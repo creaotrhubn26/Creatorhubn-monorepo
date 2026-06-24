@@ -28,7 +28,9 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from '../admin/adminDarkTheme';
 import {
   Warning,
   Error,
@@ -113,6 +115,7 @@ const PlaceholderTextScanner: React.FC<PlaceholderTextScannerProps> = ({
   
   // Theming system
   const theming = useTheming('photographer,');
+  const themeColors = { ...theming.colors, primary: '#ff8c00' };
 
   // Hent placeholder scan resultater
   const { data: scanResult, isLoading, error } = useQuery<PlaceholderScanResult>({
@@ -186,23 +189,27 @@ const PlaceholderTextScanner: React.FC<PlaceholderTextScannerProps> = ({
 
   if (isLoading) {
     return (
+      <ThemeProvider theme={adminDarkTheme}>
       <Box sx={{ p:  3 }}>
         <LinearProgress sx={{ mb:  2 }} />
-        <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+        <Typography variant="h6" gutterBottom sx={{ color: themeColors.primary }}>
           Skanner tsx-filer for placeholder tekster...
         </Typography>
         <Typography variant="body2" color="text.secondary">
           Vent mens vi analyserer alle komponenter og sider for "kommer snart" og lignende tekster.
         </Typography>
       </Box>
+      </ThemeProvider>
     );
 }
 
   if (error) {
     return (
+      <ThemeProvider theme={adminDarkTheme}>
       <Alert severity="error" sx={{ m:  3 }}>
         Kunne ikke laste placeholder scan data. Sjekk at API-endepunktet fungerer.
       </Alert>
+      </ThemeProvider>
     );
 }
 
@@ -217,23 +224,24 @@ const PlaceholderTextScanner: React.FC<PlaceholderTextScannerProps> = ({
 };
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box sx={{ p: 3 }}>
       {/* Header med oversikt */}
       <Card sx={{ mb: 3, background: 'linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%)', ...theming.getThemedCardSx() }}>
         <CardContent sx={theming.getThemedCardSx()}>
-          <Typography variant="h4" sx={{ color: theming.colors.primary, mb: 2, display: 'flex', alignItems: 'center' }}>
+          <Typography variant="h4" sx={{ color: themeColors.primary, mb: 2, display: 'flex', alignItems: 'center' }}>
             <FindInPage sx={{ mr: 2 }} />
             Placeholder Tekst Scanner
           </Typography>
 
           <Grid container spacing={3}>
             <Grid item xs={12} md={3}>
-              <Card sx={{ bgcolor: 'rgba(255,255,255,0.96)', ...theming.getThemedCardSx() }}>
+              <Card sx={{ bgcolor: 'rgba(255,255,255,0.04)', ...theming.getThemedCardSx() }}>
                 <CardContent sx={{ textAlign: 'center', ...theming.getThemedCardSx() }}>
-                  <Typography variant="h3" sx={{ color: theming.colors.primary, mb: 1 }}>
+                  <Typography variant="h3" sx={{ color: themeColors.primary, mb: 1 }}>
                     {scanData.totalMatches}
                   </Typography>
-                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>Totale Treff</Typography>
+                  <Typography variant="h6" sx={{ color: themeColors.primary }}>Totale Treff</Typography>
                   <Typography variant="body2" color="text.secondary">
                     i {scanData.scannedFiles} filer
                   </Typography>
@@ -242,12 +250,12 @@ const PlaceholderTextScanner: React.FC<PlaceholderTextScannerProps> = ({
             </Grid>
 
             <Grid item xs={12} md={3}>
-              <Card sx={{ bgcolor: 'rgba(255,255,255,0.96)', ...theming.getThemedCardSx() }}>
+              <Card sx={{ bgcolor: 'rgba(255,255,255,0.04)', ...theming.getThemedCardSx() }}>
                 <CardContent sx={{ textAlign: 'center', ...theming.getThemedCardSx() }}>
                   <Badge badgeContent={scanData.matchesBySeverity?.high || 0} color="error">
                     <Error sx={{ fontSize: 40, color: '#f44336' }} />
                   </Badge>
-                  <Typography variant="h6" sx={{ mt: 1, color: theming.colors.primary }}>Høy Prioritet</Typography>
+                  <Typography variant="h6" sx={{ mt: 1, color: themeColors.primary }}>Høy Prioritet</Typography>
                   <Typography variant="body2" color="text.secondary">
                     Krever umiddelbar handling
                   </Typography>
@@ -256,12 +264,12 @@ const PlaceholderTextScanner: React.FC<PlaceholderTextScannerProps> = ({
             </Grid>
 
             <Grid item xs={12} md={3}>
-              <Card sx={{ bgcolor: 'rgba(255,255,255,0.96)', ...theming.getThemedCardSx() }}>
+              <Card sx={{ bgcolor: 'rgba(255,255,255,0.04)', ...theming.getThemedCardSx() }}>
                 <CardContent sx={{ textAlign: 'center', ...theming.getThemedCardSx() }}>
                   <Badge badgeContent={scanData.matchesByType?.kommer_snart || 0} color="warning">
                     <Schedule sx={{ fontSize: 40, color: '#ff9800' }} />
                   </Badge>
-                  <Typography variant="h6" sx={{ mt: 1, color: theming.colors.primary }}>"Kommer Snart"</Typography>
+                  <Typography variant="h6" sx={{ mt: 1, color: themeColors.primary }}>"Kommer Snart"</Typography>
                   <Typography variant="body2" color="text.secondary">
                     Placeholder tekster
                   </Typography>
@@ -270,12 +278,12 @@ const PlaceholderTextScanner: React.FC<PlaceholderTextScannerProps> = ({
             </Grid>
 
             <Grid item xs={12} md={3}>
-              <Card sx={{ bgcolor: 'rgba(255,255,255,0.96)', ...theming.getThemedCardSx() }}>
+              <Card sx={{ bgcolor: 'rgba(255,255,255,0.04)', ...theming.getThemedCardSx() }}>
                 <CardContent sx={{ textAlign: 'center', ...theming.getThemedCardSx() }}>
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                     Sist skannet
                   </Typography>
-                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                  <Typography variant="h6" sx={{ color: themeColors.primary }}>
                     {new Date(scanData.lastScan).toLocaleString('no-NO')}
                   </Typography>
                   <Button
@@ -297,7 +305,7 @@ const PlaceholderTextScanner: React.FC<PlaceholderTextScannerProps> = ({
       {/* Filtre og søk */}
       <Card sx={{ mb: 3, ...theming.getThemedCardSx() }}>
         <CardContent sx={theming.getThemedCardSx()}>
-          <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', color: theming.colors.primary }}>
+          <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', color: themeColors.primary }}>
             <FilterList sx={{ mr:  1 }} />
             Filtrering og Søk
           </Typography>
@@ -438,7 +446,7 @@ const PlaceholderTextScanner: React.FC<PlaceholderTextScannerProps> = ({
                   <Collapse in={expandedMatches.has(match.id)}>
                     <Card sx={{ ml: 4, mb: 2, bgcolor: 'rgba(0,0,0,0.02)', ...theming.getThemedCardSx() }}>
                       <CardContent sx={theming.getThemedCardSx()}>
-                        <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>Kontekst og Detaljer</Typography>
+                        <Typography variant="h6" sx={{ mb: 2, color: themeColors.primary }}>Kontekst og Detaljer</Typography>
 
                         <Grid container spacing={2}>
                           <Grid item xs={12} md={6}>
@@ -495,6 +503,7 @@ const PlaceholderTextScanner: React.FC<PlaceholderTextScannerProps> = ({
         </CardContent>
       </Card>
     </Box>
+    </ThemeProvider>
   );
 };
 

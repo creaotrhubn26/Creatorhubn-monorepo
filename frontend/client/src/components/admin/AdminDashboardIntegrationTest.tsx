@@ -14,7 +14,9 @@ import {
   ListItemText,
   Chip,
   Divider,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   CheckCircle,
   Error as ErrorIcon,
@@ -141,6 +143,7 @@ const AdminDashboardIntegrationTest: React.FC = () => {
 }, [communication]);
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box sx={{ p: 3 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
         {professionIcon && (
@@ -234,6 +237,7 @@ const AdminDashboardIntegrationTest: React.FC = () => {
         </Typography>
       </Paper>
     </Box>
+    </ThemeProvider>
   );
 };
 

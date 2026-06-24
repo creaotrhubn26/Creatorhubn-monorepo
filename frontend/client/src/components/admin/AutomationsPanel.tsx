@@ -33,7 +33,9 @@ import {
   DialogContent,
   DialogActions,
   TextField,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   AutoAwesome,
   Schedule,
@@ -118,11 +120,13 @@ export default function AutomationsPanel({
 
   // Theming system
   const theming = useTheming('prototype_tester');
+  const themeColors = { ...theming.colors, primary: '#ff8c00' };
 
   // Fetch automation data
   const { data: automationsData, isLoading } = useQuery({
     queryKey: ['/api/admin/automations'],
     retry: 1,
+    staleTime: 15000,
     queryFn: async () => {
       const headers = await auth.getAuthHeader();
       return apiRequest('/api/admin/automations', { headers });
@@ -172,9 +176,11 @@ export default function AutomationsPanel({
 
   if (isLoading) {
     return (
+      <ThemeProvider theme={adminDarkTheme}>
       <Box sx={{ p: 3 }}>
-        <Typography variant="h6" sx={{ color: theming.colors.primary }}>Laster automatiseringer...</Typography>
+        <Typography variant="h6" sx={{ color: themeColors.primary }}>Laster automatiseringer...</Typography>
       </Box>
+      </ThemeProvider>
     );
 }
 
@@ -209,11 +215,12 @@ export default function AutomationsPanel({
 };
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <SmartToy color="primary" sx={{ fontSize: 32 }} />
-          <Typography variant="h5" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+          <Typography variant="h5" sx={{ fontWeight: 600, color: themeColors.primary }}>
             Automatiseringer
           </Typography>
         </Box>
@@ -235,7 +242,7 @@ export default function AutomationsPanel({
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                 <AutoAwesome color="primary" />
                 <Box>
-                  <Typography variant="h4" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+                  <Typography variant="h4" sx={{ fontWeight: 600, color: themeColors.primary }}>
                     {stats.totalAutomations}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -253,7 +260,7 @@ export default function AutomationsPanel({
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                 <PlayArrow color="success" />
                 <Box>
-                  <Typography variant="h4" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+                  <Typography variant="h4" sx={{ fontWeight: 600, color: themeColors.primary }}>
                     {stats.activeAutomations}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -271,7 +278,7 @@ export default function AutomationsPanel({
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                 <Timeline color="info" />
                 <Box>
-                  <Typography variant="h4" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+                  <Typography variant="h4" sx={{ fontWeight: 600, color: themeColors.primary }}>
                     {stats.totalRuns.toLocaleString('no-NO')}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -289,7 +296,7 @@ export default function AutomationsPanel({
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                 <Refresh color="warning" />
                 <Box>
-                  <Typography variant="h4" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+                  <Typography variant="h4" sx={{ fontWeight: 600, color: themeColors.primary }}>
                     {stats.successRate}%
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -312,12 +319,12 @@ export default function AutomationsPanel({
               '& .MuiTab-root': {
                 color: 'text.secondary',
                 '&.Mui-selected': {
-                  color: theming.colors.primary,
+                  color: themeColors.primary,
                   fontWeight: 600,
                 },
               },
               '& .MuiTabs-indicator': {
-                backgroundColor: theming.colors.primary,
+                backgroundColor: themeColors.primary,
               },
             }}
           >
@@ -431,7 +438,7 @@ export default function AutomationsPanel({
           <TabPanel value={tabValue} index={2}>
             <Box sx={{ textAlign: 'center', py: 4 }}>
               <Webhook sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+              <Typography variant="h6" sx={{ color: themeColors.primary }}>
                 Webhook-administrasjon
               </Typography>
               <Typography variant="body2" color="text.secondary">
@@ -483,5 +490,6 @@ export default function AutomationsPanel({
         </DialogActions>
       </Dialog>
     </Box>
+    </ThemeProvider>
   );
 }

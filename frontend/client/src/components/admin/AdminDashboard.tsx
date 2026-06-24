@@ -96,6 +96,8 @@ import {
   DeleteOutline,
 } from '@mui/icons-material';
 import AdminStats from './AdminStats';
+import { ThemeProvider as AdminSectionThemeProvider } from '@mui/material/styles';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   apiRequest,
   isApiEndpointMissing,
@@ -3333,6 +3335,7 @@ export default function AdminDashboard({
   );
 
   const renderMarketingPanel = () => (
+    <AdminSectionThemeProvider theme={adminDarkTheme}>
     <Box>
       <Box sx={{ mb: 3 }}>
         <Typography
@@ -3470,6 +3473,7 @@ export default function AdminDashboard({
         </Box>
       )}
     </Box>
+    </AdminSectionThemeProvider>
   );
 
   const renderCurrentTabContent = () => {

@@ -38,7 +38,9 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   AutoAwesome,
   PlayArrow,
@@ -145,6 +147,7 @@ export default function AutomatedTestCaseGenerator() {
   };
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box>
       <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between" sx={{ mb: 3 }}>
         <Stack direction="row" spacing={2} alignItems="center">
@@ -250,7 +253,7 @@ export default function AutomatedTestCaseGenerator() {
                         Total
                       </Typography>
                     </Box>
-                    <Box sx={{ flex: 1, textAlign: 'center', p: 1, borderRadius: 1, bgcolor: 'success.light' }}>
+                    <Box sx={{ flex: 1, textAlign: 'center', p: 1, borderRadius: 1, bgcolor: 'rgba(76,175,80,0.18)' }}>
                       <Typography variant="h6" sx={{ fontWeight: 'bold', color: 'success.dark' }}>
                         {suite.passedTests}
                       </Typography>
@@ -258,7 +261,7 @@ export default function AutomatedTestCaseGenerator() {
                         Passed
                       </Typography>
                     </Box>
-                    <Box sx={{ flex: 1, textAlign: 'center', p: 1, borderRadius: 1, bgcolor: 'error.light' }}>
+                    <Box sx={{ flex: 1, textAlign: 'center', p: 1, borderRadius: 1, bgcolor: 'rgba(239,68,68,0.18)' }}>
                       <Typography variant="h6" sx={{ fontWeight: 'bold', color: 'error.dark' }}>
                         {suite.failedTests}
                       </Typography>
@@ -372,6 +375,7 @@ export default function AutomatedTestCaseGenerator() {
         </DialogActions>
       </Dialog>
     </Box>
+    </ThemeProvider>
   );
 }
 

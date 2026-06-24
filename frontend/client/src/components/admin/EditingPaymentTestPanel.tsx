@@ -12,8 +12,9 @@ import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Card, CardContent, Typography, Button, Stack, TextField, Alert, Chip, CircularProgress,
-  Table, TableBody, TableCell, TableHead, TableRow, Box, Divider,
+  Table, TableBody, TableCell, TableHead, TableRow, Box, Divider, ThemeProvider,
 } from "@mui/material";
+import { adminDarkTheme } from './adminDarkTheme';
 import PaymentsIcon from "@mui/icons-material/Payments";
 import ScienceIcon from "@mui/icons-material/Science";
 import { apiRequest } from "@/lib/queryClient";
@@ -62,6 +63,7 @@ export default function EditingPaymentTestPanel() {
   });
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box>
       {/* PayPal-helse */}
       <Card variant="outlined" sx={{ mb: 2 }}>
@@ -122,5 +124,6 @@ export default function EditingPaymentTestPanel() {
         </CardContent>
       </Card>
     </Box>
+    </ThemeProvider>
   );
 }

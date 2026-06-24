@@ -40,7 +40,9 @@ import {
   ToggleButtonGroup,
   ToggleButton,
   CircularProgress,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   Email,
   OpenInNew,
@@ -114,6 +116,7 @@ export default function EmailAnalyticsDashboard() {
   
   // Theming system - use dynamic profession
   const theming = useTheming(currentProfession);
+  const themeColors = { ...theming.colors, primary: '#ff8c00' };
 
   const [selectedCampaign, setSelectedCampaign] = useState<string | null>(null);
   const [timeRange, setTimeRange] = useState<string>('7d');
@@ -155,6 +158,7 @@ export default function EmailAnalyticsDashboard() {
   };
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box>
       {/* Header */}
       <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between" sx={{ mb: 3 }}>
@@ -166,7 +170,7 @@ export default function EmailAnalyticsDashboard() {
           )}
           <Email sx={{ fontSize: 32, color: '#ea4335' }} />
           <Box>
-            <Typography variant="h5" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+            <Typography variant="h5" sx={{ fontWeight: 600, color: themeColors.primary }}>
               {enhancedProfessionConfig?.displayName || professionConfig?.displayName
                 ? `${enhancedProfessionConfig?.displayName || professionConfig.displayName} - Email Analytics Dashboard`
                 : 'Email Analytics Dashboard'}
@@ -432,7 +436,7 @@ export default function EmailAnalyticsDashboard() {
                       
                       <Stack direction="row" spacing={2}>
                         {/* Variant A */}
-                        <Box sx={{ flex: 1, p: 2, borderRadius: 1, bgcolor: 'success.light' }}>
+                        <Box sx={{ flex: 1, p: 2, borderRadius: 1, bgcolor: 'rgba(76,175,80,0.18)' }}>
                           <Typography variant="caption" color="success.dark" sx={{ fontWeight: 600}}>
                             VARIANT A {campaign.variantA && campaign.variantA.openCount > (campaign.variantB?.openCount || 0) && '(Winner)'}
                           </Typography>
@@ -447,7 +451,7 @@ export default function EmailAnalyticsDashboard() {
                         <CompareArrows sx={{ alignSelf: 'center', color: 'text.secondary' }} />
                         
                         {/* Variant B */}
-                        <Box sx={{ flex: 1, p: 2, borderRadius: 1, bgcolor: 'info.light' }}>
+                        <Box sx={{ flex: 1, p: 2, borderRadius: 1, bgcolor: 'rgba(33,150,243,0.18)' }}>
                           <Typography variant="caption" color="info.dark" sx={{ fontWeight: 600}}>
                             VARIANT B {campaign.variantB && campaign.variantB.openCount > (campaign.variantA?.openCount || 0) && '(Winner)'}
                           </Typography>
@@ -565,6 +569,7 @@ export default function EmailAnalyticsDashboard() {
         </DialogActions>
       </Dialog>
     </Box>
+    </ThemeProvider>
   );
 }
 

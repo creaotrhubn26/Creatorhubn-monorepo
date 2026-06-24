@@ -34,7 +34,9 @@ import {
   DialogContent,
   DialogActions,
   Alert,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   Science,
   Star,
@@ -123,6 +125,7 @@ export default function TesterSkillRatings() {
   };
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box>
       <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between" sx={{ mb: 3 }}>
         <Stack direction="row" spacing={2} alignItems="center">
@@ -373,6 +376,7 @@ export default function TesterSkillRatings() {
         )}
       </Dialog>
     </Box>
+    </ThemeProvider>
   );
 }
 

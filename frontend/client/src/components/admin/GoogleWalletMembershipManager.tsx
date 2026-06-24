@@ -47,7 +47,9 @@ import {
   Badge,
   Avatar,
   Stack,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   Add as AddIcon,
   Edit as EditIcon,
@@ -151,6 +153,7 @@ export default function GoogleWalletMembershipManager({
   
   // Theming system
   const theming = useTheming('prototype_tester');
+  const themeColors = { ...theming.colors, primary: '#ff8c00' };
 
   // Register component and data flow nodes with MasterIntegrationProvider
   useEffect(() => {
@@ -382,8 +385,9 @@ export default function GoogleWalletMembershipManager({
 };
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box className={className}>
-      <Typography variant="h4" sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+      <Typography variant="h4" sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1, color: themeColors.primary }}>
         <MembershipIcon color="primary" />
         Google Wallet - Digital Membership Cards
       </Typography>
@@ -398,7 +402,7 @@ export default function GoogleWalletMembershipManager({
                   <MembershipIcon />
                 </Avatar>
                 <Box>
-                  <Typography variant="h6" color="primary" sx={{ color: theming.colors.primary }}>
+                  <Typography variant="h6" color="primary" sx={{ color: themeColors.primary }}>
                     {membershipCards.length}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -418,7 +422,7 @@ export default function GoogleWalletMembershipManager({
                   <CheckCircleIcon />
                 </Avatar>
                 <Box>
-                  <Typography variant="h6" color="success.main" sx={{ color: theming.colors.primary }}>
+                  <Typography variant="h6" color="success.main" sx={{ color: themeColors.primary }}>
                     {membershipCards.filter((card: any) => card.isActive).length}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -438,7 +442,7 @@ export default function GoogleWalletMembershipManager({
                   <WarningIcon />
                 </Avatar>
                 <Box>
-                  <Typography variant="h6" color="warning.main" sx={{ color: theming.colors.primary }}>
+                  <Typography variant="h6" color="warning.main" sx={{ color: themeColors.primary }}>
                     {membershipCards.filter((card: any) => isExpiringSoon(card.renewalDate)).length}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -458,7 +462,7 @@ export default function GoogleWalletMembershipManager({
                   <ScheduleIcon />
                 </Avatar>
                 <Box>
-                  <Typography variant="h6" color="error.main" sx={{ color: theming.colors.primary }}>
+                  <Typography variant="h6" color="error.main" sx={{ color: themeColors.primary }}>
                     {membershipCards.filter((card: any) => isExpired(card.renewalDate)).length}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -485,7 +489,7 @@ export default function GoogleWalletMembershipManager({
       {tabValue === 0 && (
         <Box>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
-            <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+            <Typography variant="h6" sx={{ color: themeColors.primary }}>
               Digital Membership Cards
             </Typography>
             <Button variant="contained"
@@ -532,7 +536,7 @@ export default function GoogleWalletMembershipManager({
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
                       {getMembershipTypeIcon(card.membershipType)}
                       <Box sx={{ flex: 1 }}>
-                        <Typography variant="h6" noWrap sx={{ color: theming.colors.primary }}>
+                        <Typography variant="h6" noWrap sx={{ color: themeColors.primary }}>
                           {card.organizationName}
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
@@ -595,7 +599,7 @@ export default function GoogleWalletMembershipManager({
           {membershipCards.length === 0 && (
             <Paper sx={{ p: 4, textAlign: 'center' }} component="div">
               <MembershipIcon sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
-              <Typography variant="h6" color="text.secondary" gutterBottom sx={{ color: theming.colors.primary }}>
+              <Typography variant="h6" color="text.secondary" gutterBottom sx={{ color: themeColors.primary }}>
                 No Membership Cards
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
@@ -615,7 +619,7 @@ export default function GoogleWalletMembershipManager({
       {/* Organizations Tab */}
       {tabValue === 1 && (
         <Box>
-          <Typography variant="h6" sx={{ mb: 3, color: theming.colors.primary }}>
+          <Typography variant="h6" sx={{ mb: 3, color: themeColors.primary }}>
             Available Organizations
           </Typography>
           <Grid container spacing={3}>
@@ -628,7 +632,7 @@ export default function GoogleWalletMembershipManager({
                         <BusinessIcon />
                       </Avatar>
                       <Box>
-                        <Typography variant="h6" sx={{ color: theming.colors.primary }}>{org.name}</Typography>
+                        <Typography variant="h6" sx={{ color: themeColors.primary }}>{org.name}</Typography>
                         <Typography variant="body2" color="text.secondary">
                           {org.type}
                         </Typography>
@@ -658,7 +662,7 @@ export default function GoogleWalletMembershipManager({
       {/* Templates Tab */}
       {tabValue === 2 && (
         <Box>
-          <Typography variant="h6" sx={{ mb: 3, color: theming.colors.primary }}>
+          <Typography variant="h6" sx={{ mb: 3, color: themeColors.primary }}>
             Membership Card Templates
           </Typography>
           <Grid container spacing={3}>
@@ -667,7 +671,7 @@ export default function GoogleWalletMembershipManager({
                 <CardContent sx={theming.getThemedCardSx()}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
                     <WorkIcon color="primary" />
-                    <Typography variant="h6" sx={{ color: theming.colors.primary }}>Professional</Typography>
+                    <Typography variant="h6" sx={{ color: themeColors.primary }}>Professional</Typography>
                   </Box>
                   <Typography variant="body2" sx={{ mb: 2 }}>
                     For professional photographers, videographers, and creatives
@@ -683,7 +687,7 @@ export default function GoogleWalletMembershipManager({
                 <CardContent sx={theming.getThemedCardSx()}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
                     <BusinessIcon color="primary" />
-                    <Typography variant="h6" sx={{ color: theming.colors.primary }}>Business</Typography>
+                    <Typography variant="h6" sx={{ color: themeColors.primary }}>Business</Typography>
                   </Box>
                   <Typography variant="body2" sx={{ mb: 2 }}>
                     For business owners and entrepreneurs
@@ -699,7 +703,7 @@ export default function GoogleWalletMembershipManager({
                 <CardContent sx={theming.getThemedCardSx()}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
                     <SchoolIcon color="primary" />
-                    <Typography variant="h6" sx={{ color: theming.colors.primary }}>Student</Typography>
+                    <Typography variant="h6" sx={{ color: themeColors.primary }}>Student</Typography>
                   </Box>
                   <Typography variant="body2" sx={{ mb: 2 }}>
                     For students and educational memberships
@@ -717,7 +721,7 @@ export default function GoogleWalletMembershipManager({
       {/* Settings Tab */}
       {tabValue === 3 && (
         <Box>
-          <Typography variant="h6" sx={{ mb: 3, color: theming.colors.primary }}>
+          <Typography variant="h6" sx={{ mb: 3, color: themeColors.primary }}>
             Google Wallet Settings
           </Typography>
           <Card sx={theming.getThemedCardSx()}>
@@ -920,6 +924,7 @@ export default function GoogleWalletMembershipManager({
         </DialogActions>
       </Dialog>
     </Box>
+    </ThemeProvider>
   );
 }
 

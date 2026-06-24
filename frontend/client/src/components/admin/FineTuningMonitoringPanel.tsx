@@ -21,8 +21,10 @@ import {
   CircularProgress,
   Divider,
   Stack,
+  ThemeProvider,
   type ChipProps,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   CheckCircle,
   Error,
@@ -155,7 +157,7 @@ export default function FineTuningMonitoringPanel() {
       const response = await apiRequest('/api/training-monitoring/system-status');
       return response.status || {};
     },
-    refetchInterval: 10000, // Refresh every 10 seconds
+    refetchInterval: 30000, // Refresh every 10 seconds
   });
 
   // Run system test
@@ -232,6 +234,7 @@ export default function FineTuningMonitoringPanel() {
   };
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box sx={{ p: 3 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
         <Box>
@@ -848,5 +851,6 @@ export default function FineTuningMonitoringPanel() {
         </Grid>
       </Grid>
     </Box>
+    </ThemeProvider>
   );
 }

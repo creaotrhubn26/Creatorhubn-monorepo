@@ -56,7 +56,9 @@ import {
   MenuItem,
   Fab,
   Badge,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 // MUI Icons
@@ -292,7 +294,8 @@ function CreatorHubNotesInner() {
   const professionColor = getUserProfessionColor(currentProfession) || '#FF6B35';
   
   const theming = useTheming(currentProfession);
-  
+  const themeColors = { ...theming.colors, primary: '#ff8c00' };
+
   // 🔥 Enhanced Master Integration - FULL UTILIZATION
   const {
     communication,
@@ -522,6 +525,7 @@ function CreatorHubNotesInner() {
       return response as Note[];
     },
     enabled: isAuthenticated,
+    staleTime: 15000,
   });
 
   const selectedNote = useMemo(
@@ -1334,6 +1338,7 @@ function CreatorHubNotesInner() {
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Grid container spacing={2} sx={{ p: 2, height: '100vh' }}>
       {/* 🎯 Main Header with Profession Branding */}
       <Grid item xs={12}>
@@ -2113,7 +2118,7 @@ function CreatorHubNotesInner() {
           <Paper sx={{ p: 3 }}>
             <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
               <Box>
-                <Typography variant="h5" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+                <Typography variant="h5" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: themeColors.primary }}>
                   {professionIcon && (
                     <Box
                       sx={{
@@ -2410,7 +2415,7 @@ function CreatorHubNotesInner() {
               label="Paraphrased Text"
               value={outputText}
               InputProps={{ readOnly: true }}
-              sx={{ bgcolor: 'grey.50' }}
+              sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}
             />
           </Stack>
         </DialogContent>
@@ -2476,7 +2481,7 @@ function CreatorHubNotesInner() {
               label="Corrected Text"
               value={outputText}
               InputProps={{ readOnly: true }}
-              sx={{ bgcolor: 'grey.50' }}
+              sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}
             />
           </Stack>
         </DialogContent>
@@ -2549,7 +2554,7 @@ function CreatorHubNotesInner() {
               label="Summary"
               value={outputText}
               InputProps={{ readOnly: true }}
-              sx={{ bgcolor: 'grey.50' }}
+              sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}
             />
           </Stack>
         </DialogContent>
@@ -2616,7 +2621,7 @@ function CreatorHubNotesInner() {
               label="Humanized Text"
               value={outputText}
               InputProps={{ readOnly: true }}
-              sx={{ bgcolor: 'grey.50' }}
+              sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}
             />
           </Stack>
         </DialogContent>
@@ -2704,7 +2709,7 @@ function CreatorHubNotesInner() {
               label="Translated Text"
               value={outputText}
               InputProps={{ readOnly: true }}
-              sx={{ bgcolor: 'grey.50' }}
+              sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}
             />
           </Stack>
         </DialogContent>
@@ -2768,7 +2773,7 @@ function CreatorHubNotesInner() {
               label="Generated Citation"
               value={outputText}
               InputProps={{ readOnly: true }}
-              sx={{ bgcolor: 'grey.50' }}
+              sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}
             />
           </Stack>
         </DialogContent>
@@ -2834,7 +2839,7 @@ function CreatorHubNotesInner() {
               label={`Generated ${contentType}`}
               value={outputText}
               InputProps={{ readOnly: true }}
-              sx={{ bgcolor: 'grey.50' }}
+              sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}
             />
           </Stack>
         </DialogContent>
@@ -2901,7 +2906,7 @@ function CreatorHubNotesInner() {
               label="Detection Result"
               value={outputText}
               InputProps={{ readOnly: true }}
-              sx={{ bgcolor: 'grey.50' }}
+              sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}
             />
           </Stack>
         </DialogContent>
@@ -2971,7 +2976,7 @@ function CreatorHubNotesInner() {
               label="Statistics"
               value={outputText}
               InputProps={{ readOnly: true }}
-              sx={{ bgcolor: 'grey.50', fontFamily: 'monospace' }}
+              sx={{ bgcolor: 'rgba(255,255,255,0.04)', fontFamily: 'monospace' }}
             />
           </Stack>
         </DialogContent>
@@ -3060,6 +3065,7 @@ function CreatorHubNotesInner() {
         </Fab>
       )}
     </Grid>
+    </ThemeProvider>
   );
 }
 

@@ -17,7 +17,9 @@ import {
   ListItemText,
   Paper,
   Typography,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import Grid from '@mui/material/Grid2';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { useTheming } from '../../utils/theming-helper';
@@ -262,6 +264,7 @@ const PaymentSystemsIntegrationTest: React.FC = () => {
   }, [componentRegistry, dataFlow]);
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box sx={{ p: 3 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
         {professionIcon && (
@@ -404,6 +407,7 @@ const PaymentSystemsIntegrationTest: React.FC = () => {
         </Typography>
       </Alert>
     </Box>
+    </ThemeProvider>
   );
 };
 

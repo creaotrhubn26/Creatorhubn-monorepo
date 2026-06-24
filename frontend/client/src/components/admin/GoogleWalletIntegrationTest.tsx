@@ -16,7 +16,9 @@ import {
   ListItemText,
   Paper,
   Typography,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import Grid from '@mui/material/Grid2';
 import {
   Business,
@@ -260,6 +262,7 @@ const GoogleWalletIntegrationTest: React.FC = () => {
   }, [componentRegistry, dataFlow]);
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box sx={{ p: 3 }}>
       <Typography
         variant="h5"
@@ -422,6 +425,7 @@ const GoogleWalletIntegrationTest: React.FC = () => {
         </pre>
       </Paper>
     </Box>
+    </ThemeProvider>
   );
 };
 
