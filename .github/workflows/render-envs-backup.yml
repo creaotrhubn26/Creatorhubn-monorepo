@@ -1,0 +1,80 @@
+name: Render env-vars backup
+
+# Daglig backup av alle env-vars på Render-tjenester. Krypteres med
+# RENDER_ENV_BACKUP_KEY (32-byte hex, lagret som GH secret — IKKE som
+# env-var på selve Render-tjenesten, slik at en bulk-PUT-wipe ikke
+# låser oss ute av restore).
+#
+# Lagres til B2 (creatorhubn-archive-prod/render-envs/) + som GH-artifact
+# (90 dagers retensjon) som dobbel sikkerhetsnett.
+
+on:
+  schedule:
+    - cron: '0 3 * * *'  # 03:00 UTC daglig
+  workflow_dispatch:
+    inputs:
+      service_id:
+        description: 'Render service ID (default: creatorhub-backend)'
+        required: false
+        default: 'srv-d76ob60ule4c73dv2p60'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: render-envs-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - id: srv-d76ob60ule4c73dv2p60
+            name: creatorhub-backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install cryptography
+        run: pip install cryptography
+
+      - name: Validate secrets
+        run: |
+          for s in RENDER_API_KEY RENDER_ENV_BACKUP_KEY B2_APPLICATION_KEY_ID B2_APPLICATION_KEY B2_BUCKET_NAME; do
+            if [ -z "${!s}" ]; then
+              echo "::error::Missing GH secret: $s"
+              exit 1
+            fi
+          done
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_ENV_BACKUP_KEY: ${{ secrets.RENDER_ENV_BACKUP_KEY }}
+          B2_APPLICATION_KEY_ID: ${{ secrets.B2_APPLICATION_KEY_ID }}
+          B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
+          B2_BUCKET_NAME: ${{ secrets.B2_BUCKET_NAME }}
+
+      - name: Backup ${{ matrix.service.name }}
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ inputs.service_id || matrix.service.id }}
+          RENDER_ENV_BACKUP_KEY: ${{ secrets.RENDER_ENV_BACKUP_KEY }}
+          B2_APPLICATION_KEY_ID: ${{ secrets.B2_APPLICATION_KEY_ID }}
+          B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
+          B2_BUCKET_NAME: ${{ secrets.B2_BUCKET_NAME }}
+        run: |
+          python3 scripts/render-envs/backup.py
+
+      - name: Upload as GH artifact (90-day retention)
+        uses: actions/upload-artifact@v4
+        with:
+          name: render-envs-${{ matrix.service.name }}-${{ github.run_id }}
+          path: .backups/render-envs/*.json.enc
+          retention-days: 90
+          if-no-files-found: error
