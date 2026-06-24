@@ -137,6 +137,21 @@ const calculateTrend = (current: number, previous: number): { percentage: number
   return { percentage: Math.abs(percentage), isPositive: percentage >= 0 };
 };
 
+/**
+ * Polling-kadens for admin-statistikk.
+ *
+ * Tidligere pollet flere feeds hvert 5.–10. sekund med staleTime: 0, noe som
+ * ga konstant backend-last som skalerer dårlig med antall admins. Et ops-
+ * dashbord trenger ikke sub-15s ferskhet, så vi hever intervallene og legger
+ * inn en liten staleTime slik at remount (f.eks. segmentbytte) ikke refyrer
+ * alle spørringene samtidig. React Query pauser dessuten polling når vinduet
+ * ikke er fokusert (refetchIntervalInBackground: false som standard).
+ */
+const LIVE_POLL_MS = 20_000; // kjernetall: brukere, e-postkonvertering
+const STANDARD_POLL_MS = 30_000; // dashboard, profesjon, role room
+const SLOW_POLL_MS = 60_000; // academy – endrer seg sjelden
+const STATS_STALE_MS = 10_000;
+
 export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsProps) {
   const [selectedMetric, setSelectedMetric] = useState<string | null>(null);
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
@@ -192,8 +207,8 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
       return apiRequest('/api/admin/platform-stats', { headers });
     },
     enabled: canAccessAdminStats && platformStatsFeedEnabled,
-    refetchInterval: platformStatsFeedEnabled ? 5000 : false, // ✅ SANNTID: Oppdater hver 5. sekund
-    staleTime: 0 // ✅ Alltid hent ferske data
+    refetchInterval: platformStatsFeedEnabled ? LIVE_POLL_MS : false,
+    staleTime: STATS_STALE_MS
 });
 
   // Fetch enhanced dashboard with enterprise data - SANNTID
@@ -204,8 +219,8 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
       return apiRequest('/api/admin/dashboard', { headers });
     },
     enabled: canAccessAdminStats && dashboardFeedEnabled,
-    refetchInterval: dashboardFeedEnabled ? 10000 : false,
-    staleTime: 0
+    refetchInterval: dashboardFeedEnabled ? STANDARD_POLL_MS : false,
+    staleTime: STATS_STALE_MS
   });
 
   // Fetch profession-specific stats for admin overview - SANNTID
@@ -216,8 +231,8 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
       return apiRequest('/api/admin/profession-stats', { headers });
     },
     enabled: canAccessAdminStats && professionStatsFeedEnabled,
-    refetchInterval: professionStatsFeedEnabled ? 8000 : false, // ✅ SANNTID: Oppdater hver 8. sekund
-    staleTime: 0
+    refetchInterval: professionStatsFeedEnabled ? STANDARD_POLL_MS : false,
+    staleTime: STATS_STALE_MS
   });
 
   // Fetch Academy revenue stats - SANNTID
@@ -228,8 +243,8 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
       return apiRequest('/api/academy/admin/revenue/overview', { headers });
     },
     enabled: canAccessAdminStats && academyRevenueFeedEnabled,
-    refetchInterval: academyRevenueFeedEnabled ? 10000 : false, // ✅ SANNTID: Oppdater hver 10. sekund
-    staleTime: 0
+    refetchInterval: academyRevenueFeedEnabled ? SLOW_POLL_MS : false,
+    staleTime: STATS_STALE_MS
   });
 
   // Fetch Academy analytics - SANNTID
@@ -240,8 +255,8 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
       return apiRequest('/api/admin/academy/analytics/overview', { headers });
     },
     enabled: canAccessAdminStats && academyAnalyticsFeedEnabled,
-    refetchInterval: academyAnalyticsFeedEnabled ? 10000 : false, // ✅ SANNTID: Oppdater hver 10. sekund
-    staleTime: 0
+    refetchInterval: academyAnalyticsFeedEnabled ? SLOW_POLL_MS : false,
+    staleTime: STATS_STALE_MS
   });
 
   // ✅ Fetch real-time email conversion stats
@@ -252,8 +267,8 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
       return apiRequest('/api/admin/email-conversion-stats', { headers });
     },
     enabled: canAccessAdminStats && emailConversionFeedEnabled,
-    refetchInterval: emailConversionFeedEnabled ? 5000 : false, // ✅ REAL-TIME: Update every 5 seconds
-    staleTime: 0
+    refetchInterval: emailConversionFeedEnabled ? LIVE_POLL_MS : false,
+    staleTime: STATS_STALE_MS
   });
 
   // Fetch Role Room live stats for the admin dashboard
@@ -273,8 +288,8 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
       }>;
     },
     enabled: canAccessAdminStats,
-    refetchInterval: 15000,
-    staleTime: 0,
+    refetchInterval: STANDARD_POLL_MS,
+    staleTime: STATS_STALE_MS,
   });
 
   if (!canAccessAdminStats) {
