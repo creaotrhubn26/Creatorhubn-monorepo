@@ -8,6 +8,7 @@ import { CastingLandingPage } from './components/CastingLandingPage';
 import TheRoleRoomLanding from '@/pages/theroleroom-landing';
 import RoleRoomGdprNotice from '@/components/role-room/RoleRoomGdprNotice';
 import LeadgridLanding from '@/pages/leadgrid-landing';
+import LeadgridPricingPage from '@/pages/leadgrid-pricing';
 import LeadgridPersonvern from '@/pages/leadgrid-personvern';
 import LeadgridSuperadminPage from '@/pages/leadgrid-superadmin';
 import LeadgridClientPortalPage from '@/pages/leadgrid-client-portal';
@@ -17,6 +18,7 @@ import LeadgridDeveloperApplicationPage from '@/pages/leadgrid-developer-applica
 import LeadgridPartnerWizardPage from '@/pages/leadgrid-partner-wizard';
 import LeadgridPartnerDashboardPage from '@/pages/leadgrid-partner-dashboard';
 import LeadgridMarketplacePage from '@/pages/leadgrid-marketplace';
+import LeadgridConnectorsPage from '@/pages/leadgrid-connectors';
 import BlogIndexPage from '@/pages/blog-index';
 import BlogPostPage from '@/pages/blog-post';
 import AgencyLandingPage from '@/pages/agency-landing';
@@ -37,6 +39,7 @@ import MarketingPageRouter from '@/components/admin/content-marketing/MarketingP
 import { parseMarketingPagePath } from '@/components/admin/content-marketing/marketingPagesConfig';
 import { PublicBriefDetail, PublicBriefIndex, parsePublicBriefPath } from '@/components/admin/content-marketing/PublicBriefPage';
 import ClientWorkspaceShell from './components/client-workspace/ClientWorkspaceShell';
+import ClientPortalMarketingPage from '@/pages/client-portal-marketing';
 import { usePresenceHeartbeat } from '@/hooks/usePresenceHeartbeat';
 import { useAriaHiddenFocusFix } from '@/hooks/useAriaHiddenFocusFix';
 import { detectLocale } from './cms/useLocale';
@@ -162,6 +165,15 @@ function CastingStandaloneAppContent() {
     return match ? decodeURIComponent(match[1]) : null;
   }, [localeCtx.pathname]);
 
+  // Klient-portal magic-link: /client/portal/:token — read-only marketing-plan-
+  // dashboard (token-i-URL-auth). Var KUN rutet i App.tsx, som ALDRI kjører på
+  // theroleroom.com/casting-main-hosten → lenken falt til landingssiden. Ekstraher
+  // token og render portalen her (mønster som /client/workspace over).
+  const clientPortalToken = useMemo(() => {
+    const match = localeCtx.pathname.match(/^\/client\/portal\/([^/]+)\/?$/);
+    return match ? decodeURIComponent(match[1]) : null;
+  }, [localeCtx.pathname]);
+
   useEffect(() => {
     if (typeof window === 'undefined') {
       return;
@@ -196,6 +208,10 @@ function CastingStandaloneAppContent() {
       </React.Suspense>
     );
   }
+  if (localeCtx.pathname === '/leadgrid/pricing' || localeCtx.pathname === '/leadgrid/pricing/'
+      || localeCtx.pathname === '/leadgrid/priser' || localeCtx.pathname === '/leadgrid/priser/') {
+    return <LeadgridPricingPage />;
+  }
   if (localeCtx.pathname === '/leadgrid' || localeCtx.pathname === '/leadgrid/') {
     return <LeadgridLanding />;
   }
@@ -220,6 +236,11 @@ function CastingStandaloneAppContent() {
   if (localeCtx.pathname === '/leadgrid/marketplace' ||
       localeCtx.pathname === '/leadgrid/marketplace/') {
     return <LeadgridMarketplacePage />;
+  }
+  // Connector Marketplace (public — viser frem API v1 integrasjoner)
+  if (localeCtx.pathname === '/leadgrid/connectors' ||
+      localeCtx.pathname === '/leadgrid/connectors/') {
+    return <LeadgridConnectorsPage />;
   }
   // Developer-docs (public)
   if (localeCtx.pathname === '/leadgrid/utviklere' ||
@@ -252,6 +273,10 @@ function CastingStandaloneAppContent() {
     return briefRoute.kind === 'index'
       ? <PublicBriefIndex />
       : <PublicBriefDetail slug={briefRoute.slug} />;
+  }
+
+  if (clientPortalToken) {
+    return <ClientPortalMarketingPage token={clientPortalToken} />;
   }
 
   if (clientWorkspaceProjectId) {

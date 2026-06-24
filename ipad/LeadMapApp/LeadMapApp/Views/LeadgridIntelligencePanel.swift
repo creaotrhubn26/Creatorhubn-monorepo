@@ -14,6 +14,7 @@ struct LeadgridIntelligencePanel: View {
     @State private var errorText: String?
     @State private var acted = false
     @State private var presentingVoiceMemo = false
+    @State private var presentingFullReport = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -50,6 +51,15 @@ struct LeadgridIntelligencePanel: View {
         .sheet(isPresented: $presentingVoiceMemo) {
             if let lead = intel?.lead {
                 LeadgridVoiceMemoSheet(
+                    api: api,
+                    leadId: lead.id,
+                    leadName: lead.name
+                )
+            }
+        }
+        .sheet(isPresented: $presentingFullReport) {
+            if let lead = intel?.lead {
+                LeadgridFullIntelligenceSheet(
                     api: api,
                     leadId: lead.id,
                     leadName: lead.name
@@ -137,7 +147,25 @@ struct LeadgridIntelligencePanel: View {
                 }
                 .buttonStyle(.bordered)
                 .tint(.red)
+
+                Button {
+                    presentingFullReport = true
+                } label: {
+                    Label("Full rapport", systemImage: "sparkles.rectangle.stack")
+                }
+                .buttonStyle(.bordered)
+                .tint(.indigo)
             }
+        } else {
+            // Ingen aktiv anbefaling — vis fortsatt Full-rapport-CTA.
+            Divider()
+            Button {
+                presentingFullReport = true
+            } label: {
+                Label("Full rapport", systemImage: "sparkles.rectangle.stack")
+            }
+            .buttonStyle(.bordered)
+            .tint(.indigo)
         }
     }
 

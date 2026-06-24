@@ -18,6 +18,8 @@ tools/*/src-tauri/target/
 .role-room-demo-state.json
 .whatsapp-web-state.json
 .meta-business-state.json
+# Render env-var backups (encrypted, but never commit)
+.backups/
 *.log
 .DS_Store
 uploads/

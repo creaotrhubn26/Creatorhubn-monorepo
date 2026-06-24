@@ -67,6 +67,17 @@ struct LeadgridHubView: View {
                     }
                 }
 
+                // Route Planner (PR #856 + #870) — kart + nummererte stopp + Apple Maps-nav.
+                Section("Rute") {
+                    if let api = appState.api {
+                        NavigationLink {
+                            LeadgridRoutePlannerView(api: api)
+                        } label: {
+                            Label("Dagsrute", systemImage: "map.fill")
+                        }
+                    }
+                }
+
                 // Intelligence Engine (PR #855) — NBA + pipeline + score-breakdown.
                 Section("Intelligence") {
                     if let api = appState.api {
@@ -84,6 +95,19 @@ struct LeadgridHubView: View {
                             LeadgridAllRecommendationsView(api: api)
                         } label: {
                             Label("Alle NBA-anbefalinger", systemImage: "sparkles")
+                        }
+                    }
+                }
+
+                // Analytics Dashboard (PR #858 backend) — 7 KPI-endepunkter
+                // som SwiftUI Charts (5 seksjoner).
+                Section("Analyse") {
+                    if let api = appState.api {
+                        NavigationLink {
+                            LeadgridAnalyticsDashboardView(api: api)
+                        } label: {
+                            Label("Analytics Dashboard",
+                                   systemImage: "chart.line.uptrend.xyaxis")
                         }
                     }
                 }
@@ -149,6 +173,16 @@ struct LeadgridHubView: View {
                             LeadgridBillingView(api: api)
                         } label: {
                             Label("Faktura & abonnement", systemImage: "creditcard.fill")
+                        }
+                    }
+                }
+
+                Section("Kost & bruk") {
+                    if let api = appState.api {
+                        NavigationLink {
+                            LeadgridAIUsageView(api: api)
+                        } label: {
+                            Label("AI-kost", systemImage: "dollarsign.circle.fill")
                         }
                     }
                 }
