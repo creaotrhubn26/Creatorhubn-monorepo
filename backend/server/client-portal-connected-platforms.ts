@@ -375,13 +375,25 @@ export async function loadConnectedPlatforms(
     [projectId],
   );
 
-  // LinkedIn/TikTok/Google: tabellene er KUN bruker-scopet (ingen project_id),
-  // så det finnes ingen klient-spesifikk tilkobling å vise — å hente
-  // produsentens bruker-tilkobling ville lekket produsentens konto til klienten.
-  // Vis som «ikke tilkoblet» her. Ekte klient-scoping krever en migrasjon som
-  // legger project_id på disse tabellene (egen oppfølging).
+  // TikTok — nå prosjekt-scopet (mig 0337): viser klientens egen tilkobling.
+  const tiktok = await safeQueryFirst(
+    pool,
+    `SELECT connection_state AS "connectionState",
+            expiry_date      AS "expiryDate",
+            COALESCE(tiktok_display_name, tiktok_username) AS "accountName",
+            updated_at       AS "updatedAt"
+       FROM role_room_tiktok_connections
+      WHERE project_id = $1
+      ORDER BY updated_at DESC
+      LIMIT 1`,
+    [projectId],
+  );
+
+  // LinkedIn/Google: ennå ikke prosjekt-scopet i klientportalen. LinkedIn kommer
+  // (samme mønster); Google gjøres med EGEN lagring senere (20+ Workspace-lesere
+  // + destruktiv upsert-DELETE gjør in-place-scoping for risikabelt). Vis som
+  // «ikke tilkoblet» (ikke produsentens globale konto).
   const linkedin = null;
-  const tiktok = null;
   const google = null;
 
   // Facebook avledes fra Instagram-raden: Meta-publisering krever en koblet
