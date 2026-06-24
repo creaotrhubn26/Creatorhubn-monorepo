@@ -56,6 +56,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
     queryKey: ['/api/admin/analytics/cancellations', { dateRange }],
     queryFn: () => apiRequest(`/api/admin/analytics/cancellations?dateRange=${dateRange}`),
     refetchInterval: 30000, // Refresh every 30 seconds
+    staleTime: 15000, // unngå refetch-storm ved remount/segmentbytte
   });
 
   // Fetch refund analytics
@@ -63,6 +64,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
     queryKey: ['/api/admin/analytics/refunds', { dateRange, statusFilter }],
     queryFn: () => apiRequest(`/api/admin/analytics/refunds?dateRange=${dateRange}&status=${statusFilter}`),
     refetchInterval: 30000,
+    staleTime: 15000,
   });
 
   // Fetch revenue trends
@@ -70,6 +72,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
     queryKey: ['/api/admin/analytics/revenue-trends', { dateRange }],
     queryFn: () => apiRequest(`/api/admin/analytics/revenue-trends?dateRange=${dateRange}`),
     refetchInterval: 60000, // Refresh every minute
+    staleTime: 30000,
   });
 
   // Fetch churn rate
@@ -77,6 +80,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
     queryKey: ['/api/admin/analytics/churn-rate', { dateRange }],
     queryFn: () => apiRequest(`/api/admin/analytics/churn-rate?dateRange=${dateRange}`),
     refetchInterval: 60000,
+    staleTime: 30000,
   });
 
   // Refresh all analytics

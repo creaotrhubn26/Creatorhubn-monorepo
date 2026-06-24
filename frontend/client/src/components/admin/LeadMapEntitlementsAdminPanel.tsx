@@ -15,9 +15,11 @@ import {
   Alert, Box, Button, Card, CardContent, Chip, CircularProgress,
   Dialog, DialogActions, DialogContent, DialogTitle, MenuItem,
   Select, Snackbar, Stack, Table, TableBody, TableCell, TableContainer,
-  TableHead, TableRow, TextField, Typography, ThemeProvider,
+  TableHead, TableRow, TextField, Typography, ThemeProvider, Paper,
 } from '@mui/material';
 import { adminDarkTheme } from './adminDarkTheme';
+import { TableVirtuoso } from 'react-virtuoso';
+import type { TableHeadProps } from '@mui/material/TableHead';
 import {
   Verified as VerifiedIcon,
   Block as RevokeIcon,
@@ -224,91 +226,112 @@ export default function LeadMapEntitlementsAdminPanel() {
       ) : filteredRows.length === 0 ? (
         <Alert severity="info">Ingen entitlements ennå. Grant en for å komme i gang.</Alert>
       ) : (
-        <TableContainer component={Card}>
-          <Table size="small">
-            <TableHead>
+        <Paper style={{ height: 600, width: '100%' }}>
+          {/*
+            Virtualisert tabell (react-virtuoso) – rendrer kun synlige rader,
+            så DOM-en holder seg lett selv med tusenvis av entitlements.
+            Samme komponent-mønster som RefundRequestsTable/PaymentMethodsTable.
+          */}
+          <TableVirtuoso
+            data={filteredRows}
+            components={{
+              Scroller: React.forwardRef<HTMLDivElement>((props, ref) => (
+                <TableContainer component={Card} {...props} ref={ref} />
+              )),
+              Table: (props) => (
+                <Table {...props} size="small" sx={{ borderCollapse: 'separate', tableLayout: 'fixed' }} />
+              ),
+              TableHead: React.forwardRef<HTMLTableSectionElement, TableHeadProps>((props, ref) => (
+                <TableHead {...props} ref={ref} />
+              )),
+              TableRow: ({ item, ...props }) => (
+                <TableRow {...props} sx={{ opacity: item?.revoked_at ? 0.5 : 1 }} />
+              ),
+              TableBody: React.forwardRef<HTMLTableSectionElement>((props, ref) => (
+                <TableBody {...props} ref={ref} />
+              )),
+            }}
+            fixedHeaderContent={() => (
               <TableRow>
-                <TableCell>Producer / Klient</TableCell>
-                <TableCell>Tier</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell>Kilde</TableCell>
-                <TableCell>Quota</TableCell>
-                <TableCell>Grantet</TableCell>
-                <TableCell align="right">Handling</TableCell>
+                <TableCell sx={{ width: 240, fontWeight: 600 }}>Producer / Klient</TableCell>
+                <TableCell sx={{ width: 130, fontWeight: 600 }}>Tier</TableCell>
+                <TableCell sx={{ width: 120, fontWeight: 600 }}>Status</TableCell>
+                <TableCell sx={{ width: 160, fontWeight: 600 }}>Kilde</TableCell>
+                <TableCell sx={{ width: 150, fontWeight: 600 }}>Quota</TableCell>
+                <TableCell sx={{ width: 110, fontWeight: 600 }}>Grantet</TableCell>
+                <TableCell align="right" sx={{ width: 130, fontWeight: 600 }}>Handling</TableCell>
               </TableRow>
-            </TableHead>
-            <TableBody>
-              {filteredRows.map((r) => {
-                const tierMeta = TIER_META[r.tier];
-                const statusMeta = STATUS_META[r.status];
-                const producerName = r.producer_first_name && r.producer_last_name
-                  ? `${r.producer_first_name} ${r.producer_last_name}`
-                  : r.producer_email ?? r.producer_user_id;
-                return (
-                  <TableRow key={r.id} sx={{ opacity: r.revoked_at ? 0.5 : 1 }}>
-                    <TableCell>
-                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                        {producerName}
-                      </Typography>
+            )}
+            itemContent={(_index, r) => {
+              const tierMeta = TIER_META[r.tier];
+              const statusMeta = STATUS_META[r.status];
+              const producerName = r.producer_first_name && r.producer_last_name
+                ? `${r.producer_first_name} ${r.producer_last_name}`
+                : r.producer_email ?? r.producer_user_id;
+              return (
+                <>
+                  <TableCell>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                      {producerName}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {r.config_client_name ?? `config: ${r.config_id.slice(0, 8)}…`}
+                    </Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Chip
+                      size="small"
+                      label={tierMeta?.label ?? r.tier}
+                      sx={{ bgcolor: `${tierMeta?.color}33`, color: tierMeta?.color, fontWeight: 700 }}
+                    />
+                    <Typography variant="caption" sx={{ display: 'block', mt: 0.4 }}>
+                      {tierMeta?.priceNok ? `${tierMeta.priceNok} kr/mnd` : '—'}
+                    </Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Chip size="small" label={statusMeta?.label ?? r.status} color={statusMeta?.color} />
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="body2">{r.source}</Typography>
+                    {r.trial_ends_at && (
                       <Typography variant="caption" color="text.secondary">
-                        {r.config_client_name ?? `config: ${r.config_id.slice(0, 8)}…`}
+                        Trial → {new Date(r.trial_ends_at).toLocaleDateString('nb-NO')}
                       </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        size="small"
-                        label={tierMeta?.label ?? r.tier}
-                        sx={{ bgcolor: `${tierMeta?.color}33`, color: tierMeta?.color, fontWeight: 700 }}
-                      />
-                      <Typography variant="caption" sx={{ display: 'block', mt: 0.4 }}>
-                        {tierMeta?.priceNok ? `${tierMeta.priceNok} kr/mnd` : '—'}
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="body2">
+                      {r.leads_per_month_limit ?? '∞'} leads/mnd
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {r.ai_pitches_per_month_limit ?? '∞'} AI/mnd
+                    </Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="caption">
+                      {new Date(r.granted_at).toLocaleDateString('nb-NO')}
+                    </Typography>
+                  </TableCell>
+                  <TableCell align="right">
+                    {!r.revoked_at ? (
+                      <Button
+                        size="small" color="error"
+                        startIcon={<RevokeIcon sx={{ fontSize: 14 }} />}
+                        onClick={() => setRevokeTarget(r)}
+                      >
+                        Revoker
+                      </Button>
+                    ) : (
+                      <Typography variant="caption" color="error">
+                        Revokert {new Date(r.revoked_at).toLocaleDateString('nb-NO')}
                       </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Chip size="small" label={statusMeta?.label ?? r.status} color={statusMeta?.color} />
-                    </TableCell>
-                    <TableCell>
-                      <Typography variant="body2">{r.source}</Typography>
-                      {r.trial_ends_at && (
-                        <Typography variant="caption" color="text.secondary">
-                          Trial → {new Date(r.trial_ends_at).toLocaleDateString('nb-NO')}
-                        </Typography>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Typography variant="body2">
-                        {r.leads_per_month_limit ?? '∞'} leads/mnd
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {r.ai_pitches_per_month_limit ?? '∞'} AI/mnd
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Typography variant="caption">
-                        {new Date(r.granted_at).toLocaleDateString('nb-NO')}
-                      </Typography>
-                    </TableCell>
-                    <TableCell align="right">
-                      {!r.revoked_at ? (
-                        <Button
-                          size="small" color="error"
-                          startIcon={<RevokeIcon sx={{ fontSize: 14 }} />}
-                          onClick={() => setRevokeTarget(r)}
-                        >
-                          Revoker
-                        </Button>
-                      ) : (
-                        <Typography variant="caption" color="error">
-                          Revokert {new Date(r.revoked_at).toLocaleDateString('nb-NO')}
-                        </Typography>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </TableContainer>
+                    )}
+                  </TableCell>
+                </>
+              );
+            }}
+          />
+        </Paper>
       )}
 
       {/* Grant-dialog */}
