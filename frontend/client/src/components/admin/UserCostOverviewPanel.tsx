@@ -38,7 +38,9 @@ import {
   Button,
   IconButton,
   Tooltip,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   Refresh as RefreshIcon,
   Storage as StorageIcon,
@@ -143,7 +145,8 @@ export const UserCostOverviewPanel: React.FC = () => {
   }, [data, search]);
 
   return (
-    <Box sx={{ p: 3, bgcolor: '#f8fafc', minHeight: '100%' }}>
+    <ThemeProvider theme={adminDarkTheme}>
+    <Box sx={{ p: 3, minHeight: '100%' }}>
       <Stack
         direction="row"
         justifyContent="space-between"
@@ -385,6 +388,7 @@ export const UserCostOverviewPanel: React.FC = () => {
         </Typography>
       ) : null}
     </Box>
+    </ThemeProvider>
   );
 };
 

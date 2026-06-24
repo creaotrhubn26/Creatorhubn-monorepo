@@ -42,7 +42,9 @@ import {
   Switch,
   FormControlLabel,
   Autocomplete,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   Add,
   Settings,
@@ -410,12 +412,13 @@ export default function ProfessionTypeManager() {
   };
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box sx={{ p: 3 }}>
       {/* Header */}
-      <Paper sx={{ 
-        p: 3, 
-        mb: 3, 
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' 
+      <Paper sx={{
+        p: 3,
+        mb: 3,
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
       }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -1046,5 +1049,6 @@ export default function ProfessionTypeManager() {
         </DialogActions>
       </Dialog>
     </Box>
+    </ThemeProvider>
   );
 }
