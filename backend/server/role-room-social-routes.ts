@@ -133,7 +133,7 @@ export function setupRoleRoomSocialRoutes(
         `SELECT linkedin_member_id, linkedin_email, linkedin_name,
                 connection_state, profile, expiry_date
            FROM role_room_linkedin_connections
-          WHERE user_id = $1 LIMIT 1`,
+          WHERE user_id = $1 AND project_id IS NULL LIMIT 1`,
         [session.userId],
       );
       const row = result.rows[0] ?? null;
