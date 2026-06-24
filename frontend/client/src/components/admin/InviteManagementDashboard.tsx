@@ -45,6 +45,8 @@ import {
   ThemeProvider,
 } from '@mui/material';
 import { adminDarkTheme } from './adminDarkTheme';
+import { TableVirtuoso } from 'react-virtuoso';
+import type { TableHeadProps } from '@mui/material/TableHead';
 import { styled } from '@mui/material/styles';
 import {
   Assessment,
@@ -449,24 +451,44 @@ export default function InviteManagementDashboard() {
       </Paper>
 
       {/* Invitations Table */}
-      <TableContainer component={Paper}>
-        <Table>
-          <TableHead>
+      <Paper style={{ height: 600, width: '100%' }}>
+        {/*
+          Virtualisert tabell (react-virtuoso) – rendrer kun synlige rader, så
+          DOM-en holder seg lett uansett hvor mange invitasjoner som vises.
+          Samme mønster som RefundRequestsTable/PaymentMethodsTable.
+        */}
+        <TableVirtuoso
+          data={filteredInvitations}
+          components={{
+            Scroller: React.forwardRef<HTMLDivElement>((props, ref) => (
+              <TableContainer component={Paper} {...props} ref={ref} />
+            )),
+            Table: (props) => (
+              <Table {...props} sx={{ borderCollapse: 'separate', tableLayout: 'fixed' }} />
+            ),
+            TableHead: React.forwardRef<HTMLTableSectionElement, TableHeadProps>((props, ref) => (
+              <TableHead {...props} ref={ref} />
+            )),
+            TableRow: ({ item: _item, ...props }) => <TableRow {...props} hover />,
+            TableBody: React.forwardRef<HTMLTableSectionElement>((props, ref) => (
+              <TableBody {...props} ref={ref} />
+            )),
+          }}
+          fixedHeaderContent={() => (
             <TableRow>
-              <TableCell>Bedrift</TableCell>
-              <TableCell>Kontakt</TableCell>
-              <TableCell>Profesjon</TableCell>
-              <TableCell>Abonnement</TableCell>
-              <TableCell>Status</TableCell>
-              <TableCell>Brukerreise</TableCell>
-              <TableCell>Risiko</TableCell>
-              <TableCell>Dato</TableCell>
-              <TableCell>Handlinger</TableCell>
+              <TableCell sx={{ width: 200, fontWeight: 600 }}>Bedrift</TableCell>
+              <TableCell sx={{ width: 200, fontWeight: 600 }}>Kontakt</TableCell>
+              <TableCell sx={{ width: 130, fontWeight: 600 }}>Profesjon</TableCell>
+              <TableCell sx={{ width: 140, fontWeight: 600 }}>Abonnement</TableCell>
+              <TableCell sx={{ width: 120, fontWeight: 600 }}>Status</TableCell>
+              <TableCell sx={{ width: 150, fontWeight: 600 }}>Brukerreise</TableCell>
+              <TableCell sx={{ width: 110, fontWeight: 600 }}>Risiko</TableCell>
+              <TableCell sx={{ width: 110, fontWeight: 600 }}>Dato</TableCell>
+              <TableCell sx={{ width: 110, fontWeight: 600 }}>Handlinger</TableCell>
             </TableRow>
-          </TableHead>
-          <TableBody>
-            {filteredInvitations.map((invite: any) => (
-              <TableRow key={invite.id} hover>
+          )}
+          itemContent={(_index, invite: any) => (
+            <>
                 <TableCell>
                   <Box>
                     <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
@@ -477,7 +499,7 @@ export default function InviteManagementDashboard() {
                     </Typography>
                   </Box>
                 </TableCell>
-                
+
                 <TableCell>
                   <Box>
                     <Typography variant="body2">{invite.contactName}</Typography>
@@ -486,7 +508,7 @@ export default function InviteManagementDashboard() {
                     </Typography>
                   </Box>
                 </TableCell>
-                
+
                 <TableCell>
                   <Chip
                     label={getProfessionLabel(invite.profession)}
@@ -544,27 +566,27 @@ export default function InviteManagementDashboard() {
                     </Tooltip>
                   )}
                 </TableCell>
-                
+
                 <TableCell>
                   <Typography variant="body2">
                     {new Date(invite.createdAt).toLocaleDateString('nb-NO')}
                   </Typography>
                 </TableCell>
-                
+
                 <TableCell>
                   <Box sx={{ display: 'flex', gap: 1 }}>
                     <Tooltip title="Se detaljer">
-                      <IconButton 
+                      <IconButton
                         size="small"
                         onClick={() => handleReviewInvite(invite)}
                       >
                         {theming.getThemedIcon('visibility')}
                       </IconButton>
                     </Tooltip>
-                    
+
                     {invite.status === 'approved' && !invite.inviteSentAt && (
                       <Tooltip title="Send invitasjon">
-                        <IconButton 
+                        <IconButton
                           size="small"
                           onClick={() => handleSendInvite(invite.id)}
                           disabled={sendInviteMutation.isPending}
@@ -575,11 +597,10 @@ export default function InviteManagementDashboard() {
                     )}
                   </Box>
                 </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
+            </>
+          )}
+        />
+      </Paper>
 
       {/* Review Dialog */}
       <Dialog 
