@@ -785,6 +785,7 @@ import {
   createInviteFromApprovedRequest,
 } from "./prototype-tester-invites-routes";
 import { setupAdminNotificationsRoutes } from "./admin-notifications-routes";
+import { setupAdminInboundAlertsRoutes } from "./admin-inbound-alerts-routes";
 import { setupAdminAnnouncementsRoutes } from "./admin-announcements-routes";
 import { setupInviteRequestsRoutes } from "./invite-requests-routes";
 import { setupSubmissionsRoutes } from "./submissions-routes";
@@ -66116,6 +66117,7 @@ setupEquipmentRootRoutes({ app, pool, db, parseSettings, requireUserSession });
 // faktisk er beskyttet. User-endepunktene (inbox/seen/act) trenger ikke
 // admin og hopper sjekken inne i route-filen.
 setupAdminNotificationsRoutes({ app, pool, getPricingUserId, requireAdminSession });
+setupAdminInboundAlertsRoutes({ app, pool, requireAdminSession });
 
 // Task #121b — Admin Room Marketing-fane: in-app banner/modal/toast/email
 // announcements + view-/dismiss-/click-stats. Backer AnnouncementCreator +
