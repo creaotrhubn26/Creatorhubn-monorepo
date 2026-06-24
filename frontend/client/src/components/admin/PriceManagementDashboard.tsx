@@ -33,7 +33,9 @@ import {
   Tabs,
   TextField,
   Typography,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import type { ChipProps } from '@mui/material';
 import {
   AddCircle as AddIcon,
@@ -586,6 +588,8 @@ export default function PriceManagementDashboard({
   }>({ open: false, message: '', severity: 'info' });
 
   const theming = useTheming('prototype_tester');
+  // Lys oransje aksent på mørk bakgrunn (matcher admin-skallet).
+  const themeColors = { ...theming.colors, primary: '#ff8c00' };
   const { getProfessionDisplayName: getDynamicProfessionName } = useDynamicProfessions();
   const { auth } = useEnhancedMasterIntegration();
   const { subscriptionPlans, features: platformFeatures, isLoading: pricingLoading, formatPrice } = usePlatformPricing();
@@ -1194,21 +1198,24 @@ export default function PriceManagementDashboard({
 
   if (loading || pricingLoading) {
     return (
-      <Box sx={{ width: '100%', mt: 2 }}>
-        <LinearProgress />
-        <Typography sx={{ mt: 2, textAlign: 'center' }}>Laster prisstyring...</Typography>
-      </Box>
+      <ThemeProvider theme={adminDarkTheme}>
+        <Box sx={{ width: '100%', mt: 2 }}>
+          <LinearProgress />
+          <Typography sx={{ mt: 2, textAlign: 'center' }}>Laster prisstyring...</Typography>
+        </Box>
+      </ThemeProvider>
     );
   }
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box sx={{ width: '100%' }}>
       <Box
         sx={{
           mb: 3,
           borderRadius: '24px',
-          border: '1px solid rgba(15, 52, 96, 0.08)',
-          background: 'linear-gradient(135deg, rgba(15, 52, 96, 0.08), rgba(233, 69, 96, 0.05))',
+          border: '1px solid rgba(255,255,255,0.12)',
+          background: 'linear-gradient(135deg, rgba(15,23,42,0.94), rgba(255,255,255,0.04))',
           px: { xs: 2, sm: 3 },
           py: { xs: 2.25, sm: 2.75 },
         }}
@@ -1220,13 +1227,13 @@ export default function PriceManagementDashboard({
           alignItems={{ xs: 'flex-start', xl: 'stretch' }}
         >
           <Box sx={{ maxWidth: 720, flex: 1 }}>
-            <Typography variant="overline" sx={{ color: '#0f3460', fontWeight: 700, letterSpacing: '0.08em' }}>
+            <Typography variant="overline" sx={{ color: '#ff8c00', fontWeight: 700, letterSpacing: '0.08em' }}>
               CreatorHub Commerce
             </Typography>
-            <Typography variant="h4" sx={{ mt: 0.5, fontWeight: 700, letterSpacing: '-0.03em', color: '#111827' }}>
+            <Typography variant="h4" sx={{ mt: 0.5, fontWeight: 700, letterSpacing: '-0.03em', color: '#ffffff' }}>
               Prisstyring
             </Typography>
-            <Typography variant="body2" sx={{ mt: 1, color: '#5b6472', lineHeight: 1.7 }}>
+            <Typography variant="body2" sx={{ mt: 1, color: 'rgba(255,255,255,0.6)', lineHeight: 1.7 }}>
               Hold selvbetjente planer, årsprising og enterprise-sporet samlet i én arbeidsflate.
               Endringene her skal være lesbare både for teamet og for det som faktisk publiseres på CreatorHub.
             </Typography>
@@ -1271,10 +1278,10 @@ export default function PriceManagementDashboard({
                 py: 1.5,
               }}
             >
-              <Typography sx={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#6b7280', fontWeight: 700 }}>
+              <Typography sx={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(255,255,255,0.6)', fontWeight: 700 }}>
                 Det som publiseres nå
               </Typography>
-              <Typography sx={{ mt: 0.6, fontWeight: 700, color: '#111827' }}>
+              <Typography sx={{ mt: 0.6, fontWeight: 700, color: '#ffffff' }}>
                 {selfServePlans.length} selvbetjente planer og {annualPlanCount} årspriser er ute.
               </Typography>
             </Box>
@@ -1287,10 +1294,10 @@ export default function PriceManagementDashboard({
                 py: 1.5,
               }}
             >
-              <Typography sx={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#6b7280', fontWeight: 700 }}>
+              <Typography sx={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(255,255,255,0.6)', fontWeight: 700 }}>
                 Operativ kontroll
               </Typography>
-              <Typography sx={{ mt: 0.6, color: '#5b6472', lineHeight: 1.6 }}>
+              <Typography sx={{ mt: 0.6, color: 'rgba(255,255,255,0.6)', lineHeight: 1.6 }}>
                 Samme innhold styrer landingssiden, abonnementssiden, checkout og CreatorHub-mailene.
               </Typography>
             </Box>
@@ -1345,7 +1352,7 @@ export default function PriceManagementDashboard({
             '& .MuiTab-root': {
               minHeight: 42,
               textTransform: 'none',
-              color: '#667085',
+              color: 'rgba(255,255,255,0.6)',
               borderRadius: '12px',
               px: 1.75,
               mr: 0.75,
@@ -1445,7 +1452,7 @@ export default function PriceManagementDashboard({
                       }}
                     />
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
-                      <Typography variant="h6" sx={{ fontWeight: 'bold', flex: 1, color: theming.colors.primary }}>
+                      <Typography variant="h6" sx={{ fontWeight: 'bold', flex: 1, color: themeColors.primary }}>
                         {feature.name}
                       </Typography>
                       <Switch checked={isEnabled} onChange={() => void toggleFeature(feature.id)} color="primary" />
@@ -1530,7 +1537,7 @@ export default function PriceManagementDashboard({
                     sx={{
                       '& thead th': {
                         bgcolor: 'rgba(255,255,255,0.04)',
-                        color: '#6b6257',
+                        color: 'rgba(255,255,255,0.6)',
                         fontSize: '0.78rem',
                         borderBottom: '1px solid rgba(255,255,255,0.10)',
                       },
@@ -1539,7 +1546,7 @@ export default function PriceManagementDashboard({
                         verticalAlign: 'top',
                       },
                       '& tbody tr:hover': {
-                        bgcolor: '#fffaf1',
+                        bgcolor: 'rgba(255,255,255,0.06)',
                       },
                     }}
                   >
@@ -1728,7 +1735,7 @@ export default function PriceManagementDashboard({
                     <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
                       Hva oppdateres automatisk
                     </Typography>
-                    <Typography variant="body2" sx={{ mt: 0.6, color: '#5b6472', lineHeight: 1.6 }}>
+                    <Typography variant="body2" sx={{ mt: 0.6, color: 'rgba(255,255,255,0.6)', lineHeight: 1.6 }}>
                       Landingssiden, abonnementssiden og CreatorHub-checkout bruker samme planstruktur
                       som denne tabellen.
                     </Typography>
@@ -1779,7 +1786,7 @@ export default function PriceManagementDashboard({
 
                 <Stack spacing={2.25}>
                   <Box sx={priceManagementInsetSx}>
-                    <Typography variant="overline" sx={{ color: '#0f3460', fontWeight: 700 }}>
+                    <Typography variant="overline" sx={{ color: '#ff8c00', fontWeight: 700 }}>
                       Brand og support
                     </Typography>
                     <Stack spacing={1.5} sx={{ mt: 1 }}>
@@ -1831,7 +1838,7 @@ export default function PriceManagementDashboard({
                   </Box>
 
                   <Box sx={priceManagementInsetSx}>
-                    <Typography variant="overline" sx={{ color: '#0f3460', fontWeight: 700 }}>
+                    <Typography variant="overline" sx={{ color: '#ff8c00', fontWeight: 700 }}>
                       Avsendere
                     </Typography>
                     <Stack spacing={1.5} sx={{ mt: 1 }}>
@@ -1908,7 +1915,7 @@ export default function PriceManagementDashboard({
                 </Typography>
                 <Stack spacing={1.5}>
                   <Box sx={{ ...priceManagementInsetSx, bgcolor: 'rgba(255,255,255,0.04)' }}>
-                    <Typography variant="overline" sx={{ color: '#0f3460', fontWeight: 700 }}>
+                    <Typography variant="overline" sx={{ color: '#ff8c00', fontWeight: 700 }}>
                       Første vellykkede betaling
                     </Typography>
                     <Typography variant="body2" sx={{ mt: 0.5, color: 'text.secondary' }}>
@@ -1916,7 +1923,7 @@ export default function PriceManagementDashboard({
                     </Typography>
                   </Box>
                   <Box sx={{ ...priceManagementInsetSx, bgcolor: 'rgba(33,150,243,0.08)' }}>
-                    <Typography variant="overline" sx={{ color: '#1d4ed8', fontWeight: 700 }}>
+                    <Typography variant="overline" sx={{ color: '#60a5fa', fontWeight: 700 }}>
                       Konto aktivert
                     </Typography>
                     <Typography variant="body2" sx={{ mt: 0.5, color: 'text.secondary' }}>
@@ -1932,7 +1939,7 @@ export default function PriceManagementDashboard({
                     </Typography>
                   </Box>
                   <Box sx={{ ...priceManagementInsetSx, bgcolor: 'rgba(76,175,80,0.10)' }}>
-                    <Typography variant="overline" sx={{ color: '#047857', fontWeight: 700 }}>
+                    <Typography variant="overline" sx={{ color: '#34d399', fontWeight: 700 }}>
                       Betaling gjenopprettet
                     </Typography>
                     <Typography variant="body2" sx={{ mt: 0.5, color: 'text.secondary' }}>
@@ -1990,7 +1997,7 @@ export default function PriceManagementDashboard({
                     sx={{
                       '& thead th': {
                         bgcolor: 'rgba(255,255,255,0.04)',
-                        color: '#6b6257',
+                        color: 'rgba(255,255,255,0.6)',
                         fontSize: '0.78rem',
                         borderBottom: '1px solid rgba(255,255,255,0.10)',
                       },
@@ -1999,7 +2006,7 @@ export default function PriceManagementDashboard({
                         verticalAlign: 'top',
                       },
                       '& tbody tr:hover': {
-                        bgcolor: '#fffaf1',
+                        bgcolor: 'rgba(255,255,255,0.06)',
                       },
                     }}
                   >
@@ -2083,7 +2090,7 @@ export default function PriceManagementDashboard({
           <Grid size={{ xs: 12 }}>
             <Card sx={priceManagementSurfaceSx}>
               <CardContent sx={{ p: { xs: 2.25, md: 3 } }}>
-                <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
+                <Typography variant="h6" sx={{ mb: 2, color: themeColors.primary }}>
                   Top Features by Usage
                 </Typography>
                 <TableContainer>
@@ -2127,7 +2134,7 @@ export default function PriceManagementDashboard({
           <Grid size={{ xs: 12, md: 6 }}>
             <Card sx={priceManagementSurfaceSx}>
               <CardContent sx={{ p: { xs: 2.25, md: 3 } }}>
-                <Typography variant="h6" sx={{ mb: 3, display: 'flex', alignItems: 'center', color: theming.colors.primary }}>
+                <Typography variant="h6" sx={{ mb: 3, display: 'flex', alignItems: 'center', color: themeColors.primary }}>
                   <EnterpriseIcon sx={{ mr: 1 }} />
                   Enterprise Basispriser (eks. MVA)
                 </Typography>
@@ -2167,7 +2174,7 @@ export default function PriceManagementDashboard({
           <Grid size={{ xs: 12, md: 6 }}>
             <Card sx={priceManagementSurfaceSx}>
               <CardContent sx={{ p: { xs: 2.25, md: 3 } }}>
-                <Typography variant="h6" sx={{ mb: 3, display: 'flex', alignItems: 'center', color: theming.colors.primary }}>
+                <Typography variant="h6" sx={{ mb: 3, display: 'flex', alignItems: 'center', color: themeColors.primary }}>
                   <PeopleIcon sx={{ mr: 1 }} />
                   Pris per ekstra bruker (eks. MVA)
                 </Typography>
@@ -2197,7 +2204,7 @@ export default function PriceManagementDashboard({
           <Grid size={{ xs: 12 }}>
             <Card sx={priceManagementSurfaceSx}>
               <CardContent sx={{ p: { xs: 2.25, md: 3 } }}>
-                <Typography variant="h6" sx={{ mb: 3, color: theming.colors.primary }}>
+                <Typography variant="h6" sx={{ mb: 3, color: themeColors.primary }}>
                   Volumrabatter
                 </Typography>
                 <TableContainer>
@@ -2849,6 +2856,7 @@ export default function PriceManagementDashboard({
         </Alert>
       </Snackbar>
     </Box>
+    </ThemeProvider>
   );
 }
 
