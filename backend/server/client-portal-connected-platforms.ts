@@ -352,57 +352,14 @@ export async function loadConnectedPlatforms(
   projectId: string,
   now: Date = new Date(),
 ): Promise<ConnectedPlatform[]> {
-  // Produsentens bruker-ID (de fleste connection-tabellene er bruker-scopet).
-  const producerUserId = await getProjectProducerUserId(pool, projectId);
+  // KLIENTPORTAL-SCOPE: vis KUN tilkoblinger som hører til DETTE prosjektet —
+  // dvs. kontoer KLIENTEN selv har koblet (lagres med project_id). Tidligere
+  // falt spørringen tilbake til produsentens egne bruker-scopede tilkoblinger
+  // (`OR user_id = producer` for IG; `WHERE user_id = producer` for de andre),
+  // så klienten så produsentens egen konto (f.eks. creatorhubn / CreatorHub
+  // Norge) som «Tilkoblet». Klienten skal koble SIN egen konto.
 
-  // LinkedIn — bruker-scopet, unik på user_id.
-  const linkedin = producerUserId
-    ? await safeQueryFirst(
-        pool,
-        `SELECT connection_state AS "connectionState",
-                expiry_date      AS "expiryDate",
-                linkedin_name    AS "accountName",
-                updated_at       AS "updatedAt"
-           FROM role_room_linkedin_connections
-          WHERE user_id = $1
-          LIMIT 1`,
-        [producerUserId],
-      )
-    : null;
-
-  // TikTok — bruker-scopet, unik på user_id.
-  const tiktok = producerUserId
-    ? await safeQueryFirst(
-        pool,
-        `SELECT connection_state AS "connectionState",
-                expiry_date      AS "expiryDate",
-                COALESCE(tiktok_display_name, tiktok_username) AS "accountName",
-                updated_at       AS "updatedAt"
-           FROM role_room_tiktok_connections
-          WHERE user_id = $1
-          LIMIT 1`,
-        [producerUserId],
-      )
-    : null;
-
-  // Google — bruker-scopet connection. Prosjekt-bindingen finnes separat,
-  // men selve OAuth-tilstanden ligger på bruker-raden.
-  const google = producerUserId
-    ? await safeQueryFirst(
-        pool,
-        `SELECT connection_state AS "connectionState",
-                expiry_date      AS "expiryDate",
-                google_email     AS "accountName",
-                updated_at       AS "updatedAt"
-           FROM role_room_google_connections
-          WHERE user_id = $1
-          LIMIT 1`,
-        [producerUserId],
-      )
-    : null;
-
-  // Instagram — kan være prosjekt-scopet ELLER bruker-vid. Velg nyeste
-  // rad som matcher prosjektet eller produsenten.
+  // Instagram — prosjekt-scopet. Facebook avledes fra IG-radens koblede Page.
   const instagram = await safeQueryFirst(
     pool,
     `SELECT connection_state AS "connectionState",
@@ -412,11 +369,20 @@ export async function loadConnectedPlatforms(
             facebook_page_id AS "facebookPageId",
             updated_at       AS "updatedAt"
        FROM role_room_instagram_connections
-      WHERE project_id = $1 OR user_id = $2
-      ORDER BY (project_id = $1) DESC, updated_at DESC
+      WHERE project_id = $1
+      ORDER BY updated_at DESC
       LIMIT 1`,
-    [projectId, producerUserId],
+    [projectId],
   );
+
+  // LinkedIn/TikTok/Google: tabellene er KUN bruker-scopet (ingen project_id),
+  // så det finnes ingen klient-spesifikk tilkobling å vise — å hente
+  // produsentens bruker-tilkobling ville lekket produsentens konto til klienten.
+  // Vis som «ikke tilkoblet» her. Ekte klient-scoping krever en migrasjon som
+  // legger project_id på disse tabellene (egen oppfølging).
+  const linkedin = null;
+  const tiktok = null;
+  const google = null;
 
   // Facebook avledes fra Instagram-raden: Meta-publisering krever en koblet
   // FB-side, så hvis IG er koblet med en page er Facebook også «på».
