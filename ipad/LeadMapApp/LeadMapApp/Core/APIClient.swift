@@ -2357,6 +2357,164 @@ struct SnoozeResult: Decodable {
     let hours: Int?
 }
 
+<<<<<<< HEAD
+// MARK: - Leadgrid Route Planner (PR #856 + #870)
+//
+// Bygger ovenpå eksisterende `planDayRoute`/`updateRouteStop` (smart dagsrute).
+// Disse nye metodene gir Route Planner-UI-et (auto in-grid + nærmeste-nabo)
+// modeller med expected_route_value + matrix_source, og henter detaljert
+// rute-detalj for innsjekk i felt.
+
+extension APIClient {
+    /// Planlegg dagsrute uten å trenge organizationId — backend velger basert
+    /// på selgerens in-grid leads. Returnerer nil hvis ingen aktuelle leads.
+    func planRoute(
+        startLat: Double,
+        startLng: Double,
+        limit: Int = 12,
+        plannedDate: String? = nil
+    ) async throws -> LeadgridRouteDetail? {
+        var body: [String: Any] = [
+            "start_lat": startLat,
+            "start_lng": startLng,
+            "limit": limit,
+        ]
+        if let plannedDate { body["planned_date"] = plannedDate }
+        let resp: LeadgridRoutePlanResponse = try await post(
+            "/api/leadgrid/routes/plan", body: body
+        )
+        return resp.route
+    }
+
+    /// Hent en lagret rute med oppdaterte stopp-statuser (for innsjekk-flyt).
+    func fetchRoute(_ id: String) async throws -> LeadgridRouteFullResponse {
+        try await get("/api/leadgrid/routes/\(id)")
+    }
+}
+
+// MARK: - Leadgrid Meeting Notes (Voice Memo → Whisper → Claude action items)
+
+/// Resultatet av en voice-memo opplasting.
+/// Backend prosesserer asynkront (Whisper → Claude); poll `fetchMeetingNote` for status.
+struct MeetingNoteUploadResult: Decodable {
+    let meetingNoteId: String
+    let status: String
+}
+
+struct MeetingNote: Decodable, Identifiable {
+    let id: String
+    let source: String?
+    let transcript: String?
+    let summary: String?
+    let actionItems: [MeetingActionItem]?
+    let decisions: [MeetingDecision]?
+    let nextSteps: [MeetingNextStep]?
+    let topics: [MeetingTopic]?
+    let confidence: Double?
+    let processingStatus: String
+    let errorMessage: String?
+    let createdAt: String?
+    let processedAt: String?
+}
+
+struct MeetingActionItem: Decodable, Hashable {
+    let title: String
+    let dueDate: String?
+    let priority: String?
+    let assignee: String?
+}
+
+struct MeetingDecision: Decodable, Hashable {
+    let decision: String
+    let owner: String?
+}
+
+struct MeetingNextStep: Decodable, Hashable {
+    let step: String
+    let owner: String?
+    let deadline: String?
+}
+
+struct MeetingTopic: Decodable, Hashable {
+    let topic: String
+    let sentiment: String?
+}
+
+private struct MeetingNoteResponse: Decodable { let note: MeetingNote }
+private struct MeetingNotesListResponse: Decodable { let notes: [MeetingNote] }
+
+extension APIClient {
+    /// Last opp voice-memo for et lead. Backend transkriberer m/ Whisper og
+    /// ekstraherer action items m/ Claude (async — poll `fetchMeetingNote`).
+    func uploadVoiceMemo(
+        leadId: String,
+        audioData: Data,
+        durationSeconds: Int,
+        language: String = "no"
+    ) async throws -> MeetingNoteUploadResult {
+        let base64 = audioData.base64EncodedString()
+        let body: [String: Any] = [
+            "audio_base64": base64,
+            "duration_seconds": durationSeconds,
+            "language": language,
+        ]
+        return try await post("/api/leadgrid/leads/\(leadId)/meeting-notes/upload-audio", body: body)
+    }
+
+    /// Hent én meeting-note m/ status + (ved completed) transcript + action items.
+    func fetchMeetingNote(_ id: String) async throws -> MeetingNote {
+        let resp: MeetingNoteResponse = try await get("/api/leadgrid/meeting-notes/\(id)")
+        return resp.note
+    }
+
+    /// Liste alle meeting-notes for et lead.
+    func fetchMeetingNotes(leadId: String) async throws -> [MeetingNote] {
+        let resp: MeetingNotesListResponse = try await get("/api/leadgrid/leads/\(leadId)/meeting-notes")
+        return resp.notes
+    }
+}
+
+// MARK: - Leadgrid Momentum (Daniels Momentum Engine)
+
+extension APIClient {
+
+    func fetchMomentumToday() async throws -> LeadgridMomentum {
+        let resp: LeadgridMomentumResponse = try await get("/api/leadgrid/momentum/today")
+        return resp.momentum
+    }
+
+    func fetchSalesGoal() async throws -> LeadgridSalesGoal {
+        let resp: LeadgridSalesGoalResponse = try await get("/api/leadgrid/momentum/goal")
+        return resp.goal
+    }
+
+    func saveSalesGoal(
+        revenueTarget: Double?,
+        dealsTarget: Int?,
+        meetingsTarget: Int?,
+        dailyContactsTarget: Int,
+        dailyFollowupsTarget: Int,
+        dailyMeetingsTarget: Int,
+        dailyPipelineMovesTarget: Int
+    ) async throws -> LeadgridSalesGoal {
+        var body: [String: Any] = [
+            "daily_contacts_target": dailyContactsTarget,
+            "daily_followups_target": dailyFollowupsTarget,
+            "daily_meetings_target": dailyMeetingsTarget,
+            "daily_pipeline_moves_target": dailyPipelineMovesTarget,
+        ]
+        if let r = revenueTarget { body["revenue_target"] = r }
+        if let d = dealsTarget { body["deals_target"] = d }
+        if let m = meetingsTarget { body["meetings_target"] = m }
+        let resp: LeadgridSalesGoalResponse = try await post("/api/leadgrid/momentum/goal", body: body)
+        return resp.goal
+    }
+
+    /// Henter momentum-trend siste N dager (clamp 7-180).
+    func fetchMomentumTrend(days: Int = 30) async throws -> LeadgridMomentumTrend {
+        let clamped = max(7, min(180, days))
+        let resp: LeadgridMomentumTrendResponse = try await get("/api/leadgrid/momentum/trend?days=\(clamped)")
+        return resp.trend
 // MARK: - Leadgrid Meeting Notes (Voice Memo → Whisper → Claude action items)
 
 /// Resultatet av en voice-memo opplasting.
@@ -2489,5 +2647,6 @@ extension APIClient {
         let clamped = max(7, min(180, days))
         let resp: LeadgridMomentumTrendResponse = try await get("/api/leadgrid/momentum/trend?days=\(clamped)")
         return resp.trend
+>>>>>>> origin/main
     }
 }
