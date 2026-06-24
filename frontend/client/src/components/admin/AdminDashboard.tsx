@@ -250,6 +250,11 @@ export default function AdminDashboard({
   // All hooks at the top
   const [tabValue, setTabValue] = useState(0);
   const [marketingSubTab, setMarketingSubTab] = useState(0);
+  // Oversikten bruker progressiv visning: et rent sammendrag som standard,
+  // med tung statistikk og aktivitet bak egne segmenter (unngår scroll-overload).
+  const [overviewSection, setOverviewSection] = useState<'summary' | 'stats' | 'activity'>(
+    'summary',
+  );
   const [adminNavQuery, setAdminNavQuery] = useState('');
   const [adminGroupExpansion, setAdminGroupExpansion] = useState<Record<string, boolean>>({
     Oversikt: true,
@@ -1635,6 +1640,13 @@ export default function AdminDashboard({
     },
   ];
 
+  // Segmenter for oversikten – progressiv visning som holder standardflaten ryddig.
+  const overviewSegments = [
+    { key: 'summary' as const, label: 'Sammendrag', icon: Dashboard },
+    { key: 'stats' as const, label: 'Statistikk', icon: Assessment },
+    { key: 'activity' as const, label: 'Aktivitet', icon: History },
+  ];
+
   useEffect(() => {
     if (isMobile) {
       return undefined;
@@ -1738,6 +1750,49 @@ export default function AdminDashboard({
 
   const renderOverviewPanel = () => (
     <Box sx={{ display: 'grid', gap: 3 }}>
+      <Box
+        sx={{
+          display: 'inline-flex',
+          alignSelf: 'flex-start',
+          p: 0.5,
+          gap: 0.5,
+          borderRadius: '999px',
+          border: '1px solid rgba(255,255,255,0.12)',
+          bgcolor: 'rgba(255,255,255,0.04)',
+          flexWrap: 'wrap',
+        }}
+      >
+        {overviewSegments.map((segment) => {
+          const SegmentIcon = segment.icon;
+          const isActive = overviewSection === segment.key;
+          return (
+            <Button
+              key={segment.key}
+              onClick={() => setOverviewSection(segment.key)}
+              startIcon={<SegmentIcon sx={{ fontSize: 18 }} />}
+              sx={{
+                px: 2,
+                py: 0.85,
+                borderRadius: '999px',
+                textTransform: 'none',
+                fontWeight: 700,
+                fontSize: '0.85rem',
+                color: isActive ? '#0a0f1a' : 'rgba(255,255,255,0.8)',
+                bgcolor: isActive ? '#ff8c00' : 'transparent',
+                boxShadow: 'none',
+                '&:hover': {
+                  bgcolor: isActive ? '#ff8c00' : 'rgba(255,255,255,0.08)',
+                },
+              }}
+            >
+              {segment.label}
+            </Button>
+          );
+        })}
+      </Box>
+
+      {overviewSection === 'summary' && (
+        <>
       <Grid container spacing={{ xs: 1.5, sm: 2 }}>
         {overviewKpis.map((kpi) => {
           const KpiIcon = kpi.icon;
@@ -1996,26 +2051,32 @@ export default function AdminDashboard({
           </Card>
         </Grid>
       </Grid>
+        </>
+      )}
 
-      <Box>
-        <AdminErrorBoundary>
-          <AdminStats userEmail={currentUser.email} isAdmin={currentUser.isAdmin} />
-        </AdminErrorBoundary>
-      </Box>
+      {overviewSection === 'stats' && (
+        <Box>
+          <AdminErrorBoundary>
+            <AdminStats userEmail={currentUser.email} isAdmin={currentUser.isAdmin} />
+          </AdminErrorBoundary>
+        </Box>
+      )}
 
-      <Box>
-        <AdminErrorBoundary>
-          <EnhancedActivityFeed
-            maxItems={20}
-            showFilters={true}
-            autoRefresh={true}
-            refreshInterval={30000}
-            enableTimeline={true}
-            enableExport={true}
-            enableNotifications={true}
-          />
-        </AdminErrorBoundary>
-      </Box>
+      {overviewSection === 'activity' && (
+        <Box>
+          <AdminErrorBoundary>
+            <EnhancedActivityFeed
+              maxItems={20}
+              showFilters={true}
+              autoRefresh={true}
+              refreshInterval={30000}
+              enableTimeline={true}
+              enableExport={true}
+              enableNotifications={true}
+            />
+          </AdminErrorBoundary>
+        </Box>
+      )}
     </Box>
   );
 
