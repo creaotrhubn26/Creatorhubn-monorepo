@@ -2710,3 +2710,47 @@ extension APIClient {
         return resp.funnel
     }
 }
+
+// MARK: - Leadgrid Full Intelligence Report (PR #859)
+//
+// Role Room Agent Bridge — orkestrerer 7 moduler parallelt og cacher 24h:
+//   brreg + website + competitors + merch + threat + swot + outreach
+//
+// Brukes av LeadgridFullIntelligenceSheet (trigget fra
+// LeadgridIntelligencePanel via "Full rapport"-knappen).
+
+extension APIClient {
+
+    /// Generer (eller returner cachet hvis < 24h) full 7-modulers rapport.
+    /// Backend bruker queue + parallell-fanout. Returnerer ferdig rapport
+    /// når orkestreringen er ferdig.
+    func generateFullIntelligence(
+        leadId: String,
+        modules: [String]? = nil
+    ) async throws -> LeadgridFullIntelligence? {
+        var body: [String: Any] = [:]
+        if let m = modules { body["modules"] = m }
+        let resp: FullIntelligenceResponse = try await post(
+            "/api/leadgrid/leads/\(leadId)/full-intelligence",
+            body: body
+        )
+        return resp.report
+    }
+
+    /// Henter cachet rapport. Returnerer nil hvis ingen er generert ennå.
+    func fetchFullIntelligence(leadId: String) async throws -> LeadgridFullIntelligence? {
+        let resp: FullIntelligenceResponse = try await get(
+            "/api/leadgrid/leads/\(leadId)/full-intelligence"
+        )
+        return resp.report
+    }
+
+    /// Tving re-generering (overstyrer 24h-cache).
+    func refreshFullIntelligence(leadId: String) async throws -> LeadgridFullIntelligence? {
+        let resp: FullIntelligenceResponse = try await post(
+            "/api/leadgrid/leads/\(leadId)/full-intelligence/refresh",
+            body: nil
+        )
+        return resp.report
+    }
+}
