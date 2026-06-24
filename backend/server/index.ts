@@ -43357,10 +43357,20 @@ async function buildSessionUserFromActiveSession(session: ActiveSessionData) {
         accountUser.role || inferAdminRoleFromProfession(accountUser.profession),
       )
     : "user";
+  // The users table is the source of truth for ADMIN privilege. If the DB says
+  // this account is admin/super_admin but the session lost it (e.g. a Google
+  // login that demoted the role to 'couple' because the same person also owns a
+  // couple/vendor profile), trust the DB — otherwise an admin is locked out by
+  // a marketplace-shadowed or stale session role. Never elevates a non-admin:
+  // accountRoleId comes straight from the DB row.
+  const accountIsAdminRole = ADMIN_SESSION_ROLES.has(accountRoleId);
+  const sessionIsAdminRole = ADMIN_SESSION_ROLES.has(sessionRoleId);
   const roleId =
-    sessionRoleId === "user" && accountRoleId !== "user"
+    accountIsAdminRole && !sessionIsAdminRole
       ? accountRoleId
-      : sessionRoleId || accountRoleId;
+      : sessionRoleId === "user" && accountRoleId !== "user"
+        ? accountRoleId
+        : sessionRoleId || accountRoleId;
   const roleEntry = buildAdminRoleEntry(roleId);
   const permissions = (() => {
     const normalized = normalizeSessionPermissions(session.permissions);
