@@ -8,6 +8,7 @@ import { CastingLandingPage } from './components/CastingLandingPage';
 import TheRoleRoomLanding from '@/pages/theroleroom-landing';
 import RoleRoomGdprNotice from '@/components/role-room/RoleRoomGdprNotice';
 import LeadgridLanding from '@/pages/leadgrid-landing';
+import LeadgridPricingPage from '@/pages/leadgrid-pricing';
 import LeadgridPersonvern from '@/pages/leadgrid-personvern';
 import LeadgridSuperadminPage from '@/pages/leadgrid-superadmin';
 import LeadgridClientPortalPage from '@/pages/leadgrid-client-portal';
@@ -195,6 +196,10 @@ function CastingStandaloneAppContent() {
         <LeadgridResearchConsent />
       </React.Suspense>
     );
+  }
+  if (localeCtx.pathname === '/leadgrid/pricing' || localeCtx.pathname === '/leadgrid/pricing/'
+      || localeCtx.pathname === '/leadgrid/priser' || localeCtx.pathname === '/leadgrid/priser/') {
+    return <LeadgridPricingPage />;
   }
   if (localeCtx.pathname === '/leadgrid' || localeCtx.pathname === '/leadgrid/') {
     return <LeadgridLanding />;
