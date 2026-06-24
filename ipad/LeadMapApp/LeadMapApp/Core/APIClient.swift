@@ -2491,3 +2491,63 @@ extension APIClient {
         return resp.trend
     }
 }
+
+// MARK: - Leadgrid Analytics (PR #858 backend)
+//
+// Endepunkter (alle gated på analytics.view_* permission, scopet org):
+//   - GET /api/leadgrid/analytics/overview?sinceDays=N
+//   - GET /api/leadgrid/analytics/channels?sinceDays=N
+//   - GET /api/leadgrid/analytics/sources
+//   - GET /api/leadgrid/analytics/segments?by=category|city|pipeline_stage
+//   - GET /api/leadgrid/analytics/territories
+//   - GET /api/leadgrid/analytics/velocity-history?days=N
+//   - GET /api/leadgrid/analytics/conversion-funnel
+//
+// Brukes av LeadgridAnalyticsDashboardView (5 SwiftUI Charts-seksjoner).
+
+extension APIClient {
+
+    func fetchAnalyticsOverview(sinceDays: Int = 90) async throws -> LeadgridAnalyticsOverview {
+        let resp: AnalyticsOverviewResponse = try await get(
+            "/api/leadgrid/analytics/overview?sinceDays=\(sinceDays)"
+        )
+        return resp.overview
+    }
+
+    func fetchAnalyticsChannels(sinceDays: Int = 90) async throws -> [LeadgridChannelPerf] {
+        let resp: AnalyticsChannelsResponse = try await get(
+            "/api/leadgrid/analytics/channels?sinceDays=\(sinceDays)"
+        )
+        return resp.channels
+    }
+
+    func fetchAnalyticsSources() async throws -> [LeadgridSourcePerf] {
+        let resp: AnalyticsSourcesResponse = try await get("/api/leadgrid/analytics/sources")
+        return resp.sources
+    }
+
+    /// `by` accepts "category", "city", or "pipeline_stage".
+    func fetchAnalyticsSegments(by: String = "category") async throws -> [LeadgridSegmentPerf] {
+        let resp: AnalyticsSegmentsResponse = try await get(
+            "/api/leadgrid/analytics/segments?by=\(by)"
+        )
+        return resp.segments
+    }
+
+    func fetchAnalyticsTerritories() async throws -> [LeadgridTerritoryPerf] {
+        let resp: AnalyticsTerritoriesResponse = try await get("/api/leadgrid/analytics/territories")
+        return resp.territories
+    }
+
+    func fetchAnalyticsVelocity(days: Int = 90) async throws -> [LeadgridVelocityPoint] {
+        let resp: AnalyticsVelocityResponse = try await get(
+            "/api/leadgrid/analytics/velocity-history?days=\(days)"
+        )
+        return resp.history
+    }
+
+    func fetchAnalyticsFunnel() async throws -> [LeadgridFunnelStage] {
+        let resp: AnalyticsFunnelResponse = try await get("/api/leadgrid/analytics/conversion-funnel")
+        return resp.funnel
+    }
+}
