@@ -177,6 +177,16 @@ struct LeadgridHubView: View {
                     }
                 }
 
+                Section("Kost & bruk") {
+                    if let api = appState.api {
+                        NavigationLink {
+                            LeadgridAIUsageView(api: api)
+                        } label: {
+                            Label("AI-kost", systemImage: "dollarsign.circle.fill")
+                        }
+                    }
+                }
+
                 // Fase 18: Super-admin (vises bare for Daniel — B2B-pipeline +
                 // alle superadmin-flows fra felt).
                 if appState.isSuperAdmin {

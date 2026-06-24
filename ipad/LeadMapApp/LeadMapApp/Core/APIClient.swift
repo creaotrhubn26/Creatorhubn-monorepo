@@ -2754,3 +2754,23 @@ extension APIClient {
         return resp.report
     }
 }
+
+// MARK: - Leadgrid AI Usage (PR #871)
+//
+// Eksponerer org-ens AI-kost over tid. Gated på backend via
+// billing.view_ai_usage (admin/salgssjef). 403 fra backend
+// håndteres via APIError.statusCode hos kalleren.
+
+extension APIClient {
+
+    /// Aggregert per-provider-bruk siste N dager.
+    func fetchAIUsageSummary(sinceDays: Int = 30) async throws -> LeadgridAIUsageSummary {
+        try await get("/api/leadgrid/ai-usage/summary?sinceDays=\(sinceDays)")
+    }
+
+    /// Daglig kost-historikk per provider for siste N dager
+    /// (bruker bar-stack i UI).
+    func fetchAIUsageHistory(days: Int = 30) async throws -> LeadgridAIUsageHistory {
+        try await get("/api/leadgrid/ai-usage/history?days=\(days)")
+    }
+}
