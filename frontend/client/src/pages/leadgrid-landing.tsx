@@ -335,18 +335,24 @@ function StickyHeader() {
           </Stack>
 
           <Stack direction="row" spacing={3} sx={{ display: { xs: 'none', md: 'flex' } }}>
-            {['Produkt', 'Løsninger', 'Priser', 'Demo'].map((label) => (
+            {([
+              { label: 'Produkt', href: '#produkt' },
+              { label: 'Løsninger', href: '#løsninger' },
+              { label: 'Connectors', href: '/leadgrid/connectors' },
+              { label: 'Priser', href: '#priser' },
+              { label: 'Demo', href: '#demo' },
+            ]).map((item) => (
               <Typography
-                key={label}
+                key={item.label}
                 component="a"
-                href={`#${label.toLowerCase()}`}
+                href={item.href}
                 sx={{
                   color: PALETTE.textMuted, fontSize: 14, fontWeight: 500,
                   textDecoration: 'none',
                   '&:hover': { color: PALETTE.text },
                 }}
               >
-                {label}
+                {item.label}
               </Typography>
             ))}
           </Stack>
@@ -1513,7 +1519,7 @@ function Footer() {
           </Grid>
 
           {[
-            { title: 'Produkt', links: ['Funksjoner', 'Integrasjoner', 'Sikkerhet', 'Oppdateringer'] },
+            { title: 'Produkt', links: ['Funksjoner', { label: 'Integrasjoner', href: '/leadgrid/connectors' }, { label: 'Connector Marketplace', href: '/leadgrid/connectors' }, 'Sikkerhet', 'Oppdateringer'] },
             { title: 'Løsninger', links: ['Salgsteam', 'Markedsføring', 'Franchise', 'Eiendomsmegling'] },
             { title: 'Ressurser', links: ['Hjelpesenter', 'Blogg', 'Guides', 'Webinarer'] },
             {
