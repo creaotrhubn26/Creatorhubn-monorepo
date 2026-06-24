@@ -1386,6 +1386,20 @@ function PricingSection() {
             </Grid>
           ))}
         </Grid>
+        <Box sx={{ mt: 5, textAlign: 'center' }}>
+          <Button
+            href="/leadgrid/pricing"
+            variant="text"
+            sx={{
+              color: PALETTE.accentBright,
+              fontWeight: 600,
+              textTransform: 'none',
+              '&:hover': { bgcolor: 'rgba(167, 139, 250, 0.10)' },
+            }}
+          >
+            Se full pris-sammenligning, kalkulator og FAQ →
+          </Button>
+        </Box>
       </Container>
     </Box>
   );
