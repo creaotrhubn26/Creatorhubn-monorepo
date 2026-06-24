@@ -1548,22 +1548,68 @@ export default function AdminDashboard({
     {
       label: 'Brukere & roller',
       description: 'Tilganger, roller og adminoversikt',
+      icon: People,
       action: () => activateTab(tabIndexFor('brukere-roller')),
     },
     {
       label: 'Abonnementer',
       description: 'Planer, priser og offentlig visning',
+      icon: CardMembership,
       action: () => openPriceManagementSection('subscriptions'),
     },
     {
       label: 'E-postmaler',
       description: 'Billing, velkomst og systemvarsler',
+      icon: Email,
       action: () => openPriceManagementSection('email-templates'),
     },
     {
       label: 'Drift',
       description: 'Helse, backup og operativ status',
+      icon: Storage,
       action: () => activateTab(tabIndexFor('drift-helse')),
+    },
+  ];
+
+  // KPI-tall hentes fra /api/admin/dashboard (quickStats). Feeden er optional,
+  // så vi degraderer pent til «—» når backend ikke svarer ennå.
+  const dashboardQuickStats = (dashboardData as any)?.dashboard?.quickStats ?? null;
+  const formatKpiNumber = (value: unknown): string =>
+    typeof value === 'number' && Number.isFinite(value)
+      ? value.toLocaleString('nb-NO')
+      : '—';
+  const formatKpiCurrency = (value: unknown): string =>
+    typeof value === 'number' && Number.isFinite(value)
+      ? `${value.toLocaleString('nb-NO')} kr`
+      : '—';
+  const overviewKpis = [
+    {
+      label: 'CRM-kunder',
+      hint: 'Totalt i CRM',
+      value: formatKpiNumber(dashboardQuickStats?.totalCustomers),
+      icon: Group,
+      tone: '#ff8c00',
+    },
+    {
+      label: 'Omsetning',
+      hint: 'Enterprise',
+      value: formatKpiCurrency(dashboardQuickStats?.totalRevenue),
+      icon: AttachMoney,
+      tone: '#4ade80',
+    },
+    {
+      label: 'Aktive abonnement',
+      hint: 'Løpende planer',
+      value: formatKpiNumber(dashboardQuickStats?.activeSubscriptions),
+      icon: CardMembership,
+      tone: '#60a5fa',
+    },
+    {
+      label: 'Aktive deals',
+      hint: 'I pipeline',
+      value: formatKpiNumber(dashboardQuickStats?.activeDeals),
+      icon: TrendingUp,
+      tone: '#c084fc',
     },
   ];
   const overviewStatusCards = [
@@ -1692,6 +1738,87 @@ export default function AdminDashboard({
 
   const renderOverviewPanel = () => (
     <Box sx={{ display: 'grid', gap: 3 }}>
+      <Grid container spacing={{ xs: 1.5, sm: 2 }}>
+        {overviewKpis.map((kpi) => {
+          const KpiIcon = kpi.icon;
+          return (
+            <Grid item xs={6} md={3} key={kpi.label}>
+              <Card
+                sx={{
+                  height: '100%',
+                  borderRadius: '20px',
+                  border: '1px solid rgba(255,255,255,0.12)',
+                  background:
+                    'linear-gradient(135deg, rgba(15,23,42,0.94), rgba(255,255,255,0.04))',
+                  boxShadow: '0 18px 36px rgba(0,0,0,0.32)',
+                  transition: 'transform 180ms ease, border-color 180ms ease',
+                  '&:hover': {
+                    transform: 'translateY(-3px)',
+                    borderColor: `${kpi.tone}55`,
+                  },
+                }}
+              >
+                <CardContent sx={{ p: { xs: 1.75, md: 2.25 } }}>
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      mb: 1.25,
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        width: 38,
+                        height: 38,
+                        borderRadius: '12px',
+                        display: 'grid',
+                        placeItems: 'center',
+                        bgcolor: `${kpi.tone}22`,
+                        color: kpi.tone,
+                      }}
+                    >
+                      <KpiIcon sx={{ fontSize: 20 }} />
+                    </Box>
+                    <Typography
+                      sx={{
+                        fontSize: '0.66rem',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.1em',
+                        color: 'rgba(255,255,255,0.55)',
+                        fontWeight: 700,
+                      }}
+                    >
+                      {kpi.hint}
+                    </Typography>
+                  </Box>
+                  <Typography
+                    sx={{
+                      fontSize: { xs: '1.35rem', md: '1.6rem' },
+                      fontWeight: 700,
+                      color: '#fff',
+                      lineHeight: 1.1,
+                    }}
+                  >
+                    {kpi.value}
+                  </Typography>
+                  <Typography
+                    sx={{
+                      mt: 0.4,
+                      fontSize: '0.8rem',
+                      color: 'rgba(255,255,255,0.7)',
+                      fontWeight: 600,
+                    }}
+                  >
+                    {kpi.label}
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+          );
+        })}
+      </Grid>
+
       <CustomerSuccessSnapshotCard />
       <Grid container spacing={{ xs: 2, sm: 3 }}>
         <Grid item xs={12} xl={7}>
@@ -1747,44 +1874,67 @@ export default function AdminDashboard({
               </Box>
 
               <Grid container spacing={1.5}>
-                {overviewQuickActions.map((action) => (
-                  <Grid item xs={12} sm={6} key={action.label}>
-                    <Button
-                      fullWidth
-                      onClick={action.action}
-                      sx={{
-                        p: 1.5,
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'flex-start',
-                        borderRadius: '18px',
-                        border: '1px solid rgba(255,255,255,0.12)',
-                        bgcolor: 'rgba(255,255,255,0.04)',
-                        color: '#fff',
-                        textTransform: 'none',
-                        boxShadow: 'none',
-                        '&:hover': {
-                          bgcolor: 'rgba(255,255,255,0.06)',
-                          borderColor: 'rgba(255,255,255,0.2)',
-                          boxShadow: '0 10px 24px rgba(0,0,0,0.45)',
-                        },
-                      }}
-                    >
-                      <Box sx={{ textAlign: 'left' }}>
-                        <Typography sx={{ fontWeight: 700 }}>{action.label}</Typography>
-                        <Typography sx={{ mt: 0.4, fontSize: '0.8rem', color: 'rgba(255,255,255,0.7)' }}>
-                          {action.description}
-                        </Typography>
-                      </Box>
-                      <ExpandMore
+                {overviewQuickActions.map((action) => {
+                  const ActionIcon = action.icon;
+                  return (
+                    <Grid item xs={12} sm={6} key={action.label}>
+                      <Button
+                        fullWidth
+                        onClick={action.action}
                         sx={{
-                          color: 'rgba(255,255,255,0.65)',
-                          transform: 'rotate(-90deg)',
+                          p: 1.5,
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          gap: 1.5,
+                          borderRadius: '18px',
+                          border: '1px solid rgba(255,255,255,0.12)',
+                          bgcolor: 'rgba(255,255,255,0.04)',
+                          color: '#fff',
+                          textTransform: 'none',
+                          boxShadow: 'none',
+                          '&:hover': {
+                            bgcolor: 'rgba(255,255,255,0.06)',
+                            borderColor: 'rgba(255,140,0,0.35)',
+                            boxShadow: '0 10px 24px rgba(0,0,0,0.45)',
+                            '& .qa-arrow': { transform: 'translateX(3px)' },
+                          },
                         }}
-                      />
-                    </Button>
-                  </Grid>
-                ))}
+                      >
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 0 }}>
+                          <Box
+                            sx={{
+                              width: 40,
+                              height: 40,
+                              flexShrink: 0,
+                              borderRadius: '12px',
+                              display: 'grid',
+                              placeItems: 'center',
+                              bgcolor: 'rgba(255,140,0,0.15)',
+                              color: '#ff8c00',
+                            }}
+                          >
+                            <ActionIcon sx={{ fontSize: 20 }} />
+                          </Box>
+                          <Box sx={{ textAlign: 'left', minWidth: 0 }}>
+                            <Typography sx={{ fontWeight: 700 }}>{action.label}</Typography>
+                            <Typography sx={{ mt: 0.4, fontSize: '0.8rem', color: 'rgba(255,255,255,0.7)' }}>
+                              {action.description}
+                            </Typography>
+                          </Box>
+                        </Box>
+                        <ExpandMore
+                          className="qa-arrow"
+                          sx={{
+                            color: 'rgba(255,255,255,0.65)',
+                            transform: 'rotate(-90deg)',
+                            transition: 'transform 180ms ease',
+                          }}
+                        />
+                      </Button>
+                    </Grid>
+                  );
+                })}
               </Grid>
             </CardContent>
           </Card>
