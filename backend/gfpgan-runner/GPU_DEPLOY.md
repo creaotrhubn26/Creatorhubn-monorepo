@@ -20,8 +20,8 @@ Bursty + batch: a shoot produces 100–500 RAW at once, then the runner is idle 
 - **$0 when idle.** A typical shoot's compute ≈ **$0.30–0.60**. Even heavy months are a few dollars.
 
 ## Exact changes
-1. **Artifacts (committed):** `modal_app.py` (Modal serverless), `Dockerfile.gpu` + `requirements-gpu.txt` (RunPod/Render/Fly fallback). CUDA 12.1 torch; weights still pulled from R2 `ml-models` at first request (cached on a Modal Volume).
-2. **Deploy (one-time):** `modal token new` → `modal secret create gfpgan-r2 …` (R2 creds) → `modal deploy modal_app.py` → stable URL.
+1. **Artifacts (committed):** `modal_app.py` (Modal serverless), `Dockerfile.gpu` + `requirements-gpu.txt` (RunPod/Render/Fly fallback). CUDA 12.1 torch; **weights live on Backblaze B2** (the photographer pipeline's provider — same Role Room creds/bucket as capture/gallery/editing/enhance-source). The runner is **B2-first with R2 fallback**, and self-seeds the weights into B2 on first boot (downloads the official releases if missing). Cached on a Modal Volume after the first pull.
+2. **Deploy (one-time):** `modal token new` → `modal secret create gfpgan-b2 …` (B2 Role Room creds + bucket) → `modal deploy modal_app.py` → stable URL.
 3. **Wire backend (Render env, no code change):** point `PHOTO_ENHANCER_GFPGAN_URL` (+ `REALESRGAN_SERVICE_URL`, `CODEFORMER_SERVICE_URL`) at the Modal URL. The backend already calls the runner via these env URLs.
 4. **Verify:** `/health` (modelLoaded), then `/enhance` on a portrait → `modelUsed=gfpgan` in ≤10 s.
 

@@ -11,9 +11,11 @@ torch sees a GPU, so no model-code change is needed — only CUDA torch + a GPU.
 
 DEPLOY (one-time, ~5 min once a Modal account + token exist):
     pip install modal && modal token new          # interactive, once
-    modal secret create gfpgan-r2 \
-        CLOUDFLARE_R2_ACCOUNT_ID=... CLOUDFLARE_R2_ACCESS_KEY_ID=... \
-        CLOUDFLARE_R2_SECRET_ACCESS_KEY=... CLOUDFLARE_R2_MODELS_BUCKETS=ml-models,ml-models2
+    # Weights live on Backblaze B2 (the photographer pipeline's provider) —
+    # same Role Room creds + bucket as capture/gallery/editing/enhance-source.
+    modal secret create gfpgan-b2 \
+        B2_ROLE_ROOM_APPLICATION_KEY_ID=... B2_ROLE_ROOM_APPLICATION_KEY=... \
+        B2_ROLE_ROOM_BUCKET_NAME=the-role-room-prod B2_REGION=eu-central-003
     cd backend/gfpgan-runner && modal deploy modal_app.py
   → prints a stable URL like https://<org>--creatorhub-gfpgan-runner-fastapi-app.modal.run
   Point the backend at it (Render env, no code change):
@@ -54,7 +56,7 @@ cache = modal.Volume.from_name("gfpgan-weights", create_if_missing=True)
 @app.function(
     image=image,
     gpu="T4",                                  # ~3–8s/image vs ~40s CPU; bump to "A10G" for heavier batches
-    secrets=[modal.Secret.from_name("gfpgan-r2")],
+    secrets=[modal.Secret.from_name("gfpgan-b2")],
     volumes={"/cache": cache},
     scaledown_window=300,                       # scale to zero after 5 min idle → $0 between shoots
     max_containers=8,                           # autoscale for a big batch
