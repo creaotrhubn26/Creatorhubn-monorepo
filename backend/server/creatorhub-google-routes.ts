@@ -423,10 +423,18 @@ async function resolveCreatorHubGoogleLoginUser(
   if (role === 'super_admin') {
     role = 'admin';
   }
-  if (coupleCheck.rows.length > 0) {
-    role = 'couple';
-  } else if (vendorCheck.rows.length > 0) {
-    role = 'vendor';
+  // An admin who ALSO has a couple/vendor profile (e.g. a test wedding, or a
+  // vendor listing they own) must KEEP their admin role — otherwise the
+  // marketplace profile silently demotes the Google session to 'couple'/
+  // 'vendor' and locks them out of /admin. Only apply the marketplace role to
+  // non-admin accounts.
+  const isPrivilegedRole = role === 'admin' || role === 'super_admin';
+  if (!isPrivilegedRole) {
+    if (coupleCheck.rows.length > 0) {
+      role = 'couple';
+    } else if (vendorCheck.rows.length > 0) {
+      role = 'vendor';
+    }
   }
 
   const baseName =
