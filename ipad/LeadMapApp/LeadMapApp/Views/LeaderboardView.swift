@@ -15,6 +15,7 @@ struct LeaderboardView: View {
     @State private var summary: LeaderboardSummary?
     @State private var error: String?
     @State private var loading = false
+    @State private var showTerritory = false
 
     private var hasAccess: Bool {
         guard let role = state.roleInOrg else { return false }
@@ -32,6 +33,20 @@ struct LeaderboardView: View {
             }
             .navigationTitle("Team-leaderboard")
         .salesHierarchyBackdrop(.teamLeader)
+            .toolbar {
+                if hasAccess {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            showTerritory = true
+                        } label: {
+                            Label("Sone-ytelse", systemImage: "map.circle")
+                        }
+                    }
+                }
+            }
+            .sheet(isPresented: $showTerritory) {
+                TerritoryDashboardView()
+            }
             .task { await load() }
             .refreshable { await load() }
         }

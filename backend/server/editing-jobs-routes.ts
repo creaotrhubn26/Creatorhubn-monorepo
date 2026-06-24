@@ -33,6 +33,9 @@ import {
   resolveJobFromUploadToken,
   revokeUploadToken,
   presignStagingUpload,
+  presignStagingSourceUpload,
+  presignStagingDownload,
+  purgeStagingSourceFiles,
   transferStagingToPhotographer,
   createClientGalleryFromJob,
   stagingPrefix,
@@ -678,7 +681,7 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
       const auth = await loadAuthorizedJob(req.params.id, session.userId);
       if (!auth) return res.status(404).json({ error: "ikke_funnet" });
       const files = await pool.query(
-        `SELECT id, file_name, transfer_status, size_bytes, content_type, uploaded_at, copied_at
+        `SELECT id, file_name, file_role, transfer_status, size_bytes, content_type, uploaded_at, copied_at
            FROM editing_job_files WHERE job_id = $1 ORDER BY created_at ASC`,
         [req.params.id],
       );
@@ -1219,6 +1222,85 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
     }
   });
 
+  // ── Fotograf laster KILDEFILER opp til staging (rå/originaler for redigerer) ──
+  app.post("/api/editing/jobs/:id/source-upload-url", async (req, res) => {
+    try {
+      const jobId = req.params.id;
+      const fileName = req.body?.fileName;
+      const contentType = req.body?.contentType || "application/octet-stream";
+      if (!fileName) return res.status(400).json({ error: "mangler_filnavn" });
+
+      const session = await requireUserSession(req, res);
+      if (!session) return;
+      const auth = await loadAuthorizedJob(jobId, session.userId);
+      if (!auth || auth.role !== "photographer") {
+        return res.status(403).json({ error: "ikke_tillatt" });
+      }
+      // Kildefiler kan forberedes så snart en redigerer er valgt, og fram til
+      // levering er i gang.
+      if (!["requested", "accepted", "in_progress"].includes(auth.job.status)) {
+        return res.status(400).json({ error: "ugyldig_status" });
+      }
+
+      const presigned = await presignStagingSourceUpload(jobId, fileName, contentType);
+      if (!presigned) return res.status(503).json({ error: "staging_ikke_konfigurert" });
+
+      const ins = await pool.query(
+        `INSERT INTO editing_job_files (job_id, file_name, staging_key, content_type, file_role, transfer_status, uploaded_at)
+         VALUES ($1, $2, $3, $4, 'source', 'source', NOW())
+         RETURNING id`,
+        [jobId, fileName, presigned.key, contentType],
+      );
+      await logJobEvent(pool, jobId, "source_uploaded", session.userId, "photographer", {
+        fileName,
+        key: presigned.key,
+      });
+      res.json({ ok: true, uploadUrl: presigned.url, key: presigned.key, fileId: ins.rows[0]?.id });
+    } catch (err) {
+      console.error("[editing/jobs:source-upload-url] error", err);
+      res.status(500).json({ error: "kunne_ikke_lage_upload_url" });
+    }
+  });
+
+  // ── Redigerer henter en KILDEFIL (presignert GET; session ELLER token) ──
+  app.post("/api/editing/jobs/:id/source-download-url", async (req, res) => {
+    try {
+      const jobId = req.params.id;
+      const fileId = req.body?.fileId;
+      if (!fileId) return res.status(400).json({ error: "mangler_fil_id" });
+
+      // Vendor: enten innlogget på oppdraget, eller gyldig opplastings-/tilgangstoken.
+      const token = (req.headers["x-editing-upload-token"] as string) || req.body?.uploadToken;
+      let authed = false;
+      if (token && (await resolveJobFromUploadToken(pool, jobId, token))) {
+        authed = true;
+      } else {
+        const session = await requireUserSession(req, res);
+        if (!session) return;
+        const auth = await loadAuthorizedJob(jobId, session.userId);
+        // Både redigerer (henter) og fotograf (verifiserer) får lese kildefiler.
+        if (!auth) return res.status(403).json({ error: "ikke_tillatt" });
+        authed = true;
+      }
+      if (!authed) return res.status(403).json({ error: "ikke_tillatt" });
+
+      const fr = await pool.query<{ staging_key: string | null }>(
+        `SELECT staging_key FROM editing_job_files
+          WHERE id = $1 AND job_id = $2 AND file_role = 'source' AND transfer_status <> 'deleted'`,
+        [fileId, jobId],
+      );
+      const key = fr.rows[0]?.staging_key;
+      if (!key) return res.status(404).json({ error: "fil_ikke_funnet" });
+
+      const url = await presignStagingDownload(key);
+      if (!url) return res.status(503).json({ error: "staging_ikke_konfigurert" });
+      res.json({ ok: true, downloadUrl: url });
+    } catch (err) {
+      console.error("[editing/jobs:source-download-url] error", err);
+      res.status(500).json({ error: "kunne_ikke_lage_download_url" });
+    }
+  });
+
   // ── Vendor leverer -> server-side overføring staging -> fotografens B2 ──
   app.post("/api/editing/jobs/:id/deliver", async (req, res) => {
     const session = await requireUserSession(req, res);
@@ -1268,6 +1350,8 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
         [req.params.id],
       );
       await logJobEvent(pool, req.params.id, "approved", session.userId, "photographer", {});
+      // GDPR: kildefiler er ikke lenger nødvendige etter godkjent levering.
+      await purgeStagingSourceFiles(pool, req.params.id);
       // Escrow: frigi utbetaling til vendor (Stripe Connect / PayPal) ved godkjenning
       const payout = await releasePayoutForJob(pool, req.params.id);
       await logJobEvent(pool, req.params.id, "payment_released", "system", "system", {
@@ -1419,6 +1503,8 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
         [req.params.id],
       );
       await revokeUploadToken(pool, req.params.id);
+      // GDPR: fjern kildefiler fra staging ved avbrudd.
+      await purgeStagingSourceFiles(pool, req.params.id);
       await logJobEvent(pool, req.params.id, "cancelled", session.userId, "photographer", {});
       res.json({ ok: true });
     } catch (err) {

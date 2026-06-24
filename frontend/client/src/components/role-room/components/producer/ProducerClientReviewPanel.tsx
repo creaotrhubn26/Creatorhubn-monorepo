@@ -67,6 +67,7 @@ import {
   type ProducerWorkflowFocusPayload,
 } from '../../services/producerWorkflowFocusEvents';
 import settingsService from '../../services/settingsService';
+import roleRoomAgentService from '../../services/roleRoomAgentService';
 import { shouldUseRoleRoomLocalFallback } from '../../utils/runtime';
 import { logRoleRoomDiagnostic } from '../../utils/roleRoomDiagnostics';
 import {
@@ -544,14 +545,6 @@ export default function ProducerClientReviewPanel({
   // Filer klienten har lastet opp fra portalen (logo/brand/brief) — vises med
   // nedlastingsknapp så produsenten får tak i dem uten e-post.
   const [downloadingFileId, setDownloadingFileId] = useState<string | null>(null);
-  const clientUploadedFiles = useMemo(
-    () =>
-      clientMaterials.filter((material) => {
-        const meta = material.metadata as { uploadedByClient?: boolean; file?: unknown } | undefined;
-        return Boolean(meta?.uploadedByClient && meta?.file);
-      }),
-    [clientMaterials],
-  );
   const handleDownloadClientFile = useCallback(
     async (material: ProducerClientMaterial) => {
       const meta = material.metadata as { file?: { originalName?: string } } | undefined;
@@ -664,6 +657,18 @@ export default function ProducerClientReviewPanel({
   const [agreementsById, setAgreementsById] = useState<Record<string, ProjectAgreement>>({});
   const [clientIntake, setClientIntake] = useState<ProducerClientIntake>(EMPTY_CLIENT_INTAKE);
   const [clientMaterials, setClientMaterials] = useState<ProducerClientMaterial[]>([]);
+  // Flyttet hit (under clientMaterials-deklarasjonen) for å unngå TDZ-krasj
+  // («Cannot access 'clientMaterials' before initialization» → Error Boundary):
+  // denne useMemo-en lå tidligere ABOVE useState-en og leste clientMaterials i
+  // factory + dep-array før den var initialisert.
+  const clientUploadedFiles = useMemo(
+    () =>
+      clientMaterials.filter((material) => {
+        const meta = material.metadata as { uploadedByClient?: boolean; file?: unknown } | undefined;
+        return Boolean(meta?.uploadedByClient && meta?.file);
+      }),
+    [clientMaterials],
+  );
   const [clientInputLoading, setClientInputLoading] = useState(false);
   const [clientInputError, setClientInputError] = useState<string | null>(null);
   const clientInputLoadRequestRef = useRef(0);
@@ -1651,16 +1656,29 @@ export default function ProducerClientReviewPanel({
     enqueueSnackbar('Clipboard er ikke tilgjengelig for denne saken.', { variant: 'info' });
   }, [buildReviewClientInviteText, enqueueSnackbar]);
 
-  const handleOpenReviewClientInviteMail = useCallback((review: ProducerClientReview) => {
-    if (typeof window === 'undefined') {
+  // Sender en EKTE invitasjons-e-post (magic-lenke til klientportalen) via
+  // serveren — erstatter den gamle mailto:-kladden. Backend (POST
+  // /api/role-room/client-portal/invite) komponerer og sender e-posten.
+  const handleSendReviewClientInvite = useCallback(async () => {
+    const recipient = readFirstNonEmptyString(clientIntake.contactEmail);
+    if (!recipient) {
+      enqueueSnackbar('Mangler klientens e-postadresse — legg den inn i klient-intaket først.', { variant: 'warning' });
       return;
     }
-    const recipient = readFirstNonEmptyString(clientIntake.contactEmail);
-    const subject = buildReviewClientInviteEmailSubject(projectName, review);
-    const body = buildReviewClientInviteText(review);
-    const mailtoUrl = `mailto:${encodeURIComponent(recipient)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    window.location.href = mailtoUrl;
-  }, [buildReviewClientInviteText, clientIntake.contactEmail, projectName]);
+    try {
+      await roleRoomAgentService.createClientPortalInvite({
+        projectId,
+        clientEmail: recipient,
+        clientName: readFirstNonEmptyString(clientIntake.contactName) ?? null,
+      });
+      enqueueSnackbar(`Invitasjon sendt til ${recipient}.`, { variant: 'success' });
+    } catch (caught) {
+      enqueueSnackbar(
+        caught instanceof Error ? caught.message : 'Kunne ikke sende invitasjonen.',
+        { variant: 'error' },
+      );
+    }
+  }, [clientIntake.contactEmail, clientIntake.contactName, projectId, enqueueSnackbar]);
 
   const handleOpenReviewPortal = useCallback((review: ProducerClientReview) => {
     const reviewPortalUrl = buildReviewPortalUrl(review);
@@ -3256,10 +3274,10 @@ export default function ProducerClientReviewPanel({
                       <Button
                         size="small"
                         variant="text"
-                        onClick={() => handleOpenReviewClientInviteMail(review)}
+                        onClick={handleSendReviewClientInvite}
                         sx={{ minWidth: 0, px: 0.8, textTransform: 'none', fontWeight: 700, color: 'rgba(191,219,254,0.92)', minHeight: 44 }}
                       >
-                        Åpne e-postutkast
+                        Send invitasjon
                       </Button>
                       <Button
                         size="small"

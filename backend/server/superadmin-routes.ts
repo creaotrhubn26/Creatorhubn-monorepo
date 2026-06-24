@@ -145,7 +145,15 @@ export function registerSuperadminRoutes({
            o.id, o.name, o.slug, o.org_type, o.plan, o.owner_user_id,
            o.org_number, o.website, o.industry, o.logo_url, o.created_at,
            (SELECT COUNT(*) FROM organization_members WHERE organization_id = o.id) AS member_count,
-           (SELECT COUNT(*) FROM crm_customers WHERE organization_id = o.id) AS customer_count,
+           -- crm_customers har INGEN organization_id-kolonne — eierskap er
+           -- per owner_user_id (varchar). Tell via org-medlemmer. (Samme
+           -- fix-mønster som PR #837 i plan-limits-service.)
+           (SELECT COUNT(*) FROM crm_customers
+             WHERE owner_user_id IN (
+               SELECT user_id::text FROM organization_members
+                WHERE organization_id = o.id
+             ) AND archived_at IS NULL
+           ) AS customer_count,
            (SELECT email FROM users WHERE id = o.owner_user_id) AS owner_email
          FROM organizations o
          ORDER BY o.created_at DESC`,

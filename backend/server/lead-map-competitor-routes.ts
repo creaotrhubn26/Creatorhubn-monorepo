@@ -407,7 +407,7 @@ export function registerLeadMapCompetitorRoutes({
                   c.next_follow_up_at::text,
                   c.next_action, c.city, c.phone, c.email,
                   c.owner_user_id,
-                  u.name AS assigned_user_name,
+                  NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), '') AS assigned_user_name,
                   u.email AS assigned_user_email
              FROM crm_customers c
              LEFT JOIN users u ON u.id = c.owner_user_id
@@ -640,7 +640,7 @@ export function registerLeadMapCompetitorRoutes({
           last_activity_at: string | null;
         }>(
           `SELECT c.owner_user_id,
-                  u.name AS user_name,
+                  NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), '') AS user_name,
                   u.email AS user_email,
                   COUNT(*)::int AS total_leads,
                   COUNT(*) FILTER (WHERE c.lead_status = 'won')::int AS won,
@@ -658,7 +658,7 @@ export function registerLeadMapCompetitorRoutes({
                     AND LOWER(COALESCE(me.role, '')) IN ('admin','super_admin','owner')
                ))
               ${projectClause}
-            GROUP BY c.owner_user_id, u.name, u.email
+            GROUP BY c.owner_user_id, NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.email
             ORDER BY total_leads DESC, won DESC
             LIMIT 50`,
           params,
@@ -822,7 +822,7 @@ export function registerLeadMapCompetitorRoutes({
                   c.claude_recommendation_rank, c.notes,
                   c.last_visit_at, c.next_follow_up_at, c.next_action,
                   c.created_at, c.updated_at,
-                  u.name AS assigned_user_name,
+                  NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), '') AS assigned_user_name,
                   u.email AS assigned_user_email
              FROM crm_customers c
              LEFT JOIN users u ON u.id = c.owner_user_id
@@ -1185,7 +1185,7 @@ Rangering 100 = bestmatch (kjør outreach nå). 0 = ikke relevant.`,
                       to_jsonb(c) ->> 'logo_url',
                       NULL
                     ) AS logo_url,
-                    u.name AS assigned_user_name,
+                    NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), '') AS assigned_user_name,
                     u.email AS assigned_user_email
                FROM crm_customers c
                LEFT JOIN users u ON u.id = c.owner_user_id

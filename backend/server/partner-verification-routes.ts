@@ -270,16 +270,24 @@ export function registerPartnerVerificationRoutes({ app, pool, activeSessions }:
   app.get("/api/leadgrid/partner-application/my", async (req, res) => {
     const session = getSession(req, activeSessions);
     if (!session) return res.status(401).json({ error: "Ikke innlogget" });
-    const r = await pool.query(
-      `SELECT pa.*, o.name AS organization_name,
-              (SELECT COUNT(*) FROM partner_application_documents WHERE application_id = pa.id) AS document_count
-         FROM partner_applications pa
-         JOIN organizations o ON o.id = pa.organization_id
-        WHERE pa.applicant_user_id = $1
-        ORDER BY pa.created_at DESC LIMIT 1`,
-      [session.userId],
-    );
-    res.json({ application: r.rows[0] ?? null });
+    try {
+      const r = await pool.query(
+        `SELECT pa.*, o.name AS organization_name,
+                (SELECT COUNT(*)::int FROM partner_application_documents
+                  WHERE application_id = pa.id) AS document_count
+           FROM partner_applications pa
+           JOIN organizations o ON o.id = pa.organization_id
+          WHERE pa.applicant_user_id = $1
+          ORDER BY pa.created_at DESC LIMIT 1`,
+        [session.userId],
+      );
+      res.json({ application: r.rows[0] ?? null });
+    } catch (err) {
+      // Graceful: ingen rad/manglende tabell → tom application (iPad viser
+      // canApply-form i stedet for "Kunne ikke laste").
+      console.warn("[partner-application/my] failed:", (err as Error).message);
+      res.json({ application: null });
+    }
   });
 
   // ---------- Public: submit draft ----------

@@ -25,15 +25,28 @@ struct PRJournalistsResponse: Codable {
     let journalists: [PRJournalist]
 }
 
+/// Mappes mot backend `GET /api/admin-room/cockpit/pr/releases`
+/// (cockpit-b2b-routes.ts). Backend gir `{id, headline, subheadline,
+/// milestone, status, generated_at, sent_at, embargo_until,
+/// distributed_to_journalist_count}`. iPad bruker historisk
+/// title/distributedAt/recipientCount — vi aliaser.
 struct PRRelease: Codable, Hashable, Identifiable {
     let id: String
-    let title: String?
-    let slug: String?
-    let status: String?         // 'draft' | 'ready' | 'distributed'
-    let body: String?
-    let distributedAt: String?
-    let recipientCount: Int?
-    let createdAt: String?
+    let headline: String?
+    let subheadline: String?
+    let milestone: String?
+    let status: String?
+    let generatedAt: String?
+    let sentAt: String?
+    let embargoUntil: String?
+    let distributedToJournalistCount: Int?
+
+    var title: String? { headline }
+    var slug: String? { nil }
+    var body: String? { subheadline }
+    var distributedAt: String? { sentAt }
+    var recipientCount: Int? { distributedToJournalistCount }
+    var createdAt: String? { generatedAt }
 }
 
 struct PRReleasesResponse: Codable {
@@ -64,16 +77,34 @@ struct CockpitWebinarsResponse: Codable {
 // MARK: - Cockpit: Referrals + nurture
 // ============================================================
 
+/// Mappes mot backend `GET /api/admin-room/cockpit/referrals`
+/// (cockpit-b2b-routes.ts). Backend gir `{id, referrer_email, referrer_name,
+/// referral_code, reward_type, reward_value, status, click_count,
+/// referred_email, referred_agency_name, signed_up_at,
+/// became_customer_at, created_at, expires_at}`.
 struct CockpitReferral: Codable, Hashable, Identifiable {
     let id: String
     let referrerName: String?
     let referrerEmail: String?
-    let referredName: String?
+    let referralCode: String?
+    let rewardType: String?
+    let rewardValue: Double?
+    let status: String?
+    let clickCount: Int?
     let referredEmail: String?
-    let status: String?         // 'pending' | 'qualified' | 'converted' | 'lost'
-    let rewardOere: Int?
+    let referredAgencyName: String?
+    let signedUpAt: String?
+    let becameCustomerAt: String?
     let createdAt: String?
-    let convertedAt: String?
+    let expiresAt: String?
+
+    var referredName: String? { referredAgencyName }
+    var rewardOere: Int? {
+        // reward_value er antall gratis-mnd eller %-rabatt. Vi vet ikke
+        // hva penge-ekvivalent er per default — sett nil.
+        return nil
+    }
+    var convertedAt: String? { becameCustomerAt }
 }
 
 struct CockpitReferralsResponse: Codable {
@@ -133,6 +164,21 @@ struct AdminDeck: Codable, Hashable, Identifiable {
 
 struct AdminDecksResponse: Codable {
     let decks: [AdminDeck]
+
+    private struct Envelope: Codable {
+        let items: [AdminDeck]?
+        let decks: [AdminDeck]?
+    }
+
+    init(from decoder: Decoder) throws {
+        let env = try Envelope(from: decoder)
+        self.decks = env.items ?? env.decks ?? []
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: DynamicCodingKey.self)
+        try c.encode(decks, forKey: DynamicCodingKey(stringValue: "items")!)
+    }
 }
 
 struct AdminDeckSlide: Codable, Hashable, Identifiable {
@@ -152,19 +198,50 @@ struct AdminDeckSlidesResponse: Codable {
 // MARK: - Funding Apps
 // ============================================================
 
+/// Mappes mot backend `GET /api/admin-room/funding-apps`
+/// (admin-room-funding-routes.ts). Backend gir rå rader fra
+/// `admin_funding_apps`: `{id, user_id, scheme, scheme_label, project_name,
+/// applicant_company, status, amount_requested, currency, description,
+/// milestones, budget_breakdown, contact_person, contact_email,
+/// submission_date, decision_date, deadline, notes, metadata, created_at,
+/// updated_at}`. Vi aliaser via computed.
 struct FundingApp: Codable, Hashable, Identifiable {
     let id: String
-    let name: String
-    let fundingProgram: String?
-    let amountRequestedNok: Double?
-    let status: String?          // 'draft' | 'submitted' | 'approved' | 'rejected'
+    let projectName: String?
+    let scheme: String?
+    let schemeLabel: String?
+    let applicantCompany: String?
+    let status: String?
+    let amountRequested: Double?
+    let currency: String?
+    let submissionDate: String?
+    let decisionDate: String?
     let deadline: String?
-    let submittedAt: String?
     let createdAt: String?
+
+    var name: String { projectName ?? scheme ?? "(uten navn)" }
+    var fundingProgram: String? { schemeLabel ?? scheme }
+    var amountRequestedNok: Double? { amountRequested }
+    var submittedAt: String? { submissionDate }
 }
 
 struct FundingAppsResponse: Codable {
     let apps: [FundingApp]
+
+    private struct Envelope: Codable {
+        let items: [FundingApp]?
+        let apps: [FundingApp]?
+    }
+
+    init(from decoder: Decoder) throws {
+        let env = try Envelope(from: decoder)
+        self.apps = env.items ?? env.apps ?? []
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: DynamicCodingKey.self)
+        try c.encode(apps, forKey: DynamicCodingKey(stringValue: "items")!)
+    }
 }
 
 // ============================================================

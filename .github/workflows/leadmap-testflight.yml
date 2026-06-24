@@ -1,0 +1,57 @@
+name: LeadMap TestFlight
+
+# Bygger LeadMapApp (iPad) og laster opp til TestFlight via fastlane.
+# Manuell trigger (workflow_dispatch) for å ha kontroll på hver beta-release.
+#
+# Krever repo-secrets (App Store Connect API-nøkkel — se fastlane/Fastfile):
+#   APP_STORE_CONNECT_API_KEY_ID
+#   APP_STORE_CONNECT_API_ISSUER_ID
+#   APP_STORE_CONNECT_API_KEY_CONTENT   (.p8 base64-encoded)
+#
+# Engangs-steg (manuelt, kan ikke skriptes): App Store Connect-app-record for
+# bundle-id com.creatorhubn.LeadMapApp må finnes. Signering er Automatic +
+# -allowProvisioningUpdates (Fastfile), så API-nøkkelen forvalter profil/cert.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch/tag/SHA som skal bygges (tom = default branch)"
+        required: false
+        default: ""
+
+concurrency:
+  group: leadmap-testflight
+  cancel-in-progress: false
+
+jobs:
+  beta:
+    runs-on: macos-15
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: ipad/LeadMapApp
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: fastlane ios beta (archive + upload TestFlight)
+        run: fastlane ios beta
+        env:
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_API_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
+          FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT: "120"
+
+      - name: Last opp IPA som artifact (feilsøking)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: leadmap-ipa
+          path: ipad/LeadMapApp/build/*.ipa
+          if-no-files-found: ignore

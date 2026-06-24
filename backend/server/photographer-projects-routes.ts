@@ -9,6 +9,29 @@ export function ensurePhotographerProjectsSchemaShared(pool: Pool): Promise<void
     photographerProjectsSchemaReadyShared = (async () => {
       try {
         await pool.query(`
+          -- Core photographer-project columns. On prod the base projects table
+          -- is the portfolio table (title/slug/category/published…), so the
+          -- create/detail queries that read user_id/name/status/etc. 500'd with
+          -- "column user_id does not exist". Add them (idempotent) so the whole
+          -- request→project→timeline→worklog loop works. slug/category are
+          -- NOT NULL on the portfolio table but unused for photographer
+          -- projects, so relax them too.
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS user_id VARCHAR(64);
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS name VARCHAR(255);
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS client_name VARCHAR(255);
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_type VARCHAR(64);
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS status VARCHAR(32) DEFAULT 'active';
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS phase VARCHAR(32);
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS event_date TIMESTAMPTZ;
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS estimated_hours NUMERIC(10,2);
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS actual_hours NUMERIC(10,2);
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS profession VARCHAR(64);
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_data JSONB;
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS settings JSONB;
+          ALTER TABLE projects ADD COLUMN IF NOT EXISTS budget NUMERIC(10,2);
+          ALTER TABLE projects ALTER COLUMN slug DROP NOT NULL;
+          ALTER TABLE projects ALTER COLUMN category DROP NOT NULL;
+          CREATE INDEX IF NOT EXISTS projects_user_id_idx ON projects (user_id);
           ALTER TABLE projects ADD COLUMN IF NOT EXISTS client_id UUID;
           ALTER TABLE projects ADD COLUMN IF NOT EXISTS service_price NUMERIC(10,2);
           ALTER TABLE projects ADD COLUMN IF NOT EXISTS hourly_rate NUMERIC(10,2);
@@ -36,6 +59,11 @@ export function ensurePhotographerProjectsSchemaShared(pool: Pool): Promise<void
           );
           CREATE INDEX IF NOT EXISTS project_time_tracking_project_idx
             ON project_time_tracking (project_id, date_worked DESC);
+          -- An older definition FK'd project_id to integrated_projects(id),
+          -- but photographer projects live in the projects table — drop the
+          -- stale FK so time logging works (app-managed table, no FK needed).
+          ALTER TABLE project_time_tracking
+            DROP CONSTRAINT IF EXISTS project_time_tracking_project_id_integrated_projects_id_fk;
         `);
       } catch (err) {
         console.warn('[photographer-projects] schema-ensure failed:', err);
@@ -397,11 +425,11 @@ export function setupPhotographerProjectsRoutes(
             service_price, hourly_rate, cost_overhead, estimated_hours,
             project_data, settings, budget,
             created_at, updated_at)
-         VALUES ($1, $2, $2, 'photographer', $3, $4,
+         VALUES ($1, $2, $16, 'photographer', $3, $4,
                  $5, 'active', 'planning', $6, $7, $8,
                  $9, $10, $11, $12,
                  $13::jsonb, $14::jsonb, $15,
-                 NOW()::text, NOW()::text)
+                 NOW(), NOW())
          RETURNING id`,
         [
           photographerId,
@@ -420,6 +448,9 @@ export function setupPhotographerProjectsRoutes(
           Object.keys(projectDataJson).length > 0 ? JSON.stringify(projectDataJson) : null,
           settings && typeof settings === 'object' ? JSON.stringify(settings) : null,
           Number.isFinite(Number(budget)) ? Number(budget) : null,
+          // $16 — `name` gets its own placeholder (reusing $2 for title+name
+          // makes Postgres throw "inconsistent types deduced for parameter $2").
+          trimmedTitle,
         ],
       );
       const newProjectId = result.rows[0]?.id;
@@ -455,12 +486,14 @@ export function setupPhotographerProjectsRoutes(
         }
       }
 
-      // Marker submission som konvertert hvis fra inquiry-flyt.
+      // Marker submission som konvertert hvis fra inquiry-flyt. client_submissions
+      // har project_id + status (IKKE converted_to_project_id/converted_at), så
+      // den gamle UPDATEn feilet stille og forespørselen ble liggende som «ny».
       if (newProjectId && submissionId) {
         try {
           await pool.query(
             `UPDATE client_submissions
-                SET converted_to_project_id = $1, converted_at = NOW(), updated_at = NOW()
+                SET project_id = $1, status = 'converted', updated_at = NOW()
               WHERE id = $2`,
             [newProjectId, submissionId],
           );
@@ -731,7 +764,7 @@ export function setupPhotographerProjectsRoutes(
            estimated_hours= COALESCE($10, estimated_hours),
            description    = COALESCE($11, description),
            client_id      = COALESCE($12, client_id),
-           updated_at     = NOW()::text
+           updated_at     = NOW()
          WHERE id = $13 AND user_id = $14
          RETURNING id, title, event_date, location, description, client_id,
                    google_calendar_event_id`,
@@ -1151,7 +1184,7 @@ export function setupPhotographerProjectsRoutes(
            external_invoice_id = $1,
            external_invoice_number = $2,
            invoiced_at = NOW(),
-           updated_at = NOW()::text
+           updated_at = NOW()
          WHERE id = $3 AND user_id = $4`,
         [result.salesOrderId, result.salesOrderNumber != null ? String(result.salesOrderNumber) : null, projectId, photographerId],
       );

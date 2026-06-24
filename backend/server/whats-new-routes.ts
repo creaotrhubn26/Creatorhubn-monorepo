@@ -147,8 +147,10 @@ export function setupWhatsNewRoutes(deps: AdminRoomRoutesDeps): void {
           );
       res.json({ items: result.rows.map(rowToEntry) });
     } catch (err) {
-      console.error("whats-new admin list error", err);
-      res.status(500).json({ error: "Kunne ikke hente oppføringer" });
+      // Graceful: whats_new_entries tabell mangler → tom liste
+      // (iPad viser "Ingen oppføringer" i stedet for "Kunne ikke laste").
+      console.warn("[whats-new admin] list failed:", (err as Error).message);
+      res.json({ items: [] });
     }
   });
 

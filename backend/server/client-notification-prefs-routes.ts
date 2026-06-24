@@ -143,16 +143,21 @@ export function registerClientNotificationPrefsRoutes({
     const params: any[] = [];
     let where = "";
     if (cid) { params.push(cid); where = `WHERE customer_id = $${params.length}`; }
-    const r = await pool.query(
-      `SELECT id::text, customer_id::text, channel, event_type, recipient,
-              subject, sent_at::text, delivery_status, external_message_id, error_message
-         FROM client_notification_log
-         ${where}
-         ORDER BY sent_at DESC
-         LIMIT 200`,
-      params,
-    );
-    res.json({ items: r.rows });
+    try {
+      const r = await pool.query(
+        `SELECT id::text, customer_id::text, channel, event_type, recipient,
+                subject, sent_at::text, delivery_status, external_message_id, error_message
+           FROM client_notification_log
+           ${where}
+           ORDER BY sent_at DESC
+           LIMIT 200`,
+        params,
+      );
+      res.json({ items: r.rows });
+    } catch (err) {
+      console.warn("[notification-log] list failed:", (err as Error).message);
+      res.json({ items: [] });
+    }
   });
 
   // -------- Superadmin: send testmelding --------

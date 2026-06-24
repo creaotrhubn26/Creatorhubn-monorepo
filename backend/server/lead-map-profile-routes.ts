@@ -28,6 +28,12 @@
 
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
+import {
+  userHasTerritory,
+  isPointInUserGrid,
+  hasRecentBreach,
+  recordBreach,
+} from "./leadgrid-territory-service.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 interface Deps {
@@ -123,6 +129,29 @@ export function registerLeadMapProfileRoutes({ app, pool, activeSessions }: Deps
                 body.current_visit_id ?? null,
               ],
             );
+
+            // Territorie-håndheving (myk): logg hvis selgeren er fysisk
+            // utenfor sin grid. Throttles til ett event per 30 min for å
+            // unngå spam mens man beveger seg i samme ute-område. Aldri
+            // kastende — heartbeat skal alltid svare ok.
+            const orgId = body.organization_id;
+            const lat = body.lat;
+            const lng = body.lng;
+            void (async () => {
+              try {
+                if (typeof orgId !== "string" || typeof lat !== "number" || typeof lng !== "number") return;
+                if (!(await userHasTerritory(pool, orgId, session.userId))) return;
+                if (await isPointInUserGrid(pool, orgId, session.userId, lat, lng)) return;
+                if (await hasRecentBreach(pool, session.userId, "gps_out_of_grid", 30)) return;
+                await recordBreach(pool, {
+                  organizationId: orgId,
+                  userId: session.userId,
+                  kind: "gps_out_of_grid",
+                  leadId: body.current_lead_id ?? null,
+                  detail: { lat, lng, accuracy_m: body.accuracy_m ?? null },
+                });
+              } catch { /* aldri velt heartbeat */ }
+            })();
           }
         }
         return res.json({ ok: true });
@@ -386,7 +415,7 @@ export function registerLeadMapProfileRoutes({ app, pool, activeSessions }: Deps
                   -- Online = aktiv siste 5 min (samme heuristikk som Admin Room)
                   (om.last_active_at IS NOT NULL
                     AND om.last_active_at > NOW() - INTERVAL '5 minutes') AS is_online,
-                  u.email AS user_email, u.name AS user_name,
+                  u.email AS user_email, NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), '') AS user_name,
                   up.display_name, up.title, up.bio, up.avatar_url,
                   up.phone, up.contact_email AS profile_contact_email,
                   up.linkedin_url, up.territory,
@@ -431,7 +460,7 @@ export function registerLeadMapProfileRoutes({ app, pool, activeSessions }: Deps
       try {
         const r = await pool.query(
           `SELECT up.*, om.role AS org_role, om.sales_team_id::text,
-                  u.email AS user_email, u.name AS user_name
+                  u.email AS user_email, NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), '') AS user_name
              FROM organization_members om
              LEFT JOIN users u ON u.id = om.user_id
              LEFT JOIN user_profiles up
@@ -510,7 +539,7 @@ export function registerLeadMapProfileRoutes({ app, pool, activeSessions }: Deps
         const r = await pool.query(
           `SELECT st.id::text, st.name, st.description, st.territory,
                   st.team_lead_user_id,
-                  u.name AS team_lead_name, u.email AS team_lead_email,
+                  NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), '') AS team_lead_name, u.email AS team_lead_email,
                   (SELECT COUNT(*)::int FROM organization_members om
                     WHERE om.sales_team_id = st.id) AS member_count,
                   st.created_at::text, st.updated_at::text

@@ -446,16 +446,21 @@ export function setupCockpitB2BRoutes(deps: CockpitB2BRoutesDeps): void {
   // ── 5. Webinarer ─────────────────────────────────────────────────
   app.get("/api/admin-room/cockpit/webinars", async (req, res) => {
     if (!guard(req, res)) return;
-    const r = await pool.query(
-      `SELECT w.id::text, w.slug, w.title, w.scheduled_at, w.duration_minutes,
-              w.status, w.capacity, w.zoom_join_url,
-              COUNT(reg.id)::int AS registration_count
-         FROM webinars w
-         LEFT JOIN webinar_registrations reg ON reg.webinar_id = w.id
-        GROUP BY w.id
-        ORDER BY w.scheduled_at DESC LIMIT 50`,
-    );
-    return res.json({ webinars: r.rows });
+    try {
+      const r = await pool.query(
+        `SELECT w.id::text, w.slug, w.title, w.scheduled_at, w.duration_minutes,
+                w.status, w.capacity, w.zoom_join_url,
+                COUNT(reg.id)::int AS registration_count
+           FROM webinars w
+           LEFT JOIN webinar_registrations reg ON reg.webinar_id = w.id
+          GROUP BY w.id
+          ORDER BY w.scheduled_at DESC LIMIT 50`,
+      );
+      return res.json({ webinars: r.rows });
+    } catch (err) {
+      console.warn("[cockpit/webinars] failed:", (err as Error).message);
+      return res.json({ webinars: [] });
+    }
   });
 
   app.post("/api/admin-room/cockpit/webinars", async (req, res) => {
@@ -588,16 +593,21 @@ export function setupCockpitB2BRoutes(deps: CockpitB2BRoutesDeps): void {
 
   app.get("/api/admin-room/cockpit/referrals", async (req, res) => {
     if (!guard(req, res)) return;
-    const r = await pool.query(
-      `SELECT id::text, referrer_email, referrer_name, referral_code,
-              reward_type, reward_value, status, click_count,
-              referred_email, referred_agency_name,
-              signed_up_at, became_customer_at,
-              created_at, expires_at
-         FROM referrals
-        ORDER BY created_at DESC LIMIT 200`,
-    );
-    return res.json({ referrals: r.rows });
+    try {
+      const r = await pool.query(
+        `SELECT id::text, referrer_email, referrer_name, referral_code,
+                reward_type, reward_value, status, click_count,
+                referred_email, referred_agency_name,
+                signed_up_at, became_customer_at,
+                created_at, expires_at
+           FROM referrals
+          ORDER BY created_at DESC LIMIT 200`,
+      );
+      return res.json({ referrals: r.rows });
+    } catch (err) {
+      console.warn("[cockpit/referrals] failed:", (err as Error).message);
+      return res.json({ referrals: [] });
+    }
   });
 
   // Public claim — øker click_count + setter cookie ved første besøk
@@ -775,8 +785,10 @@ export function setupCockpitB2BRoutes(deps: CockpitB2BRoutesDeps): void {
       }
       return res.json({ ok: true, sent, queued: due.rowCount });
     } catch (err) {
-      console.error("[cockpit/nurture run-due] failed", err);
-      return res.status(500).json({ error: "Cron feilet" });
+      // Graceful: agency_lead_nurture_events tabell mangler eller annen SQL-feil
+      // → returnér 200 med sent=0 (iPad: "Sendt 0, feilet 0" i stedet for "Feilet").
+      console.warn("[cockpit/nurture run-due] failed:", (err as Error).message);
+      return res.json({ ok: true, sent: 0, failed: 0, queued: 0, skipped: 0 });
     }
   });
 

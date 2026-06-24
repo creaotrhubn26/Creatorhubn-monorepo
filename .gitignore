@@ -71,6 +71,8 @@ docker/
 *.md
 !README.md
 !ipad/CaptureApp/TESTFLIGHT.md
+!ipad/CaptureApp/CAPTURE_NATIVE_ROADMAP.md
+!backend/gfpgan-runner/GPU_DEPLOY.md
 !apps/resolve-script-manager/RELEASE.md
 # THE-ROLE-ROOM-strategi-dokumenter (produktdok, BankID, ENHETSOKONOMI, DPA, VERIFISERING)
 # Whitelistet 2026-06-07 — disse er kilden til sannhet for produkt-positionering og
@@ -202,3 +204,7 @@ scripts/.lead-map-admin-state.json
 ipad/LeadMapApp/LeadMapApp.xcodeproj
 ipad/LeadMapApp/LeadMapApp/Generated
 ipad/LeadMapApp/LeadMapWidget/Generated
+
+# Local-only RAW fixtures for Redigering testing (not committed)
+ipad/CaptureApp/CaptureApp/Resources/_MG_9300.CR2
+ipad/CaptureApp/CaptureAppTests/Resources/_MG_9300.CR2

@@ -1,0 +1,15 @@
+name: Leadgrid backfill organization_id
+on:
+  workflow_dispatch:  # Manual trigger første gang
+  schedule:
+    - cron: '15 3 * * *'  # 03:15 UTC daily — catcher nye leads opprettet uten org_id
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger backfill
+        run: |
+          RESP=$(curl -sf -X POST "${{ secrets.BACKEND_URL }}/api/leadgrid/cron/backfill-organization-id" \
+            -H "x-cron-trigger-token: ${{ secrets.LEADGRID_INTELLIGENCE_CRON_TOKEN }}")
+          echo "$RESP" | jq
+          [ "$(echo $RESP | jq -r .ok)" = "true" ] || exit 1

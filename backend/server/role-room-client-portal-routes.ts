@@ -31,6 +31,8 @@ import {
   listClientPortalSessionsForProject,
   revokeClientPortalSession,
 } from "./role-room-client-portal.js";
+import { sendTransactionalEmail } from "./transactional-email-service.js";
+import { composeEmail } from "./email-design-system.js";
 
 interface AdminSession {
   userId: string;
@@ -87,8 +89,41 @@ export function setupRoleRoomClientPortalRoutes(
       || process.env.ROLE_ROOM_FRONTEND_ORIGIN
       || "https://theroleroom.com";
     const magicLinkUrl = `${base.replace(/\/$/, "")}/client/portal/${encodeURIComponent(invite.sessionToken)}`;
+
+    // Send invitasjons-e-post med magic-link til klienten. Best-effort:
+    // invitasjonen er allerede opprettet, så e-post-feil skal ikke feile kallet.
+    // (Tidligere ble KUN lenken returnert — ingen e-post ble faktisk sendt.)
+    let emailed = false;
+    try {
+      const greetingName = (clientName || clientEmail.split("@")[0] || "der").trim();
+      const composed = composeEmail({
+        category: "welcome",
+        subject: "Du er invitert til å se prosjektet i The Role Room",
+        preheader: "Åpne klient-lenken for å se og godkjenne prosjektet.",
+        headline: "Du er invitert til prosjektet",
+        subhead: `Hei ${greetingName} — du har fått tilgang til å se og godkjenne et prosjekt i The Role Room. Trykk under for å åpne din private klient-lenke. Lenken er personlig og utløper ${invite.expiresAt.toLocaleDateString("nb-NO")}.`,
+        cta: { label: "Åpne prosjektet", href: magicLinkUrl },
+        footer: {
+          reason: "Du får denne e-posten fordi en produsent inviterte deg til et prosjekt i The Role Room.",
+        },
+      });
+      await sendTransactionalEmail({
+        to: clientEmail,
+        subject: "Du er invitert til å se prosjektet i The Role Room",
+        kind: "client_invite",
+        fromLabel: "The Role Room",
+        pool,
+        text: composed.text,
+        html: composed.html,
+      });
+      emailed = true;
+    } catch (err) {
+      console.warn("[client-portal] invite-e-post feilet", err);
+    }
+
     return res.json({
       success: true,
+      emailed,
       invite: {
         id: invite.id,
         clientEmail: invite.clientEmail,

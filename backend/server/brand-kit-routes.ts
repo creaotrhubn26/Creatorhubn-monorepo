@@ -69,10 +69,9 @@ export function registerBrandKitRoutes({
     if (!requireAdmin(req, res)) return;
     try {
       const kit = await getBrandKit(pool, req.params.projectId);
-      if (!kit) {
-        return res.status(404).json({ error: "brand_kit_not_found" });
-      }
-      return res.json({ brandKit: kit });
+      // Returner alltid 200 m/ brandKit: null hvis ikke funnet — iPad-clienten
+      // bruker non-optional decode på envelope og 404 ville krasje view-en.
+      return res.json({ brandKit: kit ?? null });
     } catch (err) {
       console.error("[brand-kit] GET failed", err);
       return res
