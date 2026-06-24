@@ -20,7 +20,9 @@ import {
   TableHead,
   TableRow,
   Typography,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import type { ChipProps } from '@mui/material/Chip';
 import {
   Backup,
@@ -163,13 +165,13 @@ function MetricCard({
     >
       <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2 }}>
         <Box>
-          <Typography variant="caption" sx={{ color: '#6b7280', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
             {label}
           </Typography>
-          <Typography sx={{ mt: 0.9, fontSize: '1.65rem', fontWeight: 700, color: '#111827', letterSpacing: '-0.03em' }}>
+          <Typography sx={{ mt: 0.9, fontSize: '1.65rem', fontWeight: 700, color: '#ffffff', letterSpacing: '-0.03em' }}>
             {value}
           </Typography>
-          <Typography variant="body2" sx={{ mt: 0.6, color: '#6b7280', lineHeight: 1.5 }}>
+          <Typography variant="body2" sx={{ mt: 0.6, color: 'rgba(255,255,255,0.6)', lineHeight: 1.5 }}>
             {helper}
           </Typography>
         </Box>
@@ -239,10 +241,10 @@ export default function SystemHealthPanel({
   if (isLoading) {
     return (
       <Paper sx={{ ...surfaceSx, p: 3 }}>
-        <Typography sx={{ fontSize: '1.5rem', fontWeight: 700, color: '#181512' }}>
+        <Typography sx={{ fontSize: '1.5rem', fontWeight: 700, color: '#ffffff' }}>
           Drift
         </Typography>
-        <Typography sx={{ mt: 0.75, color: '#6b7280' }}>
+        <Typography sx={{ mt: 0.75, color: 'rgba(255,255,255,0.6)' }}>
           Laster systemstatus, hendelser og driftskontroll.
         </Typography>
       </Paper>
@@ -250,6 +252,7 @@ export default function SystemHealthPanel({
   }
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box sx={{ display: 'grid', gap: 3 }}>
       <Paper
         sx={{
@@ -267,13 +270,13 @@ export default function SystemHealthPanel({
           alignItems={{ xs: 'flex-start', xl: 'stretch' }}
         >
           <Box sx={{ maxWidth: 760, flex: 1 }}>
-            <Typography variant="overline" sx={{ color: '#111827', fontWeight: 700, letterSpacing: '0.08em' }}>
+            <Typography variant="overline" sx={{ color: '#ffffff', fontWeight: 700, letterSpacing: '0.08em' }}>
               CreatorHub Operations
             </Typography>
-            <Typography sx={{ mt: 0.5, fontSize: { xs: '1.9rem', sm: '2.3rem' }, fontWeight: 700, color: '#111827', letterSpacing: '-0.04em' }}>
+            <Typography sx={{ mt: 0.5, fontSize: { xs: '1.9rem', sm: '2.3rem' }, fontWeight: 700, color: '#ffffff', letterSpacing: '-0.04em' }}>
               Drift
             </Typography>
-            <Typography variant="body2" sx={{ mt: 1, color: '#5b6472', lineHeight: 1.7 }}>
+            <Typography variant="body2" sx={{ mt: 1, color: 'rgba(255,255,255,0.6)', lineHeight: 1.7 }}>
               Bruk denne flaten til å lese systemhelsen raskt. Backup og GDPR lever i egne faner,
               men denne siden skal gi Daniel et operativt statusbilde uten overflødig støy.
             </Typography>
@@ -286,7 +289,7 @@ export default function SystemHealthPanel({
 
           <Box sx={{ width: { xs: '100%', xl: 340 }, display: 'grid', gap: 1.25 }}>
             <Paper sx={{ ...insetSx, p: 1.6 }}>
-              <Typography variant="caption" sx={{ color: '#6b7280', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
                 Status akkurat nå
               </Typography>
               <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.8 }}>
@@ -295,11 +298,11 @@ export default function SystemHealthPanel({
                   color={getStatusColor(overallStatus)}
                   label={getStatusLabel(overallStatus)}
                 />
-                <Typography variant="body2" sx={{ color: '#6b7280' }}>
+                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.6)' }}>
                   Sist oppdatert {lastRefresh.toLocaleTimeString('no-NO')}
                 </Typography>
               </Stack>
-              <Typography variant="body2" sx={{ mt: 1, color: '#6b7280', lineHeight: 1.6 }}>
+              <Typography variant="body2" sx={{ mt: 1, color: 'rgba(255,255,255,0.6)', lineHeight: 1.6 }}>
                 {getOverallStatusCopy(overallStatus)}
               </Typography>
             </Paper>
@@ -387,10 +390,10 @@ export default function SystemHealthPanel({
       <Grid container spacing={2}>
         <Grid size={{ xs: 12, xl: 7 }}>
           <Paper sx={{ ...surfaceSx, p: 2.5 }}>
-            <Typography sx={{ fontSize: '1.1rem', fontWeight: 700, color: '#181512' }}>
+            <Typography sx={{ fontSize: '1.1rem', fontWeight: 700, color: '#ffffff' }}>
               Tjenesteoversikt
             </Typography>
-            <Typography sx={{ mt: 0.5, color: '#6b7280' }}>
+            <Typography sx={{ mt: 0.5, color: 'rgba(255,255,255,0.6)' }}>
               Les tjenestestatus uten å navigere inn i egne monitoreringsflater.
             </Typography>
             <Divider sx={{ my: 2 }} />
@@ -417,7 +420,7 @@ export default function SystemHealthPanel({
                   ) : (
                     services.map((service, index) => (
                       <TableRow key={`${service.name}-${index}`}>
-                        <TableCell sx={{ fontWeight: 600, color: '#111827' }}>
+                        <TableCell sx={{ fontWeight: 600, color: '#ffffff' }}>
                           {service.name}
                         </TableCell>
                         <TableCell>
@@ -440,10 +443,10 @@ export default function SystemHealthPanel({
 
         <Grid size={{ xs: 12, xl: 5 }}>
           <Paper sx={{ ...surfaceSx, p: 2.5 }}>
-            <Typography sx={{ fontSize: '1.1rem', fontWeight: 700, color: '#181512' }}>
+            <Typography sx={{ fontSize: '1.1rem', fontWeight: 700, color: '#ffffff' }}>
               Siste hendelser
             </Typography>
-            <Typography sx={{ mt: 0.5, color: '#6b7280' }}>
+            <Typography sx={{ mt: 0.5, color: 'rgba(255,255,255,0.6)' }}>
               Dette er de driftsignalene som bør leses først.
             </Typography>
             <Divider sx={{ my: 2 }} />
@@ -466,7 +469,7 @@ export default function SystemHealthPanel({
                     <ListItemText
                       primary={
                         <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
-                          <Typography sx={{ fontWeight: 600, color: '#111827' }}>
+                          <Typography sx={{ fontWeight: 600, color: '#ffffff' }}>
                             {event.message}
                           </Typography>
                           <Chip
@@ -477,7 +480,7 @@ export default function SystemHealthPanel({
                         </Stack>
                       }
                       secondary={
-                        <Typography variant="caption" sx={{ display: 'block', mt: 0.5, color: '#6b7280' }}>
+                        <Typography variant="caption" sx={{ display: 'block', mt: 0.5, color: 'rgba(255,255,255,0.6)' }}>
                           {event.time || 'Nylig'}
                         </Typography>
                       }
@@ -493,35 +496,35 @@ export default function SystemHealthPanel({
       <Grid container spacing={2}>
         <Grid size={{ xs: 12, md: 6 }}>
           <Paper sx={{ ...surfaceSx, p: 2.5 }}>
-            <Typography sx={{ fontSize: '1.05rem', fontWeight: 700, color: '#181512' }}>
+            <Typography sx={{ fontSize: '1.05rem', fontWeight: 700, color: '#ffffff' }}>
               Infrastruktur
             </Typography>
-            <Typography sx={{ mt: 0.5, color: '#6b7280' }}>
+            <Typography sx={{ mt: 0.5, color: 'rgba(255,255,255,0.6)' }}>
               Les tekniske nøkkeltall før du går inn i dypere feilsøking.
             </Typography>
             <Divider sx={{ my: 2 }} />
             <Stack spacing={1.25}>
               <Box sx={{ ...insetSx, p: 1.6 }}>
-                <Typography sx={{ fontWeight: 700, color: '#111827' }}>
+                <Typography sx={{ fontWeight: 700, color: '#ffffff' }}>
                   CPU-bruk
                 </Typography>
-                <Typography variant="body2" sx={{ mt: 0.35, color: '#6b7280' }}>
+                <Typography variant="body2" sx={{ mt: 0.35, color: 'rgba(255,255,255,0.6)' }}>
                   {systemMetrics.cpuUsage}% aktiv bruk
                 </Typography>
               </Box>
               <Box sx={{ ...insetSx, p: 1.6 }}>
-                <Typography sx={{ fontWeight: 700, color: '#111827' }}>
+                <Typography sx={{ fontWeight: 700, color: '#ffffff' }}>
                   Databasetilkoblinger
                 </Typography>
-                <Typography variant="body2" sx={{ mt: 0.35, color: '#6b7280' }}>
+                <Typography variant="body2" sx={{ mt: 0.35, color: 'rgba(255,255,255,0.6)' }}>
                   {systemMetrics.databaseConnections} aktive forbindelser
                 </Typography>
               </Box>
               <Box sx={{ ...insetSx, p: 1.6 }}>
-                <Typography sx={{ fontWeight: 700, color: '#111827' }}>
+                <Typography sx={{ fontWeight: 700, color: '#ffffff' }}>
                   Feilrate
                 </Typography>
-                <Typography variant="body2" sx={{ mt: 0.35, color: '#6b7280' }}>
+                <Typography variant="body2" sx={{ mt: 0.35, color: 'rgba(255,255,255,0.6)' }}>
                   {systemMetrics.errorRate}% registrerte feil
                 </Typography>
               </Box>
@@ -531,10 +534,10 @@ export default function SystemHealthPanel({
 
         <Grid size={{ xs: 12, md: 6 }}>
           <Paper sx={{ ...surfaceSx, p: 2.5 }}>
-            <Typography sx={{ fontSize: '1.05rem', fontWeight: 700, color: '#181512' }}>
+            <Typography sx={{ fontSize: '1.05rem', fontWeight: 700, color: '#ffffff' }}>
               Driftshandlinger
             </Typography>
-            <Typography sx={{ mt: 0.5, color: '#6b7280' }}>
+            <Typography sx={{ mt: 0.5, color: 'rgba(255,255,255,0.6)' }}>
               Backup og personvern lever i egne faner, men bør være tilgjengelige herfra.
             </Typography>
             <Divider sx={{ my: 2 }} />
@@ -542,10 +545,10 @@ export default function SystemHealthPanel({
               <Box sx={{ ...insetSx, p: 1.6 }}>
                 <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1.5}>
                   <Box>
-                    <Typography sx={{ fontWeight: 700, color: '#111827' }}>
+                    <Typography sx={{ fontWeight: 700, color: '#ffffff' }}>
                       Backup
                     </Typography>
-                    <Typography variant="body2" sx={{ mt: 0.35, color: '#6b7280' }}>
+                    <Typography variant="body2" sx={{ mt: 0.35, color: 'rgba(255,255,255,0.6)' }}>
                       Gå til full backup-flate for kjøring, kontroll og historikk.
                     </Typography>
                   </Box>
@@ -562,10 +565,10 @@ export default function SystemHealthPanel({
               <Box sx={{ ...insetSx, p: 1.6 }}>
                 <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1.5}>
                   <Box>
-                    <Typography sx={{ fontWeight: 700, color: '#111827' }}>
+                    <Typography sx={{ fontWeight: 700, color: '#ffffff' }}>
                       GDPR & personvern
                     </Typography>
-                    <Typography variant="body2" sx={{ mt: 0.35, color: '#6b7280' }}>
+                    <Typography variant="body2" sx={{ mt: 0.35, color: 'rgba(255,255,255,0.6)' }}>
                       Åpne egen compliance-flate for sletting, samtykke og revisjon.
                     </Typography>
                   </Box>
@@ -589,5 +592,6 @@ export default function SystemHealthPanel({
         </Grid>
       </Grid>
     </Box>
+    </ThemeProvider>
   );
 }
