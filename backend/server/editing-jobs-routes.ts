@@ -49,6 +49,7 @@ import {
   type ComplianceProfile,
 } from "./editing-compliance";
 import { redeemPortalToken } from "./editing-partner-portal-service";
+import { notifyAdmins } from "./admin-notify";
 import crypto from "crypto";
 import {
   createCheckoutForJob,
@@ -256,6 +257,14 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
              WHERE id=$25`,
             [...vals, existing.id],
           );
+          void notifyAdmins(pool, {
+            type: "editing_partner_application",
+            source: "Editing-marketplace · partner-søknadsskjema",
+            title: `Gjenåpnet redigeringspartner-søknad: ${companyName ?? "(ukjent)"}`,
+            summary: `Land: ${country} · Kontakt: ${email} · Tjenester: ${services.length ? services.join(", ") : "—"}`,
+            link: "/admin",
+            relatedId: existing.id,
+          });
           return res.json({ ok: true, applicationId: existing.id, reopened: true });
         }
 
@@ -272,6 +281,14 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
            RETURNING id`,
           vals,
         );
+        void notifyAdmins(pool, {
+          type: "editing_partner_application",
+          source: "Editing-marketplace · partner-søknadsskjema",
+          title: `Ny redigeringspartner-søknad: ${companyName ?? "(ukjent)"}`,
+          summary: `Land: ${country} · Kontakt: ${email} · Tjenester: ${services.length ? services.join(", ") : "—"}`,
+          link: "/admin",
+          relatedId: r.rows[0].id,
+        });
         return res.json({ ok: true, applicationId: r.rows[0].id });
       } catch (e: unknown) {
         // Backstop mot race (unik aktiv-e-post-index) → vennlig svar, ikke 500.
