@@ -84,6 +84,13 @@ async function loadConnection(
 ): Promise<ConnectionRow | null> {
   try {
     const whereCol = byProjectId ? "project_id" : "user_id";
+    // LinkedIn/TikTok har nå project_id (klient-portal-rader). Produsent-
+    // dashboardet (byProjectId=false) skal kun vise produsentens GLOBALE rad,
+    // ikke en klients prosjekt-rad. Google/Instagram urørt (annet scope-mønster).
+    const globalPin =
+      !byProjectId && (table.includes("linkedin") || table.includes("tiktok"))
+        ? " AND project_id IS NULL"
+        : "";
     const r = await pool.query<{
       access_token_encrypted: string | null;
       scopes: unknown;
@@ -102,7 +109,7 @@ async function loadConnection(
          COALESCE(profile, '{}'::jsonb) AS profile,
          connection_state
        FROM ${table}
-       WHERE ${whereCol} = $1
+       WHERE ${whereCol} = $1${globalPin}
        ORDER BY COALESCE(last_refreshed_at, expiry_date, token_expires_at, now()) DESC
        LIMIT 1`,
       [projectIdOrUserId],
@@ -445,7 +452,7 @@ async function testLinkedInConnection(pool: Pool, userId: string): Promise<{ suc
   try {
     const r = await pool.query<{ access_token_encrypted: string }>(
       `SELECT access_token_encrypted FROM role_room_linkedin_connections
-        WHERE user_id = $1 LIMIT 1`,
+        WHERE user_id = $1 AND project_id IS NULL LIMIT 1`,
       [userId],
     );
     const token = r.rows[0]?.access_token_encrypted;

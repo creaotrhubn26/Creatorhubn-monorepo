@@ -100,7 +100,7 @@ async function loadLinkedInConnection(
       `SELECT id, user_id, linkedin_member_id, access_token_encrypted, expiry_date,
               connection_state, scopes
          FROM role_room_linkedin_connections
-        WHERE user_id = $1 AND connection_state IN ('connected', 'active')
+        WHERE user_id = $1 AND project_id IS NULL AND connection_state IN ('connected', 'active')
         LIMIT 1`,
       [userId],
     );

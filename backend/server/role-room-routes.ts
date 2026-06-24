@@ -2439,6 +2439,10 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       profile: Record<string, unknown>;
     },
     tokenBundle: RoleRoomLinkedInTransferPayload['tokenBundle'],
+    // Klient-portal-tilkoblinger scopes til prosjektet (lagres under produsentens
+    // user_id + project_id). Produsentens egne globale tilkoblinger (publisering)
+    // har project_id = null — derfor default null her.
+    projectId: string | null = null,
   ): Promise<RoleRoomLinkedInConnectionRow> {
     if (!(await ensureRoleRoomLinkedInTables())) {
       throw new Error('Role Room LinkedIn tables unavailable');
@@ -2454,13 +2458,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       `INSERT INTO role_room_linkedin_connections (
         id, user_id, role_room_email, linkedin_member_id, linkedin_email, linkedin_name,
         access_token_encrypted, refresh_token_encrypted, expiry_date, scopes,
-        connection_state, last_error, profile, created_at, updated_at, last_used_at
+        connection_state, last_error, profile, project_id, created_at, updated_at, last_used_at
       ) VALUES (
         $1, $2, $3, $4, $5, $6,
         $7, $8, $9, $10::jsonb,
-        'connected', NULL, $11::jsonb, NOW(), NOW(), NOW()
+        'connected', NULL, $11::jsonb, $12, NOW(), NOW(), NOW()
       )
-      ON CONFLICT (user_id) DO UPDATE SET
+      ON CONFLICT (user_id, COALESCE(project_id, '')) DO UPDATE SET
         role_room_email = EXCLUDED.role_room_email,
         linkedin_member_id = EXCLUDED.linkedin_member_id,
         linkedin_email = EXCLUDED.linkedin_email,
@@ -2487,6 +2491,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         expiryDate,
         JSON.stringify(tokenBundle.scopes ?? []),
         JSON.stringify(linkedInProfile.profile),
+        projectId,
       ],
     );
     return result.rows[0];
@@ -9918,6 +9923,35 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         ? Date.now() + (Number(tokenPayload.expires_in) * 1000)
         : null;
       const rawScopes = readStringValue(tokenPayload.scope);
+
+      // Klient-portal: klienten er IKKE innlogget, så transfer→/linkedin/link-
+      // fullføringen (som krever getUserId) finnes ikke for dem. Auto-upsert
+      // direkte her, prosjekt-scopet under produsentens user_id. Produsentens
+      // egen kobling går fortsatt via transfer-store + /linkedin/link (under).
+      if (oauthState.returnPath.startsWith('/client/portal/') && oauthState.createdByUserId) {
+        await upsertRoleRoomLinkedInConnection(
+          oauthState.createdByUserId,
+          linkedInEmail,
+          { memberId: linkedInMemberId, email: linkedInEmail, name: linkedInName, profile: readJsonObject(profilePayload) },
+          {
+            accessToken,
+            refreshToken: readStringValue(tokenPayload.refresh_token),
+            expiryDate,
+            scopes: rawScopes
+              ? rawScopes.split(' ').filter((entry) => entry.trim().length > 0)
+              : [...ROLE_ROOM_LINKEDIN_SCOPES],
+          },
+          oauthState.projectId ?? null,
+        );
+        res.redirect(
+          buildRoleRoomGoogleReturnUrl(oauthState.returnPath, {
+            rrLinkedInStatus: 'success',
+            rrLinkedInMode: 'link',
+          }, resolveRoleRoomBrowserOrigin(req, oauthState.browserOrigin) ?? requestOrigin),
+        );
+        return;
+      }
+
       const transferId = crypto.randomUUID();
       roleRoomLinkedInTransferStore.set(transferId, {
         mode: 'link',

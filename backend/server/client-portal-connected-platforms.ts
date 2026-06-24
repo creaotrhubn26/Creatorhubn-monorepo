@@ -389,11 +389,22 @@ export async function loadConnectedPlatforms(
     [projectId],
   );
 
-  // LinkedIn/Google: ennå ikke prosjekt-scopet i klientportalen. LinkedIn kommer
-  // (samme mønster); Google gjøres med EGEN lagring senere (20+ Workspace-lesere
-  // + destruktiv upsert-DELETE gjør in-place-scoping for risikabelt). Vis som
-  // «ikke tilkoblet» (ikke produsentens globale konto).
-  const linkedin = null;
+  // LinkedIn — nå prosjekt-scopet (mig 0338): klientens egen tilkobling.
+  const linkedin = await safeQueryFirst(
+    pool,
+    `SELECT connection_state AS "connectionState",
+            expiry_date      AS "expiryDate",
+            linkedin_name    AS "accountName",
+            updated_at       AS "updatedAt"
+       FROM role_room_linkedin_connections
+      WHERE project_id = $1
+      ORDER BY updated_at DESC
+      LIMIT 1`,
+    [projectId],
+  );
+
+  // Google: utsatt til egen lagring (20+ Workspace-lesere + destruktiv upsert-
+  // DELETE gjør in-place project-scoping for risikabelt). Vis «ikke tilkoblet».
   const google = null;
 
   // Facebook avledes fra Instagram-raden: Meta-publisering krever en koblet
