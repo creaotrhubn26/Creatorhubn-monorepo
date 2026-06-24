@@ -1,0 +1,15 @@
+# RunPod Serverless image for the GFPGAN runner.
+# Layers on top of the already-built GPU image (same CUDA + torch + gfpgan +
+# all custom modules), so this build is tiny: it only adds the RunPod SDK and
+# swaps the entrypoint from uvicorn to the serverless handler. Identical model
+# code path => identical output to the HTTP runner.
+FROM ghcr.io/creaotrhubn26/gfpgan-runner:latest
+
+# RunPod serverless SDK (provides runpod.serverless.start).
+RUN python -m pip install --no-cache-dir runpod
+
+# Handler is added on top of the *.py already copied into the base image.
+COPY rp_handler.py ./
+
+# Serverless worker entrypoint (no port; RunPod feeds jobs over its queue).
+CMD ["python", "-u", "rp_handler.py"]
