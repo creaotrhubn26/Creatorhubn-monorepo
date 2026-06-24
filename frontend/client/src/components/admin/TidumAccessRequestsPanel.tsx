@@ -17,10 +17,12 @@ import {
   InputLabel,
   MenuItem,
   Select,
+  Paper,
   Stack,
   Table,
   TableBody,
   TableCell,
+  TableContainer,
   TableHead,
   TableRow,
   TextField,
@@ -28,6 +30,8 @@ import {
   ThemeProvider,
 } from '@mui/material';
 import { adminDarkTheme } from './adminDarkTheme';
+import { TableVirtuoso } from 'react-virtuoso';
+import type { TableHeadProps } from '@mui/material/TableHead';
 import {
   Apartment,
   CheckCircle,
@@ -405,20 +409,38 @@ export default function TidumAccessRequestsPanel() {
           {isLoading ? (
             <Typography color="text.secondary">Laster Tidum-forespørsler…</Typography>
           ) : (
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>Virksomhet</TableCell>
-                  <TableCell>Kontakt</TableCell>
-                  <TableCell>Type</TableCell>
-                  <TableCell>Status</TableCell>
-                  <TableCell>Opprettet</TableCell>
-                  <TableCell align="right">Handling</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {filteredRequests.map((request) => (
-                  <TableRow key={request.requestId} hover>
+            <Paper style={{ height: 560, width: '100%' }} elevation={0}>
+              {/* Virtualisert (react-virtuoso) – tåler ubegrenset antall
+                  forespørsler uten å tynge DOM-en. Handlinger uendret. */}
+              <TableVirtuoso
+                data={filteredRequests}
+                components={{
+                  Scroller: React.forwardRef<HTMLDivElement>((props, ref) => (
+                    <TableContainer {...props} ref={ref} />
+                  )),
+                  Table: (props) => (
+                    <Table {...props} size="small" sx={{ borderCollapse: 'separate', tableLayout: 'fixed' }} />
+                  ),
+                  TableHead: React.forwardRef<HTMLTableSectionElement, TableHeadProps>((props, ref) => (
+                    <TableHead {...props} ref={ref} />
+                  )),
+                  TableRow: ({ item: _item, ...props }) => <TableRow {...props} hover />,
+                  TableBody: React.forwardRef<HTMLTableSectionElement>((props, ref) => (
+                    <TableBody {...props} ref={ref} />
+                  )),
+                }}
+                fixedHeaderContent={() => (
+                  <TableRow>
+                    <TableCell sx={{ width: 220 }}>Virksomhet</TableCell>
+                    <TableCell sx={{ width: 200 }}>Kontakt</TableCell>
+                    <TableCell sx={{ width: 160 }}>Type</TableCell>
+                    <TableCell sx={{ width: 130 }}>Status</TableCell>
+                    <TableCell sx={{ width: 150 }}>Opprettet</TableCell>
+                    <TableCell align="right" sx={{ width: 200 }}>Handling</TableCell>
+                  </TableRow>
+                )}
+                itemContent={(_index, request) => (
+                  <>
                     <TableCell>
                       <Typography sx={{ fontWeight: 600 }}>
                         {request.company || 'Ikke oppgitt'}
@@ -489,10 +511,10 @@ export default function TidumAccessRequestsPanel() {
                         </Button>
                       </Stack>
                     </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                  </>
+                )}
+              />
+            </Paper>
           )}
         </CardContent>
       </Card>

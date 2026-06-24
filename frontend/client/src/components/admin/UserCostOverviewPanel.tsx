@@ -31,6 +31,7 @@ import {
   TableHead,
   TableRow,
   TableSortLabel,
+  Paper,
   TextField,
   Chip,
   CircularProgress,
@@ -41,6 +42,8 @@ import {
   ThemeProvider,
 } from '@mui/material';
 import { adminDarkTheme } from './adminDarkTheme';
+import { TableVirtuoso } from 'react-virtuoso';
+import type { TableHeadProps } from '@mui/material/TableHead';
 import {
   Refresh as RefreshIcon,
   Storage as StorageIcon,
@@ -233,151 +236,138 @@ export const UserCostOverviewPanel: React.FC = () => {
             />
           </Box>
 
-          <TableContainer sx={{ maxHeight: 600 }}>
-            {loading && !data ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-                <CircularProgress />
-              </Box>
-            ) : (
-              <Table size="small" stickyHeader>
-                <TableHead>
+          {loading && !data ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+              <CircularProgress />
+            </Box>
+          ) : (
+            <Paper style={{ height: 600, width: '100%' }} elevation={0}>
+              {/* Virtualisert (react-virtuoso) – kun synlige rader rendres, så
+                  500+ brukere holder DOM-en lett. Sortering via header beholdt. */}
+              <TableVirtuoso
+                data={filteredRows}
+                components={{
+                  Scroller: React.forwardRef<HTMLDivElement>((props, ref) => (
+                    <TableContainer {...props} ref={ref} />
+                  )),
+                  Table: (props) => (
+                    <Table {...props} size="small" sx={{ borderCollapse: 'separate', tableLayout: 'fixed' }} />
+                  ),
+                  TableHead: React.forwardRef<HTMLTableSectionElement, TableHeadProps>((props, ref) => (
+                    <TableHead {...props} ref={ref} />
+                  )),
+                  TableRow: ({ item, ...props }) => (
+                    <TableRow
+                      {...props}
+                      sx={{ bgcolor: item && item.creatorHubMarginNok < 0 ? 'rgba(220,38,38,0.12)' : undefined }}
+                    />
+                  ),
+                  TableBody: React.forwardRef<HTMLTableSectionElement>((props, ref) => (
+                    <TableBody {...props} ref={ref} />
+                  )),
+                  EmptyPlaceholder: () => (
+                    <TableBody>
+                      <TableRow>
+                        <TableCell colSpan={9} align="center" sx={{ py: 4 }}>
+                          <Typography color="text.secondary">Ingen brukere matcher.</Typography>
+                        </TableCell>
+                      </TableRow>
+                    </TableBody>
+                  ),
+                }}
+                fixedHeaderContent={() => (
                   <TableRow>
-                    <TableCell>User</TableCell>
-                    <TableCell>Plan</TableCell>
-                    <TableCell align="right">Inntekt/mnd</TableCell>
-                    <TableCell align="right">
-                      <TableSortLabel
-                        active={sortKey === 'storage'}
-                        direction="desc"
-                        onClick={() => setSortKey('storage')}
-                      >
+                    <TableCell sx={{ width: 220 }}>User</TableCell>
+                    <TableCell sx={{ width: 130 }}>Plan</TableCell>
+                    <TableCell align="right" sx={{ width: 120 }}>Inntekt/mnd</TableCell>
+                    <TableCell align="right" sx={{ width: 110 }}>
+                      <TableSortLabel active={sortKey === 'storage'} direction="desc" onClick={() => setSortKey('storage')}>
                         Lagring
                       </TableSortLabel>
                     </TableCell>
-                    <TableCell align="right">Storage-kost</TableCell>
-                    <TableCell align="right">
-                      <TableSortLabel
-                        active={sortKey === 'ai'}
-                        direction="desc"
-                        onClick={() => setSortKey('ai')}
-                      >
+                    <TableCell align="right" sx={{ width: 120 }}>Storage-kost</TableCell>
+                    <TableCell align="right" sx={{ width: 120 }}>
+                      <TableSortLabel active={sortKey === 'ai'} direction="desc" onClick={() => setSortKey('ai')}>
                         AI-kost (30d)
                       </TableSortLabel>
                     </TableCell>
-                    <TableCell align="right">
-                      <TableSortLabel
-                        active={sortKey === 'totalCost'}
-                        direction="desc"
-                        onClick={() => setSortKey('totalCost')}
-                      >
+                    <TableCell align="right" sx={{ width: 120 }}>
+                      <TableSortLabel active={sortKey === 'totalCost'} direction="desc" onClick={() => setSortKey('totalCost')}>
                         Total kost
                       </TableSortLabel>
                     </TableCell>
-                    <TableCell align="right">
-                      <TableSortLabel
-                        active={sortKey === 'margin'}
-                        direction="desc"
-                        onClick={() => setSortKey('margin')}
-                      >
+                    <TableCell align="right" sx={{ width: 120 }}>
+                      <TableSortLabel active={sortKey === 'margin'} direction="desc" onClick={() => setSortKey('margin')}>
                         Margin
                       </TableSortLabel>
                     </TableCell>
-                    <TableCell align="right">Margin %</TableCell>
+                    <TableCell align="right" sx={{ width: 100 }}>Margin %</TableCell>
                   </TableRow>
-                </TableHead>
-                <TableBody>
-                  {filteredRows.map((row) => {
-                    const isNegativeMargin = row.creatorHubMarginNok < 0;
-                    return (
-                      <TableRow
-                        key={row.userId}
-                        sx={{
-                          bgcolor: isNegativeMargin
-                            ? 'rgba(220, 38, 38, 0.06)'
-                            : undefined,
-                        }}
-                      >
-                        <TableCell>
-                          <Tooltip title={row.userId}>
-                            <Typography
-                              variant="body2"
-                              sx={{
-                                fontFamily: 'monospace',
-                                maxWidth: 200,
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                              }}
-                            >
-                              {row.userId}
-                            </Typography>
-                          </Tooltip>
-                          {row.lastUpdated ? (
+                )}
+                itemContent={(_index, row) => {
+                  const isNegativeMargin = row.creatorHubMarginNok < 0;
+                  return (
+                    <>
+                      <TableCell>
+                        <Tooltip title={row.userId}>
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              fontFamily: 'monospace',
+                              maxWidth: 200,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {row.userId}
+                          </Typography>
+                        </Tooltip>
+                        {row.lastUpdated ? (
+                          <Typography variant="caption" color="text.secondary">
+                            {new Date(row.lastUpdated).toLocaleDateString('nb-NO')}
+                          </Typography>
+                        ) : null}
+                      </TableCell>
+                      <TableCell>
+                        <Stack spacing={0.25}>
+                          <Chip
+                            label={row.planType}
+                            size="small"
+                            sx={{ width: 'fit-content', fontWeight: 600 }}
+                          />
+                          {row.subscriptionStatus ? (
                             <Typography variant="caption" color="text.secondary">
-                              {new Date(row.lastUpdated).toLocaleDateString('nb-NO')}
+                              {row.subscriptionStatus}
                             </Typography>
                           ) : null}
-                        </TableCell>
-                        <TableCell>
-                          <Stack spacing={0.25}>
-                            <Chip
-                              label={row.planType}
-                              size="small"
-                              sx={{ width: 'fit-content', fontWeight: 600 }}
-                            />
-                            {row.subscriptionStatus ? (
-                              <Typography variant="caption" color="text.secondary">
-                                {row.subscriptionStatus}
-                              </Typography>
-                            ) : null}
-                          </Stack>
-                        </TableCell>
-                        <TableCell align="right" sx={{ fontWeight: 600 }}>
-                          {formatNok(row.monthlyPriceNok)}
-                        </TableCell>
-                        <TableCell align="right">{formatGB(row.usedGB)}</TableCell>
-                        <TableCell align="right" sx={{ color: '#0284c7' }}>
-                          {formatNok(row.storageCostNok)}
-                        </TableCell>
-                        <TableCell align="right" sx={{ color: '#7c3aed' }}>
-                          {formatNok(row.aiCostNok30d)}
-                        </TableCell>
-                        <TableCell align="right" sx={{ fontWeight: 600, color: '#dc2626' }}>
-                          {formatNok(row.totalCostNok)}
-                        </TableCell>
-                        <TableCell
-                          align="right"
-                          sx={{
-                            fontWeight: 700,
-                            color: isNegativeMargin ? '#dc2626' : '#16a34a',
-                          }}
-                        >
-                          {formatNok(row.creatorHubMarginNok)}
-                        </TableCell>
-                        <TableCell
-                          align="right"
-                          sx={{
-                            color: isNegativeMargin ? '#dc2626' : '#16a34a',
-                          }}
-                        >
-                          {(row.marginFraction * 100).toFixed(0)}%
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                  {filteredRows.length === 0 && !loading ? (
-                    <TableRow>
-                      <TableCell colSpan={9} align="center" sx={{ py: 4 }}>
-                        <Typography color="text.secondary">
-                          Ingen brukere matcher.
-                        </Typography>
+                        </Stack>
                       </TableCell>
-                    </TableRow>
-                  ) : null}
-                </TableBody>
-              </Table>
-            )}
-          </TableContainer>
+                      <TableCell align="right" sx={{ fontWeight: 600 }}>
+                        {formatNok(row.monthlyPriceNok)}
+                      </TableCell>
+                      <TableCell align="right">{formatGB(row.usedGB)}</TableCell>
+                      <TableCell align="right" sx={{ color: '#38bdf8' }}>
+                        {formatNok(row.storageCostNok)}
+                      </TableCell>
+                      <TableCell align="right" sx={{ color: '#c084fc' }}>
+                        {formatNok(row.aiCostNok30d)}
+                      </TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 600, color: '#f87171' }}>
+                        {formatNok(row.totalCostNok)}
+                      </TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700, color: isNegativeMargin ? '#f87171' : '#4ade80' }}>
+                        {formatNok(row.creatorHubMarginNok)}
+                      </TableCell>
+                      <TableCell align="right" sx={{ color: isNegativeMargin ? '#f87171' : '#4ade80' }}>
+                        {(row.marginFraction * 100).toFixed(0)}%
+                      </TableCell>
+                    </>
+                  );
+                }}
+              />
+            </Paper>
+          )}
         </CardContent>
       </Card>
 

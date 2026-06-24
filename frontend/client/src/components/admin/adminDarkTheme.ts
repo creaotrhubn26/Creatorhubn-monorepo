@@ -62,6 +62,18 @@ export const adminDarkTheme = createTheme({
         },
       },
     },
+    // Tabell-header må være OPAK på mørk flate. Viktig for virtualiserte
+    // tabeller (react-virtuoso) der headeren er sticky og ellers ville vist
+    // radene som scroller bak igjennom.
+    MuiTableCell: {
+      styleOverrides: {
+        head: {
+          backgroundColor: '#0f1729',
+          color: 'rgba(255,255,255,0.9)',
+          borderBottom: '1px solid rgba(255,255,255,0.12)',
+        },
+      },
+    },
   },
 });
 
