@@ -130,6 +130,7 @@
     "recharts": "^3.5.1",
     "socket.io-client": "^4.8.3",
     "tailwindcss": "^4.1.13",
+    "@tailwindcss/vite": "^4.1.13",
     "tesseract.js": "^6.0.1",
     "three": "^0.182.0",
     "upnp-client": "^0.0.1",
