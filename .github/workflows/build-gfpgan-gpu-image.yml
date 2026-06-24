@@ -30,7 +30,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build + push (GPU / HTTP Pod image)
+      # One image serves both transports: uvicorn (HTTP Pod/CPU default CMD) and
+      # the RunPod serverless handler (rp_handler.py, selected via the
+      # endpoint's dockerStartCmd override). runpod SDK is in requirements-gpu.
+      - name: Build + push (GPU image — HTTP runner + serverless handler)
         uses: docker/build-push-action@v6
         with:
           context: backend/gfpgan-runner
@@ -38,18 +41,5 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: ghcr.io/creaotrhubn26/gfpgan-runner:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      # Serverless image is FROM the GPU image just pushed above (only adds the
-      # RunPod SDK + handler), so it must build after the GPU push.
-      - name: Build + push (serverless image)
-        uses: docker/build-push-action@v6
-        with:
-          context: backend/gfpgan-runner
-          file: backend/gfpgan-runner/Dockerfile.serverless
-          platforms: linux/amd64
-          push: true
-          tags: ghcr.io/creaotrhubn26/gfpgan-runner-serverless:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
