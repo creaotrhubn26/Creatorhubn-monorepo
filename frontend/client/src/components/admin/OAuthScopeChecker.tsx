@@ -22,7 +22,9 @@ import {
   IconButton,
   Tooltip,
   Collapse,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   CheckCircle,
   Error,
@@ -173,6 +175,7 @@ export default function OAuthScopeChecker() {
   const { report, documentation, checkedAt } = scopeData;
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box sx={{ p: 3 }}>
       {/* Header */}
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
@@ -396,6 +399,7 @@ export default function OAuthScopeChecker() {
         </CardContent>
       </Card>
     </Box>
+    </ThemeProvider>
   );
 }
 

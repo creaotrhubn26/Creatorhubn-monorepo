@@ -21,7 +21,9 @@ import {
   Button,
   Divider,
   Stack,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   Monitor as MonitorIcon,
   Storage as StorageIcon,
@@ -273,6 +275,7 @@ const CentralizedMonitoringConsole: React.FC<CentralizedMonitoringConsoleProps> 
   }
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box sx={{ width: '100%' }}>
       {isMonitoringSleeping && (
         <Alert severity="info" sx={{ mb: 2 }}>
@@ -416,6 +419,7 @@ const CentralizedMonitoringConsole: React.FC<CentralizedMonitoringConsoleProps> 
         </TabPanel>
       </Card>
     </Box>
+    </ThemeProvider>
   );
 };
 

@@ -41,7 +41,9 @@ import {
   Paper,
   Divider,
   Snackbar,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   ExpandMore,
   Settings,
@@ -150,6 +152,8 @@ export default function FeatureManagement({
 
   // Theming system
   const theming = useTheming('prototype_tester');
+  // Lys oransje aksent på mørk bakgrunn (matcher admin-skallet).
+  const themeColors = { ...theming.colors, primary: '#ff8c00' };
   
   // Dynamic profession system
   const { getProfessionDisplayName } = useDynamicProfessions();
@@ -412,7 +416,7 @@ export default function FeatureManagement({
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', p: 2.5 }}>
         <CircularProgress />
-        <Typography variant="h6" sx={{ ml: 2, color: theming.colors.primary }}>
+        <Typography variant="h6" sx={{ ml: 2, color: themeColors.primary }}>
           Laster inn funksjoner...
         </Typography>
       </Box>
@@ -481,10 +485,11 @@ export default function FeatureManagement({
   };
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box sx={{ p: 3 }}>
       {/* Header */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+        <Typography variant="h4" sx={{ fontWeight: 600, color: themeColors.primary }}>
           Funksjonsadministrasjon
         </Typography>
         <Box sx={{ display: 'flex', gap: 2 }}>
@@ -539,10 +544,10 @@ export default function FeatureManagement({
             <Grid item xs={12} md={3} key={category}>
               <Card sx={theming.getThemedCardSx()}>
                 <CardContent sx={theming.getThemedCardSx()}>
-                  <Typography variant="h6" sx={{ textTransform: 'capitalize', color: theming.colors.primary }}>
+                  <Typography variant="h6" sx={{ textTransform: 'capitalize', color: themeColors.primary }}>
                     {category}
                   </Typography>
-                  <Typography variant="h4" sx={{ color: theming.colors.primary, fontWeight: 700 }}>
+                  <Typography variant="h4" sx={{ color: themeColors.primary, fontWeight: 700 }}>
                     {stats.enabled}
                   </Typography>
                   <Typography variant="body2">av {stats.total}</Typography>
@@ -590,7 +595,7 @@ export default function FeatureManagement({
           <Accordion key={category} defaultExpanded={selectedCategory === category}>
             <AccordionSummary expandIcon={<ExpandMore />}>
               <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
-                <Typography variant="h6" sx={{ textTransform: 'capitalize', flexGrow: 1, color: theming.colors.primary }}>
+                <Typography variant="h6" sx={{ textTransform: 'capitalize', flexGrow: 1, color: themeColors.primary }}>
                   {category} ({stats.enabled}/{stats.total})
                 </Typography>
                 <Chip
@@ -625,7 +630,7 @@ export default function FeatureManagement({
                     >
                       <CardContent sx={theming.getThemedCardSx()}>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
-                          <Typography variant="h6" sx={{ flexGrow: 1, color: theming.colors.primary }}>
+                          <Typography variant="h6" sx={{ flexGrow: 1, color: themeColors.primary }}>
                             {feature.name}
                           </Typography>
                           <Switch
@@ -711,7 +716,7 @@ export default function FeatureManagement({
                       <Card>
                         <CardContent>
                           <Typography variant="h6" color="textSecondary">Totalt Funksjoner</Typography>
-                          <Typography variant="h4" sx={{ color: theming.colors.primary, fontWeight: 700 }}>
+                          <Typography variant="h4" sx={{ color: themeColors.primary, fontWeight: 700 }}>
                             {stats.total}
                           </Typography>
                         </CardContent>
@@ -901,7 +906,7 @@ export default function FeatureManagement({
                       <Card>
                         <CardContent>
                           <Typography variant="h6" color="textSecondary">Totalt Tabs</Typography>
-                          <Typography variant="h4" sx={{ color: theming.colors.primary, fontWeight: 700 }}>
+                          <Typography variant="h4" sx={{ color: themeColors.primary, fontWeight: 700 }}>
                             {stats.totalTabs}
                           </Typography>
                         </CardContent>
@@ -941,7 +946,7 @@ export default function FeatureManagement({
                       <Card>
                         <CardContent>
                           <Typography variant="h6" color="textSecondary">Standard Prosjekttype</Typography>
-                          <Typography variant="h4" sx={{ color: theming.colors.primary, mt: 1 }}>
+                          <Typography variant="h4" sx={{ color: themeColors.primary, mt: 1 }}>
                             {config.defaultProjectType}
                           </Typography>
                           <Box sx={{ display: 'flex', gap: 1, mt: 2, flexWrap: 'wrap' }}>
@@ -1153,7 +1158,7 @@ export default function FeatureManagement({
           {selectedUserId && (
             <>
               {/* User Info Card */}
-              <Card sx={{ mb: 3, border: '2px solid', borderColor: theming.colors.primary }}>
+              <Card sx={{ mb: 3, border: '2px solid', borderColor: themeColors.primary }}>
                 <CardContent>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <Box>
@@ -1228,7 +1233,7 @@ export default function FeatureManagement({
                       <Card variant="outlined">
                         <CardContent>
                           <Typography variant="subtitle2" color="textSecondary">Tab Overrides</Typography>
-                          <Typography variant="h4" sx={{ color: theming.colors.primary }}>
+                          <Typography variant="h4" sx={{ color: themeColors.primary }}>
                             0
                           </Typography>
                           <Typography variant="caption" color="textSecondary">
@@ -1241,7 +1246,7 @@ export default function FeatureManagement({
                       <Card variant="outlined">
                         <CardContent>
                           <Typography variant="subtitle2" color="textSecondary">Feature Overrides</Typography>
-                          <Typography variant="h4" sx={{ color: theming.colors.primary }}>
+                          <Typography variant="h4" sx={{ color: themeColors.primary }}>
                             0
                           </Typography>
                           <Typography variant="caption" color="textSecondary">
@@ -1552,7 +1557,7 @@ export default function FeatureManagement({
                 {confirmDialog.feature.impact === 'critical' ? 'kritisk' : 'viktig'} funksjon.
               </Alert>
               
-              <Typography variant="h6" sx={{ mb: 1, color: theming.colors.primary }}>
+              <Typography variant="h6" sx={{ mb: 1, color: themeColors.primary }}>
                 {confirmDialog.feature.name}
               </Typography>
               <Typography variant="body2" sx={{ mb: 2 }}>
@@ -1820,5 +1825,6 @@ export default function FeatureManagement({
         </Alert>
       </Snackbar>
     </Box>
+    </ThemeProvider>
   );
 }
