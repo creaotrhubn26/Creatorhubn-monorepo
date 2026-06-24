@@ -11,6 +11,7 @@ import {
 import GoogleAnalyticsDashboard from './GoogleAnalyticsDashboardEnhanced';
 import SEOBotAnalyticsDashboard from './SEOBotAnalyticsDashboard';
 import BillingAnalytics from './BillingAnalytics';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   Box,
   Card as MuiCard,
@@ -40,7 +41,6 @@ import {
   IconButton,
   Alert,
   ThemeProvider,
-  createTheme,
 } from '@mui/material';
 import {
   Assessment,
@@ -68,33 +68,6 @@ interface AdminStatsProps {
   userEmail?: string;
   isAdmin?: boolean;
 }
-
-// Scoped mørkt tema for hele statistikkflaten. Appens globale creatorHubTheme er
-// lyst (paper: #fff), noe som tidligere fikk AdminStats til å fremstå som en lys
-// «øy» inne i det mørke admin-skallet. Vi pakker derfor flaten i et eget dark-tema
-// slik at alle MuiCard/Paper/text.secondary havner i samme palett som skallet.
-const adminStatsDarkTheme = createTheme({
-  palette: {
-    mode: 'dark',
-    primary: { main: '#ff8c00' },
-    background: { default: 'transparent', paper: 'rgba(15,23,42,0.72)' },
-    text: { primary: 'rgba(255,255,255,0.95)', secondary: 'rgba(255,255,255,0.62)' },
-    divider: 'rgba(255,255,255,0.12)',
-  },
-  components: {
-    MuiCard: {
-      styleOverrides: {
-        root: {
-          backgroundImage: 'none',
-          borderRadius: 18,
-          border: '1px solid rgba(255,255,255,0.12)',
-          boxShadow: '0 18px 36px rgba(0,0,0,0.30)',
-        },
-      },
-    },
-    MuiPaper: { styleOverrides: { root: { backgroundImage: 'none' } } },
-  },
-});
 
 interface PlatformStats {
   totalUsers: { current: number; previous: number };
@@ -339,7 +312,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
   const platformStatsEndpointMissing = isApiEndpointMissing(platformStatsError);
 
   return (
-    <ThemeProvider theme={adminStatsDarkTheme}>
+    <ThemeProvider theme={adminDarkTheme}>
     <Box sx={{ p: 3 }}>
       <Box
         sx={{

@@ -15,8 +15,9 @@ import {
   Alert, Box, Button, Card, CardContent, Chip, CircularProgress,
   Dialog, DialogActions, DialogContent, DialogTitle, MenuItem,
   Select, Snackbar, Stack, Table, TableBody, TableCell, TableContainer,
-  TableHead, TableRow, TextField, Typography,
+  TableHead, TableRow, TextField, Typography, ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   Verified as VerifiedIcon,
   Block as RevokeIcon,
@@ -161,6 +162,7 @@ export default function LeadMapEntitlementsAdminPanel() {
     .reduce((s, r) => s + (TIER_META[r.tier]?.priceNok ?? 0), 0);
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box>
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
         <Stack direction="row" alignItems="center" spacing={1}>
@@ -395,5 +397,6 @@ export default function LeadMapEntitlementsAdminPanel() {
         message={snackbar}
       />
     </Box>
+    </ThemeProvider>
   );
 }

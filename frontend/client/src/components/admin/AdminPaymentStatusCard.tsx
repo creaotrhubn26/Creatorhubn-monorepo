@@ -26,7 +26,9 @@ import {
   TableCell,
   TableBody,
   alpha,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   CheckCircle as OkIcon,
   Cancel as FailIcon,
@@ -74,25 +76,30 @@ const AdminPaymentStatusCard: React.FC = () => {
 
   if (isLoading) {
     return (
-      <Card>
-        <CardContent sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-          <CircularProgress size={28} />
-        </CardContent>
-      </Card>
+      <ThemeProvider theme={adminDarkTheme}>
+        <Card>
+          <CardContent sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+            <CircularProgress size={28} />
+          </CardContent>
+        </Card>
+      </ThemeProvider>
     );
   }
 
   if (!data) {
     return (
-      <Card>
-        <CardContent>
-          <Alert severity="warning">Kunne ikke laste Stripe-status.</Alert>
-        </CardContent>
-      </Card>
+      <ThemeProvider theme={adminDarkTheme}>
+        <Card>
+          <CardContent>
+            <Alert severity="warning">Kunne ikke laste Stripe-status.</Alert>
+          </CardContent>
+        </Card>
+      </ThemeProvider>
     );
   }
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Card>
       <CardContent>
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
@@ -228,6 +235,7 @@ const AdminPaymentStatusCard: React.FC = () => {
         )}
       </CardContent>
     </Card>
+    </ThemeProvider>
   );
 };
 
