@@ -63,7 +63,6 @@ import {
   Folder as FolderIcon,
   School as SchoolIcon,
   Business as BusinessIcon,
-  Email as EmailIcon,
 } from '@mui/icons-material';
 import { useToast } from '@/hooks/use-toast';
 import AdminInviteSystem from '../../pages/admin-invite-system.tsx';
