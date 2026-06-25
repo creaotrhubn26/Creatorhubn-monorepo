@@ -132,11 +132,11 @@ platform :ios do
   # lokalt på CI (Apple Distribution importert til midlertidig keychain
   # fra BUILD_CERTIFICATE_BASE64-secret).
   #
-  # `readonly: false` + `force: true` lar sigh regenerere profilen hvis
-  # den eksisterende hos Apple peker på en cert vi ikke har private key
-  # for. `provisioning_name` matcher de Daniel laget manuelt 2026-06-25
-  # så ExportOptions.plist sin provisioningProfiles-mapping fortsatt
-  # fungerer.
+  # `force: true` lar sigh regenerere profilen hvis den eksisterende hos
+  # Apple peker på en cert vi ikke har private key for (readonly er
+  # gjensidig ekskluderende med force og må droppes). `provisioning_name`
+  # matcher de Daniel laget manuelt 2026-06-25 så ExportOptions.plist sin
+  # provisioningProfiles-mapping fortsatt fungerer.
   private_lane :download_app_store_profiles do
     [
       { bundle: "com.creatorhubn.LeadMapApp",               name: "LeadMap App Store" },
@@ -145,7 +145,6 @@ platform :ios do
       sigh(
         app_identifier: cfg[:bundle],
         provisioning_name: cfg[:name],
-        readonly: false,
         force: true,
         platform: "ios",
       )
