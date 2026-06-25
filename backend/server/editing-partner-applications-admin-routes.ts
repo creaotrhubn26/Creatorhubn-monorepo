@@ -168,6 +168,41 @@ export function setupEditingPartnerApplicationsAdminRoutes(deps: Deps): void {
             AND v.approval_status = 'approved'
           ORDER BY fb.last_at ASC NULLS FIRST`,
       );
+
+      // Improvement C — atferdssignaler. Best-effort: tom hvis tabellen ikke
+      // finnes ennå (opprettes lazily ved første beacon-skriv).
+      const activityByUser = new Map<
+        string,
+        { lastActiveAt: string | null; events7d: number; errors7d: number; surfaces: string[] }
+      >();
+      try {
+        const act = await pool.query(
+          `SELECT user_id,
+                  MAX(created_at) AS last_active_at,
+                  COUNT(*) FILTER (WHERE created_at > now() - INTERVAL '7 days') AS events_7d,
+                  COUNT(*) FILTER (WHERE event_type = 'error_seen'
+                                     AND created_at > now() - INTERVAL '7 days') AS errors_7d,
+                  array_remove(
+                    array_agg(DISTINCT surface) FILTER (WHERE created_at > now() - INTERVAL '7 days'),
+                    NULL
+                  ) AS surfaces
+             FROM prototype_activity_signals
+            GROUP BY user_id`,
+        );
+        for (const a of act.rows as Array<Record<string, unknown>>) {
+          activityByUser.set(String(a.user_id), {
+            lastActiveAt: a.last_active_at ? new Date(a.last_active_at as string).toISOString() : null,
+            events7d: Number(a.events_7d || 0),
+            errors7d: Number(a.errors_7d || 0),
+            surfaces: Array.isArray(a.surfaces)
+              ? (a.surfaces as unknown[]).filter((x): x is string => typeof x === "string")
+              : [],
+          });
+        }
+      } catch {
+        // tabell finnes ikke ennå → ingen aktivitet å vise
+      }
+
       const rows = r.rows.map((row: Record<string, unknown>) => {
         const days = row.days_since == null ? null : Number(row.days_since);
         const eff = days == null ? Number.MAX_SAFE_INTEGER : days;
@@ -183,6 +218,7 @@ export function setupEditingPartnerApplicationsAdminRoutes(deps: Deps): void {
           daysSince: days,
           everGiven: !!row.last_feedback_at,
           escalation,
+          activity: activityByUser.get(String(row.user_id)) || null,
         };
       });
       res.json({

@@ -65,6 +65,7 @@ export default function EditingPartnersAdminPanel() {
   type ProtoFeedback = {
     userId: string; lastFeedbackAt: string | null; daysSince: number | null;
     everGiven: boolean; escalation: "ok" | "due" | "warning"; feedbackCount: number;
+    activity?: { lastActiveAt: string | null; events7d: number; errors7d: number; surfaces: string[] } | null;
   };
   const protoFeedback = useQuery<{ vendors: ProtoFeedback[]; overdueCount: number; thresholds: { overdueDays: number; warnDays: number } }>({
     queryKey: ["/api/superadmin/editing/prototype-feedback"],
@@ -202,6 +203,18 @@ export default function EditingPartnersAdminPanel() {
                             size="small"
                             color={fb.escalation === "warning" ? "error" : fb.escalation === "due" ? "warning" : "success"}
                             label={fb.everGiven ? `Tilbakemelding: ${fb.daysSince}d siden` : "Ingen tilbakemelding"}
+                          />
+                        ) : null}
+                        {v.partner_type === "prototype" && fb?.activity ? (
+                          <Chip
+                            size="small"
+                            variant="outlined"
+                            color={fb.activity.errors7d > 0 ? "warning" : "default"}
+                            label={
+                              fb.activity.lastActiveAt
+                                ? `Aktiv: ${Math.max(0, Math.floor((Date.now() - new Date(fb.activity.lastActiveAt).getTime()) / 86400000))}d siden · ${fb.activity.events7d} hendelser/7d${fb.activity.errors7d ? ` · ${fb.activity.errors7d} feil` : ""}`
+                                : "Ikke aktiv ennå"
+                            }
                           />
                         ) : null}
                         {v.review_count ? <Typography variant="caption" color="text.secondary">★ {Number(v.rating).toFixed(1)} ({v.review_count})</Typography> : null}
