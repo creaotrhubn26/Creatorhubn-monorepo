@@ -7,15 +7,42 @@ export interface PrototypeTestingRoutesDeps {
   requireUserSession: (req: any, res: any) => any;
   pool: Pool;
   isMissingRelationError: (error: unknown) => boolean;
+  // Non-blokkerende sesjons-oppslag (skriver IKKE til res) + admin-rollesett, så
+  // GET kan personvern-scopes: admin ser alt, innlogget ser KUN sin egen feedback.
+  getActiveSessionFromRequest: (req: any) =>
+    | { userId?: string; email?: string; role?: string }
+    | null
+    | undefined;
+  adminRoles: Set<string>;
 }
 
 export function setupPrototypeTestingRoutes(
   deps: PrototypeTestingRoutesDeps,
 ): void {
-  const { app, requireUserSession, pool, isMissingRelationError } = deps;
+  const {
+    app,
+    requireUserSession,
+    pool,
+    isMissingRelationError,
+    getActiveSessionFromRequest,
+    adminRoles,
+  } = deps;
 
   app.get("/api/prototype-testing/feedback", async (req, res) => {
     try {
+      // Personvern: feedback inneholder e-post + fritekst fra testere. Admin ser
+      // alt (triage-flatene); innlogget ikke-admin ser KUN sin egen ("du sa → vi
+      // gjorde"-sløyfen); uinnlogget ser ingenting.
+      const session = getActiveSessionFromRequest(req);
+      const sessionRole = String((session as any)?.role || "")
+        .trim()
+        .toLowerCase();
+      const isAdmin = !!session && adminRoles.has(sessionRole);
+      const sessUserId = session ? String((session as any).userId || "").trim() : "";
+      const sessEmail = session
+        ? String((session as any).email || "").trim().toLowerCase()
+        : "";
+
       const statusFilter =
         typeof req.query.status === "string"
           ? req.query.status.trim()
@@ -38,6 +65,23 @@ export function setupPrototypeTestingRoutes(
 
       const params: Array<string | number> = [];
       const conditions: string[] = [];
+
+      if (!isAdmin) {
+        // Uinnlogget → ingen kryss-bruker-data.
+        if (!sessUserId && !sessEmail) {
+          return res.json({ success: true, feedback: [], count: 0 });
+        }
+        const ownConds: string[] = [];
+        if (sessUserId) {
+          params.push(sessUserId);
+          ownConds.push(`user_id = $${params.length}`);
+        }
+        if (sessEmail) {
+          params.push(sessEmail);
+          ownConds.push(`lower(user_email) = $${params.length}`);
+        }
+        conditions.push(`(${ownConds.join(" OR ")})`);
+      }
 
       if (statusFilter) {
         params.push(statusFilter);
