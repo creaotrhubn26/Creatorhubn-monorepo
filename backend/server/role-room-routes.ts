@@ -22,6 +22,7 @@ import {
   deleteOauthTransfer,
 } from './role-room-oauth-store.js';
 import { resolveClientPortalSession } from './role-room-client-portal.js';
+import { notifyProducerOfClientPlatformConnection } from './role-room-producer-notifications.js';
 import { getAssistantAreas } from './role-room-assistant-access.js';
 import {
   getProjectProducerUserId,
@@ -9502,6 +9503,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           profile: (googleProfile ?? {}) as Record<string, unknown>,
           tokenBundle,
         });
+        // Varsle produsent-teamet: tilkoblingen er fullført og aktiv.
+        void notifyProducerOfClientPlatformConnection(pool, {
+          projectId: oauthState.projectId,
+          platformLabel: 'Google Workspace',
+          platformKey: 'google',
+          clientEmail: googleEmail ?? null,
+        });
         res.redirect(
           buildRoleRoomGoogleReturnUrl(oauthState.returnPath, {
             rrGoogleStatus: 'success',
@@ -10016,6 +10024,15 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           },
           oauthState.projectId ?? null,
         );
+        // Varsle produsent-teamet: tilkoblingen er fullført og aktiv.
+        if (oauthState.projectId) {
+          void notifyProducerOfClientPlatformConnection(pool, {
+            projectId: oauthState.projectId,
+            platformLabel: 'LinkedIn',
+            platformKey: 'linkedin',
+            clientEmail: linkedInEmail ?? null,
+          });
+        }
         res.redirect(
           buildRoleRoomGoogleReturnUrl(oauthState.returnPath, {
             rrLinkedInStatus: 'success',

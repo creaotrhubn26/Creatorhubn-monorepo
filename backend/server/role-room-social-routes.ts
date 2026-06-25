@@ -52,6 +52,7 @@ import { listManagedCompaniesForUser } from "./social-publisher-linkedin.js";
 import { listYouTubeChannels } from "./social-publisher-youtube.js";
 import { generateYouTubeChannelPlan } from "./social-publisher-youtube-channel-plan.js";
 import { getTikTokConnectionSummary } from "./social-publisher-tiktok.js";
+import { notifyProducerOfClientPlatformConnection } from "./role-room-producer-notifications.js";
 import { resolveClientPortalSession } from "./role-room-client-portal.js";
 import { getProjectProducerUserId } from "./client-portal-connected-platforms.js";
 import {
@@ -302,8 +303,20 @@ export function setupRoleRoomSocialRoutes(
       const result = await completeTikTokOauthCallback(pool, code, state);
       // Klient-initiert kobling (returnPath satt i state): redirect tilbake til
       // portalen i stedet for pop-up-HTML.
-      const returnPath = (result as { pendingState?: { returnPath?: string | null } })?.pendingState?.returnPath;
+      const pending = (result as {
+        pendingState?: { returnPath?: string | null; projectId?: string | null; clientEmail?: string | null };
+      })?.pendingState;
+      const returnPath = pending?.returnPath;
       if (returnPath && typeof returnPath === "string" && returnPath.startsWith("/")) {
+        // Varsle produsent-teamet: tilkoblingen er fullført og aktiv.
+        if (pending?.projectId) {
+          void notifyProducerOfClientPlatformConnection(pool, {
+            projectId: pending.projectId,
+            platformLabel: "TikTok",
+            platformKey: "tiktok",
+            clientEmail: pending.clientEmail ?? null,
+          });
+        }
         const sep = returnPath.includes("?") ? "&" : "?";
         return res.redirect(`${returnPath}${sep}connected=tiktok`);
       }

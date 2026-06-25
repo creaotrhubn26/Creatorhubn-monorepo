@@ -501,6 +501,7 @@ const PLATFORM_DISPLAY: Record<string, string> = {
   facebook: 'Facebook',
   tiktok: 'TikTok',
   linkedin: 'LinkedIn',
+  google_ads: 'Google Ads',
   google: 'Google Workspace',
   youtube: 'YouTube',
 };
@@ -520,6 +521,7 @@ const PLATFORM_CONSENT_BLURB: Record<string, string> = {
   facebook: 'Publisere innlegg til den tilkoblede Facebook-siden (via Meta).',
   tiktok: 'Publisere videoer til TikTok-kontoen.',
   linkedin: 'Publisere innlegg til LinkedIn på vegne av kontoen.',
+  google_ads: 'Administrere annonser og opprette konverterings-sporing i din egen Google Ads-konto.',
   google: 'Lese/skrive dokumenter og filer i Google Workspace knyttet til prosjektet.',
 };
 
@@ -547,6 +549,7 @@ const CLIENT_CONNECTABLE: Record<string, { path: string; method: 'GET' | 'POST';
   facebook: { path: '/api/client/portal/oauth/instagram/start', method: 'GET', label: 'Koble til (Meta)' },
   tiktok: { path: '/api/client/portal/oauth/tiktok/start', method: 'POST', label: 'Koble til TikTok' },
   linkedin: { path: '/api/role-room/client-portal/oauth/linkedin/start', method: 'POST', label: 'Koble til LinkedIn' },
+  google_ads: { path: '/api/role-room/client-portal/oauth/google-ads/start', method: 'POST', label: 'Koble til Google Ads' },
   google: { path: '/api/role-room/client-portal/oauth/google/start', method: 'POST', label: 'Koble til Google' },
 };
 

@@ -250,3 +250,62 @@ async function sendToRecipients(
   }
   return sent;
 }
+
+/**
+ * Varsle produsent-teamet når KLIENTEN faktisk har fullført en plattform-
+ * tilkobling (OAuth-callback lyktes — tilgangen er aktiv og virker, ikke bare
+ * «samtykket»). Kalles fra hver client-portal OAuth-callback ved suksess.
+ * Best-effort: inbox-rad (Creative Sync Workspace) + e-post til teamet.
+ */
+export async function notifyProducerOfClientPlatformConnection(
+  pool: Pool,
+  input: {
+    projectId: string;
+    platformLabel: string;
+    platformKey: string;
+    clientEmail?: string | null;
+    clientName?: string | null;
+  },
+): Promise<void> {
+  const who = input.clientName || input.clientEmail || 'Klienten';
+  const title = `${who} koblet til ${input.platformLabel}`;
+  const message =
+    `Klienten har fullført tilkoblingen til ${input.platformLabel} — tilgangen er aktiv ` +
+    `og klar til bruk på vegne av prosjektet.`;
+  try {
+    await upsertProducerProjectNotification(pool, {
+      projectId: input.projectId,
+      audience: 'producer_team',
+      eventType: 'client_platform_connected',
+      title,
+      message,
+      linkedEntityType: 'platform_connection',
+      linkedEntityId: input.platformKey,
+      createdByRole: 'client_reviewer',
+      metadata: {
+        clientEmail: input.clientEmail ?? null,
+        clientName: input.clientName ?? null,
+        platform: input.platformKey,
+        inboxType: 'workspace',
+      },
+    });
+  } catch (error) {
+    console.warn('[producer-notifications] connection inbox-varsel feilet:', error);
+  }
+  try {
+    await notifyProducerTeamByEmail(pool, {
+      projectId: input.projectId,
+      subject: `Klient koblet til ${input.platformLabel}`,
+      html: `<div style="font-family:system-ui,sans-serif;max-width:560px;line-height:1.6;color:#1a0f2e">
+          <h2 style="color:#6e3fc7;margin:0 0 16px">Tilkobling fullført ✅</h2>
+          <p><strong>${who}</strong> har koblet til <strong>${input.platformLabel}</strong> for prosjektet.</p>
+          <p>Tilgangen er aktiv — dere kan nå publisere / administrere på vegne av kunden.</p>
+          <p style="color:#6b7280;font-size:13px;margin-top:24px">Se «Koblede kontoer» i Creative Sync Workspace.</p>
+        </div>`,
+      text: `${who} har koblet til ${input.platformLabel} for prosjektet. Tilgangen er aktiv. Se Koblede kontoer i Creative Sync Workspace.`,
+      kind: 'client_platform_connected',
+    });
+  } catch (error) {
+    console.warn('[producer-notifications] connection e-post feilet:', error);
+  }
+}
