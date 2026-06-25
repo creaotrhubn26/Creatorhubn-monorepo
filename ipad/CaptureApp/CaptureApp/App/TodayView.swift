@@ -64,6 +64,7 @@ struct TodayView: View {
     @State private var layout = DashboardLayout()
     @State private var showCustomize = false
     @State private var showCardImport = false
+    @State private var showRevisions = false
     @State private var notes = NotesStore.shared
     @State private var quickNote = ""
     @State private var requests = TodayRequestsModel()
@@ -111,6 +112,11 @@ struct TodayView: View {
                         Label("Importer fra minnekort", systemImage: "sdcard")
                     }
                 }
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { showRevisions = true } label: {
+                        Label("Revisjoner", systemImage: "arrow.triangle.2.circlepath")
+                    }
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Button { Task { await loadAll() } } label: {
                         if isLoading { ProgressView() } else { Image(systemName: "arrow.clockwise") }
@@ -127,6 +133,9 @@ struct TodayView: View {
             }
             .sheet(isPresented: $showCardImport) {
                 CardImportView()
+            }
+            .sheet(isPresented: $showRevisions) {
+                RevisionsEntryView()
             }
         }
     }

@@ -87,6 +87,26 @@ actor BackendClient {
         )
     }
 
+    /// Client-requested revisions for a project (default: open ones). Drives the
+    /// iPad "Revisjoner" inbox.
+    func listRevisionRequests(projectId: String, status: String = "open") async throws -> [BackendRevisionRequest] {
+        struct Response: Decodable { let revisions: [BackendRevisionRequest] }
+        let response: Response = try await getJSON(
+            path: "/api/capture/projects/\(projectId)/revision-requests?status=\(status)",
+        )
+        return response.revisions
+    }
+
+    /// Move a revision through open → in_progress → resolved.
+    func setRevisionStatus(id: String, status: String) async throws {
+        struct Body: Encodable { let status: String }
+        struct Response: Decodable { let ok: Bool? }
+        let _: Response = try await postJSON(
+            path: "/api/capture/revision-requests/\(id)/status",
+            body: Body(status: status),
+        )
+    }
+
     /// Phase 2B Lag D: mark a shot in the project's shot list as
     /// captured by the just-uploaded asset. Pass `capturedAssetId: nil`
     /// to unlink. Fire-and-forget from the capture path — the backend
