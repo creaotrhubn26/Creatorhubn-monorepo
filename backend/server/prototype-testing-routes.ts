@@ -28,6 +28,89 @@ export function setupPrototypeTestingRoutes(
     adminRoles,
   } = deps;
 
+  // Improvement C — atferdssignaler. Tabellen opprettes lazily fordi
+  // start-scriptet (`node server.js`) ikke kjører migrate.sh på hver deploy;
+  // migrasjon 0344 dekker det reproduserbart, denne garanterer runtime.
+  let activityTableReady: Promise<void> | null = null;
+  const ensureActivityTable = (): Promise<void> => {
+    if (!activityTableReady) {
+      activityTableReady = pool
+        .query(
+          `CREATE TABLE IF NOT EXISTS prototype_activity_signals (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id VARCHAR(255) NOT NULL,
+            user_email VARCHAR(320),
+            event_type VARCHAR(64) NOT NULL,
+            surface VARCHAR(64),
+            detail JSONB NOT NULL DEFAULT '{}'::jsonb,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+          )`,
+        )
+        .then(() =>
+          pool.query(
+            `CREATE INDEX IF NOT EXISTS idx_prototype_activity_user
+               ON prototype_activity_signals (user_id, created_at DESC)`,
+          ),
+        )
+        .then(() =>
+          pool.query(
+            `CREATE INDEX IF NOT EXISTS idx_prototype_activity_created
+               ON prototype_activity_signals (created_at DESC)`,
+          ),
+        )
+        .then(() => undefined)
+        .catch((e) => {
+          activityTableReady = null; // la neste forsøk prøve igjen
+          console.error("[prototype-activity] ensureTable failed", e);
+        });
+    }
+    return activityTableReady;
+  };
+
+  // Lett beacon — registrerer hva testeren faktisk gjør. Aldri-blokkerende:
+  // svarer 204 uansett, slik at en feil her aldri forstyrrer arbeidsflyten.
+  app.post("/api/prototype-testing/signal", async (req, res) => {
+    const session = getActiveSessionFromRequest(req);
+    if (!session) return res.status(204).end();
+    try {
+      const body = (req.body || {}) as Record<string, unknown>;
+      const eventType =
+        typeof body.eventType === "string"
+          ? body.eventType.trim().slice(0, 64)
+          : "";
+      if (!eventType) return res.status(204).end();
+      const surface =
+        typeof body.surface === "string" && body.surface.trim().length > 0
+          ? body.surface.trim().slice(0, 64)
+          : null;
+      let detail: Record<string, unknown> = {};
+      if (
+        body.detail &&
+        typeof body.detail === "object" &&
+        !Array.isArray(body.detail)
+      ) {
+        const serialized = JSON.stringify(body.detail);
+        if (serialized.length <= 2000) {
+          detail = body.detail as Record<string, unknown>;
+        }
+      }
+      const userId = String((session as any).userId || "");
+      const email = (session as any).email
+        ? String((session as any).email)
+        : null;
+      if (!userId) return res.status(204).end();
+      await ensureActivityTable();
+      await pool.query(
+        `INSERT INTO prototype_activity_signals (user_id, user_email, event_type, surface, detail)
+         VALUES ($1, $2, $3, $4, $5::jsonb)`,
+        [userId, email, eventType, surface, JSON.stringify(detail)],
+      );
+      res.status(204).end();
+    } catch {
+      res.status(204).end();
+    }
+  });
+
   app.get("/api/prototype-testing/feedback", async (req, res) => {
     try {
       // Personvern: feedback inneholder e-post + fritekst fra testere. Admin ser

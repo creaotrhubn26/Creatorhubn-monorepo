@@ -9,7 +9,7 @@
  * server-side overføring til fotografens B2 skjer ved «marker som levert».
  */
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Box,
@@ -29,6 +29,10 @@ import {
   Snackbar,
   LinearProgress,
   TextField,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from "@mui/material";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
@@ -98,6 +102,112 @@ function requiredFor(isForeign: boolean, requiresExtraGdpr: boolean): string[] {
   return base;
 }
 
+// Improvement C — lett, aldri-blokkerende atferds-beacon. Registrerer hva
+// prototype-testeren faktisk gjør (åpner workspace, bytter fane, leverer, gir
+// feedback) så admin ser engasjement fra dag 1. Svelger alle feil.
+function sendSignal(
+  eventType: string,
+  surface?: string,
+  detail?: Record<string, unknown>,
+): void {
+  void apiRequest("/api/prototype-testing/signal", {
+    method: "POST",
+    body: { eventType, surface, detail },
+  }).catch(() => {
+    /* beacon skal aldri forstyrre */
+  });
+}
+
+// Førstegangs-opplevelse for nye prototype-testere: en varm, tydelig velkomst
+// som forklarer avtalen + hvordan man gir feedback. Vises én gang (localStorage
+// per bruker) når Orbit & co. logger inn etter godkjenning.
+function PrototypeWelcome({
+  userId,
+  vendorName,
+  locale,
+  onStartGuide,
+}: {
+  userId: string;
+  vendorName: string | null;
+  locale: "no" | "en";
+  onStartGuide?: () => void;
+}) {
+  const en = locale === "en";
+  const key = `ch_prototype_welcome_${userId}`;
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    try {
+      if (!localStorage.getItem(key)) setOpen(true);
+    } catch {
+      /* ignore */
+    }
+  }, [key]);
+
+  const close = () => {
+    try {
+      localStorage.setItem(key, "1");
+    } catch {
+      /* ignore */
+    }
+    sendSignal("welcome_seen");
+    setOpen(false);
+  };
+
+  const points: Array<[string, string]> = en
+    ? [
+        ["🟢 0% platform fee", "You keep 100% of every job during the prototype period."],
+        ["💬 Your feedback runs the show", "After each delivered job a quick 👍/👎 — plus the “Give feedback” button anytime. We read all of it."],
+        ["🔁 You'll see what changed", "“My feedback — you said → we did” shows the status and our response to each thing you raise."],
+        ["🤝 The agreement", "Regular feedback in exchange for 0% — that's how we make the tool you'll keep using better, together."],
+      ]
+    : [
+        ["🟢 0 % plattformgebyr", "Du beholder 100 % av hver jobb i prototype-perioden."],
+        ["💬 Din feedback styrer", "Etter hver levert jobb et raskt 👍/👎 — pluss «Gi tilbakemelding» når som helst. Vi leser alt."],
+        ["🔁 Du ser hva som skjedde", "«Mine tilbakemeldinger — du sa → vi gjorde» viser status og vårt svar på alt du tar opp."],
+        ["🤝 Avtalen", "Jevnlig tilbakemelding i bytte mot 0 % — slik gjør vi verktøyet du skal bruke videre bedre, sammen."],
+      ];
+
+  return (
+    <Dialog open={open} onClose={close} maxWidth="sm" fullWidth>
+      <DialogTitle sx={{ fontWeight: 700 }}>
+        {en ? `Welcome, ${vendorName || "partner"} 👋` : `Velkommen, ${vendorName || "partner"} 👋`}
+      </DialogTitle>
+      <DialogContent>
+        <Typography variant="body1" sx={{ mb: 2 }}>
+          {en
+            ? "You're one of the first to shape Creatorhub — as a prototype tester. Here's how it works:"
+            : "Du er blant de aller første som former Creatorhub — som prototype-tester. Slik fungerer det:"}
+        </Typography>
+        <Stack spacing={1.5}>
+          {points.map(([h, b], i) => (
+            <Box key={i}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                {h}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {b}
+              </Typography>
+            </Box>
+          ))}
+        </Stack>
+      </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 2 }}>
+        <Button onClick={close}>{en ? "Maybe later" : "Senere"}</Button>
+        <Button
+          variant="contained"
+          onClick={() => {
+            close();
+            onStartGuide?.();
+          }}
+        >
+          {en ? "Show me how to give feedback" : "Vis meg hvordan jeg gir tilbakemelding"}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
 // Improvement B — micro-feedback per leverte jobb. Lett friksjon (👍/👎 + valgfri
 // linje) rett etter levering, kun for prototype-testere. Gjenbruker det eksisterende
 // /api/prototype-testing/feedback-endepunktet (syntetiserer tittel/beskrivelse).
@@ -149,6 +259,7 @@ function JobMicroFeedback({
           tags: ["micro-feedback", "post-delivery"],
         },
       });
+      sendSignal("feedback_submitted", "jobs", { jobId, rating });
       setSent(true);
     } catch {
       // stille — micro-feedback skal aldri blokkere arbeidsflyten
@@ -363,6 +474,14 @@ function PrototypeTesterPanel({
 export default function EditingVendorWorkspace({ userId }: Props) {
   const qc = useQueryClient();
   const [tab, setTab] = useState(0);
+  // Interaktiv feedback-guide: bumping tokenet åpner feedback-verktøyet, guided=true
+  // viser steg-for-steg-anvisning inni. Tilgjengelig for ALLE prototype-testere.
+  const [feedbackOpenToken, setFeedbackOpenToken] = useState(0);
+  const [feedbackGuided, setFeedbackGuided] = useState(false);
+  const startFeedbackGuide = () => {
+    setFeedbackGuided(true);
+    setFeedbackOpenToken((t) => t + 1);
+  };
   const [snack, setSnack] = useState<{ msg: string; sev: "success" | "error" } | null>(null);
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [uploadingJob, setUploadingJob] = useState<string | null>(null);
@@ -381,6 +500,17 @@ export default function EditingVendorWorkspace({ userId }: Props) {
   });
   const jobs = jobsQuery.data?.jobs ?? [];
 
+  // Improvement C — atferds-beacon (kun aktive prototype-testere).
+  const isPrototype = !!me?.platformFee?.prototype;
+  useEffect(() => {
+    if (isPrototype) sendSignal("workspace_open");
+  }, [isPrototype]);
+  useEffect(() => {
+    if (!isPrototype) return;
+    const surfaces = ["jobs", "compliance", "catalog", "communication"];
+    sendSignal("tab_view", surfaces[tab] || String(tab));
+  }, [tab, isPrototype]);
+
   const acceptMutation = useMutation({
     mutationFn: (jobId: string) => apiRequest(`/api/editing/jobs/${jobId}/accept`, { method: "POST" }),
     onSuccess: () => {
@@ -397,9 +527,10 @@ export default function EditingVendorWorkspace({ userId }: Props) {
 
   const deliverMutation = useMutation({
     mutationFn: (jobId: string) => apiRequest(`/api/editing/jobs/${jobId}/deliver`, { method: "POST" }),
-    onSuccess: () => {
+    onSuccess: (_data, jobId) => {
       qc.invalidateQueries({ queryKey: ["/api/editing/vendor/jobs"] });
       setSnack({ msg: t("ws_mark_delivered", locale), sev: "success" });
+      if (me?.platformFee?.prototype) sendSignal("job_delivered", "jobs", { jobId });
     },
     onError: () => setSnack({ msg: "Error", sev: "error" }),
   });
@@ -493,7 +624,10 @@ export default function EditingVendorWorkspace({ userId }: Props) {
       ) : null}
 
       {me?.platformFee?.prototype ? (
-        <PrototypeTesterPanel me={me} jobs={jobs} locale={locale === "en" ? "en" : "no"} />
+        <>
+          <PrototypeWelcome userId={userId} vendorName={me?.vendorName ?? null} locale={locale === "en" ? "en" : "no"} onStartGuide={startFeedbackGuide} />
+          <PrototypeTesterPanel me={me} jobs={jobs} locale={locale === "en" ? "en" : "no"} />
+        </>
       ) : null}
 
       <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 1, mb: 1 }}>
@@ -501,7 +635,17 @@ export default function EditingVendorWorkspace({ userId }: Props) {
           {t("ws_title", locale)}
         </Typography>
         {me?.platformFee?.prototype ? (
-          <VendorPrototypeFeedbackTool locale={locale} vendorName={me?.vendorName} />
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Button size="small" variant="text" onClick={startFeedbackGuide}>
+              {locale === "en" ? "How does feedback work?" : "Slik gir du tilbakemelding"}
+            </Button>
+            <VendorPrototypeFeedbackTool
+              locale={locale}
+              vendorName={me?.vendorName}
+              autoOpenToken={feedbackOpenToken}
+              guided={feedbackGuided}
+            />
+          </Stack>
         ) : null}
       </Box>
 
