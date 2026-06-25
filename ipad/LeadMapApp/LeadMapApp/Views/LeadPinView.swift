@@ -1,8 +1,17 @@
 // LeadPinView.swift
 //
-// Sirkulær pin med bedrifts-logo hvis tilgjengelig, ellers status-
-// farget StatusPin (eksisterende). Speilet fra web makePinIcon-logo-
-// varianten (PR #612).
+// Pin for leads i kartet — speiler det visuelle systemet i web:
+//   • Hot lead (leadTemperature='hot' eller pipeline_stage='meeting_booked'
+//     m/ høy score) → STOR pulserende lilla pin (mest oppmerksomhetstung).
+//   • Return / følg opp (status='return')             → gul
+//   • Ikke til stede (status='not_present')           → grå
+//   • Avslått (status='declined' / 'lost')            → rød
+//   • Interessert / møte booket / vunnet              → grønn
+//   • Default                                          → blå (uvisited)
+//
+// Bedrifts-logo brukes som "kjerne" når den finnes (mig 288), men status-
+// fargen er ALLTID synlig som ring/hale så salgskonsulenten ser pipeline
+// uten å zoome. Mønstre fra LeadgridForecastingCard for purple-glow.
 
 import SwiftUI
 
@@ -10,28 +19,80 @@ struct LeadPinView: View {
     let lead: LeadModel
     let selected: Bool
 
+    /// Returner true når vi skal vise stor pulserende lilla pin.
+    /// Driver av `lead_temperature='hot'` (Intelligence Engine) eller
+    /// pipeline_stage='meeting_booked' uten avsluttende status.
+    private var isHotLead: Bool {
+        if let t = lead.leadTemperature?.lowercased(), t == "hot" || t == "ready" {
+            return true
+        }
+        if lead.status == .meetingBooked || lead.status == .proposalSent {
+            return true
+        }
+        if let stage = lead.pipelineStage?.lowercased(),
+           stage == "qualified" || stage == "proposal_sent" || stage == "negotiating" {
+            return true
+        }
+        return false
+    }
+
+    /// Effektiv pin-farge basert på status + pipeline. Synlig som ring rundt
+    /// logoen og som hale på dropp-pinen — så feltsalg alltid kan se hva
+    /// dette er uten å åpne sheet.
     private var statusColor: Color {
+        if isHotLead {
+            return Color(red: 0.66, green: 0.32, blue: 0.99) // Leadgrid-lilla (#a855f7)
+        }
         switch lead.status {
-        case .won, .interested: return Color(red: 0.20, green: 0.85, blue: 0.60)
-        case .lost, .declined: return Color(red: 0.97, green: 0.44, blue: 0.44)
-        case .meetingBooked: return Color(red: 0.37, green: 0.65, blue: 0.98)
-        case .proposalSent: return Color(red: 0.75, green: 0.52, blue: 0.99)
-        case .return: return Color(red: 0.98, green: 0.75, blue: 0.14)
-        default: return Color.gray
+        case .won, .interested:
+            return Color(red: 0.20, green: 0.85, blue: 0.60)   // grønn — interessert
+        case .meetingBooked:
+            return Color(red: 0.66, green: 0.32, blue: 0.99)   // lilla — booket møte
+        case .lost, .declined:
+            return Color(red: 0.97, green: 0.44, blue: 0.44)   // rød — avslått
+        case .proposalSent:
+            return Color(red: 0.75, green: 0.52, blue: 0.99)
+        case .return:
+            return Color(red: 0.98, green: 0.75, blue: 0.14)   // gul — kom tilbake
+        case .notPresent:
+            return Color(red: 0.55, green: 0.60, blue: 0.68)   // grå — ikke til stede
+        case .doNotContact:
+            return Color(red: 0.30, green: 0.30, blue: 0.36)
+        case .visited:
+            return Color(red: 0.55, green: 0.60, blue: 0.68)
+        default:
+            return Color(red: 0.376, green: 0.647, blue: 0.980) // blå — uvisited
         }
     }
 
     var body: some View {
-        if let logoUrl = lead.logoUrl, let url = URL(string: logoUrl) {
-            logoVariant(url: url)
-        } else {
-            StatusPin(status: lead.status, selected: selected)
+        ZStack {
+            if isHotLead {
+                HotPulseRing(color: statusColor)
+                    .frame(width: selected ? 64 : 56, height: selected ? 64 : 56)
+            }
+
+            if let logoUrl = lead.logoUrl, let url = URL(string: logoUrl) {
+                logoPin(url: url)
+            } else {
+                StatusPin(status: lead.status, selected: selected)
+            }
         }
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    /// VoiceOver-tekst — formidler status + om pin er hot.
+    private var accessibilityLabel: String {
+        var parts = [lead.name, lead.status.label]
+        if isHotLead { parts.append("Hot lead") }
+        if let score = lead.leadScore { parts.append("Score \(score)") }
+        return parts.joined(separator: ", ")
     }
 
     @ViewBuilder
-    private func logoVariant(url: URL) -> some View {
-        let size: CGFloat = selected ? 44 : 38
+    private func logoPin(url: URL) -> some View {
+        let size: CGFloat = selected ? 48 : (isHotLead ? 44 : 38)
+        let ringWidth: CGFloat = isHotLead ? 4 : (selected ? 4 : 3)
         VStack(spacing: 0) {
             AsyncImage(url: url) { phase in
                 switch phase {
@@ -46,14 +107,40 @@ struct LeadPinView: View {
             .frame(width: size - 8, height: size - 8)
             .background(Color.white)
             .clipShape(Circle())
-            .overlay(Circle().stroke(statusColor, lineWidth: selected ? 4 : 3))
-            .shadow(radius: 2)
-            // Droppin-hale
+            .overlay(Circle().stroke(statusColor, lineWidth: ringWidth))
+            .shadow(color: isHotLead ? statusColor.opacity(0.7) : .black.opacity(0.35),
+                    radius: isHotLead ? 6 : 2)
+            // Droppin-hale (peker mot kartpunkt)
             Triangle()
                 .fill(statusColor)
                 .frame(width: 10, height: 8)
                 .offset(y: -2)
         }
+    }
+}
+
+/// Pulserende ring rundt hot leads — bruker SwiftUI .repeatForever for
+/// kontinuerlig oppmerksomhet uten å trekke på CPU.
+private struct HotPulseRing: View {
+    let color: Color
+    @State private var pulse = false
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(color.opacity(0.65), lineWidth: 2)
+                .scaleEffect(pulse ? 1.4 : 0.85)
+                .opacity(pulse ? 0.0 : 0.85)
+            Circle()
+                .fill(color.opacity(0.18))
+                .scaleEffect(pulse ? 1.15 : 0.95)
+        }
+        .onAppear {
+            withAnimation(.easeOut(duration: 1.4).repeatForever(autoreverses: false)) {
+                pulse = true
+            }
+        }
+        .allowsHitTesting(false)
     }
 }
 

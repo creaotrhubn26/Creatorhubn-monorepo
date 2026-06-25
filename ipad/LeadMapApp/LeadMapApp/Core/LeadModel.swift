@@ -73,4 +73,11 @@ struct LeadModel: Identifiable, Codable, Hashable {
     let notes: String?
     let createdAt: Date
     let updatedAt: Date
+    // ── Leadgrid Intelligence (PR #855) ──────────────────────────────
+    // Felter som backend kan returnere på MapLead-payloaden. Brukes til å
+    // styre pulserende lilla "hot"-pin og pipeline-baserte map-farger.
+    // Alle valgfrie så eldre/cachede payloads fortsatt decodes.
+    let leadTemperature: String?
+    let pipelineStage: String?
+    let leadScore: Int?
 }
