@@ -101,28 +101,28 @@ const insetSx = {
 
 const metricToneMap = {
   teal: {
-    bg: 'linear-gradient(180deg, rgba(236,255,252,0.98) 0%, rgba(247,255,254,0.98) 100%)',
-    border: 'rgba(13, 148, 136, 0.18)',
-    icon: '#0f766e',
-    value: '#0f766e',
+    bg: 'rgba(13, 148, 136, 0.12)',
+    border: 'rgba(45, 212, 191, 0.30)',
+    icon: '#2dd4bf',
+    value: '#2dd4bf',
   },
   blue: {
-    bg: 'linear-gradient(180deg, rgba(239,246,255,0.98) 0%, rgba(248,251,255,0.98) 100%)',
-    border: 'rgba(37, 99, 235, 0.16)',
-    icon: '#2563eb',
-    value: '#1d4ed8',
+    bg: 'rgba(37, 99, 235, 0.14)',
+    border: 'rgba(96, 165, 250, 0.30)',
+    icon: '#60a5fa',
+    value: '#60a5fa',
   },
   amber: {
-    bg: 'linear-gradient(180deg, rgba(255,247,237,0.98) 0%, rgba(255,251,245,0.98) 100%)',
-    border: 'rgba(234, 88, 12, 0.16)',
-    icon: '#c2410c',
-    value: '#c2410c',
+    bg: 'rgba(217, 119, 6, 0.16)',
+    border: 'rgba(251, 191, 36, 0.30)',
+    icon: '#fbbf24',
+    value: '#fbbf24',
   },
   violet: {
-    bg: 'linear-gradient(180deg, rgba(245,243,255,0.98) 0%, rgba(250,248,255,0.98) 100%)',
-    border: 'rgba(124, 58, 237, 0.16)',
-    icon: '#7c3aed',
-    value: '#6d28d9',
+    bg: 'rgba(124, 58, 237, 0.14)',
+    border: 'rgba(192, 132, 252, 0.30)',
+    icon: '#c084fc',
+    value: '#c084fc',
   },
 } as const;
 
