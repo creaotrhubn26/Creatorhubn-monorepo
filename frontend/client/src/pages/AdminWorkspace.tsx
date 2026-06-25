@@ -98,7 +98,12 @@ import { SakerTab } from './admin-workspace/SakerTab';
 import {
   activityLogApi,
   type ActivityLogEntry,
+  workspaceAggregatorApi,
+  type AgendaItem,
+  type DeadlineItem,
+  DEADLINE_SOURCE_LABEL,
 } from '../services/adminRoomApi';
+import OpenInNewOutlinedIcon from '@mui/icons-material/OpenInNewOutlined';
 
 // ─────────────────────────────────────────────────────────
 // Konstanter
@@ -852,6 +857,289 @@ function TeamchatPanel() {
 }
 
 // ─────────────────────────────────────────────────────────
+// Dagens agenda — live fra workspaceAggregatorApi.todayAgenda()
+// 60s polling så åpne tabs holder seg friske uten manuell refresh.
+// ─────────────────────────────────────────────────────────
+
+function TodayAgendaSection() {
+  const [items, setItems] = useState<AgendaItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const refresh = () => {
+      workspaceAggregatorApi.todayAgenda()
+        .then((rows) => { if (!cancelled) { setItems(rows); setError(null); } })
+        .catch((err) => { if (!cancelled) setError((err as Error).message); })
+        .finally(() => { if (!cancelled) setLoading(false); });
+    };
+    refresh();
+    timer = setInterval(refresh, 60_000);
+    return () => { cancelled = true; if (timer) clearInterval(timer); };
+  }, []);
+
+  return (
+    <Box>
+      <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mb: 1 }}>
+        <ScheduleOutlinedIcon sx={{ color: BRAND.accent, fontSize: 18 }} />
+        <Typography sx={{ color: BRAND.text, fontWeight: 700, fontSize: '0.86rem' }}>
+          Dagens agenda
+        </Typography>
+        {items.length > 0 ? (
+          <Chip
+            size="small"
+            label={items.length}
+            sx={{
+              height: 18,
+              fontSize: '0.66rem',
+              fontWeight: 700,
+              bgcolor: `${BRAND.accent}22`,
+              color: BRAND.accent,
+              ml: 'auto',
+            }}
+          />
+        ) : null}
+      </Stack>
+      {loading ? (
+        <Typography sx={{ color: BRAND.textDim, fontSize: '0.78rem' }}>Laster…</Typography>
+      ) : error ? (
+        <Typography sx={{ color: '#fda4af', fontSize: '0.78rem' }}>Kunne ikke laste agenda</Typography>
+      ) : items.length === 0 ? (
+        <Typography sx={{ color: BRAND.textDim, fontSize: '0.78rem' }}>
+          Ingen møter i dag.
+        </Typography>
+      ) : (
+        <Stack spacing={0.6}>
+          {items.map((item) => {
+            const startTime = (() => {
+              try {
+                return new Date(item.starts_at).toLocaleTimeString('nb-NO', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  timeZone: item.time_zone || 'Europe/Oslo',
+                });
+              } catch {
+                return '–';
+              }
+            })();
+            return (
+              <Stack
+                key={item.id}
+                direction="row"
+                spacing={1}
+                alignItems="center"
+                sx={{
+                  p: 0.75,
+                  borderRadius: 1.5,
+                  bgcolor: 'rgba(167,139,250,0.04)',
+                  border: '1px solid rgba(167,139,250,0.12)',
+                  '&:hover': { bgcolor: 'rgba(167,139,250,0.10)' },
+                }}
+              >
+                <Box
+                  sx={{
+                    fontSize: '0.74rem',
+                    fontWeight: 700,
+                    color: BRAND.accent,
+                    minWidth: 38,
+                    textAlign: 'right',
+                    fontVariantNumeric: 'tabular-nums',
+                  }}
+                >
+                  {startTime}
+                </Box>
+                <Typography
+                  sx={{
+                    color: BRAND.text,
+                    fontSize: '0.78rem',
+                    flex: 1,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                  title={item.title}
+                >
+                  {item.title}
+                </Typography>
+                {item.meet_link ? (
+                  <IconButton
+                    size="small"
+                    component="a"
+                    href={item.meet_link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    sx={{ color: BRAND.accent, p: 0.25 }}
+                    title="Åpne Google Meet"
+                  >
+                    <OpenInNewOutlinedIcon sx={{ fontSize: 14 }} />
+                  </IconButton>
+                ) : null}
+              </Stack>
+            );
+          })}
+        </Stack>
+      )}
+    </Box>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
+// Kommende frister — aggregat fra funding-apps + cases + meetings
+// Kilde-chips fargekoder per type, sortert chronologisk.
+// ─────────────────────────────────────────────────────────
+
+const DEADLINE_SOURCE_COLOR: Record<DeadlineItem['source'], string> = {
+  funding_app: '#fbbf24', // amber — søknader
+  case: '#a78bfa',        // violet — saker (Leadgrid-accent)
+  meeting: '#22d3ee',     // cyan — møter
+};
+
+function formatDeadlineLabel(due: string): string {
+  try {
+    const d = new Date(due);
+    if (Number.isNaN(d.getTime())) return due;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const target = new Date(d);
+    target.setHours(0, 0, 0, 0);
+    const diffDays = Math.round((target.getTime() - today.getTime()) / 86_400_000);
+    if (diffDays === 0) return 'I dag';
+    if (diffDays === 1) return 'I morgen';
+    if (diffDays > 0 && diffDays < 7) return `Om ${diffDays} dager`;
+    return d.toLocaleDateString('nb-NO', { day: '2-digit', month: 'short' });
+  } catch {
+    return due;
+  }
+}
+
+function UpcomingDeadlinesSection() {
+  const [items, setItems] = useState<DeadlineItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const refresh = () => {
+      workspaceAggregatorApi.upcomingDeadlines(14)
+        .then((data) => { if (!cancelled) { setItems(data.items); setError(null); } })
+        .catch((err) => { if (!cancelled) setError((err as Error).message); })
+        .finally(() => { if (!cancelled) setLoading(false); });
+    };
+    refresh();
+    timer = setInterval(refresh, 120_000); // 2 min — frister endrer seg sjeldnere enn agenda
+    return () => { cancelled = true; if (timer) clearInterval(timer); };
+  }, []);
+
+  return (
+    <Box>
+      <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mb: 1 }}>
+        <EventAvailableOutlinedIcon sx={{ color: BRAND.accent, fontSize: 18 }} />
+        <Typography sx={{ color: BRAND.text, fontWeight: 700, fontSize: '0.86rem' }}>
+          Kommende frister
+        </Typography>
+        {items.length > 0 ? (
+          <Chip
+            size="small"
+            label={items.length}
+            sx={{
+              height: 18,
+              fontSize: '0.66rem',
+              fontWeight: 700,
+              bgcolor: `${BRAND.accent}22`,
+              color: BRAND.accent,
+              ml: 'auto',
+            }}
+          />
+        ) : null}
+      </Stack>
+      {loading ? (
+        <Typography sx={{ color: BRAND.textDim, fontSize: '0.78rem' }}>Laster…</Typography>
+      ) : error ? (
+        <Typography sx={{ color: '#fda4af', fontSize: '0.78rem' }}>Kunne ikke laste frister</Typography>
+      ) : items.length === 0 ? (
+        <Typography sx={{ color: BRAND.textDim, fontSize: '0.78rem' }}>
+          Ingen frister kommer opp.
+        </Typography>
+      ) : (
+        <Stack spacing={0.6}>
+          {items.slice(0, 8).map((item) => {
+            const sourceColor = DEADLINE_SOURCE_COLOR[item.source];
+            const dueLabel = formatDeadlineLabel(item.due_date);
+            const isUrgent = (() => {
+              try {
+                const diff = (new Date(item.due_date).getTime() - Date.now()) / 86_400_000;
+                return diff <= 1;
+              } catch { return false; }
+            })();
+            return (
+              <Box
+                key={item.id}
+                sx={{
+                  p: 0.75,
+                  borderRadius: 1.5,
+                  bgcolor: 'rgba(167,139,250,0.04)',
+                  border: '1px solid rgba(167,139,250,0.12)',
+                  '&:hover': { bgcolor: 'rgba(167,139,250,0.10)' },
+                  cursor: item.link_path ? 'pointer' : 'default',
+                }}
+                onClick={item.link_path ? () => {
+                  // Best-effort navigasjon — link_path er full URL inkl. query
+                  if (typeof window !== 'undefined' && item.link_path) {
+                    window.location.assign(item.link_path);
+                  }
+                } : undefined}
+              >
+                <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 0.25 }}>
+                  <Box
+                    sx={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: '50%',
+                      bgcolor: sourceColor,
+                      flexShrink: 0,
+                    }}
+                  />
+                  <Typography
+                    sx={{
+                      color: BRAND.text,
+                      fontSize: '0.78rem',
+                      flex: 1,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                    title={item.title}
+                  >
+                    {item.title}
+                  </Typography>
+                  <Typography
+                    sx={{
+                      fontSize: '0.70rem',
+                      fontWeight: 700,
+                      color: isUrgent ? '#fda4af' : BRAND.accent,
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {dueLabel}
+                  </Typography>
+                </Stack>
+                <Typography sx={{ color: BRAND.textDim, fontSize: '0.66rem', pl: 1.5 }}>
+                  {DEADLINE_SOURCE_LABEL[item.source]}
+                  {item.product_key ? ` · ${item.product_key === 'leadgrid' ? 'Leadgrid' : 'Role Room'}` : ''}
+                </Typography>
+              </Box>
+            );
+          })}
+        </Stack>
+      )}
+    </Box>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
 // Varsler / Agenda-panel (høyre kolonne 2)
 // ─────────────────────────────────────────────────────────
 
@@ -975,38 +1263,14 @@ function NotificationsAgendaPanel({
 
       <Divider sx={{ borderColor: BRAND.border }} />
 
-      {/* Dagens agenda */}
-      <Box>
-        <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mb: 1 }}>
-          <ScheduleOutlinedIcon sx={{ color: BRAND.accent, fontSize: 18 }} />
-          <Typography sx={{ color: BRAND.text, fontWeight: 700, fontSize: '0.86rem' }}>
-            Dagens agenda
-          </Typography>
-        </Stack>
-        <Typography sx={{ color: BRAND.textDim, fontSize: '0.78rem' }}>
-          Ingen møter i dag.
-        </Typography>
-        {/* TODO: aggregér fra /api/role-room/projects/:projectId/meetings
-            på tvers av prosjekter når et user-wide endepunkt er på plass. */}
-      </Box>
+      {/* Dagens agenda — live fra /api/admin-room/workspace/today-agenda */}
+      <TodayAgendaSection />
 
       <Divider sx={{ borderColor: BRAND.border }} />
 
-      {/* Kommende frister */}
-      <Box>
-        <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mb: 1 }}>
-          <EventAvailableOutlinedIcon sx={{ color: BRAND.accent, fontSize: 18 }} />
-          <Typography sx={{ color: BRAND.text, fontWeight: 700, fontSize: '0.86rem' }}>
-            Kommende frister
-          </Typography>
-        </Stack>
-        <Typography sx={{ color: BRAND.textDim, fontSize: '0.78rem' }}>
-          Ingen frister kommer opp.
-        </Typography>
-        {/* TODO: aggregér IN/EU-søknadsfrister (funding-apps) + showcase
-            deadline-feed + talent-milestones når et felles endepunkt er
-            tilgjengelig. */}
-      </Box>
+      {/* Kommende frister — live aggregat (funding + cases + meetings)
+          fra /api/admin-room/workspace/upcoming-deadlines */}
+      <UpcomingDeadlinesSection />
 
       <Divider sx={{ borderColor: BRAND.border }} />
 
