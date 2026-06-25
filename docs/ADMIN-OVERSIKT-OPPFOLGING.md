@@ -17,46 +17,44 @@ ble fullført i sandkassen (ingen Postgres/kjørende server der).
 - Pålogget-status (ekte) i Kommunikasjon-panelet: `/api/admin/communication/users`
   beriket via `user_presence`-JOIN; grønn prikk + «Pålogget nå»/«Frakoblet».
 
-## ⏳ Gjenstår — gjøres i Claude Code med live QA
+## ✅ Implementert i etterkant (commit på samme branch) — må fortsatt live-QA-es
 
-### 1. Presence for ALLE brukere (ikke bare de som har sendt melding)
-`/api/admin/communication/users` dekker kun distinkte *sendere*. For online-status
-i `UserManagementPanel` (og en helhetlig «hvem er pålogget»-oversikt) trengs et
-eget, **admin-guardet** endepunkt.
+### 1. Presence for ALLE brukere — GJORT (kode), trenger live verifisering
+Implementert:
+- **Nytt endepunkt:** `GET /api/admin/presence/online` i `backend/server/index.ts`
+  (rett etter `requireAdminSession`-definisjonen). Admin-guardet via
+  `requireAdminSession(req, res)` (guard-i-handler-stilen), bruker `pool`.
+  Returnerer `{ online: [{ userId, email, name, lastSeenAt, isIdle, currentRoute }],
+  onlineCount, generatedAt }`. Degraderer trygt (tom liste) hvis `user_presence`
+  mangler. SQL bruker det utprøvde 90-sek/ikke-idle-mønsteret.
+- **Frontend:** delt hook `useAdminPresence()` + `<OnlineStatusDot/>` i
+  `components/admin/shared/useAdminPresence.tsx` (poller 30s, `apiRequest`).
+- **UserManagementPanel:** grønn prikk som badge på hver bruker-avatar
+  (`presence.isOnline(user.id) || presence.isOnline(user.email)`) + et nytt
+  «Pålogget nå»-statuskort øverst med `onlineCount`.
+- [ ] **LIVE-QA:** verifiser SQL mot prod-skjema, at admin-guard blokkerer
+  ikke-admin, og at prikkene faktisk reflekterer reell heartbeat-status.
 
-- **Nytt endepunkt:** `GET /api/admin/presence/online`
-- **Guard:** Bruk `requireAdminSession` (se `backend/server/index.ts:2068`).
-  OBS: helperen brukes inkonsistent i kodebasen (noen steder som middleware
-  `app.get(path, requireAdminSession, handler)`, andre som guard-i-handler som
-  returnerer `session|null`). Verifiser kallekonvensjonen før implementasjon.
-- **SQL (utprøvd mønster, jf. `admin-room-platform-status-routes.ts:275`):**
-  ```sql
-  SELECT u.id, u.email, u.first_name, u.last_name,
-         p.last_seen_at, p.is_idle, p.current_route,
-         (p.last_seen_at > NOW() - INTERVAL '90 seconds'
-           AND COALESCE(p.is_idle, FALSE) = FALSE) AS is_online
-    FROM users u
-    LEFT JOIN user_presence p ON p.user_id = u.id
-   WHERE u.is_active = TRUE;
-  ```
-- **Respons:** `{ online: [{ userId, lastSeenAt, isIdle, currentRoute }], generatedAt }`
-- **Frontend:** delt hook `useAdminPresence()` (poll ~30s) + `<OnlineStatusDot/>`,
-  brukt i BÅDE `UserManagementPanel` (per rad) og Kommunikasjon-panelet.
-
-### 2. «Send melding» til en bruker fra brukerlisten
-`POST /api/admin/communication/send` krever en `chatId` (KANAL), ikke en bruker-ID.
-For å sende fra `UserManagementPanel` trengs ett av:
-
-- **Alt. A (anbefalt):** Utvid `/api/admin/communication/send` til å akseptere
-  `{ userId, message }` og resolve/opprette brukerens DM-kanal server-side
-  (get-or-create i `communication_channels` + delta i `communication_channel_members`).
-- **Alt. B:** Nytt `POST /api/admin/communication/dm/:userId/ensure-channel`
-  som returnerer `chatId`, deretter eksisterende `/send`.
-- **Leveranse til bruker:** lander i brukerens **Direktemelding**-fane (CreatorHub-
-  native chat) via eksisterende polling/WS i `UniversalChatWidget`. Bekreft at det
-  er denne fanen Daniel mener med «Creatorhub-fanen».
-- **Frontend:** «Send melding»-knapp per rad i `UserManagementPanel` som åpner en
-  enkel composer-dialog (gjenbruk mønster fra `AdminCommunicationPanel`).
+### 2. «Send melding» til en bruker — BLOKKERT på personvern-prerequisitt
+**IKKE implementert end-to-end** fordi det ville lekke DM-er. Funnet under
+utforskningen:
+- Selve sende-endepunktet finnes (`POST /api/admin/communication/send` i
+  `admin-communication-extras-routes.ts`, admin-guardet, tar `{ chatId, message }`)
+  og kan trivielt utvides med Alt. A (`{ userId, message }` → get-or-create
+  `dm-admin-<userId>`-kanal).
+- **MEN** `GET /api/communication/conversations` (`communication-routes.ts:2527`)
+  **filtrerer ikke på deltaker** — den returnerer ALLE aktive kanaler (limit 50)
+  til ALLE brukere (`userEmail` leses men brukes aldri i spørringen). Å
+  auto-opprette en admin↔bruker-DM ville derfor vises i ALLE brukeres CreatorHub-
+  fane = en personvernlekkasje.
+- **Prerequisitt før denne kan bygges:** legg deltaker-filtrering på
+  `/api/communication/conversations` (JOIN mot `communication_participants` der
+  `user_id`/e-post matcher innlogget bruker). Dette rører den bruker-vendte
+  widgeten for ALLE brukere → må gjøres + QA-es mot live backend, ikke blindt.
+- Etter at filtreringen finnes: Alt. A + «Send melding»-knapp per rad i
+  `UserManagementPanel` (composer-dialog, gjenbruk mønster fra
+  `AdminCommunicationPanel`). Bekreft at brukerens **CreatorHub/Direktemelding**-
+  fane er riktig leveringskanal.
 
 ### 3. QA-sjekkliste før merge av backend-bitene
 - [ ] Røyktest `user_presence`-JOIN mot prod-skjema (kolonnenavn bekreftet i

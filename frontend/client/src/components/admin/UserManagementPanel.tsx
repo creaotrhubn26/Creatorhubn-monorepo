@@ -73,6 +73,7 @@ import { UserFolderAccessViewer } from './UserFolderAccessViewer';
 import UserInstallationsPanel from './UserInstallationsPanel';
 import AcademyAdminPanel from './AcademyAdminPanel';
 import EnterpriseInquiriesPanel from './EnterpriseInquiriesPanel';
+import { useAdminPresence, OnlineStatusDot } from './shared/useAdminPresence';
 
 interface User {
   id: string;
@@ -176,6 +177,7 @@ interface UserManagementPanelProps {
 }
 
 export default function UserManagementPanel(_: UserManagementPanelProps) {
+  const presence = useAdminPresence();
   const [tabValue, setTabValue] = useState(0);
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -1977,6 +1979,14 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
               >
                 {[
                   {
+                    key: 'online-now',
+                    label: 'Pålogget nå',
+                    value: presence.onlineCount,
+                    helper: 'Aktive siste 90 sek',
+                    icon: <OnlineStatusDot online={presence.onlineCount > 0} size={12} label={`${presence.onlineCount} pålogget`} />,
+                    sx: { bgcolor: 'rgba(34,197,94,0.12)', color: '#22c55e' },
+                  },
+                  {
                     key: 'platform',
                     label: 'Plattform-admin',
                     value: accessOverview.platformAdmins,
@@ -2108,19 +2118,37 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                         </TableCell>
                         <TableCell>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                            <Avatar
-                              src={user.profileImageUrl || undefined}
-                              sx={{
-                                width: 36,
-                                height: 36,
-                                bgcolor: 'rgba(255,255,255,0.08)',
-                                color: '#ffffff',
-                                fontWeight: 700,
-                                fontSize: '0.9rem',
-                              }}
-                            >
-                              {(user.firstName?.[0] || user.email[0]).toUpperCase()}
-                            </Avatar>
+                            <Box sx={{ position: 'relative', flexShrink: 0 }}>
+                              <Avatar
+                                src={user.profileImageUrl || undefined}
+                                sx={{
+                                  width: 36,
+                                  height: 36,
+                                  bgcolor: 'rgba(255,255,255,0.08)',
+                                  color: '#ffffff',
+                                  fontWeight: 700,
+                                  fontSize: '0.9rem',
+                                }}
+                              >
+                                {(user.firstName?.[0] || user.email[0]).toUpperCase()}
+                              </Avatar>
+                              <Box
+                                sx={{
+                                  position: 'absolute',
+                                  bottom: -1,
+                                  right: -1,
+                                  borderRadius: '50%',
+                                  p: '2px',
+                                  bgcolor: '#0f1729',
+                                  lineHeight: 0,
+                                }}
+                              >
+                                <OnlineStatusDot
+                                  online={presence.isOnline(user.id) || presence.isOnline(user.email)}
+                                  size={9}
+                                />
+                              </Box>
+                            </Box>
                             <Box sx={{ minWidth: 0 }}>
                               <Typography
                                 variant="body2"

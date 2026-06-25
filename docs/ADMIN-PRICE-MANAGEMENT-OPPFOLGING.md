@@ -18,7 +18,31 @@ eksplisitt og knappestyrt. Fokuser i stedet på #1, validering av de
 gjenværende lagre-funksjonene, Stripe-drift-status og en dirty-vakt for
 enterprise-seksjonen.
 
-## #1 — Migrer datalasting til React Query (robusthet)
+## ✅ Implementert i etterkant (samme branch) — må live-QA-es
+- **#5a Validering** av `saveEnterprisePricing`: ny `validateEnterprisePricing()`
+  avviser NaN/negative/uendelige beløp + ugyldige volumrabatter (0–100 %) FØR POST,
+  med feil-snackbar (samme strenghet som `savePlanEdit`).
+- **#5b Stripe-sync-kort**: nytt read-only statuskort i prispanel-headeren som
+  henter `GET /api/admin/marketplace/stripe-price-drift/history`, viser
+  «i sync»/«N prisavvik mot Stripe» og har en «Kjør ny sjekk»-CTA
+  (`POST …/stripe-price-drift/check`). Degraderer trygt ved feil.
+- **#3 Dirty-vakt**: snapshot-basert `enterprisePricingDirty` (uten å røre hver
+  input-handler), «Ulagrede endringer»-chip ved Lagre-knappen, `beforeunload`-guard,
+  og Lagre-knappen er deaktivert når ingenting er endret.
+- [ ] **LIVE-QA:** at validering avviser ugyldige tall mot ekte data; at
+  Stripe-drift-kortet viser ekte `history`-rader + at «Kjør ny sjekk» fungerer
+  (merk: `requireAdminSession` brukes her som *middleware* — verifiser at den
+  faktisk slipper gjennom admin og blokkerer ikke-admin).
+
+## #1 — Migrer datalasting til React Query (robusthet) — BEVISST UTSATT
+**Ikke gjort blindt.** Dette er en intern robusthets-refaktor av en
+betalings-kritisk datasti (4 GET-kilder + 5 lagre-funksjoner) i en ~2940-linjers
+komponent, uten brukervendt endring. Å migrere den uten å kunne kjøre
+publiserings-/Stripe-flyten har reell regresjonsrisiko og bryter mot
+stabilitetskravet mer enn å vente. Gjør dette i Claude Code med live backend der
+publiseringsflyten kan verifiseres ende-til-ende. Spec under er fortsatt gyldig:
+
+### Original spec — React Query-migrering
 I dag laster `loadData()` (useEffect ~614–717) via **rå `fetch`** uten retry/
 cache/bakgrunns-refresh. Fire kilder:
 - `GET /api/platform/admin/subscription-plans` → `setPlans`
