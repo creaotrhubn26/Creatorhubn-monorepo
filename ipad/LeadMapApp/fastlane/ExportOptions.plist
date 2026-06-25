@@ -6,8 +6,25 @@
     <string>app-store</string>
     <key>teamID</key>
     <string>9TAUZCPK95</string>
+    <!--
+        Manual signing — peker direkte på de manuelle App Store-profilene
+        opprettet i developer.apple.com 2026-06-25.
+
+        Xcode 15+ sin "Cloud Signing" automatic-flyt feiler med "Cloud
+        signing permission error" fordi vi ikke har en Apple Cloud-managed
+        distribution cert (vi bruker vanlig "Apple Distribution: Creatorhub
+        AS"-cert). Manual signing løser dette ved å fortelle xcodebuild
+        eksakt hvilken profil som skal brukes per bundle-ID.
+    -->
     <key>signingStyle</key>
-    <string>automatic</string>
+    <string>manual</string>
+    <key>provisioningProfiles</key>
+    <dict>
+        <key>com.creatorhubn.LeadMapApp</key>
+        <string>LeadMap App Store</string>
+        <key>com.creatorhubn.LeadMapApp.LeadMapWidget</key>
+        <string>LeadMap Widget App Store</string>
+    </dict>
     <key>uploadBitcode</key>
     <false/>
     <key>uploadSymbols</key>

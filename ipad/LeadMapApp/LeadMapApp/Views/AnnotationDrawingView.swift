@@ -53,6 +53,19 @@ struct AnnotationDrawingView: View {
                             .padding(.top, 8)
                     }
                     Spacer()
+                    // Lagre et tegnet fokus-område som en selger-grid (territorium).
+                    if draft.selectedType == .focusArea && draft.hasPendingDraft && canCreate {
+                        Button {
+                            Task { await saveAsGrid() }
+                        } label: {
+                            Label("Lagre som grid", systemImage: "square.dashed.inset.filled")
+                                .font(.subheadline.bold())
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.blue)
+                        .disabled(saving)
+                        .padding(.bottom, 4)
+                    }
                     AnnotationToolbar(
                         store: draft,
                         canCreate: canCreate,
@@ -121,6 +134,30 @@ struct AnnotationDrawingView: View {
             dismiss()
         } catch {
             self.error = "Lagring feilet: \(error.localizedDescription)"
+        }
+    }
+
+    /// Lagre det tegnede fokus-området som en selger-grid (territorium).
+    @MainActor
+    private func saveAsGrid() async {
+        guard let api = state.api, let orgId = state.activeOrganizationId,
+              draft.hasPendingDraft else { return }
+        saving = true
+        defer { saving = false }
+        let coords = draft.pendingCoordinates.map {
+            CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng)
+        }
+        do {
+            _ = try await api.createTerritory(
+                organizationId: orgId,
+                name: draft.title.isEmpty ? "Nytt område" : draft.title,
+                assignedUserId: draft.assignedToUserId,
+                polygon: coords
+            )
+            await state.refreshTerritories()
+            dismiss()
+        } catch {
+            self.error = "Kunne ikke lagre grid: \(error.localizedDescription)"
         }
     }
 }

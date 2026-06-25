@@ -31,6 +31,10 @@ struct LeadDetailSheet: View {
     @State private var showLeadgridHistory = false
     @State private var leadgridAssignLevel: AssignLevel = .both
 
+    /// Leadgrid Research (native Claude + BRREG + website-analyse).
+    /// Pops opp som sheet når brukeren trykker "Research" på pin-detail.
+    @State private var showResearch = false
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -113,6 +117,15 @@ struct LeadDetailSheet: View {
             }
             .sheet(isPresented: $briefShown) {
                 MeetingBriefSheet(lead: lead)
+            }
+            .sheet(isPresented: $showResearch) {
+                if let api = appState.api {
+                    LeadgridResearchView(
+                        leadId: lead.id,
+                        leadName: lead.name,
+                        api: api,
+                    )
+                }
             }
         }
         .presentationDetents([.medium, .large])
@@ -367,11 +380,14 @@ struct LeadDetailSheet: View {
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
-            Button { /* TODO: Send Message */ } label: {
-                Label("Melding", systemImage: "message")
+            Button {
+                showResearch = true
+            } label: {
+                Label("Research", systemImage: "sparkles.rectangle.stack")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
+            .tint(.purple)
         }
     }
 

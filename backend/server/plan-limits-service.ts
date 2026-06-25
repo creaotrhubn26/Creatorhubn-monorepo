@@ -123,9 +123,17 @@ export async function getCurrentMonthUsage(pool: Pool, orgId: string): Promise<P
 }
 
 export async function getCustomerCount(pool: Pool, orgId: string): Promise<number> {
+  // crm_customers har INGEN organization_id-kolonne — eierskap er per
+  // owner_user_id. Vi teller alle kunder eid av medlemmer av denne org-en.
+  // Tidligere query brukte `organization_id = $1` → 500-feil
+  // "column \"organization_id\" does not exist" → iPad-pill «Plan
+  // utilgjengelig».
   const r = await pool.query<{ c: string }>(
     `SELECT COUNT(*)::text AS c FROM crm_customers
-     WHERE organization_id = $1 AND COALESCE(archived_at, NULL) IS NULL`,
+       WHERE owner_user_id IN (
+         SELECT user_id::text FROM organization_members WHERE organization_id = $1
+       )
+       AND archived_at IS NULL`,
     [orgId],
   );
   return parseInt(r.rows[0]?.c ?? "0", 10);

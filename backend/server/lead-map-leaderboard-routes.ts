@@ -174,7 +174,7 @@ export function registerLeadMapLeaderboardRoutes({ app, pool, activeSessions }: 
           `WITH member_base AS (
              SELECT om.user_id, om.role, om.sales_team_id::text AS sales_team_id,
                     st.name AS team_name,
-                    u.email AS user_email, u.name AS user_name,
+                    u.email AS user_email, NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), '') AS user_name,
                     up.display_name, up.avatar_url, up.title, up.territory,
                     COALESCE(
                       (SELECT lqt.target_nok::text FROM lead_quota_targets lqt

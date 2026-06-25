@@ -9,21 +9,33 @@ import Foundation
 // MARK: - Errors / Observability
 // ============================================================
 
+/// Mappes mot backend `GET /api/admin-room/errors` (error-log-routes.ts).
+/// Backend gir per error: `{id, level, source, statusCode, endpoint, message,
+/// errorName, stack, fingerprint, userId, userEmail, claritySessionId, ip,
+/// userAgent, url, meta, occurrenceCount, firstSeenAt, lastSeenAt,
+/// resolvedAt, resolvedByUserId, resolvedNote}`. iPad-UI bruker historisk
+/// title/stackTrace/createdAt/metadata — vi aliaser.
 struct AdminErrorEntry: Codable, Hashable, Identifiable {
     let id: String
-    let source: String?         // 'lead-map' | 'stripe' | osv
-    let level: String?          // 'error' | 'warning' | 'critical'
-    let title: String?
+    let source: String?
+    let level: String?
+    let errorName: String?
     let message: String?
-    let stackTrace: String?
+    let stack: String?
     let endpoint: String?
     let userId: String?
     let userEmail: String?
-    let createdAt: String?
+    let firstSeenAt: String?
+    let lastSeenAt: String?
     let resolvedAt: String?
     let resolvedByUserId: String?
     let occurrenceCount: Int?
-    let metadata: [String: String]?
+    let statusCode: Int?
+
+    var title: String? { errorName ?? message?.prefix(80).description }
+    var stackTrace: String? { stack }
+    var createdAt: String? { firstSeenAt }
+    var metadata: [String: String]? { nil }
 }
 
 struct AdminErrorsResponse: Codable {
@@ -31,7 +43,10 @@ struct AdminErrorsResponse: Codable {
     let total: Int?
 }
 
-struct AdminErrorsStats: Codable, Hashable {
+/// Mappes mot backend `GET /api/admin-room/errors/stats`. Backend gir:
+/// `{stats: {total24h, unresolvedTotal, bySource: [{source, count}],
+/// byStatus, topEndpoints}}`. Vi normaliserer til iPad-shape via init.
+struct AdminErrorsStats: Hashable {
     let total: Int
     let unresolved: Int
     let critical: Int
@@ -40,8 +55,57 @@ struct AdminErrorsStats: Codable, Hashable {
     let byLevel: [String: Int]?
 }
 
+private struct StatsRawTuple: Codable {
+    let source: String?
+    let count: Int?
+}
+
+private struct StatsRawByStatus: Codable {
+    let statusCode: Int?
+    let count: Int?
+}
+
 struct AdminErrorsStatsResponse: Codable {
     let stats: AdminErrorsStats
+
+    private struct Envelope: Codable {
+        let stats: RawStats?
+    }
+    private struct RawStats: Codable {
+        let total24h: Int?
+        let unresolvedTotal: Int?
+        let bySource: [StatsRawTuple]?
+        let byStatus: [StatsRawByStatus]?
+    }
+
+    init(from decoder: Decoder) throws {
+        let env = try Envelope(from: decoder)
+        let raw = env.stats
+        var sourceMap: [String: Int] = [:]
+        for t in raw?.bySource ?? [] {
+            if let s = t.source { sourceMap[s] = t.count ?? 0 }
+        }
+        let critical = (raw?.byStatus ?? [])
+            .filter { ($0.statusCode ?? 0) >= 500 }
+            .reduce(0) { $0 + ($1.count ?? 0) }
+        self.stats = AdminErrorsStats(
+            total: raw?.unresolvedTotal ?? 0,
+            unresolved: raw?.unresolvedTotal ?? 0,
+            critical: critical,
+            last24h: raw?.total24h ?? 0,
+            bySource: sourceMap.isEmpty ? nil : sourceMap,
+            byLevel: nil,
+        )
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: DynamicCodingKey.self)
+        let rawStats: [String: Int] = [
+            "total24h": stats.last24h,
+            "unresolvedTotal": stats.unresolved,
+        ]
+        try c.encode(rawStats, forKey: DynamicCodingKey(stringValue: "stats")!)
+    }
 }
 
 // ============================================================
@@ -158,22 +222,76 @@ struct CategoryConversionResponse: Codable {
 // MARK: - Org-switcher (impersonation)
 // ============================================================
 
+/// Mappes mot backend `GET /api/superadmin/organizations`
+/// (superadmin-routes.ts). Backend gir rader fra `organizations`-tabellen
+/// med rå kolonnenavn (org_type, plan osv.) — convertFromSnakeCase
+/// dekker mest, men `memberCount` kommer som `member_count` → vi
+/// støtter begge.
 struct SuperAdminOrgEntry: Codable, Hashable, Identifiable {
     let id: String
     let name: String
     let memberCount: Int?
     let createdAt: String?
-    let planKey: String?
-    let lastActiveAt: String?
+    let plan: String?
+    let orgType: String?
+    let ownerEmail: String?
+    let customerCount: Int?
+
+    var planKey: String? { plan }
+    var lastActiveAt: String? { nil }
 }
 
 struct SuperAdminOrgsResponse: Codable {
     let organizations: [SuperAdminOrgEntry]
 }
 
-struct ImpersonationStatus: Codable, Hashable {
-    let active: Bool
+/// Mappes mot backend `GET /api/superadmin/active-impersonation`. Backend gir
+/// `{active: {active_org_id, started_at, expires_at, org_name, org_type} | null}`.
+/// iPad-UI bruker `active: Bool` — vi syntetiserer fra om feltet finnes.
+struct ImpersonationStatus: Hashable {
+    let isActive: Bool
     let targetOrgId: String?
     let targetOrgName: String?
     let startedAt: String?
+}
+
+extension ImpersonationStatus: Codable {
+    private struct Envelope: Codable {
+        struct Row: Codable {
+            let activeOrgId: String?
+            let orgName: String?
+            let startedAt: String?
+        }
+        let active: Row?
+    }
+
+    init(from decoder: Decoder) throws {
+        let env = try Envelope(from: decoder)
+        if let row = env.active {
+            self.isActive = row.activeOrgId != nil
+            self.targetOrgId = row.activeOrgId
+            self.targetOrgName = row.orgName
+            self.startedAt = row.startedAt
+        } else {
+            self.isActive = false
+            self.targetOrgId = nil
+            self.targetOrgName = nil
+            self.startedAt = nil
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: DynamicCodingKey.self)
+        if isActive {
+            try c.encode([
+                "activeOrgId": targetOrgId,
+                "orgName": targetOrgName,
+                "startedAt": startedAt,
+            ], forKey: DynamicCodingKey(stringValue: "active")!)
+        } else {
+            try c.encodeNil(forKey: DynamicCodingKey(stringValue: "active")!)
+        }
+    }
+
+    var active: Bool { isActive }
 }

@@ -67,6 +67,7 @@ targets:
         NSCameraUsageDescription: Not used. Present only to satisfy App Store review when tethering to external cameras.
         NSPhotoLibraryAddUsageDescription: Used only when you explicitly export a captured session to Photos.
         NSMicrophoneUsageDescription: Record short voice memos attached to individual shots so you can dictate retouch + delivery instructions while shooting continues.
+        NSLocationWhenInUseUsageDescription: Used to show accurate golden-hour and weather for your current shoot location on the "I dag" dashboard.
         # Google OAuth — one-time setup per Google Cloud project:
         #   1. Register an OAuth 2.0 Client ID of type "iOS" with bundle
         #      identifier `com.creatorhubn.capture`.

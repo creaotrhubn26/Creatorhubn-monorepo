@@ -511,7 +511,7 @@ struct SuperAdminWaOrgConfigsView: View {
                     ForEach(configs) { c in
                         VStack(alignment: .leading, spacing: 6) {
                             HStack {
-                                Text(c.displayName ?? c.orgKey).font(.subheadline.bold())
+                                Text(c.displayName ?? c.orgKey ?? "default").font(.subheadline.bold())
                                 Spacer()
                                 Toggle("", isOn: Binding(
                                     get: { c.active },
@@ -858,7 +858,7 @@ struct SuperAdminEmailBrandingView: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 6))
                             }
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(c.displayName ?? c.orgKey).font(.subheadline.bold())
+                                Text(c.displayName ?? c.orgKey ?? "default").font(.subheadline.bold())
                                 if let s = c.senderEmail {
                                     Text(s).font(.caption2).foregroundStyle(.secondary)
                                 }

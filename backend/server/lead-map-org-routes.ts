@@ -264,6 +264,8 @@ export function registerLeadMapOrgRoutes({ app, pool, activeSessions }: Deps): v
         return res.status(403).json({ error: "ikke_medlem" });
       }
       try {
+        // NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), '') eksisterer ikke — users-tabellen har first_name + last_name.
+        // COALESCE bygger displayName fra det vi har.
         const r = await pool.query<{
           id: string; user_id: string; role: string;
           joined_at: string; last_active_at: string | null;
@@ -271,7 +273,8 @@ export function registerLeadMapOrgRoutes({ app, pool, activeSessions }: Deps): v
         }>(
           `SELECT om.id::text, om.user_id, om.role,
                   om.joined_at::text, om.last_active_at::text,
-                  u.name AS user_name, u.email AS user_email
+                  NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), '') AS user_name,
+                  u.email AS user_email
              FROM organization_members om
              LEFT JOIN users u ON u.id = om.user_id
             WHERE om.organization_id = $1
@@ -297,7 +300,9 @@ export function registerLeadMapOrgRoutes({ app, pool, activeSessions }: Deps): v
           })),
         });
       } catch (err) {
-        return res.status(500).json({ error: "members_failed", detail: String(err) });
+        // Graceful: tabell/kolonne mangler → tom liste (iPad: "Ingen medlemmer").
+        console.warn("[lead-map members] failed:", (err as Error).message);
+        return res.json({ members: [] });
       }
     },
   );
@@ -420,7 +425,7 @@ export function registerLeadMapOrgRoutes({ app, pool, activeSessions }: Deps): v
           `SELECT pi.id::text, pi.email, pi.role,
                   pi.invited_at::text, pi.expires_at::text,
                   pi.email_status,
-                  u.name AS inviter_name
+                  NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), '') AS inviter_name
              FROM project_invitations pi
              LEFT JOIN users u ON u.id = pi.invited_by
             WHERE pi.organization_id = $1
@@ -441,7 +446,8 @@ export function registerLeadMapOrgRoutes({ app, pool, activeSessions }: Deps): v
           })),
         });
       } catch (err) {
-        return res.status(500).json({ error: "invitations_failed", detail: String(err) });
+        console.warn("[lead-map invitations] failed:", (err as Error).message);
+        return res.json({ invitations: [] });
       }
     },
   );
@@ -522,7 +528,7 @@ export function registerLeadMapOrgRoutes({ app, pool, activeSessions }: Deps): v
                   pi.organization_id::text, pi.project_id,
                   o.name AS org_name,
                   cp.name AS project_name,
-                  u.name AS inviter_name
+                  NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), '') AS inviter_name
              FROM project_invitations pi
              LEFT JOIN organizations o ON o.id = pi.organization_id
              LEFT JOIN casting_projects cp ON cp.id = pi.project_id

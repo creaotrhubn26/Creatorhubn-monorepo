@@ -1,0 +1,70 @@
+name: Leadgrid backfill organization_id
+
+# Daglig backfill av crm_customers.organization_id for nye leads
+# (mig 320 la til kolonnen, men nye leads kan skapes uten org_id).
+# Endpoint matcher leads ↔ organisation via owner_user_id-join.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '15 3 * * *'  # 03:15 UTC daglig
+
+permissions:
+  contents: read
+
+concurrency:
+  group: leadgrid-backfill-organization-id
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Validate secrets
+        env:
+          BACKEND_URL: ${{ secrets.BACKEND_URL }}
+          TOKEN: ${{ secrets.LEADGRID_INTELLIGENCE_CRON_TOKEN }}
+        run: |
+          if [ -z "$BACKEND_URL" ]; then
+            echo "::error::secrets.BACKEND_URL er ikke satt"
+            exit 1
+          fi
+          if [ -z "$TOKEN" ]; then
+            echo "::error::secrets.LEADGRID_INTELLIGENCE_CRON_TOKEN er ikke satt"
+            exit 1
+          fi
+          echo "BACKEND_URL_LEN=$(printf '%s' "$BACKEND_URL" | wc -c)"
+          echo "TOKEN_LEN=$(printf '%s' "$TOKEN" | wc -c)"
+
+      - name: Trigger backfill
+        env:
+          BACKEND_URL: ${{ secrets.BACKEND_URL }}
+          TOKEN: ${{ secrets.LEADGRID_INTELLIGENCE_CRON_TOKEN }}
+        run: |
+          # Trim whitespace fra secrets (vanlig issue ved manuell secret-set)
+          URL=$(printf '%s' "$BACKEND_URL" | tr -d '[:space:]')
+          TOK=$(printf '%s' "$TOKEN" | tr -d '[:space:]')
+          FULL_URL="${URL}/api/leadgrid/cron/backfill-organization-id"
+          echo "POST → /api/leadgrid/cron/backfill-organization-id"
+
+          # Ikke bruk -f (kaster response-body); fang HTTP-kode separat
+          BODY=$(mktemp)
+          CODE=$(curl -s -o "$BODY" -w "%{http_code}" -X POST "$FULL_URL" \
+            -H "x-cron-trigger-token: $TOK" \
+            --max-time 60)
+          echo "HTTP $CODE"
+          cat "$BODY"
+          echo ""
+          if [ "$CODE" != "200" ]; then
+            echo "::error::Backfill feilet (HTTP $CODE)"
+            exit 1
+          fi
+          OK=$(jq -r '.ok' < "$BODY" 2>/dev/null || echo "false")
+          if [ "$OK" != "true" ]; then
+            echo "::error::Response.ok != true"
+            exit 1
+          fi
+          UPDATED=$(jq -r '.total_updated // 0' < "$BODY")
+          REMAINING=$(jq -r '.remaining.missing_organization_id // 0' < "$BODY")
+          echo "✅ Backfill OK — oppdaterte $UPDATED leads, $REMAINING leads gjenstår uten org_id (typisk fordi de mangler owner_user_id)"

@@ -3,7 +3,7 @@ import { config } from "dotenv";
 config({ override: true });
 
 // Sentry MUST initialiseres FØR alle andre imports for å fange tidlig errors
-import { initBackendSentry } from "./sentry-init.js";
+import { initBackendSentry, buildSentryErrorMiddleware } from "./sentry-init.js";
 initBackendSentry();
 import {
   registerErrorLogRoutes,
@@ -217,6 +217,7 @@ import {
   attachUserEventsWebSocket,
   broadcastUserEvent,
 } from "./realtime-user-events.js";
+import { leadgridRealtime } from "./leadgrid-realtime.js";
 import {
   ensureProjectChangeLogSchema,
   listProjectChangeLog,
@@ -453,6 +454,7 @@ import { setupMarketingPosterRoutes } from "./marketing-poster-routes";
 import { setupAdminIndustryTargetsRoutes } from "./admin-room-industry-targets-routes";
 import { setupAdminOutreachRoutes } from "./admin-room-outreach-routes";
 import { setupAdminWorkspaceAggregatorRoutes } from "./admin-workspace-aggregator-routes";
+import { setupAdminWorkspaceCasesRoutes } from "./admin-workspace-cases-routes";
 import { setupAdminAiCitationRoutes } from "./admin-room-ai-citation-routes";
 import { setupRoleRoomNewsletterRoutes } from "./role-room-newsletter-routes";
 import { setupNewsletterFromReportRoutes } from "./role-room-newsletter-from-report-routes";
@@ -515,6 +517,7 @@ import { setupRoleRoomPartnershipsRoutes } from "./role-room-partnerships-routes
 import { setupTalentSelftapesRoutes } from "./talent-selftapes-routes";
 import { setupAgencyLeadsRoutes } from "./agency-leads-routes";
 import { setupCustomerSuccessRoutes } from "./customer-success-routes.js";
+import { setupMarketScansSuperAdminRoutes } from "./market-scans-superadmin-routes.js";
 import { setupAdminLeadMapPricingRoutes } from "./admin-lead-map-pricing-routes.js";
 import { setupLeadMapRoutes } from "./lead-map-routes.js";
 import { registerLeadMapCompetitorRoutes } from "./lead-map-competitor-routes.js";
@@ -539,6 +542,24 @@ import { registerPitchDeckPdfRoutes } from "./pitch-deck-pdf-service.js";
 import { registerPitchDeckBriefRoutes } from "./pitch-deck-brief-routes.js";
 import { registerPitchDeckAssetRoutes } from "./pitch-deck-asset-service.js";
 import { registerLeadMapResearchRoutes } from "./lead-map-research-routes.js";
+import { registerLeadgridResearchRoutes } from "./leadgrid-research-routes.js";
+import { registerLeadgridMarketScanRoutes } from "./leadgrid-market-scan-routes.js";
+import { registerLeadgridIntelligenceRoutes } from "./leadgrid-intelligence-routes.js";
+import { registerLeadgridIntelligenceCron } from "./leadgrid-intelligence-cron.js";
+import { registerLeadgridRetentionCron } from "./leadgrid-retention-cron.js";
+import { registerLeadgridBackfillCron } from "./leadgrid-backfill-cron.js";
+import { registerLeadgridAIUsageRoutes } from "./leadgrid-ai-usage-routes.js";
+import { registerLeadgridForecastingRoutes } from "./leadgrid-forecasting-routes.js";
+import { registerLeadgridMomentumRoutes } from "./leadgrid-momentum-routes.js";
+import { registerLeadgridWebhookRotationRoutes } from "./leadgrid-webhook-rotation-routes.js";
+import { registerLeadgridPublicApiV1 } from "./leadgrid-public-api-v1.js";
+import { registerLeadgridApiKeyMgmtRoutes } from "./leadgrid-api-key-mgmt-routes.js";
+import { registerLeadgridOpenApiRoutes } from "./leadgrid-openapi-routes.js";
+import { registerLeadgridTerritoryRoutes } from "./leadgrid-territory-routes.js";
+import { registerLeadgridRouteRoutes } from "./leadgrid-route-routes.js";
+import { registerLeadgridAnalyticsRoutes } from "./leadgrid-analytics-routes.js";
+import { registerLeadgridMeetingNotesRoutes } from "./leadgrid-meeting-notes-routes.js";
+import { registerLeadgridAgentBridgeRoutes } from "./leadgrid-agent-bridge-routes.js";
 import { registerLeadScoutRoutes } from "./lead-scout-routes.js";
 import { registerLeadPresetRoutes } from "./lead-preset-routes.js";
 import { registerLeadRulesRoutes } from "./lead-rules-routes.js";
@@ -995,11 +1016,32 @@ import { respondWithError } from "./api-error";
 validateEnvOrExit();
 
 // Database connection
+// PERF (skalering nivå 2): tunet pool for å håndtere cron-batches (100 leads
+// samtidig) + concurrent web requests. Default pg.Pool max=10 var for lavt.
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
+  max: parseInt(process.env.PG_POOL_MAX ?? "30", 10),
+  idleTimeoutMillis: 30_000,
+  connectionTimeoutMillis: 5_000,
+  // Statement timeout per query — beskytter mot runaway queries (30s)
+  statement_timeout: 30_000,
 });
 
+// Logger pool-health hvert 5. min for observability (Render-logs)
+setInterval(() => {
+  console.log(
+    `[pg-pool] total=${pool.totalCount} idle=${pool.idleCount} waiting=${pool.waitingCount}`,
+  );
+}, 5 * 60 * 1000).unref?.();
+
 const db = drizzle(pool, { schema });
+
+// Leadgrid schema-validator (mig 313–318) — kjøres i bakgrunn ved boot.
+// Logger ADVARSEL hvis kritiske kolonner mangler. Sett
+// LEADGRID_STRICT_SCHEMA=1 for å abort'e boot isteden.
+void import("./leadgrid-schema-check.js")
+  .then(({ runSchemaCheck }) => runSchemaCheck(pool))
+  .catch((err) => console.error("[schema-check] boot-feil:", err));
 
 // upload-multer (PDF/DOCX kontrakt-import) — flyttet til ./contracts-upload-import-routes.ts
 
@@ -1995,6 +2037,46 @@ function getActiveSessionFromRequest(req: express.Request) {
   return activeSessions.get(sessionToken) || getLocalDevelopmentSession(sessionToken);
 }
 
+// The users table is the source of truth for ADMIN privilege. A session can
+// carry a stale or marketplace-shadowed role — e.g. a Google login that stored
+// 'couple' because the same person also owns a couple profile — and the admin
+// guards (requireAdminSession) read session.role DIRECTLY and synchronously from
+// the in-memory map. So a mis-roled session locks a real admin out of every
+// /api/admin/* route. When a non-admin session belongs to a user the DB marks
+// admin/super_admin, upgrade the live session object IN PLACE (and persist it),
+// so every guard — sync or async — sees the correct role. Checked at most once
+// per token to keep the auth hot-path cheap for ordinary (non-admin) users.
+const adminRoleReconciledTokens = new Set<string>();
+async function reconcileSessionAdminRole(
+  token: string,
+  session: ActiveSessionData,
+): Promise<ActiveSessionData> {
+  const role = String(session.role || "").trim().toLowerCase();
+  if (ADMIN_SESSION_ROLES.has(role)) {
+    return session;
+  }
+  if (adminRoleReconciledTokens.has(token)) {
+    return session;
+  }
+  adminRoleReconciledTokens.add(token);
+  try {
+    const r = await pool.query<{ role: string }>(
+      `SELECT role FROM users WHERE id::text = $1 OR LOWER(email) = LOWER($2) LIMIT 1`,
+      [session.userId, session.email],
+    );
+    const dbRole = String(r.rows[0]?.role || "").trim().toLowerCase();
+    if (ADMIN_SESSION_ROLES.has(dbRole)) {
+      session.role = dbRole;
+      session.isAdmin = true;
+      activeSessions.set(token, session);
+      void persistAuthSession(pool, token, session);
+    }
+  } catch (error) {
+    console.warn("[auth] admin-role reconcile failed:", error);
+  }
+  return session;
+}
+
 async function resolveActiveSessionFromRequest(
   req: express.Request,
 ): Promise<ActiveSessionData | null> {
@@ -2005,7 +2087,7 @@ async function resolveActiveSessionFromRequest(
 
   const inMemorySession = activeSessions.get(sessionToken);
   if (inMemorySession) {
-    return inMemorySession;
+    return reconcileSessionAdminRole(sessionToken, inMemorySession);
   }
 
   const localDevelopmentSession = getLocalDevelopmentSession(sessionToken);
@@ -2019,7 +2101,7 @@ async function resolveActiveSessionFromRequest(
   );
   if (persistedSession) {
     activeSessions.set(sessionToken, persistedSession);
-    return persistedSession;
+    return reconcileSessionAdminRole(sessionToken, persistedSession);
   }
 
   return null;
@@ -16586,6 +16668,15 @@ setupAdminOutreachRoutes({
   logAdminActivity,
 });
 
+// ── AdminWorkspace «Saker» (cases + comments, multi-produkt)
+setupAdminWorkspaceCasesRoutes({
+  app,
+  pool,
+  getActiveSessionFromRequest,
+  requireAdminRoomAccess,
+  logAdminActivity,
+});
+
 // ── AdminWorkspace aggregator (dagens agenda + kommende frister)
 // Fyller empty-states i AdminWorkspace høyre kolonne med live data
 // på tvers av meetings/funding/cases (PR #828 + #830).
@@ -22045,6 +22136,17 @@ app.get("/api/health", (req, res) => {
   });
 });
 
+// AI-queue health for observability (Leadgrid skalering nivå 2).
+// Eksponerer per-provider RPM-bruk, in-flight og pending wait-queue.
+app.get("/api/leadgrid/ai-queue/health", async (_req, res) => {
+  try {
+    const { aiQueue } = await import("./leadgrid-ai-queue.js");
+    res.json({ ok: true, ...aiQueue.snapshot() });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: String(err).slice(0, 200) });
+  }
+});
+
 // Auth endpoints - session-based login
 
 // POST /api/auth/login — Email/password login
@@ -24366,6 +24468,8 @@ setupCustomerSuccessRoutes({
   activeSessions,
   isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
 });
+// Market Intelligence — GET-routes for iPad SuperAdminMarketScansView
+setupMarketScansSuperAdminRoutes({ app, pool, activeSessions });
 // Lead Map module pricing-admin
 setupAdminLeadMapPricingRoutes({
   app,
@@ -24424,6 +24528,73 @@ registerPitchDeckBriefRoutes({ app, pool, activeSessions });
 registerPitchDeckAssetRoutes({ app, pool, activeSessions });
 // Research → Leads-orkestrator (gated på lead_research.run)
 registerLeadMapResearchRoutes({ app, pool, activeSessions });
+// Native Leadgrid Research — per-lead Claude + BRREG + website-analyse
+// (POST/GET /api/leadgrid/leads/:id/research). Used by iPad-app.
+registerLeadgridResearchRoutes({ app, pool, activeSessions });
+// Native Leadgrid Market Scan — markedssjef-lead-discovery m/ auto-pin
+// (/api/leadgrid/market-scan/*). Gjenbruker market_scans-orkestratoren.
+// Gated på leadgrid.market_scan.run (migrate 312).
+registerLeadgridMarketScanRoutes({ app, pool, activeSessions });
+// Leadgrid Intelligence Engine — composite scoring + Next Best Action
+// (mig 313). Gated på intelligence.* / routes.*-permissions per rolle.
+registerLeadgridIntelligenceRoutes({ app, pool, activeSessions });
+// Daglig cron-rescore (kalles fra GitHub Actions @ 04:00 UTC).
+// Krever LEADGRID_INTELLIGENCE_CRON_TOKEN env-var i tillegg til
+// matching x-cron-trigger-token-header.
+registerLeadgridIntelligenceCron({ app, pool });
+// Data-retention-cron: daglig sletting av gamle scores/recs/queue-rader.
+// Trigget @ 03:00 UTC fra GitHub Actions
+// (.github/workflows/leadgrid-retention-cleanup.yml). Bruker samme
+// CRON_TOKEN som intelligence-rescore.
+registerLeadgridRetentionCron({ app, pool });
+// Skalering nivå 2b — denormaliser crm_customers.organization_id (mig 320)
+// via backfill-cron (kjøres @ 03:15 UTC daily + manuell trigger). Eliminerer
+// owner_user_id IN organization_members-subqueries fra hot-path queries.
+registerLeadgridBackfillCron({ app, pool });
+// Per-org AI-cost tracking (mig 321): GET /summary + /history.
+// Gated på billing.view_ai_usage.
+registerLeadgridAIUsageRoutes({ app, pool, activeSessions });
+// Pakke 3B — Pipeline forecasting + NBA attribution (mig 323).
+// GET /forecasting/pipeline (p10/p50/p90 m/ Claude-refinement + 6t cache),
+// POST /forecasting/pipeline/refresh, GET /forecasting/attribution.
+// Gated på forecasting.view (admin/salgssjef/teamleder).
+registerLeadgridForecastingRoutes({ app, pool, activeSessions });
+// Momentum Engine — sales-goal + daglig activity-target + momentum-score
+// 0-100 + neste-handling-anbefaling (mig 327).
+// 3 endepunkter: GET /momentum/today, GET /momentum/goal, POST /momentum/goal
+// Gated på momentum.view / momentum.set_goal.
+registerLeadgridMomentumRoutes({ app, pool, activeSessions });
+// Webhook-secret-rotering m/ 7-dagers grace-period (mig 322).
+// POST /webhooks/:id/rotate-secret + cron /expire-old-webhook-secrets.
+registerLeadgridWebhookRotationRoutes({ app, pool, activeSessions });
+// Skalering nivå 3c — Public API v1 + API-keys + OpenAPI docs (mig 325).
+// Stabilt schema for 3.-parts-integrasjoner (Salesforce, HubSpot, custom).
+// /api/v1/leads, /api/v1/recommendations, /api/v1/health auth via lgk_-key.
+registerLeadgridPublicApiV1({ app, pool });
+// Admin-management av API-keys (session-auth, gated på api_keys.*).
+registerLeadgridApiKeyMgmtRoutes({ app, pool, activeSessions });
+// Swagger UI på /api/v1/docs + OpenAPI 3.1-spec på /api/v1/openapi.json.
+registerLeadgridOpenApiRoutes(app);
+// LeadGrid territorie-grids — "hold deg i din grid" (mig 314).
+// CRUD + check + brudd-logg (/api/leadgrid/territories/*).
+// Gated på territories.view / territories.manage / territories.view_breaches.
+registerLeadgridTerritoryRoutes({ app, pool, activeSessions });
+// Smart dagsrute — ordner selgerens in-grid leads (Distance Matrix +
+// nærmeste-nabo). /api/leadgrid/routes/* (mig 313/316). routes.create/view/execute.
+registerLeadgridRouteRoutes({ app, pool, activeSessions });
+// Leadgrid Analytics Dashboard — KPI-er per org (overview, channels,
+// sources, segments, territories, velocity, conversion-funnel). Gated på
+// analytics.view_overview/channels/sources/segments/velocity (migrate 317).
+registerLeadgridAnalyticsRoutes({ app, pool, activeSessions });
+// AI Meeting Notes — voice memo → Whisper → Claude action items
+// (/api/leadgrid/leads/:id/meeting-notes/*). Gated på meeting_notes.*
+// (migrate 318).
+registerLeadgridMeetingNotesRoutes({ app, pool, activeSessions });
+// Role Room Agent Bridge — full intelligence-rapport per lead som
+// orkestrerer alle Role Room Agent-services (brreg, website, competitors,
+// merch-fit, threat, swot, outreach). Gated på leadgrid.research.run
+// (migrate 318).
+registerLeadgridAgentBridgeRoutes({ app, pool, activeSessions });
 // Lead Scout — crawl + Claude needs/signals/scoring
 // Gated på marketing.scout.run / marketing.needs.view / marketing.needs.edit
 registerLeadScoutRoutes({ app, pool, activeSessions });
@@ -43246,10 +43417,20 @@ async function buildSessionUserFromActiveSession(session: ActiveSessionData) {
         accountUser.role || inferAdminRoleFromProfession(accountUser.profession),
       )
     : "user";
+  // The users table is the source of truth for ADMIN privilege. If the DB says
+  // this account is admin/super_admin but the session lost it (e.g. a Google
+  // login that demoted the role to 'couple' because the same person also owns a
+  // couple/vendor profile), trust the DB — otherwise an admin is locked out by
+  // a marketplace-shadowed or stale session role. Never elevates a non-admin:
+  // accountRoleId comes straight from the DB row.
+  const accountIsAdminRole = ADMIN_SESSION_ROLES.has(accountRoleId);
+  const sessionIsAdminRole = ADMIN_SESSION_ROLES.has(sessionRoleId);
   const roleId =
-    sessionRoleId === "user" && accountRoleId !== "user"
+    accountIsAdminRole && !sessionIsAdminRole
       ? accountRoleId
-      : sessionRoleId || accountRoleId;
+      : sessionRoleId === "user" && accountRoleId !== "user"
+        ? accountRoleId
+        : sessionRoleId || accountRoleId;
   const roleEntry = buildAdminRoleEntry(roleId);
   const permissions = (() => {
     const normalized = normalizeSessionPermissions(session.permissions);
@@ -73593,10 +73774,20 @@ app.post("/import/lead/:leadId", async (req, res) => {
   }
 });
 
+// Skalering nivå 3a: real-time-observability — antall WebSocket-klienter
+// koblet til /ws/leadgrid + sum av channel-abonnementer.
+app.get("/api/leadgrid/realtime/health", (_req, res) => {
+  res.json(leadgridRealtime.snapshot());
+});
+
 // Catch-all for unhandled API routes
 app.all("/api/*", (req, res) => {
   res.status(404).json({ message: "Endpoint not implemented", path: req.path });
 });
+
+// Sentry error-middleware: må mountes ETTER alle routes, slik at den
+// fanger errors fra alle endepunkter. No-op hvis Sentry ikke initialisert.
+app.use(buildSentryErrorMiddleware());
 
 // Create HTTP server for WebSocket support
 const httpServer = createServer(app);
@@ -73605,6 +73796,9 @@ createWebSocketServer(httpServer, db);
 createDanceRealtimeServer(httpServer);
 attachCaptureWebSocket(httpServer, pool, activeSessions);
 attachUserEventsWebSocket(httpServer, pool, activeSessions);
+// Skalering nivå 3a: real-time WebSocket-push til iPad (Leadgrid).
+// Selger slipper å polle follow-up-queue når Intelligence Engine rescorer.
+leadgridRealtime.attach(httpServer, pool, activeSessions);
 
 // RT-1: Final fallback. Hver av de fire opcoderne over registrerer
 // sin egen 'upgrade'-listener for sin path. Et upgrade-request mot en
@@ -73623,6 +73817,7 @@ httpServer.on("upgrade", (req, socket) => {
       p === "/ws" ||
       p.startsWith("/ws/") ||
       p === "/ws/dance/realtime" ||
+      p === "/ws/leadgrid" ||
       /^\/api\/capture\/ws\/sessions\/[0-9a-f-]{36}$/.test(p) ||
       p === "/api/ipad/ws/events";
     if (!known && !socket.destroyed && socket.writable) {
@@ -73655,6 +73850,35 @@ void driveBatchWorker;
 
 httpServer.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Backend server running on port ${PORT} (HTTP + WebSocket)`);
+  // iPad-bearer hydrering — last alle ikke-revokerte ipad_tokens inn i
+  // activeSessions ved boot. Uten dette mister vi alle iPad-sessions ved
+  // hver Render-redeploy → 401 på alle iPad-kall til Daniel re-logger.
+  void (async () => {
+    try {
+      const r = await pool.query<{
+        token: string; user_id: string; email: string | null; role: string | null;
+      }>(
+        `SELECT t.token, t.user_id, u.email, u.role
+           FROM ipad_tokens t
+           JOIN users u ON u.id::text = t.user_id
+          WHERE t.revoked_at IS NULL`,
+      );
+      let hydrated = 0;
+      for (const row of r.rows) {
+        if (!activeSessions.has(row.token)) {
+          activeSessions.set(row.token, {
+            userId: row.user_id,
+            email: row.email ?? "",
+            role: row.role ?? "member",
+          });
+          hydrated++;
+        }
+      }
+      console.log(`🔑 Hydrated ${hydrated} iPad-bearer-sessions fra ipad_tokens`);
+    } catch (e) {
+      console.warn("[boot] ipad_tokens hydrering feilet:", (e as Error).message);
+    }
+  })();
   // Slice 9X.79 — SmartFlyt scheduler-loop (poller every 60s)
   void (async () => {
     try {

@@ -13,7 +13,9 @@
 #   APP_STORE_CONNECT_API_KEY_ID
 #   APP_STORE_CONNECT_API_ISSUER_ID
 #   APP_STORE_CONNECT_API_KEY_CONTENT  (.p8 base64-encoded)
-#   FASTLANE_USER, FASTLANE_PASSWORD   (fallback)
+
+require "base64"
+require "fileutils"
 
 default_platform(:ios)
 
@@ -47,7 +49,7 @@ platform :ios do
       clean: true,
       output_directory: "build/",
       output_name: "LeadMap.ipa",
-      xcargs: "-allowProvisioningUpdates",
+      xcargs: xcodebuild_auth_xcargs,
     )
 
     ipa_path = lane_context[SharedValues::IPA_OUTPUT_PATH]
@@ -76,7 +78,7 @@ platform :ios do
       clean: true,
       output_directory: "build/",
       output_name: "LeadMap.ipa",
-      xcargs: "-allowProvisioningUpdates",
+      xcargs: xcodebuild_auth_xcargs,
     )
 
     upload_to_app_store(
@@ -89,19 +91,50 @@ platform :ios do
     )
   end
 
+  # Skriv .p8-nøkkelen til disk slik at xcodebuild -allowProvisioningUpdates
+  # kan hente profiler/cert via App Store Connect API. fastlane's
+  # app_store_connect_api_key alene gjør IKKE nøkkelen tilgjengelig for
+  # xcodebuild — den må passere som -authenticationKey* args (Xcode 13+).
   private_lane :setup_api_key do
     key_id = ENV["APP_STORE_CONNECT_API_KEY_ID"]
     issuer_id = ENV["APP_STORE_CONNECT_API_ISSUER_ID"]
     key_content = ENV["APP_STORE_CONNECT_API_KEY_CONTENT"]
-    if key_id && issuer_id && key_content
-      app_store_connect_api_key(
-        key_id: key_id,
-        issuer_id: issuer_id,
-        key_content: key_content,
-        is_key_content_base64: true,
-        duration: 1200,
-        in_house: false,
-      )
+
+    unless key_id && issuer_id && key_content
+      UI.important("ASC API-creds er ikke satt — fastlane vil falle tilbake til lokal Xcode-konto (lokal dev)")
+      return
     end
+
+    app_store_connect_api_key(
+      key_id: key_id,
+      issuer_id: issuer_id,
+      key_content: key_content,
+      is_key_content_base64: true,
+      duration: 1200,
+      in_house: false,
+    )
+
+    # Også skriv .p8 til disk + eksporter env-vars for xcargs-helperen
+    pkey_dir = File.expand_path("~/.appstoreconnect/private_keys")
+    FileUtils.mkdir_p(pkey_dir)
+    pkey_path = File.join(pkey_dir, "AuthKey_#{key_id}.p8")
+    decoded = Base64.decode64(key_content)
+    File.write(pkey_path, decoded)
+    ENV["ASC_KEY_PATH"]    = pkey_path
+    ENV["ASC_KEY_ID"]      = key_id
+    ENV["ASC_ISSUER_ID"]   = issuer_id
+    UI.success("ASC API-nøkkel skrevet til #{pkey_path}")
+  end
+
+  # Returnerer xcargs-streng med auth-flags hvis ASC-nøkkel er satt opp,
+  # ellers bare -allowProvisioningUpdates (lokal dev).
+  private_lane :xcodebuild_auth_xcargs do
+    args = ["-allowProvisioningUpdates"]
+    if ENV["ASC_KEY_PATH"] && ENV["ASC_KEY_ID"] && ENV["ASC_ISSUER_ID"]
+      args << "-authenticationKeyPath #{ENV['ASC_KEY_PATH']}"
+      args << "-authenticationKeyID #{ENV['ASC_KEY_ID']}"
+      args << "-authenticationKeyIssuerID #{ENV['ASC_ISSUER_ID']}"
+    end
+    args.join(" ")
   end
 end

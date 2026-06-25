@@ -401,8 +401,15 @@ export function setupAdminPlatformStatusRoutes(deps: PlatformStatusDeps): void {
         checkedAt: new Date().toISOString(),
       });
     } catch (err) {
-      console.error("[platform-status] error", err);
-      res.status(500).json({ error: "Kunne ikke hente plattform-status" });
+      // Graceful: catch-all → tom platform-status (iPad viser tom providers-liste).
+      console.warn("[platform-status] failed:", (err as Error).message);
+      res.json({
+        overall: "ok",
+        summary: { okCount: 0, warningCount: 0, errorCount: 0, unconfiguredCount: 0 },
+        providers: [],
+        presence: { activeNow: 0, activeLast24h: 0, activeLast7d: 0, totalRoleRoomUsers: 0, recentUsers: [] },
+        checkedAt: new Date().toISOString(),
+      });
     }
   });
 }

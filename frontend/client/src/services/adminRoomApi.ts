@@ -1890,6 +1890,149 @@ export interface MarketingPosterInput {
   fields?: Record<string, unknown>;
 }
 
+// ─────────────────────────────────────────────────────────
+// AdminWorkspace «Saker» (cases + comments, multi-produkt)
+// Mig 0336 — admin_workspace_cases + admin_workspace_case_comments.
+// ─────────────────────────────────────────────────────────
+
+export type WorkspaceCaseStatus = 'open' | 'in_progress' | 'blocked' | 'done' | 'archived';
+export type WorkspaceCasePriority = 'low' | 'normal' | 'high' | 'urgent';
+export type WorkspaceCaseLinkedEntityType =
+  | 'customer'
+  | 'partner'
+  | 'investor'
+  | 'outreach_template'
+  | 'funding_app';
+
+// product_key på saker:
+//   null  → intern sak (uten produkt-tilhørighet)
+//   string → 'role_room' | 'leadgrid'
+export type WorkspaceCaseProductKey = AdminProductKey | null;
+
+export interface WorkspaceCase {
+  id: string;
+  user_id: string;
+  product_key: WorkspaceCaseProductKey;
+  title: string;
+  body: string | null;
+  status: WorkspaceCaseStatus;
+  priority: WorkspaceCasePriority;
+  due_date: string | null;
+  linked_entity_type: WorkspaceCaseLinkedEntityType | null;
+  linked_entity_id: string | null;
+  tags: string[];
+  created_at: string;
+  updated_at: string;
+  updated_by: string | null;
+}
+
+export interface WorkspaceCaseComment {
+  id: string;
+  case_id: string;
+  user_id: string;
+  body: string;
+  created_at: string;
+}
+
+export type WorkspaceCaseInput = {
+  title?: string;
+  body?: string | null;
+  status?: WorkspaceCaseStatus;
+  priority?: WorkspaceCasePriority;
+  dueDate?: string | null;
+  productKey?: WorkspaceCaseProductKey | 'internal';
+  linkedEntityType?: WorkspaceCaseLinkedEntityType | null;
+  linkedEntityId?: string | null;
+  tags?: string[];
+};
+
+export type WorkspaceCaseListFilter = {
+  // product:
+  //   'role_room' | 'leadgrid' — filtrer på produkt
+  //   'internal' — kun interne saker (product_key IS NULL)
+  //   undefined — alle
+  product?: 'role_room' | 'leadgrid' | 'internal';
+  status?: WorkspaceCaseStatus;
+  priority?: WorkspaceCasePriority;
+};
+
+export const WORKSPACE_CASE_STATUS_LABELS: Record<WorkspaceCaseStatus, string> = {
+  open: 'Åpen',
+  in_progress: 'Pågår',
+  blocked: 'Blokkert',
+  done: 'Ferdig',
+  archived: 'Arkivert',
+};
+
+export const WORKSPACE_CASE_PRIORITY_LABELS: Record<WorkspaceCasePriority, string> = {
+  low: 'Lav',
+  normal: 'Normal',
+  high: 'Høy',
+  urgent: 'Haster',
+};
+
+export const WORKSPACE_CASE_PRIORITY_COLORS: Record<WorkspaceCasePriority, string> = {
+  low: '#64748b',       // slate-500
+  normal: '#a78bfa',    // violet-400 (samme som BRAND.accent)
+  high: '#f59e0b',      // amber-500
+  urgent: '#ef4444',    // red-500
+};
+
+export const WORKSPACE_CASE_LINKED_ENTITY_LABELS: Record<WorkspaceCaseLinkedEntityType, string> = {
+  customer: 'Lead / kunde',
+  partner: 'Partner',
+  investor: 'Investor',
+  outreach_template: 'Outreach-template',
+  funding_app: 'Funding-søknad',
+};
+
+export const workspaceCasesApi = {
+  list: async (filter?: WorkspaceCaseListFilter): Promise<WorkspaceCase[]> => {
+    const params = new URLSearchParams();
+    if (filter?.product) params.set('product', filter.product);
+    if (filter?.status) params.set('status', filter.status);
+    if (filter?.priority) params.set('priority', filter.priority);
+    const query = params.toString();
+    const data = await jsonFetch<{ items: WorkspaceCase[] }>(
+      `/workspace/cases${query ? `?${query}` : ''}`,
+    );
+    return data.items;
+  },
+  get: async (id: string): Promise<{ item: WorkspaceCase; comments: WorkspaceCaseComment[] }> => {
+    return jsonFetch(`/workspace/cases/${encodeURIComponent(id)}`);
+  },
+  create: async (input: WorkspaceCaseInput): Promise<WorkspaceCase> => {
+    const data = await jsonFetch<{ item: WorkspaceCase }>('/workspace/cases', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    return data.item;
+  },
+  update: async (id: string, input: WorkspaceCaseInput): Promise<WorkspaceCase> => {
+    const data = await jsonFetch<{ item: WorkspaceCase }>(`/workspace/cases/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    });
+    return data.item;
+  },
+  delete: async (id: string): Promise<void> => {
+    await jsonFetch(`/workspace/cases/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+  addComment: async (caseId: string, body: string): Promise<WorkspaceCaseComment> => {
+    const data = await jsonFetch<{ item: WorkspaceCaseComment }>(
+      `/workspace/cases/${encodeURIComponent(caseId)}/comments`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ body }),
+      },
+    );
+    return data.item;
+  },
+  deleteComment: async (commentId: string): Promise<void> => {
+    await jsonFetch(`/workspace/case-comments/${encodeURIComponent(commentId)}`, { method: 'DELETE' });
+  },
+};
+
 export const marketingPostersApi = {
   list: async (templateId?: string): Promise<MarketingPoster[]> => {
     const q = templateId ? `?templateId=${encodeURIComponent(templateId)}` : '';

@@ -24,14 +24,37 @@ APP_IDENTIFIER = "com.creatorhubn.capture"
 SCHEME         = "CaptureApp"
 PROJECT        = "CaptureApp.xcodeproj"
 
+# xcargs for the archive. Locally `-allowProvisioningUpdates` uses the Xcode-
+# signed-in Apple ID. On a headless CI runner there's no account, so we also
+# pass the App Store Connect API key to xcodebuild (-authenticationKey*) so it
+# can create/download the distribution cert + profile. The key file path comes
+# from ASC_KEY_PATH (the CI workflow writes the .p8 there).
+def provisioning_xcargs
+  args = ["-allowProvisioningUpdates"]
+  if ENV["ASC_KEY_PATH"] && ENV["APP_STORE_CONNECT_API_KEY_ID"] && ENV["APP_STORE_CONNECT_API_ISSUER_ID"]
+    args << "-authenticationKeyPath #{ENV['ASC_KEY_PATH']}"
+    args << "-authenticationKeyID #{ENV['APP_STORE_CONNECT_API_KEY_ID']}"
+    args << "-authenticationKeyIssuerID #{ENV['APP_STORE_CONNECT_API_ISSUER_ID']}"
+  end
+  args.join(" ")
+end
+
 platform :ios do
   before_all do
-    ensure_xcode_version(version: "26.5")
+    # Locally we want 26.5; CI sets XCODE_VERSION to whatever the runner
+    # selected so the assertion is portable across GitHub-hosted images.
+    ensure_xcode_version(version: ENV.fetch("XCODE_VERSION", "26.5"))
   end
 
-  desc "Bump CFBundleVersion by 1"
+  desc "Set CFBundleVersion to epoch seconds (unique + strictly increasing)"
   lane :bump_build do
-    increment_build_number(xcodeproj: PROJECT)
+    # xcodegen regenerates project.pbxproj from project.yml on every run,
+    # resetting CURRENT_PROJECT_VERSION to "1" — so a plain +1 always produced
+    # "2", which collides with / is lower than the existing date-based builds
+    # (20260622, …) and Apple silently rejects it in processing. Epoch seconds
+    # is monotonic, unique per upload, and < UINT32_MAX (Apple's per-component
+    # cap) until ~2106.
+    increment_build_number(build_number: Time.now.to_i.to_s, xcodeproj: PROJECT)
   end
 
   desc "Archive + upload to TestFlight"
@@ -53,7 +76,8 @@ platform :ios do
       output_name: "CreatorHubOne.ipa",
       # La Xcode kontakte Apple for å auto-generere/registrere provisioning-
       # profiler (kreves for automatic signing i headless archive).
-      xcargs: "-allowProvisioningUpdates",
+      xcargs: provisioning_xcargs,
+      export_xcargs: "-allowProvisioningUpdates",
     )
 
     # Sanity check FØR upload: bruk gyms faktiske output-sti
@@ -90,7 +114,8 @@ platform :ios do
       clean: true,
       output_directory: "build/",
       output_name: "CreatorHubOne.ipa",
-      xcargs: "-allowProvisioningUpdates",
+      xcargs: provisioning_xcargs,
+      export_xcargs: "-allowProvisioningUpdates",
     )
 
     upload_to_app_store(

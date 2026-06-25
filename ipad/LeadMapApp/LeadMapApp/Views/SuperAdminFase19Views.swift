@@ -742,7 +742,7 @@ struct SuperAdminCaseStudiesView: View {
                                 Text(cs.title ?? cs.customerName ?? "—")
                                     .font(.subheadline.bold())
                                 Spacer()
-                                statusChip(cs.status)
+                                statusChip(cs.status ?? "draft")
                                 if cs.aiGenerated == true {
                                     Image(systemName: "sparkles").foregroundStyle(.purple)
                                 }

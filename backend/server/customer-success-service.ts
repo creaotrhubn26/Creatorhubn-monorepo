@@ -280,11 +280,19 @@ export async function generateAiSuggestionForCustomer(
   // Hent helse + siste 5 interaksjoner
   const h = await computeHealthForUser(pool, userId);
   const interactions = await listInteractions(pool, userId, 5);
+  // business_name ble dropped fra users-tabellen (mig 0001) — bor nå
+  // i onboarding_profiles. LEFT JOIN slik at brukere uten profil ikke
+  // krasjer queryen.
   const user = await pool.query<{
     email: string; first_name: string | null; last_name: string | null;
     business_name: string | null;
   }>(
-    `SELECT email, first_name, last_name, business_name FROM users WHERE id = $1`,
+    `SELECT u.email, u.first_name, u.last_name, op.business_name
+       FROM users u
+       LEFT JOIN onboarding_profiles op ON op.user_id = u.id
+      WHERE u.id = $1
+      ORDER BY op.updated_at DESC NULLS LAST
+      LIMIT 1`,
     [userId],
   );
   const u = user.rows[0];
@@ -410,14 +418,25 @@ export interface DashboardSummary {
 export async function buildDashboardSummary(pool: Pool): Promise<DashboardSummary> {
   // Hent de 50 kundene som SANNSYNLIGST trenger oppmerksomhet
   // Default-sortering: nyligste snapshot ASC (rødeste først)
+  // business_name ble dropped fra users — bor nå i onboarding_profiles.
+  // Sub-select for å plukke nyeste profil-rad per bruker (en bruker kan
+  // ha multiple profiler), så LEFT JOIN inn så business_name blir tilgjengelig.
   const customersRes = await pool.query<{
     id: string; email: string; first_name: string | null; last_name: string | null;
     business_name: string | null;
   }>(
-    `SELECT id, email, first_name, last_name, business_name
-     FROM users WHERE is_active = TRUE
-     ORDER BY last_login_at DESC NULLS LAST
-     LIMIT 200`,
+    `SELECT u.id, u.email, u.first_name, u.last_name, op.business_name
+       FROM users u
+       LEFT JOIN LATERAL (
+         SELECT business_name
+           FROM onboarding_profiles p
+          WHERE p.user_id = u.id
+          ORDER BY p.updated_at DESC NULLS LAST
+          LIMIT 1
+       ) op ON TRUE
+      WHERE u.is_active = TRUE
+      ORDER BY u.last_login_at DESC NULLS LAST
+      LIMIT 200`,
   );
 
   // Hent siste AI-suggestion fra snapshot-tabellen for alle brukerne i én query
@@ -578,9 +597,12 @@ export async function listUpcomingRenewals(
 ): Promise<RenewalItem[]> {
   const days = opts.daysAhead ?? 90;
   const statusParam = opts.statusFilter && opts.statusFilter.length > 0 ? opts.statusFilter : null;
+  // business_name bor i onboarding_profiles (ble dropped fra users i mig 0001).
+  // LEFT JOIN LATERAL plukker nyeste profil-rad per bruker.
   const r = await pool.query(
     `SELECT
-       rp.id::text, rp.user_id, u.email, u.first_name, u.last_name, u.business_name,
+       rp.id::text, rp.user_id, u.email, u.first_name, u.last_name,
+       op.business_name,
        rp.renewal_at, rp.current_plan_name, rp.current_arpu_nok,
        rp.renewal_status, rp.expansion_opportunity_nok,
        rp.last_outreach_at, rp.notes,
@@ -590,6 +612,13 @@ export async function listUpcomingRenewals(
         WHERE user_id = rp.user_id ORDER BY computed_at DESC LIMIT 1) AS health_score
      FROM customer_renewal_pipeline rp
      JOIN users u ON u.id = rp.user_id
+     LEFT JOIN LATERAL (
+       SELECT business_name
+         FROM onboarding_profiles p
+        WHERE p.user_id = u.id
+        ORDER BY p.updated_at DESC NULLS LAST
+        LIMIT 1
+     ) op ON TRUE
      WHERE rp.renewal_at BETWEEN NOW() AND NOW() + ($1::int || ' days')::interval
        AND ($2::text[] IS NULL OR rp.renewal_status = ANY($2::text[]))
      ORDER BY rp.renewal_at ASC

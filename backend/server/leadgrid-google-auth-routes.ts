@@ -185,15 +185,20 @@ export function registerLeadgridGoogleAuthRoutes({ app, pool, activeSessions }: 
     try {
       await client.query("BEGIN");
 
-      // 1) Hent eller opprett bruker (matchet på email LOWER)
+      // 1) Hent eller opprett bruker (matchet på email LOWER).
+      // Henter role også — eksisterende brukere kan ha role='super_admin'
+      // (Daniel) og det skal forplantes til session-cachen, ikke
+      // overskrives med 'member'.
       let userId: string;
+      let userRole: string = "member";
       let isNew = false;
-      const userR = await client.query<{ id: string }>(
-        `SELECT id FROM users WHERE LOWER(email) = LOWER($1)`,
+      const userR = await client.query<{ id: string; role: string | null }>(
+        `SELECT id, role FROM users WHERE LOWER(email) = LOWER($1)`,
         [verified.email],
       );
       if (userR.rows.length > 0) {
         userId = userR.rows[0].id;
+        userRole = userR.rows[0].role ?? "member";
       } else {
         userId = crypto.randomUUID();
         await client.query(
@@ -268,14 +273,16 @@ export function registerLeadgridGoogleAuthRoutes({ app, pool, activeSessions }: 
 
       await client.query("COMMIT");
 
-      // Auto-aktiver session-cache (in-memory) så bruker er innlogget umiddelbart
+      // Auto-aktiver session-cache (in-memory) så bruker er innlogget umiddelbart.
+      // userRole settes fra DB — eksisterende super_admin bevares (Daniel),
+      // nye brukere får 'member' fra default-en over.
       activeSessions.set(bearer, {
-        userId, email: verified.email, role: "member",
+        userId, email: verified.email, role: userRole,
       });
 
       res.json({
         bearer,
-        user: { id: userId, email: verified.email },
+        user: { id: userId, email: verified.email, role: userRole },
         is_new_user: isNew,
         organization_id: orgId,
       });

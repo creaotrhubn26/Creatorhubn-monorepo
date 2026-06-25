@@ -1,0 +1,70 @@
+name: Leadgrid post-deploy smoke-test
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/server/leadgrid-*.ts'
+      - 'backend/migrations/31*.sql'
+
+jobs:
+  smoketest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Vent på Render auto-deploy
+        run: sleep 240  # 4 min for build+deploy
+
+      - name: Verifiser /api/health-commit (best effort)
+        run: |
+          COMMIT=$(curl -sf "${{ secrets.BACKEND_URL }}/api/health" | jq -r .commit 2>/dev/null | head -c 8 || echo "")
+          EXPECTED=$(echo "${{ github.sha }}" | head -c 8)
+          echo "backend-commit: $COMMIT | expected: $EXPECTED"
+          if [ -n "$COMMIT" ] && [ "$COMMIT" != "$EXPECTED" ]; then
+            echo "::warning::Backend commit ($COMMIT) ≠ pushed commit ($EXPECTED) — kanskje deploy henger"
+          fi
+
+      - name: Probe alle Leadgrid-endepunkter (401/200 OK)
+        run: |
+          FAILED=0
+          for path in \
+            "/api/leadgrid/intelligence/follow-up-queue" \
+            "/api/leadgrid/intelligence/recommendations" \
+            "/api/leadgrid/intelligence/weights" \
+            "/api/leadgrid/analytics/overview" \
+            "/api/leadgrid/analytics/channels" \
+            "/api/leadgrid/analytics/sources" \
+            "/api/leadgrid/analytics/segments?by=category" \
+            "/api/leadgrid/analytics/territories" \
+            "/api/leadgrid/analytics/velocity-history" \
+            "/api/leadgrid/analytics/conversion-funnel" \
+            "/api/leadgrid/territories" \
+            "/api/leadgrid/leads/00000000-0000-0000-0000-000000000000/full-intelligence" \
+            "/api/leadgrid/leads/00000000-0000-0000-0000-000000000000/meeting-notes"; do
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" "${{ secrets.BACKEND_URL }}${path}")
+            if [ "$CODE" != "401" ] && [ "$CODE" != "200" ]; then
+              echo "::error::${path} returned ${CODE} (expected 401 or 200)"
+              FAILED=$((FAILED + 1))
+            else
+              echo "OK ${CODE}  ${path}"
+            fi
+          done
+          if [ "$FAILED" -gt 0 ]; then exit 1; fi
+
+      - name: Trigge cron + verifiser ok:true
+        run: |
+          RESP=$(curl -s -X POST "${{ secrets.BACKEND_URL }}/api/leadgrid/intelligence/cron/daily-rescore" \
+            -H "x-cron-trigger-token: ${{ secrets.LEADGRID_INTELLIGENCE_CRON_TOKEN }}")
+          echo "$RESP" | jq
+          OK=$(echo "$RESP" | jq -r .ok)
+          [ "$OK" = "true" ] || { echo "::error::cron failed: $RESP"; exit 1; }
+
+      - name: Slack-varsel ved feil
+        if: failure()
+        run: |
+          if [ -n "${{ secrets.SLACK_WEBHOOK_URL }}" ]; then
+            curl -s -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+              -H "Content-Type: application/json" \
+              -d "{\"text\":\"Leadgrid post-deploy smoke-test feilet: ${{ github.sha }}\"}"
+          fi
