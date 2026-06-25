@@ -125,10 +125,12 @@ function PrototypeWelcome({
   userId,
   vendorName,
   locale,
+  onStartGuide,
 }: {
   userId: string;
   vendorName: string | null;
   locale: "no" | "en";
+  onStartGuide?: () => void;
 }) {
   const en = locale === "en";
   const key = `ch_prototype_welcome_${userId}`;
@@ -191,8 +193,15 @@ function PrototypeWelcome({
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
-        <Button variant="contained" onClick={close}>
-          {en ? "Let's go" : "Kom i gang"}
+        <Button onClick={close}>{en ? "Maybe later" : "Senere"}</Button>
+        <Button
+          variant="contained"
+          onClick={() => {
+            close();
+            onStartGuide?.();
+          }}
+        >
+          {en ? "Show me how to give feedback" : "Vis meg hvordan jeg gir tilbakemelding"}
         </Button>
       </DialogActions>
     </Dialog>
@@ -465,6 +474,14 @@ function PrototypeTesterPanel({
 export default function EditingVendorWorkspace({ userId }: Props) {
   const qc = useQueryClient();
   const [tab, setTab] = useState(0);
+  // Interaktiv feedback-guide: bumping tokenet åpner feedback-verktøyet, guided=true
+  // viser steg-for-steg-anvisning inni. Tilgjengelig for ALLE prototype-testere.
+  const [feedbackOpenToken, setFeedbackOpenToken] = useState(0);
+  const [feedbackGuided, setFeedbackGuided] = useState(false);
+  const startFeedbackGuide = () => {
+    setFeedbackGuided(true);
+    setFeedbackOpenToken((t) => t + 1);
+  };
   const [snack, setSnack] = useState<{ msg: string; sev: "success" | "error" } | null>(null);
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [uploadingJob, setUploadingJob] = useState<string | null>(null);
@@ -608,7 +625,7 @@ export default function EditingVendorWorkspace({ userId }: Props) {
 
       {me?.platformFee?.prototype ? (
         <>
-          <PrototypeWelcome userId={userId} vendorName={me?.vendorName ?? null} locale={locale === "en" ? "en" : "no"} />
+          <PrototypeWelcome userId={userId} vendorName={me?.vendorName ?? null} locale={locale === "en" ? "en" : "no"} onStartGuide={startFeedbackGuide} />
           <PrototypeTesterPanel me={me} jobs={jobs} locale={locale === "en" ? "en" : "no"} />
         </>
       ) : null}
@@ -618,7 +635,17 @@ export default function EditingVendorWorkspace({ userId }: Props) {
           {t("ws_title", locale)}
         </Typography>
         {me?.platformFee?.prototype ? (
-          <VendorPrototypeFeedbackTool locale={locale} vendorName={me?.vendorName} />
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Button size="small" variant="text" onClick={startFeedbackGuide}>
+              {locale === "en" ? "How does feedback work?" : "Slik gir du tilbakemelding"}
+            </Button>
+            <VendorPrototypeFeedbackTool
+              locale={locale}
+              vendorName={me?.vendorName}
+              autoOpenToken={feedbackOpenToken}
+              guided={feedbackGuided}
+            />
+          </Stack>
         ) : null}
       </Box>
 
