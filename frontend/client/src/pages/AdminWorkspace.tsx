@@ -93,6 +93,7 @@ import { WhatsNewTab } from '../components/role-room/components/admin-room/Whats
 import MarketingCockpitTab from './admin-room/MarketingCockpitTab';
 import RoleRoomAgentTab from './admin-room/RoleRoomAgentTab';
 import ContentCalendarTab from './admin-room/ContentCalendarTab';
+import { SakerTab } from './admin-workspace/SakerTab';
 
 import {
   activityLogApi,
@@ -1347,14 +1348,7 @@ function resolveContent(
       return {
         title: 'Saker',
         breadcrumbs: ['Creatorhub AS', 'Workspace', 'Saker'],
-        render: () => (
-          <EmptyState
-            title="Saker"
-            description="Strukturert sak-håndtering (kontrakt, support-tickets, klage-saker) er ikke implementert ennå. Når det kommer, samles alle sak-typene her med eier, status og SLA."
-            icon={<GavelOutlinedIcon />}
-            todo="Velg datamodell (cases-tabell) + RBAC + SLA-felt før første visning."
-          />
-        ),
+        render: () => <SakerTab parentProduct={product} />,
       };
     case 'projects':
       return {
