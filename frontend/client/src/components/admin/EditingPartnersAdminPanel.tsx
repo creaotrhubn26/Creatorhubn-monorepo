@@ -61,6 +61,19 @@ export default function EditingPartnersAdminPanel() {
     queryFn: () => apiRequest("/api/superadmin/editing/vendors"),
   });
 
+  // Prototype-tester-ansvar: hvem har (ikke) gitt tilbakemelding nylig.
+  type ProtoFeedback = {
+    userId: string; lastFeedbackAt: string | null; daysSince: number | null;
+    everGiven: boolean; escalation: "ok" | "due" | "warning"; feedbackCount: number;
+  };
+  const protoFeedback = useQuery<{ vendors: ProtoFeedback[]; overdueCount: number; thresholds: { overdueDays: number; warnDays: number } }>({
+    queryKey: ["/api/superadmin/editing/prototype-feedback"],
+    queryFn: () => apiRequest("/api/superadmin/editing/prototype-feedback"),
+  });
+  const feedbackByUser = new Map<string, ProtoFeedback>(
+    (protoFeedback.data?.vendors || []).map((f) => [f.userId, f]),
+  );
+
   const pending = (apps.data?.applications || []).filter((a) => a.status === "pending" || a.status === "reviewing");
   const leads = (apps.data?.applications || []).filter((a) => a.status === "lead");
   const allVendors = vendors.data?.vendors || [];
@@ -161,8 +174,17 @@ export default function EditingPartnersAdminPanel() {
       {/* Vendor-lister */}
       {filter > 1 && (
         <Stack spacing={1.5}>
+          {filter === 2 && (protoFeedback.data?.overdueCount ?? 0) > 0 && (
+            <Alert severity="warning">
+              {protoFeedback.data?.overdueCount} prototype-tester(e) har ikke gitt tilbakemelding på en stund
+              (terskel {protoFeedback.data?.thresholds?.overdueDays ?? 30} dager). Prototype-avtalen (0 % gebyr)
+              forutsetter jevnlig tilbakemelding — de får påminnelse i dashbordet + på e-post; vurder å trekke
+              prototype-statusen via «Endre type» ved vedvarende stillhet.
+            </Alert>
+          )}
           {(filter === 2 ? prototypeVendors : filter === 3 ? standardVendors : allVendors).map((v) => {
             const tl = vendorTypeLabel(v);
+            const fb = feedbackByUser.get(v.user_id);
             return (
               <Card key={v.user_id} variant="outlined">
                 <CardContent>
@@ -175,6 +197,13 @@ export default function EditingPartnersAdminPanel() {
                       <Typography variant="body2" color="text.secondary">{v.email} · {v.country || "—"}{v.is_foreign ? " (utland)" : ""}</Typography>
                       <Stack direction="row" spacing={1} sx={{ mt: 0.6 }} alignItems="center">
                         <Chip size="small" color={tl.color} icon={tl.icon as React.ReactElement | undefined} label={tl.label} />
+                        {v.partner_type === "prototype" && fb ? (
+                          <Chip
+                            size="small"
+                            color={fb.escalation === "warning" ? "error" : fb.escalation === "due" ? "warning" : "success"}
+                            label={fb.everGiven ? `Tilbakemelding: ${fb.daysSince}d siden` : "Ingen tilbakemelding"}
+                          />
+                        ) : null}
                         {v.review_count ? <Typography variant="caption" color="text.secondary">★ {Number(v.rating).toFixed(1)} ({v.review_count})</Typography> : null}
                       </Stack>
                     </Box>

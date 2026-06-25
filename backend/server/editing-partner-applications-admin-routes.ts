@@ -144,6 +144,121 @@ export function setupEditingPartnerApplicationsAdminRoutes(deps: Deps): void {
     }
   });
 
+  // Prototype-tester-ansvar: hvilke prototype-vendors har (ikke) gitt
+  // tilbakemelding nylig. 0%-fordelen forutsetter jevnlig feedback — denne
+  // oversikten viser forfalte testere så admin kan påminne / trekke statusen.
+  app.get("/api/superadmin/editing/prototype-feedback", async (req, res) => {
+    const s = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!s) return;
+    try {
+      const overdueDays = Number(process.env.PROTOTYPE_FEEDBACK_OVERDUE_DAYS) || 30;
+      const warnDays = Number(process.env.PROTOTYPE_FEEDBACK_WARN_DAYS) || 60;
+      const r = await pool.query(
+        `SELECT v.user_id, v.vendor_name, u.email, v.prototype_until, v.approved_at,
+                fb.last_at AS last_feedback_at, fb.cnt AS feedback_count,
+                CASE WHEN fb.last_at IS NULL THEN NULL
+                     ELSE EXTRACT(DAY FROM now() - fb.last_at)::int END AS days_since
+           FROM vendor_onboarding_profiles v
+           LEFT JOIN users u ON u.id = v.user_id
+           LEFT JOIN LATERAL (
+             SELECT MAX(COALESCE(submitted_at, created_at)) AS last_at, COUNT(*) AS cnt
+               FROM prototype_feedback p WHERE p.user_id = v.user_id
+           ) fb ON true
+          WHERE v.vendor_type = 'editing' AND v.partner_type = 'prototype'
+            AND v.approval_status = 'approved'
+          ORDER BY fb.last_at ASC NULLS FIRST`,
+      );
+      const rows = r.rows.map((row: Record<string, unknown>) => {
+        const days = row.days_since == null ? null : Number(row.days_since);
+        const eff = days == null ? Number.MAX_SAFE_INTEGER : days;
+        const escalation = eff >= warnDays ? "warning" : eff >= overdueDays ? "due" : "ok";
+        return {
+          userId: row.user_id,
+          vendorName: row.vendor_name,
+          email: row.email,
+          prototypeUntil: row.prototype_until,
+          approvedAt: row.approved_at,
+          lastFeedbackAt: row.last_feedback_at,
+          feedbackCount: Number(row.feedback_count || 0),
+          daysSince: days,
+          everGiven: !!row.last_feedback_at,
+          escalation,
+        };
+      });
+      res.json({
+        thresholds: { overdueDays, warnDays },
+        total: rows.length,
+        overdueCount: rows.filter((x) => x.escalation !== "ok").length,
+        vendors: rows,
+      });
+    } catch (err) {
+      console.error("[prototype-feedback overview]", err);
+      res.status(500).json({ error: "kunne_ikke_hente" });
+    }
+  });
+
+  // Cron/admin: e-post-påminnelse til FORFALTE prototype-testere. Proaktiv
+  // kanal (når de ikke er innlogget) — dashboard-banneret dekker innlogget.
+  // Dual-auth: x-cron-trigger-token ELLER super-admin. Kjør ukentlig (cadencen
+  // er throttlen — ingen per-bruker last_reminded nødvendig).
+  app.post("/api/cron/prototype-feedback-reminders", async (req, res) => {
+    const cronToken = req.headers["x-cron-trigger-token"] as string | undefined;
+    const expected = process.env.CRON_TRIGGER_TOKEN;
+    const viaToken = expected && cronToken && cronToken === expected;
+    if (!viaToken) {
+      const sess = await requireSuperAdmin(req, res, pool, activeSessions);
+      if (!sess) return;
+    }
+    try {
+      const overdueDays = Number(process.env.PROTOTYPE_FEEDBACK_OVERDUE_DAYS) || 30;
+      const r = await pool.query(
+        `SELECT v.user_id, v.vendor_name, u.email,
+                fb.last_at,
+                CASE WHEN fb.last_at IS NULL THEN NULL
+                     ELSE EXTRACT(DAY FROM now() - fb.last_at)::int END AS days_since
+           FROM vendor_onboarding_profiles v
+           JOIN users u ON u.id = v.user_id
+           LEFT JOIN LATERAL (
+             SELECT MAX(COALESCE(submitted_at, created_at)) AS last_at
+               FROM prototype_feedback p WHERE p.user_id = v.user_id
+           ) fb ON true
+          WHERE v.vendor_type = 'editing' AND v.partner_type = 'prototype'
+            AND v.approval_status = 'approved' AND u.email IS NOT NULL
+            AND (fb.last_at IS NULL OR fb.last_at < now() - ($1 || ' days')::interval)`,
+        [overdueDays],
+      );
+      const workspaceUrl = `${PORTAL_BASE}/partner/portal`;
+      let sent = 0;
+      for (const row of r.rows as Array<{ email: string; vendor_name: string | null; days_since: number | null; last_at: Date | null }>) {
+        const intro = row.last_at
+          ? `Det er ${row.days_since} dager siden din siste tilbakemelding.`
+          : "Vi har ennå ikke mottatt tilbakemelding fra deg.";
+        try {
+          await sendTransactionalEmail({
+            to: row.email,
+            subject: "Påminnelse: gi tilbakemelding som prototype-tester",
+            html: `<p>Hei ${row.vendor_name || ""},</p><p>${intro}</p>`
+              + `<p>Som prototype-tester har du <strong>0 % plattformgebyr</strong> — avtalen forutsetter at du `
+              + `hjelper oss å forbedre systemet med jevnlig tilbakemelding. Logg inn og bruk «Gi tilbakemelding» `
+              + `i partner-arbeidsområdet.</p><p><a href="${workspaceUrl}">Åpne partner-arbeidsområdet</a></p>`,
+            text: `Hei ${row.vendor_name || ""},\n${intro}\nSom prototype-tester har du 0 % plattformgebyr — `
+              + `avtalen forutsetter jevnlig tilbakemelding. Gi tilbakemelding: ${workspaceUrl}`,
+            fromLabel: "Creatorhub",
+            kind: "prototype_feedback_reminder",
+            pool,
+          });
+          sent += 1;
+        } catch (e) {
+          console.error("[prototype-feedback reminder] email failed", e);
+        }
+      }
+      res.json({ ok: true, overdue: r.rows.length, sent });
+    } catch (err) {
+      console.error("[prototype-feedback reminders]", err);
+      res.status(500).json({ error: "kunne_ikke_sende" });
+    }
+  });
+
   // Liste over godkjente redigeringsvendors m/ partner-type/fee (for admin-panelet, filtrerbar).
   app.get("/api/superadmin/editing/vendors", async (req, res) => {
     const s = await requireSuperAdmin(req, res, pool, activeSessions);
