@@ -28,6 +28,7 @@ import {
   Alert,
   Snackbar,
   LinearProgress,
+  TextField,
 } from "@mui/material";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
@@ -95,6 +96,93 @@ function requiredFor(isForeign: boolean, requiresExtraGdpr: boolean): string[] {
   const base = ["standard", "quality", "storage", "gdpr", "delivery", "payment", "dpa", "nda", "no_subcontractors", "no_portfolio_use"];
   if (isForeign && requiresExtraGdpr) base.push("scc", "tia");
   return base;
+}
+
+// Improvement B — micro-feedback per leverte jobb. Lett friksjon (👍/👎 + valgfri
+// linje) rett etter levering, kun for prototype-testere. Gjenbruker det eksisterende
+// /api/prototype-testing/feedback-endepunktet (syntetiserer tittel/beskrivelse).
+function JobMicroFeedback({
+  jobId,
+  projectTitle,
+  locale,
+}: {
+  jobId: string;
+  projectTitle: string | null;
+  locale: "no" | "en";
+}) {
+  const [sent, setSent] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState("");
+
+  if (sent) {
+    return (
+      <Typography variant="caption" color="success.main" sx={{ mt: 1, display: "block" }}>
+        {locale === "en" ? "Thanks — this shapes the next iteration." : "Takk — dette former neste iterasjon."}
+      </Typography>
+    );
+  }
+
+  const submit = async (rating: number) => {
+    if (busy) return;
+    setBusy(true);
+    const positive = rating >= 4;
+    const ctx = projectTitle ? ` (${projectTitle})` : "";
+    try {
+      await apiRequest("/api/prototype-testing/feedback", {
+        method: "POST",
+        body: {
+          title:
+            (positive
+              ? locale === "en" ? "Job workflow worked well" : "Jobb-arbeidsflyt fungerte bra"
+              : locale === "en" ? "Job workflow had friction" : "Jobb-arbeidsflyt hadde friksjon") + ctx,
+          description:
+            note.trim() ||
+            (positive
+              ? locale === "en" ? "Delivery flow felt smooth." : "Leveringsflyten føltes smidig."
+              : locale === "en" ? "Something in the delivery flow slowed me down." : "Noe i leveringsflyten bremset meg."),
+          feedbackType: "usability",
+          priority: positive ? "low" : "medium",
+          rating,
+          component: "editing-job",
+          projectId: jobId,
+          dashboardType: "editing_vendor",
+          tags: ["micro-feedback", "post-delivery"],
+        },
+      });
+      setSent(true);
+    } catch {
+      // stille — micro-feedback skal aldri blokkere arbeidsflyten
+      setSent(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Box sx={{ mt: 1.5, p: 1.5, borderRadius: 1, bgcolor: "action.hover" }}>
+      <Typography variant="caption" sx={{ display: "block", mb: 1, fontWeight: 600 }}>
+        {locale === "en"
+          ? "30 sec: how was this job's workflow? (prototype feedback)"
+          : "30 sek: hvordan var arbeidsflyten på denne jobben? (prototype-tilbakemelding)"}
+      </Typography>
+      <Stack direction="row" spacing={1} alignItems="center">
+        <TextField
+          size="small"
+          placeholder={locale === "en" ? "Optional: what stood out?" : "Valgfritt: hva stakk seg ut?"}
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          disabled={busy}
+          sx={{ flex: 1 }}
+        />
+        <Button size="small" variant="outlined" disabled={busy} onClick={() => submit(5)}>
+          👍
+        </Button>
+        <Button size="small" variant="outlined" color="warning" disabled={busy} onClick={() => submit(2)}>
+          👎
+        </Button>
+      </Stack>
+    </Box>
+  );
 }
 
 export default function EditingVendorWorkspace({ userId }: Props) {
@@ -322,6 +410,10 @@ export default function EditingVendorWorkspace({ userId }: Props) {
                       </>
                     )}
                   </Stack>
+                  {me?.platformFee?.prototype &&
+                  (j.status === "delivered" || j.status === "delivered_to_client") ? (
+                    <JobMicroFeedback jobId={j.id} projectTitle={j.project_title} locale={locale === "en" ? "en" : "no"} />
+                  ) : null}
                 </CardContent>
               </Card>
             ))
