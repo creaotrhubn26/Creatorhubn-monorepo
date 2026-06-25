@@ -1,0 +1,40 @@
+name: Leadgrid daily retention cleanup
+
+on:
+  schedule:
+    # 03:00 UTC daglig (1 time før intelligence-rescore)
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Trigger retention-cleanup
+        env:
+          BACKEND_URL: ${{ secrets.BACKEND_URL }}
+          CRON_TOKEN: ${{ secrets.LEADGRID_INTELLIGENCE_CRON_TOKEN }}
+        run: |
+          if [ -z "$BACKEND_URL" ] || [ -z "$CRON_TOKEN" ]; then
+            echo "Missing BACKEND_URL or LEADGRID_INTELLIGENCE_CRON_TOKEN secret"
+            exit 1
+          fi
+          RESP=$(curl -sf -X POST "${BACKEND_URL%/}/api/leadgrid/cron/retention-cleanup" \
+            -H "x-cron-trigger-token: $CRON_TOKEN" \
+            -H "content-type: application/json")
+          echo "$RESP" | jq
+          OK=$(echo "$RESP" | jq -r .ok)
+          if [ "$OK" != "true" ]; then
+            echo "::error::Retention cleanup failed"
+            exit 1
+          fi
+
+      - name: Slack-varsel ved feil
+        if: failure()
+        run: |
+          if [ -n "${{ secrets.SLACK_WEBHOOK_URL }}" ]; then
+            curl -s -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+              -H "Content-Type: application/json" \
+              -d "{\"text\":\"Leadgrid daily retention cleanup feilet — sjekk Render-logger\"}"
+          fi

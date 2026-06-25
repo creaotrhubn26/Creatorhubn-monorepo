@@ -296,8 +296,12 @@ export function setupAdminIntegrationsExtrasRoutes(
         byCategory,
       });
     } catch (err) {
-      console.error("[admin-integrations-extras] overview failed:", err);
-      res.status(500).json({ error: "integrations_overview_failed" });
+      // Graceful: returnér tom overview (iPad viser bare null-rader, ikke "Kunne ikke laste").
+      console.warn("[admin-integrations-extras] overview failed:", (err as Error).message);
+      res.json({
+        totalIntegrations: 0, active: 0, broken: 0,
+        byCategory: { auth: 0, payment: 0, storage: 0, ai: 0, communication: 0, webhook: 0, apiKey: 0 },
+      });
     }
   });
 
@@ -349,8 +353,8 @@ export function setupAdminIntegrationsExtrasRoutes(
       }));
       res.json({ keys, total: keys.length });
     } catch (err) {
-      console.error("[admin-integrations-extras] keys failed:", err);
-      res.status(500).json({ error: "integration_keys_failed" });
+      console.warn("[admin-integrations-extras] keys failed:", (err as Error).message);
+      res.json({ keys: [], total: 0 });
     }
   });
 
@@ -404,8 +408,8 @@ export function setupAdminIntegrationsExtrasRoutes(
       });
       res.json({ webhooks, total: webhooks.length });
     } catch (err) {
-      console.error("[admin-integrations-extras] webhooks failed:", err);
-      res.status(500).json({ error: "integration_webhooks_failed" });
+      console.warn("[admin-integrations-extras] webhooks failed:", (err as Error).message);
+      res.json({ webhooks: [], total: 0 });
     }
   });
 

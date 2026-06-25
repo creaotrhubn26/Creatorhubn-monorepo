@@ -180,7 +180,7 @@ export function registerLeadMapTeamRoutes({ app, pool, activeSessions }: Deps): 
         const r = await pool.query<MemberRow>(
           `SELECT pm.id::text, pm.user_id, pm.role,
                   pm.invited_at::text, pm.last_active_at::text,
-                  u.name AS user_name, u.email AS user_email
+                  NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), '') AS user_name, u.email AS user_email
              FROM project_members pm
              LEFT JOIN users u ON u.id = pm.user_id
             WHERE pm.project_id = $1
@@ -221,7 +221,7 @@ export function registerLeadMapTeamRoutes({ app, pool, activeSessions }: Deps): 
           `SELECT pi.id::text, pi.email, pi.role,
                   pi.invited_at::text, pi.expires_at::text,
                   pi.email_status,
-                  u.name AS inviter_name
+                  NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), '') AS inviter_name
              FROM project_invitations pi
              LEFT JOIN users u ON u.id = pi.invited_by
             WHERE pi.project_id = $1
@@ -444,7 +444,7 @@ export function registerLeadMapTeamRoutes({ app, pool, activeSessions }: Deps): 
         }>(
           `SELECT pi.email, pi.role, pi.expires_at::text, pi.accepted_at::text,
                   cp.name AS project_name,
-                  u.name AS inviter_name
+                  NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), '') AS inviter_name
              FROM project_invitations pi
              JOIN casting_projects cp ON cp.id = pi.project_id
              LEFT JOIN users u ON u.id = pi.invited_by

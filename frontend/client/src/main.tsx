@@ -24,6 +24,9 @@ import {
 } from './components/role-room/utils/runtime';
 import { registerRoleRoomPwaServiceWorker } from './components/role-room/services/roleRoomPwaService';
 import './styles/academy-responsive.css';
+// Tailwind v4 utilities (no preflight — MUI handles reset). Brukes av sider
+// som /leadgrid/connectors. Se styles/tailwind.css for begrunnelse.
+import './styles/tailwind.css';
 
 declare global {
   interface Performance {

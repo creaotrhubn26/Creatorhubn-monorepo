@@ -163,7 +163,10 @@ export async function getTikTokConnection(
   userId: string,
 ): Promise<TikTokConnection | null> {
   const result = await pool.query(
-    `SELECT * FROM role_room_tiktok_connections WHERE user_id = $1 LIMIT 1`,
+    // Produsent-scope: KUN den globale raden (project_id IS NULL). Klient-
+    // prosjekt-rader (project_id satt) skal aldri plukkes av publiserings-/
+    // status-lesere — de leses kun av klientportalen (loadConnectedPlatforms).
+    `SELECT * FROM role_room_tiktok_connections WHERE user_id = $1 AND project_id IS NULL LIMIT 1`,
     [userId],
   );
   return result.rows[0] ? mapRow(result.rows[0]) : null;
@@ -171,6 +174,10 @@ export async function getTikTokConnection(
 
 interface UpsertInput {
   userId: string;
+  // Klient-portal-tilkoblinger settes med project_id (lagres under produsentens
+  // user_id, men scopet til prosjektet). Produsentens egne globale tilkoblinger
+  // har project_id = null.
+  projectId?: string | null;
   openId: string;
   unionId?: string | null;
   username?: string | null;
@@ -200,11 +207,11 @@ export async function upsertTikTokConnection(
 
   const result = await pool.query(
     `INSERT INTO role_room_tiktok_connections (
-       id, user_id, tiktok_open_id, tiktok_union_id, tiktok_username, tiktok_display_name,
+       id, user_id, project_id, tiktok_open_id, tiktok_union_id, tiktok_username, tiktok_display_name,
        access_token_encrypted, refresh_token_encrypted, expiry_date, refresh_expiry_date,
        scopes, connection_state, profile, created_at, updated_at, last_used_at
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, 'connected', $12::jsonb, NOW(), NOW(), NOW())
-     ON CONFLICT (user_id) DO UPDATE SET
+     ) VALUES ($1, $2, $13, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, 'connected', $12::jsonb, NOW(), NOW(), NOW())
+     ON CONFLICT (user_id, COALESCE(project_id, '')) DO UPDATE SET
        tiktok_open_id = EXCLUDED.tiktok_open_id,
        tiktok_union_id = EXCLUDED.tiktok_union_id,
        tiktok_username = EXCLUDED.tiktok_username,
@@ -233,6 +240,7 @@ export async function upsertTikTokConnection(
       refreshExpiry,
       JSON.stringify(input.scopes),
       JSON.stringify(profile),
+      input.projectId ?? null,
     ],
   );
   return mapRow(result.rows[0]);
@@ -419,6 +427,7 @@ export async function completeTikTokOauthCallback(
   const scopeArr = (tokenData.scope || '').split(',').map((s) => s.trim()).filter(Boolean);
   const connection = await upsertTikTokConnection(pool, {
     userId: pendingState.userId,
+    projectId: pendingState.projectId ?? null,
     openId,
     unionId: userInfo.union_id ?? null,
     username: userInfo.username ?? null,

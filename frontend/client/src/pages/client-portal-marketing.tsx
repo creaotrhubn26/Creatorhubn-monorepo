@@ -121,9 +121,12 @@ const FORMAT_COLOR: Record<DashboardPost['format'], string> = {
   youtube_short: '#ef4444',
 };
 
-export default function ClientPortalMarketingPage() {
+export default function ClientPortalMarketingPage({ token: tokenProp }: { token?: string } = {}) {
+  // Token kan komme som prop (theroleroom.com/casting-main-hosten ruter via
+  // manuell path-ekstraksjon — App.tsx kjører ikke der) ELLER via wouter
+  // useParams (App.tsx-Route på creatorhub-hosten).
   const params = useParams<{ token: string }>();
-  const token = params?.token ?? '';
+  const token = (tokenProp ?? params?.token) ?? '';
   const [data, setData] = useState<DashboardResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

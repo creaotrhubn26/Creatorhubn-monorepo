@@ -1,7 +1,183 @@
 # memory.md — Role Room session-state, refaktor-plan og kø
 
-> Levende dokument for Claude Code-sesjoner og produkt-eier. Sist oppdatert: 2026-05-13 (kvelds-sesjon — Growth/SEO/Agent/Live-Set/DIT infrastruktur).
+> Levende dokument for Claude Code-sesjoner og produkt-eier. Sist oppdatert: **2026-06-23 — Leadgrid Intelligence-stack levert + nivå 1/2/3 robusthet/skalering shippet.**
 > Plassert i repo-rot slik at Claude Code (lokal eller web) automatisk leser den ved oppstart.
+
+---
+
+## 🚀 STATUS 2026-06-23 — Leadgrid Intelligence Platform
+
+> **TL;DR:** 19 PR-er merget på 36 timer (#851–#874). Backend live på prod. Mig 313–325 i DB. ~17 000 linjer ny Leadgrid-kode. Stacken er nå **NBA-system, ikke bare CRM**.
+
+### ✅ Alt levert (komplett liste)
+
+**Kjerne — Intelligence Engine + supporting features:**
+| PR | Tema | Linjer |
+|---|---|---|
+| #851 | Market Scan backend (Claude lead-discovery) | ~600 |
+| #854 | Market Scan iPad UI | 1066 |
+| #855 | **Intelligence Engine** (mig 313, 20 formler, NBA-determiner, 13 endepunkter, HMAC webhooks, daily cron) | 3099 |
+| #856 | Territory-grids + Smart dagsrute (mig 314+315+316) | 4576 |
+| #857 | iPad Kanban + Follow-up Queue + Intelligence Panel | 949 |
+| #858 | Analytics Dashboard (7 KPI-endepunkter, mig 317) | ~700 |
+| #859 | AI Meeting Notes + Role Room Agent Bridge (mig 318, 9 endepunkter) | ~1000 |
+| #861 | fix: cron+engine+routes bytt org_id-subqueries | 82 |
+| #862 | fix: route+territory org_id-subqueries | 13 |
+| #863 | fix: mig 313 indeks-bug | 8 |
+
+**Nivå 1 — Robusthet (skalering-roadmap):**
+| PR | Tema | Linjer |
+|---|---|---|
+| #865 | Skalerings-roadmap (4 nivåer m/ målbare terskler) | 325 |
+| #866 | Sentry + smoke-test + cron 3× retry + schema-validator + retention + timing-safe | 439 |
+| #867 | Async meeting-notes (202 + setImmediate + Whisper-retry) + zod-validering 5 endpoints (mig 319) | 299 |
+| #869 | iPad offline-kø (NetworkMonitor + ActionQueue + Resilient-wrappers + badge) | 402 |
+
+**Nivå 2 — Horisontal skalering:**
+| PR | Tema | Linjer |
+|---|---|---|
+| #870 | Batch-fetch CTE (40k→10k roundtrips) + AI rate-limiter (30 RPM Claude/Whisper, 50 OpenAI) + pool max=30 | 428 |
+| #871 | Mig 320 (denormaliser crm_customers.organization_id) + mig 321 (AI-cost tracking) + mig 322 (webhook secret-rotering) | 601 |
+
+**Nivå 3 — Platform:**
+| PR | Tema | Linjer |
+|---|---|---|
+| #873 | Public API v1 + API-keys + OpenAPI 3.1 + Swagger UI (mig 325) | 1150 |
+| #874 | WebSocket real-time push (backend, 4 event-types) | 276 |
+
+### 🟥 MÅ GJØRES MANUELT — operativt
+
+1. **Trigger backfill av crm_customers.organization_id** (task #487):
+   ```bash
+   gh workflow run leadgrid-backfill-organization-id.yml
+   # Verifiser: SELECT COUNT(*) FROM crm_customers WHERE organization_id IS NULL AND owner_user_id IS NOT NULL → 0
+   ```
+2. **Sett env-vars på Render** (alle valgfrie men anbefalte):
+   - `SENTRY_DSN` (uten den deaktiveres Sentry stille)
+   - `LEADGRID_STRICT_SCHEMA=1` (gjør schema-mismatch til fatal boot-feil)
+   - `MAPBOX_TOKEN` (Route Planner — har haversine-fallback)
+3. **GitHub-secrets** (allerede satt: `LEADGRID_INTELLIGENCE_CRON_TOKEN`, `BACKEND_URL`):
+   - `SLACK_WEBHOOK_URL` for cron-fail / smoke-test-alerts
+4. **TestFlight-build** (task #486): trenger ny iPad-build for at felt-selgere skal få:
+   - Offline-kø (PR #869)
+   - Pipeline Kanban + Follow-up Queue (PR #857)
+   - Market Scan UI (PR #854)
+   - (Senere) WebSocket-subscriber (task #489)
+5. **Roter Render API-key** delt i tidligere chat (`rnd_xF2crLAXkxHRIxCkHLT1C3eviReK`).
+6. **Roter Neon-credential** hvis ikke gjort tidligere.
+
+### 🟧 IKKE FERDIG — kjente begrensninger
+
+- **iPad WebSocket-subscriber** (task #489): Backend pusher live på `/ws/leadgrid`, men iPad lytter ikke ennå. iPad fortsetter å polle via Follow-up Queue. ~200 linjer Swift.
+- **Pakke 3B — Forecasting + Attribution** (task #488): mig 323 laget, men service+routes mangler. ~600 linjer backend.
+- **Drag-and-drop pipeline-stage på Kanban**: krever ny endpoint `PATCH /api/leadgrid/intelligence/leads/:id/pipeline-stage` + iPad-handler.
+- **Snooze på recommendations**: utvid `lead_recommendations` med `snoozed_until`-felt.
+- **Salesforce/HubSpot-connectors**: Public API v1 er klar (PR #873) — kan nå bygges.
+
+### 🔑 Beslutninger som venter på Daniel (fra roadmap §8)
+
+1. **AI-budsjett per org?** Forslag: 1k Claude-kall/mnd inkl. i Pro, 10k i Agency.
+2. **SLA-løfte?** 99.5 % vs 99.9 % (10× kost-forskjell).
+3. **Compliance-rekkefølge?** SOC 2 + ISO 27001 nå (for enterprise) eller vente til 1000 orgs?
+4. **iPad-target?** Hold iPad-first eller åpne for web?
+5. **Partner-API public release?** Når kommuniserer vi at v1 finnes?
+
+### 🛣️ Roadmap-fremtid (når Daniel sier «sett igang»)
+
+**Spor A — Fullfør nivå 3 (raskt — 1-2 dager):**
+- Pakke 3B (Forecasting + Attribution) — Claude p10/p50/p90-prediksjon + NBA-action win-rate
+- iPad WebSocket-subscriber (task #489)
+- iPad-UI for AI-usage / Analytics / Forecasting (eksisterer kun som backend)
+
+**Spor B — Salesforce/HubSpot-connectors:**
+- Bruker Public API v1 (PR #873) som baseline
+- OAuth + bi-directional sync
+- ~3-5 dager arbeid per connector
+
+**Spor C — Nivå 4 (hyperscale, venter til 1000+ orgs):**
+- Multi-region deployment (AWS ECS eu-west-1 + eu-north-1)
+- Citus/CockroachDB-sharding på org_id
+- Kafka for event-streaming
+- Kubernetes HPA
+- SOC 2 Type II + ISO 27001
+
+**Spor D — Markedsføring/oppstart (parallelt):**
+- Pricing-page med Pro/Agency-planer (knytt til AI-budsjett-beslutning)
+- Connector-marketplace UI (Salesforce-icon, HubSpot-icon, Zapier osv.)
+- Customer-onboarding-flyt for nye orgs
+
+### ⚠️ KRITISKE LÆRDOMMER (ikke gjør om disse igjen)
+
+1. **`crm_customers` har INGEN `organization_id`-kolonne** — bruk `owner_user_id IN (SELECT user_id::text FROM organization_members WHERE organization_id = $1::uuid)`-mønsteret. Mig 320 denormaliserer det, men subquery er fortsatt fallback.
+2. **`migrate.sh` hopper videre ved feilet mig** — sjekk `_migrations_applied`-tabellen, ikke bare GH-action-success. Eksempel: mig 313 droppet pga indeks-bug → 317+318 ble applied uten 313/314/315/316.
+3. **Permissions bruker `key` ikke `permission_key`** — mig 286-mønsteret.
+4. **`crm_lead_activities.activity_type` CHECK** tillater ikke `meeting_recap` — bruk `note_added` m/ `metadata.kind`.
+5. **iPad-agenter stallar på `xcodebuild`-blokker** — la dem bare skrive Swift-filer, gjør commit/build manuelt etterpå.
+6. **Render API-key + Neon-credential må roteres** etter at de er delt i chat-historikk.
+
+### 📚 Memory-filer for kontekst
+
+`.claude/projects/.../memory/` har disse Leadgrid-relevante memos:
+- `feedback_crm_customers_no_organization_id.md`
+- `feedback_migrate_sh_continues_after_error.md`
+- `feedback_pg_text_cast_not_iso8601.md`
+- `project_leadgrid_*.md` (flere)
+
+### 🧪 Test-flow når deploy lander (kopier-paste-bar)
+
+```bash
+BACKEND=https://creatorhub-backend-rtbl.onrender.com
+TOKEN=<din-session-bearer>
+
+# 1. Intelligence Engine — recompute en lead
+curl -X POST $BACKEND/api/leadgrid/intelligence/leads/<UUID>/recompute -H "Authorization: Bearer $TOKEN"
+
+# 2. Følg-opp-køen for org
+curl $BACKEND/api/leadgrid/intelligence/follow-up-queue -H "Authorization: Bearer $TOKEN"
+
+# 3. Analytics-overview
+curl $BACKEND/api/leadgrid/analytics/overview -H "Authorization: Bearer $TOKEN"
+
+# 4. AI-cost siste 30 dager
+curl $BACKEND/api/leadgrid/ai-usage/summary?sinceDays=30 -H "Authorization: Bearer $TOKEN"
+
+# 5. Voice-memo → Meeting Notes (202 Accepted, async)
+curl -X POST $BACKEND/api/leadgrid/leads/<UUID>/meeting-notes/from-text \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"transcript":"Møte med Per Hansen ..."}'
+
+# 6. Full intelligence-rapport (orkestrerer brreg+website+competitors+merch+threat+swot+outreach)
+curl -X POST $BACKEND/api/leadgrid/leads/<UUID>/full-intelligence -H "Authorization: Bearer $TOKEN"
+
+# 7. WebSocket real-time (forventer 'ready' + events ved subscribe)
+wscat -c "wss://creatorhub-backend-rtbl.onrender.com/ws/leadgrid?token=$TOKEN"
+> {"type":"subscribe","channels":["org:<UUID>"]}
+
+# 8. Public API v1 (krever API-key — lag via admin først)
+curl -X POST $BACKEND/api/leadgrid/api-keys -H "Authorization: Bearer $TOKEN" \
+  -d '{"name":"test","scopes":["leads.read"]}'
+# → returnerer lgk_live_…
+curl $BACKEND/api/v1/leads?limit=10 -H "Authorization: Bearer lgk_live_…"
+
+# 9. Swagger UI
+open $BACKEND/api/v1/docs
+```
+
+### 📁 Tidligere TestFlight-jobb (PR #856 — sjekk om relevant)
+
+- Repo-secrets må finnes: `APP_STORE_CONNECT_API_KEY_ID`, `APP_STORE_CONNECT_API_ISSUER_ID`, `APP_STORE_CONNECT_API_KEY_CONTENT` (.p8 base64).
+- App Store Connect-app-record for `com.creatorhubn.LeadMapApp` må finnes (engangs, manuelt).
+- Workflow: **«LeadMap TestFlight»** (`leadmap-testflight.yml`) via workflow_dispatch.
+- Build bumpet til 5 i `ipad/LeadMapApp/project.yml`; trenger ny bump for offline-kø + Kanban.
+
+### 🗄️ Backlog uten PowerOffice (fra territorie-jobb)
+
+- BRREG-backfill av alle kunder (orgnr + konkurs/avvikling-flagg).
+- «Nær meg»-nudge (ProximityMonitor + territorier + Intelligence).
+- Slack-varsling på `territory.breach` / `deal.won` (webhook-abonnement).
+- `verify-creatorhub-access.mjs` skript (talkit.no / medside.no / holycrust.no / thepetkey.com).
+- Fjerne committede søppelfiler med Neon-connstring fra git-historikk + roter credential.
+- `helmet` + app-nivå `express-rate-limit` i `backend/server/index.ts`.
 
 ---
 

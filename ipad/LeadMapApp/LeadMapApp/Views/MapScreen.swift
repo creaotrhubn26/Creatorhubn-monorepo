@@ -32,6 +32,7 @@ struct MapHomeView: View {
     @State private var showDrawingSheet = false
     @State private var showCardScanner = false
     @State private var showResearchStart = false
+    @State private var showCoverage = false
     @State private var camera: MapCameraPosition = .region(
         MKCoordinateRegion(
             center: .init(latitude: 59.9139, longitude: 10.7522), // Oslo
@@ -69,6 +70,29 @@ struct MapHomeView: View {
                     ForEach(appState.annotations) { annot in
                         annotationOverlay(annot)
                     }
+                    // Selgerens egne territorie-grids (polygon + sirkel)
+                    ForEach(appState.myTerritories) { t in
+                        territoryOverlay(t)
+                    }
+                    // Dagsrute-overlay (iPad-native): linje + nummererte stopp
+                    if let route = appState.dayRoute {
+                        let routeCoords = route.stops.compactMap { $0.coordinate }
+                        if routeCoords.count >= 2 {
+                            MapPolyline(coordinates: routeCoords)
+                                .stroke(.green, lineWidth: 4)
+                        }
+                        ForEach(route.stops) { stop in
+                            if let c = stop.coordinate {
+                                Annotation("Stopp \(stop.position)", coordinate: c) {
+                                    Text("\(stop.position)")
+                                        .font(.caption.bold())
+                                        .foregroundStyle(.white)
+                                        .padding(6)
+                                        .background(Circle().fill(.green))
+                                }
+                            }
+                        }
+                    }
                 }
                 .mapStyle(.standard(elevation: .flat))
                 .ignoresSafeArea(edges: .bottom)
@@ -78,6 +102,7 @@ struct MapHomeView: View {
                     ProjectContextCard()
                         .padding(.top, 4)
                     RemindersBanner()
+                    TerritoryBanner()
                     Spacer()
                 }
             }
@@ -131,6 +156,9 @@ struct MapHomeView: View {
                             Button("Tegn på kart", systemImage: "pencil.tip.crop.circle") {
                                 showDrawingSheet = true
                             }
+                            Button("Territorie-dekning", systemImage: "map.circle") {
+                                showCoverage = true
+                            }
                         }
                         // Lead Research er en VALGFRI tilleggsfunksjon.
                         // Vises kun hvis orgen har gitt brukeren
@@ -159,6 +187,9 @@ struct MapHomeView: View {
                 AnnotationDrawingView(
                     initialRegion: camera.region
                 )
+            }
+            .sheet(isPresented: $showCoverage) {
+                CoverageView()
             }
             .sheet(isPresented: $showCardScanner) {
                 if #available(iOS 16.0, *) {
@@ -197,6 +228,22 @@ struct MapHomeView: View {
             default:
                 EmptyMapContent()
             }
+        }
+    }
+
+    /// Render en territorie-grid som overlay: polygon og/eller sirkel.
+    @MapContentBuilder
+    private func territoryOverlay(_ t: Territory) -> some MapContent {
+        let coords = t.polygonCoordinates
+        if coords.count >= 3 {
+            MapPolygon(coordinates: coords)
+                .stroke(.blue, lineWidth: 2)
+                .foregroundStyle(.blue.opacity(0.10))
+        }
+        if let c = t.center, let r = t.radiusM {
+            MapCircle(center: c, radius: CLLocationDistance(r))
+                .stroke(.blue, lineWidth: 2)
+                .foregroundStyle(.blue.opacity(0.10))
         }
     }
 }

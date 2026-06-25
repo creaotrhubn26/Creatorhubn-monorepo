@@ -58,16 +58,24 @@ struct AdsConfigDetailResponse: Codable {
     let actions: [AdsAction]
 }
 
+/// Mappes mot client_ads_actions-rader fra backend
+/// `GET /api/admin-room/agent/ads/configs/:id`. Backend gir mange felter
+/// — vi aksepterer den minimale undermengden iPad-UI bruker.
 struct AdsAction: Codable, Hashable, Identifiable {
     let id: String
-    let configId: String
-    let actionType: String
-    let platform: String?
-    let status: String?              // 'pending' | 'completed' | 'failed'
-    let result: String?
+    let configId: String?
+    let actionName: String?
+    let displayName: String?
+    let goalCategory: String?
+    let triggerType: String?
     let createdAt: String?
-    let completedAt: String?
-    let errorMessage: String?
+
+    var actionType: String { actionName ?? "unknown" }
+    var platform: String? { "google_ads" }
+    var status: String? { nil }
+    var result: String? { nil }
+    var completedAt: String? { nil }
+    var errorMessage: String? { nil }
 }
 
 // ============================================================
@@ -118,8 +126,52 @@ struct AdsApproval: Codable, Hashable, Identifiable {
     var id: String { configId }
 }
 
+/// Mappes mot backend `GET /api/role-room/ads-approvals/pending`
+/// (client-ads-routes.ts). Backend gir `{pending: [{config: {...},
+/// actions: [...]}]}`. Vi unpack-er config-objektet til en flat
+/// AdsApproval.
 struct AdsApprovalsResponse: Codable {
     let approvals: [AdsApproval]
+
+    private struct ConfigRow: Codable {
+        let id: String?
+        let clientName: String?
+        let approvalMessage: String?
+        let sentForApprovalAt: String?
+        let reviewDeadline: String?
+    }
+    private struct Item: Codable {
+        let config: ConfigRow?
+    }
+    private struct Envelope: Codable {
+        let pending: [Item]?
+        let approvals: [AdsApproval]?
+    }
+
+    init(from decoder: Decoder) throws {
+        let env = try Envelope(from: decoder)
+        if let direct = env.approvals {
+            self.approvals = direct
+        } else {
+            self.approvals = (env.pending ?? []).compactMap { item -> AdsApproval? in
+                guard let cfg = item.config, let id = cfg.id else { return nil }
+                return AdsApproval(
+                    configId: id,
+                    clientName: cfg.clientName,
+                    producerName: nil,
+                    recommendationsSummary: cfg.approvalMessage,
+                    totalSpendNok: nil,
+                    requestedAt: cfg.sentForApprovalAt,
+                    deadline: cfg.reviewDeadline,
+                )
+            }
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: DynamicCodingKey.self)
+        try c.encode(approvals, forKey: DynamicCodingKey(stringValue: "approvals")!)
+    }
 }
 
 // ============================================================

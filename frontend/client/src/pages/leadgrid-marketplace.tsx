@@ -99,6 +99,19 @@ export default function LeadgridMarketplacePage() {
             Vetted partnere som har gått gjennom Leadgrid's verifiserings-program.
             Velg en partner som passer ditt behov.
           </Typography>
+          <Typography
+            component="a"
+            href="/leadgrid/connectors"
+            sx={{
+              color: PALETTE.accent,
+              fontSize: 14,
+              textDecoration: 'none',
+              fontWeight: 600,
+              '&:hover': { textDecoration: 'underline' },
+            }}
+          >
+            → Se Connector Marketplace (12 integrasjoner + 22 webhook-events)
+          </Typography>
         </Stack>
 
         <Stack direction={{ xs: "column", md: "row" }} spacing={2} mb={4} alignItems="center">

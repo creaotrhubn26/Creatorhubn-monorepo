@@ -8,6 +8,7 @@ import { CastingLandingPage } from './components/CastingLandingPage';
 import TheRoleRoomLanding from '@/pages/theroleroom-landing';
 import RoleRoomGdprNotice from '@/components/role-room/RoleRoomGdprNotice';
 import LeadgridLanding from '@/pages/leadgrid-landing';
+import LeadgridPricingPage from '@/pages/leadgrid-pricing';
 import LeadgridPersonvern from '@/pages/leadgrid-personvern';
 import LeadgridSuperadminPage from '@/pages/leadgrid-superadmin';
 import LeadgridClientPortalPage from '@/pages/leadgrid-client-portal';
@@ -17,6 +18,7 @@ import LeadgridDeveloperApplicationPage from '@/pages/leadgrid-developer-applica
 import LeadgridPartnerWizardPage from '@/pages/leadgrid-partner-wizard';
 import LeadgridPartnerDashboardPage from '@/pages/leadgrid-partner-dashboard';
 import LeadgridMarketplacePage from '@/pages/leadgrid-marketplace';
+import LeadgridConnectorsPage from '@/pages/leadgrid-connectors';
 import BlogIndexPage from '@/pages/blog-index';
 import BlogPostPage from '@/pages/blog-post';
 import AgencyLandingPage from '@/pages/agency-landing';
@@ -37,6 +39,7 @@ import MarketingPageRouter from '@/components/admin/content-marketing/MarketingP
 import { parseMarketingPagePath } from '@/components/admin/content-marketing/marketingPagesConfig';
 import { PublicBriefDetail, PublicBriefIndex, parsePublicBriefPath } from '@/components/admin/content-marketing/PublicBriefPage';
 import ClientWorkspaceShell from './components/client-workspace/ClientWorkspaceShell';
+import ClientPortalMarketingPage from '@/pages/client-portal-marketing';
 import { usePresenceHeartbeat } from '@/hooks/usePresenceHeartbeat';
 import { useAriaHiddenFocusFix } from '@/hooks/useAriaHiddenFocusFix';
 import { detectLocale } from './cms/useLocale';
@@ -51,6 +54,7 @@ import { syncSiteSeo } from '@/lib/siteSeo';
 import { trackMarketingPageView } from '@/lib/marketingPixelsRuntime';
 import RoleRoomUXLayer from './shared/RoleRoomUXLayer';
 import { getActiveProfessionMode } from './config/professionMode';
+import { Route } from 'wouter';
 import {
   Search as SearchTourIcon,
   HelpOutline as HelpTourIcon,
@@ -102,6 +106,30 @@ function upsertHeadLink(rel: string, href: string) {
   link.href = href;
   document.head.appendChild(link);
 }
+
+// App.tsx-only ruter som ALSO må virke på theroleroom.com. App.tsx kjører aldri
+// på denne hosten, så magic-link/invite/settings-lenker (bygd med theroleroom.com
+// som origin/hardkodet) falt stille til landingssiden. Lazy + wouter <Route> så
+// :token når komponenter som bruker useParams. (Audit etter dead-links/GA/portal.)
+const RrTesterInviteLanding = React.lazy(() =>
+  import('@/components/role-room/dance/BillingPanels').then((m) => ({ default: m.TesterInviteLanding })),
+);
+const RrDanceInviteLanding = React.lazy(() => import('@/components/role-room/dance/InviteLandingPage'));
+const RrLeadMapAccept = React.lazy(() => import('@/pages/LeadMapAccept'));
+const RrPostAgentLink = React.lazy(() => import('@/components/role-room/PostAgentLinkPage'));
+const RrAcceptTesterInvite = React.lazy(() => import('@/pages/AcceptTesterInvite'));
+const RrAcceptPrototypeTesterInvite = React.lazy(() => import('@/pages/AcceptPrototypeTesterInvite'));
+const RrSecuritySettings = React.lazy(() => import('@/pages/sikkerhet'));
+
+const THEROLEROOM_APP_ROUTES: Array<{ test: RegExp; path: string; component: React.ComponentType<any> }> = [
+  { test: /^\/invite\/[^/]+$/, path: '/invite/:token', component: RrTesterInviteLanding },
+  { test: /^\/dance\/invite\/[^/]+$/, path: '/dance/invite/:token', component: RrDanceInviteLanding },
+  { test: /^\/role-room\/accept-invite$/, path: '/role-room/accept-invite', component: RrAcceptTesterInvite },
+  { test: /^\/prototype-tester\/accept-invite$/, path: '/prototype-tester/accept-invite', component: RrAcceptPrototypeTesterInvite },
+  { test: /^\/lead-map\/accept$/, path: '/lead-map/accept', component: RrLeadMapAccept },
+  { test: /^\/link$/, path: '/link', component: RrPostAgentLink },
+  { test: /^\/innstillinger\/sikkerhet$/, path: '/innstillinger/sikkerhet', component: RrSecuritySettings },
+];
 
 function CastingStandaloneAppContent() {
   // Detekter locale fra /en/-prefix og strip det før path-parsing.
@@ -162,6 +190,15 @@ function CastingStandaloneAppContent() {
     return match ? decodeURIComponent(match[1]) : null;
   }, [localeCtx.pathname]);
 
+  // Klient-portal magic-link: /client/portal/:token — read-only marketing-plan-
+  // dashboard (token-i-URL-auth). Var KUN rutet i App.tsx, som ALDRI kjører på
+  // theroleroom.com/casting-main-hosten → lenken falt til landingssiden. Ekstraher
+  // token og render portalen her (mønster som /client/workspace over).
+  const clientPortalToken = useMemo(() => {
+    const match = localeCtx.pathname.match(/^\/client\/portal\/([^/]+)\/?$/);
+    return match ? decodeURIComponent(match[1]) : null;
+  }, [localeCtx.pathname]);
+
   useEffect(() => {
     if (typeof window === 'undefined') {
       return;
@@ -196,6 +233,10 @@ function CastingStandaloneAppContent() {
       </React.Suspense>
     );
   }
+  if (localeCtx.pathname === '/leadgrid/pricing' || localeCtx.pathname === '/leadgrid/pricing/'
+      || localeCtx.pathname === '/leadgrid/priser' || localeCtx.pathname === '/leadgrid/priser/') {
+    return <LeadgridPricingPage />;
+  }
   if (localeCtx.pathname === '/leadgrid' || localeCtx.pathname === '/leadgrid/') {
     return <LeadgridLanding />;
   }
@@ -220,6 +261,11 @@ function CastingStandaloneAppContent() {
   if (localeCtx.pathname === '/leadgrid/marketplace' ||
       localeCtx.pathname === '/leadgrid/marketplace/') {
     return <LeadgridMarketplacePage />;
+  }
+  // Connector Marketplace (public — viser frem API v1 integrasjoner)
+  if (localeCtx.pathname === '/leadgrid/connectors' ||
+      localeCtx.pathname === '/leadgrid/connectors/') {
+    return <LeadgridConnectorsPage />;
   }
   // Developer-docs (public)
   if (localeCtx.pathname === '/leadgrid/utviklere' ||
@@ -254,6 +300,10 @@ function CastingStandaloneAppContent() {
       : <PublicBriefDetail slug={briefRoute.slug} />;
   }
 
+  if (clientPortalToken) {
+    return <ClientPortalMarketingPage token={clientPortalToken} />;
+  }
+
   if (clientWorkspaceProjectId) {
     return <ClientWorkspaceShell projectId={clientWorkspaceProjectId} />;
   }
@@ -282,6 +332,16 @@ function CastingStandaloneAppContent() {
     }
     if (/^\/blog\/[^/]+$/.test(publicPath)) {
       return <BlogPostPage />;
+    }
+
+    // App.tsx-only ruter (invite/magic-link/settings) som også må virke her.
+    const appRoute = THEROLEROOM_APP_ROUTES.find((r) => r.test.test(publicPath));
+    if (appRoute) {
+      return (
+        <React.Suspense fallback={null}>
+          <Route path={appRoute.path} component={appRoute.component} />
+        </React.Suspense>
+      );
     }
   }
 

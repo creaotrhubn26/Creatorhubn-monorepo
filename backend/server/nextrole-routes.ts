@@ -421,7 +421,7 @@ export function setupNextRoleRoutes(deps: NextRoleRoutesDeps): void {
     // (settings.trialExpiringEmailSent IS NULL or false)
     const r = await pool.query(
       `SELECT mi.user_id, mi.trial_ends_at,
-              u.email, u.first_name, u.name
+              u.email, u.first_name, NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), '')
          FROM marketplace_installations mi
          LEFT JOIN users u ON u.id = mi.user_id
         WHERE mi.app_id = 'next-role'

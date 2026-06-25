@@ -253,8 +253,8 @@ struct SuperAdminRREconomyView: View {
             if let a = aggregate {
                 Section("Nøkkeltall") {
                     HStack {
-                        miniMetric("MRR", formatKr(a.mrrNok), .green)
-                        miniMetric("ARR", formatKr(a.arrNok), .purple)
+                        miniMetric("MRR", formatKr(a.mrrNok ?? 0), .green)
+                        miniMetric("ARR", formatKr(a.arrNok ?? 0), .purple)
                     }
                     HStack {
                         miniMetric("Aktive", "\(a.activeSubscribers)", .blue)

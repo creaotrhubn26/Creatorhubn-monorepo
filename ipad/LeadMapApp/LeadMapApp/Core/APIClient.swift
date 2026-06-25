@@ -278,6 +278,89 @@ actor APIClient {
         )
     }
 
+    // MARK: - Territorie-grids (LeadGrid territory enforcement)
+
+    /// Kun den innloggede selgerens egne grids (for on-device geofence).
+    func fetchMyTerritories(organizationId: String) async throws -> [Territory] {
+        let resp: TerritoriesResponse = try await get(
+            "/api/leadgrid/territories/mine?organization_id=\(organizationId)"
+        )
+        return resp.territories
+    }
+
+    /// Alle aktive grids i org-en (manager — for dekningskart).
+    func fetchOrgTerritories(organizationId: String) async throws -> [Territory] {
+        let resp: TerritoriesResponse = try await get(
+            "/api/leadgrid/territories?organization_id=\(organizationId)")
+        return resp.territories
+    }
+
+    /// Territorie-dekning for org-en (foreldreløse, overlapp, leads per grid).
+    func fetchCoverage(organizationId: String) async throws -> CoverageResult? {
+        let resp: CoverageResponse = try await get(
+            "/api/leadgrid/territories/coverage?organization_id=\(organizationId)")
+        return resp.coverage
+    }
+
+    /// Leder-dashboard: sone-ytelse per selger.
+    func fetchTerritoryDashboard(
+        organizationId: String, period: String = "last_30d"
+    ) async throws -> TerritoryDashboardResponse {
+        try await get(
+            "/api/leadgrid/territories/dashboard?organization_id=\(organizationId)&period=\(period)")
+    }
+
+    /// Opprett en grid fra et tegnet polygon (Apple Pencil på iPad).
+    /// Koordinatene lukkes til en GeoJSON-ring ([lng,lat]).
+    func createTerritory(
+        organizationId: String,
+        name: String,
+        assignedUserId: String?,
+        polygon coords: [CLLocationCoordinate2D]
+    ) async throws -> String {
+        var ring = coords.map { [$0.longitude, $0.latitude] }
+        if let first = ring.first, let last = ring.last,
+           first[0] != last[0] || first[1] != last[1] {
+            ring.append(first)
+        }
+        var body: [String: Any] = [
+            "organization_id": organizationId,
+            "name": name,
+            "geometry": ["type": "Polygon", "coordinates": [ring]],
+        ]
+        if let u = assignedUserId { body["assigned_user_id"] = u }
+        let resp: CreateTerritoryResponse = try await post(
+            "/api/leadgrid/territories", body: body)
+        return resp.id
+    }
+
+    // MARK: - Smart dagsrute
+
+    /// Planlegg dagens rute blant selgerens in-grid leads.
+    func planDayRoute(
+        organizationId: String, startLat: Double, startLng: Double
+    ) async throws -> DayRoutePlanResponse {
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd"
+        return try await post("/api/leadgrid/routes/plan", body: [
+            "organization_id": organizationId,
+            "start_lat": startLat,
+            "start_lng": startLng,
+            "planned_date": df.string(from: Date()),
+        ])
+    }
+
+    /// Oppdater status på et rute-stopp (innsjekk i felt).
+    func updateRouteStop(
+        routeId: String, stopId: String, status: String,
+        outcome: String? = nil, notes: String? = nil
+    ) async throws {
+        var body: [String: Any] = ["status": status]
+        if let o = outcome { body["outcome"] = o }
+        if let n = notes { body["notes"] = n }
+        try await patch("/api/leadgrid/routes/\(routeId)/stops/\(stopId)", body: body)
+    }
+
     // MARK: - Smart-transkript (PR #642 — Claude analyserer dikterings-notater)
 
     func analyzeTranscript(leadId: String, transcript: String) async throws -> TranscriptAnalysis {
@@ -969,6 +1052,120 @@ actor APIClient {
         try await patch("/api/leadgrid/portal/\(portalToken)/notification-prefs", body: payload)
     }
 
+    // ============================================================
+    // MARK: - Leadgrid Market Scan (PR #851)
+    //
+    // Native markedssjef-lead-discovery via Claude + BRREG + Places.
+    // Backend gjenbruker market-scan-service.ts under panseret og
+    // auto-oppretter crm_customers med lat/lng = pin på Kart-tab.
+    // RBAC: leadgrid.market_scan.run.
+    //
+    // NB: Funksjons- og type-navnene er prefikset `Leadgrid…` for å
+    // unngå kollisjon med eksisterende `fetchMarketScans()` /
+    // `MarketScan*` for det eldre /api/market-scans-endepunktet (brukt
+    // av SuperAdminFase22Views).
+    // ============================================================
+
+    /// Historikk over alle scans innlogget bruker har kjørt
+    /// (sortert nyeste først, maks 30).
+    func fetchLeadgridMarketScans() async throws -> [LeadgridMarketScan] {
+        let resp: LeadgridMarketScanListResponse = try await get(
+            "/api/leadgrid/market-scan"
+        )
+        return resp.scans
+    }
+
+    /// Hent én scan med tilhørende konkurrenter + muligheter.
+    /// Backend har separate endepunkter, så vi henter alt parallelt
+    /// og pakker det inn i et LeadgridMarketScanDetail.
+    func fetchLeadgridMarketScan(id: String) async throws -> LeadgridMarketScanDetail {
+        async let scan: LeadgridMarketScanProgressResponse = get(
+            "/api/leadgrid/market-scan/\(id)"
+        )
+        async let competitors: LeadgridMarketScanCompetitorsResponse = get(
+            "/api/leadgrid/market-scan/\(id)/competitors"
+        )
+        async let opportunities: LeadgridMarketScanOpportunitiesResponse = get(
+            "/api/leadgrid/market-scan/\(id)/opportunities"
+        )
+        let (s, c, o) = try await (scan, competitors, opportunities)
+        return LeadgridMarketScanDetail(
+            scan: s.scan,
+            competitors: c.competitors,
+            opportunities: o.opportunities,
+        )
+    }
+
+    /// Letvekts status-poll for detail-view (henter kun scan-progress —
+    /// competitors/opportunities oppdateres separat når status=completed).
+    func fetchLeadgridMarketScanProgress(id: String) async throws -> LeadgridMarketScan {
+        let resp: LeadgridMarketScanProgressResponse = try await get(
+            "/api/leadgrid/market-scan/\(id)"
+        )
+        return resp.scan
+    }
+
+    /// Kicker orkestratoren — returnerer ny scan-rad fra DB via
+    /// progress-poll (backend's run-endepunkt sender bare {scanId, name}).
+    func runLeadgridMarketScan(input: RunLeadgridMarketScanInput) async throws -> LeadgridMarketScan {
+        var body: [String: Any] = [
+            "industry": input.industry.trimmingCharacters(in: .whitespaces),
+            "region":   input.region.trimmingCharacters(in: .whitespaces),
+            "auto_create_leads": input.autoCreateLeads,
+        ]
+        let trimmedName = input.name.trimmingCharacters(in: .whitespaces)
+        if !trimmedName.isEmpty { body["name"] = trimmedName }
+        let trimmedAudience = input.targetAudience.trimmingCharacters(in: .whitespaces)
+        if !trimmedAudience.isEmpty { body["target_audience"] = trimmedAudience }
+        let trimmedGoal = input.goal.trimmingCharacters(in: .whitespaces)
+        if !trimmedGoal.isEmpty { body["goal"] = trimmedGoal }
+        if let orgId = input.organizationId, !orgId.isEmpty {
+            body["organization_id"] = orgId
+        }
+        let runResp: LeadgridMarketScanRunResponse = try await post(
+            "/api/leadgrid/market-scan/run",
+            body: body,
+        )
+        // Hent kanonisk scan-rad så caller får hele Leadgrid-Market-Scan-shape.
+        return try await fetchLeadgridMarketScanProgress(id: runResp.scanId)
+    }
+
+    /// Manuell trigger for å auto-opprette leads etter en scan som
+    /// kjørte med auto_create_leads=false. Returnerer oppdatert scan
+    /// (med ny leads_created_count).
+    @discardableResult
+    func createLeadgridLeadsFromScan(id: String) async throws -> LeadgridMarketScan {
+        let _: LeadgridMarketScanCreateLeadsResponse = try await post(
+            "/api/leadgrid/market-scan/\(id)/create-leads",
+            body: [:],
+        )
+        return try await fetchLeadgridMarketScanProgress(id: id)
+    }
+
+    // MARK: - Leadgrid Forecasting (PR #885, mig 323)
+    //
+    // Predikert revenue for konfigurert horisont (default 90d) m/
+    // p10/p50/p90-bånd + Claude-reasoning + contributing factors.
+    // Brukes av Forecasting-kortet på Min dag (iPad).
+    // ============================================================
+
+    /// Hent siste cached forecast (eller fresh hvis cache er kald).
+    func fetchPipelineForecast(horizon: Int = 90) async throws -> LeadgridForecast {
+        let resp: LeadgridForecastResponse = try await get(
+            "/api/leadgrid/forecasting/pipeline?horizon=\(horizon)"
+        )
+        return resp.forecast
+    }
+
+    /// Tving fresh recompute (Claude-kall + DB-skriv).
+    func refreshPipelineForecast(horizon: Int = 90) async throws -> LeadgridForecast {
+        let resp: LeadgridForecastResponse = try await post(
+            "/api/leadgrid/forecasting/pipeline/refresh",
+            body: ["horizon": horizon],
+        )
+        return resp.forecast
+    }
+
     // MARK: - Internal
 
     private func makeRequest(_ path: String, method: String = "GET") -> URLRequest {
@@ -1054,6 +1251,31 @@ actor APIClient {
         d.dateDecodingStrategy = .iso8601
         return d
     }()
+
+    // MARK: - Offline-resilient execute (robusthet-pakke 3)
+    //
+    // Raw write som OfflineActionQueue bruker når den drainer pending
+    // actions. Returnerer body (kan være tom) ved 2xx, throws ellers.
+
+    /// Raw execute for OfflineActionQueue. Returnerer Data ved 2xx, throws ellers.
+    func executeRaw(method: String, path: String, body: Data?) async throws -> Data {
+        var req = URLRequest(url: baseURL.appendingPathComponent(path))
+        req.httpMethod = method
+        req.timeoutInterval = 30
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        if let body = body {
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = body
+        }
+        let (data, resp) = try await session.data(for: req)
+        guard let http = resp as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+        if http.statusCode >= 400 {
+            throw APIError.serverError(http.statusCode, String(data: data, encoding: .utf8) ?? "")
+        }
+        return data
+    }
 }
 
 // MARK: - Fase 18: Super-admin endpoints
@@ -1974,6 +2196,33 @@ extension APIClient {
     func fetchAdminErrorDetail(id: String) async throws -> AdminErrorDetailResponse {
         try await get("/api/admin-room/errors/\(id)")
     }
+
+    // -- Leadgrid Research (Claude + BRREG + website-analyse) ------
+    //
+    // Native iPad-view for "Research med AI" per kunde. Backend ligger
+    // i backend/server/leadgrid-research-routes.ts.
+
+    /// Hent cached research hvis < 30 dager gammel. Returner nil ved 404
+    /// (ingen research kjørt enda, eller stale).
+    func fetchLeadgridResearch(leadId: String) async throws -> LeadgridResearch? {
+        do {
+            let env: LeadgridResearchEnvelope = try await get(
+                "/api/leadgrid/leads/\(leadId)/research"
+            )
+            return env.research
+        } catch APIError.statusCode(404) {
+            return nil
+        }
+    }
+
+    /// Kjør hele research-pipeline nå — BRREG → website → Claude. Tar
+    /// 10-30 sek. Returnerer ny research-blob.
+    func runLeadgridResearch(leadId: String) async throws -> LeadgridResearch {
+        let env: LeadgridResearchEnvelope = try await post(
+            "/api/leadgrid/leads/\(leadId)/research"
+        )
+        return env.research
+    }
 }
 
 /// Liten shim for å dekode arbitrary JSON-verdier (string/number/bool/null).
@@ -1997,6 +2246,8 @@ struct AnyCodableShim: Codable, Hashable {
 enum APIError: Error {
     case invalidResponse
     case statusCode(Int)
+    case invalidURL
+    case serverError(Int, String)
 }
 
 // MARK: - Response envelopes
@@ -2020,4 +2271,372 @@ struct OrgProfileEnvelope: Decodable {
     let canEdit: Bool
     let isOwner: Bool
     let ownerOnlyFields: [String]
+}
+
+// MARK: - Leadgrid Intelligence (PR #855)
+
+extension APIClient {
+
+    func fetchLeadIntelligence(leadId: String) async throws -> LeadgridIntelligenceForLead {
+        try await get("/api/leadgrid/intelligence/leads/\(leadId)")
+    }
+
+    func recomputeLeadIntelligence(leadId: String) async throws -> LeadgridIntelligenceForLead {
+        try await post("/api/leadgrid/intelligence/leads/\(leadId)/recompute", body: nil)
+    }
+
+    func fetchNBARecommendations(priority: String? = nil, limit: Int = 50) async throws -> [LeadgridNBARecommendation] {
+        var path = "/api/leadgrid/intelligence/recommendations?limit=\(limit)"
+        if let p = priority { path += "&priority=\(p)" }
+        let resp: NBARecommendationsResponse = try await get(path)
+        return resp.recommendations
+    }
+
+    func acceptRecommendation(_ id: String) async throws -> LeadgridNBARecommendation {
+        try await post("/api/leadgrid/intelligence/recommendations/\(id)/accept", body: nil)
+    }
+
+    func executeRecommendation(_ id: String, outcome: String, notes: String?) async throws -> LeadgridNBARecommendation {
+        var body: [String: Any] = ["outcome": outcome]
+        if let n = notes { body["outcome_notes"] = n }
+        return try await post("/api/leadgrid/intelligence/recommendations/\(id)/execute", body: body)
+    }
+
+    func dismissRecommendation(_ id: String) async throws -> LeadgridNBARecommendation {
+        try await post("/api/leadgrid/intelligence/recommendations/\(id)/dismiss", body: nil)
+    }
+
+    /// Snooze en NBA-anbefaling i N timer (1-168).
+    /// Backend: POST /api/leadgrid/intelligence/recommendations/:id/snooze (PR #882).
+    /// Emiter `recommendation.snoozed`-webhook server-side.
+    @discardableResult
+    func snoozeRecommendation(_ id: String, hours: Int) async throws -> SnoozeResult {
+        try await post(
+            "/api/leadgrid/intelligence/recommendations/\(id)/snooze",
+            body: ["hours": hours]
+        )
+    }
+
+    func fetchFollowUpQueue() async throws -> [LeadgridFollowUpItem] {
+        let resp: FollowUpQueueResponse = try await get("/api/leadgrid/intelligence/follow-up-queue")
+        return resp.items
+    }
+
+    func fetchLeadScoreHistory(leadId: String) async throws -> [LeadgridScoreHistoryEntry] {
+        let resp: ScoreHistoryResponse = try await get("/api/leadgrid/intelligence/leads/\(leadId)/history")
+        return resp.history
+    }
+
+    // PR #882 — drag-and-drop pipeline stage. Backend trigger Intelligence
+    // rescore + emit lead.pipeline_stage_changed webhook.
+    @discardableResult
+    func updateLeadPipelineStage(leadId: String, stage: String) async throws -> PipelineStageUpdateResult {
+        try await patchReturning(
+            "/api/leadgrid/intelligence/leads/\(leadId)/pipeline-stage",
+            body: ["pipeline_stage": stage]
+        )
+    }
+}
+
+struct PipelineStageUpdateResult: Decodable {
+    let ok: Bool
+    let leadId: String?
+    let oldStage: String?
+    let newStage: String?
+}
+
+private struct NBARecommendationsResponse: Decodable { let recommendations: [LeadgridNBARecommendation] }
+private struct FollowUpQueueResponse: Decodable { let items: [LeadgridFollowUpItem] }
+private struct ScoreHistoryResponse: Decodable { let history: [LeadgridScoreHistoryEntry] }
+
+/// Resultatet av en snooze-operasjon på en NBA-anbefaling.
+/// `snoozed_until` er ISO8601-tidspunkt; `hours` er antall timer den ble snoozet.
+struct SnoozeResult: Decodable {
+    let ok: Bool
+    let snoozedUntil: String?
+    let hours: Int?
+}
+
+// MARK: - Leadgrid Route Planner (PR #856 + #870)
+//
+// Bygger ovenpå eksisterende `planDayRoute`/`updateRouteStop` (smart dagsrute).
+// Disse nye metodene gir Route Planner-UI-et (auto in-grid + nærmeste-nabo)
+// modeller med expected_route_value + matrix_source, og henter detaljert
+// rute-detalj for innsjekk i felt.
+
+extension APIClient {
+    /// Planlegg dagsrute uten å trenge organizationId — backend velger basert
+    /// på selgerens in-grid leads. Returnerer nil hvis ingen aktuelle leads.
+    func planRoute(
+        startLat: Double,
+        startLng: Double,
+        limit: Int = 12,
+        plannedDate: String? = nil
+    ) async throws -> LeadgridRouteDetail? {
+        var body: [String: Any] = [
+            "start_lat": startLat,
+            "start_lng": startLng,
+            "limit": limit,
+        ]
+        if let plannedDate { body["planned_date"] = plannedDate }
+        let resp: LeadgridRoutePlanResponse = try await post(
+            "/api/leadgrid/routes/plan", body: body
+        )
+        return resp.route
+    }
+
+    /// Hent en lagret rute med oppdaterte stopp-statuser (for innsjekk-flyt).
+    func fetchRoute(_ id: String) async throws -> LeadgridRouteFullResponse {
+        try await get("/api/leadgrid/routes/\(id)")
+    }
+}
+
+// MARK: - Leadgrid Meeting Notes (Voice Memo → Whisper → Claude action items)
+
+/// Resultatet av en voice-memo opplasting.
+/// Backend prosesserer asynkront (Whisper → Claude); poll `fetchMeetingNote` for status.
+struct MeetingNoteUploadResult: Decodable {
+    let meetingNoteId: String
+    let status: String
+}
+
+struct MeetingNote: Decodable, Identifiable {
+    let id: String
+    let source: String?
+    let transcript: String?
+    let summary: String?
+    let actionItems: [MeetingActionItem]?
+    let decisions: [MeetingDecision]?
+    let nextSteps: [MeetingNextStep]?
+    let topics: [MeetingTopic]?
+    let confidence: Double?
+    let processingStatus: String
+    let errorMessage: String?
+    let createdAt: String?
+    let processedAt: String?
+}
+
+struct MeetingActionItem: Decodable, Hashable {
+    let title: String
+    let dueDate: String?
+    let priority: String?
+    let assignee: String?
+}
+
+struct MeetingDecision: Decodable, Hashable {
+    let decision: String
+    let owner: String?
+}
+
+struct MeetingNextStep: Decodable, Hashable {
+    let step: String
+    let owner: String?
+    let deadline: String?
+}
+
+struct MeetingTopic: Decodable, Hashable {
+    let topic: String
+    let sentiment: String?
+}
+
+private struct MeetingNoteResponse: Decodable { let note: MeetingNote }
+private struct MeetingNotesListResponse: Decodable { let notes: [MeetingNote] }
+
+extension APIClient {
+    /// Last opp voice-memo for et lead. Backend transkriberer m/ Whisper og
+    /// ekstraherer action items m/ Claude (async — poll `fetchMeetingNote`).
+    func uploadVoiceMemo(
+        leadId: String,
+        audioData: Data,
+        durationSeconds: Int,
+        language: String = "no"
+    ) async throws -> MeetingNoteUploadResult {
+        let base64 = audioData.base64EncodedString()
+        let body: [String: Any] = [
+            "audio_base64": base64,
+            "duration_seconds": durationSeconds,
+            "language": language,
+        ]
+        return try await post("/api/leadgrid/leads/\(leadId)/meeting-notes/upload-audio", body: body)
+    }
+
+    /// Hent én meeting-note m/ status + (ved completed) transcript + action items.
+    func fetchMeetingNote(_ id: String) async throws -> MeetingNote {
+        let resp: MeetingNoteResponse = try await get("/api/leadgrid/meeting-notes/\(id)")
+        return resp.note
+    }
+
+    /// Liste alle meeting-notes for et lead.
+    func fetchMeetingNotes(leadId: String) async throws -> [MeetingNote] {
+        let resp: MeetingNotesListResponse = try await get("/api/leadgrid/leads/\(leadId)/meeting-notes")
+        return resp.notes
+    }
+}
+
+// MARK: - Leadgrid Momentum (Daniels Momentum Engine)
+
+extension APIClient {
+
+    func fetchMomentumToday() async throws -> LeadgridMomentum {
+        let resp: LeadgridMomentumResponse = try await get("/api/leadgrid/momentum/today")
+        return resp.momentum
+    }
+
+    func fetchSalesGoal() async throws -> LeadgridSalesGoal {
+        let resp: LeadgridSalesGoalResponse = try await get("/api/leadgrid/momentum/goal")
+        return resp.goal
+    }
+
+    func saveSalesGoal(
+        revenueTarget: Double?,
+        dealsTarget: Int?,
+        meetingsTarget: Int?,
+        dailyContactsTarget: Int,
+        dailyFollowupsTarget: Int,
+        dailyMeetingsTarget: Int,
+        dailyPipelineMovesTarget: Int
+    ) async throws -> LeadgridSalesGoal {
+        var body: [String: Any] = [
+            "daily_contacts_target": dailyContactsTarget,
+            "daily_followups_target": dailyFollowupsTarget,
+            "daily_meetings_target": dailyMeetingsTarget,
+            "daily_pipeline_moves_target": dailyPipelineMovesTarget,
+        ]
+        if let r = revenueTarget { body["revenue_target"] = r }
+        if let d = dealsTarget { body["deals_target"] = d }
+        if let m = meetingsTarget { body["meetings_target"] = m }
+        let resp: LeadgridSalesGoalResponse = try await post("/api/leadgrid/momentum/goal", body: body)
+        return resp.goal
+    }
+
+    /// Henter momentum-trend siste N dager (clamp 7-180).
+    func fetchMomentumTrend(days: Int = 30) async throws -> LeadgridMomentumTrend {
+        let clamped = max(7, min(180, days))
+        let resp: LeadgridMomentumTrendResponse = try await get("/api/leadgrid/momentum/trend?days=\(clamped)")
+        return resp.trend
+    }
+}
+
+// MARK: - Leadgrid Analytics (PR #858 backend)
+//
+// Endepunkter (alle gated på analytics.view_* permission, scopet org):
+//   - GET /api/leadgrid/analytics/overview?sinceDays=N
+//   - GET /api/leadgrid/analytics/channels?sinceDays=N
+//   - GET /api/leadgrid/analytics/sources
+//   - GET /api/leadgrid/analytics/segments?by=category|city|pipeline_stage
+//   - GET /api/leadgrid/analytics/territories
+//   - GET /api/leadgrid/analytics/velocity-history?days=N
+//   - GET /api/leadgrid/analytics/conversion-funnel
+//
+// Brukes av LeadgridAnalyticsDashboardView (5 SwiftUI Charts-seksjoner).
+
+extension APIClient {
+
+    func fetchAnalyticsOverview(sinceDays: Int = 90) async throws -> LeadgridAnalyticsOverview {
+        let resp: AnalyticsOverviewResponse = try await get(
+            "/api/leadgrid/analytics/overview?sinceDays=\(sinceDays)"
+        )
+        return resp.overview
+    }
+
+    func fetchAnalyticsChannels(sinceDays: Int = 90) async throws -> [LeadgridChannelPerf] {
+        let resp: AnalyticsChannelsResponse = try await get(
+            "/api/leadgrid/analytics/channels?sinceDays=\(sinceDays)"
+        )
+        return resp.channels
+    }
+
+    func fetchAnalyticsSources() async throws -> [LeadgridSourcePerf] {
+        let resp: AnalyticsSourcesResponse = try await get("/api/leadgrid/analytics/sources")
+        return resp.sources
+    }
+
+    /// `by` accepts "category", "city", or "pipeline_stage".
+    func fetchAnalyticsSegments(by: String = "category") async throws -> [LeadgridSegmentPerf] {
+        let resp: AnalyticsSegmentsResponse = try await get(
+            "/api/leadgrid/analytics/segments?by=\(by)"
+        )
+        return resp.segments
+    }
+
+    func fetchAnalyticsTerritories() async throws -> [LeadgridTerritoryPerf] {
+        let resp: AnalyticsTerritoriesResponse = try await get("/api/leadgrid/analytics/territories")
+        return resp.territories
+    }
+
+    func fetchAnalyticsVelocity(days: Int = 90) async throws -> [LeadgridVelocityPoint] {
+        let resp: AnalyticsVelocityResponse = try await get(
+            "/api/leadgrid/analytics/velocity-history?days=\(days)"
+        )
+        return resp.history
+    }
+
+    func fetchAnalyticsFunnel() async throws -> [LeadgridFunnelStage] {
+        let resp: AnalyticsFunnelResponse = try await get("/api/leadgrid/analytics/conversion-funnel")
+        return resp.funnel
+    }
+}
+
+// MARK: - Leadgrid Full Intelligence Report (PR #859)
+//
+// Role Room Agent Bridge — orkestrerer 7 moduler parallelt og cacher 24h:
+//   brreg + website + competitors + merch + threat + swot + outreach
+//
+// Brukes av LeadgridFullIntelligenceSheet (trigget fra
+// LeadgridIntelligencePanel via "Full rapport"-knappen).
+
+extension APIClient {
+
+    /// Generer (eller returner cachet hvis < 24h) full 7-modulers rapport.
+    /// Backend bruker queue + parallell-fanout. Returnerer ferdig rapport
+    /// når orkestreringen er ferdig.
+    func generateFullIntelligence(
+        leadId: String,
+        modules: [String]? = nil
+    ) async throws -> LeadgridFullIntelligence? {
+        var body: [String: Any] = [:]
+        if let m = modules { body["modules"] = m }
+        let resp: FullIntelligenceResponse = try await post(
+            "/api/leadgrid/leads/\(leadId)/full-intelligence",
+            body: body
+        )
+        return resp.report
+    }
+
+    /// Henter cachet rapport. Returnerer nil hvis ingen er generert ennå.
+    func fetchFullIntelligence(leadId: String) async throws -> LeadgridFullIntelligence? {
+        let resp: FullIntelligenceResponse = try await get(
+            "/api/leadgrid/leads/\(leadId)/full-intelligence"
+        )
+        return resp.report
+    }
+
+    /// Tving re-generering (overstyrer 24h-cache).
+    func refreshFullIntelligence(leadId: String) async throws -> LeadgridFullIntelligence? {
+        let resp: FullIntelligenceResponse = try await post(
+            "/api/leadgrid/leads/\(leadId)/full-intelligence/refresh",
+            body: nil
+        )
+        return resp.report
+    }
+}
+
+// MARK: - Leadgrid AI Usage (PR #871)
+//
+// Eksponerer org-ens AI-kost over tid. Gated på backend via
+// billing.view_ai_usage (admin/salgssjef). 403 fra backend
+// håndteres via APIError.statusCode hos kalleren.
+
+extension APIClient {
+
+    /// Aggregert per-provider-bruk siste N dager.
+    func fetchAIUsageSummary(sinceDays: Int = 30) async throws -> LeadgridAIUsageSummary {
+        try await get("/api/leadgrid/ai-usage/summary?sinceDays=\(sinceDays)")
+    }
+
+    /// Daglig kost-historikk per provider for siste N dager
+    /// (bruker bar-stack i UI).
+    func fetchAIUsageHistory(days: Int = 30) async throws -> LeadgridAIUsageHistory {
+        try await get("/api/leadgrid/ai-usage/history?days=\(days)")
+    }
 }

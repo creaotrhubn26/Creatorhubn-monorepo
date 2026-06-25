@@ -49,16 +49,23 @@ export function registerLeadgridEmailBrandingRoutes({ app, pool, activeSessions 
   app.get("/api/superadmin/email-branding", async (req, res) => {
     const s = await requireSuperAdmin(pool, activeSessions, req, res);
     if (!s) return;
-    const r = await pool.query(
-      `SELECT id, org_key, from_name, from_email, reply_to_email,
-              sender_full_name, sender_title, sender_phone, sender_email,
-              brand_name, brand_logo_url, brand_primary_color, brand_accent_color,
-              footer_html, footer_address, custom_variables,
-              updated_at::text
-         FROM leadgrid_email_branding_config
-        ORDER BY (org_key IS NULL) DESC, updated_at DESC`,
-    );
-    res.json({ configs: r.rows });
+    try {
+      const r = await pool.query(
+        `SELECT id, org_key, from_name, from_email, reply_to_email,
+                sender_full_name, sender_title, sender_phone, sender_email,
+                brand_name, brand_logo_url, brand_primary_color, brand_accent_color,
+                footer_html, footer_address, custom_variables,
+                updated_at::text
+           FROM leadgrid_email_branding_config
+          ORDER BY (org_key IS NULL) DESC, updated_at DESC`,
+      );
+      res.json({ configs: r.rows });
+    } catch (err) {
+      // Graceful fallback: tabell mangler eller annen SQL-feil → tom liste
+      // (i stedet for 500 som viser "Kunne ikke laste" i iPad-UI).
+      console.warn("[email-branding] list failed:", (err as Error).message);
+      res.json({ configs: [] });
+    }
   });
 
   // ============================================================

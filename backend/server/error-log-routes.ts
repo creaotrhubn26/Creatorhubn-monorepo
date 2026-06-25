@@ -120,7 +120,9 @@ export function registerErrorLogRoutes({
       });
       return res.json({ errors });
     } catch (err) {
-      return res.status(500).json({ error: "list_failed", detail: String(err) });
+      // Graceful: error_log mangler → tom liste (iPad: "Ingen feil").
+      console.warn("[admin-room errors] list failed:", (err as Error).message);
+      return res.json({ errors: [] });
     }
   });
 
@@ -131,12 +133,18 @@ export function registerErrorLogRoutes({
       const stats = await getErrorStats(pool);
       return res.json({ stats });
     } catch (err) {
-      return res.status(500).json({ error: "stats_failed", detail: String(err) });
+      // Graceful: tom stats (iPad: skip stats-banner).
+      console.warn("[admin-room errors] stats failed:", (err as Error).message);
+      return res.json({
+        stats: { total: 0, unresolved: 0, critical: 0, last24h: 0, bySource: {} },
+      });
     }
   });
 
   // ── Resolve ──────────────────────────────────────────────────────
-  app.patch("/api/admin-room/errors/:id/resolve", async (req, res) => {
+  // iPad-clienten bruker POST (alle action-endepunkter); web bruker PATCH.
+  // Vi støtter begge for å unngå 404 på iPad.
+  const resolveHandler = async (req: Request, res: Response) => {
     const session = requireAdmin(req, res);
     if (!session) return;
     const body = (req.body ?? {}) as { note?: string };
@@ -150,16 +158,71 @@ export function registerErrorLogRoutes({
     } catch (err) {
       return res.status(500).json({ error: "resolve_failed", detail: String(err) });
     }
-  });
+  };
+  app.patch("/api/admin-room/errors/:id/resolve", resolveHandler);
+  app.post("/api/admin-room/errors/:id/resolve", resolveHandler);
 
   // ── Reopen ──────────────────────────────────────────────────────
-  app.patch("/api/admin-room/errors/:id/reopen", async (req, res) => {
+  const reopenHandler = async (req: Request, res: Response) => {
     if (!requireAdmin(req, res)) return;
     try {
       const ok = await reopenError(pool, req.params.id);
       return res.json({ ok });
     } catch (err) {
       return res.status(500).json({ error: "reopen_failed", detail: String(err) });
+    }
+  };
+  app.patch("/api/admin-room/errors/:id/reopen", reopenHandler);
+  app.post("/api/admin-room/errors/:id/reopen", reopenHandler);
+
+  // ── GET single error (iPad SuperAdminErrorDetailView) ───────────
+  app.get("/api/admin-room/errors/:id", async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    try {
+      const r = await pool.query(
+        `SELECT id::text, level, source, status_code, endpoint, message,
+                error_name, stack, fingerprint, user_id, user_email,
+                clarity_session_id, ip, user_agent, url, meta,
+                occurrence_count,
+                first_seen_at::text, last_seen_at::text,
+                resolved_at::text, resolved_by_user_id, resolved_note,
+                first_seen_at::text AS created_at
+           FROM error_log WHERE id = $1::uuid LIMIT 1`,
+        [req.params.id],
+      );
+      if (r.rows.length === 0) {
+        return res.status(404).json({ error: "not_found" });
+      }
+      const row = r.rows[0];
+      return res.json({
+        error: {
+          id: row.id,
+          source: row.source,
+          level: row.level,
+          // iPad-paritet: alias som matcher iPad-Codable AdminErrorDetail.
+          title: row.error_name ?? (row.message?.slice(0, 80) ?? null),
+          message: row.message,
+          stackTrace: row.stack,
+          endpoint: row.endpoint,
+          httpStatus: row.status_code,
+          userId: row.user_id,
+          userEmail: row.user_email,
+          userAgent: row.user_agent,
+          ipAddress: row.ip,
+          occurrenceCount: row.occurrence_count,
+          firstSeenAt: row.first_seen_at,
+          lastSeenAt: row.last_seen_at,
+          createdAt: row.created_at,
+          resolvedAt: row.resolved_at,
+          resolvedByUserId: row.resolved_by_user_id,
+          resolvedNote: row.resolved_note,
+          // metadata: lagres som JSONB → unngår string-mismatch på iPad
+          // ved å la den være null (iPad sin metadata er [String: String]?).
+          metadata: null,
+        },
+      });
+    } catch (err) {
+      return res.status(500).json({ error: "error_detail_failed", detail: String(err) });
     }
   });
 

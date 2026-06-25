@@ -23,6 +23,7 @@ struct CreatorHubOneRootView: View {
         case today
         case shoot
         case gallery
+        case redigering
         case admin
         case tilbud
         case pricing
@@ -38,6 +39,16 @@ struct CreatorHubOneRootView: View {
     /// main section and stashes ``?subTab=<id>`` into sessionStorage
     /// so the target hub picks it up on mount.
     enum TabPath {
+        /// Host that serves the photographer dashboard. This is the web
+        /// FRONTEND (the React SPA on Vercel) — deliberately NOT the API
+        /// backend (`session.backendBaseURL`). The backend only serves
+        /// `/api/*` and returns Express's "Cannot GET <path>" for these
+        /// SPA routes, which is exactly what a backend-based URL produced.
+        /// Auth still flows because ``WebViewAuthBridge`` pre-seeds the
+        /// session token into localStorage (host-agnostic), and the SPA
+        /// calls the backend API from there just like a desktop browser.
+        static let webBaseURL = URL(string: "https://creatorhubn.com")!
+
         static let gallery = "/photographer-dashboard-material?tab=showcase-admin"
         static let admin = "/photographer-dashboard-material?tab=administration"
         static let tilbud = "/photographer-dashboard-material?tab=administration&subTab=quotes"
@@ -65,7 +76,7 @@ struct CreatorHubOneRootView: View {
         fallback: Fallback,
     ) -> some View {
         if let stored = SignInService.shared.session,
-           let url = URL(string: path, relativeTo: stored.backendBaseURL) {
+           let url = URL(string: path, relativeTo: TabPath.webBaseURL) {
             AuthenticatedWebView(
                 url: url,
                 session: stored,
@@ -106,64 +117,45 @@ struct CreatorHubOneRootView: View {
                 .tabItem { Label("Shoot", systemImage: "camera") }
                 .tag(Tab.shoot)
 
-            // Galleri → Showcase Admin surface on the dashboard. Lets
-            // the photographer preview how each project renders for
-            // the client + track hearts/comments without leaving the
-            // iPad. The ``?tab=showcase-admin`` query hands off to
-            // UniversalDashboard's deep-link effect.
-            webTab(
-                path: TabPath.gallery,
-                fallback: GalleryPlaceholderView(),
-            )
-            .tabItem { Label("Galleri", systemImage: "photo.on.rectangle") }
-            .tag(Tab.gallery)
+            // Galleri → NATIVE client-gallery review (showcase admin).
+            // Rebuilt native for a run-and-gun feel: live engagement
+            // counts, client selections + comments, respond + mark
+            // complete — e2e synced against /api/photographer/galleries.
+            GalleriView()
+                .tabItem { Label("Galleri", systemImage: "photo.on.rectangle") }
+                .tag(Tab.gallery)
 
-            // Admin → whole AdministrationHub (pris, kontrakter,
-            // kommunikasjon, Evendi). Pencil-bridge on so contract
-            // signatures + tilbud-signaturer inside the hub work.
-            webTab(
-                path: TabPath.admin,
-                enablePencilBridge: true,
-                fallback: AdminPlaceholderView(),
-            )
-            .tabItem { Label("Admin", systemImage: "slider.horizontal.3") }
-            .tag(Tab.admin)
+            // Redigering → NATIVE photo-enhancer kommandosenter: Før/Etter,
+            // Smart Edit (MagicRecipe-justeringer + AI-retusj), bildekø,
+            // stegflyt og batch. Gjenbruker capture-appens egen
+            // MagicPipeline + AutoCleanService.
+            RedigeringView()
+                .tabItem { Label("Redigering", systemImage: "wand.and.stars") }
+                .tag(Tab.redigering)
 
-            // Tilbud → same hub but deep-links straight to the
-            // Evendi/quote sub-tab, skipping the two-tap drill-down.
-            // ``source=ipad-quote`` is kept for backwards-compat with
-            // SmartWorkflowSystem's own auto-open handler (desktop
-            // flow still works without the outer dashboard).
-            webTab(
-                path: TabPath.tilbud,
-                enablePencilBridge: true,
-                fallback: TilbudPlaceholderView(),
-            )
-            .tabItem { Label("Tilbud", systemImage: "doc.text.below.ecg") }
-            .tag(Tab.tilbud)
+            // Admin → NATIVE contracts hub (list, detalj, signér med
+            // Apple Pencil, send, status) e2e mot /api/contracts.
+            AdminView()
+                .tabItem { Label("Admin", systemImage: "slider.horizontal.3") }
+                .tag(Tab.admin)
 
-            // Pris-admin → the standalone ``/price-administration``
-            // route. Separate from Admin because pricing is
-            // referenced from every other tab (tilbud pulls prices,
-            // kontrakter reference packages) so a direct entry keeps
-            // the photographer one tap away.
-            webTab(
-                path: TabPath.pricing,
-                fallback: PricingPlaceholderView(),
-            )
-            .tabItem { Label("Pris", systemImage: "tag") }
-            .tag(Tab.pricing)
+            // Tilbud → NATIVE quote builder (liste, detalj m/ linjer,
+            // status, send, signér; nytt tilbud) e2e mot /api/quotes.
+            TilbudView()
+                .tabItem { Label("Tilbud", systemImage: "doc.text.below.ecg") }
+                .tag(Tab.tilbud)
 
-            // Meldinger → Kommunikasjon sub-tab inside Admin. Uses
-            // the same subTab handoff. Pencil-bridge off (no
-            // signatures in chat — would just pop the sheet on
-            // stray taps).
-            webTab(
-                path: TabPath.messages,
-                fallback: MessagesPlaceholderView(),
-            )
-            .tabItem { Label("Meldinger", systemImage: "envelope") }
-            .tag(Tab.messages)
+            // Pris → NATIVE pris-administrasjon (priser, tillegg, rabatter)
+            // e2e mot /api/price-administration.
+            PrisView()
+                .tabItem { Label("Pris", systemImage: "tag") }
+                .tag(Tab.pricing)
+
+            // Meldinger → NATIVE klient-innboks/chat e2e mot
+            // /api/communication.
+            MeldingerView()
+                .tabItem { Label("Meldinger", systemImage: "envelope") }
+                .tag(Tab.messages)
 
             // Debug-fanen følger KUN med i DEBUG-builds — skjules i release.
             #if DEBUG
@@ -172,6 +164,9 @@ struct CreatorHubOneRootView: View {
                 .tag(Tab.debug)
             #endif
         }
+        // CreatorHub dark branding across the whole shell — amber accent +
+        // forced dark scheme so every tab reads as one branded product.
+        .chBranded()
     }
 }
 
