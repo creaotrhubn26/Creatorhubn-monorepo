@@ -83,6 +83,8 @@ import {
   type BusinessPlan,
   type BusinessPlanInput,
   type ActivityLogEntry,
+  type AdminProductKey,
+  ADMIN_PRODUCTS,
 } from '../services/adminRoomApi';
 
 import { RoleNavConfigTab } from '../components/role-room/components/admin-room/RoleNavConfigTab';
@@ -1352,108 +1354,184 @@ interface BizPlanSection {
   }>;
 }
 
-const BIZ_PLAN_SECTIONS: BizPlanSection[] = [
-  {
-    id: 'exec',
-    title: '1.0 Executive Summary',
-    helperText: 'Kort oppsummering av hva The Role Room er, markedet, traction og hva du søker.',
-    fields: [{
-      key: 'execSummary',
-      dbKey: 'exec_summary',
-      label: 'Sammendrag',
-      minRows: 6,
-      placeholder: 'The Role Room er en helhetlig produksjonsplattform for det norske...',
-    }],
-  },
-  {
-    id: 'intro',
-    title: '2.0 Introduksjon',
-    helperText: 'Selskap, visjon, bærekraft, bransje og økonomiske nøkkeltall.',
-    fields: [
-      { key: 'introOverview', dbKey: 'intro_overview', label: '2.1 Selskapet', minRows: 4 },
-      { key: 'introVision', dbKey: 'intro_vision', label: '2.2 Visjon', minRows: 3 },
-      { key: 'introSustainability', dbKey: 'intro_sustainability', label: '2.3 Bærekraftige tiltak', minRows: 3 },
-      { key: 'introIndustry', dbKey: 'intro_industry', label: '2.4 Bransje', minRows: 3 },
-      { key: 'introFinancials', dbKey: 'intro_financials', label: '2.5 Regnskapstall (siste 2 år)', minRows: 3 },
-    ],
-  },
-  {
-    id: 'internal',
-    title: '3.0 Internanalyse',
-    helperText: 'Verdinettverk, drivere, ressurser og verdiskapningsevne.',
-    fields: [
-      { key: 'internalValueNetworkPrimary', dbKey: 'internal_value_network_primary', label: '3.1.1 Primæraktiviteter', minRows: 3 },
-      { key: 'internalValueNetworkSupport', dbKey: 'internal_value_network_support', label: '3.1.2 Støtteaktiviteter', minRows: 3 },
-      { key: 'internalDriversCustomer', dbKey: 'internal_drivers_customer', label: '3.2.1 Kundemasse og skala', minRows: 3 },
-      { key: 'internalDriversCapacity', dbKey: 'internal_drivers_capacity', label: '3.2.2 Kapasitetsutnyttelse', minRows: 3 },
-      { key: 'internalDriversLearning', dbKey: 'internal_drivers_learning', label: '3.2.3 Læring', minRows: 3 },
-      { key: 'internalResourceAnalysis', dbKey: 'internal_resource_analysis', label: '3.3 Ressursanalyse', minRows: 4 },
-      { key: 'internalOperational', dbKey: 'internal_operational', label: '3.4.1 Operasjonell evne', minRows: 3 },
-      { key: 'internalDynamic', dbKey: 'internal_dynamic', label: '3.4.2 Dynamisk evne', minRows: 3 },
-      { key: 'internalVrio', dbKey: 'internal_vrio', label: '3.5.1 VRIO-analyse',
-        helperText: 'Verdifull, sjelden, vanskelig å imitere, organisert. Liste opp ressurser per V/R/I/O-akse.',
-        minRows: 5 },
-      { key: 'internalNetworkStructure', dbKey: 'internal_network_structure', label: '3.5.2 Nettverksstruktur', minRows: 3 },
-      { key: 'internalStrengthsWeaknesses', dbKey: 'internal_strengths_weaknesses', label: '3.6 Styrker og svakheter', minRows: 4 },
-    ],
-  },
-  {
-    id: 'external',
-    title: '4.0 Ekstern analyse',
-    helperText: 'PESTEL, Porter\'s 5, konkurrenter og interessenter.',
-    fields: [
-      { key: 'externalPestel', dbKey: 'external_pestel', label: '4.1 PESTEL-analyse',
-        helperText: 'Politisk · Økonomisk · Sosialt · Teknologisk · Miljø · Juridisk',
-        minRows: 6 },
-      { key: 'externalPestelConclusion', dbKey: 'external_pestel_conclusion', label: '4.1.1 Konklusjon — PESTEL', minRows: 2 },
-      { key: 'externalPorter', dbKey: 'external_porter', label: '4.2.1 Porters fem krefter',
-        helperText: 'Nye aktører · Leverandører · Kunder · Substitutter · Konkurranseintensitet',
-        minRows: 5 },
-      { key: 'externalPorterConclusion', dbKey: 'external_porter_conclusion', label: '4.2.2 Konklusjon — bransjeanalyse', minRows: 2 },
-      { key: 'externalCompetitors', dbKey: 'external_competitors', label: '4.3 Konkurrentanalyse',
-        helperText: 'Liste opp 3-5 hovedkonkurrenter med posisjonering, styrker og svakheter.',
-        minRows: 5 },
-      { key: 'externalCompetitorSummary', dbKey: 'external_competitor_summary', label: '4.3.1 Oppsummering konkurrenter', minRows: 2 },
-      { key: 'externalStakeholders', dbKey: 'external_stakeholders', label: '4.4 Interessentanalyse',
-        helperText: 'Kunder, NFI, Filmforbundet, leverandører, ansatte. Interesse vs påvirkning.',
-        minRows: 4 },
-      { key: 'externalStakeholderConclusion', dbKey: 'external_stakeholder_conclusion', label: '4.4.1 Konklusjon — interessenter', minRows: 2 },
-    ],
-  },
-  {
-    id: 'swot',
-    title: '5.0 SWOT-analyse',
-    helperText: 'Styrker, svakheter, muligheter, trusler — én linje per punkt.',
-    fields: [
-      { key: 'swotStrengths', dbKey: 'swot_strengths', label: 'Styrker (S)', minRows: 3 },
-      { key: 'swotWeaknesses', dbKey: 'swot_weaknesses', label: 'Svakheter (W)', minRows: 3 },
-      { key: 'swotOpportunities', dbKey: 'swot_opportunities', label: 'Muligheter (O)', minRows: 3 },
-      { key: 'swotThreats', dbKey: 'swot_threats', label: 'Trusler (T)', minRows: 3 },
-    ],
-  },
-  {
-    id: 'wheel',
-    title: '6.0 Strategisk hjul + nåværende strategi',
-    helperText: 'Beskriv det strategiske hjulet (mål, virkemidler, tiltak) og hva som er den nåværende strategien.',
-    fields: [
-      { key: 'strategicWheel', dbKey: 'strategic_wheel', label: 'Strategisk hjul', minRows: 4 },
-      { key: 'currentStrategy', dbKey: 'current_strategy', label: 'Nåværende strategi', minRows: 4 },
-    ],
-  },
-  {
-    id: 'recommendation',
-    title: '7.0 Strategisk anbefaling',
-    helperText: 'Hvor bør The Role Room være om 12-24 måneder, og hvorfor — vurdert mot SAFe-kriteriene.',
-    fields: [
-      { key: 'strategicRecommendation', dbKey: 'strategic_recommendation', label: 'Anbefaling', minRows: 5 },
-      { key: 'safeSuitability', dbKey: 'safe_suitability', label: '7.1.1 Suitability — passer strategien?', minRows: 3 },
-      { key: 'safeAcceptability', dbKey: 'safe_acceptability', label: '7.1.2 Acceptability — godtas av interessenter?', minRows: 3 },
-      { key: 'safeFeasibility', dbKey: 'safe_feasibility', label: '7.1.3 Feasibility — gjennomførbar?', minRows: 3 },
-    ],
-  },
-];
+// Sections-struktur er identisk for begge produkter (samme tabell, samme felt),
+// men hjelpetekstene og placeholder-eksemplene bør tilpasses produktet — det
+// gjør utfyllingen mye lettere når Daniel sitter i Leadgrid-kontekst og ikke
+// vil tenke film/casting.
+function bizPlanSectionsForProduct(productKey: AdminProductKey): BizPlanSection[] {
+  const isLeadgrid = productKey === 'leadgrid';
+  const productLabel = isLeadgrid ? 'Leadgrid' : 'The Role Room';
+  const summaryPlaceholder = isLeadgrid
+    ? 'Leadgrid er det kartbaserte CRM-operativsystemet for B2B-feltsalg...'
+    : 'The Role Room er en helhetlig produksjonsplattform for det norske...';
+  const competitorHelper = isLeadgrid
+    ? 'Liste opp 3-5 hovedkonkurrenter (Pipedrive/HubSpot/SuperOffice/Salesforce/SPOTIO) med posisjonering, styrker og svakheter.'
+    : 'Liste opp 3-5 hovedkonkurrenter med posisjonering, styrker og svakheter.';
+  const stakeholderHelper = isLeadgrid
+    ? 'Kunder (B2B-byråer + interne markedsavd), bransjeforeninger, BRREG, Tripletex/Visma, Meta/Google. Interesse vs påvirkning.'
+    : 'Kunder, NFI, Filmforbundet, leverandører, ansatte. Interesse vs påvirkning.';
+  const pestelHelper = 'Politisk · Økonomisk · Sosialt · Teknologisk · Miljø · Juridisk';
+  const porterHelper = 'Nye aktører · Leverandører · Kunder · Substitutter · Konkurranseintensitet';
+  const vrioHelper = 'Verdifull, sjelden, vanskelig å imitere, organisert. Liste opp ressurser per V/R/I/O-akse.';
+
+  return [
+    {
+      id: 'exec',
+      title: '1.0 Executive Summary',
+      helperText: `Kort oppsummering av hva ${productLabel} er, markedet, traction og hva du søker.`,
+      fields: [{
+        key: 'execSummary',
+        dbKey: 'exec_summary',
+        label: 'Sammendrag',
+        minRows: 6,
+        placeholder: summaryPlaceholder,
+      }],
+    },
+    {
+      id: 'intro',
+      title: '2.0 Introduksjon',
+      helperText: 'Selskap, visjon, bærekraft, bransje og økonomiske nøkkeltall.',
+      fields: [
+        { key: 'introOverview', dbKey: 'intro_overview', label: '2.1 Selskapet', minRows: 4 },
+        { key: 'introVision', dbKey: 'intro_vision', label: '2.2 Visjon', minRows: 3 },
+        { key: 'introSustainability', dbKey: 'intro_sustainability', label: '2.3 Bærekraftige tiltak', minRows: 3 },
+        { key: 'introIndustry', dbKey: 'intro_industry', label: '2.4 Bransje', minRows: 3 },
+        { key: 'introFinancials', dbKey: 'intro_financials', label: '2.5 Regnskapstall (siste 2 år)', minRows: 3 },
+      ],
+    },
+    {
+      id: 'internal',
+      title: '3.0 Internanalyse',
+      helperText: 'Verdinettverk, drivere, ressurser og verdiskapningsevne.',
+      fields: [
+        { key: 'internalValueNetworkPrimary', dbKey: 'internal_value_network_primary', label: '3.1.1 Primæraktiviteter', minRows: 3 },
+        { key: 'internalValueNetworkSupport', dbKey: 'internal_value_network_support', label: '3.1.2 Støtteaktiviteter', minRows: 3 },
+        { key: 'internalDriversCustomer', dbKey: 'internal_drivers_customer', label: '3.2.1 Kundemasse og skala', minRows: 3 },
+        { key: 'internalDriversCapacity', dbKey: 'internal_drivers_capacity', label: '3.2.2 Kapasitetsutnyttelse', minRows: 3 },
+        { key: 'internalDriversLearning', dbKey: 'internal_drivers_learning', label: '3.2.3 Læring', minRows: 3 },
+        { key: 'internalResourceAnalysis', dbKey: 'internal_resource_analysis', label: '3.3 Ressursanalyse', minRows: 4 },
+        { key: 'internalOperational', dbKey: 'internal_operational', label: '3.4.1 Operasjonell evne', minRows: 3 },
+        { key: 'internalDynamic', dbKey: 'internal_dynamic', label: '3.4.2 Dynamisk evne', minRows: 3 },
+        { key: 'internalVrio', dbKey: 'internal_vrio', label: '3.5.1 VRIO-analyse', helperText: vrioHelper, minRows: 5 },
+        { key: 'internalNetworkStructure', dbKey: 'internal_network_structure', label: '3.5.2 Nettverksstruktur', minRows: 3 },
+        { key: 'internalStrengthsWeaknesses', dbKey: 'internal_strengths_weaknesses', label: '3.6 Styrker og svakheter', minRows: 4 },
+      ],
+    },
+    {
+      id: 'external',
+      title: '4.0 Ekstern analyse',
+      helperText: 'PESTEL, Porter\'s 5, konkurrenter og interessenter.',
+      fields: [
+        { key: 'externalPestel', dbKey: 'external_pestel', label: '4.1 PESTEL-analyse', helperText: pestelHelper, minRows: 6 },
+        { key: 'externalPestelConclusion', dbKey: 'external_pestel_conclusion', label: '4.1.1 Konklusjon — PESTEL', minRows: 2 },
+        { key: 'externalPorter', dbKey: 'external_porter', label: '4.2.1 Porters fem krefter', helperText: porterHelper, minRows: 5 },
+        { key: 'externalPorterConclusion', dbKey: 'external_porter_conclusion', label: '4.2.2 Konklusjon — bransjeanalyse', minRows: 2 },
+        { key: 'externalCompetitors', dbKey: 'external_competitors', label: '4.3 Konkurrentanalyse', helperText: competitorHelper, minRows: 5 },
+        { key: 'externalCompetitorSummary', dbKey: 'external_competitor_summary', label: '4.3.1 Oppsummering konkurrenter', minRows: 2 },
+        { key: 'externalStakeholders', dbKey: 'external_stakeholders', label: '4.4 Interessentanalyse', helperText: stakeholderHelper, minRows: 4 },
+        { key: 'externalStakeholderConclusion', dbKey: 'external_stakeholder_conclusion', label: '4.4.1 Konklusjon — interessenter', minRows: 2 },
+      ],
+    },
+    {
+      id: 'swot',
+      title: '5.0 SWOT-analyse',
+      helperText: 'Styrker, svakheter, muligheter, trusler — én linje per punkt.',
+      fields: [
+        { key: 'swotStrengths', dbKey: 'swot_strengths', label: 'Styrker (S)', minRows: 3 },
+        { key: 'swotWeaknesses', dbKey: 'swot_weaknesses', label: 'Svakheter (W)', minRows: 3 },
+        { key: 'swotOpportunities', dbKey: 'swot_opportunities', label: 'Muligheter (O)', minRows: 3 },
+        { key: 'swotThreats', dbKey: 'swot_threats', label: 'Trusler (T)', minRows: 3 },
+      ],
+    },
+    {
+      id: 'wheel',
+      title: '6.0 Strategisk hjul + nåværende strategi',
+      helperText: 'Beskriv det strategiske hjulet (mål, virkemidler, tiltak) og hva som er den nåværende strategien.',
+      fields: [
+        { key: 'strategicWheel', dbKey: 'strategic_wheel', label: 'Strategisk hjul', minRows: 4 },
+        { key: 'currentStrategy', dbKey: 'current_strategy', label: 'Nåværende strategi', minRows: 4 },
+      ],
+    },
+    {
+      id: 'recommendation',
+      title: '7.0 Strategisk anbefaling',
+      helperText: `Hvor bør ${productLabel} være om 12-24 måneder, og hvorfor — vurdert mot SAFe-kriteriene.`,
+      fields: [
+        { key: 'strategicRecommendation', dbKey: 'strategic_recommendation', label: 'Anbefaling', minRows: 5 },
+        { key: 'safeSuitability', dbKey: 'safe_suitability', label: '7.1.1 Suitability — passer strategien?', minRows: 3 },
+        { key: 'safeAcceptability', dbKey: 'safe_acceptability', label: '7.1.2 Acceptability — godtas av interessenter?', minRows: 3 },
+        { key: 'safeFeasibility', dbKey: 'safe_feasibility', label: '7.1.3 Feasibility — gjennomførbar?', minRows: 3 },
+      ],
+    },
+  ];
+}
+
+// Beholder eksport for bakoverkompatibilitet hvis andre filer importerer den
+// (default: Role Room).
+const BIZ_PLAN_SECTIONS: BizPlanSection[] = bizPlanSectionsForProduct('role_room');
+
+// Liten produkt-velger som speiler ADMIN_PRODUCTS — gjenbrukbar når flere
+// tabs (outreach, content marketing) skal få samme bryter.
+function ProductSwitcher({
+  value,
+  onChange,
+}: {
+  value: AdminProductKey;
+  onChange: (next: AdminProductKey) => void;
+}) {
+  return (
+    <Stack direction="row" spacing={0.5} sx={{
+      p: 0.5,
+      borderRadius: 999,
+      border: '1px solid rgba(148,163,184,0.22)',
+      bgcolor: 'rgba(15,23,42,0.65)',
+    }}>
+      {ADMIN_PRODUCTS.map((product) => {
+        const isActive = product.key === value;
+        return (
+          <Box
+            key={product.key}
+            onClick={() => onChange(product.key)}
+            sx={{
+              px: 1.6,
+              py: 0.5,
+              borderRadius: 999,
+              cursor: 'pointer',
+              userSelect: 'none',
+              fontSize: '0.83rem',
+              fontWeight: 700,
+              transition: 'all 120ms ease',
+              color: isActive ? '#0f172a' : 'rgba(226,232,240,0.78)',
+              bgcolor: isActive ? product.accent : 'transparent',
+              boxShadow: isActive ? `0 0 0 2px ${product.accent}33` : 'none',
+              '&:hover': {
+                color: isActive ? '#0f172a' : '#fff',
+                bgcolor: isActive ? product.accent : 'rgba(255,255,255,0.05)',
+              },
+            }}
+          >
+            {product.label}
+          </Box>
+        );
+      })}
+    </Stack>
+  );
+}
 
 function BusinessPlanTab() {
+  // Mig 0335: én forretningsplan per produkt. Daniel veksler mellom Role Room
+  // og Leadgrid uten å rote sammen tekstene. URL-state (?bizProduct=) gjør
+  // dette deeplink-vennlig.
+  const [productKey, setProductKey] = useState<AdminProductKey>(() => {
+    if (typeof window === 'undefined') return 'role_room';
+    const params = new URLSearchParams(window.location.search);
+    const fromUrl = params.get('bizProduct');
+    return fromUrl === 'leadgrid' ? 'leadgrid' : 'role_room';
+  });
+  const productLabel = ADMIN_PRODUCTS.find((p) => p.key === productKey)?.label ?? 'The Role Room';
+  const productAccent = ADMIN_PRODUCTS.find((p) => p.key === productKey)?.accent ?? '#22d3ee';
+  const sections = useMemo(() => bizPlanSectionsForProduct(productKey), [productKey]);
+
   const [plan, setPlan] = useState<BusinessPlan | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1461,15 +1539,29 @@ function BusinessPlanTab() {
   const [generatingField, setGeneratingField] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Partial<Record<keyof BusinessPlan, string>>>({});
 
+  function handleProductChange(next: AdminProductKey) {
+    if (next === productKey) return;
+    setProductKey(next);
+    setDrafts({});
+    setPlan(null);
+    setError(null);
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      params.set('bizProduct', next);
+      const newUrl = `${window.location.pathname}?${params.toString()}${window.location.hash}`;
+      window.history.replaceState({}, '', newUrl);
+    }
+  }
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    businessPlanApi.get()
+    businessPlanApi.get(productKey)
       .then((data) => { if (!cancelled) setPlan(data); })
       .catch((err) => { if (!cancelled) setError((err as Error).message); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, []);
+  }, [productKey]);
 
   function valueFor(dbKey: keyof BusinessPlan): string {
     if (drafts[dbKey] !== undefined) return drafts[dbKey] as string;
@@ -1495,7 +1587,7 @@ function BusinessPlanTab() {
     }
     setSavingField(String(field.dbKey));
     try {
-      const updated = await businessPlanApi.patch({ [field.key]: value } as BusinessPlanInput);
+      const updated = await businessPlanApi.patch({ [field.key]: value } as BusinessPlanInput, productKey);
       setPlan(updated);
       setDrafts((prev) => {
         const next = { ...prev };
@@ -1522,10 +1614,10 @@ function BusinessPlanTab() {
         fieldKey: String(field.key),
         fieldLabel: field.label,
         existingContent,
-      });
+      }, productKey);
       // Sett som draft + persist umiddelbart
       setDrafts((prev) => ({ ...prev, [field.dbKey]: result.text }));
-      const updated = await businessPlanApi.patch({ [field.key]: result.text } as BusinessPlanInput);
+      const updated = await businessPlanApi.patch({ [field.key]: result.text } as BusinessPlanInput, productKey);
       setPlan(updated);
       setDrafts((prev) => {
         const next = { ...prev };
@@ -1539,25 +1631,59 @@ function BusinessPlanTab() {
     }
   }
 
+  // Sist-oppdatert-chip — leser direkte fra rad-en, ingen ekstra fetch
+  const lastUpdatedHint = (() => {
+    if (!plan?.updated_at) return null;
+    const date = new Date(plan.updated_at);
+    if (Number.isNaN(date.getTime())) return null;
+    const diffSec = Math.round((Date.now() - date.getTime()) / 1000);
+    if (diffSec < 60) return 'oppdatert nå';
+    if (diffSec < 3600) return `oppdatert ${Math.round(diffSec / 60)} min siden`;
+    if (diffSec < 86_400) return `oppdatert ${Math.round(diffSec / 3600)} t siden`;
+    return `oppdatert ${date.toLocaleDateString('nb-NO')}`;
+  })();
+
   if (loading) return <Stack alignItems="center" sx={{ py: 6 }}><CircularProgress /></Stack>;
 
   return (
     <Stack spacing={3}>
       {error ? <Alert severity="error">{error}</Alert> : null}
-      <Stack direction="row" alignItems="center" justifyContent="space-between">
+      <Stack
+        direction={{ xs: 'column', md: 'row' }}
+        alignItems={{ xs: 'flex-start', md: 'center' }}
+        justifyContent="space-between"
+        spacing={1.5}
+      >
         <Box>
-          <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: '1.1rem' }}>
-            Forretningsplan & strategi — The Role Room
-          </Typography>
+          <Stack direction="row" alignItems="center" spacing={1.2} sx={{ mb: 0.4 }}>
+            <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: '1.1rem' }}>
+              Forretningsplan & strategi — {productLabel}
+            </Typography>
+            {lastUpdatedHint ? (
+              <Chip
+                size="small"
+                label={lastUpdatedHint}
+                sx={{
+                  bgcolor: `${productAccent}22`,
+                  color: productAccent,
+                  fontWeight: 700,
+                  fontSize: '0.72rem',
+                }}
+              />
+            ) : null}
+          </Stack>
           <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.86rem' }}>
-            Lagrer automatisk når du klikker ut av et felt. Følger BI/BBI-strukturen for strategiske analyser.
+            Hver produkt har egen plan. Lagrer automatisk når du klikker ut av et felt. Følger BI/BBI-strukturen.
           </Typography>
         </Box>
-        <Button variant="outlined" onClick={handlePrint} sx={{ textTransform: 'none', fontWeight: 700 }}>
-          Skriv ut / lagre PDF
-        </Button>
+        <Stack direction="row" spacing={1.2} alignItems="center">
+          <ProductSwitcher value={productKey} onChange={handleProductChange} />
+          <Button variant="outlined" onClick={handlePrint} sx={{ textTransform: 'none', fontWeight: 700 }}>
+            Skriv ut / lagre PDF
+          </Button>
+        </Stack>
       </Stack>
-      {BIZ_PLAN_SECTIONS.map((section) => (
+      {sections.map((section) => (
         <Box
           key={section.id}
           sx={{

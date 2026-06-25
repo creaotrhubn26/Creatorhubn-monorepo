@@ -409,9 +409,20 @@ export const PARTNER_STATUS_LABELS: Record<PartnerStatus, string> = {
 // Business plan (Forretningsplan + strategi)
 // ─────────────────────────────────────────────────────────
 
+// Mig 0335 — multi-produkt forretningsplan.
+// Daniel kan vedlikeholde én strategi-plan per produkt parallelt.
+export type AdminProductKey = 'role_room' | 'leadgrid';
+
+export const ADMIN_PRODUCTS: Array<{ key: AdminProductKey; label: string; accent: string }> = [
+  { key: 'role_room', label: 'The Role Room', accent: '#22d3ee' },
+  { key: 'leadgrid', label: 'Leadgrid', accent: '#a78bfa' },
+];
+
 export interface BusinessPlan {
   id: string;
   user_id: string;
+  product_key?: AdminProductKey;
+  updated_by?: string | null;
   // 1.0
   exec_summary: string | null;
   // 2.0
@@ -498,14 +509,16 @@ export type BusinessPlanInput = Partial<{
 }>;
 
 export const businessPlanApi = {
-  get: async (): Promise<BusinessPlan | null> => {
-    const data = await jsonFetch<{ plan: BusinessPlan | null }>('/business-plan');
+  get: async (productKey: AdminProductKey = 'role_room'): Promise<BusinessPlan | null> => {
+    const data = await jsonFetch<{ plan: BusinessPlan | null }>(
+      `/business-plan?product=${productKey}`,
+    );
     return data.plan;
   },
-  patch: async (input: BusinessPlanInput): Promise<BusinessPlan> => {
+  patch: async (input: BusinessPlanInput, productKey: AdminProductKey = 'role_room'): Promise<BusinessPlan> => {
     const data = await jsonFetch<{ plan: BusinessPlan }>('/business-plan', {
       method: 'PATCH',
-      body: JSON.stringify(input),
+      body: JSON.stringify({ ...input, productKey }),
     });
     return data.plan;
   },
@@ -513,10 +526,10 @@ export const businessPlanApi = {
     fieldKey: string;
     fieldLabel: string;
     existingContent?: string;
-  }): Promise<{ text: string; tokens: { input: number; output: number } }> => {
+  }, productKey: AdminProductKey = 'role_room'): Promise<{ text: string; tokens: { input: number; output: number } }> => {
     return jsonFetch('/business-plan/generate', {
       method: 'POST',
-      body: JSON.stringify(body),
+      body: JSON.stringify({ ...body, productKey }),
     });
   },
 };

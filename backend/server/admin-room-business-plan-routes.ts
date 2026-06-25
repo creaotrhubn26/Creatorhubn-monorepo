@@ -28,6 +28,38 @@ import type { AdminRoomRoutesDeps } from "./_shared";
 import { logAIUsage } from "./ai-usage-tracker.js";
 import { archiveToRoleRoomB2, businessPlanSnapshotKey } from "./b2-archive-helper.js";
 
+// Multi-produkt (jf. mig 0335): én forretningsplan per (user_id, product_key).
+// Default 'role_room' bevarer eksisterende rader.
+function resolveProductKey(raw: unknown): "role_room" | "leadgrid" {
+  const v = typeof raw === "string" ? raw : "";
+  return v === "leadgrid" ? "leadgrid" : "role_room";
+}
+
+const PRODUCT_LABEL: Record<"role_room" | "leadgrid", string> = {
+  role_room: "The Role Room",
+  leadgrid: "Leadgrid",
+};
+
+// Produkt-spesifikk kontekst som AI-system-prompten injiserer.
+const PRODUCT_CONTEXT: Record<"role_room" | "leadgrid", string> = {
+  role_room: `Selskapet er The Role Room — en helhetlig produksjonsplattform for det norske
+film- og innholdsmarkedet. Stable produktfunksjonalitet: casting (roller,
+kandidater, kanban), crew & lokasjoner, storyboard og shotlists, budsjett-
+styring (kategori-grupper, Avvik, Cashflow, Rapporter), avtaler (NDA,
+samarbeidsavtaler, signering via Google), TROLL-demo for fremvisning.
+Multi-vertikal: produksjonsteam og innholdsprodusenter.`,
+  leadgrid: `Selskapet er Leadgrid — det andre flaggskipet under CreatorHub. Et
+kart-først CRM-operativsystem for B2B-feltsalg og markedsoperasjoner.
+iPad-først (TestFlight live som v0.5.0), salgshierarki som førsteklasses
+primitiv (markedssjef → teamleder → salgskonsulent → promotør → research +
+super_admin), BRREG-auto-onboarding på 30 sek, ad-tech-stack-integrasjon
+(Google/Meta/LinkedIn/TikTok + GA4/GTM/GSC), white-label klient-portal
+på Agency-tier (990 kr/mnd). Pre-revenue. Målgruppe-faser:
+(1) B2B-byråer som lever av feltsalg/lead-gen for SMB-kunder,
+(2) interne markedsavdelinger i bransjer som telekom/energi/agro/foodservice,
+(3) franchise-hovedkontor som vil ha samme arbeidsflyt i alle ledd.`,
+};
+
 const BUSINESS_PLAN_TEXT_FIELDS = [
   "exec_summary",
   "intro_overview",
@@ -77,17 +109,19 @@ export function setupAdminBusinessPlanRoutes(deps: AdminRoomRoutesDeps): void {
     app,
     pool,
     requireAdminRoomAccess,
+    logAdminActivity,
   } = deps;
 
   app.get("/api/admin-room/business-plan", async (req, res) => {
     const session = requireAdminRoomAccess(req, res);
     if (!session) return;
+    const productKey = resolveProductKey(req.query.product);
     try {
       const result = await pool.query(
-        `SELECT * FROM admin_business_plan WHERE user_id = $1`,
-        [session.userId],
+        `SELECT * FROM admin_business_plan WHERE user_id = $1 AND product_key = $2`,
+        [session.userId, productKey],
       );
-      res.json({ plan: result.rows[0] ?? null });
+      res.json({ plan: result.rows[0] ?? null, productKey });
     } catch (err) {
       console.error("admin-room business-plan get error", err);
       res.status(500).json({ error: "Kunne ikke hente forretningsplan" });
@@ -98,6 +132,7 @@ export function setupAdminBusinessPlanRoutes(deps: AdminRoomRoutesDeps): void {
   app.post("/api/admin-room/business-plan/generate", async (req, res) => {
     const session = requireAdminRoomAccess(req, res);
     if (!session) return;
+    const productKey = resolveProductKey((req.body as Record<string, unknown> | undefined)?.productKey ?? req.query.product);
     const body = (req.body ?? {}) as Record<string, unknown>;
     const fieldKey = typeof body.fieldKey === "string" ? body.fieldKey : "";
     const fieldLabel = typeof body.fieldLabel === "string" ? body.fieldLabel : "";
@@ -116,8 +151,8 @@ export function setupAdminBusinessPlanRoutes(deps: AdminRoomRoutesDeps): void {
       // Hent eksisterende plan-data som kontekst — Claude kan referere til
       // andre seksjoner for å lage konsistent tekst på tvers.
       const planResult = await pool.query(
-        `SELECT * FROM admin_business_plan WHERE user_id = $1`,
-        [session.userId],
+        `SELECT * FROM admin_business_plan WHERE user_id = $1 AND product_key = $2`,
+        [session.userId, productKey],
       );
       const plan = planResult.rows[0] ?? {};
 
@@ -134,26 +169,20 @@ Skrivestil:
 - Ingen anførselstegn rundt outputen
 - Ingen forspil — returner kun innholdet selv
 
-Selskapet er The Role Room — en helhetlig produksjonsplattform for det norske
-film- og innholdsmarkedet. Stable produktfunksjonalitet: casting (roller,
-kandidater, kanban), crew & lokasjoner, storyboard og shotlists, budsjett-
-styring (kategori-grupper, Avvik, Cashflow, Rapporter), avtaler (NDA,
-samarbeidsavtaler, signering via Google), TROLL-demo for fremvisning.
-Multi-vertikal: produksjonsteam og innholdsprodusenter. Pilotkunde:
-Holy Crust (Oslo).`;
+${PRODUCT_CONTEXT[productKey]}`;
 
       const planSummary = Object.entries(plan)
         .filter(([key, value]) => (
           typeof value === "string" && value.trim().length > 0
           && key !== fieldKey
-          && !["id", "user_id", "metadata", "created_at", "updated_at"].includes(key)
+          && !["id", "user_id", "metadata", "created_at", "updated_at", "product_key", "updated_by"].includes(key)
         ))
         .slice(0, 10)
         .map(([key, value]) => `${key}: ${(value as string).slice(0, 200)}`)
         .join("\n");
 
       const userPrompt = [
-        `Skriv innhold for seksjonen "${fieldLabel}" i en forretningsplan for The Role Room.`,
+        `Skriv innhold for seksjonen "${fieldLabel}" i en forretningsplan for ${PRODUCT_LABEL[productKey]}.`,
         existingContent ? `\nEksisterende utkast (utvid eller forbedre):\n${existingContent}` : null,
         planSummary ? `\nKontekst fra andre seksjoner:\n${planSummary}` : null,
       ].filter(Boolean).join("\n");
@@ -196,14 +225,17 @@ Holy Crust (Oslo).`;
     const session = requireAdminRoomAccess(req, res);
     if (!session) return;
     const body = (req.body ?? {}) as Record<string, unknown>;
+    const productKey = resolveProductKey(body.productKey ?? req.query.product);
     const sets: string[] = [];
-    const params: unknown[] = [session.userId];
+    const params: unknown[] = [session.userId, productKey];
+    const changedFields: string[] = [];
     for (const field of BUSINESS_PLAN_TEXT_FIELDS) {
       const bodyKey = TEXT_FIELD_TO_BODY_KEY[field];
       if (bodyKey in body) {
         const value = typeof body[bodyKey] === "string" ? (body[bodyKey] as string) : null;
         params.push(value);
         sets.push(`${field} = $${params.length}`);
+        changedFields.push(field);
       }
     }
     if (sets.length === 0) {
@@ -211,18 +243,33 @@ Holy Crust (Oslo).`;
       return;
     }
     sets.push("updated_at = now()");
+    // updated_by er session.userId — samme som user_id i dag, men når
+    // multi-bruker-redigering kommer (PR 3) blir det forskjellig.
+    sets.push(`updated_by = $1`);
     try {
-      // UPSERT så første PATCH oppretter rad hvis ikke finnes
+      // UPSERT per (user_id, product_key) så første PATCH oppretter rad
+      // hvis ikke finnes for valgt produkt.
       const upsertResult = await pool.query(
-        `INSERT INTO admin_business_plan (user_id) VALUES ($1)
-           ON CONFLICT (user_id) DO NOTHING`,
-        [session.userId],
+        `INSERT INTO admin_business_plan (user_id, product_key) VALUES ($1, $2)
+           ON CONFLICT (user_id, product_key) DO NOTHING`,
+        [session.userId, productKey],
       );
       void upsertResult;
       const result = await pool.query(
-        `UPDATE admin_business_plan SET ${sets.join(", ")} WHERE user_id = $1 RETURNING *`,
+        `UPDATE admin_business_plan SET ${sets.join(", ")}
+          WHERE user_id = $1 AND product_key = $2
+          RETURNING *`,
         params,
       );
+
+      // ── Audit-logg for sync-historikk (Notion+Slack-stil aktivitetsfeed)
+      logAdminActivity({
+        userId: session.userId,
+        entityType: "business_plan",
+        entityId: result.rows[0]?.id ?? `${session.userId}:${productKey}`,
+        action: "updated",
+        summary: `[${productKey}] Forretningsplan oppdatert (felt: ${changedFields.join(", ")})`,
+      }).catch(() => undefined);
 
       // ── B2-arkivering (fire-and-forget) ─────────────────────────────
       // Hver PATCH lagrer et fullt snapshot. I tillegg kjører cron en
@@ -232,10 +279,11 @@ Holy Crust (Oslo).`;
         const snapshot = {
           snapshotAt: new Date().toISOString(),
           trigger: "patch",
+          productKey,
           plan: result.rows[0],
         };
         void archiveToRoleRoomB2(
-          businessPlanSnapshotKey(),
+          businessPlanSnapshotKey(productKey),
           JSON.stringify(snapshot, null, 2),
           "application/json; charset=utf-8",
         ).catch((err) => console.warn("[business-plan] B2-arkivering feilet", (err as Error).message));
@@ -243,7 +291,7 @@ Holy Crust (Oslo).`;
         console.warn("[business-plan] B2-arkivering oppsett feilet", (err as Error).message);
       }
 
-      res.json({ plan: result.rows[0] });
+      res.json({ plan: result.rows[0], productKey });
     } catch (err) {
       console.error("admin-room business-plan patch error", err);
       res.status(500).json({ error: "Kunne ikke oppdatere forretningsplan" });
