@@ -23,6 +23,7 @@ import {
 } from './role-room-oauth-store.js';
 import { resolveClientPortalSession } from './role-room-client-portal.js';
 import { notifyProducerOfClientPlatformConnection } from './role-room-producer-notifications.js';
+import { canAccessProjectAds, readProjectAccessUser } from './role-room-project-access.js';
 import { getAssistantAreas } from './role-room-assistant-access.js';
 import {
   getProjectProducerUserId,
@@ -23731,6 +23732,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           typeof req.query.period === 'string' && /^\d{4}-\d{2}$/.test(req.query.period)
             ? req.query.period
             : new Date().toISOString().slice(0, 7);
+        if (!(await canAccessProjectAds(pool, projectId, readProjectAccessUser(req)))) {
+          return res.status(403).json({ error: 'forbidden_project' });
+        }
         const rows = await getChannelResultRows(pool, projectId, period);
         const results = buildChannelResults(rows);
         res.json({ period, ...results });
@@ -23753,6 +23757,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           typeof req.query.period === 'string' && /^\d{4}-\d{2}$/.test(req.query.period)
             ? req.query.period
             : new Date().toISOString().slice(0, 7);
+        if (!(await canAccessProjectAds(pool, projectId, readProjectAccessUser(req)))) {
+          return res.status(403).json({ error: 'forbidden_project' });
+        }
         const campaigns = await getCampaignResultRows(pool, projectId, period);
         const campaignsWithRoas = campaigns.map((c) => ({
           ...c,
@@ -24014,6 +24021,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           typeof req.query.period === 'string' && /^\d{4}-\d{2}$/.test(req.query.period)
             ? req.query.period
             : new Date().toISOString().slice(0, 7);
+        if (!(await canAccessProjectAds(pool, projectId, readProjectAccessUser(req)))) {
+          return res.status(403).json({ error: 'forbidden_project' });
+        }
         const persisted = await fetchAdRecommendations(pool, projectId, period);
         if (!persisted) {
           return res.json({ period, recommendations: [], overallNote: null, generatedAt: null, generatedWithModel: null });
@@ -24177,6 +24187,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const period = typeof req.query.period === 'string' && /^\d{4}-\d{2}$/.test(req.query.period)
           ? req.query.period
           : currentPeriod();
+        if (!(await canAccessProjectAds(pool, projectId, readProjectAccessUser(req)))) {
+          return res.status(403).json({ error: 'forbidden_project' });
+        }
         const budget = await getBudget(pool, projectId, period);
         const actualSpendNok = await sumSpendForProjectPeriod(pool, projectId, period);
         const status = computeBudgetStatus({

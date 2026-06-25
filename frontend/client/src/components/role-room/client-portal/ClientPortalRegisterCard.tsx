@@ -228,6 +228,11 @@ const ClientPortalRegisterCard: React.FC<ClientPortalRegisterCardProps> = ({ tok
             <Typography sx={{ color: 'rgba(220,252,231,0.75)', fontSize: '0.78rem' }}>
               Neste gang kan du logge inn på vanlig måte med <strong>{email}</strong> + passord.
             </Typography>
+            <Typography sx={{ color: 'rgba(220,252,231,0.62)', fontSize: '0.74rem', mt: 0.5 }}>
+              Når du logger inn får du tilgang til hele prosjekt-arbeidsflaten — bl.a.
+              <strong> økonomi/fakturagrunnlag</strong>, godkjenning, møter og meldinger.
+              Denne lenken viser kun en lese-oversikt.
+            </Typography>
           </Box>
           <Button
             href="/login"
@@ -330,6 +335,11 @@ const ClientPortalRegisterCard: React.FC<ClientPortalRegisterCardProps> = ({ tok
           <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.8rem' }}>
             Sett et passord for <strong>{email}</strong>, så kan du logge inn på vanlig måte
             uten å finne e-post-lenken på nytt.
+          </Typography>
+          <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.76rem', mt: 0.5 }}>
+            Innlogget får du tilgang til hele prosjekt-arbeidsflaten — bl.a.
+            <strong> økonomi/fakturagrunnlag</strong>, godkjenning, møter og meldinger.
+            Denne magic-linken viser kun en lese-oversikt.
           </Typography>
         </Box>
         <Button
