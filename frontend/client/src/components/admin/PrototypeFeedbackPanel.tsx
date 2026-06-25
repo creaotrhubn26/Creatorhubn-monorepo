@@ -37,7 +37,9 @@ import {
   AccordionDetails,
   LinearProgress,
   Avatar,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   BugReport,
   Lightbulb,
@@ -414,7 +416,7 @@ export default function PrototypeFeedbackPanel({
 
   // Use theme-aware colors
   const themeColors = useMemo(() => ({
-    primary: theming.colors.primary || '#ff8c00',
+    primary: '#ff8c00',
     secondary: theming.colors.secondary || '#ffa726',
     error: '#f44336',
     warning: '#ff9800',
@@ -445,8 +447,8 @@ export default function PrototypeFeedbackPanel({
         throw queryError;
       }
     },
-    refetchInterval: 3000,
-    staleTime: 0,
+    refetchInterval: 30000,
+    staleTime: 15000,
     retry: false,
     placeholderData: [],
   });
@@ -762,7 +764,7 @@ export default function PrototypeFeedbackPanel({
   if (isLoading) {
     return (
       <Box sx={{ p: 3 }}>
-        <Typography variant="h5" gutterBottom sx={{ color: theming.colors.primary, display: 'flex', alignItems: 'center', gap: 1.5 }}>
+        <Typography variant="h5" gutterBottom sx={{ color: themeColors.primary, display: 'flex', alignItems: 'center', gap: 1.5 }}>
           <PrototypeTesterIcon size={32} /> Prototype Feedback Management
         </Typography>
         <Alert severity="info">Laster prototype feedback...</Alert>
@@ -771,6 +773,7 @@ export default function PrototypeFeedbackPanel({
 }
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box sx={{ p: 3 }}>
       <Typography variant="h5" gutterBottom sx={{ color: '#ff8c00', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 1.5 }}>
         <PrototypeTesterIcon size={32} /> Prototype Feedback Management
@@ -1023,7 +1026,7 @@ export default function PrototypeFeedbackPanel({
         <Grid item xs={12} sm={6} md={2.4}>
           <Card sx={{ background: 'linear-gradient(135deg, #2196F3 0%, #21CBF3 100%)', ...theming.getThemedCardSx() }}>
             <CardContent sx={{ color: 'white', textAlign: 'center', ...theming.getThemedCardSx() }}>
-              <Typography variant="h4" sx={{ fontWeight: 'bold', color: theming.colors.primary }}>
+              <Typography variant="h4" sx={{ fontWeight: 'bold', color: themeColors.primary }}>
                 {stats.total}
               </Typography>
               <Typography variant="body2" sx={{ opacity: 0.9 }}>
@@ -1040,7 +1043,7 @@ export default function PrototypeFeedbackPanel({
               background: 'linear-gradient(135deg, #FF9800 0%, #FFB74D 100%)'}}
           >
             <CardContent sx={{ color: 'white', textAlign: 'center', ...theming.getThemedCardSx() }}>
-              <Typography variant="h4" sx={{ fontWeight: 'bold', color: theming.colors.primary }}>
+              <Typography variant="h4" sx={{ fontWeight: 'bold', color: themeColors.primary }}>
                 {stats.open + stats.in_progress}
               </Typography>
               <Typography variant="body2" sx={{ opacity: 0.9 }}>
@@ -1058,7 +1061,7 @@ export default function PrototypeFeedbackPanel({
           >
 
             <CardContent sx={{ color: 'white', textAlign: 'center', ...theming.getThemedCardSx() }}>
-              <Typography variant="h4" sx={{ fontWeight: 'bold', color: theming.colors.primary }}>
+              <Typography variant="h4" sx={{ fontWeight: 'bold', color: themeColors.primary }}>
                 {stats.critical + stats.high}
               </Typography>
               <Typography variant="body2" sx={{ opacity: 0.9 }}>
@@ -1071,7 +1074,7 @@ export default function PrototypeFeedbackPanel({
         <Grid item xs={12} sm={6} md={2.4}>
           <Card sx={{ background: 'linear-gradient(135deg, #4CAF50 0%, #66BB6A 100%)', ...theming.getThemedCardSx() }}>
             <CardContent sx={{ color: 'white', textAlign: 'center', ...theming.getThemedCardSx() }}>
-              <Typography variant="h4" sx={{ fontWeight: 'bold', color: theming.colors.primary }}>
+              <Typography variant="h4" sx={{ fontWeight: 'bold', color: themeColors.primary }}>
                 {stats.verified}
               </Typography>
               <Typography variant="body2" sx={{ opacity: 0.9 }}>
@@ -1088,7 +1091,7 @@ export default function PrototypeFeedbackPanel({
               background: 'linear-gradient(135deg, #9C27B0 0%, #BA68C8 100%)'}}
           >
             <CardContent sx={{ color: 'white', textAlign: 'center', ...theming.getThemedCardSx() }}>
-              <Typography variant="h4" sx={{ fontWeight: 'bold', color: theming.colors.primary }}>
+              <Typography variant="h4" sx={{ fontWeight: 'bold', color: themeColors.primary }}>
                 {stats.failed}
               </Typography>
               <Typography variant="body2" sx={{ opacity: 0.9 }}>
@@ -1101,7 +1104,7 @@ export default function PrototypeFeedbackPanel({
 
       {/* Profession Breakdown */}
       <Paper sx={{ p: 2, mb: 3 }}>
-        <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+        <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: themeColors.primary }}>
           <People /> 
           Fordeling per profesjon
         </Typography>
@@ -1159,7 +1162,7 @@ export default function PrototypeFeedbackPanel({
       {/* Feedback List */}
       <Card sx={theming.getThemedCardSx()}>
         <CardContent sx={theming.getThemedCardSx()}>
-          <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+          <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: themeColors.primary }}>
             <Comment sx={{ mr: 1 }} />
             Alle tilbakemeldinger
             <Badge badgeContent={stats.open} color="primary" sx={{ ml: 1 }} />
@@ -1669,7 +1672,7 @@ export default function PrototypeFeedbackPanel({
                 </Box>
               </Box>
 
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+              <Typography variant="h6" gutterBottom sx={{ color: themeColors.primary }}>
                 {selectedFeedback.title}
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
@@ -1788,7 +1791,7 @@ export default function PrototypeFeedbackPanel({
     }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             <Comment sx={{ fontSize: 28 }} />
-            <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+            <Typography variant="h6" sx={{ color: themeColors.primary }}>
               Detaljert Feedback Visning
             </Typography>
           </Box>
@@ -1845,7 +1848,7 @@ export default function PrototypeFeedbackPanel({
                           );
                       })()}
                         <Box>
-                          <Typography variant="h4" gutterBottom sx={{ color: theming.colors.primary }}>
+                          <Typography variant="h4" gutterBottom sx={{ color: themeColors.primary }}>
                             {selectedFeedback.title}
                           </Typography>
                           <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
@@ -1877,7 +1880,7 @@ export default function PrototypeFeedbackPanel({
 
                       <Divider sx={{ mb: 3 }} />
 
-                      <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                      <Typography variant="h6" gutterBottom sx={{ color: themeColors.primary }}>
                         Beskrivelse
                       </Typography>
                       <Typography variant="body1" sx={{ mb: 3, lineHeight: 1.8 }}>
@@ -1886,7 +1889,7 @@ export default function PrototypeFeedbackPanel({
 
                       {selectedFeedback.component && (
                         <Box sx={{ mb: 3 }}>
-                          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                          <Typography variant="h6" gutterBottom sx={{ color: themeColors.primary }}>
                             Berørt komponent
                           </Typography>
                           <Chip 
@@ -1899,7 +1902,7 @@ export default function PrototypeFeedbackPanel({
 
                       {selectedFeedback.tags.length > 0 && (
                         <Box sx={{ mb: 3 }}>
-                          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                          <Typography variant="h6" gutterBottom sx={{ color: themeColors.primary }}>
                             Tags
                           </Typography>
                           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
@@ -1916,7 +1919,7 @@ export default function PrototypeFeedbackPanel({
                 <Grid item xs={12} md={4}>
                   <Card sx={theming.getThemedCardSx()}>
                     <CardContent sx={theming.getThemedCardSx()}>
-                      <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                      <Typography variant="h6" gutterBottom sx={{ color: themeColors.primary }}>
                         <Star sx={{ mr: 1, verticalAlign: 'middle' }} />
                         Rating & Info
                       </Typography>
@@ -1925,7 +1928,7 @@ export default function PrototypeFeedbackPanel({
                           Bruker rating
                         </Typography>
                         <Rating value={selectedFeedback.rating} readOnly size="large" />
-                        <Typography variant="h6" sx={{ mt: 1, color: theming.colors.primary }}>
+                        <Typography variant="h6" sx={{ mt: 1, color: themeColors.primary }}>
                           {selectedFeedback.rating}/5
                         </Typography>
                       </Box>
@@ -1945,7 +1948,7 @@ export default function PrototypeFeedbackPanel({
                   {selectedFeedback.screenshotUrl && (
                     <Card sx={{ mt: 2, ...theming.getThemedCardSx() }}>
                       <CardContent sx={theming.getThemedCardSx()}>
-                        <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                        <Typography variant="h6" gutterBottom sx={{ color: themeColors.primary }}>
                           <Screenshot sx={{ mr: 1, verticalAlign: 'middle' }} />
                           Screenshot
                         </Typography>
@@ -1973,7 +1976,7 @@ export default function PrototypeFeedbackPanel({
                   {selectedFeedback.audioRecording && (
                     <Card sx={{ mt: 2, ...theming.getThemedCardSx() }}>
                       <CardContent sx={theming.getThemedCardSx()}>
-                        <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                        <Typography variant="h6" gutterBottom sx={{ color: themeColors.primary }}>
                           <Mic sx={{ mr: 1, verticalAlign: 'middle' }} />
                           Audio Recording
                         </Typography>
@@ -2002,7 +2005,7 @@ export default function PrototypeFeedbackPanel({
                   {selectedFeedback.videoRecording && (
                     <Card sx={{ mt: 2, ...theming.getThemedCardSx() }}>
                       <CardContent sx={theming.getThemedCardSx()}>
-                        <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                        <Typography variant="h6" gutterBottom sx={{ color: themeColors.primary }}>
                           <Videocam sx={{ mr: 1, verticalAlign: 'middle' }} />
                           Screen Recording
                         </Typography>
@@ -2023,7 +2026,7 @@ export default function PrototypeFeedbackPanel({
                   {(selectedFeedback.testerXP || selectedFeedback.testerLevel) && (
                     <Card sx={{ mt: 2, ...theming.getThemedCardSx() }}>
                       <CardContent sx={theming.getThemedCardSx()}>
-                        <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                        <Typography variant="h6" gutterBottom sx={{ color: themeColors.primary }}>
                           <EmojiEvents sx={{ mr: 1, verticalAlign: 'middle' }} />
                           Tester Stats
                         </Typography>
@@ -2315,5 +2318,6 @@ export default function PrototypeFeedbackPanel({
         </DialogActions>
       </Dialog>
     </Box>
+    </ThemeProvider>
   );
 }

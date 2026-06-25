@@ -279,9 +279,9 @@ useEffect(() => {
       case 'user_approved': return <CheckCircle sx={{ color: '#4caf50' }} />;
       case 'user_rejected': return <Cancel sx={{ color: '#f44336' }} />;
       case 'account_activated': return <AccountCircle sx={{ color: '#4caf50' }} />;
-      case 'subscription_created': return <CardMembership sx={{ color: '#9c27b0' }} />;
+      case 'subscription_created': return <CardMembership sx={{ color: '#ce93d8' }} />;
       case 'payment_completed': return <Payment sx={{ color: '#2e7d32' }} />;
-      case 'user_login': return <Login sx={{ color: '#1976d2' }} />;
+      case 'user_login': return <Login sx={{ color: '#60a5fa' }} />;
       case 'feature_enabled': return <SettingsIcon sx={{ color: '#ff9800' }} />;
       default: return <DashboardIcon sx={{ color: '#9e9e9e' }} />;
     }

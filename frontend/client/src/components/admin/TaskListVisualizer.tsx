@@ -237,7 +237,7 @@ const createFallbackPayload = (): DeploymentPayload => {
         name: 'API Validation',
         description: 'Verifies critical API endpoints, auth, and payload contracts.',
         icon: 'api',
-        color: '#2563eb',
+        color: '#60a5fa',
         checks: [
           {
             id: 'api-auth-check',

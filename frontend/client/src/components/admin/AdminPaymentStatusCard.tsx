@@ -26,7 +26,9 @@ import {
   TableCell,
   TableBody,
   alpha,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   CheckCircle as OkIcon,
   Cancel as FailIcon,
@@ -74,25 +76,30 @@ const AdminPaymentStatusCard: React.FC = () => {
 
   if (isLoading) {
     return (
-      <Card>
-        <CardContent sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-          <CircularProgress size={28} />
-        </CardContent>
-      </Card>
+      <ThemeProvider theme={adminDarkTheme}>
+        <Card>
+          <CardContent sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+            <CircularProgress size={28} />
+          </CardContent>
+        </Card>
+      </ThemeProvider>
     );
   }
 
   if (!data) {
     return (
-      <Card>
-        <CardContent>
-          <Alert severity="warning">Kunne ikke laste Stripe-status.</Alert>
-        </CardContent>
-      </Card>
+      <ThemeProvider theme={adminDarkTheme}>
+        <Card>
+          <CardContent>
+            <Alert severity="warning">Kunne ikke laste Stripe-status.</Alert>
+          </CardContent>
+        </Card>
+      </ThemeProvider>
     );
   }
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Card>
       <CardContent>
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
@@ -142,13 +149,13 @@ const AdminPaymentStatusCard: React.FC = () => {
           </Box>
           <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: alpha('#3b82f6', 0.08), border: '1px solid', borderColor: alpha('#3b82f6', 0.2) }}>
             <Typography variant="caption" color="text.secondary">Siste 7 dager</Typography>
-            <Typography variant="h6" sx={{ fontWeight: 700, color: '#2563eb' }}>
+            <Typography variant="h6" sx={{ fontWeight: 700, color: '#60a5fa' }}>
               {fmtKr(data.recentRevenue?.last7d || 0)}
             </Typography>
           </Box>
           <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: alpha('#8b5cf6', 0.08), border: '1px solid', borderColor: alpha('#8b5cf6', 0.2) }}>
             <Typography variant="caption" color="text.secondary">Siste 30 dager</Typography>
-            <Typography variant="h6" sx={{ fontWeight: 700, color: '#7c3aed' }}>
+            <Typography variant="h6" sx={{ fontWeight: 700, color: '#c084fc' }}>
               {fmtKr(data.recentRevenue?.last30d || 0)}
             </Typography>
           </Box>
@@ -228,6 +235,7 @@ const AdminPaymentStatusCard: React.FC = () => {
         )}
       </CardContent>
     </Card>
+    </ThemeProvider>
   );
 };
 

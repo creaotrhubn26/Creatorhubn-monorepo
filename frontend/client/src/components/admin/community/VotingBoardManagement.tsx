@@ -135,7 +135,7 @@ interface VotingBoardManagementProps {
 const statusConfig: Record<string, { label: string; color: string; icon: React.ReactElement }> = {
   open: { label: 'Åpen', color: '#2196f3', icon: <Lightbulb fontSize="small" /> },
   under_review: { label: 'Under vurdering', color: '#ff9800', icon: <Schedule fontSize="small" /> },
-  planned: { label: 'Planlagt', color: '#9c27b0', icon: <Schedule fontSize="small" /> },
+  planned: { label: 'Planlagt', color: '#ce93d8', icon: <Schedule fontSize="small" /> },
   in_progress: { label: 'Under utvikling', color: '#ff5722', icon: <Build fontSize="small" /> },
   completed: { label: 'Fullført', color: '#4caf50', icon: <CheckCircle fontSize="small" /> },
   declined: { label: 'Avslått', color: '#f44336', icon: <Cancel fontSize="small" /> },

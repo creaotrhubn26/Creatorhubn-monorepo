@@ -511,7 +511,7 @@ export default function GooglePayStatusIndicator({
             
             <ListItem>
               <ListItemIcon>
-                <MembershipIcon sx={{ color: '#9c27b0' }} />
+                <MembershipIcon sx={{ color: '#ce93d8' }} />
               </ListItemIcon>
               <ListItemText
                 primary="Google Wallet"

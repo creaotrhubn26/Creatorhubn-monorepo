@@ -71,7 +71,7 @@ const eventTypeConfig = {
   social: {
     icon: <PublicIcon />,
     label: 'Sosiale Medier',
-    color: '#9c27b0',
+    color: '#ce93d8',
   },
   campaign: {
     icon: <CampaignIcon />,

@@ -237,8 +237,11 @@ export function registerStripePriceDriftRoutes(
   // ─── Admin: manuell trigger fra marketplace-UI ─────────────────
   app.post(
     '/api/admin/marketplace/stripe-price-drift/check',
-    requireAdminSession,
-    async (_req, res) => {
+    async (req, res) => {
+      // requireAdminSession is a guard (returns session | null and sends
+      // 401/403) — NOT Express middleware. Used as middleware it never calls
+      // next(), so the request hangs for a valid admin. Call it in-handler.
+      if (!requireAdminSession(req, res)) return;
       try {
         const report = await runPriceDriftCheck(pool);
         res.json({ success: true, report });
@@ -252,8 +255,8 @@ export function registerStripePriceDriftRoutes(
   // ─── Admin: hent siste lagrede drift-rapport (fra notifications) ─
   app.get(
     '/api/admin/marketplace/stripe-price-drift/history',
-    requireAdminSession,
-    async (_req, res) => {
+    async (req, res) => {
+      if (!requireAdminSession(req, res)) return;
       try {
         const result = await pool.query(`
           SELECT id, title, message, severity, created_at, status

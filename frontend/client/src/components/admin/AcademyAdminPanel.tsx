@@ -607,7 +607,7 @@ export default memo(function AcademyAdminPanel() {
       { title: 'Totalt Kurs', value: stats.totalCourses, icon: <SchoolIcon />, color: '#2196f3', detail: `${stats.publishedCourses} publisert` },
       { title: 'Inntekt', value: `$${stats.totalRevenue?.toLocaleString() || 0}`, icon: <MoneyIcon />, color: '#4caf50', detail: 'Totalt generert' },
       { title: 'Påmeldinger', value: stats.totalEnrollments, icon: <TrendingUpIcon />, color: '#ff9800', detail: 'Aktive studenter' },
-      { title: 'Instruktører', value: stats.totalInstructors, icon: <StarIcon />, color: '#9c27b0', detail: 'Top instruktører' },
+      { title: 'Instruktører', value: stats.totalInstructors, icon: <StarIcon />, color: '#ce93d8', detail: 'Top instruktører' },
     ];
 
     return (

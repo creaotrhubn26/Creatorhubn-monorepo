@@ -60,7 +60,9 @@ import {
   CircularProgress,
   Stack,
   Grid,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   Add as AddIcon,
   Key as KeyIcon,
@@ -258,6 +260,8 @@ export default function IntegrationsManagementPanel({
 }: IntegrationsManagementPanelProps) {
   // Theming system
   const theming = useTheming('prototype_tester');
+  // Lys oransje aksent på mørk bakgrunn (matcher admin-skallet).
+  const themeColors = { ...theming.colors, primary: '#ff8c00' };
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -1324,6 +1328,7 @@ export default function IntegrationsManagementPanel({
 };
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box sx={{ p: { xs: 2, sm: 3 } }}>
       <CreateApiKeyDialog />
       <CreateWebhookDialog />
@@ -1332,7 +1337,7 @@ export default function IntegrationsManagementPanel({
       {/* Header */}
       <Box sx={{ mb: 3 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2, mb: 3 }}>
-          <Typography variant="h5" sx={{ color: theming.colors.primary, fontWeight: 600}}>
+          <Typography variant="h5" sx={{ color: themeColors.primary, fontWeight: 600}}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <LinkIcon />
               Integrasjoner & API-er
@@ -1347,7 +1352,7 @@ export default function IntegrationsManagementPanel({
           <Grid item xs={12}>
             <Card>
               <CardContent sx={{ textAlign: 'center', py: 2 }}>
-                <Typography variant="h4" sx={{ color: theming.colors.primary, fontWeight: 600}}>
+                <Typography variant="h4" sx={{ color: themeColors.primary, fontWeight: 600}}>
                   {environmentStatus?.statistics?.total || 0}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
@@ -1638,7 +1643,7 @@ export default function IntegrationsManagementPanel({
 	                display: 'flex',
 	                alignItems: 'center',
 	                gap: 1,
-	                color: theming.colors.primary}}
+	                color: themeColors.primary}}
 	            >
 	              <AiIcon sx={{ color: '#ff8c00' }} />
 	              AI CodeGenerator Status
@@ -1711,7 +1716,7 @@ export default function IntegrationsManagementPanel({
 	                                display: 'flex',
 	                                alignItems: 'center',
 	                                gap: 1,
-	                                color: theming.colors.primary}}
+	                                color: themeColors.primary}}
 	                            >
                               <AiIcon color="primary" />
                               OpenAI GPT-5
@@ -1813,7 +1818,7 @@ export default function IntegrationsManagementPanel({
 	                                display: 'flex',
 	                                alignItems: 'center',
 	                                gap: 1,
-	                                color: theming.colors.primary}}
+	                                color: themeColors.primary}}
 	                            >
 	                              <AiIcon color="secondary" />
 	                              Anthropic Claude
@@ -1879,7 +1884,7 @@ export default function IntegrationsManagementPanel({
 	                                display: 'flex',
 	                                alignItems: 'center',
 	                                gap: 1,
-	                                color: theming.colors.primary}}
+	                                color: themeColors.primary}}
 	                            >
 	                              <AiIcon color="info" />
 	                              Google Gemini
@@ -1938,7 +1943,7 @@ export default function IntegrationsManagementPanel({
 	            <CardContent>
 	              <Typography
 	                variant="h6"
-	                sx={{ mb: 2, color: theming.colors.primary }}
+	                sx={{ mb: 2, color: themeColors.primary }}
 	              >
 	                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
 	                  <ApiIcon sx={{ color: '#ff8c00' }} />
@@ -2050,7 +2055,7 @@ export default function IntegrationsManagementPanel({
 	              {/* Intelligent Problem Solving Section */}
 	              <Card sx={{ mb: 3 }}>
 	                <CardContent>
-	                  <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary, fontWeight: 600}}>
+	                  <Typography variant="h6" sx={{ mb: 2, color: themeColors.primary, fontWeight: 600}}>
 	                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
 	                      <AiIcon sx={{ color: '#4caf50' }} />
                       Intelligent Problemløsning med AI
@@ -2200,7 +2205,7 @@ export default function IntegrationsManagementPanel({
 	                        fullWidth
 	                        variant="outlined"
 	                        startIcon={<BarChartIcon />}
-	                        sx={{ borderColor: '#9c27b0', color: '#9c27b0' }}
+	                        sx={{ borderColor: '#9c27b0', color: '#ce93d8' }}
 	                        onClick={async () => {
 	                          try {
 	                            const res = await fetch('/api/code-generator/active-implementations');
@@ -2329,7 +2334,7 @@ export default function IntegrationsManagementPanel({
 	          {/* Execute Buttons */}
 	          <Card sx={{ mb: 3 }}>
 	            <CardContent>
-	              <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
+	              <Typography variant="h6" sx={{ mb: 2, color: themeColors.primary }}>
 	                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <RocketIcon color="primary" />
                   Test CodeGenerator Endpoints
@@ -2500,7 +2505,7 @@ export default function IntegrationsManagementPanel({
 	            <CardContent>
 	              <Typography
 	                variant="h6"
-	                sx={{ mb: 2, color: theming.colors.primary, fontWeight: 600}}
+	                sx={{ mb: 2, color: themeColors.primary, fontWeight: 600}}
 	              >
 	                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
 	                  <ApiIcon sx={{ color: '#2196f3' }} />
@@ -2837,7 +2842,7 @@ export default function IntegrationsManagementPanel({
           {/* Phase 13: Advanced Integration & API Management , *, /}
           <Cardsx={{mb: 3, background: 'linear-gradient(45deg, rgba(255,140,0,0.1) 0%, rgba(255,193,7,0.1) 100%)' }}>
             <CardContent >
-              <Typography variant="h6"sx={{mb: 2, color: '#ff8c00, 0'fontWeight: 600}sx={{color: theming.colors.primary }}>
+              <Typography variant="h6"sx={{mb: 2, color: '#ff8c00, 0'fontWeight: 600}sx={{color: themeColors.primary }}>
                 <Boxsx={{display: 'flex'alignItems:'cente-r'gap: 1}}>
                   <RocketIconsx={{color: '#ff8c00' }} />
                   Phase 13: Advanced Integration & API Management
@@ -2937,7 +2942,7 @@ export default function IntegrationsManagementPanel({
 	            <CardContent>
 	              <Typography
 	                variant="h6"
-	                sx={{ mb: 2, color: theming.colors.primary }}
+	                sx={{ mb: 2, color: themeColors.primary }}
 	              >
 	                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
 	                  <SettingsIcon color="warning" />
@@ -2954,7 +2959,7 @@ export default function IntegrationsManagementPanel({
 	                <CardContent>
 	                  <Typography
 	                    variant="h6"
-	                    sx={{ mb: 2, color: theming.colors.primary }}
+	                    sx={{ mb: 2, color: themeColors.primary }}
 	                  >
 	                    <Box
 	                      sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
@@ -3256,7 +3261,7 @@ export default function IntegrationsManagementPanel({
 	                    <Grid item xs={12} sm={6} md={3}>
 	                      <Typography
 	                        variant="h5"
-	                        sx={{ color: theming.colors.primary, fontWeight: 600}}
+	                        sx={{ color: themeColors.primary, fontWeight: 600}}
 	                      >
 	                        56
 	                      </Typography>
@@ -3267,7 +3272,7 @@ export default function IntegrationsManagementPanel({
 	                    <Grid item xs={12} sm={6} md={3}>
 	                      <Typography
 	                        variant="h5"
-	                        sx={{ color: theming.colors.primary, fontWeight: 600}}
+	                        sx={{ color: themeColors.primary, fontWeight: 600}}
 	                      >
 	                        8
 	                      </Typography>
@@ -3278,7 +3283,7 @@ export default function IntegrationsManagementPanel({
 	                    <Grid item xs={12} sm={6} md={3}>
 	                      <Typography
 	                        variant="h5"
-	                        sx={{ color: theming.colors.primary, fontWeight: 600}}
+	                        sx={{ color: themeColors.primary, fontWeight: 600}}
 	                      >
 	                        35
 	                      </Typography>
@@ -3289,7 +3294,7 @@ export default function IntegrationsManagementPanel({
 	                    <Grid item xs={12} sm={6} md={3}>
 	                      <Typography
 	                        variant="h5"
-	                        sx={{ color: theming.colors.primary, fontWeight: 600}}
+	                        sx={{ color: themeColors.primary, fontWeight: 600}}
 	                      >
 	                        13
 	                      </Typography>
@@ -5152,7 +5157,7 @@ export default function IntegrationsManagementPanel({
       {/* API Keys Tab */}
       <TabPanel value={tabValue} index={1}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Typography variant="h6" sx={{ color: theming.colors.primary }}>API Nøkler</Typography>
+          <Typography variant="h6" sx={{ color: themeColors.primary }}>API Nøkler</Typography>
           <Button variant="contained"
             startIcon={<AddIcon />}
             onClick={() => setKeyDialogOpen(true)}
@@ -5268,7 +5273,7 @@ export default function IntegrationsManagementPanel({
       {/* Webhooks Tab */}
       <TabPanel value={tabValue} index={2}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Typography variant="h6" sx={{ color: theming.colors.primary }}>Webhooks</Typography>
+          <Typography variant="h6" sx={{ color: themeColors.primary }}>Webhooks</Typography>
           <Button variant="contained"
             startIcon={<AddIcon />}
             onClick={() => setWebhookDialogOpen(true)}
@@ -5369,7 +5374,7 @@ export default function IntegrationsManagementPanel({
       {/* OAuth Tab */}
       <TabPanel value={tabValue} index={3}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Typography variant="h6" sx={{ color: theming.colors.primary }}>OAuth Klienter</Typography>
+          <Typography variant="h6" sx={{ color: themeColors.primary }}>OAuth Klienter</Typography>
           <Button variant="contained"
             startIcon={<AddIcon />}
             onClick={() => setOAuthDialogOpen(true)}
@@ -5572,7 +5577,7 @@ export default function IntegrationsManagementPanel({
           <Grid item xs={12}>
             <Card>
               <CardContent>
-                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: theming.colors.primary }}>
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
                   <ApiIcon sx={{ color: '#2e7d32' }} />
                   REST API Protokoller
                 </Typography>
@@ -5589,8 +5594,8 @@ export default function IntegrationsManagementPanel({
           <Grid item xs={12}>
             <Card>
               <CardContent>
-                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: theming.colors.primary }}>
-                  <GraphQLIcon sx={{ color: '#1565c0' }} />
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
+                  <GraphQLIcon sx={{ color: '#60a5fa' }} />
                   GraphQL Protokoller
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -5606,8 +5611,8 @@ export default function IntegrationsManagementPanel({
           <Grid item xs={12}>
             <Card>
               <CardContent>
-                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: theming.colors.primary }}>
-                  <WebSocketIcon sx={{ color: '#7b1fa2' }} />
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
+                  <WebSocketIcon sx={{ color: '#ce93d8' }} />
                   WebSocket Protokoller
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -5623,7 +5628,7 @@ export default function IntegrationsManagementPanel({
           <Grid item xs={12}>
             <Card>
               <CardContent>
-                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: theming.colors.primary }}>
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
                   <GrpcIcon sx={{ color: '#ff8c00' }} />
                   gRPC Protokoller
                 </Typography>
@@ -5640,7 +5645,7 @@ export default function IntegrationsManagementPanel({
           <Grid item xs={12}>
             <Card>
               <CardContent>
-                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: theming.colors.primary }}>
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
                   <AcmeIcon sx={{ color: '#2e7d32' }} />
                   ACME Protokoller
                 </Typography>
@@ -5657,8 +5662,8 @@ export default function IntegrationsManagementPanel({
           <Grid item xs={12}>
             <Card>
               <CardContent>
-                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: theming.colors.primary }}>
-                  <OpenApiIcon sx={{ color: '#1565c0' }} />
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
+                  <OpenApiIcon sx={{ color: '#60a5fa' }} />
                   OpenAPI/Swagger
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -5688,7 +5693,7 @@ export default function IntegrationsManagementPanel({
           <Grid item xs={12}>
             <Card>
               <CardContent>
-                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: theming.colors.primary }}>
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
                   <RtmpIcon sx={{ color: '#d32f2f' }} />
                   RTMP Streaming
                 </Typography>
@@ -5709,8 +5714,8 @@ export default function IntegrationsManagementPanel({
           <Grid item xs={12}>
             <Card>
               <CardContent>
-                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: theming.colors.primary }}>
-                  <HlsIcon sx={{ color: '#1565c0' }} />
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
+                  <HlsIcon sx={{ color: '#60a5fa' }} />
                   HLS/MPEG-DASH
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -5730,8 +5735,8 @@ export default function IntegrationsManagementPanel({
           <Grid item xs={12}>
             <Card>
               <CardContent>
-                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: theming.colors.primary }}>
-                  <MLIcon sx={{ color: '#7b1fa2' }} />
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
+                  <MLIcon sx={{ color: '#ce93d8' }} />
                   AI Protokoller (ONNX)
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -5752,7 +5757,7 @@ export default function IntegrationsManagementPanel({
           <Grid item xs={12}>
             <Card>
               <CardContent>
-                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: theming.colors.primary }}>
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
                   <EnhancementIcon sx={{ color: '#ff8c00' }} />
                   DNG/XMP Metadata
                 </Typography>
@@ -5773,7 +5778,7 @@ export default function IntegrationsManagementPanel({
           <Grid item xs={12}>
             <Card>
               <CardContent>
-                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: theming.colors.primary }}>
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
                   <WebDavIcon sx={{ color: '#2e7d32' }} />
                   WebDAV Protokoll
                 </Typography>
@@ -5794,8 +5799,8 @@ export default function IntegrationsManagementPanel({
           <Grid item xs={12}>
             <Card>
               <CardContent>
-                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: theming.colors.primary }}>
-                  <ActivityPubIcon sx={{ color: '#9c27b0' }} />
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
+                  <ActivityPubIcon sx={{ color: '#ce93d8' }} />
                   ActivityPub/WebRTC
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -5829,8 +5834,8 @@ export default function IntegrationsManagementPanel({
           <Grid item xs={12}>
             <Card>
               <CardContent>
-                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: theming.colors.primary }}>
-                  <ChatProtocolIcon sx={{ color: '#1565c0' }} />
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
+                  <ChatProtocolIcon sx={{ color: '#60a5fa' }} />
                   XMPP Protokoll
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -5850,8 +5855,8 @@ export default function IntegrationsManagementPanel({
           <Grid item xs={12}>
             <Card>
               <CardContent>
-                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: theming.colors.primary }}>
-                  <ShieldIcon sx={{ color: '#7b1fa2' }} />
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
+                  <ShieldIcon sx={{ color: '#ce93d8' }} />
                   Matrix Protokoll
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -5871,7 +5876,7 @@ export default function IntegrationsManagementPanel({
           <Grid item xs={12}>
             <Card>
               <CardContent>
-                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: theming.colors.primary }}>
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
                   <SeoIcon sx={{ color: '#2e7d32' }} />
                   JSON-LD & Schema.org
                 </Typography>
@@ -5892,7 +5897,7 @@ export default function IntegrationsManagementPanel({
           <Grid item xs={12}>
             <Card>
               <CardContent>
-                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: theming.colors.primary }}>
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
                   <CalDavIcon sx={{ color: '#ff8c00' }} />
                   CalDAV/CardDAV
                 </Typography>
@@ -5913,8 +5918,8 @@ export default function IntegrationsManagementPanel({
           <Grid item xs={12}>
             <Card>
               <CardContent>
-                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: theming.colors.primary }}>
-                  <EdiIcon sx={{ color: '#9c27b0' }} />
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
+                  <EdiIcon sx={{ color: '#ce93d8' }} />
                   EDI Protokoll
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -5934,8 +5939,8 @@ export default function IntegrationsManagementPanel({
           <Grid item xs={12}>
             <Card>
               <CardContent>
-                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: theming.colors.primary }}>
-                  <OpenBankingIcon sx={{ color: '#1565c0' }} />
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
+                  <OpenBankingIcon sx={{ color: '#60a5fa' }} />
                   Open Banking API
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -5955,7 +5960,7 @@ export default function IntegrationsManagementPanel({
           <Grid item xs={12}>
             <Card sx={{ bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider' }}>
               <CardContent>
-                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: theming.colors.primary }}>
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
                   <SecurityIcon sx={{ color: '#d32f2f' }} />
                   Sikkerhetsprotokoller
                 </Typography>
@@ -6130,5 +6135,6 @@ export default function IntegrationsManagementPanel({
         </DialogActions>
       </Dialog>
     </Box>
+    </ThemeProvider>
 );
 }

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTheming } from '../../utils/theming-helper';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
@@ -33,7 +33,9 @@ import {
   Tabs,
   TextField,
   Typography,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import type { ChipProps } from '@mui/material';
 import {
   AddCircle as AddIcon,
@@ -182,6 +184,15 @@ interface EnterprisePricingConfig {
     minUsers: number;
     discount: number;
   }>;
+}
+
+interface StripeDriftAlert {
+  id: string | number;
+  title: string;
+  message: string;
+  severity: string;
+  status: string;
+  created_at: string;
 }
 
 interface CreatorHubFeature {
@@ -579,13 +590,39 @@ export default function PriceManagementDashboard({
   const [enterprisePricing, setEnterprisePricing] = useState<EnterprisePricingConfig>(defaultEnterprisePricing);
   const [enterprisePricingSaving, setEnterprisePricingSaving] = useState(false);
   const [enterprisePricingSaved, setEnterprisePricingSaved] = useState(false);
+  // Snapshot av sist lagrede enterprise-priser → dirty-deteksjon uten å røre
+  // hver input-handler. dirty = nåværende state avviker fra sist lagret.
+  const [lastSavedEnterprise, setLastSavedEnterprise] = useState<string>(() =>
+    JSON.stringify(defaultEnterprisePricing),
+  );
+  const enterprisePricingDirty = JSON.stringify(enterprisePricing) !== lastSavedEnterprise;
+
+  // Forlat-vakt: advar ved navigasjon bort med ulagrede enterprise-prisendringer.
+  useEffect(() => {
+    if (!enterprisePricingDirty) return undefined;
+    const handler = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [enterprisePricingDirty]);
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
     message: string;
     severity: 'success' | 'error' | 'info';
   }>({ open: false, message: '', severity: 'info' });
 
+  // ─── Stripe-sync / drift-status (read-only berikelse) ───────────────────
+  // Henter siste drift-varsler fra admin_notifications. Lar admin oppdage at
+  // CreatorHub-pris og Stripe-pris har kommet ut av sync. Degraderer trygt.
+  const [driftAlerts, setDriftAlerts] = useState<StripeDriftAlert[]>([]);
+  const [driftLoading, setDriftLoading] = useState(false);
+  const [driftChecking, setDriftChecking] = useState(false);
+
   const theming = useTheming('prototype_tester');
+  // Lys oransje aksent på mørk bakgrunn (matcher admin-skallet).
+  const themeColors = { ...theming.colors, primary: '#ff8c00' };
   const { getProfessionDisplayName: getDynamicProfessionName } = useDynamicProfessions();
   const { auth } = useEnhancedMasterIntegration();
   const { subscriptionPlans, features: platformFeatures, isLoading: pricingLoading, formatPrice } = usePlatformPricing();
@@ -691,6 +728,7 @@ export default function PriceManagementDashboard({
             };
             if (mounted && enterpriseData.success && enterpriseData.data) {
               setEnterprisePricing(enterpriseData.data);
+              setLastSavedEnterprise(JSON.stringify(enterpriseData.data));
             }
           }
         } catch {
@@ -1157,7 +1195,39 @@ export default function PriceManagementDashboard({
     }
   };
 
+  const validateEnterprisePricing = (config: EnterprisePricingConfig): string | null => {
+    // Betalings-kritisk: avvis NaN/negative/uendelige tall før POST (samme
+    // strenghet som savePlanEdit), slik at vi aldri publiserer ugyldige priser.
+    const numericFields: Array<[string, number]> = [
+      ['Grunnpris (måned)', config.basePrice],
+      ['Grunnpris (år)', config.basePriceAnnual],
+      ['Inkluderte brukere', config.includedUsers],
+      ['Pris per bruker (måned)', config.pricePerUser],
+      ['Pris per bruker (år)', config.pricePerUserAnnual],
+    ];
+    for (const [label, value] of numericFields) {
+      if (!Number.isFinite(value) || value < 0) {
+        return `${label} må være et tall som er 0 eller høyere.`;
+      }
+    }
+    for (let i = 0; i < config.volumeDiscounts.length; i += 1) {
+      const { minUsers, discount } = config.volumeDiscounts[i];
+      if (!Number.isFinite(minUsers) || minUsers < 0) {
+        return `Volumrabatt #${i + 1}: «min. brukere» må være 0 eller høyere.`;
+      }
+      if (!Number.isFinite(discount) || discount < 0 || discount > 100) {
+        return `Volumrabatt #${i + 1}: rabatt må være mellom 0 og 100 %.`;
+      }
+    }
+    return null;
+  };
+
   const saveEnterprisePricing = async () => {
+    const validationError = validateEnterprisePricing(enterprisePricing);
+    if (validationError) {
+      setSnackbar({ open: true, message: validationError, severity: 'error' });
+      return;
+    }
     setEnterprisePricingSaving(true);
     try {
       const headers = await auth.getAuthHeader();
@@ -1173,6 +1243,7 @@ export default function PriceManagementDashboard({
       }
 
       setEnterprisePricingSaved(true);
+      setLastSavedEnterprise(JSON.stringify(enterprisePricing));
       onNotificationCreate?.({
         id: `enterprise-pricing-updated-${Date.now()}`,
         source: 'price_management',
@@ -1192,23 +1263,83 @@ export default function PriceManagementDashboard({
     }
   };
 
+  const loadDriftHistory = useCallback(async () => {
+    setDriftLoading(true);
+    try {
+      const headers = await auth.getAuthHeader();
+      const response = await fetch('/api/admin/marketplace/stripe-price-drift/history', {
+        headers,
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        setDriftAlerts([]);
+        return;
+      }
+      const json = (await response.json()) as { success?: boolean; data?: StripeDriftAlert[] };
+      setDriftAlerts(Array.isArray(json.data) ? json.data : []);
+    } catch {
+      // Drift-status er berikelse — feil her skal aldri velte prispanelet.
+      setDriftAlerts([]);
+    } finally {
+      setDriftLoading(false);
+    }
+  }, [auth]);
+
+  const runDriftCheck = useCallback(async () => {
+    setDriftChecking(true);
+    try {
+      const headers = await auth.getAuthHeader();
+      const response = await fetch('/api/admin/marketplace/stripe-price-drift/check', {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        throw new Error('drift check failed');
+      }
+      await loadDriftHistory();
+      setSnackbar({ open: true, message: 'Stripe-synksjekk fullført.', severity: 'success' });
+    } catch {
+      setSnackbar({ open: true, message: 'Kunne ikke kjøre Stripe-synksjekk.', severity: 'error' });
+    } finally {
+      setDriftChecking(false);
+    }
+  }, [auth, loadDriftHistory]);
+
+  useEffect(() => {
+    void loadDriftHistory();
+  }, [loadDriftHistory]);
+
+  // Åpne drift-varsler = nyere enn 14 dager og ikke kvittert ut (resolved/dismissed/read).
+  const openDriftAlerts = driftAlerts.filter((alert) => {
+    const status = String(alert.status || '').toLowerCase();
+    if (['resolved', 'dismissed', 'read', 'closed'].includes(status)) return false;
+    const createdMs = Date.parse(alert.created_at);
+    if (Number.isFinite(createdMs) && createdMs < Date.now() - 14 * 24 * 60 * 60 * 1000) return false;
+    return true;
+  });
+  const latestDrift = driftAlerts[0] ?? null;
+
   if (loading || pricingLoading) {
     return (
-      <Box sx={{ width: '100%', mt: 2 }}>
-        <LinearProgress />
-        <Typography sx={{ mt: 2, textAlign: 'center' }}>Laster prisstyring...</Typography>
-      </Box>
+      <ThemeProvider theme={adminDarkTheme}>
+        <Box sx={{ width: '100%', mt: 2 }}>
+          <LinearProgress />
+          <Typography sx={{ mt: 2, textAlign: 'center' }}>Laster prisstyring...</Typography>
+        </Box>
+      </ThemeProvider>
     );
   }
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box sx={{ width: '100%' }}>
       <Box
         sx={{
           mb: 3,
           borderRadius: '24px',
-          border: '1px solid rgba(15, 52, 96, 0.08)',
-          background: 'linear-gradient(135deg, rgba(15, 52, 96, 0.08), rgba(233, 69, 96, 0.05))',
+          border: '1px solid rgba(255,255,255,0.12)',
+          background: 'linear-gradient(135deg, rgba(15,23,42,0.94), rgba(255,255,255,0.04))',
           px: { xs: 2, sm: 3 },
           py: { xs: 2.25, sm: 2.75 },
         }}
@@ -1220,13 +1351,13 @@ export default function PriceManagementDashboard({
           alignItems={{ xs: 'flex-start', xl: 'stretch' }}
         >
           <Box sx={{ maxWidth: 720, flex: 1 }}>
-            <Typography variant="overline" sx={{ color: '#0f3460', fontWeight: 700, letterSpacing: '0.08em' }}>
+            <Typography variant="overline" sx={{ color: '#ff8c00', fontWeight: 700, letterSpacing: '0.08em' }}>
               CreatorHub Commerce
             </Typography>
-            <Typography variant="h4" sx={{ mt: 0.5, fontWeight: 700, letterSpacing: '-0.03em', color: '#111827' }}>
+            <Typography variant="h4" sx={{ mt: 0.5, fontWeight: 700, letterSpacing: '-0.03em', color: '#ffffff' }}>
               Prisstyring
             </Typography>
-            <Typography variant="body2" sx={{ mt: 1, color: '#5b6472', lineHeight: 1.7 }}>
+            <Typography variant="body2" sx={{ mt: 1, color: 'rgba(255,255,255,0.6)', lineHeight: 1.7 }}>
               Hold selvbetjente planer, årsprising og enterprise-sporet samlet i én arbeidsflate.
               Endringene her skal være lesbare både for teamet og for det som faktisk publiseres på CreatorHub.
             </Typography>
@@ -1271,10 +1402,10 @@ export default function PriceManagementDashboard({
                 py: 1.5,
               }}
             >
-              <Typography sx={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#6b7280', fontWeight: 700 }}>
+              <Typography sx={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(255,255,255,0.6)', fontWeight: 700 }}>
                 Det som publiseres nå
               </Typography>
-              <Typography sx={{ mt: 0.6, fontWeight: 700, color: '#111827' }}>
+              <Typography sx={{ mt: 0.6, fontWeight: 700, color: '#ffffff' }}>
                 {selfServePlans.length} selvbetjente planer og {annualPlanCount} årspriser er ute.
               </Typography>
             </Box>
@@ -1287,12 +1418,52 @@ export default function PriceManagementDashboard({
                 py: 1.5,
               }}
             >
-              <Typography sx={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#6b7280', fontWeight: 700 }}>
+              <Typography sx={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(255,255,255,0.6)', fontWeight: 700 }}>
                 Operativ kontroll
               </Typography>
-              <Typography sx={{ mt: 0.6, color: '#5b6472', lineHeight: 1.6 }}>
+              <Typography sx={{ mt: 0.6, color: 'rgba(255,255,255,0.6)', lineHeight: 1.6 }}>
                 Samme innhold styrer landingssiden, abonnementssiden, checkout og CreatorHub-mailene.
               </Typography>
+            </Box>
+            <Box
+              sx={{
+                borderRadius: '18px',
+                border: openDriftAlerts.length > 0
+                  ? '1px solid rgba(248,113,113,0.5)'
+                  : '1px solid rgba(255,255,255,0.10)',
+                bgcolor: openDriftAlerts.length > 0
+                  ? 'rgba(248,113,113,0.12)'
+                  : 'rgba(255,255,255,0.04)',
+                px: 1.75,
+                py: 1.5,
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+                <Typography sx={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: openDriftAlerts.length > 0 ? '#fca5a5' : 'rgba(255,255,255,0.6)', fontWeight: 700 }}>
+                  Stripe-sync
+                </Typography>
+                <Button
+                  size="small"
+                  variant="text"
+                  disabled={driftChecking || driftLoading}
+                  onClick={() => void runDriftCheck()}
+                  sx={{ minWidth: 0, color: '#ff8c00', textTransform: 'none', fontWeight: 700, fontSize: '0.72rem' }}
+                >
+                  {driftChecking ? 'Sjekker…' : 'Kjør ny sjekk'}
+                </Button>
+              </Box>
+              {openDriftAlerts.length > 0 ? (
+                <Typography sx={{ mt: 0.6, color: '#fecaca', lineHeight: 1.6, fontSize: '0.82rem' }}>
+                  {openDriftAlerts.length === 1
+                    ? 'Publisert pris matcher ikke Stripe.'
+                    : `${openDriftAlerts.length} prisavvik mot Stripe.`}{' '}
+                  {latestDrift?.message ? <span style={{ opacity: 0.85 }}>{latestDrift.message}</span> : null}
+                </Typography>
+              ) : (
+                <Typography sx={{ mt: 0.6, color: 'rgba(255,255,255,0.6)', lineHeight: 1.6, fontSize: '0.82rem' }}>
+                  {driftLoading ? 'Sjekker synkronisering…' : 'CreatorHub-priser er i sync med Stripe.'}
+                </Typography>
+              )}
             </Box>
           </Box>
         </Stack>
@@ -1345,7 +1516,7 @@ export default function PriceManagementDashboard({
             '& .MuiTab-root': {
               minHeight: 42,
               textTransform: 'none',
-              color: '#667085',
+              color: 'rgba(255,255,255,0.6)',
               borderRadius: '12px',
               px: 1.75,
               mr: 0.75,
@@ -1445,7 +1616,7 @@ export default function PriceManagementDashboard({
                       }}
                     />
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
-                      <Typography variant="h6" sx={{ fontWeight: 'bold', flex: 1, color: theming.colors.primary }}>
+                      <Typography variant="h6" sx={{ fontWeight: 'bold', flex: 1, color: themeColors.primary }}>
                         {feature.name}
                       </Typography>
                       <Switch checked={isEnabled} onChange={() => void toggleFeature(feature.id)} color="primary" />
@@ -1530,7 +1701,7 @@ export default function PriceManagementDashboard({
                     sx={{
                       '& thead th': {
                         bgcolor: 'rgba(255,255,255,0.04)',
-                        color: '#6b6257',
+                        color: 'rgba(255,255,255,0.6)',
                         fontSize: '0.78rem',
                         borderBottom: '1px solid rgba(255,255,255,0.10)',
                       },
@@ -1539,7 +1710,7 @@ export default function PriceManagementDashboard({
                         verticalAlign: 'top',
                       },
                       '& tbody tr:hover': {
-                        bgcolor: '#fffaf1',
+                        bgcolor: 'rgba(255,255,255,0.06)',
                       },
                     }}
                   >
@@ -1728,7 +1899,7 @@ export default function PriceManagementDashboard({
                     <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
                       Hva oppdateres automatisk
                     </Typography>
-                    <Typography variant="body2" sx={{ mt: 0.6, color: '#5b6472', lineHeight: 1.6 }}>
+                    <Typography variant="body2" sx={{ mt: 0.6, color: 'rgba(255,255,255,0.6)', lineHeight: 1.6 }}>
                       Landingssiden, abonnementssiden og CreatorHub-checkout bruker samme planstruktur
                       som denne tabellen.
                     </Typography>
@@ -1779,7 +1950,7 @@ export default function PriceManagementDashboard({
 
                 <Stack spacing={2.25}>
                   <Box sx={priceManagementInsetSx}>
-                    <Typography variant="overline" sx={{ color: '#0f3460', fontWeight: 700 }}>
+                    <Typography variant="overline" sx={{ color: '#ff8c00', fontWeight: 700 }}>
                       Brand og support
                     </Typography>
                     <Stack spacing={1.5} sx={{ mt: 1 }}>
@@ -1831,7 +2002,7 @@ export default function PriceManagementDashboard({
                   </Box>
 
                   <Box sx={priceManagementInsetSx}>
-                    <Typography variant="overline" sx={{ color: '#0f3460', fontWeight: 700 }}>
+                    <Typography variant="overline" sx={{ color: '#ff8c00', fontWeight: 700 }}>
                       Avsendere
                     </Typography>
                     <Stack spacing={1.5} sx={{ mt: 1 }}>
@@ -1908,7 +2079,7 @@ export default function PriceManagementDashboard({
                 </Typography>
                 <Stack spacing={1.5}>
                   <Box sx={{ ...priceManagementInsetSx, bgcolor: 'rgba(255,255,255,0.04)' }}>
-                    <Typography variant="overline" sx={{ color: '#0f3460', fontWeight: 700 }}>
+                    <Typography variant="overline" sx={{ color: '#ff8c00', fontWeight: 700 }}>
                       Første vellykkede betaling
                     </Typography>
                     <Typography variant="body2" sx={{ mt: 0.5, color: 'text.secondary' }}>
@@ -1916,7 +2087,7 @@ export default function PriceManagementDashboard({
                     </Typography>
                   </Box>
                   <Box sx={{ ...priceManagementInsetSx, bgcolor: 'rgba(33,150,243,0.08)' }}>
-                    <Typography variant="overline" sx={{ color: '#1d4ed8', fontWeight: 700 }}>
+                    <Typography variant="overline" sx={{ color: '#60a5fa', fontWeight: 700 }}>
                       Konto aktivert
                     </Typography>
                     <Typography variant="body2" sx={{ mt: 0.5, color: 'text.secondary' }}>
@@ -1932,7 +2103,7 @@ export default function PriceManagementDashboard({
                     </Typography>
                   </Box>
                   <Box sx={{ ...priceManagementInsetSx, bgcolor: 'rgba(76,175,80,0.10)' }}>
-                    <Typography variant="overline" sx={{ color: '#047857', fontWeight: 700 }}>
+                    <Typography variant="overline" sx={{ color: '#34d399', fontWeight: 700 }}>
                       Betaling gjenopprettet
                     </Typography>
                     <Typography variant="body2" sx={{ mt: 0.5, color: 'text.secondary' }}>
@@ -1940,7 +2111,7 @@ export default function PriceManagementDashboard({
                     </Typography>
                   </Box>
                   <Box sx={{ ...priceManagementInsetSx, bgcolor: 'rgba(124,58,237,0.10)' }}>
-                    <Typography variant="overline" sx={{ color: '#6d28d9', fontWeight: 700 }}>
+                    <Typography variant="overline" sx={{ color: '#c084fc', fontWeight: 700 }}>
                       Alias i bruk
                     </Typography>
                     <Stack spacing={1} sx={{ mt: 1 }}>
@@ -1990,7 +2161,7 @@ export default function PriceManagementDashboard({
                     sx={{
                       '& thead th': {
                         bgcolor: 'rgba(255,255,255,0.04)',
-                        color: '#6b6257',
+                        color: 'rgba(255,255,255,0.6)',
                         fontSize: '0.78rem',
                         borderBottom: '1px solid rgba(255,255,255,0.10)',
                       },
@@ -1999,7 +2170,7 @@ export default function PriceManagementDashboard({
                         verticalAlign: 'top',
                       },
                       '& tbody tr:hover': {
-                        bgcolor: '#fffaf1',
+                        bgcolor: 'rgba(255,255,255,0.06)',
                       },
                     }}
                   >
@@ -2083,7 +2254,7 @@ export default function PriceManagementDashboard({
           <Grid size={{ xs: 12 }}>
             <Card sx={priceManagementSurfaceSx}>
               <CardContent sx={{ p: { xs: 2.25, md: 3 } }}>
-                <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
+                <Typography variant="h6" sx={{ mb: 2, color: themeColors.primary }}>
                   Top Features by Usage
                 </Typography>
                 <TableContainer>
@@ -2127,7 +2298,7 @@ export default function PriceManagementDashboard({
           <Grid size={{ xs: 12, md: 6 }}>
             <Card sx={priceManagementSurfaceSx}>
               <CardContent sx={{ p: { xs: 2.25, md: 3 } }}>
-                <Typography variant="h6" sx={{ mb: 3, display: 'flex', alignItems: 'center', color: theming.colors.primary }}>
+                <Typography variant="h6" sx={{ mb: 3, display: 'flex', alignItems: 'center', color: themeColors.primary }}>
                   <EnterpriseIcon sx={{ mr: 1 }} />
                   Enterprise Basispriser (eks. MVA)
                 </Typography>
@@ -2167,7 +2338,7 @@ export default function PriceManagementDashboard({
           <Grid size={{ xs: 12, md: 6 }}>
             <Card sx={priceManagementSurfaceSx}>
               <CardContent sx={{ p: { xs: 2.25, md: 3 } }}>
-                <Typography variant="h6" sx={{ mb: 3, display: 'flex', alignItems: 'center', color: theming.colors.primary }}>
+                <Typography variant="h6" sx={{ mb: 3, display: 'flex', alignItems: 'center', color: themeColors.primary }}>
                   <PeopleIcon sx={{ mr: 1 }} />
                   Pris per ekstra bruker (eks. MVA)
                 </Typography>
@@ -2197,7 +2368,7 @@ export default function PriceManagementDashboard({
           <Grid size={{ xs: 12 }}>
             <Card sx={priceManagementSurfaceSx}>
               <CardContent sx={{ p: { xs: 2.25, md: 3 } }}>
-                <Typography variant="h6" sx={{ mb: 3, color: theming.colors.primary }}>
+                <Typography variant="h6" sx={{ mb: 3, color: themeColors.primary }}>
                   Volumrabatter
                 </Typography>
                 <TableContainer>
@@ -2286,12 +2457,24 @@ export default function PriceManagementDashboard({
           </Grid>
 
           <Grid size={{ xs: 12 }}>
-            <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
+            <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end', alignItems: 'center' }}>
               {enterprisePricingSaved ? <Alert severity="success">Enterprise-priser lagret!</Alert> : null}
+              {enterprisePricingDirty && !enterprisePricingSaved ? (
+                <Chip
+                  size="small"
+                  label="Ulagrede endringer"
+                  sx={{
+                    bgcolor: 'rgba(251,191,36,0.16)',
+                    color: '#fbbf24',
+                    fontWeight: 700,
+                    border: '1px solid rgba(251,191,36,0.4)',
+                  }}
+                />
+              ) : null}
               <Button
                 variant="contained"
                 startIcon={<SaveIcon />}
-                disabled={enterprisePricingSaving}
+                disabled={enterprisePricingSaving || !enterprisePricingDirty}
                 onClick={() => void saveEnterprisePricing()}
                 sx={theming.getThemedButtonSx()}
               >
@@ -2849,6 +3032,7 @@ export default function PriceManagementDashboard({
         </Alert>
       </Snackbar>
     </Box>
+    </ThemeProvider>
   );
 }
 
@@ -2869,40 +3053,40 @@ function MetricCard({
 }) {
   const toneMap = {
     teal: {
-      background: 'linear-gradient(180deg, #f2fbf8 0%, #ffffff 100%)',
-      border: 'rgba(13, 148, 136, 0.20)',
-      icon: '#0f766e',
-      value: '#0f766e',
+      background: 'rgba(13, 148, 136, 0.12)',
+      border: 'rgba(45, 212, 191, 0.30)',
+      icon: '#2dd4bf',
+      value: '#2dd4bf',
     },
     blue: {
-      background: 'linear-gradient(180deg, #f4f8ff 0%, #ffffff 100%)',
-      border: 'rgba(37, 99, 235, 0.18)',
-      icon: '#1d4ed8',
-      value: '#1d4ed8',
+      background: 'rgba(37, 99, 235, 0.14)',
+      border: 'rgba(96, 165, 250, 0.30)',
+      icon: '#60a5fa',
+      value: '#60a5fa',
     },
     violet: {
-      background: 'linear-gradient(180deg, #f8f5ff 0%, #ffffff 100%)',
-      border: 'rgba(124, 58, 237, 0.18)',
-      icon: '#7c3aed',
-      value: '#6d28d9',
+      background: 'rgba(124, 58, 237, 0.14)',
+      border: 'rgba(192, 132, 252, 0.30)',
+      icon: '#c084fc',
+      value: '#c084fc',
     },
     amber: {
-      background: 'linear-gradient(180deg, #fff8ed 0%, #ffffff 100%)',
-      border: 'rgba(217, 119, 6, 0.18)',
-      icon: '#b45309',
-      value: '#c2410c',
+      background: 'rgba(217, 119, 6, 0.16)',
+      border: 'rgba(251, 191, 36, 0.30)',
+      icon: '#fbbf24',
+      value: '#fbbf24',
     },
     emerald: {
-      background: 'linear-gradient(180deg, #effcf5 0%, #ffffff 100%)',
-      border: 'rgba(5, 150, 105, 0.18)',
-      icon: '#059669',
-      value: '#047857',
+      background: 'rgba(5, 150, 105, 0.14)',
+      border: 'rgba(52, 211, 153, 0.30)',
+      icon: '#34d399',
+      value: '#34d399',
     },
     slate: {
-      background: 'linear-gradient(180deg, #f8fafc 0%, #ffffff 100%)',
-      border: 'rgba(100, 116, 139, 0.16)',
-      icon: '#475569',
-      value: '#111827',
+      background: 'rgba(255, 255, 255, 0.04)',
+      border: 'rgba(255, 255, 255, 0.14)',
+      icon: 'rgba(255,255,255,0.7)',
+      value: '#ffffff',
     },
   } as const;
   const palette = toneMap[tone];

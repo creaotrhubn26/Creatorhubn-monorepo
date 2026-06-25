@@ -37,7 +37,9 @@ import {
   MenuItem,
   FormControl,
   InputLabel,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   Edit as EditIcon,
   Delete as DeleteIcon,
@@ -130,6 +132,7 @@ export function FeatureCustomizationPanel({ userId }: Props) {
   const { data: customizationsData, isLoading } = useQuery<FeatureCustomizationsResponse>({
     queryKey: ['/api/admin/feature-customizations'],
     queryFn: () => apiRequest('/api/admin/feature-customizations'),
+    staleTime: 15000,
   });
 
   // Save mutation
@@ -212,13 +215,16 @@ export function FeatureCustomizationPanel({ userId }: Props) {
 
   if (isLoading) {
     return (
+      <ThemeProvider theme={adminDarkTheme}>
       <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
         <CircularProgress />
       </Box>
+      </ThemeProvider>
     );
   }
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Paper sx={{ p: 3 }}>
       <Typography variant="h5" sx={{ mb: 3, fontWeight: 600}}>
         Funksjonstilpasning
@@ -281,8 +287,8 @@ export function FeatureCustomizationPanel({ userId }: Props) {
                       <ImageIcon sx={{ fontSize: 16 }} />
                     </Avatar>
                   ) : (
-                    <Avatar sx={{ width: 32, height: 32, bgcolor: '#e0e0e0' }}>
-                      <ImageIcon sx={{ fontSize: 16, color: '#999' }} />
+                    <Avatar sx={{ width: 32, height: 32, bgcolor: 'rgba(255,255,255,0.1)' }}>
+                      <ImageIcon sx={{ fontSize: 16, color: 'rgba(255,255,255,0.5)' }} />
                     </Avatar>
                   )}
                 </TableCell>
@@ -493,6 +499,7 @@ export function FeatureCustomizationPanel({ userId }: Props) {
         </DialogActions>
       </Dialog>
     </Paper>
+    </ThemeProvider>
   );
 }
 

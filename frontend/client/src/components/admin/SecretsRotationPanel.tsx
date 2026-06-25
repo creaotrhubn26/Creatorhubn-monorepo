@@ -37,7 +37,9 @@ import {
   DialogActions,
   TextField,
   Snackbar,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   Refresh as RefreshIcon,
   CheckCircle as RotatedIcon,
@@ -83,7 +85,7 @@ const statusChip = (status: Status, days: number | null) => {
           icon={<OverdueIcon style={{ fontSize: 16 }} />}
           label={`Forfalt ${days != null ? `(${Math.abs(days)} dager)` : ''}`}
           size="small"
-          sx={{ bgcolor: '#fee2e2', color: '#991b1b', fontWeight: 700 }}
+          sx={{ bgcolor: 'rgba(239,68,68,0.18)', color: '#fca5a5', fontWeight: 700 }}
         />
       );
     case 'due_soon':
@@ -92,7 +94,7 @@ const statusChip = (status: Status, days: number | null) => {
           icon={<DueSoonIcon style={{ fontSize: 16 }} />}
           label={`Snart (${days} dager)`}
           size="small"
-          sx={{ bgcolor: '#fef3c7', color: '#92400e', fontWeight: 700 }}
+          sx={{ bgcolor: 'rgba(245,158,11,0.18)', color: '#fcd34d', fontWeight: 700 }}
         />
       );
     case 'never_rotated':
@@ -101,7 +103,7 @@ const statusChip = (status: Status, days: number | null) => {
           icon={<NeverIcon style={{ fontSize: 16 }} />}
           label="Aldri rotert"
           size="small"
-          sx={{ bgcolor: '#e0e7ff', color: '#3730a3', fontWeight: 700 }}
+          sx={{ bgcolor: 'rgba(99,102,241,0.18)', color: '#a5b4fc', fontWeight: 700 }}
         />
       );
     default:
@@ -110,7 +112,7 @@ const statusChip = (status: Status, days: number | null) => {
           icon={<RotatedIcon style={{ fontSize: 16 }} />}
           label={`OK (${days} dager)`}
           size="small"
-          sx={{ bgcolor: '#dcfce7', color: '#166534', fontWeight: 700 }}
+          sx={{ bgcolor: 'rgba(34,197,94,0.18)', color: '#86efac', fontWeight: 700 }}
         />
       );
   }
@@ -179,6 +181,7 @@ export const SecretsRotationPanel: React.FC = () => {
   };
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box sx={{ p: 3, bgcolor: 'rgba(255,255,255,0.04)', minHeight: '100%' }}>
       <Stack
         direction="row"
@@ -224,19 +227,19 @@ export const SecretsRotationPanel: React.FC = () => {
           <SummaryCard
             label="Forfalt"
             value={String(data.summary.overdue)}
-            color={data.summary.overdue > 0 ? '#dc2626' : '#9ca3af'}
+            color={data.summary.overdue > 0 ? '#dc2626' : 'rgba(255,255,255,0.5)'}
             icon={<OverdueIcon />}
           />
           <SummaryCard
             label="Snart forfalt"
             value={String(data.summary.dueSoon)}
-            color={data.summary.dueSoon > 0 ? '#f59e0b' : '#9ca3af'}
+            color={data.summary.dueSoon > 0 ? '#f59e0b' : 'rgba(255,255,255,0.5)'}
             icon={<DueSoonIcon />}
           />
           <SummaryCard
             label="Aldri rotert"
             value={String(data.summary.neverRotated)}
-            color={data.summary.neverRotated > 0 ? '#3730a3' : '#9ca3af'}
+            color={data.summary.neverRotated > 0 ? '#a5b4fc' : 'rgba(255,255,255,0.5)'}
             icon={<NeverIcon />}
           />
           <SummaryCard
@@ -248,7 +251,7 @@ export const SecretsRotationPanel: React.FC = () => {
           <SummaryCard
             label="Mangler i env"
             value={String(data.summary.missingFromEnv)}
-            color={data.summary.missingFromEnv > 0 ? '#9333ea' : '#9ca3af'}
+            color={data.summary.missingFromEnv > 0 ? '#9333ea' : 'rgba(255,255,255,0.5)'}
             icon={<MissingIcon />}
           />
         </Box>
@@ -370,14 +373,14 @@ export const SecretsRotationPanel: React.FC = () => {
                           <Chip
                             label="✓"
                             size="small"
-                            sx={{ bgcolor: '#dcfce7', color: '#166534' }}
+                            sx={{ bgcolor: 'rgba(34,197,94,0.18)', color: '#86efac' }}
                           />
                         ) : (
                           <Tooltip title="Env-vars mangler i Render — sjekk at navnet stemmer">
                             <Chip
                               label="✗"
                               size="small"
-                              sx={{ bgcolor: '#fee2e2', color: '#991b1b' }}
+                              sx={{ bgcolor: 'rgba(239,68,68,0.18)', color: '#fca5a5' }}
                             />
                           </Tooltip>
                         )}
@@ -473,6 +476,7 @@ export const SecretsRotationPanel: React.FC = () => {
         ) : undefined}
       </Snackbar>
     </Box>
+    </ThemeProvider>
   );
 };
 

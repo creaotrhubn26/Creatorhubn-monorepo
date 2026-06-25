@@ -29,7 +29,9 @@ import {
   Tooltip,
   Badge,
   Grid,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   EmojiEvents,
   Star,
@@ -65,6 +67,7 @@ interface LeaderboardEntry {
 export default function TestingLeaderboard() {
   const queryClient = useQueryClient();
   const theming = useTheming('prototype_tester');
+  const themeColors = { ...theming.colors, primary: '#ff8c00' };
   const { auth } = useEnhancedMasterIntegration();
 
   const [timeRange, setTimeRange] = useState<'week' | 'month' | 'all'>('week');
@@ -94,6 +97,7 @@ export default function TestingLeaderboard() {
   };
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box>
       <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between" sx={{ mb: 3 }}>
         <Stack direction="row" spacing={2} alignItems="center">
@@ -268,7 +272,7 @@ export default function TestingLeaderboard() {
                     </TableCell>
                     <TableCell>
                       <Stack direction="row" spacing={1} alignItems="center">
-                        <Avatar sx={{ width: 32, height: 32, bgcolor: theming.colors.primary }}>
+                        <Avatar sx={{ width: 32, height: 32, bgcolor: themeColors.primary }}>
                           <Science sx={{ fontSize: 18 }} />
                         </Avatar>
                         <Box>
@@ -288,7 +292,7 @@ export default function TestingLeaderboard() {
                       <Chip label={tester.assignedProfession} size="small" />
                     </TableCell>
                     <TableCell align="right">
-                      <Typography variant="body2" sx={{ fontWeight: 'bold', color: theming.colors.primary }}>
+                      <Typography variant="body2" sx={{ fontWeight: 'bold', color: themeColors.primary }}>
                         {tester.totalScore.toLocaleString()}
                       </Typography>
                     </TableCell>
@@ -323,6 +327,7 @@ export default function TestingLeaderboard() {
         </CardContent>
       </Card>
     </Box>
+    </ThemeProvider>
   );
 }
 

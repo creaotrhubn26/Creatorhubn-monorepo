@@ -24,7 +24,9 @@ import {
   Stack,
   IconButton,
   Tooltip,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   Payment as PaymentIcon,
   CardMembership as CardMembershipIcon,
@@ -48,6 +50,7 @@ export default function GooglePaymentsConfiguration({ className }: GooglePayment
   
   // Theming system
   const theming = useTheming('prototype_tester');
+  const themeColors = { ...theming.colors, primary: '#ff8c00' };
 
   // Register component with MasterIntegrationProvider
   useEffect(() => {
@@ -192,14 +195,15 @@ export default function GooglePaymentsConfiguration({ className }: GooglePayment
 };
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box className={className}>
-      <Typography variant="h4" sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+      <Typography variant="h4" sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1, color: themeColors.primary }}>
         <PaymentIcon color="primary" />
         Google Payments Configuration
       </Typography>
 
       <Alert severity="info" sx={{ mb: 3 }}>
-        <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+        <Typography variant="h6" gutterBottom sx={{ color: themeColors.primary }}>
           CreatorHub Norge Payments Profile ID: {paymentsProfileId}
         </Typography>
         <Typography variant="body2">
@@ -212,7 +216,7 @@ export default function GooglePaymentsConfiguration({ className }: GooglePayment
         <Grid item xs={12} sm={6}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: themeColors.primary }}>
                 <PaymentIcon color="primary" />
                 Google Pay Integration
               </Typography>
@@ -238,7 +242,7 @@ export default function GooglePaymentsConfiguration({ className }: GooglePayment
         <Grid item xs={12} sm={6}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: themeColors.primary }}>
                 <CardMembershipIcon color="primary" />
                 Google Wallet Integration
               </Typography>
@@ -265,7 +269,7 @@ export default function GooglePaymentsConfiguration({ className }: GooglePayment
       <Card sx={{ mb: 3 }}>
         <CardContent sx={theming.getThemedCardSx()}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+            <Typography variant="h6" sx={{ color: themeColors.primary }}>
               Configuration Details
             </Typography>
             <Button
@@ -318,7 +322,7 @@ export default function GooglePaymentsConfiguration({ className }: GooglePayment
       {Object.keys(configStatus).length > 0 && (
         <Card sx={theming.getThemedCardSx()}>
           <CardContent sx={theming.getThemedCardSx()}>
-            <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+            <Typography variant="h6" gutterBottom sx={{ color: themeColors.primary }}>
               Test Results
             </Typography>
             <Grid container spacing={2}>
@@ -349,6 +353,7 @@ export default function GooglePaymentsConfiguration({ className }: GooglePayment
         </Typography>
       </Alert>
     </Box>
+    </ThemeProvider>
   );
 }
 

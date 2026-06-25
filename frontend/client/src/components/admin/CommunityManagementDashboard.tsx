@@ -29,7 +29,9 @@ import {
   Chip,
   Alert,
   Paper,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   Group,
   Settings,
@@ -100,6 +102,7 @@ export default function CommunityManagementDashboard() {
   ];
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Container maxWidth="xl" sx={{ py: 0 }}>
       {/* Header */}
       <Box sx={{ mb: 4 }}>
@@ -233,6 +236,7 @@ export default function CommunityManagementDashboard() {
         <CommunityAnalytics />
       </TabPanel>
     </Container>
+    </ThemeProvider>
   );
 }
 

@@ -11,6 +11,7 @@ import {
 import GoogleAnalyticsDashboard from './GoogleAnalyticsDashboardEnhanced';
 import SEOBotAnalyticsDashboard from './SEOBotAnalyticsDashboard';
 import BillingAnalytics from './BillingAnalytics';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   Box,
   Card as MuiCard,
@@ -39,6 +40,7 @@ import {
   ListItemAvatar,
   IconButton,
   Alert,
+  ThemeProvider,
 } from '@mui/material';
 import {
   Assessment,
@@ -135,12 +137,30 @@ const calculateTrend = (current: number, previous: number): { percentage: number
   return { percentage: Math.abs(percentage), isPositive: percentage >= 0 };
 };
 
+/**
+ * Polling-kadens for admin-statistikk.
+ *
+ * Tidligere pollet flere feeds hvert 5.–10. sekund med staleTime: 0, noe som
+ * ga konstant backend-last som skalerer dårlig med antall admins. Et ops-
+ * dashbord trenger ikke sub-15s ferskhet, så vi hever intervallene og legger
+ * inn en liten staleTime slik at remount (f.eks. segmentbytte) ikke refyrer
+ * alle spørringene samtidig. React Query pauser dessuten polling når vinduet
+ * ikke er fokusert (refetchIntervalInBackground: false som standard).
+ */
+const LIVE_POLL_MS = 20_000; // kjernetall: brukere, e-postkonvertering
+const STANDARD_POLL_MS = 30_000; // dashboard, profesjon, role room
+const SLOW_POLL_MS = 60_000; // academy – endrer seg sjelden
+const STATS_STALE_MS = 10_000;
+
 export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsProps) {
   const [selectedMetric, setSelectedMetric] = useState<string | null>(null);
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
 
   // Theming system
   const theming = useTheming('prototype_tester');
+  // På mørk bakgrunn er prototype_tester-primæren (#e65100) for mørk/dempet.
+  // Bruk samme lyse oransje aksent som admin-skallet for god kontrast på overskrifter og tall.
+  const themeColors = { ...theming.colors, primary: '#ff8c00' };
 
   // Get auth from master integration
   const { auth } = useEnhancedMasterIntegration();
@@ -187,8 +207,8 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
       return apiRequest('/api/admin/platform-stats', { headers });
     },
     enabled: canAccessAdminStats && platformStatsFeedEnabled,
-    refetchInterval: platformStatsFeedEnabled ? 5000 : false, // ✅ SANNTID: Oppdater hver 5. sekund
-    staleTime: 0 // ✅ Alltid hent ferske data
+    refetchInterval: platformStatsFeedEnabled ? LIVE_POLL_MS : false,
+    staleTime: STATS_STALE_MS
 });
 
   // Fetch enhanced dashboard with enterprise data - SANNTID
@@ -199,8 +219,8 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
       return apiRequest('/api/admin/dashboard', { headers });
     },
     enabled: canAccessAdminStats && dashboardFeedEnabled,
-    refetchInterval: dashboardFeedEnabled ? 10000 : false,
-    staleTime: 0
+    refetchInterval: dashboardFeedEnabled ? STANDARD_POLL_MS : false,
+    staleTime: STATS_STALE_MS
   });
 
   // Fetch profession-specific stats for admin overview - SANNTID
@@ -211,8 +231,8 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
       return apiRequest('/api/admin/profession-stats', { headers });
     },
     enabled: canAccessAdminStats && professionStatsFeedEnabled,
-    refetchInterval: professionStatsFeedEnabled ? 8000 : false, // ✅ SANNTID: Oppdater hver 8. sekund
-    staleTime: 0
+    refetchInterval: professionStatsFeedEnabled ? STANDARD_POLL_MS : false,
+    staleTime: STATS_STALE_MS
   });
 
   // Fetch Academy revenue stats - SANNTID
@@ -223,8 +243,8 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
       return apiRequest('/api/academy/admin/revenue/overview', { headers });
     },
     enabled: canAccessAdminStats && academyRevenueFeedEnabled,
-    refetchInterval: academyRevenueFeedEnabled ? 10000 : false, // ✅ SANNTID: Oppdater hver 10. sekund
-    staleTime: 0
+    refetchInterval: academyRevenueFeedEnabled ? SLOW_POLL_MS : false,
+    staleTime: STATS_STALE_MS
   });
 
   // Fetch Academy analytics - SANNTID
@@ -235,8 +255,8 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
       return apiRequest('/api/admin/academy/analytics/overview', { headers });
     },
     enabled: canAccessAdminStats && academyAnalyticsFeedEnabled,
-    refetchInterval: academyAnalyticsFeedEnabled ? 10000 : false, // ✅ SANNTID: Oppdater hver 10. sekund
-    staleTime: 0
+    refetchInterval: academyAnalyticsFeedEnabled ? SLOW_POLL_MS : false,
+    staleTime: STATS_STALE_MS
   });
 
   // ✅ Fetch real-time email conversion stats
@@ -247,8 +267,8 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
       return apiRequest('/api/admin/email-conversion-stats', { headers });
     },
     enabled: canAccessAdminStats && emailConversionFeedEnabled,
-    refetchInterval: emailConversionFeedEnabled ? 5000 : false, // ✅ REAL-TIME: Update every 5 seconds
-    staleTime: 0
+    refetchInterval: emailConversionFeedEnabled ? LIVE_POLL_MS : false,
+    staleTime: STATS_STALE_MS
   });
 
   // Fetch Role Room live stats for the admin dashboard
@@ -268,8 +288,8 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
       }>;
     },
     enabled: canAccessAdminStats,
-    refetchInterval: 15000,
-    staleTime: 0,
+    refetchInterval: STANDARD_POLL_MS,
+    staleTime: STATS_STALE_MS,
   });
 
   if (!canAccessAdminStats) {
@@ -307,6 +327,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
   const platformStatsEndpointMissing = isApiEndpointMissing(platformStatsError);
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box sx={{ p: 3 }}>
       <Box
         sx={{
@@ -314,10 +335,10 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
           px: { xs: 2, md: 2.5 },
           py: { xs: 2.25, md: 2.75 },
           borderRadius: '24px',
-          border: '1px solid rgba(15, 23, 42, 0.08)',
+          border: '1px solid rgba(255,255,255,0.12)',
           background:
-            'linear-gradient(135deg, rgba(255, 248, 237, 0.96), rgba(255, 255, 255, 0.98))',
-          boxShadow: '0 18px 42px rgba(27, 21, 12, 0.05)',
+            'linear-gradient(135deg, rgba(15,23,42,0.94), rgba(255,255,255,0.04))',
+          boxShadow: '0 22px 44px rgba(0,0,0,0.35)',
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.5 }}>
@@ -328,18 +349,18 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                 fontSize: '0.72rem',
                 textTransform: 'uppercase',
                 letterSpacing: '0.12em',
-                color: '#8b5e34',
+                color: '#ff8c00',
                 fontWeight: 700,
               }}
             >
               Admin Intelligence
             </Typography>
-            <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary }}>
+            <Typography variant="h4" sx={{ fontWeight: 700, color: '#fff' }}>
               Plattformstatistikk
             </Typography>
           </Box>
         </Box>
-        <Typography sx={{ color: '#6b6257', maxWidth: 880 }}>
+        <Typography sx={{ color: 'rgba(255,255,255,0.78)', maxWidth: 880 }}>
           Live-tall for CreatorHub, The Role Room og Academy samles her når datakildene er
           tilgjengelige. Bruk denne flaten for å sjekke drift, inntekter og aktivitet før du går
           videre til detaljpanelene.
@@ -348,25 +369,25 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
           <Chip
             label="Full admin-tilgang"
             size="small"
-            sx={{ bgcolor: '#fff4e5', color: '#8c4d00', fontWeight: 700 }}
+            sx={{ bgcolor: 'rgba(255,140,0,0.18)', color: '#ffb95e', fontWeight: 700 }}
           />
           <Chip
             label={`${activeInsightSources} datakilder aktive`}
             size="small"
-            sx={{ bgcolor: '#ecfdf5', color: '#0f766e', fontWeight: 700 }}
+            sx={{ bgcolor: 'rgba(34,197,94,0.18)', color: '#86efac', fontWeight: 700 }}
           />
           {userEmail ? (
             <Chip
               label={userEmail}
               size="small"
-              sx={{ bgcolor: '#eff6ff', color: '#1d4ed8', fontWeight: 700 }}
+              sx={{ bgcolor: 'rgba(59,130,246,0.18)', color: '#93c5fd', fontWeight: 700 }}
             />
           ) : null}
           {isPlatformStatsLoading ? (
             <Chip
               label="Kjernetall laster"
               size="small"
-              sx={{ bgcolor: '#fff7ed', color: '#c2410c', fontWeight: 700 }}
+              sx={{ bgcolor: 'rgba(249,115,22,0.18)', color: '#fdba74', fontWeight: 700 }}
             />
           ) : null}
         </Box>
@@ -402,7 +423,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                   </Avatar>
                   <Chip size="small" label="Enterprise" color="warning" />
                 </Box>
-                <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary, mb: 1 }}>
+                <Typography variant="h4" sx={{ fontWeight: 700, color: themeColors.primary, mb: 1 }}>
                   {dashboardData.dashboard.quickStats.totalCustomers}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
@@ -421,7 +442,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                   </Avatar>
                   <Chip size="small" label="Enterprise" color="success" />
                 </Box>
-                <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary, mb: 1 }}>
+                <Typography variant="h4" sx={{ fontWeight: 700, color: themeColors.primary, mb: 1 }}>
                   {dashboardData.dashboard.quickStats.totalRevenue} kr
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
@@ -440,7 +461,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                   </Avatar>
                   <Chip size="small" label="Enterprise" color="primary" />
                 </Box>
-                <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary, mb: 1 }}>
+                <Typography variant="h4" sx={{ fontWeight: 700, color: themeColors.primary, mb: 1 }}>
                   {dashboardData.dashboard.quickStats.activeDeals}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
@@ -454,12 +475,12 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
             <MuiCard sx={{ height: '100%', transition: 'all 0.3s ease','&:hover': { transform: 'translateY(-4px)', boxShadow: 6 }, border: '2px solid #9c27b0' }}>
               <CardContent sx={theming.getThemedCardSx()}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-                  <Avatar sx={{ bgcolor: '#9c27b020', color: '#9c27b0', width: 48, height: 48 }}>
+                  <Avatar sx={{ bgcolor: '#9c27b020', color: '#ce93d8', width: 48, height: 48 }}>
                     {theming.getThemedIcon('star')}
                   </Avatar>
                   <Chip size="small" label="Enterprise" color="secondary" />
                 </Box>
-                <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary, mb: 1 }}>
+                <Typography variant="h4" sx={{ fontWeight: 700, color: themeColors.primary, mb: 1 }}>
                   {dashboardData.dashboard.quickStats.activeSubscriptions}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
@@ -480,7 +501,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
                   <Email sx={{ color: '#ea4335', fontSize: 32 }} />
                   <Box sx={{ flex: 1 }}>
-                    <Typography variant="h6" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+                    <Typography variant="h6" sx={{ fontWeight: 600, color: themeColors.primary }}>
                       Email Conversion Tracking (Real-Time)
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
@@ -528,7 +549,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                   </Grid>
                   <Grid xs={6} md={3}>
                     <Box sx={{ textAlign: 'center', p: 2, bgcolor: '#9c27b010', borderRadius: 1 }}>
-                      <Typography variant="h4" sx={{ fontWeight: 'bold', color: '#9c27b0' }}>
+                      <Typography variant="h4" sx={{ fontWeight: 'bold', color: '#ce93d8' }}>
                         {emailConversionStats.avgConversionRate || '0'}%
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
@@ -670,7 +691,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
         {billingAnalyticsFeedsEnabled ? (
           <MuiCard>
             <CardContent>
-              <Typography variant="h5" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 2, color: theming.colors.primary, mb: 3 }}>
+              <Typography variant="h5" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 2, color: themeColors.primary, mb: 3 }}>
                 <MonetizationOn sx={{ color: '#4caf50' }} />
                 Abonnement & Refundering Analytics
               </Typography>
@@ -690,7 +711,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
         <Box sx={{ mb: 4 }}>
           <MuiCard>
             <CardContent>
-              <Typography variant="h5" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 2, color: theming.colors.primary, mb: 3 }}>
+              <Typography variant="h5" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 2, color: themeColors.primary, mb: 3 }}>
                 <School sx={{ color: '#ff8c00' }} />
                 CreatorHub Academy - Statistikk
               </Typography>
@@ -724,7 +745,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                 <Grid xs={12} sm={6} md={3}>
                   <MuiCard sx={{
                     height: '100%',
-                    bgcolor: '#e8f5e9',
+                    bgcolor: 'rgba(76,175,80,0.12)',
                     border: '2px solid #4caf50',
                     transition: 'all 0.3s ease','&:hover': { transform: 'translateY(-4px)', boxShadow: 4 }
                   }}>
@@ -777,7 +798,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                 <Grid xs={12} sm={6} md={3}>
                   <MuiCard sx={{
                     height: '100%',
-                    bgcolor: '#f3e5f5',
+                    bgcolor: 'rgba(156,39,176,0.14)',
                     border: '2px solid #9c27b0',
                     transition: 'all 0.3s ease','&:hover': { transform: 'translateY(-4px)', boxShadow: 4 }
                   }}>
@@ -787,7 +808,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                           <EmojiEvents />
                         </Avatar>
                       </Box>
-                      <Typography variant="h3" sx={{ fontWeight: 700, color: '#9c27b0', mb: 1 }}>
+                      <Typography variant="h3" sx={{ fontWeight: 700, color: '#ce93d8', mb: 1 }}>
                         {academyStats.totalInstructors || 0}
                       </Typography>
                       <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600}}>
@@ -811,7 +832,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                 <Button
                   variant="outlined"
                   startIcon={<Analytics />}
-                  sx={{ borderColor: '#ff8c00', color: '#ff8c00','&:hover': { borderColor: '#e67e00', bgcolor: '#fff3e0' } }}
+                  sx={{ borderColor: '#ff8c00', color: '#ff8c00','&:hover': { borderColor: '#e67e00', bgcolor: 'rgba(255,140,0,0.12)' } }}
                 >
                   Detaljert Analyse
                 </Button>
@@ -847,7 +868,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                   />
                 )}
               </Box>
-              <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary, mb: 1 }}>
+              <Typography variant="h4" sx={{ fontWeight: 700, color: themeColors.primary, mb: 1 }}>
                 {stats?.totalUsers?.current || 0}
               </Typography>
               <Typography variant="body2" color="text.secondary">
@@ -881,7 +902,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                   />
                 )}
               </Box>
-              <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary, mb: 1 }}>
+              <Typography variant="h4" sx={{ fontWeight: 700, color: themeColors.primary, mb: 1 }}>
                 {stats?.activeProjects?.current || 0}
               </Typography>
               <Typography variant="body2" color="text.secondary">
@@ -915,7 +936,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                   />
                 )}
               </Box>
-              <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary, mb: 1 }}>
+              <Typography variant="h4" sx={{ fontWeight: 700, color: themeColors.primary, mb: 1 }}>
                 {formatValue(stats?.totalRevenue?.current || 0, 'currency')}
               </Typography>
               <Typography variant="body2" color="text.secondary">
@@ -936,11 +957,11 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
           >
             <CardContent sx={theming.getThemedCardSx()}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-                <Avatar sx={{ bgcolor: '#9c27b020', color: '#9c27b0', width: 48, height: 48 }}>
+                <Avatar sx={{ bgcolor: '#9c27b020', color: '#ce93d8', width: 48, height: 48 }}>
                   {theming.getThemedIcon('group')}
                 </Avatar>
               </Box>
-              <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary, mb: 1 }}>
+              <Typography variant="h4" sx={{ fontWeight: 700, color: themeColors.primary, mb: 1 }}>
                 {dashboardData?.dashboard?.quickStats?.activeSubscriptions ?? 0}
               </Typography>
               <Typography variant="body2" color="text.secondary">
@@ -954,7 +975,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
       {/* Academy Revenue Section */}
       {academyRevenue && (
         <Box sx={{ mb: 4 }}>
-          <Typography variant="h5" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 2, color: theming.colors.primary, mb: 3 }}>
+          <Typography variant="h5" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 2, color: themeColors.primary, mb: 3 }}>
             <School sx={{ color: '#ff8c00', fontSize: 32 }} />
             Academy Inntektsstatistikk
           </Typography>
@@ -973,12 +994,12 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
               >
                 <CardContent sx={theming.getThemedCardSx()}>
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-                    <Avatar sx={{ bgcolor: '#9c27b020', color: '#9c27b0', width: 48, height: 48 }}>
+                    <Avatar sx={{ bgcolor: '#9c27b020', color: '#ce93d8', width: 48, height: 48 }}>
                       <Group />
                     </Avatar>
                     <Chip size="small" label="Studenter" sx={{ bgcolor: '#9c27b0', color: 'white' }} />
                   </Box>
-                  <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary, mb: 1 }}>
+                  <Typography variant="h4" sx={{ fontWeight: 700, color: themeColors.primary, mb: 1 }}>
                     {academyRevenue.totalStudents || 0}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -1009,7 +1030,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                     </Avatar>
                     <Chip size="small" label="Instruktører" sx={{ bgcolor: '#e91e63', color: 'white' }} />
                   </Box>
-                  <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary, mb: 1 }}>
+                  <Typography variant="h4" sx={{ fontWeight: 700, color: themeColors.primary, mb: 1 }}>
                     {academyRevenue.totalInstructors || 0}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -1040,7 +1061,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                     </Avatar>
                     <Chip size="small" label="Academy" sx={{ bgcolor: '#ff8c00', color: 'white' }} />
                   </Box>
-                  <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary, mb: 1 }}>
+                  <Typography variant="h4" sx={{ fontWeight: 700, color: themeColors.primary, mb: 1 }}>
                     {formatValue(academyRevenue.totalRevenue || 0, 'currency')}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -1071,7 +1092,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                     </Avatar>
                     <Chip size="small" label="Plattform" color="success" />
                   </Box>
-                  <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary, mb: 1 }}>
+                  <Typography variant="h4" sx={{ fontWeight: 700, color: themeColors.primary, mb: 1 }}>
                     {formatValue(academyRevenue.totalPlatformRevenue || 0, 'currency')}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -1109,7 +1130,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                       color="warning"
                     />
                   </Box>
-                  <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary, mb: 1 }}>
+                  <Typography variant="h4" sx={{ fontWeight: 700, color: themeColors.primary, mb: 1 }}>
                     {formatValue(academyRevenue.pendingPayoutAmount || 0, 'currency')}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -1128,7 +1149,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
       {/* Profession Breakdown */}
       <MuiCard sx={{ mb: 4 }}>
         <CardContent sx={theming.getThemedCardSx()}>
-          <Typography variant="h6" sx={{ mb: 3, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+          <Typography variant="h6" sx={{ mb: 3, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: themeColors.primary }}>
             {theming.getThemedIcon('assessment')}
             Profesjonsfordeling
           </Typography>
@@ -1150,7 +1171,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                 onClick={() => handleCardClick('photographer')}
               >
                 <PhotoCamera sx={{ fontSize: 48, color: '#ff8c00', mb: 1 }} />
-                <Typography variant="h5" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+                <Typography variant="h5" sx={{ fontWeight: 600, color: themeColors.primary }}>
                   {stats?.professionBreakdown?.photographer || 0}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
@@ -1175,7 +1196,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                 onClick={() => handleCardClick('videographer')}
               >
                 <Videocam sx={{ fontSize: 48, color: '#e74c3c', mb: 1 }} />
-                <Typography variant="h5" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+                <Typography variant="h5" sx={{ fontWeight: 600, color: themeColors.primary }}>
                   {stats?.professionBreakdown?.videographer || 0}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
@@ -1200,7 +1221,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                 onClick={() => handleCardClick('musicproducer')}
               >
                 <LibraryMusic sx={{ fontSize: 48, color: '#9b59b6', mb: 1 }} />
-                <Typography variant="h5" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+                <Typography variant="h5" sx={{ fontWeight: 600, color: themeColors.primary }}>
                   {stats?.professionBreakdown?.musicproducer || 0}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
@@ -1225,7 +1246,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                 onClick={() => handleCardClick('vendor')}
               >
                 <Store sx={{ fontSize: 48, color: '#27ae60', mb: 1 }} />
-                <Typography variant="h5" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+                <Typography variant="h5" sx={{ fontWeight: 600, color: themeColors.primary }}>
                   {stats?.professionBreakdown?.vendor || 0}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
@@ -1240,7 +1261,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
       {/* System Health */}
       <MuiCard>
         <CardContent sx={theming.getThemedCardSx()}>
-          <Typography variant="h6" sx={{ mb: 3, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+          <Typography variant="h6" sx={{ mb: 3, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: themeColors.primary }}>
             {theming.getThemedIcon('assessment')}
             Systemhelse
           </Typography>
@@ -1249,7 +1270,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
               <Typography variant="body2" color="text.secondary" gutterBottom>
                 Oppetid siden restart
               </Typography>
-              <Typography variant="h6" sx={{ color: theming.colors.primary, fontWeight: 600}}>
+              <Typography variant="h6" sx={{ color: themeColors.primary, fontWeight: 600}}>
                 {formatRuntimeValue(stats?.systemHealth?.uptimeHours)}
               </Typography>
             </Grid>
@@ -1257,7 +1278,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
               <Typography variant="body2" color="text.secondary" gutterBottom>
                 Gjennomsnittlig Responstid
               </Typography>
-              <Typography variant="h6" sx={{ color: theming.colors.primary, fontWeight: 600}}>
+              <Typography variant="h6" sx={{ color: themeColors.primary, fontWeight: 600}}>
                 {formatOptionalMetric(stats?.systemHealth?.responseTime, 'time')}
               </Typography>
             </Grid>
@@ -1296,49 +1317,49 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
               {selectedMetric === 'users' && (
                 <>
                   <Group sx={{ color: '#2196f3' }} />
-                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>Detaljert Brukerstatistikk</Typography>
+                  <Typography variant="h6" sx={{ color: themeColors.primary }}>Detaljert Brukerstatistikk</Typography>
                 </>
               )}
               {selectedMetric === 'projects' && (
                 <>
                   <Dashboard sx={{ color: '#ff8c00' }} />
-                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>Detaljert Prosjektstatistikk</Typography>
+                  <Typography variant="h6" sx={{ color: themeColors.primary }}>Detaljert Prosjektstatistikk</Typography>
                 </>
               )}
               {selectedMetric === 'revenue' && (
                 <>
                   <AttachMoney sx={{ color: '#4caf50' }} />
-                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>Detaljert Inntektsstatistikk</Typography>
+                  <Typography variant="h6" sx={{ color: themeColors.primary }}>Detaljert Inntektsstatistikk</Typography>
                 </>
               )}
               {selectedMetric === 'subscriptions' && (
                 <>
-                  <Star sx={{ color: '#9c27b0' }} />
-                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>Detaljert Abonnementsstatistikk</Typography>
+                  <Star sx={{ color: '#ce93d8' }} />
+                  <Typography variant="h6" sx={{ color: themeColors.primary }}>Detaljert Abonnementsstatistikk</Typography>
                 </>
               )}
               {selectedMetric === 'photographer' && (
                 <>
                   <PhotoCamera sx={{ color: '#ff8c00' }} />
-                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>Detaljert Fotografer Statistikk</Typography>
+                  <Typography variant="h6" sx={{ color: themeColors.primary }}>Detaljert Fotografer Statistikk</Typography>
                 </>
               )}
               {selectedMetric === 'videographer' && (
                 <>
                   <Videocam sx={{ color: '#e74c3c' }} />
-                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>Detaljert Videografer Statistikk</Typography>
+                  <Typography variant="h6" sx={{ color: themeColors.primary }}>Detaljert Videografer Statistikk</Typography>
                 </>
               )}
               {selectedMetric === 'musicproducer' && (
                 <>
                   <LibraryMusic sx={{ color: '#9b59b6' }} />
-                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>Detaljert Musikkprodusenter Statistikk</Typography>
+                  <Typography variant="h6" sx={{ color: themeColors.primary }}>Detaljert Musikkprodusenter Statistikk</Typography>
                 </>
               )}
               {selectedMetric === 'vendor' && (
                 <>
                   <Store sx={{ color: '#27ae60' }} />
-                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>Detaljert Leverandører Statistikk</Typography>
+                  <Typography variant="h6" sx={{ color: themeColors.primary }}>Detaljert Leverandører Statistikk</Typography>
                 </>
               )}
             </Box>
@@ -1351,7 +1372,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
         <DialogContent>
           {selectedMetric === 'users' && (
             <Box>
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+              <Typography variant="h6" gutterBottom sx={{ color: themeColors.primary }}>
                 Brukerinformasjon per profesjon
               </Typography>
               <TableContainer component={Paper} sx={{ mb: 3 }}>
@@ -1417,7 +1438,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
 
           {selectedMetric === 'projects' && (
             <Box>
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+              <Typography variant="h6" gutterBottom sx={{ color: themeColors.primary }}>
                 Prosjektanalyse per profesjon
               </Typography>
               <Grid container spacing={3}>
@@ -1476,13 +1497,13 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
 
           {selectedMetric === 'revenue' && (
             <Box>
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+              <Typography variant="h6" gutterBottom sx={{ color: themeColors.primary }}>
                 Inntektsanalyse
               </Typography>
               <Grid container spacing={3}>
                 <Grid xs={12} md={6}>
                   <Paper sx={{ p: 3 }}>
-                    <Typography variant="h4" sx={{ color: theming.colors.primary, fontWeight: 700}}>
+                    <Typography variant="h4" sx={{ color: themeColors.primary, fontWeight: 700}}>
                       {formatValue(stats?.totalRevenue?.current || 0, 'currency')}
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
@@ -1492,7 +1513,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                 </Grid>
                 <Grid xs={12} md={6}>
                   <Paper sx={{ p: 3 }}>
-                    <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 , color: theming.colors.primary }}>
+                    <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 , color: themeColors.primary }}>
                       <Assessment sx={{ color: '#4caf50' }} />
                       Inntektsfordeling
                     </Typography>
@@ -1516,13 +1537,13 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
 
           {selectedMetric === 'subscriptions' && (
             <Box>
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+              <Typography variant="h6" gutterBottom sx={{ color: themeColors.primary }}>
                 Abonnementsdetaljer
               </Typography>
               <Grid container spacing={3}>
                 <Grid xs={12} md={6}>
                   <Paper sx={{ p: 3 }}>
-                    <Typography variant="h4" sx={{ color: theming.colors.primary, fontWeight: 700}}>
+                    <Typography variant="h4" sx={{ color: themeColors.primary, fontWeight: 700}}>
                       {dashboardData?.dashboard?.quickStats?.activeSubscriptions ?? 0}
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
@@ -1532,8 +1553,8 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                 </Grid>
                 <Grid xs={12} md={6}>
                   <Paper sx={{ p: 3 }}>
-                    <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 , color: theming.colors.primary }}>
-                      <Star sx={{ color: '#9c27b0' }} />
+                    <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 , color: themeColors.primary }}>
+                      <Star sx={{ color: '#ce93d8' }} />
                       Abonnementstyper
                     </Typography>
                     {subscriptionBreakdown.length > 0 ? (
@@ -1555,14 +1576,14 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
 
           {selectedMetric === 'photographer' && (
             <Box>
-              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 , color: theming.colors.primary }}>
+              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 , color: themeColors.primary }}>
                 <PhotoCamera sx={{ color: '#ff8c00' }} />
                 Fotografer - Detaljert Oversikt
               </Typography>
               <Grid container spacing={3}>
                 <Grid xs={12} md={6}>
                   <Paper sx={{ p: 3 }}>
-                    <Typography variant="h4" sx={{ color: theming.colors.primary, fontWeight: 700}}>
+                    <Typography variant="h4" sx={{ color: themeColors.primary, fontWeight: 700}}>
                       {stats?.professionBreakdown?.photographer || 0}
                     </Typography>
                     <Typography variant="body2" color="text.secondary" gutterBottom>
@@ -1582,7 +1603,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                 </Grid>
                 <Grid xs={12} md={6}>
                   <Paper sx={{ p: 3 }}>
-                    <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 , color: theming.colors.primary }}>
+                    <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 , color: themeColors.primary }}>
                       <Assessment sx={{ color: '#ff8c00' }} />
                       Spesialiseringer
                     </Typography>
@@ -1599,14 +1620,14 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
 
           {selectedMetric === 'videographer' && (
             <Box>
-              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 , color: theming.colors.primary }}>
+              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 , color: themeColors.primary }}>
                 <Videocam sx={{ color: '#e74c3c' }} />
                 Videografer - Detaljert Oversikt
               </Typography>
               <Grid container spacing={3}>
                 <Grid xs={12} md={6}>
                   <Paper sx={{ p: 3 }}>
-                    <Typography variant="h4" sx={{ color: theming.colors.primary, fontWeight: 700}}>
+                    <Typography variant="h4" sx={{ color: themeColors.primary, fontWeight: 700}}>
                       {stats?.professionBreakdown?.videographer || 0}
                     </Typography>
                     <Typography variant="body2" color="text.secondary" gutterBottom>
@@ -1626,7 +1647,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                 </Grid>
                 <Grid xs={12} md={6}>
                   <Paper sx={{ p: 3 }}>
-                    <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 , color: theming.colors.primary }}>
+                    <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 , color: themeColors.primary }}>
                       <Videocam sx={{ color: '#e74c3c' }} />
                       Spesialiseringer
                     </Typography>
@@ -1643,14 +1664,14 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
 
           {selectedMetric === 'musicproducer' && (
             <Box>
-              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 , color: theming.colors.primary }}>
+              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 , color: themeColors.primary }}>
                 <LibraryMusic sx={{ color: '#9b59b6' }} />
                 Musikkprodusenter - Detaljert Oversikt
               </Typography>
               <Grid container spacing={3}>
                 <Grid xs={12} md={6}>
                   <Paper sx={{ p: 3 }}>
-                    <Typography variant="h4" sx={{ color: theming.colors.primary, fontWeight: 700}}>
+                    <Typography variant="h4" sx={{ color: themeColors.primary, fontWeight: 700}}>
                       {stats?.professionBreakdown?.musicproducer || 0}
                     </Typography>
                     <Typography variant="body2" color="text.secondary" gutterBottom>
@@ -1670,7 +1691,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                 </Grid>
                 <Grid xs={12} md={6}>
                   <Paper sx={{ p: 3 }}>
-                    <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 , color: theming.colors.primary }}>
+                    <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 , color: themeColors.primary }}>
                       <LibraryMusic sx={{ color: '#9b59b6' }} />
                       Spesialiseringer
                     </Typography>
@@ -1687,14 +1708,14 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
 
           {selectedMetric === 'vendor' && (
             <Box>
-              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 , color: theming.colors.primary }}>
+              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 , color: themeColors.primary }}>
                 <Store sx={{ color: '#27ae60' }} />
                 Leverandører - Detaljert Oversikt
               </Typography>
               <Grid container spacing={3}>
                 <Grid xs={12} md={6}>
                   <Paper sx={{ p: 3 }}>
-                    <Typography variant="h4" sx={{ color: theming.colors.primary, fontWeight: 700}}>
+                    <Typography variant="h4" sx={{ color: themeColors.primary, fontWeight: 700}}>
                       {stats?.professionBreakdown?.vendor || 0}
                     </Typography>
                     <Typography variant="body2" color="text.secondary" gutterBottom>
@@ -1714,7 +1735,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                 </Grid>
                 <Grid xs={12} md={6}>
                   <Paper sx={{ p: 3 }}>
-                    <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 , color: theming.colors.primary }}>
+                    <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 , color: themeColors.primary }}>
                       <Store sx={{ color: '#27ae60' }} />
                       Produktkategorier
                     </Typography>
@@ -1732,8 +1753,8 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
           {/* Academy Students Detail */}
           {selectedMetric === 'academy_students' && academyRevenue && (
             <Box>
-              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
-                <Group sx={{ color: '#9c27b0' }} />
+              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: themeColors.primary }}>
+                <Group sx={{ color: '#ce93d8' }} />
                 Academy Studenter - Oversikt
               </Typography>
               <Grid container spacing={3}>
@@ -1742,7 +1763,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                     <Typography variant="caption" color="text.secondary" gutterBottom display="block">
                       UNIKE STUDENTER
                     </Typography>
-                    <Typography variant="h4" sx={{ color: '#9c27b0', fontWeight: 700}}>
+                    <Typography variant="h4" sx={{ color: '#ce93d8', fontWeight: 700}}>
                       {academyRevenue.totalStudents || 0}
                     </Typography>
                     <Divider sx={{ my: 2 }} />
@@ -1780,7 +1801,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
           {/* Academy Instructors Detail */}
           {selectedMetric === 'academy_instructors' && academyRevenue && (
             <Box>
-              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: themeColors.primary }}>
                 <Person sx={{ color: '#e91e63' }} />
                 Academy Instruktører - Oversikt
               </Typography>
@@ -1852,7 +1873,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
           {/* Academy Revenue Detail */}
           {selectedMetric === 'academy_revenue' && academyRevenue && (
             <Box>
-              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: themeColors.primary }}>
                 <School sx={{ color: '#ff8c00' }} />
                 Academy Omsetning - Detaljert
               </Typography>
@@ -1909,7 +1930,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
           {/* Academy Platform Fee Detail */}
           {selectedMetric === 'academy_platform_fee' && academyRevenue && (
             <Box>
-              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: themeColors.primary }}>
                 <MonetizationOn sx={{ color: '#4caf50' }} />
                 Plattformavgift - Detaljert Fordeling
               </Typography>
@@ -1942,7 +1963,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
           {/* Instructor Revenue Detail */}
           {selectedMetric === 'academy_instructor_revenue' && academyRevenue && (
             <Box>
-              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: themeColors.primary }}>
                 <EmojiEvents sx={{ color: '#2196f3' }} />
                 Instruktørinntekt - Totalt Utbetalt
               </Typography>
@@ -1966,7 +1987,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
           {/* Pending Payouts Detail */}
           {selectedMetric === 'academy_payouts' && academyRevenue && (
             <Box>
-              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: themeColors.primary }}>
                 <AccountBalance sx={{ color: '#ff9800' }} />
                 Ventende Utbetalinger - Krever Godkjenning
               </Typography>
@@ -2005,5 +2026,6 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
         </DialogActions>
       </Dialog>
     </Box>
+    </ThemeProvider>
   );
 }

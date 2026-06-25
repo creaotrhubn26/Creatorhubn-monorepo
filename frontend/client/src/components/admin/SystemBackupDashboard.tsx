@@ -28,7 +28,9 @@ import {
   Paper,
   Divider,
   Stack,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import Grid from '@mui/material/Grid2';
 import {
   Backup as BackupIcon,
@@ -252,6 +254,7 @@ export default function SystemBackupDashboard(props: SystemBackupDashboardProps)
   );
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box sx={{ p: 3 }}>
       <Box
         sx={{
@@ -590,5 +593,6 @@ export default function SystemBackupDashboard(props: SystemBackupDashboardProps)
         </DialogActions>
       </Dialog>
     </Box>
+    </ThemeProvider>
   );
 }

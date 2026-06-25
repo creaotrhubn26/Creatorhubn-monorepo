@@ -23,7 +23,9 @@ import {
   ListItemIcon,
   ListItemText,
   Divider,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   CheckCircle as OkIcon,
   Cancel as MissingIcon,
@@ -78,12 +80,14 @@ const AdminConfigStatusCard: React.FC = () => {
 
   if (loading && !data) {
     return (
-      <Card variant="outlined" sx={{ mb: 2 }}>
-        <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <CircularProgress size={16} />
-          <Typography variant="body2" color="text.secondary">Sjekker produksjons-config…</Typography>
-        </CardContent>
-      </Card>
+      <ThemeProvider theme={adminDarkTheme}>
+        <Card variant="outlined" sx={{ mb: 2 }}>
+          <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <CircularProgress size={16} />
+            <Typography variant="body2" color="text.secondary">Sjekker produksjons-config…</Typography>
+          </CardContent>
+        </Card>
+      </ThemeProvider>
     );
   }
 
@@ -102,6 +106,7 @@ const AdminConfigStatusCard: React.FC = () => {
   const warningMissing = data.missing.filter((m) => m.severity === 'warning');
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Card variant="outlined" sx={{ mb: 2, borderColor: statusInfo.color === 'success' ? 'success.main' : statusInfo.color === 'error' ? 'error.main' : 'warning.main' }}>
       <CardContent>
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.5 }}>
@@ -182,6 +187,7 @@ const AdminConfigStatusCard: React.FC = () => {
         </Typography>
       </CardContent>
     </Card>
+    </ThemeProvider>
   );
 };
 

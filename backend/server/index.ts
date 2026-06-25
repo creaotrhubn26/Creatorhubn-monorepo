@@ -2128,6 +2128,47 @@ function requireAdminSession(
   return session;
 }
 
+// ─── GET /api/admin/presence/online ──────────────────────────────────────
+// Admin-guardet oversikt over hvilke brukere som er pålogget akkurat nå.
+// Presence er personvern-sensitivt → kun admin. Online = user_presence
+// last_seen_at innen 90 sek og ikke idle (samme vindu som Admin Room /
+// platform-status). Degraderer trygt hvis user_presence-tabellen mangler.
+app.get("/api/admin/presence/online", async (req, res) => {
+  if (!requireAdminSession(req, res)) return;
+  try {
+    const result = await pool.query(
+      `SELECT u.id,
+              u.email,
+              COALESCE(
+                NULLIF(TRIM(CONCAT(u.first_name, ' ', u.last_name)), ''),
+                u.email
+              ) AS name,
+              p.last_seen_at,
+              p.is_idle,
+              p.current_route,
+              (p.last_seen_at > NOW() - INTERVAL '90 seconds'
+                AND COALESCE(p.is_idle, FALSE) = FALSE) AS is_online
+         FROM users u
+         LEFT JOIN user_presence p ON p.user_id::text = u.id
+        WHERE p.last_seen_at > NOW() - INTERVAL '90 seconds'
+          AND COALESCE(p.is_idle, FALSE) = FALSE`,
+    );
+    const online = result.rows.map((row) => ({
+      userId: row.id,
+      email: row.email,
+      name: row.name,
+      lastSeenAt: row.last_seen_at ?? null,
+      isIdle: row.is_idle === true,
+      currentRoute: row.current_route ?? null,
+    }));
+    res.json({ online, onlineCount: online.length, generatedAt: new Date().toISOString() });
+  } catch (error) {
+    // Tabellen kan mangle i enkelte miljøer — da er ingen «pålogget», ikke en feil.
+    console.warn("[admin/presence/online] degraded:", error);
+    res.json({ online: [], onlineCount: 0, generatedAt: new Date().toISOString(), degraded: true });
+  }
+});
+
 registerTidumAdminRoutes(app, pool, requireAdminSession);
 registerStripePriceDriftRoutes(app, pool, requireAdminSession);
 registerMarketplaceAppConfigRoutes(app, pool, requireAdminSession);

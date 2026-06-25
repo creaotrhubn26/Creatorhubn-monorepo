@@ -128,7 +128,7 @@ const UserInstallationsPanel: React.FC<Props> = ({ users }) => {
       <Card>
         <CardContent>
           <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 2 }}>
-            <Box sx={{ p: 1, borderRadius: 2, bgcolor: alpha('#7c3aed', 0.1), color: '#7c3aed' }}>
+            <Box sx={{ p: 1, borderRadius: 2, bgcolor: alpha('#7c3aed', 0.1), color: '#c084fc' }}>
               <AppsIcon />
             </Box>
             <Box>

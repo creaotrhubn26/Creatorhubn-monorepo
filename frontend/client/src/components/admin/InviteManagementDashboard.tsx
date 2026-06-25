@@ -42,7 +42,11 @@ import {
   StepLabel,
   StepConnector,
   stepConnectorClasses,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
+import { TableVirtuoso } from 'react-virtuoso';
+import type { TableHeadProps } from '@mui/material/TableHead';
 import { styled } from '@mui/material/styles';
 import {
   Assessment,
@@ -158,7 +162,9 @@ export default function InviteManagementDashboard() {
 
   // Theming system
   const theming = useTheming('prototype_tester');
-  
+  // Lys oransje aksent på mørk bakgrunn (matcher admin-skallet).
+  const themeColors = { ...theming.colors, primary: '#ff8c00' };
+
   // Dynamic profession system
   const { getProfessionDisplayName } = useDynamicProfessions();
 
@@ -308,18 +314,21 @@ export default function InviteManagementDashboard() {
 
   if (isLoading) {
     return (
-      <Box sx={{ p: 3 }}>
-        <LinearProgress />
-        <Typography sx={{ mt: 2, textAlign: 'center' }}>
-          Laster invitasjonsdata...
-        </Typography>
-      </Box>
+      <ThemeProvider theme={adminDarkTheme}>
+        <Box sx={{ p: 3 }}>
+          <LinearProgress />
+          <Typography sx={{ mt: 2, textAlign: 'center' }}>
+            Laster invitasjonsdata...
+          </Typography>
+        </Box>
+      </ThemeProvider>
     );
 }
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box sx={{ p: 3 }}>
-      <Typography variant="h4" sx={{ mb: 3, color: theming.colors.primary }}>
+      <Typography variant="h4" sx={{ mb: 3, color: themeColors.primary }}>
         Invitasjonshåndtering
       </Typography>
 
@@ -367,7 +376,7 @@ export default function InviteManagementDashboard() {
               <Box sx={{ display: 'flex', alignItems: 'center' }}>
                 <Group sx={{ color: 'primary.main', mr: 2 }} />
                 <Box>
-                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>{stats.totalRequests || 0}</Typography>
+                  <Typography variant="h4" sx={{ color: themeColors.primary }}>{stats.totalRequests || 0}</Typography>
                   <Typography variant="body2">Totale søknader</Typography>
                 </Box>
               </Box>
@@ -381,7 +390,7 @@ export default function InviteManagementDashboard() {
               <Box sx={{ display: 'flex', alignItems: 'center' }}>
                 <Schedule sx={{ color: 'warning.main', mr: 2 }} />
                 <Box>
-                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>{stats.pendingReview || 0}</Typography>
+                  <Typography variant="h4" sx={{ color: themeColors.primary }}>{stats.pendingReview || 0}</Typography>
                   <Typography variant="body2">Venter på godkjenning</Typography>
                 </Box>
               </Box>
@@ -395,7 +404,7 @@ export default function InviteManagementDashboard() {
               <Box sx={{ display: 'flex', alignItems: 'center' }}>
                 <CheckCircle sx={{ color: 'success.main', mr: 2 }} />
                 <Box>
-                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>{stats.approved || 0}</Typography>
+                  <Typography variant="h4" sx={{ color: themeColors.primary }}>{stats.approved || 0}</Typography>
                   <Typography variant="body2">Godkjente</Typography>
                 </Box>
               </Box>
@@ -409,7 +418,7 @@ export default function InviteManagementDashboard() {
               <Box sx={{ display: 'flex', alignItems: 'center' }}>
                 <TrendingUp sx={{ color: '#ff6b35', mr: 2 }} />
                 <Box>
-                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>{Math.round(stats.conversionRate || 0)}%</Typography>
+                  <Typography variant="h4" sx={{ color: themeColors.primary }}>{Math.round(stats.conversionRate || 0)}%</Typography>
                   <Typography variant="body2">Konverteringsrate</Typography>
                 </Box>
               </Box>
@@ -442,24 +451,44 @@ export default function InviteManagementDashboard() {
       </Paper>
 
       {/* Invitations Table */}
-      <TableContainer component={Paper}>
-        <Table>
-          <TableHead>
+      <Paper style={{ height: 600, width: '100%' }}>
+        {/*
+          Virtualisert tabell (react-virtuoso) – rendrer kun synlige rader, så
+          DOM-en holder seg lett uansett hvor mange invitasjoner som vises.
+          Samme mønster som RefundRequestsTable/PaymentMethodsTable.
+        */}
+        <TableVirtuoso
+          data={filteredInvitations}
+          components={{
+            Scroller: React.forwardRef<HTMLDivElement>((props, ref) => (
+              <TableContainer component={Paper} {...props} ref={ref} />
+            )),
+            Table: (props) => (
+              <Table {...props} sx={{ borderCollapse: 'separate', tableLayout: 'fixed' }} />
+            ),
+            TableHead: React.forwardRef<HTMLTableSectionElement, TableHeadProps>((props, ref) => (
+              <TableHead {...props} ref={ref} />
+            )),
+            TableRow: ({ item: _item, ...props }) => <TableRow {...props} hover />,
+            TableBody: React.forwardRef<HTMLTableSectionElement>((props, ref) => (
+              <TableBody {...props} ref={ref} />
+            )),
+          }}
+          fixedHeaderContent={() => (
             <TableRow>
-              <TableCell>Bedrift</TableCell>
-              <TableCell>Kontakt</TableCell>
-              <TableCell>Profesjon</TableCell>
-              <TableCell>Abonnement</TableCell>
-              <TableCell>Status</TableCell>
-              <TableCell>Brukerreise</TableCell>
-              <TableCell>Risiko</TableCell>
-              <TableCell>Dato</TableCell>
-              <TableCell>Handlinger</TableCell>
+              <TableCell sx={{ width: 200, fontWeight: 600 }}>Bedrift</TableCell>
+              <TableCell sx={{ width: 200, fontWeight: 600 }}>Kontakt</TableCell>
+              <TableCell sx={{ width: 130, fontWeight: 600 }}>Profesjon</TableCell>
+              <TableCell sx={{ width: 140, fontWeight: 600 }}>Abonnement</TableCell>
+              <TableCell sx={{ width: 120, fontWeight: 600 }}>Status</TableCell>
+              <TableCell sx={{ width: 150, fontWeight: 600 }}>Brukerreise</TableCell>
+              <TableCell sx={{ width: 110, fontWeight: 600 }}>Risiko</TableCell>
+              <TableCell sx={{ width: 110, fontWeight: 600 }}>Dato</TableCell>
+              <TableCell sx={{ width: 110, fontWeight: 600 }}>Handlinger</TableCell>
             </TableRow>
-          </TableHead>
-          <TableBody>
-            {filteredInvitations.map((invite: any) => (
-              <TableRow key={invite.id} hover>
+          )}
+          itemContent={(_index, invite: any) => (
+            <>
                 <TableCell>
                   <Box>
                     <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
@@ -470,7 +499,7 @@ export default function InviteManagementDashboard() {
                     </Typography>
                   </Box>
                 </TableCell>
-                
+
                 <TableCell>
                   <Box>
                     <Typography variant="body2">{invite.contactName}</Typography>
@@ -479,7 +508,7 @@ export default function InviteManagementDashboard() {
                     </Typography>
                   </Box>
                 </TableCell>
-                
+
                 <TableCell>
                   <Chip
                     label={getProfessionLabel(invite.profession)}
@@ -537,27 +566,27 @@ export default function InviteManagementDashboard() {
                     </Tooltip>
                   )}
                 </TableCell>
-                
+
                 <TableCell>
                   <Typography variant="body2">
                     {new Date(invite.createdAt).toLocaleDateString('nb-NO')}
                   </Typography>
                 </TableCell>
-                
+
                 <TableCell>
                   <Box sx={{ display: 'flex', gap: 1 }}>
                     <Tooltip title="Se detaljer">
-                      <IconButton 
+                      <IconButton
                         size="small"
                         onClick={() => handleReviewInvite(invite)}
                       >
                         {theming.getThemedIcon('visibility')}
                       </IconButton>
                     </Tooltip>
-                    
+
                     {invite.status === 'approved' && !invite.inviteSentAt && (
                       <Tooltip title="Send invitasjon">
-                        <IconButton 
+                        <IconButton
                           size="small"
                           onClick={() => handleSendInvite(invite.id)}
                           disabled={sendInviteMutation.isPending}
@@ -568,11 +597,10 @@ export default function InviteManagementDashboard() {
                     )}
                   </Box>
                 </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
+            </>
+          )}
+        />
+      </Paper>
 
       {/* Review Dialog */}
       <Dialog 
@@ -591,7 +619,7 @@ export default function InviteManagementDashboard() {
               {/* User Journey Stepper */}
               <MuiCard sx={{ mb: 3, backgroundColor: 'rgba(255,107,53,0.05)' }}>
                 <CardContent>
-                  <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
+                  <Typography variant="h6" sx={{ mb: 2, color: themeColors.primary }}>
                     Brukerreise
                   </Typography>
                   <Stepper
@@ -661,7 +689,7 @@ export default function InviteManagementDashboard() {
               {selectedInvite.planName && (
                 <MuiCard sx={{ mb: 3, backgroundColor: 'rgba(33,150,243,0.05)' }}>
                   <CardContent>
-                    <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
+                    <Typography variant="h6" sx={{ mb: 2, color: themeColors.primary }}>
                       Valgt abonnement
                     </Typography>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -684,7 +712,7 @@ export default function InviteManagementDashboard() {
               {/* Business Information */}
               <MuiCard sx={{ mb: 3, backgroundColor: 'rgba(255,255,255,0.02)' }}>
                 <CardContent>
-                  <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
+                  <Typography variant="h6" sx={{ mb: 2, color: themeColors.primary }}>
                     Bedriftsinformasjon
                   </Typography>
                   <Grid container spacing={2}>
@@ -712,7 +740,7 @@ export default function InviteManagementDashboard() {
               {selectedInvite.profession && (
                 <MuiCard sx={{ mb: 3, backgroundColor: 'rgba(255,138,0,0.05)' }}>
                   <CardContent>
-                    <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
+                    <Typography variant="h6" sx={{ mb: 2, color: themeColors.primary }}>
                       📦 Funksjoner for denne brukeren
                     </Typography>
                     <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -733,7 +761,7 @@ export default function InviteManagementDashboard() {
               {selectedInvite.redFlagAnalysis && (
                 <MuiCard sx={{ mb: 3, backgroundColor: 'rgba(255,255,255,0.02)' }}>
                   <CardContent>
-                    <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
+                    <Typography variant="h6" sx={{ mb: 2, color: themeColors.primary }}>
                       Risikoanalyse
                     </Typography>
                     <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -812,5 +840,6 @@ export default function InviteManagementDashboard() {
         </>
       )}
     </Box>
+    </ThemeProvider>
   );
 }

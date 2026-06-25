@@ -12,7 +12,9 @@ import {
   Box, Card, CardContent, Typography, Button, Chip, Stack, Tabs, Tab, Divider,
   Dialog, DialogTitle, DialogContent, DialogActions, RadioGroup, FormControlLabel,
   Radio, TextField, MenuItem, Alert, CircularProgress, Tooltip, Snackbar,
+  ThemeProvider,
 } from "@mui/material";
+import { adminDarkTheme } from "./adminDarkTheme";
 import ScienceIcon from "@mui/icons-material/Science";
 import StorefrontIcon from "@mui/icons-material/Storefront";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
@@ -84,6 +86,7 @@ export default function EditingPartnersAdminPanel() {
   };
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box>
       <Stack direction="row" justifyContent="space-between" alignItems="flex-start" flexWrap="wrap" gap={1}>
         <Box>
@@ -189,6 +192,7 @@ export default function EditingPartnersAdminPanel() {
       {addLeadOpen && <AddLeadDialog onClose={() => setAddLeadOpen(false)} onDone={() => { setAddLeadOpen(false); refresh(); setSnack("Lead lagt til."); }} />}
       <Snackbar open={!!snack} autoHideDuration={4000} onClose={() => setSnack("")} message={snack} />
     </Box>
+    </ThemeProvider>
   );
 }
 

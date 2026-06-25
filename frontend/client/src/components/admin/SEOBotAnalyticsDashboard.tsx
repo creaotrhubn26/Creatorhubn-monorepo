@@ -117,6 +117,7 @@ export default function SEOBotAnalyticsDashboard() {
       return apiRequest(`/api/seo-bot/analytics?days=${days}`);
     },
     refetchInterval: 30000, // Refresh every 30 seconds
+    staleTime: 15000, // unngå refetch-storm ved remount/segmentbytte
   });
 
   // Fetch bot visits

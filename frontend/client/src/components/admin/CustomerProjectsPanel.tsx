@@ -25,7 +25,9 @@ import {
   Tabs,
   Tab,
   Button,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   Group,
   Business,
@@ -94,6 +96,8 @@ export default function CustomerProjectsPanel({
   
   // Theming system
   const theming = useTheming('prototype_tester');
+  // Lys oransje aksent på mørk bakgrunn (matcher admin-skallet).
+  const themeColors = { ...theming.colors, primary: '#ff8c00' };
   const [searchTerm, setSearchTerm] = useState('');
 
   // Fetch real customer and project data
@@ -120,9 +124,11 @@ export default function CustomerProjectsPanel({
 
   if (isLoading) {
     return (
-      <Box sx={{ p: 3 }}>
-        <Typography variant="h6" sx={{ color: theming.colors.primary }}>Laster kunder og prosjekter...</Typography>
-      </Box>
+      <ThemeProvider theme={adminDarkTheme}>
+        <Box sx={{ p: 3 }}>
+          <Typography variant="h6" sx={{ color: themeColors.primary }}>Laster kunder og prosjekter...</Typography>
+        </Box>
+      </ThemeProvider>
     );
 }
 
@@ -138,11 +144,12 @@ export default function CustomerProjectsPanel({
   const customers = (customersData as any)?.customers || [];
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <Group color="primary" sx={{ fontSize: 32 }} />
-          <Typography variant="h5" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+          <Typography variant="h5" sx={{ fontWeight: 600, color: themeColors.primary }}>
             Kunder & Prosjekter
           </Typography>
         </Box>
@@ -165,7 +172,7 @@ export default function CustomerProjectsPanel({
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                 <People color="primary" />
                 <Box>
-                  <Typography variant="h4" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+                  <Typography variant="h4" sx={{ fontWeight: 600, color: themeColors.primary }}>
                     {stats.totalCustomers}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -183,7 +190,7 @@ export default function CustomerProjectsPanel({
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                 <Assignment color="warning" />
                 <Box>
-                  <Typography variant="h4" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+                  <Typography variant="h4" sx={{ fontWeight: 600, color: themeColors.primary }}>
                     {stats.activeProjects}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -201,7 +208,7 @@ export default function CustomerProjectsPanel({
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                 <Work color="success" />
                 <Box>
-                  <Typography variant="h4" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+                  <Typography variant="h4" sx={{ fontWeight: 600, color: themeColors.primary }}>
                     {stats.completedProjects}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -219,7 +226,7 @@ export default function CustomerProjectsPanel({
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                 <TrendingUp color="info" />
                 <Box>
-                  <Typography variant="h4" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+                  <Typography variant="h4" sx={{ fontWeight: 600, color: themeColors.primary }}>
                     {stats.totalRevenue.toLocaleString('no-NO')} kr
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -422,7 +429,7 @@ export default function CustomerProjectsPanel({
             ) : (
               <Box sx={{ textAlign: 'center', py: 4 }}>
                 <Business sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
-                <Typography variant="h6" color="text.secondary" sx={{ color: theming.colors.primary }}>
+                <Typography variant="h6" color="text.secondary" sx={{ color: themeColors.primary }}>
                   Leverandør-administrasjon
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
@@ -434,5 +441,6 @@ export default function CustomerProjectsPanel({
         </CardContent>
       </MuiCard>
     </Box>
+    </ThemeProvider>
   );
 }

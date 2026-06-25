@@ -311,9 +311,9 @@ export function DependenciesManager() {
           <Card sx={{ bgcolor: '#e3f2fd', border: '1px solid #1976d2' }}>
             <CardContent >
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                <Shield sx={{ color: '#1976d2', fontSize: 32 }} />
+                <Shield sx={{ color: '#60a5fa', fontSize: 32 }} />
                 <Box>
-                  <Typography variant="h6" sx={{ color: '#1976d2' }}>
+                  <Typography variant="h6" sx={{ color: '#60a5fa' }}>
                     {dependencies.filter(d => d.isSecurityUpdate).length}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">

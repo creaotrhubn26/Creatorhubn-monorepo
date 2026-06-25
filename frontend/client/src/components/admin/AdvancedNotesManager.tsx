@@ -22,7 +22,9 @@ import {
   IconButton,
   Stack,
   Snackbar,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   NoteAdd,
   Notes,
@@ -79,6 +81,7 @@ export default function AdvancedNotesManager({
   
   // Theming system
   const theming = useTheming('prototype_tester');
+  const themeColors = { ...theming.colors, primary: '#ff8c00' };
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [selectedNote, setSelectedNote] = useState<NotesData | null>(null);
@@ -345,10 +348,11 @@ export default function AdvancedNotesManager({
 } as const;
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box className={className} sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* Header */}
       <Box sx={{ p: 3, borderBottom: 1, borderColor: 'divider' }}>
-        <Typography variant="h4" sx={{ fontWeight: 700, mb: 2, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+        <Typography variant="h4" sx={{ fontWeight: 700, mb: 2, display: 'flex', alignItems: 'center', gap: 1, color: themeColors.primary }}>
           <Notes color="primary" />
           Stor Notatsløsning - CreatorHub Norge
         </Typography>
@@ -416,7 +420,7 @@ export default function AdvancedNotesManager({
                 {/* Note Header */}
                 <CardContent sx={{ pb: 1, ...theming.getThemedCardSx() }}>
                   <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 2 }}>
-                    <Typography variant="h6" sx={{ flex: 1, fontWeight: 600, color: theming.colors.primary }}>
+                    <Typography variant="h6" sx={{ flex: 1, fontWeight: 600, color: themeColors.primary }}>
                       {note.title}
                     </Typography>
                     <Box sx={{ display: 'flex', gap: 0.5 }}>
@@ -510,7 +514,7 @@ export default function AdvancedNotesManager({
         {filteredNotes.length === 0 && (
           <Box sx={{ textAlign: 'center', py: 8 }}>
             <Notes sx={{ fontSize: 64, color: 'text.disabled', mb: 2 }} />
-            <Typography variant="h6" color="text.secondary" sx={{ color: theming.colors.primary }}>
+            <Typography variant="h6" color="text.secondary" sx={{ color: themeColors.primary }}>
               Ingen notater funnet
             </Typography>
             <Typography variant="body2" color="text.secondary">
@@ -738,5 +742,6 @@ export default function AdvancedNotesManager({
         message={snackbarMessage}
       />
     </Box>
+    </ThemeProvider>
   );
 }

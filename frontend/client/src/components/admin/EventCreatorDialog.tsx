@@ -58,7 +58,7 @@ const eventTypeOptions = [
   { value: 'announcement', label: 'Kunngjøring', icon: <EventIcon />, color: '#ff8c00' },
   { value: 'video', label: 'Video', icon: <VideoIcon />, color: '#f44336' },
   { value: 'blog', label: 'Blogg', icon: <ArticleIcon />, color: '#2196f3' },
-  { value: 'social', label: 'Sosiale Medier', icon: <PublicIcon />, color: '#9c27b0' },
+  { value: 'social', label: 'Sosiale Medier', icon: <PublicIcon />, color: '#ce93d8' },
   { value: 'campaign', label: 'Kampanje', icon: <CampaignIcon />, color: '#4caf50' },
 ];
 

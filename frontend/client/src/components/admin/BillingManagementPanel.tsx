@@ -20,7 +20,9 @@ import {
   TableHead,
   TableRow,
   Typography,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   ArrowOutward,
   AttachMoney,
@@ -86,41 +88,41 @@ interface OptionalResult<T> {
 
 const surfaceSx = {
   borderRadius: '24px',
-  border: '1px solid rgba(17, 24, 39, 0.08)',
-  bgcolor: 'rgba(255,255,255,0.88)',
+  border: '1px solid rgba(255,255,255,0.12)',
+  bgcolor: 'rgba(255,255,255,0.04)',
   boxShadow: '0 18px 60px rgba(15, 23, 42, 0.06)',
 };
 
 const insetSx = {
   borderRadius: '18px',
-  border: '1px solid rgba(17, 24, 39, 0.08)',
-  bgcolor: '#fbfbfc',
+  border: '1px solid rgba(255,255,255,0.12)',
+  bgcolor: 'rgba(255,255,255,0.03)',
 };
 
 const metricToneMap = {
   teal: {
-    bg: 'linear-gradient(180deg, rgba(236,255,252,0.98) 0%, rgba(247,255,254,0.98) 100%)',
-    border: 'rgba(13, 148, 136, 0.18)',
-    icon: '#0f766e',
-    value: '#0f766e',
+    bg: 'rgba(13, 148, 136, 0.12)',
+    border: 'rgba(45, 212, 191, 0.30)',
+    icon: '#2dd4bf',
+    value: '#2dd4bf',
   },
   blue: {
-    bg: 'linear-gradient(180deg, rgba(239,246,255,0.98) 0%, rgba(248,251,255,0.98) 100%)',
-    border: 'rgba(37, 99, 235, 0.16)',
-    icon: '#2563eb',
-    value: '#1d4ed8',
+    bg: 'rgba(37, 99, 235, 0.14)',
+    border: 'rgba(96, 165, 250, 0.30)',
+    icon: '#60a5fa',
+    value: '#60a5fa',
   },
   amber: {
-    bg: 'linear-gradient(180deg, rgba(255,247,237,0.98) 0%, rgba(255,251,245,0.98) 100%)',
-    border: 'rgba(234, 88, 12, 0.16)',
-    icon: '#c2410c',
-    value: '#c2410c',
+    bg: 'rgba(217, 119, 6, 0.16)',
+    border: 'rgba(251, 191, 36, 0.30)',
+    icon: '#fbbf24',
+    value: '#fbbf24',
   },
   violet: {
-    bg: 'linear-gradient(180deg, rgba(245,243,255,0.98) 0%, rgba(250,248,255,0.98) 100%)',
-    border: 'rgba(124, 58, 237, 0.16)',
-    icon: '#7c3aed',
-    value: '#6d28d9',
+    bg: 'rgba(124, 58, 237, 0.14)',
+    border: 'rgba(192, 132, 252, 0.30)',
+    icon: '#c084fc',
+    value: '#c084fc',
   },
 } as const;
 
@@ -260,7 +262,7 @@ function MetricCard({
           borderRadius: '14px',
           display: 'grid',
           placeItems: 'center',
-          bgcolor: 'rgba(255,255,255,0.72)',
+          bgcolor: 'rgba(255,255,255,0.04)',
           color: palette.icon,
           border: `1px solid ${palette.border}`,
         }}
@@ -271,7 +273,7 @@ function MetricCard({
         <Typography sx={{ fontSize: '2rem', lineHeight: 1.1, fontWeight: 700, color: palette.value }}>
           {value}
         </Typography>
-        <Typography sx={{ mt: 0.75, color: '#6b7280' }}>{label}</Typography>
+        <Typography sx={{ mt: 0.75, color: 'rgba(255,255,255,0.6)' }}>{label}</Typography>
       </Box>
     </Box>
   );
@@ -368,13 +370,14 @@ export default function BillingManagementPanel({
     refundRequestsQuery.isLoading;
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box sx={{ display: 'grid', gap: 3 }}>
       <Box
         sx={{
           ...surfaceSx,
           p: { xs: 2.25, md: 3 },
           background:
-            'radial-gradient(circle at top right, rgba(191,219,254,0.32), transparent 38%), radial-gradient(circle at bottom left, rgba(254,215,170,0.24), transparent 36%), #f7f4ef',
+            'linear-gradient(135deg, rgba(15,23,42,0.94), rgba(255,255,255,0.04))',
         }}
       >
         <Stack direction={{ xs: 'column', xl: 'row' }} spacing={2.5} justifyContent="space-between">
@@ -385,23 +388,23 @@ export default function BillingManagementPanel({
                 fontWeight: 800,
                 letterSpacing: '0.08em',
                 textTransform: 'uppercase',
-                color: '#335c85',
+                color: '#ff8c00',
               }}
             >
               CreatorHub Finance
             </Typography>
-            <Typography sx={{ mt: 1, fontSize: { xs: '2rem', md: '2.5rem' }, fontWeight: 700, color: '#181512' }}>
+            <Typography sx={{ mt: 1, fontSize: { xs: '2rem', md: '2.5rem' }, fontWeight: 700, color: '#ffffff' }}>
               Økonomi
             </Typography>
-            <Typography sx={{ mt: 1.1, color: '#625b50', lineHeight: 1.7, maxWidth: 700 }}>
+            <Typography sx={{ mt: 1.1, color: 'rgba(255,255,255,0.6)', lineHeight: 1.7, maxWidth: 700 }}>
               Følg fakturering, betalingsmetoder, refusjoner og kuponger i en roligere arbeidsflate.
               Prisendringer gjøres i egen prisstyring, mens denne siden skal gi Daniel rask operativ kontroll.
             </Typography>
             <Stack direction="row" flexWrap="wrap" gap={1} sx={{ mt: 2 }}>
-              <Chip label={`${selfServePlans.length} planer i salg`} sx={{ bgcolor: 'rgba(255,255,255,0.78)' }} />
-              <Chip label={`${pendingRefunds.length} refusjoner venter`} sx={{ bgcolor: 'rgba(255,255,255,0.78)' }} />
-              <Chip label={`${defaultPaymentMethods.length} standardkort registrert`} sx={{ bgcolor: 'rgba(255,255,255,0.78)' }} />
-              <Chip label={`${availableFeedCount}/4 økonomifeeds live`} sx={{ bgcolor: 'rgba(255,255,255,0.78)' }} />
+              <Chip label={`${selfServePlans.length} planer i salg`} sx={{ bgcolor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.88)' }} />
+              <Chip label={`${pendingRefunds.length} refusjoner venter`} sx={{ bgcolor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.88)' }} />
+              <Chip label={`${defaultPaymentMethods.length} standardkort registrert`} sx={{ bgcolor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.88)' }} />
+              <Chip label={`${availableFeedCount}/4 økonomifeeds live`} sx={{ bgcolor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.88)' }} />
             </Stack>
           </Box>
 
@@ -413,19 +416,19 @@ export default function BillingManagementPanel({
               gap: 1.25,
             }}
           >
-            <Box sx={{ ...insetSx, px: 1.75, py: 1.5, bgcolor: 'rgba(255,255,255,0.72)' }}>
-              <Typography sx={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#6b7280', fontWeight: 700 }}>
+            <Box sx={{ ...insetSx, px: 1.75, py: 1.5, bgcolor: 'rgba(255,255,255,0.04)' }}>
+              <Typography sx={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(255,255,255,0.6)', fontWeight: 700 }}>
                 Økonomi akkurat nå
               </Typography>
-              <Typography sx={{ mt: 0.6, fontWeight: 700, color: '#111827' }}>
+              <Typography sx={{ mt: 0.6, fontWeight: 700, color: 'rgba(255,255,255,0.88)' }}>
                 Fakturaer, kuponger og betalingsmetoder lastes uten å knekke hele adminen hvis et endpoint mangler.
               </Typography>
             </Box>
-            <Box sx={{ ...insetSx, px: 1.75, py: 1.5, bgcolor: 'rgba(255,255,255,0.72)' }}>
-              <Typography sx={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#6b7280', fontWeight: 700 }}>
+            <Box sx={{ ...insetSx, px: 1.75, py: 1.5, bgcolor: 'rgba(255,255,255,0.04)' }}>
+              <Typography sx={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(255,255,255,0.6)', fontWeight: 700 }}>
                 Prisstyring
               </Typography>
-              <Typography sx={{ mt: 0.6, color: '#5b6472', lineHeight: 1.6 }}>
+              <Typography sx={{ mt: 0.6, color: 'rgba(255,255,255,0.6)', lineHeight: 1.6 }}>
                 Offentlige planer, årspriser og CreatorHub-mailer styres i egen flate, så økonomi kan holde fokus på drift.
               </Typography>
               <Button
@@ -434,9 +437,9 @@ export default function BillingManagementPanel({
                 onClick={onOpenPriceManagement}
                 sx={{
                   mt: 1.4,
-                  borderColor: 'rgba(17, 24, 39, 0.12)',
-                  color: '#1f2937',
-                  bgcolor: '#fff',
+                  borderColor: 'rgba(255,255,255,0.18)',
+                  color: 'rgba(255,255,255,0.82)',
+                  bgcolor: 'rgba(255,255,255,0.06)',
                 }}
               >
                 Åpne prisstyring
@@ -499,10 +502,10 @@ export default function BillingManagementPanel({
         <Grid size={{ xs: 12, xl: 7 }}>
           <Paper sx={{ ...surfaceSx, overflow: 'hidden' }}>
             <Box sx={{ p: 2.5 }}>
-              <Typography sx={{ fontSize: '1.1rem', fontWeight: 700, color: '#181512' }}>
+              <Typography sx={{ fontSize: '1.1rem', fontWeight: 700, color: '#ffffff' }}>
                 Siste fakturaer
               </Typography>
-              <Typography sx={{ mt: 0.5, color: '#6b7280' }}>
+              <Typography sx={{ mt: 0.5, color: 'rgba(255,255,255,0.6)' }}>
                 En kompakt oversikt over nylige fakturaer. Status vises selv om resten av økonomifeedene er delvis utilgjengelige.
               </Typography>
             </Box>
@@ -528,7 +531,7 @@ export default function BillingManagementPanel({
                     {invoices.slice(0, 6).map((invoice) => (
                       <TableRow key={invoice.id} hover>
                         <TableCell>
-                          <Typography sx={{ fontWeight: 600, color: '#111827' }}>
+                          <Typography sx={{ fontWeight: 600, color: 'rgba(255,255,255,0.88)' }}>
                             {invoice.customerName || 'Ukjent kunde'}
                           </Typography>
                           <Typography variant="caption" color="text.secondary">
@@ -556,10 +559,10 @@ export default function BillingManagementPanel({
 
         <Grid size={{ xs: 12, xl: 5 }}>
           <Paper sx={{ ...surfaceSx, p: 2.5 }}>
-            <Typography sx={{ fontSize: '1.1rem', fontWeight: 700, color: '#181512' }}>
+            <Typography sx={{ fontSize: '1.1rem', fontWeight: 700, color: '#ffffff' }}>
               Refusjoner som trenger oppfølging
             </Typography>
-            <Typography sx={{ mt: 0.5, color: '#6b7280' }}>
+            <Typography sx={{ mt: 0.5, color: 'rgba(255,255,255,0.6)' }}>
               Denne listen fokuserer bare på de sakene Daniel må se på først.
             </Typography>
             <Divider sx={{ my: 2 }} />
@@ -581,7 +584,7 @@ export default function BillingManagementPanel({
                     <ListItemText
                       primary={
                         <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
-                          <Typography sx={{ fontWeight: 600, color: '#111827' }}>
+                          <Typography sx={{ fontWeight: 600, color: 'rgba(255,255,255,0.88)' }}>
                             {request.first_name || request.last_name
                               ? `${request.first_name || ''} ${request.last_name || ''}`.trim()
                               : request.user_email || 'Ukjent bruker'}
@@ -618,10 +621,10 @@ export default function BillingManagementPanel({
       <Grid container spacing={2}>
         <Grid size={{ xs: 12, xl: 6 }}>
           <Paper sx={{ ...surfaceSx, p: 2.5 }}>
-            <Typography sx={{ fontSize: '1.1rem', fontWeight: 700, color: '#181512' }}>
+            <Typography sx={{ fontSize: '1.1rem', fontWeight: 700, color: '#ffffff' }}>
               Betalingsmetoder
             </Typography>
-            <Typography sx={{ mt: 0.5, color: '#6b7280' }}>
+            <Typography sx={{ mt: 0.5, color: 'rgba(255,255,255,0.6)' }}>
               Oversikt over registrerte betalingsmetoder uten å dykke ned i en egen tabellstruktur.
             </Typography>
             <Divider sx={{ my: 2 }} />
@@ -643,7 +646,7 @@ export default function BillingManagementPanel({
                     <ListItemText
                       primary={
                         <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
-                          <Typography sx={{ fontWeight: 600, color: '#111827' }}>
+                          <Typography sx={{ fontWeight: 600, color: 'rgba(255,255,255,0.88)' }}>
                             {method.first_name || method.last_name
                               ? `${method.first_name || ''} ${method.last_name || ''}`.trim()
                               : method.user_email || 'Ukjent bruker'}
@@ -673,10 +676,10 @@ export default function BillingManagementPanel({
 
         <Grid size={{ xs: 12, xl: 6 }}>
           <Paper sx={{ ...surfaceSx, p: 2.5 }}>
-            <Typography sx={{ fontSize: '1.1rem', fontWeight: 700, color: '#181512' }}>
+            <Typography sx={{ fontSize: '1.1rem', fontWeight: 700, color: '#ffffff' }}>
               Kuponger og kommersielle spor
             </Typography>
-            <Typography sx={{ mt: 0.5, color: '#6b7280' }}>
+            <Typography sx={{ mt: 0.5, color: 'rgba(255,255,255,0.6)' }}>
               Aktiv rabattbruk bør være enkel å lese, mens selve planene holdes samlet i prisstyring.
             </Typography>
             <Divider sx={{ my: 2 }} />
@@ -698,7 +701,7 @@ export default function BillingManagementPanel({
                     <ListItemText
                       primary={
                         <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
-                          <Typography sx={{ fontWeight: 600, color: '#111827' }}>
+                          <Typography sx={{ fontWeight: 600, color: 'rgba(255,255,255,0.88)' }}>
                             {coupon.name || coupon.code || 'Kupong'}
                           </Typography>
                           <Chip size="small" color="success" label="Aktiv" />
@@ -727,7 +730,7 @@ export default function BillingManagementPanel({
             <Box sx={{ ...insetSx, p: 2 }}>
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }}>
                 <Box>
-                  <Typography sx={{ fontWeight: 700, color: '#111827' }}>
+                  <Typography sx={{ fontWeight: 700, color: 'rgba(255,255,255,0.88)' }}>
                     Vil du endre priser eller planinnhold?
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -753,5 +756,6 @@ export default function BillingManagementPanel({
         </Grid>
       </Grid>
     </Box>
+    </ThemeProvider>
   );
 }

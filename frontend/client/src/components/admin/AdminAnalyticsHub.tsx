@@ -128,7 +128,7 @@ const AdminAnalyticsHub: React.FC = () => {
 
   const funnel = overview?.funnel || {};
   const funnelData = [
-    { stage: '1. Inquiry mottatt', count: funnel.inquiry_received || 0, color: '#7c3aed' },
+    { stage: '1. Inquiry mottatt', count: funnel.inquiry_received || 0, color: '#c084fc' },
     { stage: '2. Inquiry besvart', count: funnel.inquiry_replied || 0, color: '#06b6d4' },
     { stage: '3. Konvertert til prosjekt', count: funnel.inquiry_converted_to_project || 0, color: '#10b981' },
   ];
@@ -142,7 +142,7 @@ const AdminAnalyticsHub: React.FC = () => {
       label: 'Hendelser',
       value: fmtNum(totalEvents),
       sub: `siste ${period}`,
-      color: '#7c3aed',
+      color: '#c084fc',
       icon: <BoltIcon />,
     },
     {
@@ -181,11 +181,11 @@ const AdminAnalyticsHub: React.FC = () => {
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3, flexWrap: 'wrap', gap: 2 }}>
         <Box>
           <Stack direction="row" alignItems="center" spacing={1.5}>
-            <Avatar sx={{ bgcolor: alpha('#7c3aed', 0.15), color: '#7c3aed' }}>
+            <Avatar sx={{ bgcolor: alpha('#7c3aed', 0.15), color: '#c084fc' }}>
               <InsightsIcon />
             </Avatar>
             <Box>
-              <Typography variant="overline" sx={{ color: '#7c3aed', letterSpacing: '0.16em' }}>
+              <Typography variant="overline" sx={{ color: '#c084fc', letterSpacing: '0.16em' }}>
                 Analytics Hub
               </Typography>
               <Typography variant="h5" sx={{ fontWeight: 700, fontFamily: '"Space Grotesk", sans-serif' }}>

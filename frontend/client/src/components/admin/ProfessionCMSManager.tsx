@@ -90,7 +90,7 @@ const EMPTY_FORM: ProfessionConfig = {
   name: '',
   nameEnglish: '',
   description: '',
-  color: '#1976d2',
+  color: '#60a5fa',
   icon: 'work',
   status: 'active',
   tabs: [...DEFAULT_TABS],

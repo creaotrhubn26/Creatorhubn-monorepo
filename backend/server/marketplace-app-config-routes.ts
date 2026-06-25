@@ -182,6 +182,19 @@ export function registerMarketplaceAppConfigRoutes(
   pool: Pool,
   requireAdminSession: RequireAdminSession,
 ) {
+  // requireAdminSession is a GUARD (returns session | null, sends 401/403) — it
+  // is NOT Express middleware. Used directly as `app.get(path, requireAdminSession, …)`
+  // it never calls next(), so for a VALID admin the request hangs forever (it
+  // only "works" for non-admins, who get a 403 response). Wrap it as real
+  // middleware so the routes below proceed for admins.
+  // The runtime value is the index.ts guard `(req,res) => session | null` (sends
+  // 401/403 itself), even though the local type models it as middleware — which
+  // is exactly why tsc never flagged the hang. Call it as the guard.
+  const guard = requireAdminSession as unknown as (req: Request, res: Response) => unknown;
+  const adminGuard = (req: Request, res: Response, next: NextFunction): void => {
+    if (guard(req, res)) next();
+  };
+
   // ─── Public: motta event-log fra frontend (fire-and-forget) ────
   // Lar creatorhub-events.ts skrive til samme analytics_events-tabell
   // som backend bruker, slik at admin-overview-card kan vise lokale tall.
@@ -241,7 +254,7 @@ export function registerMarketplaceAppConfigRoutes(
   });
 
   // ─── Admin: analytics overview (inline GA4-erstatning) ─────────
-  app.get("/api/admin/analytics/overview", requireAdminSession, async (_req, res) => {
+  app.get("/api/admin/analytics/overview", adminGuard, async (_req, res) => {
     const result: any = {
       totals: { last24h: 0, last7d: 0, last30d: 0 },
       topEvents: [],
@@ -308,7 +321,7 @@ export function registerMarketplaceAppConfigRoutes(
   // ─── Admin: per-bruker installasjoner + Stripe-abonnement ─────
   app.get(
     "/api/admin/users/:userId/installations",
-    requireAdminSession,
+    adminGuard,
     async (req, res) => {
       const userId = req.params.userId;
       const result: any = {
@@ -492,8 +505,8 @@ export function registerMarketplaceAppConfigRoutes(
       res.json(result);
     };
   // Registreres under generelt navn + bakoverkompatibelt marketplace-path
-  app.get("/api/admin/stripe/payment-status", requireAdminSession, stripePaymentStatusHandler);
-  app.get("/api/admin/marketplace/stripe-status", requireAdminSession, stripePaymentStatusHandler);
+  app.get("/api/admin/stripe/payment-status", adminGuard, stripePaymentStatusHandler);
+  app.get("/api/admin/marketplace/stripe-status", adminGuard, stripePaymentStatusHandler);
 
   // ─── Public: hent aktive apper ─────────────────────────────────
   app.get("/api/marketplace/apps", async (_req, res) => {
@@ -518,7 +531,7 @@ export function registerMarketplaceAppConfigRoutes(
   // ─── Admin: hent alle apper (inkludert deaktiverte) ────────────
   app.get(
     "/api/admin/marketplace/apps",
-    requireAdminSession,
+    adminGuard,
     async (_req, res) => {
       try {
         const result = await pool.query(
@@ -539,7 +552,7 @@ export function registerMarketplaceAppConfigRoutes(
   // ─── Admin: opprett ny app ─────────────────────────────────────
   app.post(
     "/api/admin/marketplace/apps",
-    requireAdminSession,
+    adminGuard,
     async (req, res) => {
       const b = req.body || {};
       const adminEmail = (req.headers["x-user-email"] as string) || "admin";
@@ -587,7 +600,7 @@ export function registerMarketplaceAppConfigRoutes(
   // ?skipStripe=1 hopper over Stripe-sync (for raske utkast-lagringer)
   app.put(
     "/api/admin/marketplace/apps/:id",
-    requireAdminSession,
+    adminGuard,
     async (req, res) => {
       const b = req.body || {};
       const id = req.params.id;
@@ -670,7 +683,7 @@ export function registerMarketplaceAppConfigRoutes(
   // Henter eksisterende DB-rad, syncer tiers til Stripe, lagrer tilbake.
   app.post(
     "/api/admin/marketplace/apps/:id/publish",
-    requireAdminSession,
+    adminGuard,
     async (req, res) => {
       const id = req.params.id;
       try {
@@ -719,7 +732,7 @@ export function registerMarketplaceAppConfigRoutes(
   // ─── Admin: soft-delete ────────────────────────────────────────
   app.delete(
     "/api/admin/marketplace/apps/:id",
-    requireAdminSession,
+    adminGuard,
     async (req, res) => {
       try {
         await pool.query(
