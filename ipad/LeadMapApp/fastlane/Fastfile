@@ -38,6 +38,7 @@ platform :ios do
   desc "Archive + upload til TestFlight"
   lane :beta do
     setup_api_key
+    download_app_store_profiles
     bump_build
 
     build_app(
@@ -67,6 +68,7 @@ platform :ios do
   desc "Archive + submit for App Store Review"
   lane :release do
     setup_api_key
+    download_app_store_profiles
     bump_build
 
     build_app(
@@ -124,6 +126,24 @@ platform :ios do
     ENV["ASC_KEY_ID"]      = key_id
     ENV["ASC_ISSUER_ID"]   = issuer_id
     UI.success("ASC API-nøkkel skrevet til #{pkey_path}")
+  end
+
+  # Last ned manuelle App Store-profiler fra Apple Developer Portal til
+  # CI-maskinens ~/Library/MobileDevice/Provisioning Profiles/. Manual
+  # signing i ExportOptions.plist krever at .mobileprovision-filene er
+  # INSTALLERT lokalt — det holder ikke at de eksisterer i ASC.
+  # sigh.download_all bruker eksisterende app_store_connect_api_key.
+  private_lane :download_app_store_profiles do
+    [
+      "com.creatorhubn.LeadMapApp",
+      "com.creatorhubn.LeadMapApp.LeadMapWidget",
+    ].each do |bundle_id|
+      sigh(
+        app_identifier: bundle_id,
+        readonly: true, # bruk eksisterende profil, IKKE lag ny
+        platform: "ios",
+      )
+    end
   end
 
   # Returnerer xcargs-streng med auth-flags hvis ASC-nøkkel er satt opp,
