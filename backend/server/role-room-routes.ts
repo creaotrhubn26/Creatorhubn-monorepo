@@ -24062,6 +24062,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         if (!entitlement.allowed) {
           return res.status(402).json({ error: 'entitlement_required', entitlement });
         }
+        if (!(await canAccessProjectAds(pool, projectId, readProjectAccessUser(req)))) {
+          return res.status(403).json({ error: 'forbidden_project' });
+        }
         const summary = await runAdsRecommendationsForProject(pool, projectId, period);
         if (!summary) {
           return res.status(503).json({ error: 'generator_unavailable', detail: 'AI-generatoren er utilgjengelig. Prøv igjen.' });
@@ -24269,6 +24272,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           : currentPeriod();
         if (!projectId || typeof requestedNok !== 'number' || requestedNok < 0) {
           return res.status(400).json({ error: 'invalid_input', detail: 'projectId + requestedNok (>=0) required' });
+        }
+        if (!(await canAccessProjectAds(pool, projectId, readProjectAccessUser(req)))) {
+          return res.status(403).json({ error: 'forbidden_project' });
         }
         const identifiers = getUserIdentifiers(req);
         const budget = await requestOverage(
