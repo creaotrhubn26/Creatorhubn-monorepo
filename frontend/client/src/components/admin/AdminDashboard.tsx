@@ -94,6 +94,7 @@ import {
   CloudUpload,
   CloudDownload,
   DeleteOutline,
+  Inbox,
 } from '@mui/icons-material';
 import AdminStats from './AdminStats';
 import {
@@ -124,6 +125,7 @@ import AdminAICostDashboard from './AdminAICostDashboard';
 import AdminDesignTokensPanel from './AdminDesignTokensPanel';
 import BillingManagementPanel from './BillingManagementPanel';
 import UserCostOverviewPanel from './UserCostOverviewPanel';
+import InboundAlertsPanel from './InboundAlertsPanel';
 import SecretsRotationPanel from './SecretsRotationPanel';
 import { GDPRCompliancePanel } from './GDPRCompliancePanel';
 import IntegrationsManagementPanel from './IntegrationsManagementPanel';
@@ -1380,6 +1382,7 @@ export default function AdminDashboard({
     { id: 'innhold-assets', label: 'Innhold & Assets', icon: Folder },
     { id: 'kunder-prosjekter', label: 'Kunder/Prosjekter', icon: Group },
     { id: 'kommunikasjon', label: 'Kommunikasjon', icon: Chat },
+    { id: 'inbound-alerts', label: 'Innkommende', icon: Inbox },
     { id: 'prototype-feedback', label: 'Prototype Feedback', icon: Feedback },
     { id: 'okonomi', label: 'Økonomi', icon: AttachMoney },
     { id: 'price-management', label: 'Prisstyring', icon: AttachMoney },
@@ -1429,7 +1432,7 @@ export default function AdminDashboard({
     {
       label: 'Oversikt',
       items: adminTabs.filter((tab) =>
-        ['overblikk', 'brukere-roller', 'invite-requests', 'send-notifications', 'community', 'innhold-assets', 'kunder-prosjekter', 'kommunikasjon'].includes(tab.id),
+        ['overblikk', 'brukere-roller', 'invite-requests', 'send-notifications', 'community', 'innhold-assets', 'kunder-prosjekter', 'kommunikasjon', 'inbound-alerts'].includes(tab.id),
       ),
     },
     {
@@ -1462,6 +1465,7 @@ export default function AdminDashboard({
     'innhold-assets': 'Hold kontroll på CreatorHub CMS, assets og publiseringsflyt.',
     'kunder-prosjekter': 'Se kunder, prosjekter og leveranser i samme operative oversikt.',
     kommunikasjon: 'Koordiner meldinger, møter og intern kommunikasjon.',
+    'inbound-alerts': 'Full oversikt over innkommende varsler — søknader, leads og signups som krever oppfølging.',
     'prototype-feedback': 'Samle produktinnsikt, tester og prioritering fra prototyper.',
     okonomi: 'Følg inntekter, utbetalinger og operativ økonomi.',
     'price-management': 'Juster prismodeller og kommersielle satser på tvers av tilbud.',
@@ -3316,6 +3320,8 @@ export default function AdminDashboard({
         return <CustomerProjectsPanel {...sharedPanelProps} />;
       case 'kommunikasjon':
         return <AdminCommunicationPanel {...sharedPanelProps} />;
+      case 'inbound-alerts':
+        return <InboundAlertsPanel />;
       case 'prototype-feedback':
         return <PrototypeFeedbackPanel {...sharedPanelProps} />;
       case 'okonomi':

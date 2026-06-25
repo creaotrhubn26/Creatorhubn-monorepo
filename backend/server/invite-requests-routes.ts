@@ -1,5 +1,6 @@
 import express from "express";
 import type { Pool } from "pg";
+import { notifyAdmins } from "./admin-notify";
 
 const INVITE_REQUEST_APPROVER_ROLES = new Set([
   "admin",
@@ -331,6 +332,17 @@ export function setupInviteRequestsRoutes(
       console.log(
         `📨 New invite request from ${normalizedEmail} (${profession}) [${proffAnalysis.approvalRecommendation}/${proffAnalysis.riskLevel}]`,
       );
+      void notifyAdmins(pool, {
+        type: "invite_request",
+        source: "creatorhubn.com · invite-request (landing)",
+        title: `Ny tilgangsforespørsel: ${firstName} ${lastName} (${persistedCompanyName})`,
+        summary: `${profession} · ${normalizedEmail}${planName ? ` · Plan: ${planName}` : ""} · Proff: ${proffAnalysis.approvalRecommendation}/${proffAnalysis.riskLevel}`,
+        link: "/admin",
+        cta: (req.body && req.body.cta) || null,
+        page: req.get("referer") || (req.body && req.body.page) || null,
+        utm: (req.body && req.body.utm) || null,
+        relatedId: result.rows[0].id,
+      });
       res.status(201).json({
         success: true,
         requestId: result.rows[0].id,

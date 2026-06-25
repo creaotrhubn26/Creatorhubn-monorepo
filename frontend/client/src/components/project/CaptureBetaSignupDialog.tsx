@@ -20,6 +20,21 @@ import {
 } from "@mui/material";
 import { apiRequest } from "@/lib/queryClient";
 
+// Parse utm_* query params off the current URL so admins see the campaign
+// that drove this inbound submission. Returns undefined when none present.
+function parseUtmParams(): Record<string, string> | undefined {
+  try {
+    const sp = new URLSearchParams(window.location.search);
+    const utm: Record<string, string> = {};
+    sp.forEach((value, key) => {
+      if (/^utm_/i.test(key) && value) utm[key] = value;
+    });
+    return Object.keys(utm).length > 0 ? utm : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -37,7 +52,14 @@ export default function CaptureBetaSignupDialog({ open, onClose, defaultEmail }:
       apiRequest("/api/capture-beta/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, device, note: "Capture iPad beta" }),
+        body: JSON.stringify({
+          name,
+          email,
+          device,
+          note: "Capture iPad beta",
+          cta: "Meld meg på (iPad Capture-app TestFlight beta-dialog)",
+          ...(parseUtmParams() ? { utm: parseUtmParams() } : {}),
+        }),
       }),
     onSuccess: () => setDone(true),
   });

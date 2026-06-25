@@ -20,6 +20,21 @@ import { apiRequest } from "@/lib/queryClient";
 import { usePartnerSeo } from "./usePartnerSeo";
 import { trackEvent, trackPageView } from "@/utils/ga4-client-tracking";
 
+// Parse utm_* query params off the current URL so admins see the campaign
+// that drove this inbound partner application. Returns undefined when none.
+function parseUtmParams(): Record<string, string> | undefined {
+  try {
+    const sp = new URLSearchParams(window.location.search);
+    const utm: Record<string, string> = {};
+    sp.forEach((value, key) => {
+      if (/^utm_/i.test(key) && value) utm[key] = value;
+    });
+    return Object.keys(utm).length > 0 ? utm : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 // GEO/SEO: FAQPage + Organization (@graph) — gjør siden siterbar for AI-søkemotorer.
 const PARTNER_JSONLD = {
   "@context": "https://schema.org",
@@ -275,6 +290,10 @@ export default function PartnerApplicationForm() {
           services: selectedServices,
           consentContact, consentPrivacy: true, locale,
           hp, elapsedMs: Date.now() - loadedAt.current,
+          cta: locale === "en"
+            ? "Apply now (Creatorhub Editing Partner Program — /partner/apply)"
+            : "Send søknad (Creatorhub Partner Program — /partner/apply)",
+          ...(parseUtmParams() ? { utm: parseUtmParams() } : {}),
         }),
       })) as { ok?: boolean; alreadyReceived?: boolean; alreadyApproved?: boolean; reopened?: boolean };
       setDupMsg(

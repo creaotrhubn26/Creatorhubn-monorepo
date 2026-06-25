@@ -49,6 +49,7 @@ import {
   type ComplianceProfile,
 } from "./editing-compliance";
 import { redeemPortalToken } from "./editing-partner-portal-service";
+import { notifyAdmins } from "./admin-notify";
 import crypto from "crypto";
 import {
   createCheckoutForJob,
@@ -161,6 +162,17 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
         `INSERT INTO capture_beta_signups (name, email, device, note, user_id) VALUES ($1, $2, $3, $4, $5)`,
         [b.name || null, email, b.device || null, b.note || null, b.userId || null],
       );
+      void notifyAdmins(pool, {
+        type: "capture_beta_signup",
+        source: "Capture-app · beta-signup",
+        title: `Ny Capture beta-påmelding: ${email}`,
+        summary: `${b.name || '(uten navn)'} <${email}>${b.device ? ` · ${b.device}` : ''}${b.note ? ` · ${String(b.note).slice(0,160)}` : ''}`,
+        link: "/admin",
+        cta: (req.body && req.body.cta) || null,
+        page: req.get("referer") || (req.body && req.body.page) || null,
+        utm: (req.body && req.body.utm) || null,
+        relatedId: null,
+      });
       res.json({ ok: true });
     } catch (err) {
       console.error("[capture-beta:signup] error", err);
@@ -256,6 +268,14 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
              WHERE id=$25`,
             [...vals, existing.id],
           );
+          void notifyAdmins(pool, {
+            type: "editing_partner_application",
+            source: "Editing-marketplace · partner-søknadsskjema",
+            title: `Gjenåpnet redigeringspartner-søknad: ${companyName ?? "(ukjent)"}`,
+            summary: `Land: ${country} · Kontakt: ${email} · Tjenester: ${services.length ? services.join(", ") : "—"}`,
+            link: "/admin",
+            relatedId: existing.id,
+          });
           return res.json({ ok: true, applicationId: existing.id, reopened: true });
         }
 
@@ -272,6 +292,14 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
            RETURNING id`,
           vals,
         );
+        void notifyAdmins(pool, {
+          type: "editing_partner_application",
+          source: "Editing-marketplace · partner-søknadsskjema",
+          title: `Ny redigeringspartner-søknad: ${companyName ?? "(ukjent)"}`,
+          summary: `Land: ${country} · Kontakt: ${email} · Tjenester: ${services.length ? services.join(", ") : "—"}`,
+          link: "/admin",
+          relatedId: r.rows[0].id,
+        });
         return res.json({ ok: true, applicationId: r.rows[0].id });
       } catch (e: unknown) {
         // Backstop mot race (unik aktiv-e-post-index) → vennlig svar, ikke 500.

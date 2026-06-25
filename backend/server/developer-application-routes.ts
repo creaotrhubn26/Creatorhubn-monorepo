@@ -22,6 +22,7 @@ import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import crypto from "crypto";
 import { sendTransactionalEmail } from "./transactional-email-service.js";
+import { notifyAdmins } from "./admin-notify";
 
 interface Deps {
   app: Express;
@@ -184,31 +185,18 @@ export function registerDeveloperApplicationRoutes({ app, pool }: Deps): void {
         });
       } catch (e) { console.error("[dev-app receipt mail]", e); }
 
-      // 7) Notify super-admins
-      try {
-        const adminsR = await pool.query<{ email: string }>(
-          `SELECT email FROM users WHERE role = 'super_admin' AND email IS NOT NULL`,
-        );
-        for (const a of adminsR.rows) {
-          await sendTransactionalEmail({
-            to: a.email,
-            subject: `Ny utvikler-søknad: ${organizationName}`,
-            html: `<p>Ny developer-søknad mottatt:</p>
-                   <ul>
-                     <li><strong>Org:</strong> ${organizationName}</li>
-                     <li><strong>Søker:</strong> ${fullName} &lt;${email}&gt;</li>
-                     <li><strong>Website:</strong> ${website ?? "(ingen)"}</li>
-                     <li><strong>API-volum:</strong> ${expectedMonthlyApiCalls ?? "ikke oppgitt"}/mnd</li>
-                   </ul>
-                   <p><strong>Use-case:</strong></p>
-                   <blockquote>${useCase.replace(/\n/g, "<br>")}</blockquote>
-                   <p><a href="${PUBLIC_BASE}/superadmin">Åpne i Superadmin</a></p>`,
-            text: `Ny developer-søknad: ${organizationName} (${email}). Åpne ${PUBLIC_BASE}/superadmin`,
-            kind: "developer_application_notify_admin",
-            pool,
-          });
-        }
-      } catch (e) { console.error("[dev-app notify mail]", e); }
+      // 7) Notify super-admins (e-post + in-app via delt helper)
+      void notifyAdmins(pool, {
+        type: "leadgrid_developer_application",
+        source: "Leadgrid · utvikler-søknad (selvbetjent)",
+        title: `Ny utvikler-søknad: ${organizationName}`,
+        summary: `${fullName} <${email}>${website ? ` · ${website}` : ""} · API-volum: ${expectedMonthlyApiCalls ?? "ikke oppgitt"}/mnd · Use-case: ${useCase}`,
+        link: "/admin",
+        cta: (req.body && req.body.cta) || null,
+        page: req.get("referer") || (req.body && req.body.page) || null,
+        utm: (req.body && req.body.utm) || null,
+        relatedId: applicationId,
+      });
 
       res.status(201).json({
         ok: true,

@@ -5,6 +5,7 @@ import { and, eq } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import * as schema from "../migrations/schema.js";
 import { readBoolean, readString, readStringArray } from "./_shared";
+import { notifyAdmins } from "./admin-notify";
 
 export interface VendorOnboardingRoutesDeps {
   app: express.Application;
@@ -325,6 +326,18 @@ export function setupVendorOnboardingRoutes(
           updatedAt: now,
         } as any);
       }
+
+      void notifyAdmins(pool, {
+        type: "vendor_onboarding_completed",
+        source: "Vendor-onboarding · fullført vendor-profil",
+        title: `Vendor-onboarding ${isComplete ? "fullført" : "lagret"}: ${vendorName} (${vendorType})`,
+        summary: `${businessInfo.businessName}${businessInfo.contactEmail ? ` · ${businessInfo.contactEmail}` : ""}${businessInfo.website ? ` · ${businessInfo.website}` : ""}${businessInfo.organizationNumber ? ` · org.nr ${businessInfo.organizationNumber}` : ""}`,
+        link: "/admin",
+        cta: (req.body && req.body.cta) || null,
+        page: req.get("referer") || (req.body && req.body.page) || null,
+        utm: (req.body && req.body.utm) || null,
+        relatedId: vendorId,
+      });
 
       return res.json({
         status: isComplete ? "completed" : "saved",
