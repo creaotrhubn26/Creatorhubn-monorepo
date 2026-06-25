@@ -19,6 +19,7 @@ import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import crypto from "crypto";
 import { sendTransactionalEmail } from "./transactional-email-service.js";
+import { notifyAdmins } from "./admin-notify";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -210,23 +211,18 @@ export function registerPartnerApplicationsRoutes({
         ],
       );
 
-      // Varsel til super-admins
-      const adminsR = await pool.query<{ email: string }>(
-        `SELECT email FROM users WHERE role = 'super_admin' AND email IS NOT NULL`,
-      );
-      for (const a of adminsR.rows) {
-        try {
-          await sendTransactionalEmail({
-            to: a.email,
-            subject: `Ny partner-søknad fra ${organizationId}`,
-            html: `<p>En organisasjon har søkt om partnerskap (${partnerType}).</p>
-                   <p><a href="${PUBLIC_BASE}/superadmin">Åpne i Superadmin</a></p>`,
-            text: `Ny partner-søknad (${partnerType}). Åpne ${PUBLIC_BASE}/superadmin`,
-            kind: "partner_application_notify",
-            pool,
-          });
-        } catch (e) { console.error("[partner-app] notify-admin", e); }
-      }
+      // Varsel til admins (e-post til super_admins + innboks-rad)
+      void notifyAdmins(pool, {
+        type: "leadgrid_partner_application",
+        source: "Leadgrid · partner-søknad (org-admin)",
+        title: `Ny partner-søknad (${partnerType})`,
+        summary: `Org: ${organizationId}${proposedTagline ? ` · ${proposedTagline}` : ""}${reason ? ` · ${reason}` : ""}`,
+        link: "/admin",
+        cta: (req.body && req.body.cta) || null,
+        page: req.get("referer") || (req.body && req.body.page) || null,
+        utm: (req.body && req.body.utm) || null,
+        relatedId: r.rows[0].id,
+      });
 
       res.status(201).json({ application_id: r.rows[0].id, status: "pending" });
     } catch (e) {

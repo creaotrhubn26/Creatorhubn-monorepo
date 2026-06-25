@@ -25,6 +25,7 @@ import {
   MARKETING_PROMPTS,
 } from "./fal-image-service.js";
 import { fireAgencyLeadConversion } from "./linkedin-conversions-service.js";
+import { notifyAdmins } from "./admin-notify";
 
 interface SessionLike {
   userId: string;
@@ -351,59 +352,27 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
             text: ackComposed.text,
             html: ackComposed.html,
           });
-
-          // ── 2. Intern notifikasjon til Daniel ──────────────────
-          const internalEmail = process.env.AGENCY_LEAD_NOTIFY_EMAIL
-            ?? "daniel@creatorhubn.com";
-
-          const internalComposed = composeEmail({
-            category: "lead_internal",
-            subject: isBookDemo
-              ? `Demo booket: ${agencyName}`
-              : `Ny byrå-lead: ${agencyName}`,
-            preheader: `${contactName} fra ${agencyName} — ${segment}`,
-            headline: isBookDemo
-              ? `Demo-forespørsel fra ${agencyName}`
-              : `Ny lead fra ${agencyName}`,
-            subhead: isBookDemo
-              ? `${contactName} (${contactTitle ?? segment}) har booket en demo${preferredDemoTime ? ` — ønsket tid: ${preferredDemoTime}` : ''}.`
-              : `${contactName} kommer fra ${segment}-segmentet og venter på svar innen 24 timer.`,
-            table: [
-              { label: 'Bedrift', value: agencyName },
-              { label: 'Kontakt', value: `${contactName} <${email}>` },
-              ...(contactTitle ? [{ label: 'Tittel', value: contactTitle }] : []),
-              { label: 'Telefon', value: phone ?? '—' },
-              ...(orgNumber ? [{ label: 'Org.nr', value: orgNumber }] : []),
-              ...(website ? [{ label: 'Nettside', value: website }] : []),
-              { label: 'Team-størrelse', value: teamSize ?? rosterSize ?? '—' },
-              { label: 'Segment', value: segment },
-              ...(useCase ? [{ label: 'Bruksområde', value: useCase, pre: true }] : []),
-              ...(currentTools ? [{ label: 'Dagens verktøy', value: currentTools }] : []),
-              ...(preferredDemoTime ? [{ label: 'Ønsket demo-tid', value: preferredDemoTime }] : []),
-              { label: 'Demo-språk', value: demoLanguage === 'en' ? 'Engelsk' : 'Norsk' },
-              ...(message ? [{ label: 'Melding', value: message, pre: true }] : []),
-            ],
-            cta: { label: 'Åpne Admin Room CRM', href: `${baseUrl}/admin-room#crm` },
-            footer: {
-              reason: 'Intern notifikasjon — du mottar denne fordi du eier The Role Room.',
-            },
-          });
-
-          await sendTransactionalEmail({
-            to: internalEmail,
-            subject: isBookDemo
-              ? `Demo booket: ${agencyName}`
-              : `Ny byrå-lead: ${agencyName}`,
-            kind: "agency_lead_internal",
-            fromLabel: "The Role Room — Leads",
-            pool,
-            text: internalComposed.text,
-            html: internalComposed.html,
-          });
         } catch (err) {
           console.warn("[agency-lead] mail-notification feilet", err);
         }
       })();
+
+      // ── Intern admin-notifikasjon (e-post til super_admins + in-app inbox) ─
+      // Erstatter den tidligere enkelt-e-posten til Daniel — nå begge kanaler
+      // via den delte helperen. Kun på første innsending (ikke re-submit).
+      if (isNewLead) {
+        void notifyAdmins(pool, {
+          type: "agency_lead",
+          source: "theroleroom.com · /for-byraer (lead-skjema + Book demo-modal)",
+          title: `${isBookDemo ? 'Demo booket' : 'Ny byrå-lead'}: ${agencyName}`,
+          summary: `${contactName}${contactTitle ? ` (${contactTitle})` : ''} <${email}> · ${segment}${teamSize || rosterSize ? ` · ${teamSize ?? rosterSize}` : ''}${preferredDemoTime ? ` · ønsket tid: ${preferredDemoTime}` : ''}${useCase ? ` · ${useCase}` : ''}`,
+          link: "/admin",
+          cta: (req.body && req.body.cta) || null,
+          page: req.get("referer") || (req.body && req.body.page) || null,
+          utm: (req.body && req.body.utm) || null,
+          relatedId: lead.id,
+        });
+      }
 
       return res.status(201).json({
         ok: true,

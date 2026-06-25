@@ -34,6 +34,21 @@ export interface ClientPortalRegisterCardProps {
   token: string;
 }
 
+// Parse utm_* query params off the current URL so admins see the campaign
+// that drove this inbound client-portal registration. Undefined when none.
+function parseUtmParams(): Record<string, string> | undefined {
+  try {
+    const sp = new URLSearchParams(window.location.search);
+    const utm: Record<string, string> = {};
+    sp.forEach((value, key) => {
+      if (/^utm_/i.test(key) && value) utm[key] = value;
+    });
+    return Object.keys(utm).length > 0 ? utm : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 const ClientPortalRegisterCard: React.FC<ClientPortalRegisterCardProps> = ({ token }) => {
   const [status, setStatus] = useState<'loading' | 'unregistered' | 'registered' | 'error'>('loading');
   const [email, setEmail] = useState('');
@@ -151,7 +166,12 @@ const ClientPortalRegisterCard: React.FC<ClientPortalRegisterCardProps> = ({ tok
       const response = await fetch(`/api/client/portal/register?token=${encodeURIComponent(token)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password, fullName: fullName.trim() }),
+        body: JSON.stringify({
+          password,
+          fullName: fullName.trim(),
+          cta: 'Opprett bruker (Klient-portal — sett passord for fremtidig innlogging)',
+          ...(parseUtmParams() ? { utm: parseUtmParams() } : {}),
+        }),
       });
       if (!response.ok) {
         const errPayload = await response.json().catch(() => null) as { message?: string; error?: string } | null;

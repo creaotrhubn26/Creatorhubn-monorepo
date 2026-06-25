@@ -22,6 +22,7 @@ import type { Pool } from "pg";
 import crypto from "crypto";
 import Stripe from "stripe";
 import { sendTransactionalEmail } from "./transactional-email-service.js";
+import { notifyAdmins } from "./admin-notify.js";
 
 interface Deps {
   app: Express;
@@ -261,6 +262,18 @@ export function registerOrgSelfOnboardRoutes({ app, pool }: Deps): void {
           console.error("[self-onboard] mail failed", e);
         }
       }
+
+      void notifyAdmins(pool, {
+        type: "leadgrid_self_onboard",
+        source: "Leadgrid · selvbetjent org-registrering",
+        title: `Ny selvbetjent registrering: ${orgName}`,
+        summary: `${contactName ? `${contactName} · ` : ""}${email}${orgNumber ? ` · org.nr ${orgNumber}` : ""}${website ? ` · ${website}` : ""} · mal: ${tmpl.template_key} · plan: ${tmpl.default_plan}`,
+        link: "/admin",
+        cta: (req.body && req.body.cta) || null,
+        page: req.get("referer") || (req.body && req.body.page) || null,
+        utm: (req.body && req.body.utm) || null,
+        relatedId: orgId,
+      });
 
       res.status(201).json({
         organization: {

@@ -67,6 +67,7 @@ import {
   type RoleRoomEducationInquiryMetadata,
 } from "./role-room-education-inquiry-service";
 import { createRoleRoomTurnstileService } from "./role-room-turnstile-service";
+import { notifyAdmins } from "./admin-notify";
 
 const ROLE_ROOM_EDUCATION_INQUIRY_MIN_FILL_MS = 2500;
 const ROLE_ROOM_TURNSTILE_EDUCATION_ACTION = "role_room_education_inquiry";
@@ -488,44 +489,32 @@ export function setupRoleRoomEducationInquiriesRoutes(
         );
       }
 
-      let notification: {
+      const notification: {
         sent: boolean;
         reason: string | null;
         accepted: string[];
         provider?: string;
         messageId?: string;
       } = {
-        sent: false,
+        sent: !spamState.suppressAdminNotification,
         reason: spamState.suppressAdminNotification
           ? "duplicate_suppressed"
-          : "not_attempted",
+          : "admin_notify_dispatched",
         accepted: [] as string[],
       };
 
       if (!spamState.suppressAdminNotification) {
-        try {
-          notification = await educationService.sendRoleRoomEducationInquiryAdminEmail({
-            requestId:
-              inviteRequestId ||
-              spamState.recentSameContactRequestId ||
-              "unknown-request",
-            companyName,
-            organizationNumber,
-            contactName,
-            contactEmail,
-            metadata,
-          });
-        } catch (notificationError) {
-          console.error(
-            "Role Room education inquiry notification failed:",
-            notificationError,
-          );
-          notification = {
-            sent: false,
-            reason: "notification_failed",
-            accepted: [],
-          };
-        }
+        void notifyAdmins(deps.pool, {
+          type: "education_inquiry",
+          source: "theroleroom.com · institusjons-/utdanningsforespørsel",
+          title: `Ny institusjonsforespørsel: ${companyName}`,
+          summary: `${contactName} (${contactRole}) <${contactEmail}> · ${metadata.institutionTypeLabel} · ${programName} · studenter ${metadata.studentSeatLabel}`,
+          link: "/admin",
+          cta: (req.body && req.body.cta) || null,
+          page: req.get("referer") || (req.body && req.body.page) || null,
+          utm: (req.body && req.body.utm) || null,
+          relatedId: inviteRequestId,
+        });
       }
 
       return res.status(201).json({

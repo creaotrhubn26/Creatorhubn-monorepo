@@ -106,6 +106,21 @@ interface BrregCompany {
   };
 }
 
+// Parse utm_* query params off the current URL so admins see the campaign
+// that drove this inbound access request. Returns undefined when none present.
+function parseUtmParams(): Record<string, string> | undefined {
+  try {
+    const sp = new URLSearchParams(window.location.search);
+    const utm: Record<string, string> = {};
+    sp.forEach((value, key) => {
+      if (/^utm_/i.test(key) && value) utm[key] = value;
+    });
+    return Object.keys(utm).length > 0 ? utm : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function normalizeNorwegianOrganizationNumber(value: string) {
   return String(value || "")
     .replace(/\D/g, "")
@@ -452,6 +467,13 @@ export function InviteRequestForm({
       ? `${metaTags.join(' ')}\n\n${formData.message || ''}`
       : formData.message;
 
+    // Same prototype-tester detection used for the success redirect below, so
+    // the CTA label admins see matches the actual button the applicant clicked.
+    const ctaIsPrototypeTester =
+      selectedPlan?.id === 'prototype_tester' ||
+      (selectedPlan as any)?.tier === 'prototype_tester' ||
+      source === 'prototype_tester_pricing';
+
     // Include selected subscription plan in submission
     const submissionData = {
       ...formData,
@@ -460,6 +482,10 @@ export function InviteRequestForm({
       planName: selectedPlan?.name || null,
       planPrice: selectedPlan?.price || null,
       source: source || "landing",
+      cta: ctaIsPrototypeTester
+        ? `Send søknad (Prototype-tester-program — be om tilgang, kilde: ${source || "landing"})`
+        : `Send forespørsel (Be om tilgang til CreatorHub Norge${selectedPlan?.name ? ` — ${selectedPlan.name}` : ""}, kilde: ${source || "landing"})`,
+      ...(parseUtmParams() ? { utm: parseUtmParams() } : {}),
       // Include enterprise team size and pricing if applicable
       ...(isEnterprisePlan ? {
         enterpriseTeamSize: teamSize,

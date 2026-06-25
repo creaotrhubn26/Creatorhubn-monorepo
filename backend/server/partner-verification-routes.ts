@@ -30,6 +30,7 @@ import type { Pool } from "pg";
 import crypto from "crypto";
 import multer from "multer";
 import { sendTransactionalEmail } from "./transactional-email-service.js";
+import { notifyAdmins } from "./admin-notify";
 import {
   uploadPartnerDocument, presignPartnerDocument, deletePartnerDocument,
 } from "./partner-documents-service.js";
@@ -329,6 +330,18 @@ export function registerPartnerVerificationRoutes({ app, pool, activeSessions }:
        VALUES ($1, 'new_application', 'info', $2)`,
       [applicationId, `Ny partner-søknad submittet${own.rows[0].uses_api ? " (krever API-tilgang)" : ""}`],
     );
+
+    void notifyAdmins(pool, {
+      type: "leadgrid_partner_application_submitted",
+      source: "Leadgrid · partner-søknad submittet (verifiserings-flyt)",
+      title: `Partner-søknad submittet${own.rows[0].uses_api ? ' (krever API-tilgang)' : ''}`,
+      summary: `Søknad ${applicationId} sendt til gjennomgang av bruker ${session.userId}`,
+      link: "/admin",
+      cta: (req.body && req.body.cta) || null,
+      page: req.get("referer") || (req.body && req.body.page) || null,
+      utm: (req.body && req.body.utm) || null,
+      relatedId: applicationId,
+    });
 
     res.json({ ok: true, status: newStatus });
   });

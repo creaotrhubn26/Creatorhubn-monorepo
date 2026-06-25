@@ -24,6 +24,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { sendTransactionalEmail } from "./transactional-email-service.js";
 import { composeEmail } from "./email-design-system.js";
 import { resolveDefaultLinkedInOrg } from "./linkedin-oauth-routes.js";
+import { notifyAdmins } from "./admin-notify";
 
 interface SessionLike { userId: string; email?: string }
 
@@ -554,6 +555,18 @@ export function setupCockpitB2BRoutes(deps: CockpitB2BRoutesDeps): void {
           });
         } catch { /* best-effort */ }
       })();
+
+      void notifyAdmins(pool, {
+        type: "webinar_registration",
+        source: "theroleroom.com · webinar-påmelding",
+        title: `Ny webinar-påmelding: ${webinar.title}`,
+        summary: `${name} <${email}>${agency ? ` · ${agency}` : ""}${role ? ` · ${role}` : ""}`,
+        link: "/admin",
+        cta: (req.body && req.body.cta) || null,
+        page: req.get("referer") || (req.body && req.body.page) || null,
+        utm: (req.body && req.body.utm) || null,
+        relatedId: r.rows[0].id,
+      });
 
       return res.status(201).json({ ok: true, registration_id: r.rows[0].id });
     } catch (err) {

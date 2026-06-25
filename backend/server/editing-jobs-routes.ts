@@ -162,6 +162,17 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
         `INSERT INTO capture_beta_signups (name, email, device, note, user_id) VALUES ($1, $2, $3, $4, $5)`,
         [b.name || null, email, b.device || null, b.note || null, b.userId || null],
       );
+      void notifyAdmins(pool, {
+        type: "capture_beta_signup",
+        source: "Capture-app · beta-signup",
+        title: `Ny Capture beta-påmelding: ${email}`,
+        summary: `${b.name || '(uten navn)'} <${email}>${b.device ? ` · ${b.device}` : ''}${b.note ? ` · ${String(b.note).slice(0,160)}` : ''}`,
+        link: "/admin",
+        cta: (req.body && req.body.cta) || null,
+        page: req.get("referer") || (req.body && req.body.page) || null,
+        utm: (req.body && req.body.utm) || null,
+        relatedId: null,
+      });
       res.json({ ok: true });
     } catch (err) {
       console.error("[capture-beta:signup] error", err);
