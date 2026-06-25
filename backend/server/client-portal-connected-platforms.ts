@@ -403,9 +403,20 @@ export async function loadConnectedPlatforms(
     [projectId],
   );
 
-  // Google: utsatt til egen lagring (20+ Workspace-lesere + destruktiv upsert-
-  // DELETE gjør in-place project-scoping for risikabelt). Vis «ikke tilkoblet».
-  const google = null;
+  // Google — egen isolert tabell (mig 0339): klientens egen tilkobling, helt
+  // adskilt fra de 20+ Workspace-leserne + den destruktive produsent-upsert-en.
+  const google = await safeQueryFirst(
+    pool,
+    `SELECT connection_state AS "connectionState",
+            expiry_date      AS "expiryDate",
+            google_email     AS "accountName",
+            updated_at       AS "updatedAt"
+       FROM role_room_client_google_connections
+      WHERE project_id = $1
+      ORDER BY updated_at DESC
+      LIMIT 1`,
+    [projectId],
+  );
 
   // Facebook avledes fra Instagram-raden: Meta-publisering krever en koblet
   // FB-side, så hvis IG er koblet med en page er Facebook også «på».
