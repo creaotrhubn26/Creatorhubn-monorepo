@@ -19,6 +19,7 @@ import LeadgridPartnerWizardPage from '@/pages/leadgrid-partner-wizard';
 import LeadgridPartnerDashboardPage from '@/pages/leadgrid-partner-dashboard';
 import LeadgridMarketplacePage from '@/pages/leadgrid-marketplace';
 import LeadgridConnectorsPage from '@/pages/leadgrid-connectors';
+import LeadgridImportPage from '@/pages/leadgrid-import';
 import BlogIndexPage from '@/pages/blog-index';
 import BlogPostPage from '@/pages/blog-post';
 import AgencyLandingPage from '@/pages/agency-landing';
@@ -274,6 +275,11 @@ function CastingStandaloneAppContent() {
   if (localeCtx.pathname === '/leadgrid/connectors' ||
       localeCtx.pathname === '/leadgrid/connectors/') {
     return <LeadgridConnectorsPage />;
+  }
+  // CSV/Excel + URL-basert lead-import (mig 328, krever innlogging)
+  if (localeCtx.pathname === '/leadgrid/import' ||
+      localeCtx.pathname === '/leadgrid/import/') {
+    return <LeadgridImportPage />;
   }
   // Developer-docs (public)
   if (localeCtx.pathname === '/leadgrid/utviklere' ||
