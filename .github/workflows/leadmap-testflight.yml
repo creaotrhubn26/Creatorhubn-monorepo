@@ -42,10 +42,19 @@ jobs:
         with:
           ref: ${{ github.event.inputs.ref || github.ref }}
 
-      # Velg Xcode 26 eksplisitt — Apple krever iOS 26 SDK ved upload
-      # til ASC fra 2026 (Validation error 409: SDK version issue).
-      - name: Velg Xcode 26
-        run: sudo xcode-select -switch /Applications/Xcode_26.app
+      # Logg Xcode-versjoner — macos-26 har Xcode 26 default, men logg
+      # for forutsigbarhet. Apple krever iOS 26 SDK ved ASC upload fra 2026.
+      - name: Verifisér Xcode-versjon
+        run: |
+          echo "=== Available Xcode installations ==="
+          ls -d /Applications/Xcode*.app 2>/dev/null || echo "(none in /Applications)"
+          echo ""
+          echo "=== Active xcode-select ==="
+          xcode-select -p
+          xcodebuild -version
+          echo ""
+          echo "=== iOS SDK ==="
+          xcodebuild -showsdks | grep -i ios | head -5
 
       - name: Install XcodeGen
         run: brew install xcodegen
