@@ -40,4 +40,34 @@ describe('Markedsplan som stående workspace-fane', () => {
     const count = allSurfaces(normalized).filter((surface) => surface === 'marketing-plan').length;
     expect(count).toBe(1);
   });
+
+  it('er idempotent — gjentatt normalisering hoper IKKE opp marketing-plan', () => {
+    let nav = getDefaultProducerWorkspaceNavigation();
+    for (let i = 0; i < 5; i += 1) {
+      nav = normalizeProducerWorkspaceNavigation(nav);
+    }
+    expect(allSurfaces(nav).filter((surface) => surface === 'marketing-plan').length).toBe(1);
+  });
+
+  it('selv-helbreder en nav som allerede har akkumulert duplikat-marketing-plan', () => {
+    const base = getDefaultProducerWorkspaceNavigation();
+    const marketingSection = base.sections.find((section) =>
+      flattenProducerWorkspacePages(section).some((page) => page.surface === 'marketing-plan'),
+    );
+    expect(marketingSection).toBeTruthy();
+    // Simuler korrupt nav: tre ekstra marketing-plan-seksjoner (slik bug-en lagde).
+    const corrupted: ProducerWorkspaceNavigation = {
+      ...base,
+      sections: [
+        ...base.sections,
+        { ...marketingSection!, id: 'dup-1', pages: marketingSection!.pages.map((p) => ({ ...p, id: 'dup-1-page' })) },
+        { ...marketingSection!, id: 'dup-2', pages: marketingSection!.pages.map((p) => ({ ...p, id: 'dup-2-page' })) },
+        { ...marketingSection!, id: 'dup-3', pages: marketingSection!.pages.map((p) => ({ ...p, id: 'dup-3-page' })) },
+      ],
+    };
+    expect(allSurfaces(corrupted).filter((surface) => surface === 'marketing-plan').length).toBe(4);
+
+    const healed = normalizeProducerWorkspaceNavigation(corrupted);
+    expect(allSurfaces(healed).filter((surface) => surface === 'marketing-plan').length).toBe(1);
+  });
 });

@@ -1851,13 +1851,35 @@ export const normalizeProducerWorkspaceNavigation = (
   const existingSurfaces = new Set(
     normalizedSectionsBase.flatMap((section) => flattenProducerWorkspacePages(section).map((page) => page.surface)),
   );
+  // Legg til BARE de manglende sidene (ikke hele fallback-seksjonen) — ellers
+  // ville en fallback-seksjon med én ny + én eksisterende side duplisert den
+  // eksisterende siden.
   const missingFallbackSections = fallback.sections
-    .filter((section) => flattenProducerWorkspacePages(section).some((page) => !existingSurfaces.has(page.surface)))
     .map((section) => ({
       ...section,
-      pages: section.pages.map((page) => ({ ...page })),
-    }));
+      pages: section.pages
+        .filter((page) => !existingSurfaces.has(page.surface))
+        .map((page) => ({ ...page })),
+    }))
+    .filter((section) => section.pages.length > 0);
+  // Global de-dup på `surface`: hver flate skal forekomme NØYAKTIG én gang i
+  // navigasjonen. Dette (a) gjør normaliseringen idempotent —
+  // normalize(normalize(x)) === normalize(x) — så gjentatte klikk/re-normaliser
+  // ikke hoper opp faner, og (b) selv-helbreder nav-er som ALLEREDE har
+  // akkumulert duplikater (f.eks. «Markedsplan» som dukket opp flere ganger).
+  const seenSurfaces = new Set<string>();
   const normalizedSections = [...normalizedSectionsBase, ...missingFallbackSections]
+    .map((section) => ({
+      ...section,
+      pages: flattenProducerWorkspacePages(section).filter((page) => {
+        if (seenSurfaces.has(page.surface)) {
+          return false;
+        }
+        seenSurfaces.add(page.surface);
+        return true;
+      }),
+    }))
+    .filter((section) => section.pages.length > 0)
     .map((section, index) => ({
       ...section,
       order: index,
