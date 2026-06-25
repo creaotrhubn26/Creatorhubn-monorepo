@@ -2035,6 +2035,46 @@ function getActiveSessionFromRequest(req: express.Request) {
   return activeSessions.get(sessionToken) || getLocalDevelopmentSession(sessionToken);
 }
 
+// The users table is the source of truth for ADMIN privilege. A session can
+// carry a stale or marketplace-shadowed role — e.g. a Google login that stored
+// 'couple' because the same person also owns a couple profile — and the admin
+// guards (requireAdminSession) read session.role DIRECTLY and synchronously from
+// the in-memory map. So a mis-roled session locks a real admin out of every
+// /api/admin/* route. When a non-admin session belongs to a user the DB marks
+// admin/super_admin, upgrade the live session object IN PLACE (and persist it),
+// so every guard — sync or async — sees the correct role. Checked at most once
+// per token to keep the auth hot-path cheap for ordinary (non-admin) users.
+const adminRoleReconciledTokens = new Set<string>();
+async function reconcileSessionAdminRole(
+  token: string,
+  session: ActiveSessionData,
+): Promise<ActiveSessionData> {
+  const role = String(session.role || "").trim().toLowerCase();
+  if (ADMIN_SESSION_ROLES.has(role)) {
+    return session;
+  }
+  if (adminRoleReconciledTokens.has(token)) {
+    return session;
+  }
+  adminRoleReconciledTokens.add(token);
+  try {
+    const r = await pool.query<{ role: string }>(
+      `SELECT role FROM users WHERE id::text = $1 OR LOWER(email) = LOWER($2) LIMIT 1`,
+      [session.userId, session.email],
+    );
+    const dbRole = String(r.rows[0]?.role || "").trim().toLowerCase();
+    if (ADMIN_SESSION_ROLES.has(dbRole)) {
+      session.role = dbRole;
+      session.isAdmin = true;
+      activeSessions.set(token, session);
+      void persistAuthSession(pool, token, session);
+    }
+  } catch (error) {
+    console.warn("[auth] admin-role reconcile failed:", error);
+  }
+  return session;
+}
+
 async function resolveActiveSessionFromRequest(
   req: express.Request,
 ): Promise<ActiveSessionData | null> {
@@ -2045,7 +2085,7 @@ async function resolveActiveSessionFromRequest(
 
   const inMemorySession = activeSessions.get(sessionToken);
   if (inMemorySession) {
-    return inMemorySession;
+    return reconcileSessionAdminRole(sessionToken, inMemorySession);
   }
 
   const localDevelopmentSession = getLocalDevelopmentSession(sessionToken);
@@ -2059,7 +2099,7 @@ async function resolveActiveSessionFromRequest(
   );
   if (persistedSession) {
     activeSessions.set(sessionToken, persistedSession);
-    return persistedSession;
+    return reconcileSessionAdminRole(sessionToken, persistedSession);
   }
 
   return null;
@@ -43357,10 +43397,20 @@ async function buildSessionUserFromActiveSession(session: ActiveSessionData) {
         accountUser.role || inferAdminRoleFromProfession(accountUser.profession),
       )
     : "user";
+  // The users table is the source of truth for ADMIN privilege. If the DB says
+  // this account is admin/super_admin but the session lost it (e.g. a Google
+  // login that demoted the role to 'couple' because the same person also owns a
+  // couple/vendor profile), trust the DB — otherwise an admin is locked out by
+  // a marketplace-shadowed or stale session role. Never elevates a non-admin:
+  // accountRoleId comes straight from the DB row.
+  const accountIsAdminRole = ADMIN_SESSION_ROLES.has(accountRoleId);
+  const sessionIsAdminRole = ADMIN_SESSION_ROLES.has(sessionRoleId);
   const roleId =
-    sessionRoleId === "user" && accountRoleId !== "user"
+    accountIsAdminRole && !sessionIsAdminRole
       ? accountRoleId
-      : sessionRoleId || accountRoleId;
+      : sessionRoleId === "user" && accountRoleId !== "user"
+        ? accountRoleId
+        : sessionRoleId || accountRoleId;
   const roleEntry = buildAdminRoleEntry(roleId);
   const permissions = (() => {
     const normalized = normalizeSessionPermissions(session.permissions);

@@ -2429,6 +2429,58 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     }
   }
 
+  // Klient-portal Google: lagres i EGEN tabell (role_room_client_google_-
+  // connections), isolert fra de 20+ Workspace-leserne + den destruktive
+  // DELETE-en i upsertRoleRoomGoogleConnection. Én tilkobling per prosjekt.
+  async function upsertClientGoogleConnection(input: {
+    projectId: string;
+    producerUserId: string;
+    email: string | null;
+    subject: string | null;
+    profile: Record<string, unknown>;
+    tokenBundle: NonNullable<RoleRoomGoogleTransferPayload['tokenBundle']>;
+  }): Promise<void> {
+    const accessTokenEncrypted = input.tokenBundle.accessToken ? encryptRoleRoomGoogleToken(input.tokenBundle.accessToken) : null;
+    const refreshTokenEncrypted = input.tokenBundle.refreshToken ? encryptRoleRoomGoogleToken(input.tokenBundle.refreshToken) : null;
+    const expiryDate = typeof input.tokenBundle.expiryDate === 'number' && Number.isFinite(input.tokenBundle.expiryDate)
+      ? new Date(input.tokenBundle.expiryDate).toISOString()
+      : null;
+    const scopes = (input.tokenBundle as { scopes?: string[] }).scopes ?? [];
+    await pool.query(
+      `INSERT INTO role_room_client_google_connections (
+         id, project_id, producer_user_id, google_email, google_subject,
+         access_token_encrypted, refresh_token_encrypted, expiry_date, scopes,
+         connection_state, profile, created_at, updated_at, last_used_at
+       ) VALUES (
+         gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8::jsonb, 'connected', $9::jsonb, NOW(), NOW(), NOW()
+       )
+       ON CONFLICT (project_id) DO UPDATE SET
+         producer_user_id = EXCLUDED.producer_user_id,
+         google_email = EXCLUDED.google_email,
+         google_subject = EXCLUDED.google_subject,
+         access_token_encrypted = COALESCE(EXCLUDED.access_token_encrypted, role_room_client_google_connections.access_token_encrypted),
+         refresh_token_encrypted = COALESCE(EXCLUDED.refresh_token_encrypted, role_room_client_google_connections.refresh_token_encrypted),
+         expiry_date = COALESCE(EXCLUDED.expiry_date, role_room_client_google_connections.expiry_date),
+         scopes = EXCLUDED.scopes,
+         connection_state = 'connected',
+         last_error = NULL,
+         profile = EXCLUDED.profile,
+         updated_at = NOW(),
+         last_used_at = NOW()`,
+      [
+        input.projectId,
+        input.producerUserId,
+        input.email,
+        input.subject,
+        accessTokenEncrypted,
+        refreshTokenEncrypted,
+        expiryDate,
+        JSON.stringify(scopes),
+        JSON.stringify(input.profile),
+      ],
+    );
+  }
+
   async function upsertRoleRoomLinkedInConnection(
     userId: string,
     roleRoomEmail: string | null,
@@ -2439,6 +2491,10 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       profile: Record<string, unknown>;
     },
     tokenBundle: RoleRoomLinkedInTransferPayload['tokenBundle'],
+    // Klient-portal-tilkoblinger scopes til prosjektet (lagres under produsentens
+    // user_id + project_id). Produsentens egne globale tilkoblinger (publisering)
+    // har project_id = null — derfor default null her.
+    projectId: string | null = null,
   ): Promise<RoleRoomLinkedInConnectionRow> {
     if (!(await ensureRoleRoomLinkedInTables())) {
       throw new Error('Role Room LinkedIn tables unavailable');
@@ -2454,13 +2510,13 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       `INSERT INTO role_room_linkedin_connections (
         id, user_id, role_room_email, linkedin_member_id, linkedin_email, linkedin_name,
         access_token_encrypted, refresh_token_encrypted, expiry_date, scopes,
-        connection_state, last_error, profile, created_at, updated_at, last_used_at
+        connection_state, last_error, profile, project_id, created_at, updated_at, last_used_at
       ) VALUES (
         $1, $2, $3, $4, $5, $6,
         $7, $8, $9, $10::jsonb,
-        'connected', NULL, $11::jsonb, NOW(), NOW(), NOW()
+        'connected', NULL, $11::jsonb, $12, NOW(), NOW(), NOW()
       )
-      ON CONFLICT (user_id) DO UPDATE SET
+      ON CONFLICT (user_id, COALESCE(project_id, '')) DO UPDATE SET
         role_room_email = EXCLUDED.role_room_email,
         linkedin_member_id = EXCLUDED.linkedin_member_id,
         linkedin_email = EXCLUDED.linkedin_email,
@@ -2487,6 +2543,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         expiryDate,
         JSON.stringify(tokenBundle.scopes ?? []),
         JSON.stringify(linkedInProfile.profile),
+        projectId,
       ],
     );
     return result.rows[0];
@@ -9433,6 +9490,27 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         return;
       }
 
+      // Klient-portal: lagre Google-tilkoblingen i den isolerte klient-tabellen
+      // (ikke produsentens Workspace-tilkobling). Klienten kobler sin EGEN konto,
+      // så ingen av de 20+ Workspace-leserne eller den destruktive DELETE-en røres.
+      if (oauthState.returnPath.startsWith('/client/portal/') && oauthState.createdByUserId && oauthState.projectId) {
+        await upsertClientGoogleConnection({
+          projectId: oauthState.projectId,
+          producerUserId: oauthState.createdByUserId,
+          email: googleEmail,
+          subject: googleSubject,
+          profile: (googleProfile ?? {}) as Record<string, unknown>,
+          tokenBundle,
+        });
+        res.redirect(
+          buildRoleRoomGoogleReturnUrl(oauthState.returnPath, {
+            rrGoogleStatus: 'success',
+            rrGoogleMode: 'link',
+          }, resolveRoleRoomBrowserOrigin(req, oauthState.browserOrigin) ?? requestOrigin),
+        );
+        return;
+      }
+
       const transferId = crypto.randomUUID();
       const linkTargetUserId = oauthState.targetConnectionUserId ?? oauthState.createdByUserId ?? null;
       const linkTargetEmail = oauthState.targetConnectionEmail ?? oauthState.createdByEmail ?? null;
@@ -9918,6 +9996,35 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         ? Date.now() + (Number(tokenPayload.expires_in) * 1000)
         : null;
       const rawScopes = readStringValue(tokenPayload.scope);
+
+      // Klient-portal: klienten er IKKE innlogget, så transfer→/linkedin/link-
+      // fullføringen (som krever getUserId) finnes ikke for dem. Auto-upsert
+      // direkte her, prosjekt-scopet under produsentens user_id. Produsentens
+      // egen kobling går fortsatt via transfer-store + /linkedin/link (under).
+      if (oauthState.returnPath.startsWith('/client/portal/') && oauthState.createdByUserId) {
+        await upsertRoleRoomLinkedInConnection(
+          oauthState.createdByUserId,
+          linkedInEmail,
+          { memberId: linkedInMemberId, email: linkedInEmail, name: linkedInName, profile: readJsonObject(profilePayload) },
+          {
+            accessToken,
+            refreshToken: readStringValue(tokenPayload.refresh_token),
+            expiryDate,
+            scopes: rawScopes
+              ? rawScopes.split(' ').filter((entry) => entry.trim().length > 0)
+              : [...ROLE_ROOM_LINKEDIN_SCOPES],
+          },
+          oauthState.projectId ?? null,
+        );
+        res.redirect(
+          buildRoleRoomGoogleReturnUrl(oauthState.returnPath, {
+            rrLinkedInStatus: 'success',
+            rrLinkedInMode: 'link',
+          }, resolveRoleRoomBrowserOrigin(req, oauthState.browserOrigin) ?? requestOrigin),
+        );
+        return;
+      }
+
       const transferId = crypto.randomUUID();
       roleRoomLinkedInTransferStore.set(transferId, {
         mode: 'link',

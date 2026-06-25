@@ -558,17 +558,21 @@ private struct PitchSlideEditorSheet: View {
                     Section("Mockup / skjermbilde") {
                         mockupGrid
                         if canEdit {
+                            // Capture isUploading lokalt slik at PhotosPicker.label-
+                            // closure (Sendable) ikke trenger å lese @State direkte
+                            // under Swift 6 strict concurrency.
+                            let uploading = isUploading
                             PhotosPicker(
                                 selection: $pickerItem,
                                 matching: .images,
                                 photoLibrary: .shared()
                             ) {
                                 Label(
-                                    isUploading ? "Laster opp …" : "Legg til bilde",
+                                    uploading ? "Laster opp …" : "Legg til bilde",
                                     systemImage: "photo.badge.plus"
                                 )
                             }
-                            .disabled(isUploading)
+                            .disabled(uploading)
                             Text("JPEG/PNG, maks 6 MB ferdig komprimert. Lagres i org'ens bucket-område.")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)

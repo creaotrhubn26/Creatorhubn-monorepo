@@ -5,7 +5,7 @@
 
 import SwiftUI
 import UIKit
-import UserNotifications
+@preconcurrency import UserNotifications
 
 @main
 struct LeadMapApp: App {
