@@ -4712,8 +4712,13 @@ export const shotLists = pgTable("shot_lists", {
 	categories: text().array(),
 	totalShots: integer("total_shots").default(0),
 	completedShots: integer("completed_shots").default(0),
-	mustHaveShots: integer("must_have_shots").default(0),
-	completedMustHave: integer("completed_must_have").default(0),
+	// The actual shot_lists table uses critical_shots / completed_critical_shots
+	// (a must-have shot IS a critical shot). The previous mapping pointed at
+	// must_have_shots / completed_must_have, which don't exist — so every query
+	// selecting these (e.g. GET /api/capture/projects) threw at the DB and the
+	// async route handler's unhandled rejection left the request hanging.
+	mustHaveShots: integer("critical_shots").default(0),
+	completedMustHave: integer("completed_critical_shots").default(0),
 	clientApprovalRequired: boolean("client_approval_required").default(false),
 	clientApproved: boolean("client_approved").default(false),
 	clientFeedback: text("client_feedback"),
