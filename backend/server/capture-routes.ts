@@ -517,6 +517,65 @@ export function createCaptureRouter(
     res.status(201).json(created);
   });
 
+  // ── Client-requested revisions ──────────────────────────────────────────
+  // The gallery "be om endringer" flow posts here when a client wants changes
+  // on a delivered photo; the iPad "Revisjoner" inbox reads + resolves them.
+  // `originalFilename` is the key the iPad matches against memory cards.
+  router.post('/projects/:projectId/revision-requests', auth, async (req, res) => {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const filename = String(body.originalFilename ?? body.filename ?? '').trim();
+    if (!filename) {
+      res.status(400).json({ error: 'original_filename_required' });
+      return;
+    }
+    const assetId = typeof body.assetId === 'string' && body.assetId ? body.assetId : null;
+    const result = await pool.query<{ id: string }>(
+      `INSERT INTO capture_revision_requests
+         (project_id, asset_id, original_filename, client_email, note, source)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id`,
+      [
+        req.params.projectId,
+        assetId,
+        filename,
+        typeof body.clientEmail === 'string' ? body.clientEmail : null,
+        typeof body.note === 'string' ? body.note : '',
+        typeof body.source === 'string' ? body.source : 'gallery',
+      ],
+    );
+    res.status(201).json({ id: result.rows[0].id });
+  });
+
+  router.get('/projects/:projectId/revision-requests', auth, async (req, res) => {
+    const status = typeof req.query.status === 'string' ? req.query.status : 'open';
+    const result = await pool.query(
+      `SELECT id, project_id AS "projectId", asset_id AS "assetId",
+              original_filename AS "originalFilename", client_email AS "clientEmail",
+              note, status, source, created_at AS "createdAt", resolved_at AS "resolvedAt"
+         FROM capture_revision_requests
+        WHERE project_id = $1 AND ($2 = 'all' OR status = $2)
+        ORDER BY created_at DESC`,
+      [req.params.projectId, status],
+    );
+    res.json({ revisions: result.rows });
+  });
+
+  router.post('/revision-requests/:id/status', auth, async (req, res) => {
+    const status = String(((req.body ?? {}) as Record<string, unknown>).status ?? '').trim();
+    if (!['open', 'in_progress', 'resolved'].includes(status)) {
+      res.status(400).json({ error: 'bad_status' });
+      return;
+    }
+    await pool.query(
+      `UPDATE capture_revision_requests
+          SET status = $2,
+              resolved_at = CASE WHEN $2 = 'resolved' THEN now() ELSE resolved_at END
+        WHERE id = $1`,
+      [req.params.id, status],
+    );
+    res.json({ ok: true });
+  });
+
   // Mark a shot complete / incomplete. Body is `{ isCompleted: boolean }`.
   // Lives on /projects so iPad ShotListPanel's local toggle can push
   // back without inventing a new surface — matches the existing link-

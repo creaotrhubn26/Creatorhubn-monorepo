@@ -78,6 +78,21 @@ enum BackendUploadKind: String, Codable, Sendable {
     case raw
 }
 
+/// A client-requested change on a delivered photo. The iPad "Revisjoner" inbox
+/// reads these and matches `originalFilename` against memory cards.
+struct BackendRevisionRequest: Decodable, Sendable, Identifiable, Hashable {
+    let id: String
+    let projectId: String?
+    let assetId: String?
+    let originalFilename: String
+    let clientEmail: String?
+    let note: String
+    let status: String
+    let source: String?
+    let createdAt: String?
+    let resolvedAt: String?
+}
+
 struct BackendUploadStartRequest: Encodable, Sendable {
     let kind: BackendUploadKind
     let sizeBytes: Int64

@@ -336,6 +336,142 @@ actor DeliveryService {
 
         return assetUUID
     }
+
+    // MARK: - Card backup (originals → B2)
+
+    /// One ORIGINAL file from a memory card to back up to B2 — the RAW (.raw)
+    /// and/or the JPEG (.full). Unlike ``DeliverableAsset`` (which ships a
+    /// client preview), this carries the camera-original bytes so the card is
+    /// safely archived, not just delivered.
+    struct CardBackupItem: Sendable {
+        let localId: UUID
+        let originalFilename: String
+        let captureTime: Date
+        let mime: String
+        let path: String
+        let kind: BackendUploadKind
+    }
+
+    /// Back up original card files to B2 under a freshly-mirrored backend
+    /// session, optionally linked to a project. Reuses the same chunked
+    /// register→sign→put→complete path as ``deliver`` so the originals land in
+    /// B2 exactly like delivered assets — only the bytes (originals, not
+    /// previews) and the upload `kind` differ. `onProgress(done, total)` fires
+    /// after each item so the UI can show a real progress bar.
+    func backupCard(
+        sessionName: String,
+        sessionStartedAt: Date,
+        items: [CardBackupItem],
+        projectId: String?,
+        onProgress: (@Sendable (Int, Int) -> Void)? = nil,
+    ) async throws -> DeliveryResult {
+        guard !items.isEmpty else { throw DeliveryError.noUploadablePicks }
+
+        let backendSession: UUID = try await {
+            if let existing = backendSessionId { return existing }
+            do {
+                let row = try await backend.createSession(
+                    .init(name: sessionName, clientId: nil, startsAt: sessionStartedAt)
+                )
+                guard let id = row.uuid else {
+                    throw DeliveryError.sessionMirrorFailed("invalid session id from backend: \(row.id)")
+                }
+                self.backendSessionId = id
+                return id
+            } catch let DeliveryError.sessionMirrorFailed(msg) {
+                throw DeliveryError.sessionMirrorFailed(msg)
+            } catch {
+                throw DeliveryError.sessionMirrorFailed(String(describing: error))
+            }
+        }()
+
+        if let projectId, !projectId.isEmpty {
+            // Best-effort — the bytes are what matter; a link failure shouldn't
+            // fail the backup. The web side reconciles on next sync.
+            do {
+                try await backend.linkSessionToProject(sessionId: backendSession, projectId: projectId)
+            } catch {
+                AppLog.sync.error("[DeliveryService] backupCard linkSessionToProject failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+
+        var uploaded = 0
+        for (index, item) in items.enumerated() {
+            if idMap[item.localId] == nil {
+                let backendAssetId = try await uploadOriginal(item: item, sessionId: backendSession)
+                idMap[item.localId] = backendAssetId
+            }
+            uploaded += 1
+            onProgress?(index + 1, items.count)
+        }
+
+        do {
+            let token = try await backend.createClientToken(
+                sessionId: backendSession,
+                body: .init(clientLabel: nil, pin: nil, ttlMinutes: nil)
+            )
+            return DeliveryResult(backendSessionId: backendSession, uploadedCount: uploaded, token: token)
+        } catch {
+            throw DeliveryError.tokenMintFailed(String(describing: error))
+        }
+    }
+
+    private func uploadOriginal(item: CardBackupItem, sessionId: UUID) async throws -> UUID {
+        let data = try Data(contentsOf: URL(fileURLWithPath: item.path))
+        guard !data.isEmpty else {
+            throw DeliveryError.uploadFailed(localAssetId: item.localId, reason: "empty file")
+        }
+        let asset = try await backend.registerAsset(
+            sessionId: sessionId,
+            body: .init(
+                originalFilename: item.originalFilename,
+                captureTime: item.captureTime,
+                mime: item.mime,
+                sizeBytes: Int64(data.count),
+            )
+        )
+        guard let assetUUID = UUID(uuidString: asset.id) else {
+            throw DeliveryError.uploadFailed(localAssetId: item.localId, reason: "backend returned non-UUID asset id \(asset.id)")
+        }
+        let plan = try await backend.startUpload(
+            assetId: assetUUID,
+            body: .init(kind: item.kind, sizeBytes: Int64(data.count), mime: item.mime, preferredPartSize: nil)
+        )
+        let parts = try splitIntoParts(data: data, partSize: plan.partSize, partCount: plan.partCount)
+        guard !parts.isEmpty else {
+            throw DeliveryError.uploadFailed(localAssetId: item.localId, reason: "no upload parts")
+        }
+        let partNumbers = Array(1...parts.count)
+        let signed = try await backend.signPartURLs(
+            assetId: assetUUID,
+            body: .init(uploadId: plan.uploadId, key: plan.key, partNumbers: partNumbers),
+        )
+        guard signed.parts.count == parts.count else {
+            throw DeliveryError.uploadFailed(localAssetId: item.localId, reason: "signed part count mismatch")
+        }
+        var completed: [BackendCompletedPart] = []
+        completed.reserveCapacity(parts.count)
+        for (i, part) in parts.enumerated() {
+            let signedPart = signed.parts[i]
+            guard let url = URL(string: signedPart.url) else {
+                throw DeliveryError.uploadFailed(localAssetId: item.localId, reason: "invalid signed part url")
+            }
+            let etag = try await backend.putPart(url: url, bytes: part)
+            completed.append(.init(partNumber: signedPart.partNumber, etag: etag))
+        }
+        _ = try await backend.completeUpload(
+            assetId: assetUUID,
+            body: .init(
+                kind: item.kind,
+                uploadId: plan.uploadId,
+                key: plan.key,
+                parts: completed,
+                checksumSha256: sha256Hex(of: data),
+                sizeBytes: Int64(data.count),
+            )
+        )
+        return assetUUID
+    }
 }
 
 private func splitIntoParts(data: Data, partSize: Int64, partCount: Int) throws -> [Data] {
