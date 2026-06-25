@@ -1,6 +1,7 @@
 import type { Plugin } from 'vite';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync, statSync } from 'fs';
@@ -152,6 +153,7 @@ export default defineConfig({
   plugins: [
     buildInfoPlugin(),
     customPathResolver(), // Custom path resolver for @/* with fallback
+    tailwindcss(), // Tailwind v4 — utilities + theme only (preflight skippet i src/styles/tailwind.css)
     react({
       babel: {
         plugins: [
