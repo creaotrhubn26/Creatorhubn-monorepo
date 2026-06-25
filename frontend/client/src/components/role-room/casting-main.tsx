@@ -120,6 +120,12 @@ const RrPostAgentLink = React.lazy(() => import('@/components/role-room/PostAgen
 const RrAcceptTesterInvite = React.lazy(() => import('@/pages/AcceptTesterInvite'));
 const RrAcceptPrototypeTesterInvite = React.lazy(() => import('@/pages/AcceptPrototypeTesterInvite'));
 const RrSecuritySettings = React.lazy(() => import('@/pages/sikkerhet'));
+// Innlogging + passord-reset: var KUN App.tsx-ruter, så klienter på
+// theroleroom.com som klikket «Logg inn-side» / passord-reset-lenker falt
+// til landingssiden. Wires her så e-post+passord-innlogging faktisk virker
+// for klient-portal-brukere (de som ikke logger inn med Google).
+const RrLoginPage = React.lazy(() => import('@/pages/LoginPageSimple'));
+const RrResetPassword = React.lazy(() => import('@/pages/reset-passord'));
 
 const THEROLEROOM_APP_ROUTES: Array<{ test: RegExp; path: string; component: React.ComponentType<any> }> = [
   { test: /^\/invite\/[^/]+$/, path: '/invite/:token', component: RrTesterInviteLanding },
@@ -129,6 +135,8 @@ const THEROLEROOM_APP_ROUTES: Array<{ test: RegExp; path: string; component: Rea
   { test: /^\/lead-map\/accept$/, path: '/lead-map/accept', component: RrLeadMapAccept },
   { test: /^\/link$/, path: '/link', component: RrPostAgentLink },
   { test: /^\/innstillinger\/sikkerhet$/, path: '/innstillinger/sikkerhet', component: RrSecuritySettings },
+  { test: /^\/login$/, path: '/login', component: RrLoginPage },
+  { test: /^\/reset-passord\/[^/]+$/, path: '/reset-passord/:token', component: RrResetPassword },
 ];
 
 function CastingStandaloneAppContent() {
