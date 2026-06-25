@@ -27,6 +27,8 @@ import {
   CheckCircle as CheckCircleIcon,
   Download as DownloadIcon,
   Block as BlockIcon,
+  Visibility as VisibilityIcon,
+  VisibilityOff as VisibilityOffIcon,
 } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 import type {
@@ -540,8 +542,51 @@ export default function ProducerClientReviewPanel({
     facebook: 'Facebook',
     tiktok: 'TikTok',
     linkedin: 'LinkedIn',
-    google: 'Google',
+    google_ads: 'Google Ads',
+    google: 'Google Workspace',
   };
+
+  // Produsent-styrt synlighet: hvilke «Koblede kontoer» klienten ser i portalen.
+  // Lagrer SKJULTE plattformer; Google Workspace skjult som standard.
+  const [portalHidden, setPortalHidden] = useState<Set<string>>(new Set());
+  const [portalPlatformOptions, setPortalPlatformOptions] = useState<{ key: string; label: string }[]>([]);
+  const [savingVisibility, setSavingVisibility] = useState<string | null>(null);
+  useEffect(() => {
+    if (!projectId) return;
+    let cancelled = false;
+    void producerWorkflowService.getClientPortalPlatformPrefs(projectId).then((prefs) => {
+      if (cancelled) return;
+      setPortalHidden(new Set(prefs.hiddenPlatforms));
+      setPortalPlatformOptions(prefs.available);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
+  const handleTogglePortalPlatform = useCallback(
+    async (platformKey: string) => {
+      setSavingVisibility(platformKey);
+      const next = new Set(portalHidden);
+      if (next.has(platformKey)) next.delete(platformKey);
+      else next.add(platformKey);
+      setPortalHidden(next); // optimistisk
+      const ok = await producerWorkflowService.setClientPortalPlatformPrefs(
+        projectId,
+        Array.from(next),
+      );
+      if (!ok) {
+        // Rull tilbake ved feil.
+        setPortalHidden((prev) => {
+          const rolledBack = new Set(prev);
+          if (rolledBack.has(platformKey)) rolledBack.delete(platformKey);
+          else rolledBack.add(platformKey);
+          return rolledBack;
+        });
+      }
+      setSavingVisibility(null);
+    },
+    [portalHidden, projectId],
+  );
   // Filer klienten har lastet opp fra portalen (logo/brand/brief) — vises med
   // nedlastingsknapp så produsenten får tak i dem uten e-post.
   const [downloadingFileId, setDownloadingFileId] = useState<string | null>(null);
@@ -2053,6 +2098,45 @@ export default function ProducerClientReviewPanel({
                         }}
                       />
                     </Tooltip>
+                  );
+                })}
+              </Stack>
+            ) : null}
+            {portalPlatformOptions.length > 0 ? (
+              <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap alignItems="center" sx={{ mt: 0.2 }}>
+                <Tooltip
+                  title="Velg hvilke plattformer klienten ser og kan koble til i portalen. En plattform som allerede er koblet vises uansett."
+                  arrow
+                >
+                  <Typography sx={{ color: 'rgba(148,163,184,0.8)', fontSize: '0.72rem', fontWeight: 600, cursor: 'help' }}>
+                    Vis i portalen:
+                  </Typography>
+                </Tooltip>
+                {portalPlatformOptions.map((opt) => {
+                  const visible = !portalHidden.has(opt.key);
+                  return (
+                    <Chip
+                      key={opt.key}
+                      size="small"
+                      onClick={() => { void handleTogglePortalPlatform(opt.key); }}
+                      disabled={savingVisibility === opt.key}
+                      icon={
+                        visible
+                          ? <VisibilityIcon sx={{ fontSize: '0.8rem !important', color: '#7dd3fc !important' }} />
+                          : <VisibilityOffIcon sx={{ fontSize: '0.8rem !important', color: '#94a3b8 !important' }} />
+                      }
+                      label={opt.label}
+                      sx={{
+                        height: 20,
+                        cursor: 'pointer',
+                        bgcolor: visible ? 'rgba(56,189,248,0.14)' : 'rgba(148,163,184,0.10)',
+                        color: visible ? '#bae6fd' : '#94a3b8',
+                        fontWeight: 700,
+                        fontSize: '0.68rem',
+                        border: visible ? '1px solid rgba(56,189,248,0.35)' : '1px dashed rgba(148,163,184,0.4)',
+                        opacity: visible ? 1 : 0.72,
+                      }}
+                    />
                   );
                 })}
               </Stack>

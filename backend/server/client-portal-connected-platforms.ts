@@ -13,6 +13,7 @@ export type PlatformKey =
   | "facebook"
   | "tiktok"
   | "linkedin"
+  | "google_ads"
   | "google";
 
 export type PlatformStatus =
@@ -37,6 +38,7 @@ export const PLATFORM_LABELS: Record<PlatformKey, string> = {
   facebook: "Facebook",
   tiktok: "TikTok",
   linkedin: "LinkedIn",
+  google_ads: "Google Ads",
   google: "Google Workspace",
 };
 
@@ -46,8 +48,61 @@ export const PLATFORM_ORDER: PlatformKey[] = [
   "facebook",
   "tiktok",
   "linkedin",
+  "google_ads",
   "google",
 ];
+
+// Plattformer som produsenten IKKE har valgt å vise for et nytt prosjekt.
+// Google Workspace skjules som standard — den er sjelden relevant for klient-
+// selvbetjening (Calendar/Drive/Gmail), og produsenten kan slå den på manuelt.
+export const DEFAULT_HIDDEN_PLATFORMS: PlatformKey[] = ["google"];
+
+// Leser produsentens synlighets-overstyring for klientportalen. Ingen rad =
+// standard (DEFAULT_HIDDEN_PLATFORMS). Produsenten styrer dette per prosjekt.
+export async function loadClientPortalHiddenPlatforms(
+  pool: Pool,
+  projectId: string,
+): Promise<Set<PlatformKey>> {
+  try {
+    const res = await pool.query(
+      `SELECT hidden_platforms FROM role_room_client_portal_settings
+        WHERE project_id = $1 LIMIT 1`,
+      [projectId],
+    );
+    const row = res.rows[0];
+    if (!row) return new Set(DEFAULT_HIDDEN_PLATFORMS);
+    const raw = Array.isArray(row.hidden_platforms) ? row.hidden_platforms : [];
+    return new Set(
+      raw.filter((p: unknown): p is PlatformKey =>
+        typeof p === "string" && p in PLATFORM_LABELS,
+      ),
+    );
+  } catch {
+    // Tabellen mangler / DB-feil: degrader til standard, aldri velt portalen.
+    return new Set(DEFAULT_HIDDEN_PLATFORMS);
+  }
+}
+
+// Lagrer produsentens synlighets-valg. Lagrer SKJULTE plattformer (hvitt = vis).
+export async function setClientPortalHiddenPlatforms(
+  pool: Pool,
+  projectId: string,
+  hidden: PlatformKey[],
+  updatedBy: string | null,
+): Promise<void> {
+  const clean = Array.from(
+    new Set(hidden.filter((p) => p in PLATFORM_LABELS)),
+  );
+  await pool.query(
+    `INSERT INTO role_room_client_portal_settings (project_id, hidden_platforms, updated_by, updated_at)
+     VALUES ($1, $2::jsonb, $3, now())
+     ON CONFLICT (project_id) DO UPDATE SET
+       hidden_platforms = EXCLUDED.hidden_platforms,
+       updated_by = EXCLUDED.updated_by,
+       updated_at = now()`,
+    [projectId, JSON.stringify(clean), updatedBy],
+  );
+}
 
 interface RawConnection {
   connectionState?: string | null;
@@ -277,19 +332,24 @@ export async function revokeProjectPlatformConnection(
     );
     return;
   }
-  if (!producerUserId) return;
+  // Klient-eide tilkoblinger er PROSJEKT-scopet — revoker per project_id, aldri
+  // per produsentens user_id (det ville truffet produsentens globale kobling).
+  // De isolerte Google-tabellene (mig 0339/0343) og de project_id-scopede
+  // TikTok/LinkedIn-tabellene (mig 0337/0338) håndteres likt her.
   const table =
     key === "tiktok"
       ? "role_room_tiktok_connections"
       : key === "linkedin"
         ? "role_room_linkedin_connections"
         : key === "google"
-          ? "role_room_google_connections"
-          : null;
+          ? "role_room_client_google_connections"
+          : key === "google_ads"
+            ? "role_room_client_google_ads_connections"
+            : null;
   if (!table) return;
   await run(
-    `UPDATE ${table} SET connection_state = 'revoked', updated_at = now() WHERE user_id = $1`,
-    [producerUserId],
+    `UPDATE ${table} SET connection_state = 'revoked', updated_at = now() WHERE project_id = $1`,
+    [projectId],
   );
 }
 
@@ -403,8 +463,9 @@ export async function loadConnectedPlatforms(
     [projectId],
   );
 
-  // Google — egen isolert tabell (mig 0339): klientens egen tilkobling, helt
-  // adskilt fra de 20+ Workspace-leserne + den destruktive produsent-upsert-en.
+  // Google Workspace — egen isolert tabell (mig 0339): klientens egen
+  // tilkobling, helt adskilt fra de 20+ Workspace-leserne + den destruktive
+  // produsent-upsert-en. Skjules som standard (se DEFAULT_HIDDEN_PLATFORMS).
   const google = await safeQueryFirst(
     pool,
     `SELECT connection_state AS "connectionState",
@@ -412,6 +473,21 @@ export async function loadConnectedPlatforms(
             google_email     AS "accountName",
             updated_at       AS "updatedAt"
        FROM role_room_client_google_connections
+      WHERE project_id = $1
+      ORDER BY updated_at DESC
+      LIMIT 1`,
+    [projectId],
+  );
+
+  // Google Ads — egen isolert tabell (mig 0343): klientens egen Ads-konto,
+  // OAuth-scope adwords. Lar produsenten kjøre annonser / konvertering på vegne.
+  const googleAds = await safeQueryFirst(
+    pool,
+    `SELECT connection_state AS "connectionState",
+            expiry_date      AS "expiryDate",
+            google_email     AS "accountName",
+            updated_at       AS "updatedAt"
+       FROM role_room_client_google_ads_connections
       WHERE project_id = $1
       ORDER BY updated_at DESC
       LIMIT 1`,
@@ -439,8 +515,21 @@ export async function loadConnectedPlatforms(
     facebook: facebookRaw,
     tiktok,
     linkedin,
+    google_ads: googleAds,
     google,
   };
 
-  return PLATFORM_ORDER.map((key) => buildPlatform(key, byKey[key], now));
+  // Produsent-styrt synlighet: skjul plattformer produsenten ikke vil vise
+  // klienten (Google Workspace skjult som standard). En plattform som ER koblet
+  // vises uansett, så klienten aldri «mister» en aktiv kobling visuelt.
+  const hidden = await loadClientPortalHiddenPlatforms(pool, projectId);
+
+  return PLATFORM_ORDER
+    .filter((key) => {
+      if (!hidden.has(key)) return true;
+      const raw = byKey[key];
+      const state = raw?.connectionState;
+      return state != null && state !== "revoked" && state !== "not_connected";
+    })
+    .map((key) => buildPlatform(key, byKey[key], now));
 }

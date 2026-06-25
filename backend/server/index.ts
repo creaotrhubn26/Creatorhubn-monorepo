@@ -477,6 +477,7 @@ import { setupAdminContentCalendarRoutes } from "./admin-content-calendar-routes
 import { setupRoleRoomVendorLinksRoutes } from "./role-room-vendor-links-routes";
 import { setupRoleRoomCastingRoutes } from "./role-room-casting-routes";
 import { setupRoleRoomClientPortalRoutes } from "./role-room-client-portal-routes";
+import { setupClientPortalGoogleAdsRoutes } from "./client-portal-google-ads-oauth";
 import { setupShowcaseTemplatesRoutes } from "./showcase-templates-routes";
 import { setupShowcaseCollectionsRoutes } from "./showcase-collections-routes";
 import { setupShowcaseItemsRoutes } from "./showcase-items-routes";
@@ -24960,6 +24961,7 @@ setupRoleRoomClientRequestsRoutes({
 //   ./role-room-client-portal-routes.ts. Klient-siden (magic-link-auth)
 //   blir igjen i index.ts som /api/client/portal/*.
 setupRoleRoomClientPortalRoutes({ app, pool, requireAdminSession });
+setupClientPortalGoogleAdsRoutes({ app, pool });
 
 // Klient-portal: hent alle forespørsler scopet til (project, email)
 //   som session-tokenet representerer. Klienten ser kun det de er

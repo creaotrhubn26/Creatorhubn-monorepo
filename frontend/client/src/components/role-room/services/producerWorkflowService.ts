@@ -3589,6 +3589,47 @@ export const producerWorkflowService = {
   },
 
   /**
+   * Henter produsentens synlighets-valg for «Koblede kontoer» i klientportalen.
+   * hiddenPlatforms = plattformer som er skjult for klienten; available = alle
+   * plattformer produsenten kan vise/skjule (med visningsnavn).
+   */
+  async getClientPortalPlatformPrefs(
+    projectId: string,
+  ): Promise<{ hiddenPlatforms: string[]; available: { key: string; label: string }[] }> {
+    try {
+      const res = await fetch(
+        `${API_BASE}/client-portal/platform-prefs/${encodeURIComponent(projectId)}`,
+        { headers: buildAuthHeaders(), credentials: 'include' },
+      );
+      const json = await res.json().catch(() => ({}));
+      return {
+        hiddenPlatforms: Array.isArray(json?.hiddenPlatforms) ? json.hiddenPlatforms : [],
+        available: Array.isArray(json?.available) ? json.available : [],
+      };
+    } catch {
+      return { hiddenPlatforms: [], available: [] };
+    }
+  },
+
+  /** Lagrer produsentens synlighets-valg (liste av SKJULTE plattform-nøkler). */
+  async setClientPortalPlatformPrefs(projectId: string, hiddenPlatforms: string[]): Promise<boolean> {
+    try {
+      const res = await fetch(
+        `${API_BASE}/client-portal/platform-prefs/${encodeURIComponent(projectId)}`,
+        {
+          method: 'PUT',
+          headers: { ...buildAuthHeaders(), 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ hiddenPlatforms }),
+        },
+      );
+      return res.ok;
+    } catch {
+      return false;
+    }
+  },
+
+  /**
    * Laster ned en klient-opplastet fil (logo/brand/brief) — auth-gated stream
    * fra backend. Trigger en blob-nedlasting i nettleseren.
    */

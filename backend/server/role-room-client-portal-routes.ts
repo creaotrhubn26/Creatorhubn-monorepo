@@ -33,6 +33,14 @@ import {
 } from "./role-room-client-portal.js";
 import { sendTransactionalEmail } from "./transactional-email-service.js";
 import { composeEmail } from "./email-design-system.js";
+import {
+  PLATFORM_LABELS,
+  PLATFORM_ORDER,
+  DEFAULT_HIDDEN_PLATFORMS,
+  loadClientPortalHiddenPlatforms,
+  setClientPortalHiddenPlatforms,
+  type PlatformKey,
+} from "./client-portal-connected-platforms.js";
 
 interface AdminSession {
   userId: string;
@@ -172,5 +180,43 @@ export function setupRoleRoomClientPortalRoutes(
       return res.status(404).json({ success: false, error: "Fant ingen aktiv invitasjon å revokere." });
     }
     return res.json({ success: true });
+  });
+
+  // ── Plattform-synlighet i klientportalen (produsent-styrt) ──────────────
+  // Produsenten velger hvilke «Koblede kontoer» klienten ser/kan koble.
+  // Lagrer SKJULTE plattformer; Google Workspace skjult som standard.
+  app.get("/api/role-room/client-portal/platform-prefs/:projectId", async (req, res) => {
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+    const projectId = String(req.params.projectId || "").trim();
+    if (!projectId) {
+      return res.status(400).json({ success: false, error: "projectId er påkrevd." });
+    }
+    const hidden = await loadClientPortalHiddenPlatforms(pool, projectId);
+    return res.json({
+      success: true,
+      hiddenPlatforms: Array.from(hidden),
+      defaultHidden: DEFAULT_HIDDEN_PLATFORMS,
+      // Alle plattformer produsenten kan vise/skjule, med visningsnavn.
+      available: PLATFORM_ORDER
+        .filter((key) => key !== "facebook") // FB avledes av Instagram — ikke egen toggle
+        .map((key) => ({ key, label: PLATFORM_LABELS[key] })),
+    });
+  });
+
+  app.put("/api/role-room/client-portal/platform-prefs/:projectId", async (req, res) => {
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+    const projectId = String(req.params.projectId || "").trim();
+    if (!projectId) {
+      return res.status(400).json({ success: false, error: "projectId er påkrevd." });
+    }
+    const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
+    const raw = Array.isArray(body.hiddenPlatforms) ? body.hiddenPlatforms : [];
+    const hidden = raw.filter(
+      (p): p is PlatformKey => typeof p === "string" && p in PLATFORM_LABELS,
+    );
+    await setClientPortalHiddenPlatforms(pool, projectId, hidden, session.userId);
+    return res.json({ success: true, hiddenPlatforms: hidden });
   });
 }
