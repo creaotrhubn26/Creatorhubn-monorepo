@@ -259,7 +259,7 @@ function JobMicroFeedback({
           tags: ["micro-feedback", "post-delivery"],
         },
       });
-      sendSignal("feedback_submitted", "jobs", { jobId, rating: r });
+      sendSignal("feedback_submitted", "jobs", { jobId, rating });
       setSent(true);
     } catch {
       // stille — micro-feedback skal aldri blokkere arbeidsflyten
