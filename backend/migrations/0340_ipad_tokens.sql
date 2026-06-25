@@ -1,4 +1,4 @@
--- 0337_ipad_tokens.sql
+-- 0340_ipad_tokens.sql
 --
 -- Bearer-token-lagring for iPad-app Google Sign-In + andre native
 -- innloggings-flyter. Refereres av:
