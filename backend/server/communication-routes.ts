@@ -6026,7 +6026,7 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
                   AND COALESCE(p.is_idle, FALSE) = FALSE) AS is_online
            FROM senders s
            LEFT JOIN users u ON u.id = s.sender_id OR u.email = s.sender_id
-           LEFT JOIN user_presence p ON p.user_id = u.id`,
+           LEFT JOIN user_presence p ON p.user_id::text = u.id`,
       );
 
       res.json({

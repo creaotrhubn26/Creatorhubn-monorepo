@@ -2105,9 +2105,8 @@ app.get("/api/admin/presence/online", async (req, res) => {
               (p.last_seen_at > NOW() - INTERVAL '90 seconds'
                 AND COALESCE(p.is_idle, FALSE) = FALSE) AS is_online
          FROM users u
-         LEFT JOIN user_presence p ON p.user_id = u.id
-        WHERE u.is_active = TRUE
-          AND p.last_seen_at > NOW() - INTERVAL '90 seconds'
+         LEFT JOIN user_presence p ON p.user_id::text = u.id
+        WHERE p.last_seen_at > NOW() - INTERVAL '90 seconds'
           AND COALESCE(p.is_idle, FALSE) = FALSE`,
     );
     const online = result.rows.map((row) => ({
