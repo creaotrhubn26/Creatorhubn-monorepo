@@ -55,6 +55,7 @@ import {
   type TargetAgent,
 } from "./client-ai-prompt-generator.js";
 import { fetchClientInsights } from "./client-insights-service.js";
+import { canAccessProjectAds } from "./role-room-project-access.js";
 import {
   listLinkedinAdAccounts,
   provisionLinkedinInsightTag,
@@ -616,6 +617,11 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
     const projectId = typeof req.query.clientProjectId === "string" ? req.query.clientProjectId : null;
     if (!projectId) return res.status(400).json({ error: "clientProjectId er påkrevd" });
+    // IDOR-vakt: bekreft at brukeren tilhører prosjektet (produsent/team) eller
+    // er klienten med aktiv portal-sesjon — ikke bare «en innlogget bruker».
+    if (!(await canAccessProjectAds(pool, projectId, { userId: session.userId, email: session.email ?? null }))) {
+      return res.status(403).json({ error: "forbidden_project" });
+    }
 
     try {
       // Hent alle godkjente configs (kan vises selv om spend = 0 ennå)
