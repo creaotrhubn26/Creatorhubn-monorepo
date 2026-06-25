@@ -41,6 +41,8 @@ import { DemoStudioShell } from "./components/demo-studio/DemoStudioShell";
 import { InfographicStudioView } from "./components/demo-studio/InfographicStudioView";
 import { ColorNodeTreeWizard } from "./components/ColorNodeTreeWizard";
 import { ModuleGate } from "./components/ModuleGate";
+import { RepairPanel } from "./components/RepairPanel";
+import { MediaToolsPanel } from "./components/MediaToolsPanel";
 import {
   getEntitledModules,
   onEntitlementsChanged,
@@ -129,7 +131,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [pendingDialog, setPendingDialog] = useState<{ script: ScriptMeta; dryRun: boolean } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [view, setView] = useState<"pipeline" | "cull" | "audio" | "color" | "demo" | "infographic">("pipeline");
+  const [view, setView] = useState<"pipeline" | "cull" | "audio" | "color" | "demo" | "infographic" | "repair" | "organiser">("pipeline");
   const [showSetup, setShowSetup] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [runningScripts, setRunningScripts] = useState<Record<string, RunningScript>>({});
@@ -812,6 +814,16 @@ export default function App() {
       {view === "color" && (
         authStatus === "ok" && entitledModules.includes("resolve")
           ? <ColorView activeTemplate={activeTemplate} />
+          : <ModuleGate module="resolve" signedIn={authStatus === "ok"} onClose={() => setView("pipeline")} onSignIn={() => setShowSignIn(true)} />
+      )}
+      {view === "repair" && (
+        authStatus === "ok" && entitledModules.includes("resolve")
+          ? <RepairPanel onClose={() => setView("pipeline")} />
+          : <ModuleGate module="resolve" signedIn={authStatus === "ok"} onClose={() => setView("pipeline")} onSignIn={() => setShowSignIn(true)} />
+      )}
+      {view === "organiser" && (
+        authStatus === "ok" && entitledModules.includes("resolve")
+          ? <MediaToolsPanel onClose={() => setView("pipeline")} />
           : <ModuleGate module="resolve" signedIn={authStatus === "ok"} onClose={() => setView("pipeline")} onSignIn={() => setShowSignIn(true)} />
       )}
       {view === "demo" &&
