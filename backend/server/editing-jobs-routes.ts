@@ -112,6 +112,57 @@ function platformFeeInfo(cfg: FeeConfig): { pct: number; prototype: boolean; pro
   };
 }
 
+// Prototype-avtalen: 0 % gebyr forutsetter at testeren faktisk hjelper oss å
+// forbedre systemet med jevnlig tilbakemelding. Vi sporer siste innsending i
+// prototype_feedback og eskalerer: due (≥30d) → warning (≥60d, 0%-fordelen i
+// fare). «never» = har aldri gitt = forfalt fra start.
+const PROTOTYPE_FEEDBACK_OVERDUE_DAYS = Number(process.env.PROTOTYPE_FEEDBACK_OVERDUE_DAYS) || 30;
+const PROTOTYPE_FEEDBACK_WARN_DAYS = Number(process.env.PROTOTYPE_FEEDBACK_WARN_DAYS) || 60;
+
+type PrototypeFeedbackStatus = {
+  lastAt: string | null;
+  daysSince: number | null;
+  everGiven: boolean;
+  overdue: boolean;
+  escalation: "ok" | "due" | "warning";
+  overdueDays: number;
+  warnDays: number;
+};
+
+async function prototypeFeedbackStatus(pool: Pool, userId: string): Promise<PrototypeFeedbackStatus> {
+  const base = {
+    overdueDays: PROTOTYPE_FEEDBACK_OVERDUE_DAYS,
+    warnDays: PROTOTYPE_FEEDBACK_WARN_DAYS,
+  };
+  try {
+    const r = await pool.query<{ last_at: Date | null }>(
+      `SELECT MAX(COALESCE(submitted_at, created_at)) AS last_at
+         FROM prototype_feedback WHERE user_id = $1`,
+      [userId],
+    );
+    const lastAt = r.rows[0]?.last_at ?? null;
+    const everGiven = !!lastAt;
+    const daysSince = lastAt
+      ? Math.floor((Date.now() - new Date(lastAt).getTime()) / 86_400_000)
+      : null;
+    const effectiveDays = daysSince ?? Number.MAX_SAFE_INTEGER;
+    const overdue = effectiveDays >= PROTOTYPE_FEEDBACK_OVERDUE_DAYS;
+    const escalation: "ok" | "due" | "warning" =
+      effectiveDays >= PROTOTYPE_FEEDBACK_WARN_DAYS ? "warning" : overdue ? "due" : "ok";
+    return {
+      ...base,
+      lastAt: lastAt ? new Date(lastAt).toISOString() : null,
+      daysSince,
+      everGiven,
+      overdue,
+      escalation,
+    };
+  } catch {
+    // Tabellen kan mangle i enkelte miljøer — da degraderer vi til "ok".
+    return { ...base, lastAt: null, daysSince: null, everGiven: false, overdue: false, escalation: "ok" };
+  }
+}
+
 // MVA-beregning (formidler-modell), jf. norsk snudd avregning for fjernleverbare
 // tjenester kjøpt fra utlandet:
 //  - utenlandsk vendor → reverse charge: vendor fakturerer uten MVA, norsk kjøper
@@ -1553,6 +1604,7 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
       const row = r.rows[0];
       const isEditingVendor = !!row && row.vendor_type === "editing";
       const compliance = buildComplianceSummary((row || {}) as ComplianceProfile);
+      const fee = platformFeeInfo((row || {}) as FeeConfig);
       res.json({
         hasProfile: !!row,
         isEditingVendor,
@@ -1561,7 +1613,10 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
         country: row?.country || "NO",
         isForeign: !!row?.is_foreign,
         compliance,
-        platformFee: platformFeeInfo((row || {}) as FeeConfig),
+        platformFee: fee,
+        // Prototype-avtalens forpliktelse: jevnlig tilbakemelding. Kun relevant
+        // for aktive prototype-testere → driver nudge-banneret i workspace.
+        feedback: fee.prototype ? await prototypeFeedbackStatus(pool, session.userId) : null,
       });
     } catch (err) {
       console.error("[editing/vendor/me] error", err);

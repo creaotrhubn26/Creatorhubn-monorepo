@@ -66,6 +66,16 @@ interface MeResponse {
   // From /api/editing/vendor/me — prototype=true only for partner_type='prototype'
   // within prototype_until (0% fee). Standard partners have prototype=false.
   platformFee?: { pct?: number; prototype?: boolean };
+  // Prototype-feedback-ansvar (kun for aktive prototype-testere).
+  feedback?: {
+    lastAt: string | null;
+    daysSince: number | null;
+    everGiven: boolean;
+    overdue: boolean;
+    escalation: "ok" | "due" | "warning";
+    overdueDays: number;
+    warnDays: number;
+  } | null;
 }
 
 interface EditingJob {
@@ -196,6 +206,28 @@ export default function EditingVendorWorkspace({ userId }: Props) {
     <Box>
       {/* Partnerprogram-/verifiserings-dashboard — alltid øverst */}
       <PartnerProgramDashboard me={me} locale={locale} onStartVerification={() => setTab(1)} />
+
+      {/* Prototype-avtale-nudge: 0%-fordelen forutsetter jevnlig tilbakemelding. */}
+      {me?.platformFee?.prototype && me?.feedback?.overdue ? (
+        <Alert severity={me.feedback.escalation === "warning" ? "error" : "warning"} sx={{ mb: 2 }}>
+          <strong>{locale === "en" ? "Feedback is overdue." : "Tilbakemelding mangler."}</strong>{" "}
+          {me.feedback.everGiven
+            ? (locale === "en"
+                ? `Last given ${me.feedback.daysSince} days ago. `
+                : `Sist gitt for ${me.feedback.daysSince} dager siden. `)
+            : (locale === "en"
+                ? "You haven't given any feedback yet. "
+                : "Du har ikke gitt tilbakemelding ennå. ")}
+          {locale === "en"
+            ? "The prototype agreement (0% platform fee) requires you to help improve the system with regular feedback — use the “Give feedback” button below."
+            : "Prototype-avtalen (0 % plattformgebyr) forutsetter at du hjelper oss å forbedre systemet med jevnlig tilbakemelding — bruk «Gi tilbakemelding»-knappen nedenfor."}
+          {me.feedback.escalation === "warning"
+            ? (locale === "en"
+                ? " The 0% benefit may be withdrawn if no input arrives soon."
+                : " 0 %-fordelen kan trekkes hvis det ikke kommer innspill snart.")
+            : ""}
+        </Alert>
+      ) : null}
 
       <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 1, mb: 1 }}>
         <Typography variant="h6" sx={{ fontWeight: 700 }}>
