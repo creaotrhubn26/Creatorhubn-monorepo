@@ -63,6 +63,9 @@ interface MeResponse {
     badges: string[];
     missing: string[];
   };
+  // From /api/editing/vendor/me — prototype=true only for partner_type='prototype'
+  // within prototype_until (0% fee). Standard partners have prototype=false.
+  platformFee?: { pct?: number; prototype?: boolean };
 }
 
 interface EditingJob {
@@ -198,7 +201,9 @@ export default function EditingVendorWorkspace({ userId }: Props) {
         <Typography variant="h6" sx={{ fontWeight: 700 }}>
           {t("ws_title", locale)}
         </Typography>
-        <VendorPrototypeFeedbackTool locale={locale} vendorName={me?.vendorName} />
+        {me?.platformFee?.prototype ? (
+          <VendorPrototypeFeedbackTool locale={locale} vendorName={me?.vendorName} />
+        ) : null}
       </Box>
 
       {compliance && !compliance.cleared && (
