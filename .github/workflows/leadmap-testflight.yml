@@ -3,14 +3,18 @@ name: LeadMap TestFlight
 # Bygger LeadMapApp (iPad) og laster opp til TestFlight via fastlane.
 # Manuell trigger (workflow_dispatch) for å ha kontroll på hver beta-release.
 #
-# Krever repo-secrets (App Store Connect API-nøkkel — se fastlane/Fastfile):
+# Krever repo-secrets:
 #   APP_STORE_CONNECT_API_KEY_ID
 #   APP_STORE_CONNECT_API_ISSUER_ID
 #   APP_STORE_CONNECT_API_KEY_CONTENT   (.p8 base64-encoded)
+#   BUILD_CERTIFICATE_BASE64            (Apple Distribution .p12 base64)
+#   P12_PASSWORD                        (passord for .p12)
+#   KEYCHAIN_PASSWORD                   (random passord for midlertidig CI-keychain)
 #
 # Engangs-steg (manuelt, kan ikke skriptes): App Store Connect-app-record for
-# bundle-id com.creatorhubn.LeadMapApp må finnes. Signering er Automatic +
-# -allowProvisioningUpdates (Fastfile), så API-nøkkelen forvalter profil/cert.
+# bundle-id com.creatorhubn.LeadMapApp må finnes + Apple Distribution-cert +
+# App Store-profiler ("LeadMap App Store" + "LeadMap Widget App Store") må
+# eksistere på Apple. Signering er manual (se fastlane/ExportOptions.plist).
 
 on:
   workflow_dispatch:
@@ -39,6 +43,36 @@ jobs:
 
       - name: Install XcodeGen
         run: brew install xcodegen
+
+      # Import Apple Distribution-cert til midlertidig keychain.
+      # Standardmønster fra Apple-docs: "Customizing a self-hosted runner".
+      # Keychain slettes automatisk når jobben er ferdig (VM destrueres).
+      - name: Importér signing certificate til midlertidig keychain
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        working-directory: ${{ github.workspace }}
+        run: |
+          # Skriv cert til midlertidig fil
+          CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          echo -n "$BUILD_CERTIFICATE_BASE64" | base64 --decode -o $CERTIFICATE_PATH
+
+          # Lag midlertidig keychain
+          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+
+          # Importér cert
+          security import $CERTIFICATE_PATH -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+
+          # Legg keychain i search-list (xcodebuild trenger dette)
+          security list-keychain -d user -s $KEYCHAIN_PATH $(security list-keychains -d user | tr -d '"')
+
+          echo "✅ Cert importert til $KEYCHAIN_PATH"
+          security find-identity -v -p codesigning $KEYCHAIN_PATH
 
       - name: fastlane ios beta (archive + upload TestFlight)
         run: fastlane ios beta
