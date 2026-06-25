@@ -128,19 +128,25 @@ platform :ios do
     UI.success("ASC API-nøkkel skrevet til #{pkey_path}")
   end
 
-  # Last ned manuelle App Store-profiler fra Apple Developer Portal til
-  # CI-maskinens ~/Library/MobileDevice/Provisioning Profiles/. Manual
-  # signing i ExportOptions.plist krever at .mobileprovision-filene er
-  # INSTALLERT lokalt — det holder ikke at de eksisterer i ASC.
-  # sigh.download_all bruker eksisterende app_store_connect_api_key.
+  # Last ned/regenerer App Store-profiler så de peker på cert-en vi har
+  # lokalt på CI (Apple Distribution importert til midlertidig keychain
+  # fra BUILD_CERTIFICATE_BASE64-secret).
+  #
+  # `readonly: false` + `force: true` lar sigh regenerere profilen hvis
+  # den eksisterende hos Apple peker på en cert vi ikke har private key
+  # for. `provisioning_name` matcher de Daniel laget manuelt 2026-06-25
+  # så ExportOptions.plist sin provisioningProfiles-mapping fortsatt
+  # fungerer.
   private_lane :download_app_store_profiles do
     [
-      "com.creatorhubn.LeadMapApp",
-      "com.creatorhubn.LeadMapApp.LeadMapWidget",
-    ].each do |bundle_id|
+      { bundle: "com.creatorhubn.LeadMapApp",               name: "LeadMap App Store" },
+      { bundle: "com.creatorhubn.LeadMapApp.LeadMapWidget", name: "LeadMap Widget App Store" },
+    ].each do |cfg|
       sigh(
-        app_identifier: bundle_id,
-        readonly: true, # bruk eksisterende profil, IKKE lag ny
+        app_identifier: cfg[:bundle],
+        provisioning_name: cfg[:name],
+        readonly: false,
+        force: true,
         platform: "ios",
       )
     end
