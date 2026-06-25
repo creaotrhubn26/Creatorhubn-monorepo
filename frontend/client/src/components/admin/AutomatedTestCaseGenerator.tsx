@@ -151,7 +151,7 @@ export default function AutomatedTestCaseGenerator() {
     <Box>
       <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between" sx={{ mb: 3 }}>
         <Stack direction="row" spacing={2} alignItems="center">
-          <AutoAwesome sx={{ fontSize: 32, color: '#9c27b0' }} />
+          <AutoAwesome sx={{ fontSize: 32, color: '#ce93d8' }} />
           <Box>
             <Typography variant="h5" sx={{ fontWeight: 600}}>
               Automated Test Case Generator

@@ -2394,7 +2394,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
                               {/* Problem Solved Section */}
                               {fix.problemSolved && (
                                 <Box sx={{ mb: 2, p: 2, bgcolor: '#f0f9ff', borderRadius: 1, border: '1px solid #0ea5e9' }}>
-                                  <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#0c4a60', mb: 1 }}>
+                                  <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#60a5fa', mb: 1 }}>
                                     🎯 What This Fix Will Solve:
                                   </Typography>
                                   <Typography variant="body2" color="text.primary">

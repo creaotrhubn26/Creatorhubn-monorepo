@@ -228,7 +228,7 @@ export default function VisualCMSDashboard() {
       mockedCount:  20,
       healthyCount:  41,
       status: 'mixed',
-      color: '#9c27b0',
+      color: '#ce93d8',
       icon: <WorkflowIcon />,
   },
     {

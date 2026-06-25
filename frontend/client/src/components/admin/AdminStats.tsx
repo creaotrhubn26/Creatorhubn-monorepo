@@ -475,7 +475,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
             <MuiCard sx={{ height: '100%', transition: 'all 0.3s ease','&:hover': { transform: 'translateY(-4px)', boxShadow: 6 }, border: '2px solid #9c27b0' }}>
               <CardContent sx={theming.getThemedCardSx()}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-                  <Avatar sx={{ bgcolor: '#9c27b020', color: '#9c27b0', width: 48, height: 48 }}>
+                  <Avatar sx={{ bgcolor: '#9c27b020', color: '#ce93d8', width: 48, height: 48 }}>
                     {theming.getThemedIcon('star')}
                   </Avatar>
                   <Chip size="small" label="Enterprise" color="secondary" />
@@ -549,7 +549,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                   </Grid>
                   <Grid xs={6} md={3}>
                     <Box sx={{ textAlign: 'center', p: 2, bgcolor: '#9c27b010', borderRadius: 1 }}>
-                      <Typography variant="h4" sx={{ fontWeight: 'bold', color: '#9c27b0' }}>
+                      <Typography variant="h4" sx={{ fontWeight: 'bold', color: '#ce93d8' }}>
                         {emailConversionStats.avgConversionRate || '0'}%
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
@@ -808,7 +808,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                           <EmojiEvents />
                         </Avatar>
                       </Box>
-                      <Typography variant="h3" sx={{ fontWeight: 700, color: '#9c27b0', mb: 1 }}>
+                      <Typography variant="h3" sx={{ fontWeight: 700, color: '#ce93d8', mb: 1 }}>
                         {academyStats.totalInstructors || 0}
                       </Typography>
                       <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600}}>
@@ -957,7 +957,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
           >
             <CardContent sx={theming.getThemedCardSx()}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-                <Avatar sx={{ bgcolor: '#9c27b020', color: '#9c27b0', width: 48, height: 48 }}>
+                <Avatar sx={{ bgcolor: '#9c27b020', color: '#ce93d8', width: 48, height: 48 }}>
                   {theming.getThemedIcon('group')}
                 </Avatar>
               </Box>
@@ -994,7 +994,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
               >
                 <CardContent sx={theming.getThemedCardSx()}>
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-                    <Avatar sx={{ bgcolor: '#9c27b020', color: '#9c27b0', width: 48, height: 48 }}>
+                    <Avatar sx={{ bgcolor: '#9c27b020', color: '#ce93d8', width: 48, height: 48 }}>
                       <Group />
                     </Avatar>
                     <Chip size="small" label="Studenter" sx={{ bgcolor: '#9c27b0', color: 'white' }} />
@@ -1334,7 +1334,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
               )}
               {selectedMetric === 'subscriptions' && (
                 <>
-                  <Star sx={{ color: '#9c27b0' }} />
+                  <Star sx={{ color: '#ce93d8' }} />
                   <Typography variant="h6" sx={{ color: themeColors.primary }}>Detaljert Abonnementsstatistikk</Typography>
                 </>
               )}
@@ -1554,7 +1554,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                 <Grid xs={12} md={6}>
                   <Paper sx={{ p: 3 }}>
                     <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 , color: themeColors.primary }}>
-                      <Star sx={{ color: '#9c27b0' }} />
+                      <Star sx={{ color: '#ce93d8' }} />
                       Abonnementstyper
                     </Typography>
                     {subscriptionBreakdown.length > 0 ? (
@@ -1754,7 +1754,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
           {selectedMetric === 'academy_students' && academyRevenue && (
             <Box>
               <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: themeColors.primary }}>
-                <Group sx={{ color: '#9c27b0' }} />
+                <Group sx={{ color: '#ce93d8' }} />
                 Academy Studenter - Oversikt
               </Typography>
               <Grid container spacing={3}>
@@ -1763,7 +1763,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                     <Typography variant="caption" color="text.secondary" gutterBottom display="block">
                       UNIKE STUDENTER
                     </Typography>
-                    <Typography variant="h4" sx={{ color: '#9c27b0', fontWeight: 700}}>
+                    <Typography variant="h4" sx={{ color: '#ce93d8', fontWeight: 700}}>
                       {academyRevenue.totalStudents || 0}
                     </Typography>
                     <Divider sx={{ my: 2 }} />

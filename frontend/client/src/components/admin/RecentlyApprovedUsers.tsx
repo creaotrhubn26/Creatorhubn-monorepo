@@ -160,7 +160,7 @@ export default function RecentlyApprovedUsers({ days = 30 }: RecentlyApprovedUse
               <Typography variant="caption" color="text.secondary">
                 Google Workspace
               </Typography>
-              <Typography variant="h4" sx={{ fontWeight: 600, color: '#9c27b0' }}>
+              <Typography variant="h4" sx={{ fontWeight: 600, color: '#ce93d8' }}>
                 {recentUsers.filter((u) => u.googleWorkspaceConnected).length}
               </Typography>
             </CardContent>

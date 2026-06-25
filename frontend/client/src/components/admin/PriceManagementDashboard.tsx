@@ -1947,7 +1947,7 @@ export default function PriceManagementDashboard({
                     </Typography>
                   </Box>
                   <Box sx={{ ...priceManagementInsetSx, bgcolor: 'rgba(124,58,237,0.10)' }}>
-                    <Typography variant="overline" sx={{ color: '#6d28d9', fontWeight: 700 }}>
+                    <Typography variant="overline" sx={{ color: '#c084fc', fontWeight: 700 }}>
                       Alias i bruk
                     </Typography>
                     <Stack spacing={1} sx={{ mt: 1 }}>

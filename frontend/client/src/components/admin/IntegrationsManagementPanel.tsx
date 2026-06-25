@@ -2205,7 +2205,7 @@ export default function IntegrationsManagementPanel({
 	                        fullWidth
 	                        variant="outlined"
 	                        startIcon={<BarChartIcon />}
-	                        sx={{ borderColor: '#9c27b0', color: '#9c27b0' }}
+	                        sx={{ borderColor: '#9c27b0', color: '#ce93d8' }}
 	                        onClick={async () => {
 	                          try {
 	                            const res = await fetch('/api/code-generator/active-implementations');
@@ -5595,7 +5595,7 @@ export default function IntegrationsManagementPanel({
             <Card>
               <CardContent>
                 <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
-                  <GraphQLIcon sx={{ color: '#1565c0' }} />
+                  <GraphQLIcon sx={{ color: '#60a5fa' }} />
                   GraphQL Protokoller
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -5612,7 +5612,7 @@ export default function IntegrationsManagementPanel({
             <Card>
               <CardContent>
                 <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
-                  <WebSocketIcon sx={{ color: '#7b1fa2' }} />
+                  <WebSocketIcon sx={{ color: '#ce93d8' }} />
                   WebSocket Protokoller
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -5663,7 +5663,7 @@ export default function IntegrationsManagementPanel({
             <Card>
               <CardContent>
                 <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
-                  <OpenApiIcon sx={{ color: '#1565c0' }} />
+                  <OpenApiIcon sx={{ color: '#60a5fa' }} />
                   OpenAPI/Swagger
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -5715,7 +5715,7 @@ export default function IntegrationsManagementPanel({
             <Card>
               <CardContent>
                 <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
-                  <HlsIcon sx={{ color: '#1565c0' }} />
+                  <HlsIcon sx={{ color: '#60a5fa' }} />
                   HLS/MPEG-DASH
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -5736,7 +5736,7 @@ export default function IntegrationsManagementPanel({
             <Card>
               <CardContent>
                 <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
-                  <MLIcon sx={{ color: '#7b1fa2' }} />
+                  <MLIcon sx={{ color: '#ce93d8' }} />
                   AI Protokoller (ONNX)
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -5800,7 +5800,7 @@ export default function IntegrationsManagementPanel({
             <Card>
               <CardContent>
                 <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
-                  <ActivityPubIcon sx={{ color: '#9c27b0' }} />
+                  <ActivityPubIcon sx={{ color: '#ce93d8' }} />
                   ActivityPub/WebRTC
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -5835,7 +5835,7 @@ export default function IntegrationsManagementPanel({
             <Card>
               <CardContent>
                 <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
-                  <ChatProtocolIcon sx={{ color: '#1565c0' }} />
+                  <ChatProtocolIcon sx={{ color: '#60a5fa' }} />
                   XMPP Protokoll
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -5856,7 +5856,7 @@ export default function IntegrationsManagementPanel({
             <Card>
               <CardContent>
                 <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
-                  <ShieldIcon sx={{ color: '#7b1fa2' }} />
+                  <ShieldIcon sx={{ color: '#ce93d8' }} />
                   Matrix Protokoll
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -5919,7 +5919,7 @@ export default function IntegrationsManagementPanel({
             <Card>
               <CardContent>
                 <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
-                  <EdiIcon sx={{ color: '#9c27b0' }} />
+                  <EdiIcon sx={{ color: '#ce93d8' }} />
                   EDI Protokoll
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -5940,7 +5940,7 @@ export default function IntegrationsManagementPanel({
             <Card>
               <CardContent>
                 <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: themeColors.primary }}>
-                  <OpenBankingIcon sx={{ color: '#1565c0' }} />
+                  <OpenBankingIcon sx={{ color: '#60a5fa' }} />
                   Open Banking API
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>

@@ -766,7 +766,7 @@ const AutomatedBusinessReports: React.FC = () => {
         label: 'Compliance',
       },
       analytics: {
-        color: '#9c27b0',
+        color: '#ce93d8',
         icon: <AnalyticsIcon />,
         label: 'Analytics',
       },

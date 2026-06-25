@@ -149,13 +149,13 @@ const AdminPaymentStatusCard: React.FC = () => {
           </Box>
           <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: alpha('#3b82f6', 0.08), border: '1px solid', borderColor: alpha('#3b82f6', 0.2) }}>
             <Typography variant="caption" color="text.secondary">Siste 7 dager</Typography>
-            <Typography variant="h6" sx={{ fontWeight: 700, color: '#2563eb' }}>
+            <Typography variant="h6" sx={{ fontWeight: 700, color: '#60a5fa' }}>
               {fmtKr(data.recentRevenue?.last7d || 0)}
             </Typography>
           </Box>
           <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: alpha('#8b5cf6', 0.08), border: '1px solid', borderColor: alpha('#8b5cf6', 0.2) }}>
             <Typography variant="caption" color="text.secondary">Siste 30 dager</Typography>
-            <Typography variant="h6" sx={{ fontWeight: 700, color: '#7c3aed' }}>
+            <Typography variant="h6" sx={{ fontWeight: 700, color: '#c084fc' }}>
               {fmtKr(data.recentRevenue?.last30d || 0)}
             </Typography>
           </Box>

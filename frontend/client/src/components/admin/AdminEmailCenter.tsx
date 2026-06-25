@@ -531,7 +531,7 @@ export default function AdminEmailCenter() {
             <Grid container spacing={3}>
               <Grid item xs={12} md={4}>
                 <MuiCard sx={{ textAlign: 'center', p: 2 }}>
-                  <People sx={{ fontSize: 48, color: '#1976d2', mb: 2 }} />
+                  <People sx={{ fontSize: 48, color: '#60a5fa', mb: 2 }} />
                   <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>Velkomst E-post</Typography>
                   <TextField
                     fullWidth

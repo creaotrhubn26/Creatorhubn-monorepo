@@ -288,7 +288,7 @@ export default function EmailAnalyticsDashboard() {
                       <Typography variant="caption" color="text.secondary">
                         Conversion Rate
                       </Typography>
-                      <CheckCircle sx={{ color: '#9c27b0', fontSize: 24 }} />
+                      <CheckCircle sx={{ color: '#ce93d8', fontSize: 24 }} />
                     </Stack>
                     <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
                       {analytics?.averageConversionRate || 0}%
@@ -407,7 +407,7 @@ export default function EmailAnalyticsDashboard() {
             <CardContent>
               <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
                 <Stack direction="row" spacing={2} alignItems="center">
-                  <Science sx={{ color: '#9c27b0', fontSize: 28 }} />
+                  <Science sx={{ color: '#ce93d8', fontSize: 28 }} />
                   <Typography variant="h6" sx={{ fontWeight: 600}}>
                     A/B Testing
                   </Typography>

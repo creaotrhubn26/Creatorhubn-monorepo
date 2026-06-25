@@ -325,7 +325,7 @@ const APIEndpointMonitor: React.FC = () => {
         <Grid2 size={{ xs: 12, sm: 6, md: 3 }}>
           <Card sx={{ height: '100%', backgroundColor: '#e3f2fd', ...theming.getThemedCardSx() }}>
             <CardContent sx={{ textAlign: 'center', ...theming.getThemedCardSx() }}>
-              <Api sx={{ fontSize: 48, color: '#1976d2', mb: 1 }} />
+              <Api sx={{ fontSize: 48, color: '#60a5fa', mb: 1 }} />
               <Typography variant="h4" sx={{ color: theming.colors.primary, fontWeight: 600}}>
                 {(healthSummary?.healthyEndpoints ?? 0) +
                   (healthSummary?.degradedEndpoints ?? 0) +

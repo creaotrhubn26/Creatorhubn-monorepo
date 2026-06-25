@@ -82,7 +82,7 @@ const AdminAICostDashboard: React.FC = () => {
       label: 'Totalkostnad',
       value: fmtUsd(totalRow.costUsd || 0),
       sub: `${fmtNum(totalRow.calls || 0)} kall siste ${period}`,
-      color: '#7c3aed',
+      color: '#c084fc',
       icon: <MoneyIcon />,
     },
     {
@@ -121,11 +121,11 @@ const AdminAICostDashboard: React.FC = () => {
       {/* Header */}
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3, flexWrap: 'wrap', gap: 2 }}>
         <Stack direction="row" alignItems="center" spacing={1.5}>
-          <Avatar sx={{ bgcolor: alpha('#7c3aed', 0.15), color: '#7c3aed' }}>
+          <Avatar sx={{ bgcolor: alpha('#7c3aed', 0.15), color: '#c084fc' }}>
             <AIIcon />
           </Avatar>
           <Box>
-            <Typography variant="overline" sx={{ color: '#7c3aed', letterSpacing: '0.14em' }}>
+            <Typography variant="overline" sx={{ color: '#c084fc', letterSpacing: '0.14em' }}>
               AI cost-dashboard
             </Typography>
             <Typography variant="h5" sx={{ fontWeight: 700, fontFamily: '"Space Grotesk", sans-serif' }}>
@@ -308,7 +308,7 @@ const AdminAICostDashboard: React.FC = () => {
                         <Typography variant="caption" color="text.secondary">{fmtTokens(f.tokens)}</Typography>
                       </TableCell>
                       <TableCell align="right" sx={{ py: 0.75 }}>
-                        <Typography variant="caption" sx={{ fontWeight: 700, color: '#7c3aed' }}>
+                        <Typography variant="caption" sx={{ fontWeight: 700, color: '#c084fc' }}>
                           {fmtUsdCents(f.costUsd)}
                         </Typography>
                       </TableCell>
@@ -325,7 +325,7 @@ const AdminAICostDashboard: React.FC = () => {
       <Card sx={{ mt: 2 }}>
         <CardContent>
           <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
-            <PersonIcon sx={{ color: '#7c3aed' }} />
+            <PersonIcon sx={{ color: '#c084fc' }} />
             <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
               Hvem bruker mest Claude (30d)
             </Typography>

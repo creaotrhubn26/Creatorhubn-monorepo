@@ -512,7 +512,7 @@ export default function ProfessionTypeManager() {
               <Typography variant="h6" color="textSecondary">
                 SSB Integrasjoner
               </Typography>
-              <Typography variant="h4" sx={{ color: '#9c27b0', fontWeight: 700}}>
+              <Typography variant="h4" sx={{ color: '#ce93d8', fontWeight: 700}}>
                 {activeProfessions?.ssbConnected || 0}
               </Typography>
             </CardContent>

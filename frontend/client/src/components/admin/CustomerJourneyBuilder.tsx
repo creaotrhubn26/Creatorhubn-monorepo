@@ -861,8 +861,8 @@ export default function CustomerJourneyBuilder({ selectedProfession = 'photograp
   // ✅ Component type configuration (memoized for performance)
   const componentTypes = useMemo(() => ({
     video_player: { icon: theming.getThemedIcon('videoLibrary'), color: '#f44336', name: 'Video Player' },
-    ai_animation: { icon: <Animation />, color: '#9c27b0', name: 'AI Animasjon' },
-    calculator: { icon: <Calculate />, color: '#3f51b5', name: 'Kalkulator' },
+    ai_animation: { icon: <Animation />, color: '#ce93d8', name: 'AI Animasjon' },
+    calculator: { icon: <Calculate />, color: '#818cf8', name: 'Kalkulator' },
     quiz: { icon: theming.getThemedIcon('quiz'), color: '#ff9800', name: 'Quiz' },
     interactive_demo: { icon: <Settings />, color: '#4caf50', name: 'Interaktiv Demo' },
     roi_calculator: { icon: theming.getThemedIcon('trendingUp'), color: '#2196f3', name: 'ROI Kalkulator' },

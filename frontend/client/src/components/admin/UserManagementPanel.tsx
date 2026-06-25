@@ -2544,7 +2544,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
         <Box>
           <Card>
             <CardContent>
-              <Typography variant="h6" gutterBottom sx={{ color: '#9c27b0', display: 'flex', alignItems:'center', gap: 1 }}>
+              <Typography variant="h6" gutterBottom sx={{ color: '#ce93d8', display: 'flex', alignItems:'center', gap: 1 }}>
                 <BusinessIcon />
                 Enterprise-forespørsler
               </Typography>

@@ -112,11 +112,11 @@ const AdminDesignTokensPanel: React.FC = () => {
     <Box>
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
         <Stack direction="row" alignItems="center" spacing={1.5}>
-          <Avatar sx={{ bgcolor: alpha('#7c3aed', 0.15), color: '#7c3aed' }}>
+          <Avatar sx={{ bgcolor: alpha('#7c3aed', 0.15), color: '#c084fc' }}>
             <PaletteIcon />
           </Avatar>
           <Box>
-            <Typography variant="overline" sx={{ color: '#7c3aed', letterSpacing: '0.14em' }}>
+            <Typography variant="overline" sx={{ color: '#c084fc', letterSpacing: '0.14em' }}>
               Visual CMS
             </Typography>
             <Typography variant="h5" sx={{ fontWeight: 700, fontFamily: '"Space Grotesk", sans-serif' }}>
@@ -294,7 +294,7 @@ const AdminDesignTokensPanel: React.FC = () => {
           <Card>
             <CardContent>
               <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
-                <PreviewIcon sx={{ color: '#7c3aed' }} />
+                <PreviewIcon sx={{ color: '#c084fc' }} />
                 <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
                   Live preview
                 </Typography>
