@@ -5,6 +5,7 @@ import { Z_INDEX } from '../config/zIndex';
 import { lazyWithRetry } from '@/utils/lazyWithRetry';
 import { TOUCH_TARGET_SIZE } from '../constants/accessibility';
 import { useToast } from './ToastStack';
+import { resolveInboxCategory } from '../inboxCategories';
 import { useBrandingSettings } from '../hooks/useBrandingSettings.ts';
 import { getActiveProfessionMode as getActiveProfessionModeForDance, isDanceMode as isDanceModeCheck } from '../config/professionMode';
 import { getRoleRoomCanonicalPath, shouldUseRoleRoomLocalFallback } from '../utils/runtime';
@@ -1473,7 +1474,7 @@ type RoleRoomProjectWorkspaceState = {
   // Innboks-scope: «alle» eller kun klient-handlinger (det klienten venter på
   // / har gjort). Klient-handlinger kjennetegnes av at hendelsen kom fra
   // klient-siden (event_type client_*, eller created_by_role client_reviewer).
-  const [producerInboxScope, setProducerInboxScope] = useState<'all' | 'client'>('all');
+  const [producerInboxScope, setProducerInboxScope] = useState<'all' | 'unread' | 'client' | 'due'>('all');
   const visibleProducerInboxItems = useMemo(
     () => producerInboxItems.filter((item) => !item.archived_at),
     [producerInboxItems],
@@ -1487,12 +1488,23 @@ type RoleRoomProjectWorkspaceState = {
     () => visibleProducerInboxItems.filter(isClientActionInboxItem).length,
     [visibleProducerInboxItems, isClientActionInboxItem],
   );
-  const filteredProducerInboxItems = useMemo(
-    () => (producerInboxScope === 'client'
-      ? visibleProducerInboxItems.filter(isClientActionInboxItem)
-      : visibleProducerInboxItems),
-    [producerInboxScope, visibleProducerInboxItems, isClientActionInboxItem],
+  // Triage-teller: hvor mange forfaller (frist satt, ikke løst).
+  const dueInboxCount = useMemo(
+    () => visibleProducerInboxItems.filter((item) => item.due_at && !item.resolved_at).length,
+    [visibleProducerInboxItems],
   );
+  const filteredProducerInboxItems = useMemo(() => {
+    switch (producerInboxScope) {
+      case 'unread':
+        return visibleProducerInboxItems.filter((item) => !item.read);
+      case 'client':
+        return visibleProducerInboxItems.filter(isClientActionInboxItem);
+      case 'due':
+        return visibleProducerInboxItems.filter((item) => item.due_at && !item.resolved_at);
+      default:
+        return visibleProducerInboxItems;
+    }
+  }, [producerInboxScope, visibleProducerInboxItems, isClientActionInboxItem]);
   const openProducerInbox = useCallback(() => {
     if (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
@@ -15545,8 +15557,8 @@ type RoleRoomProjectWorkspaceState = {
               ) : null}
             </Stack>
 
-            {/* Scope-filter: fokuser på det klienten venter på / har gjort. */}
-            <Stack direction="row" spacing={0.75}>
+            {/* Triage-filtre: fokuser på det som haster / klienten venter på. */}
+            <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
               <Chip
                 size="small"
                 label="Alle"
@@ -15561,6 +15573,18 @@ type RoleRoomProjectWorkspaceState = {
               />
               <Chip
                 size="small"
+                label={producerInboxUnreadCount > 0 ? `Ulest (${producerInboxUnreadCount})` : 'Ulest'}
+                onClick={() => setProducerInboxScope('unread')}
+                variant={producerInboxScope === 'unread' ? 'filled' : 'outlined'}
+                sx={{
+                  fontWeight: 800, cursor: 'pointer',
+                  bgcolor: producerInboxScope === 'unread' ? 'rgba(56,189,248,0.9)' : 'transparent',
+                  color: producerInboxScope === 'unread' ? '#0b1220' : 'rgba(226,232,240,0.86)',
+                  borderColor: producerInboxScope === 'unread' ? 'transparent' : 'rgba(56,189,248,0.45)',
+                }}
+              />
+              <Chip
+                size="small"
                 label={clientActionInboxCount > 0 ? `Klient-handlinger (${clientActionInboxCount})` : 'Klient-handlinger'}
                 onClick={() => setProducerInboxScope('client')}
                 variant={producerInboxScope === 'client' ? 'filled' : 'outlined'}
@@ -15571,6 +15595,20 @@ type RoleRoomProjectWorkspaceState = {
                   borderColor: producerInboxScope === 'client' ? 'transparent' : 'rgba(168,85,247,0.45)',
                 }}
               />
+              {dueInboxCount > 0 ? (
+                <Chip
+                  size="small"
+                  label={`Forfaller (${dueInboxCount})`}
+                  onClick={() => setProducerInboxScope('due')}
+                  variant={producerInboxScope === 'due' ? 'filled' : 'outlined'}
+                  sx={{
+                    fontWeight: 800, cursor: 'pointer',
+                    bgcolor: producerInboxScope === 'due' ? 'rgba(251,191,36,0.92)' : 'transparent',
+                    color: producerInboxScope === 'due' ? '#0b1220' : 'rgba(226,232,240,0.86)',
+                    borderColor: producerInboxScope === 'due' ? 'transparent' : 'rgba(251,191,36,0.5)',
+                  }}
+                />
+              ) : null}
             </Stack>
 
             {producerInboxLoading && filteredProducerInboxItems.length === 0 ? (
@@ -15602,13 +15640,17 @@ type RoleRoomProjectWorkspaceState = {
                 })
                 : '';
               const isResolved = Boolean(item.resolved_at);
+              const category = resolveInboxCategory(item.inbox_type, item.event_type);
+              const CategoryIcon = category.Icon;
               return (
                 <Box
                   key={item.id}
                   sx={{
                     p: 1.25,
                     borderRadius: 2.2,
-                    border: item.read ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(56,189,248,0.34)',
+                    border: item.read ? '1px solid rgba(255,255,255,0.08)' : `1px solid ${category.color}59`,
+                    // Fargekodet venstre-stripe = kategori, for rask visuell skanning.
+                    borderLeft: `3px solid ${category.color}`,
                     bgcolor: item.read ? 'rgba(15,23,42,0.52)' : 'rgba(8,47,73,0.32)',
                   }}
                 >
@@ -15617,8 +15659,9 @@ type RoleRoomProjectWorkspaceState = {
                       <Stack direction="row" spacing={0.6} alignItems="center" flexWrap="wrap" useFlexGap>
                         <Chip
                           size="small"
-                          label={item.inbox_type || item.event_type || 'Varsel'}
-                          sx={{ height: 21, bgcolor: 'rgba(59,130,246,0.14)', color: '#bfdbfe', fontWeight: 800 }}
+                          icon={<CategoryIcon sx={{ fontSize: '0.92rem !important', color: `${category.color} !important` }} />}
+                          label={category.label}
+                          sx={{ height: 21, bgcolor: category.bg, color: category.color, fontWeight: 800, '& .MuiChip-icon': { ml: 0.5 } }}
                         />
                         {!item.read ? <Chip size="small" label="Ulest" sx={{ height: 21, bgcolor: 'rgba(248,113,113,0.16)', color: '#fecaca', fontWeight: 800 }} /> : null}
                         {isResolved ? <Chip size="small" label="Løst" sx={{ height: 21, bgcolor: 'rgba(34,197,94,0.14)', color: '#bbf7d0', fontWeight: 800 }} /> : null}
