@@ -656,6 +656,8 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
         read: Boolean(n.read),
         createdAt: n.created_at,
         eventType: n.event_type,
+        // Tidligere strippet — uten denne falt mobil-inboxen til «Varsel» for alt.
+        inboxType: n.inbox_type,
       })),
     [rawNotifications],
   );
