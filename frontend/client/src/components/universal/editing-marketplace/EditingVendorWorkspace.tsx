@@ -28,6 +28,7 @@ import {
   Alert,
   Snackbar,
   LinearProgress,
+  TextField,
 } from "@mui/material";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
@@ -65,7 +66,7 @@ interface MeResponse {
   };
   // From /api/editing/vendor/me — prototype=true only for partner_type='prototype'
   // within prototype_until (0% fee). Standard partners have prototype=false.
-  platformFee?: { pct?: number; prototype?: boolean };
+  platformFee?: { pct?: number; prototype?: boolean; prototypeUntil?: string | null };
   // Prototype-feedback-ansvar (kun for aktive prototype-testere).
   feedback?: {
     lastAt: string | null;
@@ -95,6 +96,268 @@ function requiredFor(isForeign: boolean, requiresExtraGdpr: boolean): string[] {
   const base = ["standard", "quality", "storage", "gdpr", "delivery", "payment", "dpa", "nda", "no_subcontractors", "no_portfolio_use"];
   if (isForeign && requiresExtraGdpr) base.push("scc", "tia");
   return base;
+}
+
+// Improvement B — micro-feedback per leverte jobb. Lett friksjon (👍/👎 + valgfri
+// linje) rett etter levering, kun for prototype-testere. Gjenbruker det eksisterende
+// /api/prototype-testing/feedback-endepunktet (syntetiserer tittel/beskrivelse).
+function JobMicroFeedback({
+  jobId,
+  projectTitle,
+  locale,
+}: {
+  jobId: string;
+  projectTitle: string | null;
+  locale: "no" | "en";
+}) {
+  const [sent, setSent] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState("");
+
+  if (sent) {
+    return (
+      <Typography variant="caption" color="success.main" sx={{ mt: 1, display: "block" }}>
+        {locale === "en" ? "Thanks — this shapes the next iteration." : "Takk — dette former neste iterasjon."}
+      </Typography>
+    );
+  }
+
+  const submit = async (rating: number) => {
+    if (busy) return;
+    setBusy(true);
+    const positive = rating >= 4;
+    const ctx = projectTitle ? ` (${projectTitle})` : "";
+    try {
+      await apiRequest("/api/prototype-testing/feedback", {
+        method: "POST",
+        body: {
+          title:
+            (positive
+              ? locale === "en" ? "Job workflow worked well" : "Jobb-arbeidsflyt fungerte bra"
+              : locale === "en" ? "Job workflow had friction" : "Jobb-arbeidsflyt hadde friksjon") + ctx,
+          description:
+            note.trim() ||
+            (positive
+              ? locale === "en" ? "Delivery flow felt smooth." : "Leveringsflyten føltes smidig."
+              : locale === "en" ? "Something in the delivery flow slowed me down." : "Noe i leveringsflyten bremset meg."),
+          feedbackType: "usability",
+          priority: positive ? "low" : "medium",
+          rating,
+          component: "editing-job",
+          projectId: jobId,
+          dashboardType: "editing_vendor",
+          tags: ["micro-feedback", "post-delivery"],
+        },
+      });
+      setSent(true);
+    } catch {
+      // stille — micro-feedback skal aldri blokkere arbeidsflyten
+      setSent(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Box sx={{ mt: 1.5, p: 1.5, borderRadius: 1, bgcolor: "action.hover" }}>
+      <Typography variant="caption" sx={{ display: "block", mb: 1, fontWeight: 600 }}>
+        {locale === "en"
+          ? "30 sec: how was this job's workflow? (prototype feedback)"
+          : "30 sek: hvordan var arbeidsflyten på denne jobben? (prototype-tilbakemelding)"}
+      </Typography>
+      <Stack direction="row" spacing={1} alignItems="center">
+        <TextField
+          size="small"
+          placeholder={locale === "en" ? "Optional: what stood out?" : "Valgfritt: hva stakk seg ut?"}
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          disabled={busy}
+          sx={{ flex: 1 }}
+        />
+        <Button size="small" variant="outlined" disabled={busy} onClick={() => submit(5)}>
+          👍
+        </Button>
+        <Button size="small" variant="outlined" color="warning" disabled={busy} onClick={() => submit(2)}>
+          👎
+        </Button>
+      </Stack>
+    </Box>
+  );
+}
+
+interface MyFeedbackItem {
+  id: string;
+  title: string;
+  description: string;
+  status: string;
+  adminNotes: string | null;
+  rating: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Improvements E (incentive), F (agreement + graduation path) and A (close-the-loop).
+// One cohesive prototype-status card: shows the deal + value delivered at 0% fee,
+// the graduation path, and an expandable "you said → we did" list of the tester's
+// OWN feedback with admin responses (the GET is now privacy-scoped server-side).
+function PrototypeTesterPanel({
+  me,
+  jobs,
+  locale,
+}: {
+  me: MeResponse;
+  jobs: EditingJob[];
+  locale: "no" | "en";
+}) {
+  const [showLoop, setShowLoop] = useState(false);
+  const en = locale === "en";
+
+  const myFeedback = useQuery<MyFeedbackItem[]>({
+    queryKey: ["/api/prototype-testing/feedback", "mine"],
+    queryFn: async () => {
+      const r = await apiRequest("/api/prototype-testing/feedback?limit=100");
+      return (r?.feedback ?? []) as MyFeedbackItem[];
+    },
+    enabled: showLoop,
+    staleTime: 30000,
+  });
+
+  const delivered = jobs.filter(
+    (j) => j.status === "delivered" || j.status === "delivered_to_client",
+  );
+  const totalCents = delivered.reduce((s, j) => s + (j.amount_cents || 0), 0);
+  const currency = delivered[0]?.currency || "NOK";
+  const totalValue = (totalCents / 100).toLocaleString(en ? "en-US" : "nb-NO", {
+    maximumFractionDigits: 0,
+  });
+
+  const untilRaw = me.platformFee?.prototypeUntil;
+  const until = untilRaw ? new Date(untilRaw) : null;
+  const untilStr =
+    until && !Number.isNaN(until.getTime())
+      ? until.toLocaleDateString(en ? "en-US" : "nb-NO", {
+          year: "numeric",
+          month: "short",
+          day: "numeric",
+        })
+      : null;
+
+  return (
+    <Box
+      sx={{
+        mb: 2,
+        p: 2,
+        borderRadius: 2,
+        border: "1px solid",
+        borderColor: "primary.light",
+        bgcolor: "action.hover",
+      }}
+    >
+      <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+        <Chip color="primary" size="small" label={en ? "Prototype tester" : "Prototype-tester"} />
+        <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+          {en ? "0% platform fee" : "0 % plattformgebyr"}
+        </Typography>
+      </Stack>
+
+      {/* E — incentive: value delivered at 0% */}
+      <Typography variant="body2" sx={{ mb: 1 }}>
+        {delivered.length > 0
+          ? en
+            ? `You've delivered ${delivered.length} job(s) worth ${totalValue} ${currency} — all at 0% platform fee.`
+            : `Du har levert ${delivered.length} jobb(er) til en verdi av ${totalValue} ${currency} — alt med 0 % plattformgebyr.`
+          : en
+            ? "As a prototype tester you keep 100% — no platform fee while the program runs."
+            : "Som prototype-tester beholder du 100 % — ingen plattformgebyr mens programmet varer."}
+      </Typography>
+
+      {/* F — agreement + graduation path */}
+      <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
+        {en
+          ? `The deal: regular feedback in exchange for the 0% fee${untilStr ? ` (prototype period through ${untilStr})` : ""}. When the period ends you graduate to a Creatorhub partner on the standard fee — your testing shapes the tool you'll keep using.`
+          : `Avtalen: jevnlig tilbakemelding i bytte mot 0 %-gebyret${untilStr ? ` (prototype-periode ut ${untilStr})` : ""}. Når perioden er over blir du Creatorhub-partner på standard gebyr — testingen din former verktøyet du selv skal bruke videre.`}
+      </Typography>
+
+      {/* A — close the loop */}
+      <Button size="small" variant="text" onClick={() => setShowLoop((v) => !v)} sx={{ px: 0 }}>
+        {showLoop
+          ? en
+            ? "Hide my feedback"
+            : "Skjul mine tilbakemeldinger"
+          : en
+            ? "My feedback — you said → we did"
+            : "Mine tilbakemeldinger — du sa → vi gjorde"}
+      </Button>
+
+      {showLoop ? (
+        <Box sx={{ mt: 1 }}>
+          {myFeedback.isLoading ? (
+            <Typography variant="caption">{en ? "Loading…" : "Laster…"}</Typography>
+          ) : (myFeedback.data?.length ?? 0) === 0 ? (
+            <Typography variant="caption" color="text.secondary">
+              {en
+                ? "No feedback yet — your input here directly shapes the product."
+                : "Ingen tilbakemelding ennå — innspillene dine her former produktet direkte."}
+            </Typography>
+          ) : (
+            <Stack spacing={1}>
+              {(myFeedback.data ?? []).map((f) => {
+                const st = String(f.status || "").toLowerCase();
+                const resolved =
+                  st === "resolved" || st === "closed" || st === "completed" || st === "done";
+                const inProgress =
+                  st === "in_progress" ||
+                  st === "in-progress" ||
+                  st === "planned" ||
+                  st === "acknowledged";
+                return (
+                  <Box
+                    key={f.id}
+                    sx={{
+                      p: 1,
+                      borderRadius: 1,
+                      bgcolor: "background.paper",
+                      border: "1px solid",
+                      borderColor: "divider",
+                    }}
+                  >
+                    <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1}>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                        {f.title}
+                      </Typography>
+                      <Chip
+                        size="small"
+                        color={resolved ? "success" : inProgress ? "info" : "default"}
+                        label={
+                          resolved
+                            ? en
+                              ? "Done"
+                              : "Løst"
+                            : inProgress
+                              ? en
+                                ? "In progress"
+                                : "Underveis"
+                              : en
+                                ? "Received"
+                                : "Mottatt"
+                        }
+                      />
+                    </Stack>
+                    {f.adminNotes ? (
+                      <Typography variant="caption" color="success.main" sx={{ display: "block", mt: 0.5 }}>
+                        {en ? "Our response: " : "Vårt svar: "}
+                        {f.adminNotes}
+                      </Typography>
+                    ) : null}
+                  </Box>
+                );
+              })}
+            </Stack>
+          )}
+        </Box>
+      ) : null}
+    </Box>
+  );
 }
 
 export default function EditingVendorWorkspace({ userId }: Props) {
@@ -229,6 +492,10 @@ export default function EditingVendorWorkspace({ userId }: Props) {
         </Alert>
       ) : null}
 
+      {me?.platformFee?.prototype ? (
+        <PrototypeTesterPanel me={me} jobs={jobs} locale={locale === "en" ? "en" : "no"} />
+      ) : null}
+
       <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 1, mb: 1 }}>
         <Typography variant="h6" sx={{ fontWeight: 700 }}>
           {t("ws_title", locale)}
@@ -322,6 +589,10 @@ export default function EditingVendorWorkspace({ userId }: Props) {
                       </>
                     )}
                   </Stack>
+                  {me?.platformFee?.prototype &&
+                  (j.status === "delivered" || j.status === "delivered_to_client") ? (
+                    <JobMicroFeedback jobId={j.id} projectTitle={j.project_title} locale={locale === "en" ? "en" : "no"} />
+                  ) : null}
                 </CardContent>
               </Card>
             ))

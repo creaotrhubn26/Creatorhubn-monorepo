@@ -65577,7 +65577,14 @@ setupWeddingProjectsRoutes({
 
 // /api/prototype-testing/feedback — 3 endpoints (GET liste, POST,
 // PUT admin-update). DB-backed feedback-flow for UniversalChatWidget.
-setupPrototypeTestingRoutes({ app, pool, isMissingRelationError, requireUserSession });
+setupPrototypeTestingRoutes({
+  app,
+  pool,
+  isMissingRelationError,
+  requireUserSession,
+  getActiveSessionFromRequest,
+  adminRoles: ADMIN_SESSION_ROLES,
+});
 
 // /api/vendor-onboarding/* — 3 endpoints (validate-org, upload-logo,
 // complete). Drizzle ORM mot vendorOnboardingProfiles + vendors.

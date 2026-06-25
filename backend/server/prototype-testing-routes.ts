@@ -7,15 +7,42 @@ export interface PrototypeTestingRoutesDeps {
   requireUserSession: (req: any, res: any) => any;
   pool: Pool;
   isMissingRelationError: (error: unknown) => boolean;
+  // Non-blokkerende sesjons-oppslag (skriver IKKE til res) + admin-rollesett, så
+  // GET kan personvern-scopes: admin ser alt, innlogget ser KUN sin egen feedback.
+  getActiveSessionFromRequest: (req: any) =>
+    | { userId?: string; email?: string; role?: string }
+    | null
+    | undefined;
+  adminRoles: Set<string>;
 }
 
 export function setupPrototypeTestingRoutes(
   deps: PrototypeTestingRoutesDeps,
 ): void {
-  const { app, requireUserSession, pool, isMissingRelationError } = deps;
+  const {
+    app,
+    requireUserSession,
+    pool,
+    isMissingRelationError,
+    getActiveSessionFromRequest,
+    adminRoles,
+  } = deps;
 
   app.get("/api/prototype-testing/feedback", async (req, res) => {
     try {
+      // Personvern: feedback inneholder e-post + fritekst fra testere. Admin ser
+      // alt (triage-flatene); innlogget ikke-admin ser KUN sin egen ("du sa → vi
+      // gjorde"-sløyfen); uinnlogget ser ingenting.
+      const session = getActiveSessionFromRequest(req);
+      const sessionRole = String((session as any)?.role || "")
+        .trim()
+        .toLowerCase();
+      const isAdmin = !!session && adminRoles.has(sessionRole);
+      const sessUserId = session ? String((session as any).userId || "").trim() : "";
+      const sessEmail = session
+        ? String((session as any).email || "").trim().toLowerCase()
+        : "";
+
       const statusFilter =
         typeof req.query.status === "string"
           ? req.query.status.trim()
@@ -38,6 +65,23 @@ export function setupPrototypeTestingRoutes(
 
       const params: Array<string | number> = [];
       const conditions: string[] = [];
+
+      if (!isAdmin) {
+        // Uinnlogget → ingen kryss-bruker-data.
+        if (!sessUserId && !sessEmail) {
+          return res.json({ success: true, feedback: [], count: 0 });
+        }
+        const ownConds: string[] = [];
+        if (sessUserId) {
+          params.push(sessUserId);
+          ownConds.push(`user_id = $${params.length}`);
+        }
+        if (sessEmail) {
+          params.push(sessEmail);
+          ownConds.push(`lower(user_email) = $${params.length}`);
+        }
+        conditions.push(`(${ownConds.join(" OR ")})`);
+      }
 
       if (statusFilter) {
         params.push(statusFilter);
@@ -387,6 +431,140 @@ export function setupPrototypeTestingRoutes(
       res
         .status(500)
         .json({ success: false, error: "Failed to update feedback" });
+    }
+  });
+
+  // Improvement D — AI-temaklynging for admin. Tar åpen feedback og lar Claude
+  // gruppere den i temaer med alvorlighet + foreslått tiltak, så admin ser
+  // mønstre i stedet for å lese hundre enkeltrader. Admin-only; degraderer trygt
+  // hvis ANTHROPIC_API_KEY mangler eller tabellen ikke finnes.
+  app.post("/api/prototype-testing/cluster", async (req, res) => {
+    const session = getActiveSessionFromRequest(req);
+    const role = String((session as any)?.role || "")
+      .trim()
+      .toLowerCase();
+    if (!session || !adminRoles.has(role)) {
+      return res
+        .status(403)
+        .json({ success: false, error: "Admin-tilgang kreves" });
+    }
+
+    try {
+      const body = (req.body || {}) as Record<string, unknown>;
+      const parsedLimit = Number.parseInt(String(body.limit ?? "200"), 10);
+      const limit = Number.isFinite(parsedLimit)
+        ? Math.max(1, Math.min(parsedLimit, 300))
+        : 200;
+
+      const result = await pool.query(
+        `SELECT id, title, description, feedback_type, component, rating, priority,
+                profession, dashboard_type, status, tags, created_at
+         FROM prototype_feedback
+         WHERE status IS NULL
+            OR lower(status) NOT IN ('resolved', 'closed', 'completed', 'done')
+         ORDER BY created_at DESC
+         LIMIT $1`,
+        [limit],
+      );
+
+      if (result.rows.length === 0) {
+        return res.json({
+          success: true,
+          clusters: [],
+          count: 0,
+          message: "Ingen åpen feedback å klynge.",
+        });
+      }
+
+      const apiKey = process.env.ANTHROPIC_API_KEY;
+      if (!apiKey) {
+        return res.json({
+          success: true,
+          clusters: [],
+          count: result.rows.length,
+          degraded: true,
+          message:
+            "ANTHROPIC_API_KEY mangler — AI-klynging er deaktivert. Sett nøkkelen for å aktivere.",
+        });
+      }
+
+      const items = result.rows.map((row: any) => ({
+        id: String(row.id),
+        title: String(row.title || "").slice(0, 160),
+        description: String(row.description || "").slice(0, 400),
+        type: String(row.feedback_type || "general"),
+        component: row.component ? String(row.component) : null,
+        rating: Number(row.rating ?? 0),
+        priority: String(row.priority || "medium"),
+        profession: String(row.profession || "general"),
+        surface: String(row.dashboard_type || "general"),
+      }));
+
+      const prompt = `Du er produktanalytiker for Creatorhub. Under er ${items.length} prototype-tilbakemeldinger (JSON). Grupper dem i 3-8 distinkte TEMAER basert på det underliggende problemet/ønsket — ikke på overflatiske ord.
+
+${JSON.stringify(items, null, 0)}
+
+Returner KUN valid JSON på formen:
+{"clusters":[{"theme":"kort tittel","summary":"1-2 setninger om mønsteret","severity":"low|medium|high|critical","count":<antall i klyngen>,"feedbackIds":["<id>", ...],"suggestedAction":"konkret neste steg for teamet"}]}
+
+Sorter klyngene etter alvorlighet (critical først). severity reflekterer brukerpåvirkning + frekvens. Hver feedback skal høre til nøyaktig én klynge.`;
+
+      let clusters: unknown[] = [];
+      let modelUsed = "claude-opus-4-7";
+      try {
+        const r = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-API-Key": apiKey,
+            "anthropic-version": "2023-06-01",
+          },
+          body: JSON.stringify({
+            model: modelUsed,
+            max_tokens: 4096,
+            messages: [{ role: "user", content: prompt }],
+          }),
+          signal: AbortSignal.timeout(90_000),
+        });
+        if (!r.ok) throw new Error(`Claude API ${r.status}`);
+        const data = (await r.json()) as { content?: { text?: string }[] };
+        const text = data.content?.[0]?.text ?? "{}";
+        const jsonStart = text.indexOf("{");
+        const jsonEnd = text.lastIndexOf("}");
+        const slice =
+          jsonStart >= 0 && jsonEnd > jsonStart
+            ? text.slice(jsonStart, jsonEnd + 1)
+            : "{}";
+        const parsed = JSON.parse(slice);
+        clusters = Array.isArray(parsed.clusters) ? parsed.clusters : [];
+      } catch (err) {
+        console.error("[prototype-cluster] Claude API error", err);
+        return res.status(502).json({
+          success: false,
+          error: "AI-klynging feilet",
+          detail: String(err).slice(0, 200),
+        });
+      }
+
+      res.json({
+        success: true,
+        clusters,
+        count: result.rows.length,
+        model: modelUsed,
+      });
+    } catch (error) {
+      if (isMissingRelationError(error)) {
+        return res.json({
+          success: true,
+          clusters: [],
+          count: 0,
+          message: "prototype_feedback table not available",
+        });
+      }
+      console.error("Failed to cluster prototype feedback:", error);
+      res
+        .status(500)
+        .json({ success: false, error: "Failed to cluster feedback" });
     }
   });
 }
