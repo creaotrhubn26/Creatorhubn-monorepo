@@ -35,6 +35,8 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
+  Stack,
+  CircularProgress,
   LinearProgress,
   Avatar,
   ThemeProvider,
@@ -226,6 +228,16 @@ interface VideoRecording {
   width: number;
   height: number;
   timestamp: number;
+}
+
+// Improvement D — AI-temaklynging: Claude grupperer åpen feedback i temaer.
+interface ClusterTheme {
+  theme: string;
+  summary: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  count: number;
+  feedbackIds: string[];
+  suggestedAction: string;
 }
 
 interface FeedbackItem {
@@ -455,6 +467,21 @@ export default function PrototypeFeedbackPanel({
   const feedbackItems = useMemo(() => normalizeFeedbackItems(feedbackList), [feedbackList]);
 
   // Update feedback status mutation
+  // Improvement D — AI-temaanalyse av åpen feedback.
+  const clusterMutation = useMutation<
+    { clusters: ClusterTheme[]; degraded?: boolean; message?: string; count: number },
+    Error
+  >({
+    mutationFn: async () => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest('/api/prototype-testing/cluster', {
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        method: 'POST',
+        body: JSON.stringify({ limit: 200 }),
+      });
+    },
+  });
+
   const updateStatusMutation = useMutation({
     mutationFn: async ({ id, status, adminNotes }: { id: string; status: string; adminNotes: string }) => {
       const headers = await auth.getAuthHeader();
@@ -782,6 +809,81 @@ export default function PrototypeFeedbackPanel({
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
         Administrer tilbakemeldinger fra prototype testere for kontinuerlig forbedring av plattformen.
       </Typography>
+
+      {/* Improvement D — AI-temaanalyse */}
+      <Accordion sx={{ mb: 3 }}>
+        <AccordionSummary expandIcon={<ExpandMore />}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Psychology sx={{ color: '#ff8c00' }} />
+            <Typography sx={{ fontWeight: 600 }}>AI-temaanalyse</Typography>
+            <Typography variant="caption" color="text.secondary">
+              — grupper åpen feedback i temaer med foreslåtte tiltak
+            </Typography>
+          </Box>
+        </AccordionSummary>
+        <AccordionDetails>
+          <Button
+            variant="contained"
+            startIcon={clusterMutation.isPending ? <CircularProgress size={16} color="inherit" /> : <Psychology />}
+            disabled={clusterMutation.isPending}
+            onClick={() => clusterMutation.mutate()}
+            sx={{ mb: 2 }}
+          >
+            {clusterMutation.isPending ? 'Analyserer…' : 'Analyser temaer'}
+          </Button>
+
+          {clusterMutation.isError ? (
+            <Typography variant="body2" color="error" sx={{ mb: 1 }}>
+              Klynging feilet: {clusterMutation.error?.message || 'ukjent feil'}
+            </Typography>
+          ) : null}
+
+          {clusterMutation.data?.degraded ? (
+            <Typography variant="body2" color="text.secondary">
+              {clusterMutation.data.message}
+            </Typography>
+          ) : null}
+
+          {clusterMutation.data && !clusterMutation.data.degraded ? (
+            (clusterMutation.data.clusters?.length ?? 0) === 0 ? (
+              <Typography variant="body2" color="text.secondary">
+                {clusterMutation.data.message || 'Ingen temaer funnet.'}
+              </Typography>
+            ) : (
+              <Stack spacing={1.5}>
+                <Typography variant="caption" color="text.secondary">
+                  {clusterMutation.data.count} tilbakemeldinger analysert → {clusterMutation.data.clusters.length} temaer
+                </Typography>
+                {clusterMutation.data.clusters.map((c, i) => {
+                  const sevColor =
+                    c.severity === 'critical'
+                      ? 'error'
+                      : c.severity === 'high'
+                        ? 'warning'
+                        : c.severity === 'medium'
+                          ? 'info'
+                          : 'default';
+                  return (
+                    <Paper key={`${c.theme}-${i}`} variant="outlined" sx={{ p: 1.5 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', mb: 0.5 }}>
+                        <Chip size="small" color={sevColor as any} label={c.severity} />
+                        <Typography sx={{ fontWeight: 600 }}>{c.theme}</Typography>
+                        <Chip size="small" variant="outlined" label={`${c.count ?? c.feedbackIds?.length ?? 0} saker`} />
+                      </Box>
+                      <Typography variant="body2" sx={{ mb: 0.5 }}>{c.summary}</Typography>
+                      {c.suggestedAction ? (
+                        <Typography variant="body2" color="success.main">
+                          → {c.suggestedAction}
+                        </Typography>
+                      ) : null}
+                    </Paper>
+                  );
+                })}
+              </Stack>
+            )
+          ) : null}
+        </AccordionDetails>
+      </Accordion>
 
       {/* Search, Filter, and Sort Controls */}
       <Paper sx={{ p: 2, mb: 3, bgcolor: 'background.default' }}>

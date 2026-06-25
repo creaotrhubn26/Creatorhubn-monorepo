@@ -231,9 +231,8 @@ function PrototypeTesterPanel({
     maximumFractionDigits: 0,
   });
 
-  const until = me.platformFee?.prototypeUntil
-    ? new Date(me.platformFee.prototypeUntil)
-    : null;
+  const untilRaw = me.platformFee?.prototypeUntil;
+  const until = untilRaw ? new Date(untilRaw) : null;
   const untilStr =
     until && !Number.isNaN(until.getTime())
       ? until.toLocaleDateString(en ? "en-US" : "nb-NO", {
