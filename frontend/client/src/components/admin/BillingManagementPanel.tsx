@@ -262,7 +262,7 @@ function MetricCard({
           borderRadius: '14px',
           display: 'grid',
           placeItems: 'center',
-          bgcolor: 'rgba(255,255,255,0.72)',
+          bgcolor: 'rgba(255,255,255,0.04)',
           color: palette.icon,
           border: `1px solid ${palette.border}`,
         }}
@@ -377,7 +377,7 @@ export default function BillingManagementPanel({
           ...surfaceSx,
           p: { xs: 2.25, md: 3 },
           background:
-            'radial-gradient(circle at top right, rgba(191,219,254,0.32), transparent 38%), radial-gradient(circle at bottom left, rgba(254,215,170,0.24), transparent 36%), #f7f4ef',
+            'linear-gradient(135deg, rgba(15,23,42,0.94), rgba(255,255,255,0.04))',
         }}
       >
         <Stack direction={{ xs: 'column', xl: 'row' }} spacing={2.5} justifyContent="space-between">
@@ -388,7 +388,7 @@ export default function BillingManagementPanel({
                 fontWeight: 800,
                 letterSpacing: '0.08em',
                 textTransform: 'uppercase',
-                color: '#335c85',
+                color: '#ff8c00',
               }}
             >
               CreatorHub Finance
@@ -401,10 +401,10 @@ export default function BillingManagementPanel({
               Prisendringer gjøres i egen prisstyring, mens denne siden skal gi Daniel rask operativ kontroll.
             </Typography>
             <Stack direction="row" flexWrap="wrap" gap={1} sx={{ mt: 2 }}>
-              <Chip label={`${selfServePlans.length} planer i salg`} sx={{ bgcolor: 'rgba(255,255,255,0.78)' }} />
-              <Chip label={`${pendingRefunds.length} refusjoner venter`} sx={{ bgcolor: 'rgba(255,255,255,0.78)' }} />
-              <Chip label={`${defaultPaymentMethods.length} standardkort registrert`} sx={{ bgcolor: 'rgba(255,255,255,0.78)' }} />
-              <Chip label={`${availableFeedCount}/4 økonomifeeds live`} sx={{ bgcolor: 'rgba(255,255,255,0.78)' }} />
+              <Chip label={`${selfServePlans.length} planer i salg`} sx={{ bgcolor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.88)' }} />
+              <Chip label={`${pendingRefunds.length} refusjoner venter`} sx={{ bgcolor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.88)' }} />
+              <Chip label={`${defaultPaymentMethods.length} standardkort registrert`} sx={{ bgcolor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.88)' }} />
+              <Chip label={`${availableFeedCount}/4 økonomifeeds live`} sx={{ bgcolor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.88)' }} />
             </Stack>
           </Box>
 
@@ -416,7 +416,7 @@ export default function BillingManagementPanel({
               gap: 1.25,
             }}
           >
-            <Box sx={{ ...insetSx, px: 1.75, py: 1.5, bgcolor: 'rgba(255,255,255,0.72)' }}>
+            <Box sx={{ ...insetSx, px: 1.75, py: 1.5, bgcolor: 'rgba(255,255,255,0.04)' }}>
               <Typography sx={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(255,255,255,0.6)', fontWeight: 700 }}>
                 Økonomi akkurat nå
               </Typography>
@@ -424,7 +424,7 @@ export default function BillingManagementPanel({
                 Fakturaer, kuponger og betalingsmetoder lastes uten å knekke hele adminen hvis et endpoint mangler.
               </Typography>
             </Box>
-            <Box sx={{ ...insetSx, px: 1.75, py: 1.5, bgcolor: 'rgba(255,255,255,0.72)' }}>
+            <Box sx={{ ...insetSx, px: 1.75, py: 1.5, bgcolor: 'rgba(255,255,255,0.04)' }}>
               <Typography sx={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(255,255,255,0.6)', fontWeight: 700 }}>
                 Prisstyring
               </Typography>
