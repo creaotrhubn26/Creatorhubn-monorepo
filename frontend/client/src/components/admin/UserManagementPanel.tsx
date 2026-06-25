@@ -45,7 +45,9 @@ import {
   Checkbox,
   InputAdornment,
   Pagination,
+  ThemeProvider,
 } from '@mui/material';
+import { adminDarkTheme } from './adminDarkTheme';
 import {
   Add as AddIcon,
   MoreVert as MoreVertIcon,
@@ -287,8 +289,8 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
       return {
         label: 'The Role Room',
         sx: {
-          bgcolor: '#fff4de',
-          color: '#9a5b00',
+          bgcolor: 'rgba(255,255,255,0.08)',
+          color: '#fbbf24',
         },
       };
     }
@@ -296,8 +298,8 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
       return {
         label: 'CreatorHub',
         sx: {
-          bgcolor: '#eef4ff',
-          color: '#2d63d7',
+          bgcolor: 'rgba(255,255,255,0.08)',
+          color: '#93c5fd',
         },
       };
     }
@@ -324,8 +326,8 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
           currentUser.accessDescription ||
           'Full kontroll over CreatorHub, brukere, roller, billing og Academy.',
         sx: {
-          bgcolor: '#e9f7ef',
-          color: '#1b7b4a',
+          bgcolor: 'rgba(255,255,255,0.08)',
+          color: '#86efac',
         },
       };
     }
@@ -337,8 +339,8 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
           currentUser.accessDescription ||
           'Kan administrere Academy-innhold og Academy-tilganger, men ikke plattformadmin.',
         sx: {
-          bgcolor: '#eef6ff',
-          color: '#235fa4',
+          bgcolor: 'rgba(255,255,255,0.08)',
+          color: '#93c5fd',
         },
       };
     }
@@ -350,8 +352,8 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
           currentUser.accessDescription ||
           'Kan vedlikeholde Academy-innhold, uten admin-tilgang.',
         sx: {
-          bgcolor: '#f6f0ff',
-          color: '#6e45b8',
+          bgcolor: 'rgba(255,255,255,0.08)',
+          color: '#c084fc',
         },
       };
     }
@@ -362,8 +364,8 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
         currentUser.accessDescription ||
         'Rolle- og produktstyrt tilgang uten admin-rettigheter.',
       sx: {
-        bgcolor: '#f4efe7',
-        color: '#5f564d',
+        bgcolor: 'rgba(255,255,255,0.08)',
+        color: 'rgba(255,255,255,0.6)',
       },
     };
   };
@@ -394,8 +396,8 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
         key: 'role',
         label: roleLabel,
         sx: {
-          bgcolor: '#eef4ff',
-          color: '#2d63d7',
+          bgcolor: 'rgba(255,255,255,0.08)',
+          color: '#93c5fd',
         },
       });
     }
@@ -405,8 +407,8 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
         key: 'inactive',
         label: 'Inaktiv',
         sx: {
-          bgcolor: '#f5ecec',
-          color: '#9a3e3e',
+          bgcolor: 'rgba(255,255,255,0.08)',
+          color: '#fca5a5',
         },
       });
     } else if (String(currentUser.status || '').toLowerCase() === 'pending') {
@@ -414,8 +416,8 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
         key: 'status',
         label: 'Avventer',
         sx: {
-          bgcolor: '#fff4de',
-          color: '#a05a00',
+          bgcolor: 'rgba(255,255,255,0.08)',
+          color: '#fbbf24',
         },
       });
     }
@@ -429,8 +431,8 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
       return {
         label: 'Venter kontogodkjenning',
         sx: {
-          bgcolor: '#fff1e8',
-          color: '#a14b14',
+          bgcolor: 'rgba(255,255,255,0.08)',
+          color: '#fdba74',
         },
       };
     }
@@ -438,8 +440,8 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
       return {
         label: 'Konto godkjent',
         sx: {
-          bgcolor: '#ecf7ff',
-          color: '#1f6fb2',
+          bgcolor: 'rgba(255,255,255,0.08)',
+          color: '#60a5fa',
         },
       };
     }
@@ -1539,6 +1541,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
   } as const;
 
   return (
+    <ThemeProvider theme={adminDarkTheme}>
     <Box sx={{ px: { xs: 1, sm: 0 }, pb: { xs: 2, sm: 0 } }}>
       <InviteUserDialog />
       <UserActionsMenu />
@@ -1551,9 +1554,9 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
         sx={{
           mb: 3.5,
           borderRadius: '24px',
-          border: '1px solid rgba(17, 24, 39, 0.08)',
+          border: '1px solid rgba(255,255,255,0.12)',
           background:
-            'linear-gradient(135deg, rgba(29, 78, 216, 0.07), rgba(255,255,255,0.94) 46%, rgba(180, 83, 9, 0.06))',
+            'linear-gradient(135deg, rgba(15,23,42,0.94), rgba(255,255,255,0.04))',
           px: { xs: 2, sm: 3 },
           py: { xs: 2.25, sm: 2.75 },
         }}
@@ -1568,7 +1571,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
           }}
         >
           <Box sx={{ maxWidth: 760, flex: 1 }}>
-            <Typography variant="overline" sx={{ color: '#1d4ed8', fontWeight: 700, letterSpacing: '0.08em' }}>
+            <Typography variant="overline" sx={{ color: '#ff8c00', fontWeight: 700, letterSpacing: '0.08em' }}>
               CreatorHub Access Control
             </Typography>
             <Typography
@@ -1578,7 +1581,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                 fontSize: { xs: '1.7rem', sm: '2rem' },
                 fontWeight: 700,
                 letterSpacing: '-0.03em',
-                color: '#181512',
+                color: '#ffffff',
               }}
             >
               Brukere & Roller
@@ -1588,7 +1591,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
               sx={{
                 mt: 1,
                 maxWidth: 640,
-                color: '#6c665d',
+                color: 'rgba(255,255,255,0.6)',
                 lineHeight: 1.7,
               }}
             >
@@ -1602,7 +1605,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                 alignItems: 'center',
                 gap: 1,
                 mt: 1.75,
-                color: '#7d756a',
+                color: 'rgba(255,255,255,0.6)',
                 flexWrap: 'wrap',
               }}
             >
@@ -1613,8 +1616,8 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                 label={`${totalActiveIntegrations}/12 aktive`}
                 size="small"
                 sx={{
-                  bgcolor: '#f5f2ed',
-                  color: '#4e473f',
+                  bgcolor: 'rgba(255,255,255,0.08)',
+                  color: '#ffffff',
                   borderRadius: '999px',
                   border: '1px solid #ebe4da',
                   fontWeight: 600,
@@ -1625,7 +1628,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                 size="small"
                 sx={{
                   bgcolor: 'rgba(255,255,255,0.06)',
-                  color: '#4e473f',
+                  color: '#ffffff',
                   borderRadius: '999px',
                   border: '1px solid rgba(255,255,255,0.12)',
                   fontWeight: 600,
@@ -1645,16 +1648,16 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
             <Box
               sx={{
                 borderRadius: '18px',
-                border: '1px solid rgba(17, 24, 39, 0.08)',
+                border: '1px solid rgba(255,255,255,0.12)',
                 bgcolor: 'rgba(255,255,255,0.04)',
                 px: 1.75,
                 py: 1.5,
               }}
             >
-              <Typography sx={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#6b7280', fontWeight: 700 }}>
+              <Typography sx={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(255,255,255,0.6)', fontWeight: 700 }}>
                 Drift akkurat nå
               </Typography>
-              <Typography sx={{ mt: 0.6, fontWeight: 700, color: '#111827' }}>
+              <Typography sx={{ mt: 0.6, fontWeight: 700, color: '#ffffff' }}>
                 {accessOverview.platformAdmins} plattform-admin og {academyScopedCount} Academy-kontoer med utvidet tilgang.
               </Typography>
             </Box>
@@ -1662,16 +1665,16 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
             <Box
               sx={{
                 borderRadius: '18px',
-                border: '1px solid rgba(17, 24, 39, 0.08)',
+                border: '1px solid rgba(255,255,255,0.12)',
                 bgcolor: 'rgba(255,255,255,0.04)',
                 px: 1.75,
                 py: 1.5,
               }}
             >
-              <Typography sx={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#6b7280', fontWeight: 700 }}>
+              <Typography sx={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(255,255,255,0.6)', fontWeight: 700 }}>
                 Oppfølging
               </Typography>
-              <Typography sx={{ mt: 0.6, color: '#5b6472', lineHeight: 1.6 }}>
+              <Typography sx={{ mt: 0.6, color: 'rgba(255,255,255,0.6)', lineHeight: 1.6 }}>
                 {pendingPaymentCount > 0
                   ? `${pendingPaymentCount} kontoer venter fortsatt på betalt aktivering.`
                   : 'Ingen kontoer venter på betalt aktivering akkurat nå.'}
@@ -1702,19 +1705,19 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
               key={item.key}
               sx={{
                 borderRadius: '18px',
-                border: '1px solid rgba(17, 24, 39, 0.08)',
+                border: '1px solid rgba(255,255,255,0.12)',
                 bgcolor: 'rgba(255,255,255,0.04)',
                 px: 1.75,
                 py: 1.5,
               }}
             >
-              <Typography variant="caption" sx={{ display: 'block', color: '#7a7268', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+              <Typography variant="caption" sx={{ display: 'block', color: 'rgba(255,255,255,0.6)', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
                 {item.label}
               </Typography>
-              <Typography variant="h5" sx={{ mt: 0.4, color: '#181512', fontWeight: 700 }}>
+              <Typography variant="h5" sx={{ mt: 0.4, color: '#ffffff', fontWeight: 700 }}>
                 {item.value}
               </Typography>
-              <Typography variant="caption" sx={{ display: 'block', mt: 0.8, color: '#7c7469' }}>
+              <Typography variant="caption" sx={{ display: 'block', mt: 0.8, color: 'rgba(255,255,255,0.6)' }}>
                 {item.helper}
               </Typography>
             </Box>
@@ -1745,7 +1748,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
             '& .MuiTab-root': {
               minHeight: 40,
               textTransform: 'none',
-              color: '#7b7368',
+              color: 'rgba(255,255,255,0.6)',
               borderRadius: '12px',
               px: 1.75,
               mr: 0.75,
@@ -1753,7 +1756,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
             },
             '& .Mui-selected': {
               bgcolor: 'rgba(255,255,255,0.04)',
-              color: '#181512',
+              color: '#ffffff',
               boxShadow: '0 6px 18px rgba(24, 21, 18, 0.06)',
             },
           }}
@@ -1828,16 +1831,16 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                       variant="h6"
                     sx={{
                       fontWeight: 700,
-                      color: '#1a1713',
+                      color: '#ffffff',
                       letterSpacing: '-0.02em',
                     }}
                     >
                     Alle brukere{' '}
-                    <Box component="span" sx={{ color: '#8a8176', fontWeight: 600 }}>
+                    <Box component="span" sx={{ color: 'rgba(255,255,255,0.6)', fontWeight: 600 }}>
                       {filteredUsers.length}
                     </Box>
                   </Typography>
-                  <Typography variant="body2" sx={{ mt: 0.75, color: '#7a7268' }}>
+                  <Typography variant="body2" sx={{ mt: 0.75, color: 'rgba(255,255,255,0.6)' }}>
                     Søk opp medlemmer, juster tilgang og fortsett godkjenninger uten å forlate tabellen.
                   </Typography>
                 </Box>
@@ -1869,7 +1872,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                     InputProps={{
                       startAdornment: (
                         <InputAdornment position="start">
-                          <SearchIcon sx={{ color: '#8c8378', fontSize: 18 }} />
+                          <SearchIcon sx={{ color: 'rgba(255,255,255,0.6)', fontSize: 18 }} />
                         </InputAdornment>
                       ),
                     }}
@@ -1882,7 +1885,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                         left: 12,
                         top: '50%',
                         transform: 'translateY(-50%)',
-                        color: '#8c8378',
+                        color: 'rgba(255,255,255,0.6)',
                         fontSize: 18,
                         pointerEvents: 'none',
                         zIndex: 1,
@@ -1955,7 +1958,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                   mb: 2,
                   borderRadius: '14px',
                   border: '1px solid #dce7f5',
-                  bgcolor: '#f8fbff',
+                  bgcolor: 'rgba(255,255,255,0.08)',
                 }}
               >
                 Plattform-adminer styrer roller og tilgang på tvers av CreatorHub. Academy-adminer er begrenset til Academy og vises separat her.
@@ -1978,32 +1981,32 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                     label: 'Plattform-admin',
                     value: accessOverview.platformAdmins,
                     helper: 'Full kontroll',
-                    icon: <SecurityIcon sx={{ fontSize: 18, color: '#1b7b4a' }} />,
-                    sx: { bgcolor: '#e9f7ef', color: '#1b7b4a' },
+                    icon: <SecurityIcon sx={{ fontSize: 18, color: '#86efac' }} />,
+                    sx: { bgcolor: 'rgba(255,255,255,0.08)', color: '#86efac' },
                   },
                   {
                     key: 'academy-admin',
                     label: 'Academy-admin',
                     value: accessOverview.academyAdmins,
                     helper: 'Academy-styring',
-                    icon: <SchoolIcon sx={{ fontSize: 18, color: '#235fa4' }} />,
-                    sx: { bgcolor: '#eef6ff', color: '#235fa4' },
+                    icon: <SchoolIcon sx={{ fontSize: 18, color: '#93c5fd' }} />,
+                    sx: { bgcolor: 'rgba(255,255,255,0.08)', color: '#93c5fd' },
                   },
                   {
                     key: 'academy-editor',
                     label: 'Academy-redaktør',
                     value: accessOverview.academyEditors,
                     helper: 'Innhold og kurs',
-                    icon: <HowToRegIcon sx={{ fontSize: 18, color: '#6e45b8' }} />,
-                    sx: { bgcolor: '#f6f0ff', color: '#6e45b8' },
+                    icon: <HowToRegIcon sx={{ fontSize: 18, color: '#c084fc' }} />,
+                    sx: { bgcolor: 'rgba(255,255,255,0.08)', color: '#c084fc' },
                   },
                   {
                     key: 'standard',
                     label: 'Standardbrukere',
                     value: accessOverview.standardUsers,
                     helper: 'Ingen admin-tilgang',
-                    icon: <PeopleIcon sx={{ fontSize: 18, color: '#5f564d' }} />,
-                    sx: { bgcolor: '#f4efe7', color: '#5f564d' },
+                    icon: <PeopleIcon sx={{ fontSize: 18, color: 'rgba(255,255,255,0.6)' }} />,
+                    sx: { bgcolor: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.6)' },
                   },
                 ].map((item) => (
                   <Box
@@ -2018,10 +2021,10 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                   >
                     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
                       <Box>
-                        <Typography variant="caption" sx={{ display: 'block', color: '#7a7268', fontWeight: 700 }}>
+                        <Typography variant="caption" sx={{ display: 'block', color: 'rgba(255,255,255,0.6)', fontWeight: 700 }}>
                           {item.label}
                         </Typography>
-                        <Typography variant="h5" sx={{ mt: 0.4, color: '#181512', fontWeight: 700 }}>
+                        <Typography variant="h5" sx={{ mt: 0.4, color: '#ffffff', fontWeight: 700 }}>
                           {item.value}
                         </Typography>
                       </Box>
@@ -2038,7 +2041,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                         {item.icon}
                       </Box>
                     </Box>
-                    <Typography variant="caption" sx={{ display: 'block', mt: 1, color: '#7c7469' }}>
+                    <Typography variant="caption" sx={{ display: 'block', mt: 1, color: 'rgba(255,255,255,0.6)' }}>
                       {item.helper}
                     </Typography>
                   </Box>
@@ -2054,7 +2057,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                       '& .MuiTableCell-root': {
                         bgcolor: 'rgba(255,255,255,0.04)',
                         borderBottom: '1px solid rgba(255,255,255,0.10)',
-                        color: '#857c71',
+                        color: 'rgba(255,255,255,0.6)',
                         fontSize: '0.74rem',
                         fontWeight: 700,
                         letterSpacing: '0.06em',
@@ -2110,8 +2113,8 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                               sx={{
                                 width: 36,
                                 height: 36,
-                                bgcolor: '#efe4d4',
-                                color: '#241d16',
+                                bgcolor: 'rgba(255,255,255,0.08)',
+                                color: '#ffffff',
                                 fontWeight: 700,
                                 fontSize: '0.9rem',
                               }}
@@ -2123,7 +2126,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                                 variant="body2"
                                 sx={{
                                   fontWeight: 700,
-                                  color: '#181512',
+                                  color: '#ffffff',
                                   whiteSpace: 'nowrap',
                                   overflow: 'hidden',
                                   textOverflow: 'ellipsis',
@@ -2136,7 +2139,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                                 sx={{
                                   display: 'block',
                                   mt: 0.35,
-                                  color: '#7c7469',
+                                  color: 'rgba(255,255,255,0.6)',
                                   whiteSpace: 'nowrap',
                                   overflow: 'hidden',
                                   textOverflow: 'ellipsis',
@@ -2152,10 +2155,10 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                         </TableCell>
                         <TableCell>
                           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.45 }}>
-                            <Typography variant="body2" sx={{ color: '#181512', fontWeight: 600 }}>
+                            <Typography variant="body2" sx={{ color: '#ffffff', fontWeight: 600 }}>
                               {user.businessName || user.companyName || user.roleRoomAccess?.companyName || 'Ikke oppgitt'}
                             </Typography>
-                            <Typography variant="caption" sx={{ color: '#7c7469' }}>
+                            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>
                               Org.nr. {formatOrganizationNumber(user.organizationNumber || user.roleRoomAccess?.organizationNumber)}
                             </Typography>
                             {getSourceChip(getEffectiveSource(user)) ? (
@@ -2192,7 +2195,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                                 />
                               ))}
                             </Box>
-                            <Typography variant="caption" sx={{ color: '#6e665c', lineHeight: 1.5 }}>
+                            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', lineHeight: 1.5 }}>
                               {getAccessScopePresentation(user).description}
                             </Typography>
                           </Box>
@@ -2209,8 +2212,8 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                                     borderRadius: '999px',
                                     fontWeight: 700,
                                     fontSize: '0.7rem',
-                                    bgcolor: '#f4efe7',
-                                    color: '#4f473f',
+                                    bgcolor: 'rgba(255,255,255,0.08)',
+                                    color: '#ffffff',
                                   }}
                                 />
                               ) : null}
@@ -2222,8 +2225,8 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                                   borderRadius: '999px',
                                   fontWeight: 700,
                                   fontSize: '0.7rem',
-                                  bgcolor: user.paymentCompleted ? '#e9f7ef' : '#fff4de',
-                                  color: user.paymentCompleted ? '#1b7b4a' : '#a05a00',
+                                  bgcolor: user.paymentCompleted ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.08)',
+                                  color: user.paymentCompleted ? '#86efac' : '#fbbf24',
                                 }}
                               />
                               {user.roleRoomAccess?.isTeamLeader ? (
@@ -2235,8 +2238,8 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                                     borderRadius: '999px',
                                     fontWeight: 700,
                                     fontSize: '0.7rem',
-                                    bgcolor: '#eef4ff',
-                                    color: '#2d63d7',
+                                    bgcolor: 'rgba(255,255,255,0.08)',
+                                    color: '#93c5fd',
                                   }}
                                 />
                               ) : null}
@@ -2255,42 +2258,42 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                               ) : null}
                             </Box>
                             {user.roleRoomAccess?.memberRoleLabel ? (
-                              <Typography variant="caption" sx={{ color: '#5c544c' }}>
+                              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>
                                 {user.roleRoomAccess.memberRoleLabel}
                               </Typography>
                             ) : null}
                             {user.roleRoomAccess?.teamSize ? (
-                              <Typography variant="caption" sx={{ color: '#7c7469' }}>
+                              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>
                                 {`${user.roleRoomAccess.teamSize} personer · ${formatCurrencyNok(user.roleRoomAccess.monthlyTotalExVat) || 'Pris ikke satt'} / mnd eks. mva.`}
                               </Typography>
                             ) : user.planPrice ? (
-                              <Typography variant="caption" sx={{ color: '#7c7469' }}>
+                              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>
                                 {`${formatCurrencyNok(user.planPrice)} / mnd eks. mva.`}
                               </Typography>
                             ) : null}
                             {user.paymentTimestamp ? (
-                              <Typography variant="caption" sx={{ color: '#7c7469' }}>
+                              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>
                                 {`Betalt ${formatUserDate(user.paymentTimestamp)}`}
                               </Typography>
                             ) : null}
                           </Box>
                         </TableCell>
                         <TableCell>
-                          <Typography variant="body2" sx={{ color: '#38322d' }}>
+                          <Typography variant="body2" sx={{ color: '#ffffff' }}>
                             {formatUserDate(user.lastLoginAt || user.updatedAt)}
                           </Typography>
                         </TableCell>
                         <TableCell>
-                          <Typography variant="body2" sx={{ color: '#38322d' }}>
+                          <Typography variant="body2" sx={{ color: '#ffffff' }}>
                             {formatUserDate(user.createdAt)}
                           </Typography>
                           {user.approvedAt ? (
-                            <Typography variant="caption" sx={{ display: 'block', mt: 0.3, color: '#7c7469' }}>
+                            <Typography variant="caption" sx={{ display: 'block', mt: 0.3, color: 'rgba(255,255,255,0.6)' }}>
                               {`Godkjent ${formatUserDate(user.approvedAt)}`}
                             </Typography>
                           ) : null}
                           {user.approvedBy ? (
-                            <Typography variant="caption" sx={{ display: 'block', mt: 0.2, color: '#7c7469' }}>
+                            <Typography variant="caption" sx={{ display: 'block', mt: 0.2, color: 'rgba(255,255,255,0.6)' }}>
                               {`Godkjent av ${user.approvedBy}`}
                             </Typography>
                           ) : null}
@@ -2298,7 +2301,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                         <TableCell align="center">
                           <Tooltip title="Handlinger">
                             <IconButton size="small" onClick={(event) => handleMenuClick(event, user)}>
-                              <MoreVertIcon sx={{ color: '#655d54' }} />
+                              <MoreVertIcon sx={{ color: 'rgba(255,255,255,0.6)' }} />
                             </IconButton>
                           </Tooltip>
                         </TableCell>
@@ -2338,7 +2341,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                   siblingCount={0}
                   sx={{
                     '& .MuiPaginationItem-root': {
-                      color: '#5c544c',
+                      color: 'rgba(255,255,255,0.6)',
                     },
                     '& .Mui-selected': {
                       bgcolor: '#171410 !important',
@@ -2366,7 +2369,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
             sx={{
               ...panelSurfaceSx,
               background:
-                'linear-gradient(135deg, rgba(255,248,239,1) 0%, rgba(255,255,255,1) 58%, rgba(248,243,235,1) 100%)',
+                'linear-gradient(135deg, rgba(15,23,42,0.94), rgba(255,255,255,0.04))',
             }}
           >
             <Box sx={{ px: { xs: 2, sm: 3 }, py: { xs: 2.5, sm: 3 } }}>
@@ -2374,8 +2377,8 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                 label="CreatorHub e-postdesigner"
                 size="small"
                 sx={{
-                  bgcolor: '#fff1dd',
-                  color: '#8a4b00',
+                  bgcolor: 'rgba(255,255,255,0.08)',
+                  color: '#fbbf24',
                   fontWeight: 700,
                   borderRadius: '999px',
                 }}
@@ -2385,7 +2388,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                 sx={{
                   mt: 2,
                   fontWeight: 700,
-                  color: '#1c1813',
+                  color: '#ffffff',
                   letterSpacing: '-0.03em',
                   maxWidth: 560,
                 }}
@@ -2397,7 +2400,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                 sx={{
                   mt: 1.2,
                   maxWidth: 620,
-                  color: '#6d6458',
+                  color: 'rgba(255,255,255,0.6)',
                   lineHeight: 1.7,
                 }}
               >
@@ -2413,11 +2416,11 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
             sx={{
               borderRadius: '18px',
               border: '1px solid #dce7f5',
-              bgcolor: '#f8fbff',
+              bgcolor: 'rgba(255,255,255,0.08)',
               '& .MuiAlert-message': { width: '100%' },
             }}
           >
-            <Typography variant="body2" sx={{ color: '#29415b', lineHeight: 1.8 }}>
+            <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.6)', lineHeight: 1.8 }}>
               <strong>Tilgjengelige variabler:</strong> <code>{'{{firstName}}'}</code>,
               <code>{' {{lastName}}'}</code>, <code>{' {{email}}'}</code>,
               <code>{' {{profession}}'}</code>, <code>{' {{companyName}}'}</code>,
@@ -2436,10 +2439,10 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                 bgcolor: 'rgba(255,255,255,0.04)',
               }}
             >
-              <Typography variant="h6" sx={{ fontWeight: 700, color: '#1a1713' }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, color: '#ffffff' }}>
                 Design arbeidsflate
               </Typography>
-              <Typography variant="body2" sx={{ mt: 0.75, color: '#7a7268' }}>
+              <Typography variant="body2" sx={{ mt: 0.75, color: 'rgba(255,255,255,0.6)' }}>
                 Velg en av de anbefalte malene inne i designeren, eller start fra en ny tom mal.
               </Typography>
             </Box>
@@ -2570,5 +2573,6 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
         </Alert>
       </Snackbar>
     </Box>
+    </ThemeProvider>
   );
 }
