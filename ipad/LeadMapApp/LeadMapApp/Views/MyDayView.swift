@@ -403,7 +403,7 @@ private extension Color {
 
 // MARK: - Dagsrute-sheet (iPad-native: turn-by-turn + felt-innsjekk)
 
-private struct DayRouteSheet: View {
+struct DayRouteSheet: View {
     @Environment(AppState.self) private var state
     @Environment(\.dismiss) private var dismiss
     let route: DayRoute

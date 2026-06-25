@@ -200,52 +200,188 @@ struct RootView: View {
     }
 }
 
-/// Tabs: Min dag (default) + Kart + Team + Varsler + (Pitch hvis tillatt) + Org.
-/// Pitch Deck-fanen vises kun hvis innlogget bruker har
-/// "pitch_deck.access" i org'en — gjør at en org kan skru funksjonen
-/// av/på via per-role-defaults eller per-bruker overstyringer uten at
-/// vi trenger en feature-flag i Xcode-buildet.
+/// Tabs (UX-overhaul 2026-06-25): I dag · Kart · Leads · Ruter · Mer.
+/// Tidligere flate strukturen hadde 8+ topp-faner (Kart, Team, Varsler,
+/// Leadgrid, Pitch, Org …) — det føltes som «Apple Maps med menyer».
+/// «Mer»-fanen er en samle-flate (MoreTabView) som tar Varsler, Team,
+/// Stille, Prosjekter, Innboks, Leadgrid, Pitch og Org. Per-flate
+/// permission-gates beholdes inni MoreTabView.
 struct MainTabView: View {
     @Environment(AppState.self) private var state
 
     var body: some View {
         TabView {
             MyDayView()
-                .tabItem { Label("Min dag", systemImage: "sun.max.fill") }
+                .tabItem { Label("I dag", systemImage: "sun.max.fill") }
+
             MapScreen()
                 .tabItem { Label("Kart", systemImage: "map.fill") }
-            // Portefølje — alle kundeprosjekter med logo, Leadgrid-score,
-            // needs/signals-aggregat. Vises hvis bruker har leads.view.
-            if state.permissions.contains("leads.view") {
-                ProjectsPortfolioView()
-                    .tabItem { Label("Prosjekter", systemImage: "rectangle.stack.fill") }
-            }
-            // Markedsfører-innboks — focus_requests fra klient
-            if state.permissions.contains("marketing.deliveries.execute") {
-                MarketingInboxView()
-                    .tabItem { Label("Innboks", systemImage: "tray.fill") }
-            }
-            LeaderboardView()
-                .tabItem { Label("Team", systemImage: "trophy.fill") }
-            NotificationsView()
-                .tabItem {
-                    Label("Varsler", systemImage: "bell.fill")
-                }
-                .badge(state.unreadNotificationsCount)
-            // Leadgrid CRM-hub (PR #760+) — paritet m/ web /api/leadgrid/*
-            LeadgridHubView()
-                .tabItem { Label("Leadgrid", systemImage: "person.crop.rectangle.stack.fill") }
+
+            // Lead-fokus: kø av tildelte leads med Claude-prioritet og
+            // status. Vi bruker LeadgridFollowUpQueueView som finnes alt.
+            LeadsTabHost()
+                .tabItem { Label("Leads", systemImage: "person.crop.rectangle.stack.fill") }
                 .badge(state.leadgridUnreadCount > 0 ? state.leadgridUnreadCount : 0)
-            if state.permissions.contains("pitch_deck.access"),
-               let orgId = state.activeOrganizationId {
-                PitchDeckStudioView(
-                    organizationId: orgId,
-                    permissions: state.permissions
-                )
-                .tabItem { Label("Pitch", systemImage: "rectangle.stack.fill") }
+
+            // Ruter — alt om dagens rute, plan og innsjekk.
+            RoutesTabHost()
+                .tabItem {
+                    Label("Ruter", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
+                }
+
+            // Mer — samler øvrige flater for å holde top-bar enkel.
+            MoreTabView()
+                .tabItem { Label("Mer", systemImage: "ellipsis.circle") }
+                .badge(state.unreadNotificationsCount)
+        }
+    }
+}
+
+/// Samlefane med alt som tidligere lå som egne topp-tabs. Bygger en
+/// kategorisert liste — hver rad navigerer til den eksisterende view'en
+/// uendret, så vi ikke endrer hverken backend eller delflyter.
+struct MoreTabView: View {
+    @Environment(AppState.self) private var state
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("Aktivitet") {
+                    NavigationLink {
+                        NotificationsView()
+                    } label: {
+                        moreRow(icon: "bell.fill", color: .red, title: "Varsler",
+                                badge: state.unreadNotificationsCount)
+                    }
+                    NavigationLink {
+                        CalendarView()
+                    } label: {
+                        moreRow(icon: "calendar", color: .blue, title: "Kalender")
+                    }
+                    NavigationLink {
+                        StaleLeadsList()
+                    } label: {
+                        moreRow(icon: "bell.badge", color: .orange, title: "Stille leads")
+                    }
+                }
+                Section("Team & marked") {
+                    NavigationLink {
+                        LeaderboardView()
+                    } label: {
+                        moreRow(icon: "trophy.fill", color: .yellow, title: "Team")
+                    }
+                    if state.permissions.contains("leads.view") {
+                        NavigationLink {
+                            ProjectsPortfolioView()
+                        } label: {
+                            moreRow(icon: "rectangle.stack.fill", color: .purple,
+                                    title: "Prosjekter")
+                        }
+                    }
+                    if state.permissions.contains("marketing.deliveries.execute") {
+                        NavigationLink {
+                            MarketingInboxView()
+                        } label: {
+                            moreRow(icon: "tray.fill", color: .indigo, title: "Innboks")
+                        }
+                    }
+                    NavigationLink {
+                        LeadgridHubView()
+                    } label: {
+                        moreRow(icon: "person.crop.rectangle.stack.fill", color: .purple,
+                                title: "Leadgrid",
+                                badge: state.leadgridUnreadCount > 0 ? state.leadgridUnreadCount : 0)
+                    }
+                }
+                if state.permissions.contains("pitch_deck.access"),
+                   let orgId = state.activeOrganizationId {
+                    Section("Salg") {
+                        NavigationLink {
+                            PitchDeckStudioView(
+                                organizationId: orgId,
+                                permissions: state.permissions
+                            )
+                        } label: {
+                            moreRow(icon: "rectangle.stack.fill", color: .purple,
+                                    title: "Pitch Deck")
+                        }
+                    }
+                }
+                Section("Innstillinger") {
+                    NavigationLink {
+                        OrgSettingsView()
+                    } label: {
+                        moreRow(icon: "building.2.fill", color: .gray, title: "Organisasjon")
+                    }
+                }
             }
-            OrgSettingsView()
-                .tabItem { Label("Org", systemImage: "building.2.fill") }
+            .navigationTitle("Mer")
+        }
+    }
+
+    @ViewBuilder
+    private func moreRow(
+        icon: String,
+        color: Color,
+        title: String,
+        badge: Int = 0
+    ) -> some View {
+        HStack {
+            Image(systemName: icon)
+                .foregroundStyle(.white)
+                .frame(width: 28, height: 28)
+                .background(color.opacity(0.9), in: RoundedRectangle(cornerRadius: 6))
+            Text(title).font(.body)
+            Spacer()
+            if badge > 0 {
+                Text("\(badge)")
+                    .font(.caption.bold())
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(Color.red, in: Capsule())
+                    .foregroundStyle(.white)
+            }
+        }
+    }
+}
+
+/// Host som ekstraherer APIClient fra AppState og wrapper det i en
+/// NavigationStack — slik at de eksisterende view'ene som krever
+/// `api: APIClient` (LeadgridFollowUpQueueView, LeadgridRoutePlannerView)
+/// kan brukes direkte som tabs uten å endre signaturen deres.
+struct LeadsTabHost: View {
+    @Environment(AppState.self) private var state
+
+    var body: some View {
+        NavigationStack {
+            if let api = state.api {
+                LeadgridFollowUpQueueView(api: api)
+                    .navigationTitle("Leads")
+            } else {
+                ContentUnavailableView(
+                    "Logger inn …",
+                    systemImage: "person.crop.rectangle.stack",
+                    description: Text("Vent et øyeblikk mens vi henter dine leads.")
+                )
+            }
+        }
+    }
+}
+
+struct RoutesTabHost: View {
+    @Environment(AppState.self) private var state
+
+    var body: some View {
+        NavigationStack {
+            if let api = state.api {
+                LeadgridRoutePlannerView(api: api)
+                    .navigationTitle("Ruter")
+            } else {
+                ContentUnavailableView(
+                    "Logger inn …",
+                    systemImage: "point.topleft.down.to.point.bottomright.curvepath",
+                    description: Text("Vent et øyeblikk mens vi henter dine ruter.")
+                )
+            }
         }
     }
 }
