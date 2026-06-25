@@ -224,6 +224,7 @@ import { trackMarketingPageView } from '@/lib/marketingPixelsRuntime';
 
 const LandingMobileBackupSep19 = React.lazy(() => import('@/pages/landing-mobile-backup-sep19'));
 const AdminRoomPage = React.lazy(() => import('./pages/AdminRoom'));
+const AdminWorkspacePage = React.lazy(() => import('./pages/AdminWorkspace'));
 const DeckEditorPage = React.lazy(() => import('./pages/DeckEditor'));
 const DemoAnimaticPage = React.lazy(() => import('@/components/role-room/demo/DemoAnimaticPage'));
 const PostAgentLinkPage = React.lazy(() => import('@/components/role-room/PostAgentLinkPage'));
@@ -705,6 +706,15 @@ function App() {
                       </Box>
                     }>
                       <AdminRoomPage />
+                    </React.Suspense>
+                  </Route>
+                  <Route path="/admin-workspace">
+                    <React.Suspense fallback={
+                      <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+                        <CircularProgress />
+                      </Box>
+                    }>
+                      <AdminWorkspacePage />
                     </React.Suspense>
                   </Route>
                   <Route path="/admin-room/deck/:deckId">
