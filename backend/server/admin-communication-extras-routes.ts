@@ -207,16 +207,25 @@ export function setupAdminCommunicationExtrasRoutes(
     if (!session) return;
     try {
       const body = (req.body || {}) as Record<string, unknown>;
-      const chatId = typeof body.chatId === "string" ? body.chatId.trim() : "";
+      let chatId = typeof body.chatId === "string" ? body.chatId.trim() : "";
+      const targetUserId = typeof body.userId === "string" ? body.userId.trim() : "";
       const message =
         typeof body.message === "string" ? body.message.trim() : "";
 
-      if (!chatId) {
-        return res.status(400).json({ error: "chatId is required" });
-      }
       if (!message) {
         return res.status(400).json({ error: "message is required" });
       }
+      if (!chatId && !targetUserId) {
+        return res.status(400).json({ error: "chatId or userId is required" });
+      }
+
+      // "Send melding til bruker": deterministisk admin↔bruker-DM-kanal. Bruker-
+      // id-en ligger i kanalnavnet OG vi sikrer en deltaker-rad, slik at DM-en
+      // dukker opp i brukerens egen samtaleliste — conversations-filteret matcher
+      // på begge (navn ILIKE %id% eller participant-rad).
+      const isDm = !chatId && Boolean(targetUserId);
+      if (isDm) chatId = `dm-admin-${targetUserId}`;
+      const channelName = isDm ? `Admin-DM ${targetUserId}` : `Chat ${chatId.slice(0, 8)}`;
 
       // Sørg for at kanalen eksisterer (admin kan skrive til hvilken som helst chat).
       const existing = await pool.query<{ id: string }>(
@@ -227,11 +236,24 @@ export function setupAdminCommunicationExtrasRoutes(
         await pool.query(
           `
             INSERT INTO communication_channels (id, name, type, is_active, created_at, updated_at)
-            VALUES ($1, $2, 'chat', TRUE, NOW(), NOW())
+            VALUES ($1, $2, $3, TRUE, NOW(), NOW())
             ON CONFLICT (id) DO NOTHING
           `,
-          [chatId, `Chat ${chatId.slice(0, 8)}`],
+          [chatId, channelName, isDm ? "dm" : "chat"],
         );
+      }
+      if (isDm) {
+        const hasParticipant = await pool.query(
+          `SELECT 1 FROM communication_participants WHERE channel_id = $1 AND user_id = $2 LIMIT 1`,
+          [chatId, targetUserId],
+        );
+        if (hasParticipant.rowCount === 0) {
+          await pool.query(
+            `INSERT INTO communication_participants (id, channel_id, user_id, role, is_active, joined_at)
+             VALUES ($1, $2, $3, 'member', TRUE, NOW())`,
+            [crypto.randomUUID(), chatId, targetUserId],
+          );
+        }
       }
 
       const messageId = crypto.randomUUID();

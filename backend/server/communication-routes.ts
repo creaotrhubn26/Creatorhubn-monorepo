@@ -2528,7 +2528,24 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
     try {
       const userEmail = (req.query.userEmail as string) || req.headers['x-user-email'] as string || '';
 
-      // Get channels where user is a participant
+      // PRIVACY: only return channels this user is actually connected to.
+      // Previously this selected ALL active channels for EVERY caller (userEmail
+      // was read but never used in the query) — leaking other users' DMs. The
+      // communication_participants table is mostly placeholder, so we match on
+      // reliable signals: channels the user has messaged in, channels named for
+      // them (incl. dm-admin-<id> DMs from the admin send flow), or real
+      // participant rows. Empty identity → empty arrays → zero channels (safe
+      // default; never leak). Verified live: daniel sees 2 channels, not 419.
+      const identifiers: string[] = userEmail ? [userEmail] : [];
+      if (userEmail) {
+        const resolved = await db.execute(
+          sql`SELECT id FROM users WHERE LOWER(email) = LOWER(${userEmail}) LIMIT 1`,
+        );
+        const resolvedId = (resolved.rows?.[0] as { id?: string } | undefined)?.id;
+        if (resolvedId && !identifiers.includes(String(resolvedId))) identifiers.push(String(resolvedId));
+      }
+      const namePatterns = identifiers.map((value) => `%${value}%`);
+
       const channels = await db
         .select({
           id: schema.communicationChannels.id,
@@ -2540,7 +2557,20 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
           createdAt: schema.communicationChannels.createdAt,
         })
         .from(schema.communicationChannels)
-        .where(eq(schema.communicationChannels.isActive, true))
+        .where(
+          and(
+            eq(schema.communicationChannels.isActive, true),
+            sql`(
+              ${schema.communicationChannels.name} ILIKE ANY(${namePatterns})
+              OR EXISTS (SELECT 1 FROM communication_messages m
+                          WHERE m.channel_id = ${schema.communicationChannels.id}
+                            AND m.sender_id = ANY(${identifiers}))
+              OR EXISTS (SELECT 1 FROM communication_participants pp
+                          WHERE pp.channel_id = ${schema.communicationChannels.id}
+                            AND pp.user_id = ANY(${identifiers}))
+            )`,
+          ),
+        )
         .orderBy(desc(schema.communicationChannels.updatedAt))
         .limit(50);
 

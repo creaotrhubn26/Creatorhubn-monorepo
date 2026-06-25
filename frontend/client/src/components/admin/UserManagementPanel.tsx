@@ -63,6 +63,7 @@ import {
   Folder as FolderIcon,
   School as SchoolIcon,
   Business as BusinessIcon,
+  Email as EmailIcon,
 } from '@mui/icons-material';
 import { useToast } from '@/hooks/use-toast';
 import AdminInviteSystem from '../../pages/admin-invite-system.tsx';
@@ -190,6 +191,11 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
   const [editRoleOpen, setEditRoleOpen] = useState(false);
   const [editRoleValue, setEditRoleValue] = useState<string>('user');
   const [accountingDialogOpen, setAccountingDialogOpen] = useState(false);
+  const [messageOpen, setMessageOpen] = useState(false);
+  const [messageText, setMessageText] = useState('');
+  const [messageSending, setMessageSending] = useState(false);
+  const [messageError, setMessageError] = useState<string | null>(null);
+  const [messageSentTo, setMessageSentTo] = useState<string | null>(null);
   const [accountingForm, setAccountingForm] = useState({
     businessName: '',
     organizationNumber: '',
@@ -947,6 +953,34 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
     handleMenuClose();
   };
 
+  const handleOpenMessageDialog = () => {
+    setMessageError(null);
+    setMessageOpen(true);
+    handleMenuClose();
+  };
+
+  // Sends an admin → user direct message. The backend resolves/creates a
+  // deterministic dm-admin-<userId> channel (+ participant row) so it lands in
+  // the user's CreatorHub chat widget — see admin-communication-extras-routes.
+  const handleSendMessage = async () => {
+    if (!selectedUser || !messageText.trim()) return;
+    setMessageSending(true);
+    setMessageError(null);
+    try {
+      await apiRequest('/api/admin/communication/send', {
+        method: 'POST',
+        body: { userId: selectedUser.id, message: messageText.trim() },
+      });
+      setMessageSentTo(selectedUser.email || selectedUser.id);
+      setMessageOpen(false);
+      setMessageText('');
+    } catch (err) {
+      setMessageError(err instanceof Error ? err.message : 'Kunne ikke sende meldingen.');
+    } finally {
+      setMessageSending(false);
+    }
+  };
+
   const handleImpersonate = () => {
     if (selectedUser?.accountUserId) {
       impersonateMutation.mutate(selectedUser.accountUserId);
@@ -1187,6 +1221,10 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
       <MenuItem onClick={handleImpersonate} disabled={!selectedUser?.canImpersonate}>
         <SecurityIcon sx={{ mr: 1, fontSize: 18 }} />
         Impersoner bruker
+      </MenuItem>
+      <MenuItem onClick={handleOpenMessageDialog} disabled={!selectedUser}>
+        <EmailIcon sx={{ mr: 1, fontSize: 18 }} />
+        Send melding
       </MenuItem>
       {selectedUser?.status === 'pending' ? (
         <MenuItem
@@ -1550,6 +1588,49 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
       <EditRoleDialog />
       <EditProfessionDialog />
       <AccountingActivationDialog />
+
+      {/* Send melding til bruker — inlined (ikke render-helper) så TextField
+          beholder fokus mellom tastetrykk. */}
+      <Dialog open={messageOpen} onClose={() => setMessageOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          Send melding{selectedUser ? ` til ${selectedUser.email || selectedUser.id}` : ''}
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+            Meldingen havner i brukerens CreatorHub-chat (Direktemelding fra admin).
+          </Typography>
+          {messageError ? (
+            <Typography variant="body2" sx={{ color: 'error.main', mb: 1 }}>{messageError}</Typography>
+          ) : null}
+          <TextField
+            autoFocus
+            fullWidth
+            multiline
+            minRows={3}
+            label="Melding"
+            value={messageText}
+            onChange={(e) => setMessageText(e.target.value)}
+            disabled={messageSending}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setMessageOpen(false)} disabled={messageSending}>Avbryt</Button>
+          <Button
+            variant="contained"
+            onClick={handleSendMessage}
+            disabled={messageSending || !messageText.trim() || !selectedUser}
+            sx={{ bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67e00' } }}
+          >
+            {messageSending ? 'Sender…' : 'Send'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+      <Snackbar
+        open={Boolean(messageSentTo)}
+        autoHideDuration={4000}
+        onClose={() => setMessageSentTo(null)}
+        message={messageSentTo ? `Melding sendt til ${messageSentTo}` : ''}
+      />
 
       {/* Header */}
       <Box
