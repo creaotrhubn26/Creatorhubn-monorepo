@@ -1,4 +1,4 @@
--- 0336_admin_workspace_cases.sql
+-- 0341_admin_workspace_cases.sql
 --
 -- «Saker»-modul for AdminWorkspace (Notion+Slack-stil intern flate, kun
 -- daniel@creatorhubn.com per i dag).
