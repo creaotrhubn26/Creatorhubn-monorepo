@@ -10,6 +10,8 @@
  *
  * Hver type har { type: "..." } som diskriminator + valgfrie ekstra-felt.
  * Validator returnerer { ok: true, value } | { ok: false, error }.
+ *
+ * Mig 0350 utvidet engine med 6 nye triggers + 9 nye actions.
  */
 
 // ─── Trigger-typer ────────────────────────────────────────────────────
@@ -22,7 +24,14 @@ export type WorkflowTriggerType =
   | "deal.amount_changed"
   | "deal.expected_close_changed"
   | "recommendation.published"
-  | "manual";
+  | "manual"
+  // mig 0350 — nye triggers
+  | "email.opened"
+  | "email.link_clicked"
+  | "meeting.booked"
+  | "meeting.no_show"
+  | "proposal.opened"
+  | "contract.signed";
 
 export interface TriggerLeadCreated {
   type: "lead.created";
@@ -61,6 +70,33 @@ export interface TriggerManual {
   type: "manual";
 }
 
+// ─── Nye triggers (mig 0350) ────────────────────────────────────────
+export interface TriggerEmailOpened {
+  type: "email.opened";
+  /** Match på spesifikk email-kampanje/template (valgfri) */
+  email_id?: string;
+}
+export interface TriggerEmailLinkClicked {
+  type: "email.link_clicked";
+  /** Substring/glob-match på URL (case-insensitive) */
+  link_url_pattern?: string;
+}
+export interface TriggerMeetingBooked {
+  type: "meeting.booked";
+  meeting_type?: "discovery" | "demo" | "closing" | "followup" | "other";
+}
+export interface TriggerMeetingNoShow {
+  type: "meeting.no_show";
+}
+export interface TriggerProposalOpened {
+  type: "proposal.opened";
+  proposal_id?: string;
+}
+export interface TriggerContractSigned {
+  type: "contract.signed";
+  provider?: string;
+}
+
 export type WorkflowTrigger =
   | TriggerLeadCreated
   | TriggerLeadStatusChanged
@@ -70,7 +106,13 @@ export type WorkflowTrigger =
   | TriggerDealAmountChanged
   | TriggerDealExpectedCloseChanged
   | TriggerRecommendationPublished
-  | TriggerManual;
+  | TriggerManual
+  | TriggerEmailOpened
+  | TriggerEmailLinkClicked
+  | TriggerMeetingBooked
+  | TriggerMeetingNoShow
+  | TriggerProposalOpened
+  | TriggerContractSigned;
 
 // ─── Conditions ───────────────────────────────────────────────────────
 export type WorkflowConditionOp = ">" | "<" | "=" | ">=" | "<=" | "!=";
@@ -117,7 +159,17 @@ export type WorkflowActionType =
   | "add_tag"
   | "notify_channel"
   | "wait"
-  | "ai_pitch_generate";
+  | "ai_pitch_generate"
+  // mig 0350 — nye actions
+  | "schedule_call"
+  | "book_meeting"
+  | "update_lead_fields"
+  | "post_to_webhook"
+  | "trigger_zapier"
+  | "send_internal_notification"
+  | "remove_tag"
+  | "archive_lead"
+  | "revive_lead";
 
 export interface ActionSendEmail {
   type: "send_email";
@@ -168,6 +220,83 @@ export interface ActionAiPitchGenerate {
   save_to_notes: boolean;
 }
 
+// ─── Nye actions (mig 0350) ─────────────────────────────────────────
+/**
+ * schedule_call — opprett en planlagt telefonkall i leadgrid_phone_calls.
+ *
+ * `when` aksepterer:
+ *   - ISO 8601 datetime ("2026-07-01T09:00:00Z")
+ *   - relative strings: "in_X_minutes" | "in_X_hours" | "in_X_days"
+ */
+export interface ActionScheduleCall {
+  type: "schedule_call";
+  when: string;
+  notes?: string;
+  assignee?: "owner" | "manager" | { user_id: string };
+}
+
+export interface ActionBookMeeting {
+  type: "book_meeting";
+  meeting_type?: "discovery" | "demo" | "closing" | "followup" | "other";
+  when: string; // ISO datetime eller "in_X_days"
+  duration_minutes?: number;
+  send_invite?: boolean;
+  title?: string;
+  notes?: string;
+}
+
+/**
+ * update_lead_fields — generisk PATCH lead med whitelisted felt.
+ * Whitelist håndheves i engine (ikke validator) for å la nye felt
+ * legges til uten å bryte eksisterende workflows.
+ */
+export interface ActionUpdateLeadFields {
+  type: "update_lead_fields";
+  fields: Record<string, unknown>;
+}
+
+export interface ActionPostToWebhook {
+  type: "post_to_webhook";
+  destination_id: string;
+  /** Templated JSON-string med {{lead.x}} / {{event.x}} placeholders */
+  payload_template?: string;
+}
+
+export interface ActionTriggerZapier {
+  type: "trigger_zapier";
+  destination_id: string;
+  /** Statisk payload-objekt som flettes med standard lead/event-data */
+  payload?: Record<string, unknown>;
+}
+
+export type InternalNotificationRecipient =
+  | "owner"
+  | "assignee"
+  | "manager"
+  | "admin"
+  | { user_id: string };
+
+export interface ActionSendInternalNotification {
+  type: "send_internal_notification";
+  recipient: InternalNotificationRecipient;
+  title: string;
+  body?: string;
+}
+
+export interface ActionRemoveTag {
+  type: "remove_tag";
+  tag: string;
+}
+
+export interface ActionArchiveLead {
+  type: "archive_lead";
+  reason?: string;
+}
+
+export interface ActionReviveLead {
+  type: "revive_lead";
+}
+
 export type WorkflowAction =
   | ActionSendEmail
   | ActionSendSms
@@ -179,7 +308,16 @@ export type WorkflowAction =
   | ActionAddTag
   | ActionNotifyChannel
   | ActionWait
-  | ActionAiPitchGenerate;
+  | ActionAiPitchGenerate
+  | ActionScheduleCall
+  | ActionBookMeeting
+  | ActionUpdateLeadFields
+  | ActionPostToWebhook
+  | ActionTriggerZapier
+  | ActionSendInternalNotification
+  | ActionRemoveTag
+  | ActionArchiveLead
+  | ActionReviveLead;
 
 // ─── Validators ───────────────────────────────────────────────────────
 type ValidResult<T> = { ok: true; value: T } | { ok: false; error: string };
@@ -194,6 +332,12 @@ const VALID_TRIGGER_TYPES: WorkflowTriggerType[] = [
   "deal.expected_close_changed",
   "recommendation.published",
   "manual",
+  "email.opened",
+  "email.link_clicked",
+  "meeting.booked",
+  "meeting.no_show",
+  "proposal.opened",
+  "contract.signed",
 ];
 
 const VALID_ACTION_TYPES: WorkflowActionType[] = [
@@ -208,9 +352,62 @@ const VALID_ACTION_TYPES: WorkflowActionType[] = [
   "notify_channel",
   "wait",
   "ai_pitch_generate",
+  "schedule_call",
+  "book_meeting",
+  "update_lead_fields",
+  "post_to_webhook",
+  "trigger_zapier",
+  "send_internal_notification",
+  "remove_tag",
+  "archive_lead",
+  "revive_lead",
 ];
 
 const VALID_OPS: WorkflowConditionOp[] = [">", "<", "=", ">=", "<=", "!="];
+
+const VALID_MEETING_TYPES = new Set([
+  "discovery",
+  "demo",
+  "closing",
+  "followup",
+  "other",
+]);
+
+/**
+ * Whitelist for update_lead_fields. Kun disse feltene kan workflows skrive.
+ * Eksporteres så engine + tester kan dele samme sannhets-kilde.
+ */
+export const UPDATE_LEAD_FIELDS_WHITELIST = new Set<string>([
+  "name",
+  "business_name",
+  "company",
+  "phone",
+  "email",
+  "notes",
+  "tags",
+  "custom_fields",
+  "deal_amount",
+  "expected_close_date",
+  "lead_status",
+  "lead_temperature",
+  "lead_category",
+  "follow_up_priority",
+  "next_follow_up_at",
+  "city",
+  "address",
+]);
+
+function isRelativeWhen(s: string): boolean {
+  return /^in_\d+_(minutes?|hours?|days?)$/i.test(s);
+}
+
+function isValidWhen(raw: unknown): boolean {
+  if (typeof raw !== "string" || raw.length === 0) return false;
+  if (isRelativeWhen(raw)) return true;
+  // Best-effort ISO-8601 parse
+  const t = Date.parse(raw);
+  return Number.isFinite(t);
+}
 
 export function validateTrigger(
   raw: unknown,
@@ -238,6 +435,33 @@ export function validateTrigger(
         !["hot", "warm", "cold", "ready"].includes(t.to)
       )
         return { ok: false, error: "trigger_temperature_invalid" };
+      break;
+    case "meeting.booked":
+      if (
+        t.meeting_type !== undefined &&
+        (typeof t.meeting_type !== "string" ||
+          !VALID_MEETING_TYPES.has(t.meeting_type))
+      )
+        return { ok: false, error: "trigger_meeting_type_invalid" };
+      break;
+    case "email.opened":
+      if (t.email_id !== undefined && typeof t.email_id !== "string")
+        return { ok: false, error: "trigger_email_id_must_be_string" };
+      break;
+    case "email.link_clicked":
+      if (
+        t.link_url_pattern !== undefined &&
+        typeof t.link_url_pattern !== "string"
+      )
+        return { ok: false, error: "trigger_link_url_pattern_must_be_string" };
+      break;
+    case "proposal.opened":
+      if (t.proposal_id !== undefined && typeof t.proposal_id !== "string")
+        return { ok: false, error: "trigger_proposal_id_must_be_string" };
+      break;
+    case "contract.signed":
+      if (t.provider !== undefined && typeof t.provider !== "string")
+        return { ok: false, error: "trigger_provider_must_be_string" };
       break;
   }
   return { ok: true, value: raw as WorkflowTrigger };
@@ -340,6 +564,92 @@ export function validateAction(raw: unknown): ValidResult<WorkflowAction> {
     case "ai_pitch_generate":
       if (typeof a.save_to_notes !== "boolean")
         return { ok: false, error: "action_save_to_notes_required" };
+      break;
+
+    // ── Nye actions (mig 0350) ───────────────────────────────────────
+    case "schedule_call":
+      if (!isValidWhen(a.when))
+        return { ok: false, error: "action_schedule_when_invalid" };
+      if (a.notes !== undefined && typeof a.notes !== "string")
+        return { ok: false, error: "action_notes_must_be_string" };
+      break;
+    case "book_meeting":
+      if (!isValidWhen(a.when))
+        return { ok: false, error: "action_book_when_invalid" };
+      if (
+        a.meeting_type !== undefined &&
+        (typeof a.meeting_type !== "string" ||
+          !VALID_MEETING_TYPES.has(a.meeting_type as string))
+      )
+        return { ok: false, error: "action_meeting_type_invalid" };
+      if (
+        a.duration_minutes !== undefined &&
+        (typeof a.duration_minutes !== "number" ||
+          a.duration_minutes <= 0 ||
+          a.duration_minutes > 60 * 8)
+      )
+        return { ok: false, error: "action_duration_minutes_invalid" };
+      break;
+    case "update_lead_fields":
+      if (!a.fields || typeof a.fields !== "object")
+        return { ok: false, error: "action_fields_required" };
+      if (Object.keys(a.fields as Record<string, unknown>).length === 0)
+        return { ok: false, error: "action_fields_empty" };
+      // NB: whitelist sjekkes i engine — vi vil ikke avvise hele workflow
+      // hvis bruker prøvde å skrive ett ikke-tillatt felt; vi filtrerer
+      // det heller bort med en advarsel i execution-loggen.
+      break;
+    case "post_to_webhook":
+    case "trigger_zapier":
+      if (
+        typeof a.destination_id !== "string" ||
+        a.destination_id.length === 0
+      )
+        return { ok: false, error: "action_destination_id_required" };
+      if (
+        a.type === "post_to_webhook" &&
+        a.payload_template !== undefined &&
+        typeof a.payload_template !== "string"
+      )
+        return { ok: false, error: "action_payload_template_must_be_string" };
+      if (
+        a.type === "trigger_zapier" &&
+        a.payload !== undefined &&
+        (typeof a.payload !== "object" || a.payload === null)
+      )
+        return { ok: false, error: "action_payload_must_be_object" };
+      break;
+    case "send_internal_notification":
+      if (
+        a.recipient === undefined ||
+        (typeof a.recipient !== "string" && typeof a.recipient !== "object")
+      )
+        return { ok: false, error: "action_recipient_required" };
+      if (typeof a.recipient === "string") {
+        if (
+          !["owner", "assignee", "manager", "admin"].includes(a.recipient)
+        )
+          return { ok: false, error: "action_recipient_invalid" };
+      } else {
+        const rec = a.recipient as Record<string, unknown>;
+        if (typeof rec.user_id !== "string" || rec.user_id.length === 0)
+          return { ok: false, error: "action_recipient_user_id_invalid" };
+      }
+      if (typeof a.title !== "string" || a.title.length === 0)
+        return { ok: false, error: "action_title_required" };
+      if (a.body !== undefined && typeof a.body !== "string")
+        return { ok: false, error: "action_body_must_be_string" };
+      break;
+    case "remove_tag":
+      if (typeof a.tag !== "string" || a.tag.length === 0)
+        return { ok: false, error: "action_tag_required" };
+      break;
+    case "archive_lead":
+      if (a.reason !== undefined && typeof a.reason !== "string")
+        return { ok: false, error: "action_reason_must_be_string" };
+      break;
+    case "revive_lead":
+      // Ingen ekstra felt
       break;
   }
   return { ok: true, value: raw as WorkflowAction };

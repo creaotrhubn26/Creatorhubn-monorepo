@@ -78,6 +78,12 @@ struct LeadgridWorkflowTriggerSummary: Codable, Hashable {
     let min: Double?
     let max: Double?
     let from: String?
+    // mig 0350 — nye trigger-config-felt
+    let emailId: String?
+    let linkUrlPattern: String?
+    let meetingType: String?
+    let proposalId: String?
+    let provider: String?
 }
 
 struct LeadgridWorkflowActionSummary: Codable, Hashable {
@@ -92,6 +98,15 @@ struct LeadgridWorkflowActionSummary: Codable, Hashable {
     let saveToNotes: Bool?
     let userId: String?
     let status: String?
+    // mig 0350 — nye action-felt
+    let when: String?
+    let notes: String?
+    let meetingType: String?
+    let destinationId: String?
+    let payloadTemplate: String?
+    let recipient: String?
+    let body: String?
+    let reason: String?
 }
 
 struct LeadgridWorkflowTemplatesResponse: Codable {

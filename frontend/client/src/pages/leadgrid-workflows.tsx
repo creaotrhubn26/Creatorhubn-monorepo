@@ -71,6 +71,13 @@ const TRIGGER_TYPES = [
   { value: "deal.amount_changed", label: "Deal-amount endret" },
   { value: "recommendation.published", label: "NBA publisert" },
   { value: "manual", label: "Manuelt utløst" },
+  // mig 0350 — 6 nye triggers
+  { value: "email.opened", label: "E-post åpnet" },
+  { value: "email.link_clicked", label: "E-post-lenke klikket" },
+  { value: "meeting.booked", label: "Møte booket" },
+  { value: "meeting.no_show", label: "Møte no-show" },
+  { value: "proposal.opened", label: "Proposal åpnet" },
+  { value: "contract.signed", label: "Kontrakt signert" },
 ];
 
 const ACTION_TYPES = [
@@ -85,6 +92,16 @@ const ACTION_TYPES = [
   { value: "notify_channel", label: "Varsle kanal (Slack/Teams)" },
   { value: "wait", label: "Vent (minutter)" },
   { value: "ai_pitch_generate", label: "AI: Generer pitch" },
+  // mig 0350 — 9 nye actions
+  { value: "schedule_call", label: "Planlegg telefonsamtale" },
+  { value: "book_meeting", label: "Book møte" },
+  { value: "update_lead_fields", label: "Oppdater lead-felter" },
+  { value: "post_to_webhook", label: "Post til webhook" },
+  { value: "trigger_zapier", label: "Trigger Zapier" },
+  { value: "send_internal_notification", label: "Intern varsling" },
+  { value: "remove_tag", label: "Fjern tag" },
+  { value: "archive_lead", label: "Arkiver lead" },
+  { value: "revive_lead", label: "Reviviser lead" },
 ];
 
 interface Workflow {
@@ -181,16 +198,26 @@ export default function LeadgridWorkflowsPage(): JSX.Element {
             Leadgrid-events.
           </Typography>
         </Box>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => {
-            setSelectedWorkflow(null);
-            setShowBuilder(true);
-          }}
-        >
-          Ny workflow
-        </Button>
+        <Stack direction="row" gap={1}>
+          <Button
+            variant="outlined"
+            onClick={() => {
+              window.location.href = "/leadgrid/workflows/webhooks";
+            }}
+          >
+            Webhook-destinasjoner
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => {
+              setSelectedWorkflow(null);
+              setShowBuilder(true);
+            }}
+          >
+            Ny workflow
+          </Button>
+        </Stack>
       </Stack>
 
       <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 3 }}>
@@ -402,6 +429,18 @@ interface BuilderAction {
   duration_minutes?: number;
   save_to_notes?: boolean;
   status?: string;
+  // mig 0350 — nye actions
+  when?: string;
+  notes?: string;
+  meeting_type?: string;
+  fields?: Record<string, unknown>;
+  fields_json?: string;
+  destination_id?: string;
+  payload_template?: string;
+  payload?: Record<string, unknown>;
+  recipient?: string;
+  body?: string;
+  reason?: string;
 }
 
 function WorkflowBuilderDialog({
@@ -415,6 +454,11 @@ function WorkflowBuilderDialog({
   const [description, setDescription] = useState("");
   const [triggerType, setTriggerType] = useState("lead.created");
   const [triggerTo, setTriggerTo] = useState("");
+  const [triggerEmailId, setTriggerEmailId] = useState("");
+  const [triggerLinkPattern, setTriggerLinkPattern] = useState("");
+  const [triggerMeetingType, setTriggerMeetingType] = useState("");
+  const [triggerProposalId, setTriggerProposalId] = useState("");
+  const [triggerContractProvider, setTriggerContractProvider] = useState("");
   const [actions, setActions] = useState<BuilderAction[]>([
     { type: "send_email", template_id: "" },
   ]);
@@ -431,6 +475,30 @@ function WorkflowBuilderDialog({
       ) {
         trigger.to = triggerTo;
       }
+      // mig 0350 — nye trigger-config-felt
+      if (triggerType === "email.opened" && triggerEmailId)
+        trigger.email_id = triggerEmailId;
+      if (triggerType === "email.link_clicked" && triggerLinkPattern)
+        trigger.link_url_pattern = triggerLinkPattern;
+      if (triggerType === "meeting.booked" && triggerMeetingType)
+        trigger.meeting_type = triggerMeetingType;
+      if (triggerType === "proposal.opened" && triggerProposalId)
+        trigger.proposal_id = triggerProposalId;
+      if (triggerType === "contract.signed" && triggerContractProvider)
+        trigger.provider = triggerContractProvider;
+
+      // update_lead_fields: parse fields_json → fields-objekt
+      const cleanedActions = actions.map((a) => {
+        if (a.type === "update_lead_fields" && a.fields_json) {
+          try {
+            return { ...a, fields: JSON.parse(a.fields_json), fields_json: undefined };
+          } catch {
+            throw new Error(`Action #${actions.indexOf(a) + 1}: ugyldig JSON i fields`);
+          }
+        }
+        return a;
+      });
+
       return apiRequest("/api/leadgrid/workflows", {
         method: "POST",
         body: JSON.stringify({
@@ -439,7 +507,7 @@ function WorkflowBuilderDialog({
           trigger_type: triggerType,
           trigger_config: trigger,
           conditions: [],
-          actions,
+          actions: cleanedActions,
         }),
       });
     },
@@ -508,6 +576,58 @@ function WorkflowBuilderDialog({
               onChange={(e) => setTriggerTo(e.target.value)}
               fullWidth
               helperText="For status/stage/temperature: hvilken verdi som skal trigge"
+            />
+          )}
+          {triggerType === "email.opened" && (
+            <TextField
+              label="Email-ID (valgfri)"
+              value={triggerEmailId}
+              onChange={(e) => setTriggerEmailId(e.target.value)}
+              fullWidth
+              helperText="Filtrer på spesifikk e-post-kampanje/template. Tom = alle."
+            />
+          )}
+          {triggerType === "email.link_clicked" && (
+            <TextField
+              label="Lenke-URL-pattern (valgfri)"
+              value={triggerLinkPattern}
+              onChange={(e) => setTriggerLinkPattern(e.target.value)}
+              fullWidth
+              helperText="Substring som må forekomme i URL-en (case-insensitive). F.eks. 'pricing'."
+            />
+          )}
+          {triggerType === "meeting.booked" && (
+            <FormControl fullWidth>
+              <InputLabel>Møte-type (valgfri)</InputLabel>
+              <Select
+                label="Møte-type (valgfri)"
+                value={triggerMeetingType}
+                onChange={(e) => setTriggerMeetingType(String(e.target.value))}
+              >
+                <MenuItem value="">Alle</MenuItem>
+                <MenuItem value="discovery">Discovery</MenuItem>
+                <MenuItem value="demo">Demo</MenuItem>
+                <MenuItem value="closing">Closing</MenuItem>
+                <MenuItem value="followup">Followup</MenuItem>
+                <MenuItem value="other">Annet</MenuItem>
+              </Select>
+            </FormControl>
+          )}
+          {triggerType === "proposal.opened" && (
+            <TextField
+              label="Proposal-ID (valgfri)"
+              value={triggerProposalId}
+              onChange={(e) => setTriggerProposalId(e.target.value)}
+              fullWidth
+            />
+          )}
+          {triggerType === "contract.signed" && (
+            <TextField
+              label="Provider (valgfri)"
+              value={triggerContractProvider}
+              onChange={(e) => setTriggerContractProvider(e.target.value)}
+              fullWidth
+              helperText="docusign / posten_signering / hellosign / manual"
             />
           )}
 
@@ -705,6 +825,179 @@ function ActionConfigFields({
           label="Lagre som lead-notat"
         />
       );
+
+    // ─── Mig 0350 nye actions ──────────────────────────────────────
+    case "schedule_call":
+      return (
+        <Stack spacing={1}>
+          <TextField
+            label="Når (ISO eller 'in_X_days')"
+            value={action.when ?? ""}
+            onChange={(e) => onChange({ when: e.target.value })}
+            fullWidth
+            size="small"
+            helperText="F.eks. 'in_2_days', 'in_4_hours' eller '2026-07-01T09:00:00Z'"
+          />
+          <TextField
+            label="Notater"
+            value={action.notes ?? ""}
+            onChange={(e) => onChange({ notes: e.target.value })}
+            fullWidth
+            size="small"
+          />
+        </Stack>
+      );
+
+    case "book_meeting":
+      return (
+        <Stack spacing={1}>
+          <FormControl size="small" fullWidth>
+            <InputLabel>Møte-type</InputLabel>
+            <Select
+              label="Møte-type"
+              value={action.meeting_type ?? "discovery"}
+              onChange={(e) =>
+                onChange({ meeting_type: String(e.target.value) })
+              }
+            >
+              <MenuItem value="discovery">Discovery</MenuItem>
+              <MenuItem value="demo">Demo</MenuItem>
+              <MenuItem value="closing">Closing</MenuItem>
+              <MenuItem value="followup">Followup</MenuItem>
+              <MenuItem value="other">Annet</MenuItem>
+            </Select>
+          </FormControl>
+          <TextField
+            label="Når"
+            value={action.when ?? ""}
+            onChange={(e) => onChange({ when: e.target.value })}
+            fullWidth
+            size="small"
+            helperText="ISO eller 'in_X_days'/'in_X_hours'"
+          />
+          <TextField
+            label="Varighet (min)"
+            type="number"
+            value={action.duration_minutes ?? 30}
+            onChange={(e) =>
+              onChange({ duration_minutes: Number(e.target.value) })
+            }
+            fullWidth
+            size="small"
+          />
+        </Stack>
+      );
+
+    case "update_lead_fields":
+      return (
+        <TextField
+          label="Fields JSON"
+          value={action.fields_json ?? ""}
+          onChange={(e) => onChange({ fields_json: e.target.value })}
+          fullWidth
+          multiline
+          minRows={3}
+          size="small"
+          helperText='F.eks. {"lead_temperature": "warm", "notes": "Auto-oppfølging trigget"}. Kun whitelistede felt skrives.'
+        />
+      );
+
+    case "post_to_webhook":
+      return (
+        <Stack spacing={1}>
+          <TextField
+            label="Destination ID"
+            value={action.destination_id ?? ""}
+            onChange={(e) => onChange({ destination_id: e.target.value })}
+            fullWidth
+            size="small"
+            helperText="UUID fra webhook-destinasjoner-siden"
+          />
+          <TextField
+            label="Payload-template (valgfri)"
+            value={action.payload_template ?? ""}
+            onChange={(e) => onChange({ payload_template: e.target.value })}
+            fullWidth
+            multiline
+            minRows={3}
+            size="small"
+            helperText='JSON med {{lead.name}} / {{event.foo}} placeholders. Tom = default-shape.'
+          />
+        </Stack>
+      );
+
+    case "trigger_zapier":
+      return (
+        <TextField
+          label="Destination ID"
+          value={action.destination_id ?? ""}
+          onChange={(e) => onChange({ destination_id: e.target.value })}
+          fullWidth
+          size="small"
+        />
+      );
+
+    case "send_internal_notification":
+      return (
+        <Stack spacing={1}>
+          <FormControl size="small" fullWidth>
+            <InputLabel>Mottaker</InputLabel>
+            <Select
+              label="Mottaker"
+              value={action.recipient ?? "owner"}
+              onChange={(e) => onChange({ recipient: String(e.target.value) })}
+            >
+              <MenuItem value="owner">Lead owner</MenuItem>
+              <MenuItem value="assignee">Assignee (= owner)</MenuItem>
+              <MenuItem value="manager">Manager (admin/salgssjef/teamleder)</MenuItem>
+              <MenuItem value="admin">Admin</MenuItem>
+            </Select>
+          </FormControl>
+          <TextField
+            label="Tittel"
+            value={action.title ?? ""}
+            onChange={(e) => onChange({ title: e.target.value })}
+            fullWidth
+            size="small"
+            helperText="Støtter {{lead.name}}, {{lead.score}}, {{event.foo}}"
+          />
+          <TextField
+            label="Body"
+            value={action.body ?? ""}
+            onChange={(e) => onChange({ body: e.target.value })}
+            fullWidth
+            multiline
+            minRows={2}
+            size="small"
+          />
+        </Stack>
+      );
+
+    case "remove_tag":
+      return (
+        <TextField
+          label="Tag som skal fjernes"
+          value={action.tag ?? ""}
+          onChange={(e) => onChange({ tag: e.target.value })}
+          fullWidth
+          size="small"
+        />
+      );
+
+    case "archive_lead":
+      return (
+        <TextField
+          label="Årsak (valgfri)"
+          value={action.reason ?? ""}
+          onChange={(e) => onChange({ reason: e.target.value })}
+          fullWidth
+          size="small"
+        />
+      );
+
+    case "revive_lead":
+      return <Box>(ingen ekstra config)</Box>;
+
     default:
       return <Box />;
   }
