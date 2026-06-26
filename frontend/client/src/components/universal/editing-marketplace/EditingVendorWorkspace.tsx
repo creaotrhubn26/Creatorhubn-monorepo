@@ -45,6 +45,7 @@ import EditingVendorCatalog from "./EditingVendorCatalog";
 import VendorNdaCard from "./VendorNdaCard";
 import VendorPayoutCard from "./VendorPayoutCard";
 import VendorPrototypeFeedbackTool from "./VendorPrototypeFeedbackTool";
+import FeedbackConversation from "./FeedbackConversation";
 import {
   t,
   pillarLabel,
@@ -321,6 +322,7 @@ function PrototypeTesterPanel({
   locale: "no" | "en";
 }) {
   const [showLoop, setShowLoop] = useState(false);
+  const [threadId, setThreadId] = useState<string | null>(null);
   const en = locale === "en";
 
   const myFeedback = useQuery<MyFeedbackItem[]>({
@@ -424,12 +426,16 @@ function PrototypeTesterPanel({
                 return (
                   <Box
                     key={f.id}
+                    onClick={() => setThreadId(f.id)}
                     sx={{
                       p: 1,
                       borderRadius: 1,
                       bgcolor: "background.paper",
                       border: "1px solid",
                       borderColor: "divider",
+                      cursor: "pointer",
+                      transition: "border-color .15s",
+                      "&:hover": { borderColor: "primary.main" },
                     }}
                   >
                     <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1}>
@@ -438,6 +444,11 @@ function PrototypeTesterPanel({
                       </Typography>
                       <Chip
                         size="small"
+                        clickable
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setThreadId(f.id);
+                        }}
                         color={resolved ? "success" : inProgress ? "info" : "default"}
                         label={
                           resolved
@@ -460,6 +471,9 @@ function PrototypeTesterPanel({
                         {f.adminNotes}
                       </Typography>
                     ) : null}
+                    <Typography variant="caption" color="primary.main" sx={{ display: "block", mt: 0.5, fontWeight: 600 }}>
+                      {en ? "💬 Open conversation" : "💬 Åpne samtale"}
+                    </Typography>
                   </Box>
                 );
               })}
@@ -467,6 +481,20 @@ function PrototypeTesterPanel({
           )}
         </Box>
       ) : null}
+
+      <Dialog open={!!threadId} onClose={() => setThreadId(null)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700 }}>
+          {en ? "Conversation with Creatorhub" : "Samtale med Creatorhub"}
+        </DialogTitle>
+        <DialogContent>
+          {threadId ? (
+            <FeedbackConversation feedbackId={threadId} locale={en ? "en" : "no"} viewer="vendor" />
+          ) : null}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setThreadId(null)}>{en ? "Close" : "Lukk"}</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

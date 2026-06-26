@@ -72,6 +72,7 @@ import {
 } from '@mui/icons-material';
 import { PrototypeTesterIcon } from '../icons/PrototypeTesterIcon';
 import { apiRequest, isApiEndpointMissing } from '@/lib/queryClient';
+import FeedbackConversation from '../universal/editing-marketplace/FeedbackConversation';
 import RichTextEditor from '../RichTextEditor';
 import 'quill/dist/quill.snow.css';
 
@@ -1855,6 +1856,14 @@ export default function PrototypeFeedbackPanel({
                 <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block', fontStyle: 'italic' }}>
                   💡 Tips: Bruk malene for konsistent dokumentasjon. Rich text editor støtter formatering, lister, lenker og mer.
                 </Typography>
+              </Box>
+
+              {/* Trådet samtale — admin svarer testeren direkte i tråden */}
+              <Box sx={{ mt: 3 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1, color: '#ff8c00' }}>
+                  💬 Samtale med testeren
+                </Typography>
+                <FeedbackConversation feedbackId={selectedFeedback.id} locale="no" viewer="admin" />
               </Box>
             </Box>
           )}
