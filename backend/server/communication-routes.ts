@@ -2551,80 +2551,51 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
       }
       const namePatterns = identifiers.map((value) => `%${value}%`);
 
-      const channels = await db
-        .select({
-          id: schema.communicationChannels.id,
-          name: schema.communicationChannels.name,
-          type: schema.communicationChannels.type,
-          description: schema.communicationChannels.description,
-          isActive: schema.communicationChannels.isActive,
-          settings: schema.communicationChannels.settings,
-          createdAt: schema.communicationChannels.createdAt,
-        })
-        .from(schema.communicationChannels)
-        .where(
-          and(
-            eq(schema.communicationChannels.isActive, true),
-            sql`(
-              ${schema.communicationChannels.name} ILIKE ANY(${namePatterns}::text[])
-              OR EXISTS (SELECT 1 FROM communication_messages m
-                          WHERE m.channel_id = ${schema.communicationChannels.id}
-                            AND m.sender_id = ANY(${identifiers}::text[]))
-              OR EXISTS (SELECT 1 FROM communication_participants pp
-                          WHERE pp.channel_id = ${schema.communicationChannels.id}
-                            AND pp.user_id = ANY(${identifiers}::text[]))
-            )`,
-          ),
-        )
-        .orderBy(desc(schema.communicationChannels.updatedAt))
-        .limit(50);
+      // Én rå spørring (LATERAL siste-melding + ulest-antall). Bevisst IKKE
+      // drizzle sin query-builder her: å interpolere et JS-array i ANY(${arr})
+      // bandt array-paramet på en måte som ga 500 i prod. Eksplisitte
+      // ARRAY[...]-konstruktorer via sql.join er bulletproof (verifisert mot prod).
+      const idList = sql.join(identifiers.map((value) => sql`${value}`), sql`, `);
+      const patList = sql.join(namePatterns.map((value) => sql`${value}`), sql`, `);
+      const rowsResult = await db.execute(sql`
+        SELECT cc.id, cc.name, cc.type, cc.settings, cc.created_at,
+               lm.content AS last_content, lm.created_at AS last_at,
+               COALESCE(uc.cnt, 0) AS unread
+          FROM communication_channels cc
+          LEFT JOIN LATERAL (
+            SELECT content, created_at FROM communication_messages
+             WHERE channel_id = cc.id ORDER BY created_at DESC LIMIT 1
+          ) lm ON true
+          LEFT JOIN LATERAL (
+            SELECT count(*)::int AS cnt FROM communication_messages
+             WHERE channel_id = cc.id AND is_read = false
+          ) uc ON true
+         WHERE cc.is_active = true
+           AND (
+             cc.name ILIKE ANY(ARRAY[${patList}]::text[])
+             OR EXISTS (SELECT 1 FROM communication_messages m
+                         WHERE m.channel_id = cc.id AND m.sender_id = ANY(ARRAY[${idList}]::text[]))
+             OR EXISTS (SELECT 1 FROM communication_participants pp
+                         WHERE pp.channel_id = cc.id AND pp.user_id = ANY(ARRAY[${idList}]::text[]))
+           )
+         ORDER BY cc.updated_at DESC LIMIT 50
+      `);
 
-      // Build conversations with last message info
-      const conversations = await Promise.all(
-        channels.map(async (channel) => {
-          // Get last message in channel
-          const lastMessages = await db
-            .select({
-              content: schema.communicationMessages.content,
-              createdAt: schema.communicationMessages.createdAt,
-              senderId: schema.communicationMessages.senderId,
-            })
-            .from(schema.communicationMessages)
-            .where(eq(schema.communicationMessages.channelId, channel.id))
-            .orderBy(desc(schema.communicationMessages.createdAt))
-            .limit(1);
-
-          const lastMsg = lastMessages[0] || null;
-
-          // Count unread
-          const unreadResult = await db
-            .select({ count: sql<number>`count(*)::int` })
-            .from(schema.communicationMessages)
-            .where(
-              and(
-                eq(schema.communicationMessages.channelId, channel.id),
-                eq(schema.communicationMessages.isRead, false)
-              )
-            );
-
-          const settings = (channel.settings || {}) as Record<string, any>;
-
-          return {
-            id: channel.id,
-            name: channel.name,
-            clientName: settings.clientName || channel.name,
-            email: settings.email || '',
-            avatar: settings.avatar || null,
-            isOnline: false,
-            type: channel.type,
-            createdAt: channel.createdAt,
-            lastMessage: lastMsg
-              ? { content: lastMsg.content, timestamp: lastMsg.createdAt }
-              : null,
-            unreadCount: unreadResult[0]?.count || 0,
-          };
-        })
-      );
+      const conversations = ((rowsResult.rows ?? []) as Array<Record<string, any>>).map((r) => {
+        const settings = (r.settings || {}) as Record<string, any>;
+        return {
+          id: r.id,
+          name: r.name,
+          clientName: settings.clientName || r.name,
+          email: settings.email || '',
+          avatar: settings.avatar || null,
+          isOnline: false,
+          type: r.type,
+          createdAt: r.created_at,
+          lastMessage: r.last_content ? { content: r.last_content, timestamp: r.last_at } : null,
+          unreadCount: Number(r.unread || 0),
+        };
+      });
 
       res.json({ conversations });
     } catch (error) {
