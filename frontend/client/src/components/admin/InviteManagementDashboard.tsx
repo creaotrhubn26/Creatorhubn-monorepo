@@ -515,6 +515,20 @@ export default function InviteManagementDashboard() {
                     variant="outlined"
                     size="small"
                   />
+                  {(() => {
+                    // Team-forespørsel? Parses fra «[Team: N medlemmer]» i meldingen.
+                    // Ved godkjenning settes prototype-master + max_team_size = N.
+                    const msg = String((invite as any).message || "");
+                    const m = msg.match(/\[Team:\s*(\d+)\s*medlemmer?\]/i);
+                    return m ? (
+                      <Chip
+                        label={`👥 Team (${m[1]})`}
+                        size="small"
+                        color="info"
+                        sx={{ ml: 0.5, fontWeight: 700 }}
+                      />
+                    ) : null;
+                  })()}
                 </TableCell>
 
                 {/* Subscription Plan */}
