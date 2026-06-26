@@ -30,7 +30,7 @@ interface ActionDef {
   statuses: string[];
   color: "primary" | "success" | "warning";
   reason?: { no: string; en: string }; // hvis satt → krever en kort begrunnelse
-  build: (reason: string) => { url: string; body?: Record<string, unknown> };
+  build: (jobId: string, reason: string) => { url: string; body?: Record<string, unknown> };
 }
 
 const ACTIONS: ActionDef[] = [
