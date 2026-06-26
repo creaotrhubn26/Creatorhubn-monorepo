@@ -242,6 +242,7 @@ struct MainTabView: View {
 /// uendret, så vi ikke endrer hverken backend eller delflyter.
 struct MoreTabView: View {
     @Environment(AppState.self) private var state
+    @State private var importSheetOpen = false
 
     var body: some View {
         NavigationStack {
@@ -307,6 +308,15 @@ struct MoreTabView: View {
                         }
                     }
                 }
+                Section("Data") {
+                    Button {
+                        importSheetOpen = true
+                    } label: {
+                        moreRow(icon: "square.and.arrow.down.fill", color: .purple,
+                                title: "Importer leads")
+                    }
+                    .buttonStyle(.plain)
+                }
                 Section("Innstillinger") {
                     NavigationLink {
                         OrgSettingsView()
@@ -316,6 +326,9 @@ struct MoreTabView: View {
                 }
             }
             .navigationTitle("Mer")
+            .sheet(isPresented: $importSheetOpen) {
+                LeadgridImportSheet()
+            }
         }
     }
 

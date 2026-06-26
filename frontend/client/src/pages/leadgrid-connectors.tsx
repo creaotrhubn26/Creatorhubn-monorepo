@@ -42,6 +42,39 @@ interface Connector {
 }
 
 const CONNECTORS: Connector[] = [
+  // Import (native)
+  {
+    id: "csv_import",
+    name: "CSV / Excel-import",
+    description:
+      "Last opp eksisterende lead-lister fra Pipedrive/HubSpot/Excel. 3-stegs wizard m/ column-mapping + dedup.",
+    logo: "📄",
+    status: "live",
+    category: "crm",
+    features: [
+      "CSV + XLSX",
+      "Auto-mapping + manuell mapping",
+      "Dedup på e-post / telefon / navn+by",
+      "Rollback per batch",
+    ],
+    docUrl: "/leadgrid/import",
+  },
+  {
+    id: "url_extract",
+    name: "URL-basert ekstraksjon",
+    description:
+      "Lim inn opptil 20 nettside-/SoMe-URLer — Claude Haiku 4.5 ekstraherer firma-data automatisk.",
+    logo: "🔗",
+    status: "live",
+    category: "automation",
+    features: [
+      "Vanlige nettsider",
+      "LinkedIn company pages",
+      "Instagram-profiler",
+      "Rate-limit 20 URL/min",
+    ],
+    docUrl: "/leadgrid/import",
+  },
   // CRM
   {
     id: "salesforce",
