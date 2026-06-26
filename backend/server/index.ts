@@ -65193,7 +65193,21 @@ setupWeddingAssistantSubcontractRoutes({ app, pool });
 setupWeddingAssistantCollabRoutes({ app, pool, requireUserSession, getPricingUserId });
 
 // Slice 9X.53 — Prototype-tester NDA + program-vilkår-flyt (adskilt fra Role Room).
-setupPrototypeTesterInvitesRoutes({ app, pool, getPricingUserId, requireUserSession, requireAdminSession });
+setupPrototypeTesterInvitesRoutes({
+  app, pool, getPricingUserId, requireUserSession, requireAdminSession,
+  // Oppretter (gjenbruker) en brukerkonto for en tester ved aksept, så hvert
+  // teammedlem faktisk har en konto (matchende e-post) å logge inn med (Google
+  // OAuth / e-post-match). Gjenbruker den velprøvde upsertAdminAccountUser.
+  provisionTesterAccount: async (email: string, name: string) => {
+    const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+    return upsertAdminAccountUser({
+      email: String(email || "").trim().toLowerCase(),
+      firstName: parts[0] || null,
+      lastName: parts.length > 1 ? parts.slice(1).join(" ") : null,
+      isActive: true,
+    });
+  },
+});
 
 // /api/invite-requests + /api/invites/admin/requests + /api/proff lookups —
 // 10 endpoints flyttet ut fra index.ts. Sikkerhetsstacken

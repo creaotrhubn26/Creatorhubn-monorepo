@@ -770,6 +770,16 @@ export function setupInviteRequestsRoutes(
         }
 
         const row = result.rows[0];
+        // Opprett brukerkonto for godkjent søker (master). Denne flaten gjorde
+        // det ikke før — kun /process gjorde — så master fikk invite men ingen
+        // konto å logge inn med. Try/catch: skal ikke blokkere godkjenningen.
+        if (status === "approved") {
+          try {
+            await ensureInviteRequestAccessProvisioning(row);
+          } catch (provErr) {
+            console.error("[invites/status] account provisioning failed", provErr);
+          }
+        }
         let testerInvite: any = null;
         const isPrototypeTester =
           status === "approved" &&
