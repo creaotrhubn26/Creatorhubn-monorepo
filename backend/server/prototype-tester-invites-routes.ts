@@ -27,6 +27,8 @@ export interface PrototypeTesterInvitesDeps {
   getPricingUserId: (req: any) => string;
   requireUserSession: (req: any, res: any) => any;
   requireAdminSession: (req: any, res: any) => any;
+  // Oppretter/gjenbruker en brukerkonto for en tester (master/medlem) ved aksept.
+  provisionTesterAccount?: (email: string, name: string) => Promise<any>;
 }
 
 const PROGRAM_DURATION_WEEKS = 12;
@@ -265,7 +267,7 @@ export async function createInviteFromApprovedRequest(
 }
 
 export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDeps): void {
-  const { app, pool, getPricingUserId, requireUserSession, requireAdminSession } = deps;
+  const { app, pool, getPricingUserId, requireUserSession, requireAdminSession, provisionTesterAccount } = deps;
 
   // ─── POST /api/prototype-tester-invites ─────────────────────
   // Admin oppretter invitasjon manuelt (push-modell, i tillegg til
@@ -433,9 +435,27 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
          RETURNING *`,
         [ndaName.slice(0, 200), programTermsVersion, ip, startsAt, endsAt, inv.id],
       );
+
+      // Opprett brukerkonto for testeren (master/medlem) ved aksept, så de
+      // faktisk har en konto med matchende e-post å logge inn med (Google OAuth /
+      // e-post-match → gjenkjennes som tester). Aldri-blokkerende.
+      let accountUserId: string | null = null;
+      if (provisionTesterAccount) {
+        try {
+          const acct = await provisionTesterAccount(
+            String(upd.rows[0].email || ""),
+            ndaName,
+          );
+          accountUserId = acct?.id ? String(acct.id) : null;
+        } catch (acctErr) {
+          console.error("[prototype-tester accept] account provisioning failed", acctErr);
+        }
+      }
+
       res.json({
         success: true,
         invite: rowToInvite(upd.rows[0]),
+        accountCreated: !!accountUserId,
         message: "Velkommen som prototype-tester!",
       });
     } catch (err) {
