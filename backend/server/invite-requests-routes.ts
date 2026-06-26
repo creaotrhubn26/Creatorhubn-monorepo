@@ -641,6 +641,56 @@ export function setupInviteRequestsRoutes(
           request,
           String(provisioning?.userId || ""),
         );
+
+        // Prototype-tester master/team-invite — SAMME bro som /status-flaten,
+        // slik at godkjenning via DENNE flaten (Academy / admin-invite-system)
+        // også oppretter master-inviten. Uten dette ble team-master aldri laget
+        // ved godkjenning her. Try/catch: skal aldri blokkere godkjenningen.
+        const isPrototypeTester =
+          request.selected_plan === "prototype_tester" ||
+          request.plan_name === "Prototype Tester" ||
+          request.source === "prototype_tester_pricing";
+        if (isPrototypeTester) {
+          try {
+            const baseUrl =
+              req.headers.origin || `https://${req.headers.host || "creatorhubn.com"}`;
+            const fullName =
+              [request.first_name, request.last_name].filter(Boolean).join(" ") ||
+              request.email;
+            const grantedPlan =
+              typeof req.body?.grantedPlan === "string"
+                ? req.body.grantedPlan
+                : "tester_all_access";
+            const grantedFeatures = Array.isArray(req.body?.grantedFeatures)
+              ? req.body.grantedFeatures
+              : [];
+            let teamSize = 1;
+            if (typeof request.message === "string") {
+              const m = request.message.match(/\[Team:\s*(\d+)\s*medlemmer?\]/i);
+              if (m) {
+                const n = parseInt(m[1], 10);
+                if (Number.isFinite(n)) teamSize = Math.min(5, Math.max(1, n));
+              }
+            }
+            if (Number.isFinite(req.body?.teamSize)) {
+              teamSize = Math.min(5, Math.max(1, Number(req.body.teamSize)));
+            }
+            await createInviteFromApprovedRequest(
+              pool,
+              String(request.id),
+              request.email,
+              fullName,
+              null,
+              [],
+              String(baseUrl),
+              grantedPlan,
+              grantedFeatures,
+              teamSize,
+            );
+          } catch (bridgeErr) {
+            console.error("[invite-requests/process] prototype master-bridge failed", bridgeErr);
+          }
+        }
       }
 
       console.log(`✅ Invite request ${id} ${status} (${request.email})`);
