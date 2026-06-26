@@ -43,6 +43,16 @@ struct MapScreen: View {
     // for å forhindre at vi spør om permission flere ganger.
     @State private var locationAuthStatus: CLAuthorizationStatus = LocationService.shared.authorizationStatus
     @State private var hasRequestedAuthorization = false
+    // ── Sentrer-på-meg-FAB (PR drop-pin) ───────────────────────────
+    /// Live tracking-mode for kameraet. Toggles via CenterOnMeFAB.
+    @State private var trackingMode: CenterTrackingMode = .off
+    // ── Drop-pin long-press (PR drop-pin) ──────────────────────────
+    /// Hvis non-nil → vis drop-pin-sheet. Settes av long-press på kartet
+    /// (eller long-press på FAB-en for current location).
+    @State private var pendingDropPin: CLLocationCoordinate2D?
+    /// Holder lokalt SwiftUI-koordinat for siste long-press touch slik
+    /// at MapReader-proxy kan konvertere det til geo-koordinat.
+    @State private var longPressLocalPoint: CGPoint?
 
     @State private var camera: MapCameraPosition = .region(
         MKCoordinateRegion(
@@ -107,6 +117,22 @@ struct MapScreen: View {
             .sheet(isPresented: $showResearchStart) {
                 LeadResearchStartView()
             }
+            // Drop-pin sheet (PR drop-pin): vises når brukeren long-press'er
+            // kartet eller holder inne CenterOnMeFAB. Dismissal nuller
+            // pendingDropPin → preview-pin fjernes automatisk.
+            .sheet(item: Binding(
+                get: { pendingDropPin.map { DropPinCoordinate(coordinate: $0) } },
+                set: { newValue in pendingDropPin = newValue?.coordinate }
+            )) { box in
+                LeadgridDropPinSheet(
+                    coordinate: box.coordinate,
+                    onCreated: { _ in
+                        zoomToNewLead(at: box.coordinate)
+                    }
+                )
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+            }
             .toolbar { mapToolbar }
             .task { await requestLocationAuthorizationIfNeeded() }
             .task { await initialZoomIfNeeded() }
@@ -134,6 +160,27 @@ struct MapScreen: View {
 
     @ViewBuilder
     private var mapLayer: some View {
+        // MapReader gir oss en proxy som kan konvertere lokale CGPoint-er
+        // til CLLocationCoordinate2D — kritisk for long-press → drop-pin.
+        MapReader { proxy in
+            mapBody
+                .gesture(longPressMapGesture(proxy: proxy))
+                // Preview-pin tegnes som overlay i ZStack (utenfor selve
+                // Map-treet for å unngå rebuild av MapContent ved hver
+                // long-press).
+                .overlay(alignment: .center) {
+                    if let coord = pendingDropPin,
+                       let p = proxy.convert(coord, to: .local) {
+                        DropPinPreview()
+                            .position(x: p.x, y: p.y)
+                            .allowsHitTesting(false)
+                    }
+                }
+        }
+    }
+
+    @ViewBuilder
+    private var mapBody: some View {
         Map(position: $camera) {
             ForEach(filteredLeads) { lead in
                 Annotation(
@@ -210,16 +257,51 @@ struct MapScreen: View {
             }
         }
         .mapStyle(.standard(elevation: .flat, pointsOfInterest: .excludingAll))
-        // Kart-kontroller: knapp for "sentrer på meg" (toggler tracking),
-        // kompass for orientering og avstandsskala. Apple's egne views
-        // — gratis tilgang til system-tracking-mode (none → follow →
-        // followWithHeading) som er kritisk for en selger i felt.
+        // Kart-kontroller: kompass for orientering og avstandsskala.
+        // `MapUserLocationButton` er fjernet til fordel for den prominente
+        // `CenterOnMeFAB` i bottom-overlayet (PR drop-pin) — feltbruker
+        // trenger en mye større tap-target enn Apple's lille standard-knapp.
         .mapControls {
-            MapUserLocationButton()
             MapCompass()
             MapScaleView()
             MapPitchToggle()
         }
+    }
+
+    /// Long-press på kartet → konverter touch-koordinat til lat/lng via
+    /// MapReader-proxy → trigger drop-pin-sheet. Bruker 0.6s minimum
+    /// duration som matcher Apple Maps/Google Maps standard.
+    private func longPressMapGesture(proxy: MapProxy) -> some Gesture {
+        // SpatialTapGesture eksisterer kun for tap (ikke long-press), så vi
+        // bruker LongPressGesture sequenced med DragGesture (minimumDistance:
+        // 0) for å fange UP-event m/ koordinat. DragGesture-onChanged
+        // skriver siste lokale punkt; long-press-onEnded leser det.
+        return LongPressGesture(minimumDuration: 0.6)
+            .sequenced(before: DragGesture(minimumDistance: 0))
+            .onChanged { value in
+                switch value {
+                case .second(true, let drag):
+                    if let d = drag {
+                        longPressLocalPoint = d.location
+                    }
+                default:
+                    break
+                }
+            }
+            .onEnded { value in
+                switch value {
+                case .second(true, let drag):
+                    let point = drag?.location ?? longPressLocalPoint
+                    longPressLocalPoint = nil
+                    guard let p = point,
+                          let coord = proxy.convert(p, from: .local) else { return }
+                    // Haptic + sheet trigger.
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    pendingDropPin = coord
+                default:
+                    longPressLocalPoint = nil
+                }
+            }
     }
 
     /// Mørkere Leadgrid-purple overlay øverst og nederst for å bryte den
@@ -284,14 +366,67 @@ struct MapScreen: View {
             Spacer()
             HStack {
                 Spacer()
-                NextBestActionFAB { leadId in
-                    if let model = appState.leads.first(where: { $0.id == leadId }) {
-                        quickStatusLead = model
+                VStack(alignment: .trailing, spacing: 12) {
+                    // Prominent sentrer-på-meg-FAB (PR drop-pin) over NBA.
+                    // Plasseres øverst i kolonnen så tommel naturlig treffer
+                    // den ved enhåndsbruk (iPad mini / iPhone-fall-back).
+                    CenterOnMeFAB(
+                        mode: trackingMode,
+                        authStatus: locationAuthStatus,
+                        onToggleMode: { handleCenterToggle() },
+                        onLongPress: { dropPinAtCurrentLocation() },
+                        onPermissionDenied: { openLocationSettings() }
+                    )
+                    NextBestActionFAB { leadId in
+                        if let model = appState.leads.first(where: { $0.id == leadId }) {
+                            quickStatusLead = model
+                        }
                     }
                 }
                 .padding(.trailing, 16)
                 .padding(.bottom, 16)
             }
+        }
+    }
+
+    // MARK: - Center-on-me FAB handlers
+
+    @MainActor
+    private func handleCenterToggle() {
+        let next = trackingMode.next
+        trackingMode = next
+        switch next {
+        case .off:
+            // Ingen kamera-bevegelse; brukerens manuelle pan/zoom respekteres.
+            break
+        case .follow:
+            Task { await centerOnUser(animated: true) }
+        case .followWithHeading:
+            // SwiftUI Map (iOS 17) støtter ikke heading-binding direkte i
+            // alle versjoner — vi sentrer på posisjon m/ tighter span og
+            // overlater rotasjon til Apple sin egne kompass-MapControl.
+            Task { await centerOnUser(animated: true, tighter: true) }
+        }
+    }
+
+    @MainActor
+    private func dropPinAtCurrentLocation() {
+        if let loc = LocationService.shared.currentLocation {
+            pendingDropPin = loc.coordinate
+        } else if locationAuthStatus == .denied || locationAuthStatus == .restricted {
+            openLocationSettings()
+        } else {
+            // Trigger ett oppdaterings-forsøk; viser ikke sheet hvis vi ikke
+            // har fix enda — feilfri silent no-op er bedre enn å droppe på
+            // Oslo-fallback midt i Norge.
+            LocationService.shared.startUpdating()
+        }
+    }
+
+    @MainActor
+    private func openLocationSettings() {
+        if let url = URL(string: UIApplication.openSettingsURLString) {
+            UIApplication.shared.open(url)
         }
     }
 
@@ -432,7 +567,7 @@ struct MapScreen: View {
     }
 
     @MainActor
-    private func centerOnUser(animated: Bool) async {
+    private func centerOnUser(animated: Bool, tighter: Bool = false) async {
         let coord: CLLocationCoordinate2D?
         if let loc = LocationService.shared.currentLocation {
             coord = loc.coordinate
@@ -445,9 +580,10 @@ struct MapScreen: View {
             coord = nil
         }
         guard let center = coord else { return }
+        let delta = tighter ? 0.015 : 0.06
         let region = MKCoordinateRegion(
             center: center,
-            span: .init(latitudeDelta: 0.06, longitudeDelta: 0.06)
+            span: .init(latitudeDelta: delta, longitudeDelta: delta)
         )
         if animated {
             withAnimation(.easeInOut(duration: 0.5)) {
@@ -457,6 +593,18 @@ struct MapScreen: View {
             camera = .region(region)
         }
         hasCenteredOnUser = true
+    }
+
+    /// Auto-zoom kameraet til en nyopprettet lead etter drop-pin.
+    @MainActor
+    private func zoomToNewLead(at coord: CLLocationCoordinate2D) {
+        let region = MKCoordinateRegion(
+            center: coord,
+            span: .init(latitudeDelta: 0.005, longitudeDelta: 0.005)
+        )
+        withAnimation(.easeInOut(duration: 0.6)) {
+            camera = .region(region)
+        }
     }
 
     // MARK: - Overlays for annotasjoner og territories
@@ -633,5 +781,49 @@ private extension Color {
             green: Double((rgb >> 8) & 0xFF) / 255,
             blue: Double(rgb & 0xFF) / 255
         )
+    }
+}
+
+/// Identifiable wrapper for CLLocationCoordinate2D — kreves for å
+/// presentere drop-pin-sheet via `.sheet(item:)`. CLLocationCoordinate2D
+/// er ikke Hashable/Identifiable selv.
+private struct DropPinCoordinate: Identifiable, Hashable {
+    let coordinate: CLLocationCoordinate2D
+    var id: String { "\(coordinate.latitude),\(coordinate.longitude)" }
+
+    static func == (lhs: DropPinCoordinate, rhs: DropPinCoordinate) -> Bool {
+        lhs.coordinate.latitude == rhs.coordinate.latitude
+            && lhs.coordinate.longitude == rhs.coordinate.longitude
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(coordinate.latitude)
+        hasher.combine(coordinate.longitude)
+    }
+}
+
+/// Pulserende preview-pin vist mens drop-pin-sheet er åpen. Tegnes som
+/// SwiftUI-overlay over MapReader istedenfor som MapContent slik at
+/// pulse-animasjonen ikke trigger Map-rebuild.
+private struct DropPinPreview: View {
+    @State private var pulse = false
+
+    private static let brandPurple = Color(red: 0.58, green: 0.20, blue: 0.92)
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(Self.brandPurple.opacity(0.20))
+                .frame(width: pulse ? 64 : 40, height: pulse ? 64 : 40)
+            Circle()
+                .fill(Self.brandPurple.opacity(0.35))
+                .frame(width: 32, height: 32)
+            Image(systemName: "mappin.circle.fill")
+                .font(.system(size: 36, weight: .bold))
+                .foregroundStyle(.white, Self.brandPurple)
+                .shadow(color: .black.opacity(0.35), radius: 4, x: 0, y: 2)
+        }
+        .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: pulse)
+        .onAppear { pulse = true }
     }
 }

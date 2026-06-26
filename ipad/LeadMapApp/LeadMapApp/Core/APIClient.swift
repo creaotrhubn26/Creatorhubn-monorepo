@@ -392,6 +392,48 @@ actor APIClient {
         try await post("/api/admin-room/lead-map/leads/from-card", body: body)
     }
 
+    // MARK: - Drop-pin lead-create (PR feat/leadmap-ipad-center-fab-droppin)
+
+    /// Payload for /leads/from-pin. Tilsvarer manuell pin-drop på iPad-kartet.
+    /// Bruker eksisterende `leads.create`-RBAC + crm_customers-kolonner
+    /// (lat/lng, industry_id, lead_temperature, location_confidence,
+    /// lead_source). Backend defaulter til lead_status='unvisited' og
+    /// kobler eierskap til innlogget user.
+    func createLeadAtPin(
+        name: String,
+        company: String?,
+        phone: String?,
+        email: String?,
+        industryId: String?,
+        leadTemperature: String?,
+        latitude: Double,
+        longitude: Double,
+        address: String?,
+        locationConfidence: String = "exact",
+        leadSource: String = "manual_pin_drop"
+    ) async throws -> String {
+        var body: [String: Any] = [
+            "name": name,
+            "latitude": latitude,
+            "longitude": longitude,
+            "location_confidence": locationConfidence,
+            "lead_source": leadSource,
+        ]
+        if let v = company?.trimmingCharacters(in: .whitespacesAndNewlines), !v.isEmpty { body["company"] = v }
+        if let v = phone?.trimmingCharacters(in: .whitespacesAndNewlines), !v.isEmpty { body["phone"] = v }
+        if let v = email?.trimmingCharacters(in: .whitespacesAndNewlines), !v.isEmpty { body["email"] = v }
+        if let v = industryId?.trimmingCharacters(in: .whitespacesAndNewlines), !v.isEmpty { body["industry_id"] = v }
+        if let v = leadTemperature?.trimmingCharacters(in: .whitespacesAndNewlines), !v.isEmpty { body["lead_temperature"] = v }
+        if let v = address?.trimmingCharacters(in: .whitespacesAndNewlines), !v.isEmpty { body["address"] = v }
+
+        struct CreateResponse: Decodable, Sendable {
+            let ok: Bool
+            let id: String
+        }
+        let resp: CreateResponse = try await post("/api/admin-room/lead-map/leads/from-pin", body: body)
+        return resp.id
+    }
+
     // MARK: - Varsler (PR #622)
 
     func fetchNotifications(unreadOnly: Bool = false, limit: Int = 50) async throws -> NotificationFeedResponse {

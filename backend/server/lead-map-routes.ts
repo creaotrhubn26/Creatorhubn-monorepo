@@ -426,6 +426,94 @@ export function setupLeadMapRoutes(deps: Deps): void {
     },
   );
 
+  // POST /leads/from-pin — manuell pin-drop fra kart (iPad #drop-pin)
+  //
+  // Brukes når salgsrep long-press'er på iPad-kartet og fyller inn et nytt
+  // lead direkte ("standard maps-UX": Apple Maps / Google Maps). I motsetning
+  // til /from-card setter dette lat/lng + (valgfri) industry_id og
+  // lead_temperature, og markerer lead_source='manual_pin_drop' for å
+  // skille det fra OCR-skannede visittkort i analytics.
+  app.post("/api/admin-room/lead-map/leads/from-pin",
+    requireLeadMapPermission("leads.create", { pool, activeSessions }),
+    async (req: Request, res: Response) => {
+      const session = await getUser(req, pool, activeSessions);
+      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+
+      const body = (req.body ?? {}) as {
+        name?: string;
+        company?: string;
+        email?: string;
+        phone?: string;
+        industry_id?: string | null;
+        lead_temperature?: string | null;
+        latitude?: number;
+        longitude?: number;
+        address?: string | null;
+        location_confidence?: string | null;
+        lead_source?: string | null;
+        project_id?: string | null;
+      };
+      if (!body.name?.trim()) {
+        return res.status(400).json({ error: "mangler_navn" });
+      }
+      if (typeof body.latitude !== 'number' || typeof body.longitude !== 'number') {
+        return res.status(400).json({ error: "mangler_koordinat" });
+      }
+      // Defensiv whitelist for lead_temperature — backend cap'es av VARCHAR(10).
+      const validTemps = new Set(['hot', 'warm', 'lukewarm', 'cold', 'ready', 'cool']);
+      const temperature = body.lead_temperature && validTemps.has(body.lead_temperature)
+        ? body.lead_temperature
+        : 'lukewarm';
+      const validConfidences = new Set(['exact', 'geocoded', 'approximate', 'unknown']);
+      const locationConfidence = body.location_confidence && validConfidences.has(body.location_confidence)
+        ? body.location_confidence
+        : 'exact';
+      const leadSource = body.lead_source?.trim() || 'manual_pin_drop';
+
+      try {
+        const r = await pool.query<{ id: string }>(
+          `INSERT INTO crm_customers (
+             id, name, company,
+             phone, email,
+             latitude, longitude, address,
+             industry_id, lead_temperature, location_confidence,
+             lead_status, lead_source,
+             owner_user_id, assigned_user_id,
+             assigned_at, assigned_by_user_id,
+             project_id,
+             created_at, updated_at
+           ) VALUES (
+             gen_random_uuid()::text, $1, $2, $3, $4,
+             $5, $6, $7,
+             $8::uuid, $9, $10,
+             'unvisited', $11,
+             $12, $12, NOW(), $12,
+             $13,
+             NOW(), NOW()
+           ) RETURNING id::text`,
+          [
+            body.name.trim(),
+            body.company?.trim() ?? null,
+            body.phone?.trim() ?? null,
+            body.email?.trim() ?? null,
+            body.latitude,
+            body.longitude,
+            body.address?.trim() ?? null,
+            body.industry_id?.trim() ? body.industry_id.trim() : null,
+            temperature,
+            locationConfidence,
+            leadSource,
+            session.userId,
+            body.project_id ?? null,
+          ],
+        );
+        return res.json({ ok: true, id: r.rows[0].id });
+      } catch (err) {
+        return res.status(500).json({ error: "create_failed", detail: String(err) });
+      }
+    },
+  );
+
   // POST /places/import — importer ett Places-resultat som lead
   app.post("/api/admin-room/lead-map/places/import", async (req: Request, res: Response) => {
     const session = await getUser(req, pool, activeSessions);
