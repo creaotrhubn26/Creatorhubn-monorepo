@@ -2141,6 +2141,28 @@ export default function ProducerClientReviewPanel({
                 })}
               </Stack>
             ) : null}
+            {portalPlatformOptions.some((o) => o.key === 'google_ads') && !portalHidden.has('google_ads') ? (
+              <Box sx={{ mt: 0.6, p: 1.1, borderRadius: 1.5, bgcolor: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.28)' }}>
+                <Typography sx={{ color: '#fde68a', fontSize: '0.73rem', fontWeight: 800, mb: 0.25 }}>
+                  ⚠️ Google Ads krever test-bruker
+                </Typography>
+                <Typography sx={{ color: 'rgba(253,230,138,0.85)', fontSize: '0.7rem', lineHeight: 1.5 }}>
+                  Mens Google-appen er i «Testing»-modus kan kun e-poster som er lagt til som
+                  test-brukere koble Google Ads. Legg til <strong>klientens e-post</strong> under
+                  Google Cloud → OAuth consent screen → <strong>Test users</strong>, ellers får
+                  klienten «Access blocked». For å åpne for alle klienter må appen publiseres/verifiseres.
+                </Typography>
+                <Button
+                  href="https://console.cloud.google.com/auth/audience?project=creatorhubn-com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  size="small"
+                  sx={{ mt: 0.3, textTransform: 'none', color: '#fbbf24', fontWeight: 800, fontSize: '0.7rem', px: 0.5, minWidth: 0 }}
+                >
+                  Åpne Test users i Google Cloud →
+                </Button>
+              </Box>
+            ) : null}
             {clientUploadedFiles.length > 0 ? (
               <Stack direction="row" spacing={0.6} flexWrap="wrap" useFlexGap alignItems="center" sx={{ mt: 0.2 }}>
                 <Typography sx={{ color: 'rgba(148,163,184,0.8)', fontSize: '0.72rem', fontWeight: 600 }}>
