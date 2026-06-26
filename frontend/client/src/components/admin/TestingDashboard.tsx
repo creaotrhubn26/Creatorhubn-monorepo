@@ -193,8 +193,8 @@ export default function TestingDashboard() {
   });
 
   // Use real data from APIs - no mock data
-  const testSuites = testSuitesData?.testSuites || [];
-  const environments = environmentsData?.environments || [];
+  const testSuites = Array.isArray(testSuitesData?.testSuites) ? testSuitesData.testSuites : [];
+  const environments = Array.isArray(environmentsData?.environments) ? environmentsData.environments : [];
 
   // Already using real environments data from API
 

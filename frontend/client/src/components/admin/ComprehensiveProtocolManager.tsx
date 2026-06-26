@@ -267,7 +267,7 @@ const ComprehensiveProtocolManager: React.FC<ComprehensiveProtocolManagerProps> 
   ]);
 
   // Hent systemhendelser i sanntid
-  const { data: systemEvents = [], isLoading: eventsLoading } = useQuery({
+  const { data: systemEventsData = [], isLoading: eventsLoading } = useQuery({
     queryKey: ['/api/admin/system-events'],
     refetchInterval: 5000,
     queryFn: async () => {
@@ -279,7 +279,7 @@ const ComprehensiveProtocolManager: React.FC<ComprehensiveProtocolManagerProps> 
   });
 
   // Hent protokollregler
-  const { data: protocolRules = [] } = useQuery({
+  const { data: protocolRulesData = [] } = useQuery({
     queryKey: ['/api/admin/protocol-rules'],
     queryFn: async () => {
       const authHeaders = await getAuthHeader();
@@ -311,6 +311,9 @@ const ComprehensiveProtocolManager: React.FC<ComprehensiveProtocolManagerProps> 
       });
     }, // Oppdater hver 10. sekund
   });
+
+  const systemEvents: SystemEvent[] = Array.isArray(systemEventsData) ? systemEventsData : [];
+  const protocolRules: ProtocolRule[] = Array.isArray(protocolRulesData) ? protocolRulesData : [];
 
   const getSeverityColor = (severity: string) => {
     const colors: Record<string, string> = {

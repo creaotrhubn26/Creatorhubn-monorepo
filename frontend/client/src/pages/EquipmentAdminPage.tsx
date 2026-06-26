@@ -279,7 +279,7 @@ const EquipmentAdminPage: React.FC = () => {
     refetchInterval: 3000,
 });
 
-  const products = (productsResponse as any)?.data || [];
+  const products = Array.isArray((productsResponse as any)?.data) ? (productsResponse as any).data : [];
   const stats = (statsResponse as any)?.data || { total:  0 };
   const equipmentData = products as Product[];
 

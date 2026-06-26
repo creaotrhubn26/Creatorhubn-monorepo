@@ -90,7 +90,7 @@ export default function GooglePayAdminDashboard() {
   });
 
   // Filter transactions
-  const filteredTransactions = transactions.filter((tx) => {
+  const filteredTransactions = (Array.isArray(transactions) ? transactions : []).filter((tx) => {
     const matchesSearch =
       tx.userEmail.toLowerCase().includes(searchQuery.toLowerCase()) ||
       tx.userName.toLowerCase().includes(searchQuery.toLowerCase()) ||

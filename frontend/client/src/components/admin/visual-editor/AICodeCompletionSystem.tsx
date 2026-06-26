@@ -417,7 +417,7 @@ export class AICodeCompletionEngine {
     const prompt = this.buildRefactoringPrompt(context);
     const response = await this.callAI(prompt);
 
-    const suggestions: AICompletion[] = (response.suggestions || []).map(
+    const suggestions: AICompletion[] = (Array.isArray(response.suggestions) ? response.suggestions : []).map(
       (sugg, idx: number) => ({
         id: `refactor-${Date.now()}-${idx}`,
         type: 'refactor' as const,

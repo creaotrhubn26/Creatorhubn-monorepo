@@ -211,8 +211,8 @@ export default function ReportsPanel({ onFileDownload }: ReportsPanelProps) {
     topProfession: 'professional',
   };
 
-  const professionStats = biData?.professionStats || [];
-  const monthlyData = reportsData?.monthlyData || [];
+  const professionStats = Array.isArray(biData?.professionStats) ? biData!.professionStats! : [];
+  const monthlyData = Array.isArray(reportsData?.monthlyData) ? reportsData!.monthlyData! : [];
   const totalUsers = Math.max(overview.totalUsers, 1);
 
   const activeProfessionCount = useMemo(

@@ -196,6 +196,8 @@ export default function AdminInviteSystem() {
   const { data: inviteRequests = [], isLoading } = useQuery({
     queryKey: ['/api/invite-requests'],
     queryFn: () => apiRequest('/api/invite-requests'),
+    // Defensiv: garanter array selv om endepunktet 404-er / returnerer ikke-array.
+    select: (rows: any) => (Array.isArray(rows) ? rows : []),
   });
 
   // Fetch prototype tester requests

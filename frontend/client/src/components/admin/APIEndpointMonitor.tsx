@@ -236,6 +236,7 @@ const APIEndpointMonitor: React.FC = () => {
   }
 
   const healthSummary = healthData as APIHealthSummary;
+  const healthEndpoints = Array.isArray(healthSummary?.endpoints) ? healthSummary.endpoints : [];
 
   return (
     <Box sx={{ p: 3 }}>
@@ -354,20 +355,18 @@ const APIEndpointMonitor: React.FC = () => {
       {/* API Endpoints by Category */}
       {registryData?.categorizedEndpoints &&
         Object.entries(registryData.categorizedEndpoints).map(([category, endpoints]) => {
-          const endpointsArray = endpoints as RegistryEndpoint[];
-          const healthyCount =
-            healthSummary?.endpoints.filter(
-              (h) =>
-                endpointsArray.some((e: RegistryEndpoint) => e.path === h.endpoint) &&
-                h.status === 'healthy',
-            ).length ?? 0;
+          const endpointsArray = Array.isArray(endpoints) ? (endpoints as RegistryEndpoint[]) : [];
+          const healthyCount = healthEndpoints.filter(
+            (h) =>
+              endpointsArray.some((e: RegistryEndpoint) => e.path === h.endpoint) &&
+              h.status === 'healthy',
+          ).length;
 
-          const failedCount =
-            healthSummary?.endpoints.filter(
-              (h) =>
-                endpointsArray.some((e: RegistryEndpoint) => e.path === h.endpoint) &&
-                h.status === 'failed',
-            ).length ?? 0;
+          const failedCount = healthEndpoints.filter(
+            (h) =>
+              endpointsArray.some((e: RegistryEndpoint) => e.path === h.endpoint) &&
+              h.status === 'failed',
+          ).length;
 
           return (
             <Accordion key={category} sx={{ mb: 2 }}>
@@ -415,7 +414,7 @@ const APIEndpointMonitor: React.FC = () => {
 
                     <TableBody>
                       {endpointsArray.map((endpoint: RegistryEndpoint) => {
-                        const health = healthSummary?.endpoints.find(
+                        const health = healthEndpoints.find(
                           (h) => h.endpoint === endpoint.path,
                         );
                         return (

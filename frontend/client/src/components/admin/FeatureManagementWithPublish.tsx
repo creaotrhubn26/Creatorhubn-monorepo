@@ -253,7 +253,7 @@ export default function FeatureManagementWithPublish() {
 });
 
   const handlePublishToStaging = () => {
-    const currentFlags = stagingFlags?.flags || [];
+    const currentFlags = Array.isArray(stagingFlags?.flags) ? stagingFlags.flags : [];
     publishToStaging.mutate({
       featureFlags: currentFlags,
       publishedBy: 'admin', // In real app, get from auth context
@@ -467,7 +467,7 @@ export default function FeatureManagementWithPublish() {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {environmentDiff?.diff?.map((item: EnvironmentDiff) => (
+                  {(Array.isArray(environmentDiff?.diff) ? environmentDiff.diff : []).map((item: EnvironmentDiff) => (
                     <TableRow key={item.featureName}>
                       <TableCell>
                         <Typography variant="body2" sx={{ fontWeight: 500}}>
@@ -514,7 +514,7 @@ export default function FeatureManagementWithPublish() {
                 <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
                   Staging History
                 </Typography>
-                {stagingHistory?.history?.map((entry: PublishHistory) => (
+                {(Array.isArray(stagingHistory?.history) ? stagingHistory.history : []).map((entry: PublishHistory) => (
                   <Accordion key={entry.version}>
                     <AccordionSummary expandIcon={theming.getThemedIcon('expandMore')}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%' }}>
@@ -547,7 +547,7 @@ export default function FeatureManagementWithPublish() {
                 <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
                   Production History
                 </Typography>
-                {productionHistory?.history?.map((entry: PublishHistory) => (
+                {(Array.isArray(productionHistory?.history) ? productionHistory.history : []).map((entry: PublishHistory) => (
                   <Accordion key={entry.version}>
                     <AccordionSummary expandIcon={theming.getThemedIcon('expandMore')}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%' }}>
@@ -587,7 +587,7 @@ export default function FeatureManagementWithPublish() {
               Current Feature Flags
             </Typography>
             <Grid container spacing={2}>
-              {stagingFlags?.flags?.map((flag: FeatureFlag) => (
+              {(Array.isArray(stagingFlags?.flags) ? stagingFlags.flags : []).map((flag: FeatureFlag) => (
                 <Grid item xs={12} sm={6} md={4} key={flag.id}>
                   <Card variant="outlined" sx={theming.getThemedCardSx()}>
                     <CardContent sx={theming.getThemedCardSx()}>

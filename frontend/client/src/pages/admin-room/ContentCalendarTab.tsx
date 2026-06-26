@@ -444,8 +444,8 @@ export default function ContentCalendarTab() {
       );
       if (!r.ok) throw new Error(`Status ${r.status}`);
       const d = await r.json();
-      setScheduled(d.scheduled || []);
-      setUnscheduled(d.unscheduled || []);
+      setScheduled(Array.isArray(d.scheduled) ? d.scheduled : []);
+      setUnscheduled(Array.isArray(d.unscheduled) ? d.unscheduled : []);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally { setLoading(false); }

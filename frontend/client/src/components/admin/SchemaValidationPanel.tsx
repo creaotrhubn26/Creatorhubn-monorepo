@@ -1003,7 +1003,7 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
                 </Grid>
 
                 <Typography variant="subtitle2" gutterBottom>
-                  Applied Fixes ({autoFixResult.appliedFixes.length}):
+                  Applied Fixes ({(Array.isArray(autoFixResult.appliedFixes) ? autoFixResult.appliedFixes : []).length}):
                 </Typography>
                 <TableContainer component={Paper} sx={{ mb: 2 }}>
                   <Table size="small">
@@ -1016,7 +1016,7 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {autoFixResult.appliedFixes.map((fix: any, index: number) => (
+                      {(Array.isArray(autoFixResult.appliedFixes) ? autoFixResult.appliedFixes : []).map((fix: any, index: number) => (
                         <TableRow key={index}>
                           <TableCell><code>{fix.field}</code></TableCell>
                           <TableCell>
@@ -1053,7 +1053,7 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
                   Improvements:
                 </Typography>
                 <Box component="ul" sx={{ pl: 2 }}>
-                  {autoFixResult.improvements.map((improvement: string, index: number) => (
+                  {(Array.isArray(autoFixResult.improvements) ? autoFixResult.improvements : []).map((improvement: string, index: number) => (
                     <li key={index}>
                       <Typography variant="body2">{improvement}</Typography>
                     </li>

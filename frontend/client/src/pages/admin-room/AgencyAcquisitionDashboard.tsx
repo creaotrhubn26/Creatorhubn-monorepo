@@ -189,6 +189,9 @@ export default function AgencyAcquisitionDashboard() {
 
   const t = data.funnelTotals;
   const maxStage = Math.max(t.new, t.contacted, t.demo, t.trial, t.customer, 1);
+  const hotLeads = Array.isArray(data.hotLeads) ? data.hotLeads : [];
+  const velocityByWeek = Array.isArray(data.velocityByWeek) ? data.velocityByWeek : [];
+  const topSources = Array.isArray(data.topSources) ? data.topSources : [];
 
   return (
     <Card sx={{
@@ -247,7 +250,7 @@ export default function AgencyAcquisitionDashboard() {
               color: '#fbbf24', hint: `${t.trial + t.demo} i pipeline`,
             },
             {
-              label: 'Hot leads', value: data.hotLeads.length, color: '#fb923c',
+              label: 'Hot leads', value: hotLeads.length, color: '#fb923c',
               hint: 'siste 14 dager',
             },
           ].map((k) => (
@@ -367,14 +370,14 @@ export default function AgencyAcquisitionDashboard() {
                 Velocity (siste 8 uker)
               </Typography>
             </Stack>
-            {data.velocityByWeek.length === 0 ? (
+            {velocityByWeek.length === 0 ? (
               <Typography sx={{ fontSize: '0.78rem', color: '#8b7ec4', fontStyle: 'italic' }}>
                 Ingen leads ennå
               </Typography>
             ) : (
               <Stack spacing={0.4}>
-                {data.velocityByWeek.slice().reverse().map((w) => {
-                  const maxN = Math.max(...data.velocityByWeek.map((x) => x.n), 1);
+                {velocityByWeek.slice().reverse().map((w) => {
+                  const maxN = Math.max(...velocityByWeek.map((x) => x.n), 1);
                   return (
                     <Stack key={w.week} direction="row" alignItems="center" spacing={0.8}>
                       <Typography sx={{ fontSize: '0.7rem', color: '#8b7ec4', minWidth: 60 }}>
@@ -415,18 +418,18 @@ export default function AgencyAcquisitionDashboard() {
               Hot leads
             </Typography>
             <Chip
-              size="small" label={`${data.hotLeads.length}`}
+              size="small" label={`${hotLeads.length}`}
               sx={{ bgcolor: 'rgba(251,146,60,0.18)', color: '#fb923c', fontWeight: 700, height: 18 }}
             />
           </Stack>
 
-          {data.hotLeads.length === 0 ? (
+          {hotLeads.length === 0 ? (
             <Alert severity="info" sx={{ fontSize: '0.82rem' }}>
               Ingen nye leads siste 14 dager. Dobbeltsjekk landing-trafikk + UTM-tagging.
             </Alert>
           ) : (
             <Stack spacing={0.8}>
-              {data.hotLeads.map((lead) => {
+              {hotLeads.map((lead) => {
                 const stageMeta = STAGE_LABELS[lead.status === 'demo_booked' ? 'demo' : lead.status] ?? STAGE_LABELS.new;
                 const nextStatus = STATUS_NEXT[lead.status];
                 return (
@@ -549,14 +552,14 @@ export default function AgencyAcquisitionDashboard() {
           <Typography sx={{ fontSize: '0.84rem', fontWeight: 700, color: '#f5f3ff', mb: 1.4 }}>
             Topp-kilder
           </Typography>
-          {data.topSources.length === 0 ? (
+          {topSources.length === 0 ? (
             <Typography sx={{ fontSize: '0.78rem', color: '#8b7ec4', fontStyle: 'italic' }}>
               Ingen leads ennå
             </Typography>
           ) : (
             <Stack spacing={0.6}>
-              {data.topSources.slice(0, 6).map((s) => {
-                const maxN = Math.max(...data.topSources.map((x) => x.n), 1);
+              {topSources.slice(0, 6).map((s) => {
+                const maxN = Math.max(...topSources.map((x) => x.n), 1);
                 const cvr = s.n > 0 ? Math.round((s.customers / s.n) * 100) : 0;
                 return (
                   <Stack key={s.source_key} direction="row" alignItems="center" spacing={1}>

@@ -132,6 +132,8 @@ export default function AdminNotificationManager() {
     refetchInterval: 30000, // Refresh every 30 seconds
 });
 
+  const notificationList = Array.isArray(notifications?.data) ? notifications.data : [];
+
   // Fetch pending provisioning requests for notifications
   const { data: pendingRequests, isLoading: pendingLoading } = useQuery({
     queryKey: ['/api/admin-provisioning/pending-approvals'],
@@ -141,6 +143,8 @@ export default function AdminNotificationManager() {
     },
     refetchInterval: 10000, // Refresh every 10 seconds for real-time updates
 });
+
+  const pendingRequestList = Array.isArray(pendingRequests?.data) ? pendingRequests.data : [];
 
   // Fetch provisioning metrics for dashboard notifications
   const { data: provisioningMetrics, isLoading: metricsLoading } = useQuery({
@@ -351,7 +355,7 @@ export default function AdminNotificationManager() {
             <CardContent>
               <Typography variant="h6" sx={{ color: themeColors.primary }}>Aktive</Typography>
               <Typography variant="h4" sx={{ color: themeColors.primary }}>
-                {notifications?.data?.filter((n: any) => n.isActive).length || 0}
+                {notificationList.filter((n: any) => n.isActive).length || 0}
               </Typography>
             </CardContent>
           </MuiCard>
@@ -363,7 +367,7 @@ export default function AdminNotificationManager() {
             <CardContent>
               <Typography variant="h6" sx={{ color: themeColors.primary }}>Høy Prioritet</Typography>
               <Typography variant="h4" sx={{ color: themeColors.primary }}>
-                {notifications?.data?.filter(
+                {notificationList.filter(
                   (n: any) => n.priority === 'high' || n.priority === 'urgent',
                 ).length || 0}
               </Typography>
@@ -376,7 +380,7 @@ export default function AdminNotificationManager() {
           >
             <CardContent>
               <Typography variant="h6" sx={{ color: themeColors.primary }}>Totalt</Typography>
-              <Typography variant="h4" sx={{ color: themeColors.primary }}>{notifications?.data?.length || 0}</Typography>
+              <Typography variant="h4" sx={{ color: themeColors.primary }}>{notificationList.length || 0}</Typography>
             </CardContent>
           </MuiCard>
           <MuiCard
@@ -387,19 +391,19 @@ export default function AdminNotificationManager() {
             <CardContent>
               <Typography variant="h6" sx={{ color: themeColors.primary }}>Venter på godkjenning</Typography>
               <Typography variant="h4" sx={{ color: themeColors.primary }}>
-                {pendingRequests?.data?.length || 0}
+                {pendingRequestList.length || 0}
               </Typography>
             </CardContent>
           </MuiCard>
         </Box>
 
         {/* Pending User Requests Section */}
-        {pendingRequests?.data?.length > 0 && (
+        {pendingRequestList.length > 0 && (
           <MuiCard sx={{ mb: 3 }}>
             <CardContent>
               <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1, color: themeColors.primary }}>
                 <People color="primary" />
-                Venter på godkjenning ({pendingRequests.data.length})
+                Venter på godkjenning ({pendingRequestList.length})
               </Typography>
               <Alert severity="info" sx={{ mb: 2 }}>
                 Disse brukerne har sendt inn søknader og venter på godkjenning. Du kan opprette notifikasjoner for dem.
@@ -412,7 +416,7 @@ export default function AdminNotificationManager() {
                 },
                   gap: 2}}
               >
-                {pendingRequests.data.slice(0, 3).map((request: any) => (
+                {pendingRequestList.slice(0, 3).map((request: any) => (
                   <Paper key={request.id} sx={{ p: 2, border: '1px solid', borderColor: 'divider' }}>
                     <Typography variant="subtitle1" fontWeight={600}>
                       {request.businessName || 'Ukjent bedrift'}
@@ -444,9 +448,9 @@ export default function AdminNotificationManager() {
                   </Paper>
                 ))}
               </Box>
-              {pendingRequests.data.length > 3 && (
+              {pendingRequestList.length > 3 && (
                 <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: 'block' }}>
-                  ... og {pendingRequests.data.length - 3} flere
+                  ... og {pendingRequestList.length - 3} flere
                 </Typography>
               )}
             </CardContent>
@@ -461,11 +465,11 @@ export default function AdminNotificationManager() {
             </Typography>
             {isLoading ? (
               <Typography>Laster notifikasjoner...</Typography>
-            ) : notifications?.data?.length === 0 ? (
+            ) : notificationList.length === 0 ? (
               <Typography color="text.secondary">Ingen notifikasjoner opprettet ennå.</Typography>
             ) : (
               <List>
-                {notifications?.data?.map((notification: any, index: number) => (
+                {notificationList.map((notification: any, index: number) => (
                   <React.Fragment key={notification.id}>
                     <ListItem
                       sx={{
@@ -548,7 +552,7 @@ export default function AdminNotificationManager() {
                         </Box>
                       </ListItemSecondaryAction>
                     </ListItem>
-                    {index < notifications.data.length - 1 && <Divider />}
+                    {index < notificationList.length - 1 && <Divider />}
                   </React.Fragment>
                 ))}
               </List>

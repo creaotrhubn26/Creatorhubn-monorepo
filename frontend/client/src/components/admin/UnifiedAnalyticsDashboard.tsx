@@ -111,16 +111,22 @@ export default function UnifiedAnalyticsDashboard() {
     }
   });
 
+  // Guard API-derived lists so a 404/wrapped/null response can't crash array methods
+  const socialPlatforms = Array.isArray(socialAnalytics?.platforms) ? socialAnalytics.platforms : [];
+  const emailCampaigns = Array.isArray(emailAnalytics?.campaigns) ? emailAnalytics.campaigns : [];
+  const workflowList = Array.isArray(workflowAnalytics?.workflows) ? workflowAnalytics.workflows : [];
+  const timeSeries = Array.isArray(timeSeriesData?.data) ? timeSeriesData.data : [];
+
   // Calculate overview metrics
   const calculateOverviewMetrics = (): AnalyticsMetric[] => {
-    const totalSocialEngagement = socialAnalytics?.platforms.reduce((sum, p) => sum + p.engagement, 0) || 0;
-    const totalEmailSent = emailAnalytics?.campaigns.reduce((sum, c) => sum + c.sent, 0) || 0;
-    const avgOpenRate = emailAnalytics?.campaigns.length 
-      ? (emailAnalytics.campaigns.reduce((sum, c) => sum + c.openRate, 0) / emailAnalytics.campaigns.length)
+    const totalSocialEngagement = socialPlatforms.reduce((sum, p) => sum + p.engagement, 0) || 0;
+    const totalEmailSent = emailCampaigns.reduce((sum, c) => sum + c.sent, 0) || 0;
+    const avgOpenRate = emailCampaigns.length
+      ? (emailCampaigns.reduce((sum, c) => sum + c.openRate, 0) / emailCampaigns.length)
       : 0;
-    const totalWorkflowExecutions = workflowAnalytics?.workflows.reduce((sum, w) => sum + w.executions, 0) || 0;
-    const totalConversions = workflowAnalytics?.workflows.reduce((sum, w) => sum + w.conversions, 0) || 0;
-    const totalRevenue = workflowAnalytics?.workflows.reduce((sum, w) => sum + w.revenue, 0) || 0;
+    const totalWorkflowExecutions = workflowList.reduce((sum, w) => sum + w.executions, 0) || 0;
+    const totalConversions = workflowList.reduce((sum, w) => sum + w.conversions, 0) || 0;
+    const totalRevenue = workflowList.reduce((sum, w) => sum + w.revenue, 0) || 0;
 
     return [
       {
@@ -182,10 +188,10 @@ export default function UnifiedAnalyticsDashboard() {
   const exportData = () => {
     const data = {
       timeRange,
-      social: socialAnalytics?.platforms || [],
-      email: emailAnalytics?.campaigns || [],
-      workflows: workflowAnalytics?.workflows || [],
-      timeSeries: timeSeriesData?.data || []
+      social: socialPlatforms,
+      email: emailCampaigns,
+      workflows: workflowList,
+      timeSeries: timeSeries
     };
     
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -271,9 +277,9 @@ export default function UnifiedAnalyticsDashboard() {
               <CardDescription>Engagement across all marketing channels over time</CardDescription>
             </CardHeader>
             <CardContent>
-              {timeSeriesData?.data && (
+              {timeSeries.length > 0 && (
                 <ResponsiveContainer width="100%" height={350}>
-                  <AreaChart data={timeSeriesData.data}>
+                  <AreaChart data={timeSeries}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="date" />
                     <YAxis />
@@ -299,9 +305,9 @@ export default function UnifiedAnalyticsDashboard() {
                   <PieChart>
                     <Pie
                       data={[
-                        { name: 'Social Media', value: socialAnalytics?.platforms.reduce((s, p) => s + p.engagement, 0) || 0 },
-                        { name: 'Email', value: emailAnalytics?.campaigns.reduce((s, c) => s + c.clicked, 0) || 0 },
-                        { name: 'Automation', value: workflowAnalytics?.workflows.reduce((s, w) => s + w.conversions, 0) || 0 }
+                        { name: 'Social Media', value: socialPlatforms.reduce((s, p) => s + p.engagement, 0) || 0 },
+                        { name: 'Email', value: emailCampaigns.reduce((s, c) => s + c.clicked, 0) || 0 },
+                        { name: 'Automation', value: workflowList.reduce((s, w) => s + w.conversions, 0) || 0 }
                       ]}
                       cx="50%"
                       cy="50%"
@@ -328,7 +334,7 @@ export default function UnifiedAnalyticsDashboard() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {socialAnalytics?.platforms.slice(0, 3).map((platform, idx) => (
+                  {socialPlatforms.slice(0, 3).map((platform, idx) => (
                     <div key={idx} className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <Badge variant="outline">{platform.platform}</Badge>
@@ -354,9 +360,9 @@ export default function UnifiedAnalyticsDashboard() {
               <CardDescription>Detailed metrics by platform</CardDescription>
             </CardHeader>
             <CardContent>
-              {socialAnalytics?.platforms && (
+              {socialPlatforms.length > 0 && (
                 <ResponsiveContainer width="100%" height={350}>
-                  <BarChart data={socialAnalytics.platforms}>
+                  <BarChart data={socialPlatforms}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="platform" />
                     <YAxis />
@@ -372,7 +378,7 @@ export default function UnifiedAnalyticsDashboard() {
           </Card>
 
           <div className="grid gap-4 md: grid-cols-2, lg:grid-cols-3">
-            {socialAnalytics?.platforms.map((platform, idx) => (
+            {socialPlatforms.map((platform, idx) => (
               <Card key={idx}>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
@@ -421,9 +427,9 @@ export default function UnifiedAnalyticsDashboard() {
               <CardDescription>Open and click rates by campaign</CardDescription>
             </CardHeader>
             <CardContent>
-              {emailAnalytics?.campaigns && (
+              {emailCampaigns.length > 0 && (
                 <ResponsiveContainer width="100%" height={350}>
-                  <BarChart data={emailAnalytics.campaigns}>
+                  <BarChart data={emailCampaigns}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="campaign" />
                     <YAxis />
@@ -438,7 +444,7 @@ export default function UnifiedAnalyticsDashboard() {
           </Card>
 
           <div className="space-y-4">
-            {emailAnalytics?.campaigns.map((campaign, idx) => (
+            {emailCampaigns.map((campaign, idx) => (
               <Card key={idx}>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
@@ -483,9 +489,9 @@ export default function UnifiedAnalyticsDashboard() {
               <CardDescription>Conversion rates and revenue by workflow</CardDescription>
             </CardHeader>
             <CardContent>
-              {workflowAnalytics?.workflows && (
+              {workflowList.length > 0 && (
                 <ResponsiveContainer width="100%" height={350}>
-                  <BarChart data={workflowAnalytics.workflows}>
+                  <BarChart data={workflowList}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="name" />
                     <YAxis yAxisId="left" />
@@ -501,7 +507,7 @@ export default function UnifiedAnalyticsDashboard() {
           </Card>
 
           <div className="space-y-4">
-            {workflowAnalytics?.workflows.map((workflow, idx) => (
+            {workflowList.map((workflow, idx) => (
               <Card key={idx}>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
@@ -547,18 +553,18 @@ export default function UnifiedAnalyticsDashboard() {
                   data={[
                     {
                       name: 'Social Media',
-                      engagement: socialAnalytics?.platforms.reduce((s, p) => s + p.engagement, 0) || 0,
-                      reach: socialAnalytics?.platforms.reduce((s, p) => s + p.reach, 0) || 0,
+                      engagement: socialPlatforms.reduce((s, p) => s + p.engagement, 0) || 0,
+                      reach: socialPlatforms.reduce((s, p) => s + p.reach, 0) || 0,
                     },
                     {
                       name: 'Email',
-                      engagement: emailAnalytics?.campaigns.reduce((s, c) => s + c.clicked, 0) || 0,
-                      reach: emailAnalytics?.campaigns.reduce((s, c) => s + c.sent, 0) || 0,
+                      engagement: emailCampaigns.reduce((s, c) => s + c.clicked, 0) || 0,
+                      reach: emailCampaigns.reduce((s, c) => s + c.sent, 0) || 0,
                     },
                     {
                       name: 'Automation',
-                      engagement: workflowAnalytics?.workflows.reduce((s, w) => s + w.conversions, 0) || 0,
-                      reach: workflowAnalytics?.workflows.reduce((s, w) => s + w.executions, 0) || 0,
+                      engagement: workflowList.reduce((s, w) => s + w.conversions, 0) || 0,
+                      reach: workflowList.reduce((s, w) => s + w.executions, 0) || 0,
                     }
                   ]}
                   layout="vertical"

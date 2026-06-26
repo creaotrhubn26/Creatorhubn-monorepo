@@ -140,12 +140,13 @@ export default function EditingPartnersAdminPanel() {
     queryFn: () => apiRequest("/api/superadmin/editing/prototype-feedback"),
   });
   const feedbackByUser = new Map<string, ProtoFeedback>(
-    (protoFeedback.data?.vendors || []).map((f) => [f.userId, f]),
+    (Array.isArray(protoFeedback.data?.vendors) ? protoFeedback.data.vendors : []).map((f) => [f.userId, f]),
   );
 
-  const pending = (apps.data?.applications || []).filter((a) => a.status === "pending" || a.status === "reviewing");
-  const leads = (apps.data?.applications || []).filter((a) => a.status === "lead");
-  const allVendors = vendors.data?.vendors || [];
+  const applicationsList = Array.isArray(apps.data?.applications) ? apps.data.applications : [];
+  const pending = applicationsList.filter((a) => a.status === "pending" || a.status === "reviewing");
+  const leads = applicationsList.filter((a) => a.status === "lead");
+  const allVendors = Array.isArray(vendors.data?.vendors) ? vendors.data.vendors : [];
   const prototypeVendors = allVendors.filter((v) => v.partner_type === "prototype");
   const standardVendors = allVendors.filter((v) => v.partner_type === "standard");
 

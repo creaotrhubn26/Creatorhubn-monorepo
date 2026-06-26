@@ -125,7 +125,7 @@ export default function FineTuningMonitoringPanel() {
     queryKey: ['/api/video-sync/model-versions'],
     queryFn: async () => {
       const response = await apiRequest('/api/video-sync/model-versions');
-      return response.versions || [];
+      return Array.isArray(response?.versions) ? response.versions : [];
     },
     refetchInterval: 60000, // Refresh every minute
   });
@@ -135,7 +135,7 @@ export default function FineTuningMonitoringPanel() {
     queryKey: ['/api/training-monitoring/all-models'],
     queryFn: async () => {
       const response = await apiRequest('/api/training-monitoring/all-models');
-      return response.models || [];
+      return Array.isArray(response?.models) ? response.models : [];
     },
     refetchInterval: 60000, // Refresh every minute
   });
@@ -169,10 +169,10 @@ export default function FineTuningMonitoringPanel() {
         headers: { 'Content-Type' : 'application/json' },
         body: JSON.stringify({ modelType: modelType || 'sam2' }),
       });
-      return response.results || [];
+      return Array.isArray(response?.results) ? response.results : [];
     },
     onSuccess: (results) => {
-      setTestResults(results);
+      setTestResults(Array.isArray(results) ? results : []);
       setIsRunningTest(false);
     },
     onError: (error: any) => {

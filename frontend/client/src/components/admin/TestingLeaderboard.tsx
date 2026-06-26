@@ -79,6 +79,7 @@ export default function TestingLeaderboard() {
       const headers = await auth.getAuthHeader();
       return apiRequest(`/api/admin/testing-leaderboard?range=${timeRange}`, { headers });
     },
+    select: (data) => (Array.isArray(data) ? data : []),
     staleTime: 2 * 60 * 1000,
   });
 
@@ -301,7 +302,7 @@ export default function TestingLeaderboard() {
                     <TableCell align="right">{tester.testingHours}h</TableCell>
                     <TableCell>
                       <Stack direction="row" spacing={0.5}>
-                        {tester.achievements.slice(0, 3).map((achievement, index) => (
+                        {(Array.isArray(tester.achievements) ? tester.achievements : []).slice(0, 3).map((achievement, index) => (
                           <Tooltip key={index} title={achievement}>
                             <Star sx={{ fontSize: 16, color: '#ffc107' }} />
                           </Tooltip>

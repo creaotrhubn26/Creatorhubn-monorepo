@@ -162,7 +162,7 @@ export function FeatureCustomizationPanel({ userId }: Props) {
 
   // Combine all features with customizations
   const allFeatures = useMemo<FeatureWithCustomization[]>(() => {
-    const customizations = customizationsData?.customizations || [];
+    const customizations = Array.isArray(customizationsData?.customizations) ? customizationsData.customizations : [];
     const customizationMap = new Map(
       customizations.map((customization) => [customization.featureId, customization]),
     );

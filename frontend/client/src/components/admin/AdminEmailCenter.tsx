@@ -138,7 +138,8 @@ export default function AdminEmailCenter() {
     queryFn: async () => {
       const headers = await auth.getAuthHeader();
       return apiRequest('/api/admin/email-templates?email=user?.email', { headers });
-    }
+    },
+    select: (data) => (Array.isArray(data) ? data : [])
 });
 
   // Send custom email mutation via Gmail API
@@ -195,7 +196,7 @@ export default function AdminEmailCenter() {
       const headers = await auth.getAuthHeader();
       return apiRequest('/api/prototype-tester-requests', { headers });
     },
-    select: (data) => data.filter((req: any) => req.status === 'pending')
+    select: (data) => (Array.isArray(data) ? data : []).filter((req: any) => req.status === 'pending')
   });
 
   // Register component with MasterIntegrationProvider

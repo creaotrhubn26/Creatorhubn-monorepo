@@ -1377,9 +1377,16 @@ export default function IntegrationsManagementPanel({
             <Card>
               <CardContent sx={{ textAlign: 'center', py: 2 }}>
                 <Typography variant="h4" sx={{ color: 'info.main', fontWeight: 600}}>
-                  {webhooksData?.length > 0 ?
-                    Math.round((webhooksData.filter((w: any) => w.status === 'active').length / webhooksData.length) * 100) : 
-                    0 }%
+                  {(() => {
+                    const webhookList = Array.isArray(webhooksData)
+                      ? webhooksData
+                      : Array.isArray(webhooksData?.webhooks)
+                        ? webhooksData.webhooks
+                        : [];
+                    return webhookList.length > 0
+                      ? Math.round((webhookList.filter((w: any) => w.status === 'active').length / webhookList.length) * 100)
+                      : 0;
+                  })()}%
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   Webhook suksess
@@ -5194,7 +5201,7 @@ export default function IntegrationsManagementPanel({
                         </TableRow>
                       ))
                   ) : (
-                    apiKeysData?.apiKeys?.map((apiKey: ApiKey) => (
+                    (Array.isArray(apiKeysData?.apiKeys) ? apiKeysData.apiKeys : []).map((apiKey: ApiKey) => (
                         <TableRow key={apiKey.id} hover>
                           <TableCell>
                             <Typography variant="body2" fontWeight={600}>
@@ -5310,7 +5317,7 @@ export default function IntegrationsManagementPanel({
                         </TableRow>
                       ))
                   ) : (
-                    webhooksData?.webhooks?.map((webhook: Webhook) => (
+                    (Array.isArray(webhooksData?.webhooks) ? webhooksData.webhooks : []).map((webhook: Webhook) => (
                         <TableRow key={webhook.id} hover>
                           <TableCell>
                             <Typography variant="body2" fontWeight={600}>
@@ -5410,7 +5417,7 @@ export default function IntegrationsManagementPanel({
                         </TableRow>
                       ))
                   ) : (
-                    oauthData?.oauthClients?.map((oauthClient: OAuthClient) => (
+                    (Array.isArray(oauthData?.oauthClients) ? oauthData.oauthClients : []).map((oauthClient: OAuthClient) => (
                         <TableRow key={oauthClient.id} hover>
                           <TableCell>
                             <Typography variant="body2" fontWeight={600}>

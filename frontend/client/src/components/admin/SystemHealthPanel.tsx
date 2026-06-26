@@ -227,8 +227,8 @@ export default function SystemHealthPanel({
   };
 
   const systemMetrics: HealthMetrics = { ...EMPTY_METRICS, ...(healthData?.metrics ?? {}) };
-  const services = healthData?.services ?? [];
-  const recentEvents = performanceData?.events ?? [];
+  const services = Array.isArray(healthData?.services) ? healthData.services : [];
+  const recentEvents = Array.isArray(performanceData?.events) ? performanceData.events : [];
   const overallStatus = healthData?.overallStatus ?? 'healthy';
 
   const healthyServiceCount = services.filter((service) => service.status === 'healthy').length;

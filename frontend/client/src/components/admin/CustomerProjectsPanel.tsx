@@ -140,8 +140,9 @@ export default function CustomerProjectsPanel({
     totalRevenue: 0
 };
 
-  const projects = (projectsData as any)?.projects || [];
-  const customers = (customersData as any)?.customers || [];
+  const projects = Array.isArray((projectsData as any)?.projects) ? (projectsData as any).projects : [];
+  const customers = Array.isArray((customersData as any)?.customers) ? (customersData as any).customers : [];
+  const vendors = Array.isArray((customersData as any)?.vendors) ? (customersData as any).vendors : [];
 
   return (
     <ThemeProvider theme={adminDarkTheme}>
@@ -380,7 +381,7 @@ export default function CustomerProjectsPanel({
           </TabPanel>
 
           <TabPanel value={tabValue} index={2}>
-            {(customersData as any)?.vendors?.length > 0 ? (
+            {vendors.length > 0 ? (
               <TableContainer component={Paper}>
                 <Table>
                   <TableHead>
@@ -394,7 +395,7 @@ export default function CustomerProjectsPanel({
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {(customersData as any).vendors.map((vendor: any) => (
+                    {vendors.map((vendor: any) => (
                       <TableRow key={vendor.id}>
                         <TableCell>{vendor.businessName}</TableCell>
                         <TableCell>

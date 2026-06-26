@@ -268,7 +268,7 @@ export default function DeploymentPipeline() {
 
       {/* Environment Health Status */}
       <Grid container spacing={3} sx={{ mb:  4 }}>
-        {(healthData?.environments || []).map((health) => (
+        {(Array.isArray(healthData?.environments) ? healthData.environments : []).map((health) => (
           <Grid item xs={12} md={4} key={health.environment}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
@@ -347,7 +347,7 @@ export default function DeploymentPipeline() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {(deploymentsData?.deployments || []).map((deployment) => (
+                {(Array.isArray(deploymentsData?.deployments) ? deploymentsData.deployments : []).map((deployment) => (
                   <TableRow key={deployment.id} hover>
                     <TableCell>
                       <Typography variant="body2" fontWeight={600}>
@@ -432,11 +432,11 @@ export default function DeploymentPipeline() {
         <Card sx={{ mb: 4, ...theming.getThemedCardSx() }}>
           <CardContent sx={theming.getThemedCardSx()}>
             <Typography variant="h6" sx={{  mb:  3  }}>
-              📋 Deployment Steps - {(deploymentsData?.deployments || []).find(d => d.id === selectedDeployment)?.version}
+              📋 Deployment Steps - {(Array.isArray(deploymentsData?.deployments) ? deploymentsData.deployments : []).find(d => d.id === selectedDeployment)?.version}
             </Typography>
             
             <Stepper orientation="vertical">
-              {((deploymentsData?.deployments || []).find(d => d.id === selectedDeployment)?.steps || []).map((step) => (
+              {((Array.isArray(deploymentsData?.deployments) ? deploymentsData.deployments : []).find(d => d.id === selectedDeployment)?.steps || []).map((step) => (
                 <Step key={step.id} active={step.status !== 'pending'} completed={step.status === 'completed'}>
                   <StepLabel 
                     error={step.status === 'failed'}
@@ -555,7 +555,7 @@ export default function DeploymentPipeline() {
           </Alert>
           <Typography variant="body1">
             Er du sikker på at du vil rulle tilbake deployment{''}
-            <strong>{(deploymentsData?.deployments || []).find(d => d.id === selectedDeployment)?.version}</strong>?
+            <strong>{(Array.isArray(deploymentsData?.deployments) ? deploymentsData.deployments : []).find(d => d.id === selectedDeployment)?.version}</strong>?
           </Typography>
         </DialogContent>
         <DialogActions>

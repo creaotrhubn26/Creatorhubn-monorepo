@@ -792,7 +792,9 @@ export default function PriceManagementDashboard({
     () => features.filter((feature) => feature.isEnabled).length,
     [features],
   );
-  const activeBillingTemplateCount = creatorHubEmailSettings.email.templates.length;
+  const activeBillingTemplateCount = Array.isArray(creatorHubEmailSettings.email.templates)
+    ? creatorHubEmailSettings.email.templates.length
+    : 0;
   const priceManagementSurfaceSx = {
     borderRadius: '24px',
     border: '1px solid rgba(255,255,255,0.10)',
@@ -941,7 +943,7 @@ export default function PriceManagementDashboard({
             suggestedMonthlyPriceNok: data.breakdown.suggestedMonthlyPriceNok,
             suggestedOveragePricePerGbNok:
               data.breakdown.suggestedOveragePricePerGbNok,
-            notes: data.breakdown.notes ?? [],
+            notes: Array.isArray(data.breakdown.notes) ? data.breakdown.notes : [],
           });
         }
       } catch {
@@ -1172,7 +1174,7 @@ export default function PriceManagementDashboard({
       ...creatorHubEmailSettings,
       email: {
         ...creatorHubEmailSettings.email,
-        templates: creatorHubEmailSettings.email.templates.map((template) =>
+        templates: (Array.isArray(creatorHubEmailSettings.email.templates) ? creatorHubEmailSettings.email.templates : []).map((template) =>
           template.id === editingEmailTemplateId
             ? {
                 ...template,
@@ -2184,7 +2186,7 @@ export default function PriceManagementDashboard({
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {creatorHubEmailSettings.email.templates.map((template) => (
+                      {(Array.isArray(creatorHubEmailSettings.email.templates) ? creatorHubEmailSettings.email.templates : []).map((template) => (
                         <TableRow key={template.id}>
                           <TableCell>
                             <Stack spacing={0.5}>
@@ -2273,7 +2275,7 @@ export default function PriceManagementDashboard({
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {analytics.topFeatures.slice(0, 10).map((feature) => (
+                      {(Array.isArray(analytics.topFeatures) ? analytics.topFeatures : []).slice(0, 10).map((feature) => (
                         <TableRow key={feature.featureId}>
                           <TableCell>{feature.featureId}</TableCell>
                           <TableCell>{feature.usageCount}</TableCell>
@@ -2387,7 +2389,7 @@ export default function PriceManagementDashboard({
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {enterprisePricing.volumeDiscounts.map((discount, index) => (
+                      {(Array.isArray(enterprisePricing.volumeDiscounts) ? enterprisePricing.volumeDiscounts : []).map((discount, index) => (
                         <TableRow key={`${discount.minUsers}-${index}`}>
                           <TableCell>
                             <TextField

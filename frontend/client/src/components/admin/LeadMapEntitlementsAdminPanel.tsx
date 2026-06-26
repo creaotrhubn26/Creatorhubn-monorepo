@@ -99,7 +99,7 @@ export default function LeadMapEntitlementsAdminPanel() {
         return;
       }
       const body = await r.json();
-      setRows(body.entitlements ?? []);
+      setRows(Array.isArray(body.entitlements) ? body.entitlements : []);
     } catch (e) {
       setError(String(e));
     } finally {

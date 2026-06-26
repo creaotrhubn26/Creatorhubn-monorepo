@@ -173,6 +173,7 @@ export default function OAuthScopeChecker() {
   }
 
   const { report, documentation, checkedAt } = scopeData;
+  const scopes = Array.isArray(report?.scopes) ? report.scopes : [];
 
   return (
     <ThemeProvider theme={adminDarkTheme}>
@@ -223,22 +224,22 @@ export default function OAuthScopeChecker() {
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                 <Chip
                   icon={<CheckCircle />}
-                  label={`${report.scopes.filter((s) => s.valid && !s.note).length} Valid`}
+                  label={`${scopes.filter((s) => s.valid && !s.note).length} Valid`}
                   color="success"
                   size="small"
                 />
-                {report.scopes.filter((s) => s.note).length > 0 && (
+                {scopes.filter((s) => s.note).length > 0 && (
                   <Chip
                     icon={<Warning />}
-                    label={`${report.scopes.filter((s) => s.note).length} Needs Review`}
+                    label={`${scopes.filter((s) => s.note).length} Needs Review`}
                     color="warning"
                     size="small"
                   />
                 )}
-                {report.scopes.filter((s) => !s.valid).length > 0 && (
+                {scopes.filter((s) => !s.valid).length > 0 && (
                   <Chip
                     icon={<Error />}
-                    label={`${report.scopes.filter((s) => !s.valid).length} Invalid`}
+                    label={`${scopes.filter((s) => !s.valid).length} Invalid`}
                     color="error"
                     size="small"
                   />
@@ -257,7 +258,7 @@ export default function OAuthScopeChecker() {
             Scope Validation Results
           </Typography>
           <List>
-            {report.scopes.map((scopeResult, index) => (
+            {scopes.map((scopeResult, index) => (
               <React.Fragment key={scopeResult.scope}>
                 <ListItem
                   sx={{
@@ -333,7 +334,7 @@ export default function OAuthScopeChecker() {
                     </Paper>
                   </Box>
                 </Collapse>
-                {index < report.scopes.length - 1 && <Divider />}
+                {index < scopes.length - 1 && <Divider />}
               </React.Fragment>
             ))}
           </List>

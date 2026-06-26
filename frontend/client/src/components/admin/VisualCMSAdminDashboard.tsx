@@ -271,9 +271,10 @@ export default function VisualCMSAdminDashboard() {
 };
 
   const getSuccessRate = (results: APIStatus[]) => {
-    if (!results || results.length === 0) return 0;
-    const successful = results.filter(r => r.success).length;
-    return Math.round((successful / results.length) * 100);
+    const safeResults = Array.isArray(results) ? results : [];
+    if (safeResults.length === 0) return 0;
+    const successful = safeResults.filter(r => r.success).length;
+    return Math.round((successful / safeResults.length) * 100);
 };
 
   return (
@@ -478,7 +479,7 @@ export default function VisualCMSAdminDashboard() {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {googleStatus?.results?.map((api: APIStatus, index: number) => (
+                    {(Array.isArray(googleStatus?.results) ? googleStatus.results : []).map((api: APIStatus, index: number) => (
                       <TableRow key={index}>
                         <TableCell>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
@@ -643,7 +644,7 @@ export default function VisualCMSAdminDashboard() {
                       onChange={(e) => setSelectedCategory(e.target.value)}
                       label="API Kategori"
                     >
-                      {codeCategories?.categories.map((cat: any) => (
+                      {(Array.isArray(codeCategories?.categories) ? codeCategories.categories : []).map((cat: any) => (
                         <MenuItem key={cat.name} value={cat.name}>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
                             {cat.name === 'Google Services' && <GoogleIcon fontSize="small" />}
@@ -879,12 +880,12 @@ export default function VisualCMSAdminDashboard() {
           <Card sx={{ ...theming.getThemedCardSx(), mt: 3 }}>
             <CardHeader
               title="Tilgjengelige API Kategorier"
-              subheader={`${codeCategories.total_endpoints} total endpoints på tvers av ${codeCategories.categories.length} kategorier`}
+              subheader={`${codeCategories.total_endpoints} total endpoints på tvers av ${(Array.isArray(codeCategories.categories) ? codeCategories.categories : []).length} kategorier`}
               avatar={<LightbulbIcon color="primary" />}
             />
             <CardContent>
               <Grid container spacing={2}>
-                {codeCategories.categories.map((category: any) => (
+                {(Array.isArray(codeCategories.categories) ? codeCategories.categories : []).map((category: any) => (
                   <Grid item xs={12} sm={6} md={3} key={category.name}>
                     <Card
                       variant="outlined"

@@ -59,6 +59,7 @@ export default function RecentlyApprovedUsers({ days = 30 }: RecentlyApprovedUse
       if (!response.ok) throw new Error('Failed to fetch recently approved users');
       return response.json() as Promise<User[]>;
     },
+    select: (d) => (Array.isArray(d) ? d : []),
     staleTime: 60000, // 1 minute
     refetchInterval: 120000, // Refresh every 2 minutes
   });

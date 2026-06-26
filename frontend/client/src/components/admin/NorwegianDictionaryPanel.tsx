@@ -536,7 +536,7 @@ export default function NorwegianDictionaryPanel({
                 Translations:
               </Typography>
               <Stack spacing={1}>
-                {currentEntry.translations.map((trans, idx) => (
+                {(Array.isArray(currentEntry.translations) ? currentEntry.translations : []).map((trans, idx) => (
                   <Card key={idx} variant="outlined" sx={{ bgcolor: 'grey.50' }}>
                     <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
                       <Stack direction="row" alignItems="center" justifyContent="space-between">

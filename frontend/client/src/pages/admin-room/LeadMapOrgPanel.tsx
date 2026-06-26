@@ -269,9 +269,10 @@ export default function LeadMapOrgPanel({ authToken, onOrgChange }: Props) {
       const r = await fetch('/api/admin-room/lead-map/organizations', { headers });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const data = await r.json();
-      setOrgs(data.organizations ?? []);
-      if (!activeOrgId && data.organizations?.length) {
-        setActiveOrgId(data.organizations[0].id);
+      const orgList = Array.isArray(data.organizations) ? data.organizations : [];
+      setOrgs(orgList);
+      if (!activeOrgId && orgList.length) {
+        setActiveOrgId(orgList[0].id);
       }
     } catch (err) {
       setError(`Klarte ikke laste organisasjoner: ${String(err)}`);
@@ -303,11 +304,11 @@ export default function LeadMapOrgPanel({ authToken, onOrgChange }: Props) {
       }
       if (tRes.ok) {
         const j = await tRes.json();
-        setTeams(j.teams ?? []);
+        setTeams(Array.isArray(j.teams) ? j.teams : []);
       }
       if (mRes.ok) {
         const j = await mRes.json();
-        setMembers(j.profiles ?? []);
+        setMembers(Array.isArray(j.profiles) ? j.profiles : []);
       }
     } catch (err) {
       setError(`Klarte ikke laste org-detaljer: ${String(err)}`);
@@ -615,7 +616,7 @@ export default function LeadMapOrgPanel({ authToken, onOrgChange }: Props) {
       const r = await fetch('/api/admin-room/lead-map/permissions/catalog', { headers });
       if (r.ok) {
         const j = await r.json();
-        setPermissionsCatalog(j.permissions ?? []);
+        setPermissionsCatalog(Array.isArray(j.permissions) ? j.permissions : []);
       }
     } catch { /* noop */ }
   }, [headers]);
@@ -633,7 +634,15 @@ export default function LeadMapOrgPanel({ authToken, onOrgChange }: Props) {
       );
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const j = await r.json();
-      setPermDialog({ userId: m.user_id, userLabel: label, state: j });
+      setPermDialog({
+        userId: m.user_id,
+        userLabel: label,
+        state: {
+          ...j,
+          effective: Array.isArray(j?.effective) ? j.effective : [],
+          overrides: Array.isArray(j?.overrides) ? j.overrides : [],
+        },
+      });
     } catch (err) {
       setError(`Klarte ikke laste tillatelser: ${String(err)}`);
     }
@@ -660,7 +669,14 @@ export default function LeadMapOrgPanel({ authToken, onOrgChange }: Props) {
       );
       if (re.ok) {
         const js = await re.json();
-        setPermDialog({ ...permDialog, state: js });
+        setPermDialog({
+          ...permDialog,
+          state: {
+            ...js,
+            effective: Array.isArray(js?.effective) ? js.effective : [],
+            overrides: Array.isArray(js?.overrides) ? js.overrides : [],
+          },
+        });
       }
     } catch (err) {
       setError(`Endring feilet: ${String(err)}`);
@@ -683,7 +699,14 @@ export default function LeadMapOrgPanel({ authToken, onOrgChange }: Props) {
       );
       if (re.ok) {
         const js = await re.json();
-        setPermDialog({ ...permDialog, state: js });
+        setPermDialog({
+          ...permDialog,
+          state: {
+            ...js,
+            effective: Array.isArray(js?.effective) ? js.effective : [],
+            overrides: Array.isArray(js?.overrides) ? js.overrides : [],
+          },
+        });
       }
     } catch (err) {
       setError(`Tilbakestilling feilet: ${String(err)}`);

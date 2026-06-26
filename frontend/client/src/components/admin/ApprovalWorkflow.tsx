@@ -147,9 +147,9 @@ export default function ApprovalWorkflow() {
     enabled: Boolean(selectedRequest?.id),
   });
 
-  const requests = requestsQuery.data ?? [];
-  const stages = stagesQuery.data ?? [];
-  const comments = commentsQuery.data ?? [];
+  const requests = Array.isArray(requestsQuery.data) ? requestsQuery.data : [];
+  const stages = Array.isArray(stagesQuery.data) ? stagesQuery.data : [];
+  const comments = Array.isArray(commentsQuery.data) ? commentsQuery.data : [];
 
   const approveMutation = useMutation({
     mutationFn: async ({ requestId, comment }: { requestId: string; comment?: string }) => {

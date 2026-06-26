@@ -617,7 +617,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
             </Grid>
 
             {/* Recent projects */}
-            {roleRoomStats?.recentProjects && roleRoomStats.recentProjects.length > 0 && (
+            {Array.isArray(roleRoomStats?.recentProjects) && roleRoomStats.recentProjects.length > 0 && (
               <Box>
                 <Typography variant="subtitle2" sx={{ mb: 1.5, color: 'text.secondary', letterSpacing: '0.06em', textTransform: 'uppercase', fontSize: '0.72rem' }}>
                   Siste produksjoner

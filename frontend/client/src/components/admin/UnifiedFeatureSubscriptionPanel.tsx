@@ -177,7 +177,9 @@ export default function UnifiedFeatureSubscriptionPanel() {
 
   // Helper: Get availability mode
   function getAvailabilityMode(feature: FeatureWithMetadata): AvailabilityMode {
-    const trialConfig = trialConfigs.find((t) => t.featureId === feature.id);
+    const trialConfig = (Array.isArray(trialConfigs) ? trialConfigs : []).find(
+      (t) => t.featureId === feature.id,
+    );
 
     if (!feature.enabled && !feature.optional) return 'locked';
     if (trialConfig?.availableInTrial) return 'trial';

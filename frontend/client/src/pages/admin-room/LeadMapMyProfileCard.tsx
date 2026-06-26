@@ -73,7 +73,7 @@ export default function LeadMapMyProfileCard() {
         });
         const meJson = meRes.ok ? await meRes.json() : null;
         const myEmail = meJson?.email ?? localStorage.getItem('userEmail');
-        const row = (j.profiles ?? []).find((p: Record<string, unknown>) =>
+        const row = (Array.isArray(j.profiles) ? j.profiles : []).find((p: Record<string, unknown>) =>
           (p.user_email as string)?.toLowerCase() === myEmail?.toLowerCase()
         );
         if (row) {

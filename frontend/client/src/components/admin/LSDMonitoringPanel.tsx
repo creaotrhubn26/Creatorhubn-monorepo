@@ -351,7 +351,7 @@ export function LSDMonitoringPanel(): JSX.Element {
 
   // Combine all diagnostics including compilation errors
   const allDiagnostics = React.useMemo(() => {
-    const current = currentDiagnostics?.diagnostics || [];
+    const current = Array.isArray(currentDiagnostics?.diagnostics) ? currentDiagnostics.diagnostics : [];
     return [...current, ...compilationErrors];
 }, [currentDiagnostics, compilationErrors]);
 
@@ -495,7 +495,9 @@ export function LSDMonitoringPanel(): JSX.Element {
   const renderDiagnosticsTable = () => {
     if (!currentDiagnostics?.diagnostics) return null;
 
-    const diagnostics = currentDiagnostics.diagnostics as LSDDiagnosticResult[];
+    const diagnostics = Array.isArray(currentDiagnostics.diagnostics)
+      ? (currentDiagnostics.diagnostics as LSDDiagnosticResult[])
+      : [];
 
     return (
       <TableContainer component={Paper}>

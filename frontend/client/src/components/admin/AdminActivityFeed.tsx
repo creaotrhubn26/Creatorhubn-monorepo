@@ -131,7 +131,7 @@ export default function AdminActivityFeed({
     refetchInterval: autoRefresh ? refreshInterval : false,
   });
 
-  const activities = activityData?.activities || [];
+  const activities = Array.isArray(activityData?.activities) ? activityData.activities : [];
 
   // Fetch pending counts
   const { data: pendingCounts } = useQuery({

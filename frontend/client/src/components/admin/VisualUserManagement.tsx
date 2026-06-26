@@ -341,9 +341,9 @@ const VisualUserManagement: FC = () => {
     refetchInterval: 30000,
   });
 
-  const users = usersQuery.data ?? fallbackUsers;
-  const packages = packagesQuery.data ?? fallbackPackages;
-  const featureFlags = featureFlagsQuery.data ?? fallbackFeatureFlags;
+  const users = Array.isArray(usersQuery.data) ? usersQuery.data : fallbackUsers;
+  const packages = Array.isArray(packagesQuery.data) ? packagesQuery.data : fallbackPackages;
+  const featureFlags = Array.isArray(featureFlagsQuery.data) ? featureFlagsQuery.data : fallbackFeatureFlags;
   const analytics = analyticsQuery.data ?? fallbackAnalytics;
 
   const updateFeatureFlagMutation = useMutation({

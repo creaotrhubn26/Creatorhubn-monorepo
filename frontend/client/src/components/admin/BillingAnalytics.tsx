@@ -114,7 +114,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
       [],
       ['Cancellation Reasons'],
       ['Reason','Count'],
-      ...(cancellationData?.data?.cancellationReasons || []).map((r: any) => [r.reason || 'No reason', r.count]),
+      ...(Array.isArray(cancellationData?.data?.cancellationReasons) ? cancellationData.data.cancellationReasons : []).map((r: any) => [r.reason || 'No reason', r.count]),
       [],
       ['=== REFUND STATISTICS ==='],
       ['Total Requests', refundData?.data?.totalRequests || 0],
@@ -126,7 +126,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
       [],
       ['=== REVENUE TRENDS ==='],
       ['Date','Revenue (NOK)','Subscriptions'],
-      ...(revenueData?.data?.trends || []).slice(0, 30).map((t: any) => [
+      ...(Array.isArray(revenueData?.data?.trends) ? revenueData.data.trends : []).slice(0, 30).map((t: any) => [
         new Date(t.date).toLocaleDateString('nb-NO'),
         t.revenue,
         t.subscriptionCount
@@ -242,7 +242,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
       doc.text('Cancellation Statistics', 14, yPosition);
       yPosition += 8;
 
-      const cancellationReasons = cancellationData?.data?.cancellationReasons || [];
+      const cancellationReasons = Array.isArray(cancellationData?.data?.cancellationReasons) ? cancellationData.data.cancellationReasons : [];
       if (cancellationReasons.length > 0) {
         autoTable(doc, {
           startY: yPosition,
@@ -379,7 +379,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
 
   // Keep hook order stable across loading and loaded renders.
   const revenueTrendsData = useMemo(() => {
-    if (!revenueData?.data?.trends) return [];
+    if (!Array.isArray(revenueData?.data?.trends)) return [];
     return revenueData.data.trends.slice().reverse(); // Reverse to show oldest first
   }, [revenueData]);
 
@@ -489,7 +489,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
   };
 
   // Prepare cancellation reasons pie chart
-  const cancellationReasons = cancellationData?.data?.reasonBreakdown || [];
+  const cancellationReasons = Array.isArray(cancellationData?.data?.reasonBreakdown) ? cancellationData.data.reasonBreakdown : [];
   const cancellationPieOption = {
     title: {
       text: 'Kanselleringsårsaker',
@@ -526,7 +526,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
   };
 
   // Prepare plan breakdown bar chart
-  const planBreakdown = cancellationData?.data?.planBreakdown || [];
+  const planBreakdown = Array.isArray(cancellationData?.data?.planBreakdown) ? cancellationData.data.planBreakdown : [];
   const planBarOption = {
     title: {
       text: 'Kanselleringer per Plan',

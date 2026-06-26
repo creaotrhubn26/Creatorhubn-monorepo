@@ -693,7 +693,7 @@ export default function DatabaseManagementPanel() {
                 // Verify table creation using existing tables endpoint
                 const tablesResponse = await apiRequest('/api/admin/database/tables');
                 if (tablesResponse.success) {
-                  const testTables = tablesResponse.data.filter((table: any) => 
+                  const testTables = (Array.isArray(tablesResponse.data) ? tablesResponse.data : []).filter((table: any) =>
                     table.table_name.startsWith('script_test_table_')
                   );
                   setScriptProgress(prev => ({
@@ -1536,7 +1536,7 @@ export default function DatabaseManagementPanel() {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {tables?.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((table: DatabaseTable) => (
+                    {(Array.isArray(tables) ? tables : []).slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((table: DatabaseTable) => (
                       <TableRow key={table.table_name}>
                         <TableCell>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -3078,7 +3078,7 @@ export default function DatabaseManagementPanel() {
                         </TableRow>
                       </TableHead>
                       <TableBody>
-                        {tableDetails?.columns?.map((column: any, index: number) => (
+                        {(Array.isArray(tableDetails?.columns) ? tableDetails.columns : []).map((column: any, index: number) => (
                           <TableRow key={index}>
                             <TableCell>{column.column_name}</TableCell>
                             <TableCell>{column.data_type}</TableCell>

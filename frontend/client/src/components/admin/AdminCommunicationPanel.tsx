@@ -180,6 +180,7 @@ export default function AdminCommunicationPanel({
       const response = await fetch('/api/admin/communication/users', { headers });
       return response.json();
   },
+    select: (data) => (Array.isArray(data) ? data : []),
     staleTime: 30000
 });
 
@@ -191,6 +192,7 @@ export default function AdminCommunicationPanel({
       const response = await fetch('/api/admin/communication/rooms', { headers });
       return response.json();
   },
+    select: (data) => (Array.isArray(data) ? data : []),
     staleTime: 10000,
     refetchInterval: 5000 // Real-time updates
 });
@@ -204,6 +206,7 @@ export default function AdminCommunicationPanel({
       const response = await fetch(`/api/admin/communication/messages/${selectedChat}`, { headers });
       return response.json();
   },
+    select: (data) => (Array.isArray(data) ? data : []),
     enabled: !!selectedChat,
     staleTime: 5000,
     refetchInterval: 2000 // Real-time message updates

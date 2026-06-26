@@ -128,7 +128,7 @@ interface DayRoute {
 
 /** Google Maps multi-stopp dirs-URL fra ordnede stopp + valgfritt startpunkt. */
 function googleMapsRouteUrl(stops: DayRouteStop[], origin: { lat: number; lng: number } | null): string | null {
-  const pts = stops.filter((s) => s.latitude != null && s.longitude != null);
+  const pts = (Array.isArray(stops) ? stops : []).filter((s) => s.latitude != null && s.longitude != null);
   if (pts.length === 0) return null;
   const dest = pts[pts.length - 1];
   const waypoints = pts.slice(0, -1).map((s) => `${s.latitude},${s.longitude}`).join('|');
@@ -206,7 +206,7 @@ export default function LeadMapMyDayPanel() {
       ]);
       if (wRes.ok) {
         const j = await wRes.json();
-        setLeads(j.leads ?? []);
+        setLeads(Array.isArray(j.leads) ? j.leads : []);
       }
       if (qRes?.ok) {
         const j = await qRes.json();
@@ -384,7 +384,7 @@ export default function LeadMapMyDayPanel() {
               <Box>
                 <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>{route.name}</Typography>
                 <Typography variant="caption" color="text.secondary">
-                  {route.stops.length} stopp · {(route.total_distance_meters / 1000).toFixed(1)} km ·
+                  {(Array.isArray(route.stops) ? route.stops : []).length} stopp · {(route.total_distance_meters / 1000).toFixed(1)} km ·
                   {' '}{Math.round(route.total_drive_seconds / 60)} min kjøring ·
                   {' '}forventet verdi {formatNok(route.expected_route_value)}
                   {route.matrix_source === 'estimate' && ' · (estimert avstand)'}
@@ -399,7 +399,7 @@ export default function LeadMapMyDayPanel() {
               })()}
             </Stack>
             <Stack spacing={0.5} sx={{ mt: 1 }}>
-              {route.stops.map((s) => (
+              {(Array.isArray(route.stops) ? route.stops : []).map((s) => (
                 <Stack key={s.lead_id} direction="row" spacing={1} alignItems="center"
                   sx={{ fontSize: 13, py: 0.5, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
                   <Chip size="small" label={s.position} />

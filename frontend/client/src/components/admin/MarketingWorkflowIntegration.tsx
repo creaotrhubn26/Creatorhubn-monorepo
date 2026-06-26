@@ -551,7 +551,7 @@ export default function MarketingWorkflowIntegration({
                       setWorkflowData((prev) => ({ ...prev, workflowId: e.target.value }))
                     }
                   >
-                    {workflows?.data?.map((workflow: any) => (
+                    {(Array.isArray(workflows?.data) ? workflows.data : []).map((workflow: any) => (
                       <MenuItem key={workflow.id} value={workflow.id}>
                         {workflow.name} - {workflow.description}
                       </MenuItem>
@@ -581,7 +581,7 @@ export default function MarketingWorkflowIntegration({
                       </Box>
                     )}
                   >
-                    {segments?.data?.map((segment: any) => (
+                    {(Array.isArray(segments?.data) ? segments.data : []).map((segment: any) => (
                       <MenuItem key={segment.id} value={segment.id}>
                         {segment.name} ({segment.size} kontakter)
                       </MenuItem>
@@ -600,7 +600,7 @@ export default function MarketingWorkflowIntegration({
                     <MenuItem value="">
                       <em>Ingen</em>
                     </MenuItem>
-                    {campaigns?.data?.map((campaign: any) => (
+                    {(Array.isArray(campaigns?.data) ? campaigns.data : []).map((campaign: any) => (
                       <MenuItem key={campaign.id} value={campaign.id}>
                         {campaign.name} ({campaign.type})
                       </MenuItem>

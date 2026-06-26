@@ -132,7 +132,8 @@ export default function GoogleDriveDocsBridge({
         endTiming();
       }
     },
-    enabled: canUseDrive
+    enabled: canUseDrive,
+    select: (d) => (Array.isArray(d) ? d : [])
   });
   
   // 📄 Fetch files in selected folder
@@ -150,7 +151,8 @@ export default function GoogleDriveDocsBridge({
         endTiming();
       }
     },
-    enabled: canUseDrive && !!selectedFolder
+    enabled: canUseDrive && !!selectedFolder,
+    select: (d) => (Array.isArray(d) ? d : [])
   });
   
   // 📥 Import doc from Google Drive

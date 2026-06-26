@@ -94,7 +94,7 @@ export default function UnifiedMediaLibrary({ onSelectFile }: { onSelectFile?: (
   const { toast } = useToast();
 
   // Fetch media files
-  const { data: files = [], isLoading: filesLoading } = useQuery({
+  const { data: filesData = [], isLoading: filesLoading } = useQuery({
     queryKey: [...QUERY_KEYS.MEDIA, selectedType, selectedFolderId, sortBy],
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -107,9 +107,10 @@ export default function UnifiedMediaLibrary({ onSelectFile }: { onSelectFile?: (
       return res.json() as Promise<MediaFile[]>;
     }
   });
+  const files: MediaFile[] = Array.isArray(filesData) ? filesData : [];
 
   // Fetch folders
-  const { data: folders = [] } = useQuery({
+  const { data: foldersData = [] } = useQuery({
     queryKey: QUERY_KEYS.MEDIA_FOLDERS,
     queryFn: async () => {
       const res = await fetch('/api/media/folders');
@@ -117,9 +118,10 @@ export default function UnifiedMediaLibrary({ onSelectFile }: { onSelectFile?: (
       return res.json() as Promise<MediaFolder[]>;
     }
   });
+  const folders: MediaFolder[] = Array.isArray(foldersData) ? foldersData : [];
 
   // Fetch available tags
-  const { data: availableTags = [] } = useQuery({
+  const { data: availableTagsData = [] } = useQuery({
     queryKey: [...QUERY_KEYS.MEDIA, 'tags'],
     queryFn: async () => {
       const res = await fetch('/api/media/tags');
@@ -127,6 +129,7 @@ export default function UnifiedMediaLibrary({ onSelectFile }: { onSelectFile?: (
       return res.json() as Promise<string[]>;
     }
   });
+  const availableTags: string[] = Array.isArray(availableTagsData) ? availableTagsData : [];
 
   // Upload mutation
   const uploadMutation = useMutation({

@@ -317,13 +317,15 @@ function PermissionDiffPanel({ preview }: { preview: PreviewResponse }) {
       : 'Lateral overgang';
 
   // Gruppér per kategori for tydelig oversikt
+  const gained = Array.isArray(preview.permissions_gained) ? preview.permissions_gained : [];
+  const lost = Array.isArray(preview.permissions_lost) ? preview.permissions_lost : [];
   const gainedByCat: Record<string, string[]> = {};
   const lostByCat: Record<string, string[]> = {};
-  for (const p of preview.permissions_gained) {
+  for (const p of gained) {
     if (!gainedByCat[p.category]) gainedByCat[p.category] = [];
     gainedByCat[p.category].push(p.description);
   }
-  for (const p of preview.permissions_lost) {
+  for (const p of lost) {
     if (!lostByCat[p.category]) lostByCat[p.category] = [];
     lostByCat[p.category].push(p.description);
   }
@@ -333,9 +335,9 @@ function PermissionDiffPanel({ preview }: { preview: PreviewResponse }) {
       <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
         <Icon sx={{ color }} />
         <Chip label={label} size="small" sx={{ bgcolor: `${color}22`, color, fontWeight: 700 }} />
-        <Chip label={`+${preview.permissions_gained.length} tillatelser`} size="small"
+        <Chip label={`+${gained.length} tillatelser`} size="small"
           sx={{ bgcolor: '#34d39922', color: '#34d399' }} />
-        <Chip label={`−${preview.permissions_lost.length} tillatelser`} size="small"
+        <Chip label={`−${lost.length} tillatelser`} size="small"
           sx={{ bgcolor: '#f8717122', color: '#f87171' }} />
       </Stack>
 
@@ -355,7 +357,7 @@ function PermissionDiffPanel({ preview }: { preview: PreviewResponse }) {
               ))}
             </Box>
           ))}
-          {preview.permissions_gained.length === 0 && (
+          {gained.length === 0 && (
             <Typography variant="caption" color="text.secondary">Ingen nye tillatelser</Typography>
           )}
         </Box>
@@ -375,7 +377,7 @@ function PermissionDiffPanel({ preview }: { preview: PreviewResponse }) {
               ))}
             </Box>
           ))}
-          {preview.permissions_lost.length === 0 && (
+          {lost.length === 0 && (
             <Typography variant="caption" color="text.secondary">Mister ingen tillatelser</Typography>
           )}
         </Box>
@@ -514,7 +516,7 @@ function Step2({
           </Typography>
           {newQuota && <Typography variant="body2">Kvote: <strong>{Number(newQuota).toLocaleString('nb-NO')} kr</strong></Typography>}
           <Typography variant="body2" color="text.secondary">
-            +{preview.permissions_gained.length} / −{preview.permissions_lost.length} tillatelser
+            +{(Array.isArray(preview.permissions_gained) ? preview.permissions_gained : []).length} / −{(Array.isArray(preview.permissions_lost) ? preview.permissions_lost : []).length} tillatelser
           </Typography>
           <Typography variant="caption" color="text.secondary">
             ✓ Alle leads, won/lost-historikk, audit-log og per-bruker-permission-overstyringer beholdes

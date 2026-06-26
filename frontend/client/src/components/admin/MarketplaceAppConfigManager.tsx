@@ -137,7 +137,7 @@ const MarketplaceAppConfigManager: React.FC = () => {
     },
   });
 
-  const apps = data || [];
+  const apps = Array.isArray(data) ? data : [];
 
   const saveMutation = useMutation({
     mutationFn: async (app: MarketplaceApp) => {
@@ -175,7 +175,7 @@ const MarketplaceAppConfigManager: React.FC = () => {
       return apiRequest(`/api/admin/marketplace/apps/${id}/publish`, { method: 'POST' });
     },
     onSuccess: (data, id) => {
-      const tiers = data?.data?.subscriptionTiers || [];
+      const tiers = Array.isArray(data?.data?.subscriptionTiers) ? data.data.subscriptionTiers : [];
       const errored = tiers.filter((t: any) => t.stripeSyncError).length;
       marketplaceAdminEvents.publishedToStripe(id, tiers.length, errored);
       queryClient.invalidateQueries({ queryKey: ['admin-marketplace-apps'] });
@@ -232,10 +232,10 @@ const MarketplaceAppConfigManager: React.FC = () => {
               <strong>{driftMutation.data.report.driftsFound} drift(s) oppdaget</strong> av {driftMutation.data.report.totalTiers} tiers sjekket.
               Admin-notifikasjon sendt.
               <ul style={{ margin: '8px 0 0 16px', paddingLeft: 0 }}>
-                {driftMutation.data.report.drifts.slice(0, 5).map((d: any, idx: number) => (
+                {(Array.isArray(driftMutation.data.report.drifts) ? driftMutation.data.report.drifts : []).slice(0, 5).map((d: any, idx: number) => (
                   <li key={idx}><strong>{d.appName} / {d.tierName}</strong>: {d.message}</li>
                 ))}
-                {driftMutation.data.report.drifts.length > 5 && (
+                {(Array.isArray(driftMutation.data.report.drifts) ? driftMutation.data.report.drifts.length : 0) > 5 && (
                   <li>... og {driftMutation.data.report.drifts.length - 5} til</li>
                 )}
               </ul>
@@ -328,7 +328,7 @@ const MarketplaceAppConfigManager: React.FC = () => {
                   <Chip size="small" label={app.subscriptionTiers?.length || 0} />
                   {/* Stripe-sync-indikator */}
                   {(() => {
-                    const tiers = app.subscriptionTiers || [];
+                    const tiers = Array.isArray(app.subscriptionTiers) ? app.subscriptionTiers : [];
                     const synced = tiers.filter((t: any) => t.stripeProductId).length;
                     const errored = tiers.filter((t: any) => t.stripeSyncError).length;
                     if (tiers.length === 0) return null;
@@ -601,12 +601,12 @@ const MarketplaceAppEditDialog: React.FC<{
               </Button>
             </Stack>
             <Stack spacing={2}>
-              {(form.subscriptionTiers || []).length === 0 && (
+              {(Array.isArray(form.subscriptionTiers) ? form.subscriptionTiers : []).length === 0 && (
                 <Alert severity="info">
                   Ingen tiers definert. Legg til én eller flere planer (f.eks. "Innholdsprodusent", "Produksjonsteam").
                 </Alert>
               )}
-              {(form.subscriptionTiers || []).map((tier, idx) => (
+              {(Array.isArray(form.subscriptionTiers) ? form.subscriptionTiers : []).map((tier, idx) => (
                 <Card key={tier.id || idx} sx={{ p: 2, border: 1, borderColor: 'divider', boxShadow: 'none' }}>
                   <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
                     <Stack direction="row" spacing={1} alignItems="center">
@@ -649,7 +649,7 @@ const MarketplaceAppEditDialog: React.FC<{
                     <TextField
                       label="Funksjoner (en per linje)"
                       size="small" fullWidth multiline rows={4}
-                      value={(tier.features || []).join('\n')}
+                      value={(Array.isArray(tier.features) ? tier.features : []).join('\n')}
                       onChange={(e) => updateTier(idx, { features: e.target.value.split('\n').filter(Boolean) })}
                     />
                     <FormControl size="small" fullWidth>
@@ -688,7 +688,7 @@ const MarketplaceAppEditDialog: React.FC<{
             </Typography>
             <TextField
               fullWidth multiline rows={4} size="small"
-              value={(form.mediaGallery || []).map((m) => m.label ? `${m.src} | ${m.label}` : m.src).join('\n')}
+              value={(Array.isArray(form.mediaGallery) ? form.mediaGallery : []).map((m) => m.label ? `${m.src} | ${m.label}` : m.src).join('\n')}
               onChange={(e) => {
                 const parsed = e.target.value.split('\n').filter(Boolean).map((line) => {
                   const [src, label] = line.split('|').map((p) => p.trim());

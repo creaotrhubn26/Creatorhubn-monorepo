@@ -249,7 +249,7 @@ export default function CompetitorsPanel() {
       const r = await fetch('/api/role-room/marketing-cockpit/competitors?brandKey=theroleroom', { credentials: 'include' });
       if (!r.ok) throw new Error(`Status ${r.status}`);
       const d = await r.json();
-      setCompetitors(d.competitors || []);
+      setCompetitors(Array.isArray(d.competitors) ? d.competitors : []);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -378,7 +378,7 @@ export default function CompetitorsPanel() {
       const r = await fetch(`/api/role-room/marketing-cockpit/competitors/${id}/snapshots?days=30`, { credentials: 'include' });
       const d = await r.json();
       if (d.ok) {
-        setSnapshotData((s) => ({ ...s, [id]: d.snapshots || [] }));
+        setSnapshotData((s) => ({ ...s, [id]: Array.isArray(d.snapshots) ? d.snapshots : [] }));
       }
     } catch { /* ignore */ }
     finally {

@@ -182,7 +182,7 @@ export default function AutomatedTestCaseGenerator() {
                 onChange={(e) => setSelectedProfession(e.target.value)}
                 label="Select Profession"
               >
-                {professions?.professions?.map((prof: any) => (
+                {(Array.isArray(professions?.professions) ? professions.professions : []).map((prof: any) => (
                   <MenuItem key={prof.professionId} value={prof.professionId}>
                     {prof.displayName || prof.professionId}
                   </MenuItem>
@@ -216,7 +216,7 @@ export default function AutomatedTestCaseGenerator() {
 
       {/* Test Suites Overview */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
-        {testSuites.map((suite: TestSuite) => (
+        {(Array.isArray(testSuites) ? testSuites : []).map((suite: TestSuite) => (
           <Grid item xs={12} md={6} lg={4} key={suite.id}>
             <Card>
               <CardContent>
@@ -295,7 +295,7 @@ export default function AutomatedTestCaseGenerator() {
         </DialogTitle>
         <DialogContent>
           <List>
-            {testCases.map((testCase: TestCase) => (
+            {(Array.isArray(testCases) ? testCases : []).map((testCase: TestCase) => (
               <Accordion key={testCase.id}>
                 <AccordionSummary expandIcon={<ExpandMore />}>
                   <Stack direction="row" spacing={2} alignItems="center" sx={{ width: '100%' }}>
@@ -341,7 +341,7 @@ export default function AutomatedTestCaseGenerator() {
                         Steps:
                       </Typography>
                       <ol style={{ margin: 0, paddingLeft: 20 }}>
-                        {testCase.steps.map((step, index) => (
+                        {(Array.isArray(testCase.steps) ? testCase.steps : []).map((step, index) => (
                           <li key={index}>
                             <Typography variant="body2">{step}</Typography>
                           </li>

@@ -2087,10 +2087,10 @@ export default function AdminDashboard({
   );
 
   const renderAcademyPanel = () => {
-    const pendingPayouts = academyPayoutsData?.payouts ?? [];
-    const instructors = academyInstructorsData?.instructors ?? [];
-    const transfers = academyTransfersData?.transfers ?? [];
-    const refunds = academyRefundsData?.refunds ?? [];
+    const pendingPayouts = Array.isArray(academyPayoutsData?.payouts) ? academyPayoutsData.payouts : [];
+    const instructors = Array.isArray(academyInstructorsData?.instructors) ? academyInstructorsData.instructors : [];
+    const transfers = Array.isArray(academyTransfersData?.transfers) ? academyTransfersData.transfers : [];
+    const refunds = Array.isArray(academyRefundsData?.refunds) ? academyRefundsData.refunds : [];
     const pendingPayoutsCount =
       academySummary?.pendingPayoutsCount ?? pendingPayouts.length;
     const pendingPayoutsAmount =
@@ -3009,7 +3009,7 @@ export default function AdminDashboard({
                     Per kurs
                   </Typography>
                   <Grid container spacing={1}>
-                    {academyB2StatsData?.byCourse.slice(0, 8).map((row) => (
+                    {(Array.isArray(academyB2StatsData?.byCourse) ? academyB2StatsData.byCourse : []).slice(0, 8).map((row) => (
                       <Grid item xs={12} sm={6} md={4} key={row.courseId}>
                         <Paper
                           sx={{
@@ -3077,7 +3077,7 @@ export default function AdminDashboard({
                   </Alert>
                 ) : (
                   <Grid container spacing={1}>
-                    {academyB2ListData?.files?.map((file) => (
+                    {(Array.isArray(academyB2ListData?.files) ? academyB2ListData.files : []).map((file) => (
                       <Grid item xs={12} key={file.key}>
                         <Paper
                           sx={{
@@ -3184,7 +3184,7 @@ export default function AdminDashboard({
                   disabled={academyB2UploadDialog.isUploading}
                 >
                   <MenuItem value="">— velg kurs —</MenuItem>
-                  {(academyCoursesData?.courses ?? []).map((course) => (
+                  {(Array.isArray(academyCoursesData?.courses) ? academyCoursesData.courses : []).map((course) => (
                     <MenuItem key={course.id} value={course.id}>
                       {course.title} ({course.id.slice(0, 8)})
                     </MenuItem>
@@ -3405,7 +3405,7 @@ export default function AdminDashboard({
                         bestPractices: res.bestPractices,
                         seo: res.seo,
                         pwa: res.pwa,
-                        recommendations: res.recommendations || [],
+                        recommendations: Array.isArray(res.recommendations) ? res.recommendations : [],
                       });
                     } catch (e: any) {
                       setSeoAuditError(e?.message || 'Audit failed');

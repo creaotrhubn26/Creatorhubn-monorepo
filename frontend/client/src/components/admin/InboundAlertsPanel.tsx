@@ -101,7 +101,7 @@ export default function InboundAlertsPanel() {
     queryFn: () => apiRequest('/api/admin/inbound-alerts/count'),
   });
 
-  const alerts: InboundAlert[] = data?.alerts || [];
+  const alerts: InboundAlert[] = Array.isArray(data?.alerts) ? data.alerts : [];
   const unreadCount: number = Number(countData?.unread || 0);
 
   const refresh = () => {

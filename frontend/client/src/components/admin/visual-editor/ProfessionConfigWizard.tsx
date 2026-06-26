@@ -806,7 +806,7 @@ export default function ProfessionConfigWizard({
         setLayoutTemplate(response.dashboardConfig.layoutTemplate || 'expanded');
         
         // Clone tabs
-        if (response.tabs) {
+        if (Array.isArray(response.tabs)) {
           setSelectedTabs(response.tabs.map((tab: TabConfig, index: number) => ({
             tabId: tab.tabId,
             label: tab.label,
@@ -818,7 +818,7 @@ export default function ProfessionConfigWizard({
         }
         
         // Clone project types
-        if (response.projectTypes) {
+        if (Array.isArray(response.projectTypes)) {
           setSelectedProjectTypes(response.projectTypes.map((type: ProjectTypeConfig, index: number) => ({
             typeId: type.typeId,
             displayName: type.displayName,
@@ -831,7 +831,7 @@ export default function ProfessionConfigWizard({
         }
         
         // Clone stats
-        if (response.stats) {
+        if (Array.isArray(response.stats)) {
           setSelectedStats(response.stats.map((stat: StatConfig, index: number) => ({
             statId: stat.statId,
             displayName: stat.displayName,

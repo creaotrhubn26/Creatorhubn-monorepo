@@ -187,8 +187,8 @@ export function DependenciesManager() {
   }
 });
 
-  const dependencies: DependencyInfo[] = dependenciesData?.dependencies || [];
-  const categories: DependencyCategory[] = dependenciesData?.categories || [];
+  const dependencies: DependencyInfo[] = Array.isArray(dependenciesData?.dependencies) ? dependenciesData.dependencies : [];
+  const categories: DependencyCategory[] = Array.isArray(dependenciesData?.categories) ? dependenciesData.categories : [];
 
   const getCategoryIcon = (category: string) => {
     switch (category) {
