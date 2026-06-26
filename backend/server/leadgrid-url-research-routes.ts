@@ -50,6 +50,11 @@ import {
   type RoleRoomAgentProducerBootstrapInput,
   type RoleRoomAgentWebsiteInsights,
 } from "./role-room-agent.js";
+import {
+  processUrlResearchBatch,
+  readBatchProgress,
+  normalizeAndValidateUrls,
+} from "./leadgrid-url-batch-processor.js";
 
 // =====================================================================
 // Types
@@ -1086,6 +1091,433 @@ export function registerLeadgridUrlResearchRoutes(deps: Deps): void {
       } catch (err) {
         return res.status(500).json({
           error: "refresh_failed",
+          detail: (err as Error).message,
+        });
+      }
+    },
+  );
+
+  // =================================================================
+  // BULK URL-RESEARCH (mig 0351) — endpoints
+  //
+  // Selger limer inn N URLer (1-100), batch-processor kjører dem
+  // gjennom samme runUrlResearch som enkelt-URL-flyten med max 3
+  // parallelle. iPad/web poller progress og rendrer
+  // "X / Y leads lagt til på kartet"-counter.
+  // =================================================================
+
+  // -------------------------------------------------------------------
+  // POST /api/leadgrid/url-research/batch
+  // body: { urls: string[] (1-100) }
+  // → { batch_id, total_urls, accepted_urls, rejected_urls }
+  // -------------------------------------------------------------------
+  app.post(
+    "/api/leadgrid/url-research/batch",
+    permUrl,
+    async (req: Request, res: Response) => {
+      const session = getSession(req, activeSessions);
+      if (!session?.userId) {
+        return res.status(401).json({ error: "Innlogging kreves" });
+      }
+      const body = (req.body ?? {}) as { urls?: unknown };
+      const { valid, invalid } = normalizeAndValidateUrls(body.urls);
+      if (valid.length === 0) {
+        return res.status(400).json({
+          error: "no_valid_urls",
+          rejected_urls: invalid,
+        });
+      }
+      if (valid.length > 100) {
+        return res.status(400).json({
+          error: "too_many_urls",
+          max: 100,
+          provided: valid.length,
+        });
+      }
+
+      const orgId = await resolveOrgId(req, pool, session.userId);
+      const batchId = crypto.randomUUID();
+
+      try {
+        // 1. Lag batch-rad
+        await pool.query(
+          `INSERT INTO leadgrid_url_research_batches (
+              id, organization_id, created_by, total_urls, status
+            ) VALUES ($1::uuid, $2::uuid, $3, $4, 'pending')`,
+          [batchId, orgId, session.userId, valid.length],
+        );
+
+        // 2. Lag draft-leads + item-rader (inline INSERT...RETURNING for å
+        //    få draft_lead_id på hver item).
+        for (let i = 0; i < valid.length; i++) {
+          const url = valid[i];
+          const draftRes = await pool.query<{ id: string }>(
+            `INSERT INTO crm_customers (
+                id, name, status, source,
+                owner_user_id, organization_id,
+                website_url,
+                lead_status, lead_source,
+                draft_status,
+                import_source, import_batch_id,
+                created_at, updated_at
+              ) VALUES (
+                gen_random_uuid(), $1, 'lead', 'url_research_bulk',
+                $2, $3::uuid,
+                $4,
+                'unvisited', 'url_research',
+                'draft',
+                'url_research_bulk', $5::uuid,
+                NOW(), NOW()
+              ) RETURNING id::text`,
+            ["Research pågår…", session.userId, orgId, url, batchId],
+          );
+          const draftId = draftRes.rows[0].id;
+          await pool.query(
+            `INSERT INTO leadgrid_url_research_items (
+                batch_id, url, order_index, draft_lead_id, status
+              ) VALUES ($1::uuid, $2, $3, $4::uuid, 'pending')`,
+            [batchId, url, i, draftId],
+          );
+        }
+
+        // 3. Trigger processor i bakgrunnen — ikke await.
+        setImmediate(() => {
+          processUrlResearchBatch(pool, batchId).catch((err) => {
+            console.error(
+              "[leadgrid-url-research] batch processor failed",
+              batchId,
+              err,
+            );
+          });
+        });
+
+        return res.json({
+          batch_id: batchId,
+          total_urls: valid.length,
+          accepted_urls: valid.length,
+          rejected_urls: invalid,
+        });
+      } catch (err) {
+        console.error("[leadgrid-url-research] batch start failed", err);
+        return res.status(500).json({
+          error: "batch_start_failed",
+          detail: (err as Error).message,
+        });
+      }
+    },
+  );
+
+  // -------------------------------------------------------------------
+  // GET /api/leadgrid/url-research/batches/:id
+  // Full batch + items + summary. Brukes når UI åpnes/re-mounteres.
+  // -------------------------------------------------------------------
+  app.get(
+    "/api/leadgrid/url-research/batches/:id",
+    permUrl,
+    async (req: Request, res: Response) => {
+      const session = getSession(req, activeSessions);
+      if (!session?.userId) {
+        return res.status(401).json({ error: "Innlogging kreves" });
+      }
+      const batchId = req.params.id;
+      try {
+        const batchRes = await pool.query<{
+          id: string;
+          organization_id: string | null;
+          created_by: string;
+          total_urls: number;
+          completed_urls: number;
+          failed_urls: number;
+          pinned_leads: number;
+          status: string;
+          started_at: Date | null;
+          finished_at: Date | null;
+          created_at: Date;
+        }>(
+          `SELECT id::text, organization_id::text, created_by::text,
+                  total_urls, completed_urls, failed_urls, pinned_leads,
+                  status, started_at, finished_at, created_at
+             FROM leadgrid_url_research_batches
+            WHERE id = $1::uuid AND created_by = $2`,
+          [batchId, session.userId],
+        );
+        const batch = batchRes.rows[0];
+        if (!batch) {
+          return res.status(404).json({ error: "batch_not_found" });
+        }
+        const itemsRes = await pool.query<{
+          id: string;
+          url: string;
+          order_index: number;
+          status: string;
+          draft_lead_id: string | null;
+          has_pin: boolean;
+          location_confidence: string | null;
+          error_message: string | null;
+          research_result: Record<string, unknown> | null;
+        }>(
+          `SELECT id::text, url, order_index, status,
+                  draft_lead_id::text, has_pin, location_confidence,
+                  error_message, research_result
+             FROM leadgrid_url_research_items
+            WHERE batch_id = $1::uuid
+            ORDER BY order_index ASC`,
+          [batchId],
+        );
+        return res.json({
+          batch: {
+            id: batch.id,
+            organization_id: batch.organization_id,
+            created_by: batch.created_by,
+            total_urls: batch.total_urls,
+            completed_urls: batch.completed_urls,
+            failed_urls: batch.failed_urls,
+            pinned_leads: batch.pinned_leads,
+            status: batch.status,
+            started_at: batch.started_at?.toISOString() ?? null,
+            finished_at: batch.finished_at?.toISOString() ?? null,
+            created_at: batch.created_at.toISOString(),
+          },
+          items: itemsRes.rows,
+          summary: {
+            total: batch.total_urls,
+            completed: batch.completed_urls,
+            failed: batch.failed_urls,
+            pinned: batch.pinned_leads,
+            pending:
+              batch.total_urls - batch.completed_urls - batch.failed_urls,
+          },
+        });
+      } catch (err) {
+        return res.status(500).json({
+          error: "fetch_failed",
+          detail: (err as Error).message,
+        });
+      }
+    },
+  );
+
+  // -------------------------------------------------------------------
+  // GET /api/leadgrid/url-research/batches/:id/poll
+  // Lett-vekt progress — brukes hver 2. sek av iPad/web mens batchen kjører.
+  // -------------------------------------------------------------------
+  app.get(
+    "/api/leadgrid/url-research/batches/:id/poll",
+    permUrl,
+    async (req: Request, res: Response) => {
+      const session = getSession(req, activeSessions);
+      if (!session?.userId) {
+        return res.status(401).json({ error: "Innlogging kreves" });
+      }
+      const batchId = req.params.id;
+      try {
+        // Verifiser eierskap (created_by == userId)
+        const own = await pool.query<{ created_by: string }>(
+          `SELECT created_by::text FROM leadgrid_url_research_batches
+            WHERE id = $1::uuid`,
+          [batchId],
+        );
+        if (!own.rows[0]) {
+          return res.status(404).json({ error: "batch_not_found" });
+        }
+        if (own.rows[0].created_by !== session.userId) {
+          return res.status(403).json({ error: "forbidden" });
+        }
+        const progress = await readBatchProgress(pool, batchId);
+        if (!progress) {
+          return res.status(404).json({ error: "batch_not_found" });
+        }
+        // Crude ETA: gjennomsnitt-tid-per-completed-item * pending
+        let etaSeconds: number | null = null;
+        if (
+          progress.startedAt &&
+          progress.completed > 0 &&
+          progress.status === "running"
+        ) {
+          const elapsedMs =
+            Date.now() - new Date(progress.startedAt).getTime();
+          const avgPerItem = elapsedMs / progress.completed;
+          const remaining =
+            progress.total - progress.completed - progress.failed;
+          etaSeconds = Math.round((remaining * avgPerItem) / 1000);
+        }
+        return res.json({
+          batch_id: progress.batchId,
+          status: progress.status,
+          progress: {
+            completed: progress.completed,
+            failed: progress.failed,
+            pinned: progress.pinned,
+            total: progress.total,
+          },
+          eta_seconds: etaSeconds,
+          started_at: progress.startedAt,
+          finished_at: progress.finishedAt,
+        });
+      } catch (err) {
+        return res.status(500).json({
+          error: "poll_failed",
+          detail: (err as Error).message,
+        });
+      }
+    },
+  );
+
+  // -------------------------------------------------------------------
+  // POST /api/leadgrid/url-research/batches/:id/commit-all
+  // body: {
+  //   only_with_confidence?: LocationConfidence[]   // default = alle
+  //   skip_unknown_location?: boolean               // shortcut for [exact,geocoded,approximate]
+  // }
+  // Promoterer alle research-erte drafts i batchen til lead-status='unvisited',
+  // draft_status='lead'. Returnerer hvor mange som ble committet + utelatt.
+  // -------------------------------------------------------------------
+  app.post(
+    "/api/leadgrid/url-research/batches/:id/commit-all",
+    permUrl,
+    async (req: Request, res: Response) => {
+      const session = getSession(req, activeSessions);
+      if (!session?.userId) {
+        return res.status(401).json({ error: "Innlogging kreves" });
+      }
+      const batchId = req.params.id;
+      const body = (req.body ?? {}) as {
+        only_with_confidence?: LocationConfidence[];
+        skip_unknown_location?: boolean;
+      };
+      try {
+        const own = await pool.query<{ created_by: string; status: string }>(
+          `SELECT created_by::text, status FROM leadgrid_url_research_batches
+            WHERE id = $1::uuid`,
+          [batchId],
+        );
+        if (!own.rows[0]) {
+          return res.status(404).json({ error: "batch_not_found" });
+        }
+        if (own.rows[0].created_by !== session.userId) {
+          return res.status(403).json({ error: "forbidden" });
+        }
+
+        // Bygg confidence-filter
+        let confidenceFilter: string[] | null = null;
+        if (Array.isArray(body.only_with_confidence)) {
+          confidenceFilter = body.only_with_confidence.filter(
+            (c): c is LocationConfidence =>
+              c === "exact" ||
+              c === "geocoded" ||
+              c === "approximate" ||
+              c === "unknown",
+          );
+        } else if (body.skip_unknown_location) {
+          confidenceFilter = ["exact", "geocoded", "approximate"];
+        }
+
+        // Finn items som skal committes: status='completed', draft_lead_id != null
+        const itemsRes = await pool.query<{
+          id: string;
+          draft_lead_id: string;
+          location_confidence: string | null;
+        }>(
+          `SELECT id::text, draft_lead_id::text, location_confidence
+             FROM leadgrid_url_research_items
+            WHERE batch_id = $1::uuid
+              AND status = 'completed'
+              AND draft_lead_id IS NOT NULL`,
+          [batchId],
+        );
+        let committed = 0;
+        let skipped = 0;
+        for (const item of itemsRes.rows) {
+          if (
+            confidenceFilter &&
+            (item.location_confidence == null ||
+              !confidenceFilter.includes(item.location_confidence))
+          ) {
+            skipped++;
+            continue;
+          }
+          await pool.query(
+            `UPDATE crm_customers
+                SET draft_status = 'lead',
+                    lead_status  = COALESCE(NULLIF(lead_status, ''), 'unvisited'),
+                    updated_at   = NOW()
+              WHERE id = $1::uuid`,
+            [item.draft_lead_id],
+          );
+          await pool.query(
+            `UPDATE leadgrid_url_research_items
+                SET final_lead_id = draft_lead_id
+              WHERE id = $1::uuid`,
+            [item.id],
+          );
+          committed++;
+        }
+        return res.json({
+          ok: true,
+          batch_id: batchId,
+          committed,
+          skipped,
+          filter: confidenceFilter,
+        });
+      } catch (err) {
+        return res.status(500).json({
+          error: "commit_all_failed",
+          detail: (err as Error).message,
+        });
+      }
+    },
+  );
+
+  // -------------------------------------------------------------------
+  // POST /api/leadgrid/url-research/batches/:id/cancel
+  // -------------------------------------------------------------------
+  app.post(
+    "/api/leadgrid/url-research/batches/:id/cancel",
+    permUrl,
+    async (req: Request, res: Response) => {
+      const session = getSession(req, activeSessions);
+      if (!session?.userId) {
+        return res.status(401).json({ error: "Innlogging kreves" });
+      }
+      const batchId = req.params.id;
+      try {
+        const own = await pool.query<{ created_by: string; status: string }>(
+          `SELECT created_by::text, status FROM leadgrid_url_research_batches
+            WHERE id = $1::uuid`,
+          [batchId],
+        );
+        if (!own.rows[0]) {
+          return res.status(404).json({ error: "batch_not_found" });
+        }
+        if (own.rows[0].created_by !== session.userId) {
+          return res.status(403).json({ error: "forbidden" });
+        }
+        if (
+          own.rows[0].status === "completed" ||
+          own.rows[0].status === "failed" ||
+          own.rows[0].status === "partial"
+        ) {
+          return res.status(409).json({
+            error: "batch_already_finished",
+            status: own.rows[0].status,
+          });
+        }
+        await pool.query(
+          `UPDATE leadgrid_url_research_batches
+              SET status = 'cancelled', finished_at = COALESCE(finished_at, NOW())
+            WHERE id = $1::uuid`,
+          [batchId],
+        );
+        await pool.query(
+          `UPDATE leadgrid_url_research_items
+              SET status = 'skipped', finished_at = NOW()
+            WHERE batch_id = $1::uuid AND status IN ('pending', 'running')`,
+          [batchId],
+        );
+        return res.json({ ok: true, cancelled: true });
+      } catch (err) {
+        return res.status(500).json({
+          error: "cancel_failed",
           detail: (err as Error).message,
         });
       }

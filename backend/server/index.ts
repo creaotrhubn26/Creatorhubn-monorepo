@@ -24622,11 +24622,18 @@ registerLeadgridMomentumRoutes({ app, pool, activeSessions });
 //   GET  /api/leadgrid/import/batches
 // Gated på leads.import_csv.
 registerLeadgridImportRoutes({ app, pool, activeSessions });
-// URL Research → draft-lead → pin på kartet (mig 328).
+// URL Research → draft-lead → pin på kartet (mig 328 + mig 0351).
 // Gjenbruker Role Room Agents orchestrator-stack (Brreg + Places +
 // Claude). Endpoints:
-//   POST /api/leadgrid/url-research/{start,run,commit,refresh-section}
-//   GET  /api/leadgrid/url-research/preview/:draft_lead_id
+//   Enkelt-URL (mig 328):
+//     POST /api/leadgrid/url-research/{start,run,commit,refresh-section}
+//     GET  /api/leadgrid/url-research/preview/:draft_lead_id
+//   Bulk-URL (mig 0351):
+//     POST /api/leadgrid/url-research/batch
+//     GET  /api/leadgrid/url-research/batches/:id
+//     GET  /api/leadgrid/url-research/batches/:id/poll
+//     POST /api/leadgrid/url-research/batches/:id/commit-all
+//     POST /api/leadgrid/url-research/batches/:id/cancel
 // Gated på leads.import_url.
 registerLeadgridUrlResearchRoutes({ app, pool, activeSessions });
 // Industries-katalog + member-spesialiseringer (mig 329).

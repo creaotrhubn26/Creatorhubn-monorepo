@@ -1336,6 +1336,68 @@ actor APIClient {
         return try Self.decoder.decode(UrlResearchRefreshResponse.self, from: data)
     }
 
+    // MARK: - Bulk URL Research (mig 0351)
+    //
+    // Selger limer inn flere URLer (1-100). Backend kjører dem gjennom samme
+    // research-pipeline som enkelt-URL-flyten med max 3 parallelle. iPad
+    // poller hvert 2. sek for progress og rendrer "X / Y leads lagt til på
+    // kartet"-counter mens batchen kjører.
+
+    /// Steg 1 — opprett batch + draft-leads, trigger bakgrunns-prosessor.
+    func startBulkUrlResearch(_ urls: [String]) async throws -> BulkUrlBatchStartResponse {
+        let body: [String: Any] = ["urls": urls]
+        var req = makeRequest("/api/leadgrid/url-research/batch", method: "POST")
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await session.data(for: req)
+        try Self.validate(response)
+        return try Self.decoder.decode(BulkUrlBatchStartResponse.self, from: data)
+    }
+
+    /// Lett-vekt progress for live-counter. Kall hvert 2. sek.
+    func pollBulkUrlResearchProgress(batchId: String) async throws -> BulkUrlBatchProgress {
+        return try await get("/api/leadgrid/url-research/batches/\(batchId)/poll")
+    }
+
+    /// Full batch + per-item-detaljer. Kall når batchen er ferdig (status != active)
+    /// eller når sheet re-monteres.
+    func fetchBulkUrlResearchBatch(batchId: String) async throws -> BulkUrlBatchDetail {
+        return try await get("/api/leadgrid/url-research/batches/\(batchId)")
+    }
+
+    /// Bulk-commit av alle research-erte drafts. Filter på confidence (default = alle).
+    func commitAllInBulkBatch(
+        batchId: String,
+        onlyWithConfidence: [LocationConfidence]? = nil,
+        skipUnknownLocation: Bool = false,
+    ) async throws -> BulkUrlCommitAllResponse {
+        var body: [String: Any] = [:]
+        if let only = onlyWithConfidence {
+            body["only_with_confidence"] = only.map { $0.rawValue }
+        }
+        if skipUnknownLocation {
+            body["skip_unknown_location"] = true
+        }
+        var req = makeRequest(
+            "/api/leadgrid/url-research/batches/\(batchId)/commit-all",
+            method: "POST",
+        )
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await session.data(for: req)
+        try Self.validate(response)
+        return try Self.decoder.decode(BulkUrlCommitAllResponse.self, from: data)
+    }
+
+    /// Avbryt pågående batch.
+    func cancelBulkUrlBatch(batchId: String) async throws {
+        var req = makeRequest(
+            "/api/leadgrid/url-research/batches/\(batchId)/cancel",
+            method: "POST",
+        )
+        req.httpBody = Data("{}".utf8)
+        let (_, response) = try await session.data(for: req)
+        try Self.validate(response)
+    }
+
     // MARK: - Internal
 
     private func makeRequest(_ path: String, method: String = "GET") -> URLRequest {

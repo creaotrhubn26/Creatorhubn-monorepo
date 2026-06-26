@@ -360,6 +360,24 @@ struct LeadgridUrlResearchView: View {
     @State private var committing = false
     @State private var committedLead: UrlResearchDraftLead?
 
+    /// Bulk-modus (mig 0351): brukeren limer inn N URLer separert med newline.
+    @State private var subMode: SubMode = .single
+    @State private var bulkUrlsText: String = ""
+    @State private var bulkStarting = false
+    @State private var bulkBatchId: String?
+    @State private var bulkTotalUrls: Int = 0
+
+    enum SubMode: String, CaseIterable, Identifiable {
+        case single, bulk
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .single: return "Enkelt URL"
+            case .bulk:   return "Flere URLs"
+            }
+        }
+    }
+
     enum Stage: Equatable {
         case idle
         case running
@@ -370,23 +388,143 @@ struct LeadgridUrlResearchView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                switch stage {
-                case .idle:
-                    inputArea
-                case .running:
-                    runningView
-                case .ready:
-                    if let run = lastRun {
-                        previewView(run)
+                if bulkBatchId == nil {
+                    Picker("", selection: $subMode) {
+                        ForEach(SubMode.allCases) { m in
+                            Text(m.label).tag(m)
+                        }
                     }
-                case .committed:
-                    if let lead = committedLead {
-                        successView(lead)
-                    }
+                    .pickerStyle(.segmented)
+                    .padding(.top, 4)
+                }
+
+                if let batchId = bulkBatchId {
+                    LeadgridBulkUrlResearchProgressView(
+                        statusMessage: $statusMessage,
+                        batchId: batchId,
+                        totalUrls: bulkTotalUrls,
+                        onStartOver: resetBulkState,
+                        onClose: resetBulkState,
+                    )
+                } else if subMode == .bulk {
+                    bulkInputArea
+                } else {
+                    singleModeContent
                 }
             }
             .padding()
         }
+    }
+
+    @ViewBuilder
+    private var singleModeContent: some View {
+        switch stage {
+        case .idle:
+            inputArea
+        case .running:
+            runningView
+        case .ready:
+            if let run = lastRun {
+                previewView(run)
+            }
+        case .committed:
+            if let lead = committedLead {
+                successView(lead)
+            }
+        }
+    }
+
+    // MARK: - Bulk input
+
+    private var bulkInputArea: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Image(systemName: "list.bullet.rectangle.portrait.fill")
+                        .foregroundStyle(.purple)
+                    Text("Flere URLs").font(.subheadline.bold())
+                }
+                Text("Lim inn 1–100 URL-er (én per linje). Leadgrid Agent kjører research på hver og rapporterer live: \"X av Y leads lagt til på kartet\".")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            // Multi-line tekst-editor for URL-er
+            TextEditor(text: $bulkUrlsText)
+                .frame(minHeight: 180)
+                .padding(8)
+                .background(Color(.secondarySystemBackground),
+                            in: RoundedRectangle(cornerRadius: 8))
+                .font(.callout.monospaced())
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+
+            HStack {
+                Text("\(parsedUrlCount) URL-er klare")
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+
+            Button {
+                Task { await startBulkResearch() }
+            } label: {
+                if bulkStarting {
+                    ProgressView().controlSize(.small)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                } else {
+                    Label("Start research", systemImage: "sparkles")
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.purple)
+            .disabled(bulkStarting || parsedUrlCount == 0 || parsedUrlCount > 100)
+            if parsedUrlCount > 100 {
+                Label("Maks 100 URL-er per batch — del opp i flere batcher.",
+                      systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+        }
+        .padding(.top, 12)
+    }
+
+    private var parsedUrlCount: Int {
+        parseBulkUrls(bulkUrlsText).count
+    }
+
+    private func parseBulkUrls(_ text: String) -> [String] {
+        text
+            .split(whereSeparator: { $0.isNewline || $0 == "," || $0 == ";" })
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+    }
+
+    @MainActor
+    private func startBulkResearch() async {
+        guard let api = appState.api else {
+            statusMessage = "Innlogging utløpt"
+            return
+        }
+        let urls = parseBulkUrls(bulkUrlsText)
+        guard !urls.isEmpty else { return }
+        bulkStarting = true
+        statusMessage = nil
+        defer { bulkStarting = false }
+        do {
+            let resp = try await api.startBulkUrlResearch(urls)
+            bulkBatchId = resp.batchId
+            bulkTotalUrls = resp.totalUrls
+        } catch {
+            statusMessage = "Kunne ikke starte: \(error.localizedDescription)"
+        }
+    }
+
+    private func resetBulkState() {
+        bulkBatchId = nil
+        bulkTotalUrls = 0
+        bulkUrlsText = ""
+        subMode = .bulk
     }
 
     // MARK: - Sub-views
