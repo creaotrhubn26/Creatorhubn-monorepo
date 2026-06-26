@@ -17,6 +17,7 @@ struct LeadgridCustomerDetailView: View {
     let customerId: String
     let api: APIClient
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
 
     @State private var customer: LeadgridCustomerDetail?
     @State private var loading = true
@@ -27,6 +28,21 @@ struct LeadgridCustomerDetailView: View {
     @State private var assignLevel: AssignLevel = .both
     @State private var leadStatus: String = ""
     @State private var showResearch = false
+    @State private var showNoteEditor = false
+
+    /// Slå opp matchende LeadModel fra AppState så vi får lead-score,
+    /// temperatur, next-action, expected-value, telefon etc. uten et
+    /// nytt API-kall. Returnerer nil hvis kunden ikke ligger i lokal
+    /// leads-cache (f.eks. åpnet direkte via push uten å være på kartet).
+    private var matchingLead: LeadModel? {
+        appState.leads.first { $0.id == customerId }
+    }
+
+    /// Score som drives av lead_score først, AI-opportunity-score som fallback
+    /// (matcher prioriteten i web og marketing-mockene).
+    private func effectiveScore(_ c: LeadgridCustomerDetail) -> Int? {
+        matchingLead?.leadScore ?? c.aiOpportunityScore
+    }
 
     var body: some View {
         NavigationStack {
@@ -108,6 +124,8 @@ struct LeadgridCustomerDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 headerCard(c)
+                quickActionsRow(c)
+                structuredInfoCards(c)
                 contactCard(c)
                 if let note = c.assignmentNote, !note.isEmpty {
                     noteCard(note)
@@ -119,6 +137,125 @@ struct LeadgridCustomerDetailView: View {
             }
             .padding()
         }
+    }
+
+    /// 4 store action-buttons under header — Ring / Notat / Rute / Status.
+    /// Matcher MUI-ButtonGroup-stilen fra mockene: stor ikon + label, runde
+    /// hjørner, brand-purple-bakgrunn.
+    @ViewBuilder
+    private func quickActionsRow(_ c: LeadgridCustomerDetail) -> some View {
+        HStack(spacing: 10) {
+            actionButton(title: "Ring",
+                         icon: "phone.fill",
+                         enabled: (c.phone ?? "").isEmpty == false) {
+                if let p = c.phone, let url = URL(string: "tel:\(p)") {
+                    UIApplication.shared.open(url)
+                }
+            }
+            actionButton(title: "Notat", icon: "square.and.pencil") {
+                showNoteEditor = true
+            }
+            actionButton(title: "Rute",
+                         icon: "point.topleft.down.to.point.bottomright.curvepath",
+                         enabled: matchingLead != nil) {
+                if let lead = matchingLead {
+                    let coord = "\(lead.latitude),\(lead.longitude)"
+                    if let url = URL(string: "http://maps.apple.com/?daddr=\(coord)") {
+                        UIApplication.shared.open(url)
+                    }
+                }
+            }
+            actionButton(title: "Status", icon: "flag.fill") {
+                showStatusChanger = true
+            }
+        }
+        // Enkel notat-editor som NotePadSheet hvis ikke laget enda —
+        // bruker den eksisterende voice-memo-sheet-en for raskhet.
+        .sheet(isPresented: $showNoteEditor) {
+            LeadgridVoiceMemoSheet(
+                api: api,
+                leadId: customerId,
+                leadName: customer?.name ?? "Lead"
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func actionButton(
+        title: String,
+        icon: String,
+        enabled: Bool = true,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.title2)
+                Text(title).font(.caption.bold())
+            }
+            .frame(maxWidth: .infinity, minHeight: 64)
+            .padding(.vertical, 4)
+            .background(
+                enabled
+                    ? Color(red: 0.66, green: 0.32, blue: 0.99).opacity(0.92)
+                    : Color.secondary.opacity(0.18),
+                in: RoundedRectangle(cornerRadius: 14)
+            )
+            .foregroundStyle(enabled ? .white : .secondary)
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+    }
+
+    /// Strukturerte info-cards (Neste handling / Oppfølging / Forventet verdi)
+    /// drevet av matchende LeadModel + customer-data. Matcher mock-paritet.
+    @ViewBuilder
+    private func structuredInfoCards(_ c: LeadgridCustomerDetail) -> some View {
+        VStack(spacing: 10) {
+            if let next = matchingLead?.nextAction, !next.isEmpty {
+                infoCardRow(icon: "calendar", title: "Neste handling", value: next)
+            }
+            if let due = matchingLead?.nextFollowUpAt {
+                infoCardRow(icon: "clock",
+                            title: "Oppfølging",
+                            value: due.formatted(date: .abbreviated, time: .shortened))
+            }
+            if let v = matchingLead?.estimatedValue {
+                infoCardRow(icon: "banknote",
+                            title: "Forventet verdi",
+                            value: formatNok(v))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func infoCardRow(icon: String, title: String, value: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.callout.bold())
+                .frame(width: 32, height: 32)
+                .foregroundStyle(.purple)
+                .background(Color.purple.opacity(0.14),
+                            in: RoundedRectangle(cornerRadius: 8))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.caption2).foregroundStyle(.secondary)
+                Text(value).font(.callout.weight(.medium))
+            }
+            Spacer()
+        }
+        .padding(12)
+        .background(Color(.secondarySystemBackground),
+                    in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func formatNok(_ v: Double) -> String {
+        if v >= 1_000_000 { return String(format: "NOK %.1f mill.", v / 1_000_000) }
+        if v >= 10_000 { return String(format: "NOK %.0f k", v / 1_000) }
+        let f = NumberFormatter()
+        f.numberStyle = .decimal
+        f.maximumFractionDigits = 0
+        f.groupingSeparator = "\u{00A0}"
+        return "NOK \(f.string(from: NSNumber(value: v)) ?? "\(Int(v))")"
     }
 
     @ViewBuilder
@@ -149,35 +286,51 @@ struct LeadgridCustomerDetailView: View {
     @ViewBuilder
     private func headerCard(_ c: LeadgridCustomerDetail) -> some View {
         HStack(alignment: .top, spacing: 16) {
+            // Logo / monogram
             if let url = c.logoUrl.flatMap(URL.init) {
                 AsyncImage(url: url) { img in
                     img.resizable().aspectRatio(contentMode: .fit)
                 } placeholder: {
                     Circle().fill(Color.purple.opacity(0.20))
                 }
-                .frame(width: 56, height: 56)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .frame(width: 64, height: 64)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
             } else {
-                RoundedRectangle(cornerRadius: 8).fill(Color.purple.opacity(0.20))
-                    .frame(width: 56, height: 56)
+                RoundedRectangle(cornerRadius: 10).fill(Color.purple.opacity(0.20))
+                    .frame(width: 64, height: 64)
                     .overlay(Text(String(c.name.prefix(1)).uppercased())
                                 .font(.title.bold()).foregroundStyle(.purple))
             }
-            VStack(alignment: .leading, spacing: 6) {
-                Text(c.name).font(.title3.bold())
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text(c.name).font(.title3.bold()).lineLimit(2)
                 HStack(spacing: 6) {
-                    tierChip(c.leadCategory)
-                    if let score = c.aiOpportunityScore {
-                        Label("\(score)", systemImage: "chart.bar.fill")
-                            .font(.caption.bold())
-                            .padding(.horizontal, 8).padding(.vertical, 2)
-                            .background(Color.secondary.opacity(0.15), in: Capsule())
+                    if let lead = matchingLead,
+                       let badge = LeadTemperatureBadge(lead: lead, style: .pill) {
+                        badge
+                    } else {
+                        // Fallback til tier-chip når vi ikke har lead_temperature
+                        tierChip(c.leadCategory)
                     }
                     statusChip(c.status)
                 }
             }
             Spacer()
+
+            // Stor sirkulær score-ring m/ trend — matcher marketing-mocken.
+            if let score = effectiveScore(c) {
+                LeadScoreRing(score: score, delta: nil, diameter: 84)
+            }
         }
+        .padding(14)
+        .background(
+            LinearGradient(
+                colors: [Color.purple.opacity(0.10),
+                         Color(.secondarySystemBackground)],
+                startPoint: .topLeading, endPoint: .bottomTrailing),
+            in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16)
+            .strokeBorder(Color.purple.opacity(0.18)))
     }
 
     @ViewBuilder

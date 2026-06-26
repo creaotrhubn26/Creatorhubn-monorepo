@@ -20,10 +20,13 @@ struct LeadPinView: View {
     let selected: Bool
 
     /// Returner true når vi skal vise stor pulserende lilla pin.
-    /// Driver av `lead_temperature='hot'` (Intelligence Engine) eller
-    /// pipeline_stage='meeting_booked' uten avsluttende status.
+    /// Driver av `lead_temperature='hot'` (Intelligence Engine), score ≥90,
+    /// eller pipeline_stage='meeting_booked' uten avsluttende status.
     private var isHotLead: Bool {
         if let t = lead.leadTemperature?.lowercased(), t == "hot" || t == "ready" {
+            return true
+        }
+        if let s = lead.leadScore, s >= 90 {
             return true
         }
         if lead.status == .meetingBooked || lead.status == .proposalSent {
@@ -36,12 +39,20 @@ struct LeadPinView: View {
         return false
     }
 
-    /// Effektiv pin-farge basert på status + pipeline. Synlig som ring rundt
-    /// logoen og som hale på dropp-pinen — så feltsalg alltid kan se hva
-    /// dette er uten å åpne sheet.
+    /// Effektiv pin-farge basert på STATUS + SCORE + PIPELINE — i den
+    /// prioriteringen mocken viser. Hot/varm/lunken-farger speiler 90+/70+/50+
+    /// score-bånd. Synlig som ring rundt logoen og som hale på dropp-pinen.
     private var statusColor: Color {
         if isHotLead {
-            return Color(red: 0.66, green: 0.32, blue: 0.99) // Leadgrid-lilla (#a855f7)
+            return Color(red: 0.66, green: 0.32, blue: 0.99) // brand-lilla (#a855f7)
+        }
+        // Score-band når status ikke har en sterk farge
+        if let score = lead.leadScore, lead.status == .unvisited || lead.status == .visited {
+            switch score {
+            case 70...:  return Color(red: 0.66, green: 0.32, blue: 0.99) // lilla 70–89
+            case 50..<70: return Color(red: 0.98, green: 0.75, blue: 0.14) // varm gul
+            default:     return Color(red: 0.55, green: 0.60, blue: 0.68) // grå < 50
+            }
         }
         switch lead.status {
         case .won, .interested:
@@ -72,13 +83,46 @@ struct LeadPinView: View {
                     .frame(width: selected ? 64 : 56, height: selected ? 64 : 56)
             }
 
-            if let logoUrl = lead.logoUrl, let url = URL(string: logoUrl) {
+            // Mock-paritet: lead score VISES INNI pinen (stort hvitt tall).
+            // Når score finnes prioriterer vi den over logo — det er det
+            // som gir kart-feedet sin lesbarhet på avstand.
+            if let score = lead.leadScore {
+                scorePin(score: score)
+            } else if let logoUrl = lead.logoUrl, let url = URL(string: logoUrl) {
                 logoPin(url: url)
             } else {
                 StatusPin(status: lead.status, selected: selected)
             }
         }
         .accessibilityLabel(accessibilityLabel)
+    }
+
+    /// Score-pin: rund pill m/ score-tallet i hvit bold-font, status-farget
+    /// fyll + ring. Speiler marketing-mocken direkte.
+    @ViewBuilder
+    private func scorePin(score: Int) -> some View {
+        let size: CGFloat = selected ? 50 : (isHotLead ? 46 : 40)
+        VStack(spacing: 0) {
+            ZStack {
+                Circle()
+                    .fill(statusColor)
+                Circle()
+                    .stroke(Color.white.opacity(0.95), lineWidth: 2)
+                Text("\(score)")
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .monospacedDigit()
+            }
+            .frame(width: size, height: size)
+            .shadow(color: isHotLead ? statusColor.opacity(0.7) : .black.opacity(0.35),
+                    radius: isHotLead ? 6 : 2)
+
+            // Droppin-hale (peker mot kartpunkt)
+            Triangle()
+                .fill(statusColor)
+                .frame(width: 10, height: 8)
+                .offset(y: -2)
+        }
     }
 
     /// VoiceOver-tekst — formidler status + om pin er hot.

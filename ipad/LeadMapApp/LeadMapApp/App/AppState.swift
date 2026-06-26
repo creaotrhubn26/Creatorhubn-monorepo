@@ -24,6 +24,10 @@ final class AppState {
     var userEmail: String?
     var isAuthenticated: Bool { authToken != nil }
 
+    /// Aktivt valg i iPad-sidebar. Bevares mellom portrait/landscape så
+    /// rotasjon ikke mister kontekst. Default = .oversikt (matcher mocken).
+    var selectedSidebarItem: SidebarItem = .oversikt
+
     // Klienter (lazy-init når token er satt)
     private(set) var api: APIClient?
 
