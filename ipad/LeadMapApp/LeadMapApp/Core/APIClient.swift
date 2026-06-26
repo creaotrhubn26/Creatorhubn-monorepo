@@ -2884,3 +2884,184 @@ struct IndustryAssignmentPayload {
         return d
     }
 }
+
+// MARK: - Leadgrid Deal Management (#154/#155, mig 0349)
+
+extension APIClient {
+    /// Hent weighted pipeline-forecast for innlogget brukers org.
+    func fetchDealForecast(horizonDays: Int = 365) async throws -> LeadgridDealForecast {
+        let resp: LeadgridDealForecastResponse = try await get(
+            "/api/leadgrid/deals/forecast?horizon=\(horizonDays)"
+        )
+        return resp.forecast
+    }
+
+    /// Hent månedlig weighted-forecast.
+    func fetchDealsByMonth(horizonDays: Int = 365) async throws -> [LeadgridDealPeriodBucket] {
+        let resp: LeadgridDealByMonthResponse = try await get(
+            "/api/leadgrid/deals/by-month?horizon=\(horizonDays)"
+        )
+        return resp.byMonth
+    }
+
+    /// Hent deals som er overdue (expected_close < idag, pipeline != won/lost).
+    func fetchDealsAtRisk(limit: Int = 20) async throws -> [LeadgridDealAtRisk] {
+        let resp: LeadgridDealsAtRiskResponse = try await get(
+            "/api/leadgrid/deals/at-risk?limit=\(limit)"
+        )
+        return resp.deals
+    }
+
+    /// Hent deal-info for én lead.
+    func fetchLeadDeal(_ leadId: String) async throws -> LeadgridDeal {
+        let resp: LeadgridDealResponse = try await get(
+            "/api/leadgrid/leads/\(leadId)/deal"
+        )
+        return resp.deal
+    }
+
+    /// Oppdater deal-felt for én lead. Nil-overstyring sletter feltet.
+    func updateLeadDeal(
+        _ leadId: String,
+        probability: Int? = nil,
+        expectedClose: String? = nil,
+        amount: Double? = nil,
+        currency: String? = nil,
+    ) async throws -> LeadgridDeal {
+        var body: [String: Any] = [:]
+        if let probability { body["deal_probability"] = probability }
+        if let expectedClose { body["expected_close_date"] = expectedClose }
+        if let amount { body["deal_amount"] = amount }
+        if let currency { body["deal_currency"] = currency }
+        let resp: LeadgridDealResponse = try await patchReturning(
+            "/api/leadgrid/leads/\(leadId)/deal",
+            body: body,
+        )
+        return resp.deal
+    }
+
+    /// Hent stage-historikk for én lead.
+    func fetchDealStageHistory(_ leadId: String, limit: Int = 50)
+        async throws -> [LeadgridDealStageChange]
+    {
+        let resp: LeadgridDealHistoryResponse = try await get(
+            "/api/leadgrid/leads/\(leadId)/deal-history?limit=\(limit)"
+        )
+        return resp.history
+    }
+}
+
+// MARK: - Leadgrid Workflows (#203, mig 0349)
+
+extension APIClient {
+    /// Liste alle workflows i orgen.
+    func fetchWorkflows(activeOnly: Bool = false) async throws -> [LeadgridWorkflow] {
+        let qs = activeOnly ? "?active=true" : ""
+        let resp: LeadgridWorkflowsResponse = try await get(
+            "/api/leadgrid/workflows\(qs)"
+        )
+        return resp.workflows
+    }
+
+    /// Detalj på én workflow.
+    func fetchWorkflow(_ id: String) async throws -> LeadgridWorkflow {
+        let resp: LeadgridWorkflowDetailResponse = try await get(
+            "/api/leadgrid/workflows/\(id)"
+        )
+        return resp.workflow
+    }
+
+    /// Liste forhåndsbygde templates.
+    func fetchWorkflowTemplates() async throws -> [LeadgridWorkflowTemplate] {
+        let resp: LeadgridWorkflowTemplatesResponse = try await get(
+            "/api/leadgrid/workflows/templates"
+        )
+        return resp.templates
+    }
+
+    /// Opprett ny workflow fra template-key (overstyr name/beskrivelse hvis ønskelig).
+    func createWorkflowFromTemplate(
+        templateKey: String,
+        name: String? = nil,
+        description: String? = nil,
+    ) async throws -> String {
+        var body: [String: Any] = ["template_key": templateKey]
+        if let name { body["name"] = name }
+        if let description { body["description"] = description }
+        let resp: LeadgridWorkflowCreatedResponse = try await post(
+            "/api/leadgrid/workflows",
+            body: body,
+        )
+        return resp.id
+    }
+
+    /// Opprett ny workflow med full payload, pre-serialisert til JSON Data.
+    /// Caller bygger payload-objektet og JSON-serialiserer på MainActor.
+    /// Dette unngår Swift 6 sendability-issues på `[[String: Any]]`.
+    func createWorkflow(jsonBody: Data) async throws -> String {
+        let data = try await executeRaw(
+            method: "POST",
+            path: "/api/leadgrid/workflows",
+            body: jsonBody,
+        )
+        let resp = try Self.workflowDecoder.decode(
+            LeadgridWorkflowCreatedResponse.self, from: data,
+        )
+        return resp.id
+    }
+
+    /// Decoder for workflow-modeller (samme regler som main decoder).
+    private static let workflowDecoder: JSONDecoder = {
+        let d = JSONDecoder()
+        d.keyDecodingStrategy = .convertFromSnakeCase
+        d.dateDecodingStrategy = .iso8601
+        return d
+    }()
+
+    /// Aktiver/deaktiver workflow.
+    func setWorkflowActive(_ id: String, active: Bool) async throws {
+        try await patch(
+            "/api/leadgrid/workflows/\(id)",
+            body: ["is_active": active],
+        )
+    }
+
+    /// Soft-delete (is_active = false).
+    func deleteWorkflow(_ id: String) async throws {
+        try await delete("/api/leadgrid/workflows/\(id)")
+    }
+
+    /// Dry-run mot evt. test-lead.
+    func testWorkflow(_ id: String, leadId: String? = nil)
+        async throws -> LeadgridWorkflowExecution
+    {
+        var body: [String: Any] = [:]
+        if let leadId { body["lead_id"] = leadId }
+        struct R: Decodable { let result: LeadgridWorkflowExecution }
+        let resp: R = try await post(
+            "/api/leadgrid/workflows/\(id)/test",
+            body: body,
+        )
+        return resp.result
+    }
+
+    /// Manuelt trigge workflow mot lead.
+    func executeWorkflow(_ id: String, leadId: String?) async throws {
+        var body: [String: Any] = [:]
+        if let leadId { body["lead_id"] = leadId }
+        try await post(
+            "/api/leadgrid/workflows/\(id)/execute",
+            body: body,
+        )
+    }
+
+    /// Hent eksekverings-historikk.
+    func fetchWorkflowExecutions(_ id: String, limit: Int = 50)
+        async throws -> [LeadgridWorkflowExecution]
+    {
+        let resp: LeadgridWorkflowExecutionsResponse = try await get(
+            "/api/leadgrid/workflows/\(id)/executions?limit=\(limit)"
+        )
+        return resp.executions
+    }
+}

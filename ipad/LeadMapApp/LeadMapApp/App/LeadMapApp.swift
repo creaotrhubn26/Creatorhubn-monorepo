@@ -325,6 +325,18 @@ struct MoreTabView: View {
                     }
                     .buttonStyle(.plain)
                 }
+                // Smart Workflow Builder (mig 0349, #203)
+                if state.permissions.contains("workflows.view"),
+                   let api = state.api {
+                    Section("Automatisering") {
+                        NavigationLink {
+                            LeadgridWorkflowsView(api: api)
+                        } label: {
+                            moreRow(icon: "bolt.fill", color: .purple,
+                                    title: "Workflows")
+                        }
+                    }
+                }
                 Section("Mine innstillinger") {
                     NavigationLink {
                         IndustryManagementView()

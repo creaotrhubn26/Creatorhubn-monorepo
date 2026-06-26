@@ -131,6 +131,9 @@ struct LeadgridCustomerDetailView: View {
                     noteCard(note)
                 }
                 assignmentCard(c)
+                // Deal Management (#154/#155, mig 0349) — probability slider,
+                // expected close date, deal amount, weighted value, stage-historikk
+                LeadgridDealSection(leadId: customerId, api: api)
                 researchCard(c)
                 statusCard
                 historyCard

@@ -527,6 +527,21 @@ export function registerLeadgridIntelligenceRoutes(deps: Deps): void {
             new_stage: newStage,
             changed_by: session.userId,
           }, orgId);
+
+          // Publiser til workflow-engine (mig 0349) — fire-and-forget
+          try {
+            const bus = await import("./leadgrid-workflow-engine.js");
+            void bus.publishEvent({
+              pool,
+              organizationId: orgId,
+              type: "pipeline.stage_changed",
+              leadId: req.params.id,
+              actorUserId: session.userId,
+              data: { from: oldStage, to: newStage },
+            });
+          } catch (err) {
+            console.warn("[pipeline-stage] workflow-engine publish skip:", err);
+          }
         }
 
         res.json({

@@ -20,6 +20,8 @@ import LeadgridPartnerDashboardPage from '@/pages/leadgrid-partner-dashboard';
 import LeadgridMarketplacePage from '@/pages/leadgrid-marketplace';
 import LeadgridConnectorsPage from '@/pages/leadgrid-connectors';
 import LeadgridImportPage from '@/pages/leadgrid-import';
+import LeadgridWorkflowsPage from '@/pages/leadgrid-workflows';
+import LeadgridDealsPage from '@/pages/leadgrid-deals';
 import BlogIndexPage from '@/pages/blog-index';
 import BlogPostPage from '@/pages/blog-post';
 import AgencyLandingPage from '@/pages/agency-landing';
@@ -285,6 +287,16 @@ function CastingStandaloneAppContent() {
   if (localeCtx.pathname === '/leadgrid/import' ||
       localeCtx.pathname === '/leadgrid/import/') {
     return <LeadgridImportPage />;
+  }
+  // Smart Workflow Builder (mig 0349, #203) — Leadgrid-koblede triggers + actions
+  if (localeCtx.pathname === '/leadgrid/workflows' ||
+      localeCtx.pathname === '/leadgrid/workflows/') {
+    return <LeadgridWorkflowsPage />;
+  }
+  // Deal Pipeline Kanban (mig 0349, #154/#155) — weighted forecast
+  if (localeCtx.pathname === '/leadgrid/deals' ||
+      localeCtx.pathname === '/leadgrid/deals/') {
+    return <LeadgridDealsPage />;
   }
   // Developer-docs (public)
   if (localeCtx.pathname === '/leadgrid/utviklere' ||
