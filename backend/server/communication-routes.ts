@@ -2544,6 +2544,11 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
         const resolvedId = (resolved.rows?.[0] as { id?: string } | undefined)?.id;
         if (resolvedId && !identifiers.includes(String(resolvedId))) identifiers.push(String(resolvedId));
       }
+      // Tom identitet → null kanaler (trygt default). Returner tidlig: kallere
+      // uten userEmail (gamle ChatWidget) skal ikke kjøre kanal-spørringen.
+      if (identifiers.length === 0) {
+        return res.json({ conversations: [] });
+      }
       const namePatterns = identifiers.map((value) => `%${value}%`);
 
       const channels = await db
@@ -2561,13 +2566,13 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
           and(
             eq(schema.communicationChannels.isActive, true),
             sql`(
-              ${schema.communicationChannels.name} ILIKE ANY(${namePatterns})
+              ${schema.communicationChannels.name} ILIKE ANY(${namePatterns}::text[])
               OR EXISTS (SELECT 1 FROM communication_messages m
                           WHERE m.channel_id = ${schema.communicationChannels.id}
-                            AND m.sender_id = ANY(${identifiers}))
+                            AND m.sender_id = ANY(${identifiers}::text[]))
               OR EXISTS (SELECT 1 FROM communication_participants pp
                           WHERE pp.channel_id = ${schema.communicationChannels.id}
-                            AND pp.user_id = ANY(${identifiers}))
+                            AND pp.user_id = ANY(${identifiers}::text[]))
             )`,
           ),
         )
