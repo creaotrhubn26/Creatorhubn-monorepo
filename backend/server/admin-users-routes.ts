@@ -581,4 +581,75 @@ export function setupAdminUsersRoutes(deps: AdminUsersRoutesDeps): void {
       res.status(500).json({ error: "Could not fetch recently approved users" });
     }
   });
+
+  // DELETE /api/admin/users/:id — permanent sletting av en bruker.
+  // KUN super_admin. Kan ikke slette seg selv eller andre admin/super_admin.
+  // FK-trygt: NULL-er nullbare NO ACTION-referanser (bevarer raden), sletter
+  // ikke-nullbare; CASCADE + SET NULL håndteres av DB-en. Alt i én transaksjon.
+  app.delete("/api/admin/users/:id", async (req, res) => {
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+    if (String(session.role || "").trim().toLowerCase() !== "super_admin") {
+      return res.status(403).json({ error: "Kun super_admin kan slette brukere." });
+    }
+    const targetId = String(req.params.id || "").trim();
+    if (!targetId) return res.status(400).json({ error: "Bruker-ID mangler." });
+    if (targetId === String(session.userId)) {
+      return res.status(400).json({ error: "Du kan ikke slette din egen konto." });
+    }
+
+    const client = await pool.connect();
+    try {
+      const targetRes = await client.query(
+        "SELECT id, email, role FROM users WHERE id::text = $1",
+        [targetId],
+      );
+      if (targetRes.rowCount === 0) {
+        return res.status(404).json({ error: "Fant ingen bruker med denne ID-en." });
+      }
+      const target = targetRes.rows[0];
+      const targetRole = String(target.role || "").trim().toLowerCase();
+      if (targetRole === "super_admin" || targetRole === "admin") {
+        return res.status(403).json({
+          error: "Kan ikke slette admin/super_admin-kontoer. Endre rollen til 'bruker' først.",
+        });
+      }
+
+      await client.query("BEGIN");
+      // NO ACTION-FK-barn må håndteres manuelt (ellers blokkerer de slettingen).
+      // Katalog-navn (trygge, ikke bruker-input) → bygges som siterte identifikatorer.
+      const fkRes = await client.query(`
+        SELECT tc.table_schema AS s, tc.table_name AS t, kcu.column_name AS c, col.is_nullable AS nullable
+        FROM information_schema.table_constraints tc
+        JOIN information_schema.key_column_usage kcu
+          ON tc.constraint_name=kcu.constraint_name AND tc.table_schema=kcu.table_schema
+        JOIN information_schema.constraint_column_usage ccu
+          ON tc.constraint_name=ccu.constraint_name AND tc.table_schema=ccu.table_schema
+        JOIN information_schema.referential_constraints rc
+          ON tc.constraint_name=rc.constraint_name
+        JOIN information_schema.columns col
+          ON col.table_schema=tc.table_schema AND col.table_name=tc.table_name AND col.column_name=kcu.column_name
+        WHERE tc.constraint_type='FOREIGN KEY'
+          AND ccu.table_name='users' AND ccu.table_schema='public'
+          AND rc.delete_rule='NO ACTION'`);
+      for (const row of fkRes.rows as Array<{ s: string; t: string; c: string; nullable: string }>) {
+        const ident = `"${row.s}"."${row.t}"`;
+        const col = `"${row.c}"`;
+        if (String(row.nullable).toUpperCase() === "YES") {
+          await client.query(`UPDATE ${ident} SET ${col} = NULL WHERE ${col}::text = $1`, [targetId]);
+        } else {
+          await client.query(`DELETE FROM ${ident} WHERE ${col}::text = $1`, [targetId]);
+        }
+      }
+      const del = await client.query("DELETE FROM users WHERE id::text = $1", [targetId]);
+      await client.query("COMMIT");
+      return res.json({ success: true, deletedEmail: target.email, deleted: del.rowCount });
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => {});
+      console.error("Error deleting user:", error);
+      return res.status(500).json({ error: "Kunne ikke slette bruker.", detail: String(error) });
+    } finally {
+      client.release();
+    }
+  });
 }
