@@ -33,6 +33,7 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  Skeleton,
 } from "@mui/material";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
@@ -405,7 +406,11 @@ function PrototypeTesterPanel({
       {showLoop ? (
         <Box sx={{ mt: 1 }}>
           {myFeedback.isLoading ? (
-            <Typography variant="caption">{en ? "Loading…" : "Laster…"}</Typography>
+            <Stack spacing={1}>
+              {[0, 1].map((i) => (
+                <Skeleton key={i} variant="rounded" height={56} sx={{ borderRadius: 1 }} />
+              ))}
+            </Stack>
           ) : (myFeedback.data?.length ?? 0) === 0 ? (
             <Typography variant="caption" color="text.secondary">
               {en
@@ -698,11 +703,27 @@ export default function EditingVendorWorkspace({ userId }: Props) {
             {t("ws_upload_hint", locale)}
           </Typography>
           {jobsQuery.isLoading ? (
-            <CircularProgress size={24} />
+            <Stack spacing={2}>
+              {[0, 1].map((i) => (
+                <Skeleton key={i} variant="rounded" height={120} sx={{ borderRadius: 2 }} />
+              ))}
+            </Stack>
           ) : jobs.length === 0 ? (
-            <Typography variant="body2" color="text.secondary">
-              {t("ws_no_jobs", locale)}
-            </Typography>
+            <Box
+              sx={{
+                textAlign: "center",
+                py: 6,
+                px: 2,
+                border: "1px dashed",
+                borderColor: "divider",
+                borderRadius: 2,
+              }}
+            >
+              <Typography variant="h4" aria-hidden sx={{ mb: 1 }}>📭</Typography>
+              <Typography variant="body2" color="text.secondary">
+                {t("ws_no_jobs", locale)}
+              </Typography>
+            </Box>
           ) : (
             jobs.map((j) => (
               <Card key={j.id} variant="outlined">
