@@ -519,7 +519,7 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
       const master = masterR.rows[0];
 
       const membersR = await pool.query(
-        `SELECT id, email, name, status, accepted_at, invited_at AS created_at, program_ends_at
+        `SELECT id, email, name, status, accepted_at, created_at, program_ends_at
            FROM prototype_tester_invites
           WHERE master_invite_id = $1
           ORDER BY created_at ASC`,
