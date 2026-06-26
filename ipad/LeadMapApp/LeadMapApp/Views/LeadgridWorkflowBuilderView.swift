@@ -16,6 +16,12 @@ struct LeadgridWorkflowBuilderView: View {
     @State private var description: String = ""
     @State private var triggerType: String = "lead.created"
     @State private var triggerTo: String = ""
+    // mig 0350 — trigger-config-felt for 6 nye triggers
+    @State private var triggerEmailId: String = ""
+    @State private var triggerLinkPattern: String = ""
+    @State private var triggerMeetingType: String = ""
+    @State private var triggerProposalId: String = ""
+    @State private var triggerContractProvider: String = ""
     @State private var actions: [BuilderActionDraft] = [
         BuilderActionDraft(type: "send_email", templateId: "")
     ]
@@ -31,6 +37,13 @@ struct LeadgridWorkflowBuilderView: View {
         ("deal.amount_changed", "Deal-amount endret"),
         ("recommendation.published", "NBA publisert"),
         ("manual", "Manuelt utløst"),
+        // mig 0350 — 6 nye triggers
+        ("email.opened", "E-post åpnet"),
+        ("email.link_clicked", "E-post-lenke klikket"),
+        ("meeting.booked", "Møte booket"),
+        ("meeting.no_show", "Møte no-show"),
+        ("proposal.opened", "Proposal åpnet"),
+        ("contract.signed", "Kontrakt signert"),
     ]
     private let actionOptions: [(String, String)] = [
         ("send_email", "Send e-post"),
@@ -44,6 +57,16 @@ struct LeadgridWorkflowBuilderView: View {
         ("notify_channel", "Varsle kanal"),
         ("wait", "Vent (minutter)"),
         ("ai_pitch_generate", "AI: Generer pitch"),
+        // mig 0350 — 9 nye actions
+        ("schedule_call", "Planlegg telefonsamtale"),
+        ("book_meeting", "Book møte"),
+        ("update_lead_fields", "Oppdater lead-felter"),
+        ("post_to_webhook", "Post til webhook"),
+        ("trigger_zapier", "Trigger Zapier"),
+        ("send_internal_notification", "Intern varsling"),
+        ("remove_tag", "Fjern tag"),
+        ("archive_lead", "Arkiver lead"),
+        ("revive_lead", "Reviviser lead"),
     ]
 
     private let stageOptions = [
@@ -92,6 +115,29 @@ struct LeadgridWorkflowBuilderView: View {
                     }
                     if requiresTo {
                         TextField("\"To\"-verdi (f.eks. won/hot)", text: $triggerTo)
+                    }
+                    // mig 0350 — trigger-config-felt
+                    if triggerType == "email.opened" {
+                        TextField("Email-ID (valgfri)", text: $triggerEmailId)
+                    }
+                    if triggerType == "email.link_clicked" {
+                        TextField("URL-pattern (valgfri)", text: $triggerLinkPattern)
+                    }
+                    if triggerType == "meeting.booked" {
+                        Picker("Møte-type (valgfri)", selection: $triggerMeetingType) {
+                            Text("Alle").tag("")
+                            Text("Discovery").tag("discovery")
+                            Text("Demo").tag("demo")
+                            Text("Closing").tag("closing")
+                            Text("Followup").tag("followup")
+                            Text("Annet").tag("other")
+                        }
+                    }
+                    if triggerType == "proposal.opened" {
+                        TextField("Proposal-ID (valgfri)", text: $triggerProposalId)
+                    }
+                    if triggerType == "contract.signed" {
+                        TextField("Provider (valgfri)", text: $triggerContractProvider)
                     }
                 }
 
@@ -155,6 +201,12 @@ struct LeadgridWorkflowBuilderView: View {
         description = tpl.description
         triggerType = tpl.trigger.type
         triggerTo = tpl.trigger.to ?? ""
+        // mig 0350 — overfør nye trigger-config-felt
+        triggerEmailId = tpl.trigger.emailId ?? ""
+        triggerLinkPattern = tpl.trigger.linkUrlPattern ?? ""
+        triggerMeetingType = tpl.trigger.meetingType ?? ""
+        triggerProposalId = tpl.trigger.proposalId ?? ""
+        triggerContractProvider = tpl.trigger.provider ?? ""
         actions = tpl.actions.map { a in
             BuilderActionDraft(
                 type: a.type,
@@ -168,6 +220,15 @@ struct LeadgridWorkflowBuilderView: View {
                 durationMinutes: a.durationMinutes ?? 60,
                 saveToNotes: a.saveToNotes ?? true,
                 status: a.status ?? "",
+                when: a.when ?? "",
+                notes: a.notes ?? "",
+                meetingType: a.meetingType ?? "discovery",
+                fieldsJson: "",
+                destinationId: a.destinationId ?? "",
+                payloadTemplate: a.payloadTemplate ?? "",
+                recipient: a.recipient ?? "owner",
+                body: a.body ?? "",
+                reason: a.reason ?? "",
             )
         }
     }
@@ -178,6 +239,22 @@ struct LeadgridWorkflowBuilderView: View {
         var triggerConfig: [String: Any] = ["type": triggerType]
         if requiresTo && !triggerTo.isEmpty {
             triggerConfig["to"] = triggerTo
+        }
+        // mig 0350 — nye trigger-config-felt
+        if triggerType == "email.opened" && !triggerEmailId.isEmpty {
+            triggerConfig["email_id"] = triggerEmailId
+        }
+        if triggerType == "email.link_clicked" && !triggerLinkPattern.isEmpty {
+            triggerConfig["link_url_pattern"] = triggerLinkPattern
+        }
+        if triggerType == "meeting.booked" && !triggerMeetingType.isEmpty {
+            triggerConfig["meeting_type"] = triggerMeetingType
+        }
+        if triggerType == "proposal.opened" && !triggerProposalId.isEmpty {
+            triggerConfig["proposal_id"] = triggerProposalId
+        }
+        if triggerType == "contract.signed" && !triggerContractProvider.isEmpty {
+            triggerConfig["provider"] = triggerContractProvider
         }
         let actionsPayload = actions.map { $0.toDict() }
         var body: [String: Any] = [
@@ -215,6 +292,16 @@ struct BuilderActionDraft: Identifiable {
     var durationMinutes: Int = 60
     var saveToNotes: Bool = true
     var status: String = ""
+    // mig 0350 — felt for nye actions
+    var when: String = ""
+    var notes: String = ""
+    var meetingType: String = "discovery"
+    var fieldsJson: String = ""
+    var destinationId: String = ""
+    var payloadTemplate: String = ""
+    var recipient: String = "owner"
+    var body: String = ""
+    var reason: String = ""
 
     func toDict() -> [String: Any] {
         var d: [String: Any] = ["type": type]
@@ -238,6 +325,35 @@ struct BuilderActionDraft: Identifiable {
             d["duration_minutes"] = durationMinutes
         case "ai_pitch_generate":
             d["save_to_notes"] = saveToNotes
+        case "schedule_call":
+            d["when"] = when
+            if !notes.isEmpty { d["notes"] = notes }
+        case "book_meeting":
+            d["when"] = when
+            d["meeting_type"] = meetingType
+            d["duration_minutes"] = durationMinutes
+        case "update_lead_fields":
+            if let data = fieldsJson.data(using: .utf8),
+               let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                d["fields"] = parsed
+            } else {
+                d["fields"] = [String: Any]()
+            }
+        case "post_to_webhook":
+            d["destination_id"] = destinationId
+            if !payloadTemplate.isEmpty { d["payload_template"] = payloadTemplate }
+        case "trigger_zapier":
+            d["destination_id"] = destinationId
+        case "send_internal_notification":
+            d["recipient"] = recipient
+            d["title"] = title
+            if !body.isEmpty { d["body"] = body }
+        case "remove_tag":
+            d["tag"] = tag
+        case "archive_lead":
+            if !reason.isEmpty { d["reason"] = reason }
+        case "revive_lead":
+            break
         default:
             break
         }
@@ -306,6 +422,63 @@ private struct ActionEditor: View {
             )
         case "ai_pitch_generate":
             Toggle("Lagre som lead-notat", isOn: $action.saveToNotes)
+
+        // ── Mig 0350 ─────────────────────────────────────────────
+        case "schedule_call":
+            TextField("Når (ISO eller 'in_X_days')", text: $action.when)
+            TextField("Notater", text: $action.notes, axis: .vertical)
+                .lineLimit(1...3)
+        case "book_meeting":
+            Picker("Møte-type", selection: $action.meetingType) {
+                Text("Discovery").tag("discovery")
+                Text("Demo").tag("demo")
+                Text("Closing").tag("closing")
+                Text("Followup").tag("followup")
+                Text("Annet").tag("other")
+            }
+            TextField("Når (ISO eller 'in_X_days')", text: $action.when)
+            Stepper(
+                "Varighet \(action.durationMinutes) min",
+                value: $action.durationMinutes,
+                in: 15...(60 * 8),
+                step: 15,
+            )
+        case "update_lead_fields":
+            TextField(
+                "Fields JSON {\"phone\": \"+47 999\"}",
+                text: $action.fieldsJson,
+                axis: .vertical,
+            )
+            .lineLimit(2...6)
+            .font(.system(.body, design: .monospaced))
+        case "post_to_webhook":
+            TextField("Destination ID", text: $action.destinationId)
+            TextField(
+                "Payload-template (valgfri)",
+                text: $action.payloadTemplate,
+                axis: .vertical,
+            )
+            .lineLimit(2...6)
+        case "trigger_zapier":
+            TextField("Destination ID", text: $action.destinationId)
+        case "send_internal_notification":
+            Picker("Mottaker", selection: $action.recipient) {
+                Text("Lead owner").tag("owner")
+                Text("Assignee").tag("assignee")
+                Text("Manager").tag("manager")
+                Text("Admin").tag("admin")
+            }
+            TextField("Tittel", text: $action.title)
+            TextField("Body", text: $action.body, axis: .vertical)
+                .lineLimit(1...4)
+        case "remove_tag":
+            TextField("Tag som skal fjernes", text: $action.tag)
+        case "archive_lead":
+            TextField("Årsak (valgfri)", text: $action.reason)
+        case "revive_lead":
+            Text("(ingen ekstra config)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         default:
             EmptyView()
         }

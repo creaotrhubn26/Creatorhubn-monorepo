@@ -153,6 +153,115 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
       { type: "assign_to_user", user_id: "REPLACE_WITH_USER_ID" },
     ],
   },
+
+  // ─── Mig 0350 — 5 nye templates som bruker nye triggers/actions ─────
+  {
+    key: "email_engagement_escalation",
+    name: "Email-engagement eskalering",
+    description:
+      "Når lead åpner en e-post, varsle owner i in-app feed slik at de kan følge opp mens engasjementet er ferskt.",
+    category: "Engagement",
+    trigger: { type: "email.opened" },
+    conditions: [],
+    actions: [
+      {
+        type: "send_internal_notification",
+        recipient: "owner",
+        title: "{{lead.name}} åpnet din e-post",
+        body: "Trykk å følge opp mens leadet er aktivt (score {{lead.score}}).",
+      },
+    ],
+  },
+  {
+    key: "click_to_call_pricing",
+    name: "Click-til-call (pricing-side)",
+    description:
+      "Når lead klikker en lenke som inneholder 'pricing', planlegg automatisk en telefonsamtale 1 dag fram i tid.",
+    category: "Sales Velocity",
+    trigger: {
+      type: "email.link_clicked",
+      link_url_pattern: "pricing",
+    },
+    conditions: [],
+    actions: [
+      {
+        type: "schedule_call",
+        when: "in_1_days",
+        notes: "Lead klikket pricing-lenke — sannsynlig kjøps-signal",
+      },
+      {
+        type: "send_internal_notification",
+        recipient: "owner",
+        title: "Pricing-klikk fra {{lead.name}}",
+        body: "Telefonsamtale planlagt i morgen.",
+      },
+    ],
+  },
+  {
+    key: "no_show_recovery",
+    name: "No-show recovery",
+    description:
+      "Når et møte markeres no_show: send rebook-email + planlegg oppfølgings-call 3 dager fram.",
+    category: "Re-engagement",
+    trigger: { type: "meeting.no_show" },
+    conditions: [],
+    actions: [
+      { type: "send_email", template_id: "rebook_after_noshow" },
+      {
+        type: "schedule_call",
+        when: "in_3_days",
+        notes: "No-show recovery — bekreft før vi booker nytt møte",
+      },
+      {
+        type: "send_internal_notification",
+        recipient: "owner",
+        title: "{{lead.name}} no-show — rebook-flow startet",
+      },
+    ],
+  },
+  {
+    key: "auto_archive_cold_leads",
+    name: "Auto-archive cold leads",
+    description:
+      "Kjøres manuelt eller via cron — arkiverer cold leads. Workflow er manuelt-trigget for fleksibilitet; cron-jobben velger leads.",
+    category: "Hygiene",
+    trigger: { type: "manual" },
+    conditions: [{ type: "lead.temperature", value: "cold" }],
+    actions: [
+      {
+        type: "archive_lead",
+        reason: "Auto-archive (cold + inaktiv 90 dager)",
+      },
+    ],
+  },
+  {
+    key: "contract_signed_celebration",
+    name: "Contract-signed celebration",
+    description:
+      "Når en kontrakt signeres: varsle teamet, sett pipeline til 'won', og oppdater deal-felter for ren forecast.",
+    category: "Wins",
+    trigger: { type: "contract.signed" },
+    conditions: [],
+    actions: [
+      {
+        type: "notify_channel",
+        channel: "slack",
+        message_template:
+          "🎉 Kontrakt signert: {{lead.name}} — NOK {{lead.deal_amount}}. Sett opp onboarding!",
+      },
+      { type: "change_pipeline_stage", stage: "won" },
+      {
+        type: "update_lead_fields",
+        fields: { lead_status: "customer", lead_temperature: "ready" },
+      },
+      {
+        type: "send_internal_notification",
+        recipient: "manager",
+        title: "Ny kunde signert: {{lead.name}}",
+        body: "Belop: {{lead.deal_amount}}. Onboarding kan starte.",
+      },
+    ],
+  },
 ];
 
 export function findTemplate(key: string): WorkflowTemplate | undefined {

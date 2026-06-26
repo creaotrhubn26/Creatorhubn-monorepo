@@ -171,8 +171,8 @@ describe("evaluateConditions", () => {
 });
 
 describe("WORKFLOW_TEMPLATES", () => {
-  it("har eksakt 10 templates", () => {
-    expect(WORKFLOW_TEMPLATES.length).toBe(10);
+  it("har minst 15 templates (10 originale + 5 mig 0350)", () => {
+    expect(WORKFLOW_TEMPLATES.length).toBeGreaterThanOrEqual(15);
   });
 
   it("alle templates har unike keys", () => {
@@ -183,6 +183,14 @@ describe("WORKFLOW_TEMPLATES", () => {
   it("findTemplate finner kjent key", () => {
     expect(findTemplate("welcome_new_lead")).toBeDefined();
     expect(findTemplate("nonexistent")).toBeUndefined();
+  });
+
+  it("findTemplate finner nye mig-0350-templates", () => {
+    expect(findTemplate("email_engagement_escalation")).toBeDefined();
+    expect(findTemplate("click_to_call_pricing")).toBeDefined();
+    expect(findTemplate("no_show_recovery")).toBeDefined();
+    expect(findTemplate("auto_archive_cold_leads")).toBeDefined();
+    expect(findTemplate("contract_signed_celebration")).toBeDefined();
   });
 
   it("hver template har minst 1 action", () => {
@@ -202,6 +210,13 @@ describe("WORKFLOW_TEMPLATES", () => {
       "deal.expected_close_changed",
       "recommendation.published",
       "manual",
+      // mig 0350
+      "email.opened",
+      "email.link_clicked",
+      "meeting.booked",
+      "meeting.no_show",
+      "proposal.opened",
+      "contract.signed",
     ]);
     for (const tpl of WORKFLOW_TEMPLATES) {
       expect(valid.has(tpl.trigger.type)).toBe(true);

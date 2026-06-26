@@ -558,6 +558,8 @@ import { registerLeadgridUrlResearchRoutes } from "./leadgrid-url-research-route
 import { registerLeadgridIndustriesRoutes } from "./leadgrid-industries-routes.js";
 import { registerLeadgridDealsRoutes } from "./leadgrid-deals-routes.js";
 import { registerLeadgridWorkflowRoutes } from "./leadgrid-workflow-routes.js";
+import { registerLeadgridWorkflowWebhookRoutes } from "./leadgrid-workflow-webhooks-routes.js";
+import { registerLeadgridWorkflowTriggerRoutes } from "./leadgrid-workflow-triggers-routes.js";
 import { registerLeadgridWebhookRotationRoutes } from "./leadgrid-webhook-rotation-routes.js";
 import { registerLeadgridPublicApiV1 } from "./leadgrid-public-api-v1.js";
 import { registerLeadgridApiKeyMgmtRoutes } from "./leadgrid-api-key-mgmt-routes.js";
@@ -24645,6 +24647,11 @@ registerLeadgridDealsRoutes({ app, pool, activeSessions });
 // notify_channel, wait, ai_pitch_generate). 10 forhåndsbygde templates.
 // Gated på workflows.view / workflows.create / workflows.execute.
 registerLeadgridWorkflowRoutes({ app, pool, activeSessions });
+// Mig 0350: Webhook-destinasjoner (post_to_webhook / trigger_zapier actions)
+// + event-mottakere for 6 nye triggers (email.opened/link_clicked,
+// meeting.booked/no_show, proposal.opened, contract.signed).
+registerLeadgridWorkflowWebhookRoutes({ app, pool, activeSessions });
+registerLeadgridWorkflowTriggerRoutes({ app, pool, activeSessions });
 // Webhook-secret-rotering m/ 7-dagers grace-period (mig 322).
 // POST /webhooks/:id/rotate-secret + cron /expire-old-webhook-secrets.
 registerLeadgridWebhookRotationRoutes({ app, pool, activeSessions });

@@ -21,15 +21,44 @@
  */
 
 import type { Pool } from "pg";
+import { createHmac, randomUUID } from "node:crypto";
 import type {
   WorkflowAction,
   WorkflowCondition,
   WorkflowTrigger,
   ActionResult,
+  InternalNotificationRecipient,
 } from "./leadgrid-workflow-types.js";
+import { UPDATE_LEAD_FIELDS_WHITELIST } from "./leadgrid-workflow-types.js";
 import { applyStageChange } from "./leadgrid-deals-service.js";
 import { isLeadgridStage } from "./leadgrid-deal-defaults.js";
 import { emitWebhook } from "./webhook-emitter.js";
+
+// ─── Webhook-rate-limit (60 POST/min per destination) ────────────────
+// In-memory sliding-window per destination_id. OK å reset ved process-restart
+// — rate-limit er beskyttelse mot runaway-loops, ikke en hard kvote.
+const WEBHOOK_RATE_WINDOW_MS = 60_000;
+const WEBHOOK_RATE_LIMIT = 60;
+const webhookTimestamps = new Map<string, number[]>();
+
+function checkWebhookRate(destinationId: string): boolean {
+  const now = Date.now();
+  const list = webhookTimestamps.get(destinationId) ?? [];
+  // Drop expired
+  const fresh = list.filter((t) => now - t < WEBHOOK_RATE_WINDOW_MS);
+  if (fresh.length >= WEBHOOK_RATE_LIMIT) {
+    webhookTimestamps.set(destinationId, fresh);
+    return false;
+  }
+  fresh.push(now);
+  webhookTimestamps.set(destinationId, fresh);
+  return true;
+}
+
+/** Internt for tester — clearer rate-limit-state */
+export function _resetWebhookRateLimit(): void {
+  webhookTimestamps.clear();
+}
 
 export interface WorkflowEvent {
   pool: Pool;
@@ -135,6 +164,46 @@ export function triggerMatches(
         trigger.priority &&
         event.data.priority !== trigger.priority
       )
+        return false;
+      return true;
+    }
+    // ─── Nye triggers (mig 0350) ─────────────────────────────────
+    case "email.opened": {
+      if (trigger.email_id && event.data.email_id !== trigger.email_id)
+        return false;
+      return true;
+    }
+    case "email.link_clicked": {
+      if (trigger.link_url_pattern) {
+        const url = String(event.data.link_url ?? "");
+        if (
+          !url.toLowerCase().includes(trigger.link_url_pattern.toLowerCase())
+        )
+          return false;
+      }
+      return true;
+    }
+    case "meeting.booked": {
+      if (
+        trigger.meeting_type &&
+        event.data.meeting_type !== trigger.meeting_type
+      )
+        return false;
+      return true;
+    }
+    case "meeting.no_show": {
+      return true;
+    }
+    case "proposal.opened": {
+      if (
+        trigger.proposal_id &&
+        event.data.proposal_id !== trigger.proposal_id
+      )
+        return false;
+      return true;
+    }
+    case "contract.signed": {
+      if (trigger.provider && event.data.provider !== trigger.provider)
         return false;
       return true;
     }
@@ -289,6 +358,8 @@ export async function executeWorkflow(
         event,
         lead,
         Boolean(opts?.dryRun),
+        workflow.id,
+        executionId,
       );
       actionResults.push({
         ...result,
@@ -408,6 +479,8 @@ async function runAction(
   event: WorkflowEvent,
   lead: LeadRow | null,
   dryRun: boolean,
+  workflowId: string,
+  executionId: string,
 ): Promise<Omit<ActionResult, "index" | "type" | "durationMs">> {
   if (dryRun) {
     return {
@@ -567,9 +640,530 @@ async function runAction(
       };
     }
 
+    // ─── Nye actions (mig 0350) ────────────────────────────────────
+    case "schedule_call": {
+      if (!lead) return { status: "skipped", message: "no_lead" };
+      try {
+        const plannedAt = resolveWhen(action.when);
+        if (!plannedAt) {
+          return { status: "error", message: `invalid_when:${action.when}` };
+        }
+        const assigneeUserId = resolveAssignee(action.assignee, lead);
+        const r = await pool.query<{ id: string }>(
+          `INSERT INTO leadgrid_phone_calls
+             (organization_id, customer_id, planned_at, assigned_user_id,
+              notes, status, source, created_by_user_id)
+           VALUES ($1::uuid, $2::uuid, $3, $4, $5, 'planned', 'workflow', $6)
+           RETURNING id::text`,
+          [
+            event.organizationId,
+            lead.id,
+            plannedAt.toISOString(),
+            assigneeUserId,
+            action.notes ?? null,
+            event.actorUserId ?? "workflow_engine",
+          ],
+        );
+        return {
+          status: "ok",
+          message: `call_scheduled:${plannedAt.toISOString()}`,
+          data: { call_id: r.rows[0]?.id, planned_at: plannedAt.toISOString() },
+        };
+      } catch (err) {
+        return {
+          status: "error",
+          message: String((err as Error)?.message ?? err).slice(0, 200),
+        };
+      }
+    }
+
+    case "book_meeting": {
+      if (!lead) return { status: "skipped", message: "no_lead" };
+      try {
+        const startsAt = resolveWhen(action.when);
+        if (!startsAt) {
+          return { status: "error", message: `invalid_when:${action.when}` };
+        }
+        const duration = Math.max(15, Math.min(480, action.duration_minutes ?? 30));
+        const endsAt = new Date(startsAt.getTime() + duration * 60000);
+        // Lett-vekt-meeting: vi prøver IKKE å opprette Google Meet-link her
+        // (krever bruker-session for OAuth). Tom meet_link betyr at avsenderen
+        // (UI) kan fylle inn manuelt etterpå.
+        const id = randomUUID();
+        await pool.query(
+          `INSERT INTO leadgrid_meetings
+             (id, organization_id, customer_id, meeting_type, title, starts_at,
+              ends_at, duration_minutes, status, notes, created_by_user_id, source)
+           VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, 'scheduled',
+                   $9, $10, 'workflow')`,
+          [
+            id,
+            event.organizationId,
+            lead.id,
+            action.meeting_type ?? "discovery",
+            action.title ??
+              `${action.meeting_type ?? "Møte"} med ${lead.business_name ?? "lead"}`,
+            startsAt.toISOString(),
+            endsAt.toISOString(),
+            duration,
+            action.notes ?? null,
+            event.actorUserId ?? "workflow_engine",
+          ],
+        );
+        return {
+          status: "ok",
+          message: `meeting_booked:${startsAt.toISOString()}`,
+          data: { meeting_id: id, starts_at: startsAt.toISOString() },
+        };
+      } catch (err) {
+        return {
+          status: "error",
+          message: String((err as Error)?.message ?? err).slice(0, 200),
+        };
+      }
+    }
+
+    case "update_lead_fields": {
+      if (!lead) return { status: "skipped", message: "no_lead" };
+      const safeFields: Record<string, unknown> = {};
+      const rejected: string[] = [];
+      for (const [k, v] of Object.entries(action.fields)) {
+        if (UPDATE_LEAD_FIELDS_WHITELIST.has(k)) {
+          safeFields[k] = v;
+        } else {
+          rejected.push(k);
+        }
+      }
+      if (Object.keys(safeFields).length === 0) {
+        return {
+          status: "skipped",
+          message: "no_whitelisted_fields",
+          data: { rejected_fields: rejected },
+        };
+      }
+      try {
+        const cols = Object.keys(safeFields);
+        const sets = cols.map((c, i) => `${c} = $${i + 2}`).join(", ");
+        const vals = cols.map((c) => safeFields[c]);
+        await pool.query(
+          `UPDATE crm_customers SET ${sets}, updated_at = NOW() WHERE id = $1::uuid`,
+          [lead.id, ...vals],
+        );
+        return {
+          status: "ok",
+          message: `updated:${cols.length}_fields`,
+          data: {
+            updated_fields: cols,
+            rejected_fields: rejected.length > 0 ? rejected : undefined,
+          },
+        };
+      } catch (err) {
+        return {
+          status: "error",
+          message: String((err as Error)?.message ?? err).slice(0, 200),
+        };
+      }
+    }
+
+    case "post_to_webhook":
+    case "trigger_zapier": {
+      try {
+        const destRes = await pool.query<{
+          url: string;
+          hmac_secret: string | null;
+          destination_type: string;
+        }>(
+          `SELECT url, hmac_secret, destination_type
+             FROM leadgrid_workflow_webhook_destinations
+            WHERE id = $1::uuid AND organization_id = $2::uuid AND is_active = TRUE
+            LIMIT 1`,
+          [action.destination_id, event.organizationId],
+        );
+        const dest = destRes.rows[0];
+        if (!dest) {
+          return { status: "error", message: "destination_not_found" };
+        }
+        if (!checkWebhookRate(action.destination_id)) {
+          return {
+            status: "skipped",
+            message: "rate_limited",
+            data: { destination_id: action.destination_id },
+          };
+        }
+        const payload = buildWebhookPayload(action, event, lead, workflowId);
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+          "User-Agent": "Leadgrid-Workflow/0350",
+        };
+        if (dest.hmac_secret) {
+          headers["X-Signature-Sha256"] = createHmac("sha256", dest.hmac_secret)
+            .update(JSON.stringify(payload))
+            .digest("hex");
+        }
+        // Timeout 10s
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 10_000);
+        let httpStatus = 0;
+        try {
+          const response = await fetch(dest.url, {
+            method: "POST",
+            headers,
+            body: JSON.stringify(payload),
+            signal: controller.signal,
+          });
+          httpStatus = response.status;
+        } finally {
+          clearTimeout(timer);
+        }
+        // Update destination stats (best-effort)
+        pool
+          .query(
+            `UPDATE leadgrid_workflow_webhook_destinations
+                SET last_invoked_at = NOW(),
+                    last_status_code = $2,
+                    invocation_count = invocation_count + 1,
+                    updated_at = NOW()
+              WHERE id = $1::uuid`,
+            [action.destination_id, httpStatus],
+          )
+          .catch(() => {
+            /* swallow */
+          });
+        if (httpStatus >= 200 && httpStatus < 300) {
+          return {
+            status: "ok",
+            message: `posted:${httpStatus}`,
+            data: { http_status: httpStatus, type: dest.destination_type },
+          };
+        }
+        return {
+          status: "error",
+          message: `http_${httpStatus}`,
+          data: { http_status: httpStatus },
+        };
+      } catch (err) {
+        return {
+          status: "error",
+          message: String((err as Error)?.message ?? err).slice(0, 200),
+        };
+      }
+    }
+
+    case "send_internal_notification": {
+      try {
+        const recipientUserId = await resolveRecipient(
+          pool,
+          action.recipient,
+          lead,
+          event.organizationId,
+        );
+        if (!recipientUserId) {
+          return { status: "skipped", message: "no_recipient_resolved" };
+        }
+        const r = await pool.query<{ id: string }>(
+          `INSERT INTO leadgrid_internal_notifications
+             (organization_id, recipient_user_id, title, body, related_lead_id,
+              workflow_id, execution_id)
+           VALUES ($1::uuid, $2, $3, $4, $5, $6::uuid, $7::uuid)
+           RETURNING id::text`,
+          [
+            event.organizationId,
+            recipientUserId,
+            renderTemplate(action.title, event, lead),
+            action.body ? renderTemplate(action.body, event, lead) : null,
+            lead?.id ?? null,
+            workflowId,
+            executionId || null,
+          ],
+        );
+        return {
+          status: "ok",
+          message: `notified:${recipientUserId}`,
+          data: { notification_id: r.rows[0]?.id, recipient: recipientUserId },
+        };
+      } catch (err) {
+        return {
+          status: "error",
+          message: String((err as Error)?.message ?? err).slice(0, 200),
+        };
+      }
+    }
+
+    case "remove_tag": {
+      if (!lead) return { status: "skipped", message: "no_lead" };
+      try {
+        const r = await pool.query(
+          `DELETE FROM lead_tag_assignments
+             WHERE lead_id = $1::uuid
+               AND tag_id IN (
+                 SELECT id FROM lead_tags
+                   WHERE organization_id = $2::uuid AND name = $3
+               )`,
+          [lead.id, event.organizationId, action.tag],
+        );
+        return {
+          status: "ok",
+          message: `removed_tag:${action.tag}`,
+          data: { rows_removed: r.rowCount ?? 0 },
+        };
+      } catch (err) {
+        return {
+          status: "skipped",
+          message: `tag_remove_skip:${String((err as Error)?.message ?? "").slice(0, 100)}`,
+        };
+      }
+    }
+
+    case "archive_lead": {
+      if (!lead) return { status: "skipped", message: "no_lead" };
+      try {
+        const noteSuffix = action.reason
+          ? `[Workflow archived: ${action.reason.slice(0, 100)}]`
+          : "[Workflow archived]";
+        await pool.query(
+          `UPDATE crm_customers
+              SET archived_at = NOW(),
+                  notes = COALESCE(NULLIF(notes, '') || E'\n', '') || $1,
+                  updated_at = NOW()
+            WHERE id = $2::uuid AND archived_at IS NULL`,
+          [noteSuffix, lead.id],
+        );
+        void emitWebhook(
+          pool,
+          "lead.archived",
+          { lead_id: lead.id, reason: action.reason ?? null, source: "workflow" },
+          event.organizationId,
+        );
+        return {
+          status: "ok",
+          message: `archived${action.reason ? `:${action.reason.slice(0, 40)}` : ""}`,
+        };
+      } catch (err) {
+        return {
+          status: "error",
+          message: String((err as Error)?.message ?? err).slice(0, 200),
+        };
+      }
+    }
+
+    case "revive_lead": {
+      if (!lead) return { status: "skipped", message: "no_lead" };
+      try {
+        await pool.query(
+          `UPDATE crm_customers SET archived_at = NULL, updated_at = NOW() WHERE id = $1::uuid`,
+          [lead.id],
+        );
+        void emitWebhook(
+          pool,
+          "lead.revived",
+          { lead_id: lead.id, source: "workflow" },
+          event.organizationId,
+        );
+        return { status: "ok", message: "revived" };
+      } catch (err) {
+        return {
+          status: "error",
+          message: String((err as Error)?.message ?? err).slice(0, 200),
+        };
+      }
+    }
+
     default:
       return { status: "skipped", message: "unknown_action" };
   }
+}
+
+// ─── Helper-funksjoner for nye actions ────────────────────────────────
+
+/**
+ * resolveWhen — parse `when` til en Date.
+ * Aksepterer ISO 8601 ("2026-07-01T09:00:00Z") eller relativ
+ * ("in_5_minutes", "in_2_hours", "in_3_days"). Returnerer null hvis ugyldig.
+ */
+export function resolveWhen(when: string): Date | null {
+  const rel = /^in_(\d+)_(minutes?|hours?|days?)$/i.exec(when);
+  if (rel) {
+    const n = parseInt(rel[1] ?? "0", 10);
+    if (!Number.isFinite(n) || n <= 0) return null;
+    const unit = (rel[2] ?? "").toLowerCase();
+    let ms = 0;
+    if (unit.startsWith("minute")) ms = n * 60 * 1000;
+    else if (unit.startsWith("hour")) ms = n * 60 * 60 * 1000;
+    else if (unit.startsWith("day")) ms = n * 24 * 60 * 60 * 1000;
+    if (ms === 0) return null;
+    return new Date(Date.now() + ms);
+  }
+  const t = Date.parse(when);
+  if (!Number.isFinite(t)) return null;
+  return new Date(t);
+}
+
+function resolveAssignee(
+  assignee: { user_id: string } | "owner" | "manager" | undefined,
+  lead: LeadRow,
+): string | null {
+  if (!assignee) return lead.owner_user_id;
+  if (typeof assignee === "object") return assignee.user_id;
+  if (assignee === "owner") return lead.owner_user_id;
+  // 'manager' resolves at-runtime via RBAC; vi forenkler ved å falle tilbake
+  // til owner_user_id om vi ikke har bedre signal. (Manager-oppslag krever
+  // org_members + role-hierarki — defer.)
+  return lead.owner_user_id;
+}
+
+/**
+ * resolveRecipient — finn user_id basert på recipient-spec.
+ *
+ * - "owner"     → lead.owner_user_id
+ * - "assignee"  → samme som owner (vi har ikke separat assignee-konsept)
+ * - "manager"   → første organization_members med role IN ('admin','salgssjef','teamleder')
+ * - "admin"     → første organization_members med role = 'admin'
+ * - { user_id } → eksplisitt
+ */
+export async function resolveRecipient(
+  pool: Pool,
+  recipient: InternalNotificationRecipient,
+  lead: LeadRow | null,
+  organizationId: string,
+): Promise<string | null> {
+  if (typeof recipient === "object" && "user_id" in recipient) {
+    return recipient.user_id;
+  }
+  if (recipient === "owner" || recipient === "assignee") {
+    return lead?.owner_user_id ?? null;
+  }
+  if (recipient === "manager" || recipient === "admin") {
+    const roles =
+      recipient === "admin"
+        ? ["admin"]
+        : ["admin", "salgssjef", "teamleder"];
+    try {
+      const r = await pool.query<{ user_id: string }>(
+        `SELECT user_id
+           FROM organization_members
+          WHERE organization_id = $1::uuid
+            AND role = ANY($2::text[])
+          ORDER BY
+            CASE role
+              WHEN 'admin' THEN 1
+              WHEN 'salgssjef' THEN 2
+              WHEN 'teamleder' THEN 3
+              ELSE 4
+            END,
+            joined_at ASC
+          LIMIT 1`,
+        [organizationId, roles],
+      );
+      return r.rows[0]?.user_id ?? null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+/**
+ * renderTemplate — enkel mustache-like substitusjon for {{lead.x}}
+ * og {{event.x}}. Brukes for in-app notif title/body + webhook-payload.
+ *
+ * Støttede placeholders:
+ *   {{lead.name}}            → business_name
+ *   {{lead.city}}            → city
+ *   {{lead.score}}           → lead_score
+ *   {{lead.temperature}}     → lead_temperature
+ *   {{lead.deal_amount}}     → deal_amount
+ *   {{lead.email}}           → email
+ *   {{lead.phone}}           → phone
+ *   {{event.<key>}}          → event.data[<key>]
+ */
+export function renderTemplate(
+  template: string,
+  event: WorkflowEvent,
+  lead: LeadRow | null,
+): string {
+  return template.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, path: string) => {
+    const parts = path.split(".");
+    if (parts[0] === "lead" && lead) {
+      const k = parts[1] ?? "";
+      const map: Record<string, unknown> = {
+        name: lead.business_name,
+        business_name: lead.business_name,
+        city: lead.city,
+        score: lead.lead_score,
+        temperature: lead.lead_temperature,
+        deal_amount: lead.deal_amount,
+        email: lead.email,
+        phone: lead.phone,
+        stage: lead.pipeline_stage,
+        owner_user_id: lead.owner_user_id,
+      };
+      const v = map[k];
+      return v === null || v === undefined ? "" : String(v);
+    }
+    if (parts[0] === "event") {
+      const k = parts.slice(1).join(".");
+      const v = (event.data as Record<string, unknown>)[k];
+      return v === null || v === undefined ? "" : String(v);
+    }
+    return "";
+  });
+}
+
+/**
+ * buildWebhookPayload — bygger payload for post_to_webhook / trigger_zapier.
+ *
+ * Default-shape inneholder lead + event-data + workflow-meta. Hvis
+ * payload_template (string) er satt på post_to_webhook, parses den som
+ * JSON ETTER mustache-substitusjon og overrider default-shape.
+ * Hvis payload (object) er satt på trigger_zapier, merges den med default-shape.
+ */
+export function buildWebhookPayload(
+  action: WorkflowAction,
+  event: WorkflowEvent,
+  lead: LeadRow | null,
+  workflowId: string,
+): Record<string, unknown> {
+  const base: Record<string, unknown> = {
+    workflow_id: workflowId,
+    organization_id: event.organizationId,
+    triggered_at: new Date().toISOString(),
+    event: {
+      type: event.type,
+      data: event.data,
+      actor_user_id: event.actorUserId,
+    },
+    lead: lead
+      ? {
+          id: lead.id,
+          name: lead.business_name,
+          city: lead.city,
+          score: lead.lead_score,
+          temperature: lead.lead_temperature,
+          stage: lead.pipeline_stage,
+          deal_amount: lead.deal_amount,
+          deal_probability: lead.deal_probability,
+          email: lead.email,
+          phone: lead.phone,
+          owner_user_id: lead.owner_user_id,
+        }
+      : null,
+  };
+
+  if (action.type === "post_to_webhook" && action.payload_template) {
+    try {
+      const rendered = renderTemplate(action.payload_template, event, lead);
+      const parsed = JSON.parse(rendered);
+      if (parsed && typeof parsed === "object") {
+        return { ...base, ...(parsed as Record<string, unknown>) };
+      }
+    } catch {
+      // ugyldig JSON → fall tilbake til base
+    }
+  }
+  if (action.type === "trigger_zapier" && action.payload) {
+    return { ...base, ...action.payload };
+  }
+  return base;
 }
 
 /**
