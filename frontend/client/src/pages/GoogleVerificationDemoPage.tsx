@@ -119,6 +119,10 @@ const ACTION_KEYS: ActionKey[] = [
   'upload-youtube-video',
   'update-youtube-video',
   'upload-youtube-thumbnail',
+  'ads-list-customers',
+  'ads-list-ga4',
+  'ads-list-gsc',
+  'ads-list-gtm',
 ];
 
 const initialActionStates = ACTION_KEYS.reduce<Record<ActionKey, ActionState>>((acc, key) => {
@@ -203,9 +207,9 @@ function formatActionStatusLabel(status: ActionStatus) {
 
 function getStageProgress(actions: Record<ActionKey, ActionState>, keys: ActionKey[]) {
   const actionableKeys = keys.filter((key) => key !== 'refresh-overview');
-  const completed = actionableKeys.filter((key) => actions[key].status === 'success').length;
-  const failed = actionableKeys.filter((key) => actions[key].status === 'error').length;
-  const running = actionableKeys.filter((key) => actions[key].status === 'running').length;
+  const completed = actionableKeys.filter((key) => actions[key]?.status === 'success').length;
+  const failed = actionableKeys.filter((key) => actions[key]?.status === 'error').length;
+  const running = actionableKeys.filter((key) => actions[key]?.status === 'running').length;
   return {
     completed,
     failed,
