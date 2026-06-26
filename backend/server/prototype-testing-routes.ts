@@ -223,7 +223,30 @@ export function setupPrototypeTestingRoutes(
           : null,
         createdAt: String(row.created_at || new Date().toISOString()),
         updatedAt: String(row.updated_at || new Date().toISOString()),
+        unreadReplies: 0,
       }));
+
+      // «Nytt svar»-varsling: antall uleste Creatorhub-svar (admin/system) per
+      // sak. Best-effort — tom hvis meldingstabellen ikke finnes ennå.
+      const ids = feedback.map((f) => f.id);
+      if (ids.length > 0) {
+        try {
+          const unread = await pool.query(
+            `SELECT feedback_id, count(*)::int AS n
+               FROM prototype_feedback_messages
+              WHERE read_at IS NULL AND sender_role IN ('admin', 'system')
+                AND feedback_id = ANY($1)
+              GROUP BY feedback_id`,
+            [ids],
+          );
+          const byId = new Map<string, number>(
+            unread.rows.map((r: any) => [String(r.feedback_id), Number(r.n || 0)]),
+          );
+          for (const f of feedback) f.unreadReplies = byId.get(f.id) || 0;
+        } catch {
+          // tabell finnes ikke ennå → ingen uleste
+        }
+      }
 
       res.json({
         success: true,
@@ -667,8 +690,13 @@ Sorter klyngene etter alvorlighet (critical først). severity reflekterer bruker
             sender_user_id VARCHAR(255),
             sender_name VARCHAR(255),
             body TEXT NOT NULL,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            read_at TIMESTAMPTZ
           )`,
+        )
+        .then(() =>
+          // For tabeller opprettet før read_at fantes (lazy-migrasjon).
+          pool.query(`ALTER TABLE prototype_feedback_messages ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ`),
         )
         .then(() =>
           pool.query(
@@ -835,6 +863,16 @@ Sorter klyngene etter alvorlighet (critical først). severity reflekterer bruker
       if (!isAdmin && !owns) return res.status(403).json({ success: false, error: "Ingen tilgang" });
 
       await ensureMessagesTable();
+      // Marker motpartens meldinger som lest (driver «nytt svar»-varslingen).
+      // Vendor leser admin/system-svar; admin leser vendor-meldinger.
+      const counterpartRoles = isAdmin ? ["vendor"] : ["admin", "system"];
+      await pool
+        .query(
+          `UPDATE prototype_feedback_messages SET read_at = now()
+            WHERE feedback_id = $1 AND read_at IS NULL AND sender_role = ANY($2)`,
+          [req.params.id, counterpartRoles],
+        )
+        .catch(() => {});
       const msgs = (
         await pool.query(
           `SELECT id, sender_role, sender_name, body, created_at

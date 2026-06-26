@@ -727,9 +727,13 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
     try {
       const status = typeof req.query.status === "string" ? req.query.status : null;
       const r = await pool.query(
-        `SELECT * FROM editing_jobs
-          WHERE photographer_id = $1 ${status ? "AND status = $2" : ""}
-          ORDER BY created_at DESC`,
+        `SELECT ej.*,
+                (SELECT count(*)::int FROM editing_job_messages m
+                  WHERE m.job_id = ej.id AND m.read_at IS NULL
+                    AND m.sender_role <> 'photographer') AS unread_messages
+           FROM editing_jobs ej
+          WHERE ej.photographer_id = $1 ${status ? "AND ej.status = $2" : ""}
+          ORDER BY ej.created_at DESC`,
         status ? [session.userId, status] : [session.userId],
       );
       res.json({ jobs: r.rows });
@@ -877,7 +881,10 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
            payout_status, paid_at,
            vat_reverse_charge, vat_rate, service_vat_cents,
            requested_at, accepted_at, declined_at, delivered_at,
-           approved_at, delivered_to_client_at, created_at, updated_at
+           approved_at, delivered_to_client_at, created_at, updated_at,
+           (SELECT count(*)::int FROM editing_job_messages m
+             WHERE m.job_id = editing_jobs.id AND m.read_at IS NULL
+               AND m.sender_role <> 'vendor') AS unread_messages
          FROM editing_jobs WHERE vendor_id = $1 ORDER BY created_at DESC`,
         [session.userId],
       );
