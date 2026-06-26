@@ -59,7 +59,7 @@ export const StatusChip: React.FC<StatusChipProps> = ({
   sx,
   ...rest
 }) => {
-  let color = adminTokens.color.textMuted;
+  let color: string = adminTokens.color.textMuted;
   let text: React.ReactNode = label;
 
   if (role) {
