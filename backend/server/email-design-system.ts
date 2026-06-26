@@ -134,7 +134,13 @@ function htmlToText(html: string): string {
 // Header — logo + kategori-badge
 // ──────────────────────────────────────────────────────────────────
 export function emailHeader(category: EmailCategory = 'general', brand: 'roleroom' | 'creatorhub' = 'roleroom'): string {
-  const cat = CATEGORY_BADGE[category];
+  let cat = CATEGORY_BADGE[category];
+  // Den generiske 'general'-badgen er Role Room-merket («The Role Room», lilla).
+  // For Creatorhub-e-poster skal den vise Creatorhub-merket (oransje) — ellers
+  // får ALLE Creatorhub-e-poster (velkomst, rapporter osv.) feil branding.
+  if (category === 'general' && brand === 'creatorhub') {
+    cat = { ...cat, label: 'Creatorhub', bg: 'rgba(255,140,0,0.20)', fg: '#ff8c00' };
+  }
   // Ekte logo-bilder (absolutte URL-er for e-post). Creatorhub-wordmarken er lys →
   // får en mørk pille for kontrast på lys e-post-bakgrunn. Role Room-logoen er
   // mørk/lilla og vises som den er.
@@ -367,7 +373,15 @@ export function emailDivider(): string {
 export function emailFooter(args?: {
   reason?: string;          // forklaring av hvorfor de får e-posten
   preferencesUrl?: string;  // link til å justere varslings-preferanser
+  brand?: 'roleroom' | 'creatorhub';
 }): string {
+  const isCreatorhub = args?.brand === 'creatorhub';
+  const brandName = isCreatorhub ? 'Creatorhub' : 'The Role Room';
+  const brandHref = isCreatorhub ? 'https://creatorhubn.com' : PUBLIC_URL;
+  const brandDomain = isCreatorhub ? 'creatorhubn.com' : 'theroleroom.com';
+  const defaultReason = isCreatorhub
+    ? 'Du mottar denne e-posten fordi du har en aktiv konto i Creatorhub.'
+    : 'Du mottar denne e-posten fordi du har en aktiv konto i The Role Room.';
   return `
     <tr>
       <td style="padding:24px 32px 32px 32px;border-top:1px solid ${emailPalette.borderSubtle};">
@@ -377,7 +391,7 @@ export function emailFooter(args?: {
           font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
           font-size:12px;
           line-height:1.55;
-        ">${escapeHtml(args?.reason ?? 'Du mottar denne e-posten fordi du har en aktiv konto i The Role Room.')}</p>
+        ">${escapeHtml(args?.reason ?? defaultReason)}</p>
         <p style="
           margin:0;
           color:${emailPalette.textMuted};
@@ -385,7 +399,7 @@ export function emailFooter(args?: {
           font-size:12px;
           line-height:1.55;
         ">
-          The Role Room · <a href="${PUBLIC_URL}" style="color:${emailPalette.accentBright};text-decoration:none;">theroleroom.com</a>
+          ${escapeHtml(brandName)} · <a href="${brandHref}" style="color:${emailPalette.accentBright};text-decoration:none;">${escapeHtml(brandDomain)}</a>
           ${args?.preferencesUrl ? ` · <a href="${escapeHtml(args.preferencesUrl)}" style="color:${emailPalette.accentBright};text-decoration:none;">Varslings-innstillinger</a>` : ''}
         </p>
       </td>
@@ -407,6 +421,8 @@ export interface RenderEmailArgs {
   bodyText?: string;
   /** Footer-konfigurasjon. */
   footer?: { reason?: string; preferencesUrl?: string };
+  /** Merkevare — styrer footer-tekst + copyright. Default roleroom. */
+  brand?: 'roleroom' | 'creatorhub';
 }
 
 export function renderEmail(args: RenderEmailArgs): { html: string; text: string } {
@@ -445,7 +461,7 @@ export function renderEmail(args: RenderEmailArgs): { html: string; text: string
           overflow:hidden;
         ">
           ${args.bodyHtml}
-          ${emailFooter(args.footer)}
+          ${emailFooter({ ...args.footer, brand: args.brand })}
         </table>
 
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:16px;">
@@ -455,7 +471,7 @@ export function renderEmail(args: RenderEmailArgs): { html: string; text: string
               font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
               font-size:11px;
               text-align:center;
-            ">© ${new Date().getFullYear()} The Role Room · CreatorHub</td>
+            ">© ${new Date().getFullYear()} ${args.brand === 'creatorhub' ? 'Creatorhub Norge' : 'The Role Room · CreatorHub'}</td>
           </tr>
         </table>
       </td>
@@ -503,5 +519,6 @@ export function composeEmail(args: ComposeArgs): { html: string; text: string } 
     bodyHtml: parts.join(''),
     bodyText: args.bodyText,
     footer: args.footer,
+    brand: args.brand,
   });
 }
