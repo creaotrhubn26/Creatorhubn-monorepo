@@ -1002,6 +1002,24 @@ export async function listGtmAccounts(
   };
 }
 
+/** List Search Console-sider for den tilkoblede kontoen (webmasters-scope). */
+export async function listGscSites(
+  pool: Pool,
+  producerUserId: string,
+): Promise<{ ok: true; sites: Array<{ siteUrl: string; permissionLevel: string }> } | { ok: false; error: string }> {
+  const token = await getGoogleAccessToken(pool, producerUserId);
+  if (!token) return { ok: false, error: "not_connected" };
+  const r = await fetch(`${SEARCHCONSOLE_BASE}/sites`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!r.ok) return { ok: false, error: `listSites: HTTP ${r.status}` };
+  const body = await r.json() as { siteEntry?: Array<{ siteUrl: string; permissionLevel: string }> };
+  return {
+    ok: true,
+    sites: (body.siteEntry ?? []).map((s) => ({ siteUrl: s.siteUrl, permissionLevel: s.permissionLevel })),
+  };
+}
+
 /** Opprett GTM-container (Web) → returnerer GTM-XXXXXXX. */
 export async function provisionGtmContainer(
   pool: Pool,
