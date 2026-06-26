@@ -208,12 +208,11 @@ struct RootView: View {
     }
 }
 
-/// Tabs (UX-overhaul 2026-06-25): I dag · Kart · Leads · Ruter · Mer.
-/// Tidligere flate strukturen hadde 8+ topp-faner (Kart, Team, Varsler,
-/// Leadgrid, Pitch, Org …) — det føltes som «Apple Maps med menyer».
-/// «Mer»-fanen er en samle-flate (MoreTabView) som tar Varsler, Team,
-/// Stille, Prosjekter, Innboks, Leadgrid, Pitch og Org. Per-flate
-/// permission-gates beholdes inni MoreTabView.
+/// Tabs (Pakke 9, 2026-06-26): I dag · Kart · Leads · Research · Mer.
+/// Erstatter "Ruter"-fanen (flyttet inn i Mer) med "Research" — lead-fokusert
+/// Role Room Agent (Finn leads / Brand scan / Markedsskann) som Daniel ba om.
+/// Forrige UX-overhaul (2026-06-25) komprimerte 8+ topp-faner ned til 5;
+/// vi beholder 5 her ved å sub-route Ruter til Mer-fanen.
 struct MainTabView: View {
     @Environment(AppState.self) private var state
 
@@ -231,13 +230,16 @@ struct MainTabView: View {
                 .tabItem { Label("Leads", systemImage: "person.crop.rectangle.stack.fill") }
                 .badge(state.leadgridUnreadCount > 0 ? state.leadgridUnreadCount : 0)
 
-            // Ruter — alt om dagens rute, plan og innsjekk.
-            RoutesTabHost()
+            // Research — lead-fokusert Role Room Agent (Pakke 9).
+            // Segmenter: Finn leads (AI-discovery for prosjekt), Brand
+            // scan (URL→draft), Markedsskann (region+bransje).
+            LeadgridResearchTab()
                 .tabItem {
-                    Label("Ruter", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
+                    Label("Research", systemImage: "sparkles.rectangle.stack.fill")
                 }
 
             // Mer — samler øvrige flater for å holde top-bar enkel.
+            // Ruter er flyttet inn her etter Pakke 9 for å beholde 5 tabs.
             MoreTabView()
                 .tabItem { Label("Mer", systemImage: "ellipsis.circle") }
                 .badge(state.unreadNotificationsCount)
@@ -271,6 +273,20 @@ struct MoreTabView: View {
                         StaleLeadsList()
                     } label: {
                         moreRow(icon: "bell.badge", color: .orange, title: "Stille leads")
+                    }
+                    // Ruter — flyttet hit i Pakke 9 da bottom-tab-en
+                    // ble byttet ut med Research. Bruker eksisterende
+                    // LeadgridRoutePlannerView som tidligere var rot-tab.
+                    if let api = state.api {
+                        NavigationLink {
+                            LeadgridRoutePlannerView(api: api)
+                                .navigationTitle("Ruter")
+                        } label: {
+                            moreRow(
+                                icon: "point.topleft.down.to.point.bottomright.curvepath",
+                                color: .purple, title: "Ruter",
+                            )
+                        }
                     }
                 }
                 Section("Team & marked") {
