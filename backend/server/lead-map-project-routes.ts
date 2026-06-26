@@ -72,16 +72,26 @@ export function registerLeadMapProjectRoutes({ app, pool, activeSessions }: Deps
                      WHERE (mc.project_id = p.id OR ms.project_id = p.id)
                   ), 0) AS competitor_count
              FROM casting_projects p
-            WHERE p.created_by = $1
-               OR EXISTS (
-                 SELECT 1 FROM brand_kits bk
-                  WHERE bk.project_id = p.id
-                    AND bk.workspace_owner_user_id = $1
-               )
-               OR EXISTS (
-                 SELECT 1 FROM crm_customers c
-                  WHERE c.project_id = p.id AND c.owner_user_id = $1
-               )
+            WHERE (p.status IS NULL OR p.status NOT IN ('archived', 'deleted'))
+              -- Leadgrid (Lead Map) viser kun B2B/lead-orienterte prosjekttyper.
+              -- film/casting-prosjekter (TROLL, feature_film, documentary)
+              -- hører hjemme i The Role Room og skjules her.
+              AND (p.project_type IS NULL OR p.project_type NOT IN (
+                'feature_film', 'documentary', 'film', 'short_film',
+                'tv_series', 'commercial', 'music_video', 'casting'
+              ))
+              AND (
+                p.created_by = $1
+                OR EXISTS (
+                  SELECT 1 FROM brand_kits bk
+                   WHERE bk.project_id = p.id
+                     AND bk.workspace_owner_user_id = $1
+                )
+                OR EXISTS (
+                  SELECT 1 FROM crm_customers c
+                   WHERE c.project_id = p.id AND c.owner_user_id = $1
+                )
+              )
             ORDER BY p.created_at DESC
             LIMIT 50`,
           [session.userId],
