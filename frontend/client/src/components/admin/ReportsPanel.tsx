@@ -7,7 +7,6 @@ import {
   Box,
   Button,
   Chip,
-  Divider,
   FormControl,
   InputLabel,
   LinearProgress,
@@ -19,7 +18,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   Typography,
@@ -37,6 +35,12 @@ import {
   TrendingUp,
   Workspaces,
 } from '@mui/icons-material';
+import {
+  AdminCard,
+  AdminButton,
+  StatusChip,
+  AdminTableContainer,
+} from './design-system';
 
 interface ReportsPanelProps {
   onFileDownload?: (file: {
@@ -405,16 +409,12 @@ export default function ReportsPanel({ onFileDownload }: ReportsPanelProps) {
 
       <Grid container spacing={2}>
         <Grid size={{ xs: 12, xl: 7 }}>
-          <Paper sx={{ ...surfaceSx, p: 2.5 }}>
-            <Typography sx={{ fontSize: '1.1rem', fontWeight: 700, color: '#ffffff' }}>
-              Profesjonsbidrag
-            </Typography>
-            <Typography sx={{ mt: 0.5, color: 'rgba(255,255,255,0.6)' }}>
-              Sammenlign volum, prosjekter og omsetning uten å måtte hoppe mellom flere undersider.
-            </Typography>
-            <Divider sx={{ my: 2 }} />
-
-            <TableContainer>
+          <AdminCard
+            title="Profesjonsbidrag"
+            subtitle="Sammenlign volum, prosjekter og omsetning uten å måtte hoppe mellom flere undersider."
+            disablePadding
+          >
+            <AdminTableContainer ariaLabel="Profesjonsbidrag">
               <Table>
                 <TableHead>
                   <TableRow>
@@ -478,20 +478,15 @@ export default function ReportsPanel({ onFileDownload }: ReportsPanelProps) {
                   )}
                 </TableBody>
               </Table>
-            </TableContainer>
-          </Paper>
+            </AdminTableContainer>
+          </AdminCard>
         </Grid>
 
         <Grid size={{ xs: 12, xl: 5 }}>
-          <Paper sx={{ ...surfaceSx, p: 2.5 }}>
-            <Typography sx={{ fontSize: '1.1rem', fontWeight: 700, color: '#ffffff' }}>
-              Trendlinje
-            </Typography>
-            <Typography sx={{ mt: 0.5, color: 'rgba(255,255,255,0.6)' }}>
-              Bruk dette som månedlig puls på omsetning, prosjekter og nye brukere.
-            </Typography>
-            <Divider sx={{ my: 2 }} />
-
+          <AdminCard
+            title="Trendlinje"
+            subtitle="Bruk dette som månedlig puls på omsetning, prosjekter og nye brukere."
+          >
             <Stack spacing={1.25}>
               {monthlyData.length === 0 ? (
                 <Alert severity="info" sx={{ borderRadius: '14px' }}>
@@ -509,10 +504,9 @@ export default function ReportsPanel({ onFileDownload }: ReportsPanelProps) {
                           {row.projects} prosjekter · {row.users} nye brukere
                         </Typography>
                       </Box>
-                      <Chip
-                        size="small"
+                      <StatusChip
                         label={index === 0 ? 'Nåværende' : 'Historisk'}
-                        color={index === 0 ? 'primary' : 'default'}
+                        tone={index === 0 ? 'brand' : 'neutral'}
                       />
                     </Stack>
                     <Typography sx={{ mt: 1, fontSize: '1.15rem', fontWeight: 700, color: '#ffffff' }}>
@@ -522,20 +516,16 @@ export default function ReportsPanel({ onFileDownload }: ReportsPanelProps) {
                 ))
               )}
             </Stack>
-          </Paper>
+          </AdminCard>
         </Grid>
       </Grid>
 
       <Grid container spacing={2}>
         <Grid size={{ xs: 12, md: 6 }}>
-          <Paper sx={{ ...surfaceSx, p: 2.5 }}>
-            <Typography sx={{ fontSize: '1.05rem', fontWeight: 700, color: '#ffffff' }}>
-              Fokus denne perioden
-            </Typography>
-            <Typography sx={{ mt: 0.5, color: 'rgba(255,255,255,0.6)' }}>
-              Kort lesing av hvor du bør bruke oppmerksomhet.
-            </Typography>
-            <Divider sx={{ my: 2 }} />
+          <AdminCard
+            title="Fokus denne perioden"
+            subtitle="Kort lesing av hvor du bør bruke oppmerksomhet."
+          >
             <Stack spacing={1.5}>
               <Box sx={{ ...insetSx, p: 1.6 }}>
                 <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
@@ -564,18 +554,14 @@ export default function ReportsPanel({ onFileDownload }: ReportsPanelProps) {
                 </Typography>
               </Box>
             </Stack>
-          </Paper>
+          </AdminCard>
         </Grid>
 
         <Grid size={{ xs: 12, md: 6 }}>
-          <Paper sx={{ ...surfaceSx, p: 2.5 }}>
-            <Typography sx={{ fontSize: '1.05rem', fontWeight: 700, color: '#ffffff' }}>
-              Eksport og videre arbeid
-            </Typography>
-            <Typography sx={{ mt: 0.5, color: 'rgba(255,255,255,0.6)' }}>
-              Eksport brukes når teamet trenger delbar rapport utover denne arbeidsflaten.
-            </Typography>
-            <Divider sx={{ my: 2 }} />
+          <AdminCard
+            title="Eksport og videre arbeid"
+            subtitle="Eksport brukes når teamet trenger delbar rapport utover denne arbeidsflaten."
+          >
             <Stack spacing={1.25}>
               {[
                 { label: 'CSV', helper: 'Rå tabell for regneark og videre filtrering.' },
@@ -592,19 +578,19 @@ export default function ReportsPanel({ onFileDownload }: ReportsPanelProps) {
                         {item.helper}
                       </Typography>
                     </Box>
-                    <Button
+                    <AdminButton
                       size="small"
-                      variant="outlined"
+                      tone="secondary"
                       onClick={() => handleExport(item.label === 'Excel' ? 'xlsx' : item.label.toLowerCase() as 'csv' | 'pdf')}
                       sx={{ borderRadius: '999px' }}
                     >
                       Eksporter
-                    </Button>
+                    </AdminButton>
                   </Stack>
                 </Box>
               ))}
             </Stack>
-          </Paper>
+          </AdminCard>
         </Grid>
       </Grid>
 

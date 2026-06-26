@@ -20,7 +20,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   Paper,
@@ -71,6 +70,7 @@ import {
   CheckCircle as CheckCircleIcon,
 } from '@mui/icons-material';
 import { useToast } from '@/hooks/use-toast';
+import { AdminButton, StatusChip, AdminTableContainer } from './design-system';
 
 interface Course {
   id: string;
@@ -583,12 +583,12 @@ export default memo(function AcademyAdminPanel() {
 
   const getStatusChip = (status: string) => {
     const statusConfig = {
-      draft: { label: 'Utkast', color: 'default' as const },
-      published: { label: 'Publisert', color: 'success' as const },
-      archived: { label: 'Arkivert', color: 'warning' as const },
+      draft: { label: 'Utkast', tone: 'neutral' as const },
+      published: { label: 'Publisert', tone: 'success' as const },
+      archived: { label: 'Arkivert', tone: 'warning' as const },
     };
     const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.draft;
-    return <Chip label={config.label} color={config.color} size="small" />;
+    return <StatusChip label={config.label} tone={config.tone} />;
   };
 
   const renderStatsCards = () => {
@@ -899,14 +899,13 @@ export default memo(function AcademyAdminPanel() {
         <Box>
           <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <Typography variant="h6">Instruktører</Typography>
-            <Button
-              variant="contained"
+            <AdminButton
+              tone="primary"
               startIcon={<AddIcon />}
               onClick={() => setAddInstructorDialogOpen(true)}
-              sx={{ bgcolor: '#ff8c00','&:hover': { bgcolor: '#e67e00' } }}
             >
               Legg til instruktør
-            </Button>
+            </AdminButton>
           </Box>
 
           {instructorsLoading ? (
@@ -959,22 +958,20 @@ export default memo(function AcademyAdminPanel() {
           <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
             <Typography variant="h6">Påmeldinger</Typography>
             <Box sx={{ display: 'flex', gap: 1 }}>
-              <Button
-                variant="outlined"
+              <AdminButton
+                tone="secondary"
                 startIcon={<GroupAddIcon />}
                 onClick={() => setBulkEnrollDialogOpen(true)}
-                sx={{ borderColor: '#ff8c00', color: '#ff8c00','&:hover': { borderColor: '#e67e00', bgcolor: '#fff3e0' } }}
               >
                 Massepåmelding
-              </Button>
-              <Button
-                variant="contained"
+              </AdminButton>
+              <AdminButton
+                tone="primary"
                 startIcon={<AddIcon />}
                 onClick={() => setEnrollDialogOpen(true)}
-                sx={{ bgcolor: '#ff8c00','&:hover': { bgcolor: '#e67e00' } }}
               >
                 Manuell påmelding
-              </Button>
+              </AdminButton>
             </Box>
           </Box>
 
@@ -1007,10 +1004,9 @@ export default memo(function AcademyAdminPanel() {
                     </TableCell>
                     <TableCell>{enrollment.courseTitle}</TableCell>
                     <TableCell>
-                      <Chip
+                      <StatusChip
                         label={enrollment.status}
-                        size="small"
-                        color={enrollment.status === 'active' ? 'success' : 'default'}
+                        tone={enrollment.status === 'active' ? 'success' : 'neutral'}
                       />
                     </TableCell>
                     <TableCell align="center">{enrollment.progress}%</TableCell>
@@ -1097,7 +1093,7 @@ export default memo(function AcademyAdminPanel() {
               <Card>
                 <CardContent>
                   <Typography variant="h6" gutterBottom>Kurs-ytelse</Typography>
-                  <TableContainer>
+                  <AdminTableContainer ariaLabel="Kurs-ytelse">
                     <Table size="small">
                       <TableHead>
                         <TableRow>
@@ -1134,11 +1130,11 @@ export default memo(function AcademyAdminPanel() {
                         ))}
                       </TableBody>
                     </Table>
-                  </TableContainer>
+                  </AdminTableContainer>
                 </CardContent>
               </Card>
             </Grid>
-            
+
             {/* Top Students */}
             <Grid item xs={12} md={4}>
               <Card>
@@ -1290,15 +1286,15 @@ export default memo(function AcademyAdminPanel() {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setAddInstructorDialogOpen(false)}>Avbryt</Button>
-          <Button
-            variant="contained"
+          <AdminButton tone="ghost" onClick={() => setAddInstructorDialogOpen(false)}>Avbryt</AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={() => addInstructorMutation.mutate(selectedUserId)}
             disabled={!selectedUserId || addInstructorMutation.isPending}
-            sx={{ bgcolor: '#ff8c00','&:hover': { bgcolor: '#e67e00' } }}
+            loading={addInstructorMutation.isPending}
           >
             {addInstructorMutation.isPending ? 'Legger til...' : 'Legg til'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -1339,15 +1335,15 @@ export default memo(function AcademyAdminPanel() {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setEnrollDialogOpen(false)}>Avbryt</Button>
-          <Button
-            variant="contained"
+          <AdminButton tone="ghost" onClick={() => setEnrollDialogOpen(false)}>Avbryt</AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={() => enrollStudentMutation.mutate({ userId: enrollUserId, courseId: enrollCourseId })}
             disabled={!enrollUserId || !enrollCourseId || enrollStudentMutation.isPending}
-            sx={{ bgcolor: '#ff8c00','&:hover': { bgcolor: '#e67e00' } }}
+            loading={enrollStudentMutation.isPending}
           >
             {enrollStudentMutation.isPending ? 'Melder på...' : 'Meld på'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -1424,15 +1420,15 @@ export default memo(function AcademyAdminPanel() {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setBulkEnrollDialogOpen(false)}>Avbryt</Button>
-          <Button
-            variant="contained"
+          <AdminButton tone="ghost" onClick={() => setBulkEnrollDialogOpen(false)}>Avbryt</AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={() => bulkEnrollMutation.mutate({ userIds: selectedUserIds, courseId: bulkEnrollCourseId })}
             disabled={selectedUserIds.length === 0 || !bulkEnrollCourseId || bulkEnrollMutation.isPending}
-            sx={{ bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67e00' } }}
+            loading={bulkEnrollMutation.isPending}
           >
             {bulkEnrollMutation.isPending ? 'Melder på...' : `Meld på ${selectedUserIds.length} studenter`}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -1446,10 +1442,10 @@ export default memo(function AcademyAdminPanel() {
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setConfirmDeleteDialog(prev => ({ ...prev, open: false }))}>Avbryt</Button>
-          <Button variant="contained" color="error" onClick={confirmDeleteDialog.onConfirm}>
+          <AdminButton tone="ghost" onClick={() => setConfirmDeleteDialog(prev => ({ ...prev, open: false }))}>Avbryt</AdminButton>
+          <AdminButton tone="danger" onClick={confirmDeleteDialog.onConfirm}>
             Slett
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

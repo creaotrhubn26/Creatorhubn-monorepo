@@ -12,10 +12,8 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
-  Paper,
   Chip,
   Button,
   IconButton,
@@ -53,6 +51,12 @@ import {
   Settings,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
+import {
+  AdminButton,
+  StatusChip,
+  AdminTableContainer,
+  AdminLoading,
+} from './design-system';
 
 interface TrialFeature {
   id: string;
@@ -296,7 +300,7 @@ export default function TrialManagementPanel({
             sx={{ mr: 2 }}
           />
         )}
-        <Button variant="contained"
+        <AdminButton tone="primary"
           startIcon={theming.getThemedIcon('add')}
           onClick={() => {
             setShowFeatureDialog(true);
@@ -311,7 +315,7 @@ export default function TrialManagementPanel({
           }}
         >
           Legg til funksjon
-        </Button>
+        </AdminButton>
       </Box>
 
       <Grid container spacing={3}>
@@ -489,7 +493,7 @@ export default function TrialManagementPanel({
         </Box>
       )}
 
-      <TableContainer component={Paper}>
+      <AdminTableContainer ariaLabel="Aktive prøveperioder">
         <Table>
           <TableHead>
             <TableRow>
@@ -604,7 +608,7 @@ export default function TrialManagementPanel({
             ))}
           </TableBody>
         </Table>
-      </TableContainer>
+      </AdminTableContainer>
     </Box>
     );
   };
@@ -670,7 +674,7 @@ export default function TrialManagementPanel({
   );
 
   if (featuresLoading || statusesLoading || analyticsLoading) {
-    return <LinearProgress />;
+    return <AdminLoading />;
 }
 
   return (
@@ -853,7 +857,7 @@ export default function TrialManagementPanel({
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => {
+          <AdminButton tone="ghost" onClick={() => {
             setShowFeatureDialog(false);
             setFeatureName('');
             setFeatureDescription('');
@@ -862,10 +866,9 @@ export default function TrialManagementPanel({
             setUpgradeRequired(false);
           }}>
             Avbryt
-          </Button>
-          <Button 
-            variant="contained" 
-            sx={theming.getThemedButtonSx()}
+          </AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={() => {
               // Integration: Create showcase when feature is created
               if (onShowcaseCreate && featureCategory === 'showcase') {
@@ -891,7 +894,7 @@ export default function TrialManagementPanel({
           >
             <Add sx={{ mr: 1 }} />
             Lagre
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -1022,8 +1025,8 @@ export default function TrialManagementPanel({
           <Typography>Er du sikker på at du vil avslutte denne prøveperioden?</Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setEndTrialConfirmId(null)}>Avbryt</Button>
-          <Button variant="contained" color="error" onClick={executeEndTrial}>Avslutt</Button>
+          <AdminButton tone="ghost" onClick={() => setEndTrialConfirmId(null)}>Avbryt</AdminButton>
+          <AdminButton tone="danger" loading={endTrialMutation.isPending} onClick={executeEndTrial}>Avslutt</AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

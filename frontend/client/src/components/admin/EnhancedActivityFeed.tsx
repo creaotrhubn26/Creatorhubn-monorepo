@@ -21,7 +21,6 @@ import {
   Avatar,
   Chip,
   IconButton,
-  Button,
   Divider,
   Badge,
   Tooltip,
@@ -89,6 +88,7 @@ import { useLocation } from 'wouter';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
 import { PushNotificationSettings } from '../shared/PushNotificationSettings';
+import { AdminButton } from './design-system';
 
 interface ActivityItem {
   id: string;
@@ -625,9 +625,9 @@ useEffect(() => {
                   </FormControl>
                 </Stack>
                 
-                <Button 
-                  size="small" 
-                  variant="outlined"
+                <AdminButton
+                  size="small"
+                  tone="secondary"
                   onClick={() => {
                     setSearchQuery('');
                     setStartDate('');
@@ -637,7 +637,7 @@ useEffect(() => {
                   }}
                 >
                   Clear Filters
-                </Button>
+                </AdminButton>
               </Stack>
             </Paper>
           </Collapse>
@@ -697,14 +697,14 @@ useEffect(() => {
             {/* Show More / View All */}
             {hasMore && (
               <Box sx={{ mt: 2, textAlign:'center' }}>
-                <Button
-                  variant="outlined"
+                <AdminButton
+                  tone="secondary"
                   size="small"
                   onClick={() => setLocation('/admin/activity-feed-full')}
                   endIcon={<ArrowForward />}
                 >
                   View All {total} Activities
-                </Button>
+                </AdminButton>
               </Box>
             )}
           </>
@@ -750,17 +750,17 @@ useEffect(() => {
               </Alert>
             </DialogContent>
             <DialogActions>
-              <Button onClick={() => setSelectedActivity(null)}>Close</Button>
+              <AdminButton tone="ghost" onClick={() => setSelectedActivity(null)}>Close</AdminButton>
               {selectedActivity.actionUrl && (
-                <Button
-                  variant="contained"
+                <AdminButton
+                  tone="primary"
                   onClick={() => {
                     setLocation(selectedActivity.actionUrl!);
                     setSelectedActivity(null);
                   }}
                 >
                   View Details
-                </Button>
+                </AdminButton>
               )}
             </DialogActions>
           </>
@@ -776,7 +776,7 @@ useEffect(() => {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setPushSettingsOpen(false)}>Lukk</Button>
+          <AdminButton tone="ghost" onClick={() => setPushSettingsOpen(false)}>Lukk</AdminButton>
         </DialogActions>
       </Dialog>
     </Card>

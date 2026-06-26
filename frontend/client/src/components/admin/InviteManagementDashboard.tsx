@@ -21,7 +21,6 @@ import {
   TableRow,
   Paper,
   Chip,
-  Button,
   IconButton,
   Dialog,
   DialogTitle,
@@ -69,6 +68,7 @@ import {
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import FikenIntegrationRequestsPanel from './FikenIntegrationRequestsPanel';
+import { AdminButton } from './design-system';
 
 // Custom styled connector for journey stepper
 const JourneyConnector = styled(StepConnector)(({ theme }) => ({
@@ -838,17 +838,16 @@ export default function InviteManagementDashboard() {
         </DialogContent>
 
         <DialogActions>
-          <Button onClick={() => setShowReviewDialog(false)}>
+          <AdminButton tone="ghost" onClick={() => setShowReviewDialog(false)}>
             Avbryt
-          </Button>
-          <Button onClick={handleUpdateStatus}
-            variant="contained"
-            disabled={updateStatusMutation.isPending}
-            sx={{
-              backgroundColor: '#ff6b35','&:hover': { backgroundColor: '#e55722' }
-          }}>
+          </AdminButton>
+          <AdminButton
+            tone="primary"
+            onClick={handleUpdateStatus}
+            loading={updateStatusMutation.isPending}
+          >
             Oppdater status
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
         </>

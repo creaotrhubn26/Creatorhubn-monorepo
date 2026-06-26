@@ -53,6 +53,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useTheming } from '../../utils/theming-helper';
+import { AdminButton, StatusChip, AdminTableContainer, AdminLoading, AdminEmpty } from './design-system';
 
 interface EnterpriseInquiry {
   id: string;
@@ -215,7 +216,7 @@ export default function EnterpriseInquiriesPanel({ onNavigateToPricing }: Enterp
       </Box>
 
       {/* Table */}
-      <TableContainer component={Paper}>
+      <AdminTableContainer ariaLabel="Enterprise-forespørsler">
         <Table>
           <TableHead>
             <TableRow>
@@ -231,12 +232,12 @@ export default function EnterpriseInquiriesPanel({ onNavigateToPricing }: Enterp
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={7} align="center"><CircularProgress /></TableCell>
+                <TableCell colSpan={7} align="center"><AdminLoading /></TableCell>
               </TableRow>
             ) : inquiries.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} align="center">
-                  <Typography color="text.secondary">Ingen forespørsler funnet</Typography>
+                  <AdminEmpty title="Ingen forespørsler funnet" />
                 </TableCell>
               </TableRow>
             ) : inquiries.map((inquiry) => (
@@ -265,11 +266,9 @@ export default function EnterpriseInquiriesPanel({ onNavigateToPricing }: Enterp
                   )}
                 </TableCell>
                 <TableCell>
-                  <Chip
+                  <StatusChip
                     icon={STATUS_CONFIG[inquiry.status]?.icon}
-                    label={STATUS_CONFIG[inquiry.status]?.label}
-                    color={STATUS_CONFIG[inquiry.status]?.color}
-                    size="small"
+                    status={inquiry.status}
                   />
                 </TableCell>
                 <TableCell>
@@ -284,7 +283,7 @@ export default function EnterpriseInquiriesPanel({ onNavigateToPricing }: Enterp
             ))}
           </TableBody>
         </Table>
-      </TableContainer>
+      </AdminTableContainer>
 
       {/* Detail Dialog */}
       <Dialog open={showDetailDialog} onClose={() => setShowDetailDialog(false)} maxWidth="md" fullWidth>
@@ -347,15 +346,15 @@ export default function EnterpriseInquiriesPanel({ onNavigateToPricing }: Enterp
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowDetailDialog(false)}>Lukk</Button>
-          <Button
-            variant="contained"
+          <AdminButton tone="ghost" onClick={() => setShowDetailDialog(false)}>Lukk</AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={handleUpdateStatus}
-            disabled={updateMutation.isPending}
-            startIcon={updateMutation.isPending ? <CircularProgress size={16} /> : <CheckCircle />}
+            loading={updateMutation.isPending}
+            startIcon={<CheckCircle />}
           >
             Oppdater
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

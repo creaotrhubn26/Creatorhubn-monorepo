@@ -40,6 +40,7 @@ import {
 import { useIntegrationFeatures } from '@/hooks/useIntegrationFeatures';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { useTheming } from '../../utils/theming-helper';
+import { StatusChip, adminTokens } from './design-system';
 
 interface ConsoleLog {
   id: string;
@@ -1063,11 +1064,11 @@ const apiTests: Record<string, ApiTest[]> = {
     <Card sx={{ mt: 2, ...theming.getThemedCardSx() }}>
       <CardContent sx={theming.getThemedCardSx()}>
         <Box display="flex" alignItems="center" gap={1} mb={2}>
-          <TerminalIcon sx={{ color: '#ff8c00' }} />
+          <TerminalIcon sx={{ color: adminTokens.color.brand }} />
           <Typography variant="h6" sx={{ color: theming.colors.primary }}>
             Admin Developer Console
           </Typography>
-          <Chip label={`${totalActiveIntegrations} aktive integrasjoner`} color="success" size="small" />
+          <StatusChip tone="success" label={`${totalActiveIntegrations} aktive integrasjoner`} />
         </Box>
 
         <Tabs value={activeTab} onChange={(_, value) => setActiveTab(value)} sx={{ borderBottom: 1, borderColor:'divider' }}>

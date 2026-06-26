@@ -58,6 +58,7 @@ import { useLocation } from 'wouter';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
 import { PushNotificationSettings } from '../shared/PushNotificationSettings';
+import { AdminButton, StatusChip, AdminEmpty, AdminError } from './design-system';
 
 interface ActivityItem {
   id: string;
@@ -421,9 +422,9 @@ export default function AdminActivityFeed({
                 />
               </Stack>
               <Stack direction="row" spacing={1}>
-                <Button
+                <AdminButton
                   size="small"
-                  variant="outlined"
+                  tone="secondary"
                   onClick={() => {
                     setSearchQuery('');
                     setStartDate('');
@@ -432,16 +433,16 @@ export default function AdminActivityFeed({
                   }}
                 >
                   Clear Filters
-                </Button>
-                <Button
+                </AdminButton>
+                <AdminButton
                   size="small"
-                  variant="contained"
+                  tone="primary"
                   onClick={() => {
                     queryClient.invalidateQueries({ queryKey: ['/api/admin/activity-feed'] });
                   }}
                 >
                   Apply Filters
-                </Button>
+                </AdminButton>
               </Stack>
             </Stack>
           </Paper>
@@ -464,18 +465,12 @@ export default function AdminActivityFeed({
             ))}
           </Stack>
         ) : error ? (
-          <Alert 
-            severity="error"
-            action={
-              <Button color="inherit" size="small" onClick={handleRefresh}>
-                Retry
-              </Button>
-            }
-          >
-            Failed to load activity feed. Please try again.
-          </Alert>
+          <AdminError
+            message="Failed to load activity feed. Please try again."
+            onRetry={handleRefresh}
+          />
         ) : activities.length === 0 ? (
-          <Alert severity="info">No recent activity</Alert>
+          <AdminEmpty title="No recent activity" />
         ) : viewMode === 'list' ? (
           <List sx={{ py: 0 }}>
             {activities.map((activity: ActivityItem, index: number) => (
@@ -491,16 +486,14 @@ export default function AdminActivityFeed({
                   secondaryAction={
                     <Stack direction="row" spacing={1} alignItems="center">
                       {activity.status && (
-                        <Chip
+                        <StatusChip
                           label={activity.status}
-                          size="small"
-                          color={
+                          tone={
                             activity.status === 'approved' ? 'success' :
                             activity.status === 'rejected' ? 'error' :
                             activity.status === 'pending' ? 'warning' :
-                            'default'
+                            'neutral'
                           }
-                          sx={{ fontSize: '0.7rem', height: 20 }}
                         />
                       )}
                       <IconButton 
@@ -695,19 +688,19 @@ export default function AdminActivityFeed({
               )}
             </DialogContent>
             <DialogActions>
-              <Button onClick={() => setSelectedActivity(null)}>
+              <AdminButton tone="ghost" onClick={() => setSelectedActivity(null)}>
                 Close
-              </Button>
+              </AdminButton>
               {selectedActivity.actionUrl && (
-                <Button
-                  variant="contained"
+                <AdminButton
+                  tone="primary"
                   onClick={() => {
                     setLocation(selectedActivity.actionUrl!);
                     setSelectedActivity(null);
                   }}
                 >
                   View Details
-                </Button>
+                </AdminButton>
               )}
             </DialogActions>
           </>
@@ -765,7 +758,7 @@ export default function AdminActivityFeed({
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowFilterDialog(false)}>Close</Button>
+          <AdminButton tone="ghost" onClick={() => setShowFilterDialog(false)}>Close</AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -779,7 +772,7 @@ export default function AdminActivityFeed({
             </Box>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setPushSettingsOpen(false)}>Lukk</Button>
+            <AdminButton tone="ghost" onClick={() => setPushSettingsOpen(false)}>Lukk</AdminButton>
           </DialogActions>
         </Dialog>
       )}
