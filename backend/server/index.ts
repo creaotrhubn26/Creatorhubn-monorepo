@@ -859,6 +859,7 @@ import { setupGalleryVersionsRoutes } from "./gallery-versions-routes";
 import { setupContractsRoutes } from "./contracts-routes";
 import { setupBusinessRoutes } from "./business-routes";
 import { setupAnalyticsRoutes } from "./analytics-routes";
+import { setupChatWidgetAnalyticsRoutes } from "./chat-widget-analytics-routes";
 import { setupCommunityRoutes } from "./community-routes";
 import { setupUserRoutes } from "./user-routes";
 import { setupQuotesRoutes } from "./quotes-routes";
@@ -65608,6 +65609,13 @@ setupPrototypeTestingRoutes({
   isMissingRelationError,
   requireUserSession,
   getActiveSessionFromRequest,
+  adminRoles: ADMIN_SESSION_ROLES,
+});
+
+setupChatWidgetAnalyticsRoutes({
+  app,
+  pool,
+  requireUserSession,
   adminRoles: ADMIN_SESSION_ROLES,
 });
 
