@@ -261,6 +261,16 @@ final class AppState {
         permissions.contains(permissionKey)
     }
 
+    /// Klient-side filter for leads tilhørende ett spesifikt prosjekt.
+    /// Brukes av multi-prosjekt-pageren på kartet for å vise per-kort-
+    /// counter («X leads igjen»). Server-side filtreringen via
+    /// `activeProjectId` → `fetchLeads(projectId:)` er primær-mekanismen
+    /// for kart-pins; denne hjelperen er nyttig for views som vil vise
+    /// leads for et NON-active prosjekt uten å bytte global state.
+    func filteredLeads(forProject projectId: String) -> [LeadModel] {
+        leads.filter { $0.projectId == projectId }
+    }
+
     func bootstrap() async {
         // 1. Hent persistert prosjekt + org-valg
         if let stored = UserDefaults.standard.string(forKey: "rr.lead_map.active_project"), !stored.isEmpty {
