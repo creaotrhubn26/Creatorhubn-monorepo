@@ -19,6 +19,7 @@ import ScienceIcon from "@mui/icons-material/Science";
 import StorefrontIcon from "@mui/icons-material/Storefront";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import { apiRequest } from "@/lib/queryClient";
+import PrototypeTeamsOverview from "./PrototypeTeamsOverview";
 
 interface PartnerApp {
   id: string; company_name: string; contact_name: string; contact_email: string;
@@ -245,6 +246,7 @@ export default function EditingPartnersAdminPanel() {
       {filter > 1 && (
         <Stack spacing={1.5}>
           {filter === 2 && <PrototypeReportSettings />}
+          {filter === 2 && <PrototypeTeamsOverview />}
           {filter === 2 && (protoFeedback.data?.overdueCount ?? 0) > 0 && (
             <Alert severity="warning">
               {protoFeedback.data?.overdueCount} prototype-tester(e) har ikke gitt tilbakemelding på en stund
