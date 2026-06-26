@@ -23,7 +23,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   Chip,
@@ -74,6 +73,12 @@ import UserInstallationsPanel from './UserInstallationsPanel';
 import AcademyAdminPanel from './AcademyAdminPanel';
 import EnterpriseInquiriesPanel from './EnterpriseInquiriesPanel';
 import { useAdminPresence, OnlineStatusDot } from './shared/useAdminPresence';
+import {
+  AdminButton,
+  StatusChip,
+  AdminTableContainer,
+  adminTokens,
+} from './design-system';
 
 interface User {
   id: string;
@@ -1084,7 +1089,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
       <Dialog open={inviteDialogOpen} onClose={() => setInviteDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>
           <Box display="flex" alignItems="center" gap={1}>
-            <PersonAddIcon sx={{ color: '#ff8c00' }} />
+            <PersonAddIcon sx={{ color: adminTokens.color.brand }} />
             Inviter ny bruker
           </Box>
         </DialogTitle>
@@ -1171,15 +1176,17 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setInviteDialogOpen(false)}>
+          <AdminButton tone="ghost" onClick={() => setInviteDialogOpen(false)}>
             Avbryt
-          </Button>
-          <Button onClick={handleSubmit}
-            variant="contained"
+          </AdminButton>
+          <AdminButton
+            tone="primary"
+            onClick={handleSubmit}
+            loading={createUserMutation.isPending}
             disabled={createUserMutation.isPending}
-            sx={{ bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67e00' } }}>
+          >
             {createUserMutation.isPending ? 'Oppretter...' : 'Opprett bruker'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     );
@@ -1280,9 +1287,10 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
         ) : null}
       </DialogContent>
       <DialogActions>
-        <Button onClick={() => { setEditRoleOpen(false); setSelectedUser(null); }}>Avbryt</Button>
-        <Button
-          variant="contained"
+        <AdminButton tone="ghost" onClick={() => { setEditRoleOpen(false); setSelectedUser(null); }}>Avbryt</AdminButton>
+        <AdminButton
+          tone="primary"
+          loading={updateUserMutation.isPending}
           disabled={!selectedUser || updateUserMutation.isPending}
           onClick={() => {
             if (!selectedUser) return;
@@ -1296,10 +1304,9 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
               },
             );
           }}
-          sx={{ bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67e00' } }}
         >
           Lagre rolle
-        </Button>
+        </AdminButton>
       </DialogActions>
     </Dialog>
   );
@@ -1374,9 +1381,10 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
         </FormControl>
       </DialogContent>
       <DialogActions>
-        <Button onClick={() => { setEditProfessionOpen(false); setSelectedUser(null); }}>Avbryt</Button>
-        <Button
-          variant="contained"
+        <AdminButton tone="ghost" onClick={() => { setEditProfessionOpen(false); setSelectedUser(null); }}>Avbryt</AdminButton>
+        <AdminButton
+          tone="primary"
+          loading={updateProfessionMutation.isPending}
           disabled={!selectedUser || updateProfessionMutation.isPending}
           onClick={() => {
             if (!selectedUser) return;
@@ -1386,10 +1394,9 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                 editProfessionValue || getDefaultProfessionForRole(selectedUser.role),
             });
           }}
-          sx={{ bgcolor: '#ff8c00','&:hover': { bgcolor: '#e67e00' } }}
         >
           Lagre
-        </Button>
+        </AdminButton>
       </DialogActions>
     </Dialog>
   );
@@ -1426,12 +1433,12 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
             ) : null}
 
             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-              <Chip
-                color={activationActive ? 'success' : 'default'}
+              <StatusChip
+                tone={activationActive ? 'success' : 'neutral'}
                 label={activationActive ? 'Aktivert for bruker' : 'Ikke aktivert'}
               />
-              <Chip
-                color={isConnected ? 'success' : 'default'}
+              <StatusChip
+                tone={isConnected ? 'success' : 'neutral'}
                 label={isConnected ? 'Tripletex test tilkoblet' : 'Tripletex ikke koblet'}
               />
             </Box>
@@ -1510,20 +1517,19 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
           </Box>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2.5, justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
-          <Button
-            color="inherit"
+          <AdminButton
+            tone="ghost"
             onClick={() => {
               setAccountingDialogOpen(false);
               setSelectedUser(null);
             }}
           >
             Lukk
-          </Button>
+          </AdminButton>
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
             {activationActive ? (
-              <Button
-                color="error"
-                variant="outlined"
+              <AdminButton
+                tone="danger"
                 disabled={!selectedUser || actionPending}
                 onClick={() => {
                   if (!selectedUser) return;
@@ -1534,10 +1540,10 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                 }}
               >
                 Deaktiver løsning
-              </Button>
+              </AdminButton>
             ) : (
-              <Button
-                variant="outlined"
+              <AdminButton
+                tone="secondary"
                 disabled={!selectedUser || actionPending}
                 onClick={() => {
                   if (!selectedUser) return;
@@ -1548,19 +1554,18 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                 }}
               >
                 Aktiver løsning
-              </Button>
+              </AdminButton>
             )}
-            <Button
-              variant="contained"
+            <AdminButton
+              tone="primary"
               disabled={!selectedUser || actionPending || !activationActive || !accountingStatus?.configured}
               onClick={() => {
                 if (!selectedUser) return;
                 connectAccountingTestMutation.mutate(selectedUser.id);
               }}
-              sx={{ bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67e00' } }}
             >
               Aktiver Tripletex test
-            </Button>
+            </AdminButton>
           </Box>
         </DialogActions>
       </Dialog>
@@ -1613,15 +1618,15 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setMessageOpen(false)} disabled={messageSending}>Avbryt</Button>
-          <Button
-            variant="contained"
+          <AdminButton tone="ghost" onClick={() => setMessageOpen(false)} disabled={messageSending}>Avbryt</AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={handleSendMessage}
+            loading={messageSending}
             disabled={messageSending || !messageText.trim() || !selectedUser}
-            sx={{ bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67e00' } }}
           >
             {messageSending ? 'Sender…' : 'Send'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
       <Snackbar
@@ -1653,7 +1658,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
           }}
         >
           <Box sx={{ maxWidth: 760, flex: 1 }}>
-            <Typography variant="overline" sx={{ color: '#ff8c00', fontWeight: 700, letterSpacing: '0.08em' }}>
+            <Typography variant="overline" sx={{ color: adminTokens.color.brand, fontWeight: 700, letterSpacing: '0.08em' }}>
               CreatorHub Access Control
             </Typography>
             <Typography
@@ -2139,7 +2144,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
               </Box>
             </Box>
 
-            <TableContainer component={Box}>
+            <AdminTableContainer ariaLabel="Brukere">
               <Table>
                 <TableHead>
                   <TableRow
@@ -2428,7 +2433,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                   ) : null}
                 </TableBody>
               </Table>
-            </TableContainer>
+            </AdminTableContainer>
 
             {filteredUsers.length > 8 ? (
               <Box

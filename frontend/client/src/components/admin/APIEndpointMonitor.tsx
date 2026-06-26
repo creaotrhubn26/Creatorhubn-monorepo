@@ -12,7 +12,6 @@ import {
   Alert,
   Chip,
   Tooltip,
-  Button,
   LinearProgress,
   Accordion,
   AccordionSummary,
@@ -20,10 +19,8 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
-  Paper,
 } from '@mui/material';
 import {
   CheckCircle,
@@ -33,6 +30,11 @@ import {
   Code,
   IntegrationInstructions,
 } from '@mui/icons-material';
+import {
+  AdminButton,
+  StatusChip,
+  AdminTableContainer,
+} from './design-system';
 
 interface EndpointHealthCheck {
   endpoint: string;
@@ -223,14 +225,14 @@ const APIEndpointMonitor: React.FC = () => {
           </Typography>
         </Alert>
 
-        <Button
-          variant="contained"
+        <AdminButton
+          tone="primary"
           startIcon={theming.getThemedIcon('refresh')}
           onClick={() => queryClient.invalidateQueries()}
           sx={{ mt: 2, ...theming.getThemedButtonSx() }}
         >
           Prøv igjen
-        </Button>
+        </AdminButton>
       </Box>
     );
   }
@@ -256,16 +258,14 @@ const APIEndpointMonitor: React.FC = () => {
         </Typography>
 
         <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-          <Button
-            variant="contained"
+          <AdminButton
+            tone="primary"
             startIcon={theming.getThemedIcon('play')}
             onClick={triggerHealthCheck}
-            sx={{
-              backgroundColor: '#ff8c00', '&:hover': { backgroundColor: '#e67e00' },
-              ...theming.getThemedButtonSx()}}
+            sx={{ ...theming.getThemedButtonSx() }}
           >
             Kjør Health Check
-          </Button>
+          </AdminButton>
 
           <Typography variant="body2" color="text.secondary">
             Sist sjekket:{', '}
@@ -381,25 +381,17 @@ const APIEndpointMonitor: React.FC = () => {
                   </Typography>
                   <Box sx={{ ml: 'auto', display: 'flex', gap: 1 }}>
                     {healthyCount > 0 && (
-                      <Chip
-                        size="small"
-                        label={`${healthyCount} healthy`}
-                        sx={{ backgroundColor: '#4caf50', color: 'white' }}
-                      />
+                      <StatusChip tone="success" label={`${healthyCount} healthy`} />
                     )}
                     {failedCount > 0 && (
-                      <Chip
-                        size="small"
-                        label={`${failedCount} failed`}
-                        sx={{ backgroundColor: '#f44336', color: 'white' }}
-                      />
+                      <StatusChip tone="error" label={`${failedCount} failed`} />
                     )}
                   </Box>
                 </Box>
               </AccordionSummary>
 
               <AccordionDetails>
-                <TableContainer component={Paper} variant="outlined">
+                <AdminTableContainer ariaLabel={`${category} API-endepunkter`}>
                   <Table size="small">
                     <TableHead>
                       <TableRow>
@@ -497,7 +489,7 @@ const APIEndpointMonitor: React.FC = () => {
                       })}
                     </TableBody>
                   </Table>
-                </TableContainer>
+                </AdminTableContainer>
               </AccordionDetails>
             </Accordion>
           );

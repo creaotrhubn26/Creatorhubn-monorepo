@@ -58,6 +58,7 @@ import {
   Campaign as _CampaignIcon,
 } from '@mui/icons-material';
 import { PUBLIC_BRAND_LINKS } from '@/lib/publicBrandLinks';
+import { AdminButton } from './design-system';
 
 interface SocialPost {
   id?: string;
@@ -620,15 +621,15 @@ export default function SocialMediaManager() {
                   >
                     Planlegg
                   </Button>
-                  <Button
+                  <AdminButton
+                    tone="primary"
                     startIcon={<SendIcon />}
-                    variant="contained"
                     onClick={handlePublish}
+                    loading={createPostMutation.isPending}
                     disabled={!postForm.content || selectedPlatforms.length === 0 || createPostMutation.isPending}
-                    sx={{ bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67e00' } }}
                   >
                     Publiser Nå
-                  </Button>
+                  </AdminButton>
                 </Box>
               </CardContent>
             </Card>
@@ -946,17 +947,16 @@ export default function SocialMediaManager() {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setPreviewDialogOpen(false)}>Lukk</Button>
-          <Button
-            variant="contained"
+          <AdminButton tone="ghost" onClick={() => setPreviewDialogOpen(false)}>Lukk</AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={() => {
               setPreviewDialogOpen(false);
               // Could trigger publish or schedule from here
             }}
-            sx={{ bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67e00' } }}
           >
             Fortsett til Publisering
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -1009,17 +1009,16 @@ export default function SocialMediaManager() {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setPreviewDialogOpen(false)}>Lukk</Button>
-          <Button
-            variant="contained"
+          <AdminButton tone="ghost" onClick={() => setPreviewDialogOpen(false)}>Lukk</AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={() => {
               setPreviewDialogOpen(false);
               // Could trigger publish or schedule from here
             }}
-            sx={{ bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67e00' } }}
           >
             Fortsett til Publisering
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -1037,15 +1036,15 @@ export default function SocialMediaManager() {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setScheduleDialogOpen(false)}>Avbryt</Button>
-          <Button
-            variant="contained"
+          <AdminButton tone="ghost" onClick={() => setScheduleDialogOpen(false)}>Avbryt</AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={() => {
               // Handle schedule logic
             }}
           >
             Planlegg
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 

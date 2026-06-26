@@ -48,10 +48,8 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
-  Paper,
   Switch,
   FormControlLabel,
   Skeleton,
@@ -88,6 +86,7 @@ import { validateText, validateInput, ValidationRule } from '../../utils/inputVa
 import FeatureManagementWithPublish from './FeatureManagementWithPublish';
 import DeploymentStatusWidget from './DeploymentStatusWidget';
 import { CREATOR_HUB_BRANDING } from '../../constants/CreatorHubBranding';
+import { AdminCard, AdminButton, StatusChip, AdminLoading, AdminEmpty, AdminError, AdminTableContainer, adminTokens } from './design-system';
 
 
 interface DeploymentTarget {
@@ -2516,12 +2515,9 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
           </Typography>
 
           {deploymentsLoading ? (
-            <Box sx={{ textAlign: 'center', py:  4 }}>
-              <CircularProgress />
-              <Typography sx={{ mt:  2 }}>Loading deployments...</Typography>
-            </Box>
+            <AdminLoading label="Loading deployments..." />
           ) : (
-            <TableContainer component={Paper}>
+            <AdminTableContainer ariaLabel="Deployment history">
               <Table>
                 <TableHead>
                   <TableRow>
@@ -2585,7 +2581,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
                   ))}
                 </TableBody>
               </Table>
-            </TableContainer>
+            </AdminTableContainer>
           )}
         </Box>
       )}
@@ -2692,7 +2688,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
                 <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
                   📊 Endpoint Status Details
                 </Typography>
-                <TableContainer>
+                <AdminTableContainer ariaLabel="Endpoint status details">
                   <Table>
                     <TableHead>
                       <TableRow>
@@ -2744,7 +2740,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
                       ))}
                     </TableBody>
                   </Table>
-                </TableContainer>
+                </AdminTableContainer>
               </CardContent>
             </Card>
           )}
@@ -2910,7 +2906,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
                 <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
                   📊 Component Analysis Results
                 </Typography>
-                <TableContainer>
+                <AdminTableContainer ariaLabel="Component analysis results">
                   <Table>
                     <TableHead>
                       <TableRow>
@@ -2970,7 +2966,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
                       ))}
                     </TableBody>
                   </Table>
-                </TableContainer>
+                </AdminTableContainer>
               </CardContent>
             </Card>
           )}
@@ -3241,9 +3237,9 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
           ) : null}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowHealthCheckDialog(false)}>
+          <AdminButton tone="ghost" onClick={() => setShowHealthCheckDialog(false)}>
             Close
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -3277,9 +3273,9 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
           </Alert>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowRollbackDialog(false)}>
+          <AdminButton tone="ghost" onClick={() => setShowRollbackDialog(false)}>
             Cancel
-          </Button>
+          </AdminButton>
           <Button
             variant="contained"
             color="warning"
@@ -3302,8 +3298,8 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
           <Typography style={{ whiteSpace: 'pre-line' }}>{confirmDialog.message}</Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setConfirmDialog(prev => ({ ...prev, open: false }))}>Cancel</Button>
-          <Button variant="contained" onClick={confirmDialog.onConfirm}>Confirm</Button>
+          <AdminButton tone="ghost" onClick={() => setConfirmDialog(prev => ({ ...prev, open: false }))}>Cancel</AdminButton>
+          <AdminButton tone="primary" onClick={confirmDialog.onConfirm}>Confirm</AdminButton>
         </DialogActions>
       </Dialog>
       </Box>

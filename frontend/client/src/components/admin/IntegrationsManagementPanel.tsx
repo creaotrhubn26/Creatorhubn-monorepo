@@ -163,6 +163,7 @@ import ApiIntegrationProcessMonitor from './ApiIntegrationProcessMonitor';
 import DatabaseIntegrityChecker from './DatabaseIntegrityChecker';
 import type { APIVersionInfo } from './APIVersionReleaseNotesDialog';
 import { APIVersionReleaseNotesDialog } from './APIVersionReleaseNotesDialog';
+import { AdminButton } from './design-system';
 
 interface ApiKey {
   id: string;
@@ -1076,14 +1077,14 @@ export default function IntegrationsManagementPanel({
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setKeyDialogOpen(false)}>Avbryt</Button>
-          <Button onClick={handleSubmit}
-            variant="contained"
+          <AdminButton tone="ghost" onClick={() => setKeyDialogOpen(false)}>Avbryt</AdminButton>
+          <AdminButton onClick={handleSubmit}
+            tone="primary"
+            loading={createApiKeyMutation.isPending}
             disabled={createApiKeyMutation.isPending}
-            sx={{ bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67e00' } }}
           >
             {createApiKeyMutation.isPending ? 'Oppretter...' : 'Opprett nøkkel'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
   );
@@ -1168,14 +1169,14 @@ export default function IntegrationsManagementPanel({
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setWebhookDialogOpen(false)}>Avbryt</Button>
-          <Button onClick={handleSubmit}
-            variant="contained"
+          <AdminButton tone="ghost" onClick={() => setWebhookDialogOpen(false)}>Avbryt</AdminButton>
+          <AdminButton onClick={handleSubmit}
+            tone="primary"
+            loading={createWebhookMutation.isPending}
             disabled={createWebhookMutation.isPending}
-            sx={{ bgcolor: '#ff8c00','&:hover': { bgcolor: '#e67e00' } }}
           >
             {createWebhookMutation.isPending ? 'Oppretter...' : 'Opprett webhook'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
   );
@@ -1314,14 +1315,14 @@ export default function IntegrationsManagementPanel({
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOAuthDialogOpen(false)}>Avbryt</Button>
-          <Button onClick={handleSubmit}
-            variant="contained"
+          <AdminButton tone="ghost" onClick={() => setOAuthDialogOpen(false)}>Avbryt</AdminButton>
+          <AdminButton onClick={handleSubmit}
+            tone="primary"
+            loading={createOAuthMutation.isPending}
             disabled={createOAuthMutation.isPending}
-            sx={{ bgcolor: '#ff8c00','&:hover': { bgcolor: '#e67e00' } }}
           >
             {createOAuthMutation.isPending ? 'Oppretter...' : 'Opprett klient'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
   );

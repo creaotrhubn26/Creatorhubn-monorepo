@@ -73,6 +73,8 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
+import { AdminButton, StatusChip, adminTokens } from './design-system';
+import type { StatusTone } from './design-system';
 
 interface TestItem {
   id: string;
@@ -360,25 +362,25 @@ export default function TestingDashboard() {
             alignItems: 'center',
             mb:  3}}
         >
-          <Typography variant="h5" sx={{  color: '#ff8c00', fontWeight: 600}}>
+          <Typography variant="h5" sx={{  color: adminTokens.color.brand, fontWeight: 600}}>
             🧪 Testing & Deployment Dashboard
           </Typography>
           <Box sx={{ display: 'flex', gap:  2 }}>
-            <Button
-              variant="outlined"
+            <AdminButton
+              tone="secondary"
               startIcon={<RefreshIcon />}
               onClick={() => queryClient.invalidateQueries()}
             >
               Oppdater
-            </Button>
-            <Button variant="contained"
+            </AdminButton>
+            <AdminButton
+              tone="primary"
               startIcon={<DeployIcon />}
               onClick={() => setDeploymentDialogOpen(true)}
               disabled={calculateOverallReadiness() < 95}
-              sx={{ bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67e00'} }}
             >
               Deploy til Production
-            </Button>
+            </AdminButton>
           </Box>
         </Box>
 
@@ -485,9 +487,9 @@ export default function TestingDashboard() {
                     <Typography variant="h6" sx={{  ml: 1, flex:  1  }}>
                       {suite.name}
                     </Typography>
-                    <Chip
+                    <StatusChip
                       label={suite.status}
-                      color={getStatusColor(suite.status)}
+                      tone={(getStatusColor(suite.status) === 'default' ? 'neutral' : getStatusColor(suite.status)) as StatusTone}
                       size="small"
                     />
                   </Box>
@@ -538,20 +540,14 @@ export default function TestingDashboard() {
                     )}
                   </Box>
 
-                  <Button fullWidth
-                    variant="contained"
+                  <AdminButton fullWidth
+                    tone={runningTests.has(suite.id) ? 'danger' : 'primary'}
                     startIcon={runningTests.has(suite.id) ? <StopIcon /> : <PlayIcon />}
                     onClick={() => runTestSuiteMutation.mutate(suite.id)}
                     disabled={runningTests.has(suite.id)}
-                    sx={{
-                      bgcolor: runningTests.has(suite.id) ? '#f44336' : '#ff8c00',
-                      '&:hover': {
-                        bgcolor: runningTests.has(suite.id) ? '#d32f2f' : '#e67e00',
-                      },
-                    }}
                   >
                     {runningTests.has(suite.id) ? 'Stopp Test' : 'Kjør Test Suite'}
-                  </Button>
+                  </AdminButton>
 
                   {/* Test details accordion */}
                   <Accordion sx={{ mt:  2 }}>
@@ -576,10 +572,10 @@ export default function TestingDashboard() {
                                     {test.description}
                                   </Typography>
                                   <Box sx={{ display: 'flex', gap: 1, mt: 0.5}}>
-                                    <Chip
+                                    <StatusChip
                                       label={test.priority}
                                       size="small"
-                                      color={getPriorityColor(test.priority)}
+                                      tone={(getPriorityColor(test.priority) === 'default' ? 'neutral' : getPriorityColor(test.priority)) as StatusTone}
                                     />
                                     <Chip
                                       label={test.automationLevel}
@@ -587,11 +583,10 @@ export default function TestingDashboard() {
                                       variant="outlined"
                                     />
                                     {test.requiredForDeployment && (
-                                      <Chip
+                                      <StatusChip
                                         label="Required"
                                         size="small"
-                                        color="error"
-                                        variant="outlined"
+                                        tone="error"
                                       />
                                     )}
                                   </Box>
@@ -722,9 +717,9 @@ export default function TestingDashboard() {
                     <Typography variant="h6" sx={{  flex:  1  }}>
                       {env.name}
                     </Typography>
-                    <Chip
+                    <StatusChip
                       label={env.status}
-                      color={getEnvironmentStatusColor(env.status)}
+                      tone={(getEnvironmentStatusColor(env.status) === 'default' ? 'neutral' : getEnvironmentStatusColor(env.status)) as StatusTone}
                       size="small"
                     />
                   </Box>
@@ -749,20 +744,16 @@ export default function TestingDashboard() {
                   </Box>
 
                   {env.type !== 'production' && (
-                    <Button fullWidth
-                      variant="contained"
+                    <AdminButton fullWidth
+                      tone="primary"
                       startIcon={<DeployIcon />}
                       onClick={() => {
                         setSelectedEnvironment(env.id);
                         setDeploymentDialogOpen(true);
                     }}
-                      sx={{
-                        bgcolor: '#ff8c00',
-                        '&:hover': { bgcolor: '#e67e00' },
-                      }}
                     >
                       Deploy til {env.name}
-                    </Button>
+                    </AdminButton>
                   )}
                 </CardContent>
               </Card>
@@ -865,7 +856,7 @@ export default function TestingDashboard() {
       >
         <DialogTitle>
           <Box display="flex" alignItems="center" gap={1}>
-            <DeployIcon sx={{ color: '#ff8c00'}} />
+            <DeployIcon sx={{ color: adminTokens.color.brand}} />
             Deploy til Production
           </Box>
         </DialogTitle>
@@ -899,15 +890,15 @@ export default function TestingDashboard() {
           </List>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeploymentDialogOpen(false)}>Avbryt</Button>
-          <Button
+          <AdminButton tone="ghost" onClick={() => setDeploymentDialogOpen(false)}>Avbryt</AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={() => deployMutation.mutate('production')}
-            variant="contained"
+            loading={deployMutation.isPending}
             disabled={calculateOverallReadiness() < 95 || deployMutation.isPending}
-            sx={{ bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67e00'} }}
           >
             {deployMutation.isPending ? 'Deployer...' : 'Deploy til Production'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

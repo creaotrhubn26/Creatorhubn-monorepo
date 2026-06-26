@@ -114,6 +114,11 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { nb } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
+import {
+  AdminButton,
+  AdminLoading,
+  AdminTableContainer,
+} from './design-system';
 
 interface ReportTemplate {
   id: string;
@@ -790,20 +795,7 @@ const AutomatedBusinessReports: React.FC = () => {
   };
 
   if (loading) {
-    return (
-      <Box
-        sx={{
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          height: 40}}
-      >
-        <CircularProgress size={60} />
-        <Typography variant="h6" sx={{ ml: 2, color: theming.colors.primary }}>
-          Laster rapportsystem...
-        </Typography>
-      </Box>
-    );
+    return <AdminLoading label="Laster rapportsystem..." />;
   }
 
   return (
@@ -827,21 +819,20 @@ const AutomatedBusinessReports: React.FC = () => {
           </Box>
 
           <Box sx={{ display: 'flex', gap: 2 }}>
-            <Button
+            <AdminButton
               onClick={() => setCreateDialogOpen(true)}
               startIcon={<AddIcon />}
-              variant="contained"
-              color="primary"
+              tone="primary"
             >
               Ny Rapport mal
-            </Button>
-            <Button
+            </AdminButton>
+            <AdminButton
               onClick={() => setGenerateDialogOpen(true)}
               startIcon={<PdfIcon />}
-              variant="outlined"
+              tone="secondary"
             >
               Generer Rapport
-            </Button>
+            </AdminButton>
           </Box>
         </Box>
 
@@ -1090,7 +1081,7 @@ const AutomatedBusinessReports: React.FC = () => {
                   Genererte Rapporter
                 </Typography>
 
-                <TableContainer component={Paper}>
+                <AdminTableContainer ariaLabel="Genererte rapporter">
                   <Table>
                     <TableHead>
                       <TableRow>
@@ -1189,7 +1180,7 @@ const AutomatedBusinessReports: React.FC = () => {
                       ))}
                     </TableBody>
                   </Table>
-                </TableContainer>
+                </AdminTableContainer>
               </Box>
             )}
 
@@ -1574,15 +1565,18 @@ const AutomatedBusinessReports: React.FC = () => {
             </Grid>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setGenerateDialogOpen(false)}>Avbryt</Button>
-            <Button
+            <AdminButton tone="ghost" onClick={() => setGenerateDialogOpen(false)}>
+              Avbryt
+            </AdminButton>
+            <AdminButton
               onClick={() => selectedTemplate && generateReport(selectedTemplate)}
-              variant="contained"
-              startIcon={generatingReport ? <CircularProgress size={20} /> : <PdfIcon />}
+              tone="primary"
+              startIcon={<PdfIcon />}
+              loading={generatingReport}
               disabled={generatingReport}
             >
               {generatingReport ? 'Genererer...' : 'Generer Rapport'}
-            </Button>
+            </AdminButton>
           </DialogActions>
         </Dialog>
 
@@ -1651,10 +1645,12 @@ const AutomatedBusinessReports: React.FC = () => {
             </Grid>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setCreateDialogOpen(false)}>Avbryt</Button>
-            <Button variant="contained" startIcon={<AddIcon />}>
+            <AdminButton tone="ghost" onClick={() => setCreateDialogOpen(false)}>
+              Avbryt
+            </AdminButton>
+            <AdminButton tone="primary" startIcon={<AddIcon />}>
               Opprett Mal
-            </Button>
+            </AdminButton>
           </DialogActions>
         </Dialog>
       </Box>

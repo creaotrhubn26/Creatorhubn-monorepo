@@ -76,6 +76,7 @@ import {
 import { apiRequest } from '@/lib/queryClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
+import { AdminButton, AdminTableContainer } from './design-system';
 
 interface DatabaseTable {
   table_name: string;
@@ -1522,7 +1523,7 @@ export default function DatabaseManagementPanel() {
             {tablesLoading ? (
               <LinearProgress />
             ) : (
-              <TableContainer>
+              <AdminTableContainer ariaLabel="Database tables">
                 <Table>
                   <TableHead>
                     <TableRow>
@@ -1581,7 +1582,7 @@ export default function DatabaseManagementPanel() {
                     setPage(0);
                 }}
                 />
-              </TableContainer>
+              </AdminTableContainer>
             )}
           </Box>
         )}
@@ -2697,7 +2698,7 @@ export default function DatabaseManagementPanel() {
                     Missing Tables Details
                   </Typography>
                   
-                  <TableContainer>
+                  <AdminTableContainer ariaLabel="Missing tables details">
                     <Table>
                       <TableHead>
                         <TableRow>
@@ -2739,7 +2740,7 @@ export default function DatabaseManagementPanel() {
                         ))}
                       </TableBody>
                     </Table>
-                  </TableContainer>
+                  </AdminTableContainer>
                 </CardContent>
               </Card>
             )}
@@ -3294,17 +3295,17 @@ export default function DatabaseManagementPanel() {
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button 
+          <AdminButton
+            tone="ghost"
             onClick={() => {
               localStorage.removeItem('dbPanel_scriptProgress');
               localStorage.removeItem('dbPanel_wasInterrupted');
               setShowRecoveryDialog(false);
           }}
-            variant="outlined"
           >
             Discard Progress
-          </Button>
-          <Button 
+          </AdminButton>
+          <AdminButton
             onClick={() => {
               const saved = localStorage.getItem('dbPanel_scriptProgress');
               const wasInterrupted = localStorage.getItem('dbPanel_wasInterrupted') === 'true';
@@ -3331,12 +3332,11 @@ export default function DatabaseManagementPanel() {
               localStorage.removeItem('dbPanel_wasInterrupted');
               setShowRecoveryDialog(false);
           }}
-            variant="contained"
-            color="primary"
+            tone="primary"
             startIcon={<Restore />}
           >
             Restore & View Progress
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -3378,27 +3378,27 @@ export default function DatabaseManagementPanel() {
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button 
+          <AdminButton
+            tone="ghost"
             onClick={() => {
               setShowDryRunReminder(false);
               setPendingScript(null);
           }}
-            variant="outlined"
           >
             Cancel
-          </Button>
-          <Button 
+          </AdminButton>
+          <AdminButton
+            tone="danger"
             onClick={() => {
               // Skip dry-run and proceed to execute
               setShowDryRunReminder(false);
               setShowSafetyWarning(true);
           }}
-            variant="outlined"
-            color="error"
           >
             Skip & Execute Anyway
-          </Button>
-          <Button 
+          </AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={() => {
               setDryRunMode(true);
               setShowDryRunReminder(false);
@@ -3408,12 +3408,10 @@ export default function DatabaseManagementPanel() {
             }
               setPendingScript(null);
           }}
-            variant="contained"
-            color="success"
             startIcon={<Visibility />}
           >
             Yes, Run Dry Run First
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -3455,16 +3453,17 @@ export default function DatabaseManagementPanel() {
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button 
+          <AdminButton
+            tone="ghost"
             onClick={() => {
               setShowSafetyWarning(false);
               setPendingScript(null);
           }}
-            variant="outlined"
           >
             Cancel
-          </Button>
-          <Button 
+          </AdminButton>
+          <AdminButton
+            tone="secondary"
             onClick={() => {
               setDryRunMode(true);
               setShowSafetyWarning(false);
@@ -3473,19 +3472,16 @@ export default function DatabaseManagementPanel() {
             }
               setPendingScript(null);
           }}
-            variant="outlined"
-            color="primary"
           >
             Run as Dry Run Instead
-          </Button>
-          <Button 
+          </AdminButton>
+          <AdminButton
+            tone="danger"
             onClick={confirmScriptExecution}
-            variant="contained"
-            color="error"
             startIcon={<Warning />}
           >
             Confirm Execute
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 

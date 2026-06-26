@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { apiRequest, getAuthHeader } from '@/lib/queryClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
+import { AdminButton } from './design-system';
 import {
   Box,
   Card,
@@ -458,13 +459,14 @@ const ComprehensiveProtocolManager: React.FC<ComprehensiveProtocolManagerProps> 
             <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center' }}>
               <Timeline sx={{ mr: 1 }} />
               Live Systemhendelser
-              <Button
+              <AdminButton
+                tone="ghost"
                 startIcon={<Refresh />}
                 onClick={() => queryClient.invalidateQueries({ queryKey: ['/api/admin/system-events'] })}
                 sx={{ ml: 'auto' }}
               >
                 Oppdater
-              </Button>
+              </AdminButton>
             </Typography>
             
             {/* Filtere */}

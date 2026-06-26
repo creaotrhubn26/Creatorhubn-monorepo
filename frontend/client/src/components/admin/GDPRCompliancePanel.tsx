@@ -65,6 +65,7 @@ import {
   DATATILSYNET_CONTACT,
   GDPR_COMPLIANCE_CHECKLIST
 } from '@shared/datatilsynet-gdpr-reference';
+import { AdminButton, StatusChip, adminTokens } from './design-system';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -305,13 +306,13 @@ export function GDPRCompliancePanel() {
                 onClick={() => setDatatilsynetDialog(true)}
               >
                 <CardContent sx={{ textAlign: 'center', py: 2 }}>
-                  <Typography variant="h4" sx={{ color: '#ff8c00', fontWeight: 700}}>
+                  <Typography variant="h4" sx={{ color: adminTokens.color.brand, fontWeight: 700}}>
                     <Gavel sx={{ fontSize: 40 }} />
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
                     Datatilsynet
                   </Typography>
-                  <Typography variant="caption" sx={{ display: 'block', mt: 1, color: '#ff8c00' }}>
+                  <Typography variant="caption" sx={{ display: 'block', mt: 1, color: adminTokens.color.brand }}>
                     Klikk for kontakt
                   </Typography>
                 </CardContent>
@@ -636,7 +637,7 @@ export function GDPRCompliancePanel() {
                         <Typography variant="h6" sx={{ color: themeColors.primary }}>
                           {DATATILSYNET_REQUIREMENTS.rightToAccess.name}
                         </Typography>
-                        <Chip label="Frist: 30 dager" size="small" color="warning" sx={{ mt: 1 }} />
+                        <StatusChip tone="warning" label="Frist: 30 dager" sx={{ mt: 1 }} />
                       </Box>
                       <Tooltip title="Se Datatilsynets veiledning">
                         <Button
@@ -676,7 +677,7 @@ export function GDPRCompliancePanel() {
                         <Typography variant="h6" sx={{ color: themeColors.primary }}>
                           {DATATILSYNET_REQUIREMENTS.rightToErasure.name}
                         </Typography>
-                        <Chip label="Uten ugrunnet opphold" size="small" color="error" sx={{ mt: 1 }} />
+                        <StatusChip tone="error" label="Uten ugrunnet opphold" sx={{ mt: 1 }} />
                       </Box>
                       <Button
                         size="small"
@@ -718,7 +719,7 @@ export function GDPRCompliancePanel() {
                         <Typography variant="h6" sx={{ color: 'error.main' }}>
                           {DATATILSYNET_REQUIREMENTS.breachNotification.name}
                         </Typography>
-                        <Chip label="KRITISK: 72 timer" size="small" color="error" sx={{ mt: 1 }} />
+                        <StatusChip tone="error" label="KRITISK: 72 timer" sx={{ mt: 1 }} />
                       </Box>
                       <Button
                         size="small"
@@ -738,15 +739,14 @@ export function GDPRCompliancePanel() {
                       <Typography variant="body2" sx={{ mb: 1 }}>
                         E-post: {DATATILSYNET_REQUIREMENTS.breachNotification.notificationEmail}
                       </Typography>
-                      <Button
+                      <AdminButton
                         size="small"
-                        variant="contained"
-                        color="error"
+                        tone="danger"
                         startIcon={<OpenInNew />}
                         onClick={() => window.open(DATATILSYNET_REQUIREMENTS.breachNotification.reportingPortal, '_blank')}
                       >
                         Rapporteringsportal
-                      </Button>
+                      </AdminButton>
                     </Paper>
                   </CardContent>
                 </Card>
@@ -761,7 +761,7 @@ export function GDPRCompliancePanel() {
                         <Typography variant="h6" sx={{ color: themeColors.primary }}>
                           {DATATILSYNET_REQUIREMENTS.rightToPortability.name}
                         </Typography>
-                        <Chip label="Frist: 30 dager" size="small" color="info" sx={{ mt: 1 }} />
+                        <StatusChip tone="info" label="Frist: 30 dager" sx={{ mt: 1 }} />
                       </Box>
                       <Button
                         size="small"
@@ -798,7 +798,7 @@ export function GDPRCompliancePanel() {
                         <Typography variant="h6" sx={{ color: themeColors.primary }}>
                           {DATATILSYNET_REQUIREMENTS.securityOfProcessing.name}
                         </Typography>
-                        <Chip label="KRITISK KRAV" size="small" color="error" sx={{ mt: 1 }} />
+                        <StatusChip tone="error" label="KRITISK KRAV" sx={{ mt: 1 }} />
                       </Box>
                       <Button
                         size="small"
@@ -1084,10 +1084,9 @@ export function GDPRCompliancePanel() {
                             size="small" 
                             variant="outlined"
                           />
-                          <Chip 
-                            label={item.priority === 'critical' ? 'KRITISK' : 'VIKTIG'} 
-                            size="small" 
-                            color={item.priority === 'critical' ? 'error' : 'warning'}
+                          <StatusChip
+                            label={item.priority === 'critical' ? 'KRITISK' : 'VIKTIG'}
+                            tone={item.priority === 'critical' ? 'error' : 'warning'}
                           />
                         </Box>
                         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -1241,7 +1240,7 @@ export function GDPRCompliancePanel() {
                     </Typography>
                     <Divider sx={{ my: 2 }} />
                     <Paper sx={{ p: 3, bgcolor: 'rgba(255,255,255,0.04)' }}>
-                      <Typography variant="subtitle2" gutterBottom sx={{ color: '#ff8c00' }}>
+                      <Typography variant="subtitle2" gutterBottom sx={{ color: adminTokens.color.brand }}>
                         <Info sx={{ fontSize: 14, mr: 0.5, verticalAlign: 'middle' }} />
                         Community Datalagring
                       </Typography>
@@ -1251,7 +1250,7 @@ export function GDPRCompliancePanel() {
                       <Divider sx={{ my: 2 }} />
                       <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>
                         Behandlingsansvarlig: Creatorhub AS • Personvernombud:{', '}
-                        <Link href={`mailto:${personvernombudEmail}`} sx={{ color: '#ff8c00' }}>
+                        <Link href={`mailto:${personvernombudEmail}`} sx={{ color: adminTokens.color.brand }}>
                           {personvernombudEmail}
                         </Link>
                       </Typography>
@@ -1273,7 +1272,7 @@ export function GDPRCompliancePanel() {
       >
         <DialogTitle>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Gavel sx={{ fontSize: 32, color: '#ff8c00' }} />
+            <Gavel sx={{ fontSize: 32, color: adminTokens.color.brand }} />
             Datatilsynet Kontaktinformasjon
           </Box>
         </DialogTitle>
@@ -1319,14 +1318,13 @@ export function GDPRCompliancePanel() {
                 <Typography variant="body2" sx={{ mb: 2 }}>
                   Ved personopplysningsbrudd MÅ Datatilsynet varsles innen 72 timer.
                 </Typography>
-                <Button
-                  variant="contained"
-                  color="error"
+                <AdminButton
+                  tone="danger"
                   startIcon={<OpenInNew />}
                   onClick={() => window.open('https://melde.datatilsynet.no/','_blank')}
                 >
                   Gå til rapporteringsportal
-                </Button>
+                </AdminButton>
               </Paper>
             </Grid>
 
@@ -1380,9 +1378,9 @@ export function GDPRCompliancePanel() {
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDatatilsynetDialog(false)}>
+          <AdminButton tone="ghost" onClick={() => setDatatilsynetDialog(false)}>
             Lukk
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -1395,7 +1393,7 @@ export function GDPRCompliancePanel() {
       >
         <DialogTitle>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Assignment sx={{ fontSize: 32, color: '#ff8c00' }} />
+            <Assignment sx={{ fontSize: 32, color: adminTokens.color.brand }} />
             GDPR Dataeksport
           </Box>
         </DialogTitle>
@@ -1485,18 +1483,17 @@ export function GDPRCompliancePanel() {
           </Alert>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDataExportDialog(false)}>
+          <AdminButton tone="ghost" onClick={() => setDataExportDialog(false)}>
             Avbryt
-          </Button>
-          <Button 
-            variant="contained" 
+          </AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={handleDataExport}
             disabled={!exportUserId}
-            sx={theming.getThemedButtonSx()}
             startIcon={<Assignment />}
           >
             Eksporter Data
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 

@@ -3,7 +3,6 @@ import {
   Alert,
   Autocomplete,
   Box,
-  Button,
   Card,
   CardContent,
   Chip,
@@ -38,10 +37,15 @@ import {
   HourglassTop,
   Mail,
   Phone,
-  TaskAlt,
 } from '@mui/icons-material';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { apiRequest, queryClient } from '@/lib/queryClient';
+import {
+  AdminButton,
+  AdminError,
+  AdminLoading,
+  StatusChip,
+} from './design-system';
 
 type TidumAccessRequest = {
   requestId: number;
@@ -141,14 +145,14 @@ function findVendorForBrregCompany(vendors: TidumVendor[], company: TidumBrregCo
 
 function getStatusChip(status: string) {
   if (status === 'approved') {
-    return <Chip color="success" size="small" icon={<TaskAlt />} label="Godkjent" />;
+    return <StatusChip tone="success" label="Godkjent" />;
   }
 
   if (status === 'rejected') {
-    return <Chip color="error" size="small" label="Avvist" />;
+    return <StatusChip tone="error" label="Avvist" />;
   }
 
-  return <Chip color="warning" size="small" icon={<HourglassTop />} label="Venter" />;
+  return <StatusChip tone="warning" label="Venter" />;
 }
 
 export default function TidumAccessRequestsPanel() {
@@ -400,14 +404,11 @@ export default function TidumAccessRequestsPanel() {
           </Stack>
 
           {error ? (
-            <Alert severity="error">
-              Kunne ikke laste Tidum-forespørsler. Sjekk at sync-secret og Tidum API-base er satt i
-              CreatorHub-backend.
-            </Alert>
+            <AdminError message="Kunne ikke laste Tidum-forespørsler. Sjekk at sync-secret og Tidum API-base er satt i CreatorHub-backend." />
           ) : null}
 
           {isLoading ? (
-            <Typography color="text.secondary">Laster Tidum-forespørsler…</Typography>
+            <AdminLoading label="Laster Tidum-forespørsler…" />
           ) : (
             <Paper style={{ height: 560, width: '100%' }} elevation={0}>
               {/* Virtualisert (react-virtuoso) – tåler ubegrenset antall
@@ -485,10 +486,9 @@ export default function TidumAccessRequestsPanel() {
                     </TableCell>
                     <TableCell align="right">
                       <Stack direction="row" spacing={1} justifyContent="flex-end">
-                        <Button
+                        <AdminButton
                           size="small"
-                          variant="outlined"
-                          color="error"
+                          tone="danger"
                           disabled={
                             decisionMutation.isPending || request.status === 'rejected'
                           }
@@ -500,15 +500,15 @@ export default function TidumAccessRequestsPanel() {
                           }
                         >
                           Avvis
-                        </Button>
-                        <Button
+                        </AdminButton>
+                        <AdminButton
                           size="small"
-                          variant="contained"
+                          tone="primary"
                           disabled={decisionMutation.isPending}
                           onClick={() => openApproveDialog(request)}
                         >
                           Godkjenn
-                        </Button>
+                        </AdminButton>
                       </Stack>
                     </TableCell>
                   </>
@@ -679,8 +679,8 @@ export default function TidumAccessRequestsPanel() {
 
                     <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
                       {existingVendorForSelectedBrreg ? (
-                        <Button
-                          variant="contained"
+                        <AdminButton
+                          tone="primary"
                           onClick={() => {
                             setSelectedVendorId(String(existingVendorForSelectedBrreg.id));
                             setBrregVendorMessage(
@@ -689,15 +689,15 @@ export default function TidumAccessRequestsPanel() {
                           }}
                         >
                           Bruk eksisterende Tidum-leverandør
-                        </Button>
+                        </AdminButton>
                       ) : (
-                        <Button
-                          variant="contained"
-                          disabled={createVendorMutation.isPending}
+                        <AdminButton
+                          tone="primary"
+                          loading={createVendorMutation.isPending}
                           onClick={() => createVendorMutation.mutate(selectedBrregCompany)}
                         >
                           Opprett leverandør fra BRREG
-                        </Button>
+                        </AdminButton>
                       )}
                       {createVendorMutation.error ? (
                         <Alert severity="error" sx={{ flex: 1 }}>
@@ -762,9 +762,9 @@ export default function TidumAccessRequestsPanel() {
           ) : null}
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 3 }}>
-          <Button onClick={resetApprovalDialog}>Avbryt</Button>
-          <Button
-            variant="contained"
+          <AdminButton tone="ghost" onClick={resetApprovalDialog}>Avbryt</AdminButton>
+          <AdminButton
+            tone="primary"
             disabled={
               !selectedVendorId ||
               decisionMutation.isPending ||
@@ -782,7 +782,7 @@ export default function TidumAccessRequestsPanel() {
             }}
           >
             Godkjenn og synk
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

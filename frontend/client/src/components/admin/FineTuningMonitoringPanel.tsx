@@ -15,7 +15,6 @@ import {
   TableHead,
   TableRow,
   Paper,
-  Button,
   IconButton,
   Tooltip,
   CircularProgress,
@@ -39,6 +38,7 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import { AdminButton } from './design-system';
 
 interface TestStatus {
   name: string;
@@ -247,22 +247,24 @@ export default function FineTuningMonitoringPanel() {
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', gap: 1 }}>
-          <Button
-            variant="contained"
-            startIcon={isRunningTest ? <CircularProgress size={16} /> : <Refresh />}
+          <AdminButton
+            tone="primary"
+            loading={isRunningTest}
+            startIcon={<Refresh />}
             onClick={() => handleRunTest('sam2')}
             disabled={isRunningTest}
           >
             Test SAM 2
-          </Button>
-          <Button
-            variant="outlined"
-            startIcon={isRunningTest ? <CircularProgress size={16} /> : <Refresh />}
+          </AdminButton>
+          <AdminButton
+            tone="secondary"
+            loading={isRunningTest}
+            startIcon={<Refresh />}
             onClick={() => handleRunTest('synchformer')}
             disabled={isRunningTest}
           >
             Test Sync Models
-          </Button>
+          </AdminButton>
         </Box>
       </Box>
 
