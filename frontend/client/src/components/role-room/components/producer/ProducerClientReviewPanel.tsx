@@ -587,6 +587,28 @@ export default function ProducerClientReviewPanel({
     },
     [portalHidden, projectId],
   );
+
+  // Produsent-trigger: opprett standard-konverteringer i klientens Google Ads.
+  const [adsSyncing, setAdsSyncing] = useState(false);
+  const [adsSyncResult, setAdsSyncResult] = useState<{ severity: 'success' | 'error'; text: string } | null>(null);
+  const handleSyncGoogleAdsConversions = useCallback(async () => {
+    setAdsSyncing(true);
+    setAdsSyncResult(null);
+    const r = await producerWorkflowService.syncClientGoogleAdsConversions(projectId);
+    if (!r.success) {
+      setAdsSyncResult({ severity: 'error', text: r.error || 'Kunne ikke opprette konverteringer.' });
+    } else {
+      const c = r.created?.length ?? 0;
+      const s = r.skipped?.length ?? 0;
+      const f = r.failed?.length ?? 0;
+      setAdsSyncResult({
+        severity: f > 0 ? 'error' : 'success',
+        text: `Opprettet ${c}${s ? `, hoppet over ${s} (fantes alt)` : ''}${f ? `, ${f} feilet` : ''}.`,
+      });
+    }
+    setAdsSyncing(false);
+  }, [projectId]);
+
   // Filer klienten har lastet opp fra portalen (logo/brand/brief) — vises med
   // nedlastingsknapp så produsenten får tak i dem uten e-post.
   const [downloadingFileId, setDownloadingFileId] = useState<string | null>(null);
@@ -2161,6 +2183,26 @@ export default function ProducerClientReviewPanel({
                 >
                   Åpne Test users i Google Cloud →
                 </Button>
+                <Box sx={{ mt: 0.7, display: 'flex', flexDirection: 'column', gap: 0.4 }}>
+                  <Button
+                    onClick={() => { void handleSyncGoogleAdsConversions(); }}
+                    disabled={adsSyncing}
+                    size="small"
+                    variant="outlined"
+                    sx={{
+                      alignSelf: 'flex-start', textTransform: 'none', fontWeight: 800, fontSize: '0.7rem',
+                      color: '#fde68a', borderColor: 'rgba(251,191,36,0.45)',
+                      '&:hover': { borderColor: '#fbbf24', bgcolor: 'rgba(251,191,36,0.08)' },
+                    }}
+                  >
+                    {adsSyncing ? 'Oppretter…' : 'Opprett konverteringer i klientens Google Ads'}
+                  </Button>
+                  {adsSyncResult ? (
+                    <Typography sx={{ fontSize: '0.7rem', fontWeight: 700, color: adsSyncResult.severity === 'error' ? '#fca5a5' : '#86efac' }}>
+                      {adsSyncResult.text}
+                    </Typography>
+                  ) : null}
+                </Box>
               </Box>
             ) : null}
             {clientUploadedFiles.length > 0 ? (
