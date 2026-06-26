@@ -30,7 +30,6 @@ import {
   Collapse,
   Breadcrumbs,
   Link,
-  CircularProgress,
   Alert,
   Snackbar,
   Tabs,
@@ -63,6 +62,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
+import { AdminCard, AdminButton, StatusChip, AdminLoading, AdminEmpty, AdminError, AdminTableContainer, adminTokens } from './design-system';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // TYPES
@@ -868,9 +868,7 @@ export default function DocumentationBrowser() {
               <Divider sx={{ my: 2 }} />
               
               {isLoading ? (
-                <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-                  <CircularProgress />
-                </Box>
+                <AdminLoading />
               ) : (
                 <List>
                   {filteredDocs.map((doc) => (
@@ -997,9 +995,7 @@ export default function DocumentationBrowser() {
                     ))}
                   </Stack>
                 ) : (
-                  <Box sx={{ textAlign: 'center', py: 4 }}>
-                    <CircularProgress />
-                  </Box>
+                  <AdminLoading />
                 )}
               </CardContent>
             </Card>

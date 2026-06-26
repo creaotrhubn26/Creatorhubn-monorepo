@@ -60,6 +60,7 @@ import {
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { getProfessionIcon } from '@/utils/profession-icons';
+import { AdminButton, AdminTableContainer } from './design-system';
 
 interface DependencyInfo {
   name: string;
@@ -244,13 +245,12 @@ export function DependenciesManager() {
           >
             {forceScan.isPending ? 'Scanning...' : 'Force Scan'}
           </Button>
-          <Button variant="contained"
+          <AdminButton tone="primary"
             startIcon={<MonitorHeart />}
             onClick={() => refetch()}
-            sx={{ bgcolor: '#ff8c00' }}
           >
             Refresh Status
-          </Button>
+          </AdminButton>
         </Stack>
       </Box>
 
@@ -411,7 +411,7 @@ export function DependenciesManager() {
         {/* Category-specific tabs */}
         {categories.map((category, categoryIndex) => (
           <TabPanel value={tabValue} index={categoryIndex + 1} key={category.name}>
-            <TableContainer component={Paper}>
+            <AdminTableContainer ariaLabel={`${category.name} dependencies`}>
               <Table>
                 <TableHead>
                   <TableRow>
@@ -503,7 +503,7 @@ export function DependenciesManager() {
                   ))}
                 </TableBody>
               </Table>
-            </TableContainer>
+            </AdminTableContainer>
           </TabPanel>
         ))}
       </Paper>
@@ -562,18 +562,18 @@ export function DependenciesManager() {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setUpdateDialog(false)}>
+          <AdminButton tone="ghost" onClick={() => setUpdateDialog(false)}>
             Cancel
-          </Button>
-          <Button variant="contained"
+          </AdminButton>
+          <AdminButton tone="primary"
             onClick={() => selectedDependency && updateDependency.mutate({
               name: selectedDependency.name,
               version: selectedDependency.latest
           })}
-            disabled={updateDependency.isPending}
+            loading={updateDependency.isPending}
           >
             {updateDependency.isPending ? 'Updating...' : 'Update'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 

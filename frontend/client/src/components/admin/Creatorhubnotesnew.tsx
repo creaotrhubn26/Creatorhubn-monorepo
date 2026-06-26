@@ -105,6 +105,7 @@ import NorwegianDictionaryPanel from './NorwegianDictionaryPanel';
 import ContextualWordSuggestions from './ContextualWordSuggestions';
 import 'quill/dist/quill.snow.css';
 import { quillModules, quillFormats, EMPTY_HTML } from '../notes/constants';
+import { AdminButton, adminTokens } from './design-system';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // TYPES
@@ -2355,10 +2356,10 @@ function CreatorHubNotesInner() {
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpenExportDialog(false)}>Cancel</Button>
-          <Button onClick={handleExportToGoogleDoc} variant="contained">
+          <AdminButton tone="ghost" onClick={() => setOpenExportDialog(false)}>Cancel</AdminButton>
+          <AdminButton tone="primary" onClick={handleExportToGoogleDoc}>
             Export
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -2415,13 +2416,14 @@ function CreatorHubNotesInner() {
               label="Paraphrased Text"
               value={outputText}
               InputProps={{ readOnly: true }}
-              sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}
+              sx={{ bgcolor: adminTokens.color.surface }}
             />
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowParaphraser(false)}>Close</Button>
-          <Button
+          <AdminButton tone="ghost" onClick={() => setShowParaphraser(false)}>Close</AdminButton>
+          <AdminButton
+            tone="ghost"
             startIcon={<ContentCopyIcon />}
             onClick={async () => {
               await navigator.clipboard.writeText(outputText);
@@ -2430,15 +2432,16 @@ function CreatorHubNotesInner() {
             disabled={!outputText}
           >
             Copy
-          </Button>
-          <Button
-            variant="contained"
+          </AdminButton>
+          <AdminButton
+            tone="primary"
+            loading={isProcessing}
             onClick={handleParaphrase}
             disabled={!inputText.trim() || isProcessing}
-            startIcon={isProcessing ? <CircularProgress size={16} /> : <TransformIcon />}
+            startIcon={<TransformIcon />}
           >
             {isProcessing ? 'Processing...' : 'Paraphrase'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -2481,13 +2484,14 @@ function CreatorHubNotesInner() {
               label="Corrected Text"
               value={outputText}
               InputProps={{ readOnly: true }}
-              sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}
+              sx={{ bgcolor: adminTokens.color.surface }}
             />
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowGrammarChecker(false)}>Close</Button>
-          <Button
+          <AdminButton tone="ghost" onClick={() => setShowGrammarChecker(false)}>Close</AdminButton>
+          <AdminButton
+            tone="ghost"
             startIcon={<ContentCopyIcon />}
             onClick={async () => {
               await navigator.clipboard.writeText(outputText);
@@ -2496,15 +2500,16 @@ function CreatorHubNotesInner() {
             disabled={!outputText}
           >
             Copy
-          </Button>
-          <Button
-            variant="contained"
+          </AdminButton>
+          <AdminButton
+            tone="primary"
+            loading={isProcessing}
             onClick={handleGrammarCheck}
             disabled={!inputText.trim() || isProcessing}
-            startIcon={isProcessing ? <CircularProgress size={16} /> : <SpellcheckIcon />}
+            startIcon={<SpellcheckIcon />}
           >
             {isProcessing ? 'Checking...' : 'Check Grammar'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -2554,13 +2559,14 @@ function CreatorHubNotesInner() {
               label="Summary"
               value={outputText}
               InputProps={{ readOnly: true }}
-              sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}
+              sx={{ bgcolor: adminTokens.color.surface }}
             />
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowSummarizer(false)}>Close</Button>
-          <Button
+          <AdminButton tone="ghost" onClick={() => setShowSummarizer(false)}>Close</AdminButton>
+          <AdminButton
+            tone="ghost"
             startIcon={<ContentCopyIcon />}
             onClick={async () => {
               await navigator.clipboard.writeText(outputText);
@@ -2569,15 +2575,16 @@ function CreatorHubNotesInner() {
             disabled={!outputText}
           >
             Copy
-          </Button>
-          <Button
-            variant="contained"
+          </AdminButton>
+          <AdminButton
+            tone="primary"
+            loading={isProcessing}
             onClick={handleSummarize}
             disabled={!inputText.trim() || isProcessing}
-            startIcon={isProcessing ? <CircularProgress size={16} /> : <SubjectIcon />}
+            startIcon={<SubjectIcon />}
           >
             {isProcessing ? 'Summarizing...' : 'Summarize'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -2621,13 +2628,14 @@ function CreatorHubNotesInner() {
               label="Humanized Text"
               value={outputText}
               InputProps={{ readOnly: true }}
-              sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}
+              sx={{ bgcolor: adminTokens.color.surface }}
             />
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowHumanizer(false)}>Close</Button>
-          <Button
+          <AdminButton tone="ghost" onClick={() => setShowHumanizer(false)}>Close</AdminButton>
+          <AdminButton
+            tone="ghost"
             startIcon={<ContentCopyIcon />}
             onClick={async () => {
               await navigator.clipboard.writeText(outputText);
@@ -2636,15 +2644,16 @@ function CreatorHubNotesInner() {
             disabled={!outputText}
           >
             Copy
-          </Button>
-          <Button
-            variant="contained"
+          </AdminButton>
+          <AdminButton
+            tone="primary"
+            loading={isProcessing}
             onClick={handleHumanize}
             disabled={!inputText.trim() || isProcessing}
-            startIcon={isProcessing ? <CircularProgress size={16} /> : <PsychologyIcon />}
+            startIcon={<PsychologyIcon />}
           >
             {isProcessing ? 'Humanizing...' : 'Humanize'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -2709,13 +2718,14 @@ function CreatorHubNotesInner() {
               label="Translated Text"
               value={outputText}
               InputProps={{ readOnly: true }}
-              sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}
+              sx={{ bgcolor: adminTokens.color.surface }}
             />
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowTranslator(false)}>Close</Button>
-          <Button
+          <AdminButton tone="ghost" onClick={() => setShowTranslator(false)}>Close</AdminButton>
+          <AdminButton
+            tone="ghost"
             startIcon={<ContentCopyIcon />}
             onClick={async () => {
               await navigator.clipboard.writeText(outputText);
@@ -2724,15 +2734,16 @@ function CreatorHubNotesInner() {
             disabled={!outputText}
           >
             Copy
-          </Button>
-          <Button
-            variant="contained"
+          </AdminButton>
+          <AdminButton
+            tone="primary"
+            loading={isProcessing}
             onClick={handleTranslate}
             disabled={!inputText.trim() || isProcessing}
-            startIcon={isProcessing ? <CircularProgress size={16} /> : <TranslateIcon />}
+            startIcon={<TranslateIcon />}
           >
             {isProcessing ? 'Translating...' : 'Translate'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -2773,13 +2784,14 @@ function CreatorHubNotesInner() {
               label="Generated Citation"
               value={outputText}
               InputProps={{ readOnly: true }}
-              sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}
+              sx={{ bgcolor: adminTokens.color.surface }}
             />
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowCitationGen(false)}>Close</Button>
-          <Button
+          <AdminButton tone="ghost" onClick={() => setShowCitationGen(false)}>Close</AdminButton>
+          <AdminButton
+            tone="ghost"
             startIcon={<ContentCopyIcon />}
             onClick={async () => {
               await navigator.clipboard.writeText(outputText);
@@ -2788,15 +2800,16 @@ function CreatorHubNotesInner() {
             disabled={!outputText}
           >
             Copy
-          </Button>
-          <Button
-            variant="contained"
+          </AdminButton>
+          <AdminButton
+            tone="primary"
+            loading={isProcessing}
             onClick={handleGenerateCitation}
             disabled={!inputText.trim() || isProcessing}
-            startIcon={isProcessing ? <CircularProgress size={16} /> : <FormatQuoteIcon />}
+            startIcon={<FormatQuoteIcon />}
           >
             {isProcessing ? 'Generating...' : 'Generate'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -2839,13 +2852,14 @@ function CreatorHubNotesInner() {
               label={`Generated ${contentType}`}
               value={outputText}
               InputProps={{ readOnly: true }}
-              sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}
+              sx={{ bgcolor: adminTokens.color.surface }}
             />
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowContentGen(false)}>Close</Button>
-          <Button
+          <AdminButton tone="ghost" onClick={() => setShowContentGen(false)}>Close</AdminButton>
+          <AdminButton
+            tone="ghost"
             startIcon={<ContentCopyIcon />}
             onClick={async () => {
               await navigator.clipboard.writeText(outputText);
@@ -2854,15 +2868,16 @@ function CreatorHubNotesInner() {
             disabled={!outputText}
           >
             Copy
-          </Button>
-          <Button
-            variant="contained"
+          </AdminButton>
+          <AdminButton
+            tone="primary"
+            loading={isProcessing}
             onClick={handleGenerateContent}
             disabled={!inputText.trim() || isProcessing}
-            startIcon={isProcessing ? <CircularProgress size={16} /> : <ArticleIcon />}
+            startIcon={<ArticleIcon />}
           >
             {isProcessing ? 'Generating...' : 'Generate'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -2906,20 +2921,21 @@ function CreatorHubNotesInner() {
               label="Detection Result"
               value={outputText}
               InputProps={{ readOnly: true }}
-              sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}
+              sx={{ bgcolor: adminTokens.color.surface }}
             />
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowAIDetector(false)}>Close</Button>
-          <Button
-            variant="contained"
+          <AdminButton tone="ghost" onClick={() => setShowAIDetector(false)}>Close</AdminButton>
+          <AdminButton
+            tone="primary"
+            loading={isProcessing}
             onClick={handleDetectAI}
             disabled={!inputText.trim() || isProcessing}
-            startIcon={isProcessing ? <CircularProgress size={16} /> : <PsychologyIcon />}
+            startIcon={<PsychologyIcon />}
           >
             {isProcessing ? 'Analyzing...' : 'Detect AI'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -2976,13 +2992,14 @@ function CreatorHubNotesInner() {
               label="Statistics"
               value={outputText}
               InputProps={{ readOnly: true }}
-              sx={{ bgcolor: 'rgba(255,255,255,0.04)', fontFamily: 'monospace' }}
+              sx={{ bgcolor: adminTokens.color.surface, fontFamily: 'monospace' }}
             />
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowWordCounter(false)}>Close</Button>
-          <Button
+          <AdminButton tone="ghost" onClick={() => setShowWordCounter(false)}>Close</AdminButton>
+          <AdminButton
+            tone="ghost"
             startIcon={<ContentCopyIcon />}
             onClick={async () => {
               await navigator.clipboard.writeText(outputText);
@@ -2991,7 +3008,7 @@ function CreatorHubNotesInner() {
             disabled={!outputText}
           >
             Copy Stats
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 

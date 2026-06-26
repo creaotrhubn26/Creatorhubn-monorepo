@@ -27,7 +27,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   Tabs,
@@ -57,6 +56,11 @@ import {
 } from '../../services/PlatformPricingService';
 import { PostAgentPricingPanel } from './PostAgentPricingPanel';
 import LeadMapPricingPanel from './LeadMapPricingPanel';
+import {
+  AdminButton,
+  AdminTableContainer,
+  StatusChip,
+} from './design-system';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -1691,7 +1695,8 @@ export default function PriceManagementDashboard({
                     sx={{ bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.10)', fontWeight: 700 }}
                   />
                 </Stack>
-                <TableContainer
+                <AdminTableContainer
+                  ariaLabel="Selvbetjente abonnementer"
                   sx={{
                     borderRadius: '20px',
                     border: '1px solid rgba(255,255,255,0.10)',
@@ -1756,7 +1761,7 @@ export default function PriceManagementDashboard({
                                 {plan.features.length} features i visning
                               </Typography>
                               {plan.contactSalesOnly ? (
-                                <Chip size="small" label="Kontakt salg" color="warning" sx={{ width: 'fit-content' }} />
+                                <StatusChip label="Kontakt salg" tone="warning" sx={{ width: 'fit-content' }} />
                               ) : null}
                             </Stack>
                           </TableCell>
@@ -1794,10 +1799,9 @@ export default function PriceManagementDashboard({
                           <TableCell>
                             {plan.allowsStorageOverage ? (
                               <Stack spacing={0.25}>
-                                <Chip
+                                <StatusChip
                                   label="Tillatt"
-                                  color="warning"
-                                  size="small"
+                                  tone="warning"
                                   sx={{ fontWeight: 700, width: 'fit-content' }}
                                 />
                                 {plan.storageOveragePricePerGbNok != null ? (
@@ -1807,9 +1811,9 @@ export default function PriceManagementDashboard({
                                 ) : null}
                               </Stack>
                             ) : (
-                              <Chip
+                              <StatusChip
                                 label="Hard cap"
-                                size="small"
+                                tone="neutral"
                                 sx={{ fontWeight: 700, width: 'fit-content' }}
                               />
                             )}
@@ -1818,11 +1822,9 @@ export default function PriceManagementDashboard({
                             {plan.publicPriceLabel || (plan.contactSalesOnly ? 'Kontakt salg' : 'Pris vises automatisk')}
                           </TableCell>
                           <TableCell>
-                            <Chip
+                            <StatusChip
                               label={plan.isActive ? 'Aktiv' : 'Inaktiv'}
-                              color={plan.isActive ? 'success' : 'default'}
-                              size="small"
-                              sx={{ fontWeight: 700 }}
+                              tone={plan.isActive ? 'success' : 'neutral'}
                             />
                             <Button
                               size="small"
@@ -1861,7 +1863,7 @@ export default function PriceManagementDashboard({
                       ))}
                     </TableBody>
                   </Table>
-                </TableContainer>
+                </AdminTableContainer>
               </CardContent>
             </Card>
           </Grid>
@@ -1934,20 +1936,19 @@ export default function PriceManagementDashboard({
                       Samme settings brukes i checkout, webhook og i all automatisk billing-kommunikasjon.
                     </Typography>
                   </Box>
-                  <Button
-                    variant="contained"
+                  <AdminButton
+                    tone="primary"
                     startIcon={<SaveIcon />}
-                    disabled={creatorHubEmailSettingsSaving}
+                    loading={creatorHubEmailSettingsSaving}
                     onClick={() =>
                       void saveCreatorHubEmailSettings(
                         creatorHubEmailSettings,
                         'CreatorHub e-postinnstillinger lagret.',
                       )
                     }
-                    sx={theming.getThemedButtonSx()}
                   >
                     {creatorHubEmailSettingsSaving ? 'Lagrer...' : 'Lagre oppsett'}
-                  </Button>
+                  </AdminButton>
                 </Stack>
 
                 <Stack spacing={2.25}>
@@ -2151,7 +2152,8 @@ export default function PriceManagementDashboard({
                   />
                 </Stack>
 
-                <TableContainer
+                <AdminTableContainer
+                  ariaLabel="CreatorHub e-postmaler"
                   sx={{
                     borderRadius: '20px',
                     border: '1px solid rgba(255,255,255,0.10)',
@@ -2223,7 +2225,7 @@ export default function PriceManagementDashboard({
                       ))}
                     </TableBody>
                   </Table>
-                </TableContainer>
+                </AdminTableContainer>
               </CardContent>
             </Card>
           </Grid>
@@ -2259,7 +2261,7 @@ export default function PriceManagementDashboard({
                 <Typography variant="h6" sx={{ mb: 2, color: themeColors.primary }}>
                   Top Features by Usage
                 </Typography>
-                <TableContainer>
+                <AdminTableContainer ariaLabel="Top features by usage">
                   <Table>
                     <TableHead>
                       <TableRow>
@@ -2284,7 +2286,7 @@ export default function PriceManagementDashboard({
                       ))}
                     </TableBody>
                   </Table>
-                </TableContainer>
+                </AdminTableContainer>
               </CardContent>
             </Card>
           </Grid>
@@ -2373,7 +2375,7 @@ export default function PriceManagementDashboard({
                 <Typography variant="h6" sx={{ mb: 3, color: themeColors.primary }}>
                   Volumrabatter
                 </Typography>
-                <TableContainer>
+                <AdminTableContainer ariaLabel="Volumrabatter">
                   <Table size="small">
                     <TableHead>
                       <TableRow>
@@ -2424,9 +2426,9 @@ export default function PriceManagementDashboard({
                             />
                           </TableCell>
                           <TableCell>
-                            <Button
+                            <AdminButton
+                              tone="danger"
                               size="small"
-                              color="error"
                               onClick={() =>
                                 setEnterprisePricing((previous) => ({
                                   ...previous,
@@ -2435,13 +2437,13 @@ export default function PriceManagementDashboard({
                               }
                             >
                               Fjern
-                            </Button>
+                            </AdminButton>
                           </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
                   </Table>
-                </TableContainer>
+                </AdminTableContainer>
                 <Button
                   startIcon={<AddIcon />}
                   sx={{ mt: 2 }}
@@ -2473,15 +2475,15 @@ export default function PriceManagementDashboard({
                   }}
                 />
               ) : null}
-              <Button
-                variant="contained"
+              <AdminButton
+                tone="primary"
                 startIcon={<SaveIcon />}
+                loading={enterprisePricingSaving}
                 disabled={enterprisePricingSaving || !enterprisePricingDirty}
                 onClick={() => void saveEnterprisePricing()}
-                sx={theming.getThemedButtonSx()}
               >
                 {enterprisePricingSaving ? 'Lagrer...' : 'Lagre Enterprise-priser'}
-              </Button>
+              </AdminButton>
             </Box>
           </Grid>
         </Grid>
@@ -2532,10 +2534,10 @@ export default function PriceManagementDashboard({
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDialogOpen(false)}>Avbryt</Button>
-          <Button onClick={() => void saveFeature()} variant="contained" sx={theming.getThemedButtonSx()}>
+          <AdminButton tone="ghost" onClick={() => setDialogOpen(false)}>Avbryt</AdminButton>
+          <AdminButton tone="primary" onClick={() => void saveFeature()}>
             Lagre
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -2776,10 +2778,10 @@ export default function PriceManagementDashboard({
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setEditPlanDialogOpen(false)}>Avbryt</Button>
-          <Button variant="contained" onClick={() => void savePlanEdit()}>
+          <AdminButton tone="ghost" onClick={() => setEditPlanDialogOpen(false)}>Avbryt</AdminButton>
+          <AdminButton tone="primary" onClick={() => void savePlanEdit()}>
             Lagre
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -3012,10 +3014,10 @@ export default function PriceManagementDashboard({
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setEditEmailTemplateDialogOpen(false)}>Avbryt</Button>
-          <Button variant="contained" onClick={() => void saveEmailTemplate()}>
+          <AdminButton tone="ghost" onClick={() => setEditEmailTemplateDialogOpen(false)}>Avbryt</AdminButton>
+          <AdminButton tone="primary" onClick={() => void saveEmailTemplate()}>
             Lagre mal
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
