@@ -177,19 +177,26 @@ struct LeadDetailSheet: View {
         HStack(alignment: .top, spacing: 14) {
             BrandKitMonogram(name: lead.name, accent: statusColor)
                 .frame(width: 56, height: 56)
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 6) {
                 Text(lead.name).font(.title3.bold())
                 if let cat = lead.category {
                     Text(cat).foregroundStyle(.secondary).font(.subheadline)
                 }
                 HStack(spacing: 6) {
-                    Circle().fill(statusColor).frame(width: 8, height: 8)
-                    Text(lead.status.label)
-                        .font(.caption.bold())
-                        .foregroundStyle(statusColor)
+                    if let badge = LeadTemperatureBadge(lead: lead, style: .pill) {
+                        badge
+                    } else {
+                        Circle().fill(statusColor).frame(width: 8, height: 8)
+                        Text(lead.status.label)
+                            .font(.caption.bold())
+                            .foregroundStyle(statusColor)
+                    }
                 }
             }
             Spacer()
+            if let score = lead.leadScore {
+                LeadScoreRing(score: score, delta: nil, diameter: 64)
+            }
         }
     }
 

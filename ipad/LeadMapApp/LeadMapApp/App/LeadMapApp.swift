@@ -136,13 +136,21 @@ extension Notification.Name {
 }
 
 /// Rotvisning bestemmer hvilken skjerm som rendres basert på auth-state.
+/// På iPad-landscape (regular horizontal size class) viser vi
+/// `MainSidebarView` med 8-item NavigationSplitView — matcher
+/// marketing-mockens iPad-layout. Portrait + iPhone bruker bottom tabs.
 struct RootView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.horizontalSizeClass) private var hSize
 
     var body: some View {
         Group {
             if appState.isAuthenticated {
-                MainTabView()
+                if UIDevice.current.userInterfaceIdiom == .pad && hSize == .regular {
+                    MainSidebarView()
+                } else {
+                    MainTabView()
+                }
             } else {
                 PairingView()
             }
@@ -383,5 +391,185 @@ struct RoutesTabHost: View {
                 )
             }
         }
+    }
+}
+
+// MARK: - iPad Sidebar (mock-paritet)
+
+/// Sidebar-elementer på iPad-landscape. Mapper 1-til-1 mot marketing-
+/// mockens venstre kolonne. Hver case er en ekte view i appen og bruker
+/// eksisterende komponenter (vi finner ikke opp nye flater her — vi
+/// gjenbruker MyDayView/MapScreen/LeadgridFollowUpQueueView/etc.).
+enum SidebarItem: String, CaseIterable, Identifiable, Hashable {
+    case oversikt
+    case kart
+    case leads
+    case oppfolging
+    case moter
+    case ruter
+    case analyse
+    case innstillinger
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .oversikt:      return "Oversikt"
+        case .kart:          return "Kart"
+        case .leads:         return "Leads"
+        case .oppfolging:    return "Oppfølging"
+        case .moter:         return "Møter"
+        case .ruter:         return "Ruter"
+        case .analyse:       return "Analyse"
+        case .innstillinger: return "Innstillinger"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .oversikt:      return "rectangle.3.group.fill"
+        case .kart:          return "map.fill"
+        case .leads:         return "person.crop.rectangle.stack.fill"
+        case .oppfolging:    return "bell.badge.fill"
+        case .moter:         return "calendar"
+        case .ruter:         return "point.topleft.down.to.point.bottomright.curvepath"
+        case .analyse:       return "chart.line.uptrend.xyaxis"
+        case .innstillinger: return "gearshape.fill"
+        }
+    }
+}
+
+/// Hoved-navigasjon for iPad-landscape. 8 items i venstre sidebar (matcher
+/// marketing-mock), hovedinnhold på høyre side. iPhone og iPad-portrait
+/// bruker fortsatt MainTabView (bottom-tabs).
+struct MainSidebarView: View {
+    @Environment(AppState.self) private var state
+    @State private var visibility: NavigationSplitViewVisibility = .all
+
+    var body: some View {
+        NavigationSplitView(columnVisibility: $visibility) {
+            sidebarList
+                .navigationTitle("Leadgrid")
+        } detail: {
+            NavigationStack {
+                detailFor(state.selectedSidebarItem)
+            }
+        }
+        .navigationSplitViewStyle(.balanced)
+    }
+
+    @ViewBuilder
+    private var sidebarList: some View {
+        @Bindable var bindableState = state
+        // iOS støtter ikke List(selection:content:) på den helt frie formen,
+        // så vi bruker eksplisitt ForEach + .tag() i hver Section.
+        List {
+            Section("Salg") {
+                ForEach([SidebarItem.oversikt, .kart, .leads, .oppfolging, .moter, .ruter]) { item in
+                    sidebarRow(item, badge: item == .oppfolging ? state.leadgridUnreadCount : 0,
+                               selection: $bindableState.selectedSidebarItem)
+                }
+            }
+            Section("Innsikt") {
+                ForEach([SidebarItem.analyse]) { item in
+                    sidebarRow(item, badge: 0,
+                               selection: $bindableState.selectedSidebarItem)
+                }
+            }
+            Section("Konto") {
+                ForEach([SidebarItem.innstillinger]) { item in
+                    sidebarRow(item, badge: 0,
+                               selection: $bindableState.selectedSidebarItem)
+                }
+            }
+        }
+        .listStyle(.sidebar)
+    }
+
+    /// Sidebar-rad som button (alle iOS-versjoner). Highlighter aktiv valg
+    /// med lilla bakgrunn — manuell paritet med iOS standard sidebar-selection.
+    @ViewBuilder
+    private func sidebarRow(
+        _ item: SidebarItem,
+        badge: Int,
+        selection: Binding<SidebarItem>
+    ) -> some View {
+        let isActive = selection.wrappedValue == item
+        Button {
+            selection.wrappedValue = item
+        } label: {
+            HStack {
+                Label(item.label, systemImage: item.systemImage)
+                Spacer()
+                if badge > 0 {
+                    Text("\(badge)")
+                        .font(.caption.bold())
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(Color.red, in: Capsule())
+                        .foregroundStyle(.white)
+                }
+            }
+            .padding(.vertical, 4)
+            .padding(.horizontal, 6)
+            .background(
+                isActive
+                    ? Color(red: 0.66, green: 0.32, blue: 0.99).opacity(0.20)
+                    : Color.clear,
+                in: RoundedRectangle(cornerRadius: 8)
+            )
+            .foregroundStyle(isActive
+                              ? Color(red: 0.66, green: 0.32, blue: 0.99)
+                              : Color.primary)
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private func detailFor(_ item: SidebarItem) -> some View {
+        switch item {
+        case .oversikt:
+            OversiktView()
+        case .kart:
+            MapScreen()
+        case .leads:
+            if let api = state.api {
+                LeadgridFollowUpQueueView(api: api)
+                    .navigationTitle("Leads")
+            } else {
+                loadingPlaceholder("Leads", systemImage: "person.crop.rectangle.stack")
+            }
+        case .oppfolging:
+            StaleLeadsList()
+                .navigationTitle("Oppfølging")
+        case .moter:
+            CalendarView()
+                .navigationTitle("Møter")
+        case .ruter:
+            if let api = state.api {
+                LeadgridRoutePlannerView(api: api)
+                    .navigationTitle("Ruter")
+            } else {
+                loadingPlaceholder("Ruter", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
+            }
+        case .analyse:
+            if let api = state.api {
+                LeadgridAnalyticsDashboardView(api: api)
+                    .navigationTitle("Analyse")
+            } else {
+                loadingPlaceholder("Analyse", systemImage: "chart.line.uptrend.xyaxis")
+            }
+        case .innstillinger:
+            OrgSettingsView()
+                .navigationTitle("Innstillinger")
+        }
+    }
+
+    @ViewBuilder
+    private func loadingPlaceholder(_ title: String, systemImage: String) -> some View {
+        ContentUnavailableView(
+            "Logger inn …",
+            systemImage: systemImage,
+            description: Text("Vent et øyeblikk mens vi henter \(title.lowercased()).")
+        )
     }
 }
