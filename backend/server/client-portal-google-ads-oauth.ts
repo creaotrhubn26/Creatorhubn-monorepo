@@ -23,8 +23,10 @@ import {
   adsOauthClientCreds,
   buildAdsAuthUrl,
   exchangeAdsCodeForToken,
+  refreshGoogleAdsAccessToken,
 } from "./role-room-ads-oauth.js";
-import { encryptInstagramToken } from "./role-room-instagram-oauth.js";
+import { encryptInstagramToken, decryptInstagramToken } from "./role-room-instagram-oauth.js";
+import { listAccessibleCustomers } from "./role-room-google-ads.js";
 import { resolveClientPortalSession } from "./role-room-client-portal.js";
 import { notifyProducerOfClientPlatformConnection } from "./role-room-producer-notifications.js";
 
@@ -78,6 +80,7 @@ async function upsertClientGoogleAdsConnection(
     projectId: string;
     producerUserId: string;
     email: string | null;
+    adsCustomerId: string | null;
     accessToken: string | null;
     refreshToken: string | null;
     expiryDate: Date | null;
@@ -85,13 +88,14 @@ async function upsertClientGoogleAdsConnection(
 ): Promise<void> {
   await pool.query(
     `INSERT INTO role_room_client_google_ads_connections (
-       project_id, producer_user_id, google_email,
+       project_id, producer_user_id, google_email, ads_customer_id,
        access_token_encrypted, refresh_token_encrypted, expiry_date,
        scopes, connection_state, created_at, updated_at, last_used_at
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, 'connected', now(), now(), now())
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, 'connected', now(), now(), now())
      ON CONFLICT (project_id) DO UPDATE SET
        producer_user_id = EXCLUDED.producer_user_id,
        google_email = COALESCE(EXCLUDED.google_email, role_room_client_google_ads_connections.google_email),
+       ads_customer_id = COALESCE(EXCLUDED.ads_customer_id, role_room_client_google_ads_connections.ads_customer_id),
        access_token_encrypted = COALESCE(EXCLUDED.access_token_encrypted, role_room_client_google_ads_connections.access_token_encrypted),
        refresh_token_encrypted = COALESCE(EXCLUDED.refresh_token_encrypted, role_room_client_google_ads_connections.refresh_token_encrypted),
        expiry_date = EXCLUDED.expiry_date,
@@ -104,12 +108,66 @@ async function upsertClientGoogleAdsConnection(
       input.projectId,
       input.producerUserId,
       input.email,
+      input.adsCustomerId,
       encryptInstagramToken(input.accessToken),
       encryptInstagramToken(input.refreshToken),
       input.expiryDate ? input.expiryDate.toISOString() : null,
       JSON.stringify([ADS_SCOPE]),
     ],
   );
+}
+
+/**
+ * Henter klientens Google Ads-customer-id via listAccessibleCustomers
+ * (klientens egen access-token). Returnerer den FØRSTE tilgjengelige konto-id-en
+ * (10 sifre, uten prefiks). Best-effort: null hvis ingen / feil.
+ */
+async function fetchClientAdsCustomerId(accessToken: string): Promise<string | null> {
+  const developerToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN?.trim();
+  if (!developerToken) return null;
+  try {
+    const ids = await listAccessibleCustomers({ accessToken, developerToken });
+    return ids[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fersk klient-Ads-tilgang for et prosjekt: dekrypterer refresh-token, fornyer
+ * access-token, og returnerer { accessToken, customerId } — klar til bruk mot
+ * KLIENTENS egen konto (uten MCC/login-customer-id). Null hvis ikke koblet.
+ *
+ * Dette gjør at den portal-lagrede klient-tokenen FAKTISK kan brukes til ads-
+ * operasjoner (conversion-actions), i stedet for å være foreldreløs.
+ */
+export async function getClientAdsAccess(
+  pool: Pool,
+  projectId: string,
+): Promise<{ accessToken: string; customerId: string | null } | null> {
+  const { rows } = await pool.query(
+    `SELECT refresh_token_encrypted, ads_customer_id
+       FROM role_room_client_google_ads_connections
+      WHERE project_id = $1 AND connection_state = 'connected'
+      LIMIT 1`,
+    [projectId],
+  );
+  const row = rows[0];
+  if (!row) return null;
+  const refreshToken = decryptInstagramToken(row.refresh_token_encrypted);
+  if (!refreshToken) return null;
+  const creds = adsOauthClientCreds("google");
+  if (!creds) return null;
+  try {
+    const refreshed = await refreshGoogleAdsAccessToken(refreshToken, creds.clientId, creds.clientSecret);
+    if (!refreshed.accessToken) return null;
+    return {
+      accessToken: refreshed.accessToken,
+      customerId: row.ads_customer_id ? String(row.ads_customer_id) : null,
+    };
+  } catch {
+    return null;
+  }
 }
 
 export function setupClientPortalGoogleAdsRoutes(deps: {
@@ -189,10 +247,14 @@ export function setupClientPortalGoogleAdsRoutes(deps: {
       const expiry = tokens.expiresInSec
         ? new Date(Date.now() + tokens.expiresInSec * 1000)
         : null;
+      // Fang klientens Google Ads customer-id med en gang — uten den vet
+      // systemet ikke HVILKEN konto operasjonene skal gå mot. Best-effort.
+      const adsCustomerId = await fetchClientAdsCustomerId(tokens.accessToken);
       await upsertClientGoogleAdsConnection(pool, {
         projectId: state.projectId,
         producerUserId: state.producerUserId,
         email: null,
+        adsCustomerId,
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken ?? null,
         expiryDate: expiry,

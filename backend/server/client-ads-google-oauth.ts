@@ -31,6 +31,7 @@ import {
   adsOauthClientCreds,
   getAdsOauthConnection,
 } from "./role-room-ads-oauth.js";
+import { getClientAdsAccess } from "./client-portal-google-ads-oauth.js";
 
 const GOOGLE_ADS_API_VERSION = "v18";
 const GOOGLE_ADS_API_BASE = `https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}`;
@@ -174,7 +175,13 @@ export async function createConversionAction(
   pool: Pool,
   opts: {
     producerUserId: string;
-    clientCustomerId: string;     // Klientens 10-sifrede Google Ads ID
+    clientCustomerId?: string;    // Klientens 10-sifrede Google Ads ID (MCC-sti)
+    /**
+     * Role Room-prosjekt-id. Hvis satt OG klienten har koblet sin egen Google
+     * Ads-konto via portalen, brukes KLIENTENS token mot KLIENTENS konto
+     * (uten MCC). Ellers faller vi til produsentens MCC-token + clientCustomerId.
+     */
+    roleRoomProjectId?: string;
     action: ConversionActionInput;
   },
 ): Promise<{ ok: true; result: ConversionActionResult } | { ok: false; error: string }> {
@@ -187,23 +194,44 @@ export async function createConversionAction(
   const loginCustomerId = process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID?.trim().replace(/-/g, "");
   // login-customer-id er obligatorisk når API-call-er går gjennom MCC
 
-  // Hent connection + auto-refresh hvis nær expiry
-  const conn = await getAdsOauthConnection(pool, opts.producerUserId, "google");
-  if (!conn) return { ok: false, error: "not_connected" };
-  const tokenResult = await ensureFreshAdsToken(pool, conn);
-  if (tokenResult.connectionState !== "connected") {
-    return { ok: false, error: "not_connected" };
+  // Token-resolusjon: klient-token-sti (portal-OAuth) vinner — da kjøres kallet
+  // som KLIENTEN, mot KLIENTENS egen konto, UTEN MCC/login-customer-id. Ellers
+  // produsentens MCC-token + clientCustomerId (eksisterende byrå-modell).
+  let accessToken = "";
+  let customerId = "";
+  let useMcc = true;
+
+  if (opts.roleRoomProjectId) {
+    const client = await getClientAdsAccess(pool, opts.roleRoomProjectId);
+    if (client?.accessToken && client.customerId) {
+      accessToken = client.accessToken;
+      customerId = client.customerId.replace(/-/g, "");
+      useMcc = false;
+    }
   }
 
-  const customerId = opts.clientCustomerId.replace(/-/g, "");
+  if (useMcc) {
+    const conn = await getAdsOauthConnection(pool, opts.producerUserId, "google");
+    if (!conn) return { ok: false, error: "not_connected" };
+    const tokenResult = await ensureFreshAdsToken(pool, conn);
+    if (tokenResult.connectionState !== "connected") {
+      return { ok: false, error: "not_connected" };
+    }
+    accessToken = tokenResult.accessToken;
+    customerId = (opts.clientCustomerId ?? "").replace(/-/g, "");
+  }
+
+  if (!accessToken || !customerId) return { ok: false, error: "missing_customer_id" };
+
   const url = `${GOOGLE_ADS_API_BASE}/customers/${customerId}/conversionActions:mutate`;
 
   const headers: Record<string, string> = {
-    "Authorization": `Bearer ${tokenResult.accessToken}`,
+    "Authorization": `Bearer ${accessToken}`,
     "developer-token": developerToken,
     "Content-Type": "application/json",
   };
-  if (loginCustomerId) headers["login-customer-id"] = loginCustomerId;
+  // login-customer-id KUN i MCC-sti (klient-token kjører mot egen konto direkte).
+  if (useMcc && loginCustomerId) headers["login-customer-id"] = loginCustomerId;
 
   const body = {
     operations: [{

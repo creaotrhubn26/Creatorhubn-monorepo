@@ -127,8 +127,13 @@ const RrSecuritySettings = React.lazy(() => import('@/pages/sikkerhet'));
 // for klient-portal-brukere (de som ikke logger inn med Google).
 const RrLoginPage = React.lazy(() => import('@/pages/LoginPageSimple'));
 const RrResetPassword = React.lazy(() => import('@/pages/reset-passord'));
+// Personvern — offentlig privacy-URL kreves for Google OAuth-verifisering
+// (dekker Google Ads/Workspace-data). Var KUN App.tsx-rute → død på theroleroom.
+const RrPrivacyPolicy = React.lazy(() => import('@/pages/privacy-policy'));
 
 const THEROLEROOM_APP_ROUTES: Array<{ test: RegExp; path: string; component: React.ComponentType<any> }> = [
+  { test: /^\/privacy-policy$/, path: '/privacy-policy', component: RrPrivacyPolicy },
+  { test: /^\/personvern$/, path: '/personvern', component: RrPrivacyPolicy },
   { test: /^\/invite\/[^/]+$/, path: '/invite/:token', component: RrTesterInviteLanding },
   { test: /^\/dance\/invite\/[^/]+$/, path: '/dance/invite/:token', component: RrDanceInviteLanding },
   { test: /^\/role-room\/accept-invite$/, path: '/role-room/accept-invite', component: RrAcceptTesterInvite },
