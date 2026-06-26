@@ -43,6 +43,7 @@ import {
 } from '@mui/icons-material';
 import { useDemoMode, useDemoModeApi } from '@/contexts/DemoModeContext';
 import { mockFetch } from '@/api/mockGooglePayApi';
+import { AdminCard, AdminButton, StatusChip, AdminLoading, AdminEmpty, AdminError, AdminTableContainer, adminTokens } from './design-system';
 
 interface SubscriberStats {
   totalSubscribers: number;
@@ -324,7 +325,7 @@ export default function SubscriberStatsPanel({
             Pakkefordeling
           </Typography>
           
-          <TableContainer component={Paper} sx={{ mb: 3 }}>
+          <AdminTableContainer ariaLabel="Pakkefordeling" sx={{ mb: 3 }}>
             <Table>
               <TableHead>
                 <TableRow>
@@ -343,12 +344,7 @@ export default function SubscriberStatsPanel({
                         <Typography variant="body2" sx={{ fontWeight: 600}}>
                           {pkg.name}
                         </Typography>
-                        <Chip
-                          label={pkg.interval}
-                          size="small"
-                          variant="outlined"
-                          color="primary"
-                        />
+                        <StatusChip tone="info" label={pkg.interval} />
                       </Stack>
                     </TableCell>
                     <TableCell align="right">
@@ -369,11 +365,9 @@ export default function SubscriberStatsPanel({
                     <TableCell align="right">
                       <Stack direction="row" alignItems="center" spacing={0.5} justifyContent="flex-end">
                         {getGrowthIcon(pkg.growth)}
-                        <Chip
+                        <StatusChip
+                          tone={getGrowthColor(pkg.growth) as any}
                           label={`${pkg.growth > 0 ? '+' : ', '}${pkg.growth}%`}
-                          size="small"
-                          color={getGrowthColor(pkg.growth) as any}
-                          variant="outlined"
                         />
                       </Stack>
                     </TableCell>
@@ -381,7 +375,7 @@ export default function SubscriberStatsPanel({
                 ))}
               </TableBody>
             </Table>
-          </TableContainer>
+          </AdminTableContainer>
 
           {/* Additional Metrics */}
           <Grid container spacing={2}>

@@ -5,10 +5,8 @@ import {
   Avatar,
   Badge,
   Box,
-  Button,
   Card,
   CardContent,
-  Chip,
   CircularProgress,
   Dialog,
   DialogActions,
@@ -34,7 +32,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   Typography,
@@ -76,6 +73,12 @@ import {
 } from 'recharts';
 import { useAuth } from '../../hooks/useAuth';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
+import {
+  AdminButton,
+  AdminLoading,
+  AdminTableContainer,
+  StatusChip,
+} from './design-system';
 
 type IntegrationStatus = 'active' | 'inactive' | 'error';
 type DateRange = '24h' | '7d' | '30d' | '90d';
@@ -670,14 +673,15 @@ const IntegrationAnalyticsDashboard: React.FC = () => {
             </IconButton>
           </Badge>
 
-          <Button
-            variant="outlined"
+          <AdminButton
+            tone="secondary"
             onClick={() => void refetch()}
-            startIcon={isFetching ? <CircularProgress size={14} /> : <RefreshIcon />}
+            startIcon={<RefreshIcon />}
+            loading={isFetching}
             disabled={isFetching}
           >
             Oppdater
-          </Button>
+          </AdminButton>
         </Stack>
       </Stack>
 
@@ -688,14 +692,7 @@ const IntegrationAnalyticsDashboard: React.FC = () => {
       ) : null}
 
       {isLoading && !data ? (
-        <Card>
-          <CardContent>
-            <Stack direction="row" alignItems="center" spacing={2}>
-              <CircularProgress size={22} />
-              <Typography>Laster analytics...</Typography>
-            </Stack>
-          </CardContent>
-        </Card>
+        <AdminLoading label="Laster analytics..." />
       ) : null}
 
       <Grid container spacing={2} sx={{ mb: 3 }}>
@@ -838,7 +835,7 @@ const IntegrationAnalyticsDashboard: React.FC = () => {
                 </ResponsiveContainer>
               </Box>
 
-              <TableContainer>
+              <AdminTableContainer ariaLabel="Integrasjoner – forespørsler og status">
                 <Table size="small">
                   <TableHead>
                     <TableRow>
@@ -866,17 +863,16 @@ const IntegrationAnalyticsDashboard: React.FC = () => {
                         <TableCell align="right">{formatNok(row.cost)}</TableCell>
                         <TableCell align="right">{row.errors}</TableCell>
                         <TableCell align="right">
-                          <Chip
+                          <StatusChip
                             label={row.status}
-                            size="small"
-                            color={row.status === 'active' ? 'success' : row.status === 'error' ? 'error' : 'default'}
+                            tone={row.status === 'active' ? 'success' : row.status === 'error' ? 'error' : 'neutral'}
                           />
                         </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
-              </TableContainer>
+              </AdminTableContainer>
             </Stack>
           ) : null}
 
@@ -1063,7 +1059,7 @@ const IntegrationAnalyticsDashboard: React.FC = () => {
                 </ResponsiveContainer>
               </Box>
 
-              <TableContainer>
+              <AdminTableContainer ariaLabel="Kostnad per tjeneste">
                 <Table size="small">
                   <TableHead>
                     <TableRow>
@@ -1080,7 +1076,7 @@ const IntegrationAnalyticsDashboard: React.FC = () => {
                     ))}
                   </TableBody>
                 </Table>
-              </TableContainer>
+              </AdminTableContainer>
             </Stack>
           ) : null}
 
@@ -1119,9 +1115,8 @@ const IntegrationAnalyticsDashboard: React.FC = () => {
                   primary={`${alertItem.service.toUpperCase()} · ${new Date(alertItem.timestamp).toLocaleString('nb-NO')}`}
                   secondary={alertItem.message}
                 />
-                <Chip
-                  size="small"
-                  color={alertItem.resolved ? 'success' : getAlertColor(alertItem.type)}
+                <StatusChip
+                  tone={alertItem.resolved ? 'success' : getAlertColor(alertItem.type)}
                   label={alertItem.resolved ? 'Løst' : 'Aktiv'}
                 />
               </ListItem>
@@ -1129,7 +1124,7 @@ const IntegrationAnalyticsDashboard: React.FC = () => {
           </List>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setAlertsDialogOpen(false)}>Lukk</Button>
+          <AdminButton tone="ghost" onClick={() => setAlertsDialogOpen(false)}>Lukk</AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

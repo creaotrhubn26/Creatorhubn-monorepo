@@ -22,7 +22,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   Tabs,
@@ -43,6 +42,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
 import CustomerJourneyBuilder from './CustomerJourneyBuilder';
+import {
+  AdminButton,
+  AdminTableContainer,
+  StatusChip,
+} from './design-system';
 
 type ProfessionStatus = 'active' | 'inactive' | 'beta' | 'coming_soon';
 
@@ -188,14 +192,14 @@ function toProfessionConfig(apiItem: ProfessionTypeApi): ProfessionConfig {
   };
 }
 
-function statusColor(status: ProfessionStatus): 'success' | 'default' | 'warning' {
+function statusTone(status: ProfessionStatus): 'success' | 'neutral' | 'warning' {
   switch (status) {
     case 'active':
       return 'success';
     case 'beta':
       return 'warning';
     default:
-      return 'default';
+      return 'neutral';
   }
 }
 
@@ -336,9 +340,9 @@ export default function ProfessionCMSManager() {
         <Typography variant="h5" fontWeight={700}>
           Profession CMS Manager
         </Typography>
-        <Button variant="contained" startIcon={<Add />} onClick={openCreateDialog}>
+        <AdminButton tone="primary" startIcon={<Add />} onClick={openCreateDialog}>
           Ny profesjon
-        </Button>
+        </AdminButton>
       </Stack>
 
       <Grid container spacing={2} sx={{ mb: 3 }}>
@@ -411,7 +415,7 @@ export default function ProfessionCMSManager() {
           )}
 
           {!professionsQuery.isLoading && !professionsQuery.isError && (
-            <TableContainer component={Paper}>
+            <AdminTableContainer ariaLabel="Profesjoner">
               <Table size="small">
                 <TableHead>
                   <TableRow>
@@ -429,7 +433,7 @@ export default function ProfessionCMSManager() {
                       <TableCell>{profession.key}</TableCell>
                       <TableCell>{profession.name}</TableCell>
                       <TableCell>
-                        <Chip size="small" label={profession.status} color={statusColor(profession.status)} />
+                        <StatusChip tone={statusTone(profession.status)} label={profession.status} />
                       </TableCell>
                       <TableCell>{profession.priority}</TableCell>
                       <TableCell>
@@ -468,7 +472,7 @@ export default function ProfessionCMSManager() {
                   ))}
                 </TableBody>
               </Table>
-            </TableContainer>
+            </AdminTableContainer>
           )}
         </>
       )}
@@ -682,15 +686,16 @@ export default function ProfessionCMSManager() {
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpenDialog(false)}>Avbryt</Button>
-          <Button
-            variant="contained"
+          <AdminButton tone="ghost" onClick={() => setOpenDialog(false)}>Avbryt</AdminButton>
+          <AdminButton
+            tone="primary"
             startIcon={<Save />}
             onClick={() => saveProfessionMutation.mutate({ ...formData, id: editingProfessionId ?? formData.id })}
-            disabled={!canSave || saveProfessionMutation.isPending}
+            loading={saveProfessionMutation.isPending}
+            disabled={!canSave}
           >
             Lagre
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

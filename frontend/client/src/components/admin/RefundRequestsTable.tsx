@@ -24,7 +24,6 @@ import {
   DialogActions,
   TextField,
   Alert,
-  CircularProgress,
   Typography,
   Checkbox,
   Toolbar,
@@ -40,6 +39,7 @@ import {
   Email,
   SelectAll,
 } from '@mui/icons-material';
+import { AdminButton, StatusChip, AdminLoading, AdminEmpty } from './design-system';
 
 interface RefundRequest {
   id: number;
@@ -215,37 +215,30 @@ export default function RefundRequestsTable() {
   };
 
   if (isLoading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
-        <CircularProgress />
-      </Box>
-    );
+    return <AdminLoading />;
   }
 
   const requests = Array.isArray(refundRequests?.refundRequests) ? refundRequests.refundRequests : [];
 
   if (requests.length === 0) {
     return (
-      <Alert severity="info">
-        Ingen refunderingsforespørsler for øyeblikket.
-        <br />
-        <Typography variant="caption">
-          Refunderingsforespørsler fra brukere vil vises her.
-        </Typography>
-      </Alert>
+      <AdminEmpty
+        title="Ingen refunderingsforespørsler for øyeblikket."
+        description="Refunderingsforespørsler fra brukere vil vises her."
+      />
     );
   }
 
   const getStatusChip = (status: string) => {
     switch (status) {
       case 'approved':
-        return <Chip label="Godkjent" size="small" color="success" icon={<CheckCircle />} />;
+        return <StatusChip tone="success" label="Godkjent" />;
       case 'rejected':
-        return <Chip label="Avvist" size="small" color="error" icon={<Cancel />} />;
+        return <StatusChip tone="error" label="Avvist" />;
       case 'pending':
-        return <Chip label="Ventende" size="small" color="warning" />;
+        return <StatusChip tone="warning" label="Ventende" />;
       default:
-        return <Chip label={status} size="small" />;
+        return <StatusChip tone="neutral" label={status} />;
     }
   };
 
@@ -500,15 +493,14 @@ export default function RefundRequestsTable() {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setActionDialog(null)}>Avbryt</Button>
-          <Button
+          <AdminButton tone="ghost" onClick={() => setActionDialog(null)}>Avbryt</AdminButton>
+          <AdminButton
             onClick={handleApprove}
-            variant="contained"
-            color="success"
-            disabled={approveMutation.isPending}
+            tone="primary"
+            loading={approveMutation.isPending}
           >
             {approveMutation.isPending ? 'Behandler...' : 'Godkjenn'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -540,15 +532,15 @@ export default function RefundRequestsTable() {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setActionDialog(null)}>Avbryt</Button>
-          <Button
+          <AdminButton tone="ghost" onClick={() => setActionDialog(null)}>Avbryt</AdminButton>
+          <AdminButton
             onClick={handleReject}
-            variant="contained"
-            color="error"
+            tone="danger"
+            loading={rejectMutation.isPending}
             disabled={rejectMutation.isPending || !rejectionReason.trim()}
           >
             {rejectMutation.isPending ? 'Behandler...' : 'Avvis'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -590,17 +582,17 @@ export default function RefundRequestsTable() {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => {
+          <AdminButton tone="ghost" onClick={() => {
             setActionDialog(null);
             setBulkAction(null);
             setRejectionReason('');
           }}>
             Avbryt
-          </Button>
-          <Button
+          </AdminButton>
+          <AdminButton
             onClick={bulkAction === 'approve' ? handleBulkApprove : handleBulkReject}
-            variant="contained"
-            color={bulkAction === 'approve' ? 'success' : 'error'}
+            tone={bulkAction === 'approve' ? 'primary' : 'danger'}
+            loading={bulkApproveMutation.isPending || bulkRejectMutation.isPending}
             disabled={
               (bulkAction === 'approve' && bulkApproveMutation.isPending) ||
               (bulkAction === 'reject' && (bulkRejectMutation.isPending || !rejectionReason.trim()))
@@ -612,7 +604,7 @@ export default function RefundRequestsTable() {
               ? `Godkjenn ${selectedIds.length}`
               : `Avvis ${selectedIds.length}`
             }
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 

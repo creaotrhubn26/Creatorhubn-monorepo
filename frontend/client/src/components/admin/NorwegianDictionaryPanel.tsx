@@ -56,6 +56,7 @@ import {
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
+import { AdminButton } from './design-system';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // TYPES
@@ -440,14 +441,14 @@ export default function NorwegianDictionaryPanel({
               <SwapHorizIcon />
             </IconButton>
           </Tooltip>
-          <Button
-            variant="contained"
+          <AdminButton
+            tone="primary"
             size="small"
             onClick={() => searchWord.trim() && lookupWord(searchWord.trim())}
             disabled={!searchWord.trim()}
           >
             Search
-          </Button>
+          </AdminButton>
         </Stack>
         
         {/* Domain Filter */}

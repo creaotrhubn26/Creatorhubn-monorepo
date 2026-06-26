@@ -53,6 +53,12 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { nb } from 'date-fns/locale';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
+import {
+  AdminCard,
+  AdminButton,
+  AdminLoading,
+  AdminEmpty,
+} from './design-system';
 
 interface NotificationFormData {
   title: string;
@@ -324,16 +330,13 @@ export default function AdminNotificationManager() {
                 </IconButton>
               </Tooltip>
             )}
-            <Button variant="contained"
+            <AdminButton
+              tone="primary"
               startIcon={theming.getThemedIcon('add')}
               onClick={() => setShowCreateDialog(true)}
-              sx={{
-                background: 'linear-gradient(135deg, #1976d2 0%, #42a5f5 100%)',
-                boxShadow: '0 4px 15px rgba(25, 118, 210, 0.3)',
-                borderRadius: 2}}
             >
               Ny Notifikasjon
-            </Button>
+            </AdminButton>
           </Box>
         </Box>
 
@@ -458,15 +461,11 @@ export default function AdminNotificationManager() {
         )}
 
         {/* Notifications List */}
-        <MuiCard>
-          <CardContent>
-            <Typography variant="h6" sx={{ mb: 2, color: themeColors.primary }}>
-              Alle Notifikasjoner
-            </Typography>
+        <AdminCard title="Alle Notifikasjoner">
             {isLoading ? (
-              <Typography>Laster notifikasjoner...</Typography>
+              <AdminLoading label="Laster notifikasjoner..." />
             ) : notificationList.length === 0 ? (
-              <Typography color="text.secondary">Ingen notifikasjoner opprettet ennå.</Typography>
+              <AdminEmpty title="Ingen notifikasjoner opprettet ennå." />
             ) : (
               <List>
                 {notificationList.map((notification: any, index: number) => (
@@ -557,8 +556,7 @@ export default function AdminNotificationManager() {
                 ))}
               </List>
             )}
-          </CardContent>
-        </MuiCard>
+        </AdminCard>
 
         {/* Create/Edit Dialog */}
         <Dialog
@@ -720,15 +718,18 @@ export default function AdminNotificationManager() {
             </Box>
           </DialogContent>
           <DialogActions>
-            <Button
+            <AdminButton
+              tone="ghost"
               onClick={() => {
                 setShowCreateDialog(false);
                 resetForm();
             }}
             >
               Avbryt
-            </Button>
-            <Button variant="contained"
+            </AdminButton>
+            <AdminButton
+              tone="primary"
+              loading={createNotificationMutation.isPending}
               onClick={handleSubmit}
               disabled={
                 !formData.title.trim() ||
@@ -741,7 +742,7 @@ export default function AdminNotificationManager() {
                 ? 'Sender...'
                 : editingNotification
                   ? 'Oppdater' : 'Send Notifikasjon'}
-            </Button>
+            </AdminButton>
           </DialogActions>
         </Dialog>
 
@@ -755,7 +756,7 @@ export default function AdminNotificationManager() {
               </Box>
             </DialogContent>
             <DialogActions>
-              <Button onClick={() => setPushSettingsOpen(false)}>Lukk</Button>
+              <AdminButton tone="ghost" onClick={() => setPushSettingsOpen(false)}>Lukk</AdminButton>
             </DialogActions>
           </Dialog>
         )}

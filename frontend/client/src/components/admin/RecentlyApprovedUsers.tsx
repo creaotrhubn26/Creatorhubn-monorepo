@@ -16,7 +16,6 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Paper,
   Chip,
   LinearProgress,
   Tooltip,
@@ -30,6 +29,7 @@ import {
   Cloud as CloudIcon,
   Dashboard as DashboardIcon,
 } from '@mui/icons-material';
+import { AdminTableContainer, adminTokens } from './design-system';
 
 interface User {
   id: string;
@@ -112,7 +112,7 @@ export default function RecentlyApprovedUsers({ days = 30 }: RecentlyApprovedUse
         <Typography
           variant="h6"
           sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
-          <CheckCircleIcon sx={{ color: '#ff8c00' }} />
+          <CheckCircleIcon sx={{ color: adminTokens.color.brand }} />
           Nylig Godkjente Brukere
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
@@ -128,7 +128,7 @@ export default function RecentlyApprovedUsers({ days = 30 }: RecentlyApprovedUse
               <Typography variant="caption" color="text.secondary">
                 Totalt godkjent
               </Typography>
-              <Typography variant="h4" sx={{ fontWeight: 600, color: '#ff8c00' }}>
+              <Typography variant="h4" sx={{ fontWeight: 600, color: adminTokens.color.brand }}>
                 {recentUsers.length}
               </Typography>
             </CardContent>
@@ -139,7 +139,7 @@ export default function RecentlyApprovedUsers({ days = 30 }: RecentlyApprovedUse
               <Typography variant="caption" color="text.secondary">
                 Fullført onboarding
               </Typography>
-              <Typography variant="h4" sx={{ fontWeight: 600, color: '#4caf50' }}>
+              <Typography variant="h4" sx={{ fontWeight: 600, color: adminTokens.color.success }}>
                 {recentUsers.filter((u) => u.hasCompletedUniversalOnboarding).length}
               </Typography>
             </CardContent>
@@ -172,7 +172,7 @@ export default function RecentlyApprovedUsers({ days = 30 }: RecentlyApprovedUse
       {/* Users Table */}
       <Card>
         <CardContent sx={{ p: 0 }}>
-          <TableContainer component={Paper}>
+          <AdminTableContainer ariaLabel="Nylig godkjente brukere">
             <Table>
               <TableHead>
                 <TableRow>
@@ -357,7 +357,7 @@ export default function RecentlyApprovedUsers({ days = 30 }: RecentlyApprovedUse
                 )}
               </TableBody>
             </Table>
-          </TableContainer>
+          </AdminTableContainer>
         </CardContent>
       </Card>
     </Box>

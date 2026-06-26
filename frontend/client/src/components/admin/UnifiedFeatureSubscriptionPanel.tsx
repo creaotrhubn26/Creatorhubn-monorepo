@@ -53,6 +53,13 @@ import {
 } from '@shared/profession-feature-matrix';
 import { getAllProfessionTypes } from '@shared/profession-type-registry';
 import { getPlanDisplayName, type PlanTier } from '@shared/subscription-plans';
+import {
+  AdminButton,
+  AdminLoading,
+  AdminEmpty,
+  StatusChip,
+  AdminTableContainer,
+} from './design-system';
 
 type FeatureBaseConfig = ProfessionFeatureConfig['availableFeatures'][string];
 
@@ -264,8 +271,7 @@ export default function UnifiedFeatureSubscriptionPanel() {
   if (isLoading) {
     return (
       <Box sx={{ p: 3 }}>
-        <LinearProgress />
-        <Typography sx={{ mt: 2 }}>Loading feature configurations...</Typography>
+        <AdminLoading label="Loading feature configurations..." />
       </Box>
     );
   }
@@ -284,32 +290,32 @@ export default function UnifiedFeatureSubscriptionPanel() {
         </Box>
 
         <Stack direction="row" spacing={2}>
-          <Button
-            variant="outlined"
+          <AdminButton
+            tone="secondary"
             startIcon={<Refresh />}
             onClick={() =>
               queryClient.invalidateQueries({ queryKey: ['/api/admin/feature-configs'] })
             }
           >
             Refresh
-          </Button>
-          <Button
-            variant="outlined"
+          </AdminButton>
+          <AdminButton
+            tone="secondary"
             startIcon={<FilterList />}
             onClick={handleReset}
             disabled={!hasChanges}
           >
             Reset Changes
-          </Button>
-          <Button
-            variant="contained"
+          </AdminButton>
+          <AdminButton
+            tone="primary"
             startIcon={<Save />}
             onClick={handleSave}
-            disabled={!hasChanges || saveMutation.isPending}
-            color="primary"
+            disabled={!hasChanges}
+            loading={saveMutation.isPending}
           >
             Save All Changes
-          </Button>
+          </AdminButton>
         </Stack>
       </Box>
 
@@ -464,7 +470,7 @@ export default function UnifiedFeatureSubscriptionPanel() {
       </Paper>
 
       {/* Feature List */}
-      <TableContainer component={Paper}>
+      <AdminTableContainer ariaLabel="Feature configurations">
         <Table size="small">
           <TableHead>
             <TableRow>
@@ -496,7 +502,7 @@ export default function UnifiedFeatureSubscriptionPanel() {
                       <Typography variant="body2" fontWeight={500}>
                         {feature.id.replace(/-/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
                         {isChanged && (
-                          <Chip label="Modified" size="small" color="warning" sx={{ ml: 1 }} />
+                          <StatusChip tone="warning" label="Modified" sx={{ ml: 1 }} />
                         )}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
@@ -506,7 +512,7 @@ export default function UnifiedFeatureSubscriptionPanel() {
                   </TableCell>
 
                   <TableCell>
-                    <Chip label={feature.category} size="small" />
+                    <StatusChip tone="neutral" label={feature.category} />
                   </TableCell>
 
                   <TableCell align="center">
@@ -611,12 +617,10 @@ export default function UnifiedFeatureSubscriptionPanel() {
             })}
           </TableBody>
         </Table>
-      </TableContainer>
+      </AdminTableContainer>
 
       {filteredFeatures.length === 0 && (
-        <Box sx={{ textAlign: 'center', py: 4 }}>
-          <Typography color="text.secondary">No features found matching your criteria</Typography>
-        </Box>
+        <AdminEmpty title="No features found matching your criteria" />
       )}
 
       {/* Edit Dialog */}
@@ -634,8 +638,10 @@ export default function UnifiedFeatureSubscriptionPanel() {
           {/* Add more detailed configuration options here */}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setEditDialog({ open: false })}>Cancel</Button>
-          <Button variant="contained">Save Changes</Button>
+          <AdminButton tone="ghost" onClick={() => setEditDialog({ open: false })}>
+            Cancel
+          </AdminButton>
+          <AdminButton tone="primary">Save Changes</AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

@@ -14,20 +14,24 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
-  Paper,
-  Chip,
   IconButton,
   TextField,
   InputAdornment,
   Tabs,
   Tab,
-  Button,
   ThemeProvider,
 } from '@mui/material';
 import { adminDarkTheme } from './adminDarkTheme';
+import {
+  AdminButton,
+  StatusChip,
+  AdminLoading,
+  AdminEmpty,
+  AdminTableContainer,
+  adminTokens,
+} from './design-system';
 import {
   Group,
   Business,
@@ -125,9 +129,7 @@ export default function CustomerProjectsPanel({
   if (isLoading) {
     return (
       <ThemeProvider theme={adminDarkTheme}>
-        <Box sx={{ p: 3 }}>
-          <Typography variant="h6" sx={{ color: themeColors.primary }}>Laster kunder og prosjekter...</Typography>
-        </Box>
+        <AdminLoading label="Laster kunder og prosjekter..." />
       </ThemeProvider>
     );
 }
@@ -154,15 +156,12 @@ export default function CustomerProjectsPanel({
             Kunder & Prosjekter
           </Typography>
         </Box>
-        <Button variant="contained"
+        <AdminButton
+          tone="primary"
           startIcon={<Add />}
-          sx={{ 
-            bgcolor: '#ff8c00',
-            '&:hover': { bgcolor: '#e67c00' }
-        }}
         >
           Ny Kunde
-        </Button>
+        </AdminButton>
       </Box>
 
       {/* Summary Cards */}
@@ -250,12 +249,12 @@ export default function CustomerProjectsPanel({
               '& .MuiTab-root': {
                 color: 'text.secondary',
                 '&.Mui-selected': {
-                  color: '#ff8c00',
+                  color: adminTokens.color.brand,
                   fontWeight: 600
                 }
               },
               '& .MuiTabs-indicator': {
-                backgroundColor: '#ff8c00'
+                backgroundColor: adminTokens.color.brand
               }
             }}
           >
@@ -283,7 +282,7 @@ export default function CustomerProjectsPanel({
 
           {/* Tab Panels */}
           <TabPanel value={tabValue} index={0}>
-            <TableContainer component={Paper}>
+            <AdminTableContainer ariaLabel="Alle prosjekter">
               <Table>
                 <TableHead>
                   <TableRow>
@@ -310,10 +309,9 @@ export default function CustomerProjectsPanel({
                         <TableCell>{project.name || 'Uten navn'}</TableCell>
                         <TableCell>{project.customerName || 'Ukjent kunde'}</TableCell>
                         <TableCell>
-                          <Chip 
+                          <StatusChip
                             label={project.status || 'Aktiv'}
-                            color={project.status === 'completed' ? 'success' : 'warning'}
-                            size="small"
+                            tone={project.status === 'completed' ? 'success' : 'warning'}
                           />
                         </TableCell>
                         <TableCell>{project.value || 0} kr</TableCell>
@@ -331,11 +329,11 @@ export default function CustomerProjectsPanel({
                   )}
                 </TableBody>
               </Table>
-            </TableContainer>
+            </AdminTableContainer>
           </TabPanel>
 
           <TabPanel value={tabValue} index={1}>
-            <TableContainer component={Paper}>
+            <AdminTableContainer ariaLabel="Kunder">
               <Table>
                 <TableHead>
                   <TableRow>
@@ -377,12 +375,12 @@ export default function CustomerProjectsPanel({
                   )}
                 </TableBody>
               </Table>
-            </TableContainer>
+            </AdminTableContainer>
           </TabPanel>
 
           <TabPanel value={tabValue} index={2}>
             {vendors.length > 0 ? (
-              <TableContainer component={Paper}>
+              <AdminTableContainer ariaLabel="Leverandører">
                 <Table>
                   <TableHead>
                     <TableRow>
@@ -399,17 +397,15 @@ export default function CustomerProjectsPanel({
                       <TableRow key={vendor.id}>
                         <TableCell>{vendor.businessName}</TableCell>
                         <TableCell>
-                          <Chip 
+                          <StatusChip
                             label={vendor.vendorType || 'Leverandør'}
-                            size="small" 
-                            color="secondary" 
+                            tone="neutral"
                           />
                         </TableCell>
                         <TableCell>
-                          <Chip 
+                          <StatusChip
                             label={vendor.status || 'Aktiv'}
-                            size="small" 
-                            color={vendor.status === 'active' ? 'success' : 'default'}
+                            tone={vendor.status === 'active' ? 'success' : 'neutral'}
                           />
                         </TableCell>
                         <TableCell>{vendor.activeOrders || 0}</TableCell>
@@ -426,17 +422,13 @@ export default function CustomerProjectsPanel({
                     ))}
                   </TableBody>
                 </Table>
-              </TableContainer>
+              </AdminTableContainer>
             ) : (
-              <Box sx={{ textAlign: 'center', py: 4 }}>
-                <Business sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
-                <Typography variant="h6" color="text.secondary" sx={{ color: themeColors.primary }}>
-                  Leverandør-administrasjon
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Ingen leverandører registrert ennå
-                </Typography>
-              </Box>
+              <AdminEmpty
+                icon={<Business sx={{ fontSize: 48 }} />}
+                title="Leverandør-administrasjon"
+                description="Ingen leverandører registrert ennå"
+              />
             )}
           </TabPanel>
         </CardContent>

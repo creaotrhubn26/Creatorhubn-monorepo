@@ -9,7 +9,6 @@ import {
   Button,
   Card,
   CardContent,
-  Chip,
   Dialog,
   DialogActions,
   DialogContent,
@@ -24,7 +23,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   TextField,
@@ -35,6 +33,11 @@ import {
   PhotoLibrary,
   Search,
 } from '@mui/icons-material';
+import {
+  AdminButton,
+  StatusChip,
+  AdminTableContainer,
+} from './design-system';
 
 type ProductType = 'camera' | 'lens' | 'accessory';
 type ProductLicense = 'proprietary' | 'cc-by' | 'editorial-use-only';
@@ -432,7 +435,7 @@ const ProductManager: React.FC<ProductManagerProps> = ({
 
       {isLoading ? <LinearProgress sx={{ mb: 2 }} /> : null}
 
-      <TableContainer component={Paper}>
+      <AdminTableContainer ariaLabel="Produkter">
         <Table>
           <TableHead>
             <TableRow>
@@ -489,20 +492,18 @@ const ProductManager: React.FC<ProductManagerProps> = ({
                   </Typography>
                 </TableCell>
                 <TableCell>
-                  <Chip
-                    size="small"
+                  <StatusChip
                     label={product.type}
-                    color={product.type === 'camera' ? 'primary' : product.type === 'lens' ? 'secondary' : 'default'}
+                    tone={product.type === 'camera' ? 'brand' : product.type === 'lens' ? 'info' : 'neutral'}
                   />
                 </TableCell>
                 <TableCell>{product.mount || '-'}</TableCell>
                 <TableCell>{product.sensorFormat || '-'}</TableCell>
                 <TableCell>
                   {product.license ? (
-                    <Chip
-                      size="small"
+                    <StatusChip
                       label={product.license}
-                      color={product.license === 'cc-by' ? 'success' : 'warning'}
+                      tone={product.license === 'cc-by' ? 'success' : 'warning'}
                     />
                   ) : (
                     '-'
@@ -527,7 +528,7 @@ const ProductManager: React.FC<ProductManagerProps> = ({
             ))}
           </TableBody>
         </Table>
-      </TableContainer>
+      </AdminTableContainer>
 
       <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="md" fullWidth>
         <form
@@ -599,10 +600,10 @@ const ProductManager: React.FC<ProductManagerProps> = ({
             </Grid>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setOpenDialog(false)}>Avbryt</Button>
-            <Button type="submit" variant="contained" disabled={productMutation.isPending} sx={theming.getThemedButtonSx()}>
+            <AdminButton tone="ghost" onClick={() => setOpenDialog(false)}>Avbryt</AdminButton>
+            <AdminButton type="submit" tone="primary" loading={productMutation.isPending} disabled={productMutation.isPending}>
               {productMutation.isPending ? 'Lagrer...' : 'Lagre'}
-            </Button>
+            </AdminButton>
           </DialogActions>
         </form>
       </Dialog>
@@ -629,15 +630,15 @@ const ProductManager: React.FC<ProductManagerProps> = ({
           ) : null}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setBulkImportOpen(false)}>Avbryt</Button>
-          <Button
+          <AdminButton tone="ghost" onClick={() => setBulkImportOpen(false)}>Avbryt</AdminButton>
+          <AdminButton
             onClick={handleBulkImport}
-            variant="contained"
+            tone="primary"
+            loading={bulkImportMutation.isPending}
             disabled={!selectedFile || bulkImportMutation.isPending}
-            sx={theming.getThemedButtonSx()}
           >
             {bulkImportMutation.isPending ? 'Importerer...' : 'Importer'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -649,10 +650,9 @@ const ProductManager: React.FC<ProductManagerProps> = ({
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteConfirmProduct(null)}>Avbryt</Button>
-          <Button
-            variant="contained"
-            color="error"
+          <AdminButton tone="ghost" onClick={() => setDeleteConfirmProduct(null)}>Avbryt</AdminButton>
+          <AdminButton
+            tone="danger"
             onClick={() => {
               if (!deleteConfirmProduct) return;
               deleteMutation.mutate(deleteConfirmProduct.id);
@@ -660,7 +660,7 @@ const ProductManager: React.FC<ProductManagerProps> = ({
             }}
           >
             Slett
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
