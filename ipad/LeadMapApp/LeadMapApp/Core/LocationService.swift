@@ -98,10 +98,43 @@ final class LocationService: NSObject {
     /// Nil hvis ennå ikke fixet eller authorization mangler.
     private(set) var currentLocation: CLLocation?
 
+    /// Nåværende autorisasjons-status. Eksponert så views kan vise
+    /// "Posisjon avslått"-banner uten å duplisere CLLocationManager.
+    var authorizationStatus: CLAuthorizationStatus {
+        manager.authorizationStatus
+    }
+
     /// Ber om when-in-use authorization hvis ikke avgjort.
     func requestPermissionIfNeeded() {
         if manager.authorizationStatus == .notDetermined {
             manager.requestWhenInUseAuthorization()
+        }
+    }
+
+    /// Ber om when-in-use authorization og venter (best-effort) på at
+    /// iOS-dialogen lukkes. Brukes ved første visning av kart-fanen så
+    /// permission-dialogen vises proaktivt — uten dette må noe
+    /// (heartbeat / VisitLog) trigge en location-spørring først.
+    ///
+    /// Hvis status allerede er bestemt (granted/denied), returnerer
+    /// umiddelbart. Hvis bruker dismisser dialogen uten å velge, gir
+    /// vi opp etter ~3 s.
+    func requestAuthorizationIfNeeded() async {
+        guard manager.authorizationStatus == .notDetermined else { return }
+        manager.requestWhenInUseAuthorization()
+        // Vent på at status endrer seg (bruker tar et valg) eller timer
+        // ut. Vi poller fordi delegate-callbacken allerede er knyttet
+        // til one-shot continuation-mønsteret over og vi vil ikke
+        // overskrive den.
+        for _ in 0..<30 { // 30 × 100ms = 3s
+            if manager.authorizationStatus != .notDetermined { break }
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+        // Hvis autorisert: start kontinuerlig oppdatering så
+        // currentLocation fylles ut umiddelbart for `UserAnnotation()`.
+        let status = manager.authorizationStatus
+        if status == .authorizedWhenInUse || status == .authorizedAlways {
+            manager.startUpdatingLocation()
         }
     }
 

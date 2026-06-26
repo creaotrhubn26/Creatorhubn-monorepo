@@ -15,6 +15,7 @@
 import SwiftUI
 import MapKit
 import CoreLocation
+import UIKit
 
 // Backward-compat: noen eldre views/cron-paths refererer til `MapHomeView`
 // direkte. Gjør den til en typealias så Xcode-prosjektet ikke trenger
@@ -37,6 +38,11 @@ struct MapScreen: View {
     // ── Industries-filter (mig 329) ──────────────────────────────────
     @State private var onlyMyIndustries = false
     @State private var myIndustryIds: Set<String> = []
+    // ── Bruker-posisjon på kart ──────────────────────────────────────
+    // Trackes lokalt for å vise/skjule "posisjon avslått"-banner og
+    // for å forhindre at vi spør om permission flere ganger.
+    @State private var locationAuthStatus: CLAuthorizationStatus = LocationService.shared.authorizationStatus
+    @State private var hasRequestedAuthorization = false
 
     @State private var camera: MapCameraPosition = .region(
         MKCoordinateRegion(
@@ -102,6 +108,7 @@ struct MapScreen: View {
                 LeadResearchStartView()
             }
             .toolbar { mapToolbar }
+            .task { await requestLocationAuthorizationIfNeeded() }
             .task { await initialZoomIfNeeded() }
             .task { await loadMyIndustriesIfNeeded() }
             .onChange(of: appState.workloadLeads.count) { _, _ in
@@ -163,6 +170,11 @@ struct MapScreen: View {
             ForEach(appState.myTerritories) { t in
                 territoryOverlay(t)
             }
+            // Brukerens egen posisjon — Apple's animerte blå dot.
+            // Krever NSLocationWhenInUseUsageDescription i Info.plist
+            // (satt) + at bruker har godkjent posisjon. Hvis ikke,
+            // vises ingenting (UserAnnotation feiler stille).
+            UserAnnotation()
             // Dagsrute med lilla glow-polyline + nummererte stopp.
             if let route = appState.dayRoute {
                 let routeCoords = route.stops.compactMap { $0.coordinate }
@@ -198,6 +210,16 @@ struct MapScreen: View {
             }
         }
         .mapStyle(.standard(elevation: .flat, pointsOfInterest: .excludingAll))
+        // Kart-kontroller: knapp for "sentrer på meg" (toggler tracking),
+        // kompass for orientering og avstandsskala. Apple's egne views
+        // — gratis tilgang til system-tracking-mode (none → follow →
+        // followWithHeading) som er kritisk for en selger i felt.
+        .mapControls {
+            MapUserLocationButton()
+            MapCompass()
+            MapScaleView()
+            MapPitchToggle()
+        }
     }
 
     /// Mørkere Leadgrid-purple overlay øverst og nederst for å bryte den
@@ -237,8 +259,21 @@ struct MapScreen: View {
                 onTapExpand: { showProjectDetail = true }
             )
             .padding(.top, 4)
+            // Vis banner kun hvis bruker eksplisitt har avslått posisjon.
+            // .notDetermined viser ingenting (vi har akkurat trigget
+            // iOS-dialogen); .authorized viser ingenting (alt OK).
+            if locationAuthStatus == .denied || locationAuthStatus == .restricted {
+                LocationPermissionBanner(status: locationAuthStatus)
+            }
             RemindersBanner()
             TerritoryBanner()
+            // Empty-state-overlay når det ikke finnes leads i området.
+            // Vises kun etter at vi har snakket med backend minst én gang
+            // (`lastSyncAt != nil`) for å unngå at den blinker fram før
+            // initial refresh er ferdig.
+            if appState.leads.isEmpty && appState.lastSyncAt != nil {
+                MapEmptyStateOverlay(onImport: { showResearchStart = true })
+            }
             Spacer()
         }
     }
@@ -345,6 +380,37 @@ struct MapScreen: View {
             myIndustryIds = Set(mine.map { $0.industryId })
         } catch {
             // Stille — filteret blir bare disabled til neste forsøk.
+        }
+    }
+
+    // MARK: - Location authorization
+
+    /// Spør om when-in-use posisjons-tilgang proaktivt første gang
+    /// kart-fanen vises. Uten dette ville iOS-dialogen først dukke opp
+    /// når noe annet (heartbeat, VisitLog) trigget en `currentLocation`-
+    /// spørring — og brukeren har ingen idé om hvorfor blå-doten
+    /// mangler i mellomtiden.
+    @MainActor
+    private func requestLocationAuthorizationIfNeeded() async {
+        guard !hasRequestedAuthorization else { return }
+        hasRequestedAuthorization = true
+        let initial = LocationService.shared.authorizationStatus
+        locationAuthStatus = initial
+        if initial == .notDetermined {
+            await LocationService.shared.requestAuthorizationIfNeeded()
+        } else if initial == .authorizedWhenInUse || initial == .authorizedAlways {
+            // Sikre at vi får posisjons-oppdateringer slik at
+            // UserAnnotation faktisk har data å tegne.
+            LocationService.shared.startUpdating()
+        }
+        locationAuthStatus = LocationService.shared.authorizationStatus
+        // Re-sentrer hvis vi akkurat fikk grant og kartet sto på Oslo-fallback.
+        if (locationAuthStatus == .authorizedWhenInUse
+            || locationAuthStatus == .authorizedAlways) {
+            // Vent kort så CLLocation rekker første fix
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            hasCenteredOnUser = false
+            await centerOnUser(animated: true)
         }
     }
 
@@ -457,6 +523,103 @@ private struct AnnotationCalloutPin: View {
             .shadow(radius: 2)
         }
         .accessibilityLabel(annot.title ?? "Annotasjon")
+    }
+}
+
+/// Banner som vises øverst på kartet hvis bruker har avslått eller
+/// blokkert posisjon. Tap → Innstillinger-app for å snu på det.
+/// Følger samme visuelle språk som `RemindersBanner` (kapsel-ikon +
+/// tittel + chevron + farget halo) for konsistens.
+private struct LocationPermissionBanner: View {
+    let status: CLAuthorizationStatus
+
+    var body: some View {
+        Button {
+            if let url = URL(string: UIApplication.openSettingsURLString) {
+                UIApplication.shared.open(url)
+            }
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "location.slash.fill")
+                    .font(.title3)
+                    .foregroundStyle(Color.orange)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(headline)
+                        .font(.subheadline.bold())
+                        .foregroundStyle(.primary)
+                    Text("Trykk for å åpne Innstillinger")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(12)
+            .background(Color.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: 12))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.orange.opacity(0.45), lineWidth: 1)
+            )
+            .padding(.horizontal, 12)
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Åpner iOS Innstillinger så du kan slå på posisjon for Lead Map.")
+    }
+
+    private var headline: String {
+        switch status {
+        case .denied: return "Posisjon er avslått"
+        case .restricted: return "Posisjon er begrenset"
+        default: return "Posisjon utilgjengelig"
+        }
+    }
+}
+
+/// Empty-state-kort som vises midt på kartet når brukeren ikke har
+/// noen leads ennå. Hjelper nye sales-rep'er å skjønne hva neste steg
+/// er i stedet for å se et tomt kart og lure.
+private struct MapEmptyStateOverlay: View {
+    @Environment(AppState.self) private var appState
+    var onImport: () -> Void
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "mappin.slash")
+                .font(.system(size: 32, weight: .light))
+                .foregroundStyle(Color(red: 0.66, green: 0.32, blue: 0.99))
+            Text("Ingen leads i området ennå")
+                .font(.subheadline.bold())
+                .foregroundStyle(.primary)
+            Text("Importer dine første kunder eller la Lead Map finne nye for deg.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 8)
+            if appState.permissions.contains("lead_research.run") {
+                Button("Finn nye leads", action: onImport)
+                    .font(.caption.bold())
+                    .padding(.horizontal, 12).padding(.vertical, 6)
+                    .background(
+                        Color(red: 0.66, green: 0.32, blue: 0.99),
+                        in: Capsule()
+                    )
+                    .foregroundStyle(.white)
+                    .buttonStyle(.plain)
+            }
+        }
+        .padding(16)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color.white.opacity(0.25), lineWidth: 0.5)
+        )
+        .padding(.horizontal, 24)
+        .padding(.top, 8)
     }
 }
 
