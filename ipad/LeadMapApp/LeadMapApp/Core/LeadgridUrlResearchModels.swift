@@ -172,6 +172,7 @@ extension UrlResearchDraftLead {
             leadTemperature: nil,
             pipelineStage: nil,
             leadScore: nil,
+            industryId: nil,
         )
     }
 }

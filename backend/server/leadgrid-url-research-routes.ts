@@ -41,6 +41,7 @@ import type { Pool } from "pg";
 import crypto from "crypto";
 
 import { requireLeadMapPermission } from "./lead-map-rbac-helper.js";
+import { classifyIndustryForLead } from "./leadgrid-industry-classify.js";
 import { runOrchestratedBootstrap } from "./role-room-agent-bootstrap-orchestrator.js";
 import {
   fetchGooglePlacesBusinessSignals,
@@ -662,6 +663,33 @@ async function applyResearchToDraft(
     } catch {
       // Stille fail — kolonnen kan mangle i eldre miljøer.
     }
+  }
+
+  // Klassifisér mot industries-katalogen (mig 329) basert på Brreg-
+  // NACE-kode primært, deretter trigram-match på companyProfile.industry.
+  // Feiler stille hvis industries-tabellen ikke finnes ennå (mig ikke kjørt).
+  try {
+    const brreg = bootstrapPayload?.brregCompany as
+      | { industryCode?: { code?: string | null; description?: string | null } | null }
+      | null
+      | undefined;
+    const classification = await classifyIndustryForLead(pool, {
+      naceCode: brreg?.industryCode?.code ?? null,
+      naceDescription: brreg?.industryCode?.description ?? null,
+      companyIndustryText: companyProfile.industry ?? null,
+      companySummary: companyProfile.summary ?? null,
+    });
+    if (classification.industryId) {
+      await pool.query(
+        `UPDATE crm_customers SET industry_id = $2::uuid, updated_at = NOW()
+          WHERE id = $1::uuid`,
+        [draftId, classification.industryId],
+      );
+    }
+  } catch (err) {
+    // Industries-systemet er valgfritt for at URL-research skal fungere.
+    // Logg, men ikke bryt flyten.
+    console.warn("[leadgrid-url-research] industry classification failed:", (err as Error).message);
   }
 }
 

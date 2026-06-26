@@ -106,6 +106,8 @@ export interface MapLead {
   notes: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Bransje-id (mig 329). null hvis ikke klassifisert ennå. */
+  industryId: string | null;
 }
 
 export interface VisitRow {
@@ -172,6 +174,7 @@ function rowToLead(row: any): MapLead {
     notes: row.notes,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
+    industryId: row.industry_id ?? null,
   };
 }
 
@@ -216,7 +219,8 @@ export async function listLeadsInBounds(
             c.last_visit_at, c.next_follow_up_at, c.next_action, c.tags, c.notes,
             c.created_at, c.updated_at,
             NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), '') AS assigned_user_name, u.email AS assigned_user_email,
-            c.project_id
+            c.project_id,
+            c.industry_id::text AS industry_id
      FROM crm_customers c
      LEFT JOIN users u ON u.id = c.owner_user_id
      WHERE ${conditions.join(' AND ')}
@@ -240,7 +244,8 @@ export async function getLeadById(
             c.last_visit_at, c.next_follow_up_at, c.next_action, c.tags, c.notes,
             c.created_at, c.updated_at,
             NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), '') AS assigned_user_name, u.email AS assigned_user_email,
-            c.project_id
+            c.project_id,
+            c.industry_id::text AS industry_id
      FROM crm_customers c
      LEFT JOIN users u ON u.id = c.owner_user_id
      WHERE id = $1::uuid AND ${tenantConds.join(' AND ')}`,

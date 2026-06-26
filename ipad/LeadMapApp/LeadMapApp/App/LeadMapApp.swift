@@ -325,6 +325,13 @@ struct MoreTabView: View {
                     }
                     .buttonStyle(.plain)
                 }
+                Section("Mine innstillinger") {
+                    NavigationLink {
+                        IndustryManagementView()
+                    } label: {
+                        moreRow(icon: "tag.fill", color: .purple, title: "Mine bransjer")
+                    }
+                }
                 Section("Innstillinger") {
                     NavigationLink {
                         OrgSettingsView()
