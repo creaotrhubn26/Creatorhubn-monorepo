@@ -503,6 +503,30 @@ export interface ComposeArgs {
   bodyText?: string;
 }
 
+// Hele paletten er Role Room-lilla (matcher Talents-appen). For Creatorhub-
+// e-poster bytter vi de lilla tokenene til Creatorhubs varme/oransje palett i
+// det ferdige HTML-et — kontaktflate-fritt for Role Room-e-poster (uendret).
+function applyCreatorhubPalette(html: string): string {
+  return html
+    // aksent-lilla → Creatorhub-oransje (hex)
+    .replace(/#a855f7/gi, '#ff8c00')
+    .replace(/#c084fc/gi, '#ffa733')
+    .replace(/#7c3aed/gi, '#cc7000')
+    .replace(/#d946ef/gi, '#ff8c00')
+    .replace(/#e879f9/gi, '#ffa733')
+    // lilla rgba-trippel (alle alfa, med/uten mellomrom) → oransje
+    .replace(/rgba\(\s*168\s*,\s*85\s*,\s*247\s*,/gi, 'rgba(255, 140, 0,')
+    .replace(/rgba\(\s*217\s*,\s*70\s*,\s*239\s*,/gi, 'rgba(255, 140, 0,')
+    // mørke lilla bakgrunner → varm mørk
+    .replace(/#0a0118/gi, '#0c0a08')
+    .replace(/#150b2e/gi, '#17120c')
+    .replace(/#1a0f3a/gi, '#211a10')
+    // lilla-tonet tekst → varm
+    .replace(/#f5f3ff/gi, '#fdf6ee')
+    .replace(/#c4b5fd/gi, '#f0d9b8')
+    .replace(/#8b7ec4/gi, '#b3a081');
+}
+
 export function composeEmail(args: ComposeArgs): { html: string; text: string } {
   const parts: string[] = [
     emailHeader(args.category, args.brand),
@@ -513,7 +537,7 @@ export function composeEmail(args: ComposeArgs): { html: string; text: string } 
   if (args.quote) parts.push(emailQuote(args.quote));
   if (args.table) parts.push(emailKeyValueTable(args.table));
   if (args.cta) parts.push(emailCTA(args.cta));
-  return renderEmail({
+  const result = renderEmail({
     subject: args.subject,
     preheader: args.preheader,
     bodyHtml: parts.join(''),
@@ -521,4 +545,8 @@ export function composeEmail(args: ComposeArgs): { html: string; text: string } 
     footer: args.footer,
     brand: args.brand,
   });
+  if (args.brand === 'creatorhub') {
+    return { html: applyCreatorhubPalette(result.html), text: result.text };
+  }
+  return result;
 }
