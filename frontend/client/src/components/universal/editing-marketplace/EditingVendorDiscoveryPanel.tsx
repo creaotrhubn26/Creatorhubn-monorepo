@@ -15,6 +15,7 @@ import {
   Card,
   CardContent,
   Typography,
+  Badge,
   Button,
   Chip,
   Avatar,
@@ -131,7 +132,7 @@ export default function EditingVendorDiscoveryPanel({
     queryFn: () => apiRequest("/api/editing/jobs?status=delivered"),
   });
 
-  const myJobsQuery = useQuery<{ jobs: Array<{ id: string; project_title: string | null; vendor_name: string | null; status: string }> }>({
+  const myJobsQuery = useQuery<{ jobs: Array<{ id: string; project_title: string | null; vendor_name: string | null; status: string; unread_messages?: number }> }>({
     queryKey: ["/api/editing/jobs"],
     queryFn: () => apiRequest("/api/editing/jobs"),
   });
@@ -514,9 +515,11 @@ export default function EditingVendorDiscoveryPanel({
                         {j.vendor_name} · {t(`jobstatus.${j.status}`, locale)}
                       </Typography>
                     </Box>
-                    <Button size="small" variant="outlined" onClick={() => setChatJobId(j.id)}>
-                      {t("myjobs_chat", locale)}
-                    </Button>
+                    <Badge color="error" badgeContent={j.unread_messages || 0} overlap="rectangular">
+                      <Button size="small" variant="outlined" onClick={() => setChatJobId(j.id)}>
+                        {t("myjobs_chat", locale)}
+                      </Button>
+                    </Badge>
                   </Box>
                 ))}
               </Stack>
@@ -526,13 +529,20 @@ export default function EditingVendorDiscoveryPanel({
       </Box>
 
       {/* Chat med vendor pr oppdrag */}
-      <Dialog open={!!chatJobId} onClose={() => setChatJobId(null)} maxWidth="sm" fullWidth>
+      <Dialog open={!!chatJobId} onClose={() => { setChatJobId(null); qc.invalidateQueries({ queryKey: ["/api/editing/jobs"] }); }} maxWidth="sm" fullWidth>
         <DialogTitle>{t("myjobs_chat", locale)}</DialogTitle>
         <DialogContent dividers>
-          {chatJobId && <EditingJobChat jobId={chatJobId} selfRole="photographer" locale={locale} />}
+          {chatJobId && (
+            <EditingJobChat
+              jobId={chatJobId}
+              selfRole="photographer"
+              locale={locale}
+              jobStatus={(myJobsQuery.data?.jobs || []).find((j) => j.id === chatJobId)?.status}
+            />
+          )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setChatJobId(null)}>{locale === "no" ? "Lukk" : "Close"}</Button>
+          <Button onClick={() => { setChatJobId(null); qc.invalidateQueries({ queryKey: ["/api/editing/jobs"] }); }}>{locale === "no" ? "Lukk" : "Close"}</Button>
         </DialogActions>
       </Dialog>
 

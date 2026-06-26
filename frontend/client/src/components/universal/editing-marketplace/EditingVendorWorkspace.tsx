@@ -33,6 +33,8 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  Skeleton,
+  Badge,
 } from "@mui/material";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
@@ -91,6 +93,7 @@ interface EditingJob {
   brief: string | null;
   amount_cents: number;
   currency: string;
+  unread_messages?: number;
 }
 
 interface Props {
@@ -306,6 +309,7 @@ interface MyFeedbackItem {
   rating: number;
   createdAt: string;
   updatedAt: string;
+  unreadReplies?: number;
 }
 
 // Improvements E (incentive), F (agreement + graduation path) and A (close-the-loop).
@@ -324,6 +328,13 @@ function PrototypeTesterPanel({
   const [showLoop, setShowLoop] = useState(false);
   const [threadId, setThreadId] = useState<string | null>(null);
   const en = locale === "en";
+  const qcPanel = useQueryClient();
+
+  // Lukk tråden + oppdater lista så «nytt svar»-merket forsvinner etter lesing.
+  const closeThread = () => {
+    setThreadId(null);
+    qcPanel.invalidateQueries({ queryKey: ["/api/prototype-testing/feedback", "mine"] });
+  };
 
   const myFeedback = useQuery<MyFeedbackItem[]>({
     queryKey: ["/api/prototype-testing/feedback", "mine"],
@@ -405,7 +416,11 @@ function PrototypeTesterPanel({
       {showLoop ? (
         <Box sx={{ mt: 1 }}>
           {myFeedback.isLoading ? (
-            <Typography variant="caption">{en ? "Loading…" : "Laster…"}</Typography>
+            <Stack spacing={1}>
+              {[0, 1].map((i) => (
+                <Skeleton key={i} variant="rounded" height={56} sx={{ borderRadius: 1 }} />
+              ))}
+            </Stack>
           ) : (myFeedback.data?.length ?? 0) === 0 ? (
             <Typography variant="caption" color="text.secondary">
               {en
@@ -442,28 +457,38 @@ function PrototypeTesterPanel({
                       <Typography variant="body2" sx={{ fontWeight: 600 }}>
                         {f.title}
                       </Typography>
-                      <Chip
-                        size="small"
-                        clickable
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setThreadId(f.id);
-                        }}
-                        color={resolved ? "success" : inProgress ? "info" : "default"}
-                        label={
-                          resolved
-                            ? en
-                              ? "Done"
-                              : "Løst"
-                            : inProgress
+                      <Stack direction="row" spacing={0.5} alignItems="center">
+                        {(f.unreadReplies ?? 0) > 0 ? (
+                          <Chip
+                            size="small"
+                            color="error"
+                            label={en ? "New reply" : "Nytt svar"}
+                            sx={{ fontWeight: 700, animation: "pulse 1.6s ease-in-out infinite", "@keyframes pulse": { "0%,100%": { opacity: 1 }, "50%": { opacity: 0.55 } } }}
+                          />
+                        ) : null}
+                        <Chip
+                          size="small"
+                          clickable
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setThreadId(f.id);
+                          }}
+                          color={resolved ? "success" : inProgress ? "info" : "default"}
+                          label={
+                            resolved
                               ? en
-                                ? "In progress"
-                                : "Underveis"
-                              : en
-                                ? "Received"
-                                : "Mottatt"
-                        }
-                      />
+                                ? "Done"
+                                : "Løst"
+                              : inProgress
+                                ? en
+                                  ? "In progress"
+                                  : "Underveis"
+                                : en
+                                  ? "Received"
+                                  : "Mottatt"
+                          }
+                        />
+                      </Stack>
                     </Stack>
                     {f.adminNotes ? (
                       <Typography variant="caption" color="success.main" sx={{ display: "block", mt: 0.5 }}>
@@ -482,7 +507,7 @@ function PrototypeTesterPanel({
         </Box>
       ) : null}
 
-      <Dialog open={!!threadId} onClose={() => setThreadId(null)} maxWidth="sm" fullWidth>
+      <Dialog open={!!threadId} onClose={closeThread} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ fontWeight: 700 }}>
           {en ? "Conversation with Creatorhub" : "Samtale med Creatorhub"}
         </DialogTitle>
@@ -492,7 +517,7 @@ function PrototypeTesterPanel({
           ) : null}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setThreadId(null)}>{en ? "Close" : "Lukk"}</Button>
+          <Button onClick={closeThread}>{en ? "Close" : "Lukk"}</Button>
         </DialogActions>
       </Dialog>
     </Box>
@@ -687,7 +712,17 @@ export default function EditingVendorWorkspace({ userId }: Props) {
         <Tab label={t("ws_tab_jobs", locale)} />
         <Tab label={t("ws_tab_compliance", locale)} />
         <Tab label={t("ws_tab_catalog", locale)} />
-        <Tab label={t("ws_tab_communication", locale)} />
+        <Tab
+          label={
+            <Badge
+              color="error"
+              badgeContent={jobs.reduce((n, j) => n + (j.unread_messages || 0), 0)}
+              sx={{ "& .MuiBadge-badge": { right: -14, top: 2 } }}
+            >
+              {t("ws_tab_communication", locale)}
+            </Badge>
+          }
+        />
       </Tabs>
 
       {/* ── Oppdrag ── */}
@@ -698,11 +733,27 @@ export default function EditingVendorWorkspace({ userId }: Props) {
             {t("ws_upload_hint", locale)}
           </Typography>
           {jobsQuery.isLoading ? (
-            <CircularProgress size={24} />
+            <Stack spacing={2}>
+              {[0, 1].map((i) => (
+                <Skeleton key={i} variant="rounded" height={120} sx={{ borderRadius: 2 }} />
+              ))}
+            </Stack>
           ) : jobs.length === 0 ? (
-            <Typography variant="body2" color="text.secondary">
-              {t("ws_no_jobs", locale)}
-            </Typography>
+            <Box
+              sx={{
+                textAlign: "center",
+                py: 6,
+                px: 2,
+                border: "1px dashed",
+                borderColor: "divider",
+                borderRadius: 2,
+              }}
+            >
+              <Typography variant="h4" aria-hidden sx={{ mb: 1 }}>📭</Typography>
+              <Typography variant="body2" color="text.secondary">
+                {t("ws_no_jobs", locale)}
+              </Typography>
+            </Box>
           ) : (
             jobs.map((j) => (
               <Card key={j.id} variant="outlined">
@@ -877,17 +928,23 @@ export default function EditingVendorWorkspace({ userId }: Props) {
           <Box>
             <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: "wrap" }}>
               {commJobs.map((j) => (
-                <Chip
-                  key={j.id}
-                  label={j.project_title || j.id.slice(0, 6)}
-                  color={active === j.id ? "primary" : "default"}
-                  onClick={() => setCommJobId(j.id)}
-                />
+                <Badge key={j.id} color="error" badgeContent={j.unread_messages || 0} overlap="rectangular">
+                  <Chip
+                    label={j.project_title || j.id.slice(0, 6)}
+                    color={active === j.id ? "primary" : "default"}
+                    onClick={() => setCommJobId(j.id)}
+                  />
+                </Badge>
               ))}
             </Stack>
             <Card variant="outlined">
               <CardContent>
-                <EditingJobChat jobId={active} selfRole="vendor" locale={locale} />
+                <EditingJobChat
+                  jobId={active}
+                  selfRole="vendor"
+                  locale={locale}
+                  jobStatus={commJobs.find((j) => j.id === active)?.status}
+                />
               </CardContent>
             </Card>
           </Box>
