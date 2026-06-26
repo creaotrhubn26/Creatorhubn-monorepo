@@ -51,6 +51,10 @@ struct MapSearchBar: View {
     /// lead → presenter quick-sheet, bransje → toggle filter i meny.
     let onSelect: (MapSearchTarget) -> Void
 
+    /// Valgfritt binding så parent kan vite om søk-panelet er ekspandert
+    /// (brukes til å skjule MapProjectCard så den ikke ligger under).
+    var isExpanded: Binding<Bool>? = nil
+
     @State private var expanded = false
     @State private var query: String = ""
     @State private var debouncedQuery: String = ""
@@ -74,6 +78,12 @@ struct MapSearchBar: View {
         .animation(.spring(response: 0.32, dampingFraction: 0.85), value: expanded)
         .padding(.horizontal, 12)
         .padding(.top, 8)
+        .onChange(of: expanded) { _, newValue in
+            // Speil expanded ut til parent (MapScreen) så den kan skjule
+            // MapProjectCard mens panelet er åpent. Unngår at empty/loading-
+            // state lyser gjennom under søke-overlayen.
+            isExpanded?.wrappedValue = newValue
+        }
     }
 
     // MARK: - Collapsed pill

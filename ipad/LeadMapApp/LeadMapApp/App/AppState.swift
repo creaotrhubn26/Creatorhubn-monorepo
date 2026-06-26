@@ -40,6 +40,12 @@ final class AppState {
 
     // Prosjekt-kontekst — hvilken bedrift jobber jeg for?
     var projects: [ProjectListItem] = []
+    /// Eksplisitt load-state for prosjekter slik at UI kan skille mellom
+    /// «laster fortsatt» og «ekte tom liste». Default `.idle` betyr at vi
+    /// ikke har trigget fetch enda — vises som loading-skeleton i kortet
+    /// så vi ikke blinker "Ingen prosjekter ennå" i 1-2 sek ved app-start.
+    /// Bug fra PR #993: empty-state ble vist mens projects fortsatt lastes.
+    var projectsLoadState: ProjectsLoadState = .idle
     var activeProjectSummary: ProjectSummary?
     var activeProjectId: String? {
         didSet {
@@ -492,6 +498,8 @@ final class AppState {
         self.metrics = nil
         self.calendar = []
         self.reminders = nil
+        self.projects = []
+        self.projectsLoadState = .idle
         self.organizations = []
         self.activeOrganizationId = nil
         self.permissions = []
@@ -504,6 +512,15 @@ final class AppState {
 
     func refreshAll() async {
         guard let api else { return }
+        // Marker prosjekter som «laster» FØR vi fyrer av kall. Hvis kortet
+        // er i .idle vil det ellers ende på empty-state i 1-2 sek mens
+        // fetchProjects pågår — bug fra PR #993 som denne fixen løser.
+        if case .loaded = projectsLoadState {
+            // Behold loaded-state ved bakgrunns-refresh så pageren ikke
+            // blinker til skeleton; bare flip når vi er i idle/failed.
+        } else {
+            projectsLoadState = .loading
+        }
         let proj = activeProjectId
         async let leadsTask = api.fetchLeads(projectId: proj)
         async let competitorsTask = api.fetchCompetitors(projectId: proj)
@@ -517,7 +534,23 @@ final class AppState {
             let newMetrics = try await metricsTask
             let newCal = try await calendarTask
             let newRem = try await remindersTask
-            self.projects = (try? await projectsTask) ?? []
+            // Spor prosjekt-fetch separat så vi kan vise ekte error-state
+            // hvis ENDA prosjekt-endepunktet feiler (andre kall kan ha
+            // returnert tomt fordi brukeren mangler leads).
+            do {
+                let newProjects = try await projectsTask
+                self.projects = newProjects
+                self.projectsLoadState = .loaded
+                // Auto-velg første prosjekt hvis ingen aktiv — matcher
+                // syncIndexFromActiveProject i MapProjectCard og gir
+                // umiddelbart kart-pins ved første start.
+                if activeProjectId == nil, let first = newProjects.first {
+                    activeProjectId = first.id
+                }
+            } catch {
+                print("[AppState] fetchProjects failed: \(error)")
+                self.projectsLoadState = .failed(error.localizedDescription)
+            }
 
             self.leads = newLeads
             self.competitors = newComps
@@ -546,6 +579,12 @@ final class AppState {
         } catch {
             print("[AppState] refresh failed (using cache): \(error)")
             self.isUsingStaleCache = true
+            // Hvis vi var midt i en initial-fetch og ALT feilet (typisk
+            // network down + ingen cache), surface error i kortet i stedet
+            // for å la det stå evig på «laster prosjekter…».
+            if case .loading = projectsLoadState {
+                self.projectsLoadState = .failed(error.localizedDescription)
+            }
         }
     }
 
@@ -627,5 +666,35 @@ final class AppState {
 struct OfflineEnqueuedError: LocalizedError {
     var errorDescription: String? {
         "Lagret offline. Sendes når dekning er tilbake."
+    }
+}
+
+/// Load-state for prosjekt-listen som vises i MapProjectCard-pageren.
+///
+/// PR #993 introduserte multi-prosjekt-swipe på MapProjectCard. Den viste
+/// «Ingen prosjekter ennå»-empty-state hvis `appState.projects.isEmpty`,
+/// men ved app-start er listen tom inntil fetchProjects returnerer →
+/// brukeren så empty-state i 1-2 sek selv om de hadde 4 prosjekter.
+///
+/// Tre tilstander:
+///   - `.idle`     — ingen fetch igangsatt enda (rett etter init)
+///   - `.loading`  — fetch pågår, vis skeleton
+///   - `.loaded`   — fetch fullført; bruk `projects.isEmpty` for ekte empty
+///   - `.failed`   — nettverksfeil; vis retry-card
+enum ProjectsLoadState: Equatable {
+    case idle
+    case loading
+    case loaded
+    case failed(String)
+
+    static func == (lhs: ProjectsLoadState, rhs: ProjectsLoadState) -> Bool {
+        switch (lhs, rhs) {
+        case (.idle, .idle), (.loading, .loading), (.loaded, .loaded):
+            return true
+        case (.failed(let a), .failed(let b)):
+            return a == b
+        default:
+            return false
+        }
     }
 }
