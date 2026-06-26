@@ -862,6 +862,7 @@ import { setupContractsRoutes } from "./contracts-routes";
 import { setupBusinessRoutes } from "./business-routes";
 import { setupAnalyticsRoutes } from "./analytics-routes";
 import { setupChatWidgetAnalyticsRoutes } from "./chat-widget-analytics-routes";
+import { setupPrototypeReportRoutes } from "./prototype-report-routes";
 import { setupCommunityRoutes } from "./community-routes";
 import { setupUserRoutes } from "./user-routes";
 import { setupQuotesRoutes } from "./quotes-routes";
@@ -65628,6 +65629,13 @@ setupChatWidgetAnalyticsRoutes({
   app,
   pool,
   requireUserSession,
+  adminRoles: ADMIN_SESSION_ROLES,
+});
+
+setupPrototypeReportRoutes({
+  app,
+  pool,
+  getActiveSessionFromRequest,
   adminRoles: ADMIN_SESSION_ROLES,
 });
 

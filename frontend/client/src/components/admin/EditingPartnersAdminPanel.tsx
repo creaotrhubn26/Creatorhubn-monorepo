@@ -6,13 +6,13 @@
  * VANLIG KUNDE (partner-fee). Kan endre type/fee/varighet senere. Filtrerbar på type.
  */
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Box, Card, CardContent, Typography, Button, Chip, Stack, Tabs, Tab, Divider,
   Dialog, DialogTitle, DialogContent, DialogActions, RadioGroup, FormControlLabel,
   Radio, TextField, MenuItem, Alert, CircularProgress, Tooltip, Snackbar,
-  ThemeProvider,
+  ThemeProvider, Switch,
 } from "@mui/material";
 import { adminDarkTheme } from "./adminDarkTheme";
 import ScienceIcon from "@mui/icons-material/Science";
@@ -46,6 +46,74 @@ function vendorTypeLabel(v: Vendor): { label: string; color: "info" | "success" 
 }
 
 type DecisionTarget = { kind: "app"; app: PartnerApp } | { kind: "vendor"; vendor: Vendor };
+
+// E-postrapport om prototype-testernes fremdrift — konfigurerbar mottaker + på/av
+// + «Send nå». Vises i Prototype-testere-fanen.
+function PrototypeReportSettings() {
+  const qc = useQueryClient();
+  const [email, setEmail] = useState("");
+  const [enabled, setEnabled] = useState(true);
+  const [snack, setSnack] = useState("");
+  const settings = useQuery<{ recipientEmail: string; enabled: boolean }>({
+    queryKey: ["/api/superadmin/prototype-report/settings"],
+    queryFn: () => apiRequest("/api/superadmin/prototype-report/settings"),
+  });
+  useEffect(() => {
+    if (settings.data) {
+      setEmail(settings.data.recipientEmail);
+      setEnabled(settings.data.enabled);
+    }
+  }, [settings.data]);
+  const save = useMutation({
+    mutationFn: () =>
+      apiRequest("/api/superadmin/prototype-report/settings", {
+        method: "PUT",
+        body: { recipientEmail: email, enabled },
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/superadmin/prototype-report/settings"] });
+      setSnack("Lagret.");
+    },
+    onError: () => setSnack("Kunne ikke lagre."),
+  });
+  const sendNow = useMutation({
+    mutationFn: () => apiRequest("/api/superadmin/prototype-report/send-now", { method: "POST" }),
+    onSuccess: (r: any) =>
+      setSnack(r?.sent ? `Rapport sendt til ${r.recipient} (${r.testerCount} testere).` : "Rapporten er avskrudd."),
+    onError: () => setSnack("Kunne ikke sende."),
+  });
+  return (
+    <Card variant="outlined" sx={{ bgcolor: "rgba(255,140,0,0.06)" }}>
+      <CardContent>
+        <Typography sx={{ fontWeight: 700, mb: 0.5 }}>📧 Fremdriftsrapport på e-post</Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+          Oppsummering av prototype-testernes aktivitet (innlogging, hendelser, feedback, oppdrag) på e-post.
+          Endre mottaker eller skru av når som helst. «Send nå» sender en med en gang.
+        </Typography>
+        <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems={{ sm: "center" }}>
+          <TextField
+            size="small"
+            label="Mottaker-e-post"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            sx={{ flex: 1, minWidth: 240 }}
+          />
+          <FormControlLabel
+            control={<Switch checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />}
+            label="På"
+          />
+          <Button variant="contained" size="small" disabled={save.isPending} onClick={() => save.mutate()}>
+            Lagre
+          </Button>
+          <Button variant="outlined" size="small" disabled={sendNow.isPending} onClick={() => sendNow.mutate()}>
+            Send nå
+          </Button>
+        </Stack>
+        <Snackbar open={!!snack} autoHideDuration={4000} onClose={() => setSnack("")} message={snack} />
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function EditingPartnersAdminPanel() {
   const qc = useQueryClient();
@@ -175,6 +243,7 @@ export default function EditingPartnersAdminPanel() {
       {/* Vendor-lister */}
       {filter > 1 && (
         <Stack spacing={1.5}>
+          {filter === 2 && <PrototypeReportSettings />}
           {filter === 2 && (protoFeedback.data?.overdueCount ?? 0) > 0 && (
             <Alert severity="warning">
               {protoFeedback.data?.overdueCount} prototype-tester(e) har ikke gitt tilbakemelding på en stund
