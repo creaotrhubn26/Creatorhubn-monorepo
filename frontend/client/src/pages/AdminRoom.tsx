@@ -472,7 +472,7 @@ export function FundingAppsTab() {
     setError(null);
     try {
       const data = await fundingAppsApi.list();
-      setItems(data);
+      setItems(Array.isArray(data) ? data : []);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -936,7 +936,8 @@ export function InvestorContactsTab() {
     setLoading(true);
     setError(null);
     try {
-      setItems(await investorContactsApi.list());
+      const data = await investorContactsApi.list();
+      setItems(Array.isArray(data) ? data : []);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -1228,7 +1229,8 @@ export function PartnerContactsTab() {
     setLoading(true);
     setError(null);
     try {
-      setItems(await partnerContactsApi.list());
+      const data = await partnerContactsApi.list();
+      setItems(Array.isArray(data) ? data : []);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -1763,7 +1765,7 @@ export function ActivityLogTab() {
     let cancelled = false;
     setLoading(true);
     activityLogApi.list({ limit: 100 })
-      .then((data) => { if (!cancelled) setEntries(data); })
+      .then((data) => { if (!cancelled) setEntries(Array.isArray(data) ? data : []); })
       .catch((err) => { if (!cancelled) setError((err as Error).message); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -1838,9 +1840,9 @@ function DashboardTab({ onJumpToTab }: { onJumpToTab: (tab: AdminRoomTab) => voi
       businessPlanApi.get().catch(() => null),
     ]).then(([f, i, p, bp]) => {
       if (cancelled) return;
-      setFunding(f);
-      setInvestors(i);
-      setPartners(p);
+      setFunding(Array.isArray(f) ? f : []);
+      setInvestors(Array.isArray(i) ? i : []);
+      setPartners(Array.isArray(p) ? p : []);
       setPlan(bp);
     }).finally(() => {
       if (!cancelled) setLoading(false);
@@ -3536,7 +3538,8 @@ function PostAgentSeatsTab() {
   if (error) return <Alert severity="error">Kunne ikke laste seats: {error}</Alert>;
   if (!data) return null;
 
-  const { seats, summary } = data;
+  const { summary } = data;
+  const seats = Array.isArray(data.seats) ? data.seats : [];
 
   return (
     <Stack spacing={3}>

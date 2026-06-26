@@ -49,7 +49,7 @@ export default function LeadMapAutoAssignDialog({ open, organizationId, onClose,
       const j = await r.json();
       if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
       const counts: Record<string, number> = {};
-      for (const a of (j.assignments ?? [])) {
+      for (const a of (Array.isArray(j.assignments) ? j.assignments : [])) {
         counts[a.matchType] = (counts[a.matchType] ?? 0) + 1;
       }
       setResult({ assigned: j.assigned ?? 0, per_match_type: counts });

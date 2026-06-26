@@ -112,6 +112,7 @@ export function PostAgentPricingPanel({ theming, priceManagementSurfaceSx }: Pro
         return;
       }
       const json = (await res.json()) as StripeProductSnapshot;
+      if (!Array.isArray(json.prices)) json.prices = [];
       setData(json);
       // Sync local form-state from server
       const monthlyPrice = json.prices.find((p) => p.recurring?.interval === 'month' && p.active);

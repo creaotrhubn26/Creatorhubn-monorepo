@@ -138,9 +138,10 @@ export const UserCostOverviewPanel: React.FC = () => {
 
   const filteredRows = useMemo(() => {
     if (!data) return [];
-    if (!search.trim()) return data.rows;
+    const rows = Array.isArray(data.rows) ? data.rows : [];
+    if (!search.trim()) return rows;
     const q = search.trim().toLowerCase();
-    return data.rows.filter(
+    return rows.filter(
       (r) =>
         r.userId.toLowerCase().includes(q) ||
         r.planType.toLowerCase().includes(q),

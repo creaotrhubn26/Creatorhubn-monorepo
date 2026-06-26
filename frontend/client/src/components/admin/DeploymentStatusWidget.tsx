@@ -184,7 +184,7 @@ export default function DeploymentStatusWidget({ onOpenFeatureManagement }: Depl
           <Typography variant="subtitle2" gutterBottom>
             Recent Changes
           </Typography>
-          {environmentDiff?.diff?.slice(0, 3).map((item: any, index: number) => (
+          {(Array.isArray(environmentDiff?.diff) ? environmentDiff.diff : []).slice(0, 3).map((item: any, index: number) => (
             <Box key={index} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
               <Chip
                 icon={getStatusIcon(item.status)}

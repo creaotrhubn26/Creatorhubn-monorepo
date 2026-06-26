@@ -409,7 +409,7 @@ export default function UniversalAdminCMS() {
       </Stack>
 
       <Grid container spacing={3}>
-        {cmsPages.map((page: CmsPage) => (
+        {(Array.isArray(cmsPages) ? cmsPages : []).map((page: CmsPage) => (
           <Grid item xs={12} md={6} lg={4} key={page.id}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
@@ -493,7 +493,7 @@ export default function UniversalAdminCMS() {
             <Typography variant="h5" gutterBottom sx={{ color: theming.colors.primary }}>
               👥 Brukeradministrasjon
             </Typography>
-            <Typography variant="body1">Totalt {users.length} brukere registrert</Typography>
+            <Typography variant="body1">Totalt {(Array.isArray(users) ? users : []).length} brukere registrert</Typography>
           </Box>
         );
       default: return renderDashboard();
@@ -643,7 +643,7 @@ export default function UniversalAdminCMS() {
             <FormControl fullWidth>
               <InputLabel>Profesjon</InputLabel>
               <Select defaultValue="photographer">
-                {professions.map((prof: { key: string; name: string }) => (
+                {(Array.isArray(professions) ? professions : []).map((prof: { key: string; name: string }) => (
                   <MenuItem key={prof.key} value={prof.key}>
                     {prof.name}
                   </MenuItem>

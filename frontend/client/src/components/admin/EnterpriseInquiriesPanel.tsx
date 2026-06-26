@@ -127,7 +127,7 @@ export default function EnterpriseInquiriesPanel({ onNavigateToPricing }: Enterp
     pricePerUser: 299,
   };
 
-  const inquiries: EnterpriseInquiry[] = data?.inquiries || [];
+  const inquiries: EnterpriseInquiry[] = Array.isArray(data?.inquiries) ? data.inquiries : [];
   const stats: InquiryStats = data?.stats || { total: 0, pending: 0, reviewing: 0, approved: 0, rejected: 0, converted: 0 };
 
   // Update mutation

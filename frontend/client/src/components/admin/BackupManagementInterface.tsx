@@ -84,7 +84,8 @@ export default function BackupManagementInterface() {
       if (!response.ok) {
         throw new Error('Kunne ikke hente backup-liste');
       }
-      return (await response.json()) as BackupItem[];
+      const json = await response.json();
+      return (Array.isArray(json) ? json : []) as BackupItem[];
     },
     refetchInterval: 3000, // Refresh every 30 seconds
   });
@@ -97,7 +98,8 @@ export default function BackupManagementInterface() {
       if (!response.ok) {
         throw new Error('Kunne ikke hente backup-notifikasjoner');
       }
-      return (await response.json()) as BackupNotification[];
+      const json = await response.json();
+      return (Array.isArray(json) ? json : []) as BackupNotification[];
     },
     refetchInterval: 1000, // Refresh every 10 seconds
   });

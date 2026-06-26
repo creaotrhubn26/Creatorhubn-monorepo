@@ -149,7 +149,7 @@ export default function LeadMapLeaderboardPanel() {
         );
         if (r.ok) {
           const j = await r.json();
-          setTeams(j.teams ?? []);
+          setTeams(Array.isArray(j.teams) ? j.teams : []);
         }
       } catch { /* noop */ }
     })();
@@ -174,7 +174,7 @@ export default function LeadMapLeaderboardPanel() {
         throw new Error(j.error ?? `HTTP ${lbRes.status}`);
       }
       const lbJson = await lbRes.json();
-      setEntries(lbJson.leaderboard ?? []);
+      setEntries(Array.isArray(lbJson.leaderboard) ? lbJson.leaderboard : []);
       if (sumRes.ok) {
         setSummary(await sumRes.json());
       }

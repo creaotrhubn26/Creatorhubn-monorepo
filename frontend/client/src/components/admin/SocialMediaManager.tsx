@@ -157,7 +157,7 @@ export default function SocialMediaManager() {
   const queryClient = useQueryClient();
 
   // Fetch social media posts
-  const { data: posts = [], isLoading: _isLoading } = useQuery({
+  const { data: postsData = [], isLoading: _isLoading } = useQuery({
     queryKey: ['/api/social-media/posts, '],
     queryFn: async () => {
       const response = await fetch('/api/social-media/posts');
@@ -165,6 +165,7 @@ export default function SocialMediaManager() {
       return response.json();
     },
   });
+  const posts: SocialPost[] = Array.isArray(postsData) ? postsData : [];
 
   // Upload media mutation (YouTube, Instagram, etc.)
   const uploadMediaMutation = useMutation({

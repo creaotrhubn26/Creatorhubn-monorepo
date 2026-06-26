@@ -293,7 +293,8 @@ export default function DocumentationBrowser() {
       } finally {
         endTiming();
       }
-    }
+    },
+    select: (data) => (Array.isArray(data) ? data : []),
   });
   
   // Filter docs by search
@@ -380,7 +381,7 @@ export default function DocumentationBrowser() {
         }),
         headers
       });
-      setRelatedDocs(response.related || []);
+      setRelatedDocs(Array.isArray(response.related) ? response.related : []);
     } catch (e) {
       console.warn('Failed to find related docs:', e);
     }

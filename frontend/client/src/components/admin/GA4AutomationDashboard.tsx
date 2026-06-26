@@ -349,7 +349,7 @@ export default function GA4AutomationDashboard() {
                 Status: {status.measurementProtocol.status}
               </Typography>
               <Typography variant="body2" sx={{ color: '#ffa726', mb: 2 }}>
-                Events: {status.measurementProtocol.eventsSupported.length}
+                Events: {(Array.isArray(status.measurementProtocol.eventsSupported) ? status.measurementProtocol.eventsSupported : []).length}
               </Typography>
               <Button
                 variant="outlined"
@@ -387,7 +387,7 @@ export default function GA4AutomationDashboard() {
             Supported Events
           </Typography>
           <Grid container spacing={1}>
-            {status.measurementProtocol.eventsSupported.map((event, index) => (
+            {(Array.isArray(status.measurementProtocol.eventsSupported) ? status.measurementProtocol.eventsSupported : []).map((event, index) => (
               <Grid item key={index}>
                 <Chip
                   label={event.replace('_', ', ')}

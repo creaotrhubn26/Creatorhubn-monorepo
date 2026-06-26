@@ -192,8 +192,8 @@ export default function AutomationsPanel({
     successRate: 100
 };
 
-  const automations = automationsData?.automations || [];
-  const workflows = automationsData?.workflows || [];
+  const automations = Array.isArray(automationsData?.automations) ? automationsData.automations : [];
+  const workflows = Array.isArray(automationsData?.workflows) ? automationsData.workflows : [];
 
   const getAutomationIcon = (type: string) => {
     switch (type) {

@@ -147,7 +147,7 @@ export default function CustomerSuccessDashboard() {
       });
       if (r.ok) {
         const body = await r.json();
-        setInteractions(body.interactions ?? []);
+        setInteractions(Array.isArray(body.interactions) ? body.interactions : []);
       }
     } catch (e) {
       // noop
@@ -199,6 +199,8 @@ export default function CustomerSuccessDashboard() {
       </Card>
     );
   }
+
+  const customers = Array.isArray(data.customers) ? data.customers : [];
 
   return (
     <Card sx={{ bgcolor: palette.bg, border: `1px solid ${palette.border}`, borderRadius: 2 }}>
@@ -292,15 +294,15 @@ export default function CustomerSuccessDashboard() {
 
         {/* Kunde-liste */}
         <Typography sx={{ fontWeight: 700, fontSize: '0.92rem', color: palette.textPrimary, mb: 1.4 }}>
-          Trenger oppmerksomhet ({data.customers.length})
+          Trenger oppmerksomhet ({customers.length})
         </Typography>
-        {data.customers.length === 0 ? (
+        {customers.length === 0 ? (
           <Alert severity="info" sx={{ fontSize: '0.84rem' }}>
             Ingen kunder å vise. Kunder lastes inn fra users-tabellen — sjekk at dashboard-endpointet returnerer riktig.
           </Alert>
         ) : (
           <Stack spacing={0.8}>
-            {data.customers.map((c) => {
+            {customers.map((c) => {
               const meta = TIER_META[c.tier];
               return (
                 <Box key={c.userId} sx={{
@@ -347,7 +349,7 @@ export default function CustomerSuccessDashboard() {
               );
             })}
             {/* AI-suggestion vises ekspandert hvis tilgjengelig */}
-            {data.customers.some((c) => c.aiNextAction) && (
+            {customers.some((c) => c.aiNextAction) && (
               <Typography sx={{ fontSize: '0.74rem', color: palette.textMuted, mt: 1, fontStyle: 'italic' }}>
                 💡 Klikk en kunde for å se Claude-genererte next-action-forslag
               </Typography>

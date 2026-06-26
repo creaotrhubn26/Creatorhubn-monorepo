@@ -131,6 +131,7 @@ export default function ABTestingManager() {
       }
       return (await res.json()) as ABTest[];
     },
+    select: (data) => (Array.isArray(data) ? data : []),
   });
 
   const createTestMutation = useMutation({
@@ -252,7 +253,10 @@ export default function ABTestingManager() {
       tests.reduce(
         (sum, test) =>
           sum +
-          test.variants.reduce((variantSum, variant) => variantSum + (variant.metrics.views ?? 0), 0),
+          (Array.isArray(test.variants) ? test.variants : []).reduce(
+            (variantSum, variant) => variantSum + (variant.metrics?.views ?? 0),
+            0,
+          ),
         0,
       ),
     [tests],
@@ -405,7 +409,8 @@ export default function ABTestingManager() {
       ) : (
         <Stack spacing={2}>
           {tests.map((test) => {
-            const winner = test.variants.find((variant) => variant.id === test.results?.winner);
+            const variants = Array.isArray(test.variants) ? test.variants : [];
+            const winner = variants.find((variant) => variant.id === test.results?.winner);
             return (
               <Card key={test.id}>
                 <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -422,7 +427,7 @@ export default function ABTestingManager() {
                         <Chip size="small" label={test.status} color={getStatusColor(test.status)} />
                       </Stack>
                       <Typography color="text.secondary" variant="body2">
-                        {test.variants.length} variants | primary metric: {test.config.primaryMetric}
+                        {variants.length} variants | primary metric: {test.config.primaryMetric}
                       </Typography>
                     </Box>
                     <Stack direction="row" spacing={1}>
@@ -489,7 +494,7 @@ export default function ABTestingManager() {
                   )}
 
                   <Grid container spacing={1.5}>
-                    {test.variants.map((variant) => (
+                    {variants.map((variant) => (
                       <Grid key={variant.id} xs={12} md={6} lg={4}>
                         <Card variant="outlined">
                           <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>

@@ -803,6 +803,7 @@ export default function CustomerJourneyBuilder({ selectedProfession = 'photograp
       const headers = await auth.getAuthHeader();
       return apiRequest(`/api/admin/customer-journey/templates?profession=${selectedProfession}`, { headers });
     },
+    select: (d: unknown) => (Array.isArray(d) ? d : []),
 });
 
   // ✅ Fetch available components
@@ -812,6 +813,7 @@ export default function CustomerJourneyBuilder({ selectedProfession = 'photograp
       const headers = await auth.getAuthHeader();
       return apiRequest(`/api/admin/customer-journey/components?profession=${selectedProfession}`, { headers });
     },
+    select: (d: unknown) => (Array.isArray(d) ? d : []),
 });
 
   // ✅ Profession configuration (memoized for performance)

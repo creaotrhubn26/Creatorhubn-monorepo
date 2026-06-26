@@ -152,13 +152,14 @@ export default function LeadMapPermissionsMatrix({ open, onClose, highlightRole 
         if (!defRes.ok) throw new Error(`Defaults HTTP ${defRes.status}`);
         const catalogJson = await catalogRes.json();
         const defJson = await defRes.json();
-        setCatalog(catalogJson.permissions ?? []);
+        const permissions: PermissionDef[] = Array.isArray(catalogJson.permissions) ? catalogJson.permissions : [];
+        setCatalog(permissions);
         const defs: Record<string, Set<string>> = {};
         for (const [role, perms] of Object.entries(defJson.defaults ?? {})) {
-          defs[role] = new Set(perms as string[]);
+          defs[role] = new Set(Array.isArray(perms) ? (perms as string[]) : []);
         }
         // Admin har alltid alle — backend har sikkerhets-floor
-        defs.admin = new Set((catalogJson.permissions ?? []).map((p: PermissionDef) => p.key));
+        defs.admin = new Set(permissions.map((p) => p.key));
         setRoleDefaults(defs);
       } catch (err) {
         setError(String(err));

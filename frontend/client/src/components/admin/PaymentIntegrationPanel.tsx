@@ -356,10 +356,11 @@ export default function PaymentIntegrationPanel({
   });
 
   // Get user subscriptions
-  const { data: userSubscriptions = [] } = useQuery({
+  const { data: userSubscriptionsRaw = [] } = useQuery({
     queryKey: ['user-subscriptions'],
     queryFn: () => paymentProcessingService.getUserSubscriptions('user-id')
   });
+  const userSubscriptions = Array.isArray(userSubscriptionsRaw) ? userSubscriptionsRaw : [];
 
   const handleTestPayment = async (paymentMethod: PaymentMethod) => {
     try {

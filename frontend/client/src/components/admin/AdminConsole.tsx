@@ -176,8 +176,9 @@ export const AdminConsole: React.FC = () => {
     });
 
       if (data.logs) {
-        setSystemLogs(data.logs);
-        addLog('response', `✅ EKTE DATA: ${data.logs.length} logger fra live server (${endTime - startTime}ms)`);
+        const logsArray = Array.isArray(data.logs) ? data.logs : [];
+        setSystemLogs(logsArray);
+        addLog('response', `✅ EKTE DATA: ${logsArray.length} logger fra live server (${endTime - startTime}ms)`);
         addLog(
           'info',
           `📊 Server uptime: ${Math.floor(data.serverUptime)} sek, Memory: ${Math.round(

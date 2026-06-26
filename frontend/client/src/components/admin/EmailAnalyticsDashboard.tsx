@@ -133,7 +133,7 @@ export default function EmailAnalyticsDashboard() {
   });
 
   // Fetch campaigns
-  const { data: campaigns = [] } = useQuery({
+  const { data: campaignsData = [] } = useQuery({
     queryKey: ['/api/admin/email-campaigns'],
     queryFn: async () => {
       const headers = await auth.getAuthHeader();
@@ -141,9 +141,10 @@ export default function EmailAnalyticsDashboard() {
     },
     staleTime: 5 * 60 * 1000,
   });
+  const campaigns = Array.isArray(campaignsData) ? campaignsData : [];
 
   // Fetch link analytics for selected campaign
-  const { data: linkAnalytics = [] } = useQuery({
+  const { data: linkAnalyticsData = [] } = useQuery({
     queryKey: ['/api/admin/email-link-analytics', selectedCampaign],
     queryFn: async () => {
       const headers = await auth.getAuthHeader();
@@ -151,6 +152,7 @@ export default function EmailAnalyticsDashboard() {
     },
     enabled: !!selectedCampaign,
   });
+  const linkAnalytics = Array.isArray(linkAnalyticsData) ? linkAnalyticsData : [];
 
   const handleRefresh = () => {
     queryClient.invalidateQueries({ queryKey: ['/api/admin/email-analytics'] });

@@ -566,7 +566,7 @@ export default function ProfessionTypeManager() {
           </Typography>
           
           <Grid container spacing={2}>
-            {activeProfessions?.professions?.map((profession: ProfessionTypeConfig) => (
+            {(Array.isArray(activeProfessions?.professions) ? activeProfessions.professions : []).map((profession: ProfessionTypeConfig) => (
               <Grid item xs={12} sm={6} md={4} key={profession.id}>
                 <Card sx={{ 
                   height: '100%',
@@ -697,7 +697,7 @@ export default function ProfessionTypeManager() {
           </Alert>
           
           <Grid container spacing={2}>
-            {availableTemplates?.templates?.map((template: ProfessionTypeConfig) => (
+            {(Array.isArray(availableTemplates?.templates) ? availableTemplates.templates : []).map((template: ProfessionTypeConfig) => (
               <Grid item xs={12} sm={6} md={4} key={template.id}>
                 <Card sx={{ 
                   height: '100%',
@@ -834,7 +834,7 @@ export default function ProfessionTypeManager() {
           </Alert>
           
           <Grid container spacing={2}>
-            {activeProfessions?.professions?.map((profession: ProfessionTypeConfig) => (
+            {(Array.isArray(activeProfessions?.professions) ? activeProfessions.professions : []).map((profession: ProfessionTypeConfig) => (
               <Grid item xs={12} md={6} key={profession.id}>
                 <Card>
                   <CardContent>

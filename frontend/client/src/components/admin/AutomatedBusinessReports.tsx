@@ -225,9 +225,9 @@ const AutomatedBusinessReports: React.FC = () => {
         schedulesRes.json(),
       ]);
 
-      setReportTemplates(templates);
-      setGeneratedReports(reports);
-      setReportSchedules(schedules);
+      setReportTemplates(Array.isArray(templates) ? templates : []);
+      setGeneratedReports(Array.isArray(reports) ? reports : []);
+      setReportSchedules(Array.isArray(schedules) ? schedules : []);
     } catch (error) {
       console.error('❌ Error fetching report data: ', error);
       toast({

@@ -194,7 +194,7 @@ export default function GoogleWalletMembershipManager({
 }, [communication]);
 
   // Fetch membership cards
-  const { data: membershipCards = [], isLoading: cardsLoading } = useQuery({
+  const { data: membershipCardsData = [], isLoading: cardsLoading } = useQuery({
     queryKey: ['/api/google-wallet/membership-cards', user?.id],
     queryFn: async () => {
       const headers = await auth.getAuthHeader();
@@ -202,15 +202,17 @@ export default function GoogleWalletMembershipManager({
     },
     enabled: !!user?.id,
 });
+  const membershipCards: any[] = Array.isArray(membershipCardsData) ? membershipCardsData : [];
 
   // Fetch organizations
-  const { data: organizations = [] } = useQuery({
+  const { data: organizationsData = [] } = useQuery({
     queryKey: ['/api/google-wallet/organizations'],
     queryFn: async () => {
       const headers = await auth.getAuthHeader();
       return apiRequest('/api/google-wallet/organizations', { headers });
     },
 });
+  const organizations: any[] = Array.isArray(organizationsData) ? organizationsData : [];
 
   // Create membership card mutation
   const createMembershipCardMutation = useMutation({

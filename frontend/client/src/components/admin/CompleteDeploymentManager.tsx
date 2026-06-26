@@ -1007,7 +1007,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
 },
     onSuccess: (data: ApiResponseData) => {
       setQualityAnalysis(data);
-      setComponentAnalyses(data.componentAnalyses || []);
+      setComponentAnalyses(Array.isArray(data.componentAnalyses) ? data.componentAnalyses : []);
 },
 });
 
@@ -1967,12 +1967,12 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
                       <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                         <Typography variant="subtitle1">
                           <CheckCircleIcon color="success" sx={{ mr:  1 }} />
-                          Deployed Components ({deploymentResult.deployedComponents.length})
+                          Deployed Components ({(Array.isArray(deploymentResult.deployedComponents) ? deploymentResult.deployedComponents : []).length})
                         </Typography>
                       </AccordionSummary>
                       <AccordionDetails>
                         <List dense>
-                          {deploymentResult.deployedComponents.map((component, idx) => (
+                          {(Array.isArray(deploymentResult.deployedComponents) ? deploymentResult.deployedComponents : []).map((component, idx) => (
                             <ListItem key={idx}>
                               <ListItemIcon>
                                 <CheckCircleIcon color="success" />
@@ -1988,12 +1988,12 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
                       <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                         <Typography variant="subtitle1">
                           <CodeIcon color="primary" sx={{ mr:  1 }} />
-                          Updated Files ({deploymentResult.updatedFiles.length})
+                          Updated Files ({(Array.isArray(deploymentResult.updatedFiles) ? deploymentResult.updatedFiles : []).length})
                         </Typography>
                       </AccordionSummary>
                       <AccordionDetails>
                         <List dense>
-                          {deploymentResult.updatedFiles.map((file, idx) => (
+                          {(Array.isArray(deploymentResult.updatedFiles) ? deploymentResult.updatedFiles : []).map((file, idx) => (
                             <ListItem key={idx}>
                               <ListItemIcon>
                                 <CodeIcon color="primary" />
@@ -2116,7 +2116,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
               icon={<BugReportIcon />}
               label={
                 <Badge 
-                   badgeContent={feedbackData?.feedback?.filter(f => f.status === 'open').length || 0}
+                   badgeContent={(Array.isArray(feedbackData?.feedback) ? feedbackData.feedback : []).filter(f => f.status === 'open').length || 0}
                   color="error"
                 >
                   Feedback Fixes
@@ -2302,7 +2302,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
             </Box>
           ) : (
             <Grid container spacing={2}>
-              {feedbackData?.feedback?.map((feedback) => (
+              {(Array.isArray(feedbackData?.feedback) ? feedbackData.feedback : []).map((feedback) => (
                 <Grid item xs={12} md={6} key={feedback.id}>
                   <Card sx={{ height: '100%'}}>
                     <CardContent>
@@ -2365,7 +2365,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
                         <Box>
                           <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 600, color: CREATOR_HUB_BRANDING.colors.PHOTOGRAPHY }}>
                             🤖 AI Analysis Results: </Typography>
-                          {feedback.aiAnalysis.suggestedFixes.map((fix) => (
+                          {(Array.isArray(feedback.aiAnalysis.suggestedFixes) ? feedback.aiAnalysis.suggestedFixes : []).map((fix) => (
                             <Card key={fix.id} sx={{ mb: 2, p: 2, border: '1px solid #e0e0e0'}}>
                               {/* Fix Header */}
                               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
@@ -2538,7 +2538,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
                     <TableRow key={deployment.id}>
                       <TableCell>
                         <Typography variant="body2" sx={{ fontWeight: 500}}>
-                          {feedbackData?.feedback?.find(f => f.id === deployment.feedbackId)?.title || 'Unknown'}
+                          {(Array.isArray(feedbackData?.feedback) ? feedbackData.feedback : []).find(f => f.id === deployment.feedbackId)?.title || 'Unknown'}
                         </Typography>
                       </TableCell>
                       <TableCell>
@@ -2704,7 +2704,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {systemHealth.checks.map((check, index) => (
+                      {(Array.isArray(systemHealth.checks) ? systemHealth.checks : []).map((check, index) => (
                         <TableRow key={index}>
                           <TableCell>
                             <Typography variant="body2" sx={{ fontFamily: 'monospace'}}>

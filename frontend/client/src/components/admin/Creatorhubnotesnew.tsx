@@ -522,7 +522,7 @@ function CreatorHubNotesInner() {
     queryFn: async () => {
       const headers = await auth.getAuthHeader();
       const response = await apiRequest('/api/notes', { headers });
-      return response as Note[];
+      return (Array.isArray(response) ? response : []) as Note[];
     },
     enabled: isAuthenticated,
     staleTime: 15000,
@@ -1042,7 +1042,7 @@ function CreatorHubNotesInner() {
         headers
       });
       
-      setDocSuggestions(response.suggestions || []);
+      setDocSuggestions(Array.isArray(response.suggestions) ? response.suggestions : []);
       
       analytics.trackEvent('doc_suggestions_fetched', {
         noteId: selectedNote.id,

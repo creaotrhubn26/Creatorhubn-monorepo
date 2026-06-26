@@ -123,6 +123,9 @@ const UserInstallationsPanel: React.FC<Props> = ({ users }) => {
 
   const selectedUser = users.find((u) => u.id === selectedUserId);
 
+  const installedApps = Array.isArray(data?.installedApps) ? data.installedApps : [];
+  const subscriptions = Array.isArray(data?.subscriptions) ? data.subscriptions : [];
+
   return (
     <Box>
       <Card>
@@ -205,12 +208,12 @@ const UserInstallationsPanel: React.FC<Props> = ({ users }) => {
                   </Box>
                   <Stack direction="row" spacing={1}>
                     <Chip
-                      label={`${data.installedApps.length} apper`}
+                      label={`${installedApps.length} apper`}
                       icon={<AppsIcon />}
                       sx={{ bgcolor: alpha('#7c3aed', 0.15) }}
                     />
                     <Chip
-                      label={`${data.subscriptions.length} abonnement`}
+                      label={`${subscriptions.length} abonnement`}
                       icon={<CardIcon />}
                       sx={{ bgcolor: alpha('#10b981', 0.15) }}
                     />
@@ -228,7 +231,7 @@ const UserInstallationsPanel: React.FC<Props> = ({ users }) => {
                   <AppsIcon fontSize="small" sx={{ verticalAlign: 'text-bottom', mr: 0.5 }} />
                   Installerte apper
                 </Typography>
-                {data.installedApps.length === 0 ? (
+                {installedApps.length === 0 ? (
                   <Typography variant="caption" color="text.secondary">
                     Ingen apper installert ennå.
                   </Typography>
@@ -242,7 +245,7 @@ const UserInstallationsPanel: React.FC<Props> = ({ users }) => {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {data.installedApps.map((app) => (
+                      {installedApps.map((app) => (
                         <TableRow key={app.appId}>
                           <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>{app.appId}</TableCell>
                           <TableCell>{fmtDate(app.installedAt)}</TableCell>
@@ -266,7 +269,7 @@ const UserInstallationsPanel: React.FC<Props> = ({ users }) => {
                   <CardIcon fontSize="small" sx={{ verticalAlign: 'text-bottom', mr: 0.5 }} />
                   Abonnement & fornyelse
                 </Typography>
-                {data.subscriptions.length === 0 ? (
+                {subscriptions.length === 0 ? (
                   <Typography variant="caption" color="text.secondary">
                     Ingen aktive abonnement registrert i Stripe.
                   </Typography>
@@ -282,7 +285,7 @@ const UserInstallationsPanel: React.FC<Props> = ({ users }) => {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {data.subscriptions.map((sub) => {
+                      {subscriptions.map((sub) => {
                         const status = STATUS_LABEL[sub.status] || { label: sub.status, color: 'default' as const };
                         const days = daysUntil(sub.currentPeriodEnd);
                         const renewalUrgent = days != null && days >= 0 && days <= 7;

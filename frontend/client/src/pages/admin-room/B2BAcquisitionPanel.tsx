@@ -251,7 +251,8 @@ export default function B2BAcquisitionPanel() {
   if (!funnel) return null;
 
   const tierCounts = funnel.score_distribution;
-  const totalLeads = Object.values(funnel.funnel).reduce((a, b) => a + b, 0);
+  const recentLeads = Array.isArray(funnel.recent) ? funnel.recent : [];
+  const totalLeads = Object.values(funnel.funnel ?? {}).reduce((a, b) => a + b, 0);
   const conversionRate = funnel.last_30d.new_30d
     ? Math.round((funnel.last_30d.won_30d / funnel.last_30d.new_30d) * 100)
     : 0;
@@ -335,22 +336,25 @@ export default function B2BAcquisitionPanel() {
       </Section>
 
       {/* Attribusjon — hvor kommer leadene fra? */}
-      {attribution ? (
+      {attribution ? (() => {
+        const bySource = Array.isArray(attribution.by_source) ? attribution.by_source : [];
+        const byPaidChannel = Array.isArray(attribution.by_paid_channel) ? attribution.by_paid_channel : [];
+        return (
         <Section
-          title={`Attribusjon (${attribution.by_source.length} kilder)`}
+          title={`Attribusjon (${bySource.length} kilder)`}
           Icon={CampaignOutlinedIcon}
           open={openSection === 'attribution'}
           onToggle={() => toggle('attribution')}
         >
           {/* Paid-channel-fordeling */}
-          {attribution.by_paid_channel.length > 0 ? (
+          {byPaidChannel.length > 0 ? (
             <Box sx={{ mb: 2.4 }}>
               <Typography sx={{ color: 'rgba(148,163,184,0.85)', fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', mb: 1 }}>
                 Per kanal
               </Typography>
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.2} sx={{ flexWrap: 'wrap', gap: 1.2 }}>
-                {attribution.by_paid_channel.map((c) => {
-                  const total = attribution.by_paid_channel.reduce((a, b) => a + b.n, 0);
+                {byPaidChannel.map((c) => {
+                  const total = byPaidChannel.reduce((a, b) => a + b.n, 0);
                   const pct = total ? Math.round((c.n / total) * 100) : 0;
                   const color = PAID_CHANNEL_COLORS[c.channel];
                   const winRate = c.n ? Math.round((c.won / c.n) * 100) : 0;
@@ -389,7 +393,7 @@ export default function B2BAcquisitionPanel() {
           ) : null}
 
           {/* Source-tabell */}
-          {attribution.by_source.length > 0 ? (
+          {bySource.length > 0 ? (
             <Box>
               <Typography sx={{ color: 'rgba(148,163,184,0.85)', fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', mb: 1 }}>
                 Per kilde (utm-tagger / direct)
@@ -429,7 +433,7 @@ export default function B2BAcquisitionPanel() {
                   </tr>
                 </thead>
                 <tbody>
-                  {attribution.by_source.map((s, i) => {
+                  {bySource.map((s, i) => {
                     const winRate = s.n ? Math.round((s.won / s.n) * 100) : 0;
                     return (
                       <tr key={i}>
@@ -450,23 +454,24 @@ export default function B2BAcquisitionPanel() {
             </Box>
           ) : null}
 
-          {attribution.by_source.length === 0 && attribution.by_paid_channel.length === 0 ? (
+          {bySource.length === 0 && byPaidChannel.length === 0 ? (
             <Typography sx={{ color: 'rgba(148,163,184,0.7)', fontSize: '0.85rem', fontStyle: 'italic' }}>
               Ingen attribusjon-data ennå. Drev trafikk fra LinkedIn/Google Ads/Meta med UTM-tagger eller click-ID-er for å se kilde-fordeling her.
             </Typography>
           ) : null}
         </Section>
-      ) : null}
+        );
+      })() : null}
 
       {/* Recent leads */}
       <Section
-        title={`Nyeste leads (${funnel.recent.length})`}
+        title={`Nyeste leads (${recentLeads.length})`}
         Icon={AutoAwesomeOutlinedIcon}
         open={openSection === 'leads'}
         onToggle={() => toggle('leads')}
       >
         <Stack spacing={1}>
-          {funnel.recent.map((lead) => (
+          {recentLeads.map((lead) => (
             <Box
               key={lead.id}
               sx={{
@@ -542,7 +547,7 @@ export default function B2BAcquisitionPanel() {
               </Button>
             </Box>
           ))}
-          {funnel.recent.length === 0 ? (
+          {recentLeads.length === 0 ? (
             <Typography sx={{ color: 'rgba(148,163,184,0.7)', fontSize: '0.86rem', textAlign: 'center', py: 2, fontStyle: 'italic' }}>
               Ingen leads ennå. Send /for-byraer til noen byråer.
             </Typography>
@@ -1051,7 +1056,7 @@ function LinkedInPublishSection() {
         </Stack>
       ) : (
         <Stack spacing={1.2}>
-          {status?.connections.map((conn) => {
+          {(Array.isArray(status?.connections) ? status.connections : []).map((conn) => {
             const expiresAt = new Date(conn.expires_at);
             const daysLeft = Math.round((expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
             const isExpiringSoon = daysLeft < 7;

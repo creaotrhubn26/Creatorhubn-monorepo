@@ -289,8 +289,9 @@ export default function FeatureManagement({
       try {
         const headers = await auth.getAuthHeader();
         const data = await apiRequest('/api/admin/features', { headers });
-        analytics.trackEvent('features_fetched', { count: data.length });
-        return data;
+        const safeData = Array.isArray(data) ? data : [];
+        analytics.trackEvent('features_fetched', { count: safeData.length });
+        return safeData;
       } finally {
         endTiming();
       }

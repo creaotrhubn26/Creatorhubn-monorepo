@@ -391,18 +391,24 @@ export default function GoogleAnalyticsDashboardEnhanced({
   );
 
   const seriesPoints = useMemo(
-    () => timeseriesData?.series ?? [],
+    () => (Array.isArray(timeseriesData?.series) ? timeseriesData.series : []),
     [timeseriesData],
   );
 
-  const roles = useMemo(() => overviewData?.roles ?? [], [overviewData]);
-  const sources = useMemo(() => overviewData?.sources ?? [], [overviewData]);
+  const roles = useMemo(
+    () => (Array.isArray(overviewData?.roles) ? overviewData.roles : []),
+    [overviewData],
+  );
+  const sources = useMemo(
+    () => (Array.isArray(overviewData?.sources) ? overviewData.sources : []),
+    [overviewData],
+  );
   const eventTypes = useMemo(
-    () => overviewData?.eventTypes.slice(0, 5) ?? [],
+    () => (Array.isArray(overviewData?.eventTypes) ? overviewData.eventTypes.slice(0, 5) : []),
     [overviewData],
   );
   const topPages = useMemo(
-    () => overviewData?.topPages.slice(0, 5) ?? [],
+    () => (Array.isArray(overviewData?.topPages) ? overviewData.topPages.slice(0, 5) : []),
     [overviewData],
   );
   const primaryMetricCards = useMemo(() => metricCards.slice(0, 4), [metricCards]);

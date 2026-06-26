@@ -291,7 +291,7 @@ export default function ViralContentCreator({
                 <FormControl fullWidth sx={{ mb:  2 }}>
                   <InputLabel>Velg Viral Tittel</InputLabel>
                   <Select value={selectedTitle} onChange={(e) => setSelectedTitle(e.target.value)}>
-                    {viralStrategy.strategy?.titleOptions?.map((title: string, index: number) => (
+                    {(Array.isArray(viralStrategy.strategy?.titleOptions) ? viralStrategy.strategy.titleOptions : undefined)?.map((title: string, index: number) => (
                       <MenuItem key={index} value={title}>
                         {title}
                       </MenuItem>
@@ -335,7 +335,7 @@ export default function ViralContentCreator({
                   sx={{ mb:  2 }}
                 />
                 <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap'}}>
-                  {viralStrategy.strategy?.tags?.map((tag: string, index: number) => (
+                  {(Array.isArray(viralStrategy.strategy?.tags) ? viralStrategy.strategy.tags : []).map((tag: string, index: number) => (
                     <Chip
                       key={index}
                       label={`#${tag}`}

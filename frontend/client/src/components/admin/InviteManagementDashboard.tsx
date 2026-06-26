@@ -178,7 +178,7 @@ export default function InviteManagementDashboard() {
     refetchInterval: 30000
 });
 
-  const invitations = inviteData?.invitations || [];
+  const invitations = Array.isArray(inviteData?.invitations) ? inviteData.invitations : [];
   const stats = inviteData?.stats || {};
 
   // Update invite status mutation

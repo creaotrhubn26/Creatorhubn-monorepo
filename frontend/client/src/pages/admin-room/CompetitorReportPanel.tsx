@@ -183,6 +183,7 @@ function InsightCard({ ins, reportId }: { ins: Insight; reportId: number | null 
   const meta = CATEGORY_META[ins.category];
   const status = adminTokens.status[meta.status];
   const isHighPriority = ins.priority === 'high';
+  const actionableSteps = Array.isArray(ins.actionableSteps) ? ins.actionableSteps : [];
   return (
     <Box
       sx={{
@@ -214,11 +215,11 @@ function InsightCard({ ins, reportId }: { ins: Insight; reportId: number | null 
       <Typography variant="body2" sx={{ color: adminTokens.text.body, mb: 1, lineHeight: 1.6 }}>
         {ins.body}
       </Typography>
-      {ins.actionableSteps.length > 0 && (
+      {actionableSteps.length > 0 && (
         <Box sx={{ mb: ins.relatedCompetitors?.length ? 0.75 : 0 }}>
           <Typography sx={{ ...adminSx.sectionSubHeader, mb: 0.5 }}>Handlinger</Typography>
           <Stack spacing={0.6}>
-            {ins.actionableSteps.map((s, i) => (
+            {actionableSteps.map((s, i) => (
               <Box key={i} sx={{
                 pl: 1.2, borderLeft: `2px solid ${status.base}`,
               }}>
@@ -318,9 +319,13 @@ export default function CompetitorReportPanel() {
     }
   }, [reportMeta?.reportId]);
 
-  const sortedInsights = report?.insights
+  const sortedInsights = Array.isArray(report?.insights)
     ? [...report.insights].sort((a, b) => PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority])
     : [];
+  const recommendedActions = Array.isArray(report?.recommendedNextActions) ? report.recommendedNextActions : [];
+  const contentGaps = Array.isArray(report?.contentGaps) ? report.contentGaps : [];
+  const kpiTargets = Array.isArray(report?.kpiTargets) ? report.kpiTargets : [];
+  const competitorScorecard = Array.isArray(report?.competitorScorecard) ? report.competitorScorecard : [];
 
   return (
     <Card sx={adminSx.panelAccent} data-testid="panel-competitor-report">
@@ -456,13 +461,13 @@ export default function CompetitorReportPanel() {
             )}
 
             {/* Recommended actions */}
-            {report.recommendedNextActions.length > 0 && (
+            {recommendedActions.length > 0 && (
               <Box>
                 <SectionLabel icon={<RocketLaunchOutlinedIcon sx={{ fontSize: 16 }} />}>
-                  Anbefalte handlinger · {report.recommendedNextActions.length}
+                  Anbefalte handlinger · {recommendedActions.length}
                 </SectionLabel>
                 <Stack spacing={1.25}>
-                  {report.recommendedNextActions.map((a, i) => (
+                  {recommendedActions.map((a, i) => (
                     <Box key={i}
                       sx={{
                         p: 1.75, borderRadius: 1.5,
@@ -490,13 +495,13 @@ export default function CompetitorReportPanel() {
             )}
 
             {/* Content gaps */}
-            {report.contentGaps.length > 0 && (
+            {contentGaps.length > 0 && (
               <Box>
                 <SectionLabel icon={<GavelIcon sx={{ fontSize: 16 }} />}>
-                  Content-gaps · {report.contentGaps.length}
+                  Content-gaps · {contentGaps.length}
                 </SectionLabel>
                 <Stack spacing={0.6}>
-                  {report.contentGaps.map((g, i) => (
+                  {contentGaps.map((g, i) => (
                     <Box key={i}
                       sx={{
                         py: 0.75, pl: 1.5, pr: 1,
@@ -515,16 +520,16 @@ export default function CompetitorReportPanel() {
             )}
 
             {/* KPI Targets */}
-            {report.kpiTargets && report.kpiTargets.length > 0 && (
+            {kpiTargets.length > 0 && (
               <Box>
                 <SectionLabel icon={<TrackChangesIcon sx={{ fontSize: 16 }} />}>
-                  KPI-mål · {report.kpiTargets.length}
+                  KPI-mål · {kpiTargets.length}
                 </SectionLabel>
                 <Box sx={{
                   display: 'grid', gap: 1.25,
                   gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' },
                 }}>
-                  {report.kpiTargets.map((k, i) => {
+                  {kpiTargets.map((k, i) => {
                     const diffMeta = k.difficulty === 'easy' ? 'success' as const
                       : k.difficulty === 'stretch' ? 'error' as const : 'warning' as const;
                     const platformColor = adminTokens.platforms[k.platform as keyof typeof adminTokens.platforms] || '#94a3b8';
@@ -574,7 +579,7 @@ export default function CompetitorReportPanel() {
             )}
 
             {/* Competitor scorecard */}
-            {report.competitorScorecard.length > 0 && (
+            {competitorScorecard.length > 0 && (
               <Box>
                 <SectionLabel>Konkurrent-scorecard</SectionLabel>
                 <Box sx={{
@@ -582,7 +587,7 @@ export default function CompetitorReportPanel() {
                   borderRadius: 1.5,
                   overflow: 'hidden',
                 }}>
-                  {report.competitorScorecard.map((s, i) => {
+                  {competitorScorecard.map((s, i) => {
                     const meta = MOMENTUM_META[s.momentum];
                     const pic = competitorPictures[s.nickname];
                     return (
@@ -590,7 +595,7 @@ export default function CompetitorReportPanel() {
                         sx={{
                           py: 1, px: 1.5,
                           background: i % 2 === 0 ? 'transparent' : adminTokens.bg.panelDeep,
-                          borderBottom: i < report.competitorScorecard.length - 1
+                          borderBottom: i < competitorScorecard.length - 1
                             ? `1px solid ${adminTokens.border.subtle}` : 'none',
                         }}
                         data-testid="scorecard-row">

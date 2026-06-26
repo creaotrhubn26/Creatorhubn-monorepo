@@ -136,7 +136,8 @@ export default function B2ArchiveTab(): JSX.Element {
         const data: FilesResponse = await apiRequest(
           `/api/admin/b2-archive/files?${params.toString()}`,
         );
-        setFiles((prev) => (resetPagination ? data.files : [...prev, ...data.files]));
+        const nextFiles = Array.isArray(data.files) ? data.files : [];
+        setFiles((prev) => (resetPagination ? nextFiles : [...prev, ...nextFiles]));
         setTruncated(data.truncated);
         setContinuationToken(data.nextContinuationToken);
       } catch (e: any) {

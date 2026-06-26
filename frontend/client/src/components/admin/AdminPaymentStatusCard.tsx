@@ -192,7 +192,7 @@ const AdminPaymentStatusCard: React.FC = () => {
         <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
           Siste hendelser
         </Typography>
-        {(data.events || []).length === 0 ? (
+        {(Array.isArray(data.events) ? data.events : []).length === 0 ? (
           <Typography variant="caption" color="text.secondary">
             Ingen nylige Stripe-hendelser registrert.
           </Typography>

@@ -313,7 +313,7 @@ const PackageMarketplace: FC = () => {
     },
   });
 
-  const packages = marketplaceQuery.data?.packages ?? fallbackPackages;
+  const packages = Array.isArray(marketplaceQuery.data?.packages) ? marketplaceQuery.data.packages : fallbackPackages;
   const summary = marketplaceQuery.data?.summary ?? {
     total: fallbackPackages.length,
     installed: fallbackPackages.filter((pkg) => pkg.installed).length,
@@ -321,7 +321,7 @@ const PackageMarketplace: FC = () => {
     vulnerable: fallbackPackages.filter((pkg) => pkg.vulnerabilities > 0).length,
   };
 
-  const repositories = repositoriesQuery.data ?? fallbackRepositories;
+  const repositories = Array.isArray(repositoriesQuery.data) ? repositoriesQuery.data : fallbackRepositories;
   const isLoading = marketplaceQuery.isLoading || repositoriesQuery.isLoading;
 
   const categories = useMemo(() => {

@@ -202,6 +202,7 @@ export default memo(function AcademyAdminPanel() {
       if (!response.ok) throw new Error('Failed to fetch courses');
       return response.json();
     },
+    select: (d) => (Array.isArray(d) ? d : []),
     staleTime: 30000, // 30 seconds
   });
 
@@ -213,6 +214,7 @@ export default memo(function AcademyAdminPanel() {
       if (!response.ok) throw new Error('Failed to fetch instructors');
       return response.json();
     },
+    select: (d) => (Array.isArray(d) ? d : []),
     staleTime: 60000, // 1 minute
   });
 
@@ -224,6 +226,7 @@ export default memo(function AcademyAdminPanel() {
       if (!response.ok) throw new Error('Failed to fetch enrollments');
       return response.json();
     },
+    select: (d) => (Array.isArray(d) ? d : []),
     staleTime: 30000, // 30 seconds
   });
 
@@ -1276,7 +1279,7 @@ export default memo(function AcademyAdminPanel() {
                   onChange={(e) => setSelectedUserId(e.target.value)}
                   label="Velg bruker"
                 >
-                  {usersData?.users?.map((user) => (
+                  {(Array.isArray(usersData?.users) ? usersData.users : []).map((user) => (
                     <MenuItem key={user.id} value={user.id}>
                       {user.firstName} {user.lastName} ({user.email})
                     </MenuItem>
@@ -1311,7 +1314,7 @@ export default memo(function AcademyAdminPanel() {
                 onChange={(e) => setEnrollUserId(e.target.value)}
                 label="Velg student"
               >
-                {usersData?.users?.map((user) => (
+                {(Array.isArray(usersData?.users) ? usersData.users : []).map((user) => (
                   <MenuItem key={user.id} value={user.id}>
                     {user.firstName} {user.lastName} ({user.email})
                   </MenuItem>
@@ -1375,7 +1378,7 @@ export default memo(function AcademyAdminPanel() {
               <Paper variant="outlined" sx={{ height: 300, overflow: 'hidden' }}>
                 <Virtuoso
                   style={{ height: '100%' }}
-                  data={usersData?.users || []}
+                  data={Array.isArray(usersData?.users) ? usersData.users : []}
                   itemContent={(index, user) => (
                     <Box
                       sx={{
@@ -1409,7 +1412,7 @@ export default memo(function AcademyAdminPanel() {
               <Box sx={{ mt: 1, display: 'flex', gap: 1 }}>
                 <Button
                   size="small"
-                  onClick={() => setSelectedUserIds(usersData?.users?.map((u) => u.id) || [])}
+                  onClick={() => setSelectedUserIds(Array.isArray(usersData?.users) ? usersData.users.map((u) => u.id) : [])}
                 >
                   Velg alle
                 </Button>

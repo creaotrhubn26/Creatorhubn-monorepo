@@ -208,7 +208,7 @@ export default function TidumAccessRequestsPanel() {
     staleTime: 5 * 60 * 1000,
   });
 
-  const brregOptions = brregSearchPayload?.items ?? [];
+  const brregOptions = Array.isArray(brregSearchPayload?.items) ? brregSearchPayload.items : [];
   const existingVendorForSelectedBrreg = useMemo(
     () => findVendorForBrregCompany(vendors, selectedBrregCompany),
     [selectedBrregCompany, vendors],

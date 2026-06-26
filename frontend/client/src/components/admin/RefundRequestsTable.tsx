@@ -222,7 +222,7 @@ export default function RefundRequestsTable() {
     );
   }
 
-  const requests = refundRequests?.refundRequests || [];
+  const requests = Array.isArray(refundRequests?.refundRequests) ? refundRequests.refundRequests : [];
 
   if (requests.length === 0) {
     return (

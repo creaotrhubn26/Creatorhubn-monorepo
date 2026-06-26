@@ -205,6 +205,11 @@ export default function SEOBotAnalyticsDashboard() {
     return 'error';
   };
 
+  const analyticsRows = Array.isArray(analytics?.analytics) ? analytics.analytics : [];
+  const mobileTestRows = Array.isArray(mobileTests?.tests) ? mobileTests.tests : [];
+  const budgetReportRows = Array.isArray(crawlBudget?.budgetReport) ? crawlBudget.budgetReport : [];
+  const recommendationRows = Array.isArray(recommendations?.recommendations) ? recommendations.recommendations : [];
+
   return (
     <Box sx={{ p: 3 }}>
       {/* Header */}
@@ -255,7 +260,7 @@ export default function SEOBotAnalyticsDashboard() {
       </Box>
 
       {/* Key Metrics */}
-      {!analyticsLoading && analytics?.analytics && (
+      {!analyticsLoading && analyticsRows.length > 0 && (
         <Grid container spacing={2} sx={{ mb: 3 }}>
           <Grid item xs={12} md={3}>
             <Card>
@@ -264,7 +269,7 @@ export default function SEOBotAnalyticsDashboard() {
                   Total Bot Visits
                 </Typography>
                 <Typography variant="h4">
-                  {analytics.analytics.reduce((sum: number, a: any) => sum + Number(a.total_visits || 0), 0)}
+                  {analyticsRows.reduce((sum: number, a: any) => sum + Number(a.total_visits || 0), 0)}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
                   Last {days} days
@@ -279,7 +284,7 @@ export default function SEOBotAnalyticsDashboard() {
                   Unique Bots
                 </Typography>
                 <Typography variant="h4">
-                  {analytics.analytics.length}
+                  {analyticsRows.length}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
                   Different bot types
@@ -294,7 +299,7 @@ export default function SEOBotAnalyticsDashboard() {
                   Pages Crawled
                 </Typography>
                 <Typography variant="h4">
-                  {analytics.analytics.reduce((sum: number, a: any) => sum + Number(a.total_pages || 0), 0)}
+                  {analyticsRows.reduce((sum: number, a: any) => sum + Number(a.total_pages || 0), 0)}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
                   By all bots
@@ -309,7 +314,7 @@ export default function SEOBotAnalyticsDashboard() {
                   Avg Response Time
                 </Typography>
                 <Typography variant="h4">
-                  {(analytics.analytics.reduce((sum: number, a: any) => sum + Number(a.avg_response_time || 0), 0) / analytics.analytics.length).toFixed(0)}ms
+                  {(analyticsRows.reduce((sum: number, a: any) => sum + Number(a.avg_response_time || 0), 0) / analyticsRows.length).toFixed(0)}ms
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
                   Server response
@@ -345,7 +350,7 @@ export default function SEOBotAnalyticsDashboard() {
             
             {analyticsLoading ? (
               <CircularProgress />
-            ) : analytics?.analytics && analytics.analytics.length > 0 ? (
+            ) : analyticsRows.length > 0 ? (
               <>
                 {/* Bot Distribution Chart */}
                 <Box sx={{ mb: 4 }}>
@@ -355,7 +360,7 @@ export default function SEOBotAnalyticsDashboard() {
                   <ResponsiveContainer width="100%" height={300}>
                     <PieChart>
                       <Pie
-                        data={analytics.analytics}
+                        data={analyticsRows}
                         dataKey="total_visits"
                         nameKey="bot_name"
                         cx="50%"
@@ -363,7 +368,7 @@ export default function SEOBotAnalyticsDashboard() {
                         label={({ name, value }) => `${name ?? 'Bot'}: ${value ?? 0}`}
                         outerRadius={100}
                       >
-                        {analytics.analytics.map((_: any, index: number) => (
+                        {analyticsRows.map((_: any, index: number) => (
                           <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                         ))}
                       </Pie>
@@ -387,7 +392,7 @@ export default function SEOBotAnalyticsDashboard() {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {analytics.analytics.map((bot: any) => (
+                      {analyticsRows.map((bot: any) => (
                         <TableRow key={bot.bot_name}>
                           <TableCell>{bot.bot_name}</TableCell>
                           <TableCell>
@@ -592,7 +597,7 @@ export default function SEOBotAnalyticsDashboard() {
             )}
 
             {/* Recent Mobile Tests */}
-            {!mobileLoading && mobileTests?.tests && mobileTests.tests.length > 0 && (
+            {!mobileLoading && mobileTestRows.length > 0 && (
               <TableContainer component={Paper}>
                 <Table>
                   <TableHead>
@@ -607,7 +612,7 @@ export default function SEOBotAnalyticsDashboard() {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {mobileTests.tests.map((test: any) => (
+                    {mobileTestRows.map((test: any) => (
                       <TableRow key={test.test_id}>
                         <TableCell sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {test.url}
@@ -671,7 +676,7 @@ export default function SEOBotAnalyticsDashboard() {
 
             {budgetLoading ? (
               <CircularProgress />
-            ) : crawlBudget?.budgetReport && crawlBudget.budgetReport.length > 0 ? (
+            ) : budgetReportRows.length > 0 ? (
               <>
                 <Grid container spacing={2} sx={{ mb: 3 }}>
                   <Grid item xs={12} md={6}>
@@ -719,7 +724,7 @@ export default function SEOBotAnalyticsDashboard() {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {crawlBudget.budgetReport.map((report: any, idx: number) => (
+                      {budgetReportRows.map((report: any, idx: number) => (
                         <TableRow key={`${report.bot_name}-${report.date}-${idx}`}>
                           <TableCell>{report.bot_name}</TableCell>
                           <TableCell>{new Date(report.date).toLocaleDateString()}</TableCell>
@@ -768,9 +773,9 @@ export default function SEOBotAnalyticsDashboard() {
 
             {recsLoading ? (
               <CircularProgress />
-            ) : recommendations?.recommendations && recommendations.recommendations.length > 0 ? (
+            ) : recommendationRows.length > 0 ? (
               <Grid container spacing={2}>
-                {recommendations.recommendations.map((rec: any) => (
+                {recommendationRows.map((rec: any) => (
                   <Grid item xs={12} key={rec.recommendation_id}>
                     <Card>
                       <CardContent>

@@ -73,7 +73,10 @@ const AdminAICostDashboard: React.FC = () => {
     refetchInterval: 120_000,
   });
 
-  const byUser = byUserResp?.data || [];
+  const byUser = Array.isArray(byUserResp?.data) ? byUserResp.data : [];
+  const byDay = Array.isArray(overview?.byDay) ? overview.byDay : [];
+  const byModel = Array.isArray(overview?.byModel) ? overview.byModel : [];
+  const byFeature = Array.isArray(overview?.byFeature) ? overview.byFeature : [];
   const totalRow = overview?.totals?.[period === '24h' ? 'last24h' : period === '7d' ? 'last7d' : 'last30d'] || {};
 
   // ─── KPI-kort ──────────────────────────────────────────────────
@@ -180,12 +183,12 @@ const AdminAICostDashboard: React.FC = () => {
         <Card>
           <CardContent>
             <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>Daglig kostnad (30d)</Typography>
-            {(overview?.byDay || []).length === 0 ? (
+            {byDay.length === 0 ? (
               <Typography variant="caption" color="text.secondary">Ingen data ennå.</Typography>
             ) : (
               <Box sx={{ height: 260 }}>
                 <ResponsiveContainer>
-                  <AreaChart data={overview?.byDay || []}>
+                  <AreaChart data={byDay}>
                     <defs>
                       <linearGradient id="costGrad" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor="#7c3aed" stopOpacity={0.4} />
@@ -219,19 +222,19 @@ const AdminAICostDashboard: React.FC = () => {
         <Card>
           <CardContent>
             <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>Modell-fordeling (30d)</Typography>
-            {(overview?.byModel || []).length === 0 ? (
+            {byModel.length === 0 ? (
               <Typography variant="caption" color="text.secondary">Ingen data ennå.</Typography>
             ) : (
               <Box sx={{ height: 260 }}>
                 <ResponsiveContainer>
                   <PieChart>
                     <Pie
-                      data={overview?.byModel || []}
+                      data={byModel}
                       dataKey="costUsd" nameKey="model"
                       cx="50%" cy="50%" innerRadius={50} outerRadius={90}
                       label={({ model, costUsd }) => `${model.split('-').slice(1, 3).join('-')}: ${fmtUsdCents(costUsd)}`}
                     >
-                      {(overview?.byModel || []).map((_, i) => (
+                      {byModel.map((_, i) => (
                         <Cell key={i} fill={PALETTE[i % PALETTE.length]} />
                       ))}
                     </Pie>
@@ -252,18 +255,18 @@ const AdminAICostDashboard: React.FC = () => {
             <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
               Top features etter kostnad (30d)
             </Typography>
-            {(overview?.byFeature || []).length === 0 ? (
+            {byFeature.length === 0 ? (
               <Typography variant="caption" color="text.secondary">Ingen data ennå.</Typography>
             ) : (
               <Box sx={{ height: 320 }}>
                 <ResponsiveContainer>
-                  <BarChart data={(overview?.byFeature || []).slice(0, 8)} layout="vertical" margin={{ left: 0 }}>
+                  <BarChart data={byFeature.slice(0, 8)} layout="vertical" margin={{ left: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                     <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v) => `$${v.toFixed(0)}`} />
                     <YAxis type="category" dataKey="feature" width={130} tick={{ fontSize: 10 }} />
                     <RTooltip formatter={(v: any) => fmtUsd(Number(v))} />
                     <Bar dataKey="costUsd" name="Kostnad (USD)" radius={[0, 4, 4, 0]}>
-                      {(overview?.byFeature || []).slice(0, 8).map((_, i) => (
+                      {byFeature.slice(0, 8).map((_, i) => (
                         <Cell key={i} fill={PALETTE[i % PALETTE.length]} />
                       ))}
                     </Bar>
@@ -280,7 +283,7 @@ const AdminAICostDashboard: React.FC = () => {
             <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
               Detaljer per feature
             </Typography>
-            {(overview?.byFeature || []).length === 0 ? (
+            {byFeature.length === 0 ? (
               <Typography variant="caption" color="text.secondary">Ingen data ennå.</Typography>
             ) : (
               <Table size="small">
@@ -293,7 +296,7 @@ const AdminAICostDashboard: React.FC = () => {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {(overview?.byFeature || []).slice(0, 12).map((f: any, idx: number) => (
+                  {byFeature.slice(0, 12).map((f: any, idx: number) => (
                     <TableRow key={f.feature} sx={{ '&:last-child td': { borderBottom: 0 } }}>
                       <TableCell sx={{ py: 0.75 }}>
                         <Stack direction="row" spacing={0.75} alignItems="center">

@@ -112,7 +112,7 @@ export default function LeadMapMemberPins({ organizationId, authToken }: Props) 
         );
         if (!r.ok) return;
         const j = await r.json();
-        if (!cancelled) setLocations(j.locations ?? []);
+        if (!cancelled) setLocations(Array.isArray(j.locations) ? j.locations : []);
       } catch { /* noop */ }
     };
     void load();

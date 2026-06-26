@@ -202,7 +202,7 @@ export default function LeadMapPricingPanel() {
 
       {/* Tier-kort */}
       <Stack spacing={2}>
-        {data.tiers.map((t) => {
+        {(Array.isArray(data.tiers) ? data.tiers : []).map((t) => {
           const meta = TIER_LABELS[t.tier];
           const currentNok = t.price?.unit_amount ? t.price.unit_amount / 100 : null;
           const isPlaceholder = !t.envValue || t.envValue.includes('PLACEHOLDER');

@@ -67,6 +67,7 @@ const FeatureFlagManager: React.FC = () => {
       const headers = await auth.getAuthHeader();
       return apiRequest('/api/admin/features', { headers });
     },
+    select: (d) => (Array.isArray(d) ? d : []),
     refetchInterval: 30000, // Refresh every 30 seconds
 });
 

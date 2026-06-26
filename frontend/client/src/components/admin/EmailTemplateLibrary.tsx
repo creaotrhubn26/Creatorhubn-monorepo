@@ -230,7 +230,7 @@ export default function EmailTemplateLibrary({
   });
 
   const filteredTemplates = useMemo(() => {
-    const filtered = templates.filter((template) => {
+    const filtered = (Array.isArray(templates) ? templates : []).filter((template) => {
       const query = searchQuery.toLowerCase();
       const matchesSearch =
         template.name.toLowerCase().includes(query) ||

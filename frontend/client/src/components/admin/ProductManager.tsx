@@ -305,7 +305,8 @@ const ProductManager: React.FC<ProductManagerProps> = ({
   });
 
   const products = useMemo(() => {
-    return productsData?.data ?? productsData?.products ?? [];
+    const list = productsData?.data ?? productsData?.products ?? [];
+    return Array.isArray(list) ? list : [];
   }, [productsData]);
 
   const handleSaveProduct = (formData: FormData) => {

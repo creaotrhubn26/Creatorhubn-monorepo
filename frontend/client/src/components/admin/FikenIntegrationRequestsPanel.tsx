@@ -146,7 +146,7 @@ export default function FikenIntegrationRequestsPanel() {
     },
   });
 
-  const requests: FikenRequest[] = fikenData?.requests || [];
+  const requests: FikenRequest[] = Array.isArray(fikenData?.requests) ? fikenData.requests : [];
   const stats: FikenStats = fikenData?.stats || { total: 0, pending: 0, contacted: 0, connected: 0, declined: 0 };
 
   const getStatusColor = (status: string) => {

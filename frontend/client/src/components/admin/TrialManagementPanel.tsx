@@ -152,6 +152,7 @@ export default function TrialManagementPanel({
       const headers = await auth.getAuthHeader();
       return apiRequest('/api/admin/trial-features', { headers });
     },
+    select: (d) => (Array.isArray(d) ? d : []),
 });
 
   // Fetch trial statuses
@@ -161,6 +162,7 @@ export default function TrialManagementPanel({
       const headers = await auth.getAuthHeader();
       return apiRequest('/api/admin/trial-statuses', { headers });
     },
+    select: (d) => (Array.isArray(d) ? d : []),
 });
 
   // Fetch trial analytics
@@ -170,6 +172,7 @@ export default function TrialManagementPanel({
       const headers = await auth.getAuthHeader();
       return apiRequest('/api/trials/analytics/overview', { headers });
     },
+    select: (d) => (Array.isArray(d) ? d : []),
 });
 
   // Toggle feature mutation

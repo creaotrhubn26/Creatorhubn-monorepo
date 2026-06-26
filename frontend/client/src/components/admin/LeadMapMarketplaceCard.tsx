@@ -84,7 +84,7 @@ export default function LeadMapMarketplaceCard({
         });
         if (!r.ok || cancelled) return;
         const body = await r.json();
-        const rows = (body.entitlements ?? []) as Array<{
+        const rows = (Array.isArray(body.entitlements) ? body.entitlements : []) as Array<{
           tier: 'discover'|'pro'|'agency'; status: string; revoked_at: string|null;
         }>;
         const activeRows = rows.filter((r) => r.status === 'active' && !r.revoked_at);

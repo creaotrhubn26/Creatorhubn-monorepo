@@ -493,11 +493,11 @@ export default function MarketingCockpitTab() {
                 <SectionHeader icon={<TagIcon sx={{ color: '#a78bfa', fontSize: 20 }} />}
                   title="Mentions" sectionOk={data.mentions.ok} testid="mentions" />
                 {!data.mentions.ok ? <ErrorBody section={data.mentions} /> :
-                  data.mentions.data && data.mentions.data.recent.length === 0 ? (
+                  data.mentions.data && (Array.isArray(data.mentions.data.recent) ? data.mentions.data.recent : []).length === 0 ? (
                     <Typography variant="body2" sx={{ color: 'rgba(203,213,225,0.5)' }}>
                       Ingen mentions ennå. Når noen tagger @theroleroom-Page-en, vises de her.
                     </Typography>
-                  ) : data.mentions.data?.recent.map((m) => (
+                  ) : (Array.isArray(data.mentions.data?.recent) ? data.mentions.data.recent : []).map((m) => (
                     <Box key={m.id} sx={{ py: 1, borderBottom: '1px solid rgba(148,163,184,0.10)' }} data-testid="mention-row">
                       <Typography variant="caption" sx={{ color: '#a78bfa', fontWeight: 600 }}>
                         {m.fromName || '(unknown)'} · {m.createdTime ? new Date(m.createdTime).toLocaleDateString('nb-NO') : ''}
@@ -515,11 +515,11 @@ export default function MarketingCockpitTab() {
                 <SectionHeader icon={<CampaignIcon sx={{ color: '#22d3ee', fontSize: 20 }} />}
                   title="Lead-former" sectionOk={data.leads.ok} testid="leads" />
                 {!data.leads.ok ? <ErrorBody section={data.leads} /> :
-                  data.leads.data && data.leads.data.forms.length === 0 ? (
+                  data.leads.data && (Array.isArray(data.leads.data.forms) ? data.leads.data.forms : []).length === 0 ? (
                     <Typography variant="body2" sx={{ color: 'rgba(203,213,225,0.5)' }}>
                       Ingen Lead Ad-former. Når du kjører Lead Ads på The Role Room Page, vises de her.
                     </Typography>
-                  ) : data.leads.data?.forms.map((f) => (
+                  ) : (Array.isArray(data.leads.data?.forms) ? data.leads.data.forms : []).map((f) => (
                     <Stack key={f.id} direction="row" alignItems="center" spacing={1} sx={{ py: 0.5 }} data-testid="lead-form-row">
                       <Chip size="small" label={f.status || 'unknown'}
                         sx={{
@@ -562,11 +562,11 @@ export default function MarketingCockpitTab() {
                 <SectionHeader icon={<EventIcon sx={{ color: '#f97316', fontSize: 20 }} />}
                   title="IG upcoming events" sectionOk={data.ig.ok} testid="events" />
                 {!data.ig.ok ? <ErrorBody section={data.ig} /> :
-                  data.ig.data && data.ig.data.upcomingEvents.length === 0 ? (
+                  data.ig.data && (Array.isArray(data.ig.data.upcomingEvents) ? data.ig.data.upcomingEvents : []).length === 0 ? (
                     <Typography variant="body2" sx={{ color: 'rgba(203,213,225,0.5)' }}>
                       Ingen kommende IG-events. Publiser kasting-events, demo-dager eller premiere-screenings her.
                     </Typography>
-                  ) : data.ig.data?.upcomingEvents.map((e) => (
+                  ) : (Array.isArray(data.ig.data?.upcomingEvents) ? data.ig.data.upcomingEvents : []).map((e) => (
                     <Stack key={e.id} direction="row" alignItems="center" spacing={1} sx={{ py: 0.5 }} data-testid="event-row">
                       <Typography variant="body2" sx={{ color: '#e2e8f0', flex: 1 }}>{e.title}</Typography>
                       <Typography variant="caption" sx={{ color: 'rgba(203,213,225,0.5)' }}>
@@ -585,7 +585,7 @@ export default function MarketingCockpitTab() {
                 title="Hashtag-tracker" sectionOk={data.hashtags.ok} testid="hashtags" />
               {!data.hashtags.ok ? <ErrorBody section={data.hashtags} /> : data.hashtags.data && (
                 <Box sx={{ display: 'grid', gap: 1, gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: 'repeat(3, 1fr)' } }}>
-                  {data.hashtags.data.tracked.map((t) => (
+                  {(Array.isArray(data.hashtags.data.tracked) ? data.hashtags.data.tracked : []).map((t) => (
                     <Stack key={t.tag} direction="row" alignItems="center" spacing={1}
                       sx={{ p: 1, background: 'rgba(2,6,23,0.40)', borderRadius: 1 }} data-testid="hashtag-row">
                       <Typography sx={{ color: '#22c55e', fontWeight: 600, fontSize: '0.85rem' }}>#{t.tag}</Typography>
@@ -678,7 +678,7 @@ export default function MarketingCockpitTab() {
           <Divider sx={{ borderColor: 'rgba(148,163,184,0.18)' }} />
           <Typography variant="caption" sx={{ color: 'rgba(203,213,225,0.4)', textAlign: 'center' }}>
             Konfigurasjon: pageId={data.configured.pageId ? '✓' : '✗'} · pageToken={data.configured.pageToken ? '✓' : '✗'} ·
-            igUserId={data.configured.igUserId ? '✓' : '✗'} · {data.configured.trackedHashtags.length} hashtags trackes
+            igUserId={data.configured.igUserId ? '✓' : '✗'} · {(Array.isArray(data.configured.trackedHashtags) ? data.configured.trackedHashtags : []).length} hashtags trackes
           </Typography>
         </>
       )}

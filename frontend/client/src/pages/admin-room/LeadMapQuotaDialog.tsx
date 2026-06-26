@@ -66,7 +66,7 @@ export default function LeadMapQuotaDialog({ open, organizationId, onlyUserId, o
       );
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const j = await r.json();
-      const all: MemberRow[] = (j.profiles ?? []).map((p: Record<string, unknown>) => ({
+      const all: MemberRow[] = (Array.isArray(j.profiles) ? j.profiles : []).map((p: Record<string, unknown>) => ({
         userId: p.user_id as string,
         role: p.role as string,
         displayName: (p.display_name as string | null) ?? null,

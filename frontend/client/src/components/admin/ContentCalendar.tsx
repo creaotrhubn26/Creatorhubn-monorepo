@@ -118,13 +118,15 @@ export default function ContentCalendar() {
     },
   });
 
+  const safeEvents = Array.isArray(events) ? events : [];
+
   // Get calendar dates
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(currentMonth);
   const calendarDays = eachDayOfInterval({ start: monthStart, end: monthEnd });
 
   // Group events by date
-  const eventsByDate = events.reduce((acc: Record<string, CalendarEvent[]>, event: CalendarEvent) => {
+  const eventsByDate = safeEvents.reduce((acc: Record<string, CalendarEvent[]>, event: CalendarEvent) => {
     const dateKey = event.scheduled_date;
     if (!acc[dateKey]) acc[dateKey] = [];
     acc[dateKey].push(event);
@@ -310,7 +312,7 @@ export default function ContentCalendar() {
           <Card>
             <CardContent>
               <Typography variant="h4" sx={{ color: '#ff8c00', fontWeight: 600}}>
-                {events.filter((e: CalendarEvent) => e.status === 'planned').length}
+                {safeEvents.filter((e: CalendarEvent) => e.status === 'planned').length}
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 Planlagt
@@ -322,7 +324,7 @@ export default function ContentCalendar() {
           <Card>
             <CardContent>
               <Typography variant="h4" sx={{ color: '#2196f3', fontWeight: 600}}>
-                {events.filter((e: CalendarEvent) => e.status === 'in-progress').length}
+                {safeEvents.filter((e: CalendarEvent) => e.status === 'in-progress').length}
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 Pågår
@@ -334,7 +336,7 @@ export default function ContentCalendar() {
           <Card>
             <CardContent>
               <Typography variant="h4" sx={{ color: '#4caf50', fontWeight: 600}}>
-                {events.filter((e: CalendarEvent) => e.status === 'ready').length}
+                {safeEvents.filter((e: CalendarEvent) => e.status === 'ready').length}
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 Klar
@@ -346,7 +348,7 @@ export default function ContentCalendar() {
           <Card>
             <CardContent>
               <Typography variant="h4" sx={{ color: '#4caf50', fontWeight: 600}}>
-                {events.filter((e: CalendarEvent) => e.status ==='published').length}
+                {safeEvents.filter((e: CalendarEvent) => e.status ==='published').length}
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 Publisert

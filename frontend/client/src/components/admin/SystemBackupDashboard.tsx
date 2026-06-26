@@ -153,7 +153,7 @@ export default function SystemBackupDashboard(props: SystemBackupDashboardProps)
   };
 
   const {
-    data: backups = [],
+    data: backupsData,
     isLoading: backupsLoading,
     refetch: refetchBackups,
   } = useQuery<SystemBackup[]>({
@@ -164,6 +164,8 @@ export default function SystemBackupDashboard(props: SystemBackupDashboardProps)
     },
     refetchInterval: 30000,
   });
+
+  const backups = Array.isArray(backupsData) ? backupsData : [];
 
   const { data: stats, isLoading: statsLoading } = useQuery<BackupStats>({
     queryKey: ['/api/system-backup/stats'],
@@ -414,7 +416,7 @@ export default function SystemBackupDashboard(props: SystemBackupDashboardProps)
                             {formatDate(backup.timestamp)} • {formatBytes(backup.size)}
                           </Typography>
                           <Typography variant="caption" color="text.secondary">
-                            Filer: {backup.files.join(', ')}
+                            Filer: {(Array.isArray(backup.files) ? backup.files : []).join(', ')}
                           </Typography>
                         </Box>
                       }

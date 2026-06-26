@@ -341,7 +341,7 @@ export default function AIVideoGenerator({
           </Accordion>
 
           {/* Example Prompts */}
-          {examples && examples.length > 0 && (
+          {Array.isArray(examples) && examples.length > 0 && (
             <Box sx={{ mt: 3 }}>
               <Typography variant="subtitle2" gutterBottom>
                 📝 Example Prompts
@@ -349,7 +349,7 @@ export default function AIVideoGenerator({
               <Grid container spacing={1}>
                 {examples.slice(0, 2).map((category: any, catIdx: number) => (
                   <React.Fragment key={catIdx}>
-                    {category.prompts.slice(0, 2).map((example: any, idx: number) => (
+                    {(Array.isArray(category.prompts) ? category.prompts : []).slice(0, 2).map((example: any, idx: number) => (
                       <Grid item xs={12} sm={6} key={idx}>
                         <Card
                           variant="outlined"

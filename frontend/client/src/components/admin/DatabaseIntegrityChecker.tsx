@@ -162,10 +162,10 @@ export default function DatabaseIntegrityChecker() {
     return new Date(value).toLocaleString('no-NO');
   };
 
-  const missingTables = integrityStatus?.missingTables ?? [];
-  const missingColumns = integrityStatus?.missingColumns ?? [];
-  const extraTables = integrityStatus?.extraTables ?? [];
-  const errors = integrityStatus?.errors ?? [];
+  const missingTables = Array.isArray(integrityStatus?.missingTables) ? integrityStatus.missingTables : [];
+  const missingColumns = Array.isArray(integrityStatus?.missingColumns) ? integrityStatus.missingColumns : [];
+  const extraTables = Array.isArray(integrityStatus?.extraTables) ? integrityStatus.extraTables : [];
+  const errors = Array.isArray(integrityStatus?.errors) ? integrityStatus.errors : [];
 
   if (integrityLoading && !integrityStatus) {
     return (
@@ -356,7 +356,7 @@ export default function DatabaseIntegrityChecker() {
                           <TableCell>{entry.table}</TableCell>
                           <TableCell>
                             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                              {entry.columns.map((column) => (
+                              {(Array.isArray(entry.columns) ? entry.columns : []).map((column) => (
                                 <Chip key={`${entry.table}.${column}`} size="small" label={column} color="error" />
                               ))}
                             </Box>

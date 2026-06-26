@@ -214,7 +214,7 @@ export default function AdminWidgets({ userId }: AdminWidgetsProps) {
   // Initialize widgets
   useEffect(() => {
     if (!isLoading) {
-      if (userConfig?.widgets) {
+      if (Array.isArray(userConfig?.widgets)) {
         setWidgets(userConfig.widgets);
     } else {
         // Initialize with default widgets
@@ -344,7 +344,7 @@ export default function AdminWidgets({ userId }: AdminWidgetsProps) {
         return (
           <Box>
             <List dense>
-              {(data?.errors || []).slice(0, 3).map((error: any, index: number) => (
+              {(Array.isArray(data?.errors) ? data.errors : []).slice(0, 3).map((error: any, index: number) => (
                 <ListItem key={index} sx={{ px: 0 }}>
                   <ListItemText
                     primary={error.message || 'Ukjent feil'}

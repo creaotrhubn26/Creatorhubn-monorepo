@@ -154,8 +154,12 @@ export default function AIAnalyticsInsights({
     }
   };
 
-  const insights: AIInsight[] = insightsData?.data?.insights || [];
-  const predictions: PredictionData[] = predictionsData?.data?.predictions || [];
+  const insights: AIInsight[] = Array.isArray(insightsData?.data?.insights)
+    ? insightsData.data.insights
+    : [];
+  const predictions: PredictionData[] = Array.isArray(predictionsData?.data?.predictions)
+    ? predictionsData.data.predictions
+    : [];
   const report = reportData?.data?.report;
 
   return (
@@ -501,7 +505,7 @@ export default function AIAnalyticsInsights({
                   Top Recommendations:
                 </Typography>
                 <List dense>
-                  {report.recommendations
+                  {(Array.isArray(report.recommendations) ? report.recommendations : [])
                     .slice(0, 3)
                     .map((recommendation: string, index: number) => (
                     <ListItem key={index} sx={{ py: 0 }}>

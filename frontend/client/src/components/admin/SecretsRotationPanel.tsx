@@ -279,7 +279,7 @@ export const SecretsRotationPanel: React.FC = () => {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {data?.rows.map((row) => (
+                  {(Array.isArray(data?.rows) ? data.rows : []).map((row) => (
                     <TableRow
                       key={row.keyName}
                       sx={{
@@ -399,7 +399,7 @@ export const SecretsRotationPanel: React.FC = () => {
                       </TableCell>
                     </TableRow>
                   ))}
-                  {!data?.rows.length && !loading ? (
+                  {!(Array.isArray(data?.rows) ? data.rows : []).length && !loading ? (
                     <TableRow>
                       <TableCell colSpan={8} align="center" sx={{ py: 4 }}>
                         <Typography color="text.secondary">

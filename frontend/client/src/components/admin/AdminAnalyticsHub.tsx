@@ -293,12 +293,12 @@ const AdminAnalyticsHub: React.FC = () => {
         <Card>
           <CardContent>
             <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>Top events (7d)</Typography>
-            {(overview?.topEvents || []).length === 0 ? (
+            {(Array.isArray(overview?.topEvents) ? overview.topEvents : []).length === 0 ? (
               <Typography variant="caption" color="text.secondary">Ingen data ennå.</Typography>
             ) : (
               <Box sx={{ height: 240 }}>
                 <ResponsiveContainer>
-                  <BarChart data={(overview?.topEvents || []).slice(0, 8)} layout="vertical" margin={{ left: 0 }}>
+                  <BarChart data={(Array.isArray(overview?.topEvents) ? overview.topEvents : []).slice(0, 8)} layout="vertical" margin={{ left: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                     <XAxis type="number" tick={{ fontSize: 11 }} />
                     <YAxis
@@ -310,7 +310,7 @@ const AdminAnalyticsHub: React.FC = () => {
                     />
                     <RTooltip formatter={(v: any) => fmtNum(Number(v))} />
                     <Bar dataKey="count" radius={[0, 4, 4, 0]}>
-                      {(overview?.topEvents || []).slice(0, 8).map((_, i) => (
+                      {(Array.isArray(overview?.topEvents) ? overview.topEvents : []).slice(0, 8).map((_, i) => (
                         <Cell key={i} fill={PALETTE[i % PALETTE.length]} />
                       ))}
                     </Bar>
@@ -414,12 +414,12 @@ const AdminAnalyticsHub: React.FC = () => {
             <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
               Siste hendelser
             </Typography>
-            {(overview?.recentEvents || []).length === 0 ? (
+            {(Array.isArray(overview?.recentEvents) ? overview.recentEvents : []).length === 0 ? (
               <Typography variant="caption" color="text.secondary">Ingen events registrert ennå.</Typography>
             ) : (
               <Table size="small">
                 <TableBody>
-                  {(overview?.recentEvents || []).slice(0, 10).map((ev: any, idx: number) => (
+                  {(Array.isArray(overview?.recentEvents) ? overview.recentEvents : []).slice(0, 10).map((ev: any, idx: number) => (
                     <TableRow key={idx}>
                       <TableCell sx={{ py: 0.5, borderBottom: idx === 9 ? 0 : undefined }}>
                         <Typography variant="caption" sx={{ fontWeight: 600 }}>
@@ -450,12 +450,12 @@ const AdminAnalyticsHub: React.FC = () => {
             <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
               Siste Stripe-hendelser
             </Typography>
-            {(stripe?.events || []).length === 0 ? (
+            {(Array.isArray(stripe?.events) ? stripe.events : []).length === 0 ? (
               <Typography variant="caption" color="text.secondary">Ingen Stripe-events.</Typography>
             ) : (
               <Table size="small">
                 <TableBody>
-                  {(stripe?.events || []).slice(0, 10).map((ev: any, idx: number) => (
+                  {(Array.isArray(stripe?.events) ? stripe.events : []).slice(0, 10).map((ev: any, idx: number) => (
                     <TableRow key={ev.id}>
                       <TableCell sx={{ py: 0.5, borderBottom: idx === 9 ? 0 : undefined }}>
                         <Typography variant="caption" sx={{ fontWeight: 600 }}>

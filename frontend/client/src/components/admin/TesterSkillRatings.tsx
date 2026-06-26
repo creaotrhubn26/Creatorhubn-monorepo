@@ -101,6 +101,7 @@ export default function TesterSkillRatings() {
       const headers = await auth.getAuthHeader();
       return apiRequest('/api/admin/tester-skills', { headers });
     },
+    select: (data) => (Array.isArray(data) ? data : []),
     staleTime: 5 * 60 * 1000,
   });
 

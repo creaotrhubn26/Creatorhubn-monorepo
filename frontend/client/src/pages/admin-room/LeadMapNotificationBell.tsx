@@ -91,7 +91,7 @@ export default function LeadMapNotificationBell() {
       );
       if (r.ok) {
         const j = await r.json();
-        setNotifications(j.notifications ?? []);
+        setNotifications(Array.isArray(j.notifications) ? j.notifications : []);
         setUnreadCount(j.unreadCount ?? 0);
       }
     } catch { /* noop */ }

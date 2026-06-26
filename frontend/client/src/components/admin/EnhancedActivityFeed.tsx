@@ -197,7 +197,7 @@ export default function EnhancedActivityFeed({
     retry: false,
   });
 
-  const activities = activityData?.activities || [];
+  const activities = Array.isArray(activityData?.activities) ? activityData.activities : [];
   const total = activityData?.total || 0;
   const hasMore = activityData?.hasMore || false;
 
@@ -228,7 +228,7 @@ useEffect(() => {
   if (!enableNotifications) return;
   if (typeof window === 'undefined' || !('Notification' in window)) return;
 
-  const items = activityData?.activities ?? [];
+  const items = Array.isArray(activityData?.activities) ? activityData.activities : [];
   const criticalActivities = items.filter(
     (a: ActivityItem) => a.priority === 'critical' && a.status === 'pending'
   );

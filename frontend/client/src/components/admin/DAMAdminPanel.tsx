@@ -247,7 +247,7 @@ export default function DAMAdminPanel() {
       const data = await response.json();
 
       if (data.success) {
-        setAssets(data.assets);
+        setAssets(Array.isArray(data.assets) ? data.assets : []);
         setTotalAssets(data.total);
         setHasMore(data.hasMore);
     } else {
@@ -268,7 +268,7 @@ export default function DAMAdminPanel() {
       const data = await response.json();
 
       if (data.success) {
-        setCollections(data.collections);
+        setCollections(Array.isArray(data.collections) ? data.collections : []);
     }
   } catch (err) {
       console.error('Load collections error:', err);

@@ -50,7 +50,7 @@ export function PublicBriefIndex() {
   useEffect(() => {
     fetch('/api/newsletter/role-room/brief')
       .then((r) => r.json())
-      .then((d) => setIssues(d.issues ?? []))
+      .then((d) => setIssues(Array.isArray(d?.issues) ? d.issues : []))
       .catch((err) => setError((err as Error).message))
       .finally(() => setLoading(false));
   }, []);
