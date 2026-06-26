@@ -37,6 +37,7 @@ import {
 import {
   Edit as EditIcon,
   Block as BlockIcon,
+  DeleteForever as DeleteIcon,
   CheckCircle as ActivateIcon,
   AdminPanelSettings as AdminIcon,
   Person as UserIcon,
@@ -66,7 +67,7 @@ interface AdminUserManagementProps {
 const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, isLoading }) => {
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [actionType, setActionType] = useState<'role' | 'deactivate' | 'activate'>('role');
+  const [actionType, setActionType] = useState<'role' | 'deactivate' | 'activate' | 'delete'>('role');
   const [newRole, setNewRole] = useState<'user' | 'admin' | 'super_admin'>('user');
   const [reason, setReason] = useState('');
   const [error, setError] = useState('');
@@ -121,7 +122,21 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, isLoad
   }
 });
 
-  const handleOpenDialog = (user: User, action: 'role' | 'deactivate' | 'activate') => {
+  const deleteMutation = useMutation({
+    mutationFn: async ({ userId }: { userId: string }) => {
+      const headers = await auth.getAuthHeader();
+      return await apiRequest(`/api/admin/users/${userId}`, { headers, method: 'DELETE' });
+  },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/users'] });
+      handleCloseDialog();
+  },
+    onError: (error: any) => {
+      setError(error.message || 'Kunne ikke slette bruker');
+  }
+});
+
+  const handleOpenDialog = (user: User, action: 'role' | 'deactivate' | 'activate' | 'delete') => {
     setSelectedUser(user);
     setActionType(action);
     setNewRole(user.role);
@@ -160,6 +175,8 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, isLoad
         userId: selectedUser.id,
         reason: reason || 'Admin activation'
     });
+  } else if (actionType === 'delete') {
+      deleteMutation.mutate({ userId: selectedUser.id });
   }
 };
 
@@ -295,6 +312,16 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, isLoad
                             </IconButton>
                           </Tooltip>
                         )}
+
+                        <Tooltip title="Slett bruker permanent">
+                          <IconButton
+                            size="small"
+                            onClick={() => handleOpenDialog(user, 'delete')}
+                            sx={{ color: '#d32f2f' }}
+                          >
+                            <DeleteIcon />
+                          </IconButton>
+                        </Tooltip>
                       </Box>
                     </TableCell>
                   </TableRow>
@@ -322,6 +349,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, isLoad
           {actionType === 'role' && 'Endre brukerrolle'}
           {actionType === 'deactivate' && 'Deaktiver bruker'}
           {actionType === 'activate' && 'Aktiver bruker'}
+          {actionType === 'delete' && 'Slett bruker permanent'}
         </DialogTitle>
         
         <DialogContent>
@@ -335,7 +363,17 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, isLoad
             <Typography sx={{ color: 'rgba(255, 255, 255, 0.82)' }}>
               Bruker: {selectedUser?.firstName} {selectedUser?.lastName} ({selectedUser?.email})
             </Typography>
-            
+
+            {actionType === 'delete' && (
+              <Alert severity="error" sx={{ '& .MuiAlert-message': { width: '100%' } }}>
+                <strong>Er du sikker på at du vil slette denne brukeren?</strong>
+                <br />
+                Dette fjerner kontoen <strong>permanent</strong> sammen med tilknyttede data, og
+                <strong> kan ikke angres</strong>. (Admin/super_admin-kontoer kan ikke slettes —
+                endre rollen først.)
+              </Alert>
+            )}
+
             {actionType === 'role' && (
               <FormControl fullWidth>
                 <InputLabel sx={{ color: 'rgba(255, 255, 255, 0.72)' }}>Ny rolle</InputLabel>
@@ -356,6 +394,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, isLoad
               </FormControl>
             )}
             
+            {actionType !== 'delete' && (
             <TextField
               label={actionType === 'deactivate' ? 'Årsak (påkrevd)' : 'Årsak (valgfri)'}
               multiline
@@ -368,6 +407,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, isLoad
                   color: 'white', '& fieldset': { borderColor: 'rgba(255, 255, 255, 0.2)' }, '&:hover fieldset': { borderColor: '#ff8c00',},
               }}}
             />
+            )}
           </Box>
         </DialogContent>
         
@@ -381,17 +421,20 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, isLoad
           <Button onClick={handleSubmit}
             variant="contained"
             disabled={
-              roleUpdateMutation.isPending || 
-              deactivateMutation.isPending || 
-              activateMutation.isPending
+              roleUpdateMutation.isPending ||
+              deactivateMutation.isPending ||
+              activateMutation.isPending ||
+              deleteMutation.isPending
           }
-            sx={{
-              backgroundColor: '#ff8c00', '&:hover': { backgroundColor: '#e67c00' }
-          }}>
-            {(roleUpdateMutation.isPending || deactivateMutation.isPending || activateMutation.isPending) ? (
+            sx={
+              actionType === 'delete'
+                ? { backgroundColor: '#d32f2f', '&:hover': { backgroundColor: '#b71c1c' } }
+                : { backgroundColor: '#ff8c00', '&:hover': { backgroundColor: '#e67c00' } }
+          }>
+            {(roleUpdateMutation.isPending || deactivateMutation.isPending || activateMutation.isPending || deleteMutation.isPending) ? (
               <CircularProgress size={20} sx={{ color: 'white' }} />
             ) : (
-             'Bekreft')}
+             actionType === 'delete' ? 'Slett permanent' : 'Bekreft')}
           </Button>
         </DialogActions>
       </Dialog>
