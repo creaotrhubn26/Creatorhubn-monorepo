@@ -511,11 +511,13 @@ export function setupEditingPartnerApplicationsAdminRoutes(deps: Deps): void {
         );
       } else {
         await client.query(
+          // Eksplisitt id (ikke avhengig av kolonne-default — som tidligere var
+          // feilsatt til den literale strengen 'gen_random_uuid()', se mig 0348).
           `INSERT INTO vendor_onboarding_profiles
-             (user_id, vendor_type, vendor_name, business_info, approval_status, approved_at,
+             (id, user_id, vendor_type, vendor_name, business_info, approval_status, approved_at,
               approved_by, is_foreign, country, is_eea, partner_type, prototype_until, platform_fee_bps)
-           VALUES ($1, 'editing', $2, '{}'::jsonb, 'approved', now(), $3, $4, $5, $6, $7, $8, $9)`,
-          [userId, appRow.company_name, s.userId, !!appRow.is_foreign, appRow.country, appRow.is_eea, partnerType, prototypeUntil, platformFeeBps],
+           VALUES ($10, $1, 'editing', $2, '{}'::jsonb, 'approved', now(), $3, $4, $5, $6, $7, $8, $9)`,
+          [userId, appRow.company_name, s.userId, !!appRow.is_foreign, appRow.country, appRow.is_eea, partnerType, prototypeUntil, platformFeeBps, crypto.randomUUID()],
         );
       }
 
