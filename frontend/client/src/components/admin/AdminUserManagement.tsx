@@ -34,6 +34,7 @@ import {
   Alert,
   CircularProgress,
 } from '@mui/material';
+import { AdminCard, AdminButton, StatusChip, AdminTableContainer, AdminEmpty } from './design-system';
 import {
   Edit as EditIcon,
   Block as BlockIcon,
@@ -222,13 +223,8 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, isLoad
 
   return (
     <Box>
-      <Paper sx={{ backgroundColor: 'rgba(255, 255, 255, 0.02)' }}>
-        <Box sx={{ p: 3 }}>
-          <Typography variant="h6" sx={{ color: theming.colors.primary, mb: 2 }}>
-            Brukeradministrasjon
-          </Typography>
-          
-          <TableContainer>
+      <AdminCard title="Brukeradministrasjon" disablePadding>
+          <AdminTableContainer ariaLabel="Brukere">
             <Table>
               <TableHead>
                 <TableRow>
@@ -259,18 +255,13 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, isLoad
                     <TableCell>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         {getRoleIcon(user.role)}
-                        <Chip 
-                          label={getRoleLabel(user.role)}
-                          color={getRoleColor(user.role) as any}
-                          size="small"
-                        />
+                        <StatusChip role={user.role} />
                       </Box>
                     </TableCell>
                     <TableCell>
-                      <Chip 
+                      <StatusChip
+                        tone={user.isActive ? 'success' : 'error'}
                         label={user.isActive ? 'Aktiv' : 'Deaktivert'}
-                        color={user.isActive ? 'success' : 'error'}
-                        size="small"
                       />
                     </TableCell>
                     <TableCell sx={{ color: 'rgba(255, 255, 255, 0.82)' }}>
@@ -328,9 +319,11 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, isLoad
                 ))}
               </TableBody>
             </Table>
-          </TableContainer>
-        </Box>
-      </Paper>
+          </AdminTableContainer>
+          {(!users || users.length === 0) && (
+            <AdminEmpty title="Ingen brukere" description="Det finnes ingen brukere å vise ennå." />
+          )}
+      </AdminCard>
 
       {/* Action Dialog */}
       <Dialog
@@ -412,30 +405,21 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, isLoad
         </DialogContent>
         
         <DialogActions>
-          <Button 
-            onClick={handleCloseDialog}
-            sx={{ color: 'rgba(255, 255, 255, 0.72)' }}
-          >
+          <AdminButton tone="ghost" onClick={handleCloseDialog}>
             Avbryt
-          </Button>
-          <Button onClick={handleSubmit}
-            variant="contained"
-            disabled={
+          </AdminButton>
+          <AdminButton
+            tone={actionType === 'delete' ? 'danger' : 'primary'}
+            onClick={handleSubmit}
+            loading={
               roleUpdateMutation.isPending ||
               deactivateMutation.isPending ||
               activateMutation.isPending ||
               deleteMutation.isPending
-          }
-            sx={
-              actionType === 'delete'
-                ? { backgroundColor: '#d32f2f', '&:hover': { backgroundColor: '#b71c1c' } }
-                : { backgroundColor: '#ff8c00', '&:hover': { backgroundColor: '#e67c00' } }
-          }>
-            {(roleUpdateMutation.isPending || deactivateMutation.isPending || activateMutation.isPending || deleteMutation.isPending) ? (
-              <CircularProgress size={20} sx={{ color: 'white' }} />
-            ) : (
-             actionType === 'delete' ? 'Slett permanent' : 'Bekreft')}
-          </Button>
+            }
+          >
+            {actionType === 'delete' ? 'Slett permanent' : 'Bekreft'}
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>
