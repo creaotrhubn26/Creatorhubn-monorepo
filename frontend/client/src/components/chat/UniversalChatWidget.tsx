@@ -1236,7 +1236,10 @@ export default function UniversalChatWidget({
   const [googleWorkspaceOauthPending, setGoogleWorkspaceOauthPending] = useState(false);
   
   // Push notifications
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
+  // Leverandør-profil: chat-huben er fotograf-orientert. Vis kun det relevante
+  // (CreatorHub-chat + Feedback); skjul Google Chat / E-post / Evendi / Academy.
+  const isVendorProfile = String(professionProp || '').toLowerCase() === 'vendor';
   const currentUserId = userId || user?.id || user?.sub;
   const { pushEnabled, isSupported } = usePushNotifications(currentUserId);
   
@@ -5207,6 +5210,9 @@ export default function UniversalChatWidget({
 };
 
   const openFeedbackStatusDialog = (feedback: FeedbackItem) => {
+    // Kun admin kan endre status / skrive admin-notater. Ikke-admin (f.eks.
+    // leverandør eller fotograf) skal aldri kunne åpne admin-håndteringen.
+    if (!isAdmin) return;
     setSelectedFeedback(feedback);
     setNewFeedbackStatus(feedback.status);
     setAdminNotes(feedback.adminNotes || '');
@@ -10066,12 +10072,14 @@ export default function UniversalChatWidget({
     </Box>
   );
 
-  const mobileBottomTabs = [
+  const mobileBottomTabs = ([
     { id: TAB_CREATORHUB, label: 'Chat', icon: <Chat sx={{ fontSize: 20 }} /> },
     { id: TAB_GOOGLE_CHAT, label: 'Google', icon: <Google sx={{ fontSize: 20 }} /> },
     { id: TAB_EMAIL, label: 'E-post', icon: <Email sx={{ fontSize: 20 }} /> },
     { id: TAB_FEEDBACK, label: 'Feedback', icon: <BugReport sx={{ fontSize: 20 }} /> },
-  ] as const;
+  ] as const).filter(
+    (t) => !isVendorProfile || t.id === TAB_CREATORHUB || t.id === TAB_FEEDBACK,
+  );
 
   const mobileShell = (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', position: 'relative', bgcolor: 'rgba(20,16,11,0.6)' }}>
@@ -10925,6 +10933,7 @@ export default function UniversalChatWidget({
                   iconPosition="start"
                   sx={{ textTransform: 'none' }}
                 />
+                {!isVendorProfile && (
                 <Tab
                   value={TAB_GOOGLE_CHAT}
                   icon={<Google sx={{ fontSize: 24 }} />}
@@ -10932,6 +10941,8 @@ export default function UniversalChatWidget({
                   iconPosition="start"
                   sx={{ textTransform: 'none' }}
                 />
+                )}
+                {!isVendorProfile && (
                 <Tab
                   value={TAB_EMAIL}
                   icon={<Email sx={{ fontSize: 24 }} />}
@@ -10939,6 +10950,7 @@ export default function UniversalChatWidget({
                   iconPosition="start"
                   sx={{ textTransform: 'none' }}
                 />
+                )}
                 <Tab
                   value={TAB_FEEDBACK}
                   icon={<BugReport sx={{ fontSize: 24 }} />}
@@ -10946,6 +10958,7 @@ export default function UniversalChatWidget({
                   iconPosition="start"
                   sx={{ textTransform: 'none' }}
                 />
+                {!isVendorProfile && (
                 <Tab
                   value={TAB_EVENDI}
                   icon={<img src="/evendi-logo.png" alt="Evendi" style={{ width: 24, height: 24, borderRadius: '50%' }} />}
@@ -10953,6 +10966,8 @@ export default function UniversalChatWidget({
                   iconPosition="start"
                   sx={{ textTransform: 'none' }}
                 />
+                )}
+                {!isVendorProfile && (
                 <Tab
                   value={TAB_ACADEMY}
                   icon={<img src="/academy-favicon.svg" alt="Academy" style={{ width: 24, height: 24 }} />}
@@ -10960,6 +10975,7 @@ export default function UniversalChatWidget({
                   iconPosition="start"
                   sx={{ textTransform: 'none' }}
                 />
+                )}
               </Tabs>
             </Box>
 
@@ -12073,6 +12089,7 @@ export default function UniversalChatWidget({
                                 </Box>
                           }
                             />
+                            {isAdmin && (
                             <ListItemSecondaryAction>
                               <IconButton
                                 size="small"
@@ -12085,6 +12102,7 @@ export default function UniversalChatWidget({
                                 <Edit fontSize="small" />
                               </IconButton>
                             </ListItemSecondaryAction>
+                            )}
                           </ListItem>
                         ))}
                       </List>
@@ -13213,9 +13231,9 @@ export default function UniversalChatWidget({
         </Alert>
       </Snackbar>
 
-      {/* Feedback Status Update Dialog */}
+      {/* Feedback Status Update Dialog — admin-only */}
       <Dialog
-        open={feedbackStatusDialogOpen}
+        open={feedbackStatusDialogOpen && isAdmin}
         onClose={() => setFeedbackStatusDialogOpen(false)}
         maxWidth="md"
         fullWidth
@@ -13654,6 +13672,7 @@ export default function UniversalChatWidget({
           <Button onClick={() => setFeedbackDetailDialogOpen(false)}>
             Lukk
           </Button>
+          {isAdmin && (
           <Button
             onClick={() => {
               setFeedbackDetailDialogOpen(false);
@@ -13673,6 +13692,7 @@ export default function UniversalChatWidget({
           >
             Oppdater Status
           </Button>
+          )}
           {/* Deploy Fix Button - Only show if feedback has AI analysis */}
           {selectedFeedback?.aiAnalysis && (
             <Button
