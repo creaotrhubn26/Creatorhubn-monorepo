@@ -556,6 +556,8 @@ import { registerLeadgridMomentumRoutes } from "./leadgrid-momentum-routes.js";
 import { registerLeadgridImportRoutes } from "./leadgrid-import-routes.js";
 import { registerLeadgridUrlResearchRoutes } from "./leadgrid-url-research-routes.js";
 import { registerLeadgridIndustriesRoutes } from "./leadgrid-industries-routes.js";
+import { registerLeadgridDealsRoutes } from "./leadgrid-deals-routes.js";
+import { registerLeadgridWorkflowRoutes } from "./leadgrid-workflow-routes.js";
 import { registerLeadgridWebhookRotationRoutes } from "./leadgrid-webhook-rotation-routes.js";
 import { registerLeadgridPublicApiV1 } from "./leadgrid-public-api-v1.js";
 import { registerLeadgridApiKeyMgmtRoutes } from "./leadgrid-api-key-mgmt-routes.js";
@@ -24632,6 +24634,16 @@ registerLeadgridUrlResearchRoutes({ app, pool, activeSessions });
 //   GET/PUT /api/leadgrid/members/{me|:userId}/industries
 // Gated på industries.view / .manage / .assign.
 registerLeadgridIndustriesRoutes({ app, pool, activeSessions });
+// Deal Management (mig 0349, #154/#155) — deal_probability, expected_close_date,
+// weighted forecast (sum amount × probability/100), at-risk-list, stage-history.
+// Gated på deals.view_forecast / deals.view_amount / deals.edit.
+registerLeadgridDealsRoutes({ app, pool, activeSessions });
+// Smart Workflow Builder (mig 0349, #203) — Leadgrid-koblede triggers
+// (lead.created, pipeline.stage_changed, deal.probability_changed, ...) +
+// actions (send_email/sms/wa, change_pipeline_stage, add_tag, create_task,
+// notify_channel, wait, ai_pitch_generate). 10 forhåndsbygde templates.
+// Gated på workflows.view / workflows.create / workflows.execute.
+registerLeadgridWorkflowRoutes({ app, pool, activeSessions });
 // Webhook-secret-rotering m/ 7-dagers grace-period (mig 322).
 // POST /webhooks/:id/rotate-secret + cron /expire-old-webhook-secrets.
 registerLeadgridWebhookRotationRoutes({ app, pool, activeSessions });

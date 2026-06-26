@@ -19,6 +19,8 @@ struct MyDayView: View {
                     summaryCards
                     momentumCard
                     forecastCard
+                    // Deal-mgmt weighted forecast + at-risk (#154/#155, mig 0349)
+                    dealForecastCard
                     leadsList
                 }
                 .padding(.horizontal)
@@ -168,6 +170,15 @@ struct MyDayView: View {
     private var forecastCard: some View {
         if let api = state.api {
             LeadgridForecastCard(api: api)
+        }
+    }
+
+    // MARK: - Deal-mgmt weighted forecast card (mig 0349, #154/#155)
+
+    @ViewBuilder
+    private var dealForecastCard: some View {
+        if let api = state.api {
+            LeadgridDealForecastCard(api: api)
         }
     }
 
