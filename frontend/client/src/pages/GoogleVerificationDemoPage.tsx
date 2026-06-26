@@ -24,6 +24,10 @@ import {
   Refresh,
   TaskAlt,
   VideoLibrary,
+  CampaignOutlined,
+  InsightsOutlined,
+  TravelExploreOutlined,
+  SellOutlined,
 } from '@mui/icons-material';
 import { creatorHubTheme } from '@/theme/creatorHubTheme';
 import { apiRequest } from '@/lib/queryClient';
@@ -50,7 +54,11 @@ type ActionKey =
   | 'create-youtube-playlist'
   | 'upload-youtube-video'
   | 'update-youtube-video'
-  | 'upload-youtube-thumbnail';
+  | 'upload-youtube-thumbnail'
+  | 'ads-list-customers'
+  | 'ads-list-ga4'
+  | 'ads-list-gsc'
+  | 'ads-list-gtm';
 
 type ActionState = {
   status: ActionStatus;
@@ -1084,6 +1092,39 @@ export default function GoogleVerificationDemoPage() {
   const workspaceStorageTotal = typeof (overview.workspaceStorage as { totalStorageGB?: unknown } | null)?.totalStorageGB === 'number'
     ? (overview.workspaceStorage as { totalStorageGB: number }).totalStorageGB
     : null;
+
+  // ── Ads & marketing-handlinger (demonstrerer adwords/analytics.edit/
+  //    webmasters/tagmanager via live READ-kall mot den tilkoblede kontoen).
+  const marketingUserParam = `userId=${encodeURIComponent(resolvedUserId ?? '')}`;
+  const handleAdsListCustomers = React.useCallback(async () => {
+    await runAction(
+      'ads-list-customers',
+      async () => apiRequest(`/api/google-verification/marketing/ads-customers?${marketingUserParam}`),
+      (value) => `Google Ads: ${(value as { count?: number }).count ?? 0} tilgjengelig(e) konto(er) lest (adwords-scope).`,
+    );
+  }, [runAction, marketingUserParam]);
+  const handleAdsListGa4 = React.useCallback(async () => {
+    await runAction(
+      'ads-list-ga4',
+      async () => apiRequest(`/api/google-verification/marketing/ga4-accounts?${marketingUserParam}`),
+      (value) => `Google Analytics: ${(value as { count?: number }).count ?? 0} GA4-konto(er) lest (analytics.edit-scope).`,
+    );
+  }, [runAction, marketingUserParam]);
+  const handleAdsListGsc = React.useCallback(async () => {
+    await runAction(
+      'ads-list-gsc',
+      async () => apiRequest(`/api/google-verification/marketing/gsc-sites?${marketingUserParam}`),
+      (value) => `Search Console: ${(value as { count?: number }).count ?? 0} side(r) lest (webmasters-scope).`,
+    );
+  }, [runAction, marketingUserParam]);
+  const handleAdsListGtm = React.useCallback(async () => {
+    await runAction(
+      'ads-list-gtm',
+      async () => apiRequest(`/api/google-verification/marketing/gtm-accounts?${marketingUserParam}`),
+      (value) => `Tag Manager: ${(value as { count?: number }).count ?? 0} konto(er) lest (tagmanager-scope).`,
+    );
+  }, [runAction, marketingUserParam]);
+
   const verificationSections: StageDefinition[] = [
     {
       id: 'workspace',
@@ -1253,6 +1294,47 @@ export default function GoogleVerificationDemoPage() {
           buttonLabel: 'Upload YouTube Thumbnail',
           icon: <VideoLibrary />,
           onRun: () => { void handleUploadYouTubeThumbnail(); },
+        },
+      ],
+    },
+    {
+      id: 'ads-marketing',
+      eyebrow: 'Stage 4',
+      title: 'Ads & marketing (Google Ads, Analytics, Search Console, Tag Manager)',
+      description: 'Demonstrerer markedsførings-scopene via live lese-kall mot den tilkoblede kontoen: Google Ads-konti (adwords), GA4-konti (analytics.edit), Search Console-sider (webmasters) og Tag Manager-konti (tagmanager). Krever en tilkoblet konto med disse rettighetene.',
+      accent: '#22c55e',
+      actions: [
+        {
+          key: 'ads-list-customers',
+          title: 'Google Ads-konti',
+          description: 'Les tilgjengelige Google Ads-konti (adwords-scope).',
+          buttonLabel: 'List Google Ads accounts',
+          icon: <CampaignOutlined />,
+          onRun: () => { void handleAdsListCustomers(); },
+        },
+        {
+          key: 'ads-list-ga4',
+          title: 'Analytics-konti',
+          description: 'List GA4-konti/properties (analytics.edit-scope).',
+          buttonLabel: 'List GA4 accounts',
+          icon: <InsightsOutlined />,
+          onRun: () => { void handleAdsListGa4(); },
+        },
+        {
+          key: 'ads-list-gsc',
+          title: 'Search Console-sider',
+          description: 'List verifiserte Search Console-sider (webmasters-scope).',
+          buttonLabel: 'List Search Console sites',
+          icon: <TravelExploreOutlined />,
+          onRun: () => { void handleAdsListGsc(); },
+        },
+        {
+          key: 'ads-list-gtm',
+          title: 'Tag Manager-konti',
+          description: 'List Google Tag Manager-konti (tagmanager-scope).',
+          buttonLabel: 'List Tag Manager accounts',
+          icon: <SellOutlined />,
+          onRun: () => { void handleAdsListGtm(); },
         },
       ],
     },

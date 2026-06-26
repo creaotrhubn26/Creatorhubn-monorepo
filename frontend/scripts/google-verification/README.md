@@ -22,6 +22,13 @@ This folder contains the local helper scripts for recording a Google OAuth verif
    - Tasks
    - Chat spaces/messages
    - YouTube publishing and metadata editing
+   - **Ads & marketing (Stage 4 on `/google-verification-demo`)** — live read-only
+     calls proving each marketing scope is used:
+       - List Google Ads accounts (adwords)
+       - List GA4 accounts (analytics.edit)
+       - List Search Console sites (webmasters)
+       - List Tag Manager accounts (tagmanager)
+     Requires a connected account with Google Ads + GA4/GSC/GTM access.
 7. Convert the raw `.mov` to `.mp4`.
 8. Upload the final video to YouTube as `Unlisted`.
 
