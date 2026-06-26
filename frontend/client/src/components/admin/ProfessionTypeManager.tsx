@@ -67,6 +67,7 @@ import {
 } from '@mui/icons-material';
 import type { ChipProps } from '@mui/material';
 import { apiRequest } from '@/lib/queryClient';
+import { AdminButton } from './design-system';
 
 interface ProfessionTypeConfig {
   id: string;
@@ -436,8 +437,8 @@ export default function ProfessionTypeManager() {
           </Box>
           
           {createProfessionAccess.hasAccess && (
-            <Button
-              variant="contained"
+            <AdminButton
+              tone="primary"
               startIcon={<Add />}
               onClick={() => {
                 analytics.trackEvent('create_profession_button_clicked', {
@@ -451,7 +452,7 @@ export default function ProfessionTypeManager() {
               }}
             >
               Ny Profesjon
-            </Button>
+            </AdminButton>
           )}
           
           {!createProfessionAccess.hasAccess && (
@@ -656,15 +657,15 @@ export default function ProfessionTypeManager() {
                     
                     {/* Actions */}
                     <Box sx={{ display: 'flex', gap: 1 }}>
-                      <Button
+                      <AdminButton
                         size="small"
-                        variant="outlined"
+                        tone="secondary"
                         startIcon={<Preview />}
                         onClick={() => handlePreview(profession)}
                         sx={{ flex: 1 }}
                       >
                         Forhåndsvisning
-                      </Button>
+                      </AdminButton>
                       <IconButton 
                         size="small" 
                         onClick={() => handleEditProfession(profession)}
@@ -790,26 +791,26 @@ export default function ProfessionTypeManager() {
                     
                     {/* Action buttons */}
                     <Box sx={{ display: 'flex', gap: 1 }}>
-                      <Button
+                      <AdminButton
                         fullWidth
-                        variant="contained"
+                        tone="primary"
                         startIcon={<Add />}
                         onClick={() => activateTemplateMutation.mutate(template.id)}
-                        disabled={activateTemplateMutation.isPending}
+                        loading={activateTemplateMutation.isPending}
                         sx={{
                           bgcolor: template.iconColor,
                           '&:hover': { bgcolor: template.iconColor, opacity: 0.9 }
                         }}
                       >
                         Aktiver
-                      </Button>
-                      <Button
-                        variant="outlined"
+                      </AdminButton>
+                      <AdminButton
+                        tone="secondary"
                         onClick={() => handlePreview(template)}
                         sx={{ minWidth: 'auto', px: 2 }}
                       >
                         <Preview />
-                      </Button>
+                      </AdminButton>
                     </Box>
                   </CardContent>
                 </Card>
@@ -1003,9 +1004,9 @@ export default function ProfessionTypeManager() {
         </DialogContent>
         
         <DialogActions>
-          <Button onClick={() => setPreviewDialogOpen(false)}>
+          <AdminButton tone="ghost" onClick={() => setPreviewDialogOpen(false)}>
             Lukk
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -1037,15 +1038,15 @@ export default function ProfessionTypeManager() {
         </DialogContent>
         
         <DialogActions>
-          <Button onClick={() => {
+          <AdminButton tone="ghost" onClick={() => {
             setCreateDialogOpen(false);
             setEditDialogOpen(false);
           }}>
             Avbryt
-          </Button>
-          <Button variant="contained" disabled>
+          </AdminButton>
+          <AdminButton tone="primary" disabled>
             {createDialogOpen ? 'Opprett' : 'Lagre'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

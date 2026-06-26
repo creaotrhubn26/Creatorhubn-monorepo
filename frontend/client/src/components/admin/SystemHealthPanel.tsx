@@ -7,7 +7,6 @@ import {
   Box,
   Button,
   Chip,
-  Divider,
   List,
   ListItem,
   ListItemText,
@@ -16,14 +15,12 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   Typography,
   ThemeProvider,
 } from '@mui/material';
 import { adminDarkTheme } from './adminDarkTheme';
-import type { ChipProps } from '@mui/material/Chip';
 import {
   Backup,
   CheckCircle,
@@ -37,6 +34,11 @@ import {
   WarningAmber,
 } from '@mui/icons-material';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
+import {
+  AdminCard,
+  StatusChip,
+  AdminTableContainer,
+} from './design-system';
 
 interface SystemHealthPanelProps {
   onOpenBackup?: () => void;
@@ -99,7 +101,7 @@ const insetSx = {
   bgcolor: 'rgba(255,255,255,0.04)',
 } as const;
 
-function getStatusColor(status: string): ChipProps['color'] {
+function getStatusTone(status: string): 'success' | 'warning' | 'error' | 'neutral' {
   switch (status) {
     case 'healthy':
       return 'success';
@@ -108,7 +110,7 @@ function getStatusColor(status: string): ChipProps['color'] {
     case 'error':
       return 'error';
     default:
-      return 'default';
+      return 'neutral';
   }
 }
 
@@ -293,9 +295,8 @@ export default function SystemHealthPanel({
                 Status akkurat nå
               </Typography>
               <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.8 }}>
-                <Chip
-                  size="small"
-                  color={getStatusColor(overallStatus)}
+                <StatusChip
+                  tone={getStatusTone(overallStatus)}
                   label={getStatusLabel(overallStatus)}
                 />
                 <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.6)' }}>
@@ -389,16 +390,12 @@ export default function SystemHealthPanel({
 
       <Grid container spacing={2}>
         <Grid size={{ xs: 12, xl: 7 }}>
-          <Paper sx={{ ...surfaceSx, p: 2.5 }}>
-            <Typography sx={{ fontSize: '1.1rem', fontWeight: 700, color: '#ffffff' }}>
-              Tjenesteoversikt
-            </Typography>
-            <Typography sx={{ mt: 0.5, color: 'rgba(255,255,255,0.6)' }}>
-              Les tjenestestatus uten å navigere inn i egne monitoreringsflater.
-            </Typography>
-            <Divider sx={{ my: 2 }} />
-
-            <TableContainer>
+          <AdminCard
+            title="Tjenesteoversikt"
+            subtitle="Les tjenestestatus uten å navigere inn i egne monitoreringsflater."
+            disablePadding
+          >
+            <AdminTableContainer ariaLabel="Tjenesteoversikt">
               <Table>
                 <TableHead>
                   <TableRow>
@@ -424,9 +421,8 @@ export default function SystemHealthPanel({
                           {service.name}
                         </TableCell>
                         <TableCell>
-                          <Chip
-                            size="small"
-                            color={getStatusColor(service.status)}
+                          <StatusChip
+                            tone={getStatusTone(service.status)}
                             label={getStatusLabel(service.status)}
                           />
                         </TableCell>
@@ -437,20 +433,15 @@ export default function SystemHealthPanel({
                   )}
                 </TableBody>
               </Table>
-            </TableContainer>
-          </Paper>
+            </AdminTableContainer>
+          </AdminCard>
         </Grid>
 
         <Grid size={{ xs: 12, xl: 5 }}>
-          <Paper sx={{ ...surfaceSx, p: 2.5 }}>
-            <Typography sx={{ fontSize: '1.1rem', fontWeight: 700, color: '#ffffff' }}>
-              Siste hendelser
-            </Typography>
-            <Typography sx={{ mt: 0.5, color: 'rgba(255,255,255,0.6)' }}>
-              Dette er de driftsignalene som bør leses først.
-            </Typography>
-            <Divider sx={{ my: 2 }} />
-
+          <AdminCard
+            title="Siste hendelser"
+            subtitle="Dette er de driftsignalene som bør leses først."
+          >
             <List sx={{ p: 0 }}>
               {recentEvents.length === 0 ? (
                 <Alert severity="success" sx={{ borderRadius: '14px' }}>
@@ -472,9 +463,8 @@ export default function SystemHealthPanel({
                           <Typography sx={{ fontWeight: 600, color: '#ffffff' }}>
                             {event.message}
                           </Typography>
-                          <Chip
-                            size="small"
-                            color={getStatusColor(event.type)}
+                          <StatusChip
+                            tone={getStatusTone(event.type)}
                             label={getStatusLabel(event.type)}
                           />
                         </Stack>
@@ -489,20 +479,16 @@ export default function SystemHealthPanel({
                 ))
               )}
             </List>
-          </Paper>
+          </AdminCard>
         </Grid>
       </Grid>
 
       <Grid container spacing={2}>
         <Grid size={{ xs: 12, md: 6 }}>
-          <Paper sx={{ ...surfaceSx, p: 2.5 }}>
-            <Typography sx={{ fontSize: '1.05rem', fontWeight: 700, color: '#ffffff' }}>
-              Infrastruktur
-            </Typography>
-            <Typography sx={{ mt: 0.5, color: 'rgba(255,255,255,0.6)' }}>
-              Les tekniske nøkkeltall før du går inn i dypere feilsøking.
-            </Typography>
-            <Divider sx={{ my: 2 }} />
+          <AdminCard
+            title="Infrastruktur"
+            subtitle="Les tekniske nøkkeltall før du går inn i dypere feilsøking."
+          >
             <Stack spacing={1.25}>
               <Box sx={{ ...insetSx, p: 1.6 }}>
                 <Typography sx={{ fontWeight: 700, color: '#ffffff' }}>
@@ -529,18 +515,14 @@ export default function SystemHealthPanel({
                 </Typography>
               </Box>
             </Stack>
-          </Paper>
+          </AdminCard>
         </Grid>
 
         <Grid size={{ xs: 12, md: 6 }}>
-          <Paper sx={{ ...surfaceSx, p: 2.5 }}>
-            <Typography sx={{ fontSize: '1.05rem', fontWeight: 700, color: '#ffffff' }}>
-              Driftshandlinger
-            </Typography>
-            <Typography sx={{ mt: 0.5, color: 'rgba(255,255,255,0.6)' }}>
-              Backup og personvern lever i egne faner, men bør være tilgjengelige herfra.
-            </Typography>
-            <Divider sx={{ my: 2 }} />
+          <AdminCard
+            title="Driftshandlinger"
+            subtitle="Backup og personvern lever i egne faner, men bør være tilgjengelige herfra."
+          >
             <Stack spacing={1.25}>
               <Box sx={{ ...insetSx, p: 1.6 }}>
                 <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1.5}>
@@ -588,7 +570,7 @@ export default function SystemHealthPanel({
                   : 'Denne flaten er ment som rask driftspuls. Bruk sidefanene for dypere oppfølging.'}
               </Alert>
             </Stack>
-          </Paper>
+          </AdminCard>
         </Grid>
       </Grid>
     </Box>

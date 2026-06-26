@@ -30,7 +30,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   Paper,
@@ -63,6 +62,11 @@ import {
   EmojiEvents,
   CheckCircle,
 } from '@mui/icons-material';
+import {
+  AdminButton,
+  StatusChip,
+  AdminTableContainer,
+} from './design-system';
 
 interface AdminStatsProps {
   userEmail?: string;
@@ -622,7 +626,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                 <Typography variant="subtitle2" sx={{ mb: 1.5, color: 'text.secondary', letterSpacing: '0.06em', textTransform: 'uppercase', fontSize: '0.72rem' }}>
                   Siste produksjoner
                 </Typography>
-                <TableContainer component={Paper} sx={{ bgcolor: 'rgba(130,110,255,0.04)', border: '1px solid rgba(130,110,255,0.12)' }}>
+                <AdminTableContainer ariaLabel="Siste produksjoner" sx={{ bgcolor: 'rgba(130,110,255,0.04)', border: '1px solid rgba(130,110,255,0.12)' }}>
                   <Table size="small">
                     <TableHead>
                       <TableRow>
@@ -636,16 +640,9 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                         <TableRow key={p.id} sx={{ '&:hover': { bgcolor: 'rgba(130,110,255,0.06)' } }}>
                           <TableCell sx={{ fontWeight: 500 }}>{p.name}</TableCell>
                           <TableCell>
-                            <Chip
+                            <StatusChip
                               label={p.status}
-                              size="small"
-                              sx={{
-                                bgcolor: p.status === 'active' ? 'rgba(80,214,138,0.15)' : 'rgba(130,110,255,0.15)',
-                                color:   p.status === 'active' ? '#50d68a' : 'rgba(190,175,255,0.85)',
-                                fontWeight: 600,
-                                fontSize: '0.68rem',
-                                height: 20,
-                              }}
+                              tone={p.status === 'active' ? 'success' : 'brand'}
                             />
                           </TableCell>
                           <TableCell sx={{ color: 'text.secondary', fontSize: '0.78rem' }}>
@@ -655,7 +652,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                       ))}
                     </TableBody>
                   </Table>
-                </TableContainer>
+                </AdminTableContainer>
               </Box>
             )}
           </CardContent>
@@ -821,21 +818,19 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
 
               {/* Academy Quick Actions */}
               <Box sx={{ mt: 3, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                <Button
-                  variant="contained"
+                <AdminButton
+                  tone="primary"
                   startIcon={<School />}
-                  sx={{ bgcolor: '#ff8c00','&:hover': { bgcolor: '#e67e00' } }}
                   onClick={() => window.location.href = '/admin#academy'}
                 >
                   Administrer Kurs
-                </Button>
-                <Button
-                  variant="outlined"
+                </AdminButton>
+                <AdminButton
+                  tone="secondary"
                   startIcon={<Analytics />}
-                  sx={{ borderColor: '#ff8c00', color: '#ff8c00','&:hover': { borderColor: '#e67e00', bgcolor: 'rgba(255,140,0,0.12)' } }}
                 >
                   Detaljert Analyse
-                </Button>
+                </AdminButton>
               </Box>
             </CardContent>
           </MuiCard>
@@ -1375,7 +1370,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
               <Typography variant="h6" gutterBottom sx={{ color: themeColors.primary }}>
                 Brukerinformasjon per profesjon
               </Typography>
-              <TableContainer component={Paper} sx={{ mb: 3 }}>
+              <AdminTableContainer ariaLabel="Brukerinformasjon per profesjon" sx={{ mb: 3 }}>
                 <Table>
                   <TableHead>
                     <TableRow>
@@ -1432,7 +1427,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                     </TableRow>
                   </TableBody>
                 </Table>
-              </TableContainer>
+              </AdminTableContainer>
             </Box>
           )}
 

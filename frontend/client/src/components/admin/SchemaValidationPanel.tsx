@@ -20,7 +20,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   Paper,
@@ -47,6 +46,7 @@ import {
   Select,
   MenuItem,
 } from '@mui/material';
+import { AdminButton, AdminTableContainer } from './design-system';
 import {
   CheckCircle as CheckIcon,
   CheckCircle,
@@ -407,20 +407,21 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
                     </Alert>
                   )}
                   <Box sx={{ mb: 2 }}>
-                    <Button
-                      variant="contained"
+                    <AdminButton
+                      tone="primary"
                       onClick={() => setTutorialStep(index + 1)}
                       sx={{ mt: 1, mr: 1 }}
                     >
                       {index === tutorialSteps.length - 1 ? 'Finish' : 'Continue'}
-                    </Button>
-                    <Button
+                    </AdminButton>
+                    <AdminButton
+                      tone="ghost"
                       onClick={() => setTutorialStep(index - 1)}
                       sx={{ mt: 1, mr: 1 }}
                       disabled={index === 0}
                     >
                       Back
-                    </Button>
+                    </AdminButton>
                   </Box>
                 </StepContent>
               </Step>
@@ -439,16 +440,16 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleTutorialClose}>
+          <AdminButton tone="ghost" onClick={handleTutorialClose}>
             Close Tutorial
-          </Button>
-          <Button 
-            variant="contained" 
+          </AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={handleTutorialClose}
             startIcon={<PlayIcon />}
           >
             Start Optimizing!
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -547,15 +548,16 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
                   />
                 </Grid>
                 <Grid item xs={12} md={3}>
-                  <Button
+                  <AdminButton
                     fullWidth
-                    variant="contained"
+                    tone="primary"
                     onClick={handleValidateUrl}
-                    disabled={!url || isValidating}
+                    disabled={!url}
+                    loading={isValidating}
                     sx={{ height: '56px' }}
                   >
                     {isValidating ? 'Validating...' : 'Validate'}
-                  </Button>
+                  </AdminButton>
                 </Grid>
               </Grid>
             </Box>
@@ -576,13 +578,14 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
 }`}
                 sx={{ mb: 2, fontFamily: 'monospace' }}
               />
-              <Button
-                variant="contained"
+              <AdminButton
+                tone="primary"
                 onClick={handleValidateJson}
-                disabled={!jsonLd || isValidating}
+                disabled={!jsonLd}
+                loading={isValidating}
               >
                 {isValidating ? 'Validating...' : 'Validate JSON-LD'}
-              </Button>
+              </AdminButton>
             </Box>
           )}
 
@@ -1005,7 +1008,7 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
                 <Typography variant="subtitle2" gutterBottom>
                   Applied Fixes ({(Array.isArray(autoFixResult.appliedFixes) ? autoFixResult.appliedFixes : []).length}):
                 </Typography>
-                <TableContainer component={Paper} sx={{ mb: 2 }}>
+                <AdminTableContainer ariaLabel="Applied fixes" sx={{ mb: 2 }}>
                   <Table size="small">
                     <TableHead>
                       <TableRow>
@@ -1047,7 +1050,7 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
                       ))}
                     </TableBody>
                   </Table>
-                </TableContainer>
+                </AdminTableContainer>
 
                 <Typography variant="subtitle2" gutterBottom>
                   Improvements:
@@ -1060,8 +1063,8 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
                   ))}
                 </Box>
 
-                <Button
-                  variant="contained"
+                <AdminButton
+                  tone="primary"
                   onClick={() => {
                     navigator.clipboard.writeText(JSON.stringify(autoFixResult.fixedSchema, null, 2));
                     setSnackbar({ open: true, message: 'Fixed schema copied to clipboard!', severity: 'success' });
@@ -1070,7 +1073,7 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
                   sx={{ mt: 2 }}
                 >
                   Copy Fixed Schema
-                </Button>
+                </AdminButton>
               </CardContent>
             </Card>
           )}
@@ -1193,7 +1196,7 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
                         <strong>How to Fix:</strong> Copy the suggested fix code and add it to your JSON-LD. Critical errors must be fixed for schema to work.
                       </Typography>
                     </Alert>
-                    <TableContainer component={Paper}>
+                    <AdminTableContainer ariaLabel="Schema errors">
                       <Table size="small">
                         <TableHead>
                           <TableRow>
@@ -1254,7 +1257,7 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
                           ))}
                         </TableBody>
                       </Table>
-                    </TableContainer>
+                    </AdminTableContainer>
                   </AccordionDetails>
                 </Accordion>
               )}
@@ -1279,7 +1282,7 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
                         <strong>Impact:</strong> Your schema will work without these, but you'll miss opportunities for enhanced search visibility.
                       </Typography>
                     </Alert>
-                    <TableContainer component={Paper}>
+                    <AdminTableContainer ariaLabel="Schema warnings">
                       <Table size="small">
                         <TableHead>
                           <TableRow>
@@ -1314,7 +1317,7 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
                           ))}
                         </TableBody>
                       </Table>
-                    </TableContainer>
+                    </AdminTableContainer>
                   </AccordionDetails>
                 </Accordion>
               )}

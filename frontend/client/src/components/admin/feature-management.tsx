@@ -17,7 +17,7 @@ import {
   Chip,
   Button,
   Alert,
-  CircularProgress,
+  CircularProgress as _CircularProgress,
   Accordion,
   AccordionSummary,
   AccordionDetails,
@@ -44,6 +44,7 @@ import {
   ThemeProvider,
 } from '@mui/material';
 import { adminDarkTheme } from './adminDarkTheme';
+import { AdminButton, AdminLoading, AdminError } from './design-system';
 import {
   ExpandMore,
   Settings,
@@ -414,24 +415,15 @@ export default function FeatureManagement({
 };
 
   if (isLoading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', p: 2.5 }}>
-        <CircularProgress />
-        <Typography variant="h6" sx={{ ml: 2, color: themeColors.primary }}>
-          Laster inn funksjoner...
-        </Typography>
-      </Box>
-    );
+    return <AdminLoading label="Laster inn funksjoner..." />;
 }
 
   if (error) {
     return (
-      <Alert severity="error" sx={{ m: 2 }}>
-        Feil ved lasting av funksjoner. Vennligst prøv igjen.
-        <Button onClick={() => window.location.reload()} sx={{ ml: 2 }}>
-          Last inn på nytt
-        </Button>
-      </Alert>
+      <AdminError
+        message="Feil ved lasting av funksjoner. Vennligst prøv igjen."
+        onRetry={() => window.location.reload()}
+      />
     );
 }
 
@@ -501,15 +493,14 @@ export default function FeatureManagement({
           >
             Oppdater
           </Button>
-          <Button
-            variant="contained"
+          <AdminButton
+            tone="primary"
             startIcon={<PowerSettingsNew />}
             onClick={() => initializeFeaturesMutation.mutate()}
-            disabled={initializeFeaturesMutation.isPending}
-            sx={theming.getThemedButtonSx()}
+            loading={initializeFeaturesMutation.isPending}
           >
             Initialiser funksjoner
-          </Button>
+          </AdminButton>
         </Box>
       </Box>
       
@@ -1583,18 +1574,16 @@ export default function FeatureManagement({
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setConfirmDialog({ open: false, action: 'enable' })}>
+          <AdminButton tone="ghost" onClick={() => setConfirmDialog({ open: false, action: 'enable' })}>
             Avbryt
-          </Button>
-          <Button
+          </AdminButton>
+          <AdminButton
             onClick={confirmFeatureToggle}
-            color={confirmDialog.action === 'enable' ? 'primary' : 'error'}
-            variant="contained"
-            disabled={toggleFeatureMutation.isPending}
-            sx={theming.getThemedButtonSx()}
+            tone={confirmDialog.action === 'enable' ? 'primary' : 'danger'}
+            loading={toggleFeatureMutation.isPending}
           >
             {confirmDialog.action === 'enable' ? 'Aktiver' : 'Deaktiver'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
       
@@ -1667,16 +1656,15 @@ export default function FeatureManagement({
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setProfessionFeatureDialog({ open: false, action: 'enable' })}>
+          <AdminButton tone="ghost" onClick={() => setProfessionFeatureDialog({ open: false, action: 'enable' })}>
             Avbryt
-          </Button>
-          <Button
+          </AdminButton>
+          <AdminButton
             onClick={confirmProfessionFeatureToggle}
-            color={professionFeatureDialog.action === 'enable' ? 'primary' : 'warning'}
-            variant="contained"
+            tone={professionFeatureDialog.action === 'enable' ? 'primary' : 'secondary'}
           >
             {professionFeatureDialog.action === 'enable' ? 'Ja, Aktiver' : 'Ja, Deaktiver'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
       
@@ -1763,10 +1751,10 @@ export default function FeatureManagement({
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setTabDialog({ open: false, action: 'enable' })}>
+          <AdminButton tone="ghost" onClick={() => setTabDialog({ open: false, action: 'enable' })}>
             Avbryt
-          </Button>
-          <Button
+          </AdminButton>
+          <AdminButton
             onClick={async () => {
               const { professionId, tabId, action } = tabDialog;
               if (!professionId || !tabId) return;
@@ -1802,11 +1790,10 @@ export default function FeatureManagement({
                 console.error('tab_toggle_failed', error);
               }
             }}
-            color={tabDialog.action === 'enable' ? 'primary' : 'warning'}
-            variant="contained"
+            tone={tabDialog.action === 'enable' ? 'primary' : 'secondary'}
           >
             {tabDialog.action === 'enable' ? 'Ja, Aktiver Tab': 'Ja, Deaktiver Tab'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 

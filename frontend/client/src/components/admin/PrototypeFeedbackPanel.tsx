@@ -72,6 +72,7 @@ import {
 } from '@mui/icons-material';
 import { PrototypeTesterIcon } from '../icons/PrototypeTesterIcon';
 import { apiRequest, isApiEndpointMissing } from '@/lib/queryClient';
+import { AdminButton } from './design-system';
 import FeedbackConversation from '../universal/editing-marketplace/FeedbackConversation';
 import RichTextEditor from '../RichTextEditor';
 import 'quill/dist/quill.snow.css';
@@ -823,15 +824,15 @@ export default function PrototypeFeedbackPanel({
           </Box>
         </AccordionSummary>
         <AccordionDetails>
-          <Button
-            variant="contained"
-            startIcon={clusterMutation.isPending ? <CircularProgress size={16} color="inherit" /> : <Psychology />}
-            disabled={clusterMutation.isPending}
+          <AdminButton
+            tone="primary"
+            loading={clusterMutation.isPending}
+            startIcon={<Psychology />}
             onClick={() => clusterMutation.mutate()}
             sx={{ mb: 2 }}
           >
             {clusterMutation.isPending ? 'Analyserer…' : 'Analyser temaer'}
-          </Button>
+          </AdminButton>
 
           {clusterMutation.isError ? (
             <Typography variant="body2" color="error" sx={{ mb: 1 }}>
@@ -1869,19 +1870,17 @@ export default function PrototypeFeedbackPanel({
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setStatusDialogOpen(false)}>
+          <AdminButton tone="ghost" onClick={() => setStatusDialogOpen(false)}>
             Avbryt
-          </Button>
-          <Button 
-            variant="contained"
+          </AdminButton>
+          <AdminButton
+            tone="primary"
+            loading={updateStatusMutation.isPending}
             onClick={handleStatusUpdate}
             disabled={updateStatusMutation.isPending || !newStatus}
-            sx={{
-              background: 'linear-gradient(135deg, #ff8c00, #ffa726)', '&:hover': { background: 'linear-gradient(135deg, #ffa726, #ff8c00)' }
-          }}
           >
             {updateStatusMutation.isPending ? 'Oppdaterer...' : 'Oppdater'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -2403,14 +2402,14 @@ export default function PrototypeFeedbackPanel({
           )}
         </DialogContent>
         <DialogActions sx={{ p: 2, bgcolor: 'grey.50' }}>
-          <Button 
+          <AdminButton
+            tone="ghost"
             onClick={() => setDetailDialogOpen(false)}
-            variant="outlined"
           >
             Lukk
-          </Button>
-          <Button 
-            variant="contained"
+          </AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={() => {
               if (selectedFeedback) {
                 setDetailDialogOpen(false);
@@ -2419,13 +2418,9 @@ export default function PrototypeFeedbackPanel({
                 setStatusDialogOpen(true);
             }
           }}
-            sx={{
-              background: 'linear-gradient(135deg, #ff8c00, #ffa726)',
-              '&:hover': { background: 'linear-gradient(135deg, #ffa726, #ff8c00)' }
-          }}
           >
             Administrer Status & Notater
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

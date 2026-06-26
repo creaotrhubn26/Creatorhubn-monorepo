@@ -6,12 +6,10 @@ import {
   Box,
   Button,
   Chip,
-  Divider,
   Grid,
   List,
   ListItem,
   ListItemText,
-  Paper,
   Stack,
   Table,
   TableBody,
@@ -33,6 +31,11 @@ import {
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { usePlatformPricing } from '@/services/PlatformPricingService';
+import {
+  AdminCard,
+  StatusChip,
+  AdminTableContainer,
+} from './design-system';
 
 interface BillingManagementPanelProps {
   onOpenPriceManagement?: () => void;
@@ -500,15 +503,11 @@ export default function BillingManagementPanel({
 
       <Grid container spacing={2}>
         <Grid size={{ xs: 12, xl: 7 }}>
-          <Paper sx={{ ...surfaceSx, overflow: 'hidden' }}>
-            <Box sx={{ p: 2.5 }}>
-              <Typography sx={{ fontSize: '1.1rem', fontWeight: 700, color: '#ffffff' }}>
-                Siste fakturaer
-              </Typography>
-              <Typography sx={{ mt: 0.5, color: 'rgba(255,255,255,0.6)' }}>
-                En kompakt oversikt over nylige fakturaer. Status vises selv om resten av økonomifeedene er delvis utilgjengelige.
-              </Typography>
-            </Box>
+          <AdminCard
+            title="Siste fakturaer"
+            subtitle="En kompakt oversikt over nylige fakturaer. Status vises selv om resten av økonomifeedene er delvis utilgjengelige."
+            disablePadding
+          >
             {invoices.length === 0 ? (
               <Box sx={{ px: 2.5, pb: 2.5 }}>
                 <Alert severity="info" sx={{ borderRadius: '18px' }}>
@@ -516,7 +515,7 @@ export default function BillingManagementPanel({
                 </Alert>
               </Box>
             ) : (
-              <TableContainer>
+              <AdminTableContainer ariaLabel="Siste fakturaer">
                 <Table>
                   <TableHead>
                     <TableRow>
@@ -541,10 +540,9 @@ export default function BillingManagementPanel({
                         <TableCell>{invoice.planId || 'Ikke satt'}</TableCell>
                         <TableCell>{formatAmount(invoice.amount, invoice.currency)}</TableCell>
                         <TableCell>
-                          <Chip
-                            size="small"
+                          <StatusChip
                             label={getStatusLabel(invoice.status)}
-                            color={getStatusColor(invoice.status)}
+                            tone={getStatusColor(invoice.status) === 'default' ? 'neutral' : getStatusColor(invoice.status)}
                           />
                         </TableCell>
                         <TableCell>{formatDate(invoice.createdAt)}</TableCell>
@@ -552,20 +550,16 @@ export default function BillingManagementPanel({
                     ))}
                   </TableBody>
                 </Table>
-              </TableContainer>
+              </AdminTableContainer>
             )}
-          </Paper>
+          </AdminCard>
         </Grid>
 
         <Grid size={{ xs: 12, xl: 5 }}>
-          <Paper sx={{ ...surfaceSx, p: 2.5 }}>
-            <Typography sx={{ fontSize: '1.1rem', fontWeight: 700, color: '#ffffff' }}>
-              Refusjoner som trenger oppfølging
-            </Typography>
-            <Typography sx={{ mt: 0.5, color: 'rgba(255,255,255,0.6)' }}>
-              Denne listen fokuserer bare på de sakene Daniel må se på først.
-            </Typography>
-            <Divider sx={{ my: 2 }} />
+          <AdminCard
+            title="Refusjoner som trenger oppfølging"
+            subtitle="Denne listen fokuserer bare på de sakene Daniel må se på først."
+          >
             {pendingRefunds.length === 0 ? (
               <Alert severity="success" sx={{ borderRadius: '18px' }}>
                 Ingen ventende refusjoner akkurat nå.
@@ -589,9 +583,8 @@ export default function BillingManagementPanel({
                               ? `${request.first_name || ''} ${request.last_name || ''}`.trim()
                               : request.user_email || 'Ukjent bruker'}
                           </Typography>
-                          <Chip
-                            size="small"
-                            color={getStatusColor(request.status)}
+                          <StatusChip
+                            tone={getStatusColor(request.status) === 'default' ? 'neutral' : getStatusColor(request.status)}
                             label={getStatusLabel(request.status)}
                           />
                         </Stack>
@@ -614,20 +607,16 @@ export default function BillingManagementPanel({
                 ))}
               </List>
             )}
-          </Paper>
+          </AdminCard>
         </Grid>
       </Grid>
 
       <Grid container spacing={2}>
         <Grid size={{ xs: 12, xl: 6 }}>
-          <Paper sx={{ ...surfaceSx, p: 2.5 }}>
-            <Typography sx={{ fontSize: '1.1rem', fontWeight: 700, color: '#ffffff' }}>
-              Betalingsmetoder
-            </Typography>
-            <Typography sx={{ mt: 0.5, color: 'rgba(255,255,255,0.6)' }}>
-              Oversikt over registrerte betalingsmetoder uten å dykke ned i en egen tabellstruktur.
-            </Typography>
-            <Divider sx={{ my: 2 }} />
+          <AdminCard
+            title="Betalingsmetoder"
+            subtitle="Oversikt over registrerte betalingsmetoder uten å dykke ned i en egen tabellstruktur."
+          >
             {paymentMethods.length === 0 ? (
               <Alert severity="info" sx={{ borderRadius: '18px' }}>
                 Ingen betalingsmetoder tilgjengelig ennå.
@@ -652,7 +641,7 @@ export default function BillingManagementPanel({
                               : method.user_email || 'Ukjent bruker'}
                           </Typography>
                           {method.is_default ? (
-                            <Chip size="small" color="success" label="Standard" />
+                            <StatusChip tone="success" label="Standard" />
                           ) : null}
                         </Stack>
                       }
@@ -671,18 +660,14 @@ export default function BillingManagementPanel({
                 ))}
               </List>
             )}
-          </Paper>
+          </AdminCard>
         </Grid>
 
         <Grid size={{ xs: 12, xl: 6 }}>
-          <Paper sx={{ ...surfaceSx, p: 2.5 }}>
-            <Typography sx={{ fontSize: '1.1rem', fontWeight: 700, color: '#ffffff' }}>
-              Kuponger og kommersielle spor
-            </Typography>
-            <Typography sx={{ mt: 0.5, color: 'rgba(255,255,255,0.6)' }}>
-              Aktiv rabattbruk bør være enkel å lese, mens selve planene holdes samlet i prisstyring.
-            </Typography>
-            <Divider sx={{ my: 2 }} />
+          <AdminCard
+            title="Kuponger og kommersielle spor"
+            subtitle="Aktiv rabattbruk bør være enkel å lese, mens selve planene holdes samlet i prisstyring."
+          >
             {activeCoupons.length === 0 ? (
               <Alert severity="info" sx={{ borderRadius: '18px', mb: 2 }}>
                 Ingen aktive kuponger tilgjengelig.
@@ -704,7 +689,7 @@ export default function BillingManagementPanel({
                           <Typography sx={{ fontWeight: 600, color: 'rgba(255,255,255,0.88)' }}>
                             {coupon.name || coupon.code || 'Kupong'}
                           </Typography>
-                          <Chip size="small" color="success" label="Aktiv" />
+                          <StatusChip tone="success" label="Aktiv" />
                         </Stack>
                       }
                       secondary={
@@ -752,7 +737,7 @@ export default function BillingManagementPanel({
                 </Button>
               </Stack>
             </Box>
-          </Paper>
+          </AdminCard>
         </Grid>
       </Grid>
     </Box>
