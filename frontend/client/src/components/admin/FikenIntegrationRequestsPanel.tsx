@@ -14,10 +14,8 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
-  Paper,
   Chip,
   Button,
   IconButton,
@@ -32,7 +30,6 @@ import {
   InputLabel,
   Alert,
   Tooltip,
-  CircularProgress,
   Tabs,
   Tab,
   Checkbox,
@@ -56,6 +53,7 @@ import {
 import { apiRequest } from '@/lib/queryClient';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { AdminButton, AdminLoading, AdminTableContainer } from './design-system';
 
 interface FikenRequest {
   id: string;
@@ -356,11 +354,7 @@ export default function FikenIntegrationRequestsPanel() {
   };
 
   if (isLoading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
-        <CircularProgress />
-      </Box>
-    );
+    return <AdminLoading label="Laster forespørsler …" />;
   }
 
   return (
@@ -439,7 +433,7 @@ export default function FikenIntegrationRequestsPanel() {
       </Tabs>
 
       {/* Requests Table */}
-      <TableContainer component={Paper}>
+      <AdminTableContainer ariaLabel="Fiken-integrasjonsforespørsler">
         <Table>
           <TableHead>
             <TableRow>
@@ -515,7 +509,7 @@ export default function FikenIntegrationRequestsPanel() {
             )}
           </TableBody>
         </Table>
-      </TableContainer>
+      </AdminTableContainer>
 
       {/* Details Dialog */}
       <Dialog open={showDetailsDialog} onClose={() => setShowDetailsDialog(false)} maxWidth="sm" fullWidth>
@@ -570,15 +564,15 @@ export default function FikenIntegrationRequestsPanel() {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowDetailsDialog(false)}>Avbryt</Button>
-          <Button
-            variant="contained"
+          <AdminButton tone="ghost" onClick={() => setShowDetailsDialog(false)}>Avbryt</AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={handleUpdateStatus}
-            disabled={updateStatusMutation.isPending}
-            startIcon={updateStatusMutation.isPending ? <CircularProgress size={16} /> : <Sync />}
+            loading={updateStatusMutation.isPending}
+            startIcon={<Sync />}
           >
             Oppdater status
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -643,19 +637,17 @@ export default function FikenIntegrationRequestsPanel() {
           </Alert>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => setShowExportDialog(false)}>
+          <AdminButton tone="ghost" onClick={() => setShowExportDialog(false)}>
             Avbryt
-          </Button>
-          <Button
-            variant="contained"
+          </AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={handleExportPDF}
             disabled={exportColumns.filter(c => c.enabled).length === 0}
             startIcon={<PictureAsPdf />}
-            sx={{
-              bgcolor: '#f59e0b','&:hover': { bgcolor: '#d97706' }}}
           >
             Last ned PDF
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

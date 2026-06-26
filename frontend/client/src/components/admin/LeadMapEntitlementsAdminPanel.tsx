@@ -12,7 +12,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  Alert, Box, Button, Card, CardContent, Chip, CircularProgress,
+  Alert, Box, Card, CardContent, Chip,
   Dialog, DialogActions, DialogContent, DialogTitle, MenuItem,
   Select, Snackbar, Stack, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, TextField, Typography, ThemeProvider, Paper,
@@ -26,6 +26,9 @@ import {
   AddCircleOutline as GrantIcon,
   Refresh as RefreshIcon,
 } from '@mui/icons-material';
+import {
+  AdminButton, StatusChip, AdminLoading, AdminEmpty, adminTokens,
+} from './design-system';
 
 interface EntitlementRow {
   id: string;
@@ -174,22 +177,21 @@ export default function LeadMapEntitlementsAdminPanel() {
           </Typography>
         </Stack>
         <Stack direction="row" spacing={1}>
-          <Button
-            size="small" variant="outlined"
+          <AdminButton
+            size="small" tone="secondary"
             onClick={() => setShowRevoked((s) => !s)}
           >
             {showRevoked ? 'Skjul revokerte' : 'Vis revokerte'}
-          </Button>
-          <Button size="small" startIcon={<RefreshIcon />} onClick={fetchEntitlements}>
+          </AdminButton>
+          <AdminButton size="small" tone="ghost" startIcon={<RefreshIcon />} onClick={fetchEntitlements}>
             Oppdater
-          </Button>
-          <Button
-            size="small" variant="contained" startIcon={<GrantIcon />}
+          </AdminButton>
+          <AdminButton
+            size="small" tone="primary" startIcon={<GrantIcon />}
             onClick={() => setGrantOpen(true)}
-            sx={{ bgcolor: '#fbbf24', color: '#0a0a0f', '&:hover': { bgcolor: '#f59e0b' } }}
           >
             Grant entitlement
-          </Button>
+          </AdminButton>
         </Stack>
       </Stack>
 
@@ -220,11 +222,9 @@ export default function LeadMapEntitlementsAdminPanel() {
       {error && <Alert severity="warning" sx={{ mb: 2 }}>{error}</Alert>}
 
       {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-          <CircularProgress />
-        </Box>
+        <AdminLoading />
       ) : filteredRows.length === 0 ? (
-        <Alert severity="info">Ingen entitlements ennå. Grant en for å komme i gang.</Alert>
+        <AdminEmpty title="Ingen entitlements ennå. Grant en for å komme i gang." />
       ) : (
         <Paper style={{ height: 600, width: '100%' }}>
           {/*
@@ -289,7 +289,7 @@ export default function LeadMapEntitlementsAdminPanel() {
                     </Typography>
                   </TableCell>
                   <TableCell>
-                    <Chip size="small" label={statusMeta?.label ?? r.status} color={statusMeta?.color} />
+                    <StatusChip tone={statusMeta?.color} label={statusMeta?.label ?? r.status} />
                   </TableCell>
                   <TableCell>
                     <Typography variant="body2">{r.source}</Typography>
@@ -314,13 +314,13 @@ export default function LeadMapEntitlementsAdminPanel() {
                   </TableCell>
                   <TableCell align="right">
                     {!r.revoked_at ? (
-                      <Button
-                        size="small" color="error"
+                      <AdminButton
+                        size="small" tone="danger"
                         startIcon={<RevokeIcon sx={{ fontSize: 14 }} />}
                         onClick={() => setRevokeTarget(r)}
                       >
                         Revoker
-                      </Button>
+                      </AdminButton>
                     ) : (
                       <Typography variant="caption" color="error">
                         Revokert {new Date(r.revoked_at).toLocaleDateString('nb-NO')}
@@ -372,13 +372,13 @@ export default function LeadMapEntitlementsAdminPanel() {
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setGrantOpen(false)}>Avbryt</Button>
-          <Button
-            variant="contained" onClick={handleGrant} disabled={granting}
-            startIcon={granting ? <CircularProgress size={14} /> : <GrantIcon />}
+          <AdminButton tone="ghost" onClick={() => setGrantOpen(false)}>Avbryt</AdminButton>
+          <AdminButton
+            tone="primary" onClick={handleGrant} loading={granting}
+            startIcon={<GrantIcon />}
           >
             Grant
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -404,13 +404,13 @@ export default function LeadMapEntitlementsAdminPanel() {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setRevokeTarget(null)}>Avbryt</Button>
-          <Button
-            variant="contained" color="error" onClick={handleRevoke} disabled={revoking}
-            startIcon={revoking ? <CircularProgress size={14} /> : <RevokeIcon />}
+          <AdminButton tone="ghost" onClick={() => setRevokeTarget(null)}>Avbryt</AdminButton>
+          <AdminButton
+            tone="danger" onClick={handleRevoke} loading={revoking}
+            startIcon={<RevokeIcon />}
           >
             Revoker
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 

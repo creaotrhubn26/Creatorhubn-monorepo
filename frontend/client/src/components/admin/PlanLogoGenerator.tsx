@@ -3,7 +3,6 @@ import {
   Alert,
   Avatar,
   Box,
-  Button,
   Card,
   CardContent,
   Chip,
@@ -16,7 +15,6 @@ import {
   IconButton,
   InputLabel,
   MenuItem,
-  Paper,
   Select,
   Stack,
   TextField,
@@ -37,6 +35,7 @@ import {
 import { useMutation } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
+import { AdminCard, AdminButton } from './design-system';
 
 interface GeneratedLogo {
   id: string;
@@ -347,33 +346,31 @@ export default function PlanLogoGenerator({ profession, onLogoGenerated }: PlanL
 
             <Grid item xs={12}>
               <Stack direction="row" spacing={1}>
-                <Button
-                  variant="contained"
+                <AdminButton
+                  tone="primary"
                   startIcon={<AutoAwesome />}
                   onClick={() => generateLogoMutation.mutate()}
+                  loading={generateLogoMutation.isPending}
                   disabled={isGenerating}
                 >
                   Generer logo
-                </Button>
-                <Button
-                  variant="outlined"
+                </AdminButton>
+                <AdminButton
+                  tone="secondary"
                   startIcon={<Refresh />}
                   onClick={() => generateAllLogosMutation.mutate()}
+                  loading={generateAllLogosMutation.isPending}
                   disabled={isGenerating}
                 >
                   Generer alle planer
-                </Button>
+                </AdminButton>
               </Stack>
             </Grid>
           </Grid>
         </CardContent>
       </Card>
 
-      <Paper sx={{ p: 2 }}>
-        <Typography variant="h6" sx={{ mb: 1 }}>
-          Genererte logoer ({generatedLogos.length})
-        </Typography>
-
+      <AdminCard title={`Genererte logoer (${generatedLogos.length})`}>
         {generatedLogos.length === 0 && (
           <Alert severity="warning">Ingen logoer generert ennå. Kjør generatoren over.</Alert>
         )}
@@ -437,7 +434,7 @@ export default function PlanLogoGenerator({ profession, onLogoGenerated }: PlanL
             </Grid>
           ))}
         </Grid>
-      </Paper>
+      </AdminCard>
 
       <Dialog open={showPreview} onClose={() => setShowPreview(false)} maxWidth="md" fullWidth>
         <DialogTitle>Logo preview</DialogTitle>
@@ -475,7 +472,7 @@ export default function PlanLogoGenerator({ profession, onLogoGenerated }: PlanL
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowPreview(false)}>Lukk</Button>
+          <AdminButton tone="ghost" onClick={() => setShowPreview(false)}>Lukk</AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

@@ -19,7 +19,6 @@ import {
   CardContent,
   Typography,
   Grid,
-  Button,
   TextField,
   Tab,
   Tabs,
@@ -29,10 +28,8 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
-  Paper,
   IconButton,
   Tooltip,
   CircularProgress,
@@ -74,6 +71,11 @@ import {
 } from 'recharts';
 import SchemaValidationPanel from './SchemaValidationPanel';
 import { apiRequest } from '../../lib/queryClient';
+import {
+  AdminButton,
+  StatusChip,
+  AdminTableContainer,
+} from './design-system';
 
 const COLORS = ['#FF6B6B','#4ECDC4','#45B7D1','#FFA07A','#98D8C8','#F7DC6F'];
 
@@ -237,8 +239,8 @@ export default function SEOBotAnalyticsDashboard() {
               <MenuItem value={90}>Last 90 days</MenuItem>
             </Select>
           </FormControl>
-          <Button
-            variant="outlined"
+          <AdminButton
+            tone="secondary"
             startIcon={<RefreshIcon />}
             onClick={() => {
               queryClient.invalidateQueries({ queryKey: ['seo-bot-analytics'] });
@@ -247,15 +249,16 @@ export default function SEOBotAnalyticsDashboard() {
             }}
           >
             Refresh
-          </Button>
-          <Button
-            variant="contained"
+          </AdminButton>
+          <AdminButton
+            tone="primary"
             startIcon={<SearchIcon />}
             onClick={() => initializeMutation.mutate()}
+            loading={initializeMutation.isPending}
             disabled={initializeMutation.isPending}
           >
             {initializeMutation.isPending ? 'Initializing...' : 'Initialize Bot DB'}
-          </Button>
+          </AdminButton>
         </Box>
       </Box>
 
@@ -379,7 +382,7 @@ export default function SEOBotAnalyticsDashboard() {
                 </Box>
 
                 {/* Bot Details Table */}
-                <TableContainer component={Paper}>
+                <AdminTableContainer ariaLabel="Bot detaljer">
                   <Table>
                     <TableHead>
                       <TableRow>
@@ -414,7 +417,7 @@ export default function SEOBotAnalyticsDashboard() {
                       ))}
                     </TableBody>
                   </Table>
-                </TableContainer>
+                </AdminTableContainer>
               </>
             ) : (
               <Alert severity="info">
@@ -461,16 +464,17 @@ export default function SEOBotAnalyticsDashboard() {
                 </FormControl>
               </Grid>
               <Grid item xs={12} md={3}>
-                <Button
+                <AdminButton
                   fullWidth
-                  variant="contained"
+                  tone="primary"
                   startIcon={<RunTestIcon />}
                   onClick={() => renderTestMutation.mutate()}
+                  loading={renderTestMutation.isPending}
                   disabled={!testUrl || renderTestMutation.isPending}
                   sx={{ height: '56px' }}
                 >
                   {renderTestMutation.isPending ? 'Testing...' : 'Run Test'}
-                </Button>
+                </AdminButton>
               </Grid>
             </Grid>
 
@@ -574,16 +578,17 @@ export default function SEOBotAnalyticsDashboard() {
                 />
               </Grid>
               <Grid item xs={12} md={3}>
-                <Button
+                <AdminButton
                   fullWidth
-                  variant="contained"
+                  tone="primary"
                   startIcon={<MobileIcon />}
                   onClick={() => mobileTestMutation.mutate()}
+                  loading={mobileTestMutation.isPending}
                   disabled={!testUrl || mobileTestMutation.isPending}
                   sx={{ height: '56px' }}
                 >
                   {mobileTestMutation.isPending ? 'Testing...' : 'Run Mobile Test'}
-                </Button>
+                </AdminButton>
               </Grid>
             </Grid>
 
@@ -598,7 +603,7 @@ export default function SEOBotAnalyticsDashboard() {
 
             {/* Recent Mobile Tests */}
             {!mobileLoading && mobileTestRows.length > 0 && (
-              <TableContainer component={Paper}>
+              <AdminTableContainer ariaLabel="Mobil-tester">
                 <Table>
                   <TableHead>
                     <TableRow>
@@ -639,17 +644,15 @@ export default function SEOBotAnalyticsDashboard() {
                           )}
                         </TableCell>
                         <TableCell align="right">
-                          <Chip
+                          <StatusChip
                             label={test.mobile_usability_score}
-                            color={getScoreColor(test.mobile_usability_score)}
-                            size="small"
+                            tone={getScoreColor(test.mobile_usability_score)}
                           />
                         </TableCell>
                         <TableCell align="right">
-                          <Chip
+                          <StatusChip
                             label={test.mobile_seo_score}
-                            color={getScoreColor(test.mobile_seo_score)}
-                            size="small"
+                            tone={getScoreColor(test.mobile_seo_score)}
                           />
                         </TableCell>
                         <TableCell>
@@ -659,7 +662,7 @@ export default function SEOBotAnalyticsDashboard() {
                     ))}
                   </TableBody>
                 </Table>
-              </TableContainer>
+              </AdminTableContainer>
             )}
           </Box>
         </TabPanel>
@@ -711,7 +714,7 @@ export default function SEOBotAnalyticsDashboard() {
                   </Grid>
                 </Grid>
 
-                <TableContainer component={Paper}>
+                <AdminTableContainer ariaLabel="Crawl-budsjett">
                   <Table>
                     <TableHead>
                       <TableRow>
@@ -731,10 +734,9 @@ export default function SEOBotAnalyticsDashboard() {
                           <TableCell align="right">{report.actual_pages_crawled}</TableCell>
                           <TableCell align="right">{report.total_budget_wasted}</TableCell>
                           <TableCell align="right">
-                            <Chip
+                            <StatusChip
                               label={`${Number(report.waste_percent).toFixed(1)}%`}
-                              color={Number(report.waste_percent) < 10 ? 'success' : 'warning'}
-                              size="small"
+                              tone={Number(report.waste_percent) < 10 ? 'success' : 'warning'}
                             />
                           </TableCell>
                           <TableCell align="right">
@@ -744,7 +746,7 @@ export default function SEOBotAnalyticsDashboard() {
                       ))}
                     </TableBody>
                   </Table>
-                </TableContainer>
+                </AdminTableContainer>
               </>
             ) : (
               <Alert severity="info">
@@ -793,10 +795,9 @@ export default function SEOBotAnalyticsDashboard() {
                               {rec.recommendation_text}
                             </Typography>
                             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                              <Chip
+                              <StatusChip
                                 label={rec.priority.toUpperCase()}
-                                color={rec.priority === 'critical' ? 'error' : rec.priority === 'high' ? 'warning' : 'info'}
-                                size="small"
+                                tone={rec.priority === 'critical' ? 'error' : rec.priority === 'high' ? 'warning' : 'info'}
                               />
                               <Chip label={rec.category} size="small" variant="outlined" />
                               {rec.estimated_impact && (

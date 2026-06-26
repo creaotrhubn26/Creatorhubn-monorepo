@@ -17,10 +17,8 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
-  Paper,
   Chip,
   IconButton,
   Dialog,
@@ -73,6 +71,7 @@ import {
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
+import { AdminButton, StatusChip, AdminEmpty } from './design-system';
 
 interface MembershipCard {
   id: string;
@@ -518,18 +517,16 @@ export default function GoogleWalletMembershipManager({
                 }}
                 >
                   {isExpiringSoon(card.renewalDate) && (
-                    <Chip
+                    <StatusChip
                       label="Expires Soon"
-                      color="warning"
-                      size="small"
+                      tone="warning"
                       sx={{ position: 'absolute', top: 8, right: 8, zIndex: 1}}
                     />
                   )}
                   {isExpired(card.renewalDate) && (
-                    <Chip
+                    <StatusChip
                       label="Expired"
-                      color="error"
-                      size="small"
+                      tone="error"
                       sx={{ position: 'absolute', top: 8, right: 8, zIndex: 1}}
                     />
                   )}
@@ -569,10 +566,9 @@ export default function GoogleWalletMembershipManager({
                         size="small"
                         sx={{ mr: 1 }}
                       />
-                      <Chip
+                      <StatusChip
                         label={card.isActive ? 'Active' : 'Inactive'}
-                        color={card.isActive ? 'success' : 'default'}
-                        size="small"
+                        tone={card.isActive ? 'success' : 'neutral'}
                       />
                     </Box>
 
@@ -599,21 +595,20 @@ export default function GoogleWalletMembershipManager({
           </Grid>
 
           {membershipCards.length === 0 && (
-            <Paper sx={{ p: 4, textAlign: 'center' }} component="div">
-              <MembershipIcon sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
-              <Typography variant="h6" color="text.secondary" gutterBottom sx={{ color: themeColors.primary }}>
-                No Membership Cards
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                Create your first digital membership card to get started
-              </Typography>
-              <Button variant="contained"
-                startIcon={<AddIcon />}
-                onClick={() => setShowCreateDialog(true)}
-              >
-                Create Membership Card
-              </Button>
-            </Paper>
+            <AdminEmpty
+              icon={<MembershipIcon sx={{ fontSize: 64 }} />}
+              title="No Membership Cards"
+              description="Create your first digital membership card to get started"
+              action={
+                <AdminButton
+                  tone="primary"
+                  startIcon={<AddIcon />}
+                  onClick={() => setShowCreateDialog(true)}
+                >
+                  Create Membership Card
+                </AdminButton>
+              }
+            />
           )}
         </Box>
       )}
@@ -852,15 +847,15 @@ export default function GoogleWalletMembershipManager({
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => {
+          <AdminButton tone="ghost" onClick={() => {
             setShowCreateDialog(false);
             setShowEditDialog(false);
             setSelectedCard(null);
         }}>
             Cancel
-          </Button>
-          <Button
-            variant="contained"
+          </AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={() => {
               // Handle form submission
               if (showCreateDialog) {
@@ -888,11 +883,10 @@ export default function GoogleWalletMembershipManager({
               });
             }
           }}
-            disabled={createMembershipCardMutation.isPending || updateMembershipCardMutation.isPending}
-            sx={theming.getThemedButtonSx()}
+            loading={createMembershipCardMutation.isPending || updateMembershipCardMutation.isPending}
           >
             {showCreateDialog ? 'Create Card' : 'Update Card'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -908,21 +902,21 @@ export default function GoogleWalletMembershipManager({
           </DialogContentText>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteConfirmDialog({ open: false, cardId: null })}>
+          <AdminButton tone="ghost" onClick={() => setDeleteConfirmDialog({ open: false, cardId: null })}>
             Cancel
-          </Button>
-          <Button
+          </AdminButton>
+          <AdminButton
             onClick={() => {
               if (deleteConfirmDialog.cardId) {
                 deleteMembershipCardMutation.mutate(deleteConfirmDialog.cardId);
               }
               setDeleteConfirmDialog({ open: false, cardId: null });
             }}
-            color="error"
-            variant="contained"
+            tone="danger"
+            loading={deleteMembershipCardMutation.isPending}
           >
             Delete
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

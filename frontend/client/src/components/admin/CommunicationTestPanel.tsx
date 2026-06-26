@@ -48,6 +48,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useCommunicationStatus } from '../../contexts/CommunicationStatusContext';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { useTheming } from '../../utils/theming-helper';
+import { adminTokens } from './design-system';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -773,8 +774,8 @@ export default function CommunicationTestPanel({
                           borderRadius: '50%',
                           backgroundColor:
                             communicationStatus.googleChatStatus === 'connected'
-                              ? '#4caf50'
-                              : '#f44336'}}
+                              ? adminTokens.color.success
+                              : adminTokens.color.error}}
                       />
                       <Typography variant="body2">
                         {communicationStatus.googleChatStatus === 'connected'

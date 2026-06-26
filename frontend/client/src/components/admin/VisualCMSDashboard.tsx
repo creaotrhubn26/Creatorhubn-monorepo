@@ -32,7 +32,6 @@ import {
   Checkbox,
   Alert,
   Tooltip,
-  Paper,
   Divider,
   ButtonGroup,
   Badge,
@@ -40,7 +39,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   Avatar,
@@ -103,6 +101,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
 import TaskListVisualizer from './TaskListVisualizer';
 import MonacoEditor from '@monaco-editor/react';
+import { AdminButton } from './design-system';
 
 interface APIEndpoint {
   id: string;
@@ -850,9 +849,10 @@ export default function VisualCMSDashboard() {
           </List>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeploymentDialogOpen(false)}>Avbryt</Button>
-          <Button variant="contained"
-            color="success"
+          <AdminButton tone="ghost" onClick={() => setDeploymentDialogOpen(false)}>Avbryt</AdminButton>
+          <AdminButton
+            tone="primary"
+            loading={startDeploymentWorkflow.isPending}
             startIcon={<LaunchIcon />}
             onClick={() => {
               startDeploymentWorkflow.mutate();
@@ -860,7 +860,7 @@ export default function VisualCMSDashboard() {
           }}
           >
             Deploy til Produksjon
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>
