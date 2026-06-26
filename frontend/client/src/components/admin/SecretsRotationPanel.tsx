@@ -22,11 +22,9 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   Chip,
-  CircularProgress,
   Alert,
   Button,
   IconButton,
@@ -40,6 +38,13 @@ import {
   ThemeProvider,
 } from '@mui/material';
 import { adminDarkTheme } from './adminDarkTheme';
+import {
+  AdminCard,
+  AdminButton,
+  AdminTableContainer,
+  AdminLoading,
+  adminTokens,
+} from './design-system';
 import {
   Refresh as RefreshIcon,
   CheckCircle as RotatedIcon,
@@ -182,7 +187,7 @@ export const SecretsRotationPanel: React.FC = () => {
 
   return (
     <ThemeProvider theme={adminDarkTheme}>
-    <Box sx={{ p: 3, bgcolor: 'rgba(255,255,255,0.04)', minHeight: '100%' }}>
+    <Box sx={{ p: 3, bgcolor: adminTokens.color.surface, minHeight: '100%' }}>
       <Stack
         direction="row"
         justifyContent="space-between"
@@ -198,14 +203,14 @@ export const SecretsRotationPanel: React.FC = () => {
             har gjort selve rotasjonen i Stripe/Cloudflare/Render-dashboardet.
           </Typography>
         </Box>
-        <Button
-          variant="outlined"
+        <AdminButton
+          tone="ghost"
           startIcon={<RefreshIcon />}
           onClick={() => void fetchData()}
           disabled={loading}
         >
           Oppdater
-        </Button>
+        </AdminButton>
       </Stack>
 
       {error ? (
@@ -257,13 +262,10 @@ export const SecretsRotationPanel: React.FC = () => {
         </Box>
       ) : null}
 
-      <Card sx={{ borderRadius: 2 }}>
-        <CardContent sx={{ p: 0 }}>
-          <TableContainer>
+      <AdminCard title="Sporede nøkler" disablePadding>
+          <AdminTableContainer ariaLabel="Sporede nøkler og rotasjonsstatus">
             {loading && !data ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-                <CircularProgress />
-              </Box>
+              <AdminLoading label="Laster rotation-status…" />
             ) : (
               <Table size="small">
                 <TableHead>
@@ -386,16 +388,16 @@ export const SecretsRotationPanel: React.FC = () => {
                         )}
                       </TableCell>
                       <TableCell align="right">
-                        <Button
+                        <AdminButton
                           size="small"
-                          variant="outlined"
+                          tone="ghost"
                           onClick={() => {
                             setMarkingDialog(row);
                             setMarkingNotes('');
                           }}
                         >
                           Markér som rotert
-                        </Button>
+                        </AdminButton>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -411,9 +413,8 @@ export const SecretsRotationPanel: React.FC = () => {
                 </TableBody>
               </Table>
             )}
-          </TableContainer>
-        </CardContent>
-      </Card>
+          </AdminTableContainer>
+      </AdminCard>
 
       {/* Mark-as-rotated dialog */}
       <Dialog
@@ -449,17 +450,17 @@ export const SecretsRotationPanel: React.FC = () => {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setMarkingDialog(null)} disabled={marking}>
+          <AdminButton tone="ghost" onClick={() => setMarkingDialog(null)} disabled={marking}>
             Avbryt
-          </Button>
-          <Button
-            variant="contained"
-            color="primary"
+          </AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={() => void markAsRotated()}
+            loading={marking}
             disabled={marking}
           >
-            {marking ? 'Lagrer…' : 'Bekreft rotering'}
-          </Button>
+            Bekreft rotering
+          </AdminButton>
         </DialogActions>
       </Dialog>
 

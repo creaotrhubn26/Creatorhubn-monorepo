@@ -13,7 +13,6 @@ import {
   Card,
   CardContent,
   Typography,
-  Button,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -31,7 +30,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   FormControl,
@@ -51,6 +49,7 @@ import {
   BugReport as TestIcon,
 } from '@mui/icons-material';
 import { useToast } from '@/hooks/use-toast';
+import { AdminCard, AdminButton, StatusChip, AdminTableContainer, adminTokens } from './design-system';
 
 interface DeploymentStep {
   id: string;
@@ -239,24 +238,24 @@ export default function DeploymentPipeline() {
     <Box sx={{ p: { xs: 2, sm:  3 } }}>
       {/* Header */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  3 }}>
-        <Typography variant="h5" sx={{  color: '#ff8c00', fontWeight: 600}}>
+        <Typography variant="h5" sx={{  color: adminTokens.color.brand, fontWeight: 600}}>
           🚀 Deployment Pipeline
         </Typography>
         <Box sx={{ display: 'flex', gap:  2 }}>
-          <Button
-            variant="outlined"
+          <AdminButton
+            tone="ghost"
             startIcon={<RefreshIcon />}
             onClick={() => queryClient.invalidateQueries()}
           >
             Oppdater
-          </Button>
-          <Button variant="contained"
+          </AdminButton>
+          <AdminButton
+            tone="primary"
             startIcon={<DeployIcon />}
             onClick={() => setDeploymentDialogOpen(true)}
-            sx={{ bgcolor: '#ff8c00','&:hover': { bgcolor: '#e67e00'} }}
           >
             Ny Deployment
-          </Button>
+          </AdminButton>
         </Box>
       </Box>
 
@@ -327,13 +326,8 @@ export default function DeploymentPipeline() {
       </Grid>
 
       {/* Recent Deployments */}
-      <Card sx={{ mb: 4, ...theming.getThemedCardSx() }}>
-        <CardContent sx={theming.getThemedCardSx()}>
-          <Typography variant="h6" sx={{  mb:  3  }}>
-            📊 Recent Deployments
-          </Typography>
-          
-          <TableContainer>
+      <AdminCard title="📊 Recent Deployments" disablePadding sx={{ mb: 4, ...theming.getThemedCardSx() }}>
+          <AdminTableContainer ariaLabel="Nylige deployments">
             <Table>
               <TableHead>
                 <TableRow>
@@ -423,9 +417,8 @@ export default function DeploymentPipeline() {
                 ))}
               </TableBody>
             </Table>
-          </TableContainer>
-        </CardContent>
-      </Card>
+          </AdminTableContainer>
+        </AdminCard>
 
       {/* Deployment Steps Timeline */}
       {selectedDeployment && (
@@ -491,7 +484,7 @@ export default function DeploymentPipeline() {
       >
         <DialogTitle>
           <Box display="flex" alignItems="center" gap={1}>
-            <DeployIcon sx={{ color: '#ff8c00'}} />
+            <DeployIcon sx={{ color: adminTokens.color.brand }} />
             Start New Deployment
           </Box>
         </DialogTitle>
@@ -519,20 +512,20 @@ export default function DeploymentPipeline() {
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeploymentDialogOpen(false)}>
+          <AdminButton tone="ghost" onClick={() => setDeploymentDialogOpen(false)}>
             Avbryt
-          </Button>
-          <Button 
-            onClick={() => startDeploymentMutation.mutate({ 
-              environment: selectedEnvironment, 
-              version: 'v4.1.2' 
+          </AdminButton>
+          <AdminButton
+            tone="primary"
+            onClick={() => startDeploymentMutation.mutate({
+              environment: selectedEnvironment,
+              version: 'v4.1.2'
         })}
-            variant="contained"
+            loading={startDeploymentMutation.isPending}
             disabled={startDeploymentMutation.isPending}
-            sx={{ bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67e00'} }}
           >
             {startDeploymentMutation.isPending ? 'Starter...' : 'Start Deployment'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -545,7 +538,7 @@ export default function DeploymentPipeline() {
       >
         <DialogTitle>
           <Box display="flex" alignItems="center" gap={1}>
-            <RollbackIcon sx={{ color: '#f44336'}} />
+            <RollbackIcon sx={{ color: adminTokens.color.error }} />
             Rollback Deployment
           </Box>
         </DialogTitle>
@@ -559,17 +552,17 @@ export default function DeploymentPipeline() {
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setRollbackDialogOpen(false)}>
+          <AdminButton tone="ghost" onClick={() => setRollbackDialogOpen(false)}>
             Avbryt
-          </Button>
-          <Button 
+          </AdminButton>
+          <AdminButton
+            tone="danger"
             onClick={() => selectedDeployment && rollbackMutation.mutate(selectedDeployment)}
-            variant="contained"
-            color="error"
+            loading={rollbackMutation.isPending}
             disabled={rollbackMutation.isPending}
           >
             {rollbackMutation.isPending ? 'Ruller tilbake...' : 'Rollback'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

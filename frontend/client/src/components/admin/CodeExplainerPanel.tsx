@@ -15,7 +15,6 @@ import {
   Card,
   CardContent,
   CardHeader,
-  Button,
   Typography,
   Chip,
   List,
@@ -51,6 +50,7 @@ import {
 import { useTheming } from '../../utils/theming-helper';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
 import { apiRequest } from '@/lib/queryClient';
+import { AdminButton } from './design-system';
 
 export const CodeExplainerPanel: React.FC<{ file?: string; errors?: any[] }> = ({ 
   file: initialFile, 
@@ -217,15 +217,15 @@ export const CodeExplainerPanel: React.FC<{ file?: string; errors?: any[] }> = (
           </Alert>
 
           {initialErrors.length > 0 && (
-            <Button
-              variant="contained"
+            <AdminButton
+              tone="primary"
               onClick={handleExplainErrors}
-              disabled={isLoading}
+              loading={isLoading}
               startIcon={<LearnIcon />}
               sx={{ mb: 3 }}
             >
               Explain {initialErrors.length} Errors
-            </Button>
+            </AdminButton>
           )}
 
           {/* Error Explanations */}
@@ -365,14 +365,15 @@ export const CodeExplainerPanel: React.FC<{ file?: string; errors?: any[] }> = (
             sx={{ mb: 2 }}
           />
 
-          <Button
-            variant="contained"
+          <AdminButton
+            tone="primary"
             onClick={handleAnalyzeDependencies}
-            disabled={!file || isLoading}
+            disabled={!file}
+            loading={isLoading}
             startIcon={<DependencyIcon />}
           >
             Analyze Dependencies
-          </Button>
+          </AdminButton>
 
           {dependencyAnalysis && (
             <Box sx={{ mt: 3 }}>
@@ -567,14 +568,15 @@ export const CodeExplainerPanel: React.FC<{ file?: string; errors?: any[] }> = (
             sx={{ mb: 2 }}
           />
 
-          <Button
-            variant="contained"
+          <AdminButton
+            tone="primary"
             onClick={handleExplainFile}
-            disabled={!file || isLoading}
+            disabled={!file}
+            loading={isLoading}
             startIcon={<IdeaIcon />}
           >
             Explain This File
-          </Button>
+          </AdminButton>
 
           {fileExplanation && (
             <Paper sx={{ p: 3, mt: 3 }}>
@@ -668,9 +670,9 @@ export const CodeExplainerPanel: React.FC<{ file?: string; errors?: any[] }> = (
                   </Box>
               }
                 action={
-                  <Button size="small" onClick={() => setSelectedConcept(null)}>
+                  <AdminButton tone="ghost" size="small" onClick={() => setSelectedConcept(null)}>
                     Close
-                  </Button>
+                  </AdminButton>
               }
               />
               <CardContent>

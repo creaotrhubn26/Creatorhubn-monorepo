@@ -23,7 +23,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   Paper,
@@ -66,6 +65,7 @@ import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions'
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
+import { AdminCard, AdminButton, StatusChip, AdminLoading, AdminTableContainer } from './design-system';
 
 interface EmailCampaign {
   id: string;
@@ -205,9 +205,7 @@ export default function EmailAnalyticsDashboard() {
       </Stack>
 
       {isLoading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-          <CircularProgress />
-        </Box>
+        <AdminLoading />
       ) : (
         <>
           {/* Overview Stats */}
@@ -307,13 +305,8 @@ export default function EmailAnalyticsDashboard() {
           </Grid>
 
           {/* Campaign Performance Table */}
-          <Card sx={{ mb: 4 }}>
-            <CardContent>
-              <Typography variant="h6" sx={{ mb: 2, fontWeight: 600}}>
-                Campaign Performance
-              </Typography>
-              
-              <TableContainer>
+          <AdminCard title="Campaign Performance" disablePadding sx={{ mb: 4 }}>
+              <AdminTableContainer ariaLabel="Campaign Performance">
                 <Table>
                   <TableHead>
                     <TableRow>
@@ -357,24 +350,21 @@ export default function EmailAnalyticsDashboard() {
                         <TableCell align="right">{campaign.openCount}</TableCell>
                         <TableCell align="right">{campaign.clickCount}</TableCell>
                         <TableCell align="right">
-                          <Chip 
+                          <StatusChip
                             label={`${campaign.openRate}%`}
-                            size="small"
-                            color={campaign.openRate > 30 ? 'success' : campaign.openRate > 15 ? 'warning' : 'error'}
+                            tone={campaign.openRate > 30 ? 'success' : campaign.openRate > 15 ? 'warning' : 'error'}
                           />
                         </TableCell>
                         <TableCell align="right">
-                          <Chip 
+                          <StatusChip
                             label={`${campaign.clickRate}%`}
-                            size="small"
-                            color={campaign.clickRate > 5 ? 'success' : campaign.clickRate > 2 ? 'warning' : 'error'}
+                            tone={campaign.clickRate > 5 ? 'success' : campaign.clickRate > 2 ? 'warning' : 'error'}
                           />
                         </TableCell>
                         <TableCell align="right">
-                          <Chip 
+                          <StatusChip
                             label={`${campaign.conversionRate}%`}
-                            size="small"
-                            variant="outlined"
+                            tone="neutral"
                           />
                         </TableCell>
                         <TableCell>
@@ -400,13 +390,11 @@ export default function EmailAnalyticsDashboard() {
                     ))}
                   </TableBody>
                 </Table>
-              </TableContainer>
-            </CardContent>
-          </Card>
+              </AdminTableContainer>
+          </AdminCard>
 
           {/* A/B Testing Section */}
-          <Card>
-            <CardContent>
+          <AdminCard>
               <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
                 <Stack direction="row" spacing={2} alignItems="center">
                   <Science sx={{ color: '#ce93d8', fontSize: 28 }} />
@@ -414,13 +402,13 @@ export default function EmailAnalyticsDashboard() {
                     A/B Testing
                   </Typography>
                 </Stack>
-                <Button
-                  variant="contained"
+                <AdminButton
+                  tone="primary"
                   startIcon={<Science />}
                   onClick={() => setShowABTestDialog(true)}
                 >
                   Create A/B Test
-                </Button>
+                </AdminButton>
               </Stack>
 
               <Alert severity="info" sx={{ mb: 2 }}>
@@ -478,8 +466,7 @@ export default function EmailAnalyticsDashboard() {
                   </Grid>
                 ))}
               </Grid>
-            </CardContent>
-          </Card>
+          </AdminCard>
         </>
       )}
 
@@ -501,7 +488,7 @@ export default function EmailAnalyticsDashboard() {
             Track which links in your emails get the most clicks
           </Typography>
           
-          <TableContainer>
+          <AdminTableContainer ariaLabel="Link Analytics">
             <Table size="small">
               <TableHead>
                 <TableRow>
@@ -522,10 +509,9 @@ export default function EmailAnalyticsDashboard() {
                     <TableCell align="right">{link.clicks}</TableCell>
                     <TableCell align="right">{link.uniqueClicks}</TableCell>
                     <TableCell align="right">
-                      <Chip 
-                        label={`${link.clickRate}%`} 
-                        size="small"
-                        color={link.clickRate > 10 ? 'success' : 'default'}
+                      <StatusChip
+                        label={`${link.clickRate}%`}
+                        tone={link.clickRate > 10 ? 'success' : 'neutral'}
                       />
                     </TableCell>
                   </TableRow>
@@ -541,10 +527,10 @@ export default function EmailAnalyticsDashboard() {
                 )}
               </TableBody>
             </Table>
-          </TableContainer>
+          </AdminTableContainer>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setSelectedCampaign(null)}>Close</Button>
+          <AdminButton tone="ghost" onClick={() => setSelectedCampaign(null)}>Close</AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -567,7 +553,7 @@ export default function EmailAnalyticsDashboard() {
           </ul>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowABTestDialog(false)}>Close</Button>
+          <AdminButton tone="ghost" onClick={() => setShowABTestDialog(false)}>Close</AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

@@ -7,15 +7,12 @@ import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Box,
-  Paper,
   Typography,
   TextField,
-  Button,
   IconButton,
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   Dialog,
@@ -29,7 +26,6 @@ import {
   InputAdornment,
   Tabs,
   Tab,
-  CircularProgress,
   Alert,
   Tooltip,
   alpha,
@@ -53,6 +49,13 @@ import {
   History as HistoryIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '../../lib/queryClient';
+import {
+  AdminCard,
+  AdminButton,
+  StatusChip,
+  AdminLoading,
+  AdminTableContainer,
+} from './design-system';
 import {
   CREATORHUB_FEATURES,
   type CreatorHubFeature,
@@ -216,20 +219,14 @@ export function FeatureCustomizationPanel({ userId }: Props) {
   if (isLoading) {
     return (
       <ThemeProvider theme={adminDarkTheme}>
-      <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
-        <CircularProgress />
-      </Box>
+        <AdminLoading />
       </ThemeProvider>
     );
   }
 
   return (
     <ThemeProvider theme={adminDarkTheme}>
-    <Paper sx={{ p: 3 }}>
-      <Typography variant="h5" sx={{ mb: 3, fontWeight: 600}}>
-        Funksjonstilpasning
-      </Typography>
-
+    <AdminCard title="Funksjonstilpasning">
       <Alert severity="info" sx={{ mb: 3 }}>
         Her kan du tilpasse navn, beskrivelser og logoer for alle funksjoner i plattformen.
         Disse endringene vises til brukere i planoversikter og onboarding.
@@ -258,7 +255,7 @@ export function FeatureCustomizationPanel({ userId }: Props) {
       </Box>
 
       {/* Features Table */}
-      <TableContainer>
+      <AdminTableContainer ariaLabel="Funksjonstilpasninger">
         <Table size="small">
           <TableHead>
             <TableRow>
@@ -300,11 +297,9 @@ export function FeatureCustomizationPanel({ userId }: Props) {
                 <TableCell>{feature.name}</TableCell>
                 <TableCell>
                   {feature.customization?.customName ? (
-                    <Chip
+                    <StatusChip
+                      tone="brand"
                       label={feature.customization.customName}
-                      size="small"
-                      color="primary"
-                      variant="outlined"
                     />
                   ) : (
                     <Typography variant="body2" color="text.secondary">
@@ -362,7 +357,7 @@ export function FeatureCustomizationPanel({ userId }: Props) {
             ))}
           </TableBody>
         </Table>
-      </TableContainer>
+      </AdminTableContainer>
 
       {filteredFeatures.length > 50 && (
         <Typography variant="body2" color="text.secondary" sx={{ mt: 2, textAlign: 'center' }}>
@@ -487,18 +482,18 @@ export function FeatureCustomizationPanel({ userId }: Props) {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setEditDialogOpen(false)}>Avbryt</Button>
-          <Button
-            variant="contained"
+          <AdminButton tone="ghost" onClick={() => setEditDialogOpen(false)}>Avbryt</AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={handleSave}
-            disabled={saveMutation.isPending}
+            loading={saveMutation.isPending}
             startIcon={<SaveIcon />}
           >
             {saveMutation.isPending ? 'Lagrer...' : 'Lagre'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
-    </Paper>
+    </AdminCard>
     </ThemeProvider>
   );
 }

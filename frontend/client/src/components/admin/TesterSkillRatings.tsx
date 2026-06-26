@@ -21,12 +21,10 @@ import {
   Tooltip,
   IconButton,
   Button,
-  Paper,
   Divider,
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   Dialog,
@@ -57,6 +55,7 @@ import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions'
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
+import { AdminButton } from './design-system';
 
 interface TesterSkill {
   testerId: string;
@@ -370,8 +369,8 @@ export default function TesterSkillRatings() {
               </Stack>
             </DialogContent>
             <DialogActions>
-              <Button onClick={() => setSelectedTester(null)}>Close</Button>
-              <Button variant="contained">View Full Profile</Button>
+              <AdminButton tone="ghost" onClick={() => setSelectedTester(null)}>Close</AdminButton>
+              <AdminButton tone="primary">View Full Profile</AdminButton>
             </DialogActions>
           </>
         )}

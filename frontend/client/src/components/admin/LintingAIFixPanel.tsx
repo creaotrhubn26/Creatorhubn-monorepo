@@ -35,7 +35,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
 } from '@mui/material';
@@ -51,6 +50,7 @@ import {
   School as ExplainIcon,
 } from '@mui/icons-material';
 import CodeExplainerPanel from './CodeExplainerPanel';
+import { AdminButton, StatusChip, AdminTableContainer } from './design-system';
 import { useTheming } from '../../utils/theming-helper';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
 import { apiRequest } from '@/lib/queryClient';
@@ -230,16 +230,17 @@ export const LintingAIFixPanel: React.FC = () => {
               <Typography variant="body2" color="text.secondary" gutterBottom>
                 Scan your codebase for linting errors
               </Typography>
-              <Button
-                variant="contained"
+              <AdminButton
+                tone="primary"
                 fullWidth
                 onClick={handleScan}
                 disabled={isScanning}
-                startIcon={isScanning ? <RefreshIcon /> : <BugIcon />}
+                loading={isScanning}
+                startIcon={<BugIcon />}
                 sx={{ mt: 2 }}
               >
                 {isScanning ? 'Scanning...' : 'Scan Codebase'}
-              </Button>
+              </AdminButton>
               {scanResult && (
                 <Alert severity="info" sx={{ mt: 2 }}>
                   <Typography variant="caption">
@@ -261,16 +262,17 @@ export const LintingAIFixPanel: React.FC = () => {
               <Typography variant="body2" color="text.secondary" gutterBottom>
                 Let AI analyze errors and create fix prompts
               </Typography>
-              <Button
-                variant="contained"
+              <AdminButton
+                tone="primary"
                 fullWidth
                 onClick={handleGeneratePrompts}
                 disabled={!scanResult || isGeneratingPrompts}
-                startIcon={isGeneratingPrompts ? <RefreshIcon /> : <FixIcon />}
+                loading={isGeneratingPrompts}
+                startIcon={<FixIcon />}
                 sx={{ mt: 2 }}
               >
                 {isGeneratingPrompts ? 'Generating...' : 'Generate AI Prompts'}
-              </Button>
+              </AdminButton>
               {aiPrompts.length > 0 && (
                 <Alert severity="success" sx={{ mt: 2 }}>
                   <Typography variant="caption">
@@ -314,16 +316,16 @@ export const LintingAIFixPanel: React.FC = () => {
                 sx={{ mt: 1, mb: 1 }}
               />
 
-              <Button
-                variant="contained"
+              <AdminButton
+                tone={dryRunMode ? 'secondary' : 'danger'}
                 fullWidth
                 onClick={handleRunFixes}
                 disabled={aiPrompts.length === 0 || isFixing}
-                startIcon={isFixing ? <RefreshIcon /> : <RunIcon />}
-                color={dryRunMode ? 'secondary' : 'error'}
+                loading={isFixing}
+                startIcon={<RunIcon />}
               >
                 {isFixing ? 'Fixing...' : dryRunMode ? 'Test Fixes (DRY RUN)' : 'Apply Fixes (EXECUTE)'}
-              </Button>
+              </AdminButton>
             </CardContent>
           </Card>
         </Grid>
@@ -402,7 +404,7 @@ export const LintingAIFixPanel: React.FC = () => {
               <Typography variant="h6" gutterBottom>
                 Most Common Errors
               </Typography>
-              <TableContainer component={Paper}>
+              <AdminTableContainer ariaLabel="Most common errors">
                 <Table size="small">
                   <TableHead>
                     <TableRow>
@@ -424,7 +426,7 @@ export const LintingAIFixPanel: React.FC = () => {
                       ))}
                   </TableBody>
                 </Table>
-              </TableContainer>
+              </AdminTableContainer>
             </Box>
 
             {/* Files with Most Errors */}
@@ -441,10 +443,9 @@ export const LintingAIFixPanel: React.FC = () => {
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}>
                         <ErrorIcon color="error" />
                         <Typography sx={{ flex: 1 }}>{file}</Typography>
-                        <Chip 
-                          label={`${(errors as any[]).length} errors`} 
-                          size="small" 
-                          color="error" 
+                        <StatusChip
+                          tone="error"
+                          label={`${(errors as any[]).length} errors`}
                         />
                       </Box>
                     </AccordionSummary>
@@ -610,7 +611,7 @@ export const LintingAIFixPanel: React.FC = () => {
               </Grid>
             </Grid>
 
-            <TableContainer component={Paper}>
+            <AdminTableContainer ariaLabel="Fix results">
               <Table size="small">
                 <TableHead>
                   <TableRow>
@@ -629,17 +630,15 @@ export const LintingAIFixPanel: React.FC = () => {
                       </TableCell>
                       <TableCell align="right">{result.originalErrors}</TableCell>
                       <TableCell align="right">
-                        <Chip 
-                          label={result.fixedErrors} 
-                          size="small" 
-                          color="success" 
+                        <StatusChip
+                          tone="success"
+                          label={String(result.fixedErrors)}
                         />
                       </TableCell>
                       <TableCell align="right">
-                        <Chip 
-                          label={result.remainingErrors} 
-                          size="small" 
-                          color={result.remainingErrors === 0 ? 'success' : 'warning'} 
+                        <StatusChip
+                          tone={result.remainingErrors === 0 ? 'success' : 'warning'}
+                          label={String(result.remainingErrors)}
                         />
                       </TableCell>
                       <TableCell>
@@ -653,7 +652,7 @@ export const LintingAIFixPanel: React.FC = () => {
                   ))}
                 </TableBody>
               </Table>
-            </TableContainer>
+            </AdminTableContainer>
           </CardContent>
         </Card>
       )}

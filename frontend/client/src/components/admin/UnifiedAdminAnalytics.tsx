@@ -11,14 +11,9 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
-  Paper,
-  Chip,
   LinearProgress,
-  Alert,
-  CircularProgress,
   IconButton,
   Tooltip,
 } from '@mui/material';
@@ -38,6 +33,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAdmin } from '../../contexts/AdminContext';
 import { adminAPI } from '../../lib/admin-api-client';
 import { CREATOR_HUB_BRANDING } from '../../constants/CreatorHubBranding';
+import { AdminLoading, AdminError, StatusChip, AdminTableContainer } from './design-system';
 
 
 interface TabPanelProps {
@@ -132,18 +128,15 @@ const UnifiedAdminAnalytics: React.FC = () => {
 };
 
   if (isLoading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 400}}>
-        <CircularProgress size={60} sx={{ color: CREATOR_HUB_BRANDING.colors.PHOTOGRAPHY }} />
-      </Box>
-    );
+    return <AdminLoading />;
 }
 
   if (error) {
     return (
-      <Alert severity="error" sx={{ m:  2 }}>
-        Failed to load analytics data. Please try again.
-      </Alert>
+      <AdminError
+        message="Failed to load analytics data. Please try again."
+        onRetry={() => refetch()}
+      />
     );
 }
 
@@ -306,7 +299,7 @@ const UnifiedAdminAnalytics: React.FC = () => {
                     <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
                       Features by Category
                     </Typography>
-                    <TableContainer>
+                    <AdminTableContainer ariaLabel="Features by Category">
                       <Table size="small">
                         <TableHead>
                           <TableRow>
@@ -323,7 +316,7 @@ const UnifiedAdminAnalytics: React.FC = () => {
                           ))}
                         </TableBody>
                       </Table>
-                    </TableContainer>
+                    </AdminTableContainer>
                   </CardContent>
                 </Card>
               </Grid>
@@ -376,7 +369,7 @@ const UnifiedAdminAnalytics: React.FC = () => {
                     <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
                       Users by Profession
                     </Typography>
-                    <TableContainer>
+                    <AdminTableContainer ariaLabel="Users by Profession">
                       <Table size="small">
                         <TableHead>
                           <TableRow>
@@ -393,7 +386,7 @@ const UnifiedAdminAnalytics: React.FC = () => {
                           ))}
                         </TableBody>
                       </Table>
-                    </TableContainer>
+                    </AdminTableContainer>
                   </CardContent>
                 </Card>
               </Grid>
@@ -446,7 +439,7 @@ const UnifiedAdminAnalytics: React.FC = () => {
                     <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
                       Status Distribution
                     </Typography>
-                    <TableContainer>
+                    <AdminTableContainer ariaLabel="Status Distribution">
                       <Table size="small">
                         <TableHead>
                           <TableRow>
@@ -458,10 +451,9 @@ const UnifiedAdminAnalytics: React.FC = () => {
                           {Object.entries(analytics?.professionTypes?.byStatus || {}).map(([status, count]) => (
                             <TableRow key={status}>
                               <TableCell>
-                                <Chip
+                                <StatusChip
                                   label={status}
-                                  size="small"
-                                  color={status === 'active' ? 'success' : status === 'pending' ? 'warning' : 'default'}
+                                  tone={status === 'active' ? 'success' : status === 'pending' ? 'warning' : 'neutral'}
                                 />
                               </TableCell>
                               <TableCell align="right">{count as number}</TableCell>
@@ -469,7 +461,7 @@ const UnifiedAdminAnalytics: React.FC = () => {
                           ))}
                         </TableBody>
                       </Table>
-                    </TableContainer>
+                    </AdminTableContainer>
                   </CardContent>
                 </Card>
               </Grid>
@@ -490,7 +482,7 @@ const UnifiedAdminAnalytics: React.FC = () => {
                     <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
                       Products by Type
                     </Typography>
-                    <TableContainer>
+                    <AdminTableContainer ariaLabel="Products by Type">
                       <Table size="small">
                         <TableHead>
                           <TableRow>
@@ -507,7 +499,7 @@ const UnifiedAdminAnalytics: React.FC = () => {
                           ))}
                         </TableBody>
                       </Table>
-                    </TableContainer>
+                    </AdminTableContainer>
                   </CardContent>
                 </Card>
               </Grid>
@@ -517,7 +509,7 @@ const UnifiedAdminAnalytics: React.FC = () => {
                     <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
                       Products by Brand
                     </Typography>
-                    <TableContainer>
+                    <AdminTableContainer ariaLabel="Products by Brand">
                       <Table size="small">
                         <TableHead>
                           <TableRow>
@@ -534,7 +526,7 @@ const UnifiedAdminAnalytics: React.FC = () => {
                           ))}
                         </TableBody>
                       </Table>
-                    </TableContainer>
+                    </AdminTableContainer>
                   </CardContent>
                 </Card>
               </Grid>
@@ -555,7 +547,7 @@ const UnifiedAdminAnalytics: React.FC = () => {
                     <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
                       Revenue by Profession
                     </Typography>
-                    <TableContainer>
+                    <AdminTableContainer ariaLabel="Revenue by Profession">
                       <Table size="small">
                         <TableHead>
                           <TableRow>
@@ -572,7 +564,7 @@ const UnifiedAdminAnalytics: React.FC = () => {
                           ))}
                         </TableBody>
                       </Table>
-                    </TableContainer>
+                    </AdminTableContainer>
                   </CardContent>
                 </Card>
               </Grid>
@@ -582,7 +574,7 @@ const UnifiedAdminAnalytics: React.FC = () => {
                     <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
                       Revenue by Plan
                     </Typography>
-                    <TableContainer>
+                    <AdminTableContainer ariaLabel="Revenue by Plan">
                       <Table size="small">
                         <TableHead>
                           <TableRow>
@@ -599,7 +591,7 @@ const UnifiedAdminAnalytics: React.FC = () => {
                           ))}
                         </TableBody>
                       </Table>
-                    </TableContainer>
+                    </AdminTableContainer>
                   </CardContent>
                 </Card>
               </Grid>

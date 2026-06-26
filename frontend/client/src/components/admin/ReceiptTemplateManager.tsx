@@ -1,8 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import {
-  Alert,
   Box,
-  Button,
   Card,
   CardContent,
   Chip,
@@ -22,7 +20,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   Tabs,
@@ -47,6 +44,15 @@ import { apiRequest } from '@/lib/queryClient';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
 import type { ProfessionFeatureConfig } from '../../../../shared/profession-feature-matrix';
 import { PROFESSION_FEATURE_MATRIX } from '../../../../shared/profession-feature-matrix';
+import {
+  AdminButton,
+  AdminCard,
+  AdminEmpty,
+  AdminError,
+  AdminLoading,
+  AdminTableContainer,
+  StatusChip,
+} from './design-system';
 
 type ReceiptTemplateType = 'subscription' | 'marketplace-addon' | 'invoice' | 'refund';
 
@@ -459,12 +465,12 @@ export default function ReceiptTemplateManager() {
           Receipt Template Manager
         </Typography>
         <Stack direction="row" spacing={1}>
-          <Button variant="outlined" startIcon={<Settings />} onClick={openBusinessDialog}>
+          <AdminButton tone="secondary" startIcon={<Settings />} onClick={openBusinessDialog}>
             Business Settings
-          </Button>
-          <Button variant="contained" startIcon={<Add />} onClick={() => openCreateDialog('subscription')}>
+          </AdminButton>
+          <AdminButton tone="primary" startIcon={<Add />} onClick={() => openCreateDialog('subscription')}>
             Ny template
-          </Button>
+          </AdminButton>
         </Stack>
       </Stack>
 
@@ -477,11 +483,13 @@ export default function ReceiptTemplateManager() {
 
       {tabValue === 0 && (
         <>
-          {templatesQuery.isLoading && <Alert severity="info">Laster templates...</Alert>}
-          {templatesQuery.isError && <Alert severity="error">Kunne ikke hente templates.</Alert>}
+          {templatesQuery.isLoading && <AdminLoading label="Laster templates..." />}
+          {templatesQuery.isError && (
+            <AdminError title="Kunne ikke hente templates." onRetry={() => templatesQuery.refetch()} />
+          )}
 
           {!templatesQuery.isLoading && !templatesQuery.isError && (
-            <TableContainer component={Paper}>
+            <AdminTableContainer ariaLabel="Kvitterings-templates">
               <Table size="small">
                 <TableHead>
                   <TableRow>
@@ -501,9 +509,8 @@ export default function ReceiptTemplateManager() {
                       </TableCell>
                       <TableCell>{template.autoSend ? 'Ja' : 'Nei'}</TableCell>
                       <TableCell>
-                        <Chip
-                          size="small"
-                          color={template.isActive ? 'success' : 'default'}
+                        <StatusChip
+                          tone={template.isActive ? 'success' : 'neutral'}
                           label={template.isActive ? 'Aktiv' : 'Inaktiv'}
                         />
                       </TableCell>
@@ -544,13 +551,16 @@ export default function ReceiptTemplateManager() {
                   ))}
                 </TableBody>
               </Table>
-            </TableContainer>
+            </AdminTableContainer>
           )}
 
           {templates.length === 0 && !templatesQuery.isLoading && !templatesQuery.isError && (
-            <Alert severity="warning" sx={{ mt: 2 }}>
-              Ingen templates funnet. Opprett første template for å aktivere kvitteringsflyt.
-            </Alert>
+            <Box sx={{ mt: 2 }}>
+              <AdminEmpty
+                title="Ingen templates funnet"
+                description="Opprett første template for å aktivere kvitteringsflyt."
+              />
+            </Box>
           )}
         </>
       )}
@@ -710,10 +720,11 @@ export default function ReceiptTemplateManager() {
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setEditorOpen(false)}>Avbryt</Button>
-          <Button
-            variant="contained"
+          <AdminButton tone="ghost" onClick={() => setEditorOpen(false)}>Avbryt</AdminButton>
+          <AdminButton
+            tone="primary"
             startIcon={<Save />}
+            loading={saveTemplateMutation.isPending}
             disabled={!canSaveTemplate || saveTemplateMutation.isPending}
             onClick={() =>
               saveTemplateMutation.mutate({
@@ -723,7 +734,7 @@ export default function ReceiptTemplateManager() {
             }
           >
             Lagre
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -743,7 +754,7 @@ export default function ReceiptTemplateManager() {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setPreviewOpen(false)}>Lukk</Button>
+          <AdminButton tone="ghost" onClick={() => setPreviewOpen(false)}>Lukk</AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -760,10 +771,11 @@ export default function ReceiptTemplateManager() {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setTestDialogOpen(false)}>Avbryt</Button>
-          <Button
-            variant="contained"
+          <AdminButton tone="ghost" onClick={() => setTestDialogOpen(false)}>Avbryt</AdminButton>
+          <AdminButton
+            tone="primary"
             startIcon={<Send />}
+            loading={sendTestEmailMutation.isPending}
             disabled={!selectedTemplate?.id || !testEmail || sendTestEmailMutation.isPending}
             onClick={() => {
               if (!selectedTemplate?.id) {
@@ -777,7 +789,7 @@ export default function ReceiptTemplateManager() {
             }}
           >
             Send
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -852,15 +864,16 @@ export default function ReceiptTemplateManager() {
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setBusinessOpen(false)}>Avbryt</Button>
-          <Button
-            variant="contained"
+          <AdminButton tone="ghost" onClick={() => setBusinessOpen(false)}>Avbryt</AdminButton>
+          <AdminButton
+            tone="primary"
             startIcon={<Save />}
+            loading={updateBusinessSettingsMutation.isPending}
             disabled={updateBusinessSettingsMutation.isPending}
             onClick={() => updateBusinessSettingsMutation.mutate(businessDraft)}
           >
             Lagre
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

@@ -30,7 +30,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   Accordion,
@@ -84,6 +83,7 @@ import {
 } from '@mui/icons-material';
 import MonacoEditor from '@monaco-editor/react';
 import { apiRequest } from '@/lib/queryClient';
+import { AdminButton, StatusChip, AdminLoading, AdminTableContainer } from './design-system';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -417,13 +417,14 @@ export default function VisualCMSAdminDashboard() {
                   Quick Actions
                 </Typography>
                 <Stack direction="row" spacing={2} flexWrap="wrap">
-                  <Button variant="contained" 
+                  <AdminButton
+                    tone="primary"
                     startIcon={<PlayArrowIcon />}
                     onClick={() => runComprehensiveTest.mutate()}
-                    disabled={testRunning}
+                    loading={testRunning}
                   >
                     {testRunning ? 'Running Tests...' : 'Run All Tests'}
-                  </Button>
+                  </AdminButton>
                   <Button 
                     variant="outlined" 
                     startIcon={<TestTubeIcon />}
@@ -462,13 +463,11 @@ export default function VisualCMSAdminDashboard() {
 
           {statusLoading ? (
             <Grid item xs={12}>
-              <Box sx={{ display: 'flex', justifyContent: 'center', p:  4 }}>
-                <CircularProgress />
-              </Box>
+              <AdminLoading />
             </Grid>
           ) : (
             <Grid item xs={12}>
-              <TableContainer component={Paper} elevation={2}>
+              <AdminTableContainer ariaLabel="Google API-statuser">
                 <Table>
                   <TableHead>
                     <TableRow>
@@ -488,10 +487,9 @@ export default function VisualCMSAdminDashboard() {
                           </Box>
                         </TableCell>
                         <TableCell>
-                          <Chip 
+                          <StatusChip
+                            tone={api.success ? 'success' : 'error'}
                             label={api.success ? 'Connected' : 'Error'}
-                            color={api.success ? 'success' : 'error'}
-                            size="small"
                           />
                         </TableCell>
                         <TableCell>
@@ -514,7 +512,7 @@ export default function VisualCMSAdminDashboard() {
                     ))}
                   </TableBody>
                 </Table>
-              </TableContainer>
+              </AdminTableContainer>
             </Grid>
           )}
         </Grid>
@@ -574,10 +572,9 @@ export default function VisualCMSAdminDashboard() {
                       <Card variant="outlined" sx={{ ...theming.getThemedCardSx(), p: 2 }}>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  1 }}>
                           <Typography variant="subtitle2">{server.name}</Typography>
-                          <Chip 
+                          <StatusChip
+                            tone={server.status ? 'success' : 'neutral'}
                             label={server.status ? 'Running' : 'Stopped'}
-                            color={server.status ? 'success' : 'default'}
-                            size="small"
                           />
                         </Box>
                         <Typography variant="body2" color="text.secondary">

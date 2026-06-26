@@ -28,10 +28,8 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
-  Paper,
   IconButton,
   Tooltip,
   Badge,
@@ -61,6 +59,7 @@ import {
   VisibilityOff,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
+import { AdminButton, AdminTableContainer } from './design-system';
 
 interface FeatureFlag {
   id: string;
@@ -315,47 +314,46 @@ export default function FeatureManagementWithPublish() {
 
       {/* Action Buttons */}
       <Box sx={{ mb: 3, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-        <Button variant="contained"
+        <AdminButton tone="primary"
           startIcon={<Publish />}
           onClick={() => setPublishDialogOpen(true)}
           disabled={publishToStaging.isPending}
         >
           Publish to Staging
-        </Button>
-        <Button variant="contained"
-          color="success"
+        </AdminButton>
+        <AdminButton tone="primary"
           startIcon={theming.getThemedIcon('cloudUpload')}
           onClick={handlePromoteToProduction}
+          loading={promoteToProduction.isPending}
           disabled={promoteToProduction.isPending || !stagingFlags?.flags?.length}
-          sx={theming.getThemedButtonSx()}>
+        >
           Promote to Production
-        </Button>
-        <Button
-          variant="outlined"
+        </AdminButton>
+        <AdminButton
+          tone="ghost"
           startIcon={theming.getThemedIcon('undo')}
           onClick={() => setRevertDialogOpen(true)}
           disabled={revertFlags.isPending}
         >
           Revert
-        </Button>
-        <Button
-          variant="outlined"
-          color="error"
+        </AdminButton>
+        <AdminButton
+          tone="danger"
           startIcon={<Emergency />}
           onClick={() => setEmergencyDialogOpen(true)}
           disabled={emergencyRollback.isPending}
         >
           Emergency Rollback
-        </Button>
-        <Button
-          variant="outlined"
+        </AdminButton>
+        <AdminButton
+          tone="ghost"
           startIcon={theming.getThemedIcon('refresh')}
           onClick={() => {
             queryClient.invalidateQueries({ queryKey: ['/api/feature-flags'] });
           }}
         >
           Refresh
-        </Button>
+        </AdminButton>
       </Box>
 
       {/* Environment Status Cards */}
@@ -456,7 +454,7 @@ export default function FeatureManagementWithPublish() {
                 />
               </Box>
             )}
-            <TableContainer component={Paper}>
+            <AdminTableContainer ariaLabel="Staging vs Production differences">
               <Table>
                 <TableHead>
                   <TableRow>
@@ -502,7 +500,7 @@ export default function FeatureManagementWithPublish() {
                   ))}
                 </TableBody>
               </Table>
-            </TableContainer>
+            </AdminTableContainer>
           </Box>
         )}
 
@@ -632,10 +630,10 @@ export default function FeatureManagementWithPublish() {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setPublishDialogOpen(false)}>Cancel</Button>
-          <Button onClick={handlePublishToStaging} variant="contained" disabled={publishToStaging.isPending} sx={theming.getThemedButtonSx()}>
+          <AdminButton tone="ghost" onClick={() => setPublishDialogOpen(false)}>Cancel</AdminButton>
+          <AdminButton tone="primary" onClick={handlePublishToStaging} loading={publishToStaging.isPending} disabled={publishToStaging.isPending}>
             {publishToStaging.isPending ? 'Publishing...' : 'Publish'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -664,7 +662,7 @@ export default function FeatureManagementWithPublish() {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setRevertDialogOpen(false)}>Cancel</Button>
+          <AdminButton tone="ghost" onClick={() => setRevertDialogOpen(false)}>Cancel</AdminButton>
           <Button onClick={handleRevert} variant="contained" color="warning" disabled={revertFlags.isPending} sx={theming.getThemedButtonSx()}>
             {revertFlags.isPending ? 'Reverting...' : 'Revert'}
           </Button>
@@ -690,10 +688,10 @@ export default function FeatureManagementWithPublish() {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setEmergencyDialogOpen(false)}>Cancel</Button>
-          <Button onClick={handleEmergencyRollback} variant="contained" color="error" disabled={emergencyRollback.isPending} sx={theming.getThemedButtonSx()}>
+          <AdminButton tone="ghost" onClick={() => setEmergencyDialogOpen(false)}>Cancel</AdminButton>
+          <AdminButton tone="danger" onClick={handleEmergencyRollback} loading={emergencyRollback.isPending} disabled={emergencyRollback.isPending}>
             {emergencyRollback.isPending ? 'Rolling back...' : 'Emergency Rollback'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>
