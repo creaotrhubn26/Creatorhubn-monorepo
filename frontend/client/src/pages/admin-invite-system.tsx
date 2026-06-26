@@ -202,6 +202,24 @@ export default function AdminInviteSystem() {
   const { data: prototypeTesterRequests = [], isLoading: isLoadingPrototype } = useQuery({
     queryKey: ['/api/prototype-tester-requests'],
     queryFn: () => apiRequest('/api/prototype-tester-requests'),
+    // Defensiv: garanter at testingAreas alltid er string[] (skadet/ikke-array
+    // data fra API-et skal aldri krasje .slice/.map i render).
+    select: (rows: any) =>
+      (Array.isArray(rows) ? rows : []).map((r: any) => ({
+        ...r,
+        testingAreas: Array.isArray(r?.testingAreas)
+          ? r.testingAreas.filter((s: unknown): s is string => typeof s === 'string')
+          : typeof r?.testingAreas === 'string' && r.testingAreas.trim()
+            ? (() => {
+                try {
+                  const p = JSON.parse(r.testingAreas);
+                  return Array.isArray(p) ? p.filter((s: unknown): s is string => typeof s === 'string') : [];
+                } catch {
+                  return String(r.testingAreas).split(',').map((s: string) => s.trim()).filter(Boolean);
+                }
+              })()
+            : [],
+      })),
   });
 
   // Process invite request mutation
