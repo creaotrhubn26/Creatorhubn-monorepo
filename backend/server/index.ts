@@ -65200,12 +65200,32 @@ setupPrototypeTesterInvitesRoutes({
   // OAuth / e-post-match). Gjenbruker den velprøvde upsertAdminAccountUser.
   provisionTesterAccount: async (email: string, name: string) => {
     const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
-    return upsertAdminAccountUser({
+    const acct = await upsertAdminAccountUser({
       email: String(email || "").trim().toLowerCase(),
       firstName: parts[0] || null,
       lastName: parts.length > 1 ? parts.slice(1).join(" ") : null,
       isActive: true,
     });
+    // #3 — ekte entitlement: gi testeren (master/medlem) et reelt full-tilgangs-
+    // abonnement under prototype-programmet. 'tester_all_access' ble aldri lest;
+    // solo_pro er en EKTE plan (automation, pitch deck, osv.) som faktisk gjenkjennes.
+    const userId = acct?.id ? String(acct.id) : null;
+    if (userId && (await hasTable("user_subscriptions"))) {
+      const TESTER_PLAN = "solo_pro";
+      const existing = await pool.query(
+        `SELECT id FROM user_subscriptions
+          WHERE user_id = $1 AND plan_id = $2 AND status IN ('active', 'trial') LIMIT 1`,
+        [userId, TESTER_PLAN],
+      );
+      if (existing.rowCount === 0) {
+        await pool.query(
+          `INSERT INTO user_subscriptions (user_id, plan_id, status, started_at, auto_renew)
+           VALUES ($1, $2, 'active', NOW(), true)`,
+          [userId, TESTER_PLAN],
+        );
+      }
+    }
+    return acct;
   },
 });
 
