@@ -34,6 +34,9 @@ struct MapScreen: View {
     @State private var showFullDetail = false
     @State private var fullDetailLead: LeadModel?
     @State private var hasCenteredOnUser = false
+    // ── Industries-filter (mig 329) ──────────────────────────────────
+    @State private var onlyMyIndustries = false
+    @State private var myIndustryIds: Set<String> = []
 
     @State private var camera: MapCameraPosition = .region(
         MKCoordinateRegion(
@@ -100,6 +103,7 @@ struct MapScreen: View {
             }
             .toolbar { mapToolbar }
             .task { await initialZoomIfNeeded() }
+            .task { await loadMyIndustriesIfNeeded() }
             .onChange(of: appState.workloadLeads.count) { _, _ in
                 Task { await initialZoomIfNeeded() }
             }
@@ -108,10 +112,23 @@ struct MapScreen: View {
 
     // MARK: - Map layer
 
+    /// Leads etter aktive filtre (industries m.m.). Sentral
+    /// filtreringsfunksjon slik at både kart-laget og bottom-overlay
+    /// teller samme antall.
+    private var filteredLeads: [LeadModel] {
+        guard onlyMyIndustries, !myIndustryIds.isEmpty else {
+            return appState.leads
+        }
+        return appState.leads.filter { lead in
+            guard let iid = lead.industryId else { return false }
+            return myIndustryIds.contains(iid)
+        }
+    }
+
     @ViewBuilder
     private var mapLayer: some View {
         Map(position: $camera) {
-            ForEach(appState.leads) { lead in
+            ForEach(filteredLeads) { lead in
                 Annotation(
                     lead.name,
                     coordinate: .init(latitude: lead.latitude, longitude: lead.longitude)
@@ -302,12 +319,32 @@ struct MapScreen: View {
                         Task { await appState.refreshAll() }
                     }
                 }
+                Divider()
+                // Industries-filter (mig 329). Toggle viser bare leads
+                // i bransjene sales-rep'en har spesialisering på.
+                Toggle(isOn: $onlyMyIndustries) {
+                    Label("Bare mine bransjer", systemImage: "tag.fill")
+                }
+                .disabled(myIndustryIds.isEmpty)
                 Button("Logg ut", systemImage: "person.crop.circle.badge.minus") {
                     appState.signOut()
                 }
             } label: {
                 Image(systemName: "ellipsis.circle")
             }
+        }
+    }
+
+    /// Hent mine industries-IDer for filteret. Cachen leve­tid er hele
+    /// sesjonen — bruker kan trekke ned for å oppdatere.
+    @MainActor
+    private func loadMyIndustriesIfNeeded() async {
+        guard myIndustryIds.isEmpty, let api = appState.api else { return }
+        do {
+            let mine = try await api.fetchMyIndustries()
+            myIndustryIds = Set(mine.map { $0.industryId })
+        } catch {
+            // Stille — filteret blir bare disabled til neste forsøk.
         }
     }
 

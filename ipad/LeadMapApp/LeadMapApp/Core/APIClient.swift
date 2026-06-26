@@ -2768,3 +2768,119 @@ extension APIClient {
         try await get("/api/leadgrid/ai-usage/history?days=\(days)")
     }
 }
+
+// MARK: - Leadgrid Industries (mig 329)
+//
+// 3-lags bransje-system: industries-katalog (global + custom),
+// crm_customers.industry_id, og organization_member_industries.
+// Brukes av IndustryManagementView, MapScreen-filter og
+// OversiktView-bransje-kolonne.
+
+extension APIClient {
+
+    /// Hent alle aktive bransjer (global + min orgs custom).
+    func fetchIndustries() async throws -> [Industry] {
+        let resp: IndustriesResponse = try await get("/api/leadgrid/industries")
+        return resp.industries
+    }
+
+    /// Hent én bransje (sjeldent brukt — liste-endpointet dekker UI).
+    func fetchIndustry(id: String) async throws -> Industry {
+        let resp: IndustryResponse = try await get("/api/leadgrid/industries/\(id)")
+        return resp.industry
+    }
+
+    /// Opprett custom bransje for min org. Krever industries.manage.
+    func createCustomIndustry(
+        code: String,
+        nameNo: String,
+        nameEn: String? = nil,
+        parentId: String? = nil,
+        icon: String? = nil,
+        colorHex: String? = nil
+    ) async throws -> Industry {
+        var body: [String: Any] = [
+            "code": code,
+            "nameNo": nameNo,
+        ]
+        if let nameEn { body["nameEn"] = nameEn }
+        if let parentId { body["parentId"] = parentId }
+        if let icon { body["icon"] = icon }
+        if let colorHex { body["colorHex"] = colorHex }
+        let resp: IndustryResponse = try await post("/api/leadgrid/industries", body: body)
+        return resp.industry
+    }
+
+    /// Oppdater custom bransje. Krever industries.manage + være eier.
+    func updateCustomIndustry(
+        id: String,
+        nameNo: String? = nil,
+        icon: String? = nil,
+        colorHex: String? = nil
+    ) async throws -> Industry {
+        var body: [String: Any] = [:]
+        if let nameNo { body["nameNo"] = nameNo }
+        if let icon { body["icon"] = icon }
+        if let colorHex { body["colorHex"] = colorHex }
+        let resp: IndustryResponse = try await patchReturning("/api/leadgrid/industries/\(id)", body: body)
+        return resp.industry
+    }
+
+    /// Soft-delete custom bransje.
+    func deleteCustomIndustry(id: String) async throws {
+        try await delete("/api/leadgrid/industries/\(id)")
+    }
+
+    /// Mine spesialiseringer.
+    func fetchMyIndustries() async throws -> [MemberIndustry] {
+        let resp: MemberIndustriesResponse = try await get("/api/leadgrid/members/me/industries")
+        return resp.memberIndustries
+    }
+
+    /// Replace-all: skriv hele mine spesialiseringer.
+    /// Hver assignment: { industryId, expertiseLevel, isPrimary, notes }.
+    func updateMyIndustries(_ assignments: [IndustryAssignmentPayload]) async throws -> [MemberIndustry] {
+        let body: [String: Any] = [
+            "industries": assignments.map { $0.toDict() }
+        ]
+        let resp: MemberIndustriesResponse = try await put("/api/leadgrid/members/me/industries", body: body)
+        return resp.memberIndustries
+    }
+
+    /// Admin: andres spesialiseringer.
+    func fetchMemberIndustries(userId: String) async throws -> [MemberIndustry] {
+        let resp: MemberIndustriesResponse = try await get("/api/leadgrid/members/\(userId)/industries")
+        return resp.memberIndustries
+    }
+
+    /// Admin: replace-all for et annet medlem (krever industries.assign).
+    func updateMemberIndustries(
+        userId: String,
+        assignments: [IndustryAssignmentPayload]
+    ) async throws -> [MemberIndustry] {
+        let body: [String: Any] = [
+            "industries": assignments.map { $0.toDict() }
+        ]
+        let resp: MemberIndustriesResponse = try await put("/api/leadgrid/members/\(userId)/industries", body: body)
+        return resp.memberIndustries
+    }
+}
+
+/// Payload-helper for PUT-replace-all-endepunktene (JSONSerialization
+/// kan ikke serialisere Codable direkte, så vi mapper til [String: Any]).
+struct IndustryAssignmentPayload {
+    let industryId: String
+    let expertiseLevel: ExpertiseLevel
+    let isPrimary: Bool
+    let notes: String?
+
+    func toDict() -> [String: Any] {
+        var d: [String: Any] = [
+            "industryId": industryId,
+            "expertiseLevel": expertiseLevel.rawValue,
+            "isPrimary": isPrimary,
+        ]
+        if let notes { d["notes"] = notes }
+        return d
+    }
+}

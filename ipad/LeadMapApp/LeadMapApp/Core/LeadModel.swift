@@ -80,4 +80,9 @@ struct LeadModel: Identifiable, Codable, Hashable {
     let leadTemperature: String?
     let pipelineStage: String?
     let leadScore: Int?
+    // ── Bransje-kategorisering (mig 329) ─────────────────────────────
+    /// Bransje-id (industries.id). Brukes for IndustryBadge i UI og
+    /// «Bare mine bransjer»-filter på kartet. Backwards-compat: optional
+    /// så eldre cached payloads fortsatt decodes.
+    let industryId: String?
 }

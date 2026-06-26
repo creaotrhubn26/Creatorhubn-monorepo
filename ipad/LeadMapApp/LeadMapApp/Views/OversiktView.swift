@@ -34,6 +34,9 @@ struct OversiktView: View {
     @State private var loading = false
     @State private var refreshTask: Task<Void, Never>?
     @State private var presentingLeadDetail = false
+    /// Lookup-tabell for bransjer (mig 329). Brukes til å vise
+    /// IndustryBadge i "Leads i området"-tabellen.
+    @State private var industriesById: [String: Industry] = [:]
 
     /// Vis right sidebar når vi har plass — kompakt-portrait på iPad/iPhone
     /// stables seksjonene under hverandre i hovedkolonnen.
@@ -234,6 +237,7 @@ struct OversiktView: View {
             // Header
             HStack(spacing: 8) {
                 Text("Selskap").frame(maxWidth: .infinity, alignment: .leading)
+                Text("Bransje").frame(width: 140, alignment: .leading)
                 Text("Score").frame(width: 56, alignment: .trailing)
                 Text("Status").frame(width: 110, alignment: .leading)
                 Text("Neste handling").frame(width: 160, alignment: .leading)
@@ -277,6 +281,14 @@ struct OversiktView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            Group {
+                if let iid = lead.industryId, let industry = industriesById[iid] {
+                    IndustryBadge(industry: industry, style: .compact)
+                } else {
+                    Text("—").font(.caption2).foregroundStyle(.secondary)
+                }
+            }
+            .frame(width: 140, alignment: .leading)
             Text(lead.leadScore.map { String($0) } ?? "—")
                 .font(.callout.bold())
                 .monospacedDigit()
@@ -580,7 +592,19 @@ struct OversiktView: View {
         async let f: () = loadForecast(api: api)
         async let n: () = loadTopNBA(api: api)
         async let r: () = loadRoutePreview(api: api)
-        _ = await (m, f, n, r)
+        async let i: () = loadIndustries(api: api)
+        _ = await (m, f, n, r, i)
+    }
+
+    /// Hent industries-katalog én gang (cached i view-state for sesjonen).
+    private func loadIndustries(api: APIClient) async {
+        guard industriesById.isEmpty else { return }
+        do {
+            let list = try await api.fetchIndustries()
+            var map: [String: Industry] = [:]
+            for ind in list { map[ind.id] = ind }
+            self.industriesById = map
+        } catch { print("[Oversikt] industries failed: \(error)") }
     }
 
     private func loadMomentum(api: APIClient) async {

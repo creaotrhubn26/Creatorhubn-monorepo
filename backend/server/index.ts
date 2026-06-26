@@ -555,6 +555,7 @@ import { registerLeadgridForecastingRoutes } from "./leadgrid-forecasting-routes
 import { registerLeadgridMomentumRoutes } from "./leadgrid-momentum-routes.js";
 import { registerLeadgridImportRoutes } from "./leadgrid-import-routes.js";
 import { registerLeadgridUrlResearchRoutes } from "./leadgrid-url-research-routes.js";
+import { registerLeadgridIndustriesRoutes } from "./leadgrid-industries-routes.js";
 import { registerLeadgridWebhookRotationRoutes } from "./leadgrid-webhook-rotation-routes.js";
 import { registerLeadgridPublicApiV1 } from "./leadgrid-public-api-v1.js";
 import { registerLeadgridApiKeyMgmtRoutes } from "./leadgrid-api-key-mgmt-routes.js";
@@ -24622,6 +24623,14 @@ registerLeadgridImportRoutes({ app, pool, activeSessions });
 //   GET  /api/leadgrid/url-research/preview/:draft_lead_id
 // Gated på leads.import_url.
 registerLeadgridUrlResearchRoutes({ app, pool, activeSessions });
+// Industries-katalog + member-spesialiseringer (mig 329).
+// 3-lags bransje-system: industries (global+custom) + crm_customers.industry_id
+// + organization_member_industries (sales-rep × bransje × expertise).
+// Endpoints:
+//   GET/POST/PATCH/DELETE /api/leadgrid/industries[/:id]
+//   GET/PUT /api/leadgrid/members/{me|:userId}/industries
+// Gated på industries.view / .manage / .assign.
+registerLeadgridIndustriesRoutes({ app, pool, activeSessions });
 // Webhook-secret-rotering m/ 7-dagers grace-period (mig 322).
 // POST /webhooks/:id/rotate-secret + cron /expire-old-webhook-secrets.
 registerLeadgridWebhookRotationRoutes({ app, pool, activeSessions });
