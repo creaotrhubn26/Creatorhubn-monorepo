@@ -140,6 +140,15 @@ struct MapScreen: View {
             .onChange(of: appState.workloadLeads.count) { _, _ in
                 Task { await initialZoomIfNeeded() }
             }
+            // Lytt på "zoom til batch-bounds" — postet både av bulk-URL
+            // success-flyten (PR #991) og Research-fanens lead-discovery
+            // success-hero (Pakke 9). Centrer kamera til bounding-box
+            // av alle nye pins m/ 20% padding.
+            .onReceive(NotificationCenter.default.publisher(
+                for: .leadgridBulkUrlBatchZoomToBounds
+            )) { notif in
+                handleBatchBoundsNotification(notif)
+            }
         }
     }
 
@@ -327,6 +336,13 @@ struct MapScreen: View {
     @ViewBuilder
     private var topOverlay: some View {
         VStack(spacing: 8) {
+            // Søk-overlay (Pakke 9): kompakt kapsel som ekspanderer til
+            // full søke-panel m/ steder, leads og bransjer. Bygges først
+            // i z-stack slik at både Project-kort og banner kan dukke
+            // opp under uten å bli skjult.
+            MapSearchBar { target in
+                handleMapSearchSelection(target)
+            }
             MapProjectCard(
                 onStartRoute: {
                     if appState.dayRoute != nil {
@@ -604,6 +620,85 @@ struct MapScreen: View {
         )
         withAnimation(.easeInOut(duration: 0.6)) {
             camera = .region(region)
+        }
+    }
+
+    /// Zoom kameraet til en bounding-box av alle koordinatene + 20% padding.
+    /// Brukt av bulk-URL/lead-discovery success-flyten.
+    @MainActor
+    private func handleBatchBoundsNotification(_ notif: Notification) {
+        guard let raw = notif.userInfo?["coordinates"] as? [[String: Double]],
+              !raw.isEmpty else { return }
+        let lats = raw.compactMap { $0["lat"] }
+        let lngs = raw.compactMap { $0["lng"] }
+        guard !lats.isEmpty, !lngs.isEmpty else { return }
+        let minLat = lats.min() ?? 0
+        let maxLat = lats.max() ?? 0
+        let minLng = lngs.min() ?? 0
+        let maxLng = lngs.max() ?? 0
+        let centerLat = (minLat + maxLat) / 2
+        let centerLng = (minLng + maxLng) / 2
+        let latDelta = max(0.01, (maxLat - minLat) * 1.2)
+        let lngDelta = max(0.01, (maxLng - minLng) * 1.2)
+        let region = MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: centerLat, longitude: centerLng),
+            span: MKCoordinateSpan(
+                latitudeDelta: latDelta,
+                longitudeDelta: lngDelta,
+            )
+        )
+        withAnimation(.easeInOut(duration: 0.6)) {
+            camera = .region(region)
+        }
+    }
+
+    // MARK: - Map-søk (Pakke 9)
+
+    /// Handler for MapSearchBar-resultater.
+    ///   - sted → animér kamera til koordinatet
+    ///   - lead → animér til lead-koordinatet + presenter quick-sheet
+    ///   - bransje → toggle filter "Bare bransje X" via myIndustryIds
+    @MainActor
+    private func handleMapSearchSelection(_ target: MapSearchTarget) {
+        switch target {
+        case .place(let coord, _):
+            let region = MKCoordinateRegion(
+                center: coord,
+                span: .init(latitudeDelta: 0.04, longitudeDelta: 0.04)
+            )
+            withAnimation(.easeInOut(duration: 0.5)) {
+                camera = .region(region)
+            }
+        case .lead(let lead):
+            let coord = CLLocationCoordinate2D(
+                latitude: lead.latitude,
+                longitude: lead.longitude,
+            )
+            let region = MKCoordinateRegion(
+                center: coord,
+                span: .init(latitudeDelta: 0.01, longitudeDelta: 0.01)
+            )
+            withAnimation(.easeInOut(duration: 0.5)) {
+                camera = .region(region)
+            }
+            // Kort sleep så kameraet starter pan FØR sheeten slår opp.
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 250_000_000)
+                quickStatusLead = lead
+            }
+        case .industry(let industry):
+            // Toggle bransje-filter — legg til/fjern fra mine industries.
+            // (Filtrering er klient-side på myIndustryIds — vi bruker
+            // den eksisterende `onlyMyIndustries`-mekanismen.)
+            if myIndustryIds.contains(industry.id) {
+                myIndustryIds.remove(industry.id)
+                if myIndustryIds.isEmpty {
+                    onlyMyIndustries = false
+                }
+            } else {
+                myIndustryIds.insert(industry.id)
+                onlyMyIndustries = true
+            }
         }
     }
 

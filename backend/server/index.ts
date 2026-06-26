@@ -555,6 +555,7 @@ import { registerLeadgridForecastingRoutes } from "./leadgrid-forecasting-routes
 import { registerLeadgridMomentumRoutes } from "./leadgrid-momentum-routes.js";
 import { registerLeadgridImportRoutes } from "./leadgrid-import-routes.js";
 import { registerLeadgridUrlResearchRoutes } from "./leadgrid-url-research-routes.js";
+import { registerLeadgridProjectLeadDiscoveryRoutes } from "./leadgrid-project-lead-discovery-routes.js";
 import { registerLeadgridIndustriesRoutes } from "./leadgrid-industries-routes.js";
 import { registerLeadgridDealsRoutes } from "./leadgrid-deals-routes.js";
 import { registerLeadgridWorkflowRoutes } from "./leadgrid-workflow-routes.js";
@@ -24636,6 +24637,13 @@ registerLeadgridImportRoutes({ app, pool, activeSessions });
 //     POST /api/leadgrid/url-research/batches/:id/cancel
 // Gated på leads.import_url.
 registerLeadgridUrlResearchRoutes({ app, pool, activeSessions });
+// AI lead-discovery for valgt prosjekt (mig 0352). "Finn leads for MedSide"
+// → Places Text Search + filter eksisterende → batch-research via samme
+// processor som bulk-URL. Endpoints:
+//   POST /api/leadgrid/projects/:projectId/discover-leads
+//   GET  /api/leadgrid/projects/:projectId/discover-leads/:batchId/result
+// Gated på lead_research.run.
+registerLeadgridProjectLeadDiscoveryRoutes({ app, pool, activeSessions });
 // Industries-katalog + member-spesialiseringer (mig 329).
 // 3-lags bransje-system: industries (global+custom) + crm_customers.industry_id
 // + organization_member_industries (sales-rep × bransje × expertise).

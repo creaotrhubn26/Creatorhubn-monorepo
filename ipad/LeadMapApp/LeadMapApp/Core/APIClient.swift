@@ -1398,6 +1398,45 @@ actor APIClient {
         try Self.validate(response)
     }
 
+    // MARK: - AI Lead-discovery for prosjekt (mig 0352)
+    //
+    // "Finn leads for {prosjekt}" → backend kombinerer prosjekt-context
+    // (bransje + by fra brand-kit / market-scan) med override fra UI,
+    // spør Google Places, filtrerer eksisterende leads, og kjører hver
+    // kandidat gjennom samme runUrlResearch som bulk-URL. Pings tilbake
+    // via samme WebSocket-kanal (url_research.batch.progress) slik at
+    // MapScreen kan animere pins idet de dukker opp.
+
+    /// Steg 1 — start lead-discovery for et prosjekt. Backend returnerer
+    /// batch_id + found_count (hvor mange URL-er ble lagt i kø).
+    /// Hvis foundCount==0, var alle Places-kandidater allerede importert.
+    func discoverLeadsForProject(
+        projectId: String,
+        request: LeadDiscoveryRequest,
+    ) async throws -> LeadDiscoveryStartResponse {
+        var req = makeRequest(
+            "/api/leadgrid/projects/\(projectId)/discover-leads",
+            method: "POST",
+        )
+        req.httpBody = try JSONSerialization.data(withJSONObject: request.toDict())
+        let (data, response) = try await session.data(for: req)
+        try Self.validate(response)
+        return try Self.decoder.decode(LeadDiscoveryStartResponse.self, from: data)
+    }
+
+    /// Hent full batch + items + breakdown for en lead-discovery-batch.
+    /// Polling-loop bruker eksisterende pollBulkUrlResearchProgress for
+    /// lett-vekt counter — denne kalles når UI trenger full breakdown
+    /// (success-hero-card).
+    func fetchLeadDiscoveryResult(
+        projectId: String,
+        batchId: String,
+    ) async throws -> LeadDiscoveryResultResponse {
+        return try await get(
+            "/api/leadgrid/projects/\(projectId)/discover-leads/\(batchId)/result"
+        )
+    }
+
     // MARK: - Internal
 
     private func makeRequest(_ path: String, method: String = "GET") -> URLRequest {
