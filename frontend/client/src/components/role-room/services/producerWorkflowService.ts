@@ -3630,6 +3630,32 @@ export const producerWorkflowService = {
   },
 
   /**
+   * Produsent-trigger: opprett standard-konverteringer i klientens Google Ads-
+   * konto (via klientens egen token). Returnerer resultat-sammendrag eller en feil.
+   */
+  async syncClientGoogleAdsConversions(projectId: string): Promise<{
+    success: boolean;
+    created?: Array<{ actionName: string; conversionActionId: string; label: string | null }>;
+    skipped?: string[];
+    failed?: Array<{ actionName: string; error: string }>;
+    error?: string;
+  }> {
+    try {
+      const res = await fetch(
+        `${API_BASE}/client-portal/ads/sync-conversions/${encodeURIComponent(projectId)}`,
+        { method: 'POST', headers: { ...buildAuthHeaders(), 'Content-Type': 'application/json' }, credentials: 'include' },
+      );
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        return { success: false, error: json?.error || `Feil (${res.status})` };
+      }
+      return json;
+    } catch {
+      return { success: false, error: 'Kunne ikke nå serveren.' };
+    }
+  },
+
+  /**
    * Laster ned en klient-opplastet fil (logo/brand/brief) — auth-gated stream
    * fra backend. Trigger en blob-nedlasting i nettleseren.
    */

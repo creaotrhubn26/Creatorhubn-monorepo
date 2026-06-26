@@ -294,6 +294,90 @@ export async function createConversionAction(
   };
 }
 
+// Standard konverteringer som opprettes for en klient (content/markedsføring).
+// Kjøres via KLIENTENS egen token mot KLIENTENS konto (roleRoomProjectId-stien).
+const DEFAULT_CLIENT_CONVERSION_ACTIONS: ConversionActionInput[] = [
+  { actionName: "lead", displayName: "Lead", goalCategory: "submit_lead_form", defaultValue: 0, currency: "NOK" },
+  { actionName: "contact", displayName: "Kontakt", goalCategory: "contact", defaultValue: 0, currency: "NOK" },
+  { actionName: "booking", displayName: "Booking", goalCategory: "book_appointment", defaultValue: 0, currency: "NOK" },
+  { actionName: "purchase", displayName: "Kjøp", goalCategory: "purchase", defaultValue: 0, currency: "NOK" },
+];
+
+export interface SyncConversionsResult {
+  ok: boolean;
+  created: Array<{ actionName: string; conversionActionId: string; label: string | null }>;
+  skipped: string[];
+  failed: Array<{ actionName: string; error: string }>;
+  error?: string;
+}
+
+/**
+ * Produsent-trigger (#3): oppretter standard-konverteringer i KLIENTENS Google
+ * Ads-konto via klient-token-stien. Idempotent — hopper over actions som
+ * allerede er opprettet (sporet i connection.profile.conversionActions).
+ *
+ * Dette er biten som FAKTISK kaller createConversionAction; uten den var
+ * conversion-koden komplett men aldri trigget.
+ */
+export async function syncClientConversionActions(
+  pool: Pool,
+  opts: { producerUserId: string; projectId: string },
+): Promise<SyncConversionsResult> {
+  const { rows } = await pool.query(
+    `SELECT profile FROM role_room_client_google_ads_connections
+      WHERE project_id = $1 AND connection_state = 'connected' LIMIT 1`,
+    [opts.projectId],
+  );
+  if (!rows[0]) {
+    return { ok: false, created: [], skipped: [], failed: [], error: "client_google_ads_not_connected" };
+  }
+  const profile = (rows[0].profile && typeof rows[0].profile === "object" && !Array.isArray(rows[0].profile))
+    ? rows[0].profile as Record<string, unknown>
+    : {};
+  const existing = Array.isArray(profile.conversionActions)
+    ? profile.conversionActions as Array<{ actionName?: string; conversionActionId?: string; label?: string | null }>
+    : [];
+  const existingNames = new Set(existing.map((a) => a.actionName).filter(Boolean));
+
+  const created: SyncConversionsResult["created"] = [];
+  const skipped: string[] = [];
+  const failed: SyncConversionsResult["failed"] = [];
+
+  for (const action of DEFAULT_CLIENT_CONVERSION_ACTIONS) {
+    if (existingNames.has(action.actionName)) {
+      skipped.push(action.actionName);
+      continue;
+    }
+    const r = await createConversionAction(pool, {
+      producerUserId: opts.producerUserId,
+      roleRoomProjectId: opts.projectId,
+      action,
+    });
+    if (r.ok) {
+      const entry = {
+        actionName: action.actionName,
+        conversionActionId: r.result.conversionActionId,
+        label: r.result.awConversionLabel ?? null,
+      };
+      created.push(entry);
+      existing.push(entry);
+    } else {
+      failed.push({ actionName: action.actionName, error: r.error });
+    }
+  }
+
+  if (created.length > 0) {
+    await pool.query(
+      `UPDATE role_room_client_google_ads_connections
+          SET profile = $2::jsonb, updated_at = now()
+        WHERE project_id = $1`,
+      [opts.projectId, JSON.stringify({ ...profile, conversionActions: existing })],
+    );
+  }
+
+  return { ok: failed.length === 0, created, skipped, failed };
+}
+
 /**
  * Hent tag-snippet for en conversion-action — trekker ut AW-id + label
  * fra send_to-feltet.

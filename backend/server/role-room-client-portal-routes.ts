@@ -33,6 +33,8 @@ import {
 } from "./role-room-client-portal.js";
 import { sendTransactionalEmail } from "./transactional-email-service.js";
 import { composeEmail } from "./email-design-system.js";
+import { syncClientConversionActions } from "./client-ads-google-oauth.js";
+import { canAccessProjectAds } from "./role-room-project-access.js";
 import {
   PLATFORM_LABELS,
   PLATFORM_ORDER,
@@ -218,5 +220,31 @@ export function setupRoleRoomClientPortalRoutes(
     );
     await setClientPortalHiddenPlatforms(pool, projectId, hidden, session.userId);
     return res.json({ success: true, hiddenPlatforms: hidden });
+  });
+
+  // ── Produsent-trigger: opprett standard-konverteringer i klientens Google Ads
+  // Kjøres som klienten (klient-token-stien) mot klientens egen konto. Krever at
+  // klienten har koblet Google Ads + at vi har customer-id.
+  app.post("/api/role-room/client-portal/ads/sync-conversions/:projectId", async (req, res) => {
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+    const projectId = String(req.params.projectId || "").trim();
+    if (!projectId) {
+      return res.status(400).json({ success: false, error: "projectId er påkrevd." });
+    }
+    if (!(await canAccessProjectAds(pool, projectId, { userId: session.userId, email: session.email }))) {
+      return res.status(403).json({ success: false, error: "Ingen tilgang til prosjektet." });
+    }
+    const result = await syncClientConversionActions(pool, {
+      producerUserId: session.userId,
+      projectId,
+    });
+    if (!result.ok && result.error === "client_google_ads_not_connected") {
+      return res.status(409).json({
+        success: false,
+        error: "Klienten har ikke koblet Google Ads ennå (eller customer-id mangler).",
+      });
+    }
+    return res.json({ success: result.ok, ...result });
   });
 }
