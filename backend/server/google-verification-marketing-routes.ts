@@ -26,7 +26,6 @@ import {
   refreshGoogleAdsAccessToken,
 } from "./role-room-ads-oauth.js";
 import { decryptInstagramToken } from "./role-room-instagram-oauth.js";
-import { listAccessibleCustomers } from "./role-room-google-ads.js";
 
 const GA4_BASE = "https://analyticsadmin.googleapis.com/v1beta";
 const GSC_BASE = "https://www.googleapis.com/webmasters/v3";
@@ -91,8 +90,31 @@ export function setupGoogleVerificationMarketingRoutes(deps: {
       if (action === "ads-customers") {
         const developerToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN?.trim() ?? "";
         if (!developerToken) return res.status(503).json({ ok: false, error: "missing_developer_token" });
-        const ids = await listAccessibleCustomers({ accessToken, developerToken });
-        return res.json({ ok: true, scope: "adwords", count: ids.length, items: ids });
+        // v18 er solnedgang-et (juni 2026) → 404 på den faste versjonen i
+        // listAccessibleCustomers. Prøv flere versjoner inline og bruk den som
+        // svarer; returner Googles faktiske feiltekst hvis ALLE feiler.
+        const versions = ["v21", "v20", "v19", "v18"];
+        let lastStatus = 0;
+        let lastDetail = "";
+        for (const v of versions) {
+          const r = await fetch(
+            `https://googleads.googleapis.com/${v}/customers:listAccessibleCustomers`,
+            { headers: { Authorization: `Bearer ${accessToken}`, "developer-token": developerToken } },
+          );
+          if (r.ok) {
+            const body = (await r.json().catch(() => ({}))) as { resourceNames?: string[] };
+            const ids = (body.resourceNames ?? []).map((n) => n.replace("customers/", ""));
+            return res.json({ ok: true, scope: "adwords", apiVersion: v, count: ids.length, items: ids });
+          }
+          lastStatus = r.status;
+          lastDetail = (await r.text().catch(() => "")).slice(0, 400);
+          // 404 = feil versjon → prøv neste. Andre feil (401/403) = token/dev-token,
+          // ingen vits i å prøve flere versjoner.
+          if (r.status !== 404) break;
+        }
+        return res
+          .status(502)
+          .json({ ok: false, error: `adwords_http_${lastStatus}`, detail: lastDetail });
       }
 
       if (action === "ga4-accounts") {
