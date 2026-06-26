@@ -5888,12 +5888,21 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
               )}
               
               {profession === 'vendor' && projectsTabValue === 3 && (
-                <VendorProductManager 
+                <VendorProductManager
                   userId={userId}
                 />
               )}
-              
-              {projectsTabValue === 0 && (
+
+              {/* Leverandør: standard-fanen viser PRODUKTER, ikke fotograf-shoot-
+                  prosjekter. Shoot-prosjektmodalen (minnekort/kamera/bryllup) er
+                  ikke relevant for en leverandør. */}
+              {profession === 'vendor' && projectsTabValue === 0 && (
+                <VendorProductManager
+                  userId={userId}
+                />
+              )}
+
+              {projectsTabValue === 0 && profession !== 'vendor' && (
               <>
               
               <Grid2 container spacing={{ xs: 2, md: 3 }}>
@@ -7917,8 +7926,9 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
       />
 
       {/* Universal Project Creation Modal - Enhanced */}
-      <Dialog 
-        open={showProjectCreation || showProjectModal}
+      {/* Ikke for leverandører: dette er fotograf-shoot-modalen (minnekort/kamera). */}
+      <Dialog
+        open={(showProjectCreation || showProjectModal) && profession !== 'vendor'}
         onClose={(_event, _reason) => {
           setShowProjectCreation(false);
           setShowProjectModal(false);
