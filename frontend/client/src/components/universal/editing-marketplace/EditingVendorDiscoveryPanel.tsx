@@ -532,7 +532,14 @@ export default function EditingVendorDiscoveryPanel({
       <Dialog open={!!chatJobId} onClose={() => { setChatJobId(null); qc.invalidateQueries({ queryKey: ["/api/editing/jobs"] }); }} maxWidth="sm" fullWidth>
         <DialogTitle>{t("myjobs_chat", locale)}</DialogTitle>
         <DialogContent dividers>
-          {chatJobId && <EditingJobChat jobId={chatJobId} selfRole="photographer" locale={locale} />}
+          {chatJobId && (
+            <EditingJobChat
+              jobId={chatJobId}
+              selfRole="photographer"
+              locale={locale}
+              jobStatus={(myJobsQuery.data?.jobs || []).find((j) => j.id === chatJobId)?.status}
+            />
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => { setChatJobId(null); qc.invalidateQueries({ queryKey: ["/api/editing/jobs"] }); }}>{locale === "no" ? "Lukk" : "Close"}</Button>

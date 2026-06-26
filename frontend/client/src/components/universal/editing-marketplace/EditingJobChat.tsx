@@ -12,6 +12,7 @@ import { Box, Stack, TextField, Button, Typography, Paper, Alert, Skeleton } fro
 import SendIcon from "@mui/icons-material/Send";
 import { apiRequest } from "@/lib/queryClient";
 import { t, type Locale } from "./editingMarketplaceStrings";
+import EditingJobActions from "./EditingJobActions";
 
 function fmtChatTime(iso: string, locale: Locale): string {
   if (!iso) return "";
@@ -36,9 +37,11 @@ interface Props {
   jobId: string;
   selfRole: "photographer" | "vendor";
   locale?: Locale;
+  /** Oppdrags-status — driver de kontekst-bevisste hurtighandlingene. */
+  jobStatus?: string;
 }
 
-export default function EditingJobChat({ jobId, selfRole, locale = "no" }: Props) {
+export default function EditingJobChat({ jobId, selfRole, locale = "no", jobStatus }: Props) {
   const qc = useQueryClient();
   const [draft, setDraft] = useState("");
 
@@ -118,6 +121,11 @@ export default function EditingJobChat({ jobId, selfRole, locale = "no" }: Props
           </Stack>
         )}
       </Box>
+      {jobStatus ? (
+        <Box sx={{ pt: 1 }}>
+          <EditingJobActions jobId={jobId} selfRole={selfRole} jobStatus={jobStatus} locale={locale} />
+        </Box>
+      ) : null}
       {canMessage ? (
         <Box sx={{ display: "flex", gap: 1, pt: 1 }}>
           <TextField

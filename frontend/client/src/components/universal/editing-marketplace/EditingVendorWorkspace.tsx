@@ -939,7 +939,12 @@ export default function EditingVendorWorkspace({ userId }: Props) {
             </Stack>
             <Card variant="outlined">
               <CardContent>
-                <EditingJobChat jobId={active} selfRole="vendor" locale={locale} />
+                <EditingJobChat
+                  jobId={active}
+                  selfRole="vendor"
+                  locale={locale}
+                  jobStatus={commJobs.find((j) => j.id === active)?.status}
+                />
               </CardContent>
             </Card>
           </Box>
