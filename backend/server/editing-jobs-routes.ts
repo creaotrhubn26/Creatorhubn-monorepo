@@ -863,8 +863,22 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
     const session = await requireUserSession(req, res);
     if (!session) return;
     try {
+      // Personvern/scope: returner KUN jobb-relevante felt til den (ofte
+      // eksterne, ikke-EØS) leverandøren. SELECT * lekket klient-PII
+      // (photographer_email/-id), lagrings-token (upload_token_jti, staging_*),
+      // Stripe-ID-er, faktura-URL og plattformøkonomi (platform_fee_cents,
+      // commission_vat_cents). Allow-list under = det leverandøren faktisk trenger.
       const r = await pool.query(
-        `SELECT * FROM editing_jobs WHERE vendor_id = $1 ORDER BY created_at DESC`,
+        `SELECT
+           id, project_title, vendor_id, vendor_name, status,
+           requested_services, brief, raw_files_info, quality_spec,
+           amount_cents, currency, cost_model, revenue_share_pct,
+           max_revisions, revisions_used, confidentiality_ack,
+           payout_status, paid_at,
+           vat_reverse_charge, vat_rate, service_vat_cents,
+           requested_at, accepted_at, declined_at, delivered_at,
+           approved_at, delivered_to_client_at, created_at, updated_at
+         FROM editing_jobs WHERE vendor_id = $1 ORDER BY created_at DESC`,
         [session.userId],
       );
       res.json({ jobs: r.rows });
