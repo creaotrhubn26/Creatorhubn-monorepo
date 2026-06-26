@@ -42384,7 +42384,25 @@ app.get("/api/prototype-tester-requests", async (req, res) => {
         email: r.email,
         company: r.company || "",
         profession: r.profession || "",
-        testingAreas: r.testing_areas || [],
+        // testing_areas kan være array (jsonb), JSON-streng, komma-streng eller
+        // (ved skadet data) et objekt — normaliser ALLTID til string[] så
+        // frontend ikke krasjer på .slice/.map.
+        testingAreas: ((v: any): string[] => {
+          if (Array.isArray(v)) return v.filter((s: unknown): s is string => typeof s === "string");
+          if (typeof v === "string") {
+            const t = v.trim();
+            if (!t) return [];
+            try {
+              const p = JSON.parse(t);
+              if (Array.isArray(p)) return p.filter((s: unknown): s is string => typeof s === "string");
+            } catch { /* ikke JSON */ }
+            return t.split(",").map((s) => s.trim()).filter(Boolean);
+          }
+          if (v && typeof v === "object") {
+            return Object.values(v).filter((s: unknown): s is string => typeof s === "string");
+          }
+          return [];
+        })(r.testing_areas),
         experience: r.experience || "",
         feedback: r.feedback || "",
         availableTime: r.available_time || "",
