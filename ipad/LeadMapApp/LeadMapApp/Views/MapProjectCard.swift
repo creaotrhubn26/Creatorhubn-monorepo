@@ -46,12 +46,48 @@ struct MapProjectCard: View {
 
     var body: some View {
         Group {
-            if appState.projects.isEmpty {
-                ProjectCardEmptyState()
+            // 3-state-switch (bug-fix etter PR #993):
+            //   .idle / .loading → skeleton-kort (ikke empty-state)
+            //   .failed          → kompakt error-banner m/ retry
+            //   .loaded + tom    → ekte «Ingen prosjekter ennå»
+            //   .loaded + data   → multi-prosjekt-pageren
+            //
+            // Daniel rapporterte at empty-state-kortet blinket i 1-2 sek
+            // ved app-start selv om han hadde 4 prosjekter. Roten var at
+            // den gamle `projects.isEmpty` ikke skilte mellom «laster»
+            // og «ekte tom liste».
+            switch appState.projectsLoadState {
+            case .idle, .loading:
+                if appState.projects.isEmpty {
+                    LoadingProjectCard()
+                        .frame(height: cardHeight)
+                        .padding(.horizontal, 12)
+                } else {
+                    // Allerede har cached data fra forrige sesjon — vis
+                    // pageren med eksisterende data så vi ikke blinker
+                    // skeleton over noe brukeren allerede ser.
+                    pager
+                }
+            case .failed(let message):
+                if appState.projects.isEmpty {
+                    ErrorProjectCard(message: message) {
+                        Task { await appState.refreshAll() }
+                    }
                     .frame(height: cardHeight)
                     .padding(.horizontal, 12)
-            } else {
-                pager
+                } else {
+                    // Vi har cached data; ikke kast over en error-banner —
+                    // vis pageren slik at brukeren kan jobbe videre offline.
+                    pager
+                }
+            case .loaded:
+                if appState.projects.isEmpty {
+                    ProjectCardEmptyState()
+                        .frame(height: cardHeight)
+                        .padding(.horizontal, 12)
+                } else {
+                    pager
+                }
             }
         }
         .sheet(isPresented: $showAllProjectsSheet) {

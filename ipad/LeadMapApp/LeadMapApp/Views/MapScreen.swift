@@ -35,6 +35,10 @@ struct MapScreen: View {
     @State private var showFullDetail = false
     @State private var fullDetailLead: LeadModel?
     @State private var hasCenteredOnUser = false
+    /// Sann mens MapSearchBar er ekspandert (panelet dekker området).
+    /// Brukes til å skjule MapProjectCard slik at ikke empty/loading-state
+    /// lyser gjennom under søke-panelet.
+    @State private var searchBarExpanded = false
     // ── Industries-filter (mig 329) ──────────────────────────────────
     @State private var onlyMyIndustries = false
     @State private var myIndustryIds: Set<String> = []
@@ -340,23 +344,30 @@ struct MapScreen: View {
             // full søke-panel m/ steder, leads og bransjer. Bygges først
             // i z-stack slik at både Project-kort og banner kan dukke
             // opp under uten å bli skjult.
-            MapSearchBar { target in
-                handleMapSearchSelection(target)
-            }
-            MapProjectCard(
-                onStartRoute: {
-                    if appState.dayRoute != nil {
-                        showRouteSheet = true
-                    } else {
-                        Task { await planRoute() }
-                    }
-                },
-                onOpenNext: { lead in
-                    quickStatusLead = lead
-                },
-                onTapExpand: { showProjectDetail = true }
+            MapSearchBar(
+                onSelect: { target in handleMapSearchSelection(target) },
+                isExpanded: $searchBarExpanded
             )
-            .padding(.top, 4)
+            // Skjul MapProjectCard mens søke-panelet er åpent — ellers ligger
+            // empty/loading-skeleton synlig under search-overlayen og gir
+            // dobbel-visuell støy. Glir tilbake inn når brukeren lukker søk.
+            if !searchBarExpanded {
+                MapProjectCard(
+                    onStartRoute: {
+                        if appState.dayRoute != nil {
+                            showRouteSheet = true
+                        } else {
+                            Task { await planRoute() }
+                        }
+                    },
+                    onOpenNext: { lead in
+                        quickStatusLead = lead
+                    },
+                    onTapExpand: { showProjectDetail = true }
+                )
+                .padding(.top, 4)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
             // Vis banner kun hvis bruker eksplisitt har avslått posisjon.
             // .notDetermined viser ingenting (vi har akkurat trigget
             // iOS-dialogen); .authorized viser ingenting (alt OK).
@@ -374,6 +385,7 @@ struct MapScreen: View {
             }
             Spacer()
         }
+        .animation(.spring(response: 0.32, dampingFraction: 0.85), value: searchBarExpanded)
     }
 
     @ViewBuilder
