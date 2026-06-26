@@ -1,9 +1,8 @@
 /**
  * leadgrid-import-routes.ts
  *
- * Lead-import-pipeline for Leadgrid (mig 328). Dekker to flows som
- * begge eksisterer på Leadgrid one-pager seksjon 1 "DISCOVER & IMPORT
- * LEADS":
+ * CSV/Excel-import for Leadgrid (mig 328). Dekker en av to flows på
+ * Leadgrid one-pager seksjon 1 "DISCOVER & IMPORT LEADS":
  *
  *   1. CSV/Excel-import — fotograf eller selger laster opp en fil
  *      eksportert fra Pipedrive/HubSpot/Excel-regneark.
@@ -20,23 +19,14 @@
  *          }
  *          → { imported, skipped_duplicates, errors, batch_id }
  *
- *   2. URL-basert lead-extraction — lim inn opptil 20 nettside-URLer
- *      eller SoMe-profiler, Claude Haiku 4.5 ekstraherer firma-data.
- *
- *        POST /api/leadgrid/import/url/scrape
- *          body: { urls: string[] }
- *          → { results: [{ url, lead?, error? }] }
- *
- *        POST /api/leadgrid/import/url/commit
- *          body: { leads: [...] }
- *          → { imported, skipped_duplicates, errors, batch_id }
- *
- * Cost-throttling: 20 URLer / minutt / bruker via leadgrid_import_url_rate.
- * Modell: claude-haiku-4-5-20251001 (cost-effektivt for HTML→JSON).
+ * URL-Research-flyten lever i `leadgrid-url-research-routes.ts` —
+ * bruker hele Role Room Agents research-stack (Brreg + website +
+ * Google Places + Claude synthesis) i stedet for one-shot HTML-
+ * skraping, og oppretter draft-lead i samme call slik at lokasjons-
+ * konfidens kan vises i preview før commit.
  *
  * Auth: requireAuth via lead-map-rbac-helper. Permission-keys:
  *   - leads.import_csv
- *   - leads.import_url
  *   - leads.import_admin (for rollback — fremtidig)
  *
  * Worker pattern: følger leadgrid-momentum-routes.ts mht. session-
@@ -49,17 +39,11 @@ import crypto from "crypto";
 import multer from "multer";
 import * as Papa from "papaparse";
 import * as XLSX from "xlsx";
-import * as cheerio from "cheerio";
-import Anthropic from "@anthropic-ai/sdk";
 
 import { requireLeadMapPermission } from "./lead-map-rbac-helper.js";
 
 const MAX_IMPORT_BYTES = 10 * 1024 * 1024; // 10 MB
 const MAX_PREVIEW_ROWS = 20;
-const MAX_URLS_PER_BATCH = 20;
-const URL_RATE_LIMIT_PER_MINUTE = 20;
-const HAIKU_MODEL =
-  process.env.LEADGRID_IMPORT_MODEL || "claude-haiku-4-5-20251001";
 
 const importUpload = multer({
   storage: multer.memoryStorage(),
@@ -380,7 +364,7 @@ async function insertLead(
   opts: {
     ownerUserId: string;
     organizationId: string | null;
-    importSource: "csv_import" | "url_extract";
+    importSource: "csv_import";
     importBatchId: string;
     lead: MappedLead;
   },
@@ -431,269 +415,6 @@ async function insertLead(
 }
 
 // =====================================================================
-// URL scraping
-// =====================================================================
-
-let anthropicClient: Anthropic | null = null;
-function getAnthropicClient(): Anthropic | null {
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) return null;
-  if (!anthropicClient) anthropicClient = new Anthropic({ apiKey: key });
-  return anthropicClient;
-}
-
-// Eksportert for unit-testing — funksjonen er ren (input-buffer + url).
-export function extractMetaFromHtml(html: string, sourceUrl: string): {
-  og_title: string | null;
-  og_description: string | null;
-  og_image: string | null;
-  title: string | null;
-  body_text: string;
-} {
-  const $ = cheerio.load(html);
-  const og_title =
-    $('meta[property="og:title"]').attr("content")?.trim() ||
-    $('meta[name="twitter:title"]').attr("content")?.trim() ||
-    null;
-  const og_description =
-    $('meta[property="og:description"]').attr("content")?.trim() ||
-    $('meta[name="description"]').attr("content")?.trim() ||
-    null;
-  const og_image = $('meta[property="og:image"]').attr("content")?.trim() || null;
-  const title = $("title").first().text().trim() || null;
-
-  // Fjern script/style/svg, behold meningsfull tekst
-  $("script, style, svg, noscript").remove();
-  const body_text = $("body").text().replace(/\s+/g, " ").trim().slice(0, 10_000);
-
-  // Inkluder source-url i body slik at Claude vet hvor det kommer fra.
-  const prefix = `URL: ${sourceUrl}\nTITLE: ${title ?? og_title ?? ""}\nMETA: ${og_description ?? ""}\n\n`;
-  return {
-    og_title,
-    og_description,
-    og_image,
-    title,
-    body_text: prefix + body_text.slice(0, 10_000 - prefix.length),
-  };
-}
-
-const URL_EXTRACT_SYSTEM_PROMPT = `Du ekstraherer struktur fra firma-nettsider (website, LinkedIn company page, Instagram-profil). Returner KUN ett JSON-objekt — ingen markdown, ingen forklaring:
-
-{
-  "company_name": string | null,
-  "company_description": string | null,
-  "industry": string | null,
-  "country": string | null,           // 2-bokstav ISO (NO/SE/DK/DE/...)
-  "city": string | null,
-  "address": string | null,
-  "phone": string | null,
-  "email": string | null,
-  "website": string | null,
-  "linkedin_url": string | null,
-  "instagram_url": string | null,
-  "facebook_url": string | null,
-  "employee_count_estimate": number | null,  // 1-99999 eller null
-  "lead_quality_score": number | null        // 0-100, basert på hvor mye signal vi har
-}
-
-Regler:
-- Hvis siden er en LinkedIn company page, ekstraher "Headquarters", "Industry", "Company size", "Website" osv.
-- Hvis siden er en Instagram-profil, ekstraher bio, kontakt og link i bio.
-- Hvis det er en vanlig nettside, finn kontakt-side-data.
-- Hvis et felt ikke kan utledes med rimelig sikkerhet, returner null.
-- lead_quality_score = 0-100. 80+ for komplett firma med navn+adresse+telefon+e-post. 30-50 for kun navn+web.
-- Behold UTF-8 (æøå).
-- Returner KUN ett JSON-objekt.`;
-
-interface ScrapedLead {
-  company_name: string | null;
-  company_description: string | null;
-  industry: string | null;
-  country: string | null;
-  city: string | null;
-  address: string | null;
-  phone: string | null;
-  email: string | null;
-  website: string | null;
-  linkedin_url: string | null;
-  instagram_url: string | null;
-  facebook_url: string | null;
-  employee_count_estimate: number | null;
-  lead_quality_score: number | null;
-}
-
-export function parseScrapedJson(text: string): ScrapedLead | null {
-  // Claude returnerer noen ganger markdown-fence rundt JSON. Strippe det.
-  const cleaned = text
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/```\s*$/i, "")
-    .trim();
-  try {
-    const obj = JSON.parse(cleaned) as Partial<ScrapedLead>;
-    return {
-      company_name: obj.company_name ?? null,
-      company_description: obj.company_description ?? null,
-      industry: obj.industry ?? null,
-      country: obj.country ?? null,
-      city: obj.city ?? null,
-      address: obj.address ?? null,
-      phone: obj.phone ?? null,
-      email: obj.email ?? null,
-      website: obj.website ?? null,
-      linkedin_url: obj.linkedin_url ?? null,
-      instagram_url: obj.instagram_url ?? null,
-      facebook_url: obj.facebook_url ?? null,
-      employee_count_estimate: typeof obj.employee_count_estimate === "number" ? obj.employee_count_estimate : null,
-      lead_quality_score: typeof obj.lead_quality_score === "number" ? obj.lead_quality_score : null,
-    };
-  } catch {
-    return null;
-  }
-}
-
-async function scrapeUrl(
-  url: string,
-): Promise<
-  | { ok: true; lead: ScrapedLead; raw: Record<string, unknown> }
-  | { ok: false; error: string }
-> {
-  // Validér URL
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return { ok: false, error: "invalid_url" };
-  }
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    return { ok: false, error: "unsupported_protocol" };
-  }
-
-  // Fetch HTML
-  let html: string;
-  try {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 15_000);
-    const resp = await fetch(url, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15 Leadgrid-Importer/1.0",
-        Accept:
-          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "nb-NO,nb;q=0.9,no;q=0.8,en;q=0.7",
-      },
-      signal: ctrl.signal,
-      redirect: "follow",
-    });
-    clearTimeout(t);
-    if (!resp.ok) {
-      return { ok: false, error: `fetch_failed_${resp.status}` };
-    }
-    html = await resp.text();
-  } catch (err) {
-    const msg = (err as Error).message || "unknown";
-    return { ok: false, error: `fetch_error: ${msg.slice(0, 120)}` };
-  }
-
-  // Parse + ekstraher
-  const meta = extractMetaFromHtml(html, url);
-
-  const client = getAnthropicClient();
-  if (!client) {
-    return { ok: false, error: "anthropic_unavailable" };
-  }
-
-  let claudeText: string;
-  try {
-    const resp = await client.messages.create({
-      model: HAIKU_MODEL,
-      max_tokens: 800,
-      system: URL_EXTRACT_SYSTEM_PROMPT,
-      messages: [{ role: "user", content: meta.body_text }],
-    });
-    const block = resp.content.find((c) => c.type === "text");
-    claudeText = block && block.type === "text" ? block.text : "";
-  } catch (err) {
-    return { ok: false, error: `claude_error: ${(err as Error).message.slice(0, 120)}` };
-  }
-
-  const lead = parseScrapedJson(claudeText);
-  if (!lead) {
-    return { ok: false, error: "claude_parse_failed" };
-  }
-  return {
-    ok: true,
-    lead,
-    raw: {
-      url,
-      og_title: meta.og_title,
-      og_description: meta.og_description,
-      og_image: meta.og_image,
-      title: meta.title,
-    },
-  };
-}
-
-export function scrapedLeadToMapped(
-  url: string,
-  lead: ScrapedLead,
-  raw: Record<string, unknown>,
-): MappedLead {
-  const name = lead.company_name?.trim() || "";
-  return {
-    name,
-    email: lead.email,
-    phone: lead.phone,
-    city: lead.city,
-    address: lead.address,
-    postal_code: null,
-    company: name,
-    website_url: lead.website || url,
-    notes: lead.company_description,
-    industry: lead.industry,
-    country: lead.country,
-    linkedin_url: lead.linkedin_url,
-    instagram_url: lead.instagram_url,
-    facebook_url: lead.facebook_url,
-    employee_count_estimate: lead.employee_count_estimate,
-    lead_quality_score: lead.lead_quality_score,
-    raw: { ...raw, ...lead },
-  };
-}
-
-// =====================================================================
-// Rate-limiting (URL-scrape)
-// =====================================================================
-
-async function checkAndIncrementUrlRate(
-  pool: Pool,
-  userId: string,
-  count: number,
-): Promise<{ ok: true } | { ok: false; remaining: number }> {
-  // Atomic upsert: setter inn ny bucket eller øker count.
-  const r = await pool.query<{ url_count: number }>(
-    `INSERT INTO leadgrid_import_url_rate (user_id, minute_bucket, url_count)
-     VALUES ($1, date_trunc('minute', NOW()), $2)
-     ON CONFLICT (user_id, minute_bucket)
-       DO UPDATE SET url_count = leadgrid_import_url_rate.url_count + EXCLUDED.url_count
-     RETURNING url_count`,
-    [userId, count],
-  );
-  const total = r.rows[0]?.url_count ?? count;
-  if (total > URL_RATE_LIMIT_PER_MINUTE) {
-    // Roll back tilskuddet vårt så neste forsøk får en korrekt baseline.
-    await pool.query(
-      `UPDATE leadgrid_import_url_rate
-          SET url_count = GREATEST(url_count - $2, 0)
-        WHERE user_id = $1
-          AND minute_bucket = date_trunc('minute', NOW())`,
-      [userId, count],
-    );
-    return { ok: false, remaining: Math.max(URL_RATE_LIMIT_PER_MINUTE - (total - count), 0) };
-  }
-  return { ok: true };
-}
-
-// =====================================================================
 // Route-registrering
 // =====================================================================
 
@@ -701,10 +422,6 @@ export function registerLeadgridImportRoutes(deps: Deps): void {
   const { app, pool, activeSessions } = deps;
 
   const permCsv = requireLeadMapPermission("leads.import_csv", {
-    pool,
-    activeSessions,
-  });
-  const permUrl = requireLeadMapPermission("leads.import_url", {
     pool,
     activeSessions,
   });
@@ -858,164 +575,6 @@ export function registerLeadgridImportRoutes(deps: Deps): void {
   );
 
   // ------------------------------------------------------------------
-  // POST /api/leadgrid/import/url/scrape
-  // ------------------------------------------------------------------
-  app.post(
-    "/api/leadgrid/import/url/scrape",
-    permUrl,
-    async (req: Request, res: Response) => {
-      const session = getSession(req, activeSessions);
-      if (!session?.userId) {
-        return res.status(401).json({ error: "Innlogging kreves" });
-      }
-      const body = req.body as { urls?: string[] };
-      const urls = (body.urls ?? [])
-        .map((u) => (typeof u === "string" ? u.trim() : ""))
-        .filter((u) => u.length > 0);
-      if (urls.length === 0) {
-        return res.status(400).json({ error: "missing_urls" });
-      }
-      if (urls.length > MAX_URLS_PER_BATCH) {
-        return res.status(400).json({
-          error: "too_many_urls",
-          max: MAX_URLS_PER_BATCH,
-        });
-      }
-
-      const rate = await checkAndIncrementUrlRate(pool, session.userId, urls.length);
-      if (!rate.ok) {
-        return res.status(429).json({
-          error: "rate_limited",
-          message: `Maks ${URL_RATE_LIMIT_PER_MINUTE} URL-er per minutt per bruker.`,
-          retry_after_seconds: 60,
-        });
-      }
-
-      // Sekvensiell behandling — Claude-kall er ikke parallelliserbare
-      // uten å bryte cost-throttling i framtiden.
-      const results: Array<{ url: string; lead?: MappedLead; error?: string }> = [];
-      for (const url of urls) {
-        const scrape = await scrapeUrl(url);
-        if (scrape.ok) {
-          results.push({
-            url,
-            lead: scrapedLeadToMapped(url, scrape.lead, scrape.raw),
-          });
-        } else {
-          results.push({ url, error: scrape.error });
-        }
-      }
-      return res.json({ results });
-    },
-  );
-
-  // ------------------------------------------------------------------
-  // POST /api/leadgrid/import/url/commit
-  // ------------------------------------------------------------------
-  app.post(
-    "/api/leadgrid/import/url/commit",
-    permUrl,
-    async (req: Request, res: Response) => {
-      const session = getSession(req, activeSessions);
-      if (!session?.userId) {
-        return res.status(401).json({ error: "Innlogging kreves" });
-      }
-      const body = req.body as {
-        leads?: Partial<MappedLead>[];
-        dedupe_strategy?: DedupeStrategy;
-      };
-      const leads = (body.leads ?? []).filter(
-        (l): l is Partial<MappedLead> & { name: string } =>
-          typeof l?.name === "string" && l.name.trim().length > 0,
-      );
-      if (leads.length === 0) {
-        return res.status(400).json({ error: "missing_leads" });
-      }
-
-      const dedupe: DedupeStrategy = body.dedupe_strategy ?? "email";
-      const orgId = await resolveOrgId(req, pool, session.userId);
-      const batchId = crypto.randomUUID();
-
-      let imported = 0;
-      let skipped = 0;
-      const errors: { index: number; error: string }[] = [];
-
-      for (let i = 0; i < leads.length; i++) {
-        const partial = leads[i];
-        const mapped: MappedLead = {
-          name: partial.name ?? "",
-          email: partial.email ?? null,
-          phone: partial.phone ?? null,
-          city: partial.city ?? null,
-          address: partial.address ?? null,
-          postal_code: partial.postal_code ?? null,
-          company: partial.company ?? partial.name ?? null,
-          website_url: partial.website_url ?? null,
-          notes: partial.notes ?? null,
-          industry: partial.industry ?? null,
-          country: partial.country ?? null,
-          linkedin_url: partial.linkedin_url ?? null,
-          instagram_url: partial.instagram_url ?? null,
-          facebook_url: partial.facebook_url ?? null,
-          employee_count_estimate: partial.employee_count_estimate ?? null,
-          lead_quality_score: partial.lead_quality_score ?? null,
-          raw: (partial.raw as Record<string, unknown>) ?? {},
-        };
-        const dupId = await findDuplicate(pool, {
-          ownerUserId: session.userId,
-          organizationId: orgId,
-          strategy: dedupe,
-          lead: mapped,
-        });
-        if (dupId) {
-          skipped++;
-          continue;
-        }
-        const ins = await insertLead(pool, {
-          ownerUserId: session.userId,
-          organizationId: orgId,
-          importSource: "url_extract",
-          importBatchId: batchId,
-          lead: mapped,
-        });
-        if (ins.ok) imported++;
-        else errors.push({ index: i, error: ins.reason });
-      }
-
-      await pool.query(
-        `INSERT INTO leadgrid_import_batches (
-            id, organization_id, owner_user_id, import_source, file_name,
-            total_rows, imported_count, skipped_duplicates, errors_count,
-            errors_sample, dedupe_strategy
-          ) VALUES (
-            $1::uuid, $2::uuid, $3, 'url_extract', NULL,
-            $4, $5, $6, $7,
-            $8::jsonb, $9
-          )`,
-        [
-          batchId,
-          orgId,
-          session.userId,
-          leads.length,
-          imported,
-          skipped,
-          errors.length,
-          JSON.stringify(errors.slice(0, 10)),
-          dedupe,
-        ],
-      );
-
-      return res.json({
-        batch_id: batchId,
-        imported,
-        skipped_duplicates: skipped,
-        errors: errors.slice(0, 50),
-        errors_count: errors.length,
-      });
-    },
-  );
-
-  // ------------------------------------------------------------------
   // GET /api/leadgrid/import/batches — siste 20 batches for innlogget bruker
   // ------------------------------------------------------------------
   app.get(
@@ -1051,7 +610,4 @@ export function registerLeadgridImportRoutes(deps: Deps): void {
 export const __test = {
   parseSpreadsheetBuffer,
   findDuplicate,
-  extractMetaFromHtml,
-  parseScrapedJson,
-  scrapedLeadToMapped,
 };

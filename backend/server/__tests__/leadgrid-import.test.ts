@@ -1,21 +1,15 @@
 /**
  * leadgrid-import.test.ts
  *
- * Unit-tester for CSV/Excel-parsing, URL→meta-ekstraksjon, Claude-JSON-
- * parsing og dedup-spørringer (mig 328).
+ * Unit-tester for CSV/Excel-parsing og dedup-spørringer (mig 328).
+ * URL-Research-stien har egen test-fil (`leadgrid-url-research.test.ts`).
  *
  * Pool-er er mockede — vi kjører ikke faktiske SQL-spørringer her.
  */
 import { describe, expect, it, vi } from "vitest";
 import { __test } from "../leadgrid-import-routes";
 
-const {
-  parseSpreadsheetBuffer,
-  findDuplicate,
-  extractMetaFromHtml,
-  parseScrapedJson,
-  scrapedLeadToMapped,
-} = __test;
+const { parseSpreadsheetBuffer, findDuplicate } = __test;
 
 // ---------------------------------------------------------------------
 // CSV / XLSX
@@ -147,136 +141,3 @@ describe("findDuplicate", () => {
   });
 });
 
-// ---------------------------------------------------------------------
-// URL-extract: HTML→meta
-// ---------------------------------------------------------------------
-
-describe("extractMetaFromHtml", () => {
-  it("ekstraherer OG-meta + body-tekst", () => {
-    const html = `
-      <html>
-        <head>
-          <title>Acme — Norges beste</title>
-          <meta property="og:title" content="Acme AS">
-          <meta property="og:description" content="Vi leverer kvalitet siden 1999">
-          <meta property="og:image" content="https://example.com/logo.png">
-        </head>
-        <body>
-          <script>alert('skip');</script>
-          <h1>Velkommen</h1>
-          <p>Ring oss på 12345678</p>
-        </body>
-      </html>`;
-    const meta = extractMetaFromHtml(html, "https://acme.no");
-    expect(meta.og_title).toBe("Acme AS");
-    expect(meta.og_description).toBe("Vi leverer kvalitet siden 1999");
-    expect(meta.og_image).toBe("https://example.com/logo.png");
-    expect(meta.title).toBe("Acme — Norges beste");
-    // Script-tag fjernet
-    expect(meta.body_text).not.toContain("alert");
-    expect(meta.body_text).toContain("Velkommen");
-    expect(meta.body_text).toContain("12345678");
-    // URL inkludert i prefix
-    expect(meta.body_text).toContain("URL: https://acme.no");
-  });
-
-  it("faller tilbake til <meta name=description> når og:description mangler", () => {
-    const html = `<html><head><meta name="description" content="Fallback"></head><body></body></html>`;
-    const meta = extractMetaFromHtml(html, "https://x.no");
-    expect(meta.og_description).toBe("Fallback");
-  });
-});
-
-// ---------------------------------------------------------------------
-// Claude JSON-parsing
-// ---------------------------------------------------------------------
-
-describe("parseScrapedJson (Claude output)", () => {
-  it("parses a clean JSON object", () => {
-    const text = `{"company_name":"Acme AS","industry":"Software","country":"NO","city":"Oslo","email":"a@b.no","phone":null,"address":null,"website":"https://acme.no","linkedin_url":null,"instagram_url":null,"facebook_url":null,"employee_count_estimate":42,"lead_quality_score":80,"company_description":"Test"}`;
-    const lead = parseScrapedJson(text);
-    expect(lead).not.toBeNull();
-    expect(lead?.company_name).toBe("Acme AS");
-    expect(lead?.country).toBe("NO");
-    expect(lead?.employee_count_estimate).toBe(42);
-    expect(lead?.lead_quality_score).toBe(80);
-  });
-
-  it("strips markdown fence around JSON", () => {
-    const text =
-      "```json\n" +
-      JSON.stringify({ company_name: "Beta", lead_quality_score: 50 }) +
-      "\n```";
-    const lead = parseScrapedJson(text);
-    expect(lead?.company_name).toBe("Beta");
-    expect(lead?.lead_quality_score).toBe(50);
-  });
-
-  it("returns null for invalid JSON", () => {
-    expect(parseScrapedJson("not json at all")).toBeNull();
-    expect(parseScrapedJson("")).toBeNull();
-  });
-
-  it("nuller ut felter som mangler", () => {
-    const lead = parseScrapedJson(`{"company_name":"X"}`);
-    expect(lead?.company_name).toBe("X");
-    expect(lead?.email).toBeNull();
-    expect(lead?.employee_count_estimate).toBeNull();
-    expect(lead?.lead_quality_score).toBeNull();
-  });
-});
-
-describe("scrapedLeadToMapped", () => {
-  it("flytter Claude-output til MappedLead-form og setter notes=description", () => {
-    const m = scrapedLeadToMapped(
-      "https://acme.no",
-      {
-        company_name: "Acme AS",
-        company_description: "Vi gjør X",
-        industry: "Software",
-        country: "NO",
-        city: "Oslo",
-        address: "Karl Johans gate 1",
-        phone: "12345678",
-        email: "kontakt@acme.no",
-        website: "https://acme.no",
-        linkedin_url: "https://linkedin.com/company/acme",
-        instagram_url: null,
-        facebook_url: null,
-        employee_count_estimate: 50,
-        lead_quality_score: 85,
-      },
-      { url: "https://acme.no" },
-    );
-    expect(m.name).toBe("Acme AS");
-    expect(m.notes).toBe("Vi gjør X");
-    expect(m.linkedin_url).toBe("https://linkedin.com/company/acme");
-    expect(m.lead_quality_score).toBe(85);
-    expect(m.website_url).toBe("https://acme.no");
-    expect(m.company).toBe("Acme AS");
-  });
-
-  it("faller tilbake til source-url når Claude ikke gir website", () => {
-    const m = scrapedLeadToMapped(
-      "https://acme.no/kontakt",
-      {
-        company_name: "X",
-        company_description: null,
-        industry: null,
-        country: null,
-        city: null,
-        address: null,
-        phone: null,
-        email: null,
-        website: null,
-        linkedin_url: null,
-        instagram_url: null,
-        facebook_url: null,
-        employee_count_estimate: null,
-        lead_quality_score: null,
-      },
-      {},
-    );
-    expect(m.website_url).toBe("https://acme.no/kontakt");
-  });
-});

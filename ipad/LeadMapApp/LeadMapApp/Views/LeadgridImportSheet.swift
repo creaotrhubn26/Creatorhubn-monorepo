@@ -2,15 +2,20 @@
 //
 // Bottom-sheet for å importere leads til Leadgrid fra iPad. To moduser:
 //
-//   1. CSV / Excel  — DocumentPicker → preview → enkel auto-mapping →
-//                     commit. Vi viser ikke full column-mapping på iPad
-//                     (det er en web-flate), men vi sender mappingen vi
-//                     auto-utleder.
-//   2. URL          — TextEditor m/ 1-20 URLer, scrape via Claude,
-//                     velg leads m/ checkmarks, commit.
+//   1. CSV / Excel    — DocumentPicker → preview → enkel auto-mapping →
+//                       commit. Vi viser ikke full column-mapping på iPad
+//                       (det er en web-flate), men vi sender mappingen vi
+//                       auto-utleder.
+//   2. URL Research   — lim inn EN nettside-URL → Role Room Agents
+//                       orchestrator-stack kjører Brreg + website +
+//                       Google Places + Claude synthesis → draft-lead
+//                       opprettes → preview m/ lokasjons-konfidens →
+//                       commit → pin på kartet.
 //
-// Bruker eksisterende APIClient-metoder (uploadImportFile, scrapeUrls,
-// commitImportCsv, commitImportUrls).
+// Bruker eksisterende APIClient-metoder:
+//   CSV: uploadImportFile, commitImportCsv
+//   URL Research: startUrlResearch, runUrlResearch, commitDraftLead,
+//                 refreshUrlResearchSection
 
 import SwiftUI
 import UniformTypeIdentifiers
@@ -29,7 +34,7 @@ struct LeadgridImportSheet: View {
         var label: String {
             switch self {
             case .csv: return "CSV / Excel-fil"
-            case .url: return "URL / SoMe"
+            case .url: return "URL Research"
             }
         }
     }
@@ -51,7 +56,7 @@ struct LeadgridImportSheet: View {
                 case .csv:
                     CsvImportTab(statusMessage: $statusMessage)
                 case .url:
-                    UrlImportTab(statusMessage: $statusMessage)
+                    LeadgridUrlResearchView(statusMessage: $statusMessage)
                 }
             }
             .navigationTitle("Importer leads")
@@ -329,36 +334,54 @@ private struct CsvImportTab: View {
     }
 }
 
-// MARK: - URL-tab
+// MARK: - URL Research-tab
+//
+// Ny flyt (mig 328):
+//   1. URL-input + "Start research"-knapp.
+//   2. Kall /start → draftLeadId + research_job_id.
+//   3. Kall /run → vis LeadResearchProgressView-stil progress mens
+//      orchestrator kjører (10-30s).
+//   4. Når .ready: vis preview m/ brand kit, lokasjons-badge, kontakt,
+//      socials, estimated value/score, og knappene
+//      "Legg til som lead" + "Forkast".
+//   5. Ved commit: hent oppdatert lead-objekt, append til AppState.leads
+//      hvis lat/lng er populert → MapScreen tegner pin automatisk.
 
 @MainActor
-private struct UrlImportTab: View {
+struct LeadgridUrlResearchView: View {
     @Environment(AppState.self) private var appState
     @Binding var statusMessage: String?
 
     @State private var urlText: String = ""
-    @State private var scraping = false
-    @State private var results: [LeadgridImportScrapeItem] = []
-    @State private var selected: Set<String> = []
+    @State private var stage: Stage = .idle
+    @State private var draftLeadId: String?
+    @State private var lastRun: UrlResearchRunResponse?
+    @State private var overrides = UrlResearchOverrides()
     @State private var committing = false
-    @State private var commitResult: LeadgridImportCommit?
+    @State private var committedLead: UrlResearchDraftLead?
 
-    private var urls: [String] {
-        urlText
-            .split(whereSeparator: { $0.isNewline })
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
+    enum Stage: Equatable {
+        case idle
+        case running
+        case ready
+        case committed
     }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                if let result = commitResult {
-                    successView(result)
-                } else {
+                switch stage {
+                case .idle:
                     inputArea
-                    if !results.isEmpty {
-                        resultsList
+                case .running:
+                    runningView
+                case .ready:
+                    if let run = lastRun {
+                        previewView(run)
+                    }
+                case .committed:
+                    if let lead = committedLead {
+                        successView(lead)
                     }
                 }
             }
@@ -366,194 +389,343 @@ private struct UrlImportTab: View {
         }
     }
 
+    // MARK: - Sub-views
+
     private var inputArea: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Image(systemName: "link").foregroundStyle(.purple)
-                Text("URL-er (én per linje)").font(.subheadline.bold())
-                Spacer()
-                Text("\(urls.count) / 20").font(.caption).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Image(systemName: "sparkle.magnifyingglass")
+                        .foregroundStyle(.purple)
+                    Text("URL Research")
+                        .font(.subheadline.bold())
+                }
+                Text("Lim inn en nettside — Leadgrid bygger lead, finner pin på kartet og fyller inn alt vi vet om selskapet.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-            TextEditor(text: $urlText)
-                .font(.callout.monospaced())
-                .frame(minHeight: 120)
-                .padding(6)
+
+            TextField("acme.no  eller  https://acme.no", text: $urlText)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(.URL)
+                .padding(10)
                 .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8))
+                .font(.callout.monospaced())
 
             Button {
-                Task { await scrape() }
+                Task { await startResearch() }
             } label: {
-                Label(
-                    scraping ? "Ekstraherer …" : "Ekstraher \(urls.count) URLer",
-                    systemImage: "sparkles"
-                )
-                .frame(maxWidth: .infinity, minHeight: 44)
+                Label("Start research", systemImage: "sparkles")
+                    .frame(maxWidth: .infinity, minHeight: 44)
             }
             .buttonStyle(.borderedProminent)
             .tint(.purple)
-            .disabled(scraping || urls.isEmpty || urls.count > 20)
+            .disabled(urlText.trimmingCharacters(in: .whitespaces).isEmpty)
+        }
+        .padding(.top, 16)
+    }
 
-            if scraping {
-                ProgressView()
+    private var runningView: some View {
+        VStack(spacing: 24) {
+            ProgressView()
+                .controlSize(.large)
+                .tint(.purple)
+                .padding(.top, 40)
+            Text("Leadgrid Agent jobber …")
+                .font(.title3.weight(.semibold))
+            VStack(alignment: .leading, spacing: 10) {
+                phaseRow(symbol: "globe", label: "Henter nettside-innhold")
+                phaseRow(symbol: "building.columns", label: "Slår opp i Brønnøysund")
+                phaseRow(symbol: "mappin.and.ellipse", label: "Finner Google Places-signaler")
+                phaseRow(symbol: "brain.head.profile", label: "Claude syntetiserer brand kit")
+                phaseRow(symbol: "map", label: "Setter pin på kartet")
             }
+            .padding()
+            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+
+            Text("Tar typisk 10-30 sekunder.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func phaseRow(symbol: String, label: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: symbol)
+                .foregroundStyle(.purple)
+                .frame(width: 22)
+            Text(label).font(.callout)
         }
     }
 
-    private var resultsList: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("RESULTAT").font(.caption2.bold()).foregroundStyle(.secondary)
+    private func previewView(_ run: UrlResearchRunResponse) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            locationConfidenceBadge(run.locationConfidence)
+            brandKitCard(run.researchResult.companyProfile)
+            if run.locationConfidence.requiresManualVerification {
+                manualPinHint(run.researchResult.location)
+            }
+            contactCard(run.researchResult.companyProfile)
+            socialsCard(run.researchResult.companyProfile.socials)
+
+            HStack(spacing: 12) {
+                Button(role: .destructive) {
+                    Task { await discard() }
+                } label: {
+                    Label("Forkast", systemImage: "trash")
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+                .disabled(committing)
+
+                Button {
+                    Task { await commit() }
+                } label: {
+                    Label("Legg til som lead", systemImage: "checkmark.circle.fill")
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.purple)
+                .disabled(committing)
+            }
+            .padding(.top, 8)
+        }
+    }
+
+    private func locationConfidenceBadge(_ confidence: LocationConfidence) -> some View {
+        let (symbol, tint): (String, Color) = {
+            switch confidence {
+            case .exact:       return ("checkmark.circle.fill", .green)
+            case .geocoded:    return ("location.fill", .yellow)
+            case .approximate: return ("mappin.slash", .orange)
+            case .unknown:     return ("xmark.circle.fill", .red)
+            }
+        }()
+        return HStack(spacing: 10) {
+            Image(systemName: symbol).foregroundStyle(tint)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Lokasjon").font(.caption2.bold()).foregroundStyle(.secondary)
+                Text(confidence.label).font(.subheadline)
+            }
+            Spacer()
+        }
+        .padding(12)
+        .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func brandKitCard(_ profile: UrlResearchCompanyProfile) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                if let logoUrl = profile.logoUrl, let url = URL(string: logoUrl) {
+                    AsyncImage(url: url) { phase in
+                        if case let .success(image) = phase {
+                            image.resizable().aspectRatio(contentMode: .fit)
+                        } else {
+                            Color.purple.opacity(0.15)
+                        }
+                    }
+                    .frame(width: 56, height: 56)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                } else {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color.purple.opacity(0.15))
+                        .frame(width: 56, height: 56)
+                        .overlay(
+                            Image(systemName: "building.2.fill")
+                                .foregroundStyle(.purple)
+                        )
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(profile.name ?? "Uten navn").font(.headline)
+                    if let industry = profile.industry {
+                        Text(industry).font(.caption).foregroundStyle(.secondary)
+                    }
+                    if let org = profile.organizationNumber {
+                        Text("Org.nr \(org)").font(.caption2.monospaced())
+                            .foregroundStyle(.secondary)
+                    }
+                }
                 Spacer()
-                let okCount = results.filter { $0.lead != nil }.count
-                let errCount = results.filter { $0.error != nil }.count
-                Text("\(okCount) OK · \(errCount) feil")
-                    .font(.caption).foregroundStyle(.secondary)
             }
+            if let summary = profile.summary, !summary.isEmpty {
+                Text(summary).font(.callout).foregroundStyle(.primary)
+            }
+        }
+        .padding(12)
+        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 10))
+    }
 
-            ForEach(results) { item in
-                resultRow(item)
-            }
+    private func contactCard(_ profile: UrlResearchCompanyProfile) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("KONTAKT").font(.caption2.bold()).foregroundStyle(.secondary)
+            row(symbol: "globe", value: profile.website)
+            row(symbol: "envelope", value: profile.email)
+            row(symbol: "phone", value: profile.phone)
+        }
+        .padding(12)
+        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 10))
+    }
 
-            Button {
-                Task { await commit() }
-            } label: {
-                Label(
-                    committing ? "Importerer …" : "Importér \(selected.count) valgte",
-                    systemImage: "square.and.arrow.down.fill"
-                )
-                .frame(maxWidth: .infinity, minHeight: 44)
+    private func socialsCard(_ socials: UrlResearchSocials) -> some View {
+        let hasAny = socials.instagram != nil || socials.linkedin != nil || socials.facebook != nil
+        return Group {
+            if hasAny {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("SOSIALE PROFILER").font(.caption2.bold()).foregroundStyle(.secondary)
+                    row(symbol: "camera", value: socials.instagram)
+                    row(symbol: "person.crop.rectangle.stack", value: socials.linkedin)
+                    row(symbol: "person.2", value: socials.facebook)
+                }
+                .padding(12)
+                .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 10))
             }
-            .buttonStyle(.borderedProminent)
-            .tint(.purple)
-            .disabled(committing || selected.isEmpty)
         }
     }
 
     @ViewBuilder
-    private func resultRow(_ item: LeadgridImportScrapeItem) -> some View {
-        if let err = item.error {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(item.url).font(.caption.monospaced()).lineLimit(1)
-                Text("❌ \(err)").font(.caption).foregroundStyle(.red)
+    private func row(symbol: String, value: String?) -> some View {
+        if let v = value, !v.isEmpty {
+            HStack(spacing: 10) {
+                Image(systemName: symbol)
+                    .foregroundStyle(.purple)
+                    .frame(width: 22)
+                Text(v).font(.callout).lineLimit(1).truncationMode(.middle)
+                Spacer()
             }
-            .padding(8)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
-        } else if let lead = item.lead {
-            Button {
-                if selected.contains(item.url) { selected.remove(item.url) }
-                else { selected.insert(item.url) }
-            } label: {
-                HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: selected.contains(item.url)
-                          ? "checkmark.square.fill" : "square")
-                        .foregroundStyle(.purple)
-                        .font(.title3)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(lead.name ?? "(uten navn)").font(.subheadline.bold())
-                        Text(item.url).font(.caption2.monospaced())
-                            .foregroundStyle(.secondary).lineLimit(1)
-                        HStack(spacing: 6) {
-                            if let v = lead.email { chip(v) }
-                            if let v = lead.phone { chip(v) }
-                            if let v = lead.city { chip(v) }
-                            if let s = lead.leadQualityScore {
-                                chip("Score \(s)").foregroundStyle(.purple)
-                            }
-                        }
-                    }
-                }
-                .padding(8)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(.secondarySystemBackground),
-                            in: RoundedRectangle(cornerRadius: 8))
-            }
-            .buttonStyle(.plain)
         }
     }
 
-    private func chip(_ text: String) -> some View {
-        Text(text)
-            .font(.caption2)
-            .padding(.horizontal, 6).padding(.vertical, 2)
-            .background(Color.purple.opacity(0.12), in: Capsule())
-            .lineLimit(1)
+    private func manualPinHint(_ location: UrlResearchResolvedLocation) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Sett pin manuelt for best presisjon",
+                  systemImage: "hand.point.up.left")
+                .font(.subheadline.bold())
+                .foregroundStyle(.orange)
+            Text(location.city.map { "By: \($0)" } ?? "Ingen by funnet — bruk knappen til å sette koordinater før commit.")
+                .font(.caption).foregroundStyle(.secondary)
+            // For nå: enkel TextField for lat/lng. En full kart-velger
+            // kommer i Fase 2 (gjenbruker MKMapView annotation-drag fra
+            // MapScreen).
+            HStack {
+                TextField("Lat (f.eks. 59.913)", text: Binding(
+                    get: { overrides.latitude.map { String($0) } ?? "" },
+                    set: { overrides.latitude = Double($0) },
+                ))
+                .keyboardType(.decimalPad)
+                .padding(6)
+                .background(Color(.tertiarySystemBackground), in: RoundedRectangle(cornerRadius: 6))
+                TextField("Lng (f.eks. 10.752)", text: Binding(
+                    get: { overrides.longitude.map { String($0) } ?? "" },
+                    set: { overrides.longitude = Double($0) },
+                ))
+                .keyboardType(.decimalPad)
+                .padding(6)
+                .background(Color(.tertiarySystemBackground), in: RoundedRectangle(cornerRadius: 6))
+            }
+            .font(.callout.monospaced())
+        }
+        .padding(12)
+        .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
     }
 
-    private func successView(_ result: LeadgridImportCommit) -> some View {
+    private func successView(_ lead: UrlResearchDraftLead) -> some View {
         VStack(spacing: 16) {
-            Image(systemName: "checkmark.circle.fill")
+            Image(systemName: "mappin.and.ellipse")
                 .font(.system(size: 64))
                 .foregroundStyle(.green)
-            Text("\(result.imported) leads importert")
+            Text("Lead lagt til")
                 .font(.title3.bold())
-            HStack(spacing: 8) {
-                Label("\(result.skippedDuplicates) dupl.", systemImage: "doc.on.doc")
-                    .font(.caption)
-                if result.errorsCount > 0 {
-                    Label("\(result.errorsCount) feil", systemImage: "exclamationmark.triangle")
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                }
+            if let name = lead.name {
+                Text(name).font(.callout).foregroundStyle(.secondary)
             }
-            Button("Importér flere") {
-                commitResult = nil
-                results = []
-                selected = []
-                urlText = ""
+            if lead.latitude != nil && lead.longitude != nil {
+                Text("Pinen er på kartet")
+                    .font(.caption).foregroundStyle(.green)
+            } else {
+                Text("Mangler koordinater — åpne lead-detaljer for å sette pin manuelt")
+                    .font(.caption).foregroundStyle(.orange)
+                    .multilineTextAlignment(.center)
+            }
+            Button("Research en ny URL") {
+                resetState()
             }
             .buttonStyle(.bordered)
         }
-        .padding(.top, 40)
+        .padding(.top, 30)
         .frame(maxWidth: .infinity)
     }
 
+    // MARK: - Actions
+
+    private func resetState() {
+        urlText = ""
+        stage = .idle
+        draftLeadId = nil
+        lastRun = nil
+        overrides = UrlResearchOverrides()
+        committedLead = nil
+    }
+
     @MainActor
-    private func scrape() async {
+    private func startResearch() async {
         guard let api = appState.api else {
             statusMessage = "Innlogging utløpt"
             return
         }
         statusMessage = nil
-        scraping = true
-        defer { scraping = false }
+        stage = .running
         do {
-            let res = try await api.scrapeUrls(urls)
-            results = res.results
-            selected = Set(res.results.compactMap { $0.lead != nil ? $0.url : nil })
+            let start = try await api.startUrlResearch(urlText)
+            draftLeadId = start.draftLeadId
+            let run = try await api.runUrlResearch(draftLeadId: start.draftLeadId)
+            lastRun = run
+            stage = .ready
         } catch {
-            statusMessage = "Scraping feilet: \(error.localizedDescription)"
+            statusMessage = "Research feilet: \(error.localizedDescription)"
+            stage = .idle
         }
     }
 
     @MainActor
     private func commit() async {
-        guard let api = appState.api else { return }
-        let chosen: [[String: Any]] = results.compactMap { item in
-            guard selected.contains(item.url), let lead = item.lead else { return nil }
-            return lead.toCommitDict()
-        }
-        guard !chosen.isEmpty else { return }
-        // Serialiser til Data her i @MainActor-scope; Data er Sendable og
-        // kan trygt sendes til actor APIClient (Swift 6 strict concurrency).
-        let payload: Data
-        do {
-            payload = try JSONSerialization.data(withJSONObject: [
-                "leads": chosen,
-                "dedupe_strategy": "email",
-            ])
-        } catch {
-            statusMessage = "Pakking feilet: \(error.localizedDescription)"
-            return
-        }
+        guard let api = appState.api, let id = draftLeadId else { return }
         committing = true
         defer { committing = false }
         do {
-            let res = try await api.commitImportUrls(payload: payload)
-            commitResult = res
-            await appState.refreshAll()
+            let res = try await api.commitDraftLead(
+                draftLeadId: id, accept: true, overrides: overrides)
+            committedLead = res.lead
+            stage = .committed
+            // Pin-garanti: hvis lat/lng er populert, injekt direkte i
+            // AppState.leads slik at MapScreen rendrer pin umiddelbart
+            // uten å vente på refreshAll-syklusen.
+            if let leadModel = res.lead?.toLeadModelForMap() {
+                if !appState.leads.contains(where: { $0.id == leadModel.id }) {
+                    appState.leads.append(leadModel)
+                }
+            }
+            // Refresh i bakgrunnen så vi får eventuelle felter vi ikke
+            // satte selv (assignment, projectId, etc.).
+            Task { await appState.refreshAll() }
         } catch {
-            statusMessage = "Import feilet: \(error.localizedDescription)"
+            statusMessage = "Commit feilet: \(error.localizedDescription)"
         }
+    }
+
+    @MainActor
+    private func discard() async {
+        guard let api = appState.api, let id = draftLeadId else {
+            resetState()
+            return
+        }
+        do {
+            _ = try await api.commitDraftLead(
+                draftLeadId: id, accept: false, overrides: nil)
+        } catch {
+            statusMessage = "Forkasting feilet: \(error.localizedDescription)"
+        }
+        resetState()
     }
 }

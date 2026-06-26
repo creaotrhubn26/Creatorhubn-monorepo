@@ -553,6 +553,7 @@ import { registerLeadgridAIUsageRoutes } from "./leadgrid-ai-usage-routes.js";
 import { registerLeadgridForecastingRoutes } from "./leadgrid-forecasting-routes.js";
 import { registerLeadgridMomentumRoutes } from "./leadgrid-momentum-routes.js";
 import { registerLeadgridImportRoutes } from "./leadgrid-import-routes.js";
+import { registerLeadgridUrlResearchRoutes } from "./leadgrid-url-research-routes.js";
 import { registerLeadgridWebhookRotationRoutes } from "./leadgrid-webhook-rotation-routes.js";
 import { registerLeadgridPublicApiV1 } from "./leadgrid-public-api-v1.js";
 import { registerLeadgridApiKeyMgmtRoutes } from "./leadgrid-api-key-mgmt-routes.js";
@@ -24608,11 +24609,18 @@ registerLeadgridForecastingRoutes({ app, pool, activeSessions });
 // 3 endepunkter: GET /momentum/today, GET /momentum/goal, POST /momentum/goal
 // Gated på momentum.view / momentum.set_goal.
 registerLeadgridMomentumRoutes({ app, pool, activeSessions });
-// CSV/Excel-import + URL-basert lead-extraction (mig 328).
-// Endpoints: /api/leadgrid/import/csv/{preview,commit},
-// /api/leadgrid/import/url/{scrape,commit}, GET /import/batches.
-// Gated på leads.import_csv / leads.import_url.
+// CSV/Excel-import (mig 328). Endpoints:
+//   POST /api/leadgrid/import/csv/{preview,commit}
+//   GET  /api/leadgrid/import/batches
+// Gated på leads.import_csv.
 registerLeadgridImportRoutes({ app, pool, activeSessions });
+// URL Research → draft-lead → pin på kartet (mig 328).
+// Gjenbruker Role Room Agents orchestrator-stack (Brreg + Places +
+// Claude). Endpoints:
+//   POST /api/leadgrid/url-research/{start,run,commit,refresh-section}
+//   GET  /api/leadgrid/url-research/preview/:draft_lead_id
+// Gated på leads.import_url.
+registerLeadgridUrlResearchRoutes({ app, pool, activeSessions });
 // Webhook-secret-rotering m/ 7-dagers grace-period (mig 322).
 // POST /webhooks/:id/rotate-secret + cron /expire-old-webhook-secrets.
 registerLeadgridWebhookRotationRoutes({ app, pool, activeSessions });

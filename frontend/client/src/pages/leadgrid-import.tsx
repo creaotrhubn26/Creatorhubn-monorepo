@@ -8,9 +8,10 @@
  *     Steg 2: Map kolonner
  *     Steg 3: Bekreft + commit → /api/leadgrid/import/csv/commit
  *
- *   Tab 2: URL/SoMe — lim inn 1-20 URLer
- *     Scrape → /api/leadgrid/import/url/scrape
- *     Velg leads + commit → /api/leadgrid/import/url/commit
+ *   Tab 2: URL Research — iPad-native flate. Web-versjonen viser kun
+ *     en lenke til Leadgrid iPad-appen. Hele research-pipelinen
+ *     (Brønnøysund + Google Places + Claude) kjører på iPad og
+ *     ender med en pin på Lead Map.
  */
 import React, { useState, useMemo, useCallback } from "react";
 import {
@@ -26,7 +27,6 @@ import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
 import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
-import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 
 // =====================================================================
 // Felles kolonne-felt vi tilbyr i column-mapping
@@ -73,28 +73,6 @@ interface CommitResponse {
   errors_count: number;
 }
 
-interface ScrapeResultItem {
-  url: string;
-  lead?: {
-    name: string;
-    email: string | null;
-    phone: string | null;
-    city: string | null;
-    address: string | null;
-    company: string | null;
-    website_url: string | null;
-    industry: string | null;
-    country: string | null;
-    linkedin_url: string | null;
-    instagram_url: string | null;
-    facebook_url: string | null;
-    employee_count_estimate: number | null;
-    lead_quality_score: number | null;
-    notes: string | null;
-    raw?: Record<string, unknown>;
-  };
-  error?: string;
-}
 
 // =====================================================================
 // Felles helpers
@@ -139,8 +117,9 @@ export default function LeadgridImportPage() {
               Importer leads
             </Typography>
             <Typography variant="body1" sx={{ color: "text.secondary" }}>
-              Last opp CSV/Excel fra eksisterende CRM, eller la Claude ekstrahere data direkte fra
-              bedriftsnettsider og sosiale medier.
+              Last opp CSV/Excel fra eksisterende CRM. URL-Research er en
+              iPad-native flate — bruk Leadgrid-appen for å gjøre research
+              som ender med en pin på kartet.
             </Typography>
           </Stack>
 
@@ -160,11 +139,11 @@ export default function LeadgridImportPage() {
                 value="url"
                 icon={<LanguageIcon />}
                 iconPosition="start"
-                label="Fra nettside / SoMe"
+                label="URL Research (iPad)"
               />
             </Tabs>
             <CardContent sx={{ p: { xs: 2, md: 4 } }}>
-              {tab === "csv" ? <CsvImportFlow /> : <UrlImportFlow />}
+              {tab === "csv" ? <CsvImportFlow /> : <UrlResearchIpadHint />}
             </CardContent>
           </Card>
 
@@ -175,14 +154,30 @@ export default function LeadgridImportPage() {
           >
             <Box>
               <strong>Gjenbruk:</strong> Importerte leads havner i Lead Map med kilde{" "}
-              <code>csv_import</code> eller <code>url_extract</code>.
-            </Box>
-            <Box>
-              <strong>Rate-limit URL:</strong> 20 URLer / minutt / bruker (Claude-cost-control).
+              <code>csv_import</code> eller <code>url_research</code>.
             </Box>
           </Stack>
         </Stack>
       </Container>
+    </Box>
+  );
+}
+
+function UrlResearchIpadHint() {
+  return (
+    <Box sx={{ textAlign: "center", py: 6 }}>
+      <LanguageIcon sx={{ fontSize: 64, color: "#7c3aed", mb: 2 }} />
+      <Typography variant="h5" sx={{ fontWeight: 700, mb: 1 }}>
+        URL Research lever i Leadgrid på iPad
+      </Typography>
+      <Typography variant="body1" sx={{ color: "text.secondary", maxWidth: 520, mx: "auto" }}>
+        Selgeren limer inn nettsiden i feltet og Leadgrid Agent kjører hele
+        research-pipelinen (Brønnøysund + Google Places + Claude). Resultatet
+        blir en lead med pin på kartet — klar til å besøke.
+      </Typography>
+      <Typography variant="caption" sx={{ display: "block", mt: 3, color: "text.secondary" }}>
+        Web-flaten støtter CSV/Excel-bulk-import; URL-Research er iPad-native.
+      </Typography>
     </Box>
   );
 }
@@ -522,277 +517,5 @@ function CsvSuccessStep({ result, onReset }: { result: CommitResponse; onReset: 
         </Button>
       </Stack>
     </Stack>
-  );
-}
-
-// =====================================================================
-// URL-import flow
-// =====================================================================
-function UrlImportFlow() {
-  const [urlText, setUrlText] = useState("");
-  const [scraping, setScraping] = useState(false);
-  const [results, setResults] = useState<ScrapeResultItem[]>([]);
-  const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [committing, setCommitting] = useState(false);
-  const [commitResult, setCommitResult] = useState<CommitResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const urls = useMemo(
-    () => urlText.split(/\r?\n/).map((u) => u.trim()).filter(Boolean),
-    [urlText],
-  );
-
-  const onScrape = useCallback(async () => {
-    setError(null);
-    setCommitResult(null);
-    if (urls.length === 0) {
-      setError("Lim inn minst én URL.");
-      return;
-    }
-    if (urls.length > 20) {
-      setError("Maks 20 URLer per batch.");
-      return;
-    }
-    setScraping(true);
-    try {
-      const data = await postJson<{ results: ScrapeResultItem[] }>(
-        "/api/leadgrid/import/url/scrape",
-        { urls },
-      );
-      setResults(data.results);
-      const selectedSet = new Set<number>();
-      data.results.forEach((r, i) => {
-        if (r.lead) selectedSet.add(i);
-      });
-      setSelected(selectedSet);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setScraping(false);
-    }
-  }, [urls]);
-
-  const onCommit = useCallback(async () => {
-    setError(null);
-    const leads = Array.from(selected)
-      .map((idx) => results[idx])
-      .filter((r) => r?.lead)
-      .map((r) => r.lead!);
-    if (leads.length === 0) {
-      setError("Velg minst én lead å importere.");
-      return;
-    }
-    setCommitting(true);
-    try {
-      const data = await postJson<CommitResponse>(
-        "/api/leadgrid/import/url/commit",
-        { leads, dedupe_strategy: "email" },
-      );
-      setCommitResult(data);
-      setResults([]);
-      setSelected(new Set());
-      setUrlText("");
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setCommitting(false);
-    }
-  }, [results, selected]);
-
-  if (commitResult) {
-    return (
-      <CsvSuccessStep
-        result={commitResult}
-        onReset={() => setCommitResult(null)}
-      />
-    );
-  }
-
-  return (
-    <Stack spacing={3}>
-      {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
-
-      <Box>
-        <Typography variant="h6" gutterBottom>Lim inn URL-er</Typography>
-        <Typography variant="body2" sx={{ color: "text.secondary", mb: 2 }}>
-          Én URL per linje. Vi støtter vanlige nettsider, <code>linkedin.com/company/...</code> og{" "}
-          <code>instagram.com/profil</code>. Claude leser sidene og ekstraherer firma-data.
-        </Typography>
-        <TextField
-          fullWidth
-          multiline
-          minRows={6}
-          placeholder={"https://acme.no\nhttps://linkedin.com/company/beta\nhttps://instagram.com/gamma"}
-          value={urlText}
-          onChange={(e) => setUrlText(e.target.value)}
-          sx={{ fontFamily: "monospace" }}
-        />
-        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mt: 1 }}>
-          <Typography variant="caption" sx={{ color: "text.secondary" }}>
-            {urls.length} / 20 URL-er · rate-limit 20/min
-          </Typography>
-          <Button
-            variant="contained"
-            onClick={onScrape}
-            disabled={scraping || urls.length === 0}
-            endIcon={scraping ? <CircularProgress size={18} color="inherit" /> : <ArrowForwardIcon />}
-            sx={{ bgcolor: "#7c3aed", "&:hover": { bgcolor: "#6d28d9" } }}
-          >
-            {scraping ? "Ekstraherer …" : `Ekstraher ${urls.length || ""} URL-er`}
-          </Button>
-        </Stack>
-        {scraping && <LinearProgress sx={{ mt: 2 }} />}
-      </Box>
-
-      {results.length > 0 && (
-        <Box>
-          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
-            <Typography variant="h6">Resultat ({results.filter((r) => r.lead).length} OK / {results.filter((r) => r.error).length} feil)</Typography>
-            <Button
-              variant="contained"
-              onClick={onCommit}
-              disabled={committing || selected.size === 0}
-              endIcon={committing ? <CircularProgress size={18} color="inherit" /> : <CheckCircleIcon />}
-              sx={{ bgcolor: "#7c3aed", "&:hover": { bgcolor: "#6d28d9" } }}
-            >
-              Importér {selected.size} valgte
-            </Button>
-          </Stack>
-          <Stack spacing={1}>
-            {results.map((r, i) => (
-              <UrlResultRow
-                key={i}
-                idx={i}
-                item={r}
-                selected={selected.has(i)}
-                onToggle={() => {
-                  const next = new Set(selected);
-                  if (next.has(i)) next.delete(i);
-                  else next.add(i);
-                  setSelected(next);
-                }}
-                onEdit={(patch) => {
-                  const next = [...results];
-                  if (next[i].lead) {
-                    next[i] = { ...next[i], lead: { ...next[i].lead!, ...patch } };
-                  }
-                  setResults(next);
-                }}
-              />
-            ))}
-          </Stack>
-        </Box>
-      )}
-    </Stack>
-  );
-}
-
-function UrlResultRow({
-  idx, item, selected, onToggle, onEdit,
-}: {
-  idx: number;
-  item: ScrapeResultItem;
-  selected: boolean;
-  onToggle: () => void;
-  onEdit: (patch: Partial<NonNullable<ScrapeResultItem["lead"]>>) => void;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  if (item.error) {
-    return (
-      <Box sx={{
-        p: 2, border: "1px solid #fecaca", borderRadius: 1, bgcolor: "#fef2f2",
-      }}>
-        <Typography variant="body2" sx={{ fontFamily: "monospace", fontSize: 12 }}>
-          ❌ {item.url}
-        </Typography>
-        <Typography variant="caption" sx={{ color: "#b91c1c" }}>
-          Feil: {item.error}
-        </Typography>
-      </Box>
-    );
-  }
-  const lead = item.lead!;
-  return (
-    <Box sx={{
-      p: 2, border: "1px solid #e5e7eb", borderRadius: 1, bgcolor: "#fff",
-    }}>
-      <Stack direction="row" alignItems="center" spacing={2}>
-        <Checkbox checked={selected} onChange={onToggle} />
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-            {lead.name || "(uten navn)"}
-          </Typography>
-          <Typography variant="caption" sx={{ color: "text.secondary", display: "block" }}>
-            {item.url}
-          </Typography>
-          <Stack direction="row" spacing={1} sx={{ mt: 0.5, flexWrap: "wrap" }}>
-            {lead.email && <Chip size="small" label={lead.email} />}
-            {lead.phone && <Chip size="small" label={lead.phone} />}
-            {lead.city && <Chip size="small" label={lead.city} />}
-            {lead.country && <Chip size="small" label={lead.country} />}
-            {lead.industry && <Chip size="small" label={lead.industry} variant="outlined" />}
-            {typeof lead.lead_quality_score === "number" && (
-              <Chip
-                size="small"
-                label={`Score ${lead.lead_quality_score}`}
-                sx={{ bgcolor: "#ede9fe", color: "#6d28d9" }}
-              />
-            )}
-          </Stack>
-        </Box>
-        <IconButton onClick={() => setExpanded((v) => !v)}>
-          {expanded ? <DeleteOutlineIcon /> : <ArrowForwardIcon />}
-        </IconButton>
-      </Stack>
-      {expanded && (
-        <Stack spacing={1} sx={{ mt: 2 }}>
-          <TextField
-            label="Bedriftsnavn"
-            size="small"
-            fullWidth
-            value={lead.name || ""}
-            onChange={(e) => onEdit({ name: e.target.value })}
-          />
-          <Stack direction={{ xs: "column", md: "row" }} spacing={1}>
-            <TextField
-              label="E-post"
-              size="small"
-              fullWidth
-              value={lead.email || ""}
-              onChange={(e) => onEdit({ email: e.target.value })}
-            />
-            <TextField
-              label="Telefon"
-              size="small"
-              fullWidth
-              value={lead.phone || ""}
-              onChange={(e) => onEdit({ phone: e.target.value })}
-            />
-          </Stack>
-          <Stack direction={{ xs: "column", md: "row" }} spacing={1}>
-            <TextField
-              label="Adresse"
-              size="small"
-              fullWidth
-              value={lead.address || ""}
-              onChange={(e) => onEdit({ address: e.target.value })}
-            />
-            <TextField
-              label="By"
-              size="small"
-              fullWidth
-              value={lead.city || ""}
-              onChange={(e) => onEdit({ city: e.target.value })}
-            />
-          </Stack>
-          {lead.notes && (
-            <Box sx={{ fontSize: 13, color: "text.secondary" }}>
-              <Divider sx={{ mb: 1 }} />
-              {lead.notes}
-            </Box>
-          )}
-        </Stack>
-      )}
-    </Box>
   );
 }
