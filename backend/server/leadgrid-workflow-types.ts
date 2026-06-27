@@ -31,7 +31,9 @@ export type WorkflowTriggerType =
   | "meeting.booked"
   | "meeting.no_show"
   | "proposal.opened"
-  | "contract.signed";
+  | "contract.signed"
+  // mig 0353 — schedule.cron for continuous discovery
+  | "schedule.cron";
 
 export interface TriggerLeadCreated {
   type: "lead.created";
@@ -97,6 +99,23 @@ export interface TriggerContractSigned {
   provider?: string;
 }
 
+// ─── Cron-trigger (mig 0353) ───────────────────────────────────────
+/**
+ * schedule.cron — kjør workflow på et cron-schedule.
+ *
+ * Cron-uttrykk er standard 5-felt ("0 6 * * *" = 06:00 hver dag).
+ * timezone er IANA-zone (default 'Europe/Oslo').
+ *
+ * project_id kan settes for prosjekt-skoped workflows (continuous
+ * lead discovery, daglige rapporter, osv).
+ */
+export interface TriggerScheduleCron {
+  type: "schedule.cron";
+  cron: string;
+  timezone?: string;
+  project_id?: string;
+}
+
 export type WorkflowTrigger =
   | TriggerLeadCreated
   | TriggerLeadStatusChanged
@@ -112,7 +131,8 @@ export type WorkflowTrigger =
   | TriggerMeetingBooked
   | TriggerMeetingNoShow
   | TriggerProposalOpened
-  | TriggerContractSigned;
+  | TriggerContractSigned
+  | TriggerScheduleCron;
 
 // ─── Conditions ───────────────────────────────────────────────────────
 export type WorkflowConditionOp = ">" | "<" | "=" | ">=" | "<=" | "!=";
@@ -169,7 +189,9 @@ export type WorkflowActionType =
   | "send_internal_notification"
   | "remove_tag"
   | "archive_lead"
-  | "revive_lead";
+  | "revive_lead"
+  // mig 0353 — continuous discovery action
+  | "leadgrid.discover_leads";
 
 export interface ActionSendEmail {
   type: "send_email";
@@ -297,6 +319,22 @@ export interface ActionReviveLead {
   type: "revive_lead";
 }
 
+/**
+ * leadgrid.discover_leads (mig 0353) — kjør AI lead-discovery for et
+ * prosjekt som en workflow-action. Brukes typisk fra cron-triggered
+ * workflows ("daglig 06:00 — finn nye leads for MedSide").
+ *
+ * Hvis project_id ikke er satt brukes trigger-prosjektet (cron-triggers
+ * må ha project_id satt). count fra config eller default 10.
+ */
+export interface ActionDiscoverLeads {
+  type: "leadgrid.discover_leads";
+  project_id?: string;
+  count?: number;
+  industry_query?: string;
+  city?: string;
+}
+
 export type WorkflowAction =
   | ActionSendEmail
   | ActionSendSms
@@ -317,7 +355,8 @@ export type WorkflowAction =
   | ActionSendInternalNotification
   | ActionRemoveTag
   | ActionArchiveLead
-  | ActionReviveLead;
+  | ActionReviveLead
+  | ActionDiscoverLeads;
 
 // ─── Validators ───────────────────────────────────────────────────────
 type ValidResult<T> = { ok: true; value: T } | { ok: false; error: string };
@@ -338,6 +377,7 @@ const VALID_TRIGGER_TYPES: WorkflowTriggerType[] = [
   "meeting.no_show",
   "proposal.opened",
   "contract.signed",
+  "schedule.cron",
 ];
 
 const VALID_ACTION_TYPES: WorkflowActionType[] = [
@@ -361,6 +401,7 @@ const VALID_ACTION_TYPES: WorkflowActionType[] = [
   "remove_tag",
   "archive_lead",
   "revive_lead",
+  "leadgrid.discover_leads",
 ];
 
 const VALID_OPS: WorkflowConditionOp[] = [">", "<", "=", ">=", "<=", "!="];
@@ -399,6 +440,23 @@ export const UPDATE_LEAD_FIELDS_WHITELIST = new Set<string>([
 
 function isRelativeWhen(s: string): boolean {
   return /^in_\d+_(minutes?|hours?|days?)$/i.test(s);
+}
+
+/**
+ * Light-weight cron-validator: 5 felter separert med whitespace, hvert
+ * felt et tall, range, list, step, eller "*". Vi godtar også 6-felt
+ * (med seconds). Avviser tom streng eller åpenbart ugyldig syntax.
+ *
+ * Full cron-eval delegeres til scheduler-laget (node-cron / croner) —
+ * vi validerer bare grammatic shape her så workflow-creation kan
+ * raskt si "ugyldig cron".
+ */
+export function isValidCronExpression(s: unknown): boolean {
+  if (typeof s !== "string" || s.length === 0) return false;
+  const parts = s.trim().split(/\s+/);
+  if (parts.length < 5 || parts.length > 6) return false;
+  const fieldPattern = /^(\*|(?:\d+|\d+-\d+)(?:\/\d+)?(?:,(?:\d+|\d+-\d+)(?:\/\d+)?)*|\*\/\d+|[A-Z]{3}(?:,[A-Z]{3})*)$/i;
+  return parts.every((p) => fieldPattern.test(p));
 }
 
 function isValidWhen(raw: unknown): boolean {
@@ -462,6 +520,14 @@ export function validateTrigger(
     case "contract.signed":
       if (t.provider !== undefined && typeof t.provider !== "string")
         return { ok: false, error: "trigger_provider_must_be_string" };
+      break;
+    case "schedule.cron":
+      if (!isValidCronExpression(t.cron))
+        return { ok: false, error: "trigger_cron_invalid" };
+      if (t.timezone !== undefined && typeof t.timezone !== "string")
+        return { ok: false, error: "trigger_timezone_must_be_string" };
+      if (t.project_id !== undefined && typeof t.project_id !== "string")
+        return { ok: false, error: "trigger_project_id_must_be_string" };
       break;
   }
   return { ok: true, value: raw as WorkflowTrigger };
@@ -650,6 +716,24 @@ export function validateAction(raw: unknown): ValidResult<WorkflowAction> {
       break;
     case "revive_lead":
       // Ingen ekstra felt
+      break;
+    case "leadgrid.discover_leads":
+      // project_id valgfri (tas fra trigger hvis ikke satt)
+      if (a.project_id !== undefined && typeof a.project_id !== "string")
+        return { ok: false, error: "action_project_id_must_be_string" };
+      if (a.count !== undefined) {
+        if (
+          typeof a.count !== "number" ||
+          a.count < 1 ||
+          a.count > 50 ||
+          !Number.isInteger(a.count)
+        )
+          return { ok: false, error: "action_count_invalid" };
+      }
+      if (a.industry_query !== undefined && typeof a.industry_query !== "string")
+        return { ok: false, error: "action_industry_query_must_be_string" };
+      if (a.city !== undefined && typeof a.city !== "string")
+        return { ok: false, error: "action_city_must_be_string" };
       break;
   }
   return { ok: true, value: raw as WorkflowAction };

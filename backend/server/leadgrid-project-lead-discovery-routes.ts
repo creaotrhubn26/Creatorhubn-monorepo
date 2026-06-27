@@ -66,6 +66,7 @@ import {
   processUrlResearchBatch,
   readBatchProgress,
 } from "./leadgrid-url-batch-processor.js";
+import { autoAssignIndustryFromDiscoveryQuery } from "./leadgrid-industry-classify.js";
 
 // =====================================================================
 // Types
@@ -355,6 +356,15 @@ export function registerLeadgridProjectLeadDiscoveryRoutes(deps: Deps): void {
         const orgId = await resolveOrgId(pool, session.userId);
         const batchId = crypto.randomUUID();
 
+        // Fix 4 (live-test 2026-06-27): auto-assign industry_id basert på
+        // discovery-query FØR research-pipelinen kjører. Daniel testet
+        // "fotograf i Oslo" — leadene fikk industry_id=null fordi Brreg
+        // ikke alltid kjenner bransjen + classify-er kjørte først etter
+        // research. Nå har leads riktig bransje umiddelbart.
+        const autoIndustry = await autoAssignIndustryFromDiscoveryQuery(pool, {
+          discoveryQuery: resolved.query,
+        }).catch(() => null);
+
         await pool.query(
           `INSERT INTO leadgrid_url_research_batches (
               id, organization_id, created_by, total_urls, status
@@ -373,6 +383,7 @@ export function registerLeadgridProjectLeadDiscoveryRoutes(deps: Deps): void {
 
           // Pre-fyller draft med Places-data (lat/lng + place_id) slik at
           // selv om Brreg/website-skraping feiler, har vi et solid pin.
+          // industry_id settes fra autoIndustry (Fix 4).
           const draftRes = await pool.query<{ id: string }>(
             `INSERT INTO crm_customers (
                 id, name, status, source,
@@ -383,6 +394,7 @@ export function registerLeadgridProjectLeadDiscoveryRoutes(deps: Deps): void {
                 address, phone,
                 lead_status, lead_source,
                 draft_status,
+                industry_id,
                 import_source, import_batch_id,
                 created_at, updated_at
               ) VALUES (
@@ -394,7 +406,8 @@ export function registerLeadgridProjectLeadDiscoveryRoutes(deps: Deps): void {
                 $10, $11,
                 'unvisited', 'lead_discovery',
                 'draft',
-                'lead_discovery', $12::uuid,
+                $12::uuid,
+                'lead_discovery', $13::uuid,
                 NOW(), NOW()
               ) RETURNING id::text`,
             [
@@ -409,6 +422,7 @@ export function registerLeadgridProjectLeadDiscoveryRoutes(deps: Deps): void {
               p.rating,
               p.address,
               p.phone,
+              autoIndustry?.industryId ?? null,
               batchId,
             ],
           );
@@ -443,6 +457,14 @@ export function registerLeadgridProjectLeadDiscoveryRoutes(deps: Deps): void {
                 city: resolved.city,
                 requested_count: requestedCount,
                 geo: body.geo ?? null,
+                auto_assigned_industry: autoIndustry
+                  ? {
+                      industry_id: autoIndustry.industryId,
+                      source: autoIndustry.source,
+                      matched_code: autoIndustry.matchedCode,
+                      matched_name: autoIndustry.matchedName,
+                    }
+                  : null,
               }),
             ],
           );

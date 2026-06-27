@@ -175,39 +175,39 @@ function buildMockPool(seed: {
     ) {
       const id = String(params?.[0]);
       const b = batches.find((x) => x.id === id);
-      if (b && b.status === "pending") {
+      if (b && (b.status === "pending" || b.status === "completed" || b.status === "failed" || b.status === "partial")) {
         b.status = "running";
         b.started_at = b.started_at ?? new Date();
       }
       return { rows: [] };
     }
+    // Atomic counter-recompute (Fix 1) — kalles per item completed/failed
+    // SQL: UPDATE leadgrid_url_research_batches SET completed_urls = (SELECT COUNT…)
     if (
-      text.startsWith(
-        "UPDATE leadgrid_url_research_batches SET completed_urls = completed_urls + 1",
-      )
+      text.startsWith("UPDATE leadgrid_url_research_batches SET completed_urls = (")
     ) {
-      const itemId = String(params?.[0]);
-      const hasPin = Boolean(params?.[1]);
-      const item = items.find((x) => x.id === itemId);
+      // Kan være per-item ($1 = itemId) eller per-batch ($1 = batchId)
+      const id = String(params?.[0]);
+      let targetBatch: BatchRow | undefined;
+      const item = items.find((x) => x.id === id);
       if (item) {
-        const b = batches.find((x) => x.id === item.batch_id);
-        if (b) {
-          b.completed_urls += 1;
-          if (hasPin) b.pinned_leads += 1;
-        }
+        targetBatch = batches.find((x) => x.id === item.batch_id);
+      } else {
+        targetBatch = batches.find((x) => x.id === id);
       }
-      return { rows: [] };
-    }
-    if (
-      text.startsWith(
-        "UPDATE leadgrid_url_research_batches SET failed_urls = failed_urls + 1",
-      )
-    ) {
-      const itemId = String(params?.[0]);
-      const item = items.find((x) => x.id === itemId);
-      if (item) {
-        const b = batches.find((x) => x.id === item.batch_id);
-        if (b) b.failed_urls += 1;
+      if (targetBatch) {
+        const batchItems = items.filter((x) => x.batch_id === targetBatch!.id);
+        targetBatch.completed_urls = batchItems.filter(
+          (i) => i.status === "completed",
+        ).length;
+        targetBatch.failed_urls = batchItems.filter(
+          (i) => i.status === "failed",
+        ).length;
+        targetBatch.pinned_leads = batchItems.filter((i) => {
+          if (i.status !== "completed" || !i.draft_lead_id) return false;
+          const d = drafts.find((x) => x.id === i.draft_lead_id);
+          return d?.latitude != null && d?.longitude != null;
+        }).length;
       }
       return { rows: [] };
     }
@@ -218,6 +218,19 @@ function buildMockPool(seed: {
       if (b) {
         b.status = next;
         b.finished_at = new Date();
+      }
+      return { rows: [] };
+    }
+    if (
+      text.startsWith(
+        "UPDATE leadgrid_url_research_batches SET status = 'running', finished_at = NULL",
+      )
+    ) {
+      const id = String(params?.[0]);
+      const b = batches.find((x) => x.id === id);
+      if (b && (b.status === "completed" || b.status === "failed" || b.status === "partial")) {
+        b.status = "running";
+        b.finished_at = null;
       }
       return { rows: [] };
     }
@@ -250,8 +263,17 @@ function buildMockPool(seed: {
       const item = items.find((x) => x.id === id);
       if (item) {
         item.status = "running";
-        item.started_at = new Date();
+        item.started_at = item.started_at ?? new Date();
       }
+      return { rows: [] };
+    }
+    // Bump retry_count (Fix 2)
+    if (
+      text.startsWith(
+        "UPDATE leadgrid_url_research_items SET retry_count = retry_count + 1",
+      )
+    ) {
+      // No-op for tester — vi sjekker ikke retry_count i mock
       return { rows: [] };
     }
     if (
@@ -262,12 +284,25 @@ function buildMockPool(seed: {
       const id = String(params?.[0]);
       const hasPin = Boolean(params?.[1]);
       const confidence = String(params?.[2] ?? "");
+      const qualityScore = params?.[4] ?? null;
       const item = items.find((x) => x.id === id);
       if (item) {
         item.status = "completed";
         item.has_pin = hasPin;
         item.location_confidence = confidence;
         item.finished_at = new Date();
+        // Also persist on draft (for atomic counter ground-truth)
+        if (item.draft_lead_id) {
+          const d = drafts.find((x) => x.id === item.draft_lead_id);
+          if (d) {
+            if (hasPin) {
+              // applyResearchToDraftLite har allerede satt lat/lng — bekreft
+              d.latitude = d.latitude ?? 59.913;
+              d.longitude = d.longitude ?? 10.752;
+            }
+          }
+        }
+        void qualityScore;
       }
       return { rows: [] };
     }
@@ -291,10 +326,17 @@ function buildMockPool(seed: {
         "UPDATE leadgrid_url_research_items SET status = 'skipped'",
       )
     ) {
-      const batchId = String(params?.[0]);
+      const arg0 = String(params?.[0]);
+      // Kan være enten batch_id (markPendingAsSkipped) eller item_id (markItemSkipped)
+      const matchedItem = items.find((x) => x.id === arg0);
+      if (matchedItem) {
+        matchedItem.status = "skipped";
+        matchedItem.finished_at = new Date();
+        return { rows: [] };
+      }
       for (const it of items) {
         if (
-          it.batch_id === batchId &&
+          it.batch_id === arg0 &&
           (it.status === "pending" || it.status === "running")
         ) {
           it.status = "skipped";
@@ -302,6 +344,72 @@ function buildMockPool(seed: {
         }
       }
       return { rows: [] };
+    }
+    // Reset item til pending (retrySingleItem)
+    if (
+      text.startsWith(
+        "UPDATE leadgrid_url_research_items SET status = 'pending'",
+      )
+    ) {
+      const id = String(params?.[0]);
+      const item = items.find((x) => x.id === id);
+      if (item) {
+        item.status = "pending";
+        item.error_message = null;
+        item.has_pin = false;
+        item.location_confidence = null;
+        item.started_at = null;
+        item.finished_at = null;
+      }
+      return { rows: [] };
+    }
+    // Select single item + batch (retrySingleItem)
+    if (
+      text.startsWith(
+        "SELECT i.id::text, i.batch_id::text, i.url, i.draft_lead_id::text, i.status, b.organization_id",
+      )
+    ) {
+      const id = String(params?.[0]);
+      const item = items.find((x) => x.id === id);
+      if (!item) return { rows: [] };
+      const b = batches.find((x) => x.id === item.batch_id);
+      return {
+        rows: [
+          {
+            id: item.id,
+            batch_id: item.batch_id,
+            url: item.url,
+            draft_lead_id: item.draft_lead_id,
+            status: item.status,
+            organization_id: b?.organization_id ?? null,
+            created_by: b?.created_by ?? null,
+          },
+        ],
+      };
+    }
+    // Select status + error_message for retry response
+    if (
+      text.startsWith(
+        "SELECT status, error_message FROM leadgrid_url_research_items",
+      )
+    ) {
+      const id = String(params?.[0]);
+      const item = items.find((x) => x.id === id);
+      return item
+        ? { rows: [{ status: item.status, error_message: item.error_message }] }
+        : { rows: [] };
+    }
+    // Select batch_id + status for markItemSkipped
+    if (
+      text.startsWith(
+        "SELECT batch_id::text, status FROM leadgrid_url_research_items",
+      )
+    ) {
+      const id = String(params?.[0]);
+      const item = items.find((x) => x.id === id);
+      return item
+        ? { rows: [{ batch_id: item.batch_id, status: item.status }] }
+        : { rows: [] };
     }
     // --- draft update (applyResearchToDraftLite) ---
     if (text.startsWith("UPDATE crm_customers SET name")) {
@@ -695,10 +803,17 @@ describe("processUrlResearchBatch", () => {
       ],
     });
     const runner = makeRunner({ "https://nullify.no": "null" });
-    await processUrlResearchBatch(pool, batchId, { runner: runner as never, concurrency: 1 });
+    await processUrlResearchBatch(pool, batchId, {
+      runner: runner as never,
+      concurrency: 1,
+      // Test-mode: ingen sleep mellom retries
+      backoff: () => 0,
+    });
 
     expect(items[0].status).toBe("failed");
     expect(items[0].error_message).toBe("orchestrator_unavailable");
+    // Verifiser at vi prøvde 3 ganger (retry-konfig default)
+    expect(runner).toHaveBeenCalledTimes(3);
   });
 });
 
@@ -706,5 +821,188 @@ describe("__test utilities", () => {
   it("eksporterer interne helpers for granulær testing", () => {
     expect(typeof __test.applyResearchToDraftLite).toBe("function");
     expect(typeof __test.readBatchProgress).toBe("function");
+  });
+});
+
+// =====================================================================
+// Fix 1+2 — Atomic counters + auto-retry (mig 0353)
+// =====================================================================
+
+describe("isTransientError", () => {
+  it("matcher orchestrator_unavailable", () => {
+    expect(__test.isTransientError("orchestrator_unavailable")).toBe(true);
+  });
+  it("matcher claude_rate_limited (case-insensitive)", () => {
+    expect(__test.isTransientError("Claude_Rate_Limited")).toBe(true);
+  });
+  it("matcher network-feil", () => {
+    expect(__test.isTransientError("ETIMEDOUT")).toBe(true);
+    expect(__test.isTransientError("ECONNRESET")).toBe(true);
+    expect(__test.isTransientError("fetch failed: ENOTFOUND")).toBe(true);
+  });
+  it("matcher places/brreg timeouts", () => {
+    expect(__test.isTransientError("places_timeout")).toBe(true);
+    expect(__test.isTransientError("brreg_timeout")).toBe(true);
+  });
+  it("matcher IKKE permanente feil", () => {
+    expect(__test.isTransientError("validation_failed")).toBe(false);
+    expect(__test.isTransientError("not_found")).toBe(false);
+    expect(__test.isTransientError("invalid_url")).toBe(false);
+  });
+  it("returnerer false for null/undefined", () => {
+    expect(__test.isTransientError(null)).toBe(false);
+    expect(__test.isTransientError(undefined)).toBe(false);
+    expect(__test.isTransientError("")).toBe(false);
+  });
+});
+
+describe("backoffDelay", () => {
+  it("eskalerer fra 2s til 30s max", () => {
+    expect(__test.backoffDelay(0)).toBe(2000);
+    expect(__test.backoffDelay(1)).toBe(5000);
+    expect(__test.backoffDelay(2)).toBe(12500);
+    // Tredje retry caper på 30s
+    expect(__test.backoffDelay(10)).toBeLessThanOrEqual(30_000);
+  });
+});
+
+describe("Fix 2 — auto-retry transiente feil", () => {
+  let batchId: string;
+  let userId: string;
+  beforeEach(() => {
+    batchId = "batch-retry";
+    userId = "user-retry";
+  });
+
+  it("retrier orchestrator_unavailable og lykkes på 2. forsøk", async () => {
+    const items: ItemRow[] = [
+      {
+        id: "i1", batch_id: batchId, url: "https://a.no", order_index: 0,
+        status: "pending", draft_lead_id: "d1", final_lead_id: null,
+        has_pin: false, location_confidence: null, error_message: null,
+        research_result: null, started_at: null, finished_at: null,
+      },
+    ];
+    const pool = buildMockPool({
+      batch: {
+        id: batchId, organization_id: null, created_by: userId,
+        total_urls: 1, completed_urls: 0, failed_urls: 0, pinned_leads: 0,
+        status: "pending", started_at: null, finished_at: null, created_at: new Date(),
+      },
+      items,
+      drafts: [
+        { id: "d1", name: "x", draft_status: "draft", latitude: null, longitude: null, location_confidence: null, import_raw_data: null },
+      ],
+    });
+
+    let callCount = 0;
+    const runner = vi.fn(async (opts: RunnerOpts) => {
+      callCount++;
+      if (callCount === 1) return null; // first attempt: orchestrator_unavailable
+      return {
+        companyProfile: {
+          name: opts.websiteUrl, company: opts.websiteUrl, email: null, phone: null,
+          website: opts.websiteUrl, industry: null, organizationNumber: null,
+          summary: null, logoUrl: null, socials: { instagram: null, linkedin: null, facebook: null },
+          estimatedValueOere: null, aiOpportunityScore: null,
+        },
+        location: {
+          latitude: 59.913, longitude: 10.752, confidence: "exact" as const,
+          source: "mock", address: null, postalCode: null, city: null, country: null,
+        },
+        qualityScore: 75,
+        bootstrapPayload: { mock: true },
+      };
+    });
+
+    await processUrlResearchBatch(pool, batchId, {
+      runner: runner as never,
+      concurrency: 1,
+      backoff: () => 0,
+    });
+
+    expect(items[0].status).toBe("completed");
+    expect(items[0].has_pin).toBe(true);
+    expect(runner).toHaveBeenCalledTimes(2);
+  });
+
+  it("retrier IKKE permanent feil", async () => {
+    const items: ItemRow[] = [
+      {
+        id: "i1", batch_id: batchId, url: "https://broken.no", order_index: 0,
+        status: "pending", draft_lead_id: "d1", final_lead_id: null,
+        has_pin: false, location_confidence: null, error_message: null,
+        research_result: null, started_at: null, finished_at: null,
+      },
+    ];
+    const pool = buildMockPool({
+      batch: {
+        id: batchId, organization_id: null, created_by: userId,
+        total_urls: 1, completed_urls: 0, failed_urls: 0, pinned_leads: 0,
+        status: "pending", started_at: null, finished_at: null, created_at: new Date(),
+      },
+      items,
+      drafts: [
+        { id: "d1", name: "x", draft_status: "draft", latitude: null, longitude: null, location_confidence: null, import_raw_data: null },
+      ],
+    });
+
+    const runner = vi.fn(async () => {
+      throw new Error("validation_failed: bad URL");
+    });
+
+    await processUrlResearchBatch(pool, batchId, {
+      runner: runner as never,
+      concurrency: 1,
+      backoff: () => 0,
+    });
+
+    expect(items[0].status).toBe("failed");
+    expect(items[0].error_message).toContain("validation_failed");
+    // Ingen retry — én call total
+    expect(runner).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("Fix 1 — atomic counter-recompute", () => {
+  it("rekomputerer fra ground-truth uavhengig av rekkefølge", async () => {
+    const batchId = "batch-atomic";
+    const userId = "user-1";
+    const items: ItemRow[] = Array.from({ length: 4 }, (_, i) => ({
+      id: `i${i}`, batch_id: batchId, url: `https://${i}.no`, order_index: i,
+      status: "pending", draft_lead_id: `d${i}`, final_lead_id: null,
+      has_pin: false, location_confidence: null, error_message: null,
+      research_result: null, started_at: null, finished_at: null,
+    }));
+    const drafts: DraftRow[] = items.map((it) => ({
+      id: it.draft_lead_id!, name: "x", draft_status: "draft",
+      latitude: null, longitude: null, location_confidence: null, import_raw_data: null,
+    }));
+    const pool = buildMockPool({
+      batch: {
+        id: batchId, organization_id: null, created_by: userId,
+        total_urls: 4, completed_urls: 0, failed_urls: 0, pinned_leads: 0,
+        status: "pending", started_at: null, finished_at: null, created_at: new Date(),
+      },
+      items, drafts,
+    });
+
+    // 3 exact, 1 fail
+    const runner = makeRunner({
+      "https://0.no": "exact",
+      "https://1.no": "exact",
+      "https://2.no": "fail",
+      "https://3.no": "exact",
+    });
+    await processUrlResearchBatch(pool, batchId, {
+      runner: runner as never,
+      concurrency: 3,
+      backoff: () => 0,
+    });
+
+    const progress = await readBatchProgress(pool, batchId);
+    expect(progress?.completed).toBe(3);
+    expect(progress?.failed).toBe(1);
+    expect(progress?.pinned).toBe(3);
   });
 });
