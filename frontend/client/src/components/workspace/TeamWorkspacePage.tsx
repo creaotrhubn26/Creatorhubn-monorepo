@@ -6,10 +6,11 @@
  * Rendrer WorkspaceShell + aktivt tab. Andre tabs enn Oversikt får et
  * pent «kommer»-skall inntil de wires (bygges ett om gangen).
  */
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRoute, useLocation } from 'wouter';
-import { Box, Typography, Stack } from '@mui/material';
+import { Box, Typography, Stack, Snackbar, Alert } from '@mui/material';
 import { useAuth } from '@/hooks/useAuth';
+import { apiRequest } from '@/lib/queryClient';
 import WorkspaceShell from './WorkspaceShell';
 import OversiktTab from './tabs/OversiktTab';
 import ProsjektplanTab from './tabs/ProsjektplanTab';
@@ -52,6 +53,22 @@ const TeamWorkspacePage: React.FC = () => {
   const { user } = useAuth();
 
   const [tab, setTab] = useState<string>(paramsTab?.tab || 'oversikt');
+  const [accepted, setAccepted] = useState<string | null>(null);
+
+  // Aksepter team-invitasjon når man åpner lenken (?invite=<token>).
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('invite');
+    if (!token) return;
+    apiRequest(`/api/projects/team/accept/${encodeURIComponent(token)}`, { method: 'POST' })
+      .then((r: any) => {
+        if (r?.success) setAccepted('Du er nå med i prosjektteamet 🎉');
+        // fjern token fra URL
+        const clean = window.location.pathname;
+        window.history.replaceState({}, '', clean);
+      })
+      .catch(() => { /* ugyldig/utløpt — stille */ });
+  }, []);
 
   const project = { ...SAMPLE_PROJECT, id: projectId };
   const wsUser = {
@@ -93,6 +110,9 @@ const TeamWorkspacePage: React.FC = () => {
       }}
     >
       {content}
+      <Snackbar open={!!accepted} autoHideDuration={5000} onClose={() => setAccepted(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
+        <Alert severity="success" variant="filled" onClose={() => setAccepted(null)}>{accepted}</Alert>
+      </Snackbar>
     </WorkspaceShell>
   );
 };

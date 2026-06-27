@@ -5,15 +5,26 @@
  * framdrift + Nøkkelinformasjon + Godkjenninger + Team-notater. Mapper til
  * project_team_members-backend (wires i delings-fasen).
  */
-import React from 'react';
-import { Box, Stack, Typography, Avatar, Button, IconButton } from '@mui/material';
+import React, { useState, useEffect } from 'react';
+import { Box, Stack, Typography, Avatar, Button, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem, Alert, CircularProgress } from '@mui/material';
 import ChatBubbleOutline from '@mui/icons-material/ChatBubbleOutline';
 import MailOutline from '@mui/icons-material/MailOutline';
 import Phone from '@mui/icons-material/Phone';
 import PersonAdd from '@mui/icons-material/PersonAdd';
-import Lock from '@mui/icons-material/Lock';
+import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
 import { WsCard, WsSectionTitle, WsBar, WsTag, WsTable } from '../ui';
+
+const CREW_ROLES = [
+  { value: 'fotograf', label: 'Fotograf', tone: 'accent' },
+  { value: 'videograf', label: 'Videograf', tone: 'green' },
+  { value: 'editor', label: 'Editor', tone: 'blue' },
+  { value: 'lyd', label: 'Lydtekniker', tone: 'amber' },
+  { value: 'begge', label: 'Foto + Video', tone: 'accent' },
+  { value: 'assistent', label: 'Assistent', tone: 'neutral' },
+];
+const crewTone = (c: string) => CREW_ROLES.find((r) => r.value === c)?.tone || 'neutral';
+const crewLabel = (c: string) => CREW_ROLES.find((r) => r.value === c)?.label || c || 'Medlem';
 
 const MEMBERS = [
   { name: 'Thomas Qazi', role: 'Fotograf', tone: 'accent', star: true, online: true, ansvar: ['Hovedfotograf', 'Shotlist foto', 'Redigering bilder'], aktiv: 'Nå' },
@@ -26,21 +37,45 @@ const ROLES = [['Fotograf', 2, ws.roleFoto], ['Videograf', 2, ws.roleVideo], ['E
 const PROGRESS = [['Brief gjennomgått', 7, 8, ws.green], ['Shotlist bekreftet', 6, 8, ws.accent], ['Produksjonskart klart', 8, 8, ws.green], ['Utstyrssjekk', 5, 8, ws.amber], ['Leveranseplan bekreftet', 7, 8, ws.blue]];
 const TASKS = [['Oppdater shotlist', 'Thomas', 'Gjort', 'green'], ['Bekreft drone tillatelse', 'Daniel', 'Venter', 'amber'], ['Fargeprofil godkjenning', 'Julie', 'Pågår', 'blue'], ['Utstyrssjekk', 'Nora', 'Gjort', 'green'], ['Backup lydplan', 'Marcus', 'Pågår', 'blue']];
 
-const TeamTab: React.FC<{ projectId: string }> = () => {
+const TeamTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const totalRoles = ROLES.reduce((s, r) => s + r[1], 0);
+  const [real, setReal] = useState<any[] | null>(null);
+  const [isOwner, setIsOwner] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
+
+  const load = async () => {
+    try {
+      const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/team/members`);
+      setIsOwner(!!r?.isOwner);
+      const list = Array.isArray(r?.members) ? r.members : [];
+      // Inkluder eier øverst hvis vi har den
+      const owner = r?.owner ? [{ name: r.owner.name, role: 'Eier', tone: 'accent', online: true, ansvar: ['Prosjekteier'], aktiv: 'Nå', star: true }] : [];
+      const mapped = list.filter((m: any) => m.status !== 'revoked').map((m: any) => ({
+        name: m.name || m.email, role: crewLabel(m.crewRole), tone: crewTone(m.crewRole),
+        online: m.status === 'active', ansvar: [m.role === 'viewer' ? 'Lesetilgang' : 'Redigeringstilgang', m.email],
+        aktiv: m.status === 'active' ? 'Aktiv' : 'Venter på aksept',
+      }));
+      const combined = [...owner, ...mapped];
+      setReal(combined.length > 0 ? combined : null); // tom → behold sample-demo
+    } catch { setReal(null); }
+  };
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [projectId]);
+
+  const displayMembers = real || MEMBERS;
+
   return (
     <Stack direction="row" spacing={2.5} sx={{ alignItems: 'flex-start' }}>
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Stack direction="row" justifyContent="space-between" alignItems="flex-end" sx={{ mb: 2 }}>
           <Box>
-            <Typography sx={{ fontSize: 20, fontWeight: 800 }}>Team <Typography component="span" sx={{ color: ws.textDim }}>{MEMBERS.length}</Typography></Typography>
+            <Typography sx={{ fontSize: 20, fontWeight: 800 }}>Team <Typography component="span" sx={{ color: ws.textDim }}>{displayMembers.length}</Typography></Typography>
             <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Alle teammedlemmer og roller i dette prosjektet.</Typography>
           </Box>
         </Stack>
 
         {/* Medlemskort */}
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', lg: 'repeat(3, 1fr)' }, gap: 1.5, mb: 2 }}>
-          {MEMBERS.map((m) => (
+          {displayMembers.map((m) => (
             <WsCard key={m.name} pad={1.75}>
               <Stack direction="row" spacing={1.25} alignItems="center" sx={{ mb: 1.25 }}>
                 <Box sx={{ position: 'relative' }}>
@@ -67,7 +102,7 @@ const TeamTab: React.FC<{ projectId: string }> = () => {
             </WsCard>
           ))}
           {/* Inviter-kort */}
-          <Box sx={{ border: `1.5px dashed ${ws.border}`, borderRadius: `${ws.radius}px`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 180, cursor: 'pointer', color: ws.textDim, '&:hover': { borderColor: ws.accentBorder, color: ws.accent } }}>
+          <Box onClick={() => setInviteOpen(true)} sx={{ border: `1.5px dashed ${ws.border}`, borderRadius: `${ws.radius}px`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 180, cursor: 'pointer', color: ws.textDim, '&:hover': { borderColor: ws.accentBorder, color: ws.accent } }}>
             <PersonAdd sx={{ fontSize: 28, mb: 1 }} />
             <Typography sx={{ fontSize: 13, fontWeight: 700 }}>Inviter medlem</Typography>
           </Box>
@@ -146,7 +181,56 @@ const TeamTab: React.FC<{ projectId: string }> = () => {
           </Stack>
         </WsCard>
       </Box>
+
+      <InviteMemberDialog open={inviteOpen} onClose={() => setInviteOpen(false)} projectId={projectId} onInvited={() => { setInviteOpen(false); load(); }} />
     </Stack>
+  );
+};
+
+const InviteMemberDialog: React.FC<{ open: boolean; onClose: () => void; projectId: string; onInvited: () => void }> = ({ open, onClose, projectId, onInvited }) => {
+  const [email, setEmail] = useState('');
+  const [name, setName] = useState('');
+  const [crewRole, setCrewRole] = useState('fotograf');
+  const [role, setRole] = useState('member');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async () => {
+    if (!email.trim()) { setError('E-post påkrevd'); return; }
+    setBusy(true); setError(null);
+    try {
+      await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/team/invite`, {
+        method: 'POST',
+        body: { email: email.trim(), name: name.trim(), crewRole, role },
+      });
+      setEmail(''); setName('');
+      onInvited();
+    } catch (e: any) { setError(e?.message || 'Invitering feilet'); } finally { setBusy(false); }
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="xs">
+      <DialogTitle>Inviter teammedlem</DialogTitle>
+      <DialogContent dividers>
+        <Stack spacing={2} sx={{ pt: 0.5 }}>
+          <Typography variant="caption" color="text.secondary">Medlemmet får e-post med lenke til workspacet. Profesjonen styrer hvilke verktøy de får (videograf → videograf-funksjoner).</Typography>
+          <TextField label="Navn" value={name} onChange={(e) => setName(e.target.value)} fullWidth size="small" />
+          <TextField label="E-post" type="email" value={email} onChange={(e) => setEmail(e.target.value)} fullWidth size="small" required />
+          <TextField select label="Rolle i teamet" value={crewRole} onChange={(e) => setCrewRole(e.target.value)} fullWidth size="small">
+            {CREW_ROLES.map((r) => <MenuItem key={r.value} value={r.value}>{r.label}</MenuItem>)}
+          </TextField>
+          <TextField select label="Tilgang" value={role} onChange={(e) => setRole(e.target.value)} fullWidth size="small">
+            <MenuItem value="member">Kan redigere</MenuItem>
+            <MenuItem value="viewer">Kun lese</MenuItem>
+          </TextField>
+          {error && <Alert severity="error">{error}</Alert>}
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose} disabled={busy}>Avbryt</Button>
+        <Button variant="contained" onClick={submit} disabled={busy || !email.trim()} startIcon={busy ? <CircularProgress size={14} color="inherit" /> : null}>{busy ? 'Sender…' : 'Send invitasjon'}</Button>
+      </DialogActions>
+    </Dialog>
   );
 };
 
