@@ -58,6 +58,7 @@ import {
   AdminButton,
   AdminLoading,
   AdminEmpty,
+  useIsMobile,
 } from './design-system';
 
 interface NotificationFormData {
@@ -99,6 +100,7 @@ const priorityColors = {
 
 export default function AdminNotificationManager() {
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
 
   // Get auth from master integration
   const { auth } = useEnhancedMasterIntegration();
@@ -569,6 +571,7 @@ export default function AdminNotificationManager() {
         }}
           maxWidth="md"
           fullWidth
+          fullScreen={isMobile}
         >
           <DialogTitle
             sx={{
@@ -751,7 +754,7 @@ export default function AdminNotificationManager() {
 
         {/* Push Notification Settings Dialog */}
         {isSupported && (
-          <Dialog open={pushSettingsOpen} onClose={() => setPushSettingsOpen(false)} maxWidth="sm" fullWidth>
+          <Dialog open={pushSettingsOpen} onClose={() => setPushSettingsOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
             <DialogTitle>Push-varsler innstillinger</DialogTitle>
             <DialogContent>
               <Box sx={{ mt: 2 }}>

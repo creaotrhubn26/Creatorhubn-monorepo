@@ -50,7 +50,7 @@ import {
   Security,
   Analytics,
 } from '@mui/icons-material';
-import { AdminButton } from './design-system';
+import { AdminButton, useIsMobile } from './design-system';
 
 interface AutomationStatus {
   gtm: {
@@ -73,6 +73,7 @@ interface AutomationStatus {
 export default function GA4AutomationDashboard() {
   const queryClient = useQueryClient();
   const { auth } = useEnhancedMasterIntegration();
+  const isMobile = useIsMobile();
 
   // State
   const [setupDialogOpen, setSetupDialogOpen] = useState(false);
@@ -224,7 +225,7 @@ export default function GA4AutomationDashboard() {
   return (
     <Box sx={{ mb: 4 }}>
       {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2, mb: 3 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <Settings aria-hidden="true" sx={{ color: '#ff6b35', fontSize: 32 }} />
           <Box>
@@ -386,7 +387,7 @@ export default function GA4AutomationDashboard() {
       </Card>
 
       {/* Setup Dialog */}
-      <Dialog open={setupDialogOpen} onClose={() => setSetupDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={setupDialogOpen} onClose={() => setSetupDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle sx={{ color: '#ffffff', backgroundColor: '#2d2d2d' }}>
           Setup GA4 Automation
         </DialogTitle>
@@ -427,7 +428,7 @@ export default function GA4AutomationDashboard() {
       </Dialog>
 
       {/* Custom Insight Dialog */}
-      <Dialog open={customInsightDialogOpen} onClose={() => setCustomInsightDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={customInsightDialogOpen} onClose={() => setCustomInsightDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle sx={{ color: '#ffffff', backgroundColor: '#2d2d2d' }}>
           Create Custom Insight
         </DialogTitle>
@@ -493,7 +494,7 @@ export default function GA4AutomationDashboard() {
       </Dialog>
 
       {/* Monthly Report Dialog */}
-      <Dialog open={monthlyReportDialogOpen} onClose={() => setMonthlyReportDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={monthlyReportDialogOpen} onClose={() => setMonthlyReportDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle sx={{ color: '#ffffff', backgroundColor: '#2d2d2d' }}>
           Generate Monthly Report
         </DialogTitle>

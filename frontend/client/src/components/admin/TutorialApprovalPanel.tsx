@@ -33,7 +33,7 @@ import {
 } from '@mui/icons-material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
-import { AdminButton } from './design-system';
+import { AdminButton, useIsMobile } from './design-system';
 
 type TutorialStatus = 'pending' | 'approved' | 'rejected';
 type TutorialType = 'video' | 'mixed';
@@ -191,6 +191,7 @@ function dateString(value: string): string {
 
 export function TutorialApprovalPanel({ open, onClose, isAdmin = true }: TutorialApprovalPanelProps): JSX.Element {
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
 
   const [tabValue, setTabValue] = useState(0);
   const [items, setItems] = useState<TutorialSubmission[]>([]);
@@ -323,7 +324,7 @@ export function TutorialApprovalPanel({ open, onClose, isAdmin = true }: Tutoria
 
   if (!isAdmin) {
     return (
-      <Dialog open={open} onClose={onClose}>
+      <Dialog open={open} onClose={onClose} fullScreen={isMobile}>
         <DialogContent>
           <Alert severity="error">Only admins can access tutorial approval.</Alert>
         </DialogContent>
@@ -333,7 +334,7 @@ export function TutorialApprovalPanel({ open, onClose, isAdmin = true }: Tutoria
 
   return (
     <>
-      <Dialog open={open} onClose={onClose} maxWidth="xl" fullWidth>
+      <Dialog open={open} onClose={onClose} maxWidth="xl" fullWidth fullScreen={isMobile}>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
             <AdminPanelSettings color="primary" />
@@ -482,7 +483,7 @@ export function TutorialApprovalPanel({ open, onClose, isAdmin = true }: Tutoria
         </DialogContent>
       </Dialog>
 
-      <Dialog open={reviewDialogOpen} onClose={() => setReviewDialogOpen(false)} fullWidth maxWidth="sm">
+      <Dialog open={reviewDialogOpen} onClose={() => setReviewDialogOpen(false)} fullWidth maxWidth="sm" fullScreen={isMobile}>
         <DialogTitle>{reviewAction === 'approve' ? 'Approve tutorial' : 'Reject tutorial'}</DialogTitle>
         <DialogContent>
           {selected ? (

@@ -57,7 +57,7 @@ import {
   Support,
 } from '@mui/icons-material';
 
-import { AdminButton, AdminLoading } from './design-system';
+import { AdminButton, AdminLoading, useIsMobile } from './design-system';
 
 interface Widget {
   id: string;
@@ -177,6 +177,7 @@ export default function AdminWidgets({ userId }: AdminWidgetsProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const theme = useTheme();
+  const isMobile = useIsMobile();
   
   // Theming system
   const theming = useTheming('prototype_tester');
@@ -268,7 +269,7 @@ export default function AdminWidgets({ userId }: AdminWidgetsProps) {
 
     const items = Array.from(widgets);
     const [reorderedItem] = items.splice(result.source.index, 1);
-    items.splice(result.destination.indexreorderedItem);
+    items.splice(result.destination.index, 0, reorderedItem);
 
     setWidgets(items);
     saveConfigMutation.mutate(items);
@@ -505,6 +506,7 @@ export default function AdminWidgets({ userId }: AdminWidgetsProps) {
         onClose={() => setSettingsOpen(false)}
         maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>
           Widget Innstillinger

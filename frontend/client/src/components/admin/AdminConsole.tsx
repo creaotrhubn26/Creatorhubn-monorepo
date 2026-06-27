@@ -596,7 +596,7 @@ const apiTests: Record<string, ApiTest[]> = {
       {/* Status card */}
       <Card sx={theming.getThemedCardSx()}>
         <CardContent sx={theming.getThemedCardSx()}>
-          <Box display="flex" alignItems="center" justifyContent="space-between">
+          <Box display="flex" alignItems="center" justifyContent="space-between" sx={{ flexWrap: 'wrap', gap: 2 }}>
             <Box display="flex" alignItems="center" gap={3}>
               <Box
                 sx={{
@@ -1003,7 +1003,7 @@ const apiTests: Record<string, ApiTest[]> = {
             sx={{ fontFamily: 'monospace' }}
           />
 
-          <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>
+          <Box sx={{ mt: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
             <Button
               variant="contained"
               onClick={() => {

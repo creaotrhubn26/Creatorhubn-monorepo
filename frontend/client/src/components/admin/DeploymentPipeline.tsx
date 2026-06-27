@@ -49,7 +49,7 @@ import {
   BugReport as TestIcon,
 } from '@mui/icons-material';
 import { useToast } from '@/hooks/use-toast';
-import { AdminCard, AdminButton, StatusChip, AdminTableContainer, adminTokens } from './design-system';
+import { AdminCard, AdminButton, StatusChip, AdminTableContainer, adminTokens, useIsMobile } from './design-system';
 
 interface DeploymentStep {
   id: string;
@@ -106,6 +106,7 @@ export default function DeploymentPipeline() {
   // Theming system
   const theming = useTheming('prototype_tester');
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
 
   // Get auth from master integration
   const { auth } = useEnhancedMasterIntegration();
@@ -478,11 +479,12 @@ export default function DeploymentPipeline() {
       )}
 
       {/* New Deployment Dialog */}
-      <Dialog 
+      <Dialog
         open={deploymentDialogOpen}
         onClose={() => setDeploymentDialogOpen(false)}
         maxWidth="sm"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>
           <Box display="flex" alignItems="center" gap={1}>
@@ -532,11 +534,12 @@ export default function DeploymentPipeline() {
       </Dialog>
 
       {/* Rollback Dialog */}
-      <Dialog 
+      <Dialog
         open={rollbackDialogOpen}
         onClose={() => setRollbackDialogOpen(false)}
         maxWidth="sm"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>
           <Box display="flex" alignItems="center" gap={1}>

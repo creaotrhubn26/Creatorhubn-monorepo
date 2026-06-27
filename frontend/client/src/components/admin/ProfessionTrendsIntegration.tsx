@@ -134,7 +134,7 @@ export default function ProfessionTrendsIntegration() {
             Current User Context
           </Typography>
           <Grid container spacing={2}>
-            <Grid item >
+            <Grid item xs={12}>
               <Typography variant="body2" color="text.secondary">
                 Current Profession: <strong>{currentProfession}</strong>
               </Typography>
@@ -194,7 +194,7 @@ export default function ProfessionTrendsIntegration() {
       {/* Google Trends Data */}
       <Grid container spacing={3}>
         {/* Trending Keywords */}
-        <Grid item >
+        <Grid item xs={12} md={4}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  2 }}>
@@ -236,7 +236,7 @@ export default function ProfessionTrendsIntegration() {
         </Grid>
 
         {/* SEO Insights */}
-        <Grid item >
+        <Grid item xs={12} md={4}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
               <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -251,7 +251,7 @@ export default function ProfessionTrendsIntegration() {
                       Market Overview
                     </Typography>
                     <Grid container spacing={2}>
-                      <Grid item >
+                      <Grid item xs={6}>
                         <Typography variant="body2" color="text.secondary">
                           Total Search Volume
                         </Typography>
@@ -259,7 +259,7 @@ export default function ProfessionTrendsIntegration() {
                           {getSEOInsights(selectedProfession)?.searchVolume.toLocaleString()}
                         </Typography>
                       </Grid>
-                      <Grid item >
+                      <Grid item xs={6}>
                         <Typography variant="body2" color="text.secondary">
                           Trend Direction
                         </Typography>
@@ -311,7 +311,7 @@ export default function ProfessionTrendsIntegration() {
         </Grid>
 
         {/* SEO Suggestions */}
-        <Grid item >
+        <Grid item xs={12} md={4}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
               <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -359,7 +359,7 @@ export default function ProfessionTrendsIntegration() {
           </Typography>
           <Divider sx={{ mb: 2 }} />
           <Grid container spacing={2}>
-            <Grid item >
+            <Grid item xs={12} md={6}>
               <Typography variant="subtitle2" gutterBottom>
                 useDynamicProfessions Hook
               </Typography>
@@ -382,7 +382,7 @@ export default function ProfessionTrendsIntegration() {
                 </ListItem>
               </List>
             </Grid>
-            <Grid item >
+            <Grid item xs={12} md={6}>
               <Typography variant="subtitle2" gutterBottom>
                 Connected Components
               </Typography>

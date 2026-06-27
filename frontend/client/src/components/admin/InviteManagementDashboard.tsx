@@ -68,7 +68,7 @@ import {
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import FikenIntegrationRequestsPanel from './FikenIntegrationRequestsPanel';
-import { AdminButton } from './design-system';
+import { AdminButton, useIsMobile } from './design-system';
 
 // Custom styled connector for journey stepper
 const JourneyConnector = styled(StepConnector)(({ theme }) => ({
@@ -159,6 +159,7 @@ const normalizePlan = (plan?: string): 'basic' | 'pro' | 'enterprise' | null => 
 export default function InviteManagementDashboard() {
   const queryClient = useQueryClient();
   const { auth } = useEnhancedMasterIntegration();
+  const isMobile = useIsMobile();
 
   // Theming system
   const theming = useTheming('prototype_tester');
@@ -619,11 +620,12 @@ export default function InviteManagementDashboard() {
       </Paper>
 
       {/* Review Dialog */}
-      <Dialog 
+      <Dialog
         open={showReviewDialog}
         onClose={() => setShowReviewDialog(false)}
         maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>
           Vurder invitasjon - {selectedInvite?.businessName}
