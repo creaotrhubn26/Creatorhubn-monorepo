@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -203,12 +203,12 @@ export default function UnifiedMediaLibrary({ onSelectFile }: { onSelectFile?: (
   });
 
   // Filter files
-  const filteredFiles = files.filter(file => {
+  const filteredFiles = useMemo(() => files.filter(file => {
     const matchesSearch = file.name.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesTags = selectedTags.length === 0 || selectedTags.some(tag => file.tags.includes(tag));
     const matchesFavorites = !showFavoritesOnly || file.isFavorite;
     return matchesSearch && matchesTags && matchesFavorites;
-  });
+  }), [files, searchQuery, selectedTags, showFavoritesOnly]);
 
   const handleToggleFavorite = (fileId: string, currentStatus: boolean) => {
     toggleFavoriteMutation.mutate({ fileId, isFavorite: !currentStatus });
