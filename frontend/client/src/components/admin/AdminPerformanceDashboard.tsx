@@ -67,7 +67,7 @@ import {
 import { useAuth } from '@/hooks/useAuth';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
 import { PushNotificationSettings } from '../shared/PushNotificationSettings';
-import { AdminButton } from './design-system';
+import { AdminButton, useIsMobile } from './design-system';
 // import { performanceMonitor } from '@/lib/performance-monitor';
 
 // Chart.js components replaced with Material-UI placeholders
@@ -103,7 +103,8 @@ export default function AdminPerformanceDashboard({ className }: AdminPerformanc
   const [pushSettingsOpen, setPushSettingsOpen] = useState(false);
 
   const { user } = useAuth();
-  
+  const isMobile = useIsMobile();
+
   // Push notifications
   const userId = user?.id || (user as { sub?: string })?.sub;
   const { pushEnabled, isSupported } = usePushNotifications(userId);
@@ -555,7 +556,7 @@ export default function AdminPerformanceDashboard({ className }: AdminPerformanc
 
         {/* Push Notification Settings Dialog */}
         {isSupported && (
-          <Dialog open={pushSettingsOpen} onClose={() => setPushSettingsOpen(false)} maxWidth="sm" fullWidth>
+          <Dialog open={pushSettingsOpen} onClose={() => setPushSettingsOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
             <DialogTitle>Push-varsler innstillinger</DialogTitle>
             <DialogContent>
               <Box sx={{ mt: 2 }}>

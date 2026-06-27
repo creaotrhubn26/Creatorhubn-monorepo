@@ -52,6 +52,7 @@ import {
   AdminLoading,
   AdminTableContainer,
   StatusChip,
+  useIsMobile,
 } from './design-system';
 
 type ReceiptTemplateType = 'subscription' | 'marketplace-addon' | 'invoice' | 'refund';
@@ -283,6 +284,7 @@ function buildPreviewHtml(template: ReceiptTemplate, business: BusinessSettings)
 export default function ReceiptTemplateManager() {
   const queryClient = useQueryClient();
   const { auth } = useEnhancedMasterIntegration();
+  const isMobile = useIsMobile();
 
   const [tabValue, setTabValue] = useState(0);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -596,7 +598,7 @@ export default function ReceiptTemplateManager() {
         </Grid>
       )}
 
-      <Dialog open={editorOpen} onClose={() => setEditorOpen(false)} maxWidth="md" fullWidth>
+      <Dialog open={editorOpen} onClose={() => setEditorOpen(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle>{selectedTemplate ? 'Rediger template' : 'Ny template'}</DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 0.5 }}>
@@ -740,7 +742,7 @@ export default function ReceiptTemplateManager() {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={previewOpen} onClose={() => setPreviewOpen(false)} maxWidth="lg" fullWidth>
+      <Dialog open={previewOpen} onClose={() => setPreviewOpen(false)} maxWidth="lg" fullWidth fullScreen={isMobile}>
         <DialogTitle>Preview</DialogTitle>
         <DialogContent>
           {selectedTemplate && (
@@ -760,7 +762,7 @@ export default function ReceiptTemplateManager() {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={testDialogOpen} onClose={() => setTestDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={testDialogOpen} onClose={() => setTestDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>Send testmail</DialogTitle>
         <DialogContent>
           <TextField
@@ -795,7 +797,7 @@ export default function ReceiptTemplateManager() {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={businessOpen} onClose={() => setBusinessOpen(false)} maxWidth="md" fullWidth>
+      <Dialog open={businessOpen} onClose={() => setBusinessOpen(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle>Business Settings</DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 0.5 }}>

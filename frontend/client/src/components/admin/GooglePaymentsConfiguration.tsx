@@ -268,7 +268,7 @@ export default function GooglePaymentsConfiguration({ className }: GooglePayment
 
       <Card sx={{ mb: 3 }}>
         <CardContent sx={theming.getThemedCardSx()}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1, mb: 2 }}>
             <Typography variant="h6" component="h3" sx={{ color: themeColors.primary }}>
               Configuration Details
             </Typography>
@@ -291,7 +291,7 @@ export default function GooglePaymentsConfiguration({ className }: GooglePayment
                   </ListItemIcon>
                   <ListItemText
                     primary={
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
                         {item.icon}
                         <Typography variant="subtitle1">{item.label}</Typography>
                         <StatusChip

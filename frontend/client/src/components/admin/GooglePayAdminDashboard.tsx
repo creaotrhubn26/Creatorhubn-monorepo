@@ -135,7 +135,7 @@ export default function GooglePayAdminDashboard() {
   return (
     <Box sx={{ p: 3 }}>
       {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2, mb: 3 }}>
         <Box>
           <Typography variant="h4" component="h2" sx={{ fontWeight: 600, mb: 1 }}>
             Google Pay Transactions

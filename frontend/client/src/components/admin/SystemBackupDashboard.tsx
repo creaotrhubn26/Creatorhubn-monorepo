@@ -49,6 +49,7 @@ import {
   AdminLoading,
   AdminEmpty,
   AdminError,
+  useIsMobile,
 } from './design-system';
 import { useTheming } from '../../utils/theming-helper';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
@@ -126,6 +127,7 @@ export default function SystemBackupDashboard(props: SystemBackupDashboardProps)
   const queryClient = useQueryClient();
   const theming = useTheming('prototype_tester');
   const { auth } = useEnhancedMasterIntegration();
+  const isMobile = useIsMobile();
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
@@ -268,6 +270,8 @@ export default function SystemBackupDashboard(props: SystemBackupDashboardProps)
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 2,
         }}
       >
         <Box>
@@ -465,6 +469,7 @@ export default function SystemBackupDashboard(props: SystemBackupDashboardProps)
         onClose={() => setCreateDialogOpen(false)}
         maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>Opprett System Backup</DialogTitle>
         <DialogContent>
@@ -586,6 +591,7 @@ export default function SystemBackupDashboard(props: SystemBackupDashboardProps)
         onClose={() => setFolderDialogOpen(false)}
         maxWidth="lg"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>Mappestruktur Oversikt</DialogTitle>
         <DialogContent>

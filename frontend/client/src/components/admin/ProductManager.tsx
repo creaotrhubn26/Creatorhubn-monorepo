@@ -37,6 +37,7 @@ import {
   AdminButton,
   StatusChip,
   AdminTableContainer,
+  useIsMobile,
 } from './design-system';
 
 type ProductType = 'camera' | 'lens' | 'accessory';
@@ -200,6 +201,7 @@ const ProductManager: React.FC<ProductManagerProps> = ({
   const queryClient = useQueryClient();
   const { auth } = useEnhancedMasterIntegration();
   const theming = useTheming('prototype_tester');
+  const isMobile = useIsMobile();
 
   const { data: productsData, isLoading } = useQuery({
     queryKey: ['/api/admin/products', searchTerm, filterBrand, filterType, filterMount, page],
@@ -531,7 +533,7 @@ const ProductManager: React.FC<ProductManagerProps> = ({
         </Table>
       </AdminTableContainer>
 
-      <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="md" fullWidth>
+      <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <form
           onSubmit={(event) => {
             event.preventDefault();
@@ -609,7 +611,7 @@ const ProductManager: React.FC<ProductManagerProps> = ({
         </form>
       </Dialog>
 
-      <Dialog open={bulkImportOpen} onClose={() => setBulkImportOpen(false)}>
+      <Dialog open={bulkImportOpen} onClose={() => setBulkImportOpen(false)} fullScreen={isMobile}>
         <DialogTitle>Masseimport av produkter</DialogTitle>
         <DialogContent>
           <Alert severity="info" sx={{ mb: 2 }}>

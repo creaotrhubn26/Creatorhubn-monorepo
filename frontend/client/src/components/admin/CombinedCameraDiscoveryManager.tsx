@@ -310,7 +310,7 @@ const CombinedCameraDiscoveryManager: React.FC<CombinedCameraDiscoveryManagerPro
       <AdminCard
         title="Discovery Controls (Admin)"
         action={
-          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>
             <FormControlLabel
               control={<Switch checked={showNewOnly} onChange={(event) => setShowNewOnly(event.target.checked)} />}
               label="Only New/Updated"

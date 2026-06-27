@@ -78,6 +78,7 @@ import {
   AdminLoading,
   AdminTableContainer,
   StatusChip,
+  useIsMobile,
 } from './design-system';
 
 type IntegrationStatus = 'active' | 'inactive' | 'error';
@@ -502,6 +503,7 @@ const getServiceIcon = (service: string) => {
 
 const IntegrationAnalyticsDashboard: React.FC = () => {
   const theme = useTheme();
+  const isMobile = useIsMobile();
   const { user } = useAuth();
   const { auth } = useEnhancedMasterIntegration();
 
@@ -1100,7 +1102,7 @@ const IntegrationAnalyticsDashboard: React.FC = () => {
         </CardContent>
       </Card>
 
-      <Dialog open={alertsDialogOpen} onClose={() => setAlertsDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={alertsDialogOpen} onClose={() => setAlertsDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>Driftsvarsler</DialogTitle>
         <DialogContent dividers>
           <List disablePadding>

@@ -41,7 +41,7 @@ import {
   ThumbUp,
   ThumbDown,
 } from '@mui/icons-material';
-import { AdminButton } from './design-system';
+import { AdminButton, useIsMobile } from './design-system';
 
 interface DemoStep {
   id: string;
@@ -69,6 +69,7 @@ interface VerificationDemo {
 }
 
 export default function VerificationSystemDemo() {
+  const isMobile = useIsMobile();
   const [isRunning, setIsRunning] = useState(false);
   
   // Theming system
@@ -480,7 +481,7 @@ export default function VerificationSystemDemo() {
       )}
 
       {/* User Validation Dialog */}
-      <Dialog open={showUserValidation} maxWidth="md" fullWidth>
+      <Dialog open={showUserValidation} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle sx={{ bgcolor: '#ff8c00', color: 'white'}}>
           🔍 User Validation Required
         </DialogTitle>
