@@ -497,6 +497,59 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     } catch (e) { console.error("GET project galleries", e); res.json({ galleries: [] }); }
   });
 
+  // ─────────── Media-mappestruktur (maler + egne) ───────────
+  // Maler matcher One Desk/iPad-ingest-strukturen. project_id-scopet.
+  const FOLDER_TEMPLATES: Record<string, { label: string; folders: string[] }> = {
+    wedding: { label: 'Bryllup (foto + video)', folders: ['01_Brief', '02_Shotlists', '03_Photo_RAW', '04_Video_A_Cam', '05_Video_B_Cam', '06_Drone', '07_Audio', '08_Selects', '09_Client_Review', '10_Final_Delivery', 'Archive'] },
+    portrait: { label: 'Portrett / Foto', folders: ['01_Brief', '02_RAW', '03_Selects', '04_Edited', '05_Client_Review', '06_Final'] },
+    commercial: { label: 'Kommersiell', folders: ['01_Brief', '02_RAW', '03_Video', '04_Audio', '05_Graphics', '06_Selects', '07_Client_Review', '08_Final'] },
+  };
+  async function ensureFoldersTable() {
+    await pool.query(`CREATE TABLE IF NOT EXISTS project_media_folders (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), project_id VARCHAR(64) NOT NULL, name VARCHAR(120) NOT NULL, order_index INTEGER NOT NULL DEFAULT 0, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`).catch(() => undefined);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_pmf_project ON project_media_folders (project_id, order_index)`).catch(() => undefined);
+  }
+
+  app.get("/api/projects/:projectId/media-folders", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureFoldersTable();
+      const r = await pool.query(`SELECT id, name, order_index FROM project_media_folders WHERE project_id = $1 ORDER BY order_index, name`, [req.params.projectId]);
+      res.json({ folders: r.rows.map((f: any) => ({ id: f.id, name: f.name })), templates: Object.entries(FOLDER_TEMPLATES).map(([key, t]) => ({ key, label: t.label, count: t.folders.length })) });
+    } catch (e) { console.error("GET media-folders", e); res.json({ folders: [], templates: [] }); }
+  });
+  app.post("/api/projects/:projectId/media-folders", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureFoldersTable();
+      const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+      if (!name) return res.status(400).json({ error: "name_required" });
+      const r = await pool.query(`INSERT INTO project_media_folders (project_id, name, order_index) VALUES ($1,$2,COALESCE($3,999)) RETURNING id, name`, [req.params.projectId, name, req.body?.orderIndex ?? null]);
+      res.status(201).json({ id: r.rows[0].id, name: r.rows[0].name });
+    } catch (e) { console.error("POST media-folders", e); res.status(500).json({ error: "failed" }); }
+  });
+  app.post("/api/projects/:projectId/media-folders/apply-template", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureFoldersTable();
+      const tpl = FOLDER_TEMPLATES[String(req.body?.template || "")];
+      if (!tpl) return res.status(400).json({ error: "unknown_template" });
+      for (let i = 0; i < tpl.folders.length; i++) {
+        await pool.query(
+          `INSERT INTO project_media_folders (project_id, name, order_index)
+           SELECT $1, $2, $3 WHERE NOT EXISTS (SELECT 1 FROM project_media_folders WHERE project_id = $1 AND name = $2)`,
+          [req.params.projectId, tpl.folders[i], i],
+        );
+      }
+      const r = await pool.query(`SELECT id, name FROM project_media_folders WHERE project_id = $1 ORDER BY order_index, name`, [req.params.projectId]);
+      res.json({ folders: r.rows.map((f: any) => ({ id: f.id, name: f.name })) });
+    } catch (e) { console.error("apply-template", e); res.status(500).json({ error: "failed" }); }
+  });
+  app.delete("/api/projects/:projectId/media-folders/:id", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try { await ensureFoldersTable(); await pool.query(`DELETE FROM project_media_folders WHERE id = $1 AND project_id = $2`, [req.params.id, req.params.projectId]); res.json({ success: true }); }
+    catch (e) { console.error("DELETE media-folders", e); res.status(500).json({ error: "failed" }); }
+  });
+
   // ─────────── Media — capture_assets fra B2 (presigned thumbnails) ───────────
   // Leser prosjektets capture-session(er) → assets → presigned preview_key-URL.
   // Dette er det EKTE mediabiblioteket (RAW/originaler skutt på iPad, lagret i B2).

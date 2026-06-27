@@ -4,10 +4,13 @@
  * Bibliotek-sidebar (typer/mapper) + opplastbart asset-rutenett + asset-detaljer.
  */
 import React, { useState, useEffect } from 'react';
-import { Box, Stack, Typography, Button, TextField } from '@mui/material';
+import { Box, Stack, Typography, Button, TextField, IconButton, Menu, MenuItem } from '@mui/material';
 import CloudUpload from '@mui/icons-material/CloudUpload';
 import Search from '@mui/icons-material/Search';
 import Star from '@mui/icons-material/Star';
+import CreateNewFolder from '@mui/icons-material/CreateNewFolder';
+import AutoAwesomeMotion from '@mui/icons-material/AutoAwesomeMotion';
+import Close from '@mui/icons-material/Close';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
 import { WsCard, WsTag, WsImageGrid } from '../ui';
@@ -24,6 +27,32 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [filter, setFilter] = useState('alle');
   const web = useProjectImages(projectId, 'media');
   const isReal = projectId && projectId !== 'sample';
+  const [folders, setFolders] = useState<any[]>([]);
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [tplMenu, setTplMenu] = useState<any>(null);
+
+  const loadFolders = () => {
+    if (!isReal) return;
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/media-folders`)
+      .then((r: any) => { setFolders(Array.isArray(r?.folders) ? r.folders : []); setTemplates(Array.isArray(r?.templates) ? r.templates : []); })
+      .catch(() => {});
+  };
+  useEffect(() => { loadFolders(); /* eslint-disable-next-line */ }, [projectId, isReal]);
+
+  const newFolder = async () => {
+    const name = window.prompt('Mappenavn:'); if (!name) return;
+    try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/media-folders`, { method: 'POST', body: { name: name.trim() } }); loadFolders(); }
+    catch (e: any) { window.alert(e?.message || 'Kunne ikke opprette mappe'); }
+  };
+  const applyTemplate = async (key: string) => {
+    setTplMenu(null);
+    try { const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/media-folders/apply-template`, { method: 'POST', body: { template: key } }); setFolders(Array.isArray(r?.folders) ? r.folders : []); }
+    catch (e: any) { window.alert(e?.message || 'Kunne ikke bruke mal'); }
+  };
+  const delFolder = async (id: string) => {
+    try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/media-folders/${id}`, { method: 'DELETE' }); loadFolders(); } catch { /* */ }
+  };
+  const folderList = (isReal && folders.length) ? folders.map((f) => [f.name, f.id]) : FOLDERS.map(([n]) => [n, null]);
 
   useEffect(() => {
     if (!isReal) return;
@@ -70,10 +99,32 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
               </Stack>
             ))}
           </Stack>
-          <Typography sx={{ fontSize: 11, fontWeight: 700, color: ws.textFaint, mb: 1 }}>MAPPER</Typography>
-          <Stack spacing={0.25}>
-            {FOLDERS.map(([n, c]) => <Stack key={n} direction="row" sx={{ px: 1, py: 0.5 }}><Typography sx={{ fontSize: 12.5, flex: 1, color: ws.textDim }}>📁 {n}</Typography><Typography sx={{ fontSize: 11, color: ws.textFaint }}>{c}</Typography></Stack>)}
+          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+            <Typography sx={{ fontSize: 11, fontWeight: 700, color: ws.textFaint }}>MAPPER</Typography>
+            {isReal && (
+              <Stack direction="row" spacing={0.25}>
+                <IconButton size="small" title="Bruk mal" onClick={(e) => setTplMenu(e.currentTarget)} sx={{ color: ws.textDim, p: 0.25 }}><AutoAwesomeMotion sx={{ fontSize: 15 }} /></IconButton>
+                <IconButton size="small" title="Ny mappe" onClick={newFolder} sx={{ color: ws.textDim, p: 0.25 }}><CreateNewFolder sx={{ fontSize: 16 }} /></IconButton>
+              </Stack>
+            )}
           </Stack>
+          {isReal && folders.length === 0 && (
+            <Box sx={{ px: 1, py: 1, mb: 0.5 }}>
+              <Typography sx={{ fontSize: 11.5, color: ws.textFaint, mb: 0.75 }}>Ingen mapper. Bruk en mal eller lag egne.</Typography>
+              <Button size="small" startIcon={<AutoAwesomeMotion sx={{ fontSize: 14 }} />} onClick={(e) => setTplMenu(e.currentTarget)} sx={{ color: ws.accent, textTransform: 'none', fontSize: 12 }}>Bruk mal</Button>
+            </Box>
+          )}
+          <Stack spacing={0.25}>
+            {folderList.map(([n, id]) => (
+              <Stack key={id || n} direction="row" alignItems="center" sx={{ px: 1, py: 0.5, borderRadius: 1, '&:hover .delf': { opacity: 1 } }}>
+                <Typography sx={{ fontSize: 12.5, flex: 1, color: ws.textDim }}>📁 {n}</Typography>
+                {id && <IconButton className="delf" size="small" onClick={() => delFolder(id)} sx={{ opacity: 0, color: ws.textFaint, p: 0.1 }}><Close sx={{ fontSize: 13 }} /></IconButton>}
+              </Stack>
+            ))}
+          </Stack>
+          <Menu open={!!tplMenu} anchorEl={tplMenu} onClose={() => setTplMenu(null)}>
+            {templates.map((t) => <MenuItem key={t.key} onClick={() => applyTemplate(t.key)}>{t.label} <Typography component="span" sx={{ ml: 1, fontSize: 11, color: ws.textFaint }}>({t.count})</Typography></MenuItem>)}
+          </Menu>
         </WsCard>
       </Box>
 
