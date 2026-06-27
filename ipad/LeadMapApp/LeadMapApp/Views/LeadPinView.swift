@@ -18,6 +18,14 @@ import SwiftUI
 struct LeadPinView: View {
     let lead: LeadModel
     let selected: Bool
+    @Environment(AppState.self) private var appState
+
+    /// True når pin nettopp dukket opp via real-time `lead.created`-event
+    /// (typisk fra batch-research). Driver en 3-sek "new-pin"-pulse over
+    /// den vanlige hot-pulse-ringen.
+    private var isNewlyArrived: Bool {
+        appState.recentlyAddedLeadIds.contains(lead.id)
+    }
 
     /// Returner true når vi skal vise stor pulserende lilla pin.
     /// Driver av `lead_temperature='hot'` (Intelligence Engine), score ≥90,
@@ -78,6 +86,13 @@ struct LeadPinView: View {
 
     var body: some View {
         ZStack {
+            if isNewlyArrived {
+                // Lilla brand-glow "just landed" — en stor pulserende
+                // ring som ligger under hot-pulsen og forsvinner etter 3s.
+                NewPinPulse(color: Color(red: 0.66, green: 0.32, blue: 0.99))
+                    .frame(width: selected ? 84 : 76, height: selected ? 84 : 76)
+                    .transition(.scale.combined(with: .opacity))
+            }
             if isHotLead {
                 HotPulseRing(color: statusColor)
                     .frame(width: selected ? 64 : 56, height: selected ? 64 : 56)
@@ -88,10 +103,19 @@ struct LeadPinView: View {
             // som gir kart-feedet sin lesbarhet på avstand.
             if let score = lead.leadScore {
                 scorePin(score: score)
+                    .scaleEffect(isNewlyArrived ? 1.18 : 1.0)
+                    .animation(.spring(response: 0.6, dampingFraction: 0.55),
+                               value: isNewlyArrived)
             } else if let logoUrl = lead.logoUrl, let url = URL(string: logoUrl) {
                 logoPin(url: url)
+                    .scaleEffect(isNewlyArrived ? 1.18 : 1.0)
+                    .animation(.spring(response: 0.6, dampingFraction: 0.55),
+                               value: isNewlyArrived)
             } else {
                 StatusPin(status: lead.status, selected: selected)
+                    .scaleEffect(isNewlyArrived ? 1.18 : 1.0)
+                    .animation(.spring(response: 0.6, dampingFraction: 0.55),
+                               value: isNewlyArrived)
             }
         }
         .accessibilityLabel(accessibilityLabel)
@@ -182,6 +206,37 @@ private struct HotPulseRing: View {
         .onAppear {
             withAnimation(.easeOut(duration: 1.4).repeatForever(autoreverses: false)) {
                 pulse = true
+            }
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+/// "New pin"-pulse — kraftigere enn HotPulseRing, men lever bare i ~3s.
+/// Tre konsentriske ringer som ekspanderer ut + en lilla glow-kjerne.
+/// Brukes når et nytt lead landet via WebSocket (batch-research-flyten).
+private struct NewPinPulse: View {
+    let color: Color
+    @State private var phase: CGFloat = 0
+
+    var body: some View {
+        ZStack {
+            // Ytterste ring — størst, mest fadet
+            Circle()
+                .stroke(color.opacity(0.8 - Double(phase) * 0.8),
+                        lineWidth: 3)
+                .scaleEffect(0.6 + phase * 1.0)
+            Circle()
+                .stroke(color.opacity(0.65 - Double(phase) * 0.6),
+                        lineWidth: 2)
+                .scaleEffect(0.55 + phase * 0.7)
+            Circle()
+                .fill(color.opacity(0.25 - Double(phase) * 0.2))
+                .scaleEffect(0.5 + phase * 0.5)
+        }
+        .onAppear {
+            withAnimation(.easeOut(duration: 1.2).repeatForever(autoreverses: false)) {
+                phase = 1.0
             }
         }
         .allowsHitTesting(false)

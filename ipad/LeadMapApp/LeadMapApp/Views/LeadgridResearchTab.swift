@@ -39,6 +39,7 @@ struct LeadgridResearchTab: View {
         case findLeads = "Finn leads"
         case brandScan = "Brand scan"
         case marketScan = "Markedsskann"
+        case chat = "Chat med Agent"
         var id: String { rawValue }
 
         var icon: String {
@@ -46,6 +47,7 @@ struct LeadgridResearchTab: View {
             case .findLeads:   return "sparkles.rectangle.stack.fill"
             case .brandScan:   return "link.circle.fill"
             case .marketScan:  return "chart.line.uptrend.xyaxis.circle.fill"
+            case .chat:        return "bubble.left.and.text.bubble.right.fill"
             }
         }
     }
@@ -54,20 +56,28 @@ struct LeadgridResearchTab: View {
         NavigationStack {
             VStack(spacing: 0) {
                 segmentPicker
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        switch selectedSegment {
-                        case .findLeads:
-                            FindLeadsSegment()
-                        case .brandScan:
-                            brandScanSegment
-                        case .marketScan:
-                            marketScanSegment
+                if selectedSegment == .chat {
+                    // Chat-flaten må fylle hele resterende plass — ingen
+                    // ScrollView-wrap (chat har sin egen scroll).
+                    LeadgridAgentChatView(projectId: appState.activeProjectId)
+                } else {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 16) {
+                            switch selectedSegment {
+                            case .findLeads:
+                                FindLeadsSegment()
+                            case .brandScan:
+                                brandScanSegment
+                            case .marketScan:
+                                marketScanSegment
+                            case .chat:
+                                EmptyView() // håndtert over
+                            }
                         }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 16)
+                        .padding(.bottom, 32)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 16)
-                    .padding(.bottom, 32)
                 }
             }
             .navigationTitle("Research")

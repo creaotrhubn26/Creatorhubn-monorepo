@@ -220,6 +220,15 @@ struct RootView: View {
                 LeadgridRealtimeClient.shared.disconnect()
             }
         }
+        // Lytt på alle WebSocket-events globalt så vi kan trigge
+        // pulse-animasjon på nye pins uavhengig av hvilken fane er åpen.
+        .onReceive(NotificationCenter.default.publisher(for: .leadgridRealtimeEvent)) { notif in
+            guard let info = notif.userInfo as? [String: String],
+                  info["type"] == "lead.created" else { return }
+            Task { @MainActor in
+                appState.handleLeadCreatedEvent(userInfo: info)
+            }
+        }
     }
 }
 

@@ -149,5 +149,16 @@ struct LeadgridWorkflowCreatedResponse: Decodable {
     let status: String?
 }
 
+/// Returneres av POST /api/leadgrid/workflows/:id/execute (bulk-utvidet).
+struct LeadgridWorkflowExecuteResponse: Decodable, Sendable {
+    let executionId: String?
+    let status: String?
+    let totalLeads: Int?
+    let triggeredAt: String?
+    let leadIds: [String]?
+    let ok: Bool?
+    let queued: Bool?
+}
+
 // AnyCodable er allerede definert i NotificationModel.swift som Decodable +
 // Sendable. Vi gjenbruker den her.

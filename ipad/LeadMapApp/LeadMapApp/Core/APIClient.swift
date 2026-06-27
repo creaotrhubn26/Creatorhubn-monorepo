@@ -3422,6 +3422,24 @@ extension APIClient {
         )
     }
 
+    /// Manuelt trigge workflow mot 1 eller flere leads (bulk-utvidelse).
+    /// Returnerer execution_id + count så UI kan vise progress og hente
+    /// per-eksekverings-status via `fetchWorkflowExecutions(_:)`.
+    @discardableResult
+    func executeWorkflowBulk(
+        _ id: String,
+        leadIds: [String],
+    ) async throws -> LeadgridWorkflowExecuteResponse {
+        let body: [String: Any] = [
+            "lead_ids": leadIds,
+        ]
+        let resp: LeadgridWorkflowExecuteResponse = try await post(
+            "/api/leadgrid/workflows/\(id)/execute",
+            body: body,
+        )
+        return resp
+    }
+
     /// Hent eksekverings-historikk.
     func fetchWorkflowExecutions(_ id: String, limit: Int = 50)
         async throws -> [LeadgridWorkflowExecution]
@@ -3430,5 +3448,204 @@ extension APIClient {
             "/api/leadgrid/workflows/\(id)/executions?limit=\(limit)"
         )
         return resp.executions
+    }
+}
+
+// MARK: - Role Room Agent threads (chat-flate)
+// HTTP-wrapping av backend/server/role-room-agent-threads-routes.ts.
+// Streaming returnerer en AsyncThrowingStream<AgentStreamEvent, Error>.
+
+extension APIClient {
+    /// Liste threads for et prosjekt.
+    func fetchAgentThreads(
+        projectId: String,
+        includeArchived: Bool = false,
+        limit: Int = 20,
+    ) async throws -> [AgentThread] {
+        var path = "/api/role-room/agent/threads?project_id=\(projectId)&limit=\(limit)"
+        if includeArchived { path += "&include_archived=true" }
+        let resp: AgentThreadsListResponse = try await get(path)
+        return resp.threads
+    }
+
+    /// Opprett ny thread.
+    func createAgentThread(
+        projectId: String,
+        title: String? = nil,
+    ) async throws -> AgentThread {
+        var body: [String: Any] = ["project_id": projectId]
+        if let title { body["title"] = title }
+        let resp: AgentThreadCreateResponse = try await post(
+            "/api/role-room/agent/threads",
+            body: body,
+        )
+        return resp.thread
+    }
+
+    /// Full thread + meldinger.
+    func fetchAgentThread(_ id: String) async throws -> AgentThreadDetailResponse {
+        try await get("/api/role-room/agent/threads/\(id)")
+    }
+
+    /// Soft-delete (archive).
+    func archiveAgentThread(_ id: String) async throws {
+        try await delete("/api/role-room/agent/threads/\(id)")
+    }
+
+    /// Endre tittel.
+    func renameAgentThread(_ id: String, title: String) async throws {
+        try await patch(
+            "/api/role-room/agent/threads/\(id)",
+            body: ["title": title],
+        )
+    }
+
+    /// Stream-meldinger fra Claude via SSE. Backend POSTer
+    /// /threads/:id/messages og holder forbindelsen åpen til Claude
+    /// er ferdig. Vi parser SSE-rammene linje-for-linje.
+    ///
+    /// Stream-events leveres som AgentStreamEvent. Stream avsluttes
+    /// rent på `.done` eller `.error` — caller kan også cancel'e via
+    /// AsyncThrowingStream.Continuation.onTermination.
+    nonisolated func streamAgentMessage(
+        threadId: String,
+        content: String,
+        requiredScope: String? = nil,
+    ) -> AsyncThrowingStream<AgentStreamEvent, Error> {
+        let token = self.token
+        let base = self.baseURL
+        return AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    let url = base.appendingPathComponent(
+                        "/api/role-room/agent/threads/\(threadId)/messages"
+                    )
+                    var req = URLRequest(url: url)
+                    req.httpMethod = "POST"
+                    req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                    req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                    req.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+                    var body: [String: Any] = ["content": content]
+                    if let requiredScope { body["required_scope"] = requiredScope }
+                    req.httpBody = try JSONSerialization.data(withJSONObject: body)
+                    req.timeoutInterval = 120
+
+                    let (bytes, response) = try await URLSession.shared.bytes(for: req)
+                    if let http = response as? HTTPURLResponse,
+                       !(200...299).contains(http.statusCode) {
+                        // Les én linje for å få med error-body.
+                        var preview = ""
+                        for try await line in bytes.lines {
+                            preview += line
+                            if preview.count > 600 { break }
+                        }
+                        if http.statusCode == 401 {
+                            throw APIError.unauthorized
+                        } else if http.statusCode == 403 {
+                            throw APIError.forbidden
+                        } else if http.statusCode == 429 {
+                            throw APIError.tooManyRequests
+                        }
+                        throw APIError.serverError(http.statusCode, preview)
+                    }
+
+                    var currentEvent: String = "message"
+                    var dataBuffer: String = ""
+
+                    for try await rawLine in bytes.lines {
+                        if Task.isCancelled { break }
+                        if rawLine.isEmpty {
+                            // SSE: tom linje = "fyr av eventet vi har samlet"
+                            if !dataBuffer.isEmpty {
+                                let evt = Self.parseSSE(
+                                    eventName: currentEvent,
+                                    data: dataBuffer,
+                                )
+                                continuation.yield(evt)
+                                switch evt {
+                                case .done, .error:
+                                    continuation.finish()
+                                    return
+                                default:
+                                    break
+                                }
+                            }
+                            currentEvent = "message"
+                            dataBuffer = ""
+                            continue
+                        }
+                        if rawLine.hasPrefix(":") { continue } // SSE comment
+                        if rawLine.hasPrefix("event:") {
+                            currentEvent = String(
+                                rawLine.dropFirst("event:".count)
+                            ).trimmingCharacters(in: .whitespaces)
+                        } else if rawLine.hasPrefix("data:") {
+                            let chunk = String(
+                                rawLine.dropFirst("data:".count)
+                            ).trimmingCharacters(in: .whitespaces)
+                            if dataBuffer.isEmpty {
+                                dataBuffer = chunk
+                            } else {
+                                dataBuffer += "\n" + chunk
+                            }
+                        }
+                    }
+                    // Flush any trailing event (defensive; backend ends m/ \n\n)
+                    if !dataBuffer.isEmpty {
+                        let evt = Self.parseSSE(
+                            eventName: currentEvent,
+                            data: dataBuffer,
+                        )
+                        continuation.yield(evt)
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in
+                task.cancel()
+            }
+        }
+    }
+
+    private static func parseSSE(eventName: String, data: String) -> AgentStreamEvent {
+        let bytes = Data(data.utf8)
+        let json = (try? JSONSerialization.jsonObject(with: bytes)) as? [String: Any] ?? [:]
+        switch eventName {
+        case "start":
+            return .start(
+                model: json["model"] as? String,
+                threadId: json["threadId"] as? String,
+            )
+        case "delta":
+            return .delta(text: (json["text"] as? String) ?? "")
+        case "tool_use":
+            let inputObj = json["input"] ?? [String: Any]()
+            let inputData = (try? JSONSerialization.data(
+                withJSONObject: inputObj,
+                options: [.sortedKeys, .prettyPrinted],
+            )) ?? Data()
+            return .toolUse(
+                id: (json["id"] as? String) ?? "",
+                name: (json["name"] as? String) ?? "",
+                inputJSON: String(data: inputData, encoding: .utf8) ?? "{}",
+            )
+        case "done":
+            var usage: AgentUsage?
+            if let u = json["usage"] as? [String: Any] {
+                let i = (u["inputTokens"] as? Int) ?? (u["input_tokens"] as? Int) ?? 0
+                let o = (u["outputTokens"] as? Int) ?? (u["output_tokens"] as? Int) ?? 0
+                usage = AgentUsage(inputTokens: i, outputTokens: o)
+            }
+            return .done(
+                threadId: json["threadId"] as? String,
+                usage: usage,
+            )
+        case "error":
+            return .error(message: (json["message"] as? String) ?? "Ukjent feil")
+        default:
+            return .unknown(name: eventName, raw: data)
+        }
     }
 }

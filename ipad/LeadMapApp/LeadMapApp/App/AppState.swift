@@ -12,6 +12,9 @@
 
 import Foundation
 import Observation
+#if canImport(UIKit)
+import UIKit
+#endif
 #if canImport(WidgetKit)
 import WidgetKit
 #endif
@@ -33,6 +36,67 @@ final class AppState {
 
     // Cached data (refreshes ved pull-down + periodisk)
     var leads: [LeadModel] = []
+    /// Lead-id-er som er kommet inn via real-time WebSocket-event
+    /// (typisk `lead.created` fra batch-research). Pin-viewen sjekker
+    /// dette settet og pulserer i 3 sek før vi tar id-en ut igjen.
+    /// Brukes kun visuelt — påvirker ikke filter/sort.
+    var recentlyAddedLeadIds: Set<String> = []
+    /// Lett mock-hook så tester kan injisere fake "just landed" leads.
+    func markLeadAsNew(_ leadId: String, duration: TimeInterval = 3.0) {
+        guard !leadId.isEmpty else { return }
+        recentlyAddedLeadIds.insert(leadId)
+        // AppState er @MainActor, så vi trenger ikke MainActor.run; Task
+        // arver MainActor-kontekst og pulse-flagget tas ut igjen rent på
+        // main-thread etter `duration` sekunder.
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(duration * 1_000_000_000))
+            self?.recentlyAddedLeadIds.remove(leadId)
+        }
+    }
+
+    /// Håndter et `lead.created`-WebSocket-event fra LeadgridRealtimeClient.
+    /// userInfo-formatet er flat-string-konvertert av klienten.
+    /// Effekt: trigger pulse-animasjon + sørger for at lead-en blir hentet
+    /// inn i `leads` (selv om listen ikke har refresh-et enda).
+    func handleLeadCreatedEvent(userInfo: [String: String]) {
+        guard userInfo["type"] == "lead.created" else { return }
+        let leadId = userInfo["data.lead_id"] ?? ""
+        guard !leadId.isEmpty else { return }
+        // Org-filter: hvis backend sendte org-id og den ikke matcher aktivt,
+        // ignorer (brukeren har byttet org siden eventet ble produsert).
+        if let orgIdInEvent = userInfo["data.organization_id"],
+           !orgIdInEvent.isEmpty,
+           let activeOrg = activeOrganizationId,
+           orgIdInEvent != activeOrg {
+            return
+        }
+        // Subtle haptic feedback når et nytt lead lander — kun hvis user er
+        // i appen (UIImpactFeedbackGenerator er no-op når app er i bg).
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
+
+        markLeadAsNew(leadId, duration: 3.0)
+
+        // Hvis lead-en ikke finnes i listen, trigger refresh slik at pinen
+        // dukker opp på kartet. Vi unngår å refresh på hver event ved å
+        // bare gjøre det når leadId mangler — listen blir konsolidert via
+        // refreshAll() etter en kort delay.
+        if !leads.contains(where: { $0.id == leadId }) {
+            Task { await refreshLeads() }
+        }
+    }
+
+    /// Kun lead-fetch — billigere enn full refreshAll. Brukes av real-time-
+    /// pulse-flyten for å unngå å refreshe metrics/calendar samtidig.
+    func refreshLeads() async {
+        guard let api else { return }
+        do {
+            let fresh = try await api.fetchLeads(projectId: activeProjectId)
+            self.leads = fresh
+        } catch {
+            print("[AppState] refreshLeads failed: \(error)")
+        }
+    }
     var competitors: [CompetitorModel] = []
     var metrics: MetricsModel?
     var calendar: [CalendarEvent] = []

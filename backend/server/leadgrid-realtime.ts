@@ -238,3 +238,44 @@ export function broadcastFollowupDue(
     data: payload,
   });
 }
+
+/**
+ * Broadcast et nytt lead som dukker opp på kartet — typisk fra
+ * batch-research, manuell add-lead, eller market-scan import.
+ * Driver pulse-animasjon på iPad-pinen så salgskonsulenten ser
+ * når et nytt lead lander uten å måtte refresh.
+ *
+ * `source` lar UI velge animasjon: 'batch' = subtil pulse, 'manual'
+ * = sterkere pulse, 'discovery' = ekstra glow. Frontend kan ignorere.
+ */
+export function broadcastLeadCreated(
+  orgId: string | null,
+  userId: string | null,
+  payload: {
+    lead_id: string;
+    organization_id?: string | null;
+    project_id?: string | null;
+    name?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
+    source: "batch" | "manual" | "discovery" | "market_scan" | "import";
+    batch_id?: string | null;
+    [key: string]: unknown;
+  },
+): void {
+  const data: Record<string, unknown> = { ...payload };
+  if (orgId) {
+    leadgridRealtime.emit({
+      type: "lead.created",
+      channel: `org:${orgId}`,
+      data,
+    });
+  }
+  if (userId) {
+    leadgridRealtime.emit({
+      type: "lead.created",
+      channel: `user:${userId}`,
+      data,
+    });
+  }
+}

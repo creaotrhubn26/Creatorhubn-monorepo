@@ -131,6 +131,7 @@ final class LeadgridRealtimeClient {
         for (k, v) in payload {
             if let s = v as? String { safe["data.\(k)"] = s }
             else if let n = v as? NSNumber { safe["data.\(k)"] = n.stringValue }
+            else if let b = v as? Bool { safe["data.\(k)"] = b ? "true" : "false" }
         }
         NotificationCenter.default.post(
             name: .leadgridRealtimeEvent,
@@ -167,6 +168,7 @@ final class LeadgridRealtimeClient {
 extension Notification.Name {
     /// Backend pushet et Leadgrid real-time event via WebSocket.
     /// userInfo: ["type": String, "channel": String, "data.<key>": String]
-    /// Mulige types: lead.scored, recommendation.created, nba.updated, followup.due
+    /// Mulige types: lead.scored, recommendation.created, nba.updated,
+    /// followup.due, lead.created, url_research.batch.progress.
     static let leadgridRealtimeEvent = Notification.Name("LeadMapApp.leadgridRealtimeEvent")
 }
