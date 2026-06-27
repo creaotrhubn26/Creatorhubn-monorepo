@@ -14,14 +14,17 @@ import CheckCircle from '@mui/icons-material/CheckCircle';
 import Search from '@mui/icons-material/Search';
 import { ws } from '../workspaceTheme';
 import { WsCard, WsSectionTitle, WsStat, WsPills, WsTag, WsImageGrid } from '../ui';
+import { useProjectImages } from '../useProjectImages';
 
 const CATS = [{ key: 'alle', label: 'Alle 86' }, { key: 'forb', label: 'Forberedelser 12' }, { key: 'vielse', label: 'Vielse 14' }, { key: 'portrett', label: 'Portretter 16' }, { key: 'golden', label: 'Golden hour 10' }, { key: 'detaljer', label: 'Detaljer 12' }, { key: 'fest', label: 'Fest 14' }];
 const PALETTE = [['Elfenben', '#F6F2EB'], ['Champagne', '#EAD9C1'], ['Salvie', '#A6B49A'], ['Sand', '#DCC9B1'], ['Mørk grønn', '#2E4A3B'], ['Gull', '#D4A017']];
 const STYLE_NOTES = ['Mykt naturlig lys', 'Varme hudtoner', 'Romantisk og tidløst', 'Dokumentarisk + editorial miks', 'Fokus på følelser og nærhet'];
 const CAPTURE = [['Ringer og detaljer', true], ['First look reaksjon', true], ['Slør i motlys', true], ['Reaksjoner under vielsen', true], ['Borddetaljer og dekk', false]];
 
-const MoodboardTab: React.FC<{ projectId: string }> = () => {
+const MoodboardTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [cat, setCat] = useState('alle');
+  const mood = useProjectImages(projectId, 'moodboard');
+  const shared = useProjectImages(projectId, 'moodboard-shared');
   return (
     <Stack direction="row" spacing={2.5} sx={{ alignItems: 'flex-start' }}>
       <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -43,7 +46,7 @@ const MoodboardTab: React.FC<{ projectId: string }> = () => {
             <WsPills items={CATS} value={cat} onChange={setCat} />
           </Stack>
           <TextField fullWidth size="small" placeholder="Søk i moodboardet…" InputProps={{ startAdornment: <Search sx={{ fontSize: 18, color: ws.textFaint, mr: 1 }} /> }} sx={{ mb: 1.5, '& .MuiOutlinedInput-root': { bgcolor: ws.panelInput, fontSize: 13 } }} />
-          <WsImageGrid columns={4} addLabel="Last opp bilde" />
+          <WsImageGrid columns={4} addLabel="Last opp bilde" images={mood.images} onUpload={mood.onUpload} />
         </WsCard>
 
         {/* Fargepalett + Stilnotater + Må fanges */}
@@ -64,7 +67,7 @@ const MoodboardTab: React.FC<{ projectId: string }> = () => {
 
         <WsCard>
           <WsSectionTitle title="Referanser delt med teamet" action={<Button size="small" sx={{ color: ws.accent, textTransform: 'none' }}>Se alle</Button>} />
-          <WsImageGrid columns={7} addLabel="Del bilde" />
+          <WsImageGrid columns={7} addLabel="Del bilde" images={shared.images} onUpload={shared.onUpload} />
         </WsCard>
       </Box>
 

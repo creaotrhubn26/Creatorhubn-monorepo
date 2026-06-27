@@ -18,6 +18,7 @@ import NotificationsActive from '@mui/icons-material/NotificationsActive';
 import Send from '@mui/icons-material/Send';
 import { ws } from '../workspaceTheme';
 import { WsCard, WsSectionTitle, WsRing, WsPills, WsTag, WsTable, WsImageGrid } from '../ui';
+import { useProjectImages } from '../useProjectImages';
 
 const ROWS = [
   { tid: '08:00 – 10:00', moment: 'Forberedelser', sub: 'Brud & brudgom', foto: ['Detaljer', 'Getting Ready'], video: ['A-cam', 'B-roll'], lyd: ['Lav mic', 'Room tone'], ansvarlig: 'Daniel (Foto)', status: ['Ferdig', 'green'], notat: 'Brud hjemme · Backm på hotell' },
@@ -40,8 +41,9 @@ const ALERTS = [
   { tone: 'blue', title: 'Transport til location 2', t: '09:50', sub: 'Avreise 15:30 fra kirken.' },
 ];
 
-const ProduksjonskartTab: React.FC<{ projectId: string }> = () => {
+const ProduksjonskartTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [view, setView] = useState('timeline');
+  const refs = useProjectImages(projectId, 'references');
   return (
     <Stack direction="row" spacing={2.5} sx={{ alignItems: 'flex-start' }}>
       <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -117,7 +119,7 @@ const ProduksjonskartTab: React.FC<{ projectId: string }> = () => {
           </WsCard>
           <WsCard>
             <WsSectionTitle title="Referanser & shots" action={<Button size="small" sx={{ color: ws.accent, textTransform: 'none' }}>Se alle</Button>} />
-            <WsImageGrid columns={4} addLabel="Legg til" />
+            <WsImageGrid columns={4} addLabel="Legg til" images={refs.images} onUpload={refs.onUpload} />
           </WsCard>
         </Box>
       </Box>

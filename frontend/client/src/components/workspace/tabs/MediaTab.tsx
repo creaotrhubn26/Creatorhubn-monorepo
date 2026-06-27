@@ -3,20 +3,37 @@
  * MediaTab — design #6 (Media library), dark CreatorHub.
  * Bibliotek-sidebar (typer/mapper) + opplastbart asset-rutenett + asset-detaljer.
  */
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Box, Stack, Typography, Button, TextField } from '@mui/material';
 import CloudUpload from '@mui/icons-material/CloudUpload';
 import Search from '@mui/icons-material/Search';
 import Star from '@mui/icons-material/Star';
+import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
 import { WsCard, WsTag, WsImageGrid } from '../ui';
+import { useProjectImages } from '../useProjectImages';
 
 const LIB = [['Alle medier', 2487], ['Bilder', 1732], ['Videoer', 624], ['Lyd', 98], ['Dokumenter', 33]];
 const FOLDERS = [['01_Brief', 12], ['02_Shotlists', 8], ['03_Photo_RAW', 1732], ['04_Video_A_Cam', 214], ['05_Video_B_Cam', 186], ['06_Drone', 67], ['07_Audio', 98], ['08_Selects', 156], ['09_Client_Review', 23], ['10_Final_Delivery', 0]];
 const QUICK = [['Unrated', 1205], ['Favoritter', 156], ['For Edit', 312], ['Client Review', 23], ['Highlights', 48], ['Audio Issues', 4]];
 
-const MediaTab: React.FC<{ projectId: string }> = () => {
+const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [lib, setLib] = useState('Alle medier');
+  const [assets, setAssets] = useState<any[]>([]);
+  const web = useProjectImages(projectId, 'media');
+  const isReal = projectId && projectId !== 'sample';
+
+  useEffect(() => {
+    if (!isReal) return;
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/media`)
+      .then((r: any) => setAssets(Array.isArray(r?.assets) ? r.assets : []))
+      .catch(() => {});
+  }, [projectId, isReal]);
+
+  // Ekte capture-assets (B2-thumbnails) + web-opplastede bilder, samme rutenett.
+  const captureItems = assets.filter((a) => a.previewUrl).map((a) => ({ id: a.id, url: a.previewUrl, label: a.filename }));
+  const gridImages = isReal ? [...captureItems, ...web.images] : [];
+
   return (
     <Stack direction="row" spacing={2} sx={{ alignItems: 'flex-start' }}>
       {/* Bibliotek-sidebar */}
@@ -43,7 +60,7 @@ const MediaTab: React.FC<{ projectId: string }> = () => {
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5, flexWrap: 'wrap', gap: 1 }}>
           <Box>
             <Typography sx={{ fontSize: 18, fontWeight: 800 }}>{lib}</Typography>
-            <Typography sx={{ fontSize: 12, color: ws.textDim }}>2 487 elementer</Typography>
+            <Typography sx={{ fontSize: 12, color: ws.textDim }}>{isReal ? `${gridImages.length} elementer` : '2 487 elementer'}</Typography>
           </Box>
           <Stack direction="row" spacing={1} alignItems="center">
             <TextField size="small" placeholder="Søk media…" InputProps={{ startAdornment: <Search sx={{ fontSize: 16, color: ws.textFaint, mr: 0.5 }} /> }} sx={{ width: 200, '& .MuiOutlinedInput-root': { bgcolor: ws.panelInput, fontSize: 13 } }} />
@@ -55,7 +72,7 @@ const MediaTab: React.FC<{ projectId: string }> = () => {
           {QUICK.map(([n, c]) => <WsTag key={n} label={`${n} ${c}`} tone="neutral" />)}
         </Stack>
 
-        <WsImageGrid columns={4} addLabel="Last opp media" />
+        <WsImageGrid columns={4} addLabel="Last opp media" images={gridImages} onUpload={web.onUpload} />
       </Box>
 
       {/* Asset-detaljer */}

@@ -19,7 +19,15 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import type express from "express";
+import crypto from "crypto";
+import multer from "multer";
 import { canAccessProject } from "./project-team-routes";
+import { signAssetReadUrl } from "./capture-upload-service";
+import { archiveToRoleRoomB2, presignRoleRoomB2Download, slugifyForKey } from "./b2-archive-helper";
+
+// Web-opplasting holdes i minne og skyves server-side til B2 (Role Room-bøtta).
+// 60 MB tak — store RAW/originaler skal uansett gjennom capture multipart-flyten.
+const mediaUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 60 * 1024 * 1024 } });
 
 export interface ProjectWorkspaceRoutesDeps {
   app: express.Application;
@@ -72,6 +80,19 @@ async function ensureSchema(pool: any): Promise<void> {
           updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
         CREATE INDEX IF NOT EXISTS idx_pd_project ON project_deliverables (project_id, order_index);
+
+        CREATE TABLE IF NOT EXISTS project_images (
+          id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          project_id   VARCHAR(64) NOT NULL,
+          panel        VARCHAR(40),
+          b2_key       TEXT NOT NULL,
+          label        VARCHAR(255),
+          content_type VARCHAR(80),
+          size_bytes   BIGINT,
+          uploaded_by  VARCHAR(64),
+          created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_pi_project ON project_images (project_id, panel, created_at DESC);
 
         CREATE TABLE IF NOT EXISTS project_split_shares (
           id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -265,6 +286,95 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
         })),
       });
     } catch (e) { console.error("GET project galleries", e); res.json({ galleries: [] }); }
+  });
+
+  // ─────────── Media — capture_assets fra B2 (presigned thumbnails) ───────────
+  // Leser prosjektets capture-session(er) → assets → presigned preview_key-URL.
+  // Dette er det EKTE mediabiblioteket (RAW/originaler skutt på iPad, lagret i B2).
+  app.get("/api/projects/:projectId/media", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const sessions = await pool.query(
+        `SELECT id FROM capture_sessions WHERE project_id = $1`,
+        [req.params.projectId],
+      ).catch(() => ({ rows: [] }));
+      const sessionIds = sessions.rows.map((s: any) => s.id);
+      if (sessionIds.length === 0) return res.json({ assets: [], hasSession: false });
+      const limit = Math.min(200, Math.max(1, parseInt(String(req.query.limit || "120"), 10) || 120));
+      const a = await pool.query(
+        `SELECT id, session_id, original_filename, mime, size_bytes, state, rating,
+                color_label, flagged_for_client, preview_key, created_at
+           FROM capture_assets
+          WHERE session_id = ANY($1::uuid[]) AND rejected IS NOT TRUE
+          ORDER BY created_at DESC LIMIT $2`,
+        [sessionIds, limit],
+      );
+      const assets = await Promise.all(a.rows.map(async (r: any) => ({
+        id: r.id,
+        filename: r.original_filename,
+        mime: r.mime,
+        sizeBytes: r.size_bytes ? Number(r.size_bytes) : null,
+        state: r.state,
+        rating: r.rating,
+        colorLabel: r.color_label,
+        flaggedForClient: r.flagged_for_client,
+        previewUrl: r.preview_key ? await signAssetReadUrl(r.preview_key) : null,
+        createdAt: r.created_at,
+      })));
+      res.json({ assets, hasSession: true });
+    } catch (e) { console.error("GET media", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  // ─────────── Web-bilder (moodboard/referanser/«legg til bilde») → B2 ───────────
+  app.get("/api/projects/:projectId/images", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureSchema(pool);
+      const panel = typeof req.query.panel === "string" ? req.query.panel : null;
+      const r = await pool.query(
+        `SELECT id, panel, b2_key, label, content_type, created_at FROM project_images
+          WHERE project_id = $1 ${panel ? "AND panel = $2" : ""}
+          ORDER BY created_at DESC`,
+        panel ? [req.params.projectId, panel] : [req.params.projectId],
+      );
+      const images = await Promise.all(r.rows.map(async (im: any) => ({
+        id: im.id, panel: im.panel, label: im.label,
+        url: await presignRoleRoomB2Download(im.b2_key, 3600),
+        createdAt: im.created_at,
+      })));
+      res.json({ images });
+    } catch (e) { console.error("GET images", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  app.post("/api/projects/:projectId/images", mediaUpload.single("file"), async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureSchema(pool);
+      const file = (req as any).file;
+      if (!file || !file.buffer) return res.status(400).json({ error: "file_required" });
+      const panel = typeof req.body?.panel === "string" ? req.body.panel : "media";
+      const label = typeof req.body?.label === "string" ? req.body.label : file.originalname;
+      const safeName = slugifyForKey(file.originalname || "bilde");
+      const key = `workspace/${req.params.projectId}/${panel}/${crypto.randomUUID()}-${safeName}`;
+      const result = await archiveToRoleRoomB2(key, file.buffer, file.mimetype || "application/octet-stream");
+      if (!result) return res.status(502).json({ error: "b2_upload_failed" });
+      const ins = await pool.query(
+        `INSERT INTO project_images (project_id, panel, b2_key, label, content_type, size_bytes, uploaded_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, created_at`,
+        [req.params.projectId, panel, key, label, file.mimetype || null, file.size || null, uid],
+      );
+      res.status(201).json({
+        id: ins.rows[0].id, panel, label,
+        url: await presignRoleRoomB2Download(key, 3600),
+        createdAt: ins.rows[0].created_at,
+      });
+    } catch (e) { console.error("POST images", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  app.delete("/api/projects/:projectId/images/:id", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try { await ensureSchema(pool); await pool.query(`DELETE FROM project_images WHERE id = $1 AND project_id = $2`, [req.params.id, req.params.projectId]); res.json({ success: true }); }
+    catch (e) { console.error("DELETE images", e); res.status(500).json({ error: "failed" }); }
   });
 
   // ─────────── Shotlist (LESER shot_lists wizarden skrev) ───────────

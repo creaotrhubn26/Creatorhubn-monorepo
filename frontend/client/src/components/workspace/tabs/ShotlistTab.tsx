@@ -13,6 +13,7 @@ import Star from '@mui/icons-material/Star';
 import ErrorOutline from '@mui/icons-material/ErrorOutline';
 import { ws } from '../workspaceTheme';
 import { WsCard, WsSectionTitle, WsStat, WsPills, WsTag, WsTable, WsImageGrid } from '../ui';
+import { useProjectImages } from '../useProjectImages';
 
 const CATS = [{ key: 'alle', label: 'Alle (68)' }, { key: 'forb', label: 'Forberedelser (10)' }, { key: 'vielse', label: 'Vielse (14)' }, { key: 'portrett', label: 'Portretter (10)' }, { key: 'fam', label: 'Familiebilder (8)' }, { key: 'golden', label: 'Golden hour (6)' }, { key: 'taler', label: 'Taler (7)' }, { key: 'fest', label: 'Fest (13)' }];
 const SHOTS = [
@@ -36,6 +37,7 @@ const STATUS_TONE: Record<string, string> = { ferdig: 'green', done: 'green', co
 const ShotlistTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [cat, setCat] = useState('alle');
   const [real, setReal] = useState<{ shots: any[]; meta: any } | null>(null);
+  const refs = useProjectImages(projectId, 'references');
 
   useEffect(() => {
     if (!projectId || projectId === 'sample') return;
@@ -94,7 +96,7 @@ const ShotlistTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '2fr 1fr' }, gap: 2, mt: 2 }}>
           <WsCard>
             <WsSectionTitle title="Referanser & inspirasjon" action={<Button size="small" sx={{ color: ws.accent, textTransform: 'none' }}>Se alle</Button>} />
-            <WsImageGrid columns={5} addLabel="Legg til referanse" />
+            <WsImageGrid columns={5} addLabel="Legg til referanse" images={refs.images} onUpload={refs.onUpload} />
           </WsCard>
           <WsCard>
             <WsSectionTitle title="Må huskes" action={<Button size="small" sx={{ color: ws.accent, textTransform: 'none' }}>Rediger</Button>} />
