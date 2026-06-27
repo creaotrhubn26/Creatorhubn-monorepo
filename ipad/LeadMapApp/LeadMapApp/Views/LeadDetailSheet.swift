@@ -35,6 +35,12 @@ struct LeadDetailSheet: View {
     /// Pops opp som sheet når brukeren trykker "Research" på pin-detail.
     @State private var showResearch = false
 
+    // ── Workflows (PR feat/leadmap-ipad-pulse-workflow-chat) ───────────
+    /// Aktive workflows i orgen — vises som "Kjør nå"-handlinger på lead.
+    @State private var availableWorkflows: [LeadgridWorkflow] = []
+    @State private var workflowsLoaded = false
+    @State private var workflowRunSheet: LeadgridWorkflow?
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -51,6 +57,7 @@ struct LeadDetailSheet: View {
                     }
                     statusButtons
                     leadgridSection
+                    workflowsSection
                     actionGrid
                 }
                 .padding()
@@ -66,6 +73,13 @@ struct LeadDetailSheet: View {
                 await loadEnrichment()
                 await loadPitchAvailability()
                 await markSeenIfAssigned()
+                await loadAvailableWorkflows()
+            }
+            .sheet(item: $workflowRunSheet) { wf in
+                LeadgridWorkflowRunSheet(
+                    workflow: wf,
+                    preselectedLeadIds: [lead.id],
+                )
             }
             .sheet(isPresented: $showLeadgridStatusChanger) {
                 if let api = appState.api {
@@ -398,7 +412,85 @@ struct LeadDetailSheet: View {
         }
     }
 
+    // ── Workflows-seksjon — "Kjør nå"-launcher for denne lead-en ────────
+    @ViewBuilder
+    private var workflowsSection: some View {
+        if !workflowsLoaded {
+            EmptyView()
+        } else if availableWorkflows.isEmpty {
+            EmptyView()
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Label("Workflows", systemImage: "bolt.badge.automatic.fill")
+                        .font(.caption.bold())
+                        .foregroundStyle(Color(red: 0.58, green: 0.20, blue: 0.92))
+                    Spacer()
+                    Text("\(availableWorkflows.count) aktive")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                VStack(spacing: 6) {
+                    ForEach(availableWorkflows.prefix(5)) { wf in
+                        Button {
+                            workflowRunSheet = wf
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "bolt.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(Color(red: 0.58, green: 0.20, blue: 0.92))
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(wf.name).font(.callout.weight(.medium))
+                                    Text("Trigger: \(wf.triggerType)")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Text("Kjør nå")
+                                    .font(.caption.bold())
+                                    .padding(.horizontal, 8).padding(.vertical, 3)
+                                    .background(Color(red: 0.58, green: 0.20, blue: 0.92).opacity(0.18),
+                                                in: Capsule())
+                                    .foregroundStyle(Color(red: 0.58, green: 0.20, blue: 0.92))
+                            }
+                            .padding(8)
+                            .background(Color(.secondarySystemBackground),
+                                         in: RoundedRectangle(cornerRadius: 8))
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .padding(12)
+            .background(Color(red: 0.58, green: 0.20, blue: 0.92).opacity(0.06),
+                         in: RoundedRectangle(cornerRadius: 12))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .strokeBorder(Color(red: 0.58, green: 0.20, blue: 0.92).opacity(0.20))
+            )
+        }
+    }
+
     // MARK: - Helpers
+
+    private func loadAvailableWorkflows() async {
+        guard let api = appState.api else {
+            workflowsLoaded = true
+            return
+        }
+        do {
+            let all = try await api.fetchWorkflows(activeOnly: true)
+            // Best-effort: filtrer ut workflows som åpenbart ikke kan
+            // trigges manuelt (f.eks. webhook-baserte). Backend returnerer
+            // ikke et "manually_triggerable"-flagg, så vi viser alle
+            // aktive — brukeren ser uansett trigger-type i kortet.
+            availableWorkflows = all.filter { $0.isActive }
+        } catch {
+            // Stille — workflows er ikke kritisk for lead-detail.
+        }
+        workflowsLoaded = true
+    }
 
     private func loadEnrichment() async {
         guard let api = appState.api else { return }

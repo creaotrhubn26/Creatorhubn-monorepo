@@ -17,6 +17,7 @@ struct LeadgridWorkflowDetailSheet: View {
     @State private var isActive: Bool
     @State private var actionPending = false
     @State private var feedback: String?
+    @State private var runSheetOpen = false
 
     init(
         workflow: LeadgridWorkflow,
@@ -68,9 +69,17 @@ struct LeadgridWorkflowDetailSheet: View {
                     }
                     .disabled(actionPending)
                     Button {
+                        runSheetOpen = true
+                    } label: {
+                        Label("Kjør nå (velg leads)", systemImage: "bolt.fill")
+                    }
+                    .disabled(!isActive)
+                    Button {
                         Task { await runExecute() }
                     } label: {
-                        Label("Eksekver nå", systemImage: "bolt.fill")
+                        Label("Kjør én gang (uten lead)",
+                              systemImage: "play.rectangle.fill")
+                            .font(.caption)
                     }
                     .disabled(actionPending || !isActive)
                 }
@@ -96,6 +105,15 @@ struct LeadgridWorkflowDetailSheet: View {
                 }
             }
             .task { await loadExecutions() }
+            .sheet(isPresented: $runSheetOpen) {
+                LeadgridWorkflowRunSheet(
+                    workflow: workflow,
+                    onCompleted: {
+                        await loadExecutions()
+                        await onUpdate()
+                    }
+                )
+            }
         }
     }
 

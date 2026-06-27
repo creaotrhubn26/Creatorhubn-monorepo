@@ -561,6 +561,7 @@ import { registerLeadgridDiscoveryConfigRoutes } from "./leadgrid-discovery-conf
 import { registerLeadgridIndustriesRoutes } from "./leadgrid-industries-routes.js";
 import { registerLeadgridDealsRoutes } from "./leadgrid-deals-routes.js";
 import { registerLeadgridWorkflowRoutes } from "./leadgrid-workflow-routes.js";
+import { registerRoleRoomAgentThreadsRoutes } from "./role-room-agent-threads-routes.js";
 import { registerLeadgridWorkflowWebhookRoutes } from "./leadgrid-workflow-webhooks-routes.js";
 import { registerLeadgridWorkflowTriggerRoutes } from "./leadgrid-workflow-triggers-routes.js";
 import { registerLeadgridWebhookRotationRoutes } from "./leadgrid-webhook-rotation-routes.js";
@@ -24677,6 +24678,12 @@ registerLeadgridWorkflowRoutes({ app, pool, activeSessions });
 // meeting.booked/no_show, proposal.opened, contract.signed).
 registerLeadgridWorkflowWebhookRoutes({ app, pool, activeSessions });
 registerLeadgridWorkflowTriggerRoutes({ app, pool, activeSessions });
+// Role Room Agent threads HTTP-eksponering for iPad-chat (genjenbruker
+// eksisterende threads-service + SSE-streaming i role-room-agent-stream).
+// GET/POST/DELETE /api/role-room/agent/threads[/:id] + POST :id/messages
+// for SSE streaming. Web-chatten bruker /projects/:id/agent/stream-routen
+// fortsatt — denne tilbyr en tråd-først URL-form for native klienter.
+registerRoleRoomAgentThreadsRoutes({ app, pool, activeSessions });
 // Webhook-secret-rotering m/ 7-dagers grace-period (mig 322).
 // POST /webhooks/:id/rotate-secret + cron /expire-old-webhook-secrets.
 registerLeadgridWebhookRotationRoutes({ app, pool, activeSessions });

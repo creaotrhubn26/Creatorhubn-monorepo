@@ -31,7 +31,7 @@
 
 import type { Pool } from "pg";
 import { runUrlResearch as defaultRunUrlResearch } from "./leadgrid-url-research-routes.js";
-import { leadgridRealtime } from "./leadgrid-realtime.js";
+import { leadgridRealtime, broadcastLeadCreated } from "./leadgrid-realtime.js";
 
 // =====================================================================
 // Konfigurasjon
@@ -635,6 +635,25 @@ async function processItem(
         leadId: item.draft_lead_id,
         confidence: result.location.confidence,
       });
+      // Fire-and-forget: send eget `lead.created`-event så iPad-kartet
+      // kan trigge pulse-animasjon på den nye pinen. Kun når vi faktisk
+      // har koordinater — pin uten lat/lng havner aldri på kartet uansett.
+      if (hasPin && item.draft_lead_id) {
+        try {
+          broadcastLeadCreated(orgId, userId, {
+            lead_id: item.draft_lead_id,
+            organization_id: orgId,
+            name: result.companyProfile?.name ?? null,
+            latitude: result.location.latitude ?? null,
+            longitude: result.location.longitude ?? null,
+            source: "batch",
+            batch_id: batchId,
+            confidence: result.location.confidence,
+          });
+        } catch {
+          /* aldri blokker batchen på broadcast-feil */
+        }
+      }
       return; // success — bryt retry-loop
     } catch (err) {
       const msg = (err as Error).message ?? String(err);

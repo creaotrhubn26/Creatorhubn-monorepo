@@ -555,34 +555,74 @@ export function registerLeadgridWorkflowRoutes(deps: Deps): void {
           res.status(400).json({ error: "workflow_inactive" });
           return;
         }
-        const leadId =
+        // Body kan inneholde:
+        //   - lead_id / leadId        (single-lead, eldre format)
+        //   - lead_ids / leadIds      (array av lead-ids, fra iPad-bulk-UI)
+        // Vi normaliserer til en array internt. Tom array = ingen lead-binding
+        // (workflow kjøres én gang uten leadId).
+        const singleLeadId =
           (req.body?.lead_id as string | undefined) ??
           (req.body?.leadId as string | undefined) ??
           null;
-        const event: WorkflowEvent = {
+        const arrayCandidate =
+          (req.body?.lead_ids as unknown) ?? (req.body?.leadIds as unknown);
+        const leadIds: string[] = Array.isArray(arrayCandidate)
+          ? arrayCandidate
+              .filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+              .map((x) => x.trim())
+              .slice(0, 100) // hard-cap så vi ikke aksepterer 10 000 IDs
+          : singleLeadId
+            ? [singleLeadId]
+            : [];
+
+        const triggeredAt = new Date().toISOString();
+        const totalLeads = Math.max(leadIds.length, 1);
+
+        const buildEvent = (leadId: string | null): WorkflowEvent => ({
           pool,
           organizationId: row.organization_id,
           type: "manual",
           leadId,
           actorUserId: session.userId,
-          data: { source: "manual_execute" },
-        };
-        // Eksekverer asynkront, returnerer execution-id direkte
-        void executeWorkflow(
-          pool,
-          {
-            id: row.id,
-            organization_id: row.organization_id,
-            name: row.name,
-            trigger_type: row.trigger_type,
-            trigger_config: row.trigger_config as WorkflowEvent["data"] as never,
-            conditions: row.conditions as never,
-            actions: row.actions as never,
-            is_active: row.is_active,
+          data: {
+            source: "manual_execute",
+            bulk: leadIds.length > 1,
+            total: leadIds.length,
+            triggered_at: triggeredAt,
           },
-          event,
-        );
-        res.json({ ok: true, queued: true });
+        });
+        const wfDef = {
+          id: row.id,
+          organization_id: row.organization_id,
+          name: row.name,
+          trigger_type: row.trigger_type,
+          trigger_config: row.trigger_config as WorkflowEvent["data"] as never,
+          conditions: row.conditions as never,
+          actions: row.actions as never,
+          is_active: row.is_active,
+        };
+        if (leadIds.length === 0) {
+          // Bevarer eldre oppførsel — én eksekvering uten lead-binding.
+          void executeWorkflow(pool, wfDef, buildEvent(null));
+        } else {
+          for (const lid of leadIds) {
+            void executeWorkflow(pool, wfDef, buildEvent(lid));
+          }
+        }
+        // iPad bulk-UI forventer en "execution_id"-shape; bygg en
+        // deterministisk pseudo-id basert på workflow + tidspunkt så
+        // UI kan vise progress (selv om hver per-lead-eksekvering
+        // har sin egen id i leadgrid_workflow_executions).
+        const executionId = `${row.id}:${Date.parse(triggeredAt)}`;
+        res.json({
+          ok: true,
+          queued: true,
+          execution_id: executionId,
+          status: "running",
+          total_leads: totalLeads,
+          triggered_at: triggeredAt,
+          lead_ids: leadIds,
+        });
       } catch (err) {
         console.error("[workflows POST :id/execute]", err);
         res.status(500).json({ error: "execute_failed" });
