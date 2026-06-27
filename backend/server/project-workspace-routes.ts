@@ -632,6 +632,41 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     } catch (e) { console.error("GET team-sync", e); res.json({ pct: 0, online: 0, readiness: [] }); }
   });
 
+  // ─────────── One Desk DIT-backup-status (RAID/B2-speiling + hash-verifisering) ───
+  // Surfacer One Desk sin backup-jobb-status: destinasjoner + hash-verifiserte
+  // kopier per fil (dit_backup_jobs) + hvilke One Desk-maskiner som jobber.
+  app.get("/api/projects/:projectId/dit-status", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const pid = req.params.projectId;
+      const [dest, jobs] = await Promise.all([
+        pool.query(`SELECT id, destination_type, label, storage_type, status, cloud_provider FROM dit_destinations WHERE project_id = $1 ORDER BY priority NULLS LAST, created_at`, [pid]).catch(() => ({ rows: [] })),
+        pool.query(
+          `SELECT count(*)::int total,
+                  count(*) FILTER (WHERE status = 'completed')::int completed,
+                  count(*) FILTER (WHERE status IN ('copying','running','started'))::int copying,
+                  count(*) FILTER (WHERE status = 'failed')::int failed,
+                  count(*) FILTER (WHERE status = 'completed' AND dest_hash IS NOT NULL AND dest_hash = source_hash)::int verified,
+                  COALESCE(sum(bytes_copied),0)::bigint bytes,
+                  max(completed_at) last_completed,
+                  array_agg(DISTINCT helper_hostname) FILTER (WHERE helper_hostname IS NOT NULL) hosts
+             FROM dit_backup_jobs WHERE project_id = $1`,
+          [pid],
+        ).catch(() => ({ rows: [{}] })),
+      ]);
+      const j = jobs.rows[0] || {};
+      res.json({
+        hasBackup: (dest.rows.length > 0) || (j.total || 0) > 0,
+        destinations: dest.rows.map((d: any) => ({ id: d.id, type: d.destination_type, label: d.label, storage: d.storage_type, status: d.status, cloud: d.cloud_provider })),
+        jobs: {
+          total: j.total || 0, completed: j.completed || 0, copying: j.copying || 0, failed: j.failed || 0,
+          verified: j.verified || 0, bytes: j.bytes ? Number(j.bytes) : 0, lastCompleted: j.last_completed || null,
+        },
+        oneDeskHosts: Array.isArray(j.hosts) ? j.hosts.filter(Boolean) : [],
+      });
+    } catch (e) { console.error("GET dit-status", e); res.json({ hasBackup: false }); }
+  });
+
   // ─────────── Capture & backup-status (iPad CaptureApp + One Desk) ───────────
   // Sømløst: samme konto ser samme prosjekt/session/assets overalt. Dette
   // surfacer LIVE-tilstanden i workspacet: aktiv capture-session (skyter nå?),
