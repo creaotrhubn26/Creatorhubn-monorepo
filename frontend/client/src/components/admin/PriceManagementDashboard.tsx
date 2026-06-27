@@ -1360,7 +1360,7 @@ export default function PriceManagementDashboard({
             <Typography variant="overline" sx={{ color: '#ff8c00', fontWeight: 700, letterSpacing: '0.08em' }}>
               CreatorHub Commerce
             </Typography>
-            <Typography variant="h4" sx={{ mt: 0.5, fontWeight: 700, letterSpacing: '-0.03em', color: '#ffffff' }}>
+            <Typography variant="h4" component="h1" sx={{ mt: 0.5, fontWeight: 700, letterSpacing: '-0.03em', color: '#ffffff' }}>
               Prisstyring
             </Typography>
             <Typography variant="body2" sx={{ mt: 1, color: 'rgba(255,255,255,0.6)', lineHeight: 1.7 }}>
@@ -1625,7 +1625,7 @@ export default function PriceManagementDashboard({
                       <Typography variant="h6" sx={{ fontWeight: 'bold', flex: 1, color: themeColors.primary }}>
                         {feature.name}
                       </Typography>
-                      <Switch checked={isEnabled} onChange={() => void toggleFeature(feature.id)} color="primary" />
+                      <Switch checked={isEnabled} onChange={() => void toggleFeature(feature.id)} color="primary" inputProps={{ 'aria-label': `Slå ${feature.name} av eller på` }} />
                     </Box>
 
                     <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -1682,8 +1682,8 @@ export default function PriceManagementDashboard({
                   sx={{ mb: 2.5 }}
                 >
                   <Box>
-                    <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', fontWeight: 700 }}>
-                      <MoneyIcon sx={{ mr: 1 }} />
+                    <Typography variant="h6" component="h2" sx={{ display: 'flex', alignItems: 'center', fontWeight: 700 }}>
+                      <MoneyIcon aria-hidden sx={{ mr: 1 }} />
                       Selvbetjente abonnementer
                     </Typography>
                     <Typography variant="body2" sx={{ mt: 0.5, color: 'text.secondary' }}>
@@ -1871,7 +1871,7 @@ export default function PriceManagementDashboard({
           <Grid size={{ xs: 12, md: 4 }}>
             <Card sx={priceManagementSurfaceSx}>
               <CardContent sx={{ p: { xs: 2.25, md: 3 } }}>
-                <Typography variant="h6" sx={{ mb: 1.5, fontWeight: 700 }}>
+                <Typography variant="h6" component="h2" sx={{ mb: 1.5, fontWeight: 700 }}>
                   Publiseringsstatus
                 </Typography>
                 <Stack spacing={1.25}>
@@ -1928,8 +1928,8 @@ export default function PriceManagementDashboard({
                   sx={{ mb: 2.5 }}
                 >
                   <Box>
-                    <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', fontWeight: 700 }}>
-                      <EmailIcon sx={{ mr: 1 }} />
+                    <Typography variant="h6" component="h2" sx={{ display: 'flex', alignItems: 'center', fontWeight: 700 }}>
+                      <EmailIcon aria-hidden sx={{ mr: 1 }} />
                       CreatorHub e-postmaler
                     </Typography>
                     <Typography variant="body2" sx={{ mt: 0.5, color: 'text.secondary' }}>
@@ -2077,7 +2077,7 @@ export default function PriceManagementDashboard({
           <Grid size={{ xs: 12, lg: 7 }}>
             <Card sx={{ ...priceManagementSurfaceSx, height: '100%' }}>
               <CardContent sx={{ p: { xs: 2.25, md: 3 } }}>
-                <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>
+                <Typography variant="h6" component="h2" sx={{ fontWeight: 700, mb: 2 }}>
                   Når disse mailene går ut
                 </Typography>
                 <Stack spacing={1.5}>
@@ -2139,7 +2139,7 @@ export default function PriceManagementDashboard({
                   sx={{ mb: 2.5 }}
                 >
                   <Box>
-                    <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                    <Typography variant="h6" component="h2" sx={{ fontWeight: 700 }}>
                       Maler som går ut automatisk
                     </Typography>
                     <Typography variant="body2" sx={{ mt: 0.5, color: 'text.secondary' }}>
@@ -2258,7 +2258,7 @@ export default function PriceManagementDashboard({
           <Grid size={{ xs: 12 }}>
             <Card sx={priceManagementSurfaceSx}>
               <CardContent sx={{ p: { xs: 2.25, md: 3 } }}>
-                <Typography variant="h6" sx={{ mb: 2, color: themeColors.primary }}>
+                <Typography variant="h6" component="h2" sx={{ mb: 2, color: themeColors.primary }}>
                   Top Features by Usage
                 </Typography>
                 <AdminTableContainer ariaLabel="Top features by usage">
@@ -2302,8 +2302,8 @@ export default function PriceManagementDashboard({
           <Grid size={{ xs: 12, md: 6 }}>
             <Card sx={priceManagementSurfaceSx}>
               <CardContent sx={{ p: { xs: 2.25, md: 3 } }}>
-                <Typography variant="h6" sx={{ mb: 3, display: 'flex', alignItems: 'center', color: themeColors.primary }}>
-                  <EnterpriseIcon sx={{ mr: 1 }} />
+                <Typography variant="h6" component="h2" sx={{ mb: 3, display: 'flex', alignItems: 'center', color: themeColors.primary }}>
+                  <EnterpriseIcon aria-hidden sx={{ mr: 1 }} />
                   Enterprise Basispriser (eks. MVA)
                 </Typography>
                 <TextField
@@ -2342,8 +2342,8 @@ export default function PriceManagementDashboard({
           <Grid size={{ xs: 12, md: 6 }}>
             <Card sx={priceManagementSurfaceSx}>
               <CardContent sx={{ p: { xs: 2.25, md: 3 } }}>
-                <Typography variant="h6" sx={{ mb: 3, display: 'flex', alignItems: 'center', color: themeColors.primary }}>
-                  <PeopleIcon sx={{ mr: 1 }} />
+                <Typography variant="h6" component="h2" sx={{ mb: 3, display: 'flex', alignItems: 'center', color: themeColors.primary }}>
+                  <PeopleIcon aria-hidden sx={{ mr: 1 }} />
                   Pris per ekstra bruker (eks. MVA)
                 </Typography>
                 <TextField
@@ -2372,7 +2372,7 @@ export default function PriceManagementDashboard({
           <Grid size={{ xs: 12 }}>
             <Card sx={priceManagementSurfaceSx}>
               <CardContent sx={{ p: { xs: 2.25, md: 3 } }}>
-                <Typography variant="h6" sx={{ mb: 3, color: themeColors.primary }}>
+                <Typography variant="h6" component="h2" sx={{ mb: 3, color: themeColors.primary }}>
                   Volumrabatter
                 </Typography>
                 <AdminTableContainer ariaLabel="Volumrabatter">
@@ -2397,6 +2397,7 @@ export default function PriceManagementDashboard({
                             <TextField
                               type="number"
                               size="small"
+                              aria-label={`Minimum brukere for rabattnivå ${index + 1}`}
                               value={discount.minUsers}
                               onChange={(event) => {
                                 const value = Number(event.target.value);
@@ -2413,6 +2414,7 @@ export default function PriceManagementDashboard({
                             <TextField
                               type="number"
                               size="small"
+                              aria-label={`Rabatt i prosent for rabattnivå ${index + 1}`}
                               value={discount.discount}
                               onChange={(event) => {
                                 const value = Number(event.target.value);

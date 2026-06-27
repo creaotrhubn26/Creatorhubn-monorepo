@@ -352,8 +352,8 @@ export default function AdvancedNotesManager({
     <Box className={className} sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* Header */}
       <Box sx={{ p: 3, borderBottom: 1, borderColor: 'divider' }}>
-        <Typography variant="h4" sx={{ fontWeight: 700, mb: 2, display: 'flex', alignItems: 'center', gap: 1, color: themeColors.primary }}>
-          <Notes color="primary" />
+        <Typography variant="h4" component="h2" sx={{ fontWeight: 700, mb: 2, display: 'flex', alignItems: 'center', gap: 1, color: themeColors.primary }}>
+          <Notes color="primary" aria-hidden />
           Stor Notatsløsning - CreatorHub Norge
         </Typography>
         
@@ -419,11 +419,11 @@ export default function AdvancedNotesManager({
                 {/* Note Header */}
                 <CardContent sx={{ pb: 1, ...theming.getThemedCardSx() }}>
                   <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 2 }}>
-                    <Typography variant="h6" sx={{ flex: 1, fontWeight: 600, color: themeColors.primary }}>
+                    <Typography variant="h6" component="h3" sx={{ flex: 1, fontWeight: 600, color: themeColors.primary }}>
                       {note.title}
                     </Typography>
                     <Box sx={{ display: 'flex', gap: 0.5 }}>
-                      <IconButton size="small" onClick={() => handleToggleStar(note.id)}>
+                      <IconButton size="small" onClick={() => handleToggleStar(note.id)} aria-label={note.isStarred ? 'Fjern stjernemarkering' : 'Stjernemarker notat'}>
                         {note.isStarred ? <Star color="warning" /> : <StarBorder />}
                       </IconButton>
                       {note.isPrivate && <Lock fontSize="small" color="action" />}
@@ -489,16 +489,17 @@ export default function AdvancedNotesManager({
                       {new Date(note.updatedAt).toLocaleDateString('no')}
                     </Typography>
                     <Box>
-                      <IconButton size="small" onClick={() => handleSyncToGoogleDrive(note.id)}>
+                      <IconButton size="small" onClick={() => handleSyncToGoogleDrive(note.id)} aria-label="Synkroniser til Google Drive">
                         <CloudSync />
                       </IconButton>
-                      <IconButton size="small" onClick={() => openEditDialog(note)}>
+                      <IconButton size="small" onClick={() => openEditDialog(note)} aria-label="Rediger notat">
                         <Edit />
                       </IconButton>
-                      <IconButton 
-                        size="small" 
+                      <IconButton
+                        size="small"
                         onClick={() => handleDeleteNote(note.id)}
                         color="error"
+                        aria-label="Slett notat"
                       >
                         <Delete />
                       </IconButton>

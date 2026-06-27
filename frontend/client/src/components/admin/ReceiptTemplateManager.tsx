@@ -516,13 +516,14 @@ export default function ReceiptTemplateManager() {
                       </TableCell>
                       <TableCell>
                         <Stack direction="row" spacing={1}>
-                          <IconButton size="small" onClick={() => openEditDialog(template)}>
+                          <IconButton aria-label="Rediger template" size="small" onClick={() => openEditDialog(template)}>
                             <Edit fontSize="small" />
                           </IconButton>
-                          <IconButton size="small" onClick={() => openPreview(template)}>
+                          <IconButton aria-label="Forhåndsvis template" size="small" onClick={() => openPreview(template)}>
                             <Preview fontSize="small" />
                           </IconButton>
                           <IconButton
+                            aria-label="Send testmail"
                             size="small"
                             onClick={() => {
                               if (template.id) {
@@ -535,6 +536,7 @@ export default function ReceiptTemplateManager() {
                             <Send fontSize="small" />
                           </IconButton>
                           <IconButton
+                            aria-label="Slett template"
                             size="small"
                             onClick={() => {
                               if (template.id) {

@@ -313,19 +313,19 @@ export default function AdminNotificationManager() {
         >
           {isSupported && (
             <Tooltip title="Push-varsler innstillinger">
-              <IconButton onClick={() => setPushSettingsOpen(true)} color={pushEnabled ? 'primary' : 'default'}>
+              <IconButton aria-label="Push-varsler innstillinger" onClick={() => setPushSettingsOpen(true)} color={pushEnabled ? 'primary' : 'default'}>
                 {pushEnabled ? <NotificationsActive /> : <Notifications />}
               </IconButton>
             </Tooltip>
           )}
-          <Typography variant="h4" sx={{ fontWeight: 600, color: themeColors.primary }}>
+          <Typography variant="h4" component="h2" sx={{ fontWeight: 600, color: themeColors.primary }}>
             <Notifications sx={{ mr: 2, verticalAlign: 'middle' }} />
             Admin Notifikasjoner
           </Typography>
           <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
             {isSupported && (
               <Tooltip title="Push-varsler innstillinger">
-                <IconButton onClick={() => setPushSettingsOpen(true)} color={pushEnabled ? 'primary' : 'default'}>
+                <IconButton aria-label="Push-varsler innstillinger" onClick={() => setPushSettingsOpen(true)} color={pushEnabled ? 'primary' : 'default'}>
                   {pushEnabled ? <NotificationsActive /> : <Notifications />}
                 </IconButton>
               </Tooltip>
@@ -529,6 +529,7 @@ export default function AdminNotificationManager() {
                       <ListItemSecondaryAction>
                         <Box sx={{ display: 'flex', gap: 1 }}>
                           <IconButton
+                            aria-label={notification.isActive ? 'Deaktiver notifikasjon' : 'Aktiver notifikasjon'}
                             onClick={() =>
                               toggleNotificationMutation.mutate({
                                 id: notification.id,
@@ -539,10 +540,11 @@ export default function AdminNotificationManager() {
                           >
                             {notification.isActive ? theming.getThemedIcon('visibility') : theming.getThemedIcon('visibilityOff')}
                           </IconButton>
-                          <IconButton onClick={() => handleEdit(notification)}>
+                          <IconButton aria-label="Rediger notifikasjon" onClick={() => handleEdit(notification)}>
                             {theming.getThemedIcon('edit')}
                           </IconButton>
                           <IconButton
+                            aria-label="Slett notifikasjon"
                             onClick={() => deleteNotificationMutation.mutate(notification.id)}
                             color="error"
                           >
@@ -578,6 +580,7 @@ export default function AdminNotificationManager() {
               {editingNotification ? 'Rediger Notifikasjon' : 'Opprett Ny Notifikasjon'}
             </Typography>
             <IconButton
+              aria-label="Lukk dialog"
               onClick={() => {
                 setShowCreateDialog(false);
                 resetForm();

@@ -347,7 +347,7 @@ const ProductManager: React.FC<ProductManagerProps> = ({
 
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h4" gutterBottom sx={{ color: theming.colors.primary }}>
+      <Typography variant="h4" component="h2" gutterBottom sx={{ color: theming.colors.primary }}>
         Produktadministrasjon
       </Typography>
 
@@ -473,7 +473,7 @@ const ProductManager: React.FC<ProductManagerProps> = ({
                         borderRadius: 1,
                       }}
                     >
-                      <PhotoLibrary color="disabled" />
+                      <PhotoLibrary color="disabled" aria-hidden />
                     </Box>
                   )}
                 </TableCell>
@@ -513,6 +513,7 @@ const ProductManager: React.FC<ProductManagerProps> = ({
                 <TableCell>
                   <IconButton
                     size="small"
+                    aria-label="Rediger produkt"
                     onClick={() => {
                       setSelectedProduct(product);
                       setOpenDialog(true);
@@ -520,7 +521,7 @@ const ProductManager: React.FC<ProductManagerProps> = ({
                   >
                     {theming.getThemedIcon('edit')}
                   </IconButton>
-                  <IconButton size="small" color="error" onClick={() => setDeleteConfirmProduct(product)}>
+                  <IconButton size="small" color="error" aria-label="Slett produkt" onClick={() => setDeleteConfirmProduct(product)}>
                     {theming.getThemedIcon('delete')}
                   </IconButton>
                 </TableCell>

@@ -983,6 +983,7 @@ export default function IntegrationsManagementPanel({
                 endAdornment: (
                   <InputAdornment position="end">
                     <IconButton
+                      aria-label="Vis eller skjul API-nøkkel"
                       onClick={async () => {
                         const input = document.querySelector('input[type="password"]') as HTMLInputElement;
                         if (input) {
@@ -2082,6 +2083,7 @@ export default function IntegrationsManagementPanel({
 	                    variant="outlined"
 	                    sx={{ mb: 2 }}
                     id="ai-problem-input"
+                    aria-label="Beskriv hva AI skal hjelpe deg med"
                   />
 
 	                      <Button
@@ -5215,6 +5217,7 @@ export default function IntegrationsManagementPanel({
                             <Typography variant="caption" color="text.secondary" fontFamily="monospace">
                               {showSecrets[apiKey.id] ? apiKey.maskedKey.replace(/\*+/g, 'sk_live_abc123xyz789') : apiKey.maskedKey}
                                 <IconButton
+                                  aria-label="Vis eller skjul nøkkel"
                                   size="small"
                                   onClick={() => toggleSecretVisibility(apiKey.id)}
                                   sx={{ ml: 1 }}
@@ -5254,12 +5257,13 @@ export default function IntegrationsManagementPanel({
                           <TableCell>
                             <Box sx={{ display: 'flex', gap: 1 }}>
                               <Tooltip title="Roter nøkkel">
-                                <IconButton size="small">
+                                <IconButton size="small" aria-label="Roter nøkkel">
                                   <RefreshIcon fontSize="inherit" />
                                 </IconButton>
                               </Tooltip>
                               <Tooltip title="Kopier nøkkel">
                                 <IconButton
+                                  aria-label="Kopier nøkkel"
                                   size="small"
                                   onClick={() => copyToClipboard(apiKey.maskedKey)}
                                 >
@@ -5358,12 +5362,12 @@ export default function IntegrationsManagementPanel({
                           <TableCell>
                             <Box sx={{ display: 'flex', gap: 1 }}>
                               <Tooltip title="Test webhook">
-                                <IconButton size="small">
+                                <IconButton size="small" aria-label="Test webhook">
                                   <PlayIcon fontSize="inherit" />
                                 </IconButton>
                               </Tooltip>
                               <Tooltip title="Pause webhook">
-                                <IconButton size="small">
+                                <IconButton size="small" aria-label="Pause webhook">
                                   <PauseIcon fontSize="inherit" />
                                 </IconButton>
                               </Tooltip>
@@ -5438,6 +5442,7 @@ export default function IntegrationsManagementPanel({
                               {showSecrets[oauthClient.id] ? oauthClient.clientId : `${oauthClient.clientId.substring(0, 12)}...`}
                               </Typography>
                               <IconButton
+                                aria-label="Vis eller skjul Client ID"
                                 size="small"
                                 onClick={() => toggleSecretVisibility(oauthClient.id)}
                               >
@@ -5460,12 +5465,13 @@ export default function IntegrationsManagementPanel({
                           <TableCell>
                             <Box sx={{ display: 'flex', gap: 1 }}>
                               <Tooltip title="Vis scopes">
-                                <IconButton size="small">
+                                <IconButton size="small" aria-label="Vis scopes">
                                   <ViewIcon fontSize="inherit" />
                                 </IconButton>
                               </Tooltip>
                               <Tooltip title="Kopier Client ID">
                                 <IconButton
+                                  aria-label="Kopier Client ID"
                                   size="small"
                                   onClick={() => copyToClipboard(oauthClient.clientId)}
                                 >
