@@ -26,6 +26,7 @@ import {
   Compare,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
+import { StatusChip } from './design-system';
 
 interface DeploymentStatusWidgetProps {
   onOpenFeatureManagement?: () => void;
@@ -202,26 +203,21 @@ export default function DeploymentStatusWidget({ onOpenFeatureManagement }: Depl
 
         {/* Quick Actions */}
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-          <Chip
+          <StatusChip
             label="Staging"
-            size="small"
-            color="primary"
-            variant="outlined"
-icon={<CloudUpload />}
+            tone="brand"
+            icon={<CloudUpload />}
           />
-          <Chip
+          <StatusChip
             label="Production"
-            size="small"
-            color="success"
-            variant="outlined"
-icon={<CloudDownload />}
+            tone="success"
+            icon={<CloudDownload />}
           />
           {hasDifferences && (
-            <Chip
+            <StatusChip
               label="Needs Review"
-              size="small"
-              color="warning"
-icon={<Warning />}
+              tone="warning"
+              icon={<Warning />}
             />
           )}
         </Box>

@@ -1,21 +1,18 @@
 import React, { useState } from 'react';
 import {
   Box,
-  Card,
-  CardContent,
   Typography,
   Accordion,
   AccordionSummary,
   AccordionDetails,
-  Button,
   TextField,
-  Chip,
   Grid,
   Alert,
 } from '@mui/material';
 import { ExpandMore as ExpandIcon, PlayArrow as ExecuteIcon, Code as CodeIcon } from '@mui/icons-material';
 import type { WireMockTestResult } from './WireMockResponseViewer';
 import { WireMockResponseViewer } from './WireMockResponseViewer';
+import { AdminCard, AdminButton, StatusChip } from './design-system';
 
 interface AdminAPIEndpoint {
   name: string;
@@ -225,15 +222,10 @@ export const WireMockAdminAPIExplorer: React.FC = () => {
   };
 
   return (
-    <Card>
-      <CardContent>
-        <Typography variant="h6" gutterBottom>
-          🔧 WireMock Admin API Explorer
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Explore and execute WireMock admin APIs directly from the UI
-        </Typography>
-
+    <AdminCard
+      title="🔧 WireMock Admin API Explorer"
+      subtitle="Explore and execute WireMock admin APIs directly from the UI"
+    >
         {categories.map(category => (
           <Box key={category} sx={{ mb: 2 }}>
             <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1 }}>
@@ -243,11 +235,10 @@ export const WireMockAdminAPIExplorer: React.FC = () => {
               <Accordion key={endpoint.name}>
                 <AccordionSummary expandIcon={<ExpandIcon />}>
                   <Box display="flex" alignItems="center" gap={2} width="100%">
-                    <Chip
+                    <StatusChip
                       label={endpoint.method}
-                      size="small"
-                      color={
-                        endpoint.method === 'GET' ? 'primary' :
+                      tone={
+                        endpoint.method === 'GET' ? 'info' :
                         endpoint.method === 'POST' ? 'success' :
                         endpoint.method === 'PUT' ? 'warning' : 'error'
                       }
@@ -296,9 +287,10 @@ export const WireMockAdminAPIExplorer: React.FC = () => {
                     )}
 
                     <Grid item xs={12}>
-                      <Button
-                        variant="contained"
+                      <AdminButton
+                        tone="primary"
                         startIcon={<ExecuteIcon />}
+                        loading={loading}
                         onClick={() => {
                           setSelectedEndpoint(endpoint);
                           if (!requestBody && endpoint.requestBody) {
@@ -309,7 +301,7 @@ export const WireMockAdminAPIExplorer: React.FC = () => {
                         disabled={loading}
                       >
                         Execute
-                      </Button>
+                      </AdminButton>
                     </Grid>
                   </Grid>
                 </AccordionDetails>
@@ -323,8 +315,7 @@ export const WireMockAdminAPIExplorer: React.FC = () => {
           onClose={() => setViewerOpen(false)}
           result={result}
         />
-      </CardContent>
-    </Card>
+    </AdminCard>
   );
 };
 

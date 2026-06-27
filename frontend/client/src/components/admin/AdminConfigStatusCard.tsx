@@ -13,7 +13,6 @@ import {
   CardContent,
   Stack,
   Typography,
-  Chip,
   Box,
   IconButton,
   Alert,
@@ -34,6 +33,7 @@ import {
   Settings as ConfigIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
+import { StatusChip } from './design-system';
 
 interface ConfigCheck {
   status: 'ready' | 'partial' | 'broken';
@@ -113,7 +113,7 @@ const AdminConfigStatusCard: React.FC = () => {
           <Stack direction="row" alignItems="center" spacing={1}>
             <ConfigIcon color={statusInfo.color} />
             <Typography variant="h6">Produksjons-config</Typography>
-            <Chip size="small" color={statusInfo.color} label={statusInfo.label} />
+            <StatusChip tone={statusInfo.color} label={statusInfo.label} />
           </Stack>
           <IconButton size="small" onClick={load} disabled={loading}>
             {loading ? <CircularProgress size={16} /> : <RefreshIcon fontSize="small" />}
