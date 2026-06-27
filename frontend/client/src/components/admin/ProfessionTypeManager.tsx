@@ -43,6 +43,7 @@ import {
   FormControlLabel,
   Autocomplete,
   ThemeProvider,
+  InputAdornment,
 } from '@mui/material';
 import { adminDarkTheme } from './adminDarkTheme';
 import {
@@ -64,6 +65,7 @@ import {
   People,
   AttachMoney,
   Event,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import type { ChipProps } from '@mui/material';
 import { apiRequest } from '@/lib/queryClient';
@@ -127,6 +129,7 @@ export default function ProfessionTypeManager() {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [selectedProfession, setSelectedProfession] = useState<ProfessionTypeConfig | null>(null);
   const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
+  const [search, setSearch] = useState("");
 
   const isMobile = useIsMobile();
   const queryClient = useQueryClient();
@@ -566,9 +569,30 @@ export default function ProfessionTypeManager() {
             <CheckCircle sx={{ mr: 2, color: 'success.main' }} />
             Aktive Profesjoner
           </Typography>
-          
+
+          <TextField
+            size="small"
+            placeholder="Søk i profesjoner …"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            sx={{ mb: 3, width: { xs: '100%', sm: 360 } }}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" />
+                </InputAdornment>
+              ),
+            }}
+          />
+
           <Grid container spacing={2}>
-            {(Array.isArray(activeProfessions?.professions) ? activeProfessions.professions : []).map((profession: ProfessionTypeConfig) => (
+            {(Array.isArray(activeProfessions?.professions) ? activeProfessions.professions : [])
+              .filter((profession: ProfessionTypeConfig) =>
+                `${profession.displayName} ${profession.name} ${profession.category} ${profession.description}`
+                  .toLowerCase()
+                  .includes(search.toLowerCase())
+              )
+              .map((profession: ProfessionTypeConfig) => (
               <Grid item xs={12} sm={6} md={4} key={profession.id}>
                 <Card sx={{ 
                   height: '100%',
