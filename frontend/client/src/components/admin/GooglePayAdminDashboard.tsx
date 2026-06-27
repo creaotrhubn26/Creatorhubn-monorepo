@@ -137,7 +137,7 @@ export default function GooglePayAdminDashboard() {
       {/* Header */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Box>
-          <Typography variant="h4" sx={{ fontWeight: 600, mb: 1 }}>
+          <Typography variant="h4" component="h2" sx={{ fontWeight: 600, mb: 1 }}>
             Google Pay Transactions
           </Typography>
           <Typography variant="body2" color="text.secondary">
@@ -239,6 +239,7 @@ export default function GooglePayAdminDashboard() {
               fullWidth
               size="small"
               placeholder="Search by email, name, or transaction ID..."
+              aria-label="Søk i transaksjoner etter e-post, navn eller transaksjons-ID"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               InputProps={{
@@ -351,7 +352,7 @@ export default function GooglePayAdminDashboard() {
 
                   <TableCell align="right">
                     <Tooltip title="View details">
-                      <IconButton size="small" onClick={() => setSelectedTransaction(transaction)}>
+                      <IconButton size="small" aria-label="Vis detaljer" onClick={() => setSelectedTransaction(transaction)}>
                         <Visibility fontSize="small" />
                       </IconButton>
                     </Tooltip>

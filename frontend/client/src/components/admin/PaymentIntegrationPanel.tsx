@@ -503,8 +503,8 @@ export default function PaymentIntegrationPanel({
 
   return (
     <Box className={className}>
-      <Typography variant="h4" sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
-        <Payment color="primary" />
+      <Typography variant="h4" component="h2" sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+        <Payment color="primary" aria-hidden="true" />
         Betalingsintegrasjon
       </Typography>
 
@@ -716,7 +716,7 @@ export default function PaymentIntegrationPanel({
       {tabValue === 1 && (
         <Card sx={theming.getThemedCardSx()}>
           <CardContent sx={theming.getThemedCardSx()}>
-            <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
+            <Typography variant="h6" component="h3" sx={{ mb: 2, color: theming.colors.primary }}>
               Siste transaksjoner
             </Typography>
             <AdminTableContainer ariaLabel="Siste transaksjoner">
@@ -764,7 +764,7 @@ export default function PaymentIntegrationPanel({
                         {new Date(transaction.timestamp).toLocaleString('no-NO')}
                       </TableCell>
                       <TableCell>
-                        <IconButton size="small">
+                        <IconButton size="small" aria-label="Vis transaksjonsdetaljer">
                           <Visibility />
                         </IconButton>
                       </TableCell>
@@ -781,7 +781,7 @@ export default function PaymentIntegrationPanel({
       {tabValue === 2 && (
         <Card sx={theming.getThemedCardSx()}>
           <CardContent sx={theming.getThemedCardSx()}>
-            <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
+            <Typography variant="h6" component="h3" sx={{ mb: 2, color: theming.colors.primary }}>
               Abonnementer
             </Typography>
             <Alert severity="info" sx={{ mb: 2 }}>
@@ -827,7 +827,7 @@ export default function PaymentIntegrationPanel({
                         {new Date(subscription.startDate).toLocaleDateString('no-NO')}
                       </TableCell>
                       <TableCell>
-                        <IconButton size="small">
+                        <IconButton size="small" aria-label="Vis abonnementsdetaljer">
                           <Visibility />
                         </IconButton>
                       </TableCell>
@@ -846,7 +846,7 @@ export default function PaymentIntegrationPanel({
           <Grid item xs={12} md={3}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
+                <Typography variant="h6" component="h3" sx={{ mb: 2, color: theming.colors.primary }}>
                   Google Pay Konfigurasjon
                 </Typography>
                 <List>
@@ -885,7 +885,7 @@ export default function PaymentIntegrationPanel({
           <Grid item xs={12} md={3}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
+                <Typography variant="h6" component="h3" sx={{ mb: 2, color: theming.colors.primary }}>
                   Stripe Konfigurasjon
                 </Typography>
                 <List>
@@ -918,7 +918,7 @@ export default function PaymentIntegrationPanel({
       {tabValue === 4 && (
         <Card sx={theming.getThemedCardSx()}>
           <CardContent sx={theming.getThemedCardSx()}>
-            <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
+            <Typography variant="h6" component="h3" sx={{ mb: 2, color: theming.colors.primary }}>
               Betalingsrapporter
             </Typography>
             <Grid container spacing={3}>

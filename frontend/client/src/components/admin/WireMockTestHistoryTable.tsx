@@ -200,7 +200,7 @@ export const WireMockTestHistoryTable: React.FC<WireMockTestHistoryTableProps> =
                     </TableCell>
                     <TableCell align="center">
                       <Tooltip title="View Details">
-                        <IconButton size="small" onClick={() => onViewResult(result)}>
+                        <IconButton size="small" aria-label="Se detaljer" onClick={() => onViewResult(result)}>
                           <ViewIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>

@@ -137,7 +137,7 @@ const UserInstallationsPanel: React.FC<Props> = ({ users }) => {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               InputProps={{
-                startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment>,
+                startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" aria-hidden /></InputAdornment>,
               }}
               sx={{ flex: 1 }}
             />
@@ -157,7 +157,7 @@ const UserInstallationsPanel: React.FC<Props> = ({ users }) => {
               </Select>
             </FormControl>
             {selectedUserId && (
-              <IconButton onClick={() => refetch()} disabled={isFetching}>
+              <IconButton aria-label="Oppdater installasjoner og abonnement" onClick={() => refetch()} disabled={isFetching}>
                 <RefreshIcon />
               </IconButton>
             )}
@@ -214,7 +214,7 @@ const UserInstallationsPanel: React.FC<Props> = ({ users }) => {
               {/* Installerte apper */}
               <Box>
                 <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
-                  <AppsIcon fontSize="small" sx={{ verticalAlign: 'text-bottom', mr: 0.5 }} />
+                  <AppsIcon fontSize="small" aria-hidden sx={{ verticalAlign: 'text-bottom', mr: 0.5 }} />
                   Installerte apper
                 </Typography>
                 {installedApps.length === 0 ? (
@@ -253,7 +253,7 @@ const UserInstallationsPanel: React.FC<Props> = ({ users }) => {
               {/* Stripe-abonnement */}
               <Box>
                 <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
-                  <CardIcon fontSize="small" sx={{ verticalAlign: 'text-bottom', mr: 0.5 }} />
+                  <CardIcon fontSize="small" aria-hidden sx={{ verticalAlign: 'text-bottom', mr: 0.5 }} />
                   Abonnement & fornyelse
                 </Typography>
                 {subscriptions.length === 0 ? (

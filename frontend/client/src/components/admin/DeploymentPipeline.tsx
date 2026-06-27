@@ -238,7 +238,7 @@ export default function DeploymentPipeline() {
     <Box sx={{ p: { xs: 2, sm:  3 } }}>
       {/* Header */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  3 }}>
-        <Typography variant="h5" sx={{  color: adminTokens.color.brand, fontWeight: 600}}>
+        <Typography variant="h5" component="h2" sx={{  color: adminTokens.color.brand, fontWeight: 600}}>
           🚀 Deployment Pipeline
         </Typography>
         <Box sx={{ display: 'flex', gap:  2 }}>
@@ -392,8 +392,9 @@ export default function DeploymentPipeline() {
                       <Box sx={{ display: 'flex', gap:  1 }}>
                         {deployment.rollbackAvailable && (
                           <Tooltip title="Rollback">
-                            <IconButton 
+                            <IconButton
                               size="small"
+                              aria-label="Rull tilbake deployment"
                               onClick={() => {
                                 setSelectedDeployment(deployment.id);
                                 setRollbackDialogOpen(true);
@@ -404,8 +405,9 @@ export default function DeploymentPipeline() {
                           </Tooltip>
                         )}
                         <Tooltip title="View Details">
-                          <IconButton 
+                          <IconButton
                             size="small"
+                            aria-label="Vis detaljer"
                             onClick={() => setSelectedDeployment(deployment.id)}
                           >
                             <TimelineIcon fontSize="inherit" />

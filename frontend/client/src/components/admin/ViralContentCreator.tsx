@@ -179,7 +179,7 @@ export default function ViralContentCreator({
 
   const renderAnalysisStep = () => (
     <Box>
-      <Typography variant="h6" gutterBottom sx={{  color: theming.colors.primary }}>
+      <Typography variant="h6" component="h2" gutterBottom sx={{  color: theming.colors.primary }}>
         🔍 Viral Innholds-Analyse
       </Typography>
 
@@ -236,7 +236,7 @@ export default function ViralContentCreator({
 
   const renderOptimizationStep = () => (
     <Box>
-      <Typography variant="h6" gutterBottom sx={{  color: theming.colors.primary }}>
+      <Typography variant="h6" component="h2" gutterBottom sx={{  color: theming.colors.primary }}>
         🚀 Viral Optimalisering
       </Typography>
 
@@ -286,7 +286,7 @@ export default function ViralContentCreator({
           <Grid item xs={12}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary }}>
                   📝 Viral Tittel-forslag
                 </Typography>
                 <FormControl fullWidth sx={{ mb:  2 }}>
@@ -323,7 +323,7 @@ export default function ViralContentCreator({
           <Grid item xs={12}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary }}>
                   📄 Viral Beskrivelse
                 </Typography>
                 <TextField
@@ -359,13 +359,14 @@ export default function ViralContentCreator({
               }}
             >
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" gutterBottom sx={{  color: theming.colors.primary }}>
+                <Typography variant="h6" component="h3" gutterBottom sx={{  color: theming.colors.primary }}>
                   🎨 Kreative Verktøy - Rask Tilgang
                 </Typography>
 
                 <Tabs
                   value={creativeToolsTab}
                   onChange={(e, newValue) => setCreativeToolsTab(newValue)}
+                  aria-label="Kreative verktøy"
                   sx={{ mb:  2 }}
                 >
                   <Tab icon={<VideocamLibrary />} label="Video Suite" />
@@ -415,7 +416,7 @@ export default function ViralContentCreator({
           <Grid item xs={12}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary }}>
                   🖼️ Thumbnail Optimalisering
                 </Typography>
                 <Grid container spacing={2}>
@@ -460,7 +461,7 @@ export default function ViralContentCreator({
           <Grid item xs={12}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary }}>
                   ⏰ Optimal Publiseringstid
                 </Typography>
                 <TextField
@@ -486,7 +487,7 @@ export default function ViralContentCreator({
 
   const renderPublishStep = () => (
     <Box>
-      <Typography variant="h6" gutterBottom sx={{  color: theming.colors.primary }}>
+      <Typography variant="h6" component="h2" gutterBottom sx={{  color: theming.colors.primary }}>
         🎯 Publiser Viral Innhold
       </Typography>
 
@@ -499,7 +500,7 @@ export default function ViralContentCreator({
 
       <Card sx={{ mb:  3 ,  ...theming.getThemedCardSx() }}>
         <CardContent sx={theming.getThemedCardSx()}>
-          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+          <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary }}>
             📊 Forventet Ytelse
           </Typography>
           <Grid container spacing={2}>

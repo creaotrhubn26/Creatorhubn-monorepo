@@ -182,18 +182,18 @@ const UnifiedAdminAnalytics: React.FC = () => {
     <Box>
       {/* Header */}
       <Box sx={{ mb:  3, display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-        <Typography variant="h4" sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
+        <Typography variant="h4" component="h1" sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
           <AnalyticsIcon color="primary" />
           Unified Admin Analytics
         </Typography>
         <Box sx={{ display: 'flex', gap:  1 }}>
           <Tooltip title="Refresh Analytics">
-            <IconButton onClick={handleRefresh} color="primary">
+            <IconButton onClick={handleRefresh} color="primary" aria-label="Oppdater analyse">
               <RefreshIcon />
             </IconButton>
           </Tooltip>
           <Tooltip title="Export All Data">
-            <IconButton onClick={() => handleExport('unified')} color="primary">
+            <IconButton onClick={() => handleExport('unified')} color="primary" aria-label="Eksporter alle data">
               <DownloadIcon />
             </IconButton>
           </Tooltip>
