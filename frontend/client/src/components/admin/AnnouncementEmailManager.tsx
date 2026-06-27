@@ -23,7 +23,7 @@ import {
   Error as ErrorIcon,
 } from '@mui/icons-material';
 import { useToast } from '@/hooks/use-toast';
-import { AdminButton, adminTokens } from './design-system';
+import { AdminButton, adminTokens, useIsMobile } from './design-system';
 
 interface AnnouncementEmailManagerProps {
   announcementId: string;
@@ -43,6 +43,7 @@ export default function AnnouncementEmailManager({
   emailRecipientCount = 0,
 }: AnnouncementEmailManagerProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
+  const isMobile = useIsMobile();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -99,7 +100,7 @@ export default function AnnouncementEmailManager({
       </AdminButton>
 
       {/* Confirmation Dialog */}
-      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>
           <Box display="flex" alignItems="center" gap={1}>
             <EmailIcon sx={{ color: adminTokens.color.brand }} />

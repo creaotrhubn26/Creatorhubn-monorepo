@@ -177,7 +177,7 @@ export default function AuthenticationTest() {
                   <ListItemIcon>{getStatusIcon(result)}</ListItemIcon>
                   <ListItemText
                     primary={
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                         <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
                           {result.endpoint}
                         </Typography>
