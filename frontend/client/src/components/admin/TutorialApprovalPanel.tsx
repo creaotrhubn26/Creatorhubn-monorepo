@@ -4,10 +4,8 @@ import {
   Avatar,
   Badge,
   Box,
-  Button,
   Card,
   CardContent,
-  Chip,
   Dialog,
   DialogActions,
   DialogContent,
@@ -21,6 +19,7 @@ import {
   TextField,
   Tooltip,
   Typography,
+  Chip,
 } from '@mui/material';
 import {
   AdminPanelSettings,
@@ -34,6 +33,7 @@ import {
 } from '@mui/icons-material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import { AdminButton } from './design-system';
 
 type TutorialStatus = 'pending' | 'approved' | 'rejected';
 type TutorialType = 'video' | 'mixed';
@@ -433,31 +433,29 @@ export function TutorialApprovalPanel({ open, onClose, isAdmin = true }: Tutoria
                     <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                       {submission.status === 'pending' ? (
                         <>
-                          <Button
+                          <AdminButton
                             size="small"
-                            variant="contained"
-                            color="success"
+                            tone="primary"
                             startIcon={<ThumbUp />}
                             onClick={() => openReview(submission, 'approve')}
                           >
                             Approve
-                          </Button>
-                          <Button
+                          </AdminButton>
+                          <AdminButton
                             size="small"
-                            variant="contained"
-                            color="error"
+                            tone="danger"
                             startIcon={<ThumbDown />}
                             onClick={() => openReview(submission, 'reject')}
                           >
                             Reject
-                          </Button>
+                          </AdminButton>
                         </>
                       ) : null}
 
                       <Tooltip title="Open tutorial URL">
-                        <Button
+                        <AdminButton
                           size="small"
-                          variant="outlined"
+                          tone="secondary"
                           startIcon={<Visibility />}
                           onClick={() => {
                             if (submission.targetUrl) {
@@ -467,7 +465,7 @@ export function TutorialApprovalPanel({ open, onClose, isAdmin = true }: Tutoria
                           disabled={submission.targetUrl.length === 0}
                         >
                           View URL
-                        </Button>
+                        </AdminButton>
                       </Tooltip>
                     </Box>
                   </CardContent>
@@ -508,15 +506,15 @@ export function TutorialApprovalPanel({ open, onClose, isAdmin = true }: Tutoria
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setReviewDialogOpen(false)}>Cancel</Button>
-          <Button
-            variant="contained"
-            color={reviewAction === 'approve' ? 'success' : 'error'}
+          <AdminButton tone="ghost" onClick={() => setReviewDialogOpen(false)}>Cancel</AdminButton>
+          <AdminButton
+            tone={reviewAction === 'approve' ? 'primary' : 'danger'}
+            loading={reviewMutation.isPending}
             onClick={submitReview}
             disabled={reviewMutation.isPending || (reviewAction === 'reject' && reviewNotes.trim().length === 0)}
           >
             {reviewAction === 'approve' ? 'Approve' : 'Reject'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 

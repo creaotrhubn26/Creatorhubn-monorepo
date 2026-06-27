@@ -13,11 +13,8 @@ import {
   CardContent,
   Typography,
   Stack,
-  Button,
   Grid,
-  Chip,
   IconButton,
-  Paper,
   List,
   ListItem,
   ListItemText,
@@ -39,6 +36,7 @@ import {
   AccordionSummary,
   AccordionDetails,
   ThemeProvider,
+  Button,
 } from '@mui/material';
 import { adminDarkTheme } from './adminDarkTheme';
 import {
@@ -58,6 +56,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
 import { useTheming } from '@/utils/theming-helper';
+import { AdminCard, AdminButton, StatusChip } from './design-system';
 
 interface TestCase {
   id: string;
@@ -168,12 +167,7 @@ export default function AutomatedTestCaseGenerator() {
       </Stack>
 
       {/* Generation Controls */}
-      <Card sx={{ mb: 4 }}>
-        <CardContent>
-          <Typography variant="h6" sx={{ mb: 2, fontWeight: 600}}>
-            Generate Test Cases
-          </Typography>
-          
+      <AdminCard title="Generate Test Cases" sx={{ mb: 4 }}>
           <Stack spacing={2}>
             <FormControl fullWidth>
               <InputLabel>Select Profession</InputLabel>
@@ -189,30 +183,25 @@ export default function AutomatedTestCaseGenerator() {
                 ))}
               </Select>
             </FormControl>
-            
-            <Button
-              variant="contained"
+
+            <AdminButton
+              tone="primary"
               size="large"
-              startIcon={generating ? <AutoAwesome /> : <AutoAwesome />}
+              startIcon={<AutoAwesome />}
+              loading={generating}
               onClick={handleGenerateTests}
               disabled={generating || !selectedProfession}
-              sx={{
-                background: 'linear-gradient(45deg, #9c27b0, #7b1fa2)', '&:hover': {
-                  background: 'linear-gradient(45deg, #7b1fa2, #6a1b9a)'
-                }
-              }}
             >
               {generating ? 'Generating Test Cases...' : 'Generate AI Test Cases'}
-            </Button>
-            
+            </AdminButton>
+
             {generating && (
               <Alert severity="info">
                 AI is analyzing {selectedProfession} features and generating comprehensive test scenarios...
               </Alert>
             )}
           </Stack>
-        </CardContent>
-      </Card>
+      </AdminCard>
 
       {/* Test Suites Overview */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
@@ -225,10 +214,9 @@ export default function AutomatedTestCaseGenerator() {
                     <Typography variant="subtitle1" sx={{ fontWeight: 600}}>
                       {suite.profession}
                     </Typography>
-                    <Chip 
+                    <StatusChip
                       label={`${suite.coverage}% coverage`}
-                      size="small"
-                      color={suite.coverage > 80 ? 'success' : suite.coverage > 50 ? 'warning' : 'error'}
+                      tone={suite.coverage > 80 ? 'success' : suite.coverage > 50 ? 'warning' : 'error'}
                     />
                   </Stack>
                   
@@ -314,16 +302,15 @@ export default function AutomatedTestCaseGenerator() {
                         {testCase.feature}
                       </Typography>
                     </Box>
-                    <Chip 
-                      label={testCase.priority} 
-                      size="small"
-                      color={
+                    <StatusChip
+                      label={testCase.priority}
+                      tone={
                         testCase.priority === 'critical' ? 'error' :
-                        testCase.priority === 'high' ? 'warning' : 'default'
+                        testCase.priority === 'high' ? 'warning' : 'neutral'
                       }
                     />
                     {testCase.automated && (
-                      <Chip label="AUTO" size="small" color="secondary" />
+                      <StatusChip label="AUTO" tone="brand" />
                     )}
                   </Stack>
                 </AccordionSummary>
@@ -368,10 +355,10 @@ export default function AutomatedTestCaseGenerator() {
           </List>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowTestCaseDialog(false)}>Close</Button>
-          <Button variant="contained" startIcon={<Download />}>
+          <AdminButton tone="ghost" onClick={() => setShowTestCaseDialog(false)}>Close</AdminButton>
+          <AdminButton tone="primary" startIcon={<Download />}>
             Export Test Cases
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

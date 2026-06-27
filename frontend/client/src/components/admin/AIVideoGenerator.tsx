@@ -7,7 +7,6 @@
 import React, { useState } from 'react';
 import {
   Box,
-  Button,
   TextField,
   Typography,
   Select,
@@ -17,7 +16,6 @@ import {
   Card,
   CardContent,
   Grid,
-  Chip,
   LinearProgress,
   Alert,
   Dialog,
@@ -28,6 +26,7 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
+  Chip,
 } from '@mui/material';
 import {
   MovieCreation as CreateIcon,
@@ -44,6 +43,7 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import axios from 'axios';
+import { AdminButton } from './design-system';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // TYPES
@@ -433,20 +433,20 @@ export default function AIVideoGenerator({
                   </Typography>
                   <Box display="flex" gap={1} mt={2}>
                     {generatedVideo.videoUrl && (
-                      <Button
+                      <AdminButton
                         component="a"
-                        variant="outlined"
+                        tone="secondary"
                         size="small"
                         startIcon={<DownloadIcon />}
                         href={generatedVideo.videoUrl}
                         download
                       >
                         Download
-                      </Button>
+                      </AdminButton>
                     )}
-                    <Button variant="outlined" size="small" startIcon={<ShareIcon />}>
+                    <AdminButton tone="secondary" size="small" startIcon={<ShareIcon />}>
                       Share
-                    </Button>
+                    </AdminButton>
                   </Box>
                 </CardContent>
               </Card>
@@ -456,18 +456,19 @@ export default function AIVideoGenerator({
       </DialogContent>
 
       <DialogActions>
-        <Button onClick={handleReset} disabled={generateMutation.isPending}>
+        <AdminButton tone="ghost" onClick={handleReset} disabled={generateMutation.isPending}>
           Reset
-        </Button>
-        <Button onClick={onClose}>Close</Button>
-        <Button
-          variant="contained"
+        </AdminButton>
+        <AdminButton tone="ghost" onClick={onClose}>Close</AdminButton>
+        <AdminButton
+          tone="primary"
           startIcon={<CreateIcon />}
           onClick={handleGenerate}
+          loading={generateMutation.isPending}
           disabled={!prompt.trim() || generateMutation.isPending}
         >
           {generateMutation.isPending ? 'Generating...' : 'Generate Video'}
-        </Button>
+        </AdminButton>
       </DialogActions>
     </Dialog>
   );

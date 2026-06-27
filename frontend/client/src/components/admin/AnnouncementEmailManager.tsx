@@ -7,16 +7,14 @@ import React, { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Box,
-  Button,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
   Typography,
   Alert,
-  CircularProgress,
-  Chip,
   Divider,
+  Chip,
 } from '@mui/material';
 import {
   Email as EmailIcon,
@@ -25,6 +23,7 @@ import {
   Error as ErrorIcon,
 } from '@mui/icons-material';
 import { useToast } from '@/hooks/use-toast';
+import { AdminButton, adminTokens } from './design-system';
 
 interface AnnouncementEmailManagerProps {
   announcementId: string;
@@ -90,25 +89,20 @@ export default function AnnouncementEmailManager({
   return (
     <>
       {/* Send Email Button */}
-      <Button
-        variant={emailSent ? 'outlined' : 'contained'}
+      <AdminButton
+        tone={emailSent ? 'ghost' : 'primary'}
         size="small"
         startIcon={emailSent ? <CheckCircleIcon /> : <EmailIcon />}
         onClick={() => setDialogOpen(true)}
-        sx={{
-          bgcolor: emailSent ? 'transparent' : '#ff8c00',
-          color: emailSent ? '#ff8c00' : 'white','&:hover': {
-            bgcolor: emailSent ? 'rgba(255, 140, 0, 0.1)' : '#e67e00',
-          }}}
       >
         {emailSent ? 'Sendt til e-post' : 'Send som e-post'}
-      </Button>
+      </AdminButton>
 
       {/* Confirmation Dialog */}
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>
           <Box display="flex" alignItems="center" gap={1}>
-            <EmailIcon sx={{ color: '#ff8c00' }} />
+            <EmailIcon sx={{ color: adminTokens.color.brand }} />
             <Typography variant="h6">Send kunngjøring som e-post</Typography>
           </Box>
         </DialogTitle>
@@ -166,25 +160,18 @@ export default function AnnouncementEmailManager({
         </DialogContent>
 
         <DialogActions>
-          <Button onClick={() => setDialogOpen(false)} disabled={sendEmailMutation.isPending}>
+          <AdminButton tone="ghost" onClick={() => setDialogOpen(false)} disabled={sendEmailMutation.isPending}>
             Avbryt
-          </Button>
-          <Button
+          </AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={handleSendEmail}
-            variant="contained"
-            startIcon={
-              sendEmailMutation.isPending ? (
-                <CircularProgress size={20} color="inherit" />
-              ) : (
-                <SendIcon />
-              )
-            }
+            loading={sendEmailMutation.isPending}
+            startIcon={<SendIcon />}
             disabled={sendEmailMutation.isPending}
-            sx={{
-              bgcolor: '#ff8c00','&:hover': { bgcolor: '#e67e00' }}}
           >
             {sendEmailMutation.isPending ? 'Sender...' : 'Send e-post'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </>

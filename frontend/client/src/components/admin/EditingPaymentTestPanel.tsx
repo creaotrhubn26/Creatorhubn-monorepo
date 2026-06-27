@@ -11,10 +11,11 @@
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  Card, CardContent, Typography, Button, Stack, TextField, Alert, Chip, CircularProgress,
+  Typography, Stack, TextField, Alert,
   Table, TableBody, TableCell, TableHead, TableRow, Box, Divider, ThemeProvider,
 } from "@mui/material";
 import { adminDarkTheme } from './adminDarkTheme';
+import { AdminCard, AdminButton, StatusChip, AdminTableContainer, AdminLoading, AdminEmpty } from './design-system';
 import PaymentsIcon from "@mui/icons-material/Payments";
 import ScienceIcon from "@mui/icons-material/Science";
 import { apiRequest } from "@/lib/queryClient";
@@ -27,10 +28,10 @@ interface TestJob {
 }
 
 function statusChip(label: string | null, kind: "pay" | "payout") {
-  if (!label) return <Chip size="small" variant="outlined" label="—" />;
+  if (!label) return <StatusChip tone="neutral" label="—" />;
   const ok = (kind === "pay" && label === "held") || (kind === "payout" && label === "paid");
   const warn = label === "released" || label === "unclaimed" || label === "pending";
-  return <Chip size="small" color={ok ? "success" : warn ? "warning" : label === "failed" ? "error" : "default"} label={label} />;
+  return <StatusChip tone={ok ? "success" : warn ? "warning" : label === "failed" ? "error" : "neutral"} label={label} />;
 }
 
 export default function EditingPaymentTestPanel() {
@@ -66,35 +67,27 @@ export default function EditingPaymentTestPanel() {
     <ThemeProvider theme={adminDarkTheme}>
     <Box>
       {/* PayPal-helse */}
-      <Card variant="outlined" sx={{ mb: 2 }}>
-        <CardContent>
-          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
-            <PaymentsIcon color="primary" /><Typography variant="h6" sx={{ fontWeight: 700 }}>PayPal-tilkobling</Typography>
-          </Stack>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Tester OAuth mot PayPal (creds + miljø fra Render). Valgfritt: send en ekte test-payout ($1) til en sandbox-personal-e-post.
-          </Typography>
+      <AdminCard
+        sx={{ mb: 2 }}
+        title={<Stack direction="row" spacing={1} alignItems="center"><PaymentsIcon color="primary" /><span>PayPal-tilkobling</span></Stack>}
+        subtitle="Tester OAuth mot PayPal (creds + miljø fra Render). Valgfritt: send en ekte test-payout ($1) til en sandbox-personal-e-post."
+      >
           <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems="center">
-            <Button variant="outlined" onClick={() => paypalPing.mutate(false)} disabled={paypalPing.isPending}>Test tilkobling</Button>
+            <AdminButton tone="secondary" onClick={() => paypalPing.mutate(false)} loading={paypalPing.isPending} disabled={paypalPing.isPending}>Test tilkobling</AdminButton>
             <Divider flexItem orientation="vertical" sx={{ display: { xs: "none", sm: "block" } }} />
             <TextField size="small" label="Sandbox-personal-e-post (mottaker)" value={ppEmail} onChange={(e) => setPpEmail(e.target.value)} sx={{ flex: 1, minWidth: 240 }} />
-            <Button variant="contained" onClick={() => paypalPing.mutate(true)} disabled={paypalPing.isPending || !ppEmail}>Send test-payout ($1)</Button>
+            <AdminButton tone="primary" onClick={() => paypalPing.mutate(true)} loading={paypalPing.isPending} disabled={paypalPing.isPending || !ppEmail}>Send test-payout ($1)</AdminButton>
           </Stack>
-          {paypalPing.isPending && <CircularProgress size={20} sx={{ mt: 2 }} />}
           {ppMsg && <Alert severity={ppMsg.sev} sx={{ mt: 2 }}>{ppMsg.text}</Alert>}
-        </CardContent>
-      </Card>
+      </AdminCard>
 
       {/* Escrow-simulering */}
-      <Card variant="outlined">
-        <CardContent>
-          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
-            <ScienceIcon color="primary" /><Typography variant="h6" sx={{ fontWeight: 700 }}>Escrow-test (redigeringsoppdrag)</Typography>
-          </Stack>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            «Simuler betalt» setter escrow til <b>held</b> uten faktisk betaling — så hele løkka (levering → godkjenning → payout) kan testes gratis.
-          </Typography>
-          {jobs.isLoading ? <CircularProgress size={22} /> : (jobs.data?.jobs?.length ? (
+      <AdminCard
+        title={<Stack direction="row" spacing={1} alignItems="center"><ScienceIcon color="primary" /><span>Escrow-test (redigeringsoppdrag)</span></Stack>}
+        subtitle={<>«Simuler betalt» setter escrow til <b>held</b> uten faktisk betaling — så hele løkka (levering → godkjenning → payout) kan testes gratis.</>}
+      >
+          {jobs.isLoading ? <AdminLoading /> : (jobs.data?.jobs?.length ? (
+            <AdminTableContainer ariaLabel="Redigeringsoppdrag escrow-test">
             <Table size="small">
               <TableHead>
                 <TableRow>
@@ -113,16 +106,16 @@ export default function EditingPaymentTestPanel() {
                     <TableCell>{statusChip(j.payout_status, "payout")}{j.payout_reference ? <Typography variant="caption" display="block" color="text.secondary">{j.payout_reference}</Typography> : null}</TableCell>
                     <TableCell>
                       {j.payment_status !== "held" && j.payment_status !== "released" && (
-                        <Button size="small" variant="outlined" disabled={simulatePaid.isPending} onClick={() => simulatePaid.mutate(j.id)}>Simuler betalt</Button>
+                        <AdminButton tone="secondary" size="small" loading={simulatePaid.isPending} disabled={simulatePaid.isPending} onClick={() => simulatePaid.mutate(j.id)}>Simuler betalt</AdminButton>
                       )}
                     </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
-          ) : <Typography color="text.secondary">Ingen redigeringsoppdrag ennå.</Typography>)}
-        </CardContent>
-      </Card>
+            </AdminTableContainer>
+          ) : <AdminEmpty title="Ingen redigeringsoppdrag ennå." />)}
+      </AdminCard>
     </Box>
     </ThemeProvider>
   );
