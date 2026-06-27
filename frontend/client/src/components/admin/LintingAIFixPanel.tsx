@@ -209,8 +209,8 @@ export const LintingAIFixPanel: React.FC = () => {
     <Box sx={{ p: 3 }}>
       {/* Header */}
       <Box sx={{ mb: 4 }}>
-        <Typography variant="h4" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <BugIcon sx={{ fontSize: 40, color: theming.colors.primary }} />
+        <Typography variant="h4" component="h2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <BugIcon aria-hidden sx={{ fontSize: 40, color: theming.colors.primary }} />
           AI-Powered Linting Fixer
         </Typography>
         <Typography variant="body1" color="text.secondary">
@@ -223,8 +223,8 @@ export const LintingAIFixPanel: React.FC = () => {
         <Grid item xs={12} md={4}>
           <Card>
             <CardContent>
-              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <BugIcon color="error" />
+              <Typography variant="h6" component="h3" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <BugIcon color="error" aria-hidden />
                 Step 1: Scan
               </Typography>
               <Typography variant="body2" color="text.secondary" gutterBottom>
@@ -255,8 +255,8 @@ export const LintingAIFixPanel: React.FC = () => {
         <Grid item xs={12} md={4}>
           <Card>
             <CardContent>
-              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <FixIcon color="primary" />
+              <Typography variant="h6" component="h3" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <FixIcon color="primary" aria-hidden />
                 Step 2: Generate Prompts
               </Typography>
               <Typography variant="body2" color="text.secondary" gutterBottom>
@@ -287,8 +287,8 @@ export const LintingAIFixPanel: React.FC = () => {
         <Grid item xs={12} md={4}>
           <Card>
             <CardContent>
-              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <TestIcon color="secondary" />
+              <Typography variant="h6" component="h3" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <TestIcon color="secondary" aria-hidden />
                 Step 3: Apply Fixes
               </Typography>
               <Typography variant="body2" color="text.secondary" gutterBottom>
@@ -350,7 +350,7 @@ export const LintingAIFixPanel: React.FC = () => {
           <CardHeader
             title={
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <BugIcon />
+                <BugIcon aria-hidden />
                 Scan Results
               </Box>
           }
@@ -401,7 +401,7 @@ export const LintingAIFixPanel: React.FC = () => {
 
             {/* Top Error Rules */}
             <Box sx={{ mt: 3 }}>
-              <Typography variant="h6" gutterBottom>
+              <Typography variant="h6" component="h3" gutterBottom>
                 Most Common Errors
               </Typography>
               <AdminTableContainer ariaLabel="Most common errors">
@@ -431,7 +431,7 @@ export const LintingAIFixPanel: React.FC = () => {
 
             {/* Files with Most Errors */}
             <Box sx={{ mt: 3 }}>
-              <Typography variant="h6" gutterBottom>
+              <Typography variant="h6" component="h3" gutterBottom>
                 Files with Most Errors
               </Typography>
               {Object.entries(scanResult.errorsByFile || {})
@@ -441,7 +441,7 @@ export const LintingAIFixPanel: React.FC = () => {
                   <Accordion key={file}>
                     <AccordionSummary expandIcon={<ExpandIcon />}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}>
-                        <ErrorIcon color="error" />
+                        <ErrorIcon color="error" aria-hidden />
                         <Typography sx={{ flex: 1 }}>{file}</Typography>
                         <StatusChip
                           tone="error"
@@ -494,7 +494,7 @@ export const LintingAIFixPanel: React.FC = () => {
           <CardHeader
             title={
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <FixIcon />
+                <FixIcon aria-hidden />
                 AI Fix Prompts ({aiPrompts.length})
               </Box>
           }
@@ -519,7 +519,7 @@ export const LintingAIFixPanel: React.FC = () => {
               <Accordion key={idx}>
                 <AccordionSummary expandIcon={<ExpandIcon />}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <FixIcon color="primary" />
+                    <FixIcon color="primary" aria-hidden />
                     <Typography>{prompt.file}</Typography>
                     <Chip label={`${prompt.errors.length} errors`} size="small" />
                   </Box>
@@ -543,7 +543,7 @@ export const LintingAIFixPanel: React.FC = () => {
           <CardHeader
             title={
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <SuccessIcon color="success" />
+                <SuccessIcon color="success" aria-hidden />
                 Fix Results {fixResults[0]?.dryRun ? '(DRY RUN)' : '(EXECUTED)'}
               </Box>
           }
@@ -663,7 +663,7 @@ export const LintingAIFixPanel: React.FC = () => {
           <CardHeader
             title={
               <Box sx={{ display: 'flex', alignItems:'center', gap: 1 }}>
-                <ExplainIcon />
+                <ExplainIcon aria-hidden />
                 Understanding Errors in {selectedFileForExplanation.file}
               </Box>
           }

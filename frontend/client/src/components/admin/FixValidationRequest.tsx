@@ -112,8 +112,8 @@ export default function FixValidationRequest({
     return (
       <Card sx={{ p:  3, maxWidth: 60, mx: 'auto', mt:  4, textAlign: 'center',  ...theming.getThemedCardSx() }}>
         <CardContent sx={theming.getThemedCardSx()}>
-          <CheckCircle sx={{ fontSize:  64, color: 'success.main', mb:  2 }} />
-          <Typography variant="h5" gutterBottom sx={{  color: theming.colors.primary }}>
+          <CheckCircle aria-hidden="true" sx={{ fontSize:  64, color: 'success.main', mb:  2 }} />
+          <Typography variant="h5" component="h2" gutterBottom sx={{  color: theming.colors.primary }}>
             ✅ Validation Submitted Successfully!
           </Typography>
           <Typography variant="body1" color="text.secondary">
@@ -145,12 +145,12 @@ export default function FixValidationRequest({
   return (
     <Card sx={{ p:  3, maxWidth: 60, mx: 'auto', mt:  4 ,  ...theming.getThemedCardSx() }}>
       <CardContent sx={theming.getThemedCardSx()}>
-        <Typography variant="h5" gutterBottom sx={{  color: '#ff8c00', fontWeight: 'bold' }}>
+        <Typography variant="h5" component="h2" gutterBottom sx={{  color: '#ff8c00', fontWeight: 'bold' }}>
           🔍 Verify Fix for Your Feedback
         </Typography>
         
         <Paper sx={{ p: 2, mb: 3, bgcolor: 'grey.50',  ...theming.getThemedCardSx() }}>
-          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+          <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary }}>
             Original Issue: </Typography>
           <Typography variant="body1" sx={{ mb: 1 }}>
             <strong>{feedback.title}</strong>
@@ -185,8 +185,8 @@ export default function FixValidationRequest({
         </Alert>
 
         <Box sx={{ mb:  3 }}>
-          <Typography variant="h6" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
-            {validation.userConfirmed ? <CheckCircle color="success" /> : <Error color="error" />}
+          <Typography variant="h6" component="h3" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
+            {validation.userConfirmed ? <CheckCircle color="success" aria-hidden="true" /> : <Error color="error" aria-hidden="true" />}
             Did this fix resolve your original problem?
           </Typography>
           
@@ -231,7 +231,7 @@ export default function FixValidationRequest({
         />
 
         <Box sx={{ mb:  3 }}>
-          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+          <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary }}>
             Rate the fix quality: </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
             <Rating

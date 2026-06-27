@@ -195,7 +195,7 @@ export const SecretsRotationPanel: React.FC = () => {
         sx={{ mb: 3 }}
       >
         <Box>
-          <Typography variant="h5" sx={{ fontWeight: 700 }}>
+          <Typography variant="h5" component="h2" sx={{ fontWeight: 700 }}>
             Nøkkel-rotering
           </Typography>
           <Typography variant="body2" color="text.secondary">

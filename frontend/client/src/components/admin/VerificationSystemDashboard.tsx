@@ -103,7 +103,7 @@ export default function VerificationSystemDashboard() {
         }}
       >
         <Box sx={{ p: 3 }}>
-          <Typography variant="h4" gutterBottom sx={{ color: adminTokens.color.brand, fontWeight: 'bold' }}>
+          <Typography variant="h4" component="h2" gutterBottom sx={{ color: adminTokens.color.brand, fontWeight: 'bold' }}>
             Verification System Testing Dashboard
           </Typography>
           <Typography variant="body1" sx={{ mb: 2, color: 'rgba(255,255,255,0.7)' }}>
@@ -292,8 +292,8 @@ export default function VerificationSystemDashboard() {
               }}
             >
               <CardContent>
-                <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: '#fff' }}>
-                  <PlayArrow sx={{ color: '#64b5f6' }} />
+                <Typography variant="h6" component="h3" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: '#fff' }}>
+                  <PlayArrow aria-hidden sx={{ color: '#64b5f6' }} />
                   Live Demo
                 </Typography>
                 <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
@@ -316,8 +316,8 @@ export default function VerificationSystemDashboard() {
               }}
             >
               <CardContent>
-                <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: '#fff' }}>
-                  <Science sx={{ color: '#64b5f6' }} />
+                <Typography variant="h6" component="h3" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: '#fff' }}>
+                  <Science aria-hidden sx={{ color: '#64b5f6' }} />
                   Step-by-Step Demo
                 </Typography>
                 <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
@@ -340,8 +340,8 @@ export default function VerificationSystemDashboard() {
               }}
             >
               <CardContent>
-                <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: '#fff' }}>
-                  <BugReport sx={{ color: '#64b5f6' }} />
+                <Typography variant="h6" component="h3" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: '#fff' }}>
+                  <BugReport aria-hidden sx={{ color: '#64b5f6' }} />
                   Real Components
                 </Typography>
                 <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>

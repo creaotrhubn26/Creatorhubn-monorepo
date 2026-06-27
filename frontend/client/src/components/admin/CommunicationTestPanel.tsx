@@ -717,6 +717,7 @@ export default function CommunicationTestPanel({
         <Tabs
           value={activeTab}
           onChange={(_, newValue) => setActiveTab(newValue)}
+          aria-label="Kommunikasjonstest-faner"
           sx={{ borderBottom: 1, borderColor: 'divider' }}
         >
           <Tab label="System Health" icon={<CheckCircleIcon />} />
@@ -768,6 +769,7 @@ export default function CommunicationTestPanel({
                     </Typography>
                     <Box display="flex" alignItems="center" gap={1} mb={1}>
                       <Box
+                        aria-hidden="true"
                         sx={{
                           width: 8,
                           height: 8,

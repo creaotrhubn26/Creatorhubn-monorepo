@@ -637,7 +637,7 @@ const apiTests: Record<string, ApiTest[]> = {
       </Card>
 
       {/* Actions */}
-      <Typography variant="h5" sx={{ mb: 3, fontWeight: 'bold', color: theming.colors.primary }}>
+      <Typography variant="h5" component="h2" sx={{ mb: 3, fontWeight: 'bold', color: theming.colors.primary }}>
         Hva vil du gjøre?
       </Typography>
 
@@ -854,7 +854,7 @@ const apiTests: Record<string, ApiTest[]> = {
       </Grid>
 
       {/* Messages area */}
-      <Typography variant="h5" sx={{ mb: 2, fontWeight: 'bold', color: theming.colors.primary }}>
+      <Typography variant="h5" component="h2" sx={{ mb: 2, fontWeight: 'bold', color: theming.colors.primary }}>
         Meldinger fra datamaskinen:
       </Typography>
 
@@ -980,6 +980,7 @@ const apiTests: Record<string, ApiTest[]> = {
                     variant="contained"
                     onClick={() => executeQuickTest(test)}
                     disabled={isLoading}
+                    aria-label={`Kjør test: ${test.name}`}
                     sx={{ minWidth: 80 }}
                   >
                     <PlayIcon />
@@ -1064,7 +1065,7 @@ const apiTests: Record<string, ApiTest[]> = {
     <Card sx={{ mt: 2, ...theming.getThemedCardSx() }}>
       <CardContent sx={theming.getThemedCardSx()}>
         <Box display="flex" alignItems="center" gap={1} mb={2}>
-          <TerminalIcon sx={{ color: adminTokens.color.brand }} />
+          <TerminalIcon aria-hidden sx={{ color: adminTokens.color.brand }} />
           <Typography variant="h6" sx={{ color: theming.colors.primary }}>
             Admin Developer Console
           </Typography>

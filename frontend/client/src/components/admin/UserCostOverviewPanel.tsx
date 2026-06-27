@@ -160,7 +160,7 @@ export const UserCostOverviewPanel: React.FC = () => {
         sx={{ mb: 3 }}
       >
         <Box>
-          <Typography variant="h5" sx={{ fontWeight: 700 }}>
+          <Typography variant="h5" component="h2" sx={{ fontWeight: 700 }}>
             Bruker-kostnader
           </Typography>
           <Typography variant="body2" color="text.secondary">
@@ -233,6 +233,7 @@ export const UserCostOverviewPanel: React.FC = () => {
             <TextField
               fullWidth
               placeholder="Søk på user_id eller plan_type…"
+              aria-label="Søk på user_id eller plan_type"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               size="small"
@@ -393,7 +394,7 @@ const SummaryCard: React.FC<{
   <Card sx={{ borderRadius: 2, borderLeft: `4px solid ${color}` }}>
     <CardContent sx={{ py: 2 }}>
       <Stack direction="row" alignItems="center" spacing={1.5}>
-        <Box sx={{ color, display: 'flex' }}>{icon}</Box>
+        <Box aria-hidden sx={{ color, display: 'flex' }}>{icon}</Box>
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
             {label}

@@ -132,7 +132,7 @@ const AdminAICostDashboard: React.FC = () => {
             <Typography variant="overline" sx={{ color: '#c084fc', letterSpacing: '0.14em' }}>
               AI cost-dashboard
             </Typography>
-            <Typography variant="h5" sx={{ fontWeight: 700, fontFamily: '"Space Grotesk", sans-serif' }}>
+            <Typography variant="h5" component="h2" sx={{ fontWeight: 700, fontFamily: '"Space Grotesk", sans-serif' }}>
               Claude-bruk og kostnader
             </Typography>
           </Box>
@@ -143,7 +143,7 @@ const AdminAICostDashboard: React.FC = () => {
             <ToggleButton value="7d">7d</ToggleButton>
             <ToggleButton value="30d">30d</ToggleButton>
           </ToggleButtonGroup>
-          <IconButton onClick={() => refetch()} disabled={isFetching}>
+          <IconButton onClick={() => refetch()} disabled={isFetching} aria-label="Oppdater data">
             <RefreshIcon />
           </IconButton>
         </Stack>

@@ -183,8 +183,8 @@ export function PostAgentPricingPanel({ theming, priceManagementSurfaceSx }: Pro
             <Grid size={{ xs: 12, md: 8 }}>
               <Card sx={priceManagementSurfaceSx}>
                 <CardContent>
-                  <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', color: theming.colors.primary }}>
-                    <MoneyIcon sx={{ mr: 1 }} />
+                  <Typography variant="h6" component="h2" sx={{ mb: 2, display: 'flex', alignItems: 'center', color: theming.colors.primary }}>
+                    <MoneyIcon aria-hidden sx={{ mr: 1 }} />
                     Base-priser (eks. MVA)
                     <StatusChip
                       label={data.mode.toUpperCase()}
