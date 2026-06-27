@@ -36,6 +36,7 @@ import {
   FormControlLabel,
   FormGroup,
   Divider,
+  InputAdornment,
 } from '@mui/material';
 import {
   AccountBalance,
@@ -49,6 +50,7 @@ import {
   Edit,
   Sync,
   PictureAsPdf,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import jsPDF from 'jspdf';
@@ -113,6 +115,7 @@ export default function FikenIntegrationRequestsPanel() {
   const [newStatus, setNewStatus] = useState('');
   const [adminNotes, setAdminNotes] = useState('');
   const [currentTab, setCurrentTab] = useState(0);
+  const [search, setSearch] = useState("");
 
   // Export dialog state
   const [showExportDialog, setShowExportDialog] = useState(false);
@@ -185,14 +188,21 @@ export default function FikenIntegrationRequestsPanel() {
     }
   };
 
-  const filteredRequests = useMemo(() => (
-    currentTab === 0
+  const filteredRequests = useMemo(() => {
+    const byTab = currentTab === 0
       ? requests
       : requests.filter(r => {
           const statusMap = ['all','pending','contacted','connected','declined'];
           return r.fikenIntegrationStatus === statusMap[currentTab];
-        })
-  ), [requests, currentTab]);
+        });
+    const q = search.trim().toLowerCase();
+    if (!q) return byTab;
+    return byTab.filter(r =>
+      [r.vendorName, r.vendorType, r.businessInfo?.name, r.businessInfo?.email, r.businessInfo?.organizationNumber]
+        .filter(Boolean)
+        .some(field => String(field).toLowerCase().includes(q))
+    );
+  }, [requests, currentTab, search]);
 
   // Toggle export column
   const handleToggleExportColumn = (key: string) => {
@@ -434,6 +444,23 @@ export default function FikenIntegrationRequestsPanel() {
         <Tab label={`Tilkoblet (${stats.connected})`} />
         <Tab label={`Avslått (${stats.declined})`} />
       </Tabs>
+
+      {/* Search */}
+      <TextField
+        size="small"
+        fullWidth
+        placeholder="Søk etter leverandør, e-post, org.nr …"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        sx={{ mb: 2 }}
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start">
+              <SearchIcon fontSize="small" />
+            </InputAdornment>
+          ),
+        }}
+      />
 
       {/* Requests Table */}
       <AdminTableContainer ariaLabel="Fiken-integrasjonsforespørsler">

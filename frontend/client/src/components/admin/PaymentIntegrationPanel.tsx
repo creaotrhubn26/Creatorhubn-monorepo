@@ -43,6 +43,7 @@ import {
   FormControlLabel,
   Tooltip,
   Badge,
+  InputAdornment,
 } from '@mui/material';
 import {
   Payment,
@@ -65,6 +66,7 @@ import {
   MonetizationOn,
   AccountBalance,
   LocalAtm,
+  Search,
 } from '@mui/icons-material';
 import { useToast } from '../../hooks/use-toast';
 import { googlePayService } from '../../services/GooglePayService';
@@ -131,6 +133,7 @@ export default function PaymentIntegrationPanel({
   const [showConfigDialog, setShowConfigDialog] = useState(false);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod | null>(null);
   const [loading, setLoading] = useState(false);
+  const [search, setSearch] = useState("");
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const isMobile = useIsMobile();
@@ -788,6 +791,21 @@ export default function PaymentIntegrationPanel({
             <Alert severity="info" sx={{ mb: 2 }}>
               {userSubscriptions.length} aktive abonnementer funnet
             </Alert>
+            <TextField
+              size="small"
+              fullWidth
+              placeholder="Søk etter produkt eller kunde …"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              sx={{ mb: 2 }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Search fontSize="small" />
+                  </InputAdornment>
+                ),
+              }}
+            />
             <AdminTableContainer ariaLabel="Abonnementer">
               <Table>
                 <TableHead>
@@ -802,7 +820,16 @@ export default function PaymentIntegrationPanel({
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {userSubscriptions.slice(0, 10).map((subscription: any) => (
+                  {userSubscriptions
+                    .filter((subscription: any) =>
+                      [subscription.productId, subscription.userId]
+                        .filter(Boolean)
+                        .join(' ')
+                        .toLowerCase()
+                        .includes(search.toLowerCase())
+                    )
+                    .slice(0, 10)
+                    .map((subscription: any) => (
                     <TableRow key={subscription.d}>
                       <TableCell>{subscription.productId}</TableCell>
                       <TableCell>{subscription.userId}</TableCell>

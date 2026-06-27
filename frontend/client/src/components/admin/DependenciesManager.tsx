@@ -37,6 +37,8 @@ import {
   Divider,
   CircularProgress,
   Stack,
+  TextField,
+  InputAdornment,
 } from '@mui/material';
 import {
   Update,
@@ -57,6 +59,7 @@ import {
   Shield,
   AutoFixHigh,
   MonitorHeart,
+  Search,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { getProfessionIcon } from '@/utils/profession-icons';
@@ -114,6 +117,7 @@ function TabPanel(props: TabPanelProps) {
 
 export function DependenciesManager() {
   const [tabValue, setTabValue] = useState(0);
+  const [search, setSearch] = useState("");
   const [autoScanEnabled, setAutoScanEnabled] = useState(true);
   const [selectedDependency, setSelectedDependency] = useState<DependencyInfo | null>(null);
   const [updateDialog, setUpdateDialog] = useState(false);
@@ -412,6 +416,20 @@ export function DependenciesManager() {
         {/* Category-specific tabs */}
         {categories.map((category, categoryIndex) => (
           <TabPanel value={tabValue} index={categoryIndex + 1} key={category.name}>
+            <TextField
+              size="small"
+              placeholder="Søk pakker …"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              sx={{ mb: 2, width: { xs: '100%', sm: 320 } }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Search fontSize="small" />
+                  </InputAdornment>
+                ),
+              }}
+            />
             <AdminTableContainer ariaLabel={`${category.name} dependencies`}>
               <Table>
                 <TableHead>
@@ -425,7 +443,13 @@ export function DependenciesManager() {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {getDependenciesByCategory(category.name).map((dependency) => (
+                  {getDependenciesByCategory(category.name)
+                    .filter((dependency) =>
+                      `${dependency.name} ${dependency.description} ${dependency.component} ${dependency.system}`
+                        .toLowerCase()
+                        .includes(search.toLowerCase())
+                    )
+                    .map((dependency) => (
                     <TableRow key={dependency.name}>
                       <TableCell>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1}}>

@@ -40,6 +40,8 @@ import {
   ToggleButton,
   CircularProgress,
   ThemeProvider,
+  TextField,
+  InputAdornment,
 } from '@mui/material';
 import { adminDarkTheme } from './adminDarkTheme';
 import {
@@ -56,6 +58,7 @@ import {
   CompareArrows,
   Visibility,
   Mouse,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
@@ -123,6 +126,7 @@ export default function EmailAnalyticsDashboard() {
   const [selectedCampaign, setSelectedCampaign] = useState<string | null>(null);
   const [timeRange, setTimeRange] = useState<string>('7d');
   const [showABTestDialog, setShowABTestDialog] = useState(false);
+  const [search, setSearch] = useState("");
 
   // Fetch email analytics
   const { data: analytics, isLoading } = useQuery({
@@ -308,6 +312,22 @@ export default function EmailAnalyticsDashboard() {
 
           {/* Campaign Performance Table */}
           <AdminCard title="Campaign Performance" disablePadding sx={{ mb: 4 }}>
+              <Box sx={{ px: 2, pt: 2 }}>
+                <TextField
+                  size="small"
+                  fullWidth
+                  placeholder="Søk kampanje eller emne …"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <SearchIcon fontSize="small" />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+              </Box>
               <AdminTableContainer ariaLabel="Campaign Performance">
                 <Table>
                   <TableHead>
@@ -324,7 +344,9 @@ export default function EmailAnalyticsDashboard() {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {campaigns.map((campaign: EmailCampaign) => (
+                    {campaigns.filter((campaign: EmailCampaign) =>
+                      `${campaign.name || ''} ${campaign.subject || ''}`.toLowerCase().includes(search.toLowerCase())
+                    ).map((campaign: EmailCampaign) => (
                       <TableRow key={campaign.id} hover>
                         <TableCell>
                           <Stack>
