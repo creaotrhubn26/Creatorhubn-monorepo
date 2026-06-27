@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Avatar,
@@ -91,7 +91,17 @@ export default function SocialInboxPanel(): React.ReactElement {
   const [sentimentFilter, setSentimentFilter] = useState<FilterSentiment>('all');
   const [unreadOnly, setUnreadOnly] = useState(false);
 
+  // Monotonic request id. The 30s auto-poll overlaps with filter changes and
+  // manual refreshes, so responses can arrive out of order — without this, a
+  // slow stale response could overwrite the freshly-filtered list (or flip
+  // `loading` off while a newer request is still in flight). Only the latest
+  // request's result is applied.
+  const reqSeqRef = useRef(0);
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
+
   const refresh = useCallback(async () => {
+    const seq = ++reqSeqRef.current;
     setLoading(true);
     setError(null);
     const result = await roleRoomAgentService.listSocialInbox({
@@ -101,6 +111,8 @@ export default function SocialInboxPanel(): React.ReactElement {
       unread: unreadOnly,
       limit: 100,
     });
+    // Discard stale/out-of-order responses and post-unmount updates.
+    if (seq !== reqSeqRef.current || !mountedRef.current) return;
     if (result.error) setError(result.error);
     setEvents(result.events);
     setLoading(false);

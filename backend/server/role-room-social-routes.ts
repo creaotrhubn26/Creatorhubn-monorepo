@@ -90,6 +90,30 @@ export interface RoleRoomSocialRoutesDeps {
   isCompatAdminFeatureEnabled: (featureId: string) => boolean;
 }
 
+/**
+ * SQL subquery returning every social account_id the given user owns —
+ * IG business + FB page + LinkedIn member + linked YouTube channels. Used to
+ * scope both the inbox read (GET) and the mark-as-read write (POST) to the
+ * caller's own data. `userParam` is a bind placeholder (e.g. "$2"); pass the
+ * same user id for it. Kept in one place so the read and write paths can never
+ * drift out of sync (which is how the mark-read endpoint became an IDOR).
+ */
+function ownedSocialAccountIdsSql(userParam: string): string {
+  return `
+    SELECT ig_business_account_id FROM role_room_instagram_connections WHERE user_id = ${userParam}
+    UNION
+    SELECT facebook_page_id FROM role_room_instagram_connections
+     WHERE user_id = ${userParam} AND facebook_page_id IS NOT NULL
+    UNION
+    SELECT linkedin_member_id FROM role_room_linkedin_connections
+     WHERE user_id = ${userParam} AND linkedin_member_id IS NOT NULL
+    UNION
+    SELECT DISTINCT account_id FROM social_metrics
+     WHERE platform = 'youtube'
+       AND connection_id IN (SELECT id FROM role_room_google_connections WHERE user_id = ${userParam})
+  `;
+}
+
 export function setupRoleRoomSocialRoutes(
   deps: RoleRoomSocialRoutesDeps,
 ): void {
@@ -407,21 +431,7 @@ export function setupRoleRoomSocialRoutes(
     // Scope til brukerens egne tilkoblinger. Inkluderer IG-business-id +
     // FB-page-id + LinkedIn-member-id + YouTube-channel-ids (sistnevnte
     // via Google-connection-link på social_metrics-raden).
-    where.push(
-      `account_id IN (
-         SELECT ig_business_account_id FROM role_room_instagram_connections WHERE user_id = $${params.length + 1}
-         UNION
-         SELECT facebook_page_id FROM role_room_instagram_connections
-          WHERE user_id = $${params.length + 1} AND facebook_page_id IS NOT NULL
-         UNION
-         SELECT linkedin_member_id FROM role_room_linkedin_connections
-          WHERE user_id = $${params.length + 1} AND linkedin_member_id IS NOT NULL
-         UNION
-         SELECT DISTINCT account_id FROM social_metrics
-          WHERE platform = 'youtube'
-            AND connection_id IN (SELECT id FROM role_room_google_connections WHERE user_id = $${params.length + 1})
-       )`,
-    );
+    where.push(`account_id IN (${ownedSocialAccountIdsSql(`$${params.length + 1}`)})`);
     params.push(session.userId);
     if (platform) {
       where.push(`platform = $${params.length + 1}`);
@@ -491,12 +501,21 @@ export function setupRoleRoomSocialRoutes(
   });
 
   app.post("/api/role-room/social/inbox/:eventId/read", async (req, res) => {
-    if (!requireAdminSession(req, res)) return;
+    const session = requireAdminSession(req, res);
+    if (!session) return;
     try {
-      await pool.query(
-        `UPDATE social_events SET is_read = true WHERE id = $1`,
-        [req.params.eventId],
+      // Scope the write to the caller's own accounts — same filter as the GET.
+      // Previously this updated any social_events row by id, letting one user
+      // mark another tenant's events read (IDOR).
+      const result = await pool.query(
+        `UPDATE social_events SET is_read = true
+          WHERE id = $1
+            AND account_id IN (${ownedSocialAccountIdsSql("$2")})`,
+        [req.params.eventId, session.userId],
       );
+      if (result.rowCount === 0) {
+        return res.status(404).json({ success: false, error: "Fant ikke hendelsen." });
+      }
       return res.json({ success: true });
     } catch (error) {
       console.error("[social-inbox] mark read failed", error);
