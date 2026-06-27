@@ -72,7 +72,7 @@ import {
 } from '@mui/icons-material';
 import { PrototypeTesterIcon } from '../icons/PrototypeTesterIcon';
 import { apiRequest, isApiEndpointMissing } from '@/lib/queryClient';
-import { AdminButton } from './design-system';
+import { AdminButton, useIsMobile } from './design-system';
 import FeedbackConversation from '../universal/editing-marketplace/FeedbackConversation';
 import RichTextEditor from '../RichTextEditor';
 import 'quill/dist/quill.snow.css';
@@ -377,6 +377,7 @@ export default function PrototypeFeedbackPanel({
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
 
   // Theming system
   const theming = useTheming('prototype_tester');
@@ -1767,6 +1768,7 @@ export default function PrototypeFeedbackPanel({
         onClose={() => setStatusDialogOpen(false)}
         maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>
           Oppdater tilbakemelding status

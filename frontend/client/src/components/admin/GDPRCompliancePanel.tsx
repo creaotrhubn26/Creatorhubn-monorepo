@@ -65,7 +65,7 @@ import {
   DATATILSYNET_CONTACT,
   GDPR_COMPLIANCE_CHECKLIST
 } from '@shared/datatilsynet-gdpr-reference';
-import { AdminButton, StatusChip, adminTokens } from './design-system';
+import { AdminButton, StatusChip, adminTokens, useIsMobile } from './design-system';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -112,6 +112,7 @@ export function GDPRCompliancePanel() {
   );
 
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
   const theming = useTheming('photographer');
   // Lys oransje aksent på mørk bakgrunn (matcher admin-skallet).
   const themeColors = { ...theming.colors, primary: '#ff8c00' };
@@ -1287,6 +1288,7 @@ export function GDPRCompliancePanel() {
         onClose={() => setDatatilsynetDialog(false)}
         maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -1408,6 +1410,7 @@ export function GDPRCompliancePanel() {
         onClose={() => setDataExportDialog(false)}
         maxWidth="sm"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>

@@ -44,7 +44,7 @@ import {
   ThemeProvider,
 } from '@mui/material';
 import { adminDarkTheme } from './adminDarkTheme';
-import { AdminButton, AdminLoading, AdminError } from './design-system';
+import { AdminButton, AdminLoading, AdminError, useIsMobile } from './design-system';
 import {
   ExpandMore,
   Settings,
@@ -147,6 +147,7 @@ export default function FeatureManagement({
   onNotificationCreate
 }: FeatureManagementProps) {
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
 
   // ⭐ Enhanced Master Integration
   const { lifecycle, analytics, performance, debugging, dataFlow, communication, auth } = useEnhancedMasterIntegration();
@@ -1547,7 +1548,7 @@ export default function FeatureManagement({
       )}
 
       {/* Confirmation Dialog */}
-      <Dialog open={confirmDialog.open} onClose={() => setConfirmDialog({ open: false, action: 'enable' })}>
+      <Dialog open={confirmDialog.open} fullScreen={isMobile} onClose={() => setConfirmDialog({ open: false, action: 'enable' })}>
         <DialogTitle>
           Bekreft funksjonsendring
         </DialogTitle>
@@ -1601,9 +1602,10 @@ export default function FeatureManagement({
       </Dialog>
       
       {/* Profession Feature Confirmation Dialog */}
-      <Dialog 
-        open={professionFeatureDialog.open} 
+      <Dialog
+        open={professionFeatureDialog.open}
         onClose={() => setProfessionFeatureDialog({ open: false, action: 'enable' })}
+        fullScreen={isMobile}
         maxWidth="sm"
         fullWidth
       >
@@ -1682,9 +1684,10 @@ export default function FeatureManagement({
       </Dialog>
       
       {/* Tab Toggle Confirmation Dialog */}
-      <Dialog 
-        open={tabDialog.open} 
+      <Dialog
+        open={tabDialog.open}
         onClose={() => setTabDialog({ open: false, action: 'enable' })}
+        fullScreen={isMobile}
         maxWidth="sm"
         fullWidth
       >

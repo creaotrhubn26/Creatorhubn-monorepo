@@ -515,7 +515,7 @@ export function ShowcaseSettingsPanel({ profession = 'photographer' }: ShowcaseS
 
   return (
     <Box sx={{ p:  3 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  3 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1, mb:  3 }}>
         <Typography variant="h4" component="h2" sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
           {theming.getThemedIcon('settings')}
           Showcase Innstillinger
@@ -2101,9 +2101,10 @@ export function ShowcaseSettingsPanel({ profession = 'photographer' }: ShowcaseS
                           settings.cardShadow === 'subtle' ? '0 1px 3px rgba(0,0,0,0.12)' :
                           settings.cardShadow === 'medium' ? '0 4px 6px rgba(0,0,0,0.1)' :
                           '0 8px 15px rgba(0,0,0,0.2)',
-                width: settings.cardSize === 'small' ? 200 : 
+                width: settings.cardSize === 'small' ? 200 :
                        settings.cardSize === 'medium' ? 250 :
-                       settings.cardSize === 'large' ? 300 : 350 }}>
+                       settings.cardSize === 'large' ? 300 : 350,
+                maxWidth: '100%' }}>
                 <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.72)', mb: 1, display: 'block'}}>
                   Eksempel showcase-item ({settings.cardSize})
                 </Typography>
