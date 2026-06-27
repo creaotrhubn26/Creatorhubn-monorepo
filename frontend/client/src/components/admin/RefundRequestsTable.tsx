@@ -322,6 +322,7 @@ export default function RefundRequestsTable() {
             <Tooltip title="Send e-post til valgte brukere">
               <IconButton
                 color="inherit"
+                aria-label="Send e-post til valgte brukere"
                 onClick={() => {
                   analytics.trackEvent('bulk_email_refund_users', { count: selectedIds.length });
                   setSnackbar({ open: true, message: `Sender e-post til ${selectedIds.length} brukere...` });
@@ -364,6 +365,7 @@ export default function RefundRequestsTable() {
                     checked={pendingCount > 0 && selectedIds.length === pendingCount}
                     onChange={handleSelectAll}
                     icon={<SelectAll />}
+                    aria-label="Velg alle ventende"
                   />
                 </Tooltip>
               </TableCell>
@@ -383,6 +385,7 @@ export default function RefundRequestsTable() {
                   checked={selectedIds.includes(request.id)}
                   onChange={() => handleSelectOne(request.id)}
                   disabled={request.status !== 'pending'}
+                  aria-label="Velg refunderingsforespørsel"
                 />
               </TableCell>
               <TableCell>
@@ -436,6 +439,7 @@ export default function RefundRequestsTable() {
                         setActionDialog('approve');
                       }}
                       title="Godkjenn"
+                      aria-label="Godkjenn"
                     >
                       <CheckCircle />
                     </IconButton>
@@ -447,6 +451,7 @@ export default function RefundRequestsTable() {
                         setActionDialog('reject');
                       }}
                       title="Avvis"
+                      aria-label="Avvis"
                     >
                       <Cancel />
                     </IconButton>
@@ -458,6 +463,7 @@ export default function RefundRequestsTable() {
                       setSelectedRefund(request);
                     }}
                     title="Vis detaljer"
+                    aria-label="Vis detaljer"
                   >
                     <Visibility />
                   </IconButton>

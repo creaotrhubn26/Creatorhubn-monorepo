@@ -678,6 +678,7 @@ export default memo(function AcademyAdminPanel() {
                   checked={coursesData.length > 0 && selectedCourseIds.length === coursesData.length}
                   indeterminate={selectedCourseIds.length > 0 && selectedCourseIds.length < coursesData.length}
                   onChange={handleSelectAll}
+                  aria-label="Velg alle kurs"
                 />
               </TableCell>
               <TableCell sx={{ bgcolor: 'rgba(255,255,255,0.04)' }}><strong>Kurs</strong></TableCell>
@@ -697,6 +698,7 @@ export default memo(function AcademyAdminPanel() {
                 <Checkbox
                   checked={selectedCourseIds.includes(course.id)}
                   onChange={() => handleSelectCourse(course.id)}
+                  aria-label="Velg kurs"
                 />
               </TableCell>
               <TableCell>
@@ -723,6 +725,7 @@ export default memo(function AcademyAdminPanel() {
               <TableCell align="center">
                 <IconButton
                   size="small"
+                  aria-label="Kurshandlinger"
                   onClick={(e) => handleMenuOpen(e, course)}
                 >
                   <MoreVertIcon />
@@ -744,7 +747,7 @@ export default memo(function AcademyAdminPanel() {
     <Box>
       {/* Header */}
       <Box sx={{ mb: 3 }}>
-        <Typography variant="h5" sx={{ fontWeight: 'bold', mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Typography variant="h5" component="h2" sx={{ fontWeight: 'bold', mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
           {professionIcon && (
             <Box sx={{ color: professionColor, display: 'flex', alignItems: 'center' }}>
               {professionIcon}
@@ -831,6 +834,7 @@ export default memo(function AcademyAdminPanel() {
                     fullWidth
                     size="small"
                     placeholder="Søk etter kurs..."
+                    aria-label="Søk etter kurs"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     InputProps={{
@@ -898,7 +902,7 @@ export default memo(function AcademyAdminPanel() {
       {tabValue === 1 && (
         <Box>
           <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Typography variant="h6">Instruktører</Typography>
+            <Typography variant="h6" component="h2">Instruktører</Typography>
             <AdminButton
               tone="primary"
               startIcon={<AddIcon />}
@@ -934,7 +938,7 @@ export default memo(function AcademyAdminPanel() {
                     <TableCell align="center">{instructor.courseCount}</TableCell>
                     <TableCell align="center">
                       <Tooltip title="Se kurs">
-                        <IconButton size="small">
+                        <IconButton size="small" aria-label="Se kurs">
                           <VideoLibraryIcon />
                         </IconButton>
                       </Tooltip>
@@ -956,7 +960,7 @@ export default memo(function AcademyAdminPanel() {
       {tabValue === 2 && (
         <Box>
           <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
-            <Typography variant="h6">Påmeldinger</Typography>
+            <Typography variant="h6" component="h2">Påmeldinger</Typography>
             <Box sx={{ display: 'flex', gap: 1 }}>
               <AdminButton
                 tone="secondary"
@@ -1018,6 +1022,7 @@ export default memo(function AcademyAdminPanel() {
                         <IconButton
                           size="small"
                           color="error"
+                          aria-label="Fjern påmelding"
                           onClick={() => {
                             setConfirmDeleteDialog({
                               open: true,
@@ -1092,7 +1097,7 @@ export default memo(function AcademyAdminPanel() {
             <Grid item xs={12} md={8}>
               <Card>
                 <CardContent>
-                  <Typography variant="h6" gutterBottom>Kurs-ytelse</Typography>
+                  <Typography variant="h6" component="h3" gutterBottom>Kurs-ytelse</Typography>
                   <AdminTableContainer ariaLabel="Kurs-ytelse">
                     <Table size="small">
                       <TableHead>
@@ -1139,7 +1144,7 @@ export default memo(function AcademyAdminPanel() {
             <Grid item xs={12} md={4}>
               <Card>
                 <CardContent>
-                  <Typography variant="h6" gutterBottom>Topp studenter</Typography>
+                  <Typography variant="h6" component="h3" gutterBottom>Topp studenter</Typography>
                   <List dense>
                     {[
                       { name: 'Maria Hansen', courses: 5, completed: 4 },
@@ -1166,7 +1171,7 @@ export default memo(function AcademyAdminPanel() {
             <Grid item xs={12}>
               <Card>
                 <CardContent>
-                  <Typography variant="h6" gutterBottom>Månedlig utvikling</Typography>
+                  <Typography variant="h6" component="h3" gutterBottom>Månedlig utvikling</Typography>
                   <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: 1, height: 150, pt: 2 }}>
                     {[
                       { month: 'Jul', revenue: 12400, students: 78 },
@@ -1385,6 +1390,7 @@ export default memo(function AcademyAdminPanel() {
                     >
                       <Checkbox
                         checked={selectedUserIds.includes(user.id)}
+                        aria-label={`Velg ${user.firstName} ${user.lastName}`}
                         onChange={() => {
                           setSelectedUserIds((prev) =>
                             prev.includes(user.id)

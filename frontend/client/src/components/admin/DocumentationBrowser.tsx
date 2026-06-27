@@ -523,6 +523,7 @@ export default function DocumentationBrowser() {
             <Stack direction="row" spacing={1}>
               <Tooltip title="View Mode">
                 <IconButton
+                  aria-label="Bytt visningsmodus"
                   onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
                   sx={{ color: 'white' }}
                 >
@@ -578,6 +579,7 @@ export default function DocumentationBrowser() {
             <TextField
               fullWidth
               size="small"
+              aria-label="Søk i dokumentasjon"
               placeholder="Search documentation..."
               value={searchQuery}
               onChange={(e) => {
@@ -655,9 +657,10 @@ export default function DocumentationBrowser() {
                       key={docPath} 
                       disablePadding
                       secondaryAction={
-                        <IconButton 
-                          edge="end" 
+                        <IconButton
+                          edge="end"
                           size="small"
+                          aria-label="Fjern bokmerke"
                           onClick={() => toggleBookmark(docPath)}
                         >
                           <BookmarkIcon fontSize="small" color="warning" />
@@ -902,6 +905,7 @@ export default function DocumentationBrowser() {
                     <Tooltip title={bookmarkedDocs.includes(selectedFile?.path || '') ? 'Remove bookmark' : 'Bookmark this doc'}>
                       <IconButton
                         size="small"
+                        aria-label={bookmarkedDocs.includes(selectedFile?.path || '') ? 'Fjern bokmerke' : 'Bokmerk dette dokumentet'}
                         onClick={() => selectedFile && toggleBookmark(selectedFile.path)}
                       >
                         {bookmarkedDocs.includes(selectedFile?.path || '') ? (
@@ -1008,6 +1012,7 @@ export default function DocumentationBrowser() {
                 <TextField
                   fullWidth
                   size="small"
+                  aria-label="Søk i dokumentet"
                   placeholder="Search in document..."
                   value={docSearch}
                   onChange={(e) => setDocSearch(e.target.value)}
@@ -1053,6 +1058,7 @@ export default function DocumentationBrowser() {
                     <TextField
                       fullWidth
                       size="small"
+                      aria-label="Still et spørsmål om dokumentet"
                       placeholder="What would you like to know?"
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') {
@@ -1188,7 +1194,7 @@ function SectionItem({
     <Box>
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
         <Stack direction="row" spacing={1} alignItems="center">
-          <IconButton onClick={() => setOpen((o) => !o)} size="small">
+          <IconButton aria-label={open ? 'Skjul seksjon' : 'Vis seksjon'} onClick={() => setOpen((o) => !o)} size="small">
             <ChevronRightIcon
               sx={{
                 transform: open ? 'rotate(90deg)' : 'rotate(0deg)',
@@ -1203,7 +1209,7 @@ function SectionItem({
         <Stack direction="row" spacing={1}>
           {canUseAI && (
             <Tooltip title="Ask AI about this section">
-              <IconButton size="small">
+              <IconButton size="small" aria-label="Spør AI om denne seksjonen">
                 <SmartToyIcon fontSize="small" />
               </IconButton>
             </Tooltip>
@@ -1211,6 +1217,7 @@ function SectionItem({
           <Tooltip title="Copy code blocks">
             <IconButton
               size="small"
+              aria-label="Kopier kodeblokker"
               onClick={() => {
                 const tmp = document.createElement('div');
                 tmp.innerHTML = html;

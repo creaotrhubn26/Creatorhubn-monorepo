@@ -98,7 +98,7 @@ export const WireMockResponseViewer: React.FC<WireMockResponseViewerProps> = ({
               size="small"
             />
           </Box>
-          <IconButton onClick={onClose} size="small">
+          <IconButton onClick={onClose} size="small" aria-label="Lukk">
             <CloseIcon />
           </IconButton>
         </Box>
@@ -171,6 +171,7 @@ export const WireMockResponseViewer: React.FC<WireMockResponseViewerProps> = ({
                         <Tooltip title={copied ? 'Copied!' : 'Copy headers'}>
                           <IconButton
                             size="small"
+                            aria-label="Kopier response-headere"
                             onClick={() => handleCopy(formatJSON(result.response?.headers))}
                           >
                             <CopyIcon fontSize="small" />
@@ -203,6 +204,7 @@ export const WireMockResponseViewer: React.FC<WireMockResponseViewerProps> = ({
                       <Tooltip title={copied ? 'Copied!' : 'Copy response'}>
                         <IconButton
                           size="small"
+                          aria-label="Kopier response-body"
                           onClick={() => handleCopy(formatJSON(result.response?.body))}
                         >
                           <CopyIcon fontSize="small" />
@@ -246,6 +248,7 @@ export const WireMockResponseViewer: React.FC<WireMockResponseViewerProps> = ({
                         <Tooltip title={copied ? 'Copied!' : 'Copy headers'}>
                           <IconButton
                             size="small"
+                            aria-label="Kopier request-headere"
                             onClick={() => handleCopy(formatJSON(result.request?.headers))}
                           >
                             <CopyIcon fontSize="small" />
@@ -279,6 +282,7 @@ export const WireMockResponseViewer: React.FC<WireMockResponseViewerProps> = ({
                         <Tooltip title={copied ? 'Copied!' : 'Copy request'}>
                           <IconButton
                             size="small"
+                            aria-label="Kopier request-body"
                             onClick={() => handleCopy(formatJSON(result.request?.body))}
                           >
                             <CopyIcon fontSize="small" />
@@ -318,6 +322,7 @@ export const WireMockResponseViewer: React.FC<WireMockResponseViewerProps> = ({
                 <Tooltip title={copied ? 'Copied!' : 'Copy stack trace'}>
                   <IconButton
                     size="small"
+                    aria-label="Kopier stack trace"
                     onClick={() => handleCopy(result.error?.stack || '')}
                   >
                     <CopyIcon fontSize="small" />

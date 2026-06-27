@@ -281,7 +281,7 @@ export default function MarketingWorkflowIntegration({
         // Content Type Selection
         return (
           <Box>
-            <Typography variant="h6" gutterBottom>
+            <Typography variant="h6" component="h2" gutterBottom>
               Velg innholdstype
             </Typography>
             <Grid container spacing={2}>
@@ -332,7 +332,7 @@ export default function MarketingWorkflowIntegration({
         // Email Design
         return (
           <Box>
-            <Typography variant="h6" gutterBottom>
+            <Typography variant="h6" component="h2" gutterBottom>
               Design e-postmal
             </Typography>
             <Alert severity="info" sx={{ mb: 3 }}>
@@ -401,7 +401,7 @@ export default function MarketingWorkflowIntegration({
         // Announcement Details
         return (
           <Box>
-            <Typography variant="h6" gutterBottom>
+            <Typography variant="h6" component="h2" gutterBottom>
               Kunngjøring Detaljer
             </Typography>
             <TextField
@@ -468,7 +468,7 @@ export default function MarketingWorkflowIntegration({
         // Scheduling
         return (
           <Box>
-            <Typography variant="h6" gutterBottom>
+            <Typography variant="h6" component="h2" gutterBottom>
               Planlegging
             </Typography>
             <FormControlLabel
@@ -525,7 +525,7 @@ export default function MarketingWorkflowIntegration({
         // Marketing Automation
         return (
           <Box>
-            <Typography variant="h6" gutterBottom>
+            <Typography variant="h6" component="h2" gutterBottom>
               Markedsføringsautomatisering
             </Typography>
             <FormControlLabel
@@ -616,7 +616,7 @@ export default function MarketingWorkflowIntegration({
         // Confirmation
         return (
           <Box>
-            <Typography variant="h6" gutterBottom>
+            <Typography variant="h6" component="h2" gutterBottom>
               Bekreft og Publiser
             </Typography>
             <Alert severity="success" sx={{ mb: 3 }}>
@@ -684,8 +684,8 @@ export default function MarketingWorkflowIntegration({
       <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
         <DialogTitle>
           <Box display="flex" alignItems="center" gap={2}>
-            <CampaignIcon sx={{ color: adminTokens.color.brand }} />
-            <Typography variant="h6">Marketing Workflow</Typography>
+            <CampaignIcon sx={{ color: adminTokens.color.brand }} aria-hidden="true" />
+            <Typography variant="h6" component="h2">Marketing Workflow</Typography>
           </Box>
         </DialogTitle>
         <DialogContent>

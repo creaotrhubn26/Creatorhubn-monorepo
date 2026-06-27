@@ -482,7 +482,7 @@ export default function FeatureManagement({
     <Box sx={{ p: 3 }}>
       {/* Header */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" sx={{ fontWeight: 600, color: themeColors.primary }}>
+        <Typography variant="h4" component="h2" sx={{ fontWeight: 600, color: themeColors.primary }}>
           Funksjonsadministrasjon
         </Typography>
         <Box sx={{ display: 'flex', gap: 2 }}>
@@ -601,6 +601,7 @@ export default function FeatureManagement({
                       checked={stats.percentage === 100}
                       onChange={(e) => handleCategoryToggle(category, e.target.checked)}
                       onClick={(e) => e.stopPropagation()}
+                      aria-label={`Aktiver eller deaktiver alle funksjoner i ${category}`}
                     />
                 }
                   label=""
@@ -629,6 +630,7 @@ export default function FeatureManagement({
                             checked={feature.enabled}
                             onChange={(e) => handleFeatureToggle(feature, e.target.checked)}
                             disabled={toggleFeatureMutation.isPending}
+                            aria-label={`Aktiver eller deaktiver ${feature.name}`}
                           />
                         </Box>
                         
@@ -841,10 +843,11 @@ export default function FeatureManagement({
                           <Switch
                             checked={feature.enabled}
                             onChange={(e) => handleProfessionFeatureToggle(
-                              selectedProfession, 
-                              feature.featureId, 
+                              selectedProfession,
+                              feature.featureId,
                               e.target.checked
                             )}
+                            aria-label={`Aktiver eller deaktiver valgfri funksjon ${feature.featureId.replace(/_/g, ' ')}`}
                           />
                         </Box>
                       </CardContent>
@@ -956,7 +959,7 @@ export default function FeatureManagement({
           )}
           
           {/* Tab List with Expand/Collapse */}
-          <Typography variant="h5" sx={{ mb: 2, fontWeight: 600}}>
+          <Typography variant="h5" component="h2" sx={{ mb: 2, fontWeight: 600}}>
             Dashboard Tabs
           </Typography>
           
@@ -986,6 +989,7 @@ export default function FeatureManagement({
                   {!tab.required && (
                     <Switch
                       checked={tab.enabled}
+                      aria-label={`Aktiver eller deaktiver tab ${tab.label}`}
                       onChange={(e) => {
                         e.stopPropagation();
                         setTabDialog({
@@ -1056,6 +1060,7 @@ export default function FeatureManagement({
                               {feature.optional && (
                                 <Switch
                                   checked={feature.enabled}
+                                  aria-label={`Aktiver eller deaktiver funksjon ${feature.label}`}
                                   onChange={async (e) => {
                                     const success = toggleTabFeature(
                                       selectedProfession,
@@ -1279,6 +1284,7 @@ export default function FeatureManagement({
                             </Box>
                             <Switch
                               checked={false}
+                              aria-label="Overstyr tab Bryllupstidslinje for denne brukeren"
                               onChange={(_e) => {
                                 setUserOverrideDialog({
                                   open: true,
@@ -1310,6 +1316,7 @@ export default function FeatureManagement({
                             </Box>
                             <Switch
                               checked={false}
+                              aria-label="Overstyr tab Forretningsanalyse for denne brukeren"
                               onChange={(_e) => {
                                 setUserOverrideDialog({
                                   open: true,
@@ -1341,6 +1348,7 @@ export default function FeatureManagement({
                             </Box>
                             <Switch
                               checked={false}
+                              aria-label="Overstyr tab Live Kameraer for denne brukeren"
                               onChange={(_e) => {
                                 setUserOverrideDialog({
                                   open: true,
@@ -1372,6 +1380,7 @@ export default function FeatureManagement({
                             </Box>
                             <Switch
                               checked={false}
+                              aria-label="Overstyr tab AI Assistent for denne brukeren"
                               onChange={(_e) => {
                                 setUserOverrideDialog({
                                   open: true,
@@ -1418,6 +1427,7 @@ export default function FeatureManagement({
                             </Box>
                             <Switch
                               checked={false}
+                              aria-label="Overstyr funksjon Ubegrenset Lagring for denne brukeren"
                               onChange={(_e) => {
                                 setUserOverrideDialog({
                                   open: true,
@@ -1449,6 +1459,7 @@ export default function FeatureManagement({
                             </Box>
                             <Switch
                               checked={false}
+                              aria-label="Overstyr funksjon Prioritert Support for denne brukeren"
                               onChange={(_e) => {
                                 setUserOverrideDialog({
                                   open: true,
@@ -1480,6 +1491,7 @@ export default function FeatureManagement({
                             </Box>
                             <Switch
                               checked={false}
+                              aria-label="Overstyr funksjon API Tilgang for denne brukeren"
                               onChange={(_e) => {
                                 setUserOverrideDialog({
                                   open: true,
@@ -1511,6 +1523,7 @@ export default function FeatureManagement({
                             </Box>
                             <Switch
                               checked={false}
+                              aria-label="Overstyr funksjon Tilpasset Branding for denne brukeren"
                               onChange={(_e) => {
                                 setUserOverrideDialog({
                                   open: true,

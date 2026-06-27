@@ -318,7 +318,7 @@ export default function VisualCMSAdmin() {
     <Box sx={{ p: 3 }}>
       <Stack direction="row" spacing={2} justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
         <Box>
-          <Typography variant="h4" sx={{ color: theming.colors.primary, fontWeight: 700 }}>
+          <Typography variant="h4" component="h2" sx={{ color: theming.colors.primary, fontWeight: 700 }}>
             Visual CMS Admin
           </Typography>
           <Typography variant="body2" color="text.secondary">
@@ -557,11 +557,11 @@ function FieldsPanel({
             key={field.id ?? field.name}
             secondaryAction={
               <Stack direction="row" spacing={1}>
-                <IconButton onClick={() => onEdit(field)} size="small">
+                <IconButton onClick={() => onEdit(field)} size="small" aria-label="Rediger felt">
                   <EditIcon fontSize="small" />
                 </IconButton>
                 {field.id && (
-                  <IconButton onClick={() => onDelete(field.id ?? '')} size="small" color="error">
+                  <IconButton onClick={() => onDelete(field.id ?? '')} size="small" color="error" aria-label="Slett felt">
                     <DeleteIcon fontSize="small" />
                   </IconButton>
                 )}
@@ -631,11 +631,11 @@ function ContentTypesPanel({
               key={contentType.id ?? contentType.navn}
               secondaryAction={
                 <Stack direction="row" spacing={1}>
-                  <IconButton onClick={() => onEdit(contentType)} size="small">
+                  <IconButton onClick={() => onEdit(contentType)} size="small" aria-label="Rediger innholdstype">
                     <EditIcon fontSize="small" />
                   </IconButton>
                   {contentType.id && (
-                    <IconButton onClick={() => onDelete(contentType.id ?? '')} size="small" color="error">
+                    <IconButton onClick={() => onDelete(contentType.id ?? '')} size="small" color="error" aria-label="Slett innholdstype">
                       <DeleteIcon fontSize="small" />
                     </IconButton>
                   )}

@@ -408,7 +408,7 @@ export default function AdminEmailCenter() {
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
               <Email sx={{ color: '#ea4335', fontSize: 32 }} />
-              <Typography variant="h5" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+              <Typography variant="h5" component="h2" sx={{ fontWeight: 600, color: theming.colors.primary }}>
                 Admin E-postsenter
               </Typography>
               <StatusChip
@@ -418,13 +418,13 @@ export default function AdminEmailCenter() {
             </Box>
             <Stack direction="row" spacing={1}>
               <Tooltip title="Oppdater maler">
-                <IconButton onClick={() => queryClient.invalidateQueries({ queryKey: ['/api/admin/email-templates'] })}>
+                <IconButton aria-label="Oppdater maler" onClick={() => queryClient.invalidateQueries({ queryKey: ['/api/admin/email-templates'] })}>
                   <Refresh />
                 </IconButton>
               </Tooltip>
               {isSupported && (
                 <Tooltip title="Push-varsler innstillinger">
-                  <IconButton onClick={() => setPushSettingsOpen(true)} color={pushEnabled ? 'primary' : 'default'}>
+                  <IconButton aria-label="Push-varsler innstillinger" onClick={() => setPushSettingsOpen(true)} color={pushEnabled ? 'primary' : 'default'}>
                     {pushEnabled ? <NotificationsActive /> : <Notifications />}
                   </IconButton>
                 </Tooltip>
@@ -533,6 +533,7 @@ export default function AdminEmailCenter() {
                   <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>Velkomst E-post</Typography>
                   <TextField
                     fullWidth
+                    aria-label="Mottakers e-postadresse"
                     placeholder="admin@eksempel.no"
                     sx={{ mb: 2 }}
                     onChange={(e) => setEmailForm(prev => ({ ...prev, to: e.target.value }))}
@@ -556,6 +557,7 @@ export default function AdminEmailCenter() {
                   <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>Dashboard Tilgang</Typography>
                   <TextField
                     fullWidth
+                    aria-label="Brukers e-postadresse"
                     placeholder="bruker@eksempel.no"
                     sx={{ mb: 1 }}
                     onChange={(e) => setEmailForm(prev => ({ ...prev, to: e.target.value }))}
@@ -596,18 +598,21 @@ export default function AdminEmailCenter() {
                   <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>Funksjons-kunngjøring</Typography>
                   <TextField
                     fullWidth
+                    aria-label="Mottakere (kommaseparert)"
                     placeholder="Mottakere (kommaseparert)"
                     sx={{ mb: 1 }}
                     onChange={(e) => setEmailForm(prev => ({ ...prev, to: e.target.value }))}
                   />
                   <TextField
                     fullWidth
+                    aria-label="Funksjonsnavn"
                     placeholder="Funksjonsnavn"
                     sx={{ mb: 1 }}
                     onChange={(e) => setEmailForm(prev => ({ ...prev, subject: e.target.value }))}
                   />
                   <TextField
                     fullWidth
+                    aria-label="Beskrivelse"
                     placeholder="Beskrivelse"
                     multiline
                     rows={2}
