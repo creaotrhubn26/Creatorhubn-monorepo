@@ -69,7 +69,7 @@ export default function EditingPaymentTestPanel() {
       {/* PayPal-helse */}
       <AdminCard
         sx={{ mb: 2 }}
-        title={<Stack direction="row" spacing={1} alignItems="center"><PaymentsIcon color="primary" /><span>PayPal-tilkobling</span></Stack>}
+        title={<Stack direction="row" spacing={1} alignItems="center"><PaymentsIcon color="primary" aria-hidden="true" /><span>PayPal-tilkobling</span></Stack>}
         subtitle="Tester OAuth mot PayPal (creds + miljø fra Render). Valgfritt: send en ekte test-payout ($1) til en sandbox-personal-e-post."
       >
           <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems="center">
@@ -83,7 +83,7 @@ export default function EditingPaymentTestPanel() {
 
       {/* Escrow-simulering */}
       <AdminCard
-        title={<Stack direction="row" spacing={1} alignItems="center"><ScienceIcon color="primary" /><span>Escrow-test (redigeringsoppdrag)</span></Stack>}
+        title={<Stack direction="row" spacing={1} alignItems="center"><ScienceIcon color="primary" aria-hidden="true" /><span>Escrow-test (redigeringsoppdrag)</span></Stack>}
         subtitle={<>«Simuler betalt» setter escrow til <b>held</b> uten faktisk betaling — så hele løkka (levering → godkjenning → payout) kan testes gratis.</>}
       >
           {jobs.isLoading ? <AdminLoading /> : (jobs.data?.jobs?.length ? (

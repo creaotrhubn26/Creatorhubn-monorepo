@@ -105,13 +105,13 @@ export default function CommunityManagementDashboard() {
     <Container maxWidth="xl" sx={{ py: 0 }}>
       {/* Header */}
       <Box sx={{ mb: 4 }}>
-        <Typography variant="h4" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+        <Typography variant="h4" component="h1" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           {professionIcon && (
-            <Box sx={{ color: professionColor, display: 'flex', alignItems: 'center' }}>
+            <Box aria-hidden="true" sx={{ color: professionColor, display: 'flex', alignItems: 'center' }}>
               {professionIcon}
             </Box>
           )}
-          <Group sx={{ fontSize: 40, color: adminTokens.color.brand }} />
+          <Group aria-hidden="true" sx={{ fontSize: 40, color: adminTokens.color.brand }} />
           {enhancedProfessionConfig?.displayName || professionConfig?.displayName
             ? `${enhancedProfessionConfig?.displayName || professionConfig.displayName} - Community Management`
             : 'Community Management'}

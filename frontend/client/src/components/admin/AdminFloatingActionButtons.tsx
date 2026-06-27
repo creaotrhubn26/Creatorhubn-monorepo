@@ -278,7 +278,16 @@ export default function AdminFloatingActionButtons({
       {/* Info Message */}
       {showInfoMessage && (
         <Box
+          role="button"
+          tabIndex={0}
+          aria-label="Lukk informasjonsmelding"
           onClick={() => setShowInfoMessage(false)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setShowInfoMessage(false);
+            }
+          }}
           sx={{
             position: 'fixed',
             top: '50%',
@@ -310,8 +319,8 @@ export default function AdminFloatingActionButtons({
               '0%': { transform: 'scale(1)' }, '50%': { transform: 'scale(1.05)' }, '100%': { transform: 'scale(1)' }
           }
         }}>
-            <AdminPanelSettings sx={{ 
-              fontSize: 40, 
+            <AdminPanelSettings aria-hidden sx={{
+              fontSize: 40,
               color: 'white',
               animation: 'pulse 1.5s infinite'
           }} />
@@ -463,6 +472,7 @@ export default function AdminFloatingActionButtons({
                   <Fab
                     size="medium"
                     tabIndex={0}
+                    aria-label={action.name.replace(/-/g, ' ')}
                     onFocus={() => setFocusedIndex(index)}
                     onClick={() => handleActionClick(action.name, action.action)}
                     sx={{
@@ -494,6 +504,8 @@ export default function AdminFloatingActionButtons({
         <Fab
           color="primary"
           tabIndex={0}
+          aria-label="Åpne admin-handlinger"
+          aria-expanded={open}
           onClick={() => {
             setOpen(!open);
             setFocusedIndex(open ? -1 : 0);
