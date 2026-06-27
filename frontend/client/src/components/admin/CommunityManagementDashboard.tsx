@@ -105,7 +105,7 @@ export default function CommunityManagementDashboard() {
     <Container maxWidth="xl" sx={{ py: 0 }}>
       {/* Header */}
       <Box sx={{ mb: 4 }}>
-        <Typography variant="h4" component="h1" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+        <Typography variant="h4" component="h1" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
           {professionIcon && (
             <Box aria-hidden="true" sx={{ color: professionColor, display: 'flex', alignItems: 'center' }}>
               {professionIcon}

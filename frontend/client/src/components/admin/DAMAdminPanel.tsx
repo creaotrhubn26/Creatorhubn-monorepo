@@ -113,6 +113,7 @@ import {
 import {
   AdminButton,
   AdminTableContainer,
+  useIsMobile,
 } from './design-system';
 
 interface Asset {
@@ -188,6 +189,7 @@ export default function DAMAdminPanel() {
   
   // Theming system
   const theming = useTheming('prototype_tester');
+  const isMobile = useIsMobile();
   const [error, setError] = useState<string | null>(null);
 
   // UI state
@@ -770,6 +772,7 @@ export default function DAMAdminPanel() {
         onClose={() => setAssetDetailsOpen(false)}
         maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>
           <Stack direction="row" justifyContent="space-between" alignItems="center">

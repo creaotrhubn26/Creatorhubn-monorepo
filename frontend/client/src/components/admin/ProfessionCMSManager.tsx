@@ -46,6 +46,7 @@ import {
   AdminButton,
   AdminTableContainer,
   StatusChip,
+  useIsMobile,
 } from './design-system';
 
 type ProfessionStatus = 'active' | 'inactive' | 'beta' | 'coming_soon';
@@ -206,6 +207,7 @@ function statusTone(status: ProfessionStatus): 'success' | 'neutral' | 'warning'
 export default function ProfessionCMSManager() {
   const queryClient = useQueryClient();
   const { auth } = useEnhancedMasterIntegration();
+  const isMobile = useIsMobile();
 
   const [currentTab, setCurrentTab] = useState(0);
   const [openDialog, setOpenDialog] = useState(false);
@@ -499,7 +501,7 @@ export default function ProfessionCMSManager() {
         </Stack>
       )}
 
-      <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="md" fullWidth>
+      <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle>{editingProfessionId ? 'Rediger profesjon' : 'Opprett profesjon'}</DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 0.5 }}>

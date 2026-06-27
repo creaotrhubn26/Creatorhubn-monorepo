@@ -46,7 +46,7 @@ import WhatsNewModal from '../WhatsNewModal';
 import MarketingWorkflowIntegration from './MarketingWorkflowIntegration';
 import EmailDesigner from '../EmailDesigner/EmailDesigner';
 import { PUBLIC_BRAND_LINKS } from '@/lib/publicBrandLinks';
-import { AdminCard, AdminButton } from './design-system';
+import { AdminCard, AdminButton, useIsMobile } from './design-system';
 
 interface AnnouncementForm {
   title: string;
@@ -102,6 +102,7 @@ export default function AnnouncementCreator() {
   const { professionConfigs: apiProfessionConfigs, hasData: hasApiProfessionConfigs } = useProfessionConfigs();
   const professionAdapter = useProfessionAdapter();
   const { getAllProfessionTypes, getProfessionDisplayName, getUserProfessionColor } = useDynamicProfessions();
+  const isMobile = useIsMobile();
 
   const [form, setForm] = useState<AnnouncementForm>({
     title: '',
@@ -746,7 +747,7 @@ export default function AnnouncementCreator() {
 
             {/* Action Buttons */}
             <Grid item xs={12}>
-                <Box display="flex" gap={2} justifyContent="space-between">
+                <Box display="flex" gap={2} justifyContent="space-between" sx={{ flexWrap: 'wrap' }}>
                 <Button
                   variant="outlined"
                   startIcon={<CampaignIcon />}
@@ -755,7 +756,7 @@ export default function AnnouncementCreator() {
                 >
                   Marketing Workflow
                 </Button>
-                <Box display="flex" gap={2}>
+                <Box display="flex" gap={2} sx={{ flexWrap: 'wrap' }}>
                   <Button
                     variant="outlined"
                     startIcon={<SendIcon />}
@@ -828,6 +829,7 @@ export default function AnnouncementCreator() {
       <Dialog
         open={emailDesignerOpen}
         onClose={() => setEmailDesignerOpen(false)}
+        fullScreen={isMobile}
         fullWidth
         maxWidth="xl"
       >

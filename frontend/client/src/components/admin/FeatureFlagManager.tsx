@@ -29,7 +29,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '../../lib/queryClient';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
-import { AdminButton, StatusChip, AdminLoading, AdminError } from './design-system';
+import { AdminButton, StatusChip, AdminLoading, AdminError, useIsMobile } from './design-system';
 
 interface FeatureFlag {
   id: string;
@@ -52,6 +52,7 @@ const FeatureFlagManager: React.FC = () => {
 
   const queryClient = useQueryClient();
   const { auth } = useEnhancedMasterIntegration();
+  const isMobile = useIsMobile();
 
   // Theming system
   const theming = useTheming('prototype_tester');
@@ -241,7 +242,7 @@ const FeatureFlagManager: React.FC = () => {
       </Grid>
 
       {/* Edit Dialog */}
-      <Dialog open={showEditDialog} onClose={handleCancelEdit} maxWidth="sm" fullWidth>
+      <Dialog open={showEditDialog} onClose={handleCancelEdit} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>Edit Feature Flag</DialogTitle>
         <DialogContent>
           <TextField

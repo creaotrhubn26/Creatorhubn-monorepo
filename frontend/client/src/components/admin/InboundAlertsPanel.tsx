@@ -181,7 +181,7 @@ export default function InboundAlertsPanel() {
             onChange={(e) => setTypeFilter(e.target.value)}
             size="small"
             placeholder="f.eks. partner-soknad"
-            sx={{ minWidth: 200 }}
+            sx={{ minWidth: { xs: '100%', sm: 200 } }}
           />
           <TextField
             label="Kilde inneholder"
@@ -189,7 +189,7 @@ export default function InboundAlertsPanel() {
             onChange={(e) => setSourceFilter(e.target.value)}
             size="small"
             placeholder="f.eks. theroleroom.com"
-            sx={{ minWidth: 220 }}
+            sx={{ minWidth: { xs: '100%', sm: 220 } }}
           />
           <FormControlLabel
             control={

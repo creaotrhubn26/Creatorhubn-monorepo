@@ -88,7 +88,7 @@ import { useLocation } from 'wouter';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
 import { PushNotificationSettings } from '../shared/PushNotificationSettings';
-import { AdminButton } from './design-system';
+import { AdminButton, useIsMobile } from './design-system';
 
 interface ActivityItem {
   id: string;
@@ -721,7 +721,7 @@ useEffect(() => {
       </CardContent>
 
       {/* Activity Details Dialog */}
-      <Dialog open={!!selectedActivity} onClose={() => setSelectedActivity(null)} maxWidth="sm" fullWidth>
+      <Dialog open={!!selectedActivity} onClose={() => setSelectedActivity(null)} maxWidth="sm" fullWidth fullScreen={useIsMobile()}>
         {selectedActivity && (
           <>
             <DialogTitle>
@@ -777,7 +777,7 @@ useEffect(() => {
       </Dialog>
 
       {/* Push Notification Settings Dialog */}
-      <Dialog open={pushSettingsOpen} onClose={() => setPushSettingsOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={pushSettingsOpen} onClose={() => setPushSettingsOpen(false)} maxWidth="sm" fullWidth fullScreen={useIsMobile()}>
         <DialogTitle>Push-varsler innstillinger</DialogTitle>
         <DialogContent>
           <Box sx={{ mt: 2 }}>
