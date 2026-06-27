@@ -58,7 +58,7 @@ import {
   Campaign as _CampaignIcon,
 } from '@mui/icons-material';
 import { PUBLIC_BRAND_LINKS } from '@/lib/publicBrandLinks';
-import { AdminButton } from './design-system';
+import { AdminButton, useIsMobile } from './design-system';
 
 interface SocialPost {
   id?: string;
@@ -154,6 +154,7 @@ export default function SocialMediaManager() {
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
   const [errorSnackbar, setErrorSnackbar] = useState<{ open: boolean; message: string }>({ open: false, message: '' });
   const [autoPublish, setAutoPublish] = useState(false);
+  const isMobile = useIsMobile();
 
   const queryClient = useQueryClient();
 
@@ -900,7 +901,7 @@ export default function SocialMediaManager() {
       )}
 
       {/* Preview Dialog */}
-      <Dialog open={previewDialogOpen} onClose={() => setPreviewDialogOpen(false)} maxWidth="md" fullWidth>
+      <Dialog open={previewDialogOpen} onClose={() => setPreviewDialogOpen(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle>Forhåndsvisning av Innlegg</DialogTitle>
         <DialogContent>
           <Box sx={{ pt: 2 }}>
@@ -962,7 +963,7 @@ export default function SocialMediaManager() {
       </Dialog>
 
       {/* Preview Dialog */}
-      <Dialog open={previewDialogOpen} onClose={() => setPreviewDialogOpen(false)} maxWidth="md" fullWidth>
+      <Dialog open={previewDialogOpen} onClose={() => setPreviewDialogOpen(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle>Forhåndsvisning av Innlegg</DialogTitle>
         <DialogContent>
           <Box sx={{ pt: 2 }}>
@@ -1024,7 +1025,7 @@ export default function SocialMediaManager() {
       </Dialog>
 
       {/* Schedule Dialog */}
-      <Dialog open={scheduleDialogOpen} onClose={() => setScheduleDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={scheduleDialogOpen} onClose={() => setScheduleDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>Planlegg Innlegg</DialogTitle>
         <DialogContent>
           <TextField

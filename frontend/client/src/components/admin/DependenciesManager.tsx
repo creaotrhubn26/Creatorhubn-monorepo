@@ -60,7 +60,7 @@ import {
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { getProfessionIcon } from '@/utils/profession-icons';
-import { AdminButton, AdminTableContainer } from './design-system';
+import { AdminButton, AdminTableContainer, useIsMobile } from './design-system';
 
 interface DependencyInfo {
   name: string;
@@ -118,6 +118,7 @@ export function DependenciesManager() {
   const [selectedDependency, setSelectedDependency] = useState<DependencyInfo | null>(null);
   const [updateDialog, setUpdateDialog] = useState(false);
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
 
   // Theming system
   const theming = useTheming('prototype_tester');
@@ -511,11 +512,12 @@ export function DependenciesManager() {
       </Paper>
 
       {/* Update Dialog */}
-      <Dialog 
+      <Dialog
         open={updateDialog}
         onClose={() => setUpdateDialog(false)}
         maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>
           Update Dependency: {selectedDependency?.name}

@@ -73,7 +73,7 @@ import SubscriberStatsPanel from './SubscriberStatsPanel';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { CommunicationStatusProvider } from '../../contexts/CommunicationStatusContext';
 import { FileManagementStatusProvider } from '../../contexts/FileManagementStatusContext';
-import { AdminButton, adminTokens } from './design-system';
+import { AdminButton, adminTokens, useIsMobile } from './design-system';
 
 interface ChatUser {
   id: string;
@@ -144,6 +144,9 @@ export default function AdminCommunicationPanel({
 }: AdminCommunicationPanelProps) {
   // Get auth from master integration
   const { auth } = useEnhancedMasterIntegration();
+
+  // Responsiv: full-skjerm dialoger på mobil
+  const isMobile = useIsMobile();
 
   // Theming system
   const theming = useTheming('prototype_tester');
@@ -874,11 +877,12 @@ export default function AdminCommunicationPanel({
       </Menu>
 
       {/* Broadcast Dialog */}
-      <Dialog 
-        open={broadcastDialogOpen} 
+      <Dialog
+        open={broadcastDialogOpen}
         onClose={() => setBroadcastDialogOpen(false)}
         maxWidth="sm"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle sx={{ bgcolor: adminTokens.color.brand, color: 'white' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -932,11 +936,12 @@ export default function AdminCommunicationPanel({
       </Dialog>
 
       {/* Add User Dialog */}
-      <Dialog 
-        open={addUserDialogOpen} 
+      <Dialog
+        open={addUserDialogOpen}
         onClose={() => setAddUserDialogOpen(false)}
         maxWidth="sm"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>

@@ -70,7 +70,7 @@ import { useToast } from '../../hooks/use-toast';
 import { googlePayService } from '../../services/GooglePayService';
 import { paymentProcessingService } from '../../services/PaymentProcessingService';
 import { pricingService } from '../../services/PricingService';
-import { AdminButton, StatusChip, AdminTableContainer } from './design-system';
+import { AdminButton, StatusChip, AdminTableContainer, useIsMobile } from './design-system';
 
 interface PaymentIntegrationPanelProps {
   className?: string;
@@ -133,6 +133,7 @@ export default function PaymentIntegrationPanel({
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
 
   // Master integration system for "everything interacts with everything"
   const { integration, communication, dataFlow, componentRegistry } = useEnhancedMasterIntegration();
@@ -971,7 +972,7 @@ export default function PaymentIntegrationPanel({
       )}
 
       {/* Configuration Dialog */}
-      <Dialog open={showConfigDialog} onClose={() => setShowConfigDialog(false)} maxWidth="md" fullWidth>
+      <Dialog open={showConfigDialog} onClose={() => setShowConfigDialog(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle>
           Konfigurer {selectedPaymentMethod?.name}
         </DialogTitle>
