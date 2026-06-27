@@ -10,7 +10,6 @@ import {
   Button,
   Card,
   CardContent,
-  Chip,
   Divider,
   List,
   ListItem,
@@ -27,6 +26,7 @@ import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions'
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
+import { StatusChip } from './design-system';
 
 type TestStatus = 'PASS' | 'FAIL';
 
@@ -314,7 +314,7 @@ const PaymentSystemsIntegrationTest: React.FC = () => {
           {testResults.map((result) => (
             <ListItem key={result.key}>
               <ListItemText primary={result.key} secondary={result.detail} />
-              <Chip label={result.status} size="small" color={result.status === 'PASS' ? 'success' : 'error'} />
+              <StatusChip tone={result.status === 'PASS' ? 'success' : 'error'} label={result.status} />
             </ListItem>
           ))}
         </List>
@@ -362,10 +362,9 @@ const PaymentSystemsIntegrationTest: React.FC = () => {
                     <ListItemText
                       primary={componentId}
                       secondary={
-                        <Chip
+                        <StatusChip
+                          tone={componentRegistry.getComponent(componentId) ? 'success' : 'error'}
                           label={componentRegistry.getComponent(componentId) ? 'Registered' : 'Missing'}
-                          color={componentRegistry.getComponent(componentId) ? 'success' : 'error'}
-                          size="small"
                         />
                       }
                     />
@@ -384,15 +383,24 @@ const PaymentSystemsIntegrationTest: React.FC = () => {
               <List dense>
                 <ListItem>
                   <ListItemText primary="payment-integration:paymentMethods" />
-                  <Chip label={integrationSnapshot.paymentMethodsReady ? 'Ready' : 'Empty'} size="small" />
+                  <StatusChip
+                    tone={integrationSnapshot.paymentMethodsReady ? 'success' : 'neutral'}
+                    label={integrationSnapshot.paymentMethodsReady ? 'Ready' : 'Empty'}
+                  />
                 </ListItem>
                 <ListItem>
                   <ListItemText primary="pricing-management:services" />
-                  <Chip label={integrationSnapshot.pricingServicesReady ? 'Ready' : 'Empty'} size="small" />
+                  <StatusChip
+                    tone={integrationSnapshot.pricingServicesReady ? 'success' : 'neutral'}
+                    label={integrationSnapshot.pricingServicesReady ? 'Ready' : 'Empty'}
+                  />
                 </ListItem>
                 <ListItem>
                   <ListItemText primary="billing-management:plans" />
-                  <Chip label={integrationSnapshot.billingPlansReady ? 'Ready' : 'Empty'} size="small" />
+                  <StatusChip
+                    tone={integrationSnapshot.billingPlansReady ? 'success' : 'neutral'}
+                    label={integrationSnapshot.billingPlansReady ? 'Ready' : 'Empty'}
+                  />
                 </ListItem>
               </List>
             </CardContent>

@@ -110,6 +110,10 @@ import {
   Archive as ArchiveIcon,
   Unarchive as UnarchiveIcon,
 } from '@mui/icons-material';
+import {
+  AdminButton,
+  AdminTableContainer,
+} from './design-system';
 
 interface Asset {
   id: string;
@@ -501,14 +505,14 @@ export default function DAMAdminPanel() {
             </Grid>
             <Grid item xs={12}>
               <Stack direction="row" spacing={1}>
-                <Button variant="contained"
+                <AdminButton tone="primary"
                   onClick={handleSearch}
                   startIcon={<SearchIcon />}
                 >
                   Search
-                </Button>
-                <Button
-                  variant="outlined"
+                </AdminButton>
+                <AdminButton
+                  tone="secondary"
                   onClick={() => setSearchFilters({
                     query: '',
                     tags:  [],
@@ -519,7 +523,7 @@ export default function DAMAdminPanel() {
                 })}
                 >
                   Clear
-                </Button>
+                </AdminButton>
               </Stack>
             </Grid>
           </Grid>
@@ -531,27 +535,26 @@ export default function DAMAdminPanel() {
         <CardContent sx={theming.getThemedCardSx()}>
           <Stack direction="row" justifyContent="space-between" alignItems="center">
             <Stack direction="row" spacing={2} alignItems="center">
-              <Button variant="contained"
+              <AdminButton tone="primary"
                 startIcon={<UploadIcon />}
                 onClick={() => setUploadDialogOpen(true)}
               >
                 Upload Assets
-              </Button>
-              <Button
-                variant="outlined"
+              </AdminButton>
+              <AdminButton
+                tone="secondary"
                 startIcon={<AddIcon />}
                 onClick={() => setCollectionDialogOpen(true)}
               >
                 New Collection
-              </Button>
+              </AdminButton>
               {selectedAssets.length > 0 && (
-                <Button
-                  variant="outlined"
-                  color="error"
+                <AdminButton
+                  tone="danger"
                   startIcon={<DeleteIcon />}
                 >
                   Delete ({selectedAssets.length})
-                </Button>
+                </AdminButton>
               )}
             </Stack>
             <Stack direction="row" spacing={1} alignItems="center">
@@ -651,7 +654,7 @@ export default function DAMAdminPanel() {
         </Grid>
       ) : (
         <Card sx={theming.getThemedCardSx()}>
-          <TableContainer>
+          <AdminTableContainer ariaLabel="Eiendeler">
             <Table>
               <TableHead>
                 <TableRow>
@@ -741,7 +744,7 @@ export default function DAMAdminPanel() {
                 ))}
               </TableBody>
             </Table>
-          </TableContainer>
+          </AdminTableContainer>
           <TablePagination
             component="div"
             count={totalAssets}

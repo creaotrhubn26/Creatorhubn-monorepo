@@ -14,7 +14,6 @@ import {
   Button,
   Grid,
   Alert,
-  Chip,
   Divider,
   List,
   ListItem,
@@ -27,6 +26,7 @@ import {
   ThemeProvider,
 } from '@mui/material';
 import { adminDarkTheme } from './adminDarkTheme';
+import { AdminButton, StatusChip } from './design-system';
 import {
   Payment as PaymentIcon,
   CardMembership as CardMembershipIcon,
@@ -173,7 +173,7 @@ export default function GooglePaymentsConfiguration({ className }: GooglePayment
       case 'ERROR':
         return 'error';
       default:
-        return 'default';
+        return 'neutral';
   }
 };
 
@@ -224,8 +224,8 @@ export default function GooglePaymentsConfiguration({ className }: GooglePayment
                 Payment processing and subscription management
               </Typography>
               <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
-                <Chip label="Merchant ID: 7115-4985-8029" color="primary" size="small" />
-                <Chip label="Status: Active" color="success" size="small" />
+                <StatusChip label="Merchant ID: 7115-4985-8029" tone="brand" />
+                <StatusChip label="Status: Active" tone="success" />
               </Stack>
               <Button
                 variant="outlined"
@@ -250,8 +250,8 @@ export default function GooglePaymentsConfiguration({ className }: GooglePayment
                 Digital membership cards and passes
               </Typography>
               <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
-                <Chip label="Issuer ID: 7115-4985-8029" color="primary" size="small" />
-                <Chip label="Status: Active" color="success" size="small" />
+                <StatusChip label="Issuer ID: 7115-4985-8029" tone="brand" />
+                <StatusChip label="Status: Active" tone="success" />
               </Stack>
               <Button
                 variant="outlined"
@@ -272,15 +272,14 @@ export default function GooglePaymentsConfiguration({ className }: GooglePayment
             <Typography variant="h6" sx={{ color: themeColors.primary }}>
               Configuration Details
             </Typography>
-            <Button
-              variant="contained"
+            <AdminButton
+              tone="primary"
               startIcon={<RefreshIcon />}
               onClick={testConfiguration}
-              disabled={isLoading}
-              sx={theming.getThemedButtonSx()}
+              loading={isLoading}
             >
               {isLoading ? 'Testing...' : 'Test Configuration'}
-            </Button>
+            </AdminButton>
           </Box>
 
           <List>
@@ -295,10 +294,9 @@ export default function GooglePaymentsConfiguration({ className }: GooglePayment
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         {item.icon}
                         <Typography variant="subtitle1">{item.label}</Typography>
-                        <Chip
+                        <StatusChip
                           label={item.value}
-                          color={getStatusColor(item.status) as any}
-                          size="small"
+                          tone={getStatusColor(item.status) as any}
                         />
                       </Box>
                   }
@@ -332,10 +330,9 @@ export default function GooglePaymentsConfiguration({ className }: GooglePayment
                     <Typography variant="body2" color="text.secondary" gutterBottom>
                       {key.replace(/([A-Z])/g, ' $1').trim()}
                     </Typography>
-                    <Chip
+                    <StatusChip
                       label={value as string}
-                      color={getStatusColor(value as string) as any}
-                      size="small"
+                      tone={getStatusColor(value as string) as any}
                     />
                   </Paper>
                 </Grid>

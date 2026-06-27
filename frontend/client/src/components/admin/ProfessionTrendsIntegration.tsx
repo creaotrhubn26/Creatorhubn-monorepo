@@ -10,7 +10,6 @@ import {
   Card,
   CardContent,
   Typography,
-  Button,
   Grid,
   Chip,
   List,
@@ -18,7 +17,6 @@ import {
   ListItemText,
   ListItemIcon,
   Alert,
-  CircularProgress,
   Divider,
   Paper,
   Stack,
@@ -42,6 +40,7 @@ import {
   Build,
 } from '@mui/icons-material';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
+import { AdminButton, AdminLoading } from './design-system';
 
 export default function ProfessionTrendsIntegration() {
   const {
@@ -211,9 +210,7 @@ export default function ProfessionTrendsIntegration() {
               </Box>
               
               {isLoading ? (
-                <Box sx={{ display: 'flex', justifyContent: 'center', p:  2 }}>
-                  <CircularProgress />
-                </Box>
+                <AdminLoading />
               ) : (
                 <List dense>
                   {getTrendingKeywords(selectedProfession).map((keyword: any, index: number) => (
@@ -295,14 +292,13 @@ export default function ProfessionTrendsIntegration() {
                   </Box>
 
                   <Tooltip title="Apply top 3 SEO optimizations automatically" arrow placement="top">
-                    <Button variant="contained"
+                    <AdminButton tone="primary"
                       startIcon={<AutoFixHigh />}
                       onClick={handleApplySEOFixes}
                       fullWidth
-                      color="success"
                      sx={theming.getThemedButtonSx()}>
                       Apply SEO Fixes
-                    </Button>
+                    </AdminButton>
                   </Tooltip>
                 </Box>
               ) : (
