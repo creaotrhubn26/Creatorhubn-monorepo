@@ -118,8 +118,8 @@ export default function ProfessionTrendsIntegration() {
     <Box sx={{ width: '100%'}}>
       {/* Header */}
       <Box sx={{ mb:  3 }}>
-        <Typography variant="h4" gutterBottom sx={{ color: theming.colors.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Link sx={{ fontSize: 32 }} />
+        <Typography variant="h4" component="h2" gutterBottom sx={{ color: theming.colors.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Link sx={{ fontSize: 32 }} aria-hidden="true" />
           Profession-Trends Integration
         </Typography>
         <Typography variant="body1" color="text.secondary">
@@ -130,7 +130,7 @@ export default function ProfessionTrendsIntegration() {
       {/* Current User Info */}
       <Card sx={{ mb:  3 ,  ...theming.getThemedCardSx() }}>
         <CardContent sx={theming.getThemedCardSx()}>
-          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+          <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary }}>
             Current User Context
           </Typography>
           <Grid container spacing={2}>
@@ -155,8 +155,8 @@ export default function ProfessionTrendsIntegration() {
       {/* Profession Selector */}
       <Card sx={{ mb:  3 ,  ...theming.getThemedCardSx() }}>
         <CardContent sx={theming.getThemedCardSx()}>
-          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-            <Search sx={{ mr: 1, verticalAlign: 'middle' }} />
+          <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary }}>
+            <Search sx={{ mr: 1, verticalAlign: 'middle' }} aria-hidden="true" />
             Test Different Professions
           </Typography>
           <Divider sx={{ mb: 2 }} />
@@ -198,12 +198,12 @@ export default function ProfessionTrendsIntegration() {
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  2 }}>
-                <Typography variant="h6" sx={{ color: theming.colors.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Whatshot />
+                <Typography variant="h6" component="h3" sx={{ color: theming.colors.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Whatshot aria-hidden="true" />
                   Trending Keywords
                 </Typography>
                 <Tooltip title="Refresh trend data" arrow>
-                  <IconButton onClick={loadTrendsForProfession} disabled={isLoading}>
+                  <IconButton onClick={loadTrendsForProfession} disabled={isLoading} aria-label="Oppdater trenddata">
                     <Refresh />
                   </IconButton>
                 </Tooltip>
@@ -239,8 +239,8 @@ export default function ProfessionTrendsIntegration() {
         <Grid item >
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Analytics />
+              <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Analytics aria-hidden="true" />
                 SEO Insights
               </Typography>
               
@@ -314,8 +314,8 @@ export default function ProfessionTrendsIntegration() {
         <Grid item >
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Lightbulb />
+              <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Lightbulb aria-hidden="true" />
                 SEO Suggestions
               </Typography>
               
@@ -353,8 +353,8 @@ export default function ProfessionTrendsIntegration() {
       {/* Integration Details */}
       <Card sx={{ mt:  3 ,  ...theming.getThemedCardSx() }}>
         <CardContent sx={theming.getThemedCardSx()}>
-          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Build />
+          <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Build aria-hidden="true" />
             How the Integration Works
           </Typography>
           <Divider sx={{ mb: 2 }} />

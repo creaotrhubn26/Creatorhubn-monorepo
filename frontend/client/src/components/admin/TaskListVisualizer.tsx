@@ -646,7 +646,7 @@ export default function TaskListVisualizer({
     <Box>
       <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={2} sx={{ mb: 2 }}>
         <Box>
-          <Typography variant="h5" sx={{ fontWeight: 700 }}>
+          <Typography variant="h5" component="h2" sx={{ fontWeight: 700 }}>
             Deployment Task Visualizer
           </Typography>
           <Typography variant="body2" color="text.secondary">
@@ -715,7 +715,7 @@ export default function TaskListVisualizer({
                   <Typography variant="body2" sx={{ minWidth: 48, textAlign: 'right' }}>
                     {group.progress}%
                   </Typography>
-                  <IconButton onClick={() => toggleGroupExpand(group.id)}>
+                  <IconButton aria-label={expanded ? 'Skjul sjekkliste' : 'Vis sjekkliste'} onClick={() => toggleGroupExpand(group.id)}>
                     {expanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
                   </IconButton>
                 </Stack>
@@ -818,7 +818,7 @@ export default function TaskListVisualizer({
 
       <Card sx={{ mt: 2 }}>
         <CardContent>
-          <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.5 }}>
+          <Typography variant="h6" component="h3" sx={{ fontWeight: 700, mb: 1.5 }}>
             Deployment Gates
           </Typography>
 

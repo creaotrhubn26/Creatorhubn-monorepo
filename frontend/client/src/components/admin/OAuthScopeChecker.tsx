@@ -176,7 +176,7 @@ export default function OAuthScopeChecker() {
       {/* Header */}
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
         <Box>
-          <Typography variant="h5" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Typography variant="h5" component="h2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Security color="primary" />
             OAuth Scope Validator
           </Typography>
@@ -248,7 +248,7 @@ export default function OAuthScopeChecker() {
       {/* Scope List */}
       <Card>
         <CardContent>
-          <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+          <Typography variant="h6" component="h3" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
             <Info color="primary" />
             Scope Validation Results
           </Typography>
@@ -298,6 +298,7 @@ export default function OAuthScopeChecker() {
                     size="small"
                     onClick={() => toggleScopeDetails(scopeResult.scope)}
                     sx={{ ml: 1 }}
+                    aria-label={expandedScopes[scopeResult.scope] ? 'Skjul detaljer' : 'Vis detaljer'}
                   >
                     {expandedScopes[scopeResult.scope] ? <ExpandLess /> : <ExpandMore />}
                   </IconButton>
@@ -339,7 +340,7 @@ export default function OAuthScopeChecker() {
       {/* Documentation & Recommendations */}
       <Card sx={{ mt: 3 }}>
         <CardContent>
-          <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Typography variant="h6" component="h3" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <LinkIcon color="primary" />
             Resources & Documentation
           </Typography>

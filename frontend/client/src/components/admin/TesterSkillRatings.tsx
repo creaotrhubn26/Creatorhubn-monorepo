@@ -137,7 +137,7 @@ export default function TesterSkillRatings() {
                   {professionIcon}
                 </Box>
               )}
-              <Typography variant="h5" sx={{ fontWeight: 600}}>
+              <Typography variant="h5" component="h2" sx={{ fontWeight: 600}}>
                 {enhancedProfessionConfig?.displayName || professionConfig?.displayName
                   ? `${enhancedProfessionConfig?.displayName || professionConfig.displayName} - Tester Skill Ratings`
                   : 'Tester Skill Ratings'}
@@ -149,7 +149,7 @@ export default function TesterSkillRatings() {
           </Box>
         </Stack>
         
-        <IconButton onClick={() => queryClient.invalidateQueries({ queryKey: ['/api/admin/tester-skills'] })}>
+        <IconButton aria-label="Oppdater" onClick={() => queryClient.invalidateQueries({ queryKey: ['/api/admin/tester-skills'] })}>
           <Refresh />
         </IconButton>
       </Stack>
@@ -158,11 +158,20 @@ export default function TesterSkillRatings() {
       <Grid container spacing={3}>
         {testers.map((tester: TesterSkill) => (
           <Grid item xs={12} md={6} lg={4} key={tester.testerId}>
-            <Card 
-              sx={{ 
+            <Card
+              role="button"
+              tabIndex={0}
+              aria-label={`Vis detaljer for ${tester.testerName}`}
+              sx={{
                 cursor: 'pointer', '&:hover': { boxShadow: 4 }
               }}
               onClick={() => setSelectedTester(tester)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setSelectedTester(tester);
+                }
+              }}
             >
               <CardContent>
                 <Stack spacing={2}>

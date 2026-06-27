@@ -1358,7 +1358,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                 </>
               )}
             </Box>
-            <IconButton onClick={handleCloseDialog}>
+            <IconButton onClick={handleCloseDialog} aria-label="Lukk">
               {theming.getThemedIcon('close')}
             </IconButton>
           </Box>

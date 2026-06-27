@@ -197,7 +197,7 @@ export default function GooglePaymentsConfiguration({ className }: GooglePayment
   return (
     <ThemeProvider theme={adminDarkTheme}>
     <Box className={className}>
-      <Typography variant="h4" sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1, color: themeColors.primary }}>
+      <Typography variant="h4" component="h2" sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1, color: themeColors.primary }}>
         <PaymentIcon color="primary" />
         Google Payments Configuration
       </Typography>
@@ -216,7 +216,7 @@ export default function GooglePaymentsConfiguration({ className }: GooglePayment
         <Grid item xs={12} sm={6}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: themeColors.primary }}>
+              <Typography variant="h6" component="h3" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: themeColors.primary }}>
                 <PaymentIcon color="primary" />
                 Google Pay Integration
               </Typography>
@@ -242,7 +242,7 @@ export default function GooglePaymentsConfiguration({ className }: GooglePayment
         <Grid item xs={12} sm={6}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: themeColors.primary }}>
+              <Typography variant="h6" component="h3" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: themeColors.primary }}>
                 <CardMembershipIcon color="primary" />
                 Google Wallet Integration
               </Typography>
@@ -269,7 +269,7 @@ export default function GooglePaymentsConfiguration({ className }: GooglePayment
       <Card sx={{ mb: 3 }}>
         <CardContent sx={theming.getThemedCardSx()}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Typography variant="h6" sx={{ color: themeColors.primary }}>
+            <Typography variant="h6" component="h3" sx={{ color: themeColors.primary }}>
               Configuration Details
             </Typography>
             <AdminButton
@@ -306,6 +306,7 @@ export default function GooglePaymentsConfiguration({ className }: GooglePayment
                     size="small"
                     onClick={() => copyToClipboard(item.value)}
                     title="Copy to clipboard"
+                    aria-label="Kopier til utklippstavle"
                   >
                     <CopyIcon />
                   </IconButton>
@@ -320,7 +321,7 @@ export default function GooglePaymentsConfiguration({ className }: GooglePayment
       {Object.keys(configStatus).length > 0 && (
         <Card sx={theming.getThemedCardSx()}>
           <CardContent sx={theming.getThemedCardSx()}>
-            <Typography variant="h6" gutterBottom sx={{ color: themeColors.primary }}>
+            <Typography variant="h6" component="h3" gutterBottom sx={{ color: themeColors.primary }}>
               Test Results
             </Typography>
             <Grid container spacing={2}>
