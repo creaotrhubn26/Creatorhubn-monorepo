@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Box,
-  Button,
   Card,
   CardContent,
   Chip,
@@ -36,6 +35,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
+import { AdminButton, StatusChip } from './design-system';
 
 type Profession = 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'other' | 'enterprise';
 
@@ -160,19 +160,6 @@ function parseApplications(raw: unknown): PrototypeTesterApplication[] {
       } satisfies PrototypeTesterApplication;
     })
     .filter((application): application is PrototypeTesterApplication => application !== null);
-}
-
-function statusColor(status: ApplicationStatus): 'warning' | 'success' | 'error' | 'default' {
-  switch (status) {
-    case 'pending':
-      return 'warning';
-    case 'approved':
-      return 'success';
-    case 'rejected':
-      return 'error';
-    default:
-      return 'default';
-  }
 }
 
 function toCsv(applications: PrototypeTesterApplication[]): string {
@@ -393,9 +380,9 @@ export default function PrototypeTesterApplicationPanel() {
         <Typography variant="h5" fontWeight={700}>
           Prototype Tester Applications
         </Typography>
-        <Button variant="outlined" startIcon={<Download />} onClick={exportCsv}>
+        <AdminButton tone="secondary" startIcon={<Download />} onClick={exportCsv}>
           Export CSV
-        </Button>
+        </AdminButton>
       </Stack>
 
       <Grid container spacing={2} sx={{ mb: 2 }}>
@@ -565,7 +552,7 @@ export default function PrototypeTesterApplicationPanel() {
                     <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
                       <Typography variant="subtitle2">{application.name}</Typography>
                       <Chip size="small" label={application.profession} variant="outlined" />
-                      <Chip size="small" label={application.status} color={statusColor(application.status)} />
+                      <StatusChip status={application.status} />
                     </Stack>
                   }
                   secondary={
@@ -616,7 +603,7 @@ export default function PrototypeTesterApplicationPanel() {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDetailDialogOpen(false)}>Lukk</Button>
+          <AdminButton tone="ghost" onClick={() => setDetailDialogOpen(false)}>Lukk</AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -643,10 +630,10 @@ export default function PrototypeTesterApplicationPanel() {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setActionDialogOpen(false)}>Avbryt</Button>
-          <Button
-            variant="contained"
-            color={actionType === 'approve' ? 'success' : 'error'}
+          <AdminButton tone="ghost" onClick={() => setActionDialogOpen(false)}>Avbryt</AdminButton>
+          <AdminButton
+            tone={actionType === 'approve' ? 'primary' : 'danger'}
+            loading={approveMutation.isPending || rejectMutation.isPending}
             onClick={confirmAction}
             disabled={
               approveMutation.isPending ||
@@ -655,7 +642,7 @@ export default function PrototypeTesterApplicationPanel() {
             }
           >
             {actionType === 'approve' ? 'Approve' : 'Reject'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

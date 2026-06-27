@@ -7,7 +7,6 @@ import {
   Card,
   CardContent,
   Typography,
-  Button,
   Alert,
   Chip,
   LinearProgress,
@@ -25,6 +24,7 @@ import {
   ThemeProvider,
 } from '@mui/material';
 import { adminDarkTheme } from './adminDarkTheme';
+import { AdminButton, AdminError } from './design-system';
 import {
   CheckCircle,
   Error,
@@ -141,16 +141,11 @@ export default function OAuthScopeChecker() {
   if (error) {
     return (
       <Box sx={{ p: 3 }}>
-        <Card>
-          <CardContent>
-            <Alert severity="error" sx={{ mb: 2 }}>
-              Failed to check OAuth scopes: {error instanceof Error ? error.message : 'Unknown error'}
-            </Alert>
-            <Button variant="contained" startIcon={<Refresh />} onClick={handleRefresh}>
-              Try Again
-            </Button>
-          </CardContent>
-        </Card>
+        <AdminError
+          title="Failed to check OAuth scopes"
+          message={error instanceof Error ? error.message : 'Unknown error'}
+          onRetry={handleRefresh}
+        />
       </Box>
     );
   }
@@ -163,9 +158,9 @@ export default function OAuthScopeChecker() {
             <Alert severity="warning" sx={{ mb: 2 }}>
               {scopeData?.error || 'Failed to retrieve scope validation data'}
             </Alert>
-            <Button variant="contained" startIcon={<Refresh />} onClick={handleRefresh}>
+            <AdminButton tone="primary" startIcon={<Refresh />} onClick={handleRefresh}>
               Retry Check
-            </Button>
+            </AdminButton>
           </CardContent>
         </Card>
       </Box>
@@ -189,14 +184,14 @@ export default function OAuthScopeChecker() {
             Validate Google OAuth 2.0 scopes for 2025 compliance
           </Typography>
         </Box>
-        <Button
-          variant="outlined"
+        <AdminButton
+          tone="secondary"
           startIcon={<Refresh />}
           onClick={handleRefresh}
           disabled={isLoading}
         >
           Refresh
-        </Button>
+        </AdminButton>
       </Box>
 
       {/* Overall Status */}
@@ -357,15 +352,15 @@ export default function OAuthScopeChecker() {
                 primary="Google OAuth 2.0 Scopes Documentation"
                 secondary={documentation}
               />
-              <Button
+              <AdminButton
+                tone="secondary"
                 size="small"
-                variant="outlined"
                 href={documentation}
                 target="_blank"
                 rel="noopener noreferrer"
               >
                 Open
-              </Button>
+              </AdminButton>
             </ListItem>
             <ListItem>
               <ListItemIcon>

@@ -10,19 +10,15 @@ import {
   Card,
   CardContent,
   Typography,
-  Button,
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
-  Paper,
   Chip,
   Switch,
   FormControlLabel,
   Alert,
-  CircularProgress,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -47,6 +43,7 @@ import {
   Info,
 } from '@mui/icons-material';
 import { cameraDiscoveryService } from '../../data/camera-discovery-system';
+import { AdminButton, AdminTableContainer } from './design-system';
 
 interface CameraDiscoveryManagerProps {
   onCamerasApproved?: (cameras: any[]) => void;
@@ -206,15 +203,15 @@ const CameraDiscoveryManager: React.FC<CameraDiscoveryManagerProps> = ({
               }
                 label="Auto Update"
               />
-              <Button 
-                variant="contained"
-                startIcon={isDiscovering ? <CircularProgress size={20} /> : <Refresh />}
+              <AdminButton
+                tone="primary"
+                loading={isDiscovering}
+                startIcon={<Refresh />}
                 onClick={handleDiscoverCameras}
                 disabled={isDiscovering}
-                sx={theming.getThemedButtonSx()}
               >
                 {isDiscovering ? 'Discovering...' : 'Discover Cameras'}
-              </Button>
+              </AdminButton>
             </Box>
           </Box>
 
@@ -236,31 +233,29 @@ const CameraDiscoveryManager: React.FC<CameraDiscoveryManagerProps> = ({
             </Typography>
             {discoveredCameras.length > 0 && (
               <Box sx={{ display: 'flex', gap: 1 }}>
-                <Button
-                  variant="outlined"
+                <AdminButton
+                  tone="secondary"
                   onClick={handleSelectAll}
                   size="small"
                 >
                   {selectedCameras.length === discoveredCameras.length ? 'Deselect All' : 'Select All'}
-                </Button>
-                <Button 
-                  variant="contained"
-                  color="success"
+                </AdminButton>
+                <AdminButton
+                  tone="primary"
                   startIcon={<Check />}
                   onClick={() => setShowApprovalDialog(true)}
                   disabled={selectedCameras.length === 0}
                 >
                   Approve Selected ({selectedCameras.length})
-                </Button>
-                <Button
-                  variant="outlined"
-                  color="error"
+                </AdminButton>
+                <AdminButton
+                  tone="danger"
                   startIcon={<Close />}
                   onClick={handleRejectSelected}
                   disabled={selectedCameras.length === 0}
                 >
                   Reject Selected
-                </Button>
+                </AdminButton>
               </Box>
             )}
           </Box>
@@ -271,7 +266,7 @@ const CameraDiscoveryManager: React.FC<CameraDiscoveryManagerProps> = ({
               No new cameras discovered. Click "Discover Cameras" to search for new models.
             </Alert>
           ) : (
-            <TableContainer component={Paper}>
+            <AdminTableContainer ariaLabel="Oppdagede kameraer">
               <Table>
                 <TableHead>
                   <TableRow>
@@ -355,7 +350,7 @@ const CameraDiscoveryManager: React.FC<CameraDiscoveryManagerProps> = ({
                   ))}
                 </TableBody>
               </Table>
-            </TableContainer>
+            </AdminTableContainer>
           )}
         </CardContent>
       </Card>
@@ -387,17 +382,16 @@ const CameraDiscoveryManager: React.FC<CameraDiscoveryManagerProps> = ({
           </Alert>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowApprovalDialog(false)}>
+          <AdminButton tone="ghost" onClick={() => setShowApprovalDialog(false)}>
             Cancel
-          </Button>
-          <Button 
-            onClick={handleApproveSelected} 
-            variant="contained" 
-            color="success"
+          </AdminButton>
+          <AdminButton
+            onClick={handleApproveSelected}
+            tone="primary"
             startIcon={<Check />}
           >
             Approve & Add to Database
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

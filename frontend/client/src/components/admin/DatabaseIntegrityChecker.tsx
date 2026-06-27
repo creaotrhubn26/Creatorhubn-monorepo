@@ -9,13 +9,11 @@ import {
   Card,
   CardContent,
   Chip,
-  CircularProgress,
   Grid,
   LinearProgress,
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   Typography,
@@ -32,6 +30,12 @@ import {
   Warning as WarningIcon,
   Build as RepairIcon,
 } from '@mui/icons-material';
+import {
+  AdminCard,
+  AdminButton,
+  AdminLoading,
+  AdminTableContainer,
+} from './design-system';
 
 type IntegrityState = 'healthy' | 'warning' | 'error' | 'unknown';
 type AutoSyncState = 'idle' | 'running' | 'completed' | 'failed';
@@ -168,12 +172,7 @@ export default function DatabaseIntegrityChecker() {
   const errors = Array.isArray(integrityStatus?.errors) ? integrityStatus.errors : [];
 
   if (integrityLoading && !integrityStatus) {
-    return (
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, p: 2 }}>
-        <CircularProgress size={24} />
-        <Typography>Laster database integritetsstatus...</Typography>
-      </Box>
-    );
+    return <AdminLoading label="Laster database integritetsstatus..." />;
   }
 
   return (
@@ -216,29 +215,26 @@ export default function DatabaseIntegrityChecker() {
         </CardContent>
       </Card>
 
-      <Card sx={{ mb: 2 }}>
-        <CardContent>
-          <Typography variant="subtitle1" sx={{ mb: 1.5 }}>
-            Kontrollpanel
-          </Typography>
+      <AdminCard title="Kontrollpanel" sx={{ mb: 2 }}>
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-            <Button
-              variant="contained"
+            <AdminButton
+              tone="primary"
+              loading={manualCheckMutation.isPending}
               startIcon={<RefreshIcon />}
               onClick={() => manualCheckMutation.mutate()}
               disabled={manualCheckMutation.isPending}
             >
               {manualCheckMutation.isPending ? 'Kjører sjekk...' : 'Manuell Sjekk'}
-            </Button>
+            </AdminButton>
 
-            <Button
-              variant="outlined"
+            <AdminButton
+              tone="secondary"
               startIcon={<PlayArrowIcon />}
               onClick={() => monitoringMutation.mutate(isMonitoring ? 'stop' : 'start')}
               disabled={monitoringMutation.isPending}
             >
               {isMonitoring ? 'Stopp overvåkning' : 'Start overvåkning'}
-            </Button>
+            </AdminButton>
 
             <Button
               variant="contained"
@@ -262,8 +258,7 @@ export default function DatabaseIntegrityChecker() {
               {repairMutation.isPending ? 'Reparerer...' : 'Reparer database'}
             </Button>
           </Box>
-        </CardContent>
-      </Card>
+      </AdminCard>
 
       {isBusy && (
         <Box sx={{ mb: 2 }}>
@@ -273,11 +268,7 @@ export default function DatabaseIntegrityChecker() {
 
       <Grid container spacing={2}>
         <Grid item xs={12} md={6}>
-          <Card>
-            <CardContent>
-              <Typography variant="subtitle1" sx={{ mb: 1 }}>
-                Siste sjekk
-              </Typography>
+          <AdminCard title="Siste sjekk">
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                 <ScheduleIcon fontSize="small" color="action" />
                 <Typography variant="body2">{formatTimestamp(integrityStatus?.lastChecked)}</Typography>
@@ -290,16 +281,11 @@ export default function DatabaseIntegrityChecker() {
                   Siste auto-sync: {formatTimestamp(autoSyncStatus.lastAutoSync)}
                 </Typography>
               )}
-            </CardContent>
-          </Card>
+          </AdminCard>
         </Grid>
 
         <Grid item xs={12} md={6}>
-          <Card>
-            <CardContent>
-              <Typography variant="subtitle1" sx={{ mb: 1 }}>
-                Statistikk
-              </Typography>
+          <AdminCard title="Statistikk">
               <Box sx={{ display: 'grid', gap: 0.75 }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                   <Typography variant="body2">Manglende tabeller</Typography>
@@ -314,35 +300,25 @@ export default function DatabaseIntegrityChecker() {
                   <Chip size="small" label={extraTables.length} color={extraTables.length > 0 ? 'warning' : 'success'} />
                 </Box>
               </Box>
-            </CardContent>
-          </Card>
+          </AdminCard>
         </Grid>
 
         {missingTables.length > 0 && (
           <Grid item xs={12}>
-            <Card>
-              <CardContent>
-                <Typography variant="subtitle1" sx={{ mb: 1 }}>
-                  Manglende tabeller
-                </Typography>
+            <AdminCard title="Manglende tabeller">
                 <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                   {missingTables.map((table) => (
                     <Chip key={table} size="small" label={table} color="error" />
                   ))}
                 </Box>
-              </CardContent>
-            </Card>
+            </AdminCard>
           </Grid>
         )}
 
         {missingColumns.length > 0 && (
           <Grid item xs={12}>
-            <Card>
-              <CardContent>
-                <Typography variant="subtitle1" sx={{ mb: 1 }}>
-                  Manglende kolonner
-                </Typography>
-                <TableContainer>
+            <AdminCard title="Manglende kolonner" disablePadding>
+                <AdminTableContainer ariaLabel="Manglende kolonner">
                   <Table size="small">
                     <TableHead>
                       <TableRow>
@@ -365,19 +341,14 @@ export default function DatabaseIntegrityChecker() {
                       ))}
                     </TableBody>
                   </Table>
-                </TableContainer>
-              </CardContent>
-            </Card>
+                </AdminTableContainer>
+            </AdminCard>
           </Grid>
         )}
 
         {errors.length > 0 && (
           <Grid item xs={12}>
-            <Card>
-              <CardContent>
-                <Typography variant="subtitle1" sx={{ mb: 1 }}>
-                  Feilmeldinger
-                </Typography>
+            <AdminCard title="Feilmeldinger">
                 <Box sx={{ display: 'grid', gap: 1 }}>
                   {errors.map((message, index) => (
                     <Alert key={`integrity-error-${index}`} severity="error">
@@ -385,8 +356,7 @@ export default function DatabaseIntegrityChecker() {
                     </Alert>
                   ))}
                 </Box>
-              </CardContent>
-            </Card>
+            </AdminCard>
           </Grid>
         )}
 

@@ -36,6 +36,7 @@ import { usePushNotifications } from '../../hooks/usePushNotifications';
 import { PushNotificationSettings } from '../shared/PushNotificationSettings';
 import { useTheming } from '../../utils/theming-helper';
 import { apiRequest } from '@/lib/queryClient';
+import { AdminButton, StatusChip } from './design-system';
 
 interface EmailContact {
   id: string;
@@ -402,7 +403,7 @@ export default function IntegratedEmailMarketingCenter(): JSX.Element {
                     <Typography variant="body2" color="text.secondary">
                       {contact.company || 'Ingen bedrift'}
                     </Typography>
-                    <Chip label={contact.status} size="small" sx={{ mt: 1 }} />
+                    <StatusChip status={contact.status} sx={{ mt: 1 }} />
                   </Paper>
                 </Grid>
               ))}
@@ -427,7 +428,7 @@ export default function IntegratedEmailMarketingCenter(): JSX.Element {
                     <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                       {campaign.subject}
                     </Typography>
-                    <Chip label={campaign.status} size="small" />
+                    <StatusChip status={campaign.status} />
                     <Divider sx={{ my: 1.5 }} />
                     <Typography variant="body2">Sendt: {campaign.totalSent ?? 0}</Typography>
                     <Typography variant="body2">Åpnet: {campaign.totalOpen ?? 0}</Typography>
@@ -589,10 +590,10 @@ export default function IntegratedEmailMarketingCenter(): JSX.Element {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setContactDialogOpen(false)}>Avbryt</Button>
-          <Button onClick={handleCreateContact} disabled={createContactMutation.isPending}>
-            {createContactMutation.isPending ? 'Oppretter...' : 'Opprett'}
-          </Button>
+          <AdminButton tone="ghost" onClick={() => setContactDialogOpen(false)}>Avbryt</AdminButton>
+          <AdminButton tone="primary" onClick={handleCreateContact} loading={createContactMutation.isPending}>
+            Opprett
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -625,10 +626,10 @@ export default function IntegratedEmailMarketingCenter(): JSX.Element {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setQuickEmailOpen(false)}>Avbryt</Button>
-          <Button onClick={handleSendQuickEmail} disabled={sendQuickEmailMutation.isPending}>
-            {sendQuickEmailMutation.isPending ? 'Sender...' : 'Send'}
-          </Button>
+          <AdminButton tone="ghost" onClick={() => setQuickEmailOpen(false)}>Avbryt</AdminButton>
+          <AdminButton tone="primary" onClick={handleSendQuickEmail} loading={sendQuickEmailMutation.isPending}>
+            Send
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -641,7 +642,7 @@ export default function IntegratedEmailMarketingCenter(): JSX.Element {
             </Box>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setPushSettingsOpen(false)}>Lukk</Button>
+            <AdminButton tone="ghost" onClick={() => setPushSettingsOpen(false)}>Lukk</AdminButton>
           </DialogActions>
         </Dialog>
       )}

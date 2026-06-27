@@ -8,7 +8,6 @@ import {
   Button,
   Grid,
   Alert,
-  Chip,
   Paper,
   IconButton,
   Dialog,
@@ -42,6 +41,7 @@ import {
 } from '@mui/icons-material';
 import { mockBackendService } from '../../services/MockBackendService';
 import UniversalChatWidget from '../chat/UniversalChatWidget';
+import { AdminButton, StatusChip, adminTokens } from './design-system';
 
 interface LiveDemoState {
   isRunning: boolean;
@@ -344,23 +344,21 @@ export default function LiveVerificationDemo() {
                 Demo Controls
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Status: <Chip 
-                  label={demoState.currentStep} 
-                  size="small" 
-                  color={demoState.isRunning ? 'warning' : 'default'} 
+                Status: <StatusChip
+                  label={demoState.currentStep}
+                  tone={demoState.isRunning ? 'warning' : 'neutral'}
                 />
               </Typography>
             </Box>
             <Box sx={{ display: 'flex', gap: 2 }}>
-              <Button
-                variant="contained"
+              <AdminButton
+                tone="primary"
                 startIcon={theming.getThemedIcon('play')}
                 onClick={startLiveDemo}
                 disabled={demoState.isRunning}
-                sx={{ ...theming.getThemedButtonSx(), bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67e00' } }}
               >
                 Start Live Demo
-              </Button>
+              </AdminButton>
               <Button
                 variant="outlined"
                 startIcon={theming.getThemedIcon('refresh')}
@@ -444,13 +442,12 @@ export default function LiveVerificationDemo() {
                         {feedback.description}
                       </Typography>
                       <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
-                        <Chip label={feedback.status} size="small" color="primary" />
-                        <Chip label={feedback.priority} size="small" color="warning" />
+                        <StatusChip label={feedback.status} tone="brand" />
+                        <StatusChip label={feedback.priority} tone="warning" />
                         {feedback.verification && (
-                          <Chip
+                          <StatusChip
                             label={feedback.verification.userValidation?.status || 'pending'}
-                            size="small"
-                            color={feedback.verification.userValidation?.status === 'validated' ? 'success' : 'default'}
+                            tone={feedback.verification.userValidation?.status === 'validated' ? 'success' : 'neutral'}
                           />
                         )}
                       </Box>
@@ -508,7 +505,7 @@ export default function LiveVerificationDemo() {
 
       {/* User Validation Dialog */}
       <Dialog open={demoState.showValidationDialog} maxWidth="md" fullWidth>
-        <DialogTitle sx={{ bgcolor: '#ff8c00', color: 'white'}}>
+        <DialogTitle sx={{ bgcolor: adminTokens.color.brand, color: 'white'}}>
           🔍 User Validation Required
         </DialogTitle>
         <DialogContent sx={{ p:  3 }}>
@@ -563,9 +560,9 @@ export default function LiveVerificationDemo() {
           </Box>
         </DialogContent>
         <DialogActions sx={{ p:  3 }}>
-          <Button onClick={handleUserValidation} variant="contained" disabled={demoState.validationData.userRating === 0} sx={theming.getThemedButtonSx()}>
+          <AdminButton tone="primary" onClick={handleUserValidation} disabled={demoState.validationData.userRating === 0}>
             Submit Validation
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

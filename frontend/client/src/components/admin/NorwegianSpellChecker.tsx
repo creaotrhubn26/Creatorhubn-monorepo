@@ -29,6 +29,7 @@ import {
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
+import { AdminButton } from './design-system';
 
 type SpellErrorType = 'spelling' | 'grammar' | 'style';
 
@@ -455,14 +456,15 @@ export const NorwegianSpellChecker: React.FC<NorwegianSpellCheckerProps> = ({
               <ContentCopy />
             </IconButton>
           </Tooltip>
-          <Button
-            variant="contained"
+          <AdminButton
+            tone="primary"
+            loading={isChecking}
             startIcon={<Refresh />}
             disabled={isChecking || text.trim().length === 0}
             onClick={() => void runSpellCheck()}
           >
             {isChecking ? 'Sjekker...' : 'Sjekk nå'}
-          </Button>
+          </AdminButton>
         </Stack>
       </Stack>
 
