@@ -22,6 +22,7 @@ import MediaTab from './tabs/MediaTab';
 import LeveranserTab from './tabs/LeveranserTab';
 import OppgaverTab from './tabs/OppgaverTab';
 import AvtalerTab from './tabs/AvtalerTab';
+import KundevisningTab from './tabs/KundevisningTab';
 import TeamTab from './tabs/TeamTab';
 import WorkspaceChatPanel from './WorkspaceChatPanel';
 import { usePresence } from './usePresence';
@@ -113,6 +114,7 @@ const TeamWorkspacePage: React.FC = () => {
     leveranser: <LeveranserTab projectId={projectId} />,
     oppgaver: <OppgaverTab projectId={projectId} />,
     avtaler: <AvtalerTab projectId={projectId} />,
+    kundevisning: <KundevisningTab projectId={projectId} />,
     team: <TeamTab projectId={projectId} />,
     chat: (
       <Box sx={{ height: 'calc(100vh - 160px)', maxWidth: 760, mx: 'auto' }}>
