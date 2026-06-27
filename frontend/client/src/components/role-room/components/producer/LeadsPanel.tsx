@@ -9,6 +9,7 @@ import {
   Box, Stack, Typography, Chip, Button, List, ListItemButton, ListItemText,
   CircularProgress, Alert, Divider, Table, TableBody, TableCell, TableHead, TableRow,
   Select, MenuItem, TextField, InputAdornment, Collapse, Tooltip, Switch, FormControlLabel,
+  Snackbar,
 } from '@mui/material';
 import {
   ContactPage as LeadsIcon, InstallMobile as FormIcon, BoltOutlined as FollowupIcon,
@@ -209,13 +210,27 @@ export default function LeadsPanel() {
       }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['leads-followup-config', connectionId] }),
   });
-  const sendFollowup = useMutation({
+  // Følg opp messages a real lead (SMS/e-post/WhatsApp), so a silent failure
+  // is the worst kind here — the producer assumes the lead was contacted.
+  // Surface both transport errors (apiRequest throws on non-2xx) and logical
+  // failures (2xx with success:false) in a snackbar.
+  const [followupMsg, setFollowupMsg] = useState<{ severity: 'success' | 'error'; text: string } | null>(null);
+  const sendFollowup = useMutation<{ success?: boolean; error?: string }, Error, Lead>({
     mutationFn: async (lead: Lead) =>
       apiRequest('/api/role-room/leads/producer/followup', {
         method: 'POST',
         body: JSON.stringify({ connectionId, formId, leadId: lead.id, name: lead.name, email: lead.email, phone: lead.phone, fields: lead.fields }),
       }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['leads-list', connectionId, formId] }),
+    onSuccess: (data) => {
+      if (!data || data.success !== true) {
+        setFollowupMsg({ severity: 'error', text: data?.error || 'Kunne ikke sende oppfølging.' });
+        return;
+      }
+      setFollowupMsg({ severity: 'success', text: 'Oppfølging sendt.' });
+      queryClient.invalidateQueries({ queryKey: ['leads-list', connectionId, formId] });
+    },
+    onError: (err) =>
+      setFollowupMsg({ severity: 'error', text: err instanceof Error ? err.message : 'Kunne ikke sende oppfølging.' }),
   });
   const channelsReady = (followupData?.smsConfigured || followupData?.emailConfigured || followupData?.whatsappConfigured) ?? false;
 
@@ -742,6 +757,23 @@ export default function LeadsPanel() {
           </Box>
         </>
       )}
+      <Snackbar
+        open={followupMsg !== null}
+        autoHideDuration={5000}
+        onClose={() => setFollowupMsg(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        {followupMsg ? (
+          <Alert
+            severity={followupMsg.severity}
+            variant="filled"
+            onClose={() => setFollowupMsg(null)}
+            sx={{ width: '100%' }}
+          >
+            {followupMsg.text}
+          </Alert>
+        ) : undefined}
+      </Snackbar>
     </Stack>
   );
 }
