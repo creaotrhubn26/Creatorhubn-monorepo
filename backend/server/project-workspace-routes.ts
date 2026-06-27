@@ -333,6 +333,92 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     } catch (e) { console.error("POST meetings", e); res.status(500).json({ error: "failed" }); }
   });
 
+  // ─────────── Editor-handoff (LESER editing_jobs — redigerings-marketplace) ───
+  // Jobber sendt fra iPad (SendToEditor/EditingJobs) til redigerings-vendor.
+  // project_id-scopet + canAccessProject. Read-only surfacing i Leveranser.
+  app.get("/api/projects/:projectId/editing-jobs", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const r = await pool.query(
+        `SELECT id, vendor_name, status, requested_services, brief, amount_cents, currency,
+                payment_status, gallery_id, requested_at, accepted_at
+           FROM editing_jobs WHERE project_id = $1 ORDER BY requested_at DESC NULLS LAST`,
+        [req.params.projectId],
+      ).catch(() => ({ rows: [] }));
+      res.json({
+        jobs: r.rows.map((j: any) => ({
+          id: j.id, vendorName: j.vendor_name, status: j.status,
+          services: Array.isArray(j.requested_services) ? j.requested_services : (j.requested_services || []),
+          brief: j.brief, amount: j.amount_cents != null ? j.amount_cents / 100 : null, currency: j.currency || "NOK",
+          paymentStatus: j.payment_status, galleryId: j.gallery_id,
+          requestedAt: j.requested_at, acceptedAt: j.accepted_at,
+        })),
+      });
+    } catch (e) { console.error("GET editing-jobs", e); res.json({ jobs: [] }); }
+  });
+
+  // ─────────── Kontrakt m/ signatur-detaljer (iPad-signatur surfacet) ───────────
+  // Surfacer signaturen klienten tegnet på iPad-en: signer_name/signed_at +
+  // om digital_signature finnes. project_id-scopet + canAccessProject.
+  app.get("/api/projects/:projectId/contract", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const r = await pool.query(
+        `SELECT id, status, signature_status, signer_name, signer_email, signed_at, signed_date,
+                (digital_signature IS NOT NULL AND length(digital_signature::text) > 0) AS has_signature,
+                client_name
+           FROM contracts WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1`,
+        [req.params.projectId],
+      ).catch(() => ({ rows: [] }));
+      if (r.rows.length === 0) return res.json({ hasContract: false });
+      const c = r.rows[0];
+      const isSigned = c.signature_status === "signed" || c.status === "signed";
+      res.json({
+        hasContract: true, contractId: c.id, status: c.status, isSigned,
+        signerName: c.signer_name || null, signerEmail: c.signer_email || null,
+        signedAt: c.signed_at || c.signed_date || null, hasSignature: !!c.has_signature,
+        clientName: c.client_name || null,
+      });
+    } catch (e) { console.error("GET contract", e); res.json({ hasContract: false }); }
+  });
+
+  // ─────────── Tilbud (LESER quotes — project_id) ───────────
+  app.get("/api/projects/:projectId/quotes", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const r = await pool.query(
+        `SELECT id, quote_number, title, status, total_amount, valid_until, client_name, created_at
+           FROM quotes WHERE project_id = $1 ORDER BY created_at DESC`,
+        [req.params.projectId],
+      ).catch(() => ({ rows: [] }));
+      res.json({
+        quotes: r.rows.map((q: any) => ({
+          id: q.id, quoteNumber: q.quote_number, title: q.title, status: q.status,
+          total: q.total_amount != null ? Number(q.total_amount) : null, validUntil: q.valid_until,
+          clientName: q.client_name, createdAt: q.created_at,
+        })),
+      });
+    } catch (e) { console.error("GET quotes", e); res.json({ quotes: [] }); }
+  });
+
+  // ─────────── Revisjoner (LESER capture_revision_requests — klient-ønsker) ───────────
+  app.get("/api/projects/:projectId/revision-requests", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const r = await pool.query(
+        `SELECT id, asset_id, original_filename, client_email, note, status, source, created_at, resolved_at
+           FROM capture_revision_requests WHERE project_id = $1 ORDER BY created_at DESC LIMIT 50`,
+        [req.params.projectId],
+      ).catch(() => ({ rows: [] }));
+      const rows = r.rows.map((x: any) => ({
+        id: x.id, filename: x.original_filename, clientEmail: x.client_email, note: x.note,
+        status: x.status, source: x.source, createdAt: x.created_at, resolvedAt: x.resolved_at,
+      }));
+      const open = rows.filter((x: any) => x.status !== "resolved" && x.status !== "done").length;
+      res.json({ requests: rows, openCount: open });
+    } catch (e) { console.error("GET revision-requests", e); res.json({ requests: [], openCount: 0 }); }
+  });
+
   // ─────────── Showcase / klient-galleri (LESER photographer_client_galleries) ───
   // Kobler Leveranser til det EKTE leveranse-systemet: klient-galleriet/showcasen
   // klienten faktisk ser. project_id-scopet + canAccessProject. shareUrl =
