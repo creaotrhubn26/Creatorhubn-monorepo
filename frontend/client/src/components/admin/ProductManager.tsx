@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { useTheming } from '../../utils/theming-helper';
@@ -183,6 +183,7 @@ const ProductManager: React.FC<ProductManagerProps> = ({
   selectedProject,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [filterBrand, setFilterBrand] = useState('');
   const [filterType, setFilterType] = useState('');
   const [filterMount, setFilterMount] = useState('');
@@ -203,11 +204,16 @@ const ProductManager: React.FC<ProductManagerProps> = ({
   const theming = useTheming('prototype_tester');
   const isMobile = useIsMobile();
 
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearchTerm(searchTerm), 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
   const { data: productsData, isLoading } = useQuery({
-    queryKey: ['/api/admin/products', searchTerm, filterBrand, filterType, filterMount, page],
+    queryKey: ['/api/admin/products', debouncedSearchTerm, filterBrand, filterType, filterMount, page],
     queryFn: async (): Promise<ProductListResponse> => {
       const params = new URLSearchParams();
-      if (searchTerm) params.append('search', searchTerm);
+      if (debouncedSearchTerm) params.append('search', debouncedSearchTerm);
       if (filterBrand) params.append('brand', filterBrand);
       if (filterType) params.append('type', filterType);
       if (filterMount) params.append('mount', filterMount);
@@ -313,6 +319,19 @@ const ProductManager: React.FC<ProductManagerProps> = ({
     const list = productsData?.data ?? productsData?.products ?? [];
     return Array.isArray(list) ? list : [];
   }, [productsData]);
+
+  const cameraCount = useMemo(
+    () => products.filter((product) => product.type === 'camera').length,
+    [products],
+  );
+  const lensCount = useMemo(
+    () => products.filter((product) => product.type === 'lens').length,
+    [products],
+  );
+  const accessoryCount = useMemo(
+    () => products.filter((product) => product.type === 'accessory').length,
+    [products],
+  );
 
   const handleSaveProduct = (formData: FormData) => {
     const brand = normalizeString(formData.get('brand'));
@@ -430,9 +449,9 @@ const ProductManager: React.FC<ProductManagerProps> = ({
 
       <Grid container spacing={2} sx={{ mb: 3 }}>
         <StatsCard title="Totalt produkter" value={products.length} />
-        <StatsCard title="Kameraer" value={products.filter((product) => product.type === 'camera').length} />
-        <StatsCard title="Objektiver" value={products.filter((product) => product.type === 'lens').length} />
-        <StatsCard title="Tilbehør" value={products.filter((product) => product.type === 'accessory').length} />
+        <StatsCard title="Kameraer" value={cameraCount} />
+        <StatsCard title="Objektiver" value={lensCount} />
+        <StatsCard title="Tilbehør" value={accessoryCount} />
       </Grid>
 
       {isLoading ? <LinearProgress sx={{ mb: 2 }} /> : null}

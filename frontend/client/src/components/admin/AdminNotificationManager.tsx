@@ -1,5 +1,5 @@
 import { useTheming } from '../../utils/theming-helper';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Box,
   Typography,
@@ -141,6 +141,18 @@ export default function AdminNotificationManager() {
 });
 
   const notificationList = Array.isArray(notifications?.data) ? notifications.data : [];
+
+  const activeNotificationCount = useMemo(
+    () => notificationList.filter((n: any) => n.isActive).length,
+    [notificationList],
+  );
+  const highPriorityNotificationCount = useMemo(
+    () =>
+      notificationList.filter(
+        (n: any) => n.priority === 'high' || n.priority === 'urgent',
+      ).length,
+    [notificationList],
+  );
 
   // Fetch pending provisioning requests for notifications
   const { data: pendingRequests, isLoading: pendingLoading } = useQuery({
@@ -360,7 +372,7 @@ export default function AdminNotificationManager() {
             <CardContent>
               <Typography variant="h6" sx={{ color: themeColors.primary }}>Aktive</Typography>
               <Typography variant="h4" sx={{ color: themeColors.primary }}>
-                {notificationList.filter((n: any) => n.isActive).length || 0}
+                {activeNotificationCount || 0}
               </Typography>
             </CardContent>
           </MuiCard>
@@ -372,9 +384,7 @@ export default function AdminNotificationManager() {
             <CardContent>
               <Typography variant="h6" sx={{ color: themeColors.primary }}>Høy Prioritet</Typography>
               <Typography variant="h4" sx={{ color: themeColors.primary }}>
-                {notificationList.filter(
-                  (n: any) => n.priority === 'high' || n.priority === 'urgent',
-                ).length || 0}
+                {highPriorityNotificationCount || 0}
               </Typography>
             </CardContent>
           </MuiCard>

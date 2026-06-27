@@ -245,8 +245,10 @@ export default function ApprovalWorkflow() {
     };
   }, [requests]);
 
-  const filteredRequests =
-    selectedTab === 'all' ? requests : requests.filter((request) => request.status === selectedTab);
+  const filteredRequests = useMemo(
+    () => (selectedTab === 'all' ? requests : requests.filter((request) => request.status === selectedTab)),
+    [requests, selectedTab],
+  );
 
   const handleApprove = () => {
     if (!selectedRequest) {
