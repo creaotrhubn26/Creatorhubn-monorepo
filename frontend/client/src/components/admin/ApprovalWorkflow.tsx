@@ -4,7 +4,6 @@ import {
   Avatar,
   Badge,
   Box,
-  Button,
   Card,
   CardContent,
   CardHeader,
@@ -35,6 +34,7 @@ import {
 } from '@mui/icons-material';
 import { QUERY_KEYS } from '@/lib/queryKeys';
 import { useToast } from '@/hooks/use-toast';
+import { AdminButton, StatusChip, AdminLoading, AdminEmpty } from './design-system';
 
 export type ApprovalStatus = 'pending' | 'in_review' | 'approved' | 'rejected' | 'published';
 export type ApprovalRole = 'creator' | 'reviewer' | 'approver';
@@ -89,13 +89,18 @@ type RequestTab = 'pending' | 'in_review' | 'approved' | 'all';
 
 const STATUS_META: Record<
   ApprovalStatus,
-  { label: string; color: 'default' | 'info' | 'success' | 'error'; icon: React.ReactElement }
+  {
+    label: string;
+    color: 'default' | 'info' | 'success' | 'error';
+    tone: 'neutral' | 'info' | 'success' | 'error';
+    icon: React.ReactElement;
+  }
 > = {
-  pending: { label: 'Pending', color: 'default', icon: <HourglassEmptyIcon fontSize="small" /> },
-  in_review: { label: 'In Review', color: 'info', icon: <RateReviewIcon fontSize="small" /> },
-  approved: { label: 'Approved', color: 'success', icon: <CheckCircleIcon fontSize="small" /> },
-  rejected: { label: 'Rejected', color: 'error', icon: <CloseIcon fontSize="small" /> },
-  published: { label: 'Published', color: 'success', icon: <PublishedWithChangesIcon fontSize="small" /> },
+  pending: { label: 'Pending', color: 'default', tone: 'neutral', icon: <HourglassEmptyIcon fontSize="small" /> },
+  in_review: { label: 'In Review', color: 'info', tone: 'info', icon: <RateReviewIcon fontSize="small" /> },
+  approved: { label: 'Approved', color: 'success', tone: 'success', icon: <CheckCircleIcon fontSize="small" /> },
+  rejected: { label: 'Rejected', color: 'error', tone: 'error', icon: <CloseIcon fontSize="small" /> },
+  published: { label: 'Published', color: 'success', tone: 'success', icon: <PublishedWithChangesIcon fontSize="small" /> },
 };
 
 export default function ApprovalWorkflow() {
@@ -339,21 +344,12 @@ export default function ApprovalWorkflow() {
       </Card>
 
       {requestsQuery.isLoading ? (
-        <Card>
-          <CardContent>
-            <Typography color="text.secondary">Loading approval requests...</Typography>
-          </CardContent>
-        </Card>
+        <AdminLoading label="Loading approval requests..." />
       ) : filteredRequests.length === 0 ? (
-        <Card>
-          <CardContent>
-            <Typography color="text.secondary">No approval requests found.</Typography>
-          </CardContent>
-        </Card>
+        <AdminEmpty title="No approval requests found." />
       ) : (
         <Stack spacing={2}>
           {filteredRequests.map((request) => {
-            const status = STATUS_META[request.status];
             return (
               <Card key={request.id}>
                 <CardHeader
@@ -369,12 +365,9 @@ export default function ApprovalWorkflow() {
                       <Typography variant="caption">
                         {new Date(request.createdAt).toLocaleDateString()}
                       </Typography>
-                      <Chip
-                        icon={status.icon}
-                        label={status.label}
-                        color={status.color}
-                        size="small"
-                        variant={status.color === 'default' ? 'outlined' : 'filled'}
+                      <StatusChip
+                        tone={STATUS_META[request.status].tone}
+                        label={STATUS_META[request.status].label}
                       />
                     </Stack>
                   }
@@ -424,10 +417,9 @@ export default function ApprovalWorkflow() {
                             <Typography variant="subtitle2" sx={{ textTransform: 'capitalize' }}>
                               {stage.role}
                             </Typography>
-                            <Chip
-                              size="small"
+                            <StatusChip
+                              tone={STATUS_META[stage.status].tone}
                               label={STATUS_META[stage.status].label}
-                              color={STATUS_META[stage.status].color}
                             />
                           </Stack>
                           <Typography variant="caption" color="text.secondary">
@@ -501,57 +493,58 @@ export default function ApprovalWorkflow() {
                   onChange={(event) => setReviewComment(event.target.value)}
                 />
                 <Box sx={{ mt: 1 }}>
-                  <Button
-                    variant="outlined"
+                  <AdminButton
+                    tone="secondary"
                     startIcon={<CommentIcon />}
                     onClick={handleAddComment}
-                    disabled={!reviewComment.trim() || addCommentMutation.isPending}
+                    loading={addCommentMutation.isPending}
+                    disabled={!reviewComment.trim()}
                   >
                     Add comment
-                  </Button>
+                  </AdminButton>
                 </Box>
               </Box>
             </Stack>
           )}
         </DialogContent>
         <DialogActions sx={{ p: 2, gap: 1, justifyContent: 'space-between' }}>
-          <Button
+          <AdminButton
+            tone="ghost"
             onClick={() => {
               setSelectedRequest(null);
               setReviewComment('');
             }}
           >
             Close
-          </Button>
+          </AdminButton>
           {selectedRequest && (selectedRequest.status === 'pending' || selectedRequest.status === 'in_review') ? (
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-              <Button
-                variant="contained"
-                color="success"
+              <AdminButton
+                tone="primary"
                 startIcon={<CheckCircleIcon />}
                 onClick={handleApprove}
-                disabled={approveMutation.isPending}
+                loading={approveMutation.isPending}
               >
                 Approve
-              </Button>
-              <Button
-                variant="outlined"
-                color="warning"
+              </AdminButton>
+              <AdminButton
+                tone="secondary"
                 startIcon={<ErrorOutlineIcon />}
                 onClick={handleRequestChanges}
-                disabled={!reviewComment.trim() || requestChangesMutation.isPending}
+                loading={requestChangesMutation.isPending}
+                disabled={!reviewComment.trim()}
               >
                 Request changes
-              </Button>
-              <Button
-                variant="contained"
-                color="error"
+              </AdminButton>
+              <AdminButton
+                tone="danger"
                 startIcon={<SendIcon />}
                 onClick={handleReject}
-                disabled={!reviewComment.trim() || rejectMutation.isPending}
+                loading={rejectMutation.isPending}
+                disabled={!reviewComment.trim()}
               >
                 Reject
-              </Button>
+              </AdminButton>
             </Stack>
           ) : (
             <Chip label={`Request is ${selectedRequest?.status || 'closed'}`} />

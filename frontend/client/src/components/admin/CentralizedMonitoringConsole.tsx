@@ -42,6 +42,7 @@ import {
   Psychology as PsychologyIcon,
 } from '@mui/icons-material';
 import { useTheming } from '../../utils/theming-helper';
+import { AdminButton } from './design-system';
 
 import APIEndpointMonitor from './APIEndpointMonitor';
 import PlaceholderTextScanner from '../development/PlaceholderTextScanner';
@@ -324,12 +325,12 @@ const CentralizedMonitoringConsole: React.FC<CentralizedMonitoringConsoleProps> 
             >
               Refresh data
             </Button>
-            <Button
-              variant="outlined"
+            <AdminButton
+              tone="ghost"
               onClick={() => setIsMonitoringSleeping((previous) => !previous)}
             >
               {isMonitoringSleeping ? 'Wake monitoring' : 'Sleep mode'}
-            </Button>
+            </AdminButton>
           </Stack>
         </CardContent>
       </Card>

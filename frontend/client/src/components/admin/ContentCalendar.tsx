@@ -16,7 +16,6 @@ import {
   CardContent,
   Typography,
   IconButton,
-  Button,
   Chip,
   Tooltip,
   Dialog,
@@ -37,6 +36,7 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isTod
 import { nb } from 'date-fns/locale';
 import MarketingWorkflowIntegration from './MarketingWorkflowIntegration';
 import EventCreatorDialog from './EventCreatorDialog';
+import { AdminButton } from './design-system';
 
 interface CalendarEvent {
   id: number;
@@ -162,34 +162,30 @@ export default function ContentCalendar() {
               ? `${enhancedProfessionConfig?.displayName || professionConfig.displayName} - Innholdskalender`
               : 'Innholdskalender'}
           </Typography>
-          <Button
+          <AdminButton
             size="small"
-            variant="outlined"
+            tone="ghost"
             onClick={handleToday}
-            sx={{ borderColor: '#ff8c00', color: '#ff8c00' }}
           >
             I dag
-          </Button>
+          </AdminButton>
         </Box>
 
         <Box display="flex" alignItems="center" gap={2}>
-          <Button
-            variant="outlined"
+          <AdminButton
+            tone="ghost"
             startIcon={<CampaignIcon />}
             onClick={() => setWorkflowDialogOpen(true)}
-            sx={{ borderColor: '#ff8c00', color: '#ff8c00' }}
           >
             Marketing Workflow
-          </Button>
-          <Button
-            variant="contained"
+          </AdminButton>
+          <AdminButton
+            tone="primary"
             startIcon={<AddIcon />}
             onClick={handleCreateEvent}
-            sx={{
-              bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67e00' }}}
           >
             Ny hendelse
-          </Button>
+          </AdminButton>
         </Box>
       </Box>
 

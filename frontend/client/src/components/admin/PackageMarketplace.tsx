@@ -2,7 +2,6 @@ import { useMemo, useState, type FC } from 'react';
 import {
   Alert,
   Box,
-  Button,
   Card,
   CardContent,
   Chip,
@@ -44,6 +43,16 @@ import {
 } from '@mui/icons-material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import {
+  AdminCard,
+  AdminButton,
+  StatusChip,
+  AdminLoading,
+  AdminEmpty,
+  AdminError,
+  AdminTableContainer,
+  adminTokens,
+} from './design-system';
 
 interface MarketplacePackage {
   name: string;
@@ -384,12 +393,12 @@ const PackageMarketplace: FC = () => {
         </Stack>
 
         <Stack direction="row" spacing={1}>
-          <Button startIcon={<Refresh />} variant="outlined" onClick={handleRefresh}>
+          <AdminButton tone="secondary" startIcon={<Refresh />} onClick={handleRefresh}>
             Refresh
-          </Button>
-          <Button startIcon={<Download />} variant="outlined" onClick={openScriptDialog}>
+          </AdminButton>
+          <AdminButton tone="secondary" startIcon={<Download />} onClick={openScriptDialog}>
             Generate Script
-          </Button>
+          </AdminButton>
         </Stack>
       </Stack>
 
@@ -490,8 +499,8 @@ const PackageMarketplace: FC = () => {
             </Stack>
           </Stack>
 
-          <Card>
-            <CardContent sx={{ p: 0 }}>
+          <AdminCard disablePadding>
+            <AdminTableContainer ariaLabel="Packages">
               <Table size="small">
                 <TableHead>
                   <TableRow>
@@ -528,28 +537,30 @@ const PackageMarketplace: FC = () => {
                       <TableCell>
                         <Stack direction="row" spacing={1}>
                           <Tooltip title="View package details">
-                            <Button size="small" variant="outlined" onClick={() => openDetails(pkg)}>
+                            <AdminButton tone="secondary" size="small" onClick={() => openDetails(pkg)}>
                               Details
-                            </Button>
+                            </AdminButton>
                           </Tooltip>
                           {pkg.installed ? (
-                            <Button
+                            <AdminButton
+                              tone="primary"
                               size="small"
-                              variant="contained"
+                              loading={updateMutation.isPending}
                               onClick={() => updateMutation.mutate({ name: pkg.name, version: pkg.latest })}
                               disabled={!pkg.isOutdated || updateMutation.isPending}
                             >
                               Update
-                            </Button>
+                            </AdminButton>
                           ) : (
-                            <Button
+                            <AdminButton
+                              tone="primary"
                               size="small"
-                              variant="contained"
+                              loading={installMutation.isPending}
                               onClick={() => installMutation.mutate({ name: pkg.name, version: pkg.latest })}
                               disabled={installMutation.isPending}
                             >
                               Install
-                            </Button>
+                            </AdminButton>
                           )}
                         </Stack>
                       </TableCell>
@@ -557,13 +568,13 @@ const PackageMarketplace: FC = () => {
                   ))}
                 </TableBody>
               </Table>
-            </CardContent>
-          </Card>
+            </AdminTableContainer>
+          </AdminCard>
         </TabPanel>
 
         <TabPanel value={tabValue} index={1}>
-          <Card>
-            <CardContent sx={{ p: 0 }}>
+          <AdminCard disablePadding>
+            <AdminTableContainer ariaLabel="Repositories">
               <Table size="small">
                 <TableHead>
                   <TableRow>
@@ -581,14 +592,13 @@ const PackageMarketplace: FC = () => {
                       <TableCell>{repository.name}</TableCell>
                       <TableCell>{repository.type}</TableCell>
                       <TableCell>
-                        <Chip
-                          size="small"
+                        <StatusChip
                           label={repository.status}
-                          color={repository.status === 'active' ? 'success' : repository.status === 'error' ? 'error' : 'default'}
+                          tone={repository.status === 'active' ? 'success' : repository.status === 'error' ? 'error' : 'neutral'}
                         />
                       </TableCell>
                       <TableCell>
-                        <Chip size="small" label={repository.trusted ? 'Trusted' : 'Untrusted'} color={repository.trusted ? 'success' : 'warning'} />
+                        <StatusChip label={repository.trusted ? 'Trusted' : 'Untrusted'} tone={repository.trusted ? 'success' : 'warning'} />
                       </TableCell>
                       <TableCell>{repository.packageCount.toLocaleString('nb-NO')}</TableCell>
                       <TableCell>
@@ -600,8 +610,8 @@ const PackageMarketplace: FC = () => {
                   ))}
                 </TableBody>
               </Table>
-            </CardContent>
-          </Card>
+            </AdminTableContainer>
+          </AdminCard>
         </TabPanel>
 
         <TabPanel value={tabValue} index={2}>
@@ -639,7 +649,7 @@ const PackageMarketplace: FC = () => {
           ) : null}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDetailsDialogOpen(false)}>Close</Button>
+          <AdminButton tone="ghost" onClick={() => setDetailsDialogOpen(false)}>Close</AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -655,10 +665,10 @@ const PackageMarketplace: FC = () => {
           />
         </DialogContent>
         <DialogActions>
-          <Button startIcon={<ContentCopy />} onClick={copyScript}>
+          <AdminButton tone="ghost" startIcon={<ContentCopy />} onClick={copyScript}>
             Copy
-          </Button>
-          <Button onClick={() => setScriptDialogOpen(false)}>Close</Button>
+          </AdminButton>
+          <AdminButton tone="ghost" onClick={() => setScriptDialogOpen(false)}>Close</AdminButton>
         </DialogActions>
       </Dialog>
 

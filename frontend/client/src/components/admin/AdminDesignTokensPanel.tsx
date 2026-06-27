@@ -25,6 +25,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { tokens as defaultTokens, gradient } from '@/utils/dashboard-design-tokens';
+import { AdminCard, AdminButton } from './design-system';
 
 interface DesignTokens {
   accentColor?: string;
@@ -125,19 +126,20 @@ const AdminDesignTokensPanel: React.FC = () => {
           </Box>
         </Stack>
         <Stack direction="row" spacing={1}>
-          <Button startIcon={<ResetIcon />} onClick={resetToDefaults} disabled={!dirty}>
+          <AdminButton tone="ghost" startIcon={<ResetIcon />} onClick={resetToDefaults} disabled={!dirty}>
             Tilbakestill
-          </Button>
+          </AdminButton>
           <IconButton onClick={() => refetch()}>
             <RefreshIcon />
           </IconButton>
-          <Button
-            variant="contained" startIcon={<SaveIcon />}
+          <AdminButton
+            tone="primary" startIcon={<SaveIcon />}
+            loading={saveMutation.isPending}
             disabled={!dirty || saveMutation.isPending}
             onClick={() => saveMutation.mutate(form)}
           >
             {saveMutation.isPending ? 'Lagrer…' : 'Lagre & publiser'}
-          </Button>
+          </AdminButton>
         </Stack>
       </Stack>
 
@@ -157,11 +159,7 @@ const AdminDesignTokensPanel: React.FC = () => {
         {/* Venstre: redigering */}
         <Stack spacing={2}>
           {/* Accent-farger */}
-          <Card>
-            <CardContent>
-              <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2 }}>
-                Hoved-accent (overstyrer profesjons-color)
-              </Typography>
+          <AdminCard title="Hoved-accent (overstyrer profesjons-color)">
               <Stack spacing={2}>
                 <TextField
                   label="Accent-farge (hex)" size="small" fullWidth
@@ -209,15 +207,10 @@ const AdminDesignTokensPanel: React.FC = () => {
                   }}
                 />
               </Stack>
-            </CardContent>
-          </Card>
+          </AdminCard>
 
           {/* Tekstfarger */}
-          <Card>
-            <CardContent>
-              <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2 }}>
-                Tekstfarger på dark bakgrunn
-              </Typography>
+          <AdminCard title="Tekstfarger på dark bakgrunn">
               <Stack spacing={2}>
                 <TextField
                   label="Primær tekst" size="small" fullWidth
@@ -234,15 +227,10 @@ const AdminDesignTokensPanel: React.FC = () => {
                   helperText={`Default: ${defaultTokens.text.secondary}`}
                 />
               </Stack>
-            </CardContent>
-          </Card>
+          </AdminCard>
 
           {/* Border-radius */}
-          <Card>
-            <CardContent>
-              <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2 }}>
-                Border-radius (avrunding)
-              </Typography>
+          <AdminCard title="Border-radius (avrunding)">
               <Stack spacing={3}>
                 <Box>
                   <Typography variant="body2" sx={{ mb: 1 }}>
@@ -263,15 +251,10 @@ const AdminDesignTokensPanel: React.FC = () => {
                   helperText={`Default: ${defaultTokens.radius.lg}`}
                 />
               </Stack>
-            </CardContent>
-          </Card>
+          </AdminCard>
 
           {/* Typografi */}
-          <Card>
-            <CardContent>
-              <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2 }}>
-                Typografi
-              </Typography>
+          <AdminCard title="Typografi">
               <FormControl size="small" fullWidth>
                 <InputLabel>Overskrift-font</InputLabel>
                 <Select
@@ -285,8 +268,7 @@ const AdminDesignTokensPanel: React.FC = () => {
                   ))}
                 </Select>
               </FormControl>
-            </CardContent>
-          </Card>
+          </AdminCard>
         </Stack>
 
         {/* Høyre: live preview */}
@@ -367,11 +349,7 @@ const AdminDesignTokensPanel: React.FC = () => {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardContent>
-              <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
-                Resolveringsrekkefølge
-              </Typography>
+          <AdminCard title="Resolveringsrekkefølge">
               <Stack spacing={0.5}>
                 <Typography variant="caption" color="text.secondary">
                   1. CMS-overrides (denne flaten) — har høyeste prioritet
@@ -389,8 +367,7 @@ const AdminDesignTokensPanel: React.FC = () => {
                   {data.updatedBy && ` av ${data.updatedBy}`}
                 </Typography>
               )}
-            </CardContent>
-          </Card>
+          </AdminCard>
         </Stack>
       </Box>
     </Box>

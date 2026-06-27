@@ -12,7 +12,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  Alert, Box, Button, Card, CardContent, Chip, CircularProgress,
+  Alert, Box, Card, CardContent,
   Dialog, DialogActions, DialogContent, DialogTitle, Divider,
   Snackbar, Stack, TextField, Typography,
 } from '@mui/material';
@@ -24,6 +24,7 @@ import {
   TrendingUp as TrendingIcon,
   Warning as WarningIcon,
 } from '@mui/icons-material';
+import { AdminButton, StatusChip, AdminLoading, AdminError } from './design-system';
 
 interface StripePrice {
   id: string;
@@ -137,15 +138,11 @@ export default function LeadMapPricingPanel() {
   };
 
   if (loading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-        <CircularProgress />
-      </Box>
-    );
+    return <AdminLoading />;
   }
 
   if (error || !data) {
-    return <Alert severity="error" sx={{ m: 2 }}>{error ?? 'Ingen data'}</Alert>;
+    return <AdminError message={error ?? 'Ingen data'} onRetry={fetchPricing} />;
   }
 
   return (
@@ -157,16 +154,14 @@ export default function LeadMapPricingPanel() {
           <Typography variant="h6" sx={{ fontWeight: 700 }}>
             Lead Map — Prising
           </Typography>
-          <Chip
+          <StatusChip
+            tone={data.mode === 'live' ? 'error' : 'neutral'}
             label={data.mode === 'live' ? 'LIVE Stripe' : 'TEST Stripe'}
-            size="small"
-            color={data.mode === 'live' ? 'error' : 'default'}
-            sx={{ fontWeight: 700 }}
           />
         </Stack>
-        <Button startIcon={<RefreshIcon />} onClick={fetchPricing} size="small">
+        <AdminButton tone="ghost" startIcon={<RefreshIcon />} onClick={fetchPricing} size="small">
           Oppdater
-        </Button>
+        </AdminButton>
       </Stack>
 
       {/* Usage metrics */}
@@ -235,8 +230,8 @@ export default function LeadMapPricingPanel() {
                     ) : (
                       <Typography variant="body2" color="error">Ingen pris satt</Typography>
                     )}
-                    <Button
-                      variant="outlined" size="small"
+                    <AdminButton
+                      tone="secondary" size="small"
                       startIcon={<EditIcon />}
                       onClick={() => {
                         setEditingTier(t.tier);
@@ -244,7 +239,7 @@ export default function LeadMapPricingPanel() {
                       }}
                     >
                       Endre pris
-                    </Button>
+                    </AdminButton>
                   </Stack>
                 </Stack>
 
@@ -278,10 +273,9 @@ export default function LeadMapPricingPanel() {
                   {t.price && (
                     <Box>
                       <Typography variant="caption" color="text.secondary">Status</Typography>
-                      <Chip
-                        size="small"
+                      <StatusChip
+                        tone={t.price.active ? 'success' : 'neutral'}
                         label={t.price.active ? 'Active' : 'Inactive'}
-                        color={t.price.active ? 'success' : 'default'}
                       />
                     </Box>
                   )}
@@ -331,13 +325,13 @@ export default function LeadMapPricingPanel() {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setEditingTier(null)}>Avbryt</Button>
-          <Button
-            variant="contained" onClick={handleSave} disabled={saving}
-            startIcon={saving ? <CircularProgress size={14} /> : <SaveIcon />}
+          <AdminButton tone="ghost" onClick={() => setEditingTier(null)}>Avbryt</AdminButton>
+          <AdminButton
+            tone="primary" onClick={handleSave} loading={saving} disabled={saving}
+            startIcon={<SaveIcon />}
           >
             Opprett ny pris
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 

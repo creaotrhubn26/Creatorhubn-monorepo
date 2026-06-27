@@ -97,6 +97,8 @@ import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIn
 // Visual CMS Components
 import MaterialIconLibrary from '../cms/MaterialIconLibrary';
 
+import { AdminButton, StatusChip, AdminLoading } from './design-system';
+
 interface AdminUser {
   id: string;
   email: string;
@@ -369,24 +371,25 @@ export default function UniversalAdminCMS() {
                 🚀 Quick Actions
               </Typography>
               <Stack spacing={2}>
-                <Button variant="contained"
+                <AdminButton
+                  tone="primary"
                   startIcon={<AddIcon />}
                   onClick={() => setCreatePageDialog(true)}
                   fullWidth
                 >
                   Opprett ny side
-                </Button>
-                <Button
-                  variant="outlined"
+                </AdminButton>
+                <AdminButton
+                  tone="secondary"
                   startIcon={<PaletteIcon />}
                   onClick={() => setShowIconLibrary(true)}
                   fullWidth
                 >
                   Ikon bibliotek
-                </Button>
-                <Button variant="outlined" startIcon={<BackupIcon />} fullWidth>
+                </AdminButton>
+                <AdminButton tone="secondary" startIcon={<BackupIcon />} fullWidth>
                   System backup
-                </Button>
+                </AdminButton>
               </Stack>
             </CardContent>
           </Card>
@@ -400,12 +403,13 @@ export default function UniversalAdminCMS() {
     <Box>
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb:  3 }}>
         <Typography variant="h5" sx={{ color: theming.colors.primary }}>📄 CMS Sider</Typography>
-        <Button variant="contained"
+        <AdminButton
+          tone="primary"
           startIcon={<AddIcon />}
           onClick={() => setCreatePageDialog(true)}
         >
           Ny side
-        </Button>
+        </AdminButton>
       </Stack>
 
       <Grid container spacing={3}>
@@ -418,11 +422,7 @@ export default function UniversalAdminCMS() {
                     <Typography variant="h6" noWrap sx={{ color: theming.colors.primary }}>
                       {page.name}
                     </Typography>
-                    <Chip
-                      label={page.status}
-                      color={page.status === 'published' ? 'success' : 'default'}
-                      size="small"
-                    />
+                    <StatusChip status={page.status} />
                   </Stack>
 
                   <Typography variant="body2" color="textSecondary">
@@ -464,11 +464,7 @@ export default function UniversalAdminCMS() {
   // Render content based on selected section
   const renderContent = () => {
     if (statsLoading || pagesLoading || usersLoading) {
-      return (
-        <Box display="flex" justifyContent="center" alignItems="center" height="400px">
-          <CircularProgress />
-        </Box>
-      );
+      return <AdminLoading />;
   }
 
     switch (selectedSection) {
@@ -653,10 +649,12 @@ export default function UniversalAdminCMS() {
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setCreatePageDialog(false)}>Avbryt</Button>
-          <Button variant="contained" onClick={() => setCreatePageDialog(false)}>
+          <AdminButton tone="ghost" onClick={() => setCreatePageDialog(false)}>
+            Avbryt
+          </AdminButton>
+          <AdminButton tone="primary" onClick={() => setCreatePageDialog(false)}>
             Opprett side
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

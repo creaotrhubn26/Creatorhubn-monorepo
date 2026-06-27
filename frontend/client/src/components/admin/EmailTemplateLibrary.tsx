@@ -42,6 +42,7 @@ import {
 } from '@mui/icons-material';
 import { QUERY_KEYS } from '../../lib/queryKeys';
 import { useToast } from '../../hooks/use-toast';
+import { AdminButton, AdminEmpty } from './design-system';
 
 type SortBy = 'recent' | 'popular' | 'name';
 type CategoryValue =
@@ -389,15 +390,11 @@ export default function EmailTemplateLibrary({
       )}
 
       {!isLoading && filteredTemplates.length === 0 ? (
-        <Card>
-          <CardContent sx={{ py: 8, textAlign: 'center' }}>
-            <Email sx={{ fontSize: 48, color: 'text.secondary', mb: 1 }} />
-            <Typography>No templates found</Typography>
-            <Typography variant="body2" color="text.secondary">
-              Try adjusting your search or filters.
-            </Typography>
-          </CardContent>
-        </Card>
+        <AdminEmpty
+          icon={<Email sx={{ fontSize: 48 }} />}
+          title="No templates found"
+          description="Try adjusting your search or filters."
+        />
       ) : (
         <Grid2 container spacing={2}>
           {filteredTemplates.map((template) => {
@@ -509,9 +506,9 @@ export default function EmailTemplateLibrary({
                       </Tooltip>
                     )}
                     <Box sx={{ flexGrow: 1 }} />
-                    <Button variant="contained" onClick={() => handleUseTemplate(template)}>
+                    <AdminButton tone="primary" onClick={() => handleUseTemplate(template)}>
                       Use Template
-                    </Button>
+                    </AdminButton>
                   </CardActions>
                 </Card>
               </Grid2>
@@ -538,22 +535,24 @@ export default function EmailTemplateLibrary({
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setPreviewTemplate(null)}>Close</Button>
+          <AdminButton tone="ghost" onClick={() => setPreviewTemplate(null)}>
+            Close
+          </AdminButton>
           {previewTemplate && (
             <>
-              <Button
-                variant="outlined"
+              <AdminButton
+                tone="secondary"
                 startIcon={<ContentCopy />}
                 onClick={() => duplicateMutation.mutate(previewTemplate.id)}
               >
                 Duplicate
-              </Button>
-              <Button
-                variant="contained"
+              </AdminButton>
+              <AdminButton
+                tone="primary"
                 onClick={() => handleUseTemplate(previewTemplate)}
               >
                 Use Template
-              </Button>
+              </AdminButton>
             </>
           )}
         </DialogActions>
@@ -573,10 +572,12 @@ export default function EmailTemplateLibrary({
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteConfirmId(null)}>Cancel</Button>
-          <Button color="error" variant="contained" onClick={executeDelete}>
+          <AdminButton tone="ghost" onClick={() => setDeleteConfirmId(null)}>
+            Cancel
+          </AdminButton>
+          <AdminButton tone="danger" onClick={executeDelete}>
             Delete
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Stack>
