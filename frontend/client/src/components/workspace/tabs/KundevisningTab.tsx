@@ -13,6 +13,7 @@ import Visibility from '@mui/icons-material/Visibility';
 import Collections from '@mui/icons-material/Collections';
 import ContentCopy from '@mui/icons-material/ContentCopy';
 import OpenInNew from '@mui/icons-material/OpenInNew';
+import AccessTime from '@mui/icons-material/AccessTime';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
 import { WsCard, WsSectionTitle, WsTag, WsImg } from '../ui';
@@ -24,13 +25,20 @@ const SAMPLE = [
 const KundevisningTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const isReal = projectId && projectId !== 'sample';
   const [galleries, setGalleries] = useState<any[]>([]);
+  const [timelineToken, setTimelineToken] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isReal) return;
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/galleries`)
       .then((r: any) => setGalleries(Array.isArray(r?.galleries) ? r.galleries : []))
       .catch(() => {});
+    // Wedding timeline-kundevisning (run-of-day klienten ser/justerer).
+    apiRequest(`/api/wedding/timeline/project/${encodeURIComponent(projectId)}`)
+      .then((r: any) => { const t = r?.clientAccessToken; if (t) setTimelineToken(t); })
+      .catch(() => {});
   }, [projectId, isReal]);
+
+  const timelinePath = (isReal && timelineToken) ? `/wedding/timeline/${timelineToken}` : (!isReal ? '/wedding/timeline/demo' : null);
 
   const list = isReal ? galleries : SAMPLE;
 
@@ -60,6 +68,26 @@ const KundevisningTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           </Typography>
         </Stack>
       </WsCard>
+
+      {/* Wedding timeline — kundevisning (run-of-day) */}
+      {timelinePath && (
+        <WsCard sx={{ mb: 2 }}>
+          <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap" gap={1.5}>
+            <Box sx={{ width: 44, height: 44, borderRadius: 2, bgcolor: ws.accentSoft, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <AccessTime sx={{ color: ws.accent }} />
+            </Box>
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography sx={{ fontSize: 15, fontWeight: 700 }}>Bryllups-tidslinje (kundevisning)</Typography>
+              <Typography sx={{ fontSize: 12, color: ws.textDim }}>Klienten ser og kan justere dagens program (first look, vielse, taler …) i sin egen visning.</Typography>
+            </Box>
+            <Stack direction="row" spacing={1}>
+              <Button size="small" startIcon={<ContentCopy sx={{ fontSize: 15 }} />} onClick={() => { try { navigator.clipboard?.writeText(`${window.location.origin}${timelinePath}`); } catch { /* */ } }} sx={{ color: ws.textDim, textTransform: 'none', border: `1px solid ${ws.border}` }}>Kopier lenke</Button>
+              <Button size="small" variant="contained" startIcon={<OpenInNew sx={{ fontSize: 15 }} />} onClick={() => window.open(`${window.location.origin}${timelinePath}`, '_blank')}
+                sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Åpne tidslinje</Button>
+            </Stack>
+          </Stack>
+        </WsCard>
+      )}
 
       {list.length === 0 ? (
         <WsCard>
