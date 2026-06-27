@@ -19,6 +19,7 @@ import { ws } from '../workspaceTheme';
 import { WsCard, WsSectionTitle, WsRing, WsBar, WsImageGrid } from '../ui';
 import WorkspaceChatPanel from '../WorkspaceChatPanel';
 import { useProjectImages } from '../useProjectImages';
+import { useCaptureRealtime } from '../useCaptureRealtime';
 
 const PHASES = [
   { icon: '🤍', label: 'Forberedelser', time: '08:00 – 10:00', color: ws.textDim },
@@ -150,6 +151,10 @@ const OversiktTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
+  // Sanntid: oppdater Capture & backup INSTANT når iPad skyter/culler (WS).
+  const { live: capLive } = useCaptureRealtime(projectId, () => {
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/capture-status`).then((r: any) => setCapture(r || null)).catch(() => {});
+  });
   const cap = isReal ? capture : { hasSession: true, shootingNow: true, session: { name: 'EOS R5 — Vielse' }, assets: { total: 842, securedToB2: 842, securedPct: 100, lastCaptureAt: new Date().toISOString() } };
 
   const toggleTask = async (id: string, status: string) => {

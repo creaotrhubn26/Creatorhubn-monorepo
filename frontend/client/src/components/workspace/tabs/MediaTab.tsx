@@ -15,6 +15,7 @@ import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
 import { WsCard, WsTag, WsImageGrid } from '../ui';
 import { useProjectImages } from '../useProjectImages';
+import { useCaptureRealtime } from '../useCaptureRealtime';
 
 const LIB = [['Alle medier', 2487], ['Bilder', 1732], ['Videoer', 624], ['Lyd', 98], ['Dokumenter', 33]];
 const FOLDERS = [['01_Brief', 12], ['02_Shotlists', 8], ['03_Photo_RAW', 1732], ['04_Video_A_Cam', 214], ['05_Video_B_Cam', 186], ['06_Drone', 67], ['07_Audio', 98], ['08_Selects', 156], ['09_Client_Review', 23], ['10_Final_Delivery', 0]];
@@ -64,9 +65,14 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         .catch(() => {});
     };
     fetchMedia();
-    const t = setInterval(fetchMedia, 25000); // live: reflekter culling fra iPad
+    const t = setInterval(fetchMedia, 25000); // poll-fallback
     return () => clearInterval(t);
   }, [projectId, isReal]);
+
+  // Sanntid: refetch media INSTANT når iPad skyter/culler (WS).
+  const { live: capLive } = useCaptureRealtime(projectId, () => {
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/media`).then((r: any) => { setAssets(Array.isArray(r?.assets) ? r.assets : []); setCull(r?.cullStats || {}); }).catch(() => {});
+  });
 
   // Cull-aware items: rating + pick (flagged_for_client) fra iPad-culling.
   const matchFilter = (a: any) => {
@@ -133,7 +139,10 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5, flexWrap: 'wrap', gap: 1 }}>
           <Box>
-            <Typography sx={{ fontSize: 18, fontWeight: 800 }}>{lib}</Typography>
+            <Stack direction="row" spacing={1} alignItems="center">
+              <Typography sx={{ fontSize: 18, fontWeight: 800 }}>{lib}</Typography>
+              {capLive && <Stack direction="row" spacing={0.5} alignItems="center"><Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: ws.green }} /><Typography sx={{ fontSize: 10.5, color: ws.green, fontWeight: 700 }}>SANNTID</Typography></Stack>}
+            </Stack>
             <Typography sx={{ fontSize: 12, color: ws.textDim }}>
               {isReal ? `${cull.total ?? 0} bilder · ${cull.favorites ?? 0} valgt · ${cull.highlights ?? 0} highlights` : '2 487 elementer'}
             </Typography>
