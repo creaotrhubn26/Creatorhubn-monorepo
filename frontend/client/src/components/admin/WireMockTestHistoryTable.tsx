@@ -13,6 +13,7 @@ import {
   TextField,
   MenuItem,
   Grid,
+  InputAdornment,
 } from '@mui/material';
 import {
   Visibility as ViewIcon,
@@ -20,6 +21,7 @@ import {
   Error as ErrorIcon,
   Delete as DeleteIcon,
   FileDownload as ExportIcon,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import type { WireMockTestResult } from './WireMockResponseViewer';
 import { AdminCard, AdminButton, StatusChip, AdminEmpty, AdminTableContainer } from './design-system';
@@ -43,6 +45,7 @@ export const WireMockTestHistoryTable: React.FC<WireMockTestHistoryTableProps> =
 }) => {
   const [filterApi, setFilterApi] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [search, setSearch] = useState('');
 
   // Get unique API names
   const uniqueApis = useMemo(
@@ -55,9 +58,12 @@ export const WireMockTestHistoryTable: React.FC<WireMockTestHistoryTableProps> =
     () => history.filter(result => {
       if (filterApi !== 'all' && result.apiName !== filterApi) return false;
       if (filterStatus !== 'all' && result.status !== filterStatus) return false;
+      const q = search.toLowerCase();
+      if (q && ![result.apiName, result.method, String(result.statusCode || ''), result.status]
+        .some(field => (field || '').toLowerCase().includes(q))) return false;
       return true;
     }),
-    [history, filterApi, filterStatus]
+    [history, filterApi, filterStatus, search]
   );
 
   const formatTime = (date: Date) => {
@@ -140,6 +146,20 @@ export const WireMockTestHistoryTable: React.FC<WireMockTestHistoryTableProps> =
 
         {/* Filters */}
         <Box display="flex" flexWrap="wrap" gap={2} mb={2}>
+          <TextField
+            size="small"
+            placeholder="Søk …"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            sx={{ minWidth: 200 }}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" />
+                </InputAdornment>
+              ),
+            }}
+          />
           <TextField
             select
             size="small"

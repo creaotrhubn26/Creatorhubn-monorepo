@@ -21,6 +21,8 @@ import {
   Tooltip,
   Alert,
   Skeleton,
+  TextField,
+  InputAdornment,
 } from '@mui/material';
 import {
   CheckCircle as CheckCircleIcon,
@@ -28,6 +30,7 @@ import {
   Schedule as ScheduleIcon,
   Cloud as CloudIcon,
   Dashboard as DashboardIcon,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import { AdminTableContainer, adminTokens } from './design-system';
 
@@ -52,6 +55,7 @@ interface RecentlyApprovedUsersProps {
 }
 
 export default function RecentlyApprovedUsers({ days = 30 }: RecentlyApprovedUsersProps) {
+  const [search, setSearch] = React.useState('');
   const { data: recentUsers, isLoading } = useQuery({
     queryKey: ['/api/admin/users/recently-approved', days],
     queryFn: async () => {
@@ -169,6 +173,24 @@ export default function RecentlyApprovedUsers({ days = 30 }: RecentlyApprovedUse
         </Box>
       )}
 
+      {/* Search */}
+      <Box sx={{ mb: 2 }}>
+        <TextField
+          size="small"
+          fullWidth
+          placeholder="Søk etter navn, e-post eller bedrift …"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon fontSize="small" />
+              </InputAdornment>
+            ),
+          }}
+        />
+      </Box>
+
       {/* Users Table */}
       <Card>
         <CardContent sx={{ p: 0 }}>
@@ -204,7 +226,15 @@ export default function RecentlyApprovedUsers({ days = 30 }: RecentlyApprovedUse
                     </TableCell>
                   </TableRow>
                 ) : (
-                  recentUsers.map((user: User) => {
+                  recentUsers
+                    .filter((user: User) =>
+                      [user.firstName, user.lastName, user.email, user.businessName]
+                        .filter(Boolean)
+                        .join(' ')
+                        .toLowerCase()
+                        .includes(search.toLowerCase())
+                    )
+                    .map((user: User) => {
                     const progress = calculateOnboardingProgress(user);
                     const daysSinceApproval = getDaysSince(user.approvedAt);
 

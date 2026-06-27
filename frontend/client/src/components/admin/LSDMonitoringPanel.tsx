@@ -26,6 +26,8 @@ import {
   FormControlLabel,
   CircularProgress,
   Tooltip,
+  TextField,
+  InputAdornment,
   useTheme,
 } from '@mui/material';
 import {
@@ -43,6 +45,7 @@ import {
   Stop,
   Timeline,
   SystemUpdate,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import {
   AdminCard,
@@ -136,6 +139,7 @@ export function LSDMonitoringPanel(): JSX.Element {
   const theme = useTheme();
   const queryClient = useQueryClient();
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [search, setSearch] = useState("");
 
   // ============================================================================
   // API QUERIES
@@ -506,7 +510,28 @@ export function LSDMonitoringPanel(): JSX.Element {
       ? (currentDiagnostics.diagnostics as LSDDiagnosticResult[])
       : [];
 
+    const filteredDiagnostics = diagnostics.filter((d) =>
+      `${d.name ?? ''} ${d.category ?? ''} ${d.filePath ?? ''} ${d.message ?? ''}`
+        .toLowerCase()
+        .includes(search.toLowerCase())
+    );
+
     return (
+      <Box>
+      <TextField
+        size="small"
+        placeholder="Søk i diagnostikk (fil, type, melding) …"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        sx={{ mb: 2, width: { xs: '100%', sm: 360 } }}
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start">
+              <SearchIcon fontSize="small" />
+            </InputAdornment>
+          ),
+        }}
+      />
       <AdminTableContainer ariaLabel="Detaljerte diagnostikk-resultater">
         <Table size="small">
           <TableHead>
@@ -520,7 +545,7 @@ export function LSDMonitoringPanel(): JSX.Element {
             </TableRow>
           </TableHead>
           <TableBody>
-            {diagnostics.map((diagnostic) => (
+            {filteredDiagnostics.map((diagnostic) => (
               <TableRow key={diagnostic.id}>
                 <TableCell>
                   <Box display="flex" alignItems="center">
@@ -575,6 +600,7 @@ export function LSDMonitoringPanel(): JSX.Element {
           </TableBody>
         </Table>
       </AdminTableContainer>
+      </Box>
     );
 };
 

@@ -34,6 +34,7 @@ import {
   DialogContent,
   DialogActions,
   TextField,
+  InputAdornment,
   Snackbar,
   ThemeProvider,
 } from '@mui/material';
@@ -53,6 +54,7 @@ import {
   Schedule as DueSoonIcon,
   Cancel as MissingIcon,
   HistoryToggleOff as NeverIcon,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 
 type Status = 'overdue' | 'due_soon' | 'ok' | 'never_rotated';
@@ -126,6 +128,7 @@ const statusChip = (status: Status, days: number | null) => {
 
 export const SecretsRotationPanel: React.FC = () => {
   const [data, setData] = useState<RotationResponse | null>(null);
+  const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [markingDialog, setMarkingDialog] = useState<SecretRow | null>(null);
@@ -265,6 +268,22 @@ export const SecretsRotationPanel: React.FC = () => {
       ) : null}
 
       <AdminCard title="Sporede nøkler" disablePadding>
+          <Box sx={{ px: 2, pt: 2 }}>
+            <TextField
+              size="small"
+              fullWidth
+              placeholder="Søk i nøkler …"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon fontSize="small" />
+                  </InputAdornment>
+                ),
+              }}
+            />
+          </Box>
           <AdminTableContainer ariaLabel="Sporede nøkler og rotasjonsstatus">
             {loading && !data ? (
               <AdminLoading label="Laster rotation-status…" />
@@ -283,7 +302,15 @@ export const SecretsRotationPanel: React.FC = () => {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {(Array.isArray(data?.rows) ? data.rows : []).map((row) => (
+                  {(Array.isArray(data?.rows) ? data.rows : [])
+                    .filter((row) =>
+                      [row.displayName, row.keyName, row.category]
+                        .filter(Boolean)
+                        .some((field) =>
+                          field.toLowerCase().includes(search.toLowerCase()),
+                        ),
+                    )
+                    .map((row) => (
                     <TableRow
                       key={row.keyName}
                       sx={{
