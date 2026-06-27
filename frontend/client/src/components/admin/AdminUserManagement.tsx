@@ -275,6 +275,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, isLoad
                         <Tooltip title="Endre rolle">
                           <IconButton
                             size="small"
+                            aria-label="Endre rolle"
                             onClick={() => handleOpenDialog(user, 'role')}
                             sx={{ color: '#ff8c00' }}
                           >
@@ -286,6 +287,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, isLoad
                           <Tooltip title="Deaktiver bruker">
                             <IconButton
                               size="small"
+                              aria-label="Deaktiver bruker"
                               onClick={() => handleOpenDialog(user, 'deactivate')}
                               sx={{ color: '#f44336' }}
                             >
@@ -296,6 +298,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, isLoad
                           <Tooltip title="Aktiver bruker">
                             <IconButton
                               size="small"
+                              aria-label="Aktiver bruker"
                               onClick={() => handleOpenDialog(user, 'activate')}
                               sx={{ color: '#4caf50'}}
                             >
@@ -307,6 +310,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, isLoad
                         <Tooltip title="Slett bruker permanent">
                           <IconButton
                             size="small"
+                            aria-label="Slett bruker permanent"
                             onClick={() => handleOpenDialog(user, 'delete')}
                             sx={{ color: '#d32f2f' }}
                           >

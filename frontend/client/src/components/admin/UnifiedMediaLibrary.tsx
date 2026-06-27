@@ -306,7 +306,7 @@ export default function UnifiedMediaLibrary({ onSelectFile }: { onSelectFile?: (
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
-              <Input type="file" multiple onChange={(e) => {
+              <Input type="file" multiple aria-label="Velg filer for opplasting" onChange={(e) => {
                 const files = e.target.files;
                 if (files) {
                   Array.from(files).forEach(file => {
@@ -336,13 +336,14 @@ export default function UnifiedMediaLibrary({ onSelectFile }: { onSelectFile?: (
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Search files..."
+              aria-label="Søk i filer"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-10"
             />
           </div>
           <Select value={sortBy} onValueChange={(v: any) => setSortBy(v)}>
-            <SelectTrigger className="w-[180px]">
+            <SelectTrigger className="w-[180px]" aria-label="Sorter etter">
               <SortAsc className="h-4 w-4 mr-2" />
               <SelectValue />
             </SelectTrigger>
@@ -365,6 +366,7 @@ export default function UnifiedMediaLibrary({ onSelectFile }: { onSelectFile?: (
               variant={viewMode === 'grid' ? 'default' : 'ghost'}
               size="sm"
               onClick={() => setViewMode('grid')}
+              aria-label="Vis som rutenett"
             >
               <Grid3x3 className="h-4 w-4" />
             </Button>
@@ -372,6 +374,7 @@ export default function UnifiedMediaLibrary({ onSelectFile }: { onSelectFile?: (
               variant={viewMode === 'list' ? 'default' : 'ghost'}
               size="sm"
               onClick={() => setViewMode('list')}
+              aria-label="Vis som liste"
             >
               <List className="h-4 w-4" />
             </Button>
@@ -500,6 +503,7 @@ export default function UnifiedMediaLibrary({ onSelectFile }: { onSelectFile?: (
                               size="sm"
                               className="opacity-0 group-hover:opacity-100"
                               onClick={() => handleToggleFavorite(file.id, file.isFavorite)}
+                              aria-label={file.isFavorite ? 'Fjern fra favoritter' : 'Legg til i favoritter'}
                             >
                               {file.isFavorite ? (
                                 <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
@@ -532,7 +536,7 @@ export default function UnifiedMediaLibrary({ onSelectFile }: { onSelectFile?: (
                           <div className="flex gap-2 mt-4 opacity-0 group-hover:opacity-100 transition-opacity">
                             <Dialog>
                               <DialogTrigger asChild>
-                                <Button variant="outline" size="sm" className="flex-1">
+                                <Button variant="outline" size="sm" className="flex-1" aria-label="Forhåndsvis fil">
                                   <Eye className="h-4 w-4" />
                                 </Button>
                               </DialogTrigger>
@@ -565,7 +569,7 @@ export default function UnifiedMediaLibrary({ onSelectFile }: { onSelectFile?: (
                             <Button size="sm" className="flex-1" onClick={() => handleUseFile(file)}>
                               Use
                             </Button>
-                            <Button variant="ghost" size="sm" onClick={() => handleDelete(file.id)}>
+                            <Button variant="ghost" size="sm" onClick={() => handleDelete(file.id)} aria-label="Slett fil">
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           </div>
@@ -604,6 +608,7 @@ export default function UnifiedMediaLibrary({ onSelectFile }: { onSelectFile?: (
                               variant="ghost"
                               size="sm"
                               onClick={() => handleToggleFavorite(file.id, file.isFavorite)}
+                              aria-label={file.isFavorite ? 'Fjern fra favoritter' : 'Legg til i favoritter'}
                             >
                               {file.isFavorite ? (
                                 <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
@@ -615,11 +620,11 @@ export default function UnifiedMediaLibrary({ onSelectFile }: { onSelectFile?: (
                               Use File
                             </Button>
                             <Button variant="ghost" size="sm" asChild>
-                              <a href={file.url} download>
+                              <a href={file.url} download aria-label="Last ned fil">
                                 <Download className="h-4 w-4" />
                               </a>
                             </Button>
-                            <Button variant="ghost" size="sm" onClick={() => handleDelete(file.id)}>
+                            <Button variant="ghost" size="sm" onClick={() => handleDelete(file.id)} aria-label="Slett fil">
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           </div>

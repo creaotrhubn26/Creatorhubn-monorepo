@@ -183,7 +183,7 @@ export default function AIVideoGenerator({
             <AIIcon color="primary" />
             <Typography variant="h6">AI Video Generator (Sora-like)</Typography>
           </Box>
-          <IconButton onClick={onClose} size="small">
+          <IconButton onClick={onClose} size="small" aria-label="Lukk">
             <CloseIcon />
           </IconButton>
         </Box>
@@ -353,10 +353,18 @@ export default function AIVideoGenerator({
                       <Grid item xs={12} sm={6} key={idx}>
                         <Card
                           variant="outlined"
+                          role="button"
+                          tabIndex={0}
                           sx={{
                             cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' },
                             transition: 'all 0.2s'}}
                           onClick={() => handleUseExample(example.prompt)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              handleUseExample(example.prompt);
+                            }
+                          }}
                         >
                           <CardContent>
                             <Typography variant="body2" fontWeight="bold" gutterBottom>

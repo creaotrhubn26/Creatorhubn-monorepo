@@ -399,7 +399,7 @@ export default function SocialMediaManager() {
       {/* Header */}
       <Box display="flex" alignItems="center" justifyContent="space-between" mb={3}>
         <Box>
-          <Typography variant="h5" sx={{ fontWeight: 600, mb: 1 }}>
+          <Typography variant="h5" component="h2" sx={{ fontWeight: 600, mb: 1 }}>
             Sosiale Medier
           </Typography>
           <Typography variant="body2" color="text.secondary">
@@ -411,7 +411,7 @@ export default function SocialMediaManager() {
       {/* Platform Selection */}
       <Card sx={{ mb: 3 }}>
         <CardContent>
-          <Typography variant="h6" gutterBottom>
+          <Typography variant="h6" component="h3" gutterBottom>
             Velg Plattformer
           </Typography>
           <Box display="flex" gap={2} flexWrap="wrap">
@@ -469,7 +469,7 @@ export default function SocialMediaManager() {
           <Grid item xs={12} md={8}>
             <Card>
               <CardContent>
-                <Typography variant="h6" gutterBottom>
+                <Typography variant="h6" component="h3" gutterBottom>
                   Opprett Innlegg
                 </Typography>
 
@@ -639,7 +639,7 @@ export default function SocialMediaManager() {
           <Grid item xs={12} md={4}>
             <Card>
               <CardContent>
-                <Typography variant="h6" gutterBottom>
+                <Typography variant="h6" component="h3" gutterBottom>
                   Forhåndsvisning
                 </Typography>
                 <Box
@@ -654,6 +654,7 @@ export default function SocialMediaManager() {
                     <Box
                       component="img"
                       src={uploadedMediaUrl}
+                      alt="Forhåndsvisning av opplastet media"
                       sx={{
                         width: '100%',
                         height: 200,
@@ -685,7 +686,7 @@ export default function SocialMediaManager() {
       {activeTab === 1 && (
         <Card>
           <CardContent>
-            <Typography variant="h6" gutterBottom>
+            <Typography variant="h6" component="h3" gutterBottom>
               Planlagte Innlegg
             </Typography>
             <List>
@@ -703,7 +704,7 @@ export default function SocialMediaManager() {
                       ).toLocaleString('no-NO')}`}
                     />
                     <ListItemSecondaryAction>
-                      <IconButton edge="end">
+                      <IconButton edge="end" aria-label="Slett planlagt innlegg">
                         <DeleteIcon />
                       </IconButton>
                     </ListItemSecondaryAction>
@@ -722,7 +723,7 @@ export default function SocialMediaManager() {
       {activeTab === 2 && (
         <Card>
           <CardContent>
-            <Typography variant="h6" gutterBottom>
+            <Typography variant="h6" component="h3" gutterBottom>
               Publiserte Innlegg
             </Typography>
             <Grid container spacing={2}>
@@ -764,7 +765,7 @@ export default function SocialMediaManager() {
       {activeTab === 3 && (
         <Card>
           <CardContent>
-            <Typography variant="h6" gutterBottom>
+            <Typography variant="h6" component="h3" gutterBottom>
               Engasjement Analyse
             </Typography>
             
@@ -927,7 +928,7 @@ export default function SocialMediaManager() {
                       <Box sx={{ mt: 2, borderRadius: 1, overflow: 'hidden' }}>
                         <img
                           src={uploadedMediaUrl}
-                          alt="Preview"
+                          alt="Forhåndsvisning av opplastet media"
                           style={{ width: '100%', maxHeight: 300, objectFit: 'cover' }}
                         />
                       </Box>
@@ -989,7 +990,7 @@ export default function SocialMediaManager() {
                       <Box sx={{ mt: 2, borderRadius: 1, overflow: 'hidden' }}>
                         <img
                           src={uploadedMediaUrl}
-                          alt="Preview"
+                          alt="Forhåndsvisning av opplastet media"
                           style={{ width: '100%', maxHeight: 300, objectFit: 'cover' }}
                         />
                       </Box>

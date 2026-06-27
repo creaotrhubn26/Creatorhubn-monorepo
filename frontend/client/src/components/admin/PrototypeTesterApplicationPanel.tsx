@@ -377,7 +377,7 @@ export default function PrototypeTesterApplicationPanel() {
   return (
     <Box sx={{ p: 3 }}>
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-        <Typography variant="h5" fontWeight={700}>
+        <Typography variant="h5" component="h2" fontWeight={700}>
           Prototype Tester Applications
         </Typography>
         <AdminButton tone="secondary" startIcon={<Download />} onClick={exportCsv}>
@@ -459,7 +459,7 @@ export default function PrototypeTesterApplicationPanel() {
               InputProps={{
                 startAdornment: (
                   <Box sx={{ mr: 1, display: 'flex', alignItems: 'center' }}>
-                    <Search fontSize="small" />
+                    <Search fontSize="small" aria-hidden="true" />
                   </Box>
                 ),
               }}
@@ -476,7 +476,7 @@ export default function PrototypeTesterApplicationPanel() {
                 onChange={(event) => setStatusFilter(event.target.value as ApplicationStatus[])}
                 startAdornment={
                   <Box sx={{ mr: 1, display: 'flex', alignItems: 'center' }}>
-                    <FilterList fontSize="small" />
+                    <FilterList fontSize="small" aria-hidden="true" />
                   </Box>
                 }
               >
@@ -523,6 +523,7 @@ export default function PrototypeTesterApplicationPanel() {
                   <Stack direction="row" spacing={1}>
                     <IconButton
                       size="small"
+                      aria-label="Vis søknadsdetaljer"
                       onClick={() => {
                         setSelectedApplication(application);
                         setDetailDialogOpen(true);
@@ -532,6 +533,7 @@ export default function PrototypeTesterApplicationPanel() {
                     </IconButton>
                     <IconButton
                       size="small"
+                      aria-label="Godkjenn søknad"
                       onClick={() => openApproveDialog(application)}
                       disabled={application.status === 'approved' || approveMutation.isPending}
                     >
@@ -539,6 +541,7 @@ export default function PrototypeTesterApplicationPanel() {
                     </IconButton>
                     <IconButton
                       size="small"
+                      aria-label="Avslå søknad"
                       onClick={() => openRejectDialog(application)}
                       disabled={application.status === 'rejected' || rejectMutation.isPending}
                     >
@@ -560,7 +563,7 @@ export default function PrototypeTesterApplicationPanel() {
                       <Typography variant="caption">{application.email}</Typography>
                       <Typography variant="caption">{application.company ?? 'Ingen selskap'}</Typography>
                       <Typography variant="caption" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
-                        <Schedule sx={{ fontSize: 13 }} />
+                        <Schedule sx={{ fontSize: 13 }} aria-hidden="true" />
                         {new Date(application.createdAt).toLocaleString()}
                       </Typography>
                     </Stack>

@@ -281,7 +281,7 @@ export default function UnifiedFeatureSubscriptionPanel() {
       {/* Header */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Box>
-          <Typography variant="h4" sx={{ fontWeight: 600, mb: 1 }}>
+          <Typography variant="h4" component="h2" sx={{ fontWeight: 600, mb: 1 }}>
             Feature & Subscription Management
           </Typography>
           <Typography variant="body2" color="text.secondary">
@@ -518,6 +518,7 @@ export default function UnifiedFeatureSubscriptionPanel() {
                   <TableCell align="center">
                     <Select
                       size="small"
+                      aria-label="Velg abonnement"
                       value={merged.plan || 'basic'}
                       onChange={(e) =>
                         updateFeature(feature.id, { plan: e.target.value as PlanTier })
@@ -532,6 +533,7 @@ export default function UnifiedFeatureSubscriptionPanel() {
                   <TableCell align="center">
                     <Select
                       size="small"
+                      aria-label="Velg tilgjengelighet"
                       value={mode}
                       onChange={(e) => {
                         const newMode = e.target.value as AvailabilityMode;
@@ -553,6 +555,7 @@ export default function UnifiedFeatureSubscriptionPanel() {
                       checked={merged.enabled}
                       onChange={(e) => updateFeature(feature.id, { enabled: e.target.checked })}
                       size="small"
+                      inputProps={{ 'aria-label': 'Aktivert' }}
                     />
                   </TableCell>
 
@@ -561,6 +564,7 @@ export default function UnifiedFeatureSubscriptionPanel() {
                       checked={merged.optional}
                       onChange={(e) => updateFeature(feature.id, { optional: e.target.checked })}
                       size="small"
+                      inputProps={{ 'aria-label': 'Valgfri' }}
                     />
                   </TableCell>
 
@@ -601,6 +605,7 @@ export default function UnifiedFeatureSubscriptionPanel() {
                   <TableCell align="right">
                     <IconButton
                       size="small"
+                      aria-label="Rediger funksjon"
                       onClick={() =>
                         setEditDialog({
                           open: true,

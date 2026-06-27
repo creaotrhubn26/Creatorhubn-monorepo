@@ -281,7 +281,7 @@ export default function VisualCMSAdminDashboard() {
     <Box sx={{ width: '100%', bgcolor: 'background.default', minHeight: '100vh', p: 3 }}>
       {/* Header */}
       <Paper elevation={2} sx={{ ...theming.getThemedCardSx(), p: 3, mb: 3, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
-        <Typography variant="h4" sx={{ color: theming.colors.primary, fontWeight: 'bold', mb: 1 }}>
+        <Typography variant="h4" component="h1" sx={{ color: theming.colors.primary, fontWeight: 'bold', mb: 1 }}>
           Visual CMS Admin Dashboard
         </Typography>
         <Typography variant="subtitle1" sx={{ color: 'white', opacity: 0.9 }}>
@@ -337,7 +337,7 @@ export default function VisualCMSAdminDashboard() {
           <Grid item xs={12} md={6}>
             <Card elevation={2} sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
+                <Typography variant="h6" component="h2" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
                   <GoogleIcon color="primary" />
                   Google API Integration
                 </Typography>
@@ -381,7 +381,7 @@ export default function VisualCMSAdminDashboard() {
           <Grid item xs={12} md={6}>
             <Card elevation={2} sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
+                <Typography variant="h6" component="h2" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
                   <MonitorIcon color="success" />
                   System Health
                 </Typography>
@@ -413,7 +413,7 @@ export default function VisualCMSAdminDashboard() {
           <Grid item xs={12}>
             <Card elevation={2} sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                <Typography variant="h6" component="h2" gutterBottom sx={{ color: theming.colors.primary }}>
                   Quick Actions
                 </Typography>
                 <Stack direction="row" spacing={2} flexWrap="wrap">
@@ -524,7 +524,7 @@ export default function VisualCMSAdminDashboard() {
           <Grid item xs={12}>
             <Card elevation={2} sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
+                <Typography variant="h6" component="h2" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
                   <TestTubeIcon />
                   WireMock Testing Infrastructure
                 </Typography>
@@ -615,7 +615,7 @@ export default function VisualCMSAdminDashboard() {
 
       {/* Enhanced Code Generator Tab */}
       <TabPanel value={tabValue} index={3}>
-        <Typography variant="h5" gutterBottom sx={{ color: theming.colors.primary }}>
+        <Typography variant="h5" component="h2" gutterBottom sx={{ color: theming.colors.primary }}>
           AI-Drevet Code Generator
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -809,6 +809,7 @@ export default function VisualCMSAdminDashboard() {
                       <IconButton
                         onClick={() => navigator.clipboard.writeText(generatedCode)}
                         title="Kopier kode"
+                        aria-label="Kopier kode"
                       >
                         <ContentCopyIcon />
                       </IconButton>
@@ -823,6 +824,7 @@ export default function VisualCMSAdminDashboard() {
                           URL.revokeObjectURL(url);
                         }}
                         title="Last ned fil"
+                        aria-label="Last ned fil"
                       >
                         <DownloadIcon />
                       </IconButton>
@@ -896,6 +898,15 @@ export default function VisualCMSAdminDashboard() {
                         borderColor: selectedCategory === category.name ? 'primary.main' : 'divider'
                       }}
                       onClick={() => setSelectedCategory(category.name)}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`Velg kategori ${category.name}`}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setSelectedCategory(category.name);
+                        }
+                      }}
                     >
                       <CardContent sx={{ textAlign: 'center', py: 2 }}>
                         <Typography variant="h6" gutterBottom noWrap sx={{ color: theming.colors.primary }}>
@@ -929,7 +940,7 @@ export default function VisualCMSAdminDashboard() {
           <Grid item xs={12}>
             <Card elevation={2} sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
+                <Typography variant="h6" component="h2" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
                   <StorageIcon />
                   PostgreSQL Database Status
                 </Typography>
@@ -948,7 +959,7 @@ export default function VisualCMSAdminDashboard() {
           <Grid item xs={12}>
             <Card elevation={2} sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
+                <Typography variant="h6" component="h2" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
                   <MonitorIcon />
                   System Performance Monitor
                 </Typography>
@@ -967,7 +978,7 @@ export default function VisualCMSAdminDashboard() {
           <Grid item xs={12}>
             <Card elevation={2} sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
+                <Typography variant="h6" component="h2" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
                   <SettingsIcon />
                   System Configuration
                 </Typography>
