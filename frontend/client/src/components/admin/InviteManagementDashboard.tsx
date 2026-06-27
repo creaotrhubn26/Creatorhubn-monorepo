@@ -42,6 +42,7 @@ import {
   StepConnector,
   stepConnectorClasses,
   ThemeProvider,
+  InputAdornment,
 } from '@mui/material';
 import { adminDarkTheme } from './adminDarkTheme';
 import { TableVirtuoso } from 'react-virtuoso';
@@ -65,6 +66,7 @@ import {
   HowToReg,
   Verified,
   CreditCard,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import FikenIntegrationRequestsPanel from './FikenIntegrationRequestsPanel';
@@ -208,6 +210,7 @@ export default function InviteManagementDashboard() {
   const [showReviewDialog, setShowReviewDialog] = useState(false);
   const [reviewStatus, setReviewStatus] = useState('');
   const [adminNotes, setAdminNotes] = useState('');
+  const [search, setSearch] = useState('');
 
   // Send invite email mutation
   const sendInviteMutation = useMutation({
@@ -303,15 +306,31 @@ export default function InviteManagementDashboard() {
     }
   };
 
-  const filteredInvitations = useMemo(() => invitations.filter((invite: any) => {
-    switch (currentTab) {
-      case 1: return invite.status === 'pending';
-      case 2: return invite.status === 'under_review';
-      case 3: return invite.status === 'approved';
-      case 4: return invite.status === 'rejected';
-      default: return true;
-}
-}), [invitations, currentTab]);
+  const filteredInvitations = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return invitations.filter((invite: any) => {
+      const matchesTab = (() => {
+        switch (currentTab) {
+          case 1: return invite.status === 'pending';
+          case 2: return invite.status === 'under_review';
+          case 3: return invite.status === 'approved';
+          case 4: return invite.status === 'rejected';
+          default: return true;
+        }
+      })();
+      if (!matchesTab) return false;
+      if (!q) return true;
+      return [
+        invite.businessName,
+        invite.contactName,
+        invite.contactEmail,
+        invite.orgNumber,
+        invite.profession,
+      ]
+        .map((v: any) => String(v ?? '').toLowerCase())
+        .some((v: string) => v.includes(q));
+    });
+  }, [invitations, currentTab, search]);
 
   if (isLoading) {
     return (
@@ -450,6 +469,23 @@ export default function InviteManagementDashboard() {
           <Tab label={`Avvist (${invitations.filter((i: any) => i.status === 'rejected').length})`} />
         </Tabs>
       </Paper>
+
+      {/* Search */}
+      <TextField
+        size="small"
+        fullWidth
+        placeholder="Søk i bedrift, kontakt, e-post, org.nr eller profesjon …"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        sx={{ mb: 2 }}
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start">
+              <SearchIcon fontSize="small" />
+            </InputAdornment>
+          ),
+        }}
+      />
 
       {/* Invitations Table */}
       <Paper style={{ height: 600, width: '100%' }}>

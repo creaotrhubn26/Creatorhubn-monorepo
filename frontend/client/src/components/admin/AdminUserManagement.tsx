@@ -25,6 +25,7 @@ import {
   DialogContent,
   DialogActions,
   TextField,
+  InputAdornment,
   FormControl,
   InputLabel,
   Select,
@@ -43,6 +44,7 @@ import {
   AdminPanelSettings as AdminIcon,
   Person as UserIcon,
   SupervisorAccount as SuperAdminIcon,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 
@@ -72,6 +74,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, isLoad
   const [newRole, setNewRole] = useState<'user' | 'admin' | 'super_admin'>('user');
   const [reason, setReason] = useState('');
   const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
 
   const isMobile = useIsMobile();
 
@@ -226,6 +229,28 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, isLoad
   return (
     <Box>
       <AdminCard title="Brukeradministrasjon" disablePadding>
+          <Box sx={{ px: 2, pt: 2, pb: 1 }}>
+            <TextField
+              size="small"
+              fullWidth
+              placeholder="Søk etter navn, e-post eller firma …"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon sx={{ color: 'rgba(255, 255, 255, 0.62)' }} />
+                  </InputAdornment>
+                ),
+              }}
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  color: 'white', '& fieldset': { borderColor: 'rgba(255, 255, 255, 0.2)' }, '&:hover fieldset': { borderColor: '#ff8c00' },
+                },
+                '& .MuiInputBase-input::placeholder': { color: 'rgba(255, 255, 255, 0.5)' },
+              }}
+            />
+          </Box>
           <AdminTableContainer ariaLabel="Brukere">
             <Table>
               <TableHead>
@@ -239,7 +264,11 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, isLoad
                 </TableRow>
               </TableHead>
               <TableBody>
-                {users?.map((user) => (
+                {users?.filter((user) =>
+                  `${user.firstName ?? ''} ${user.lastName ?? ''} ${user.email ?? ''} ${user.companyName ?? ''}`
+                    .toLowerCase()
+                    .includes(search.toLowerCase())
+                ).map((user) => (
                   <TableRow key={user.id}>
                     <TableCell sx={{ color: 'rgba(255, 255, 255, 0.82)' }}>
                       <Box sx={{ display: 'flex', flexDirection: 'column'}}>
