@@ -122,7 +122,7 @@ export const WsImg: React.FC<{ ratio?: string; label?: string; sx?: any }> = ({ 
  * media / reference-archive). Uten onUpload brukes lokal forhåndsvisning slik at
  * UX-en fungerer allerede nå.
  */
-export interface WsImageItem { id: string; url: string; label?: string }
+export interface WsImageItem { id: string; url: string; label?: string; rating?: number; flag?: boolean }
 export const WsImageGrid: React.FC<{
   images?: WsImageItem[];
   columns?: number;
@@ -164,6 +164,10 @@ export const WsImageGrid: React.FC<{
       {items.map((im, i) => (
         <Box key={im.id} sx={{ aspectRatio: ratio, borderRadius: `${ws.radiusSm}px`, position: 'relative', overflow: 'hidden', border: `1px solid ${ws.borderSoft}`, bgcolor: ws.panelInput,
           background: im.url ? `center/cover no-repeat url(${im.url})` : 'linear-gradient(135deg, rgba(255,140,0,0.16), rgba(255,255,255,0.05))' }}>
+          {im.flag && <Box sx={{ position: 'absolute', top: 5, left: 5, width: 18, height: 18, borderRadius: '50%', bgcolor: ws.accent, color: ws.accentContrast, fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>★</Box>}
+          {typeof im.rating === 'number' && im.rating > 0 && (
+            <Box sx={{ position: 'absolute', top: 5, right: 5, px: 0.5, borderRadius: 1, bgcolor: 'rgba(0,0,0,0.55)', color: '#ffd24a', fontSize: 10, fontWeight: 700 }}>{'★'.repeat(Math.min(5, im.rating))}</Box>
+          )}
           {im.label && <Typography sx={{ position: 'absolute', left: 6, bottom: 6, fontSize: 10.5, px: 0.75, py: 0.25, borderRadius: 1, bgcolor: 'rgba(0,0,0,0.5)', color: '#fff', maxWidth: '85%' }} noWrap>{im.label}</Typography>}
           {onRemove && (
             <IconButton size="small" onClick={() => { setItems((p) => p.filter((x) => x.id !== im.id)); onRemove(im.id); }}

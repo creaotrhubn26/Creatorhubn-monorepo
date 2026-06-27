@@ -20,19 +20,41 @@ const QUICK = [['Unrated', 1205], ['Favoritter', 156], ['For Edit', 312], ['Clie
 const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [lib, setLib] = useState('Alle medier');
   const [assets, setAssets] = useState<any[]>([]);
+  const [cull, setCull] = useState<any>({});
+  const [filter, setFilter] = useState('alle');
   const web = useProjectImages(projectId, 'media');
   const isReal = projectId && projectId !== 'sample';
 
   useEffect(() => {
     if (!isReal) return;
-    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/media`)
-      .then((r: any) => setAssets(Array.isArray(r?.assets) ? r.assets : []))
-      .catch(() => {});
+    const fetchMedia = () => {
+      if (document.hidden) return;
+      apiRequest(`/api/projects/${encodeURIComponent(projectId)}/media`)
+        .then((r: any) => { setAssets(Array.isArray(r?.assets) ? r.assets : []); setCull(r?.cullStats || {}); })
+        .catch(() => {});
+    };
+    fetchMedia();
+    const t = setInterval(fetchMedia, 25000); // live: reflekter culling fra iPad
+    return () => clearInterval(t);
   }, [projectId, isReal]);
 
-  // Ekte capture-assets (B2-thumbnails) + web-opplastede bilder, samme rutenett.
-  const captureItems = assets.filter((a) => a.previewUrl).map((a) => ({ id: a.id, url: a.previewUrl, label: a.filename }));
-  const gridImages = isReal ? [...captureItems, ...web.images] : [];
+  // Cull-aware items: rating + pick (flagged_for_client) fra iPad-culling.
+  const matchFilter = (a: any) => {
+    if (filter === 'unrated') return !a.rating;
+    if (filter === 'favoritter') return (a.rating || 0) >= 4;
+    if (filter === 'highlights') return !!a.flaggedForClient;
+    return true;
+  };
+  const captureItems = assets.filter((a) => a.previewUrl && matchFilter(a)).map((a) => ({ id: a.id, url: a.previewUrl, label: a.filename, rating: a.rating || 0, flag: !!a.flaggedForClient }));
+  const gridImages = isReal ? [...captureItems, ...(filter === 'alle' ? web.images : [])] : [];
+
+  // Hurtigfiltre med EKTE tall fra cull-stats.
+  const QUICK_REAL = [
+    { key: 'alle', label: 'Alle', n: cull.total ?? 0 },
+    { key: 'unrated', label: 'Uten rating', n: cull.unrated ?? 0 },
+    { key: 'favoritter', label: 'Favoritter', n: cull.favorites ?? 0 },
+    { key: 'highlights', label: 'Highlights (klient)', n: cull.highlights ?? 0 },
+  ];
 
   return (
     <Stack direction="row" spacing={2} sx={{ alignItems: 'flex-start' }}>
@@ -60,7 +82,9 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5, flexWrap: 'wrap', gap: 1 }}>
           <Box>
             <Typography sx={{ fontSize: 18, fontWeight: 800 }}>{lib}</Typography>
-            <Typography sx={{ fontSize: 12, color: ws.textDim }}>{isReal ? `${gridImages.length} elementer` : '2 487 elementer'}</Typography>
+            <Typography sx={{ fontSize: 12, color: ws.textDim }}>
+              {isReal ? `${cull.total ?? 0} bilder · ${cull.favorites ?? 0} valgt · ${cull.highlights ?? 0} highlights` : '2 487 elementer'}
+            </Typography>
           </Box>
           <Stack direction="row" spacing={1} alignItems="center">
             <TextField size="small" placeholder="Søk media…" InputProps={{ startAdornment: <Search sx={{ fontSize: 16, color: ws.textFaint, mr: 0.5 }} /> }} sx={{ width: 200, '& .MuiOutlinedInput-root': { bgcolor: ws.panelInput, fontSize: 13 } }} />
@@ -69,7 +93,15 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         </Stack>
 
         <Stack direction="row" spacing={0.75} sx={{ mb: 1.5, flexWrap: 'wrap', gap: 0.75 }}>
-          {QUICK.map(([n, c]) => <WsTag key={n} label={`${n} ${c}`} tone="neutral" />)}
+          {isReal
+            ? QUICK_REAL.map((q) => (
+                <Box key={q.key} onClick={() => setFilter(q.key)} sx={{
+                  px: 1.25, py: 0.4, borderRadius: 2, cursor: 'pointer', fontSize: 12, fontWeight: filter === q.key ? 700 : 500,
+                  color: filter === q.key ? ws.accent : ws.textDim, bgcolor: filter === q.key ? ws.accentSoft : 'rgba(255,255,255,0.04)',
+                  border: `1px solid ${filter === q.key ? ws.accentBorder : 'transparent'}`,
+                }}>{q.label} {q.n}</Box>
+              ))
+            : QUICK.map(([n, c]) => <WsTag key={n} label={`${n} ${c}`} tone="neutral" />)}
         </Stack>
 
         <WsImageGrid columns={4} addLabel="Last opp media" images={gridImages} onUpload={web.onUpload} />
