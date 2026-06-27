@@ -33,15 +33,17 @@ import {
   TableSortLabel,
   Paper,
   TextField,
-  Chip,
-  CircularProgress,
   Alert,
-  Button,
   IconButton,
   Tooltip,
   ThemeProvider,
 } from '@mui/material';
 import { adminDarkTheme } from './adminDarkTheme';
+import {
+  AdminButton,
+  StatusChip,
+  AdminLoading,
+} from './design-system';
 import { TableVirtuoso } from 'react-virtuoso';
 import type { TableHeadProps } from '@mui/material/TableHead';
 import {
@@ -165,14 +167,14 @@ export const UserCostOverviewPanel: React.FC = () => {
             Per-bruker: lagring (Cloudflare R2+Stream), AI-bruk siste 30d, totalkost, margin til CreatorHub.
           </Typography>
         </Box>
-        <Button
-          variant="outlined"
+        <AdminButton
+          tone="secondary"
           startIcon={<RefreshIcon />}
           onClick={() => void fetchData()}
-          disabled={loading}
+          loading={loading}
         >
           Oppdater
-        </Button>
+        </AdminButton>
       </Stack>
 
       {error ? (
@@ -238,9 +240,7 @@ export const UserCostOverviewPanel: React.FC = () => {
           </Box>
 
           {loading && !data ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-              <CircularProgress />
-            </Box>
+            <AdminLoading />
           ) : (
             <Paper style={{ height: 600, width: '100%' }} elevation={0}>
               {/* Virtualisert (react-virtuoso) – kun synlige rader rendres, så
@@ -332,9 +332,9 @@ export const UserCostOverviewPanel: React.FC = () => {
                       </TableCell>
                       <TableCell>
                         <Stack spacing={0.25}>
-                          <Chip
+                          <StatusChip
+                            tone="neutral"
                             label={row.planType}
-                            size="small"
                             sx={{ width: 'fit-content', fontWeight: 600 }}
                           />
                           {row.subscriptionStatus ? (

@@ -73,6 +73,7 @@ import SubscriberStatsPanel from './SubscriberStatsPanel';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { CommunicationStatusProvider } from '../../contexts/CommunicationStatusContext';
 import { FileManagementStatusProvider } from '../../contexts/FileManagementStatusContext';
+import { AdminButton, adminTokens } from './design-system';
 
 interface ChatUser {
   id: string;
@@ -607,14 +608,13 @@ export default function AdminCommunicationPanel({
                       <PersonAddIcon />
                     </IconButton>
                   </Tooltip>
-                  <Button variant="contained"
+                  <AdminButton tone="primary"
                     size="small"
                     startIcon={<NotificationsIcon />}
                     onClick={handleCreateBroadcast}
-                    sx={{ bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67e00' } }}
                   >
                     Broadcast
-                  </Button>
+                  </AdminButton>
                 </Box>
               </Box>
 
@@ -774,7 +774,7 @@ export default function AdminCommunicationPanel({
                         sx={{
                           p: 1.5,
                           maxWidth: '70%',
-                          bgcolor: message.senderId === 'admin' ? '#ff8c00' : 'grey.100',
+                          bgcolor: message.senderId === 'admin' ? adminTokens.color.brand : 'grey.100',
                           color: message.senderId === 'admin' ? 'white' : 'text.primary'
                     }}>
                         <Typography variant="body2">{message.content}</Typography>
@@ -821,14 +821,14 @@ export default function AdminCommunicationPanel({
                         )
                   }}
                     />
-                    <Button variant="contained"
+                    <AdminButton tone="primary"
                       endIcon={<SendIcon />}
                       onClick={handleSendMessage}
-                      disabled={!messageText.trim() || sendMessageMutation.isPending}
-                      sx={{ bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67e00' } }}
+                      loading={sendMessageMutation.isPending}
+                      disabled={!messageText.trim()}
                     >
                       Send
-                    </Button>
+                    </AdminButton>
                   </Box>
                 </Box>
               </>
@@ -879,7 +879,7 @@ export default function AdminCommunicationPanel({
         maxWidth="sm"
         fullWidth
       >
-        <DialogTitle sx={{ bgcolor: '#ff8c00', color: 'white' }}>
+        <DialogTitle sx={{ bgcolor: adminTokens.color.brand, color: 'white' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <NotificationsIcon />
             Send Broadcast til alle brukere
@@ -920,15 +920,13 @@ export default function AdminCommunicationPanel({
           />
         </DialogContent>
         <DialogActions sx={{ p: 2 }}>
-          <Button onClick={() => setBroadcastDialogOpen(false)}>Avbryt</Button>
-          <Button 
-            variant="contained" 
+          <AdminButton tone="ghost" onClick={() => setBroadcastDialogOpen(false)}>Avbryt</AdminButton>
+          <AdminButton tone="primary"
             onClick={handleSendBroadcast}
             startIcon={<SendIcon />}
-            sx={{ bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67e00' } }}
           >
             Send til alle ({users.length})
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -964,14 +962,13 @@ export default function AdminCommunicationPanel({
           />
         </DialogContent>
         <DialogActions sx={{ p: 2 }}>
-          <Button onClick={() => setAddUserDialogOpen(false)}>Avbryt</Button>
-          <Button 
-            variant="contained" 
+          <AdminButton tone="ghost" onClick={() => setAddUserDialogOpen(false)}>Avbryt</AdminButton>
+          <AdminButton tone="primary"
             onClick={handleAddUser}
             startIcon={<PersonAddIcon />}
           >
             Legg til bruker
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

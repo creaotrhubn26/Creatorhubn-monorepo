@@ -7,7 +7,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Box,
-  Button,
   Card,
   CardContent,
   Chip,
@@ -22,7 +21,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   Typography,
@@ -41,6 +39,11 @@ import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions'
 import getProfessionIcon from '@/utils/profession-icons';
 import { useTheming } from '@/utils/theming-helper';
 import type { GoogleTrendsData } from '@/services/GoogleTrendsService';
+import {
+  AdminButton,
+  AdminTableContainer,
+  StatusChip,
+} from './design-system';
 
 type SnackbarState = {
   open: boolean;
@@ -68,15 +71,15 @@ const SEO_COMPONENT_ROWS: ConnectedComponentRow[] = [
   { component: 'Profession Trends Integration', connection: 'Dynamic profession + trends merge', status: 'Active' },
 ];
 
-function statusColor(status: ConnectedComponentRow['status']): 'success' | 'warning' | 'default' {
+function statusTone(status: ConnectedComponentRow['status']): 'success' | 'warning' | 'neutral' {
   if (status === 'Active') return 'success';
   if (status === 'Partial') return 'warning';
-  return 'default';
+  return 'neutral';
 }
 
 function ConnectedTable({ rows }: { rows: ConnectedComponentRow[] }) {
   return (
-    <TableContainer>
+    <AdminTableContainer ariaLabel="Connected components">
       <Table size="small">
         <TableHead>
           <TableRow>
@@ -91,13 +94,13 @@ function ConnectedTable({ rows }: { rows: ConnectedComponentRow[] }) {
               <TableCell>{row.component}</TableCell>
               <TableCell>{row.connection}</TableCell>
               <TableCell>
-                <Chip size="small" label={row.status} color={statusColor(row.status)} />
+                <StatusChip tone={statusTone(row.status)} label={row.status} />
               </TableCell>
             </TableRow>
           ))}
         </TableBody>
       </Table>
-    </TableContainer>
+    </AdminTableContainer>
   );
 }
 
@@ -335,15 +338,14 @@ export default function CompleteIntegrationOverview() {
                   ))}
                 </List>
               )}
-              <Button
-                variant="contained"
-                color="success"
+              <AdminButton
+                tone="primary"
                 startIcon={<AutoFixHighIcon />}
                 onClick={() => void handleApplySEOFixes()}
                 sx={{ mt: 1 }}
               >
                 Apply SEO Fixes
-              </Button>
+              </AdminButton>
             </CardContent>
           </Card>
         </Grid>
@@ -429,21 +431,21 @@ export default function CompleteIntegrationOverview() {
       </Card>
 
       <Stack direction="row" spacing={1}>
-        <Button
-          variant="contained"
+        <AdminButton
+          tone="primary"
           startIcon={<RefreshIcon />}
           onClick={() => void loadIntegrationData()}
           disabled={loading}
         >
           Refresh Data
-        </Button>
-        <Button
-          variant="outlined"
+        </AdminButton>
+        <AdminButton
+          tone="secondary"
           startIcon={<LinkIcon />}
           onClick={() => void trackProfessionActivity('integration_overview_viewed', { profession })}
         >
           Track View
-        </Button>
+        </AdminButton>
       </Stack>
 
       <Snackbar

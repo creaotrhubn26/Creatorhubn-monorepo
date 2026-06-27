@@ -19,7 +19,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   ToggleButtonGroup,
@@ -47,6 +46,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useTheming } from '@/utils/theming-helper';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
+import { AdminCard, AdminTableContainer, AdminEmpty } from './design-system';
 
 interface LeaderboardEntry {
   rank: number;
@@ -232,13 +232,8 @@ export default function TestingLeaderboard() {
       )}
 
       {/* Full Leaderboard Table */}
-      <Card>
-        <CardContent>
-          <Typography variant="h6" sx={{ mb: 2, fontWeight: 600}}>
-            Full Rankings
-          </Typography>
-          
-          <TableContainer>
+      <AdminCard title="Full Rankings" disablePadding>
+          <AdminTableContainer ariaLabel="Full Rankings">
             <Table>
               <TableHead>
                 <TableRow>
@@ -318,15 +313,12 @@ export default function TestingLeaderboard() {
                 ))}
               </TableBody>
             </Table>
-          </TableContainer>
-          
+          </AdminTableContainer>
+
           {leaderboard.length === 0 && (
-            <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
-              No testers in leaderboard yet
-            </Typography>
+            <AdminEmpty title="No testers in leaderboard yet" />
           )}
-        </CardContent>
-      </Card>
+      </AdminCard>
     </Box>
     </ThemeProvider>
   );

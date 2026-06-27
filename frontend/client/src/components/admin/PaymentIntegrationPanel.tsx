@@ -70,6 +70,7 @@ import { useToast } from '../../hooks/use-toast';
 import { googlePayService } from '../../services/GooglePayService';
 import { paymentProcessingService } from '../../services/PaymentProcessingService';
 import { pricingService } from '../../services/PricingService';
+import { AdminButton, StatusChip, AdminTableContainer } from './design-system';
 
 interface PaymentIntegrationPanelProps {
   className?: string;
@@ -718,7 +719,7 @@ export default function PaymentIntegrationPanel({
             <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
               Siste transaksjoner
             </Typography>
-            <TableContainer>
+            <AdminTableContainer ariaLabel="Siste transaksjoner">
               <Table>
                 <TableHead>
                   <TableRow>
@@ -754,10 +755,9 @@ export default function PaymentIntegrationPanel({
                         </Box>
                       </TableCell>
                       <TableCell>
-                        <Chip
+                        <StatusChip
                           label={transaction.status}
-                          color={transaction.status === 'succeeded' ? 'success' : 'default'}
-                          size="small"
+                          tone={transaction.status === 'succeeded' ? 'success' : 'neutral'}
                         />
                       </TableCell>
                       <TableCell>
@@ -772,7 +772,7 @@ export default function PaymentIntegrationPanel({
                   ))}
                 </TableBody>
               </Table>
-            </TableContainer>
+            </AdminTableContainer>
           </CardContent>
         </Card>
       )}
@@ -787,7 +787,7 @@ export default function PaymentIntegrationPanel({
             <Alert severity="info" sx={{ mb: 2 }}>
               {userSubscriptions.length} aktive abonnementer funnet
             </Alert>
-            <TableContainer>
+            <AdminTableContainer ariaLabel="Abonnementer">
               <Table>
                 <TableHead>
                   <TableRow>
@@ -818,10 +818,9 @@ export default function PaymentIntegrationPanel({
                         />
                       </TableCell>
                       <TableCell>
-                        <Chip
+                        <StatusChip
                           label={subscription.status}
-                          color={subscription.status === 'active' ? 'success' : 'default'}
-                          size="small"
+                          tone={subscription.status === 'active' ? 'success' : 'neutral'}
                         />
                       </TableCell>
                       <TableCell>
@@ -836,7 +835,7 @@ export default function PaymentIntegrationPanel({
                   ))}
                 </TableBody>
               </Table>
-            </TableContainer>
+            </AdminTableContainer>
           </CardContent>
         </Card>
       )}
@@ -995,12 +994,12 @@ export default function PaymentIntegrationPanel({
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowConfigDialog(false)}>
+          <AdminButton tone="ghost" onClick={() => setShowConfigDialog(false)}>
             Lukk
-          </Button>
-          <Button variant="contained" sx={theming.getThemedButtonSx()}>
+          </AdminButton>
+          <AdminButton tone="primary">
             Lagre endringer
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>
