@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Box,
   Typography,
@@ -45,14 +45,20 @@ export const WireMockTestHistoryTable: React.FC<WireMockTestHistoryTableProps> =
   const [filterStatus, setFilterStatus] = useState<string>('all');
 
   // Get unique API names
-  const uniqueApis = Array.from(new Set(history.map(r => r.apiName))).sort();
+  const uniqueApis = useMemo(
+    () => Array.from(new Set(history.map(r => r.apiName))).sort(),
+    [history]
+  );
 
   // Filter history
-  const filteredHistory = history.filter(result => {
-    if (filterApi !== 'all' && result.apiName !== filterApi) return false;
-    if (filterStatus !== 'all' && result.status !== filterStatus) return false;
-    return true;
-  });
+  const filteredHistory = useMemo(
+    () => history.filter(result => {
+      if (filterApi !== 'all' && result.apiName !== filterApi) return false;
+      if (filterStatus !== 'all' && result.status !== filterStatus) return false;
+      return true;
+    }),
+    [history, filterApi, filterStatus]
+  );
 
   const formatTime = (date: Date) => {
     return new Date(date).toLocaleTimeString('no-NO', {

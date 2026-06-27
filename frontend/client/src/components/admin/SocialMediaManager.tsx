@@ -3,7 +3,7 @@
  * Manage and publish content across Instagram, Facebook, Snapchat, YouTube, and TikTok
  */
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Box,
@@ -168,6 +168,16 @@ export default function SocialMediaManager() {
     },
   });
   const posts: SocialPost[] = Array.isArray(postsData) ? postsData : [];
+
+  // Derived post lists (memoized to avoid re-filtering on every render)
+  const scheduledPosts = useMemo(
+    () => posts.filter((post: SocialPost) => post.status === 'scheduled'),
+    [posts]
+  );
+  const publishedPosts = useMemo(
+    () => posts.filter((post: SocialPost) => post.status === 'published'),
+    [posts]
+  );
 
   // Upload media mutation (YouTube, Instagram, etc.)
   const uploadMediaMutation = useMutation({
@@ -691,8 +701,7 @@ export default function SocialMediaManager() {
               Planlagte Innlegg
             </Typography>
             <List>
-              {posts
-                .filter((post: SocialPost) => post.status === 'scheduled')
+              {scheduledPosts
                 .map((post: SocialPost) => (
                   <ListItem key={post.id}>
                     <ListItemIcon>
@@ -711,7 +720,7 @@ export default function SocialMediaManager() {
                     </ListItemSecondaryAction>
                   </ListItem>
                 ))}
-              {posts.filter((post: SocialPost) => post.status === 'scheduled').length === 0 && (
+              {scheduledPosts.length === 0 && (
                 <Typography variant="body2" color="text.secondary" sx={{ p: 2, textAlign: 'center' }}>
                   Ingen planlagte innlegg
                 </Typography>
@@ -728,8 +737,7 @@ export default function SocialMediaManager() {
               Publiserte Innlegg
             </Typography>
             <Grid container spacing={2}>
-              {posts
-                .filter((post: SocialPost) => post.status ==='published')
+              {publishedPosts
                 .map((post: SocialPost) => {
                   const Icon = platformConfig[post.platform as keyof typeof platformConfig].icon;
                   const config = platformConfig[post.platform as keyof typeof platformConfig];
@@ -899,68 +907,6 @@ export default function SocialMediaManager() {
           </CardContent>
         </Card>
       )}
-
-      {/* Preview Dialog */}
-      <Dialog open={previewDialogOpen} onClose={() => setPreviewDialogOpen(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
-        <DialogTitle>Forhåndsvisning av Innlegg</DialogTitle>
-        <DialogContent>
-          <Box sx={{ pt: 2 }}>
-            {selectedPlatforms.map((platform) => {
-              const config = platformConfig[platform as keyof typeof platformConfig];
-              const Icon = config.icon;
-              return (
-                <Box key={platform} sx={{ mb: 3 }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                    <Avatar sx={{ bgcolor: config.color }}>
-                      <Icon />
-                    </Avatar>
-                    <Typography variant="h6">{config.name}</Typography>
-                  </Box>
-                  <Paper sx={{ p: 2, bgcolor: 'grey.50' }}>
-                    <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap', mb: 2 }}>
-                      {postForm.content || 'Ingen innhold enda...'}
-                    </Typography>
-                    {postForm.hashtags && (
-                      <Typography variant="body2" color="primary">
-                        {postForm.hashtags}
-                      </Typography>
-                    )}
-                    {uploadedMediaUrl && (
-                      <Box sx={{ mt: 2, borderRadius: 1, overflow: 'hidden' }}>
-                        <img
-                          src={uploadedMediaUrl}
-                          alt="Forhåndsvisning av opplastet media"
-                          style={{ width: '100%', maxHeight: 300, objectFit: 'cover' }}
-                        />
-                      </Box>
-                    )}
-                    {postForm.mediaUrl && !uploadedMediaUrl && (
-                      <Box sx={{ mt: 2 }}>
-                        <Typography variant="caption" color="text.secondary">
-                          Media: {postForm.mediaUrl}
-                        </Typography>
-                      </Box>
-                    )}
-                  </Paper>
-                  <Divider sx={{ mt: 2 }} />
-                </Box>
-              );
-            })}
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <AdminButton tone="ghost" onClick={() => setPreviewDialogOpen(false)}>Lukk</AdminButton>
-          <AdminButton
-            tone="primary"
-            onClick={() => {
-              setPreviewDialogOpen(false);
-              // Could trigger publish or schedule from here
-            }}
-          >
-            Fortsett til Publisering
-          </AdminButton>
-        </DialogActions>
-      </Dialog>
 
       {/* Preview Dialog */}
       <Dialog open={previewDialogOpen} onClose={() => setPreviewDialogOpen(false)} maxWidth="md" fullWidth fullScreen={isMobile}>

@@ -10,7 +10,7 @@
  * Brukere & Roller).
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert, Box, Card, CardContent, Chip,
   Dialog, DialogActions, DialogContent, DialogTitle, MenuItem,
@@ -158,14 +158,26 @@ export default function LeadMapEntitlementsAdminPanel() {
     }
   };
 
-  const filteredRows = showRevoked ? rows : rows.filter((r) => !r.revoked_at);
+  const filteredRows = useMemo(
+    () => (showRevoked ? rows : rows.filter((r) => !r.revoked_at)),
+    [rows, showRevoked],
+  );
 
   // Sammenfatning
-  const totalActive = rows.filter((r) => r.status === 'active' && !r.revoked_at).length;
-  const totalTrial = rows.filter((r) => r.status === 'trial' && !r.revoked_at).length;
-  const monthlyRevenue = rows
-    .filter((r) => r.status === 'active' && !r.revoked_at)
-    .reduce((s, r) => s + (TIER_META[r.tier]?.priceNok ?? 0), 0);
+  const totalActive = useMemo(
+    () => rows.filter((r) => r.status === 'active' && !r.revoked_at).length,
+    [rows],
+  );
+  const totalTrial = useMemo(
+    () => rows.filter((r) => r.status === 'trial' && !r.revoked_at).length,
+    [rows],
+  );
+  const monthlyRevenue = useMemo(
+    () => rows
+      .filter((r) => r.status === 'active' && !r.revoked_at)
+      .reduce((s, r) => s + (TIER_META[r.tier]?.priceNok ?? 0), 0),
+    [rows],
+  );
 
   return (
     <ThemeProvider theme={adminDarkTheme}>

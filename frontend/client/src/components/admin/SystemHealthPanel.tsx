@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { apiRequest } from '@/lib/queryClient';
 import { useQuery } from '@tanstack/react-query';
 import Grid from '@mui/material/Grid2';
@@ -233,9 +233,18 @@ export default function SystemHealthPanel({
   const recentEvents = Array.isArray(performanceData?.events) ? performanceData.events : [];
   const overallStatus = healthData?.overallStatus ?? 'healthy';
 
-  const healthyServiceCount = services.filter((service) => service.status === 'healthy').length;
-  const warningServiceCount = services.filter((service) => service.status === 'warning').length;
-  const criticalServiceCount = services.filter((service) => service.status === 'error').length;
+  const healthyServiceCount = useMemo(
+    () => services.filter((service) => service.status === 'healthy').length,
+    [services],
+  );
+  const warningServiceCount = useMemo(
+    () => services.filter((service) => service.status === 'warning').length,
+    [services],
+  );
+  const criticalServiceCount = useMemo(
+    () => services.filter((service) => service.status === 'error').length,
+    [services],
+  );
 
   const alertSeverity =
     overallStatus === 'error' ? 'error' : overallStatus === 'warning' ? 'warning' : 'success';
