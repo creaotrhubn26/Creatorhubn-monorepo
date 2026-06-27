@@ -151,9 +151,20 @@ const OversiktTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
+  // One Desk DIT-backup — RAID/B2-speiling + hash-verifiserte kopier (poll 30s).
+  const [dit, setDit] = useState<any | null>(null);
+  const loadDit = () => { if (!isReal) return; apiRequest(`/api/projects/${encodeURIComponent(projectId)}/dit-status`).then((r: any) => setDit(r || null)).catch(() => {}); };
+  useEffect(() => {
+    if (!isReal) return;
+    loadDit();
+    const t = setInterval(() => { if (!document.hidden) loadDit(); }, 30000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
   // Sanntid: oppdater Capture & backup INSTANT når iPad skyter/culler (WS).
   const { live: capLive } = useCaptureRealtime(projectId, () => {
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/capture-status`).then((r: any) => setCapture(r || null)).catch(() => {});
+    loadDit();
   });
   const cap = isReal ? capture : { hasSession: true, shootingNow: true, session: { name: 'EOS R5 — Vielse' }, assets: { total: 842, securedToB2: 842, securedPct: 100, lastCaptureAt: new Date().toISOString() } };
 
@@ -223,6 +234,39 @@ const OversiktTab: React.FC<{ projectId: string }> = ({ projectId }) => {
                 <Typography sx={{ fontSize: 10.5, color: ws.textFaint, mt: 0.25 }}>{cap.assets?.securedToB2 ?? 0} av {cap.assets?.total ?? 0} originaler verifisert</Typography>
               </Box>
             </Stack>
+
+            {/* One Desk DIT — speilings-destinasjoner + hash-verifiserte kopier */}
+            {dit?.hasBackup && (
+              <Box sx={{ mt: 1.5, pt: 1.5, borderTop: `1px solid ${ws.borderSoft}` }}>
+                <Stack direction="row" alignItems="center" spacing={1.5} flexWrap="wrap" gap={1}>
+                  <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 150 }}>
+                    <Typography sx={{ fontSize: 13 }}>🖥️</Typography>
+                    <Box>
+                      <Typography sx={{ fontSize: 11.5, fontWeight: 700 }}>One Desk-speiling</Typography>
+                      <Typography sx={{ fontSize: 10, color: ws.textFaint }}>{dit.oneDeskHosts?.length ? dit.oneDeskHosts.join(', ') : 'Backup-helper'}</Typography>
+                    </Box>
+                  </Stack>
+                  {(dit.destinations || []).map((d: any) => {
+                    const ok = d.status === 'online' || d.status === 'connected' || d.status === 'ok' || d.status === 'active';
+                    const ic = d.type === 'cloud' || d.storage === 'cloud' || d.cloud ? '☁️' : d.type === 'raid' || d.storage === 'raid' ? '🗄️' : '💾';
+                    return (
+                      <Stack key={d.id} direction="row" spacing={0.5} alignItems="center" sx={{ px: 1, py: 0.4, borderRadius: 1, bgcolor: ws.panelAlt }}>
+                        <Typography sx={{ fontSize: 11 }}>{ic}</Typography>
+                        <Typography sx={{ fontSize: 11, color: ws.text }}>{d.label || d.type || 'Destinasjon'}</Typography>
+                        <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: ok ? ws.green : ws.textFaint }} />
+                      </Stack>
+                    );
+                  })}
+                  <Box sx={{ flex: 1 }} />
+                  <Box sx={{ textAlign: 'right' }}>
+                    <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: dit.jobs?.failed ? ws.amber : ws.green }}>
+                      {dit.jobs?.verified ?? 0} hash-verifisert{dit.jobs?.copying ? ` · ${dit.jobs.copying} kopierer…` : ''}{dit.jobs?.failed ? ` · ${dit.jobs.failed} feilet` : ''}
+                    </Typography>
+                    <Typography sx={{ fontSize: 10, color: ws.textFaint }}>{dit.jobs?.completed ?? 0} av {dit.jobs?.total ?? 0} jobber · xxHash64</Typography>
+                  </Box>
+                </Stack>
+              </Box>
+            )}
           </WsCard>
         )}
 
