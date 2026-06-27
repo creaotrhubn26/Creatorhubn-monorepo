@@ -51,7 +51,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { marketplaceAdminEvents } from '@/utils/creatorhub-events';
-import { AdminCard, AdminButton, StatusChip, AdminLoading, AdminEmpty, AdminError, AdminTableContainer, adminTokens } from './design-system';
+import { AdminCard, AdminButton, StatusChip, AdminLoading, AdminEmpty, AdminError, AdminTableContainer, adminTokens, useIsMobile } from './design-system';
 
 interface SubscriptionTier {
   id: string;
@@ -444,7 +444,7 @@ const MarketplaceAppEditDialog: React.FC<{
   };
 
   return (
-    <Dialog open onClose={onClose} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+    <Dialog open onClose={onClose} maxWidth="md" fullWidth fullScreen={useIsMobile()} PaperProps={{ sx: { borderRadius: 3 } }}>
       <Box sx={{ p: 3, borderBottom: 1, borderColor: 'divider', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Box>
           <Typography variant="overline" color="primary">{isNew ? 'Ny app' : 'Rediger'}</Typography>
@@ -639,7 +639,7 @@ const MarketplaceAppEditDialog: React.FC<{
                         placeholder="Innholdsprodusent"
                       />
                       <TextField
-                        label="Pris" size="small" sx={{ width: 220 }}
+                        label="Pris" size="small" sx={{ width: 220, maxWidth: '100%' }}
                         value={tier.price} onChange={(e) => updateTier(idx, { price: e.target.value })}
                         placeholder="495 kr / mnd"
                       />

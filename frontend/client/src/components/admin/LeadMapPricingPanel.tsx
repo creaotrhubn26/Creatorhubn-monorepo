@@ -24,7 +24,7 @@ import {
   TrendingUp as TrendingIcon,
   Warning as WarningIcon,
 } from '@mui/icons-material';
-import { AdminButton, StatusChip, AdminLoading, AdminError } from './design-system';
+import { AdminButton, StatusChip, AdminLoading, AdminError, useIsMobile } from './design-system';
 
 interface StripePrice {
   id: string;
@@ -79,6 +79,7 @@ export default function LeadMapPricingPanel() {
   const [autoUpdateEnv, setAutoUpdateEnv] = useState(true);
   const [saving, setSaving] = useState(false);
   const [snackbar, setSnackbar] = useState<string | null>(null);
+  const isMobile = useIsMobile();
 
   const fetchPricing = useCallback(async () => {
     setLoading(true); setError(null);
@@ -166,7 +167,7 @@ export default function LeadMapPricingPanel() {
 
       {/* Usage metrics */}
       {data.usageMetrics && !data.usageMetrics.tableDoesNotExistYet && (
-        <Stack direction="row" spacing={2} sx={{ mb: 3 }}>
+        <Stack direction="row" spacing={2} sx={{ mb: 3, flexWrap: 'wrap' }}>
           <Card sx={{ flex: 1 }}>
             <CardContent>
               <Typography variant="caption" sx={{ color: 'text.secondary' }}>Aktive abonnementer</Typography>
@@ -251,7 +252,7 @@ export default function LeadMapPricingPanel() {
                 )}
 
                 <Divider sx={{ my: 1 }} />
-                <Stack direction="row" spacing={2} sx={{ fontSize: '0.78rem' }}>
+                <Stack direction="row" spacing={2} sx={{ fontSize: '0.78rem', flexWrap: 'wrap' }}>
                   <Box>
                     <Typography variant="caption" color="text.secondary">Stripe Price ID</Typography>
                     <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.78rem' }}>
@@ -287,7 +288,7 @@ export default function LeadMapPricingPanel() {
       </Stack>
 
       {/* Edit-dialog */}
-      <Dialog open={!!editingTier} onClose={() => setEditingTier(null)} maxWidth="sm" fullWidth>
+      <Dialog open={!!editingTier} onClose={() => setEditingTier(null)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>
           Endre pris — Lead Map {editingTier && TIER_LABELS[editingTier].label}
         </DialogTitle>

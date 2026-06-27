@@ -27,7 +27,7 @@ import {
   Refresh as RefreshIcon,
 } from '@mui/icons-material';
 import {
-  AdminButton, StatusChip, AdminLoading, AdminEmpty, adminTokens,
+  AdminButton, StatusChip, AdminLoading, AdminEmpty, adminTokens, useIsMobile,
 } from './design-system';
 
 interface EntitlementRow {
@@ -70,6 +70,7 @@ function authHeaders(): HeadersInit {
 }
 
 export default function LeadMapEntitlementsAdminPanel() {
+  const isMobile = useIsMobile();
   const [rows, setRows] = useState<EntitlementRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -335,7 +336,7 @@ export default function LeadMapEntitlementsAdminPanel() {
       )}
 
       {/* Grant-dialog */}
-      <Dialog open={grantOpen} onClose={() => setGrantOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={grantOpen} onClose={() => setGrantOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>Grant Lead Map-entitlement (admin)</DialogTitle>
         <DialogContent>
           <Alert severity="info" sx={{ mt: 1, mb: 2 }}>
@@ -384,7 +385,7 @@ export default function LeadMapEntitlementsAdminPanel() {
       </Dialog>
 
       {/* Revoke-dialog */}
-      <Dialog open={!!revokeTarget} onClose={() => setRevokeTarget(null)} maxWidth="sm" fullWidth>
+      <Dialog open={!!revokeTarget} onClose={() => setRevokeTarget(null)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>Revoker entitlement</DialogTitle>
         <DialogContent>
           <Alert severity="warning" sx={{ mt: 1, mb: 2 }}>

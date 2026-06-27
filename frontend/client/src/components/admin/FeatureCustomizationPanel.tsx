@@ -55,6 +55,7 @@ import {
   StatusChip,
   AdminLoading,
   AdminTableContainer,
+  useIsMobile,
 } from './design-system';
 import {
   CREATORHUB_FEATURES,
@@ -125,6 +126,7 @@ type FeatureWithCustomization = CreatorHubFeature & {
 
 export function FeatureCustomizationPanel({ userId }: Props) {
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTab, setSelectedTab] = useState(0);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -233,7 +235,7 @@ export function FeatureCustomizationPanel({ userId }: Props) {
       </Alert>
 
       {/* Search and Tabs */}
-      <Box sx={{ display: 'flex', gap: 2, mb: 3, alignItems: 'center' }}>
+      <Box sx={{ display: 'flex', gap: 2, mb: 3, alignItems: 'center', flexWrap: 'wrap' }}>
         <TextField
           placeholder="Søk etter funksjoner..."
           aria-label="Søk etter funksjoner"
@@ -246,7 +248,7 @@ export function FeatureCustomizationPanel({ userId }: Props) {
                 <SearchIcon />
               </InputAdornment>
             )}}
-          sx={{ width: 300 }}
+          sx={{ width: 300, maxWidth: '100%' }}
         />
         <Tabs value={selectedTab} onChange={(_event, value) => setSelectedTab(value)}>
           <Tab label={`Alle (${allFeatures.length})`} />
@@ -368,7 +370,7 @@ export function FeatureCustomizationPanel({ userId }: Props) {
       )}
 
       {/* Edit Dialog */}
-      <Dialog open={editDialogOpen} onClose={() => setEditDialogOpen(false)} maxWidth="md" fullWidth>
+      <Dialog open={editDialogOpen} onClose={() => setEditDialogOpen(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle>
           Tilpass funksjon: {selectedFeature?.name}
           <IconButton

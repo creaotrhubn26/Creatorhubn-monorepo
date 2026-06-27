@@ -372,7 +372,7 @@ export default function GooglePayStatusIndicator({
         </Stack>
 
         {/* Status Overview */}
-        <Stack direction="row" spacing={2} sx={{ mb: 2 }}>
+        <Stack direction="row" spacing={2} sx={{ mb: 2, flexWrap: 'wrap' }}>
           <Chip
             icon={getStatusIcon(overallStatus)}
             label={overallStatus === 'active' ? 'Aktiv' : 

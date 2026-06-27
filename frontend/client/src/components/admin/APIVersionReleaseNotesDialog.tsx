@@ -18,7 +18,7 @@ import {
   Link,
 } from '@mui/material';
 import { CheckCircle as CheckCircleIcon, Warning as WarningIcon, NewReleases as NewReleasesIcon } from '@mui/icons-material';
-import { AdminButton, StatusChip } from './design-system';
+import { AdminButton, StatusChip, useIsMobile } from './design-system';
 
 export interface APIVersionInfo {
   service: string;
@@ -49,13 +49,14 @@ export const APIVersionReleaseNotesDialog: React.FC<APIVersionReleaseNotesDialog
   onUpdate,
   updating = false,
 }) => {
+  const isMobile = useIsMobile();
   if (!versionInfo) return null;
 
   const hasUpdate = versionInfo.currentVersion !== versionInfo.latestVersion;
   const hasBreakingChanges = versionInfo.breakingChanges && versionInfo.breakingChanges.length > 0;
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth fullScreen={isMobile}>
       <DialogTitle>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <NewReleasesIcon color="primary" />

@@ -29,7 +29,7 @@ import {
   Public as PublicIcon,
 } from '@mui/icons-material';
 import { format } from 'date-fns';
-import { AdminButton } from './design-system';
+import { AdminButton, useIsMobile } from './design-system';
 
 interface EventCreatorDialogProps {
   open: boolean;
@@ -87,6 +87,7 @@ export default function EventCreatorDialog({
   onEventCreated,
 }: EventCreatorDialogProps) {
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
   const isEdit = !!editEvent;
 
   const [form, setForm] = useState<Partial<CalendarEvent>>({
@@ -172,7 +173,7 @@ export default function EventCreatorDialog({
   const selectedEventType = eventTypeOptions.find((opt) => opt.value === form.event_type);
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
+    <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth fullScreen={isMobile}>
       <DialogTitle>
         <Box display="flex" alignItems="center" gap={2}>
           {selectedEventType?.icon}
