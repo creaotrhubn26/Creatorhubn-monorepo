@@ -12,6 +12,14 @@ import { Box, Typography, Stack } from '@mui/material';
 import { useAuth } from '@/hooks/useAuth';
 import WorkspaceShell from './WorkspaceShell';
 import OversiktTab from './tabs/OversiktTab';
+import ProsjektplanTab from './tabs/ProsjektplanTab';
+import ProduksjonskartTab from './tabs/ProduksjonskartTab';
+import ShotlistTab from './tabs/ShotlistTab';
+import MoodboardTab from './tabs/MoodboardTab';
+import MediaTab from './tabs/MediaTab';
+import LeveranserTab from './tabs/LeveranserTab';
+import TeamTab from './tabs/TeamTab';
+import WorkspaceChatPanel from './WorkspaceChatPanel';
 import { ws, WS_NAV } from './workspaceTheme';
 
 // Prøveprosjekt (Sara & Amir) — byttes med ekte prosjekt-fetch i wire-fasen.
@@ -54,9 +62,22 @@ const TeamWorkspacePage: React.FC = () => {
 
   const navItem = WS_NAV.find((n) => n.key === tab);
 
-  let content;
-  if (tab === 'oversikt') content = <OversiktTab projectId={projectId} />;
-  else content = <ComingTab label={navItem?.label || tab} />;
+  const TABS: Record<string, React.ReactNode> = {
+    oversikt: <OversiktTab projectId={projectId} />,
+    prosjektplan: <ProsjektplanTab projectId={projectId} />,
+    produksjonskart: <ProduksjonskartTab projectId={projectId} />,
+    shotlist: <ShotlistTab projectId={projectId} />,
+    moodboard: <MoodboardTab projectId={projectId} />,
+    media: <MediaTab projectId={projectId} />,
+    leveranser: <LeveranserTab projectId={projectId} />,
+    team: <TeamTab projectId={projectId} />,
+    chat: (
+      <Box sx={{ height: 'calc(100vh - 160px)', maxWidth: 760, mx: 'auto' }}>
+        <WorkspaceChatPanel projectId={projectId} />
+      </Box>
+    ),
+  };
+  const content = TABS[tab] || <ComingTab label={navItem?.label || tab} />;
 
   return (
     <WorkspaceShell

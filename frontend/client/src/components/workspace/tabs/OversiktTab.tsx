@@ -15,7 +15,7 @@ import RadioButtonUnchecked from '@mui/icons-material/RadioButtonUnchecked';
 import Warning from '@mui/icons-material/Warning';
 import Add from '@mui/icons-material/Add';
 import { ws } from '../workspaceTheme';
-import { WsCard, WsSectionTitle, WsRing, WsBar } from '../ui';
+import { WsCard, WsSectionTitle, WsRing, WsBar, WsImageGrid } from '../ui';
 import WorkspaceChatPanel from '../WorkspaceChatPanel';
 
 const PHASES = [
@@ -191,17 +191,7 @@ const OversiktTab: React.FC<{ projectId: string }> = ({ projectId }) => {
 
           <WsCard>
             <WsSectionTitle title="Referanser & shots" action={<Button size="small" sx={{ color: ws.accent, textTransform: 'none' }}>Se alle</Button>} />
-            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1 }}>
-              {Array.from({ length: 6 }).map((_, i) => (
-                <Box key={i} sx={{
-                  aspectRatio: '1 / 1', borderRadius: `${ws.radiusSm}px`,
-                  background: 'linear-gradient(135deg, rgba(255,140,0,0.18), rgba(255,255,255,0.04))',
-                  border: `1px solid ${ws.borderSoft}`, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
-                  {i === 5 && <Typography sx={{ fontSize: 14, fontWeight: 800, color: ws.text }}>+12</Typography>}
-                </Box>
-              ))}
-            </Box>
+            <WsImageGrid columns={3} addLabel="Legg til referanse" />
           </WsCard>
         </Box>
       </Box>
