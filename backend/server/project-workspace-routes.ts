@@ -357,6 +357,31 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     } catch (e) { console.error("GET editing-jobs", e); res.json({ jobs: [] }); }
   });
 
+  // ─────────── Kontrakt m/ signatur-detaljer (iPad-signatur surfacet) ───────────
+  // Surfacer signaturen klienten tegnet på iPad-en: signer_name/signed_at +
+  // om digital_signature finnes. project_id-scopet + canAccessProject.
+  app.get("/api/projects/:projectId/contract", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const r = await pool.query(
+        `SELECT id, status, signature_status, signer_name, signer_email, signed_at, signed_date,
+                (digital_signature IS NOT NULL AND length(digital_signature::text) > 0) AS has_signature,
+                client_name
+           FROM contracts WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1`,
+        [req.params.projectId],
+      ).catch(() => ({ rows: [] }));
+      if (r.rows.length === 0) return res.json({ hasContract: false });
+      const c = r.rows[0];
+      const isSigned = c.signature_status === "signed" || c.status === "signed";
+      res.json({
+        hasContract: true, contractId: c.id, status: c.status, isSigned,
+        signerName: c.signer_name || null, signerEmail: c.signer_email || null,
+        signedAt: c.signed_at || c.signed_date || null, hasSignature: !!c.has_signature,
+        clientName: c.client_name || null,
+      });
+    } catch (e) { console.error("GET contract", e); res.json({ hasContract: false }); }
+  });
+
   // ─────────── Tilbud (LESER quotes — project_id) ───────────
   app.get("/api/projects/:projectId/quotes", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;

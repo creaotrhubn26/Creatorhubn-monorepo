@@ -32,7 +32,7 @@ const AvtalerTab: React.FC<{ projectId: string }> = ({ projectId }) => {
 
   const load = () => {
     if (!isReal) return;
-    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/contract/status`).then((r: any) => setContract(r || null)).catch(() => {});
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/contract`).then((r: any) => setContract(r || null)).catch(() => {});
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/avtaler`).then((r: any) => { setCrm(r?.crmCustomer || null); setMeetings(Array.isArray(r?.meetings) ? r.meetings : []); }).catch(() => {});
     apiRequest(`/api/photographer/projects/${encodeURIComponent(projectId)}`).then((r: any) => setPricing(r?.project || null)).catch(() => {});
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/quotes`).then((r: any) => setQuotes(Array.isArray(r?.quotes) ? r.quotes : [])).catch(() => {});
@@ -81,6 +81,12 @@ const AvtalerTab: React.FC<{ projectId: string }> = ({ projectId }) => {
                 <Typography sx={{ fontSize: 13.5, fontWeight: 600 }}>{dContract.clientName || 'Kontrakt'}</Typography>
                 <WsTag label={dContract.isSigned ? 'Signert' : 'Venter på signering'} tone={dContract.isSigned ? 'green' : 'amber'} />
               </Stack>
+              {dContract.isSigned && (dContract.signerName || dContract.signedAt) && (
+                <Stack direction="row" spacing={0.75} alignItems="center" sx={{ color: ws.green }}>
+                  <Typography sx={{ fontSize: 12 }}>✍️ Signert{dContract.signerName ? ` av ${dContract.signerName}` : ''}{dContract.signedAt ? ` · ${new Date(dContract.signedAt).toLocaleDateString('nb-NO')}` : ''}</Typography>
+                  {dContract.hasSignature && <WsTag label="iPad-signatur" tone="green" />}
+                </Stack>
+              )}
               <Stack direction="row" spacing={1}>
                 {dContract.contractId && (
                   <Button size="small" onClick={() => window.open(`/api/contracts/${dContract.contractId}/pdf`, '_blank')} sx={{ color: ws.accent, textTransform: 'none', border: `1px solid ${ws.accentBorder}` }}>Åpne PDF ↗</Button>
