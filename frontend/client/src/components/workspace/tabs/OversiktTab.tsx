@@ -127,6 +127,15 @@ const OversiktTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   };
   const checkItems = (checks && checks.length > 0) ? checks.map((c) => ({ id: c.id, t: c.label, ok: c.checked, real: true })) : CHECKLIST;
   const refs = useProjectImages(projectId, 'references');
+  const [teamSync, setTeamSync] = useState<any | null>(null);
+  useEffect(() => {
+    if (!isReal) return;
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/team-sync`).then((r: any) => setTeamSync(r || null)).catch(() => {});
+  }, [projectId, isReal, tasks, checks]);
+  const syncPct = teamSync ? teamSync.pct : 82;
+  const syncItems = (teamSync && Array.isArray(teamSync.readiness) && teamSync.readiness.length)
+    ? teamSync.readiness.map((x: any) => ({ t: `${x.label} (${x.value})`, ok: x.done }))
+    : SYNC_ITEMS.map((s) => ({ t: s, ok: true }));
 
   // Capture & backup — live-status fra iPad CaptureApp + One Desk (poll 20s).
   const [capture, setCapture] = useState<any | null>(null);
@@ -299,12 +308,12 @@ const OversiktTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           <WsCard>
             <Typography sx={{ fontSize: 14, fontWeight: 700, mb: 1.5 }}>Samkjøring (Team Sync)</Typography>
             <Stack direction="row" spacing={2} alignItems="center">
-              <WsRing value={82} size={104} label="82%" sub="Klar" />
+              <WsRing value={syncPct} size={104} label={`${syncPct}%`} sub="Klar" color={syncPct >= 80 ? ws.green : ws.amber} />
               <Stack spacing={0.75} sx={{ flex: 1 }}>
-                {SYNC_ITEMS.map((s) => (
-                  <Stack key={s} direction="row" spacing={0.75} alignItems="center">
-                    <CheckCircle sx={{ fontSize: 16, color: ws.green }} />
-                    <Typography sx={{ fontSize: 12.5, color: ws.text }}>{s}</Typography>
+                {syncItems.map((s, i) => (
+                  <Stack key={i} direction="row" spacing={0.75} alignItems="center">
+                    {s.ok ? <CheckCircle sx={{ fontSize: 16, color: ws.green }} /> : <RadioButtonUnchecked sx={{ fontSize: 16, color: ws.textFaint }} />}
+                    <Typography sx={{ fontSize: 12.5, color: ws.text }}>{s.t}</Typography>
                   </Stack>
                 ))}
               </Stack>

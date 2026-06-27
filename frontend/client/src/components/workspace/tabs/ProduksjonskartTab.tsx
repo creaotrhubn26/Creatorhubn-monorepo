@@ -4,8 +4,9 @@
  * Dagens fokus / Crew / Vær / Team Sync + tid-for-tid-tabell (Foto/Video/Lyd)
  * + Live koordinering (høyre) + Kritiske øyeblikk / Referanser.
  */
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Box, Stack, Typography, Avatar, AvatarGroup, IconButton, Button, TextField } from '@mui/material';
+import { apiRequest } from '@/lib/queryClient';
 import Groups from '@mui/icons-material/Groups';
 import Cloud from '@mui/icons-material/Cloud';
 import Sync from '@mui/icons-material/Sync';
@@ -41,9 +42,35 @@ const ALERTS = [
   { tone: 'blue', title: 'Transport til location 2', t: '09:50', sub: 'Avreise 15:30 fra kirken.' },
 ];
 
+const STATUS_TONE: Record<string, string> = { ferdig: 'green', done: 'green', completed: 'green', pågår: 'amber', in_progress: 'amber', current: 'amber', kritisk: 'red', planlagt: 'blue', planned: 'blue' };
+const addMin = (hhmm: string, m: number) => { if (!/^\d{2}:\d{2}$/.test(hhmm)) return ''; const [h, mm] = hhmm.split(':').map(Number); const t = (h * 60 + mm + (m || 0)) % 1440; return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`; };
+
 const ProduksjonskartTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [view, setView] = useState('timeline');
   const refs = useProjectImages(projectId, 'references');
+  const isReal = projectId && projectId !== 'sample';
+  const [events, setEvents] = useState<any[] | null>(null);
+  const [sync, setSync] = useState<any | null>(null);
+
+  useEffect(() => {
+    if (!isReal) return;
+    apiRequest(`/api/wedding/timeline/project/${encodeURIComponent(projectId)}`).then((r: any) => { const e = Array.isArray(r?.events) ? r.events : []; if (e.length) setEvents(e); }).catch(() => {});
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/team-sync`).then((r: any) => setSync(r || null)).catch(() => {});
+  }, [projectId, isReal]);
+
+  const syncPct = sync ? sync.pct : 82;
+  const crewOnline = sync ? sync.online : 6;
+  const crewTotal = sync ? sync.teamSize : 8;
+  const rows = events
+    ? events.map((e: any) => ({
+        tid: e.time ? `${e.time}${e.durationMinutes ? ' – ' + addMin(e.time, e.durationMinutes) : ''}` : '',
+        moment: e.title || 'Hendelse', sub: e.location || '',
+        foto: ['Foto'], video: ['Video'], lyd: ['Lyd'],
+        ansvarlig: '', status: [e.status === 'in_progress' ? 'Pågår' : (e.status || 'Planlagt'), STATUS_TONE[(e.status || 'planlagt').toLowerCase()] || 'blue'],
+        notat: e.description || '', active: e.status === 'in_progress' || e.status === 'current',
+      }))
+    : ROWS;
+  const fokus = events ? (events.find((e: any) => e.status === 'in_progress' || e.status === 'current') || events[0]) : null;
   return (
     <Stack direction="row" spacing={2.5} sx={{ alignItems: 'flex-start' }}>
       <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -54,13 +81,13 @@ const ProduksjonskartTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           <WsCard pad={1.75}>
             <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}><CenterFocusStrong sx={{ fontSize: 18, color: ws.accent }} /><Typography sx={{ fontSize: 13, fontWeight: 700 }}>Dagens fokus</Typography></Stack>
             <Stack direction="row" spacing={1.5} alignItems="center">
-              <Box><Typography sx={{ fontSize: 16, fontWeight: 800 }}>Vielse</Typography><Typography sx={{ fontSize: 12, color: ws.textDim }}>12:15 – 13:00</Typography><Box sx={{ mt: 0.5 }}><WsTag label="Kritisk moment" tone="accent" /></Box></Box>
+              <Box><Typography sx={{ fontSize: 16, fontWeight: 800 }}>{fokus ? fokus.title : 'Vielse'}</Typography><Typography sx={{ fontSize: 12, color: ws.textDim }}>{fokus ? (fokus.time + (fokus.durationMinutes ? ' – ' + addMin(fokus.time, fokus.durationMinutes) : '')) : '12:15 – 13:00'}</Typography><Box sx={{ mt: 0.5 }}><WsTag label={fokus?.location || 'Kritisk moment'} tone="accent" /></Box></Box>
               <Box sx={{ width: 64, ml: 'auto' }}><WsImageGrid columns={1} ratio="4 / 3" addLabel="Bilde" /></Box>
             </Stack>
           </WsCard>
           <WsCard pad={1.75}>
             <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}><Groups sx={{ fontSize: 18, color: ws.accent }} /><Typography sx={{ fontSize: 13, fontWeight: 700 }}>Crew på location</Typography></Stack>
-            <Typography sx={{ fontSize: 22, fontWeight: 800 }}>6 <Typography component="span" sx={{ fontSize: 14, color: ws.textDim }}>/ 8</Typography></Typography>
+            <Typography sx={{ fontSize: 22, fontWeight: 800 }}>{crewOnline} <Typography component="span" sx={{ fontSize: 14, color: ws.textDim }}>/ {crewTotal}</Typography></Typography>
             <Typography sx={{ fontSize: 11.5, color: ws.textDim, mb: 1 }}>teammedlemmer</Typography>
             <AvatarGroup max={5} sx={{ justifyContent: 'flex-start', '& .MuiAvatar-root': { width: 24, height: 24, fontSize: 10, border: `2px solid ${ws.panelSolid}` } }}>
               {['M', 'D', 'E', 'L', 'N'].map((x, i) => <Avatar key={i}>{x}</Avatar>)}
@@ -75,8 +102,8 @@ const ProduksjonskartTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           <WsCard pad={1.75}>
             <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}><Sync sx={{ fontSize: 18, color: ws.accent }} /><Typography sx={{ fontSize: 13, fontWeight: 700 }}>Team Sync</Typography></Stack>
             <Stack direction="row" spacing={1.5} alignItems="center">
-              <WsRing value={82} size={70} thickness={8} label="82%" />
-              <Box><Typography sx={{ fontSize: 13, fontWeight: 700 }}>Synkronisert</Typography><Typography sx={{ fontSize: 11, color: ws.textDim }}>Sist oppdatert 10:14</Typography></Box>
+              <WsRing value={syncPct} size={70} thickness={8} label={`${syncPct}%`} color={syncPct >= 80 ? ws.green : ws.amber} />
+              <Box><Typography sx={{ fontSize: 13, fontWeight: 700 }}>{syncPct >= 80 ? 'Synkronisert' : 'Pågår'}</Typography><Typography sx={{ fontSize: 11, color: ws.textDim }}>{crewOnline} online</Typography></Box>
             </Stack>
           </WsCard>
         </Box>
@@ -94,7 +121,7 @@ const ProduksjonskartTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           </Stack>
           <WsTable
             columns={['Tid', 'Moment', 'Foto', 'Video', 'Lyd', 'Ansvarlig', 'Status', 'Notater']}
-            rows={ROWS.map((r) => [
+            rows={rows.map((r) => [
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>{r.active && <Box sx={{ width: 0, height: 0, borderTop: '4px solid transparent', borderBottom: '4px solid transparent', borderLeft: `6px solid ${ws.accent}` }} />}<Typography sx={{ fontSize: 12.5, fontWeight: r.active ? 800 : 600, color: r.active ? ws.accent : ws.text }}>{r.tid}</Typography></Box>,
               <Box><Typography sx={{ fontSize: 13, fontWeight: 700 }}>{r.moment}</Typography><Typography sx={{ fontSize: 11, color: ws.textFaint }}>{r.sub}</Typography></Box>,
               <Stack spacing={0.25}>{r.foto.map((x) => <WsTag key={x} label={x} tone="accent" />)}</Stack>,

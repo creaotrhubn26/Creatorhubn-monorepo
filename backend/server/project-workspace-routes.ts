@@ -500,6 +500,33 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     } catch (e) { console.error("GET media", e); res.status(500).json({ error: "failed" }); }
   });
 
+  // ─────────── Team Sync % (ekte readiness fra board + sjekkliste + presence) ───
+  app.get("/api/projects/:projectId/team-sync", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureSchema(pool);
+      const pid = req.params.projectId;
+      const [board, checks, pres, members] = await Promise.all([
+        pool.query(`SELECT count(*)::int total, count(*) FILTER (WHERE status='done')::int done FROM project_board_tasks WHERE project_id=$1`, [pid]).catch(() => ({ rows: [{ total: 0, done: 0 }] })),
+        pool.query(`SELECT count(*)::int total, count(*) FILTER (WHERE checked)::int done FROM project_checklist_items WHERE project_id=$1`, [pid]).catch(() => ({ rows: [{ total: 0, done: 0 }] })),
+        pool.query(`SELECT count(*) FILTER (WHERE pr.last_seen_at > NOW() - INTERVAL '90 seconds')::int online FROM project_team_members m LEFT JOIN user_presence pr ON pr.user_id=m.user_id WHERE m.project_id=$1 AND m.status='active' AND m.deactivated_at IS NULL`, [pid]).catch(() => ({ rows: [{ online: 0 }] })),
+        pool.query(`SELECT count(*)::int n FROM project_team_members WHERE project_id=$1 AND status='active' AND deactivated_at IS NULL`, [pid]).catch(() => ({ rows: [{ n: 0 }] })),
+      ]);
+      const b = board.rows[0], c = checks.rows[0];
+      const boardPct = b.total > 0 ? b.done / b.total : null;
+      const checkPct = c.total > 0 ? c.done / c.total : null;
+      const parts = [boardPct, checkPct].filter((x) => x != null);
+      const pct = parts.length ? Math.round((parts.reduce((s: number, x: number) => s + x, 0) / parts.length) * 100) : 0;
+      res.json({
+        pct, online: pres.rows[0]?.online || 0, teamSize: (members.rows[0]?.n || 0) + 1,
+        readiness: [
+          { label: "Oppgaver fullført", done: b.total > 0 && b.done === b.total, value: `${b.done}/${b.total}` },
+          { label: "Sjekkliste klar", done: c.total > 0 && c.done === c.total, value: `${c.done}/${c.total}` },
+        ],
+      });
+    } catch (e) { console.error("GET team-sync", e); res.json({ pct: 0, online: 0, readiness: [] }); }
+  });
+
   // ─────────── Capture & backup-status (iPad CaptureApp + One Desk) ───────────
   // Sømløst: samme konto ser samme prosjekt/session/assets overalt. Dette
   // surfacer LIVE-tilstanden i workspacet: aktiv capture-session (skyter nå?),
