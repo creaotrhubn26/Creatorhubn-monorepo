@@ -10,7 +10,6 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Button,
   TextField,
   FormControl,
   InputLabel,
@@ -30,6 +29,7 @@ import {
   Public as PublicIcon,
 } from '@mui/icons-material';
 import { format } from 'date-fns';
+import { AdminButton } from './design-system';
 
 interface EventCreatorDialogProps {
   open: boolean;
@@ -353,17 +353,17 @@ export default function EventCreatorDialog({
       </DialogContent>
 
       <DialogActions>
-        <Button onClick={handleClose} disabled={createMutation.isPending}>
+        <AdminButton tone="ghost" onClick={handleClose} disabled={createMutation.isPending}>
           Avbryt
-        </Button>
-        <Button
-          variant="contained"
+        </AdminButton>
+        <AdminButton
+          tone="primary"
           onClick={handleSubmit}
-          disabled={!form.title || !form.scheduled_date || createMutation.isPending}
-          sx={{ bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67e00' } }}
+          loading={createMutation.isPending}
+          disabled={!form.title || !form.scheduled_date}
         >
           {isEdit ? 'Oppdater' : 'Opprett'}
-        </Button>
+        </AdminButton>
       </DialogActions>
     </Dialog>
   );

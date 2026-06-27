@@ -38,6 +38,7 @@ import {
 } from '@mui/icons-material';
 import { useTheming } from '../../utils/theming-helper';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
+import { AdminEmpty } from './design-system';
 
 interface Todo {
   id: string;
@@ -267,20 +268,12 @@ export const AITodoTracker: React.FC = () => {
 
   if (todos.length === 0) {
     return (
-      <Card sx={{ maxWidth: 400 }}>
-        <CardContent>
-          <Alert severity="info">
-            <Typography variant="body2">
-              Todos will appear when you:
-            </Typography>
-            <Box component="ul" sx={{ mt: 1, mb: 0 }}>
-              <li>Add an API key</li>
-              <li>Start code generation</li>
-              <li>Scan for linting errors</li>
-            </Box>
-          </Alert>
-        </CardContent>
-      </Card>
+      <Box sx={{ maxWidth: 400 }}>
+        <AdminEmpty
+          title="Todos will appear when you:"
+          description="Add an API key · Start code generation · Scan for linting errors"
+        />
+      </Box>
     );
 }
 

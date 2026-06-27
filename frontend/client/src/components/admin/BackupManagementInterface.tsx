@@ -3,9 +3,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Card as MuiCard,
   CardContent,
-  CardHeader,
   Typography,
-  Button,
   Box,
   Grid,
   Chip,
@@ -22,7 +20,6 @@ import {
   TextField,
   FormControlLabel,
   Switch,
-  Paper,
   Divider,
 } from '@mui/material';
 import {
@@ -38,6 +35,7 @@ import {
   Security as SecurityIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { AdminCard, AdminButton, StatusChip, AdminLoading, AdminEmpty } from './design-system';
 
 interface BackupItem {
   id: string;
@@ -206,7 +204,7 @@ export default function BackupManagementInterface() {
                   <Typography variant="body2" color="text.secondary">
                     daniel@creatorhubn.com
                   </Typography>
-                  <Chip label="Tilkoblet" color="success" size="small" />
+                  <StatusChip tone="success" label="Tilkoblet" />
                 </Box>
               </Box>
             </CardContent>
@@ -243,7 +241,7 @@ export default function BackupManagementInterface() {
                   <Typography variant="body2" color="text.secondary">
                     2x Sikkerhet Aktivert
                   </Typography>
-                  <Chip label="Beskyttet" color="success" size="small" />
+                  <StatusChip tone="success" label="Beskyttet" />
                 </Box>
               </Box>
             </CardContent>
@@ -253,17 +251,17 @@ export default function BackupManagementInterface() {
 
       {/* Action Buttons */}
       <Box sx={{ mb: 4, display: 'flex', gap: 2 }}>
-        <Button
-          variant="contained"
+        <AdminButton
+          tone="primary"
           startIcon={<CloudUploadIcon />}
           onClick={() => setCreateDialogOpen(true)}
           disabled={createBackupMutation.isPending}
           size="large"
         >
           Opprett Backup
-        </Button>
-        <Button
-          variant="outlined"
+        </AdminButton>
+        <AdminButton
+          tone="secondary"
           startIcon={<RefreshIcon />}
           onClick={() => {
             refetchBackups();
@@ -271,14 +269,12 @@ export default function BackupManagementInterface() {
           }}
         >
           Oppdater
-        </Button>
+        </AdminButton>
       </Box>
 
       {/* Notifications */}
       {notifications.length > 0 && (
-        <MuiCard sx={{ mb: 4 }}>
-          <CardHeader title="Backup Notifikasjoner" sx={theming.getThemedCardSx()} />
-          <CardContent sx={theming.getThemedCardSx()}>
+        <AdminCard title="Backup Notifikasjoner" sx={{ mb: 4 }}>
             <List>
               {notifications.slice(0, 5).map((notification: BackupNotification) => (
                 <ListItem key={notification.id}>
@@ -290,8 +286,7 @@ export default function BackupManagementInterface() {
                 </ListItem>
               ))}
             </List>
-          </CardContent>
-        </MuiCard>
+        </AdminCard>
       )}
 
       {/* Zero Toast Compliance - Backup Progress as Typography */}
@@ -312,22 +307,18 @@ export default function BackupManagementInterface() {
       )}
 
       {/* Backup List */}
-      <MuiCard>
-        <CardHeader
-          title="Backup Historie"
-          action={
-            <Typography variant="body2" color="text.secondary" sx={theming.getThemedCardSx()}>
-              {backups.length} backups totalt
-            </Typography>
-          }
-        />
-        <CardContent sx={theming.getThemedCardSx()}>
+      <AdminCard
+        title="Backup Historie"
+        action={
+          <Typography variant="body2" color="text.secondary" sx={theming.getThemedCardSx()}>
+            {backups.length} backups totalt
+          </Typography>
+        }
+      >
           {backupsLoading ? (
-            <LinearProgress />
+            <AdminLoading />
           ) : backups.length === 0 ? (
-            <Typography color="text.secondary" textAlign="center" py={4}>
-              Ingen backups funnet
-            </Typography>
+            <AdminEmpty title="Ingen backups funnet" />
           ) : (
             <List>
               {backups.map((backup: BackupItem, index: number) => (
@@ -396,8 +387,7 @@ export default function BackupManagementInterface() {
               ))}
             </List>
           )}
-        </CardContent>
-      </MuiCard>
+      </AdminCard>
 
       {/* Create Backup Dialog */}
       <Dialog
@@ -493,15 +483,16 @@ export default function BackupManagementInterface() {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setCreateDialogOpen(false)}>Avbryt</Button>
-          <Button
+          <AdminButton tone="ghost" onClick={() => setCreateDialogOpen(false)}>Avbryt</AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={handleCreateBackup}
-            variant="contained"
+            loading={createBackupMutation.isPending}
             disabled={createBackupMutation.isPending}
             sx={theming.getThemedButtonSx()}
           >
             Opprett Backup
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

@@ -8,8 +8,9 @@
 
 import React from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Box, Card, CardContent, Typography, Chip, Stack, CircularProgress } from "@mui/material";
+import { Box, Typography, Chip, Stack } from "@mui/material";
 import { apiRequest } from "@/lib/queryClient";
+import { AdminCard, StatusChip, AdminLoading } from "./design-system";
 
 interface TeamMember {
   id: string;
@@ -33,8 +34,8 @@ interface Team {
 
 function statusChip(s: string) {
   const x = String(s || "").toLowerCase();
-  const color = x === "accepted" || x === "active" ? "success" : x === "pending" ? "warning" : "default";
-  return <Chip size="small" color={color as any} label={s || "ukjent"} />;
+  const tone = x === "accepted" || x === "active" ? "success" : x === "pending" ? "warning" : "neutral";
+  return <StatusChip tone={tone} label={s || "ukjent"} />;
 }
 
 export default function PrototypeTeamsOverview() {
@@ -44,13 +45,11 @@ export default function PrototypeTeamsOverview() {
   });
   const teams = Array.isArray(q.data?.teams) ? q.data.teams : [];
 
-  if (q.isLoading) return <CircularProgress size={22} />;
+  if (q.isLoading) return <AdminLoading />;
   if (teams.length === 0) return null; // ingen team → ikke vis kortet
 
   return (
-    <Card variant="outlined" sx={{ bgcolor: "rgba(33,150,243,0.06)" }}>
-      <CardContent>
-        <Typography sx={{ fontWeight: 700, mb: 1 }}>👥 Prototype-team ({teams.length})</Typography>
+    <AdminCard title={`👥 Prototype-team (${teams.length})`}>
         <Stack spacing={1.5}>
           {teams.map((t) => (
             <Box
@@ -90,7 +89,6 @@ export default function PrototypeTeamsOverview() {
             </Box>
           ))}
         </Stack>
-      </CardContent>
-    </Card>
+    </AdminCard>
   );
 }

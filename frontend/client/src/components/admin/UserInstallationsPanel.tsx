@@ -11,8 +11,6 @@
 import React, { useState, useMemo } from 'react';
 import {
   Box,
-  Card,
-  CardContent,
   Stack,
   Typography,
   Chip,
@@ -28,7 +26,6 @@ import {
   TableCell,
   TableBody,
   Alert,
-  CircularProgress,
   Avatar,
   IconButton,
   alpha,
@@ -44,6 +41,7 @@ import {
 } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import { AdminCard, StatusChip, AdminLoading, AdminTableContainer } from './design-system';
 
 interface User {
   id: string;
@@ -128,20 +126,10 @@ const UserInstallationsPanel: React.FC<Props> = ({ users }) => {
 
   return (
     <Box>
-      <Card>
-        <CardContent>
-          <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 2 }}>
-            <Box sx={{ p: 1, borderRadius: 2, bgcolor: alpha('#7c3aed', 0.1), color: '#c084fc' }}>
-              <AppsIcon />
-            </Box>
-            <Box>
-              <Typography variant="h6" sx={{ fontWeight: 700 }}>Installasjoner & abonnement</Typography>
-              <Typography variant="caption" color="text.secondary">
-                Se hva en bruker har installert og når Stripe-abonnementet fornyes
-              </Typography>
-            </Box>
-          </Stack>
-
+      <AdminCard
+        title="Installasjoner & abonnement"
+        subtitle="Se hva en bruker har installert og når Stripe-abonnementet fornyes"
+      >
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mb: 2 }}>
             <TextField
               size="small"
@@ -180,9 +168,7 @@ const UserInstallationsPanel: React.FC<Props> = ({ users }) => {
           )}
 
           {selectedUserId && isLoading && (
-            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-              <CircularProgress size={28} />
-            </Box>
+            <AdminLoading />
           )}
 
           {selectedUserId && data && (
@@ -236,6 +222,7 @@ const UserInstallationsPanel: React.FC<Props> = ({ users }) => {
                     Ingen apper installert ennå.
                   </Typography>
                 ) : (
+                  <AdminTableContainer ariaLabel="Installerte apper">
                   <Table size="small">
                     <TableHead>
                       <TableRow>
@@ -250,16 +237,16 @@ const UserInstallationsPanel: React.FC<Props> = ({ users }) => {
                           <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>{app.appId}</TableCell>
                           <TableCell>{fmtDate(app.installedAt)}</TableCell>
                           <TableCell align="center">
-                            <Chip
-                              size="small"
+                            <StatusChip
+                              tone={app.isActive ? 'success' : 'neutral'}
                               label={app.isActive ? 'Aktiv' : 'Avinstallert'}
-                              color={app.isActive ? 'success' : 'default'}
                             />
                           </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
                   </Table>
+                  </AdminTableContainer>
                 )}
               </Box>
 
@@ -274,6 +261,7 @@ const UserInstallationsPanel: React.FC<Props> = ({ users }) => {
                     Ingen aktive abonnement registrert i Stripe.
                   </Typography>
                 ) : (
+                  <AdminTableContainer ariaLabel="Abonnement og fornyelse">
                   <Table size="small">
                     <TableHead>
                       <TableRow>
@@ -307,7 +295,7 @@ const UserInstallationsPanel: React.FC<Props> = ({ users }) => {
                                 : '—'}
                             </TableCell>
                             <TableCell>
-                              <Chip size="small" label={status.label} color={status.color} />
+                              <StatusChip tone={status.color === 'default' ? 'neutral' : status.color} label={status.label} />
                               {sub.cancelAtPeriodEnd && (
                                 <Chip size="small" label="Sies opp" color="warning" sx={{ ml: 0.5 }} icon={<WarningIcon fontSize="small" />} />
                               )}
@@ -335,12 +323,12 @@ const UserInstallationsPanel: React.FC<Props> = ({ users }) => {
                       })}
                     </TableBody>
                   </Table>
+                  </AdminTableContainer>
                 )}
               </Box>
             </Stack>
           )}
-        </CardContent>
-      </Card>
+      </AdminCard>
     </Box>
   );
 };
