@@ -55,7 +55,7 @@ import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions'
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
-import { AdminButton } from './design-system';
+import { AdminButton, useIsMobile } from './design-system';
 
 interface TesterSkill {
   testerId: string;
@@ -329,7 +329,7 @@ export default function TesterSkillRatings() {
       </Grid>
 
       {/* Tester Details Dialog */}
-      <Dialog open={!!selectedTester} onClose={() => setSelectedTester(null)} maxWidth="sm" fullWidth>
+      <Dialog open={!!selectedTester} onClose={() => setSelectedTester(null)} maxWidth="sm" fullWidth fullScreen={useIsMobile()}>
         {selectedTester && (
           <>
             <DialogTitle>

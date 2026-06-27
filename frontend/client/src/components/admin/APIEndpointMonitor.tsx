@@ -257,7 +257,7 @@ const APIEndpointMonitor: React.FC = () => {
           Sanntids overvåkning av alle API-endepunkter for system-helse og ytelse-tracking
         </Typography>
 
-        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
           <AdminButton
             tone="primary"
             startIcon={theming.getThemedIcon('play')}

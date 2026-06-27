@@ -61,6 +61,7 @@ import {
   AdminCard,
   AdminButton,
   AdminTableContainer,
+  useIsMobile,
 } from './design-system';
 
 interface MemoryCardPricingAdminProps {
@@ -97,6 +98,7 @@ const MemoryCardPricingAdmin: React.FC<MemoryCardPricingAdminProps> = ({
   
   // Theming system
   const theming = useTheming('prototype_tester');
+  const isMobile = useIsMobile();
 
   // Client service pricing service integration
   const { 
@@ -341,7 +343,7 @@ const MemoryCardPricingAdmin: React.FC<MemoryCardPricingAdminProps> = ({
       </AdminCard>
 
       {/* Edit Dialog */}
-      <Dialog open={showEditDialog} onClose={handleCancelEdit} maxWidth="md" fullWidth>
+      <Dialog open={showEditDialog} onClose={handleCancelEdit} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle>
           Edit Memory Card Pricing
           {editingCard && (

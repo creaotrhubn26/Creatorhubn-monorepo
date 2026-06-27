@@ -34,7 +34,7 @@ import {
   Alert,
   CircularProgress,
 } from '@mui/material';
-import { AdminCard, AdminButton, StatusChip, AdminTableContainer, AdminEmpty } from './design-system';
+import { AdminCard, AdminButton, StatusChip, AdminTableContainer, AdminEmpty, useIsMobile } from './design-system';
 import {
   Edit as EditIcon,
   Block as BlockIcon,
@@ -72,6 +72,8 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, isLoad
   const [newRole, setNewRole] = useState<'user' | 'admin' | 'super_admin'>('user');
   const [reason, setReason] = useState('');
   const [error, setError] = useState('');
+
+  const isMobile = useIsMobile();
 
   const queryClient = useQueryClient();
 
@@ -333,6 +335,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, isLoad
       <Dialog
         open={dialogOpen}
         onClose={handleCloseDialog}
+        fullScreen={isMobile}
         maxWidth="md"
         fullWidth
         PaperProps={{

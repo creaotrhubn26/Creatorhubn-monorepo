@@ -35,7 +35,7 @@ import {
 import { useMutation } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
-import { AdminCard, AdminButton } from './design-system';
+import { AdminCard, AdminButton, useIsMobile } from './design-system';
 
 interface GeneratedLogo {
   id: string;
@@ -437,7 +437,7 @@ export default function PlanLogoGenerator({ profession, onLogoGenerated }: PlanL
         </Grid>
       </AdminCard>
 
-      <Dialog open={showPreview} onClose={() => setShowPreview(false)} maxWidth="md" fullWidth>
+      <Dialog open={showPreview} onClose={() => setShowPreview(false)} maxWidth="md" fullWidth fullScreen={useIsMobile()}>
         <DialogTitle>Logo preview</DialogTitle>
         <DialogContent>
           {previewLogo ? (
