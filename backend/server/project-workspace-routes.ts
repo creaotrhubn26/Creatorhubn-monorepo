@@ -24,6 +24,7 @@ import multer from "multer";
 import { canAccessProject } from "./project-team-routes";
 import { signAssetReadUrl } from "./capture-upload-service";
 import { archiveToRoleRoomB2, presignRoleRoomB2Download, slugifyForKey } from "./b2-archive-helper";
+import { createGoogleMeetLink } from "./google-meet";
 
 // Web-opplasting holdes i minne og skyves server-side til B2 (Role Room-bøtta).
 // 60 MB tak — store RAW/originaler skal uansett gjennom capture multipart-flyten.
@@ -262,6 +263,76 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     } catch (e) { console.error("PUT split-sheet", e); res.status(500).json({ error: "failed" }); }
   });
 
+  // ─────────── Avtaler — CRM-kunde + møter (Google Meet) ───────────
+  // Samler prosjektets kunde-/avtale-info: CRM-kunde (crm_customers.project_id),
+  // kommende møter (crm_meetings), pluss kontrakt-status (frontend kaller det
+  // eksisterende /contract/status). project_id-scopet, canAccessProject.
+  app.get("/api/projects/:projectId/avtaler", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const cust = await pool.query(
+        `SELECT id, name, email, status, project_type FROM crm_customers WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1`,
+        [req.params.projectId],
+      ).catch(() => ({ rows: [] }));
+      const customer = cust.rows[0] || null;
+      let meetings: any[] = [];
+      if (customer?.id) {
+        const m = await pool.query(
+          `SELECT id, title, description, location, meet_link, web_view_url, scheduled_at, duration_minutes
+             FROM crm_meetings WHERE customer_id = $1 ORDER BY scheduled_at ASC NULLS LAST LIMIT 30`,
+          [customer.id],
+        ).catch(() => ({ rows: [] }));
+        meetings = m.rows.map((r: any) => ({
+          id: r.id, title: r.title, description: r.description, location: r.location,
+          meetLink: r.meet_link, webViewUrl: r.web_view_url, scheduledAt: r.scheduled_at, durationMinutes: r.duration_minutes,
+        }));
+      }
+      res.json({
+        crmCustomer: customer ? { id: customer.id, name: customer.name, email: customer.email, status: customer.status, projectType: customer.project_type } : null,
+        meetings,
+      });
+    } catch (e) { console.error("GET avtaler", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  // POST møte — oppretter crm_meeting, evt. med ekte Google Meet-lenke.
+  app.post("/api/projects/:projectId/meetings", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const b = req.body ?? {};
+      const title = typeof b.title === "string" && b.title.trim() ? b.title.trim() : "Møte";
+      const scheduledAt = b.scheduledAt || null;
+      const durationMinutes = Number(b.durationMinutes) || 60;
+      // Knytt til prosjektets CRM-kunde hvis den finnes.
+      const cust = await pool.query(
+        `SELECT id, name FROM crm_customers WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1`,
+        [req.params.projectId],
+      ).catch(() => ({ rows: [] }));
+      const customerId = cust.rows[0]?.id || null;
+      const proj = await pool.query(`SELECT COALESCE(title, name) AS title FROM projects WHERE id = $1 LIMIT 1`, [req.params.projectId]).catch(() => ({ rows: [] }));
+
+      // Ekte Google Meet-lenke hvis brukeren har Google koblet (ellers stille fallback).
+      let meetLink: string | null = typeof b.meetLink === "string" ? b.meetLink : null;
+      let webViewUrl: string | null = null;
+      if (b.generateMeet && scheduledAt) {
+        try {
+          const meet = await createGoogleMeetLink(pool, {
+            title, description: b.description || null, startDateTime: scheduledAt, duration: durationMinutes,
+            projectId: req.params.projectId, projectName: proj.rows[0]?.title || null, clientName: cust.rows[0]?.name || null,
+          }, uid);
+          if (meet && (meet as any).meetLink) { meetLink = (meet as any).meetLink; webViewUrl = (meet as any).webViewUrl || null; }
+        } catch (err) { console.warn("[avtaler] google meet failed:", (err as Error)?.message); }
+      }
+
+      const ins = await pool.query(
+        `INSERT INTO crm_meetings (id, customer_id, title, description, location, meet_link, web_view_url, scheduled_at, duration_minutes, owner_user_id, created_at)
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, now()) RETURNING *`,
+        [customerId, title, b.description || null, b.location || null, meetLink, webViewUrl, scheduledAt, durationMinutes, uid],
+      );
+      const r = ins.rows[0];
+      res.status(201).json({ id: r.id, title: r.title, meetLink: r.meet_link, webViewUrl: r.web_view_url, scheduledAt: r.scheduled_at, durationMinutes: r.duration_minutes });
+    } catch (e) { console.error("POST meetings", e); res.status(500).json({ error: "failed" }); }
+  });
+
   // ─────────── Showcase / klient-galleri (LESER photographer_client_galleries) ───
   // Kobler Leveranser til det EKTE leveranse-systemet: klient-galleriet/showcasen
   // klienten faktisk ser. project_id-scopet + canAccessProject. shareUrl =
@@ -323,6 +394,53 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       })));
       res.json({ assets, hasSession: true });
     } catch (e) { console.error("GET media", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  // ─────────── Capture & backup-status (iPad CaptureApp + One Desk) ───────────
+  // Sømløst: samme konto ser samme prosjekt/session/assets overalt. Dette
+  // surfacer LIVE-tilstanden i workspacet: aktiv capture-session (skyter nå?),
+  // antall assets, og B2-backup-status (raw_key satt = original sikret).
+  // project_id-scopet + canAccessProject. Poll fra frontend.
+  app.get("/api/projects/:projectId/capture-status", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const s = await pool.query(
+        `SELECT id, name, status, starts_at, ends_at FROM capture_sessions WHERE project_id = $1 ORDER BY created_at DESC`,
+        [req.params.projectId],
+      ).catch(() => ({ rows: [] }));
+      const sessions = s.rows;
+      if (sessions.length === 0) return res.json({ hasSession: false });
+      const ids = sessions.map((x: any) => x.id);
+      const stats = await pool.query(
+        `SELECT count(*)::int AS total,
+                count(*) FILTER (WHERE raw_key IS NOT NULL OR full_key IS NOT NULL)::int AS secured,
+                count(*) FILTER (WHERE preview_key IS NOT NULL)::int AS with_preview,
+                max(capture_time) AS last_capture,
+                max(created_at) AS last_upload
+           FROM capture_assets WHERE session_id = ANY($1::uuid[])`,
+        [ids],
+      ).catch(() => ({ rows: [{ total: 0, secured: 0, with_preview: 0, last_capture: null, last_upload: null }] }));
+      const st = stats.rows[0] || {};
+      const total = st.total || 0;
+      const secured = st.secured || 0;
+      // «Skyter nå» = ny asset siste 5 min ELLER session aktiv uten ends_at.
+      const lastUpload = st.last_upload ? new Date(st.last_upload).getTime() : 0;
+      const shootingNow = (Date.now() - lastUpload) < 5 * 60 * 1000;
+      const active = sessions.find((x: any) => (x.status === "active" || !x.ends_at)) || sessions[0];
+      res.json({
+        hasSession: true,
+        session: { id: active.id, name: active.name, status: active.status, startsAt: active.starts_at, endsAt: active.ends_at },
+        sessionCount: sessions.length,
+        shootingNow,
+        assets: {
+          total,
+          securedToB2: secured,
+          securedPct: total > 0 ? Math.round((secured / total) * 100) : 0,
+          lastCaptureAt: st.last_capture || null,
+          lastUploadAt: st.last_upload || null,
+        },
+      });
+    } catch (e) { console.error("GET capture-status", e); res.json({ hasSession: false }); }
   });
 
   // ─────────── Web-bilder (moodboard/referanser/«legg til bilde») → B2 ───────────

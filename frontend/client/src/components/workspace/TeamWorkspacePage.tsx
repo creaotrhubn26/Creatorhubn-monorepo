@@ -21,6 +21,8 @@ import MoodboardTab from './tabs/MoodboardTab';
 import MediaTab from './tabs/MediaTab';
 import LeveranserTab from './tabs/LeveranserTab';
 import OppgaverTab from './tabs/OppgaverTab';
+import AvtalerTab from './tabs/AvtalerTab';
+import KundevisningTab from './tabs/KundevisningTab';
 import TeamTab from './tabs/TeamTab';
 import WorkspaceChatPanel from './WorkspaceChatPanel';
 import { usePresence } from './usePresence';
@@ -53,7 +55,7 @@ const TeamWorkspacePage: React.FC = () => {
   const [, paramsTab] = useRoute('/workspace/:projectId/:tab');
   const projectId = paramsTab?.projectId || params?.projectId || 'sample';
   const [, navigate] = useLocation();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
 
   const [tab, setTab] = useState<string>(paramsTab?.tab || 'oversikt');
   const [accepted, setAccepted] = useState<string | null>(null);
@@ -97,6 +99,7 @@ const TeamWorkspacePage: React.FC = () => {
   const wsUser = {
     name: user?.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : (user?.name || user?.email || 'Bruker'),
     role: user?.profession === 'videographer' ? 'Videograf' : 'Fotograf',
+    email: user?.email || null,
     avatarUrl: user?.avatarUrl || null,
   };
 
@@ -111,6 +114,8 @@ const TeamWorkspacePage: React.FC = () => {
     media: <MediaTab projectId={projectId} />,
     leveranser: <LeveranserTab projectId={projectId} />,
     oppgaver: <OppgaverTab projectId={projectId} />,
+    avtaler: <AvtalerTab projectId={projectId} />,
+    kundevisning: <KundevisningTab projectId={projectId} />,
     team: <TeamTab projectId={projectId} />,
     chat: (
       <Box sx={{ height: 'calc(100vh - 160px)', maxWidth: 760, mx: 'auto' }}>
@@ -126,6 +131,7 @@ const TeamWorkspacePage: React.FC = () => {
       user={wsUser}
       online={online}
       onNewProject={() => setShowCreate(true)}
+      onLogout={() => { try { (logout as any)?.(); } catch { window.location.href = '/login'; } }}
       activeTab={tab}
       onTab={(key) => {
         setTab(key);
