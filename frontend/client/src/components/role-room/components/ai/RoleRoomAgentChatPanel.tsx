@@ -169,6 +169,14 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
     reset();
   }, [projectId, reset]);
 
+  // "Agent tenker …" should only show while we're waiting for the first
+  // token. Once deltas start streaming into the assistant bubble, the
+  // growing text is the progress indicator — a second spinner below it just
+  // looked like the agent was thinking *and* answering at the same time.
+  const lastMessage = messages[messages.length - 1];
+  const awaitingFirstToken =
+    pending && (!lastMessage || lastMessage.role === 'user' || !lastMessage.text);
+
   const body = useMemo(() => (
     <Stack ref={scrollRef} onScroll={handleScroll} spacing={1.6} sx={{ flex: 1, minHeight: 0, overflow: 'auto', px: { xs: 1.4, md: 2 }, pt: 1.4, pb: 1 }}>
       {trialBannerDays !== null ? (
@@ -412,7 +420,7 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
           </Box>
           );
         })}
-        {pending ? (
+        {awaitingFirstToken ? (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <CircularProgress size={18} sx={{ color: '#22d3ee' }} />
             <Typography sx={{ color: 'rgba(226,232,240,0.72)', fontSize: '0.8rem' }}>
@@ -439,7 +447,7 @@ export const RoleRoomAgentChatPanel: React.FC<RoleRoomAgentChatPanelProps> = ({
       {/* Scroll anchor — keeps the latest message/streaming delta in view. */}
       <Box ref={endRef} sx={{ height: 0 }} />
     </Stack>
-  ), [messages, pending, handleSend, handleScroll, handleRevokeConsent, projectId, lastError, threadId, startNewThread, trialBannerDays, toolFeedback]);
+  ), [messages, pending, awaitingFirstToken, handleSend, handleScroll, handleRevokeConsent, projectId, lastError, threadId, startNewThread, trialBannerDays, toolFeedback]);
 
   const composer = (
     <Box

@@ -81,6 +81,17 @@ export function useRoleRoomAgentClaude(projectId: string | null): UseRoleRoomAge
     threadIdRef.current = threadId;
   }, [threadId]);
 
+  // Abort any in-flight stream when the panel unmounts or the project
+  // changes. Without this the fetch keeps running detached, deltas keep
+  // calling setState on a gone component, and the stream races against the
+  // next project's conversation.
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+      abortRef.current = null;
+    };
+  }, [projectId]);
+
   // Load the active thread (if any) when the projectId changes, so the user
   // picks up where they left off across sessions.
   useEffect(() => {
@@ -158,7 +169,8 @@ export function useRoleRoomAgentClaude(projectId: string | null): UseRoleRoomAge
           },
         ]);
         setStreaming(true);
-        abortRef.current = new AbortController();
+        const controller = new AbortController();
+        abortRef.current = controller;
         // Tool_use events arrive between deltas and `done`; collect them so
         // both the per-message response *and* the running confirmation
         // dialogs see the same set.
@@ -262,10 +274,20 @@ export function useRoleRoomAgentClaude(projectId: string | null): UseRoleRoomAge
                 );
               },
             },
-            abortRef.current.signal,
+            controller.signal,
           );
           return finalResponse;
         } catch (err) {
+          // The stream was deliberately aborted (panel closed / project
+          // switched mid-stream). That's not an error to surface — drop the
+          // dangling placeholder and bail quietly.
+          if (
+            controller.signal.aborted ||
+            (err instanceof DOMException && err.name === 'AbortError')
+          ) {
+            setMessages((prev) => prev.filter((m) => m.id !== assistantId));
+            return null;
+          }
           if (err instanceof RoleRoomAgentClaudeError) {
             setLastError({ code: err.code, detail: err.detail });
             setMessages((prev) =>
