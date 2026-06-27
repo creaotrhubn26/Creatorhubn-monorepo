@@ -95,6 +95,7 @@ struct ProjectDetailView: View {
                     deliverablesSection
                     sendToEditorButton
                     editingJobsLink
+                    teamChatLink
                     if !model.galleries.isEmpty { galleriesSection }
                 }
             }
@@ -124,6 +125,29 @@ struct ProjectDetailView: View {
     private var sendToEditorButton: some View {
         Button { showSendToEditor = true } label: {
             Label("Send til ekstern redigerer", systemImage: "paperplane")
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.large)
+        .tint(CHTheme.accent)
+    }
+
+    /// Team-chat for prosjektet — SAMME tråd som web-workspacet (kanal
+    /// `project-<id>` i communication_channels). Meldinger fra iPad og web
+    /// synker fordi de deler kanal + backend (/api/communication/messages).
+    private var teamChatLink: some View {
+        NavigationLink {
+            ChatThreadView(conversation: Conversation(
+                id: "project-\(projectId)",
+                channelId: "project-\(projectId)",
+                name: "Team-chat",
+                lastMessage: nil,
+                provider: "internal-chat",
+                customerName: nil,
+                updatedAt: nil
+            ))
+        } label: {
+            Label("Team-chat", systemImage: "bubble.left.and.bubble.right")
                 .frame(maxWidth: .infinity)
         }
         .buttonStyle(.bordered)

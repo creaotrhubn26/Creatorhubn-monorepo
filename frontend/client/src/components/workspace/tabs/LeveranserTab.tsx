@@ -10,7 +10,7 @@ import Add from '@mui/icons-material/Add';
 import CheckCircle from '@mui/icons-material/CheckCircle';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
-import { WsCard, WsSectionTitle, WsRing, WsPills, WsTag, WsImageGrid } from '../ui';
+import { WsCard, WsSectionTitle, WsRing, WsPills, WsTag, WsImageGrid, WsModal } from '../ui';
 
 const STATUS_LABEL: Record<string, [string, string]> = {
   not_started: ['Not started', 'neutral'], in_progress: ['In progress', 'amber'],
@@ -38,6 +38,9 @@ const LeveranserTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [delivery, setDelivery] = useState<{ phase: number; signals: any } | null>(null);
   const [editingJobs, setEditingJobs] = useState<any[]>([]);
   const [revisions, setRevisions] = useState<any[]>([]);
+  const [feedback, setFeedback] = useState<any[]>([]);
+  const [activity, setActivity] = useState<any[]>([]);
+  const [fbModal, setFbModal] = useState(false);
   const load = () => {
     if (!isReal) return;
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/deliverables`)
@@ -54,6 +57,9 @@ const LeveranserTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       .catch(() => {});
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/revision-requests`)
       .then((r: any) => setRevisions(Array.isArray(r?.requests) ? r.requests : []))
+      .catch(() => {});
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/client-feedback`)
+      .then((r: any) => { setFeedback(Array.isArray(r?.feedback) ? r.feedback : []); setActivity(Array.isArray(r?.activity) ? r.activity : []); })
       .catch(() => {});
   };
   const EJ_TONE: Record<string, string> = { requested: 'amber', pending: 'amber', accepted: 'blue', in_progress: 'blue', delivered: 'green', completed: 'green', paid: 'green' };
@@ -245,22 +251,40 @@ const LeveranserTab: React.FC<{ projectId: string }> = ({ projectId }) => {
             ); })()}
         </WsCard>
         <WsCard sx={{ mb: 2 }}>
-          <WsSectionTitle title="Client feedback" action={<Button size="small" sx={{ color: ws.accent, textTransform: 'none' }}>Se alle</Button>} />
-          <WsTag label="👍 Looks great!" tone="green" />
-          <Box sx={{ mt: 1, p: 1.25, borderRadius: 2, bgcolor: ws.panelInput }}>
-            <Typography sx={{ fontSize: 12.5, color: ws.text }}>Amazing work! We love the vibe 😍</Typography>
-            <Typography sx={{ fontSize: 11, color: ws.textFaint, mt: 0.5 }}>– Sara · 16. sep 2024</Typography>
-          </Box>
+          <WsSectionTitle title="Client feedback" action={<Button size="small" onClick={() => setFbModal(true)} sx={{ color: ws.accent, textTransform: 'none' }}>Se alle</Button>} />
+          {(isReal ? feedback : [{ clientName: 'Sara', comment: 'Amazing work! We love the vibe 😍', at: '2024-09-16' }]).length === 0 ? (
+            <Typography sx={{ fontSize: 12, color: ws.textDim }}>Ingen klient-tilbakemeldinger ennå.</Typography>
+          ) : (isReal ? feedback : [{ clientName: 'Sara', comment: 'Amazing work! We love the vibe 😍', at: '2024-09-16' }]).slice(0, 4).map((f, i) => (
+            <Box key={i} sx={{ mt: i ? 1 : 0, p: 1.25, borderRadius: 2, bgcolor: ws.panelInput }}>
+              <Typography sx={{ fontSize: 12.5, color: ws.text }}>{f.comment}</Typography>
+              <Typography sx={{ fontSize: 11, color: ws.textFaint, mt: 0.5 }}>– {f.clientName || 'Klient'}{f.at ? ` · ${new Date(f.at).toLocaleDateString('nb-NO')}` : ''}</Typography>
+            </Box>
+          ))}
         </WsCard>
         <WsCard>
           <WsSectionTitle title="Activity" />
           <Stack spacing={1.25}>
-            {[['Julie', 'lastet opp versjon 1', '16. sep'], ['Thomas', 'la til et notat', '15. sep'], ['Marcus', 'markerte task som ferdig', '14. sep']].map(([who, what, t], i) => (
-              <Stack key={i} direction="row" spacing={1}><Avatar sx={{ width: 24, height: 24, fontSize: 10 }}>{who[0]}</Avatar><Box sx={{ flex: 1 }}><Typography sx={{ fontSize: 12 }}><b>{who}</b> {what}</Typography><Typography sx={{ fontSize: 10.5, color: ws.textFaint }}>{t}</Typography></Box></Stack>
+            {(isReal && activity.length ? activity.map((a) => [a.who, a.what, a.at ? new Date(a.at).toLocaleDateString('nb-NO') : '']) : [['Julie', 'lastet opp versjon 1', '16. sep'], ['Thomas', 'la til et notat', '15. sep'], ['Marcus', 'markerte task som ferdig', '14. sep']]).map(([who, what, t], i) => (
+              <Stack key={i} direction="row" spacing={1}><Avatar sx={{ width: 24, height: 24, fontSize: 10 }}>{(who || '?')[0]}</Avatar><Box sx={{ flex: 1 }}><Typography sx={{ fontSize: 12 }}><b>{who}</b> {what}</Typography><Typography sx={{ fontSize: 10.5, color: ws.textFaint }}>{t}</Typography></Box></Stack>
             ))}
           </Stack>
         </WsCard>
       </Box>
+
+      <WsModal open={fbModal} onClose={() => setFbModal(false)} title="All klient-feedback" maxWidth="sm">
+        {feedback.length === 0 ? (
+          <Typography sx={{ fontSize: 13, color: ws.textDim }}>Ingen klient-tilbakemeldinger ennå.</Typography>
+        ) : (
+          <Stack spacing={1.25}>
+            {feedback.map((f, i) => (
+              <Box key={i} sx={{ p: 1.5, borderRadius: 2, bgcolor: ws.panelInput }}>
+                <Typography sx={{ fontSize: 13, color: ws.text }}>{f.comment}</Typography>
+                <Typography sx={{ fontSize: 11, color: ws.textFaint, mt: 0.5 }}>– {f.clientName || 'Klient'}{f.at ? ` · ${new Date(f.at).toLocaleString('nb-NO')}` : ''}</Typography>
+              </Box>
+            ))}
+          </Stack>
+        )}
+      </WsModal>
     </Stack>
   );
 };

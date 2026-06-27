@@ -3,10 +3,21 @@
  * ui.tsx — delte byggeklosser for Team Workspace-tabbene (dark CreatorHub).
  */
 import React, { useRef, useState } from 'react';
-import { Box, Stack, Typography, IconButton } from '@mui/material';
+import { Box, Stack, Typography, IconButton, Dialog, DialogTitle, DialogContent } from '@mui/material';
 import AddPhotoAlternate from '@mui/icons-material/AddPhotoAlternate';
 import Close from '@mui/icons-material/Close';
 import { ws } from './workspaceTheme';
+
+/** Gjenbrukbar modal (for «Se alle» / detalj-visninger) */
+export const WsModal: React.FC<{ open: boolean; onClose: () => void; title: string; children: React.ReactNode; maxWidth?: any }> = ({ open, onClose, title, children, maxWidth = 'md' }) => (
+  <Dialog open={open} onClose={onClose} fullWidth maxWidth={maxWidth}>
+    <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      {title}
+      <IconButton onClick={onClose} size="small"><Close fontSize="small" /></IconButton>
+    </DialogTitle>
+    <DialogContent dividers>{children}</DialogContent>
+  </Dialog>
+);
 
 export const WsCard: React.FC<{ children: React.ReactNode; sx?: any; pad?: number }> = ({ children, sx, pad = 2 }) => (
   <Box sx={{
@@ -131,8 +142,9 @@ export const WsImageGrid: React.FC<{
   allowAdd?: boolean;
   onUpload?: (file: File) => Promise<WsImageItem | void> | void;
   onRemove?: (id: string) => void;
+  onSelect?: (item: WsImageItem) => void;
   extraLabel?: string; // f.eks. "+12"
-}> = ({ images = [], columns = 3, ratio = '1 / 1', addLabel = 'Legg til bilde', allowAdd = true, onUpload, onRemove, extraLabel }) => {
+}> = ({ images = [], columns = 3, ratio = '1 / 1', addLabel = 'Legg til bilde', allowAdd = true, onUpload, onRemove, onSelect, extraLabel }) => {
   const [items, setItems] = useState<WsImageItem[]>(images);
   const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -162,8 +174,8 @@ export const WsImageGrid: React.FC<{
   return (
     <Box sx={{ display: 'grid', gridTemplateColumns: `repeat(${columns}, 1fr)`, gap: 1 }}>
       {items.map((im, i) => (
-        <Box key={im.id} sx={{ aspectRatio: ratio, borderRadius: `${ws.radiusSm}px`, position: 'relative', overflow: 'hidden', border: `1px solid ${ws.borderSoft}`, bgcolor: ws.panelInput,
-          background: im.url ? `center/cover no-repeat url(${im.url})` : 'linear-gradient(135deg, rgba(255,140,0,0.16), rgba(255,255,255,0.05))' }}>
+        <Box key={im.id} onClick={() => onSelect && onSelect(im)} sx={{ aspectRatio: ratio, borderRadius: `${ws.radiusSm}px`, position: 'relative', overflow: 'hidden', border: `1px solid ${ws.borderSoft}`, bgcolor: ws.panelInput, cursor: onSelect ? 'pointer' : 'default',
+          background: im.url ? `center/cover no-repeat url(${im.url})` : 'linear-gradient(135deg, rgba(255,140,0,0.16), rgba(255,255,255,0.05))', '&:hover': onSelect ? { outline: `2px solid ${ws.accentBorder}` } : undefined }}>
           {im.flag && <Box sx={{ position: 'absolute', top: 5, left: 5, width: 18, height: 18, borderRadius: '50%', bgcolor: ws.accent, color: ws.accentContrast, fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>★</Box>}
           {typeof im.rating === 'number' && im.rating > 0 && (
             <Box sx={{ position: 'absolute', top: 5, right: 5, px: 0.5, borderRadius: 1, bgcolor: 'rgba(0,0,0,0.55)', color: '#ffd24a', fontSize: 10, fontWeight: 700 }}>{'★'.repeat(Math.min(5, im.rating))}</Box>
@@ -196,7 +208,7 @@ export const WsImageGrid: React.FC<{
 };
 
 /** Enkel tabell på mørk flate */
-export const WsTable: React.FC<{ columns: string[]; rows: React.ReactNode[][]; widths?: string[] }> = ({ columns, rows, widths }) => (
+export const WsTable: React.FC<{ columns: string[]; rows: React.ReactNode[][]; widths?: string[]; onRowClick?: (i: number) => void }> = ({ columns, rows, widths, onRowClick }) => (
   <Box sx={{ overflowX: 'auto' }}>
     <Box sx={{ display: 'table', width: '100%', borderCollapse: 'collapse' }}>
       <Box sx={{ display: 'table-header-group' }}>
@@ -208,7 +220,7 @@ export const WsTable: React.FC<{ columns: string[]; rows: React.ReactNode[][]; w
       </Box>
       <Box sx={{ display: 'table-row-group' }}>
         {rows.map((r, ri) => (
-          <Box key={ri} sx={{ display: 'table-row', '&:hover': { bgcolor: 'rgba(255,255,255,0.02)' } }}>
+          <Box key={ri} onClick={() => onRowClick && onRowClick(ri)} sx={{ display: 'table-row', cursor: onRowClick ? 'pointer' : 'default', '&:hover': { bgcolor: onRowClick ? ws.accentSoft : 'rgba(255,255,255,0.02)' } }}>
             {r.map((cell, ci) => (
               <Box key={ci} sx={{ display: 'table-cell', px: 1.25, py: 1, fontSize: 13, color: ws.text, borderBottom: `1px solid ${ws.borderSoft}`, verticalAlign: 'middle' }}>{cell}</Box>
             ))}

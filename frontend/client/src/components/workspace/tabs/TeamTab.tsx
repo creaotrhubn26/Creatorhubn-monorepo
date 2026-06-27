@@ -42,6 +42,14 @@ const TeamTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [real, setReal] = useState<any[] | null>(null);
   const [isOwner, setIsOwner] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [boardTasks, setBoardTasks] = useState<any[] | null>(null);
+  const [milestones, setMilestones] = useState<any[] | null>(null);
+  const isRealP = projectId && projectId !== 'sample';
+  useEffect(() => {
+    if (!isRealP) return;
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/board-tasks`).then((r: any) => setBoardTasks(Array.isArray(r?.tasks) ? r.tasks : [])).catch(() => {});
+    apiRequest(`/api/photographer/projects/${encodeURIComponent(projectId)}/milestones`).then((r: any) => setMilestones(Array.isArray(r?.milestones) ? r.milestones : [])).catch(() => {});
+  }, [projectId, isRealP]);
 
   const load = async () => {
     try {
@@ -62,6 +70,24 @@ const TeamTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [projectId]);
 
   const displayMembers = real || MEMBERS;
+
+  // Oppgaver (høyre) fra ekte board-tasks.
+  const taskList = (boardTasks && boardTasks.length)
+    ? boardTasks.slice(0, 6).map((t) => [t.title, '', t.status === 'done' ? 'Gjort' : t.status === 'in_progress' ? 'Pågår' : 'Venter', t.status === 'done' ? 'green' : t.status === 'in_progress' ? 'blue' : 'amber'])
+    : TASKS;
+  // Kommende milepæler fra ekte milestones.
+  const MO = ['JAN', 'FEB', 'MAR', 'APR', 'MAI', 'JUN', 'JUL', 'AUG', 'SEP', 'OKT', 'NOV', 'DES'];
+  const upcoming = (milestones || []).filter((m: any) => { const d = m.dueDate || m.scheduledDate; return d && new Date(d) >= new Date(Date.now() - 864e5); }).slice(0, 3);
+  const msList = upcoming.length
+    ? upcoming.map((m: any) => { const d = new Date(m.dueDate || m.scheduledDate); return [String(d.getDate()), MO[d.getMonth()], m.title, d.toLocaleDateString('nb-NO', { weekday: 'long', day: 'numeric', month: 'short' })]; })
+    : [['12', 'SEP', 'Location scout', 'Torsdag 12. sep 10:00'], ['14', 'SEP', 'Produksjonsdag', 'Lørdag 14. sep 09:00'], ['21', 'SEP', 'Teaser levering', 'Lørdag 21. sep 18:00']];
+
+  // Rolleoversikt fra ekte medlemmer.
+  const ROLE_COLORS: Record<string, string> = { Fotograf: ws.roleFoto, Eier: ws.roleFoto, Videograf: ws.roleVideo, Editor: ws.blue, Lydtekniker: ws.roleLyd, Lyd: ws.roleLyd, Assistent: ws.roleAnnet };
+  const roleCounts: Record<string, number> = {};
+  displayMembers.forEach((m: any) => { const k = m.role || 'Medlem'; roleCounts[k] = (roleCounts[k] || 0) + 1; });
+  const teamRoles = real ? Object.entries(roleCounts).map(([n, v]) => [n, v, ROLE_COLORS[n] || ws.roleAnnet]) : ROLES;
+  const teamTotalRoles = real ? displayMembers.length : totalRoles;
 
   return (
     <Stack direction="row" spacing={2.5} sx={{ alignItems: 'flex-start' }}>
@@ -115,12 +141,12 @@ const TeamTab: React.FC<{ projectId: string }> = ({ projectId }) => {
             <Stack direction="row" spacing={1.5} alignItems="center">
               <Box sx={{ position: 'relative', width: 84, height: 84 }}>
                 <svg width={84} height={84} viewBox="0 0 84 84">
-                  {(() => { let a = 0; const r = 34, cx = 42, cy = 42, C = 2 * Math.PI * r; return ROLES.map(([n, v, c], i) => { const frac = v / totalRoles; const dash = C * frac; const el = <circle key={i} cx={cx} cy={cy} r={r} fill="none" stroke={c} strokeWidth={11} strokeDasharray={`${dash} ${C - dash}`} strokeDashoffset={-C * (a / 360)} transform={`rotate(-90 ${cx} ${cy})`} />; a += frac * 360; return el; }); })()}
+                  {(() => { let a = 0; const r = 34, cx = 42, cy = 42, C = 2 * Math.PI * r; return teamRoles.map(([n, v, c], i) => { const frac = v / (teamTotalRoles || 1); const dash = C * frac; const el = <circle key={i} cx={cx} cy={cy} r={r} fill="none" stroke={c} strokeWidth={11} strokeDasharray={`${dash} ${C - dash}`} strokeDashoffset={-C * (a / 360)} transform={`rotate(-90 ${cx} ${cy})`} />; a += frac * 360; return el; }); })()}
                 </svg>
-                <Box sx={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}><Typography sx={{ fontSize: 18, fontWeight: 800 }}>{totalRoles}</Typography><Typography sx={{ fontSize: 9, color: ws.textDim }}>Totalt</Typography></Box>
+                <Box sx={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}><Typography sx={{ fontSize: 18, fontWeight: 800 }}>{teamTotalRoles}</Typography><Typography sx={{ fontSize: 9, color: ws.textDim }}>Totalt</Typography></Box>
               </Box>
               <Stack spacing={0.4} sx={{ flex: 1 }}>
-                {ROLES.map(([n, v, c]) => <Stack key={n} direction="row" spacing={1} alignItems="center"><Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: c }} /><Typography sx={{ fontSize: 11.5, flex: 1 }}>{n}</Typography><Typography sx={{ fontSize: 11.5, fontWeight: 700 }}>{v}</Typography></Stack>)}
+                {teamRoles.map(([n, v, c]) => <Stack key={n} direction="row" spacing={1} alignItems="center"><Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: c }} /><Typography sx={{ fontSize: 11.5, flex: 1 }}>{n}</Typography><Typography sx={{ fontSize: 11.5, fontWeight: 700 }}>{v}</Typography></Stack>)}
               </Stack>
             </Stack>
           </WsCard>
@@ -166,7 +192,7 @@ const TeamTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         <WsCard sx={{ mb: 2 }}>
           <WsSectionTitle title="Oppgaver" action={<Button size="small" sx={{ color: ws.accent, textTransform: 'none' }}>Se alle</Button>} />
           <Stack spacing={1}>
-            {TASKS.map(([t, who, st, tone]) => (
+            {taskList.map(([t, who, st, tone]) => (
               <Stack key={t} direction="row" alignItems="center" spacing={1}><Box sx={{ width: 14, height: 14, borderRadius: '50%', border: `2px solid ${ws.textFaint}` }} /><Typography sx={{ fontSize: 12.5, flex: 1 }}>{t}</Typography><Typography sx={{ fontSize: 11, color: ws.textFaint }}>{who}</Typography><WsTag label={st} tone={tone} /></Stack>
             ))}
           </Stack>
@@ -174,7 +200,7 @@ const TeamTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         <WsCard>
           <WsSectionTitle title="Kommende milepæler" action={<Button size="small" sx={{ color: ws.accent, textTransform: 'none' }}>Se alle</Button>} />
           <Stack spacing={1.25}>
-            {[['12', 'SEP', 'Location scout', 'Torsdag 12. sep 10:00'], ['14', 'SEP', 'Produksjonsdag', 'Lørdag 14. sep 09:00'], ['21', 'SEP', 'Teaser levering', 'Lørdag 21. sep 18:00']].map(([d, mo, t, sub]) => (
+            {msList.map(([d, mo, t, sub]) => (
               <Stack key={t} direction="row" spacing={1.25} alignItems="center">
                 <Box sx={{ width: 40, textAlign: 'center', bgcolor: ws.accentSoft, borderRadius: 1.5, py: 0.5 }}><Typography sx={{ fontSize: 15, fontWeight: 800, color: ws.accent, lineHeight: 1 }}>{d}</Typography><Typography sx={{ fontSize: 9, color: ws.accent }}>{mo}</Typography></Box>
                 <Box><Typography sx={{ fontSize: 12.5, fontWeight: 700 }}>{t}</Typography><Typography sx={{ fontSize: 11, color: ws.textFaint }}>{sub}</Typography></Box>

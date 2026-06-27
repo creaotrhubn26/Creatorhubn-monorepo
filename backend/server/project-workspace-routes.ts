@@ -181,6 +181,58 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     catch (e) { console.error("DELETE board-tasks", e); res.status(500).json({ error: "failed" }); }
   });
 
+  // ─────────── Klient-feedback + aktivitet (galleri-kommentarer) ───────────
+  app.get("/api/projects/:projectId/client-feedback", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const g = await pool.query(`SELECT id FROM photographer_client_galleries WHERE project_id = $1`, [req.params.projectId]).catch(() => ({ rows: [] }));
+      const ids = g.rows.map((x: any) => x.id);
+      if (ids.length === 0) return res.json({ feedback: [], activity: [] });
+      const cm = await pool.query(
+        `SELECT client_name, comment, comment_type, created_at FROM client_image_comments
+          WHERE gallery_id = ANY($1::uuid[]) ORDER BY created_at DESC LIMIT 20`,
+        [ids],
+      ).catch(() => ({ rows: [] }));
+      const feedback = cm.rows.map((c: any) => ({ clientName: c.client_name, comment: c.comment, type: c.comment_type, at: c.created_at }));
+      // Aktivitet = nylige kommentarer + innsendte utvalg.
+      const sub = await pool.query(
+        `SELECT count(*)::int n, max(submitted_at) AS at FROM client_image_selections
+          WHERE gallery_id = ANY($1::uuid[]) AND submitted_at IS NOT NULL`,
+        [ids],
+      ).catch(() => ({ rows: [{ n: 0, at: null }] }));
+      const activity = [
+        ...feedback.slice(0, 5).map((f: any) => ({ who: f.clientName || 'Klient', what: 'la igjen en kommentar', at: f.at })),
+      ];
+      if (sub.rows[0]?.n > 0) activity.unshift({ who: 'Klient', what: `sendte inn ${sub.rows[0].n} utvalgte bilder`, at: sub.rows[0].at });
+      res.json({ feedback, activity });
+    } catch (e) { console.error("GET client-feedback", e); res.json({ feedback: [], activity: [] }); }
+  });
+
+  // ─────────── Moodboard-meta (stil/palett/notater) ───────────
+  app.get("/api/projects/:projectId/moodboard-meta", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await pool.query(`CREATE TABLE IF NOT EXISTS project_moodboard_meta (project_id VARCHAR(64) PRIMARY KEY, style TEXT, palette JSONB, notes JSONB, must_capture JSONB, client_approved VARCHAR(20), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`).catch(() => undefined);
+      const r = await pool.query(`SELECT style, palette, notes, must_capture, client_approved FROM project_moodboard_meta WHERE project_id = $1`, [req.params.projectId]).catch(() => ({ rows: [] }));
+      const m = r.rows[0];
+      res.json({ meta: m ? { style: m.style, palette: m.palette || [], notes: m.notes || [], mustCapture: m.must_capture || [], clientApproved: m.client_approved } : null });
+    } catch (e) { console.error("GET moodboard-meta", e); res.json({ meta: null }); }
+  });
+  app.put("/api/projects/:projectId/moodboard-meta", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await pool.query(`CREATE TABLE IF NOT EXISTS project_moodboard_meta (project_id VARCHAR(64) PRIMARY KEY, style TEXT, palette JSONB, notes JSONB, must_capture JSONB, client_approved VARCHAR(20), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`).catch(() => undefined);
+      const b = req.body ?? {};
+      await pool.query(
+        `INSERT INTO project_moodboard_meta (project_id, style, palette, notes, must_capture, client_approved, updated_at)
+         VALUES ($1,$2,$3::jsonb,$4::jsonb,$5::jsonb,$6,NOW())
+         ON CONFLICT (project_id) DO UPDATE SET style=EXCLUDED.style, palette=EXCLUDED.palette, notes=EXCLUDED.notes, must_capture=EXCLUDED.must_capture, client_approved=EXCLUDED.client_approved, updated_at=NOW()`,
+        [req.params.projectId, b.style || null, JSON.stringify(b.palette || []), JSON.stringify(b.notes || []), JSON.stringify(b.mustCapture || []), b.clientApproved || null],
+      );
+      res.json({ success: true });
+    } catch (e) { console.error("PUT moodboard-meta", e); res.status(500).json({ error: "failed" }); }
+  });
+
   // ─────────── Delivery-fase utledet fra EKTE showcase-tilstand ───────────
   // Stepperen (Editing→Internal Review→Client Review→Revisions→Approved) drives
   // av galleriets livssyklus + klient-aktivitet, ikke manuelt:
@@ -445,6 +497,59 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     } catch (e) { console.error("GET project galleries", e); res.json({ galleries: [] }); }
   });
 
+  // ─────────── Media-mappestruktur (maler + egne) ───────────
+  // Maler matcher One Desk/iPad-ingest-strukturen. project_id-scopet.
+  const FOLDER_TEMPLATES: Record<string, { label: string; folders: string[] }> = {
+    wedding: { label: 'Bryllup (foto + video)', folders: ['01_Brief', '02_Shotlists', '03_Photo_RAW', '04_Video_A_Cam', '05_Video_B_Cam', '06_Drone', '07_Audio', '08_Selects', '09_Client_Review', '10_Final_Delivery', 'Archive'] },
+    portrait: { label: 'Portrett / Foto', folders: ['01_Brief', '02_RAW', '03_Selects', '04_Edited', '05_Client_Review', '06_Final'] },
+    commercial: { label: 'Kommersiell', folders: ['01_Brief', '02_RAW', '03_Video', '04_Audio', '05_Graphics', '06_Selects', '07_Client_Review', '08_Final'] },
+  };
+  async function ensureFoldersTable() {
+    await pool.query(`CREATE TABLE IF NOT EXISTS project_media_folders (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), project_id VARCHAR(64) NOT NULL, name VARCHAR(120) NOT NULL, order_index INTEGER NOT NULL DEFAULT 0, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`).catch(() => undefined);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_pmf_project ON project_media_folders (project_id, order_index)`).catch(() => undefined);
+  }
+
+  app.get("/api/projects/:projectId/media-folders", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureFoldersTable();
+      const r = await pool.query(`SELECT id, name, order_index FROM project_media_folders WHERE project_id = $1 ORDER BY order_index, name`, [req.params.projectId]);
+      res.json({ folders: r.rows.map((f: any) => ({ id: f.id, name: f.name })), templates: Object.entries(FOLDER_TEMPLATES).map(([key, t]) => ({ key, label: t.label, count: t.folders.length })) });
+    } catch (e) { console.error("GET media-folders", e); res.json({ folders: [], templates: [] }); }
+  });
+  app.post("/api/projects/:projectId/media-folders", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureFoldersTable();
+      const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+      if (!name) return res.status(400).json({ error: "name_required" });
+      const r = await pool.query(`INSERT INTO project_media_folders (project_id, name, order_index) VALUES ($1,$2,COALESCE($3,999)) RETURNING id, name`, [req.params.projectId, name, req.body?.orderIndex ?? null]);
+      res.status(201).json({ id: r.rows[0].id, name: r.rows[0].name });
+    } catch (e) { console.error("POST media-folders", e); res.status(500).json({ error: "failed" }); }
+  });
+  app.post("/api/projects/:projectId/media-folders/apply-template", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureFoldersTable();
+      const tpl = FOLDER_TEMPLATES[String(req.body?.template || "")];
+      if (!tpl) return res.status(400).json({ error: "unknown_template" });
+      for (let i = 0; i < tpl.folders.length; i++) {
+        await pool.query(
+          `INSERT INTO project_media_folders (project_id, name, order_index)
+           SELECT $1, $2, $3 WHERE NOT EXISTS (SELECT 1 FROM project_media_folders WHERE project_id = $1 AND name = $2)`,
+          [req.params.projectId, tpl.folders[i], i],
+        );
+      }
+      const r = await pool.query(`SELECT id, name FROM project_media_folders WHERE project_id = $1 ORDER BY order_index, name`, [req.params.projectId]);
+      res.json({ folders: r.rows.map((f: any) => ({ id: f.id, name: f.name })) });
+    } catch (e) { console.error("apply-template", e); res.status(500).json({ error: "failed" }); }
+  });
+  app.delete("/api/projects/:projectId/media-folders/:id", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try { await ensureFoldersTable(); await pool.query(`DELETE FROM project_media_folders WHERE id = $1 AND project_id = $2`, [req.params.id, req.params.projectId]); res.json({ success: true }); }
+    catch (e) { console.error("DELETE media-folders", e); res.status(500).json({ error: "failed" }); }
+  });
+
   // ─────────── Media — capture_assets fra B2 (presigned thumbnails) ───────────
   // Leser prosjektets capture-session(er) → assets → presigned preview_key-URL.
   // Dette er det EKTE mediabiblioteket (RAW/originaler skutt på iPad, lagret i B2).
@@ -498,6 +603,33 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
         },
       });
     } catch (e) { console.error("GET media", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  // ─────────── Team Sync % (ekte readiness fra board + sjekkliste + presence) ───
+  app.get("/api/projects/:projectId/team-sync", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureSchema(pool);
+      const pid = req.params.projectId;
+      const [board, checks, pres, members] = await Promise.all([
+        pool.query(`SELECT count(*)::int total, count(*) FILTER (WHERE status='done')::int done FROM project_board_tasks WHERE project_id=$1`, [pid]).catch(() => ({ rows: [{ total: 0, done: 0 }] })),
+        pool.query(`SELECT count(*)::int total, count(*) FILTER (WHERE checked)::int done FROM project_checklist_items WHERE project_id=$1`, [pid]).catch(() => ({ rows: [{ total: 0, done: 0 }] })),
+        pool.query(`SELECT count(*) FILTER (WHERE pr.last_seen_at > NOW() - INTERVAL '90 seconds')::int online FROM project_team_members m LEFT JOIN user_presence pr ON pr.user_id=m.user_id WHERE m.project_id=$1 AND m.status='active' AND m.deactivated_at IS NULL`, [pid]).catch(() => ({ rows: [{ online: 0 }] })),
+        pool.query(`SELECT count(*)::int n FROM project_team_members WHERE project_id=$1 AND status='active' AND deactivated_at IS NULL`, [pid]).catch(() => ({ rows: [{ n: 0 }] })),
+      ]);
+      const b = board.rows[0], c = checks.rows[0];
+      const boardPct = b.total > 0 ? b.done / b.total : null;
+      const checkPct = c.total > 0 ? c.done / c.total : null;
+      const parts = [boardPct, checkPct].filter((x) => x != null);
+      const pct = parts.length ? Math.round((parts.reduce((s: number, x: number) => s + x, 0) / parts.length) * 100) : 0;
+      res.json({
+        pct, online: pres.rows[0]?.online || 0, teamSize: (members.rows[0]?.n || 0) + 1,
+        readiness: [
+          { label: "Oppgaver fullført", done: b.total > 0 && b.done === b.total, value: `${b.done}/${b.total}` },
+          { label: "Sjekkliste klar", done: c.total > 0 && c.done === c.total, value: `${c.done}/${c.total}` },
+        ],
+      });
+    } catch (e) { console.error("GET team-sync", e); res.json({ pct: 0, online: 0, readiness: [] }); }
   });
 
   // ─────────── Capture & backup-status (iPad CaptureApp + One Desk) ───────────
