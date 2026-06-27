@@ -4,12 +4,18 @@
  * Leveranse-liste + leveranse-detalj (video/preview opplastbar + progress-stepper
  * + sjekkliste) + Delivery progress / Client feedback / Activity.
  */
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Box, Stack, Typography, Button, Avatar } from '@mui/material';
 import Add from '@mui/icons-material/Add';
 import CheckCircle from '@mui/icons-material/CheckCircle';
+import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
 import { WsCard, WsSectionTitle, WsRing, WsPills, WsTag, WsImageGrid } from '../ui';
+
+const STATUS_LABEL: Record<string, [string, string]> = {
+  not_started: ['Not started', 'neutral'], in_progress: ['In progress', 'amber'],
+  completed: ['Completed', 'green'], delivered: ['Delivered', 'green'], archived: ['Archived', 'neutral'],
+};
 
 const DELIVERABLES = [
   ['Teaser Trailer (60s)', 'Video', 'In progress', 'amber', '18. sep'],
@@ -23,8 +29,31 @@ const DELIVERABLES = [
 const STEPS = ['Editing', 'Internal Review', 'Client Review', 'Revisions', 'Approved'];
 const CHECKLIST = [['Rough cut completed', true], ['Audio mix complete', true], ['Color grading', false], ['Titles & graphics', false], ['Final export', false], ['QC & delivery', false]];
 
-const LeveranserTab: React.FC<{ projectId: string }> = () => {
+const LeveranserTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [filter, setFilter] = useState('planned');
+  const [real, setReal] = useState<any[] | null>(null);
+  const isReal = projectId && projectId !== 'sample';
+
+  const load = () => {
+    if (!isReal) return;
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/deliverables`)
+      .then((r: any) => setReal(Array.isArray(r?.deliverables) ? r.deliverables : []))
+      .catch(() => {});
+  };
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [projectId]);
+
+  const addDeliverable = async () => {
+    if (!isReal) return;
+    const title = window.prompt('Ny leveranse (tittel):'); if (!title) return;
+    const type = window.prompt('Type (f.eks. Video / Online gallery):') || null;
+    try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/deliverables`, { method: 'POST', body: { title: title.trim(), type } }); load(); }
+    catch (e: any) { window.alert(e?.message || 'Kunne ikke legge til'); }
+  };
+
+  const list = (real && real.length > 0)
+    ? real.map((d: any) => [d.title, d.type || '', ...(STATUS_LABEL[d.status] || ['—', 'neutral']), d.dueDate ? new Date(d.dueDate).toLocaleDateString('nb-NO', { day: 'numeric', month: 'short' }) : '—', false])
+    : DELIVERABLES;
+
   return (
     <Stack direction="row" spacing={2} sx={{ alignItems: 'flex-start' }}>
       {/* Liste */}
@@ -32,11 +61,11 @@ const LeveranserTab: React.FC<{ projectId: string }> = () => {
         <WsCard>
           <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
             <Typography sx={{ fontSize: 15, fontWeight: 700 }}>Deliverables</Typography>
-            <Button size="small" variant="contained" startIcon={<Add sx={{ fontSize: 15 }} />} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Ny</Button>
+            <Button size="small" variant="contained" onClick={addDeliverable} disabled={!isReal} startIcon={<Add sx={{ fontSize: 15 }} />} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Ny</Button>
           </Stack>
           <Box sx={{ mb: 1.5 }}><WsPills items={[{ key: 'planned', label: 'Planned' }, { key: 'progress', label: 'In progress' }, { key: 'delivered', label: 'Delivered' }]} value={filter} onChange={setFilter} /></Box>
           <Stack spacing={0.75}>
-            {DELIVERABLES.map(([n, type, st, tone, due, active], i) => (
+            {list.map(([n, type, st, tone, due, active], i) => (
               <Box key={i} sx={{ p: 1.25, borderRadius: 2, cursor: 'pointer', border: `1px solid ${active ? ws.accentBorder : ws.borderSoft}`, bgcolor: active ? ws.accentSoft : 'transparent' }}>
                 <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
                   <Box><Typography sx={{ fontSize: 13, fontWeight: 700 }}>{n}</Typography><Typography sx={{ fontSize: 11, color: ws.textFaint }}>{type}</Typography></Box>

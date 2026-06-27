@@ -86,16 +86,69 @@ function addMinutes(hhmm: string, mins: number): string {
 const OversiktTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [progress, setProgress] = useState<{ pct: number; done: number; total: number } | null>(null);
   const [events, setEvents] = useState<any[] | null>(null);
+  const [tasks, setTasks] = useState<any[] | null>(null);
+  const [checks, setChecks] = useState<any[] | null>(null);
+
+  const isReal = projectId && projectId !== 'sample';
+
+  const loadTasks = () => {
+    if (!isReal) return;
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/board-tasks`)
+      .then((r: any) => { setTasks(Array.isArray(r?.tasks) ? r.tasks : []); })
+      .catch(() => {});
+  };
 
   useEffect(() => {
-    if (!projectId || projectId === 'sample') return;
+    if (!isReal) return;
     apiRequest(`/api/photographer/projects/${encodeURIComponent(projectId)}/milestones`)
       .then((r: any) => { if (r) setProgress({ pct: Math.round(r.totalProgress || 0), done: r.completedCount || 0, total: (r.milestones || []).length }); })
       .catch(() => {});
     apiRequest(`/api/wedding/timeline/project/${encodeURIComponent(projectId)}`)
       .then((r: any) => { const evs = Array.isArray(r?.events) ? r.events : []; if (evs.length) setEvents(evs); })
       .catch(() => {});
+    loadTasks();
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/checklist`)
+      .then((r: any) => { setChecks(Array.isArray(r?.items) ? r.items : []); })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
+
+  const toggleCheck = async (id: string, checked: boolean) => {
+    if (!isReal) return;
+    setChecks((p) => (p || []).map((c) => (c.id === id ? { ...c, checked: !checked } : c)));
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/checklist/${id}`, { method: 'PATCH', body: { checked: !checked } }).catch(() => {});
+  };
+  const addCheck = async () => {
+    if (!isReal) return;
+    const label = window.prompt('Nytt sjekkpunkt:'); if (!label) return;
+    try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/checklist`, { method: 'POST', body: { label: label.trim() } }); apiRequest(`/api/projects/${encodeURIComponent(projectId)}/checklist`).then((r: any) => setChecks(r?.items || [])); }
+    catch (e: any) { window.alert(e?.message || 'Kunne ikke legge til'); }
+  };
+  const checkItems = (checks && checks.length > 0) ? checks.map((c) => ({ id: c.id, t: c.label, ok: c.checked, real: true })) : CHECKLIST;
+
+  const toggleTask = async (id: string, status: string) => {
+    if (!isReal) return;
+    setTasks((p) => (p || []).map((t) => (t.id === id ? { ...t, status: status === 'done' ? 'todo' : 'done' } : t)));
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/board-tasks/${id}`, { method: 'PATCH', body: { status: status === 'done' ? 'todo' : 'done' } }).catch(loadTasks);
+  };
+  const addTask = async (crewRole: string) => {
+    if (!isReal) return;
+    const title = window.prompt('Ny oppgave:'); if (!title) return;
+    try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/board-tasks`, { method: 'POST', body: { title: title.trim(), crewRole } }); loadTasks(); }
+    catch (e: any) { window.alert(e?.message || 'Kunne ikke legge til'); }
+  };
+
+  // Bygg de 4 rolle-kolonnene fra ekte tasks, ellers sample.
+  const COLS = [
+    { role: 'Fotograf (Daniel)', icon: '📷', crew: 'fotograf' },
+    { role: 'Videograf (Emma)', icon: '🎥', crew: 'videograf' },
+    { role: 'Begge', icon: '👥', crew: 'begge' },
+    { role: 'Editor (Lukas)', icon: '🎬', crew: 'editor' },
+  ];
+  const realBoard = tasks && tasks.length > 0
+    ? COLS.map((c) => ({ ...c, tasks: tasks.filter((t) => (t.crewRole || 'begge') === c.crew).map((t) => ({ id: t.id, t: t.title, time: t.timeLabel || '', done: t.status === 'done', real: true })) }))
+    : null;
+  const boardCols = realBoard || BOARD.map((c, i) => ({ role: c.role, icon: c.icon, crew: COLS[i]?.crew || 'begge', tasks: c.tasks }));
 
   const fremdriftPct = progress ? progress.pct : 68;
   const fremdriftText = progress ? `${progress.done} av ${progress.total} oppgaver fullført` : '14 av 21 oppgaver fullført';
@@ -163,7 +216,7 @@ const OversiktTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         <WsCard sx={{ mb: 2 }}>
           <WsSectionTitle icon={<ViewKanban sx={{ fontSize: 18, color: ws.textDim }} />} title="Samkjøringsboard" />
           <Stack direction="row" spacing={1.5} sx={{ overflowX: 'auto' }}>
-            {BOARD.map((col) => (
+            {boardCols.map((col) => (
               <Box key={col.role} sx={{ minWidth: 220, flex: 1 }}>
                 <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 1 }}>
                   <Typography sx={{ fontSize: 14 }}>{col.icon}</Typography>
@@ -171,22 +224,24 @@ const OversiktTab: React.FC<{ projectId: string }> = ({ projectId }) => {
                 </Stack>
                 <Stack spacing={1}>
                   {col.tasks.map((task, i) => (
-                    <Box key={i} sx={{
+                    <Box key={task.id || i} sx={{
                       p: 1.25, borderRadius: `${ws.radiusSm}px`, bgcolor: 'rgba(255,255,255,0.03)',
                       border: `1px solid ${ws.borderSoft}`,
                     }}>
                       <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>
                         <Box>
                           <Typography sx={{ fontSize: 12.5, fontWeight: 600, color: ws.text }}>{task.t}</Typography>
-                          <Typography sx={{ fontSize: 11, color: ws.textFaint, mt: 0.25 }}>{task.time}</Typography>
+                          {task.time && <Typography sx={{ fontSize: 11, color: ws.textFaint, mt: 0.25 }}>{task.time}</Typography>}
                         </Box>
-                        {task.done
-                          ? <CheckCircle sx={{ fontSize: 18, color: ws.green }} />
-                          : <RadioButtonUnchecked sx={{ fontSize: 18, color: ws.textFaint }} />}
+                        <Box onClick={() => task.real && toggleTask(task.id, task.done ? 'done' : 'todo')} sx={{ cursor: task.real ? 'pointer' : 'default', display: 'flex' }}>
+                          {task.done
+                            ? <CheckCircle sx={{ fontSize: 18, color: ws.green }} />
+                            : <RadioButtonUnchecked sx={{ fontSize: 18, color: ws.textFaint }} />}
+                        </Box>
                       </Stack>
                     </Box>
                   ))}
-                  <Button size="small" startIcon={<Add sx={{ fontSize: 15 }} />} sx={{ color: ws.textDim, textTransform: 'none', justifyContent: 'flex-start' }}>
+                  <Button size="small" startIcon={<Add sx={{ fontSize: 15 }} />} onClick={() => addTask(col.crew)} disabled={!isReal} sx={{ color: ws.textDim, textTransform: 'none', justifyContent: 'flex-start' }}>
                     Legg til oppgave
                   </Button>
                 </Stack>
@@ -216,14 +271,14 @@ const OversiktTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           <WsCard>
             <Typography sx={{ fontSize: 14, fontWeight: 700, mb: 1.5 }}>Sjekkliste</Typography>
             <Stack spacing={1}>
-              {CHECKLIST.map((c) => (
-                <Stack key={c.t} direction="row" spacing={0.75} alignItems="center">
+              {checkItems.map((c, i) => (
+                <Stack key={c.id || i} direction="row" spacing={0.75} alignItems="center" onClick={() => c.real && toggleCheck(c.id, c.ok)} sx={{ cursor: c.real ? 'pointer' : 'default' }}>
                   {c.ok ? <CheckCircle sx={{ fontSize: 17, color: ws.green }} /> : <Warning sx={{ fontSize: 17, color: ws.amber }} />}
                   <Typography sx={{ fontSize: 12.5, color: ws.text }}>{c.t}</Typography>
                 </Stack>
               ))}
             </Stack>
-            <Button fullWidth size="small" sx={{ mt: 1.5, color: ws.textDim, textTransform: 'none', border: `1px solid ${ws.border}` }}>Se alle</Button>
+            <Button fullWidth size="small" onClick={addCheck} disabled={!isReal} sx={{ mt: 1.5, color: ws.textDim, textTransform: 'none', border: `1px solid ${ws.border}` }}>{isReal ? '+ Legg til sjekkpunkt' : 'Se alle'}</Button>
           </WsCard>
 
           <WsCard>
