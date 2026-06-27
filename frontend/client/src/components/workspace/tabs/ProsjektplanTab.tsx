@@ -5,14 +5,18 @@
  * (Prosjektinformasjon / Milepæler / Ressursallokering / Hurtighandlinger)
  * + Faseoversikt-tabell.
  */
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Box, Stack, Typography, Button, Switch, Avatar, AvatarGroup, IconButton } from '@mui/material';
 import FilterList from '@mui/icons-material/FilterList';
 import Add from '@mui/icons-material/Add';
 import Flag from '@mui/icons-material/Flag';
 import UploadFile from '@mui/icons-material/UploadFile';
+import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
 import { WsCard, WsSectionTitle, WsBar, WsPills, WsTag, WsTable } from '../ui';
+
+const PHASE_COLORS = [ws.accent, ws.blue, ws.green, ws.amber, ws.roleAnnet];
+const STATUS_LABEL: Record<string, [string, string]> = { in_progress: ['I gang', 'accent'], pågår: ['I gang', 'accent'], completed: ['Ferdig', 'green'], done: ['Ferdig', 'green'], pending: ['Kommende', 'neutral'], planned: ['Kommende', 'neutral'] };
 
 const WEEKS = ['UKE 33', 'UKE 34', 'UKE 35', 'UKE 36', 'UKE 37', 'UKE 38', 'UKE 39', 'UKE 40'];
 const PHASES = [
@@ -51,10 +55,62 @@ const MILESTONES = [
 ];
 const RESOURCES = [['Foto', 6, ws.roleFoto], ['Video', 6, ws.roleVideo], ['Lyd', 2, ws.roleLyd], ['Drone', 2, ws.roleDrone], ['Annet', 2, ws.roleAnnet]];
 
-const ProsjektplanTab: React.FC<{ projectId: string }> = () => {
+const ProsjektplanTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [view, setView] = useState('tidslinje');
   const colW = 100 / WEEKS.length;
-  const total = RESOURCES.reduce((s, r) => s + r[1], 0);
+  const isReal = projectId && projectId !== 'sample';
+  const [detail, setDetail] = useState<any | null>(null);
+  const [ms, setMs] = useState<any[]>([]);
+  const [members, setMembers] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!isReal) return;
+    apiRequest(`/api/photographer/projects/${encodeURIComponent(projectId)}`).then((r: any) => setDetail(r?.project || null)).catch(() => {});
+    apiRequest(`/api/photographer/projects/${encodeURIComponent(projectId)}/milestones`).then((r: any) => setMs(Array.isArray(r?.milestones) ? r.milestones : [])).catch(() => {});
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/team/members`).then((r: any) => setMembers(Array.isArray(r?.members) ? r.members : [])).catch(() => {});
+  }, [projectId, isReal]);
+
+  // Prosjektinformasjon
+  const infoRows = (isReal && detail) ? [
+    ['Klient', detail.clientName || '—'], ['Prosjekttype', detail.projectType || '—'],
+    ['Dato', detail.eventDate ? new Date(detail.eventDate).toLocaleDateString('nb-NO', { day: 'numeric', month: 'long', year: 'numeric' }) : '—'],
+    ['Lokasjon', detail.location || '—'], ['Status', detail.status || '—'],
+  ] : INFO;
+  // Milepæler
+  const msList = (isReal && ms.length)
+    ? ms.slice(0, 8).map((m: any, i: number) => [m.title, (m.dueDate || m.scheduledDate) ? new Date(m.dueDate || m.scheduledDate).toLocaleDateString('nb-NO', { day: 'numeric', month: 'short', year: 'numeric' }) : '—', PHASE_COLORS[i % PHASE_COLORS.length]])
+    : MILESTONES;
+  // Ressursallokering fra crew-roller
+  const roleCount: Record<string, number> = {};
+  members.forEach((m: any) => { const k = m.crewRole || 'annet'; roleCount[k] = (roleCount[k] || 0) + 1; });
+  const ROLE_LABEL: Record<string, [string, string]> = { fotograf: ['Foto', ws.roleFoto], videograf: ['Video', ws.roleVideo], lyd: ['Lyd', ws.roleLyd], editor: ['Editor', ws.blue], begge: ['Foto+Video', ws.roleFoto], assistent: ['Assistent', ws.roleAnnet] };
+  const resources = (isReal && members.length) ? Object.entries(roleCount).map(([k, v]) => [ROLE_LABEL[k]?.[0] || k, v, ROLE_LABEL[k]?.[1] || ws.roleAnnet]) : RESOURCES;
+  const total = resources.reduce((s, r) => s + r[1], 0);
+  // Faser fra milestones gruppert på kategori; Gantt-bars posisjonert på dato.
+  const dates = ms.map((m: any) => new Date(m.dueDate || m.scheduledDate || m.createdAt)).filter((d) => !isNaN(d.getTime()));
+  const minT = dates.length ? Math.min(...dates.map((d) => d.getTime())) : 0;
+  const maxT = dates.length ? Math.max(...dates.map((d) => d.getTime())) : 1;
+  const span = Math.max(1, maxT - minT);
+  const cats = [...new Set(ms.map((m: any) => m.category || 'Milepæler'))];
+  const realPhases = (isReal && ms.length) ? cats.map((cat, ci) => ({
+    name: cat, dot: PHASE_COLORS[ci % PHASE_COLORS.length], count: `${ms.filter((m: any) => (m.category || 'Milepæler') === cat).length} milepæler`,
+    bars: ms.filter((m: any) => (m.category || 'Milepæler') === cat).map((m: any) => {
+      const d = new Date(m.dueDate || m.scheduledDate || m.createdAt).getTime();
+      const start = ((d - minT) / span) * (WEEKS.length - 1);
+      return { label: m.title, start, span: 1.2, color: PHASE_COLORS[ci % PHASE_COLORS.length] };
+    }),
+  })) : null;
+  const phases = realPhases || PHASES;
+  // Faseoversikt
+  const faseRows = (isReal && ms.length) ? cats.map((cat, ci) => {
+    const items = ms.filter((m: any) => (m.category || 'Milepæler') === cat);
+    const doneN = items.filter((m: any) => m.status === 'completed' || m.status === 'done').length;
+    const avg = items.length ? Math.round(items.reduce((s: number, m: any) => s + (Number(m.progress) || 0), 0) / items.length) : 0;
+    const dts = items.map((m: any) => new Date(m.dueDate || m.scheduledDate)).filter((d) => !isNaN(d.getTime()));
+    const frist = dts.length ? new Date(Math.max(...dts.map((d) => d.getTime()))).toLocaleDateString('nb-NO', { day: 'numeric', month: 'short' }) : '—';
+    const st = doneN === items.length ? ['Ferdig', 'green'] : avg > 0 ? ['I gang', 'accent'] : ['Kommende', 'neutral'];
+    return { name: cat, st, avg, count: `${doneN} av ${items.length}`, frist };
+  }) : null;
 
   return (
     <Stack direction="row" spacing={2.5} sx={{ alignItems: 'flex-start' }}>
@@ -88,7 +144,7 @@ const ProsjektplanTab: React.FC<{ projectId: string }> = () => {
 
           {/* Faser + bars */}
           <Stack spacing={1.5}>
-            {PHASES.map((ph) => (
+            {phases.map((ph) => (
               <Box key={ph.name}>
                 <Stack direction="row">
                   <Box sx={{ width: 180, flexShrink: 0, pr: 1 }}>
@@ -115,12 +171,14 @@ const ProsjektplanTab: React.FC<{ projectId: string }> = () => {
           <Typography sx={{ fontSize: 15, fontWeight: 700, mb: 1.5 }}>Faseoversikt</Typography>
           <WsTable
             columns={['Fase', 'Status', 'Fremdrift', '', 'Oppgaver', 'Frist']}
-            rows={[
-              ['1. Forproduksjon', <WsTag label="I gang" tone="accent" />, <Box sx={{ width: 120 }}><WsBar value={83} /></Box>, '83%', '5 av 6', '1. sep'],
-              ['2. Produksjon', <WsTag label="Kommende" tone="neutral" />, <Box sx={{ width: 120 }}><WsBar value={0} /></Box>, '0%', '0 av 5', '14. sep'],
-              ['3. Etterproduksjon', <WsTag label="Kommende" tone="neutral" />, <Box sx={{ width: 120 }}><WsBar value={0} /></Box>, '0%', '0 av 7', '5. okt'],
-              ['4. Leveranse', <WsTag label="Kommende" tone="neutral" />, <Box sx={{ width: 120 }}><WsBar value={0} /></Box>, '0%', '0 av 4', '20. okt'],
-            ]}
+            rows={(faseRows || [
+              { name: '1. Forproduksjon', st: ['I gang', 'accent'], avg: 83, count: '5 av 6', frist: '1. sep' },
+              { name: '2. Produksjon', st: ['Kommende', 'neutral'], avg: 0, count: '0 av 5', frist: '14. sep' },
+              { name: '3. Etterproduksjon', st: ['Kommende', 'neutral'], avg: 0, count: '0 av 7', frist: '5. okt' },
+              { name: '4. Leveranse', st: ['Kommende', 'neutral'], avg: 0, count: '0 av 4', frist: '20. okt' },
+            ]).map((r) => [
+              r.name, <WsTag label={r.st[0]} tone={r.st[1]} />, <Box sx={{ width: 120 }}><WsBar value={r.avg} /></Box>, `${r.avg}%`, r.count, r.frist,
+            ])}
           />
         </WsCard>
       </Box>
@@ -130,14 +188,14 @@ const ProsjektplanTab: React.FC<{ projectId: string }> = () => {
         <WsCard sx={{ mb: 2 }}>
           <WsSectionTitle title="Prosjektinformasjon" action={<Button size="small" sx={{ color: ws.accent, textTransform: 'none' }}>Rediger</Button>} />
           <Stack spacing={1}>
-            {INFO.map(([k, v]) => <Stack key={k} direction="row" justifyContent="space-between"><Typography sx={{ fontSize: 12.5, color: ws.textDim }}>{k}</Typography><Typography sx={{ fontSize: 12.5, fontWeight: 600 }}>{v}</Typography></Stack>)}
+            {infoRows.map(([k, v]) => <Stack key={k} direction="row" justifyContent="space-between"><Typography sx={{ fontSize: 12.5, color: ws.textDim }}>{k}</Typography><Typography sx={{ fontSize: 12.5, fontWeight: 600 }}>{v}</Typography></Stack>)}
           </Stack>
         </WsCard>
 
         <WsCard sx={{ mb: 2 }}>
           <WsSectionTitle title="Milepæler" action={<Button size="small" startIcon={<Add sx={{ fontSize: 14 }} />} sx={{ color: ws.accent, textTransform: 'none' }}>Legg til</Button>} />
           <Stack spacing={1.25}>
-            {MILESTONES.map(([t, d, c]) => <Stack key={t} direction="row" spacing={1} alignItems="center"><Flag sx={{ fontSize: 15, color: c }} /><Typography sx={{ fontSize: 12.5, flex: 1 }}>{t}</Typography><Typography sx={{ fontSize: 11.5, color: ws.textFaint }}>{d}</Typography></Stack>)}
+            {msList.map(([t, d, c]) => <Stack key={t} direction="row" spacing={1} alignItems="center"><Flag sx={{ fontSize: 15, color: c }} /><Typography sx={{ fontSize: 12.5, flex: 1 }}>{t}</Typography><Typography sx={{ fontSize: 11.5, color: ws.textFaint }}>{d}</Typography></Stack>)}
           </Stack>
         </WsCard>
 
@@ -146,12 +204,12 @@ const ProsjektplanTab: React.FC<{ projectId: string }> = () => {
           <Stack direction="row" spacing={2} alignItems="center">
             <Box sx={{ position: 'relative', width: 96, height: 96 }}>
               <svg width={96} height={96} viewBox="0 0 96 96">
-                {(() => { let a = -90; const r = 40, cx = 48, cy = 48, C = 2 * Math.PI * r; return RESOURCES.map(([n, v, c], i) => { const frac = v / total; const dash = C * frac; const el = <circle key={i} cx={cx} cy={cy} r={r} fill="none" stroke={c} strokeWidth={12} strokeDasharray={`${dash} ${C - dash}`} strokeDashoffset={-C * ((a + 90) / 360)} transform={`rotate(-90 ${cx} ${cy})`} />; a += frac * 360; return el; }); })()}
+                {(() => { let a = -90; const r = 40, cx = 48, cy = 48, C = 2 * Math.PI * r; return resources.map(([n, v, c], i) => { const frac = v / (total || 1); const dash = C * frac; const el = <circle key={i} cx={cx} cy={cy} r={r} fill="none" stroke={c} strokeWidth={12} strokeDasharray={`${dash} ${C - dash}`} strokeDashoffset={-C * ((a + 90) / 360)} transform={`rotate(-90 ${cx} ${cy})`} />; a += frac * 360; return el; }); })()}
               </svg>
               <Box sx={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}><Typography sx={{ fontSize: 20, fontWeight: 800 }}>{total}</Typography><Typography sx={{ fontSize: 10, color: ws.textDim }}>Totalt</Typography></Box>
             </Box>
             <Stack spacing={0.5} sx={{ flex: 1 }}>
-              {RESOURCES.map(([n, v, c]) => <Stack key={n} direction="row" spacing={1} alignItems="center"><Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: c }} /><Typography sx={{ fontSize: 12, flex: 1 }}>{n}</Typography><Typography sx={{ fontSize: 12, fontWeight: 700 }}>{v}</Typography></Stack>)}
+              {resources.map(([n, v, c]) => <Stack key={n} direction="row" spacing={1} alignItems="center"><Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: c }} /><Typography sx={{ fontSize: 12, flex: 1 }}>{n}</Typography><Typography sx={{ fontSize: 12, fontWeight: 700 }}>{v}</Typography></Stack>)}
             </Stack>
           </Stack>
         </WsCard>
