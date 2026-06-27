@@ -3318,9 +3318,11 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                           // prosjekt-detalj med ProjectTimeline + next-steps,
                           // så hun ser hva som er auto-generert og hva som
                           // gjenstår frem til leveranse.
-                          if (profession === 'photographer' && projectId) {
+                          if ((profession === 'photographer' || profession === 'videographer') && projectId) {
                             queryClient.invalidateQueries({ queryKey: ['/api/photographer/projects'] });
-                            setLocation(`/photographer/projects/${projectId}?created=1`);
+                            // Åpne det nye Team Workspacet — hjemmet for prosjektet
+                            // wizarden nettopp lagde (shot-list, capture, type → tidslinje).
+                            setLocation(`/workspace/${projectId}`);
                           }
                         }}
                       />

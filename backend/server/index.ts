@@ -852,6 +852,7 @@ import {
 } from "./photographer-projects-routes";
 import { setupPhotographerMiscRoutes } from "./photographer-misc-routes";
 import { setupProjectTeamRoutes, canAccessProject } from "./project-team-routes";
+import { setupProjectWorkspaceRoutes } from "./project-workspace-routes";
 import { setupGoogleDriveSyncRoutes } from "./google-drive-sync-routes";
 import { setupChunkedUploadRoutes } from "./chunked-upload-routes";
 import { setupUploadsRoutes } from "./uploads-routes";
@@ -65784,6 +65785,9 @@ setupPhotographerProjectsRoutes({
 });
 // Team Workspace deling/medlemskap (Fase 1) — project_team_members + canAccessProject.
 setupProjectTeamRoutes({ app, pool, requireUserSession, escapeHtml });
+// Team Workspace egne panel-data (board-tasks/checklist/deliverables/shot-list GET)
+// — project_id-scopet, UAVHENGIG av Role Room.
+setupProjectWorkspaceRoutes({ app, pool, requireUserSession });
 setupPhotographerMiscRoutes({
   app,
   pool,

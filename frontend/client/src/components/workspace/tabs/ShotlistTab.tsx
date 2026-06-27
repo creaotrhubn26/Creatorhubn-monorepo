@@ -4,8 +4,9 @@
  * Stats + kategori-pills + shot-tabell + Shot detaljer (høyre, opplastbart bilde
  * + samtale) + Referanser & inspirasjon (opplastbart) + Må huskes.
  */
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Box, Stack, Typography, Button, Avatar, TextField } from '@mui/material';
+import { apiRequest } from '@/lib/queryClient';
 import PhotoCameraBack from '@mui/icons-material/PhotoCameraBack';
 import CheckCircle from '@mui/icons-material/CheckCircle';
 import Star from '@mui/icons-material/Star';
@@ -29,25 +30,54 @@ const SAMTALE = [
   { who: 'Lukas (Editor)', t: '10:18', msg: 'Perfekt! Husk å få med gjestene som reiser seg også.' },
 ];
 
-const ShotlistTab: React.FC<{ projectId: string }> = () => {
+const PRIO_TONE: Record<string, string> = { kritisk: 'red', critical: 'red', høy: 'amber', high: 'amber', normal: 'neutral', lav: 'neutral', low: 'neutral' };
+const STATUS_TONE: Record<string, string> = { ferdig: 'green', done: 'green', completed: 'green', pågår: 'amber', in_progress: 'amber', klar: 'accent', ready: 'accent', planlagt: 'blue', planned: 'blue' };
+
+const ShotlistTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [cat, setCat] = useState('alle');
+  const [real, setReal] = useState<{ shots: any[]; meta: any } | null>(null);
+
+  useEffect(() => {
+    if (!projectId || projectId === 'sample') return;
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/shot-list`)
+      .then((r: any) => { const shots = Array.isArray(r?.shots) ? r.shots : []; if (shots.length) setReal({ shots, meta: r.shotList || {} }); })
+      .catch(() => {});
+  }, [projectId]);
+
+  // Ekte shots → tabell-rader (fleksibel felt-mapping mot wizard-shapen).
+  const realRows = real ? real.shots.slice(0, 12).map((s: any) => {
+    const title = s.name || s.title || s.shot || s.description || 'Shot';
+    const prio = (s.priority || s.prio || 'normal').toString();
+    const status = (s.status || 'planlagt').toString();
+    const kat = s.category || s.kategori || s.phase || '—';
+    const loc = s.location || s.lokasjon || '—';
+    return [prio, PRIO_TONE[prio.toLowerCase()] || 'neutral', title, kat, loc, status, STATUS_TONE[status.toLowerCase()] || 'blue'];
+  }) : null;
+  const rows = realRows || SHOTS;
+
+  const total = real ? (real.meta.totalShots ?? real.shots.length) : 68;
+  const done = real ? (real.meta.completedShots ?? 0) : 21;
+  const critical = real ? (real.meta.criticalShots ?? 0) : 12;
+  const mangler = real ? Math.max(0, critical - (real.meta.completedCriticalShots ?? 0)) : 5;
+  const donePct = total > 0 ? Math.round((done / total) * 100) : 0;
+
   return (
     <Stack direction="row" spacing={2.5} sx={{ alignItems: 'flex-start' }}>
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Typography sx={{ fontSize: 20, fontWeight: 800, mb: 2 }}>Shotlist</Typography>
 
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', lg: 'repeat(4, 1fr)' }, gap: 1.5, mb: 2 }}>
-          <WsStat icon={<PhotoCameraBack sx={{ fontSize: 20 }} />} label="Totalt antall shots" value="68" sub="100% planlagt" />
-          <WsStat icon={<CheckCircle sx={{ fontSize: 20 }} />} label="Fullført" value="21" sub="31% av totalen" tone={ws.greenSoft} />
-          <WsStat icon={<Star sx={{ fontSize: 20 }} />} label="Kritiske øyeblikk" value="12" sub="Av totalt 68" tone={ws.amberSoft} />
-          <WsStat icon={<ErrorOutline sx={{ fontSize: 20 }} />} label="Mangler" value="5" sub="Må dekkes" tone={ws.redSoft} />
+          <WsStat icon={<PhotoCameraBack sx={{ fontSize: 20 }} />} label="Totalt antall shots" value={total} sub="100% planlagt" />
+          <WsStat icon={<CheckCircle sx={{ fontSize: 20 }} />} label="Fullført" value={done} sub={`${donePct}% av totalen`} tone={ws.greenSoft} />
+          <WsStat icon={<Star sx={{ fontSize: 20 }} />} label="Kritiske øyeblikk" value={critical} sub={`Av totalt ${total}`} tone={ws.amberSoft} />
+          <WsStat icon={<ErrorOutline sx={{ fontSize: 20 }} />} label="Mangler" value={mangler} sub="Må dekkes" tone={ws.redSoft} />
         </Box>
 
         <WsCard>
           <Box sx={{ mb: 1.5 }}><WsPills items={CATS} value={cat} onChange={setCat} /></Box>
           <WsTable
             columns={['Prioritet', 'Shot', 'Kategori', 'Foto', 'Video', 'Lokasjon', 'Ansvarlig', 'Status']}
-            rows={SHOTS.map((s) => [
+            rows={rows.map((s) => [
               <WsTag label={s[0]} tone={s[1]} />,
               <Typography sx={{ fontSize: 13, fontWeight: 600 }}>{s[2]}</Typography>,
               <Typography sx={{ fontSize: 12, color: ws.textDim }}>{s[3]}</Typography>,
