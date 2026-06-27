@@ -3,10 +3,21 @@
  * ui.tsx — delte byggeklosser for Team Workspace-tabbene (dark CreatorHub).
  */
 import React, { useRef, useState } from 'react';
-import { Box, Stack, Typography, IconButton } from '@mui/material';
+import { Box, Stack, Typography, IconButton, Dialog, DialogTitle, DialogContent } from '@mui/material';
 import AddPhotoAlternate from '@mui/icons-material/AddPhotoAlternate';
 import Close from '@mui/icons-material/Close';
 import { ws } from './workspaceTheme';
+
+/** Gjenbrukbar modal (for «Se alle» / detalj-visninger) */
+export const WsModal: React.FC<{ open: boolean; onClose: () => void; title: string; children: React.ReactNode; maxWidth?: any }> = ({ open, onClose, title, children, maxWidth = 'md' }) => (
+  <Dialog open={open} onClose={onClose} fullWidth maxWidth={maxWidth}>
+    <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      {title}
+      <IconButton onClick={onClose} size="small"><Close fontSize="small" /></IconButton>
+    </DialogTitle>
+    <DialogContent dividers>{children}</DialogContent>
+  </Dialog>
+);
 
 export const WsCard: React.FC<{ children: React.ReactNode; sx?: any; pad?: number }> = ({ children, sx, pad = 2 }) => (
   <Box sx={{

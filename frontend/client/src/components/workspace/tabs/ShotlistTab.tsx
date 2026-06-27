@@ -38,6 +38,7 @@ const ShotlistTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [cat, setCat] = useState('alle');
   const [real, setReal] = useState<{ shots: any[]; meta: any } | null>(null);
   const [selShot, setSelShot] = useState<any | null>(null);
+  const [showAll, setShowAll] = useState(false);
   const refs = useProjectImages(projectId, 'references');
 
   useEffect(() => {
@@ -48,7 +49,7 @@ const ShotlistTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   }, [projectId]);
 
   // Ekte shots → tabell-rader (fleksibel felt-mapping mot wizard-shapen).
-  const realRows = real ? real.shots.slice(0, 12).map((s: any) => {
+  const realRows = real ? real.shots.slice(0, showAll ? 999 : 12).map((s: any) => {
     const title = s.name || s.title || s.shot || s.description || 'Shot';
     const prio = (s.priority || s.prio || 'normal').toString();
     const status = (s.status || 'planlagt').toString();
@@ -92,7 +93,9 @@ const ShotlistTab: React.FC<{ projectId: string }> = ({ projectId }) => {
               <WsTag label={s[5]} tone={s[6]} />,
             ])}
           />
-          <Stack alignItems="center" sx={{ mt: 1 }}><Button size="small" sx={{ color: ws.textDim, textTransform: 'none' }}>Vis 44 flere shots ▾</Button></Stack>
+          {(!real || real.shots.length > 12) && (
+            <Stack alignItems="center" sx={{ mt: 1 }}><Button size="small" onClick={() => setShowAll((v) => !v)} sx={{ color: ws.textDim, textTransform: 'none' }}>{showAll ? 'Vis færre ▴' : `Vis ${real ? real.shots.length - 12 : 44} flere shots ▾`}</Button></Stack>
+          )}
         </WsCard>
 
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '2fr 1fr' }, gap: 2, mt: 2 }}>

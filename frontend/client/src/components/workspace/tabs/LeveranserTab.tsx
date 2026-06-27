@@ -10,7 +10,7 @@ import Add from '@mui/icons-material/Add';
 import CheckCircle from '@mui/icons-material/CheckCircle';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
-import { WsCard, WsSectionTitle, WsRing, WsPills, WsTag, WsImageGrid } from '../ui';
+import { WsCard, WsSectionTitle, WsRing, WsPills, WsTag, WsImageGrid, WsModal } from '../ui';
 
 const STATUS_LABEL: Record<string, [string, string]> = {
   not_started: ['Not started', 'neutral'], in_progress: ['In progress', 'amber'],
@@ -40,6 +40,7 @@ const LeveranserTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [revisions, setRevisions] = useState<any[]>([]);
   const [feedback, setFeedback] = useState<any[]>([]);
   const [activity, setActivity] = useState<any[]>([]);
+  const [fbModal, setFbModal] = useState(false);
   const load = () => {
     if (!isReal) return;
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/deliverables`)
@@ -250,7 +251,7 @@ const LeveranserTab: React.FC<{ projectId: string }> = ({ projectId }) => {
             ); })()}
         </WsCard>
         <WsCard sx={{ mb: 2 }}>
-          <WsSectionTitle title="Client feedback" action={<Button size="small" sx={{ color: ws.accent, textTransform: 'none' }}>Se alle</Button>} />
+          <WsSectionTitle title="Client feedback" action={<Button size="small" onClick={() => setFbModal(true)} sx={{ color: ws.accent, textTransform: 'none' }}>Se alle</Button>} />
           {(isReal ? feedback : [{ clientName: 'Sara', comment: 'Amazing work! We love the vibe 😍', at: '2024-09-16' }]).length === 0 ? (
             <Typography sx={{ fontSize: 12, color: ws.textDim }}>Ingen klient-tilbakemeldinger ennå.</Typography>
           ) : (isReal ? feedback : [{ clientName: 'Sara', comment: 'Amazing work! We love the vibe 😍', at: '2024-09-16' }]).slice(0, 4).map((f, i) => (
@@ -269,6 +270,21 @@ const LeveranserTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           </Stack>
         </WsCard>
       </Box>
+
+      <WsModal open={fbModal} onClose={() => setFbModal(false)} title="All klient-feedback" maxWidth="sm">
+        {feedback.length === 0 ? (
+          <Typography sx={{ fontSize: 13, color: ws.textDim }}>Ingen klient-tilbakemeldinger ennå.</Typography>
+        ) : (
+          <Stack spacing={1.25}>
+            {feedback.map((f, i) => (
+              <Box key={i} sx={{ p: 1.5, borderRadius: 2, bgcolor: ws.panelInput }}>
+                <Typography sx={{ fontSize: 13, color: ws.text }}>{f.comment}</Typography>
+                <Typography sx={{ fontSize: 11, color: ws.textFaint, mt: 0.5 }}>– {f.clientName || 'Klient'}{f.at ? ` · ${new Date(f.at).toLocaleString('nb-NO')}` : ''}</Typography>
+              </Box>
+            ))}
+          </Stack>
+        )}
+      </WsModal>
     </Stack>
   );
 };
