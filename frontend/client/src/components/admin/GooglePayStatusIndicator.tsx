@@ -16,7 +16,6 @@ import {
   Card,
   CardContent,
   Typography,
-  Chip,
   Stack,
   IconButton,
   Tooltip,
@@ -31,6 +30,7 @@ import {
   Divider,
   Collapse,
   Button,
+  Chip,
 } from '@mui/material';
 import {
   Payment as PaymentIcon,
@@ -51,6 +51,7 @@ import { useToast } from '@/hooks/use-toast';
 import { mockFetch } from '@/api/mockGooglePayApi';
 import { useDemoMode, useDemoModeApi } from '@/contexts/DemoModeContext';
 import { mockGooglePayConfiguration, mockGooglePayProducts, mockPaymentStatistics } from '@/api/mockGooglePayApi';
+import { adminTokens } from './design-system';
 
 interface GooglePayStatusIndicatorProps {
   compact?: boolean;
@@ -255,13 +256,13 @@ export default function GooglePayStatusIndicator({
       case 'active':
       case 'ready':
       case 'configured':
-        return <CheckIcon sx={{ color: '#4caf50' }} />;
+        return <CheckIcon sx={{ color: adminTokens.color.success }} />;
       case 'warning':
       case 'pending':
         return <WarningIcon sx={{ color: '#ff9800' }} />;
       case 'error':
       case 'failed':
-        return <ErrorIcon sx={{ color: '#f44336' }} />;
+        return <ErrorIcon sx={{ color: adminTokens.color.error }} />;
       default: return <WarningIcon sx={{ color: '#9e9e9e' }} />;
   }
 };
@@ -476,7 +477,7 @@ export default function GooglePayStatusIndicator({
           <List dense>
             <ListItem>
               <ListItemIcon>
-                <SecurityIcon sx={{ color: '#4caf50' }} />
+                <SecurityIcon sx={{ color: adminTokens.color.success }} />
               </ListItemIcon>
               <ListItemText
                 primary="Autentisering"
@@ -500,7 +501,7 @@ export default function GooglePayStatusIndicator({
             
             <ListItem>
               <ListItemIcon>
-                <SecurityIcon sx={{ color: '#4caf50' }} />
+                <SecurityIcon sx={{ color: adminTokens.color.success }} />
               </ListItemIcon>
               <ListItemText
                 primary="Merchant ID"

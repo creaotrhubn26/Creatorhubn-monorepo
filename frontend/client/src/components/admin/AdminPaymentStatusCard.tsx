@@ -10,15 +10,11 @@
 
 import React from 'react';
 import {
-  Card,
-  CardContent,
   Stack,
   Typography,
-  Chip,
   Box,
   IconButton,
   Alert,
-  CircularProgress,
   Divider,
   Table,
   TableHead,
@@ -27,6 +23,7 @@ import {
   TableBody,
   alpha,
   ThemeProvider,
+  Chip,
 } from '@mui/material';
 import { adminDarkTheme } from './adminDarkTheme';
 import {
@@ -40,6 +37,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { paymentEvents } from '@/utils/creatorhub-events';
+import { AdminCard, StatusChip, AdminLoading, AdminError, AdminTableContainer, adminTokens } from './design-system';
 
 const fmtKr = (n: number) =>
   `${Math.round(n).toLocaleString('nb-NO')} kr`;
@@ -77,11 +75,9 @@ const AdminPaymentStatusCard: React.FC = () => {
   if (isLoading) {
     return (
       <ThemeProvider theme={adminDarkTheme}>
-        <Card>
-          <CardContent sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-            <CircularProgress size={28} />
-          </CardContent>
-        </Card>
+        <AdminCard>
+          <AdminLoading />
+        </AdminCard>
       </ThemeProvider>
     );
   }
@@ -89,19 +85,14 @@ const AdminPaymentStatusCard: React.FC = () => {
   if (!data) {
     return (
       <ThemeProvider theme={adminDarkTheme}>
-        <Card>
-          <CardContent>
-            <Alert severity="warning">Kunne ikke laste Stripe-status.</Alert>
-          </CardContent>
-        </Card>
+        <AdminError message="Kunne ikke laste Stripe-status." />
       </ThemeProvider>
     );
   }
 
   return (
     <ThemeProvider theme={adminDarkTheme}>
-    <Card>
-      <CardContent>
+    <AdminCard>
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
           <Stack direction="row" alignItems="center" spacing={1.5}>
             <Box sx={{ p: 1, borderRadius: 2, bgcolor: alpha('#635bff', 0.1), color: '#635bff' }}>
@@ -197,6 +188,7 @@ const AdminPaymentStatusCard: React.FC = () => {
             Ingen nylige Stripe-hendelser registrert.
           </Typography>
         ) : (
+          <AdminTableContainer ariaLabel="Siste Stripe-hendelser">
           <Table size="small">
             <TableHead>
               <TableRow>
@@ -232,9 +224,9 @@ const AdminPaymentStatusCard: React.FC = () => {
               ))}
             </TableBody>
           </Table>
+          </AdminTableContainer>
         )}
-      </CardContent>
-    </Card>
+    </AdminCard>
     </ThemeProvider>
   );
 };

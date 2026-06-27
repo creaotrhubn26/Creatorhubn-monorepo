@@ -19,7 +19,6 @@ import {
   Tab,
   Tabs,
   Alert,
-  Chip,
   List,
   ListItem,
   ListItemIcon,
@@ -32,7 +31,7 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Button,
+  Chip,
 } from '@mui/material';
 import {
   Speed as SpeedIcon,
@@ -68,6 +67,7 @@ import {
 import { useAuth } from '@/hooks/useAuth';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
 import { PushNotificationSettings } from '../shared/PushNotificationSettings';
+import { AdminButton } from './design-system';
 // import { performanceMonitor } from '@/lib/performance-monitor';
 
 // Chart.js components replaced with Material-UI placeholders
@@ -561,7 +561,7 @@ export default function AdminPerformanceDashboard({ className }: AdminPerformanc
               </Box>
             </DialogContent>
             <DialogActions>
-              <Button onClick={() => setPushSettingsOpen(false)}>Lukk</Button>
+              <AdminButton tone="ghost" onClick={() => setPushSettingsOpen(false)}>Lukk</AdminButton>
             </DialogActions>
           </Dialog>
         )}

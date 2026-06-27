@@ -8,10 +8,9 @@ import {
   IconButton,
   Tabs,
   Tab,
-  Chip,
-  Button,
   Tooltip,
   Alert,
+  Chip,
 } from '@mui/material';
 import {
   Close as CloseIcon,
@@ -20,6 +19,7 @@ import {
   Error as ErrorIcon,
   AccessTime as TimeIcon,
 } from '@mui/icons-material';
+import { AdminButton } from './design-system';
 
 export interface WireMockTestResult {
   id: string;
@@ -344,16 +344,16 @@ export const WireMockResponseViewer: React.FC<WireMockResponseViewerProps> = ({
 
         {/* Actions */}
         <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
-          <Button variant="outlined" onClick={onClose}>
+          <AdminButton tone="ghost" onClick={onClose}>
             Close
-          </Button>
-          <Button
-            variant="contained"
+          </AdminButton>
+          <AdminButton
+            tone="primary"
             startIcon={<CopyIcon />}
             onClick={() => handleCopy(formatJSON(result))}
           >
             Copy All Data
-          </Button>
+          </AdminButton>
         </Box>
       </DialogContent>
     </Dialog>
