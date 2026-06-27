@@ -46,7 +46,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
-import { AdminCard, AdminButton } from './design-system';
+import { AdminCard, AdminButton, useIsMobile } from './design-system';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // TYPES
@@ -86,7 +86,8 @@ export default function GoogleDriveDocsBridge({
   currentNoteId 
 }: Props) {
   const queryClient = useQueryClient();
-  const { 
+  const isMobile = useIsMobile();
+  const {
     analytics, 
     performance, 
     auth, 
@@ -397,11 +398,12 @@ export default function GoogleDriveDocsBridge({
       </Stack>
       
       {/* Import Dialog */}
-      <Dialog 
-        open={openImportDialog} 
+      <Dialog
+        open={openImportDialog}
         onClose={() => setOpenImportDialog(false)}
         maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>
           <Stack direction="row" alignItems="center" spacing={1}>

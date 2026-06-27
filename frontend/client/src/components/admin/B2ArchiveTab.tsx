@@ -298,7 +298,7 @@ export default function B2ArchiveTab(): JSX.Element {
                 Bruk
               </Typography>
               {refreshingUsage ? (
-                <LinearProgress sx={{ mt: 1, width: 200 }} />
+                <LinearProgress sx={{ mt: 1, width: 200, maxWidth: '100%' }} />
               ) : (
                 <Stack direction="row" spacing={3} alignItems="baseline" sx={{ mt: 0.5 }}>
                   <Typography variant="h5" sx={{ fontWeight: 700 }}>

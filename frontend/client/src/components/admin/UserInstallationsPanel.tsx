@@ -141,7 +141,7 @@ const UserInstallationsPanel: React.FC<Props> = ({ users }) => {
               }}
               sx={{ flex: 1 }}
             />
-            <FormControl size="small" sx={{ minWidth: 320 }}>
+            <FormControl size="small" sx={{ minWidth: { xs: 'auto', sm: 320 } }}>
               <InputLabel>Velg bruker</InputLabel>
               <Select
                 label="Velg bruker"
@@ -175,7 +175,7 @@ const UserInstallationsPanel: React.FC<Props> = ({ users }) => {
             <Stack spacing={2}>
               {/* Bruker-info */}
               <Box sx={{ p: 2, borderRadius: 2, bgcolor: alpha('#7c3aed', 0.05), border: '1px solid', borderColor: alpha('#7c3aed', 0.2) }}>
-                <Stack direction="row" alignItems="center" spacing={2}>
+                <Stack direction="row" alignItems="center" spacing={2} sx={{ flexWrap: 'wrap' }}>
                   <Avatar sx={{ bgcolor: '#7c3aed', width: 48, height: 48 }}>
                     {selectedUser?.firstName?.[0]?.toUpperCase() || '?'}
                   </Avatar>

@@ -188,6 +188,7 @@ export default function InlineNorwegianSpellChecker({
           bottom: 16,
           right: 16,
           width: 380,
+          maxWidth: '100%',
           maxHeight: 'calc(100vh - 200px)',
           overflow: 'hidden',
           zIndex: 130,

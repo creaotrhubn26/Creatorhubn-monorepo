@@ -292,7 +292,7 @@ export default function LeadMapMarketplaceCard({
           ))}
         </Stack>
 
-        <Stack direction="row" spacing={1}>
+        <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
           <AdminButton
             tone="primary"
             size="small" startIcon={<EntitlementIcon />}

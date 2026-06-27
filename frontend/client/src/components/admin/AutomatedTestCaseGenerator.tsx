@@ -56,7 +56,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
 import { useTheming } from '@/utils/theming-helper';
-import { AdminCard, AdminButton, StatusChip } from './design-system';
+import { AdminCard, AdminButton, StatusChip, useIsMobile } from './design-system';
 
 interface TestCase {
   id: string;
@@ -85,6 +85,7 @@ interface TestSuite {
 export default function AutomatedTestCaseGenerator() {
   const queryClient = useQueryClient();
   const theming = useTheming('prototype_tester');
+  const isMobile = useIsMobile();
 
   // Get auth from master integration
   const { auth } = useEnhancedMasterIntegration();
@@ -277,7 +278,7 @@ export default function AutomatedTestCaseGenerator() {
       </Grid>
 
       {/* Test Cases List Dialog */}
-      <Dialog open={showTestCaseDialog} onClose={() => setShowTestCaseDialog(false)} maxWidth="md" fullWidth>
+      <Dialog open={showTestCaseDialog} onClose={() => setShowTestCaseDialog(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle>
           Test Cases: {selectedProfession}
         </DialogTitle>

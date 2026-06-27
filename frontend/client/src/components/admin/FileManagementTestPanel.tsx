@@ -302,7 +302,7 @@ export default function FileManagementTestPanel({ onNotificationCreate }: FileMa
   return (
     <Card sx={theming.getThemedCardSx()}>
       <CardContent sx={theming.getThemedCardSx()}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1, mb: 2 }}>
           <Typography variant="h6" sx={{ color: theming.colors.primary }}>
             File Management Test Panel
           </Typography>

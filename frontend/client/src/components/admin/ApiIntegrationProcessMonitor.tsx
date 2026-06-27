@@ -62,7 +62,7 @@ import {
 } from '@mui/icons-material';
 import { useToast } from '@/hooks/use-toast';
 import { useTheming } from '../../utils/theming-helper';
-import { AdminButton, StatusChip } from './design-system';
+import { AdminButton, StatusChip, useIsMobile } from './design-system';
 
 type StepStatus = 'pending' | 'active' | 'completed' | 'error';
 type ProcessStatus = 'initializing' | 'processing' | 'completed' | 'failed';
@@ -746,7 +746,7 @@ export function ApiIntegrationProcessMonitor({ service }: { service?: string }) 
         </CardContent>
       </Card>
 
-      <Dialog open={Boolean(selectedStep)} onClose={() => setSelectedStep(null)} fullWidth maxWidth="md">
+      <Dialog open={Boolean(selectedStep)} onClose={() => setSelectedStep(null)} fullScreen={useIsMobile()} fullWidth maxWidth="md">
         <DialogTitle>{selectedStep?.title ?? 'Step details'}</DialogTitle>
         <DialogContent dividers>
           {selectedStep && (

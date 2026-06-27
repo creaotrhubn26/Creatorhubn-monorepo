@@ -44,6 +44,7 @@ import {
   AdminTableContainer,
   AdminLoading,
   adminTokens,
+  useIsMobile,
 } from './design-system';
 import {
   Refresh as RefreshIcon,
@@ -131,6 +132,7 @@ export const SecretsRotationPanel: React.FC = () => {
   const [markingNotes, setMarkingNotes] = useState('');
   const [marking, setMarking] = useState(false);
   const [toast, setToast] = useState<{ severity: 'success' | 'error'; msg: string } | null>(null);
+  const isMobile = useIsMobile();
 
   const fetchData = async () => {
     setLoading(true);
@@ -422,6 +424,7 @@ export const SecretsRotationPanel: React.FC = () => {
         onClose={() => setMarkingDialog(null)}
         maxWidth="sm"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>Markér som rotert</DialogTitle>
         <DialogContent>
