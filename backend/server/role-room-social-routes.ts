@@ -114,6 +114,36 @@ function ownedSocialAccountIdsSql(userParam: string): string {
   `;
 }
 
+/**
+ * Does the given user own this social connection? Checks all three connection
+ * tables (IG/FB, LinkedIn, Google/YouTube) by id + user_id. Fail-closed: any
+ * error denies. `id::text` so a non-UUID id can't throw on a UUID column.
+ * Used to gate the metrics-snapshot endpoint, which otherwise looked the
+ * connection up by id alone (IDOR — one tenant could fetch/persist another
+ * tenant's insights using their connection token).
+ */
+async function userOwnsSocialConnection(
+  pool: Pool,
+  connectionId: string,
+  userId: string,
+): Promise<boolean> {
+  try {
+    const result = await pool.query(
+      `SELECT 1 FROM role_room_instagram_connections WHERE id::text = $1 AND user_id = $2
+       UNION ALL
+       SELECT 1 FROM role_room_linkedin_connections WHERE id::text = $1 AND user_id = $2
+       UNION ALL
+       SELECT 1 FROM role_room_google_connections WHERE id::text = $1 AND user_id = $2
+       LIMIT 1`,
+      [connectionId, userId],
+    );
+    return (result.rowCount ?? 0) > 0;
+  } catch (error) {
+    console.error("[social-routes] ownership check failed", error);
+    return false;
+  }
+}
+
 export function setupRoleRoomSocialRoutes(
   deps: RoleRoomSocialRoutesDeps,
 ): void {
@@ -734,6 +764,12 @@ export function setupRoleRoomSocialRoutes(
     if (!platform || !connectionId) {
       return res.status(400).json({ success: false, error: "platform + connectionId påkrevd" });
     }
+    // Ownership gate: without this, any user could pass another tenant's
+    // connectionId to fetch (and persist) their insights using the stored
+    // token — and the snapshots came back in the response.
+    if (!(await userOwnsSocialConnection(pool, connectionId, session.userId))) {
+      return res.status(404).json({ success: false, error: "connection_not_found" });
+    }
     try {
       const snapshots = await dispatchFetchInsights(
         platform as Parameters<typeof dispatchFetchInsights>[0],
@@ -748,8 +784,8 @@ export function setupRoleRoomSocialRoutes(
         const accountIdRow = await pool.query<{ account_id: string }>(
           `SELECT CASE WHEN $1 = 'facebook_page' THEN facebook_page_id
                        ELSE ig_business_account_id END AS account_id
-             FROM role_room_instagram_connections WHERE id = $2 LIMIT 1`,
-          [platform, connectionId],
+             FROM role_room_instagram_connections WHERE id = $2 AND user_id = $3 LIMIT 1`,
+          [platform, connectionId, session.userId],
         );
         const accountId = accountIdRow.rows[0]?.account_id;
         if (accountId) {

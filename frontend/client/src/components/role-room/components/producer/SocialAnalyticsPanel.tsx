@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -159,10 +159,18 @@ export default function SocialAnalyticsPanel(): React.ReactElement {
   const [topPosts, setTopPosts] = useState<RoleRoomTopPostMetric[]>([]);
   const [publishesPerPlatform, setPublishesPerPlatform] = useState<RoleRoomPublishCountEntry[]>([]);
 
+  // Drop stale/out-of-order responses (rapid refresh clicks) and post-unmount
+  // updates — only the latest request's result is applied.
+  const reqSeqRef = useRef(0);
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
+
   const refresh = useCallback(async () => {
+    const seq = ++reqSeqRef.current;
     setLoading(true);
     setError(null);
     const result = await roleRoomAgentService.fetchSocialAnalytics();
+    if (seq !== reqSeqRef.current || !mountedRef.current) return;
     if (result.error) setError(result.error);
     setSummary(result.summary ?? null);
     setSentimentBreakdown(result.sentimentBreakdown ?? []);
