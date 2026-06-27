@@ -110,6 +110,23 @@ async function getAnthropicClient(): Promise<any> {
   return cachedAnthropicClient;
 }
 
+/**
+ * Single-line structured diagnostics, matching the orchestrator/synthesis
+ * loggers. Until now this path swallowed every failure (no client, API
+ * error, truncation, parse failure) and silently returned null. Grep
+ * `role-room-agent:claude-bootstrap`.
+ */
+function logClaudeBootstrap(reason: string, detail?: Record<string, unknown>): void {
+  try {
+    console.warn(
+      '[role-room-agent:claude-bootstrap]',
+      JSON.stringify({ reason, ...detail }),
+    );
+  } catch {
+    // diagnostics never throw
+  }
+}
+
 function extractJsonFromText(text: string): unknown | null {
   if (!text) return null;
   // Claude sometimes wraps JSON in markdown despite instructions; strip common fences.
@@ -174,7 +191,12 @@ export async function requestClaudeBootstrap(
   retrievalMeta: RoleRoomAgentRetrievalMeta | null,
 ): Promise<unknown | null> {
   const client = await getAnthropicClient();
-  if (!client) return null;
+  if (!client) {
+    logClaudeBootstrap('anthropic_client_unavailable', {
+      hasApiKey: Boolean(process.env.ANTHROPIC_API_KEY),
+    });
+    return null;
+  }
 
   const model = process.env.ROLE_ROOM_BOOTSTRAP_CLAUDE_MODEL || 'claude-sonnet-4-5';
   const visionEnabled = process.env.ROLE_ROOM_BOOTSTRAP_VISION !== 'false';
@@ -230,7 +252,9 @@ export async function requestClaudeBootstrap(
     const response = await Promise.race([
       client.messages.create({
         model,
-        max_tokens: 4096,
+        // 4096 truncated the large synthesis JSON, failing extractJsonFromText
+        // → null → silent deterministic fallback. 8192 lets it complete.
+        max_tokens: 8192,
         // Keep the large constraints block in the cached system prefix; the
         // per-call user message is just the project data.
         system: [
@@ -258,6 +282,10 @@ export async function requestClaudeBootstrap(
       durationMs: Date.now() - bootstrapStartedAt,
     }).catch(() => undefined);
 
+    if ((response as any)?.stop_reason === 'max_tokens') {
+      logClaudeBootstrap('response_truncated_max_tokens', { model });
+    }
+
     const blocks = (response as any)?.content ?? [];
     let text = '';
     for (const block of blocks) {
@@ -265,8 +293,20 @@ export async function requestClaudeBootstrap(
         text += block.text;
       }
     }
-    return extractJsonFromText(text);
-  } catch {
+    const parsed = extractJsonFromText(text);
+    if (!parsed) {
+      logClaudeBootstrap('synthesis_parse_failed', {
+        model,
+        textLength: text.length,
+        stopReason: (response as any)?.stop_reason ?? null,
+      });
+    }
+    return parsed;
+  } catch (err) {
+    logClaudeBootstrap('request_threw', {
+      model,
+      error: err instanceof Error ? err.message : String(err),
+    });
     return null;
   }
 }

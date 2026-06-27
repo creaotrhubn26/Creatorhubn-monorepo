@@ -90,6 +90,23 @@ async function getClient(): Promise<any> {
   return cachedAnthropicClient;
 }
 
+/**
+ * Single-line structured diagnostics so ops can grep `orchestrator_*`
+ * reasons on any log backend. Until now every failure path in this module
+ * returned null silently, which is why "research kom gjennom, men kilden
+ * svarte tomt" was impossible to diagnose from logs.
+ */
+function logOrchestrator(reason: string, detail?: Record<string, unknown>): void {
+  try {
+    console.warn(
+      '[role-room-agent:orchestrator]',
+      JSON.stringify({ reason, ...detail }),
+    );
+  } catch {
+    // diagnostics never throw
+  }
+}
+
 export interface OrchestratorFetchResult {
   brregCompany: RoleRoomAgentBrregCompany | null;
   websiteInsights: RoleRoomAgentWebsiteInsights | null;
@@ -136,7 +153,12 @@ export async function runOrchestratedBootstrap(
   input: RoleRoomAgentProducerBootstrapInput,
 ): Promise<OrchestratorFetchResult | null> {
   const client = await getClient();
-  if (!client) return null;
+  if (!client) {
+    logOrchestrator('anthropic_client_unavailable', {
+      hasApiKey: Boolean(process.env.ANTHROPIC_API_KEY),
+    });
+    return null;
+  }
 
   const model = process.env.ROLE_ROOM_BOOTSTRAP_CLAUDE_MODEL || 'claude-sonnet-4-5';
   const maxRounds = 5;
@@ -200,6 +222,7 @@ export async function runOrchestratedBootstrap(
   ];
 
   let finalText = '';
+  let exhaustedRounds = false;
 
   for (let round = 0; round < maxRounds; round++) {
     let response: any;
@@ -207,7 +230,12 @@ export async function runOrchestratedBootstrap(
       response = await Promise.race([
         client.messages.create({
           model,
-          max_tokens: 4096,
+          // 4096 tokens routinely truncated the large synthesis JSON
+          // (companyProfile + intakeDraft + planningDraft + storyLogicDraft
+          // + nextRecommendedSteps), and the truncated body failed JSON.parse
+          // → null synthesis → silent deterministic fallback. 8192 gives the
+          // payload room to complete.
+          max_tokens: 8192,
           system: [
             {
               type: 'text',
@@ -222,7 +250,11 @@ export async function runOrchestratedBootstrap(
           setTimeout(() => reject(new Error('orchestrator_timeout')), 60_000),
         ),
       ]);
-    } catch {
+    } catch (err) {
+      logOrchestrator('api_call_failed', {
+        round,
+        error: err instanceof Error ? err.message : String(err),
+      });
       return null;
     }
 
@@ -232,6 +264,10 @@ export async function runOrchestratedBootstrap(
       .filter((block: any) => block.type === 'text')
       .map((block: any) => block.text)
       .join('');
+
+    if (response?.stop_reason === 'max_tokens') {
+      logOrchestrator('response_truncated_max_tokens', { round });
+    }
 
     // Record the assistant turn verbatim so the model keeps context.
     conversation.push({ role: 'assistant', content });
@@ -253,9 +289,66 @@ export async function runOrchestratedBootstrap(
       });
     }
     conversation.push({ role: 'user', content: toolResults });
+
+    // Last allowed round but the model still wants to call a tool: it will
+    // never get a turn to emit the final JSON. This was the main cause of
+    // `orchestrator_returned_no_synthesis` — the loop ended with an empty
+    // finalText. Mark it so we force one synthesis-only round below.
+    if (round === maxRounds - 1) {
+      exhaustedRounds = true;
+    }
+  }
+
+  // Forced synthesis: the tool loop ran out of rounds without a terminal
+  // text turn. Ask once more with tools disabled so the model has no choice
+  // but to return the JSON payload from the context it already gathered.
+  if (!finalText && exhaustedRounds) {
+    conversation.push({
+      role: 'user',
+      content:
+        'Du har nok informasjon nå. Returner KUN JSON-objektet med feltene companyProfile, intakeDraft, planningDraft, storyLogicDraft og nextRecommendedSteps. Ingen forklaring, ingen markdown — bare JSON.',
+    });
+    try {
+      const finalResponse: any = await Promise.race([
+        client.messages.create({
+          model,
+          max_tokens: 8192,
+          system: [
+            {
+              type: 'text',
+              text: ORCHESTRATOR_SYSTEM_PROMPT,
+              cache_control: { type: 'ephemeral' },
+            },
+          ],
+          messages: conversation,
+          // No tools — force a text/JSON answer.
+        }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('orchestrator_timeout')), 60_000),
+        ),
+      ]);
+      if (finalResponse?.stop_reason === 'max_tokens') {
+        logOrchestrator('forced_synthesis_truncated_max_tokens');
+      }
+      finalText = (finalResponse?.content ?? [])
+        .filter((block: any) => block.type === 'text')
+        .map((block: any) => block.text)
+        .join('');
+    } catch (err) {
+      logOrchestrator('forced_synthesis_failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   const synthesis = extractJsonFromText(finalText);
+  if (!synthesis) {
+    logOrchestrator('no_synthesis_after_loop', {
+      exhaustedRounds,
+      finalTextLength: finalText.length,
+      toolCalls: toolCallsLog.map((t) => `${t.tool}:${t.ok ? 'ok' : 'fail'}`),
+    });
+  }
   return {
     brregCompany,
     websiteInsights,
