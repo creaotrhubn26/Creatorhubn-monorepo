@@ -76,7 +76,7 @@ import {
 import { apiRequest } from '@/lib/queryClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
-import { AdminButton, AdminTableContainer } from './design-system';
+import { AdminButton, AdminTableContainer, useIsMobile } from './design-system';
 
 interface DatabaseTable {
   table_name: string;
@@ -310,6 +310,9 @@ export default function DatabaseManagementPanel() {
 
   // Theming system
   const theming = useTheming('prototype_tester');
+
+  // Responsive: full-screen dialogs on mobile
+  const isMobile = useIsMobile();
 
   // Get auth from master integration
   const { auth } = useEnhancedMasterIntegration();
@@ -3166,11 +3169,12 @@ export default function DatabaseManagementPanel() {
       </Card>
 
       {/* Script Recovery Dialog */}
-      <Dialog 
-        open={showRecoveryDialog} 
+      <Dialog
+        open={showRecoveryDialog}
         onClose={() => setShowRecoveryDialog(false)}
         maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle sx={{ 
           bgcolor: (() => {
@@ -3343,11 +3347,12 @@ export default function DatabaseManagementPanel() {
       </Dialog>
 
       {/* Dry Run Reminder Dialog */}
-      <Dialog 
-        open={showDryRunReminder} 
+      <Dialog
+        open={showDryRunReminder}
         onClose={() => setShowDryRunReminder(false)}
         maxWidth="sm"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle sx={{ bgcolor: 'warning.main', color: 'white' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -3418,11 +3423,12 @@ export default function DatabaseManagementPanel() {
       </Dialog>
 
       {/* Safety Warning Dialog */}
-      <Dialog 
-        open={showSafetyWarning} 
+      <Dialog
+        open={showSafetyWarning}
         onClose={() => setShowSafetyWarning(false)}
         maxWidth="sm"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle sx={{ bgcolor: 'error.main', color: 'white' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>

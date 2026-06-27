@@ -46,7 +46,7 @@ import {
   Select,
   MenuItem,
 } from '@mui/material';
-import { AdminButton, AdminTableContainer } from './design-system';
+import { AdminButton, AdminTableContainer, useIsMobile } from './design-system';
 import {
   CheckCircle as CheckIcon,
   CheckCircle,
@@ -96,6 +96,7 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
   const [showTutorial, setShowTutorial] = useState(true);
   const [tutorialStep, setTutorialStep] = useState(0);
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'warning' | 'info' }>({ open: false, message: '', severity: 'info' });
+  const isMobile = useIsMobile();
 
   const handleValidateUrl = async () => {
     if (!url) return;
@@ -367,11 +368,12 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
   return (
     <Box>
       {/* Tutorial Dialog */}
-      <Dialog 
-        open={showTutorial} 
+      <Dialog
+        open={showTutorial}
         onClose={handleTutorialClose}
         maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <TutorialIcon color="primary" />
@@ -786,7 +788,7 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
                 
                 <Divider sx={{ my: 2 }} />
                 
-                <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', mb: 2 }}>
+                <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
                   <Button
                     variant="outlined"
                     color="info"

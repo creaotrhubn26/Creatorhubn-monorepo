@@ -86,7 +86,7 @@ import { validateText, validateInput, ValidationRule } from '../../utils/inputVa
 import FeatureManagementWithPublish from './FeatureManagementWithPublish';
 import DeploymentStatusWidget from './DeploymentStatusWidget';
 import { CREATOR_HUB_BRANDING } from '../../constants/CreatorHubBranding';
-import { AdminCard, AdminButton, StatusChip, AdminLoading, AdminEmpty, AdminError, AdminTableContainer, adminTokens } from './design-system';
+import { AdminCard, AdminButton, StatusChip, AdminLoading, AdminEmpty, AdminError, AdminTableContainer, adminTokens, useIsMobile } from './design-system';
 
 
 interface DeploymentTarget {
@@ -360,6 +360,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
 }: CompleteDeploymentManagerProps = {}) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
 
   // Master Integration Provider
   const { integration, communication, dataFlow, componentRegistry, auth } = useEnhancedMasterIntegration();
@@ -2103,7 +2104,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
           Deploy complete solutions with App.tsx integration, package.json updates, and vendor integration
         </Typography>
 
-      {/* ✅ NY: Enhanced Tab Interface , *, /}
+      {/* ✅ NY: Enhanced Tab Interface */}
       <Card sx={{ mt:  3 }}>
         <Tabs
           value={activeTab}
@@ -2600,7 +2601,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
       {/* 200 OK Checker Tab */}
       {activeTab === 3 && (
         <Box sx={{ mt:  3 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  3 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2, mb:  3 }}>
             <Box>
               <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
                 🔍 System Health Checker
@@ -2782,7 +2783,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
       {/* Quality Analysis Tab */}
       {activeTab === 5 && (
         <Box sx={{ mt:  3 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  3 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2, mb:  3 }}>
             <Box>
               <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
                 🔍 Comprehensive Quality Analysis
@@ -3180,7 +3181,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
       {/* Feature Flags Tab */}
       {activeTab === 4 && (
         <Box sx={{ mt:  3 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  3 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2, mb:  3 }}>
             <Box>
               <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
                 🚀 Feature Flag Management
@@ -3214,11 +3215,12 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
       )}
 
       {/* Health Check Dialog */}
-      <Dialog 
+      <Dialog
          open={showHealthCheckDialog}
         onClose={() => setShowHealthCheckDialog(false)}
         maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>
           <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
@@ -3255,11 +3257,12 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
       </Dialog>
 
       {/* Rollback Dialog */}
-      <Dialog 
+      <Dialog
          open={showRollbackDialog}
         onClose={() => setShowRollbackDialog(false)}
         maxWidth="sm"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>
           <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
@@ -3303,7 +3306,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
       </Dialog>
 
       {/* Confirm Dialog */}
-      <Dialog open={confirmDialog.open} onClose={() => setConfirmDialog(prev => ({ ...prev, open: false }))}>
+      <Dialog open={confirmDialog.open} onClose={() => setConfirmDialog(prev => ({ ...prev, open: false }))} fullScreen={isMobile}>
         <DialogTitle>{confirmDialog.title}</DialogTitle>
         <DialogContent>
           <Typography style={{ whiteSpace: 'pre-line' }}>{confirmDialog.message}</Typography>

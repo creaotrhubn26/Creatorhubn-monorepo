@@ -66,6 +66,7 @@ import {
   AdminButton,
   StatusChip,
   AdminTableContainer,
+  useIsMobile,
 } from './design-system';
 
 interface AdminStatsProps {
@@ -159,6 +160,7 @@ const STATS_STALE_MS = 10_000;
 export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsProps) {
   const [selectedMetric, setSelectedMetric] = useState<string | null>(null);
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
+  const isMobile = useIsMobile();
 
   // Theming system
   const theming = useTheming('prototype_tester');
@@ -1300,11 +1302,12 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
       </MuiCard>
 
       {/* Detail Dialog */}
-      <Dialog 
+      <Dialog
         open={detailDialogOpen}
         onClose={handleCloseDialog}
         maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

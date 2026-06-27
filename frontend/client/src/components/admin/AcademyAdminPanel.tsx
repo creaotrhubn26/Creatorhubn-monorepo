@@ -70,7 +70,7 @@ import {
   CheckCircle as CheckCircleIcon,
 } from '@mui/icons-material';
 import { useToast } from '@/hooks/use-toast';
-import { AdminButton, StatusChip, AdminTableContainer } from './design-system';
+import { AdminButton, StatusChip, AdminTableContainer, useIsMobile } from './design-system';
 
 interface Course {
   id: string;
@@ -177,6 +177,7 @@ export default memo(function AcademyAdminPanel() {
   const professionColor = getUserProfessionColor(currentProfession) || '#ff8c00';
 
   const { toast } = useToast();
+  const isMobile = useIsMobile();
 
   // Fetch academy statistics
   const { data: stats, isLoading: statsLoading } = useQuery<AcademyStats>({
@@ -1235,7 +1236,7 @@ export default memo(function AcademyAdminPanel() {
       </Menu>
 
       {/* Edit Course Dialog */}
-      <Dialog open={editDialogOpen} onClose={() => setEditDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={editDialogOpen} onClose={() => setEditDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>Rediger kurs</DialogTitle>
         <DialogContent>
           {selectedCourse && (
@@ -1266,7 +1267,7 @@ export default memo(function AcademyAdminPanel() {
       </Dialog>
 
       {/* Add Instructor Dialog */}
-      <Dialog open={addInstructorDialogOpen} onClose={() => setAddInstructorDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={addInstructorDialogOpen} onClose={() => setAddInstructorDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>Legg til instruktør</DialogTitle>
         <DialogContent>
           <Box sx={{ mt: 2 }}>
@@ -1304,7 +1305,7 @@ export default memo(function AcademyAdminPanel() {
       </Dialog>
 
       {/* Enroll Student Dialog */}
-      <Dialog open={enrollDialogOpen} onClose={() => setEnrollDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={enrollDialogOpen} onClose={() => setEnrollDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>Manuell påmelding</DialogTitle>
         <DialogContent>
           <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -1353,7 +1354,7 @@ export default memo(function AcademyAdminPanel() {
       </Dialog>
 
       {/* Bulk Enroll Dialog */}
-      <Dialog open={bulkEnrollDialogOpen} onClose={() => setBulkEnrollDialogOpen(false)} maxWidth="md" fullWidth>
+      <Dialog open={bulkEnrollDialogOpen} onClose={() => setBulkEnrollDialogOpen(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle>Massepåmelding - Meld på flere studenter</DialogTitle>
         <DialogContent>
           <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 3 }}>

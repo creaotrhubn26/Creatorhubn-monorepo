@@ -56,6 +56,7 @@ import {
   StatusChip,
   AdminTableContainer,
   AdminLoading,
+  useIsMobile,
 } from './design-system';
 
 interface TrialFeature {
@@ -144,6 +145,7 @@ export default function TrialManagementPanel({
   const [clientFilter, setClientFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
 
   // Theming system
   const theming = useTheming('prototype_tester');
@@ -408,7 +410,7 @@ export default function TrialManagementPanel({
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  3 }}>
         <Typography variant="h5" component="h2" sx={{ color: theming.colors.primary }}>Aktive Prøveperioder</Typography>
-        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
           {/* Client Filter */}
           <TextField
             size="small"
@@ -797,7 +799,7 @@ export default function TrialManagementPanel({
       {activeTab === 2 && renderAnalyticsTab()}
 
       {/* Feature Dialog */}
-      <Dialog open={showFeatureDialog} onClose={() => setShowFeatureDialog(false)} maxWidth="md" fullWidth>
+      <Dialog open={showFeatureDialog} onClose={() => setShowFeatureDialog(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Add />
@@ -907,7 +909,7 @@ export default function TrialManagementPanel({
       </Dialog>
 
       {/* Analytics Dialog */}
-      <Dialog open={showAnalyticsDialog} onClose={() => setShowAnalyticsDialog(false)} maxWidth="lg" fullWidth>
+      <Dialog open={showAnalyticsDialog} onClose={() => setShowAnalyticsDialog(false)} maxWidth="lg" fullWidth fullScreen={isMobile}>
         <DialogTitle>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <TrendingUp />
@@ -1027,7 +1029,7 @@ export default function TrialManagementPanel({
       </Dialog>
 
       {/* End Trial Confirmation Dialog */}
-      <Dialog open={!!endTrialConfirmId} onClose={() => setEndTrialConfirmId(null)}>
+      <Dialog open={!!endTrialConfirmId} onClose={() => setEndTrialConfirmId(null)} fullScreen={isMobile}>
         <DialogTitle>Avslutt prøveperiode</DialogTitle>
         <DialogContent>
           <Typography>Er du sikker på at du vil avslutte denne prøveperioden?</Typography>

@@ -60,6 +60,7 @@ import {
   AdminButton,
   AdminTableContainer,
   StatusChip,
+  useIsMobile,
 } from './design-system';
 
 interface TabPanelProps {
@@ -624,6 +625,7 @@ export default function PriceManagementDashboard({
   const [driftLoading, setDriftLoading] = useState(false);
   const [driftChecking, setDriftChecking] = useState(false);
 
+  const isMobile = useIsMobile();
   const theming = useTheming('prototype_tester');
   // Lys oransje aksent på mørk bakgrunn (matcher admin-skallet).
   const themeColors = { ...theming.colors, primary: '#ff8c00' };
@@ -2499,7 +2501,7 @@ export default function PriceManagementDashboard({
         <LeadMapPricingPanel />
       </TabPanel>
 
-      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="md" fullWidth>
+      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle>{editingFeature ? 'Rediger feature' : 'Legg til ny feature'}</DialogTitle>
         <DialogContent>
           <TextField
@@ -2543,7 +2545,7 @@ export default function PriceManagementDashboard({
         </DialogActions>
       </Dialog>
 
-      <Dialog open={editPlanDialogOpen} onClose={() => setEditPlanDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={editPlanDialogOpen} onClose={() => setEditPlanDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>Rediger plan</DialogTitle>
         <DialogContent>
           {editingPlanContactSalesOnly ? (
@@ -2792,6 +2794,7 @@ export default function PriceManagementDashboard({
         onClose={() => setEditEmailTemplateDialogOpen(false)}
         maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>Rediger CreatorHub e-postmal</DialogTitle>
         <DialogContent>

@@ -278,7 +278,7 @@ export default function VisualCMSAdminDashboard() {
 };
 
   return (
-    <Box sx={{ width: '100%', bgcolor: 'background.default', minHeight: '100vh', p: 3 }}>
+    <Box sx={{ width: '100%', bgcolor: 'background.default', minHeight: '100vh', py: 3, px: { xs: 2, sm: 3 } }}>
       {/* Header */}
       <Paper elevation={2} sx={{ ...theming.getThemedCardSx(), p: 3, mb: 3, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
         <Typography variant="h4" component="h1" sx={{ color: theming.colors.primary, fontWeight: 'bold', mb: 1 }}>
@@ -287,8 +287,8 @@ export default function VisualCMSAdminDashboard() {
         <Typography variant="subtitle1" sx={{ color: 'white', opacity: 0.9 }}>
           Complete API Integration Management & Testing Infrastructure
         </Typography>
-        <Box sx={{ mt: 2, display: 'flex', gap:  2 }}>
-          <Chip 
+        <Box sx={{ mt: 2, display: 'flex', gap:  2, flexWrap: 'wrap' }}>
+          <Chip
             icon={<GoogleIcon />}
             label={`Google APIs: ${googleStatus?.success_rate || '0, %'}`}
             color={googleStatus?.success_rate === '100%' ? 'success' : 'warning'}
@@ -532,10 +532,10 @@ export default function VisualCMSAdminDashboard() {
                   Comprehensive API mocking and testing infrastructure for 100+ services integration coverage.
                 </Typography>
                 
-                <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
+                <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
                   <FormControlLabel
                     control={
-                      <Switch 
+                      <Switch
                         checked={mockServersActive}
                         onChange={(e) => toggleMockServers.mutate(e.target.checked)}
                       />

@@ -78,6 +78,7 @@ import {
   StatusChip,
   AdminTableContainer,
   adminTokens,
+  useIsMobile,
 } from './design-system';
 
 interface User {
@@ -183,6 +184,7 @@ interface UserManagementPanelProps {
 
 export default function UserManagementPanel(_: UserManagementPanelProps) {
   const presence = useAdminPresence();
+  const isMobile = useIsMobile();
   const [tabValue, setTabValue] = useState(0);
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -1086,7 +1088,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
   };
 
     return (
-      <Dialog open={inviteDialogOpen} onClose={() => setInviteDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={inviteDialogOpen} onClose={() => setInviteDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>
           <Box display="flex" alignItems="center" gap={1}>
             <PersonAddIcon sx={{ color: adminTokens.color.brand }} />
@@ -1263,7 +1265,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
   );
 
   const EditRoleDialog = () => (
-    <Dialog open={editRoleOpen} onClose={() => { setEditRoleOpen(false); setSelectedUser(null); }} maxWidth="xs" fullWidth>
+    <Dialog open={editRoleOpen} onClose={() => { setEditRoleOpen(false); setSelectedUser(null); }} maxWidth="xs" fullWidth fullScreen={isMobile}>
       <DialogTitle>Endre rolle</DialogTitle>
       <DialogContent>
         <FormControl fullWidth sx={{ mt: 1 }}>
@@ -1320,6 +1322,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
       }}
       maxWidth="xs"
       fullWidth
+      fullScreen={isMobile}
     >
       <DialogTitle>Endre profesjon</DialogTitle>
       <DialogContent>
@@ -1417,6 +1420,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
         }}
         maxWidth="sm"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>Administrer regnskapsflyt</DialogTitle>
         <DialogContent>
@@ -1595,7 +1599,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
 
       {/* Send melding til bruker — inlined (ikke render-helper) så TextField
           beholder fokus mellom tastetrykk. */}
-      <Dialog open={messageOpen} onClose={() => setMessageOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={messageOpen} onClose={() => setMessageOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>
           Send melding{selectedUser ? ` til ${selectedUser.email || selectedUser.id}` : ''}
         </DialogTitle>

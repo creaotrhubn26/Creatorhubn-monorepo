@@ -67,7 +67,7 @@ import {
 } from '@mui/icons-material';
 import type { ChipProps } from '@mui/material';
 import { apiRequest } from '@/lib/queryClient';
-import { AdminButton } from './design-system';
+import { AdminButton, useIsMobile } from './design-system';
 
 interface ProfessionTypeConfig {
   id: string;
@@ -128,6 +128,7 @@ export default function ProfessionTypeManager() {
   const [selectedProfession, setSelectedProfession] = useState<ProfessionTypeConfig | null>(null);
   const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
 
+  const isMobile = useIsMobile();
   const queryClient = useQueryClient();
   const theming = useTheming('admin');
   const { analytics, performance, debugging, lifecycle, features, auth } = useEnhancedMasterIntegration();
@@ -881,11 +882,12 @@ export default function ProfessionTypeManager() {
       )}
 
       {/* Preview Dialog */}
-      <Dialog 
-        open={previewDialogOpen} 
+      <Dialog
+        open={previewDialogOpen}
         onClose={() => setPreviewDialogOpen(false)}
         maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -1013,14 +1015,15 @@ export default function ProfessionTypeManager() {
       </Dialog>
 
       {/* Create/Edit Dialog */}
-      <Dialog 
-        open={createDialogOpen || editDialogOpen} 
+      <Dialog
+        open={createDialogOpen || editDialogOpen}
         onClose={() => {
           setCreateDialogOpen(false);
           setEditDialogOpen(false);
         }}
         maxWidth="lg"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>
           <Typography variant="h6">

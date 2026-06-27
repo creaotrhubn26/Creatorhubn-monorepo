@@ -105,7 +105,7 @@ import NorwegianDictionaryPanel from './NorwegianDictionaryPanel';
 import ContextualWordSuggestions from './ContextualWordSuggestions';
 import 'quill/dist/quill.snow.css';
 import { quillModules, quillFormats, EMPTY_HTML } from '../notes/constants';
-import { AdminButton, adminTokens } from './design-system';
+import { AdminButton, adminTokens, useIsMobile } from './design-system';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // TYPES
@@ -283,7 +283,8 @@ function buildSectionsFromHTML(html: string): Array<{ id: string; level: number;
 
 function CreatorHubNotesInner() {
   const qc = useQueryClient();
-  
+  const isMobile = useIsMobile();
+
   // Profession system hooks
   const { professionConfigs, getUserProfessionColor } = useDynamicProfessions();
   const { professionConfigs: apiProfessionConfigs } = useProfessionConfigs();
@@ -2331,7 +2332,7 @@ function CreatorHubNotesInner() {
       )}
 
       {/* Export Dialog */}
-      <Dialog open={openExportDialog} onClose={() => setOpenExportDialog(false)} fullWidth maxWidth="sm">
+      <Dialog open={openExportDialog} onClose={() => setOpenExportDialog(false)} fullWidth maxWidth="sm" fullScreen={isMobile}>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           {professionIcon && (
             <Box
@@ -2371,7 +2372,7 @@ function CreatorHubNotesInner() {
           ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
 
       {/* Paraphraser */}
-      <Dialog open={showParaphraser} onClose={() => setShowParaphraser(false)} maxWidth="md" fullWidth>
+      <Dialog open={showParaphraser} onClose={() => setShowParaphraser(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, position: 'relative' }}>
           {professionIcon && (
             <Box
@@ -2449,7 +2450,7 @@ function CreatorHubNotesInner() {
       </Dialog>
 
       {/* Grammar Checker */}
-      <Dialog open={showGrammarChecker} onClose={() => setShowGrammarChecker(false)} maxWidth="md" fullWidth>
+      <Dialog open={showGrammarChecker} onClose={() => setShowGrammarChecker(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, position: 'relative' }}>
           {professionIcon && (
             <Box
@@ -2517,7 +2518,7 @@ function CreatorHubNotesInner() {
       </Dialog>
 
       {/* Summarizer */}
-      <Dialog open={showSummarizer} onClose={() => setShowSummarizer(false)} maxWidth="md" fullWidth>
+      <Dialog open={showSummarizer} onClose={() => setShowSummarizer(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, position: 'relative' }}>
           {professionIcon && (
             <Box
@@ -2592,7 +2593,7 @@ function CreatorHubNotesInner() {
       </Dialog>
 
       {/* AI Humanizer */}
-      <Dialog open={showHumanizer} onClose={() => setShowHumanizer(false)} maxWidth="md" fullWidth>
+      <Dialog open={showHumanizer} onClose={() => setShowHumanizer(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, position: 'relative' }}>
           {professionIcon && (
             <Box
@@ -2661,7 +2662,7 @@ function CreatorHubNotesInner() {
       </Dialog>
 
       {/* Translator */}
-      <Dialog open={showTranslator} onClose={() => setShowTranslator(false)} maxWidth="md" fullWidth>
+      <Dialog open={showTranslator} onClose={() => setShowTranslator(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, position: 'relative' }}>
           {professionIcon && (
             <Box
@@ -2751,7 +2752,7 @@ function CreatorHubNotesInner() {
       </Dialog>
 
       {/* Citation Generator */}
-      <Dialog open={showCitationGen} onClose={() => setShowCitationGen(false)} maxWidth="md" fullWidth>
+      <Dialog open={showCitationGen} onClose={() => setShowCitationGen(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, position: 'relative' }}>
           <FormatQuoteIcon color="primary" />
           Citation Generator
@@ -2817,7 +2818,7 @@ function CreatorHubNotesInner() {
       </Dialog>
 
       {/* Content Generator */}
-      <Dialog open={showContentGen} onClose={() => setShowContentGen(false)} maxWidth="md" fullWidth>
+      <Dialog open={showContentGen} onClose={() => setShowContentGen(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, position: 'relative' }}>
           {professionIcon && (
             <Box
@@ -2885,7 +2886,7 @@ function CreatorHubNotesInner() {
       </Dialog>
 
       {/* AI Detector */}
-      <Dialog open={showAIDetector} onClose={() => setShowAIDetector(false)} maxWidth="md" fullWidth>
+      <Dialog open={showAIDetector} onClose={() => setShowAIDetector(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, position: 'relative' }}>
           {professionIcon && (
             <Box
@@ -2943,7 +2944,7 @@ function CreatorHubNotesInner() {
       </Dialog>
 
       {/* Word Counter */}
-      <Dialog open={showWordCounter} onClose={() => setShowWordCounter(false)} maxWidth="md" fullWidth>
+      <Dialog open={showWordCounter} onClose={() => setShowWordCounter(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           {professionIcon && (
             <Box

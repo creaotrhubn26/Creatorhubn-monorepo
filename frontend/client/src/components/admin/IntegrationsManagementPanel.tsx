@@ -163,7 +163,7 @@ import ApiIntegrationProcessMonitor from './ApiIntegrationProcessMonitor';
 import DatabaseIntegrityChecker from './DatabaseIntegrityChecker';
 import type { APIVersionInfo } from './APIVersionReleaseNotesDialog';
 import { APIVersionReleaseNotesDialog } from './APIVersionReleaseNotesDialog';
-import { AdminButton } from './design-system';
+import { AdminButton, useIsMobile } from './design-system';
 
 interface ApiKey {
   id: string;
@@ -265,6 +265,7 @@ export default function IntegrationsManagementPanel({
   const themeColors = { ...theming.colors, primary: '#ff8c00' };
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
 
   // Get auth from master integration
   const { auth } = useEnhancedMasterIntegration();
@@ -845,7 +846,7 @@ export default function IntegrationsManagementPanel({
     };
 
     return (
-      <Dialog open={keyDialogOpen} onClose={() => setKeyDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={keyDialogOpen} onClose={() => setKeyDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>
           <Box display="flex" alignItems="center" gap={1}>
             <KeyIcon sx={{ color: '#ff8c00' }} />
@@ -1119,7 +1120,7 @@ export default function IntegrationsManagementPanel({
     };
 
     return (
-      <Dialog open={webhookDialogOpen} onClose={() => setWebhookDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={webhookDialogOpen} onClose={() => setWebhookDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>
           <Box display="flex" alignItems="center" gap={1}>
             <WebhookIcon sx={{ color: '#ff8c00' }} />
@@ -1215,7 +1216,7 @@ export default function IntegrationsManagementPanel({
 	    };
 
     return (
-      <Dialog open={oauthDialogOpen} onClose={() => setOAuthDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={oauthDialogOpen} onClose={() => setOAuthDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>
           <Box display="flex" alignItems="center" gap={1}>
             <OAuthIcon sx={{ color: '#ff8c00' }} />
@@ -2849,7 +2850,7 @@ export default function IntegrationsManagementPanel({
             </CardContent>
           </Card>
 
-          {/* Phase 13: Advanced Integration & API Management , *, /}
+          {/* Phase 13: Advanced Integration & API Management  */}
           <Cardsx={{mb: 3, background: 'linear-gradient(45deg, rgba(255,140,0,0.1) 0%, rgba(255,193,7,0.1) 100%)' }}>
             <CardContent >
               <Typography variant="h6"sx={{mb: 2, color: '#ff8c00, 0'fontWeight: 600}sx={{color: themeColors.primary }}>
@@ -3914,7 +3915,7 @@ export default function IntegrationsManagementPanel({
                 </ListItem>
               </List>
 
-              {/* Phase 13: Norwegian Business Ecosystem APIs , *, /}
+              {/* Phase 13: Norwegian Business Ecosystem APIs  */}
               <Typography variant="subtitle1"sx={{fontWeight: 600, mb: 1, color: '#ff8c00' }}>
                 🏛️ Phase 13: Norske Business Ecosystem Integrasjoner
               </Typography>
@@ -6086,7 +6087,7 @@ export default function IntegrationsManagementPanel({
       />
 
       {/* Confirm Dialogs */}
-      <Dialog open={_apiTestConfirm.open} onClose={() => setApiTestConfirm({ open: false, testService: null, headers: null })}>
+      <Dialog open={_apiTestConfirm.open} onClose={() => setApiTestConfirm({ open: false, testService: null, headers: null })} fullScreen={isMobile}>
         <DialogTitle>Confirm API Test</DialogTitle>
         <DialogContent>
           <DialogContentText>
@@ -6101,7 +6102,7 @@ export default function IntegrationsManagementPanel({
         </DialogActions>
       </Dialog>
 
-      <Dialog open={_aiImplementConfirm.open} onClose={() => setAiImplementConfirm({ open: false, message: '', solutionId: null, headers: null })}>
+      <Dialog open={_aiImplementConfirm.open} onClose={() => setAiImplementConfirm({ open: false, message: '', solutionId: null, headers: null })} fullScreen={isMobile}>
         <DialogTitle>Confirm AI Implementation</DialogTitle>
         <DialogContent>
           <DialogContentText>
@@ -6116,7 +6117,7 @@ export default function IntegrationsManagementPanel({
         </DialogActions>
       </Dialog>
 
-      <Dialog open={_needsDatabaseConfirm.open} onClose={() => setNeedsDatabaseConfirm({ open: false, projectName: '', description: '', apis: '' })}>
+      <Dialog open={_needsDatabaseConfirm.open} onClose={() => setNeedsDatabaseConfirm({ open: false, projectName: '', description: '', apis: '' })} fullScreen={isMobile}>
         <DialogTitle>Confirm Database Operation</DialogTitle>
         <DialogContent>
           <DialogContentText>
@@ -6133,7 +6134,7 @@ export default function IntegrationsManagementPanel({
         </DialogActions>
       </Dialog>
 
-      <Dialog open={_projectLiveConfirm.open} onClose={() => _setProjectLiveConfirm({ open: false, projectName: '' })}>
+      <Dialog open={_projectLiveConfirm.open} onClose={() => _setProjectLiveConfirm({ open: false, projectName: '' })} fullScreen={isMobile}>
         <DialogTitle>Confirm Project Go Live</DialogTitle>
         <DialogContent>
           <DialogContentText>
