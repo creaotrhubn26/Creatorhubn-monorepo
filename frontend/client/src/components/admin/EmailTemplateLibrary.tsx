@@ -315,7 +315,7 @@ export default function EmailTemplateLibrary({
   return (
     <Stack spacing={3}>
       <Box>
-        <Typography variant="h4" fontWeight={700}>
+        <Typography variant="h4" component="h2" fontWeight={700}>
           Email Template Library
         </Typography>
         <Typography variant="body2" color="text.secondary">
@@ -327,6 +327,7 @@ export default function EmailTemplateLibrary({
         <TextField
           fullWidth
           placeholder="Search templates..."
+          aria-label="Søk i e-postmaler"
           value={searchQuery}
           onChange={(event) => setSearchQuery(event.target.value)}
           InputProps={{
@@ -343,6 +344,7 @@ export default function EmailTemplateLibrary({
             value={sortBy}
             onChange={(event) => setSortBy(event.target.value as SortBy)}
             displayEmpty
+            aria-label="Sorter maler"
           >
             <MenuItem value="recent">Most Recent</MenuItem>
             <MenuItem value="popular">Most Popular</MenuItem>
@@ -489,18 +491,27 @@ export default function EmailTemplateLibrary({
 
                   <CardActions sx={{ px: 2, pb: 2 }}>
                     <Tooltip title="Preview template">
-                      <IconButton onClick={() => setPreviewTemplate(template)}>
+                      <IconButton
+                        aria-label="Forhåndsvis mal"
+                        onClick={() => setPreviewTemplate(template)}
+                      >
                         <Visibility />
                       </IconButton>
                     </Tooltip>
                     <Tooltip title="Duplicate template">
-                      <IconButton onClick={() => duplicateMutation.mutate(template.id)}>
+                      <IconButton
+                        aria-label="Dupliser mal"
+                        onClick={() => duplicateMutation.mutate(template.id)}
+                      >
                         <ContentCopy />
                       </IconButton>
                     </Tooltip>
                     {!template.isDefault && (
                       <Tooltip title="Delete template">
-                        <IconButton onClick={() => setDeleteConfirmId(template.id)}>
+                        <IconButton
+                          aria-label="Slett mal"
+                          onClick={() => setDeleteConfirmId(template.id)}
+                        >
                           <Delete />
                         </IconButton>
                       </Tooltip>

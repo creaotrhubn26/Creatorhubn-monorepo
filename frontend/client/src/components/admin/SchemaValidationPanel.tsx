@@ -377,7 +377,7 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
           <TutorialIcon color="primary" />
           SEO Schema Optimization Tutorial
           <Box sx={{ flexGrow: 1 }} />
-          <Button size="small" onClick={handleTutorialClose}>
+          <Button size="small" onClick={handleTutorialClose} aria-label="Lukk veiledning">
             <CloseIcon />
           </Button>
         </DialogTitle>
@@ -460,7 +460,7 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <AssessmentIcon />
               <Box>
-                <Typography variant="h5">
+                <Typography variant="h5" component="h2">
                   Schema.org Validator
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
@@ -1101,7 +1101,7 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
                 <CardContent>
                   <Grid container spacing={2} alignItems="center">
                     <Grid item xs={12} md={6}>
-                      <Typography variant="h6" gutterBottom>
+                      <Typography variant="h6" component="h3" gutterBottom>
                         Validation Score
                       </Typography>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -1156,7 +1156,7 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
               {validation.detectedSchemas && validation.detectedSchemas.length > 0 && (
                 <Accordion defaultExpanded>
                   <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                    <Typography variant="h6">
+                    <Typography variant="h6" component="h3">
                       Detected Schemas ({validation.detectedSchemas.length})
                     </Typography>
                   </AccordionSummary>
@@ -1369,7 +1369,7 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
               {/* External Validation Links */}
               <Card sx={{ mt: 2, bgcolor: 'info.light' }}>
                 <CardContent>
-                  <Typography variant="h6" gutterBottom>
+                  <Typography variant="h6" component="h3" gutterBottom>
                     External Validation Tools
                   </Typography>
                   <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>

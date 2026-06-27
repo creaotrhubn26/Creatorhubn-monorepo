@@ -183,6 +183,7 @@ export default function BackupManagementInterface() {
     <Box sx={{ p: 3 }}>
       <Typography
         variant="h4"
+        component="h2"
         gutterBottom
         sx={{ display: 'flex', alignItems: 'center', gap: 2, color: theming.colors.primary }}
       >
@@ -198,7 +199,7 @@ export default function BackupManagementInterface() {
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                 <CloudIcon color="primary" />
                 <Box>
-                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                  <Typography variant="h6" component="h3" sx={{ color: theming.colors.primary }}>
                     Google Drive
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -217,7 +218,7 @@ export default function BackupManagementInterface() {
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                 <StorageIcon color="secondary" />
                 <Box>
-                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                  <Typography variant="h6" component="h3" sx={{ color: theming.colors.primary }}>
                     Totale Backups
                   </Typography>
                   <Typography variant="h4" color="primary" sx={{ color: theming.colors.primary }}>
@@ -235,7 +236,7 @@ export default function BackupManagementInterface() {
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                 <SecurityIcon color="success" />
                 <Box>
-                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                  <Typography variant="h6" component="h3" sx={{ color: theming.colors.primary }}>
                     Redundant Backup
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -368,6 +369,7 @@ export default function BackupManagementInterface() {
                           size="small"
                           onClick={() => window.open(backup.driveUrl, '_blank')}
                           title="Åpne i Google Drive"
+                          aria-label="Åpne i Google Drive"
                         >
                           <DownloadIcon />
                         </IconButton>
@@ -377,6 +379,7 @@ export default function BackupManagementInterface() {
                         onClick={() => deleteBackupMutation.mutate(backup.id)}
                         disabled={deleteBackupMutation.isPending}
                         title="Slett backup"
+                        aria-label="Slett backup"
                       >
                         <DeleteIcon />
                       </IconButton>

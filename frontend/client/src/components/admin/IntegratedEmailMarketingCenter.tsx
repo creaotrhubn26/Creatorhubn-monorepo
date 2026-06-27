@@ -309,7 +309,7 @@ export default function IntegratedEmailMarketingCenter(): JSX.Element {
       >
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Box>
-            <Typography variant="h4" sx={{ fontWeight: 800, mb: 1 }}>
+            <Typography variant="h4" component="h2" sx={{ fontWeight: 800, mb: 1 }}>
               Integrert E-postmarkedsføring & CRM
             </Typography>
             <Typography variant="subtitle1" color="text.secondary">
@@ -319,6 +319,7 @@ export default function IntegratedEmailMarketingCenter(): JSX.Element {
           {isSupported && (
             <Tooltip title="Push-varsler innstillinger">
               <IconButton
+                aria-label="Push-varsler innstillinger"
                 onClick={() => setPushSettingsOpen(true)}
                 sx={{ color: pushEnabled ? theming.colors.primary : 'text.secondary' }}
               >
@@ -341,7 +342,7 @@ export default function IntegratedEmailMarketingCenter(): JSX.Element {
 
       <TabPanel value={tabValue} index={0}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
-          <Typography variant="h5" sx={{ color: theming.colors.primary, fontWeight: 700 }}>
+          <Typography variant="h5" component="h3" sx={{ color: theming.colors.primary, fontWeight: 700 }}>
             CRM Kontakter
           </Typography>
           <Button variant="contained" onClick={() => setContactDialogOpen(true)} sx={theming.getThemedButtonSx()}>
@@ -413,7 +414,7 @@ export default function IntegratedEmailMarketingCenter(): JSX.Element {
       </TabPanel>
 
       <TabPanel value={tabValue} index={1}>
-        <Typography variant="h5" sx={{ color: theming.colors.primary, fontWeight: 700, mb: 2 }}>
+        <Typography variant="h5" component="h3" sx={{ color: theming.colors.primary, fontWeight: 700, mb: 2 }}>
           E-postkampanjer
         </Typography>
         {campaignsQuery.isLoading ? (
@@ -441,7 +442,7 @@ export default function IntegratedEmailMarketingCenter(): JSX.Element {
       </TabPanel>
 
       <TabPanel value={tabValue} index={2}>
-        <Typography variant="h5" sx={{ color: theming.colors.primary, fontWeight: 700, mb: 2 }}>
+        <Typography variant="h5" component="h3" sx={{ color: theming.colors.primary, fontWeight: 700, mb: 2 }}>
           Kampanjelister
         </Typography>
         <Grid container spacing={2}>
@@ -464,7 +465,7 @@ export default function IntegratedEmailMarketingCenter(): JSX.Element {
       </TabPanel>
 
       <TabPanel value={tabValue} index={3}>
-        <Typography variant="h5" sx={{ color: theming.colors.primary, fontWeight: 700, mb: 2 }}>
+        <Typography variant="h5" component="h3" sx={{ color: theming.colors.primary, fontWeight: 700, mb: 2 }}>
           E-postmaler
         </Typography>
         <Grid container spacing={2}>
@@ -485,7 +486,7 @@ export default function IntegratedEmailMarketingCenter(): JSX.Element {
       </TabPanel>
 
       <TabPanel value={tabValue} index={4}>
-        <Typography variant="h5" sx={{ color: theming.colors.primary, fontWeight: 700, mb: 2 }}>
+        <Typography variant="h5" component="h3" sx={{ color: theming.colors.primary, fontWeight: 700, mb: 2 }}>
           Kampanjeanalyse
         </Typography>
         {analytics ? (
@@ -538,6 +539,7 @@ export default function IntegratedEmailMarketingCenter(): JSX.Element {
 
       <Fab
         color="primary"
+        aria-label="Send hurtig e-post"
         sx={{ position: 'fixed', bottom: 16, right: 16 }}
         onClick={() => setQuickEmailOpen(true)}
       >

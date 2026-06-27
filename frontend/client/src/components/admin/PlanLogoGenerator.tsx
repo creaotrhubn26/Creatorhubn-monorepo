@@ -264,7 +264,7 @@ export default function PlanLogoGenerator({ profession, onLogoGenerated }: PlanL
           <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2 }}>
             <Avatar sx={{ bgcolor: professionColor(profession) }}>{professionIcon(profession)}</Avatar>
             <Box>
-              <Typography variant="h5" fontWeight={700}>
+              <Typography variant="h5" component="h2" fontWeight={700}>
                 Plan Logo Generator
               </Typography>
               <Typography variant="body2" color="text.secondary">
@@ -414,14 +414,15 @@ export default function PlanLogoGenerator({ profession, onLogoGenerated }: PlanL
                     </Typography>
 
                     <Stack direction="row" spacing={1}>
-                      <IconButton size="small" onClick={() => { setPreviewLogo(logo); setShowPreview(true); }}>
+                      <IconButton size="small" aria-label="Forhåndsvis logo" onClick={() => { setPreviewLogo(logo); setShowPreview(true); }}>
                         <Visibility fontSize="small" />
                       </IconButton>
-                      <IconButton size="small" onClick={() => downloadLogo(logo)}>
+                      <IconButton size="small" aria-label="Last ned logo" onClick={() => downloadLogo(logo)}>
                         <Download fontSize="small" />
                       </IconButton>
                       <IconButton
                         size="small"
+                        aria-label="Slett logo"
                         onClick={() => deleteLogoMutation.mutate(logo.id)}
                         disabled={deleteLogoMutation.isPending}
                       >

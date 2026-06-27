@@ -215,7 +215,7 @@ export default function AutomationsPanel({
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <SmartToy color="primary" sx={{ fontSize: 32 }} />
-          <Typography variant="h5" sx={{ fontWeight: 600, color: themeColors.primary }}>
+          <Typography variant="h5" component="h2" sx={{ fontWeight: 600, color: themeColors.primary }}>
             Automatiseringer
           </Typography>
         </Box>
@@ -370,9 +370,10 @@ export default function AutomationsPanel({
                   />
                   <ListItemSecondaryAction>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <IconButton 
-                        size="small" 
+                      <IconButton
+                        size="small"
                         onClick={() => handleEditAutomation(automation)}
+                        aria-label="Rediger automatisering"
                       >
                         <Edit />
                       </IconButton>
@@ -413,10 +414,10 @@ export default function AutomationsPanel({
                         />
                       </TableCell>
                       <TableCell>
-                        <IconButton size="small">
+                        <IconButton size="small" aria-label="Rediger arbeidsflyt">
                           <Edit />
                         </IconButton>
-                        <IconButton size="small">
+                        <IconButton size="small" aria-label="Slett arbeidsflyt">
                           <Delete />
                         </IconButton>
                       </TableCell>
@@ -430,7 +431,7 @@ export default function AutomationsPanel({
           <TabPanel value={tabValue} index={2}>
             <Box sx={{ textAlign: 'center', py: 4 }}>
               <Webhook sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
-              <Typography variant="h6" sx={{ color: themeColors.primary }}>
+              <Typography variant="h6" component="h3" sx={{ color: themeColors.primary }}>
                 Webhook-administrasjon
               </Typography>
               <Typography variant="body2" color="text.secondary">

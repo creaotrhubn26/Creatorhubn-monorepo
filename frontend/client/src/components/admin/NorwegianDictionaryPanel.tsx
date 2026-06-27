@@ -409,8 +409,8 @@ export default function NorwegianDictionaryPanel({
         {/* Header */}
         <Stack direction="row" alignItems="center" justifyContent="space-between">
           <Stack direction="row" alignItems="center" spacing={1}>
-            <TranslateIcon color="primary" />
-            <Typography variant="h6">Norwegian Dictionary</Typography>
+            <TranslateIcon color="primary" aria-hidden="true" />
+            <Typography variant="h6" component="h2">Norwegian Dictionary</Typography>
           </Stack>
           <Chip 
             label={`${fromLang.toUpperCase()} → ${toLang.toUpperCase()}`}
@@ -424,6 +424,7 @@ export default function NorwegianDictionaryPanel({
           <TextField
             fullWidth
             size="small"
+            aria-label="Søk etter ord i ordboken"
             placeholder={`Search ${fromLang === 'no' ? 'Norwegian' : 'English'} word...`}
             value={searchWord}
             onChange={(e) => setSearchWord(e.target.value)}
@@ -437,7 +438,7 @@ export default function NorwegianDictionaryPanel({
             }}
           />
           <Tooltip title="Swap languages">
-            <IconButton size="small" onClick={swapLanguages}>
+            <IconButton size="small" onClick={swapLanguages} aria-label="Bytt språk">
               <SwapHorizIcon />
             </IconButton>
           </Tooltip>
@@ -495,12 +496,12 @@ export default function NorwegianDictionaryPanel({
               </Stack>
               <Stack direction="row" spacing={0.5}>
                 <Tooltip title="Pronounce">
-                  <IconButton size="small">
+                  <IconButton size="small" aria-label="Uttal ordet">
                     <VolumeUpIcon fontSize="small" />
                   </IconButton>
                 </Tooltip>
                 <Tooltip title={bookmarkedWords.includes(currentEntry.word) ? 'Remove bookmark' : 'Bookmark'}>
-                  <IconButton size="small" onClick={() => toggleBookmark(currentEntry.word)}>
+                  <IconButton size="small" onClick={() => toggleBookmark(currentEntry.word)} aria-label={bookmarkedWords.includes(currentEntry.word) ? 'Fjern bokmerke' : 'Legg til bokmerke'}>
                     {bookmarkedWords.includes(currentEntry.word) ? (
                       <BookmarkIcon fontSize="small" color="warning" />
                     ) : (
@@ -514,7 +515,7 @@ export default function NorwegianDictionaryPanel({
             {/* Domain Badge */}
             {currentEntry.domain && (
               <Stack direction="row" spacing={1} alignItems="center" mb={2}>
-                {getDomainIcon(currentEntry.domain)}
+                <Box component="span" aria-hidden="true" sx={{ display: 'inline-flex' }}>{getDomainIcon(currentEntry.domain)}</Box>
                 <Chip 
                   label={currentEntry.domain}
                   size="small"
@@ -559,7 +560,7 @@ export default function NorwegianDictionaryPanel({
                             sx={{ fontSize: '0.7rem' }}
                           />
                           <Tooltip title="Insert into note">
-                            <IconButton size="small" onClick={() => insertTranslation(trans.text)}>
+                            <IconButton size="small" onClick={() => insertTranslation(trans.text)} aria-label="Sett inn i notat">
                               <ContentCopyIcon fontSize="small" />
                             </IconButton>
                           </Tooltip>
@@ -657,7 +658,7 @@ export default function NorwegianDictionaryPanel({
           </Alert>
         ) : (
           <Box sx={{ textAlign: 'center', py: 2 }}>
-            <TranslateIcon sx={{ fontSize: 48, color: 'text.secondary', opacity: 0.3, mb: 1 }} />
+            <TranslateIcon sx={{ fontSize: 48, color: 'text.secondary', opacity: 0.3, mb: 1 }} aria-hidden="true" />
             <Typography variant="body2" color="text.secondary">
               Search for a Norwegian or English word
             </Typography>
