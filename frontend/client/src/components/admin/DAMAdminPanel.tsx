@@ -361,7 +361,7 @@ export default function DAMAdminPanel() {
     <Box sx={{ p:  3 }}>
       {/* Header */}
       <Box sx={{ mb:  3 }}>
-        <Typography variant="h4" gutterBottom sx={{ color: theming.colors.primary }}>
+        <Typography variant="h4" component="h2" gutterBottom sx={{ color: theming.colors.primary }}>
           Digital Asset Management
         </Typography>
         <Typography variant="body1" color="text.secondary">
@@ -450,6 +450,7 @@ export default function DAMAdminPanel() {
             <Grid item xs={12}>
               <TextField
                 fullWidth
+                aria-label="Søk i eiendeler"
                 placeholder="Search assets..."
                 value={searchFilters.query}
                 onChange={(e) => handleFilterChange('query', e.target.value)}
@@ -572,7 +573,7 @@ export default function DAMAdminPanel() {
               >
                 List
               </Button>
-              <IconButton onClick={() => loadAssets()}>
+              <IconButton aria-label="Oppdater" onClick={() => loadAssets()}>
                 <RefreshIcon />
               </IconButton>
             </Stack>
@@ -606,13 +607,14 @@ export default function DAMAdminPanel() {
                 <CardContent sx={theming.getThemedCardSx()}>
                   <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb:  2 }}>
                     <Checkbox
+                      inputProps={{ 'aria-label': 'Velg eiendel' }}
                       checked={selectedAssets.includes(asset.id)}
                       onChange={(e) => {
                         e.stopPropagation();
                         handleAssetSelect(asset.id, e.target.checked);
                     }}
                     />
-                    <IconButton size="small">
+                    <IconButton aria-label="Flere handlinger" size="small">
                       <MoreIcon />
                     </IconButton>
                   </Stack>
@@ -660,6 +662,7 @@ export default function DAMAdminPanel() {
                 <TableRow>
                   <TableCell padding="checkbox">
                     <Checkbox
+                      inputProps={{ 'aria-label': 'Velg alle eiendeler' }}
                       checked={selectedAssets.length === assets.length && assets.length > 0}
                       indeterminate={selectedAssets.length > 0 && selectedAssets.length < assets.length}
                       onChange={(e) => handleSelectAll(e.target.checked)}
@@ -681,6 +684,7 @@ export default function DAMAdminPanel() {
                   <TableRow key={asset.id} hover>
                     <TableCell padding="checkbox">
                       <Checkbox
+                        inputProps={{ 'aria-label': 'Velg eiendel' }}
                         checked={selectedAssets.includes(asset.id)}
                         onChange={(e) => handleAssetSelect(asset.id, e.target.checked)}
                       />
@@ -726,16 +730,16 @@ export default function DAMAdminPanel() {
                     </TableCell>
                     <TableCell>
                       <Stack direction="row" spacing={0.5}>
-                        <IconButton size="small">
+                        <IconButton aria-label="Last ned" size="small">
                           <DownloadIcon />
                         </IconButton>
-                        <IconButton size="small">
+                        <IconButton aria-label="Rediger" size="small">
                           <EditIcon />
                         </IconButton>
-                        <IconButton size="small">
+                        <IconButton aria-label="Del" size="small">
                           <ShareIcon />
                         </IconButton>
-                        <IconButton size="small">
+                        <IconButton aria-label="Flere handlinger" size="small">
                           <MoreIcon />
                         </IconButton>
                       </Stack>
@@ -772,7 +776,7 @@ export default function DAMAdminPanel() {
             <Typography variant="h6" sx={{ color: theming.colors.primary }}>
               {selectedAsset?.name}
             </Typography>
-            <IconButton onClick={() => setAssetDetailsOpen(false)}>
+            <IconButton aria-label="Lukk" onClick={() => setAssetDetailsOpen(false)}>
               <CloseIcon />
             </IconButton>
           </Stack>

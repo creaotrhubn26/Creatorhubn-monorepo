@@ -291,7 +291,7 @@ export default function TrialManagementPanel({
   const renderFeaturesTab = () => (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  3 }}>
-        <Typography variant="h5" sx={{ color: theming.colors.primary }}>Trial-funksjoner</Typography>
+        <Typography variant="h5" component="h2" sx={{ color: theming.colors.primary }}>Trial-funksjoner</Typography>
         {selectedProject && (
           <Chip 
             label={`Prosjekt: ${selectedProject.title || selectedProject.name}`} 
@@ -407,7 +407,7 @@ export default function TrialManagementPanel({
     return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  3 }}>
-        <Typography variant="h5" sx={{ color: theming.colors.primary }}>Aktive Prøveperioder</Typography>
+        <Typography variant="h5" component="h2" sx={{ color: theming.colors.primary }}>Aktive Prøveperioder</Typography>
         <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
           {/* Client Filter */}
           <TextField
@@ -538,6 +538,7 @@ export default function TrialManagementPanel({
                           <IconButton
                             size="small"
                             color="error"
+                            aria-label="Avslutt prøveperiode"
                             onClick={() => handleEndTrial(trial.id)}
                           >
                             <Stop />
@@ -547,6 +548,7 @@ export default function TrialManagementPanel({
                         <Tooltip title="Vis detaljer">
                           <IconButton
                             size="small"
+                            aria-label="Vis detaljer"
                             onClick={() => {
                               // Integration: Create worklog when viewing trial details
                               if (onWorklogCreate) {
@@ -566,6 +568,7 @@ export default function TrialManagementPanel({
                         <Tooltip title="Innstillinger">
                           <IconButton
                             size="small"
+                            aria-label="Innstillinger"
                             onClick={() => {
                               if (onSettingsUpdate) {
                                 onSettingsUpdate({
@@ -587,6 +590,7 @@ export default function TrialManagementPanel({
                         <IconButton
                           size="small"
                           color="error"
+                          aria-label="Slett prøveperiode"
                           onClick={() => {
                             // Integration: File upload for trial archive
                             if (onFileUpload) {
@@ -615,7 +619,7 @@ export default function TrialManagementPanel({
 
   const renderAnalyticsTab = () => (
     <Box>
-      <Typography variant="h5" sx={{  mb:  3  }}>
+      <Typography variant="h5" component="h2" sx={{  mb:  3  }}>
         Trial Analytics
       </Typography>
 
@@ -689,6 +693,7 @@ export default function TrialManagementPanel({
               <Tooltip title="Download trial report">
                 <IconButton
                   size="small"
+                  aria-label="Last ned prøveperiode-rapport"
                   onClick={() => {
                     if (onFileDownload) {
                       onFileDownload({
@@ -707,6 +712,7 @@ export default function TrialManagementPanel({
                 <IconButton
                   size="small"
                   color="primary"
+                  aria-label="Planlegg gjennomgangsmøte for prøveperiode"
                   onClick={() => {
                     if (onMeetingCreate) {
                       onMeetingCreate({
@@ -725,6 +731,7 @@ export default function TrialManagementPanel({
               <Tooltip title="Update project with trial data">
                 <IconButton
                   size="small"
+                  aria-label="Oppdater prosjekt med prøveperiode-data"
                   onClick={() => {
                     if (onProjectUpdate && onProjectSelect) {
                       const projectTrials = trialStatuses.filter((t: TrialStatus) => 
@@ -749,6 +756,7 @@ export default function TrialManagementPanel({
               <IconButton
                 size="small"
                 color="secondary"
+                aria-label="Oppdater klientens prøveperiode-status"
                 onClick={() => {
                   if (onClientUpdate) {
                     const clientTrials = trialStatuses.filter((t: TrialStatus) => 

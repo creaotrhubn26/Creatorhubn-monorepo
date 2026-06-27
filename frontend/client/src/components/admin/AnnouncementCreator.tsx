@@ -470,7 +470,7 @@ export default function AnnouncementCreator() {
 
             <Grid item xs={12}>
               <Divider sx={{ my: 2 }} />
-              <Typography variant="h6" sx={{ mb: 2 }}>
+              <Typography variant="h6" component="h2" sx={{ mb: 2 }}>
                 Tilleggsinformasjon
               </Typography>
             </Grid>
@@ -510,7 +510,7 @@ export default function AnnouncementCreator() {
 
             <Grid item xs={12}>
               <Divider sx={{ my: 2 }} />
-              <Typography variant="h6" sx={{ mb: 2 }}>
+              <Typography variant="h6" component="h2" sx={{ mb: 2 }}>
                 Tutorial Video med Marketing (valgfritt)
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -532,7 +532,7 @@ export default function AnnouncementCreator() {
               >
                 {uploadedVideoUrl ? (
                   <Box>
-                    <CheckIcon sx={{ fontSize: 48, color: 'success.main', mb: 1 }} />
+                    <CheckIcon aria-hidden sx={{ fontSize: 48, color: 'success.main', mb: 1 }} />
                     <Typography variant="h6" sx={{ mb: 1, color: 'success.main' }}>
                       Video lastet opp til YouTube!
                     </Typography>
@@ -551,7 +551,7 @@ export default function AnnouncementCreator() {
                   </Box>
                 ) : isUploading ? (
                   <Box>
-                    <YouTubeIcon sx={{ fontSize: 48, color: '#ff0000', mb: 1 }} />
+                    <YouTubeIcon aria-hidden sx={{ fontSize: 48, color: '#ff0000', mb: 1 }} />
                     <Typography variant="h6" sx={{ mb: 2 }}>
                       Laster opp til YouTube...
                     </Typography>
@@ -564,7 +564,7 @@ export default function AnnouncementCreator() {
                   </Box>
                 ) : (
                   <Box>
-                    <UploadIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 1 }} />
+                    <UploadIcon aria-hidden sx={{ fontSize: 48, color: 'text.secondary', mb: 1 }} />
                     <Typography variant="h6" sx={{ mb: 1 }}>
                       Last opp video til YouTube
                     </Typography>

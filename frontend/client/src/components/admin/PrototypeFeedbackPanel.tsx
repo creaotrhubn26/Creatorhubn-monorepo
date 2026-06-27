@@ -906,7 +906,7 @@ export default function PrototypeFeedbackPanel({
                 ),
                 endAdornment: searchTerm && (
                   <InputAdornment position="end">
-                    <IconButton size="small" onClick={() => setSearchTerm('')}>
+                    <IconButton size="small" aria-label="Tøm søk" onClick={() => setSearchTerm('')}>
                       <Clear />
                     </IconButton>
                   </InputAdornment>
@@ -1010,9 +1010,10 @@ export default function PrototypeFeedbackPanel({
           {/* Sort Order */}
           <Grid item xs={12} sm={6} md={1}>
             <MuiTooltip title={sortOrder === 'asc' ? 'Stigende' : 'Synkende'}>
-              <IconButton 
+              <IconButton
+                aria-label={sortOrder === 'asc' ? 'Stigende' : 'Synkende'}
                 onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-                sx={{ 
+                sx={{
                   border: '1px solid',
                   borderColor: 'divider',
                   bgcolor: '#ff8c00',
@@ -1028,7 +1029,8 @@ export default function PrototypeFeedbackPanel({
           <Grid item xs={12} md={2}>
             <Box sx={{ display: 'flex', gap: 1 }}>
               <MuiTooltip title={groupByProfession ? "Vis som liste" : "Grupper etter profesjon"}>
-                <IconButton 
+                <IconButton
+                  aria-label={groupByProfession ? "Vis som liste" : "Grupper etter profesjon"}
                   onClick={() => {
                     const newValue = !groupByProfession;
                     setGroupByProfession(newValue);
@@ -1050,9 +1052,10 @@ export default function PrototypeFeedbackPanel({
                 </IconButton>
               </MuiTooltip>
               <MuiTooltip title="Eksporter til CSV">
-                <IconButton 
+                <IconButton
+                  aria-label="Eksporter til CSV"
                   onClick={exportToCSV}
-                  sx={{ 
+                  sx={{
                     border: '1px solid',
                     borderColor: 'divider',
                     color: '#4caf50'
@@ -1063,9 +1066,10 @@ export default function PrototypeFeedbackPanel({
               </MuiTooltip>
               {(searchTerm || filterStatus.length > 0 || filterPriority.length > 0 || filterProfession.length > 0) && (
                 <MuiTooltip title="Nullstill filtre">
-                  <IconButton 
+                  <IconButton
+                    aria-label="Nullstill filtre"
                     onClick={clearFilters}
-                    sx={{ 
+                    sx={{
                       border: '1px solid',
                       borderColor: 'divider',
                       color: '#f44336'
@@ -1218,8 +1222,12 @@ export default function PrototypeFeedbackPanel({
             const config = professionConfig[profession] || professionConfig.other;
             return (
               <Grid item xs={6} sm={4} md={2.4} key={profession}>
-                <Card 
-                  sx={{ 
+                <Card
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={filterProfession.includes(profession)}
+                  aria-label={`Filtrer på ${config.label}`}
+                  sx={{
                     cursor: 'pointer',
                     border: '2px solid',
                     borderColor: filterProfession.includes(profession) ? config.color : 'transparent',
@@ -1236,11 +1244,26 @@ export default function PrototypeFeedbackPanel({
                     } else {
                       setFilterProfession([...filterProfession, profession]);
                     }
-                    
+
                     analytics.trackEvent('profession_card_clicked', {
                       profession,
                       action: isAdding ? 'add_filter' : 'remove_filter',
                       totalFilteredProfessions: isAdding ? filterProfession.length + 1 : filterProfession.length - 1 });
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      const isAdding = !filterProfession.includes(profession);
+                      if (filterProfession.includes(profession)) {
+                        setFilterProfession(filterProfession.filter(p => p !== profession));
+                      } else {
+                        setFilterProfession([...filterProfession, profession]);
+                      }
+                      analytics.trackEvent('profession_card_clicked', {
+                        profession,
+                        action: isAdding ? 'add_filter' : 'remove_filter',
+                        totalFilteredProfessions: isAdding ? filterProfession.length + 1 : filterProfession.length - 1 });
+                    }
                   }}
                 >
                   <CardContent sx={{ textAlign: 'center', p: 2 }}>
@@ -1386,7 +1409,8 @@ export default function PrototypeFeedbackPanel({
                               />
                               <ListItemSecondaryAction>
                                 <Box sx={{ display: 'flex', gap: 1 }}>
-                                  <IconButton 
+                                  <IconButton
+                                    aria-label="Se detaljer"
                                     onClick={() => {
                                       setSelectedFeedback(feedback);
                                       setDetailDialogOpen(true);
@@ -1396,6 +1420,7 @@ export default function PrototypeFeedbackPanel({
                                     <OpenInNew />
                                   </IconButton>
                                   <IconButton
+                                    aria-label="Rediger status"
                                     onClick={() => {
                                       setSelectedFeedback(feedback);
                                       setNewStatus(feedback.status);
@@ -1714,6 +1739,7 @@ export default function PrototypeFeedbackPanel({
                           </IconButton>
                           {/* Status redigering */}
                           <IconButton
+                            aria-label="Rediger status"
                             onClick={() => {
                               setSelectedFeedback(feedback);
                               setNewStatus(feedback.status);
@@ -1906,6 +1932,7 @@ export default function PrototypeFeedbackPanel({
             </Typography>
           </Box>
           <IconButton
+            aria-label="Lukk"
             onClick={() => setDetailDialogOpen(false)}
             sx={{ color: 'white' }}
           >

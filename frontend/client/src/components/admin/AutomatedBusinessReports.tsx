@@ -1037,6 +1037,7 @@ const AutomatedBusinessReports: React.FC = () => {
                                 <Tooltip title="Generer rapport (API)">
                                   <IconButton
                                     size="small"
+                                    aria-label="Generer rapport (API)"
                                     onClick={() => {
                                       setSelectedTemplate(template);
                                       setGenerateDialogOpen(true);
@@ -1048,18 +1049,19 @@ const AutomatedBusinessReports: React.FC = () => {
                                 <Tooltip title="Generer PDF (Lokal)">
                                   <IconButton
                                     size="small"
+                                    aria-label="Generer PDF (Lokal)"
                                     onClick={() => generatePDFReport(template)}
                                   >
                                     <DownloadIcon />
                                   </IconButton>
                                 </Tooltip>
                                 <Tooltip title="Rediger mal">
-                                  <IconButton size="small">
+                                  <IconButton size="small" aria-label="Rediger mal">
                                     <EditIcon />
                                   </IconButton>
                                 </Tooltip>
                                 <Tooltip title="Se detaljer">
-                                  <IconButton size="small">
+                                  <IconButton size="small" aria-label="Se detaljer">
                                     <ViewIcon />
                                   </IconButton>
                                 </Tooltip>
@@ -1132,18 +1134,19 @@ const AutomatedBusinessReports: React.FC = () => {
                               {report.status === 'ready' && (
                                 <>
                                   <Tooltip title="Last ned">
-                                    <IconButton size="small" onClick={() => downloadReport(report)}>
+                                    <IconButton size="small" aria-label="Last ned" onClick={() => downloadReport(report)}>
                                       <DownloadIcon />
                                     </IconButton>
                                   </Tooltip>
                                   <Tooltip title="Send på e-post">
-                                    <IconButton size="small" onClick={() => emailReport(report)}>
+                                    <IconButton size="small" aria-label="Send på e-post" onClick={() => emailReport(report)}>
                                       <EmailIcon />
                                     </IconButton>
                                   </Tooltip>
                                   <Tooltip title="Lagre til Google Drive">
                                     <IconButton
                                       size="small"
+                                      aria-label="Lagre til Google Drive"
                                       onClick={() => saveToGoogleDrive(report)}
                                     >
                                       <CloudIcon />
@@ -1152,6 +1155,7 @@ const AutomatedBusinessReports: React.FC = () => {
                                   <Tooltip title="Eksporter til Google Sheets">
                                     <IconButton
                                       size="small"
+                                      aria-label="Eksporter til Google Sheets"
                                       onClick={() => exportToGoogleSheets(report)}
                                     >
                                       <TableChartIcon />
@@ -1160,6 +1164,7 @@ const AutomatedBusinessReports: React.FC = () => {
                                   <Tooltip title="Kopier link">
                                     <IconButton
                                       size="small"
+                                      aria-label="Kopier link"
                                       onClick={() => {
                                         navigator.clipboard.writeText(report.downloadUrl);
                                         toast({
@@ -1247,7 +1252,7 @@ const AutomatedBusinessReports: React.FC = () => {
                               label="Aktivert"
                             />
                             <Tooltip title="Rediger planlegging">
-                              <IconButton onClick={() => setSelectedTemplate(template)}>
+                              <IconButton aria-label="Rediger planlegging" onClick={() => setSelectedTemplate(template)}>
                                 <EditIcon />
                               </IconButton>
                             </Tooltip>

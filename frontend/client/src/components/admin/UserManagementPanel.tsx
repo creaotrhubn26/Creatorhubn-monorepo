@@ -1948,6 +1948,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                       setUsersPage(1);
                     }}
                     placeholder="Søk i navn, e-post eller selskap"
+                    inputProps={{ 'aria-label': 'Søk i brukere' }}
                     size="small"
                     sx={{
                       width: { xs: '100%', sm: 240 },
@@ -1981,6 +1982,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                     <FormControl size="small" fullWidth>
                       <Select
                         value={selectedRole}
+                        inputProps={{ 'aria-label': 'Filtrer på rolle' }}
                         displayEmpty
                         onChange={(event) => {
                           setSelectedRole(String(event.target.value));
@@ -2162,7 +2164,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                     }}
                   >
                     <TableCell padding="checkbox" sx={{ width: 52 }}>
-                      <Checkbox size="small" />
+                      <Checkbox size="small" inputProps={{ 'aria-label': 'Velg alle brukere' }} />
                     </TableCell>
                     <TableCell>Navn</TableCell>
                     <TableCell>Bedrift</TableCell>
@@ -2199,7 +2201,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                         }}
                       >
                         <TableCell padding="checkbox">
-                          <Checkbox size="small" />
+                          <Checkbox size="small" inputProps={{ 'aria-label': `Velg ${formatUserName(user)}` }} />
                         </TableCell>
                         <TableCell>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
@@ -2413,7 +2415,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
                         </TableCell>
                         <TableCell align="center">
                           <Tooltip title="Handlinger">
-                            <IconButton size="small" onClick={(event) => handleMenuClick(event, user)}>
+                            <IconButton size="small" aria-label="Handlinger" onClick={(event) => handleMenuClick(event, user)}>
                               <MoreVertIcon sx={{ color: 'rgba(255,255,255,0.6)' }} />
                             </IconButton>
                           </Tooltip>

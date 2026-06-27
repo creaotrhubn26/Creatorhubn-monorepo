@@ -194,7 +194,7 @@ const MarketplaceAppConfigManager: React.FC = () => {
     <Box>
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
         <Box>
-          <Typography variant="h5" sx={{ fontWeight: 700, mb: 0.5 }}>
+          <Typography variant="h5" component="h2" sx={{ fontWeight: 700, mb: 0.5 }}>
             Marketplace-apper
           </Typography>
           <Typography variant="body2" color="text.secondary">
@@ -367,11 +367,12 @@ const MarketplaceAppConfigManager: React.FC = () => {
                   >
                     {publishMutation.isPending && publishMutation.variables === app.id ? 'Publiserer…' : 'Publiser → Stripe'}
                   </Button>
-                  <IconButton size="small" onClick={() => { setEditingApp(app); setCreating(false); }}>
+                  <IconButton size="small" aria-label="Rediger app" onClick={() => { setEditingApp(app); setCreating(false); }}>
                     <EditIcon fontSize="small" />
                   </IconButton>
                   <IconButton
                     size="small"
+                    aria-label="Skjul app fra marketplace"
                     onClick={() => {
                       if (confirm(`Skjul appen "${app.name}" fra marketplace?`)) {
                         deleteMutation.mutate(app.id);
@@ -447,9 +448,9 @@ const MarketplaceAppEditDialog: React.FC<{
       <Box sx={{ p: 3, borderBottom: 1, borderColor: 'divider', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Box>
           <Typography variant="overline" color="primary">{isNew ? 'Ny app' : 'Rediger'}</Typography>
-          <Typography variant="h6" sx={{ fontWeight: 700 }}>{form.name || 'Ny marketplace-app'}</Typography>
+          <Typography variant="h6" component="h2" sx={{ fontWeight: 700 }}>{form.name || 'Ny marketplace-app'}</Typography>
         </Box>
-        <IconButton onClick={onClose}><CloseIcon /></IconButton>
+        <IconButton aria-label="Lukk" onClick={onClose}><CloseIcon /></IconButton>
       </Box>
 
       <DialogContent>
@@ -552,7 +553,7 @@ const MarketplaceAppEditDialog: React.FC<{
           {/* Pris */}
           <Box>
             <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5 }}>
-              <MoneyIcon fontSize="small" sx={{ verticalAlign: 'text-bottom', mr: 0.5 }} />
+              <MoneyIcon fontSize="small" aria-hidden sx={{ verticalAlign: 'text-bottom', mr: 0.5 }} />
               Standard-pris (vises som overskrift)
             </Typography>
             <Stack spacing={2}>
@@ -621,7 +622,7 @@ const MarketplaceAppEditDialog: React.FC<{
                         <Chip size="small" label={`Feil: ${tier.stripeSyncError}`} color="error" sx={{ height: 18, fontSize: '0.65rem' }} />
                       )}
                     </Stack>
-                    <IconButton size="small" onClick={() => removeTier(idx)}>
+                    <IconButton size="small" aria-label="Fjern tier" onClick={() => removeTier(idx)}>
                       <DeleteIcon fontSize="small" />
                     </IconButton>
                   </Stack>
@@ -686,11 +687,12 @@ const MarketplaceAppEditDialog: React.FC<{
           {/* Media gallery */}
           <Box>
             <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5 }}>
-              <ImageIcon fontSize="small" sx={{ verticalAlign: 'text-bottom', mr: 0.5 }} />
+              <ImageIcon fontSize="small" aria-hidden sx={{ verticalAlign: 'text-bottom', mr: 0.5 }} />
               Bilde-galleri (URL per linje, valgfri label etter "|")
             </Typography>
             <TextField
               fullWidth multiline rows={4} size="small"
+              aria-label="Bilde-galleri (URL per linje)"
               value={(Array.isArray(form.mediaGallery) ? form.mediaGallery : []).map((m) => m.label ? `${m.src} | ${m.label}` : m.src).join('\n')}
               onChange={(e) => {
                 const parsed = e.target.value.split('\n').filter(Boolean).map((line) => {

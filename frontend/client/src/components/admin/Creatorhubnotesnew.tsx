@@ -1412,7 +1412,7 @@ function CreatorHubNotesInner() {
             <Stack direction="row" spacing={1}>
               {/* Performance Metrics */}
               <Tooltip title="View Performance Metrics">
-                <IconButton size="small" onClick={() => console.log(perf.getPerformanceMetrics())}>
+                <IconButton size="small" aria-label="Vis ytelsesmålinger" onClick={() => console.log(perf.getPerformanceMetrics())}>
                   <SpeedIcon />
                 </IconButton>
               </Tooltip>
@@ -1420,9 +1420,10 @@ function CreatorHubNotesInner() {
               {/* Debug Mode Toggle (Admin only) */}
               {auth.hasRole('admin') && (
                 <Tooltip title={debugMode ? 'Disable Debug Mode' : 'Enable Debug Mode'}>
-                  <IconButton 
-                    size="small" 
+                  <IconButton
+                    size="small"
                     color={debugMode ? 'primary' : 'default'}
+                    aria-label={debugMode ? 'Deaktiver feilsøkingsmodus' : 'Aktiver feilsøkingsmodus'}
                     onClick={() => setDebugMode(!debugMode)}
                   >
                     <BugReportIcon />
@@ -1460,6 +1461,7 @@ function CreatorHubNotesInner() {
                 <TextField
                   size="small"
                   placeholder="Search notes…"
+                  aria-label="Søk i notater"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   InputProps={{
@@ -2054,6 +2056,7 @@ function CreatorHubNotesInner() {
                   <TextField
                     size="small"
                     placeholder="Search in document…"
+                    aria-label="Søk i dokumentet"
                     value={docSearch}
                     onChange={(e) => setDocSearch(e.target.value)}
                     InputProps={{
@@ -2119,7 +2122,7 @@ function CreatorHubNotesInner() {
           <Paper sx={{ p: 3 }}>
             <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
               <Box>
-                <Typography variant="h5" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: themeColors.primary }}>
+                <Typography variant="h5" component="h2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: themeColors.primary }}>
                   {professionIcon && (
                     <Box
                       sx={{
@@ -2155,7 +2158,7 @@ function CreatorHubNotesInner() {
               <Grid item xs={12} md={6} lg={4}>
                 <Card variant="outlined">
                   <CardContent>
-                    <Typography variant="h6" gutterBottom>
+                    <Typography variant="h6" component="h3" gutterBottom>
                       Text Enhancement
                     </Typography>
                     <Stack spacing={1}>
@@ -2200,7 +2203,7 @@ function CreatorHubNotesInner() {
               <Grid item xs={12} md={6} lg={4}>
                 <Card variant="outlined">
                   <CardContent>
-                    <Typography variant="h6" gutterBottom>
+                    <Typography variant="h6" component="h3" gutterBottom>
                       Content Generation
                     </Typography>
                     <Stack spacing={1}>
@@ -2257,7 +2260,7 @@ function CreatorHubNotesInner() {
               <Grid item xs={12} md={6} lg={4}>
                 <Card variant="outlined">
                   <CardContent>
-                    <Typography variant="h6" gutterBottom>
+                    <Typography variant="h6" component="h3" gutterBottom>
                       Utilities
                     </Typography>
                     <Stack spacing={1}>
@@ -3121,7 +3124,7 @@ function SectionItem({
         </Stack>
         <Stack direction="row" spacing={1}>
           <Tooltip title="Ask AI about this section">
-            <Button size="small" variant="outlined" onClick={onAskAI} disabled={isProcessing}>
+            <Button size="small" variant="outlined" aria-label="Spør AI om denne seksjonen" onClick={onAskAI} disabled={isProcessing}>
               {isProcessing ? <CircularProgress size={16} /> : <SmartToyIcon fontSize="small" />}
             </Button>
           </Tooltip>
@@ -3129,6 +3132,7 @@ function SectionItem({
             <Button
               size="small"
               variant="outlined"
+              aria-label="Kopier kodeblokker i seksjonen"
               onClick={async () => {
                 const tmp = document.createElement('div');
                 tmp.innerHTML = html;

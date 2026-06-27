@@ -236,6 +236,7 @@ export function FeatureCustomizationPanel({ userId }: Props) {
       <Box sx={{ display: 'flex', gap: 2, mb: 3, alignItems: 'center' }}>
         <TextField
           placeholder="Søk etter funksjoner..."
+          aria-label="Søk etter funksjoner"
           size="small"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
@@ -337,7 +338,7 @@ export function FeatureCustomizationPanel({ userId }: Props) {
                 </TableCell>
                 <TableCell align="right">
                   <Tooltip title="Rediger">
-                    <IconButton size="small" onClick={() => handleEditClick(feature)}>
+                    <IconButton size="small" aria-label="Rediger" onClick={() => handleEditClick(feature)}>
                       <EditIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
@@ -345,6 +346,7 @@ export function FeatureCustomizationPanel({ userId }: Props) {
                     <Tooltip title="Slett tilpasning">
                       <IconButton
                         size="small"
+                        aria-label="Slett tilpasning"
                         onClick={() => deleteMutation.mutate(feature.id)}
                         color="error"
                       >
@@ -370,6 +372,7 @@ export function FeatureCustomizationPanel({ userId }: Props) {
         <DialogTitle>
           Tilpass funksjon: {selectedFeature?.name}
           <IconButton
+            aria-label="Lukk"
             onClick={() => setEditDialogOpen(false)}
             sx={{ position: 'absolute', right: 8, top: 8 }}
           >
