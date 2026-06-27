@@ -65198,12 +65198,22 @@ setupPrototypeTesterInvitesRoutes({
   // Oppretter (gjenbruker) en brukerkonto for en tester ved aksept, så hvert
   // teammedlem faktisk har en konto (matchende e-post) å logge inn med (Google
   // OAuth / e-post-match). Gjenbruker den velprøvde upsertAdminAccountUser.
-  provisionTesterAccount: async (email: string, name: string) => {
+  provisionTesterAccount: async (
+    email: string,
+    name: string,
+    profession?: string | null,
+  ) => {
     const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
     const acct = await upsertAdminAccountUser({
       email: String(email || "").trim().toLowerCase(),
       firstName: parts[0] || null,
       lastName: parts.length > 1 ? parts.slice(1).join(" ") : null,
+      // Slice 9X.58 — sett medlemmets profesjon (f.eks. videograf) så de får
+      // riktig dashboard-orchestrator. undefined → ikke rør (master beholder sin).
+      profession:
+        typeof profession === "string" && profession.trim()
+          ? profession.trim().toLowerCase()
+          : undefined,
       isActive: true,
     });
     // #3 — ekte entitlement: gi testeren (master/medlem) et reelt full-tilgangs-

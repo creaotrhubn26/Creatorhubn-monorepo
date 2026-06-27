@@ -28,7 +28,12 @@ export interface PrototypeTesterInvitesDeps {
   requireUserSession: (req: any, res: any) => any;
   requireAdminSession: (req: any, res: any) => any;
   // Oppretter/gjenbruker en brukerkonto for en tester (master/medlem) ved aksept.
-  provisionTesterAccount?: (email: string, name: string) => Promise<any>;
+  // profession (valgfri) settes på users.profession → riktig dashboard.
+  provisionTesterAccount?: (
+    email: string,
+    name: string,
+    profession?: string | null,
+  ) => Promise<any>;
 }
 
 const PROGRAM_DURATION_WEEKS = 12;
@@ -82,6 +87,9 @@ async function ensureSchema(pool: any): Promise<void> {
     `team_role VARCHAR(20) NOT NULL DEFAULT 'individual'`,
     `master_invite_id UUID`,
     `max_team_size INTEGER NOT NULL DEFAULT 1`,
+    // Slice 9X.58 — Profesjon per medlem: en fotograf-master kan invitere en
+    // videograf. Settes på users.profession ved aksept → riktig dashboard.
+    `member_profession VARCHAR(40)`,
   ]) {
     await pool.query(`ALTER TABLE prototype_tester_invites ADD COLUMN IF NOT EXISTS ${col}`).catch(() => undefined);
   }
@@ -166,7 +174,31 @@ function rowToInvite(r: any): any {
     teamRole: r.team_role || "individual",
     masterInviteId: r.master_invite_id || null,
     maxTeamSize: r.max_team_size || 1,
+    memberProfession: r.member_profession || null,
   };
+}
+
+// Slice 9X.58 — Gyldige profesjoner et team-medlem kan ha. Må matche
+// frontend-keys (useProfessionAdapter) → riktig dashboard-orchestrator.
+const ALLOWED_MEMBER_PROFESSIONS = new Set([
+  "photographer",
+  "videographer",
+  "music_producer",
+  "vendor",
+]);
+function normalizeMemberProfession(raw: unknown): string | null {
+  const v = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+  if (!v) return null;
+  // Norske synonymer → kanoniske keys.
+  const alias: Record<string, string> = {
+    fotograf: "photographer",
+    videograf: "videographer",
+    musikkprodusent: "music_producer",
+    leverandør: "vendor",
+    leverandor: "vendor",
+  };
+  const mapped = alias[v] || v;
+  return ALLOWED_MEMBER_PROFESSIONS.has(mapped) ? mapped : null;
 }
 
 /**
@@ -445,6 +477,7 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
           const acct = await provisionTesterAccount(
             String(upd.rows[0].email || ""),
             ndaName,
+            upd.rows[0].member_profession || null,
           );
           accountUserId = acct?.id ? String(acct.id) : null;
         } catch (acctErr) {
@@ -539,7 +572,7 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
       const master = masterR.rows[0];
 
       const membersR = await pool.query(
-        `SELECT id, email, name, status, accepted_at, created_at, program_ends_at
+        `SELECT id, email, name, status, accepted_at, created_at, program_ends_at, member_profession
            FROM prototype_tester_invites
           WHERE master_invite_id = $1
           ORDER BY created_at ASC`,
@@ -561,6 +594,7 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
           invitedAt: r.created_at,
           acceptedAt: r.accepted_at,
           programEndsAt: r.program_ends_at,
+          profession: r.member_profession || null,
         })),
       });
     } catch (err) {
@@ -582,6 +616,7 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
       const body = req.body ?? {};
       const memberEmail = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
       const memberName = typeof body.name === "string" ? body.name.trim() : "";
+      const memberProfession = normalizeMemberProfession(body.profession);
       if (!memberEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(memberEmail)) {
         return res.status(400).json({ error: "Gyldig e-post påkrevd" });
       }
@@ -632,8 +667,8 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
         `INSERT INTO prototype_tester_invites
            (token, email, name, nda_version, program_terms_version, expires_at,
             invited_by, granted_plan, granted_features, team_role,
-            master_invite_id, max_team_size)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, 'member', $10, 1)
+            master_invite_id, max_team_size, member_profession)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, 'member', $10, 1, $11)
          RETURNING id, token`,
         [
           token,
@@ -646,6 +681,7 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
           master.granted_plan,
           JSON.stringify(master.granted_features || []),
           master.id,
+          memberProfession,
         ],
       );
 
