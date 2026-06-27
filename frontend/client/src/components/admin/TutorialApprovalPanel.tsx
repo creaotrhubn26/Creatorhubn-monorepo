@@ -281,9 +281,9 @@ export function TutorialApprovalPanel({ open, onClose, isAdmin = true }: Tutoria
     },
   });
 
-  const pendingCount = items.filter((item) => item.status === 'pending').length;
-  const approvedCount = items.filter((item) => item.status === 'approved').length;
-  const rejectedCount = items.filter((item) => item.status === 'rejected').length;
+  const pendingCount = useMemo(() => items.filter((item) => item.status === 'pending').length, [items]);
+  const approvedCount = useMemo(() => items.filter((item) => item.status === 'approved').length, [items]);
+  const rejectedCount = useMemo(() => items.filter((item) => item.status === 'rejected').length, [items]);
 
   const filteredItems = useMemo(() => {
     if (tabValue === 0) {

@@ -3,7 +3,7 @@
  * Monthly content planning and scheduling interface
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
@@ -126,12 +126,12 @@ export default function ContentCalendar() {
   const calendarDays = eachDayOfInterval({ start: monthStart, end: monthEnd });
 
   // Group events by date
-  const eventsByDate = safeEvents.reduce((acc: Record<string, CalendarEvent[]>, event: CalendarEvent) => {
+  const eventsByDate = useMemo(() => safeEvents.reduce((acc: Record<string, CalendarEvent[]>, event: CalendarEvent) => {
     const dateKey = event.scheduled_date;
     if (!acc[dateKey]) acc[dateKey] = [];
     acc[dateKey].push(event);
     return acc;
-  }, {});
+  }, {}), [safeEvents]);
 
   const handlePrevMonth = () => setCurrentMonth(subMonths(currentMonth, 1));
   const handleNextMonth = () => setCurrentMonth(addMonths(currentMonth, 1));

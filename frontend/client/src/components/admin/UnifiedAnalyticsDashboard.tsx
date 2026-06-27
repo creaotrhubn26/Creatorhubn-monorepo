@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -174,7 +174,11 @@ export default function UnifiedAnalyticsDashboard() {
     ];
   };
 
-  const overviewMetrics = calculateOverviewMetrics();
+  const overviewMetrics = useMemo(
+    () => calculateOverviewMetrics(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [socialPlatforms, emailCampaigns, workflowList]
+  );
 
   // Chart colors
   const COLORS = ['#3b82f6','#8b5cf6','#ec4899','#10b981','#f59e0b','#ef4444'];

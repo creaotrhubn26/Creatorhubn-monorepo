@@ -3,7 +3,7 @@ import { useProfessionConfigs as _useProfessionConfigs } from '@/hooks/useProfes
 import { useProfessionAdapter as _useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import _getProfessionIcon from '@/utils/profession-icons';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
 import {
@@ -367,10 +367,16 @@ export default function FeatureManagement({
   }
 });
 
-  const categories = Array.from(new Set(features.map((f: Feature) => f.category))) as string[];
-  const _filteredFeatures = selectedCategory === 'all' 
-    ? features 
-    : features.filter((f: Feature) => f.category === selectedCategory);
+  const categories = useMemo(
+    () => Array.from(new Set(features.map((f: Feature) => f.category))) as string[],
+    [features]
+  );
+  const _filteredFeatures = useMemo(
+    () => selectedCategory === 'all'
+      ? features
+      : features.filter((f: Feature) => f.category === selectedCategory),
+    [features, selectedCategory]
+  );
 
   const getImpactColor = (impact: string) => {
     switch (impact) {
