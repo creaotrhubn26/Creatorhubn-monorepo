@@ -3,12 +3,12 @@ import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
 import { apiRequest } from '@/lib/queryClient';
+import { adminTokens, AdminButton } from './design-system';
 
 import {
   Fab,
   Box,
   Tooltip,
-  Button,
   Typography,
   IconButton,
   Dialog,
@@ -267,9 +267,9 @@ export default function AdminFloatingActionButtons({
   const getPriorityColor = (priority: 'high' | 'medium' | 'low'): string => {
     switch (priority) {
       case 'high': return '#ff4444'; // Red for critical admin actions
-      case 'medium': return '#ff8c00'; // Orange for normal actions
+      case 'medium': return adminTokens.color.brand; // Orange for normal actions
       case 'low': return '#4caf50'; // Green for low priority
-      default: return '#ff8c00';
+      default: return adminTokens.color.brand;
 }
 };
 
@@ -370,17 +370,12 @@ export default function AdminFloatingActionButtons({
           </List>
         </DialogContent>
         <DialogActions>
-          <Button
+          <AdminButton
+            tone="primary"
             onClick={() => setOrganizerDialogOpen(false)}
-            variant="contained"
-            sx={{ 
-              background: 'linear-gradient(135deg, #ff4444, #ff6b00)', '&:hover': {
-                background: 'linear-gradient(135deg, #ff6b00, #ff4444)',
-            }
-          }}
           >
             Ferdig
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 

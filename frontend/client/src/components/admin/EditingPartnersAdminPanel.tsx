@@ -9,7 +9,7 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  Box, Card, CardContent, Typography, Chip, Stack, Tabs, Tab, Divider,
+  Box, Typography, Stack, Tabs, Tab, Divider,
   Dialog, DialogTitle, DialogContent, DialogActions, RadioGroup, FormControlLabel,
   Radio, TextField, MenuItem, Alert, CircularProgress, Tooltip, Snackbar,
   ThemeProvider, Switch,
@@ -20,7 +20,7 @@ import StorefrontIcon from "@mui/icons-material/Storefront";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import { apiRequest } from "@/lib/queryClient";
 import PrototypeTeamsOverview from "./PrototypeTeamsOverview";
-import { AdminButton, StatusChip } from "./design-system";
+import { AdminCard, AdminButton, StatusChip, adminTokens } from "./design-system";
 
 interface PartnerApp {
   id: string; company_name: string; contact_name: string; contact_email: string;
@@ -36,15 +36,15 @@ interface Vendor {
 }
 
 // Avledet visnings-type for en vendor (prototype aktiv? utløpt? standard? uavklart?)
-function vendorTypeLabel(v: Vendor): { label: string; color: "info" | "success" | "warning" | "default"; icon?: React.ReactNode } {
+function vendorTypeLabel(v: Vendor): { label: string; tone: "info" | "success" | "warning" | "neutral"; icon?: React.ReactNode } {
   if (v.partner_type === "prototype") {
     const active = !v.prototype_until || new Date(v.prototype_until) > new Date();
     return active
-      ? { label: v.prototype_until ? `Prototype t.o.m. ${new Date(v.prototype_until).toLocaleDateString("nb-NO")}` : "Prototype (ubegrenset)", color: "info", icon: <ScienceIcon sx={{ fontSize: 15 }} /> }
-      : { label: "Prototype utløpt → fee aktiv", color: "warning", icon: <ScienceIcon sx={{ fontSize: 15 }} /> };
+      ? { label: v.prototype_until ? `Prototype t.o.m. ${new Date(v.prototype_until).toLocaleDateString("nb-NO")}` : "Prototype (ubegrenset)", tone: "info", icon: <ScienceIcon sx={{ fontSize: 15 }} /> }
+      : { label: "Prototype utløpt → fee aktiv", tone: "warning", icon: <ScienceIcon sx={{ fontSize: 15 }} /> };
   }
-  if (v.partner_type === "standard") return { label: `Vanlig kunde · ${((v.platform_fee_bps ?? 1500) / 100).toFixed(0)}% fee`, color: "success", icon: <StorefrontIcon sx={{ fontSize: 15 }} /> };
-  return { label: "Uavklart", color: "default" };
+  if (v.partner_type === "standard") return { label: `Vanlig kunde · ${((v.platform_fee_bps ?? 1500) / 100).toFixed(0)}% fee`, tone: "success", icon: <StorefrontIcon sx={{ fontSize: 15 }} /> };
+  return { label: "Uavklart", tone: "neutral" };
 }
 
 type DecisionTarget = { kind: "app"; app: PartnerApp } | { kind: "vendor"; vendor: Vendor };
@@ -85,35 +85,32 @@ function PrototypeReportSettings() {
     onError: () => setSnack("Kunne ikke sende."),
   });
   return (
-    <Card variant="outlined" sx={{ bgcolor: "rgba(255,140,0,0.06)" }}>
-      <CardContent>
-        <Typography sx={{ fontWeight: 700, mb: 0.5 }}>📧 Fremdriftsrapport på e-post</Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-          Oppsummering av prototype-testernes aktivitet (innlogging, hendelser, feedback, oppdrag) på e-post.
-          Endre mottaker eller skru av når som helst. «Send nå» sender en med en gang.
-        </Typography>
-        <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems={{ sm: "center" }}>
-          <TextField
-            size="small"
-            label="Mottaker-e-post"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            sx={{ flex: 1, minWidth: 240 }}
-          />
-          <FormControlLabel
-            control={<Switch checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />}
-            label="På"
-          />
-          <AdminButton tone="primary" size="small" loading={save.isPending} onClick={() => save.mutate()}>
-            Lagre
-          </AdminButton>
-          <AdminButton tone="secondary" size="small" loading={sendNow.isPending} onClick={() => sendNow.mutate()}>
-            Send nå
-          </AdminButton>
-        </Stack>
-        <Snackbar open={!!snack} autoHideDuration={4000} onClose={() => setSnack("")} message={snack} />
-      </CardContent>
-    </Card>
+    <AdminCard
+      title="📧 Fremdriftsrapport på e-post"
+      subtitle="Oppsummering av prototype-testernes aktivitet (innlogging, hendelser, feedback, oppdrag) på e-post. Endre mottaker eller skru av når som helst. «Send nå» sender en med en gang."
+      sx={{ bgcolor: adminTokens.color.brandSubtle }}
+    >
+      <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems={{ sm: "center" }}>
+        <TextField
+          size="small"
+          label="Mottaker-e-post"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          sx={{ flex: 1, minWidth: 240 }}
+        />
+        <FormControlLabel
+          control={<Switch checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />}
+          label="På"
+        />
+        <AdminButton tone="primary" size="small" loading={save.isPending} onClick={() => save.mutate()}>
+          Lagre
+        </AdminButton>
+        <AdminButton tone="secondary" size="small" loading={sendNow.isPending} onClick={() => sendNow.mutate()}>
+          Send nå
+        </AdminButton>
+      </Stack>
+      <Snackbar open={!!snack} autoHideDuration={4000} onClose={() => setSnack("")} message={snack} />
+    </AdminCard>
   );
 }
 
@@ -198,23 +195,21 @@ export default function EditingPartnersAdminPanel() {
         <Stack spacing={1.5}>
           {pending.length === 0 && <Typography color="text.secondary">Ingen nye søknader.</Typography>}
           {pending.map((a) => (
-            <Card key={a.id} variant="outlined">
-              <CardContent>
-                <Stack direction="row" justifyContent="space-between" alignItems="flex-start" flexWrap="wrap" gap={1}>
-                  <Box>
-                    <Typography sx={{ fontWeight: 700 }}>{a.company_name} {a.is_foreign && <Chip size="small" label={a.country || "Utland"} sx={{ ml: 1 }} />}</Typography>
-                    <Typography variant="body2" color="text.secondary">{a.contact_name} · {a.contact_email}</Typography>
-                    {a.services?.length ? <Typography variant="caption" color="text.secondary">Tjenester: {a.services.join(", ")}</Typography> : null}
-                    {a.price_range && <Typography variant="caption" display="block" color="text.secondary">Pris: {a.price_range} {a.currency}</Typography>}
-                    {a.portfolio_url && <Typography variant="caption" display="block"><a href={a.portfolio_url} target="_blank" rel="noopener">Portfolio</a>{a.website && <> · <a href={a.website} target="_blank" rel="noopener">Nettside</a></>}</Typography>}
-                  </Box>
-                  <Stack direction="row" spacing={1}>
-                    <AdminButton tone="primary" size="small" onClick={() => setTarget({ kind: "app", app: a })}>Godkjenn…</AdminButton>
-                    <AdminButton tone="danger" size="small" loading={reject.isPending} onClick={() => { if (confirm(`Avvis søknaden fra ${a.company_name}?`)) reject.mutate(a.id); }}>Avvis</AdminButton>
-                  </Stack>
+            <AdminCard key={a.id}>
+              <Stack direction="row" justifyContent="space-between" alignItems="flex-start" flexWrap="wrap" gap={1}>
+                <Box>
+                  <Typography sx={{ fontWeight: 700 }}>{a.company_name} {a.is_foreign && <StatusChip tone="neutral" label={a.country || "Utland"} sx={{ ml: 1 }} />}</Typography>
+                  <Typography variant="body2" color="text.secondary">{a.contact_name} · {a.contact_email}</Typography>
+                  {a.services?.length ? <Typography variant="caption" color="text.secondary">Tjenester: {a.services.join(", ")}</Typography> : null}
+                  {a.price_range && <Typography variant="caption" display="block" color="text.secondary">Pris: {a.price_range} {a.currency}</Typography>}
+                  {a.portfolio_url && <Typography variant="caption" display="block"><a href={a.portfolio_url} target="_blank" rel="noopener">Portfolio</a>{a.website && <> · <a href={a.website} target="_blank" rel="noopener">Nettside</a></>}</Typography>}
+                </Box>
+                <Stack direction="row" spacing={1}>
+                  <AdminButton tone="primary" size="small" onClick={() => setTarget({ kind: "app", app: a })}>Godkjenn…</AdminButton>
+                  <AdminButton tone="danger" size="small" loading={reject.isPending} onClick={() => { if (confirm(`Avvis søknaden fra ${a.company_name}?`)) reject.mutate(a.id); }}>Avvis</AdminButton>
                 </Stack>
-              </CardContent>
-            </Card>
+              </Stack>
+            </AdminCard>
           ))}
         </Stack>
       )}
@@ -224,21 +219,19 @@ export default function EditingPartnersAdminPanel() {
         <Stack spacing={1.5}>
           {leads.length === 0 && <Typography color="text.secondary">Ingen leads. Bruk «+ Legg til lead» for å registrere et prospekt.</Typography>}
           {leads.map((a) => (
-            <Card key={a.id} variant="outlined">
-              <CardContent>
-                <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1}>
-                  <Box>
-                    <Typography sx={{ fontWeight: 700 }}>{a.company_name} {a.is_foreign && <Chip size="small" label={a.country || "Utland"} sx={{ ml: 1 }} />}</Typography>
-                    <Typography variant="body2" color="text.secondary">{a.contact_email}</Typography>
-                    <Chip size="small" label="Lead — har ikke søkt selv ennå" sx={{ mt: 0.6 }} />
-                  </Box>
-                  <Stack direction="row" spacing={1}>
-                    <AdminButton tone="primary" size="small" loading={invite.isPending} onClick={() => invite.mutate(a.id)}>Inviter til å søke</AdminButton>
-                    <AdminButton tone="secondary" size="small" onClick={() => setTarget({ kind: "app", app: a })}>Godkjenn likevel…</AdminButton>
-                  </Stack>
+            <AdminCard key={a.id}>
+              <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1}>
+                <Box>
+                  <Typography sx={{ fontWeight: 700 }}>{a.company_name} {a.is_foreign && <StatusChip tone="neutral" label={a.country || "Utland"} sx={{ ml: 1 }} />}</Typography>
+                  <Typography variant="body2" color="text.secondary">{a.contact_email}</Typography>
+                  <StatusChip tone="info" label="Lead — har ikke søkt selv ennå" sx={{ mt: 0.6 }} />
+                </Box>
+                <Stack direction="row" spacing={1}>
+                  <AdminButton tone="primary" size="small" loading={invite.isPending} onClick={() => invite.mutate(a.id)}>Inviter til å søke</AdminButton>
+                  <AdminButton tone="secondary" size="small" onClick={() => setTarget({ kind: "app", app: a })}>Godkjenn likevel…</AdminButton>
                 </Stack>
-              </CardContent>
-            </Card>
+              </Stack>
+            </AdminCard>
           ))}
         </Stack>
       )}
@@ -260,42 +253,38 @@ export default function EditingPartnersAdminPanel() {
             const tl = vendorTypeLabel(v);
             const fb = feedbackByUser.get(v.user_id);
             return (
-              <Card key={v.user_id} variant="outlined">
-                <CardContent>
-                  <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1}>
-                    <Box>
-                      <Typography sx={{ fontWeight: 700 }}>
-                        {v.vendor_name}
-                        {v.quality_flagged && <Tooltip title="Kvalitetsflagget (klager)"><WarningAmberIcon sx={{ fontSize: 17, color: "warning.main", ml: 1, verticalAlign: "middle" }} /></Tooltip>}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">{v.email} · {v.country || "—"}{v.is_foreign ? " (utland)" : ""}</Typography>
-                      <Stack direction="row" spacing={1} sx={{ mt: 0.6 }} alignItems="center">
-                        <Chip size="small" color={tl.color} icon={tl.icon as React.ReactElement | undefined} label={tl.label} />
-                        {v.partner_type === "prototype" && fb ? (
-                          <StatusChip
-                            tone={fb.escalation === "warning" ? "error" : fb.escalation === "due" ? "warning" : "success"}
-                            label={fb.everGiven ? `Tilbakemelding: ${fb.daysSince}d siden` : "Ingen tilbakemelding"}
-                          />
-                        ) : null}
-                        {v.partner_type === "prototype" && fb?.activity ? (
-                          <Chip
-                            size="small"
-                            variant="outlined"
-                            color={fb.activity.errors7d > 0 ? "warning" : "default"}
-                            label={
-                              fb.activity.lastActiveAt
-                                ? `Aktiv: ${Math.max(0, Math.floor((Date.now() - new Date(fb.activity.lastActiveAt).getTime()) / 86400000))}d siden · ${fb.activity.events7d} hendelser/7d${fb.activity.errors7d ? ` · ${fb.activity.errors7d} feil` : ""}`
-                                : "Ikke aktiv ennå"
-                            }
-                          />
-                        ) : null}
-                        {v.review_count ? <Typography variant="caption" color="text.secondary">★ {Number(v.rating).toFixed(1)} ({v.review_count})</Typography> : null}
-                      </Stack>
-                    </Box>
-                    <AdminButton tone="secondary" size="small" onClick={() => setTarget({ kind: "vendor", vendor: v })}>Endre type</AdminButton>
-                  </Stack>
-                </CardContent>
-              </Card>
+              <AdminCard key={v.user_id}>
+                <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1}>
+                  <Box>
+                    <Typography sx={{ fontWeight: 700 }}>
+                      {v.vendor_name}
+                      {v.quality_flagged && <Tooltip title="Kvalitetsflagget (klager)"><WarningAmberIcon sx={{ fontSize: 17, color: "warning.main", ml: 1, verticalAlign: "middle" }} /></Tooltip>}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">{v.email} · {v.country || "—"}{v.is_foreign ? " (utland)" : ""}</Typography>
+                    <Stack direction="row" spacing={1} sx={{ mt: 0.6 }} alignItems="center">
+                      <StatusChip tone={tl.tone} icon={tl.icon as React.ReactElement | undefined} label={tl.label} />
+                      {v.partner_type === "prototype" && fb ? (
+                        <StatusChip
+                          tone={fb.escalation === "warning" ? "error" : fb.escalation === "due" ? "warning" : "success"}
+                          label={fb.everGiven ? `Tilbakemelding: ${fb.daysSince}d siden` : "Ingen tilbakemelding"}
+                        />
+                      ) : null}
+                      {v.partner_type === "prototype" && fb?.activity ? (
+                        <StatusChip
+                          tone={fb.activity.errors7d > 0 ? "warning" : "neutral"}
+                          label={
+                            fb.activity.lastActiveAt
+                              ? `Aktiv: ${Math.max(0, Math.floor((Date.now() - new Date(fb.activity.lastActiveAt).getTime()) / 86400000))}d siden · ${fb.activity.events7d} hendelser/7d${fb.activity.errors7d ? ` · ${fb.activity.errors7d} feil` : ""}`
+                              : "Ikke aktiv ennå"
+                          }
+                        />
+                      ) : null}
+                      {v.review_count ? <Typography variant="caption" color="text.secondary">★ {Number(v.rating).toFixed(1)} ({v.review_count})</Typography> : null}
+                    </Stack>
+                  </Box>
+                  <AdminButton tone="secondary" size="small" onClick={() => setTarget({ kind: "vendor", vendor: v })}>Endre type</AdminButton>
+                </Stack>
+              </AdminCard>
             );
           })}
           {(filter === 2 ? prototypeVendors : filter === 3 ? standardVendors : allVendors).length === 0 && <Typography color="text.secondary">Ingen i denne kategorien.</Typography>}
