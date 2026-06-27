@@ -15,6 +15,8 @@ import {
   Tooltip,
   Alert,
   Grid,
+  TextField,
+  InputAdornment,
 } from '@mui/material';
 import {
   AutoFixHigh as AutoFixIcon,
@@ -23,6 +25,7 @@ import {
   Delete as ClearIcon,
   Visibility as ViewIcon,
   CheckCircle as SuccessIcon,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import type { RecordedCall, WireMockMapping } from '../../utils/selfHealingSandbox';
 import { selfHealingSandbox } from '../../utils/selfHealingSandbox';
@@ -40,6 +43,7 @@ export const SelfHealingSandboxPanel: React.FC = () => {
   });
   const [selectedCall, setSelectedCall] = useState<RecordedCall | null>(null);
   const [selectedMapping, setSelectedMapping] = useState<WireMockMapping | null>(null);
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -223,6 +227,21 @@ export const SelfHealingSandboxPanel: React.FC = () => {
             description={autoConvertEnabled ? 'Make API calls to see them here.' : 'Enable auto-convert to start recording.'}
           />
         ) : (
+          <>
+          <TextField
+            size="small"
+            placeholder="Søk URL eller metode …"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            sx={{ mb: 2, width: { xs: '100%', sm: 320 } }}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" />
+                </InputAdornment>
+              ),
+            }}
+          />
           <AdminTableContainer ariaLabel="Recorded API calls" sx={{ maxHeight: 400 }}>
             <Table stickyHeader size="small">
               <TableHead>
@@ -236,7 +255,9 @@ export const SelfHealingSandboxPanel: React.FC = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {recordedCalls.map((call) => (
+                {recordedCalls.filter((call) =>
+                  `${call.request.url} ${call.request.method}`.toLowerCase().includes(search.toLowerCase())
+                ).map((call) => (
                   <TableRow key={call.id} hover>
                     <TableCell>
                       {new Date(call.timestamp).toLocaleTimeString()}
@@ -277,6 +298,7 @@ export const SelfHealingSandboxPanel: React.FC = () => {
               </TableBody>
             </Table>
           </AdminTableContainer>
+          </>
         )}
 
         {/* Mapping Preview */}

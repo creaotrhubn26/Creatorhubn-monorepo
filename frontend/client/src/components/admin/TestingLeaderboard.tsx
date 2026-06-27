@@ -29,6 +29,8 @@ import {
   Badge,
   Grid,
   ThemeProvider,
+  TextField,
+  InputAdornment,
 } from '@mui/material';
 import { adminDarkTheme } from './adminDarkTheme';
 import {
@@ -41,6 +43,7 @@ import {
   Assignment,
   Timer,
   LocalFireDepartment,
+  Search,
 } from '@mui/icons-material';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
@@ -71,6 +74,7 @@ export default function TestingLeaderboard() {
   const { auth } = useEnhancedMasterIntegration();
 
   const [timeRange, setTimeRange] = useState<'week' | 'month' | 'all'>('week');
+  const [search, setSearch] = useState("");
 
   // Fetch leaderboard
   const { data: leaderboard = [], isLoading } = useQuery({
@@ -233,6 +237,22 @@ export default function TestingLeaderboard() {
 
       {/* Full Leaderboard Table */}
       <AdminCard title="Full Rankings" disablePadding>
+          <Box sx={{ p: 2, pb: 0 }}>
+            <TextField
+              size="small"
+              fullWidth
+              placeholder="Søk etter navn eller profesjon …"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Search fontSize="small" />
+                  </InputAdornment>
+                ),
+              }}
+            />
+          </Box>
           <AdminTableContainer ariaLabel="Full Rankings">
             <Table>
               <TableHead>
@@ -248,7 +268,9 @@ export default function TestingLeaderboard() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {leaderboard.map((tester: LeaderboardEntry) => (
+                {leaderboard.filter((tester: LeaderboardEntry) =>
+                  `${tester.name ?? ''} ${tester.assignedProfession ?? ''} ${tester.profession ?? ''}`.toLowerCase().includes(search.toLowerCase())
+                ).map((tester: LeaderboardEntry) => (
                   <TableRow 
                     key={tester.testerId}
                     sx={{

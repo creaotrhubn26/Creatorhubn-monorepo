@@ -12,11 +12,14 @@ import {
   LinearProgress,
   Tooltip,
   IconButton,
+  TextField,
+  InputAdornment,
 } from '@mui/material';
 import {
   FileDownload as ExportIcon,
   Delete as ClearIcon,
   Visibility as ViewIcon,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import type { HAREntry } from '../../utils/harRecorder';
 import { harRecorder } from '../../utils/harRecorder';
@@ -41,6 +44,7 @@ export const HARViewer: React.FC<HARViewerProps> = ({
     errorCount: 0
   });
   const [selectedEntry, setSelectedEntry] = useState<HAREntry | null>(null);
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     const updateData = () => {
@@ -174,6 +178,21 @@ export const HARViewer: React.FC<HARViewerProps> = ({
             description="Run a WireMock test to see traffic here."
           />
         ) : (
+          <>
+          <TextField
+            size="small"
+            placeholder="Søk i URL eller metode …"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            sx={{ mb: 2, width: { xs: '100%', sm: 320 } }}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" />
+                </InputAdornment>
+              ),
+            }}
+          />
           <AdminTableContainer ariaLabel="HAR event log and waterfall" sx={{ maxHeight: 500 }}>
             <Table stickyHeader size="small">
               <TableHead>
@@ -188,7 +207,9 @@ export const HARViewer: React.FC<HARViewerProps> = ({
                 </TableRow>
               </TableHead>
               <TableBody>
-                {entries.map((entry, index) => {
+                {entries.filter(entry =>
+                  `${entry.request.method} ${entry.request.url}`.toLowerCase().includes(search.toLowerCase())
+                ).map((entry, index) => {
                   const waterfallWidth = (entry.time / maxTime) * 100;
                   
                   return (
@@ -249,6 +270,7 @@ export const HARViewer: React.FC<HARViewerProps> = ({
               </TableBody>
             </Table>
           </AdminTableContainer>
+          </>
         )}
     </AdminCard>
   );

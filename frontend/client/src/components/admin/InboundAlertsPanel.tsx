@@ -9,7 +9,7 @@
  *   POST /api/admin/inbound-alerts/:id/read
  *   POST /api/admin/inbound-alerts/read-all
  */
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Box,
   Card,
@@ -30,6 +30,7 @@ import {
   Badge,
   Tooltip,
   CircularProgress,
+  InputAdornment,
   Link as MuiLink,
 } from '@mui/material';
 import {
@@ -39,6 +40,7 @@ import {
   Done,
   FiberManualRecord,
   OpenInNew,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
@@ -88,6 +90,7 @@ export default function InboundAlertsPanel() {
   const [typeFilter, setTypeFilter] = useState('');
   const [sourceFilter, setSourceFilter] = useState('');
   const [unreadOnly, setUnreadOnly] = useState(false);
+  const [search, setSearch] = useState('');
 
   const buildQueryString = (): string => {
     const params = new URLSearchParams();
@@ -110,6 +113,16 @@ export default function InboundAlertsPanel() {
 
   const alerts: InboundAlert[] = Array.isArray(data?.alerts) ? data.alerts : [];
   const unreadCount: number = Number(countData?.unread || 0);
+
+  const visibleAlerts: InboundAlert[] = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return alerts;
+    return alerts.filter((alert) =>
+      [alert.title, alert.summary, alert.source, alert.cta, alert.type]
+        .map((field) => (field ?? '').toLowerCase())
+        .some((field) => field.includes(q)),
+    );
+  }, [alerts, search]);
 
   const refresh = () => {
     refetch();
@@ -176,6 +189,20 @@ export default function InboundAlertsPanel() {
           }}
         >
           <TextField
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            size="small"
+            placeholder="Søk i tittel, sammendrag, kilde …"
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" />
+                </InputAdornment>
+              ),
+            }}
+            sx={{ minWidth: { xs: '100%', sm: 260 } }}
+          />
+          <TextField
             label="Type"
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value)}
@@ -227,14 +254,14 @@ export default function InboundAlertsPanel() {
                   <AdminLoading />
                 </TableCell>
               </TableRow>
-            ) : alerts.length === 0 ? (
+            ) : visibleAlerts.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={9} align="center" sx={{ py: 4 }}>
                   <AdminEmpty title="Ingen varsler funnet" />
                 </TableCell>
               </TableRow>
             ) : (
-              alerts.map((alert) => {
+              visibleAlerts.map((alert) => {
                 const isUnread = !alert.read_at;
                 return (
                   <TableRow

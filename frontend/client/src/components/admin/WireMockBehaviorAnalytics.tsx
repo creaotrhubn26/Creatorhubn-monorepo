@@ -10,11 +10,14 @@ import {
   TableRow,
   Chip,
   LinearProgress,
+  TextField,
+  InputAdornment,
 } from '@mui/material';
 import {
   Speed as SpeedIcon,
   Error as ErrorIcon,
   CheckCircle as SuccessIcon,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import { harRecorder } from '../../utils/harRecorder';
 import { useWireMockTestHistory } from '../../hooks/useWireMockTestHistory';
@@ -40,6 +43,7 @@ export const WireMockBehaviorAnalytics: React.FC = () => {
   // Use test history hook for comprehensive analytics
   const { history } = useWireMockTestHistory();
 
+  const [search, setSearch] = useState("");
   const [endpointStats, setEndpointStats] = useState<EndpointStats[]>([]);
   const [globalStats, setGlobalStats] = useState({
     totalRequests: 0,
@@ -170,6 +174,22 @@ export const WireMockBehaviorAnalytics: React.FC = () => {
         {endpointStats.length === 0 ? (
           <AdminEmpty description="No data yet. Run WireMock tests to see analytics." />
         ) : (
+          <>
+          <TextField
+            size="small"
+            fullWidth
+            placeholder="Søk i endepunkter …"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            sx={{ mb: 1.5 }}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" />
+                </InputAdornment>
+              ),
+            }}
+          />
           <AdminTableContainer ariaLabel="Endpoint performance" sx={{ maxHeight: 400 }}>
             <Table stickyHeader size="small">
               <TableHead>
@@ -185,7 +205,9 @@ export const WireMockBehaviorAnalytics: React.FC = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {endpointStats.map((stat, index) => (
+                {endpointStats.filter(stat =>
+                  `${stat.endpoint} ${stat.method}`.toLowerCase().includes(search.toLowerCase())
+                ).map((stat, index) => (
                   <TableRow key={index} hover>
                     <TableCell>
                       <Chip
@@ -251,6 +273,7 @@ export const WireMockBehaviorAnalytics: React.FC = () => {
               </TableBody>
             </Table>
           </AdminTableContainer>
+          </>
         )}
     </AdminCard>
   );
