@@ -392,7 +392,25 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
         previewUrl: r.preview_key ? await signAssetReadUrl(r.preview_key) : null,
         createdAt: r.created_at,
       })));
-      res.json({ assets, hasSession: true });
+      // Cull-stats (det fotografen culler på iPad → reflektert i web).
+      const cs = await pool.query(
+        `SELECT count(*)::int AS total,
+                count(*) FILTER (WHERE rejected IS TRUE)::int AS rejected,
+                count(*) FILTER (WHERE rating IS NULL OR rating = 0)::int AS unrated,
+                count(*) FILTER (WHERE rating >= 4)::int AS favorites,
+                count(*) FILTER (WHERE flagged_for_client IS TRUE)::int AS highlights,
+                count(*) FILTER (WHERE rating >= 1)::int AS rated
+           FROM capture_assets WHERE session_id = ANY($1::uuid[])`,
+        [sessionIds],
+      ).catch(() => ({ rows: [{}] }));
+      const c = cs.rows[0] || {};
+      res.json({
+        assets, hasSession: true,
+        cullStats: {
+          total: c.total || 0, rejected: c.rejected || 0, unrated: c.unrated || 0,
+          favorites: c.favorites || 0, highlights: c.highlights || 0, rated: c.rated || 0,
+        },
+      });
     } catch (e) { console.error("GET media", e); res.status(500).json({ error: "failed" }); }
   });
 
