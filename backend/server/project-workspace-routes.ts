@@ -159,6 +159,42 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     catch (e) { console.error("DELETE board-tasks", e); res.status(500).json({ error: "failed" }); }
   });
 
+  // ─────────── Delivery-fase utledet fra EKTE showcase-tilstand ───────────
+  // Stepperen (Editing→Internal Review→Client Review→Revisions→Approved) drives
+  // av galleriets livssyklus + klient-aktivitet, ikke manuelt:
+  //   1 Editing        — ingen galleri opprettet
+  //   3 Client Review  — galleri finnes (delt med klient), ingen klient-handling
+  //   4 Revisions      — klient har comments eller (ikke-innsendte) selections
+  //   5 Approved       — klient sendte utvalg (submitted_at) ELLER galleri completed
+  app.get("/api/projects/:projectId/delivery-status", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const gq = await pool.query(
+        `SELECT id, status, completed_at FROM photographer_client_galleries WHERE project_id = $1`,
+        [req.params.projectId],
+      ).catch(() => ({ rows: [] }));
+      const galleries = gq.rows;
+      if (galleries.length === 0) {
+        return res.json({ phase: 1, phaseKey: "editing", signals: { hasGallery: false, selections: 0, submitted: 0, comments: 0, completed: false } });
+      }
+      const ids = galleries.map((g: any) => g.id);
+      const [selQ, subQ, comQ] = await Promise.all([
+        pool.query(`SELECT count(*)::int c FROM client_image_selections WHERE gallery_id = ANY($1::uuid[])`, [ids]).catch(() => ({ rows: [{ c: 0 }] })),
+        pool.query(`SELECT count(*)::int c FROM client_image_selections WHERE gallery_id = ANY($1::uuid[]) AND submitted_at IS NOT NULL`, [ids]).catch(() => ({ rows: [{ c: 0 }] })),
+        pool.query(`SELECT count(*)::int c FROM client_image_comments WHERE gallery_id = ANY($1::uuid[])`, [ids]).catch(() => ({ rows: [{ c: 0 }] })),
+      ]);
+      const selections = selQ.rows[0]?.c || 0;
+      const submitted = subQ.rows[0]?.c || 0;
+      const comments = comQ.rows[0]?.c || 0;
+      const completed = galleries.some((g: any) => g.status === "completed" || g.completed_at);
+
+      let phase = 3, phaseKey = "client_review";
+      if (completed || submitted > 0) { phase = 5; phaseKey = "approved"; }
+      else if (comments > 0 || selections > 0) { phase = 4; phaseKey = "revisions"; }
+      res.json({ phase, phaseKey, signals: { hasGallery: true, selections, submitted, comments, completed } });
+    } catch (e) { console.error("GET delivery-status", e); res.json({ phase: 1, phaseKey: "editing", signals: {} }); }
+  });
+
   // ─────────── Split sheet (honorar-fordeling mellom team) ───────────
   app.get("/api/projects/:projectId/split-sheet", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;

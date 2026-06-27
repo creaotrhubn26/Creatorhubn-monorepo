@@ -35,6 +35,7 @@ const LeveranserTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const isReal = projectId && projectId !== 'sample';
 
   const [galleries, setGalleries] = useState<any[]>([]);
+  const [delivery, setDelivery] = useState<{ phase: number; signals: any } | null>(null);
   const load = () => {
     if (!isReal) return;
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/deliverables`)
@@ -43,8 +44,23 @@ const LeveranserTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/galleries`)
       .then((r: any) => setGalleries(Array.isArray(r?.galleries) ? r.galleries : []))
       .catch(() => {});
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/delivery-status`)
+      .then((r: any) => { if (r && typeof r.phase === 'number') setDelivery({ phase: r.phase, signals: r.signals || {} }); })
+      .catch(() => {});
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [projectId]);
+
+  // Aktiv fase: ekte (utledet fra showcase) eller demo = 1.
+  const activePhase = delivery ? delivery.phase : 1;
+  const sig = delivery?.signals || {};
+
+  const markApproved = async () => {
+    const g = galleries[0];
+    if (!g?.id) { window.alert('Ingen klient-galleri å markere som godkjent ennå.'); return; }
+    if (!window.confirm('Marker leveransen som godkjent (fullfør galleriet)?')) return;
+    try { await apiRequest(`/api/photographer/galleries/${g.id}/mark-complete`, { method: 'POST' }); load(); }
+    catch (e: any) { window.alert(e?.message || 'Kunne ikke markere'); }
+  };
 
   const shareGallery = (sharePath: string) => {
     if (!sharePath) return;
@@ -101,16 +117,32 @@ const LeveranserTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         </WsCard>
 
         <WsCard sx={{ mb: 2 }}>
-          <Typography sx={{ fontSize: 14, fontWeight: 700, mb: 2 }}>Progress</Typography>
+          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+            <Typography sx={{ fontSize: 14, fontWeight: 700 }}>Progress</Typography>
+            {isReal && (
+              <Stack direction="row" spacing={1} alignItems="center">
+                {sig.hasGallery && <Typography sx={{ fontSize: 11, color: ws.textFaint }}>{sig.selections || 0} valg · {sig.comments || 0} kommentarer</Typography>}
+                {activePhase < 5 && <Button size="small" onClick={markApproved} sx={{ color: ws.green, textTransform: 'none', border: `1px solid ${ws.greenSoft}` }}>Marker godkjent</Button>}
+              </Stack>
+            )}
+          </Stack>
           <Stack direction="row" justifyContent="space-between" sx={{ position: 'relative' }}>
             <Box sx={{ position: 'absolute', top: 14, left: 16, right: 16, height: 2, bgcolor: ws.border }} />
-            {STEPS.map((s, i) => (
-              <Stack key={s} alignItems="center" spacing={0.75} sx={{ zIndex: 1, flex: 1 }}>
-                <Box sx={{ width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, bgcolor: i === 0 ? ws.accent : ws.panelSolid, color: i === 0 ? ws.accentContrast : ws.textDim, border: `2px solid ${i === 0 ? ws.accent : ws.border}` }}>{i + 1}</Box>
-                <Typography sx={{ fontSize: 11, color: i === 0 ? ws.accent : ws.textDim, fontWeight: i === 0 ? 700 : 500, textAlign: 'center' }}>{s}</Typography>
-                <Typography sx={{ fontSize: 9.5, color: ws.textFaint }}>{i === 0 ? 'In progress' : 'Pending'}</Typography>
-              </Stack>
-            ))}
+            <Box sx={{ position: 'absolute', top: 14, left: 16, height: 2, bgcolor: ws.accent, width: `${Math.max(0, (activePhase - 1) / (STEPS.length - 1)) * 100}%`, maxWidth: 'calc(100% - 32px)' }} />
+            {STEPS.map((s, i) => {
+              const step = i + 1;
+              const done = step < activePhase;
+              const active = step === activePhase;
+              return (
+                <Stack key={s} alignItems="center" spacing={0.75} sx={{ zIndex: 1, flex: 1 }}>
+                  <Box sx={{ width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800,
+                    bgcolor: active ? ws.accent : done ? ws.greenSoft : ws.panelSolid, color: active ? ws.accentContrast : done ? ws.green : ws.textDim,
+                    border: `2px solid ${active ? ws.accent : done ? ws.green : ws.border}` }}>{done ? '✓' : step}</Box>
+                  <Typography sx={{ fontSize: 11, color: active ? ws.accent : ws.textDim, fontWeight: active ? 700 : 500, textAlign: 'center' }}>{s}</Typography>
+                  <Typography sx={{ fontSize: 9.5, color: ws.textFaint }}>{active ? 'In progress' : done ? 'Ferdig' : 'Pending'}</Typography>
+                </Stack>
+              );
+            })}
           </Stack>
         </WsCard>
 
@@ -153,13 +185,18 @@ const LeveranserTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         )}
         <WsCard sx={{ mb: 2 }}>
           <Typography sx={{ fontSize: 14, fontWeight: 700, mb: 1.5 }}>Delivery progress</Typography>
+          {(() => {
+            const completed = isReal ? (activePhase >= 5 ? 5 : activePhase - 1) : 2;
+            const pct = isReal ? Math.round((completed / 5) * 100) : 40;
+            return (
           <Stack direction="row" spacing={2} alignItems="center">
-            <WsRing value={40} size={84} color={ws.accent} label="40%" />
+            <WsRing value={pct} size={84} color={ws.accent} label={`${pct}%`} />
             <Stack spacing={0.5} sx={{ flex: 1 }}>
-              <Typography sx={{ fontSize: 12, color: ws.textDim }}>2 av 5 fullført</Typography>
+              <Typography sx={{ fontSize: 12, color: ws.textDim }}>{completed} av 5 fullført</Typography>
               {[['In progress', 1, ws.amber], ['Not started', 2, ws.textFaint], ['Overdue', 0, ws.red]].map(([l, n, c]) => <Stack key={l} direction="row" spacing={1} alignItems="center"><Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: c }} /><Typography sx={{ fontSize: 11.5, flex: 1 }}>{l}</Typography><Typography sx={{ fontSize: 11.5, fontWeight: 700 }}>{n}</Typography></Stack>)}
             </Stack>
           </Stack>
+            ); })()}
         </WsCard>
         <WsCard sx={{ mb: 2 }}>
           <WsSectionTitle title="Client feedback" action={<Button size="small" sx={{ color: ws.accent, textTransform: 'none' }}>Se alle</Button>} />
