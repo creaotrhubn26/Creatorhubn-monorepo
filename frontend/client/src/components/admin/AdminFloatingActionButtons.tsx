@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
 import { apiRequest } from '@/lib/queryClient';
-import { adminTokens, AdminButton } from './design-system';
+import { adminTokens, AdminButton, useIsMobile } from './design-system';
 
 import {
   Fab,
@@ -120,6 +120,7 @@ export default function AdminFloatingActionButtons({
   onGoogleWorkspaceResellerOpen,
 }: AdminFloatingActionButtonsProps) {
   const [open, setOpen] = useState(false);
+  const isMobile = useIsMobile();
 
   // Get auth from master integration
   const { auth } = useEnhancedMasterIntegration();
@@ -294,6 +295,7 @@ export default function AdminFloatingActionButtons({
             left: '50%',
             transform: 'translate(-50%, -50%)',
             width: '320px',
+            maxWidth: '100%',
             height: '200px',
             zIndex: 9999,
             background: 'linear-gradient(135deg, #ff4444 0%, #ff6b00 50%, #ff8500 100%)',
@@ -354,6 +356,7 @@ export default function AdminFloatingActionButtons({
         onClose={() => setOrganizerDialogOpen(false)}
         maxWidth="sm"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>
           Admin SpeedDial Organiser

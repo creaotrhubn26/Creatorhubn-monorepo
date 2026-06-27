@@ -54,7 +54,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
-import { StatusChip } from './design-system';
+import { StatusChip, useIsMobile } from './design-system';
 
 interface ViralContentCreatorProps {
   showcase: any;
@@ -192,13 +192,13 @@ export default function ViralContentCreator({
       >
         <CardContent sx={theming.getThemedCardSx()}>
           <Grid container spacing={2} alignItems="center">
-            <Grid item xs={8} >
+            <Grid item xs={12} sm={8} >
               <Typography variant="h6" sx={{ color: theming.colors.primary }}>{showcase.title}</Typography>
               <Typography color="textSecondary">
                 {showcase.profession} • {showcase.category}
               </Typography>
             </Grid>
-            <Grid item xs={4} sx={{ textAlign: 'right'}}>
+            <Grid item xs={12} sm={4} sx={{ textAlign: 'right'}}>
               <Button variant="contained"
                 onClick={handleAnalyzeContent}
                 disabled={isAnalyzing}
@@ -504,7 +504,7 @@ export default function ViralContentCreator({
             📊 Forventet Ytelse
           </Typography>
           <Grid container spacing={2}>
-            <Grid item xs={3} >
+            <Grid item xs={6} sm={3} >
               <Box sx={{ textAlign: 'center'}}>
                 <Typography variant="h4" color="primary" sx={{ color: theming.colors.primary }}>
                   2.5K
@@ -512,7 +512,7 @@ export default function ViralContentCreator({
                 <Typography color="textSecondary">Forventede visninger</Typography>
               </Box>
             </Grid>
-            <Grid item xs={3} >
+            <Grid item xs={6} sm={3} >
               <Box sx={{ textAlign: 'center'}}>
                 <Typography variant="h4" color="success.main" sx={{ color: theming.colors.primary }}>
                   15%
@@ -520,7 +520,7 @@ export default function ViralContentCreator({
                 <Typography color="textSecondary">Engagement rate</Typography>
               </Box>
             </Grid>
-            <Grid item xs={3} >
+            <Grid item xs={6} sm={3} >
               <Box sx={{ textAlign: 'center'}}>
                 <Typography variant="h4" color="warning.main" sx={{ color: theming.colors.primary }}>
                   85%
@@ -528,7 +528,7 @@ export default function ViralContentCreator({
                 <Typography color="textSecondary">Viral score</Typography>
               </Box>
             </Grid>
-            <Grid item xs={3} >
+            <Grid item xs={6} sm={3} >
               <Box sx={{ textAlign: 'center'}}>
                 <Typography variant="h4" color="info.main" sx={{ color: theming.colors.primary }}>
                   12
@@ -563,6 +563,7 @@ export default function ViralContentCreator({
       onClose={onClose}
       maxWidth="md"
       fullWidth
+      fullScreen={useIsMobile()}
       PaperProps={{
         sx: {
           borderRadius: 3,

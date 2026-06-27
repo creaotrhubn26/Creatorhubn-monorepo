@@ -59,6 +59,7 @@ import {
   AdminEmpty,
   StatusChip,
   AdminTableContainer,
+  useIsMobile,
 } from './design-system';
 
 type FeatureBaseConfig = ProfessionFeatureConfig['availableFeatures'][string];
@@ -82,6 +83,7 @@ type AvailabilityMode = 'included' | 'trial' | 'addon' | 'locked';
 export default function UnifiedFeatureSubscriptionPanel() {
   const queryClient = useQueryClient();
   const { auth } = useEnhancedMasterIntegration();
+  const isMobile = useIsMobile();
   const [activeTab, setActiveTab] = useState(0);
   const [selectedProfession, setSelectedProfession] = useState<string>('videographer');
   const [searchQuery, setSearchQuery] = useState('');
@@ -279,7 +281,7 @@ export default function UnifiedFeatureSubscriptionPanel() {
   return (
     <Box sx={{ p: 3 }}>
       {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2, mb: 3 }}>
         <Box>
           <Typography variant="h4" component="h2" sx={{ fontWeight: 600, mb: 1 }}>
             Feature & Subscription Management
@@ -634,6 +636,7 @@ export default function UnifiedFeatureSubscriptionPanel() {
         onClose={() => setEditDialog({ open: false })}
         maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>Edit Feature: {editDialog.featureName}</DialogTitle>
         <DialogContent>

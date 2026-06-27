@@ -53,7 +53,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useTheming } from '../../utils/theming-helper';
-import { AdminButton, StatusChip, AdminTableContainer, AdminLoading, AdminEmpty } from './design-system';
+import { AdminButton, StatusChip, AdminTableContainer, AdminLoading, AdminEmpty, useIsMobile } from './design-system';
 
 interface EnterpriseInquiry {
   id: string;
@@ -102,6 +102,7 @@ interface EnterpriseInquiriesPanelProps {
 
 export default function EnterpriseInquiriesPanel({ onNavigateToPricing }: EnterpriseInquiriesPanelProps) {
   const theming = useTheming('photographer');
+  const isMobile = useIsMobile();
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selectedInquiry, setSelectedInquiry] = useState<EnterpriseInquiry | null>(null);
@@ -219,7 +220,7 @@ export default function EnterpriseInquiriesPanel({ onNavigateToPricing }: Enterp
       </Grid>
 
       {/* Actions Bar */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1, mb: 2 }}>
         <Alert severity="info" sx={{ flex: 1, mr: 2 }}>
           Enterprise-priser: Basispris {pricingConfig.basePrice} kr/mnd (inkl. {pricingConfig.includedUsers} brukere) + {pricingConfig.pricePerUser} kr/mnd per ekstra bruker.
           {onNavigateToPricing && (
@@ -304,7 +305,7 @@ export default function EnterpriseInquiriesPanel({ onNavigateToPricing }: Enterp
       </AdminTableContainer>
 
       {/* Detail Dialog */}
-      <Dialog open={showDetailDialog} onClose={() => setShowDetailDialog(false)} maxWidth="md" fullWidth>
+      <Dialog open={showDetailDialog} onClose={() => setShowDetailDialog(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <Business color="primary" />
           {selectedInquiry?.company_name}

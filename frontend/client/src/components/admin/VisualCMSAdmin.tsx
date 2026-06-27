@@ -47,7 +47,7 @@ import { useTheming } from '../../utils/theming-helper';
 import { apiRequest } from '@/lib/queryClient';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
-import { AdminCard, AdminButton, StatusChip } from './design-system';
+import { AdminCard, AdminButton, StatusChip, useIsMobile } from './design-system';
 
 interface CMSField {
   id?: string;
@@ -792,7 +792,7 @@ function FieldDialog({
   onSave: () => void;
 }) {
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth fullScreen={useIsMobile()}>
       <DialogTitle>{value.id ? 'Rediger felt' : 'Nytt felt'}</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 1 }}>
@@ -875,7 +875,7 @@ function ContentTypeDialog({
   onSave: () => void;
 }) {
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth fullScreen={useIsMobile()}>
       <DialogTitle>{value.id ? 'Rediger innholdstype' : 'Ny innholdstype'}</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 1 }}>

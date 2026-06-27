@@ -43,7 +43,7 @@ import {
   Info,
 } from '@mui/icons-material';
 import { cameraDiscoveryService } from '../../data/camera-discovery-system';
-import { AdminButton, AdminTableContainer } from './design-system';
+import { AdminButton, AdminTableContainer, useIsMobile } from './design-system';
 
 interface CameraDiscoveryManagerProps {
   onCamerasApproved?: (cameras: any[]) => void;
@@ -61,6 +61,7 @@ const CameraDiscoveryManager: React.FC<CameraDiscoveryManagerProps> = ({
   
   // Theming system
   const theming = useTheming('prototype_tester');
+  const isMobile = useIsMobile();
 
   // Load initial data
   useEffect(() => {
@@ -358,7 +359,7 @@ const CameraDiscoveryManager: React.FC<CameraDiscoveryManagerProps> = ({
       </Card>
 
       {/* Approval Dialog */}
-      <Dialog open={showApprovalDialog} onClose={() => setShowApprovalDialog(false)} maxWidth="md" fullWidth>
+      <Dialog open={showApprovalDialog} onClose={() => setShowApprovalDialog(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle>
           Approve Selected Cameras
         </DialogTitle>
