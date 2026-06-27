@@ -11,22 +11,18 @@ import {
   Card as MuiCard,
   CardContent,
   Switch,
-  Button,
   List,
   ListItem,
   ListItemIcon,
   ListItemText,
   ListItemSecondaryAction,
-  Chip,
   Tabs,
   Tab,
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
-  Paper,
   IconButton,
   Dialog,
   DialogTitle,
@@ -36,6 +32,7 @@ import {
   ThemeProvider,
 } from '@mui/material';
 import { adminDarkTheme } from './adminDarkTheme';
+import { AdminButton, StatusChip, AdminLoading, AdminTableContainer } from './design-system';
 import {
   AutoAwesome,
   Schedule,
@@ -177,9 +174,7 @@ export default function AutomationsPanel({
   if (isLoading) {
     return (
       <ThemeProvider theme={adminDarkTheme}>
-      <Box sx={{ p: 3 }}>
-        <Typography variant="h6" sx={{ color: themeColors.primary }}>Laster automatiseringer...</Typography>
-      </Box>
+      <AdminLoading label="Laster automatiseringer..." />
       </ThemeProvider>
     );
 }
@@ -205,12 +200,12 @@ export default function AutomationsPanel({
   }
 };
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status: string): 'success' | 'warning' | 'error' | 'neutral' => {
     switch (status) {
       case 'success': return 'success';
       case 'warning': return 'warning';
       case 'error': return 'error';
-      default: return 'default';
+      default: return 'neutral';
   }
 };
 
@@ -224,14 +219,13 @@ export default function AutomationsPanel({
             Automatiseringer
           </Typography>
         </Box>
-        <Button 
-          variant="contained"
+        <AdminButton
+          tone="primary"
           startIcon={<Add />}
           onClick={() => setDialogOpen(true)}
-          sx={theming.getThemedButtonSx()}
         >
           Ny Automatisering
-        </Button>
+        </AdminButton>
       </Box>
 
       {/* Summary Cards */}
@@ -357,10 +351,9 @@ export default function AutomationsPanel({
                         <Typography variant="subtitle1" sx={{ fontWeight: 500}}>
                           {automation.name}
                         </Typography>
-                        <Chip 
+                        <StatusChip
                           label={automation.status}
-                          color={getStatusColor(automation.status)}
-                          size="small"
+                          tone={getStatusColor(automation.status)}
                         />
                       </Box>
                   }
@@ -396,7 +389,7 @@ export default function AutomationsPanel({
           </TabPanel>
 
           <TabPanel value={tabValue} index={1}>
-            <TableContainer component={Paper}>
+            <AdminTableContainer ariaLabel="Arbeidsflyter">
               <Table>
                 <TableHead>
                   <TableRow>
@@ -414,10 +407,9 @@ export default function AutomationsPanel({
                       <TableCell>{workflow.steps} trinn</TableCell>
                       <TableCell>{workflow.completedToday}</TableCell>
                       <TableCell>
-                        <Chip 
+                        <StatusChip
                           label={workflow.status === 'active' ? 'Aktiv' : 'Inaktiv'}
-                          color={workflow.status === 'active' ? 'success' : 'default'}
-                          size="small"
+                          tone={workflow.status === 'active' ? 'success' : 'neutral'}
                         />
                       </TableCell>
                       <TableCell>
@@ -432,7 +424,7 @@ export default function AutomationsPanel({
                   ))}
                 </TableBody>
               </Table>
-            </TableContainer>
+            </AdminTableContainer>
           </TabPanel>
 
           <TabPanel value={tabValue} index={2}>
@@ -478,15 +470,12 @@ export default function AutomationsPanel({
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDialogOpen(false)}>
+          <AdminButton tone="ghost" onClick={() => setDialogOpen(false)}>
             Avbryt
-          </Button>
-          <Button 
-            variant="contained"
-            sx={theming.getThemedButtonSx()}
-          >
+          </AdminButton>
+          <AdminButton tone="primary">
             {selectedAutomation ? 'Oppdater' : 'Opprett'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

@@ -6,9 +6,7 @@
 import React, { useState, useCallback } from 'react';
 import {
   Box,
-  Button,
   Typography,
-  Paper,
   List,
   ListItem,
   ListItemText,
@@ -30,6 +28,7 @@ import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions'
 import { useProfessionConfigs } from '../../hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '../../hooks/useProfessionAdapter';
 import { getProfessionIcon } from '../../utils/profession-icons';
+import { AdminCard, AdminButton } from './design-system';
 
 const AdminDashboardIntegrationTest: React.FC = () => {
   const { integration, communication, dataFlow, componentRegistry } = useEnhancedMasterIntegration();
@@ -163,26 +162,23 @@ const AdminDashboardIntegrationTest: React.FC = () => {
       </Typography>
 
       <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mb: 3 }}>
-        <Button variant="contained" onClick={runIntegrationTest} sx={theming.getThemedButtonSx()} startIcon={<CheckCircle />}>
+        <AdminButton tone="primary" onClick={runIntegrationTest} sx={theming.getThemedButtonSx()} startIcon={<CheckCircle />}>
           Run Integration Test
-        </Button>
-        <Button variant="outlined" onClick={testDataFlow} startIcon={<Sync />}>
+        </AdminButton>
+        <AdminButton tone="secondary" onClick={testDataFlow} startIcon={<Sync />}>
           Test Data Flow
-        </Button>
-        <Button variant="outlined" onClick={testCommunication} startIcon={<Send />}>
+        </AdminButton>
+        <AdminButton tone="secondary" onClick={testCommunication} startIcon={<Send />}>
           Test Communication
-        </Button>
-        <Button variant="outlined" onClick={testAdminActions} startIcon={<Storage />}>
+        </AdminButton>
+        <AdminButton tone="secondary" onClick={testAdminActions} startIcon={<Storage />}>
           Test Admin Actions
-        </Button>
+        </AdminButton>
       </Box>
 
       <Divider sx={{ my: 3 }} />
 
-      <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-        Test Results
-      </Typography>
-      <Paper elevation={1} sx={{ p: 2, mb: 3 }}>
+      <AdminCard title="Test Results" sx={{ mb: 3 }}>
         <List dense>
           {Object.entries(testResults).map(([key, value]) => (
             <ListItem key={key}>
@@ -200,12 +196,9 @@ const AdminDashboardIntegrationTest: React.FC = () => {
             </ListItem>
           ))}
         </List>
-      </Paper>
+      </AdminCard>
 
-      <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-        Data Flow Messages
-      </Typography>
-      <Paper elevation={1} sx={{ p: 2, mb: 3, maxHeight: 200, overflow: 'auto' }}>
+      <AdminCard title="Data Flow Messages" sx={{ mb: 3, maxHeight: 200, overflow: 'auto' }}>
         <List dense>
           {dataFlowMessages.map((msg, index) => (
             <ListItem key={index}>
@@ -213,12 +206,9 @@ const AdminDashboardIntegrationTest: React.FC = () => {
             </ListItem>
           ))}
         </List>
-      </Paper>
+      </AdminCard>
 
-      <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-        Communication Messages
-      </Typography>
-      <Paper elevation={1} sx={{ p: 2, mb: 3, maxHeight: 200, overflow: 'auto' }}>
+      <AdminCard title="Communication Messages" sx={{ mb: 3, maxHeight: 200, overflow: 'auto' }}>
         <List dense>
           {communicationMessages.map((msg, index) => (
             <ListItem key={index}>
@@ -226,16 +216,13 @@ const AdminDashboardIntegrationTest: React.FC = () => {
             </ListItem>
           ))}
         </List>
-      </Paper>
+      </AdminCard>
 
-      <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-        Component Registry Status
-      </Typography>
-      <Paper elevation={1} sx={{ p: 2 }}>
+      <AdminCard title="Component Registry Status">
         <Typography variant="body2" color="text.secondary">
           Component registry is active and operational.
         </Typography>
-      </Paper>
+      </AdminCard>
     </Box>
     </ThemeProvider>
   );

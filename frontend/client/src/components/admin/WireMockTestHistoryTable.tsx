@@ -1,13 +1,10 @@
 import React, { useState } from 'react';
 import {
   Box,
-  Card,
-  CardContent,
   Typography,
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   Chip,
@@ -15,7 +12,6 @@ import {
   Tooltip,
   TextField,
   MenuItem,
-  Button,
   Grid,
 } from '@mui/material';
 import {
@@ -26,6 +22,7 @@ import {
   FileDownload as ExportIcon,
 } from '@mui/icons-material';
 import type { WireMockTestResult } from './WireMockResponseViewer';
+import { AdminCard, AdminButton, StatusChip, AdminEmpty, AdminTableContainer } from './design-system';
 
 interface WireMockTestHistoryTableProps {
   history: WireMockTestResult[];
@@ -76,35 +73,31 @@ export const WireMockTestHistoryTable: React.FC<WireMockTestHistoryTableProps> =
   };
 
   return (
-    <Card>
-      <CardContent>
-        <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-          <Typography variant="h6">
-            🧪 WireMock Test History
-          </Typography>
-          <Box display="flex" gap={1}>
-            <Button
-              size="small"
-              variant="outlined"
-              startIcon={<ExportIcon />}
-              onClick={onExportHistory}
-              disabled={history.length === 0}
-            >
-              Export
-            </Button>
-            <Button
-              size="small"
-              variant="outlined"
-              color="error"
-              startIcon={<DeleteIcon />}
-              onClick={onClearHistory}
-              disabled={history.length === 0}
-            >
-              Clear
-            </Button>
-          </Box>
+    <AdminCard
+      title="🧪 WireMock Test History"
+      action={
+        <Box display="flex" gap={1}>
+          <AdminButton
+            tone="ghost"
+            size="small"
+            startIcon={<ExportIcon />}
+            onClick={onExportHistory}
+            disabled={history.length === 0}
+          >
+            Export
+          </AdminButton>
+          <AdminButton
+            tone="danger"
+            size="small"
+            startIcon={<DeleteIcon />}
+            onClick={onClearHistory}
+            disabled={history.length === 0}
+          >
+            Clear
+          </AdminButton>
         </Box>
-
+      }
+    >
         {/* Stats */}
         <Grid container spacing={2} sx={{ mb: 3 }}>
           <Grid item xs={12} sm={4}>
@@ -170,11 +163,9 @@ export const WireMockTestHistoryTable: React.FC<WireMockTestHistoryTableProps> =
 
         {/* Table */}
         {filteredHistory.length === 0 ? (
-          <Box sx={{ p: 4, textAlign: 'center', color: 'text.secondary' }}>
-            <Typography>No test results yet. Run a WireMock test to see results here.</Typography>
-          </Box>
+          <AdminEmpty description="No test results yet. Run a WireMock test to see results here." />
         ) : (
-          <TableContainer sx={{ maxHeight: 400 }}>
+          <AdminTableContainer ariaLabel="WireMock Test History" sx={{ maxHeight: 400 }}>
             <Table stickyHeader size="small">
               <TableHead>
                 <TableRow>
@@ -199,11 +190,9 @@ export const WireMockTestHistoryTable: React.FC<WireMockTestHistoryTableProps> =
                       <Chip label={result.method} size="small" variant="outlined" />
                     </TableCell>
                     <TableCell>
-                      <Chip
-                        icon={result.status === 'success' ? <SuccessIcon /> : <ErrorIcon />}
-                        label={result.statusCode || result.status}
-                        size="small"
-                        color={getStatusColor(result)}
+                      <StatusChip
+                        tone={getStatusColor(result)}
+                        label={String(result.statusCode || result.status)}
                       />
                     </TableCell>
                     <TableCell align="right">
@@ -220,10 +209,9 @@ export const WireMockTestHistoryTable: React.FC<WireMockTestHistoryTableProps> =
                 ))}
               </TableBody>
             </Table>
-          </TableContainer>
+          </AdminTableContainer>
         )}
-      </CardContent>
-    </Card>
+    </AdminCard>
   );
 };
 

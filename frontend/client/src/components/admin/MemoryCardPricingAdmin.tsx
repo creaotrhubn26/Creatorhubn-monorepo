@@ -57,6 +57,11 @@ import {
   convertCurrency,
   formatCurrency,
 } from '../../data/memory-card-database';
+import {
+  AdminCard,
+  AdminButton,
+  AdminTableContainer,
+} from './design-system';
 
 interface MemoryCardPricingAdminProps {
   onPricingUpdate?: (updatedPricing: MemoryCardPricing) => void;
@@ -219,11 +224,7 @@ const MemoryCardPricingAdmin: React.FC<MemoryCardPricingAdminProps> = ({
       </Typography>
 
       {/* Currency Rate Controls */}
-      <Card sx={{ mb:  3 ,  ...theming.getThemedCardSx() }}>
-        <CardContent sx={theming.getThemedCardSx()}>
-          <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
-            Currency Settings
-          </Typography>
+      <AdminCard title="Currency Settings" sx={{ mb:  3 }}>
           <Grid container spacing={2} alignItems="center">
             <Grid item xs={12} sm={4}>
               <TextField
@@ -259,17 +260,11 @@ const MemoryCardPricingAdmin: React.FC<MemoryCardPricingAdminProps> = ({
               </Button>
             </Grid>
           </Grid>
-        </CardContent>
-      </Card>
+      </AdminCard>
 
       {/* Pricing Table */}
-      <Card sx={theming.getThemedCardSx()}>
-        <CardContent sx={theming.getThemedCardSx()}>
-          <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
-            Memory Card Pricing (NOK per GB)
-          </Typography>
-          
-          <TableContainer component={Paper}>
+      <AdminCard title="Memory Card Pricing (NOK per GB)">
+          <AdminTableContainer ariaLabel="Memory Card Pricing (NOK per GB)">
             <Table>
               <TableHead>
                 <TableRow>
@@ -341,9 +336,8 @@ const MemoryCardPricingAdmin: React.FC<MemoryCardPricingAdminProps> = ({
               })}
               </TableBody>
             </Table>
-          </TableContainer>
-        </CardContent>
-      </Card>
+          </AdminTableContainer>
+      </AdminCard>
 
       {/* Edit Dialog */}
       <Dialog open={showEditDialog} onClose={handleCancelEdit} maxWidth="md" fullWidth>
@@ -414,23 +408,19 @@ const MemoryCardPricingAdmin: React.FC<MemoryCardPricingAdminProps> = ({
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCancelEdit} startIcon={theming.getThemedIcon('cancel')}>
+          <AdminButton tone="ghost" onClick={handleCancelEdit} startIcon={theming.getThemedIcon('cancel')}>
             Cancel
-          </Button>
-          <Button onClick={handleSavePricing} startIcon={theming.getThemedIcon('save')} variant="contained" sx={theming.getThemedButtonSx()}>
+          </AdminButton>
+          <AdminButton tone="primary" onClick={handleSavePricing} startIcon={theming.getThemedIcon('save')}>
             Save Changes
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
       {/* Pricing History */}
       {pricingHistory.length > 0 && (
-        <Card sx={{ mt:  3 ,  ...theming.getThemedCardSx() }}>
-          <CardContent sx={theming.getThemedCardSx()}>
-            <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
-              Recent Price Changes
-            </Typography>
-            <TableContainer component={Paper}>
+        <AdminCard title="Recent Price Changes" sx={{ mt:  3 }}>
+            <AdminTableContainer ariaLabel="Recent Price Changes">
               <Table size="small">
                 <TableHead>
                   <TableRow>
@@ -474,9 +464,8 @@ const MemoryCardPricingAdmin: React.FC<MemoryCardPricingAdminProps> = ({
                 })}
                 </TableBody>
               </Table>
-            </TableContainer>
-          </CardContent>
-        </Card>
+            </AdminTableContainer>
+        </AdminCard>
       )}
     </Box>
   );
