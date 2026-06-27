@@ -335,13 +335,24 @@ final class AppState {
     func loadOrganizations() async {
         guard let api else { return }
         do {
-            self.organizations = try await api.fetchOrganizations()
-            // Auto-velg første hvis ingen aktiv
-            if activeOrganizationId == nil, let first = organizations.first {
+            let orgs = try await api.fetchOrganizations()
+            self.organizations = orgs
+            // FIX 4: Valider at activeOrganizationId fortsatt eksisterer i
+            // medlemskapslista. Stale ID i UserDefaults (typisk: brukeren
+            // ble fjernet fra orgen, eller orgen ble slettet) → alle
+            // org-scoped fetchers (workload/quota/permissions/territories)
+            // ville feilet med 404 helt til neste app-installasjon.
+            if let activeId = activeOrganizationId,
+               !orgs.contains(where: { $0.id == activeId }) {
+                print("[AppState] activeOrganizationId \(activeId) not in orgs list — auto-clearing")
+                self.activeOrganizationId = orgs.first?.id  // didSet rydder UserDefaults
+            } else if activeOrganizationId == nil, let first = orgs.first {
+                // Auto-velg første hvis ingen aktiv
                 self.activeOrganizationId = first.id
             }
         } catch {
             print("[AppState] loadOrganizations failed: \(error)")
+            handleAPIError(error)
         }
     }
 
@@ -468,7 +479,26 @@ final class AppState {
         do {
             self.activeProjectSummary = try await api.fetchProjectSummary(id: id)
         } catch {
-            print("[AppState] projectSummary failed: \(error)")
+            // Stale `activeProjectId` (typisk arkivert/slettet prosjekt
+            // som fremdeles ligger i UserDefaults) → 404. Auto-clear så
+            // appen ikke hardlocker på "HTTP 404" ved start, og fallback
+            // til første aktive prosjekt hvis vi har laster en liste.
+            // Andre feil bare logges (matcher tidligere oppførsel).
+            if let apiError = error as? APIError, apiError.isNotFound {
+                print("[AppState] activeProjectId \(id) returned 404 — clearing and falling back")
+                self.activeProjectSummary = nil
+                // Bare auto-velg fra projects-listen hvis ID-en vi nettopp
+                // ble 404 på faktisk fortsatt er den aktive. Hvis brukeren
+                // har byttet til et annet prosjekt mens kallet var i flight,
+                // skal vi ikke trampe over deres valg.
+                if activeProjectId == id {
+                    let fallback = projects.first(where: { $0.id != id })?.id
+                    activeProjectId = fallback  // didSet rydder UserDefaults når nil
+                }
+            } else {
+                print("[AppState] projectSummary failed: \(error)")
+                handleAPIError(error)
+            }
         }
     }
 
@@ -551,46 +581,109 @@ final class AppState {
         async let calendarTask = api.fetchCalendar(projectId: proj)
         async let remindersTask = api.fetchReminders(projectId: proj)
         async let projectsTask = api.fetchProjects()
+
+        // Vent FØRST på projects-listen så vi kan validere activeProjectId
+        // og auto-clear hvis den peker på et arkivert/slettet prosjekt.
+        // Uten dette: 45 arkiverte testprosjekter i DB → stale UserDefaults
+        // → 404 fra leads/competitors/metrics → top-level catch → ErrorCard.
+        var projectsLoaded = false
         do {
-            let newLeads = try await leadsTask
-            let newComps = try await competitorsTask
-            let newMetrics = try await metricsTask
-            let newCal = try await calendarTask
-            let newRem = try await remindersTask
-            // Spor prosjekt-fetch separat så vi kan vise ekte error-state
-            // hvis ENDA prosjekt-endepunktet feiler (andre kall kan ha
-            // returnert tomt fordi brukeren mangler leads).
-            do {
-                let newProjects = try await projectsTask
-                self.projects = newProjects
-                self.projectsLoadState = .loaded
-                // Auto-velg første prosjekt hvis ingen aktiv — matcher
-                // syncIndexFromActiveProject i MapProjectCard og gir
-                // umiddelbart kart-pins ved første start.
-                if activeProjectId == nil, let first = newProjects.first {
-                    activeProjectId = first.id
-                }
-            } catch {
-                print("[AppState] fetchProjects failed: \(error)")
-                handleAPIError(error)
-                let retryable = (error as? APIError)?.isRetryable ?? true
-                self.projectsLoadState = .failed(error.localizedDescription, isRetryable: retryable)
+            let newProjects = try await projectsTask
+            self.projects = newProjects
+            self.projectsLoadState = .loaded
+            projectsLoaded = true
+
+            // FIX 2: Hvis activeProjectId peker på et prosjekt som ikke
+            // lenger er i lista (arkivert/slettet/byttet bruker), auto-
+            // clear og fallback til første aktive. Dette tilbakestiller
+            // også UserDefaults via activeProjectId.didSet.
+            if let activeId = activeProjectId,
+               !newProjects.contains(where: { $0.id == activeId }) {
+                print("[AppState] activeProjectId \(activeId) not in projects list — auto-clearing")
+                activeProjectId = newProjects.first?.id
+                // didSet vil trigge ny refreshAll() + loadProjectSummary() —
+                // vi avbryter resten av denne runden ettersom de pågående
+                // tasks holder stale proj-ID-en og vil kunne 404.
+                _ = try? await leadsTask
+                _ = try? await competitorsTask
+                _ = try? await metricsTask
+                _ = try? await calendarTask
+                _ = try? await remindersTask
+                return
+            }
+            // Auto-velg første prosjekt hvis ingen aktiv — matcher
+            // syncIndexFromActiveProject i MapProjectCard og gir
+            // umiddelbart kart-pins ved første start.
+            if activeProjectId == nil, let first = newProjects.first {
+                activeProjectId = first.id
+                _ = try? await leadsTask
+                _ = try? await competitorsTask
+                _ = try? await metricsTask
+                _ = try? await calendarTask
+                _ = try? await remindersTask
+                return
+            }
+        } catch {
+            print("[AppState] fetchProjects failed: \(error)")
+            handleAPIError(error)
+            let retryable = (error as? APIError)?.isRetryable ?? true
+            self.projectsLoadState = .failed(error.localizedDescription, isRetryable: retryable)
+        }
+
+        do {
+            // FIX 3: Pakk per-prosjekt-kall slik at 404 (stale projectId
+            // som ennå ikke er fanget av FIX 2 — race-vindu) ikke kaster
+            // hele refreshAll i bakken. Returnerer tom-fallback ved 404
+            // som er ufarlig — neste tick rydder UserDefaults via FIX 2.
+            let newLeads: [LeadModel]
+            do { newLeads = try await leadsTask }
+            catch let apiError as APIError where apiError.isNotFound {
+                print("[AppState] fetchLeads 404 — using empty fallback (stale projectId)")
+                newLeads = []
+            }
+            let newComps: [CompetitorModel]
+            do { newComps = try await competitorsTask }
+            catch let apiError as APIError where apiError.isNotFound {
+                print("[AppState] fetchCompetitors 404 — using empty fallback")
+                newComps = []
+            }
+            let newMetricsOpt: MetricsModel?
+            do { newMetricsOpt = try await metricsTask }
+            catch let apiError as APIError where apiError.isNotFound {
+                print("[AppState] fetchMetrics 404 — keeping cached state")
+                newMetricsOpt = nil
+            }
+            let newCal: [CalendarEvent]
+            do { newCal = try await calendarTask }
+            catch let apiError as APIError where apiError.isNotFound {
+                print("[AppState] fetchCalendar 404 — using empty fallback")
+                newCal = []
+            }
+            let newRemOpt: RemindersResponse?
+            do { newRemOpt = try await remindersTask }
+            catch let apiError as APIError where apiError.isNotFound {
+                print("[AppState] fetchReminders 404 — keeping cached state")
+                newRemOpt = nil
             }
 
             self.leads = newLeads
             self.competitors = newComps
-            self.metrics = newMetrics
+            if let m = newMetricsOpt { self.metrics = m }
             self.calendar = newCal
-            self.reminders = newRem
+            if let r = newRemOpt { self.reminders = r }
             self.lastSyncAt = Date()
             self.isUsingStaleCache = false
 
             // Lagre snapshot til disk
             await OfflineCache.shared.save(newLeads, named: "leads")
             await OfflineCache.shared.save(newComps, named: "competitors")
-            await OfflineCache.shared.save(newMetrics, named: "metrics")
+            if let m = newMetricsOpt {
+                await OfflineCache.shared.save(m, named: "metrics")
+            }
             await OfflineCache.shared.save(newCal, named: "calendar")
-            await OfflineCache.shared.save(newRem, named: "reminders")
+            if let r = newRemOpt {
+                await OfflineCache.shared.save(r, named: "reminders")
+            }
 
             // Flush pending visits hvis vi er online
             let result = await OfflineCache.shared.flush(using: api)
@@ -607,13 +700,15 @@ final class AppState {
             handleAPIError(error)
             // Hvis vi var midt i en initial-fetch og ALT feilet (typisk
             // network down + ingen cache), surface error i kortet i stedet
-            // for å la det stå evig på «laster prosjekter…».
-            if case .loading = projectsLoadState {
+            // for å la det stå evig på «laster prosjekter…». Men hvis
+            // projects ble lastet OK, behold .loaded-state.
+            if !projectsLoaded, case .loading = projectsLoadState {
                 let retryable = (error as? APIError)?.isRetryable ?? true
                 self.projectsLoadState = .failed(error.localizedDescription, isRetryable: retryable)
             }
         }
     }
+
 
     /// Skriver siste data til App Group container så widget kan lese.
     /// Trigges automatisk etter hver vellykket refreshAll.

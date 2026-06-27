@@ -2677,6 +2677,24 @@ enum APIError: Error, LocalizedError {
         if case .unauthorized = self { return true }
         return false
     }
+
+    /// True hvis feilen er HTTP 404 — typisk en stale ID som peker på
+    /// et arkivert/slettet prosjekt eller organisasjon. AppState bruker
+    /// dette for å auto-clear `rr.lead_map.active_project`-/`active_org`-
+    /// UserDefaults og fallback til første aktive entry, slik at appen
+    /// ikke hardlocker på "Tjeneren returnerte HTTP 404" ved app-start.
+    ///
+    /// Inkluderer både `.statusCode(404)` (typisk 4xx-mapping) og
+    /// `.serverError(404, _)` (defensiv — backend kunne i prinsippet ha
+    /// rapportert 404 i 5xx-banen ved en feilkonfigurasjon).
+    var isNotFound: Bool {
+        switch self {
+        case .statusCode(404), .serverError(404, _):
+            return true
+        default:
+            return false
+        }
+    }
 }
 
 // MARK: - Response envelopes
