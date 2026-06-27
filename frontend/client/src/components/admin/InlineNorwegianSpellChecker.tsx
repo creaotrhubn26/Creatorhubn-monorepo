@@ -216,13 +216,13 @@ export default function InlineNorwegianSpellChecker({
 
           <Stack direction="row" spacing={0.5}>
             <Tooltip title="Sjekk på nytt">
-              <IconButton size="small" onClick={handleManualCheck} disabled={isChecking}>
+              <IconButton size="small" aria-label="Sjekk på nytt" onClick={handleManualCheck} disabled={isChecking}>
                 <RefreshIcon fontSize="small" />
               </IconButton>
             </Tooltip>
             {onOpenPanel && (
               <Tooltip title="Åpne fullstendig panel">
-                <IconButton size="small" onClick={onOpenPanel}>
+                <IconButton size="small" aria-label="Åpne fullstendig panel" onClick={onOpenPanel}>
                   <OpenInNewIcon fontSize="small" />
                 </IconButton>
               </Tooltip>
@@ -230,6 +230,7 @@ export default function InlineNorwegianSpellChecker({
             <Tooltip title="Utvid">
               <IconButton
                 size="small"
+                aria-label="Utvid"
                 onClick={() => setIsExpanded(!isExpanded)}
                 sx={{
                   transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',

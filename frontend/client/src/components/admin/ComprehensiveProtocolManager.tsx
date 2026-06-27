@@ -379,7 +379,7 @@ const ComprehensiveProtocolManager: React.FC<ComprehensiveProtocolManagerProps> 
       {/* Header med oversikt */}
       <Card sx={{ mb: 3, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
         <CardContent>
-          <Typography variant="h4" sx={{ color: 'white', mb: 2, display: 'flex', alignItems: 'center' }}>
+          <Typography variant="h4" component="h2" sx={{ color: 'white', mb: 2, display: 'flex', alignItems: 'center' }}>
             <SystemSecurityUpdate sx={{ mr: 2 }} />
             Omfattende Protokollstyring
           </Typography>
@@ -474,6 +474,7 @@ const ComprehensiveProtocolManager: React.FC<ComprehensiveProtocolManagerProps> 
               <Grid item xs={12} md={3}>
                 <TextField
                   fullWidth
+                  aria-label="Søk i hendelser"
                   placeholder="Søk i hendelser..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
@@ -586,7 +587,10 @@ const ComprehensiveProtocolManager: React.FC<ComprehensiveProtocolManagerProps> 
                           </Box>
                       }
                       />
-                      <IconButton onClick={() => toggleEventExpansion(event.id)}>
+                      <IconButton
+                        aria-label={expandedEvents.has(event.id) ? 'Skjul hendelsesdetaljer' : 'Vis hendelsesdetaljer'}
+                        onClick={() => toggleEventExpansion(event.id)}
+                      >
                         {expandedEvents.has(event.id) ? <ExpandLess /> : <ExpandMore />}
                       </IconButton>
                     </ListItem>
@@ -649,7 +653,7 @@ const ComprehensiveProtocolManager: React.FC<ComprehensiveProtocolManagerProps> 
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                         <Typography variant="h6">{rule.name}</Typography>
                         <FormControlLabel
-                          control={<Switch checked={rule.enabled} />}
+                          control={<Switch checked={rule.enabled} inputProps={{ 'aria-label': `Aktiver protokollregel ${rule.name}` }} />}
                           label=""
                         />
                       </Box>
@@ -711,7 +715,7 @@ const ComprehensiveProtocolManager: React.FC<ComprehensiveProtocolManagerProps> 
                           </Typography>
                         </Box>
                         <FormControlLabel
-                          control={<Switch checked={channelConfig.enabled} />}
+                          control={<Switch checked={channelConfig.enabled} inputProps={{ 'aria-label': `Aktiver varslingskanal ${channelType}` }} />}
                           label=""
                         />
                       </Box>

@@ -1323,7 +1323,7 @@ export default function DatabaseManagementPanel() {
       {/* Header */}
       <Box sx={{ mb: 3 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-          <Typography variant="h4" sx={{ display: 'flex', alignItems: 'center', gap: 2, color: theming.colors.primary }}>
+          <Typography variant="h4" component="h2" sx={{ display: 'flex', alignItems: 'center', gap: 2, color: theming.colors.primary }}>
             <Storage color="primary" />
             Database Management
           </Typography>
@@ -1560,6 +1560,7 @@ export default function DatabaseManagementPanel() {
                           <Tooltip title="View Details">
                             <IconButton
                               size="small"
+                              aria-label="Vis detaljer"
                               onClick={() => setSelectedTable(table.table_name)}
                             >
                               {theming.getThemedIcon('visibility')}
@@ -1598,6 +1599,7 @@ export default function DatabaseManagementPanel() {
               value={customSQL}
               onChange={(e) => setCustomSQL(e.target.value)}
               placeholder="Enter your SQL query here..."
+              aria-label="SQL-spørring"
               variant="outlined"
               sx={{ mb: 2 }}
             />

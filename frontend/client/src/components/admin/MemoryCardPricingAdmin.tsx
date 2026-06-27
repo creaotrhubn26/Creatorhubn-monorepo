@@ -215,7 +215,7 @@ const MemoryCardPricingAdmin: React.FC<MemoryCardPricingAdminProps> = ({
   return (
     <Box sx={{ p:  2 }}>
       <Typography variant="h5" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap:  1, color: theming.colors.primary }}>
-        <Memory />
+        <Memory aria-hidden="true" />
         Memory Card Pricing Administration
       </Typography>
 
@@ -327,6 +327,7 @@ const MemoryCardPricingAdmin: React.FC<MemoryCardPricingAdminProps> = ({
                           size="small"
                           onClick={() => handleEditPricing(cardTypeId)}
                           color="primary"
+                          aria-label="Rediger priser"
                         >
                           {theming.getThemedIcon('edit')}
                         </IconButton>

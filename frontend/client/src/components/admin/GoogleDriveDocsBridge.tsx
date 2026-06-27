@@ -342,13 +342,14 @@ export default function GoogleDriveDocsBridge({
       action={
         <Stack direction="row" spacing={1}>
           <Tooltip title="Import docs from Drive">
-            <IconButton size="small" onClick={() => setOpenImportDialog(true)}>
+            <IconButton size="small" aria-label="Importer dokumenter fra Drive" onClick={() => setOpenImportDialog(true)}>
               <CloudDownloadIcon />
             </IconButton>
           </Tooltip>
           <Tooltip title="Sync with Drive">
             <IconButton
               size="small"
+              aria-label="Synkroniser med Drive"
               onClick={() => syncWithDrive.mutate()}
               disabled={isSyncing}
             >
@@ -467,6 +468,7 @@ export default function GoogleDriveDocsBridge({
                                 <IconButton
                                   edge="end"
                                   size="small"
+                                  aria-label="Importer til dokumentasjonsleser"
                                   onClick={() => {
                                     importFromDrive.mutate(file);
                                     setOpenImportDialog(false);
@@ -481,6 +483,7 @@ export default function GoogleDriveDocsBridge({
                                   <IconButton
                                     edge="end"
                                     size="small"
+                                    aria-label="Koble til gjeldende notat"
                                     onClick={() => {
                                       linkToNote(file);
                                       setOpenImportDialog(false);

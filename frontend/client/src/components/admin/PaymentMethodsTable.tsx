@@ -133,7 +133,7 @@ export default function PaymentMethodsTable() {
                   label="Standard" 
                   size="small" 
                   color="success" 
-                  icon={<CheckCircle />}
+                  icon={<CheckCircle aria-hidden />}
                 />
               )}
             </TableCell>
@@ -152,6 +152,7 @@ export default function PaymentMethodsTable() {
                   size="small"
                   color="primary"
                   title="Vis detaljer"
+                  aria-label="Vis detaljer"
                 >
                   <Visibility />
                 </IconButton>
@@ -159,6 +160,7 @@ export default function PaymentMethodsTable() {
                   size="small"
                   color="primary"
                   title="Rediger"
+                  aria-label="Rediger"
                 >
                   <Edit />
                 </IconButton>
@@ -166,6 +168,7 @@ export default function PaymentMethodsTable() {
                   size="small"
                   color="error"
                   title="Slett"
+                  aria-label="Slett"
                 >
                   <Delete />
                 </IconButton>

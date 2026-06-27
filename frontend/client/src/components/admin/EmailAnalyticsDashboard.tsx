@@ -172,7 +172,7 @@ export default function EmailAnalyticsDashboard() {
           )}
           <Email sx={{ fontSize: 32, color: '#ea4335' }} />
           <Box>
-            <Typography variant="h5" sx={{ fontWeight: 600, color: themeColors.primary }}>
+            <Typography variant="h5" component="h2" sx={{ fontWeight: 600, color: themeColors.primary }}>
               {enhancedProfessionConfig?.displayName || professionConfig?.displayName
                 ? `${enhancedProfessionConfig?.displayName || professionConfig.displayName} - Email Analytics Dashboard`
                 : 'Email Analytics Dashboard'}
@@ -198,7 +198,7 @@ export default function EmailAnalyticsDashboard() {
             </Select>
           </FormControl>
           
-          <IconButton onClick={handleRefresh}>
+          <IconButton onClick={handleRefresh} aria-label="Oppdater">
             <Refresh />
           </IconButton>
         </Stack>
@@ -370,16 +370,17 @@ export default function EmailAnalyticsDashboard() {
                         <TableCell>
                           <Stack direction="row" spacing={1}>
                             <Tooltip title="View link analytics">
-                              <IconButton 
+                              <IconButton
                                 size="small"
                                 onClick={() => setSelectedCampaign(campaign.id)}
+                                aria-label="Vis lenke-analyse"
                               >
                                 <BarChart fontSize="small" />
                               </IconButton>
                             </Tooltip>
                             {campaign.isABTest && (
                               <Tooltip title="View A/B test results">
-                                <IconButton size="small">
+                                <IconButton size="small" aria-label="Vis A/B-testresultater">
                                   <CompareArrows fontSize="small" />
                                 </IconButton>
                               </Tooltip>
@@ -398,7 +399,7 @@ export default function EmailAnalyticsDashboard() {
               <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
                 <Stack direction="row" spacing={2} alignItems="center">
                   <Science sx={{ color: '#ce93d8', fontSize: 28 }} />
-                  <Typography variant="h6" sx={{ fontWeight: 600}}>
+                  <Typography variant="h6" component="h3" sx={{ fontWeight: 600}}>
                     A/B Testing
                   </Typography>
                 </Stack>

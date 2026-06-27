@@ -339,6 +339,7 @@ export default function EventCreatorDialog({
                   value={form.progress_percentage}
                   onChange={(e) => handleChange('progress_percentage', parseInt(e.target.value))}
                   style={{ width: '100%' }}
+                  aria-label="Fremdrift i prosent"
                 />
               </Grid>
             )}

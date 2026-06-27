@@ -226,9 +226,9 @@ export default function GA4AutomationDashboard() {
       {/* Header */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <Settings sx={{ color: '#ff6b35', fontSize: 32 }} />
+          <Settings aria-hidden="true" sx={{ color: '#ff6b35', fontSize: 32 }} />
           <Box>
-            <Typography variant="h5" sx={{ fontWeight: 700, color: '#ffffff' }}>
+            <Typography variant="h5" component="h2" sx={{ fontWeight: 700, color: '#ffffff' }}>
               GA4 Automation Dashboard
             </Typography>
             <Typography variant="body2" sx={{ color: '#ffa726' }}>
@@ -264,8 +264,8 @@ export default function GA4AutomationDashboard() {
           }}>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                <Analytics sx={{ color: getStatusColor(status.gtm.status) }} />
-                <Typography variant="h6" sx={{ color: '#ffffff' }}>
+                <Analytics aria-hidden="true" sx={{ color: getStatusColor(status.gtm.status) }} />
+                <Typography variant="h6" component="h3" sx={{ color: '#ffffff' }}>
                   Google Tag Manager
                 </Typography>
               </Box>
@@ -296,8 +296,8 @@ export default function GA4AutomationDashboard() {
           }}>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                <Insights sx={{ color: getStatusColor('active') }} />
-                <Typography variant="h6" sx={{ color: '#ffffff' }}>
+                <Insights aria-hidden="true" sx={{ color: getStatusColor('active') }} />
+                <Typography variant="h6" component="h3" sx={{ color: '#ffffff' }}>
                   Custom Insights
                 </Typography>
               </Box>
@@ -326,8 +326,8 @@ export default function GA4AutomationDashboard() {
           }}>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                <Speed sx={{ color: getStatusColor(status.measurementProtocol.status) }} />
-                <Typography variant="h6" sx={{ color: '#ffffff' }}>
+                <Speed aria-hidden="true" sx={{ color: getStatusColor(status.measurementProtocol.status) }} />
+                <Typography variant="h6" component="h3" sx={{ color: '#ffffff' }}>
                   Measurement Protocol
                 </Typography>
               </Box>
@@ -357,15 +357,15 @@ export default function GA4AutomationDashboard() {
         mb: 3
       }}>
         <CardContent>
-          <Typography variant="h6" sx={{ 
-            fontWeight: 600, 
+          <Typography variant="h6" component="h2" sx={{
+            fontWeight: 600,
             color: '#ffffff',
             mb: 2,
             display: 'flex',
             alignItems: 'center',
             gap: 1
           }}>
-            <Security sx={{ color: '#ff6b35' }} />
+            <Security aria-hidden="true" sx={{ color: '#ff6b35' }} />
             Supported Events
           </Typography>
           <Grid container spacing={1}>

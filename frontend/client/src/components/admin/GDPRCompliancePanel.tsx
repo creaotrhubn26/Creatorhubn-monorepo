@@ -274,12 +274,21 @@ export function GDPRCompliancePanel() {
           
           <Grid item xs={12} sm={6} md={3}>
             <Tooltip title="GDPR Dataeksport - Art. 15 & 20">
-              <Card 
-                sx={{ 
+              <Card
+                role="button"
+                tabIndex={0}
+                aria-label="Åpne GDPR dataeksport"
+                sx={{
                   ...theming.getThemedCardSx(),
                   cursor: 'pointer', '&:hover': { transform: 'translateY(-2px)', boxShadow: 4 }
                 }}
                 onClick={() => setDataExportDialog(true)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setDataExportDialog(true);
+                  }
+                }}
               >
                 <CardContent sx={{ textAlign: 'center', py: 2 }}>
                   <Typography variant="h4" sx={{ color: 'success.main', fontWeight: 700}}>
@@ -298,12 +307,21 @@ export function GDPRCompliancePanel() {
           
           <Grid item xs={12} sm={6} md={3}>
             <Tooltip title="Klikk for å se Datatilsynet kontaktinfo">
-              <Card 
-                sx={{ 
-                  ...theming.getThemedCardSx(), 
+              <Card
+                role="button"
+                tabIndex={0}
+                aria-label="Klikk for å se Datatilsynet kontaktinfo"
+                sx={{
+                  ...theming.getThemedCardSx(),
                   cursor: 'pointer','&:hover': { transform: 'translateY(-2px)', boxShadow: 4 }
                 }}
                 onClick={() => setDatatilsynetDialog(true)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setDatatilsynetDialog(true);
+                  }
+                }}
               >
                 <CardContent sx={{ textAlign: 'center', py: 2 }}>
                   <Typography variant="h4" sx={{ color: adminTokens.color.brand, fontWeight: 700}}>
@@ -1241,7 +1259,7 @@ export function GDPRCompliancePanel() {
                     <Divider sx={{ my: 2 }} />
                     <Paper sx={{ p: 3, bgcolor: 'rgba(255,255,255,0.04)' }}>
                       <Typography variant="subtitle2" gutterBottom sx={{ color: adminTokens.color.brand }}>
-                        <Info sx={{ fontSize: 14, mr: 0.5, verticalAlign: 'middle' }} />
+                        <Info aria-hidden sx={{ fontSize: 14, mr: 0.5, verticalAlign: 'middle' }} />
                         Community Datalagring
                       </Typography>
                       <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', lineHeight: 1.6 }}>

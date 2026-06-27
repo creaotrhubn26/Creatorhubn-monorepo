@@ -328,7 +328,7 @@ export default function InviteManagementDashboard() {
   return (
     <ThemeProvider theme={adminDarkTheme}>
     <Box sx={{ p: 3 }}>
-      <Typography variant="h4" sx={{ mb: 3, color: themeColors.primary }}>
+      <Typography variant="h4" component="h2" sx={{ mb: 3, color: themeColors.primary }}>
         Invitasjonshåndtering
       </Typography>
 
@@ -592,6 +592,7 @@ export default function InviteManagementDashboard() {
                     <Tooltip title="Se detaljer">
                       <IconButton
                         size="small"
+                        aria-label="Se detaljer"
                         onClick={() => handleReviewInvite(invite)}
                       >
                         {theming.getThemedIcon('visibility')}
@@ -602,6 +603,7 @@ export default function InviteManagementDashboard() {
                       <Tooltip title="Send invitasjon">
                         <IconButton
                           size="small"
+                          aria-label="Send invitasjon"
                           onClick={() => handleSendInvite(invite.id)}
                           disabled={sendInviteMutation.isPending}
                         >
@@ -633,7 +635,7 @@ export default function InviteManagementDashboard() {
               {/* User Journey Stepper */}
               <MuiCard sx={{ mb: 3, backgroundColor: 'rgba(255,107,53,0.05)' }}>
                 <CardContent>
-                  <Typography variant="h6" sx={{ mb: 2, color: themeColors.primary }}>
+                  <Typography variant="h6" component="h3" sx={{ mb: 2, color: themeColors.primary }}>
                     Brukerreise
                   </Typography>
                   <Stepper
@@ -703,7 +705,7 @@ export default function InviteManagementDashboard() {
               {selectedInvite.planName && (
                 <MuiCard sx={{ mb: 3, backgroundColor: 'rgba(33,150,243,0.05)' }}>
                   <CardContent>
-                    <Typography variant="h6" sx={{ mb: 2, color: themeColors.primary }}>
+                    <Typography variant="h6" component="h3" sx={{ mb: 2, color: themeColors.primary }}>
                       Valgt abonnement
                     </Typography>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -726,7 +728,7 @@ export default function InviteManagementDashboard() {
               {/* Business Information */}
               <MuiCard sx={{ mb: 3, backgroundColor: 'rgba(255,255,255,0.02)' }}>
                 <CardContent>
-                  <Typography variant="h6" sx={{ mb: 2, color: themeColors.primary }}>
+                  <Typography variant="h6" component="h3" sx={{ mb: 2, color: themeColors.primary }}>
                     Bedriftsinformasjon
                   </Typography>
                   <Grid container spacing={2}>
@@ -754,7 +756,7 @@ export default function InviteManagementDashboard() {
               {selectedInvite.profession && (
                 <MuiCard sx={{ mb: 3, backgroundColor: 'rgba(255,138,0,0.05)' }}>
                   <CardContent>
-                    <Typography variant="h6" sx={{ mb: 2, color: themeColors.primary }}>
+                    <Typography variant="h6" component="h3" sx={{ mb: 2, color: themeColors.primary }}>
                       📦 Funksjoner for denne brukeren
                     </Typography>
                     <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -775,7 +777,7 @@ export default function InviteManagementDashboard() {
               {selectedInvite.redFlagAnalysis && (
                 <MuiCard sx={{ mb: 3, backgroundColor: 'rgba(255,255,255,0.02)' }}>
                   <CardContent>
-                    <Typography variant="h6" sx={{ mb: 2, color: themeColors.primary }}>
+                    <Typography variant="h6" component="h3" sx={{ mb: 2, color: themeColors.primary }}>
                       Risikoanalyse
                     </Typography>
                     <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
