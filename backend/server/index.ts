@@ -851,6 +851,7 @@ import {
   ensurePhotographerProjectsSchemaShared,
 } from "./photographer-projects-routes";
 import { setupPhotographerMiscRoutes } from "./photographer-misc-routes";
+import { setupProjectTeamRoutes, canAccessProject } from "./project-team-routes";
 import { setupGoogleDriveSyncRoutes } from "./google-drive-sync-routes";
 import { setupChunkedUploadRoutes } from "./chunked-upload-routes";
 import { setupUploadsRoutes } from "./uploads-routes";
@@ -65781,6 +65782,8 @@ setupPhotographerProjectsRoutes({
   createWeddingTimelineFromProject,
   escapeHtml,
 });
+// Team Workspace deling/medlemskap (Fase 1) — project_team_members + canAccessProject.
+setupProjectTeamRoutes({ app, pool, requireUserSession, escapeHtml });
 setupPhotographerMiscRoutes({
   app,
   pool,

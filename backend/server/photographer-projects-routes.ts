@@ -64,6 +64,27 @@ export function ensurePhotographerProjectsSchemaShared(pool: Pool): Promise<void
           -- stale FK so time logging works (app-managed table, no FK needed).
           ALTER TABLE project_time_tracking
             DROP CONSTRAINT IF EXISTS project_time_tracking_project_id_integrated_projects_id_fk;
+          -- Team Workspace deling: prosjekt-listingen JOINer mot denne, så den
+          -- MÅ finnes før listing-queryen kjører (ellers kaster Postgres på
+          -- manglende relasjon). Full DDL + indekser eies av project-team-routes.
+          CREATE TABLE IF NOT EXISTS project_team_members (
+            id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            project_id     VARCHAR(64) NOT NULL,
+            user_id        VARCHAR(64),
+            email          VARCHAR(255) NOT NULL,
+            name           VARCHAR(255),
+            role           VARCHAR(20) NOT NULL DEFAULT 'member',
+            crew_role      VARCHAR(20),
+            permissions    JSONB NOT NULL DEFAULT '{"canRead":true,"canEdit":false}'::jsonb,
+            status         VARCHAR(20) NOT NULL DEFAULT 'pending',
+            invite_token   VARCHAR(80),
+            invited_by     VARCHAR(64),
+            invited_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            accepted_at    TIMESTAMPTZ,
+            deactivated_at TIMESTAMPTZ
+          );
+          CREATE INDEX IF NOT EXISTS idx_ptm_project ON project_team_members (project_id) WHERE deactivated_at IS NULL;
+          CREATE INDEX IF NOT EXISTS idx_ptm_user ON project_team_members (user_id) WHERE deactivated_at IS NULL;
         `);
       } catch (err) {
         console.warn('[photographer-projects] schema-ensure failed:', err);
@@ -133,6 +154,11 @@ export function setupPhotographerProjectsRoutes(
             GROUP BY project_id
          ) t ON t.project_id = p.id
          WHERE p.user_id = $1
+            OR EXISTS (
+                 SELECT 1 FROM project_team_members m
+                  WHERE m.project_id = p.id AND m.user_id = $1
+                    AND m.status = 'active' AND m.deactivated_at IS NULL
+               )
          ORDER BY COALESCE(p.event_date, p.created_at::date) DESC NULLS LAST`,
         [photographerId],
       );
