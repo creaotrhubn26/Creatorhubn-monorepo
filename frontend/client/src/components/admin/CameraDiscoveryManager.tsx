@@ -31,6 +31,8 @@ import {
   Divider,
   Grid,
   LinearProgress,
+  TextField,
+  InputAdornment,
 } from '@mui/material';
 import {
   Refresh,
@@ -41,6 +43,7 @@ import {
   AutoAwesome,
   Warning,
   Info,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import { cameraDiscoveryService } from '../../data/camera-discovery-system';
 import { AdminButton, AdminTableContainer, useIsMobile } from './design-system';
@@ -58,6 +61,7 @@ const CameraDiscoveryManager: React.FC<CameraDiscoveryManagerProps> = ({
   const [showApprovalDialog, setShowApprovalDialog] = useState(false);
   const [stats, setStats] = useState<any>(null);
   const [autoUpdate, setAutoUpdate] = useState(true);
+  const [search, setSearch] = useState("");
   
   // Theming system
   const theming = useTheming('prototype_tester');
@@ -267,6 +271,21 @@ const CameraDiscoveryManager: React.FC<CameraDiscoveryManagerProps> = ({
               No new cameras discovered. Click "Discover Cameras" to search for new models.
             </Alert>
           ) : (
+            <>
+            <TextField
+              size="small"
+              placeholder="Søk kameraer …"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              sx={{ mb: 2 }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon fontSize="small" />
+                  </InputAdornment>
+                ),
+              }}
+            />
             <AdminTableContainer ariaLabel="Oppdagede kameraer">
               <Table>
                 <TableHead>
@@ -289,7 +308,11 @@ const CameraDiscoveryManager: React.FC<CameraDiscoveryManagerProps> = ({
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {discoveredCameras.map((camera) => (
+                  {discoveredCameras.filter((camera) =>
+                    `${camera.brand ?? ''} ${camera.model ?? ''} ${camera.category ?? ''}`
+                      .toLowerCase()
+                      .includes(search.toLowerCase())
+                  ).map((camera) => (
                     <TableRow key={camera.id}>
                       <TableCell padding="checkbox">
                         <input
@@ -354,6 +377,7 @@ const CameraDiscoveryManager: React.FC<CameraDiscoveryManagerProps> = ({
                 </TableBody>
               </Table>
             </AdminTableContainer>
+            </>
           )}
         </CardContent>
       </Card>

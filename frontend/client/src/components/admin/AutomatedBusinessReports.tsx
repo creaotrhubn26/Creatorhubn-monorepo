@@ -53,6 +53,7 @@ import {
   FormControl,
   InputLabel,
   TextField,
+  InputAdornment,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -108,6 +109,7 @@ import {
   Group as GroupIcon,
   TableChart as TableChartIcon,
   AccountBalance as SplitSheetIcon,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -178,6 +180,7 @@ const AutomatedBusinessReports: React.FC = () => {
   const [customRecipients, setCustomRecipients] = useState<string[]>([]);
   const [generatingReport, setGeneratingReport] = useState<boolean>(false);
   const [selectedReport, setSelectedReport] = useState<GeneratedReport | null>(null);
+  const [search, setSearch] = useState<string>('');
 
   const { toast } = useToast();
   const isMobile = useIsMobile();
@@ -1087,6 +1090,22 @@ const AutomatedBusinessReports: React.FC = () => {
                   Genererte Rapporter
                 </Typography>
 
+                <TextField
+                  size="small"
+                  placeholder="Søk i rapporter …"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  sx={{ mb: 2, maxWidth: 360 }}
+                  fullWidth
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <SearchIcon fontSize="small" />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+
                 <AdminTableContainer ariaLabel="Genererte rapporter">
                   <Table>
                     <TableHead>
@@ -1101,7 +1120,13 @@ const AutomatedBusinessReports: React.FC = () => {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {generatedReports.map((report) => (
+                      {generatedReports
+                        .filter((report) =>
+                          `${report.templateName} ${report.period} ${report.format} ${report.status}`
+                            .toLowerCase()
+                            .includes(search.toLowerCase()),
+                        )
+                        .map((report) => (
                         <TableRow key={report.id}>
                           <TableCell>
                             <Box sx={{ display: 'flex', alignItems: 'center' }}>

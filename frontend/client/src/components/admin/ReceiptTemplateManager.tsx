@@ -11,6 +11,7 @@ import {
   FormControl,
   Grid,
   IconButton,
+  InputAdornment,
   InputLabel,
   MenuItem,
   Paper,
@@ -35,6 +36,7 @@ import {
   Email,
   Preview,
   Save,
+  Search,
   Send,
   Settings,
   ShoppingCart,
@@ -287,6 +289,7 @@ export default function ReceiptTemplateManager() {
   const isMobile = useIsMobile();
 
   const [tabValue, setTabValue] = useState(0);
+  const [search, setSearch] = useState('');
   const [editorOpen, setEditorOpen] = useState(false);
   const [businessOpen, setBusinessOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -495,6 +498,22 @@ export default function ReceiptTemplateManager() {
 
           {!templatesQuery.isLoading && !templatesQuery.isError && (
             <AdminTableContainer ariaLabel="Kvitterings-templates">
+              <Box sx={{ p: 1.5 }}>
+                <TextField
+                  size="small"
+                  fullWidth
+                  placeholder="Søk i templates (navn, subject, type)…"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <Search fontSize="small" />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+              </Box>
               <Table size="small">
                 <TableHead>
                   <TableRow>
@@ -506,7 +525,14 @@ export default function ReceiptTemplateManager() {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {templates.map((template) => (
+                  {templates
+                    .filter((template) =>
+                      [template.name, template.subject, templateTypeLabel(template.type)]
+                        .join(' ')
+                        .toLowerCase()
+                        .includes(search.toLowerCase()),
+                    )
+                    .map((template) => (
                     <TableRow key={template.id ?? template.name} hover>
                       <TableCell>{template.name}</TableCell>
                       <TableCell>

@@ -44,6 +44,7 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  InputAdornment,
 } from '@mui/material';
 import {
   Dashboard as DashboardIcon,
@@ -80,6 +81,7 @@ import {
   MusicNote as MusicNoteIcon,
   Web as WebIcon,
   Lightbulb as LightbulbIcon,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import MonacoEditor from '@monaco-editor/react';
 import { apiRequest } from '@/lib/queryClient';
@@ -125,6 +127,7 @@ interface GoogleAPIResults {
 
 export default function VisualCMSAdminDashboard() {
   const [tabValue, setTabValue] = useState(0);
+  const [search, setSearch] = useState("");
   const [mockServersActive, setMockServersActive] = useState(false);
   const [testRunning, setTestRunning] = useState(false);
   const [codeGeneratorOpen, setCodeGeneratorOpen] = useState(false);
@@ -467,6 +470,20 @@ export default function VisualCMSAdminDashboard() {
             </Grid>
           ) : (
             <Grid item xs={12}>
+              <TextField
+                size="small"
+                placeholder="Søk tjeneste …"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                sx={{ mb: 2 }}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon fontSize="small" />
+                    </InputAdornment>
+                  ),
+                }}
+              />
               <AdminTableContainer ariaLabel="Google API-statuser">
                 <Table>
                   <TableHead>
@@ -478,7 +495,7 @@ export default function VisualCMSAdminDashboard() {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {(Array.isArray(googleStatus?.results) ? googleStatus.results : []).map((api: APIStatus, index: number) => (
+                    {(Array.isArray(googleStatus?.results) ? googleStatus.results : []).filter((api: APIStatus) => (api.service || '').toLowerCase().includes(search.toLowerCase())).map((api: APIStatus, index: number) => (
                       <TableRow key={index}>
                         <TableCell>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>

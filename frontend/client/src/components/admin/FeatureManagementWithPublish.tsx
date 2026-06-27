@@ -25,6 +25,7 @@ import {
   MenuItem,
   FormControl,
   InputLabel,
+  InputAdornment,
   Table,
   TableBody,
   TableCell,
@@ -57,6 +58,7 @@ import {
   Settings,
   Visibility,
   VisibilityOff,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { AdminButton, AdminTableContainer, useIsMobile } from './design-system';
@@ -115,6 +117,7 @@ export default function FeatureManagementWithPublish() {
   const [publishMetadata, setPublishMetadata] = useState('');
   const [revertReason, setRevertReason] = useState('');
   const [emergencyReason, setEmergencyReason] = useState('');
+  const [search, setSearch] = useState('');
 
   const queryClient = useQueryClient();
   const { auth } = useEnhancedMasterIntegration();
@@ -585,8 +588,24 @@ export default function FeatureManagementWithPublish() {
             <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary }}>
               Current Feature Flags
             </Typography>
+            <TextField
+              size="small"
+              placeholder="Søk i feature flags …"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              sx={{ mb: 2, width: { xs: '100%', sm: 320 } }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon fontSize="small" />
+                  </InputAdornment>
+                ),
+              }}
+            />
             <Grid container spacing={2}>
-              {(Array.isArray(stagingFlags?.flags) ? stagingFlags.flags : []).map((flag: FeatureFlag) => (
+              {(Array.isArray(stagingFlags?.flags) ? stagingFlags.flags : [])
+                .filter((flag: FeatureFlag) => flag.featureName.toLowerCase().includes(search.toLowerCase()))
+                .map((flag: FeatureFlag) => (
                 <Grid item xs={12} sm={6} md={4} key={flag.id}>
                   <Card variant="outlined" sx={theming.getThemedCardSx()}>
                     <CardContent sx={theming.getThemedCardSx()}>
