@@ -18,6 +18,7 @@ import Add from '@mui/icons-material/Add';
 import { ws } from '../workspaceTheme';
 import { WsCard, WsSectionTitle, WsRing, WsBar, WsImageGrid } from '../ui';
 import WorkspaceChatPanel from '../WorkspaceChatPanel';
+import { useProjectImages } from '../useProjectImages';
 
 const PHASES = [
   { icon: '🤍', label: 'Forberedelser', time: '08:00 – 10:00', color: ws.textDim },
@@ -125,6 +126,7 @@ const OversiktTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     catch (e: any) { window.alert(e?.message || 'Kunne ikke legge til'); }
   };
   const checkItems = (checks && checks.length > 0) ? checks.map((c) => ({ id: c.id, t: c.label, ok: c.checked, real: true })) : CHECKLIST;
+  const refs = useProjectImages(projectId, 'references');
 
   const toggleTask = async (id: string, status: string) => {
     if (!isReal) return;
@@ -283,7 +285,7 @@ const OversiktTab: React.FC<{ projectId: string }> = ({ projectId }) => {
 
           <WsCard>
             <WsSectionTitle title="Referanser & shots" action={<Button size="small" sx={{ color: ws.accent, textTransform: 'none' }}>Se alle</Button>} />
-            <WsImageGrid columns={3} addLabel="Legg til referanse" />
+            <WsImageGrid columns={3} addLabel="Legg til referanse" images={refs.images} onUpload={refs.onUpload} />
           </WsCard>
         </Box>
       </Box>

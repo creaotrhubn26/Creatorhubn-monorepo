@@ -137,6 +137,9 @@ export const WsImageGrid: React.FC<{
   const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
+  // Synk når bilder lastes asynkront (f.eks. fra B2 via useProjectImages).
+  React.useEffect(() => { setItems(images); }, [images]);
+
   const pick = () => inputRef.current?.click();
   const handleFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
