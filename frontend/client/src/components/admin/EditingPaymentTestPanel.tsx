@@ -11,13 +11,14 @@
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  Typography, Stack, TextField, Alert,
+  Typography, Stack, TextField, Alert, InputAdornment,
   Table, TableBody, TableCell, TableHead, TableRow, Box, Divider, ThemeProvider,
 } from "@mui/material";
 import { adminDarkTheme } from './adminDarkTheme';
 import { AdminCard, AdminButton, StatusChip, AdminTableContainer, AdminLoading, AdminEmpty } from './design-system';
 import PaymentsIcon from "@mui/icons-material/Payments";
 import ScienceIcon from "@mui/icons-material/Science";
+import SearchIcon from "@mui/icons-material/Search";
 import { apiRequest } from "@/lib/queryClient";
 
 interface TestJob {
@@ -38,6 +39,7 @@ export default function EditingPaymentTestPanel() {
   const qc = useQueryClient();
   const [ppEmail, setPpEmail] = useState("");
   const [ppMsg, setPpMsg] = useState<{ sev: "success" | "error" | "info"; text: string } | null>(null);
+  const [search, setSearch] = useState("");
 
   const jobs = useQuery<{ jobs: TestJob[] }>({
     queryKey: ["/api/superadmin/editing/test/jobs"],
@@ -87,6 +89,15 @@ export default function EditingPaymentTestPanel() {
         subtitle={<>«Simuler betalt» setter escrow til <b>held</b> uten faktisk betaling — så hele løkka (levering → godkjenning → payout) kan testes gratis.</>}
       >
           {jobs.isLoading ? <AdminLoading /> : (jobs.data?.jobs?.length ? (
+            <>
+            <TextField
+              size="small"
+              placeholder="Søk oppdrag eller vendor …"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              sx={{ mb: 2, width: { xs: "100%", sm: 320 } }}
+              InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
+            />
             <AdminTableContainer ariaLabel="Redigeringsoppdrag escrow-test">
             <Table size="small">
               <TableHead>
@@ -96,7 +107,7 @@ export default function EditingPaymentTestPanel() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {jobs.data.jobs.map((j) => (
+                {jobs.data.jobs.filter((j) => `${j.project_title || ""} ${j.vendor_name || ""}`.toLowerCase().includes(search.toLowerCase())).map((j) => (
                   <TableRow key={j.id}>
                     <TableCell>{j.project_title || j.id.slice(0, 8)}</TableCell>
                     <TableCell>{j.vendor_name || "—"}</TableCell>
@@ -114,6 +125,7 @@ export default function EditingPaymentTestPanel() {
               </TableBody>
             </Table>
             </AdminTableContainer>
+            </>
           ) : <AdminEmpty title="Ingen redigeringsoppdrag ennå." />)}
       </AdminCard>
     </Box>
