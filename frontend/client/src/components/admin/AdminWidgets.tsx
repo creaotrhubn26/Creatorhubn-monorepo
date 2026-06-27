@@ -18,7 +18,6 @@ import {
   CardActions,
   Typography,
   IconButton,
-  Button,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -57,6 +56,8 @@ import {
   Notifications,
   Support,
 } from '@mui/icons-material';
+
+import { AdminButton, AdminLoading } from './design-system';
 
 interface Widget {
   id: string;
@@ -390,14 +391,7 @@ export default function AdminWidgets({ userId }: AdminWidgetsProps) {
 };
 
   if (loading) {
-    return (
-      <Box sx={{ textAlign: 'center', py: 4 }}>
-        <CircularProgress />
-        <Typography variant="body2" sx={{ mt: 2 }}>
-          Laster widgets...
-        </Typography>
-      </Box>
-    );
+    return <AdminLoading label="Laster widgets..." />;
 }
 
   return (
@@ -408,23 +402,23 @@ export default function AdminWidgets({ userId }: AdminWidgetsProps) {
           Admin Dashboard Widgets
         </Typography>
         <Box sx={{ display: 'flex', gap: 1 }}>
-          <Button
-            variant="outlined"
+          <AdminButton
+            tone="secondary"
             startIcon={<Refresh />}
             onClick={() => window.location.reload()}
             size="small"
           >
             Oppdater
-          </Button>
-          <Button 
-            variant="contained"
+          </AdminButton>
+          <AdminButton
+            tone="primary"
             startIcon={<Settings />}
             onClick={() => setSettingsOpen(true)}
             size="small"
             sx={theming.getThemedButtonSx()}
           >
             Innstillinger
-          </Button>
+          </AdminButton>
         </Box>
       </Box>
 
@@ -543,9 +537,9 @@ export default function AdminWidgets({ userId }: AdminWidgetsProps) {
           </List>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setSettingsOpen(false)}>
+          <AdminButton tone="ghost" onClick={() => setSettingsOpen(false)}>
             Lukk
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

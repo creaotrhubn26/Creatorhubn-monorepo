@@ -7,7 +7,6 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
   Box,
-  Button,
   Card,
   CardContent,
   Chip,
@@ -20,7 +19,6 @@ import {
   Stack,
   Typography,
 } from '@mui/material';
-import type { ChipProps } from '@mui/material/Chip';
 import {
   CheckCircle as CheckIcon,
   Error as ErrorIcon,
@@ -31,6 +29,7 @@ import {
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { useTheming } from '../../utils/theming-helper';
 import { mockFetch } from '@/api/mockGooglePayApi';
+import { AdminButton, StatusChip, adminTokens } from './design-system';
 
 interface AuthTestResult {
   endpoint: string;
@@ -110,18 +109,10 @@ export default function AuthenticationTest() {
 
   const getStatusIcon = (result: AuthTestResult) => {
     if (result.success) {
-      return <CheckIcon sx={{ color: '#4caf50' }} />;
+      return <CheckIcon sx={{ color: adminTokens.color.success }} />;
     }
 
-    return <ErrorIcon sx={{ color: '#f44336' }} />;
-  };
-
-  const getStatusColor = (result: AuthTestResult): ChipProps['color'] => {
-    if (result.success) {
-      return 'success';
-    }
-
-    return 'error';
+    return <ErrorIcon sx={{ color: adminTokens.color.error }} />;
   };
 
   const successCount = testResults.filter((result) => result.success).length;
@@ -132,7 +123,7 @@ export default function AuthenticationTest() {
     <Card sx={theming.getThemedCardSx()}>
       <CardContent sx={theming.getThemedCardSx()}>
         <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 3 }}>
-          <SecurityIcon sx={{ color: '#4caf50', fontSize: 32 }} />
+          <SecurityIcon sx={{ color: adminTokens.color.success, fontSize: 32 }} />
           <Box>
             <Typography variant="h6" sx={{ fontWeight: 600, color: theming.colors.primary }}>
               Autentisering Test
@@ -141,8 +132,8 @@ export default function AuthenticationTest() {
               Tester alle API endepunkter for 200 OK responser
             </Typography>
           </Box>
-          <Button
-            variant="outlined"
+          <AdminButton
+            tone="secondary"
             startIcon={<RefreshIcon />}
             onClick={() => {
               void runAuthenticationTest();
@@ -151,7 +142,7 @@ export default function AuthenticationTest() {
             sx={{ ml: 'auto' }}
           >
             {isRunning ? 'Tester...' : 'Test Igjen'}
-          </Button>
+          </AdminButton>
         </Stack>
 
         <Stack direction="row" spacing={2} sx={{ mb: 3 }}>
@@ -190,17 +181,13 @@ export default function AuthenticationTest() {
                         <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
                           {result.endpoint}
                         </Typography>
-                        <Chip
+                        <StatusChip
                           label={`${result.status} ${result.statusText}`}
-                          color={getStatusColor(result)}
-                          size="small"
-                          variant="outlined"
+                          tone={result.success ? 'success' : 'error'}
                         />
-                        <Chip
+                        <StatusChip
                           label={`${result.responseTime}ms`}
-                          color="default"
-                          size="small"
-                          variant="outlined"
+                          tone="neutral"
                         />
                       </Box>
                     }

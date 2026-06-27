@@ -8,7 +8,7 @@
 
 import React, { useEffect, useState } from 'react';
 import {
-  Box, Button, Card, CardContent, Chip, IconButton, Stack, Typography,
+  Box, Card, CardContent, Chip, IconButton, Stack, Typography,
   LinearProgress,
 } from '@mui/material';
 import {
@@ -19,6 +19,7 @@ import {
   ArrowBackIos as PrevIcon,
   ArrowForwardIos as NextIcon,
 } from '@mui/icons-material';
+import { AdminButton } from './design-system';
 
 interface LeadMapStats {
   activeSubscribers: number;
@@ -281,20 +282,20 @@ export default function LeadMapMarketplaceCard({
         </Stack>
 
         <Stack direction="row" spacing={1}>
-          <Button
-            size="small" variant="contained" startIcon={<EntitlementIcon />}
+          <AdminButton
+            tone="primary"
+            size="small" startIcon={<EntitlementIcon />}
             onClick={onJumpToEntitlements}
-            sx={{ bgcolor: '#fbbf24', color: '#0a0a0f', '&:hover': { bgcolor: '#f59e0b' } }}
           >
             Administrer entitlements
-          </Button>
-          <Button
-            size="small" variant="outlined" startIcon={<SettingsIcon />}
+          </AdminButton>
+          <AdminButton
+            tone="ghost"
+            size="small" startIcon={<SettingsIcon />}
             onClick={onJumpToPricing}
-            sx={{ borderColor: '#fbbf24', color: '#fbbf24' }}
           >
             Priser & Stripe
-          </Button>
+          </AdminButton>
         </Stack>
       </CardContent>
     </Card>
