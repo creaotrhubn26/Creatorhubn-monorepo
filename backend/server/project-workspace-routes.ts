@@ -24,6 +24,7 @@ import multer from "multer";
 import { canAccessProject } from "./project-team-routes";
 import { signAssetReadUrl } from "./capture-upload-service";
 import { archiveToRoleRoomB2, presignRoleRoomB2Download, slugifyForKey } from "./b2-archive-helper";
+import { createGoogleMeetLink } from "./google-meet";
 
 // Web-opplasting holdes i minne og skyves server-side til B2 (Role Room-bøtta).
 // 60 MB tak — store RAW/originaler skal uansett gjennom capture multipart-flyten.
@@ -260,6 +261,76 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       }
       res.json({ success: true, total });
     } catch (e) { console.error("PUT split-sheet", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  // ─────────── Avtaler — CRM-kunde + møter (Google Meet) ───────────
+  // Samler prosjektets kunde-/avtale-info: CRM-kunde (crm_customers.project_id),
+  // kommende møter (crm_meetings), pluss kontrakt-status (frontend kaller det
+  // eksisterende /contract/status). project_id-scopet, canAccessProject.
+  app.get("/api/projects/:projectId/avtaler", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const cust = await pool.query(
+        `SELECT id, name, email, status, project_type FROM crm_customers WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1`,
+        [req.params.projectId],
+      ).catch(() => ({ rows: [] }));
+      const customer = cust.rows[0] || null;
+      let meetings: any[] = [];
+      if (customer?.id) {
+        const m = await pool.query(
+          `SELECT id, title, description, location, meet_link, web_view_url, scheduled_at, duration_minutes
+             FROM crm_meetings WHERE customer_id = $1 ORDER BY scheduled_at ASC NULLS LAST LIMIT 30`,
+          [customer.id],
+        ).catch(() => ({ rows: [] }));
+        meetings = m.rows.map((r: any) => ({
+          id: r.id, title: r.title, description: r.description, location: r.location,
+          meetLink: r.meet_link, webViewUrl: r.web_view_url, scheduledAt: r.scheduled_at, durationMinutes: r.duration_minutes,
+        }));
+      }
+      res.json({
+        crmCustomer: customer ? { id: customer.id, name: customer.name, email: customer.email, status: customer.status, projectType: customer.project_type } : null,
+        meetings,
+      });
+    } catch (e) { console.error("GET avtaler", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  // POST møte — oppretter crm_meeting, evt. med ekte Google Meet-lenke.
+  app.post("/api/projects/:projectId/meetings", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const b = req.body ?? {};
+      const title = typeof b.title === "string" && b.title.trim() ? b.title.trim() : "Møte";
+      const scheduledAt = b.scheduledAt || null;
+      const durationMinutes = Number(b.durationMinutes) || 60;
+      // Knytt til prosjektets CRM-kunde hvis den finnes.
+      const cust = await pool.query(
+        `SELECT id, name FROM crm_customers WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1`,
+        [req.params.projectId],
+      ).catch(() => ({ rows: [] }));
+      const customerId = cust.rows[0]?.id || null;
+      const proj = await pool.query(`SELECT COALESCE(title, name) AS title FROM projects WHERE id = $1 LIMIT 1`, [req.params.projectId]).catch(() => ({ rows: [] }));
+
+      // Ekte Google Meet-lenke hvis brukeren har Google koblet (ellers stille fallback).
+      let meetLink: string | null = typeof b.meetLink === "string" ? b.meetLink : null;
+      let webViewUrl: string | null = null;
+      if (b.generateMeet && scheduledAt) {
+        try {
+          const meet = await createGoogleMeetLink(pool, {
+            title, description: b.description || null, startDateTime: scheduledAt, duration: durationMinutes,
+            projectId: req.params.projectId, projectName: proj.rows[0]?.title || null, clientName: cust.rows[0]?.name || null,
+          }, uid);
+          if (meet && (meet as any).meetLink) { meetLink = (meet as any).meetLink; webViewUrl = (meet as any).webViewUrl || null; }
+        } catch (err) { console.warn("[avtaler] google meet failed:", (err as Error)?.message); }
+      }
+
+      const ins = await pool.query(
+        `INSERT INTO crm_meetings (id, customer_id, title, description, location, meet_link, web_view_url, scheduled_at, duration_minutes, owner_user_id, created_at)
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, now()) RETURNING *`,
+        [customerId, title, b.description || null, b.location || null, meetLink, webViewUrl, scheduledAt, durationMinutes, uid],
+      );
+      const r = ins.rows[0];
+      res.status(201).json({ id: r.id, title: r.title, meetLink: r.meet_link, webViewUrl: r.web_view_url, scheduledAt: r.scheduled_at, durationMinutes: r.duration_minutes });
+    } catch (e) { console.error("POST meetings", e); res.status(500).json({ error: "failed" }); }
   });
 
   // ─────────── Showcase / klient-galleri (LESER photographer_client_galleries) ───
