@@ -34,13 +34,24 @@ const LeveranserTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [real, setReal] = useState<any[] | null>(null);
   const isReal = projectId && projectId !== 'sample';
 
+  const [galleries, setGalleries] = useState<any[]>([]);
   const load = () => {
     if (!isReal) return;
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/deliverables`)
       .then((r: any) => setReal(Array.isArray(r?.deliverables) ? r.deliverables : []))
       .catch(() => {});
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/galleries`)
+      .then((r: any) => setGalleries(Array.isArray(r?.galleries) ? r.galleries : []))
+      .catch(() => {});
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [projectId]);
+
+  const shareGallery = (sharePath: string) => {
+    if (!sharePath) return;
+    const url = `${window.location.origin}${sharePath}`;
+    try { navigator.clipboard?.writeText(url); } catch { /* ignore */ }
+    window.open(url, '_blank');
+  };
 
   const addDeliverable = async () => {
     if (!isReal) return;
@@ -113,6 +124,33 @@ const LeveranserTab: React.FC<{ projectId: string }> = ({ projectId }) => {
 
       {/* Høyre */}
       <Box sx={{ width: 280, flexShrink: 0 }}>
+        {isReal && (
+          <WsCard sx={{ mb: 2 }}>
+            <WsSectionTitle title="Klient-galleri (Showcase)" />
+            {galleries.length === 0 ? (
+              <Typography sx={{ fontSize: 12, color: ws.textDim }}>Ingen galleri publisert ennå. Opprett et klient-galleri for å dele leveransen som showcase.</Typography>
+            ) : (
+              <Stack spacing={1}>
+                {galleries.map((g) => (
+                  <Box key={g.id} sx={{ p: 1, borderRadius: 1.5, border: `1px solid ${ws.borderSoft}` }}>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography noWrap sx={{ fontSize: 12.5, fontWeight: 700 }}>{g.title}</Typography>
+                        <Typography noWrap sx={{ fontSize: 11, color: ws.textFaint }}>{g.clientName || g.clientEmail || ''}</Typography>
+                      </Box>
+                      <WsTag label={g.status || 'klar'} tone={g.status === 'completed' ? 'green' : 'blue'} />
+                    </Stack>
+                    {g.sharePath && (
+                      <Button fullWidth size="small" onClick={() => shareGallery(g.sharePath)} sx={{ mt: 0.75, color: ws.accent, textTransform: 'none', border: `1px solid ${ws.accentBorder}` }}>
+                        Del med klient ↗
+                      </Button>
+                    )}
+                  </Box>
+                ))}
+              </Stack>
+            )}
+          </WsCard>
+        )}
         <WsCard sx={{ mb: 2 }}>
           <Typography sx={{ fontSize: 14, fontWeight: 700, mb: 1.5 }}>Delivery progress</Typography>
           <Stack direction="row" spacing={2} alignItems="center">

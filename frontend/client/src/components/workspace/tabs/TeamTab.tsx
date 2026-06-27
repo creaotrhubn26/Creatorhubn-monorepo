@@ -144,7 +144,7 @@ const TeamTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         </Box>
 
         {/* Godkjenninger */}
-        <WsCard>
+        <WsCard sx={{ mb: 2 }}>
           <WsSectionTitle title="Godkjenninger & dokumenter" />
           <WsTable
             columns={['Dokument', 'Status', 'Ansvarlig', 'Oppdatert']}
@@ -157,6 +157,8 @@ const TeamTab: React.FC<{ projectId: string }> = ({ projectId }) => {
             ]}
           />
         </WsCard>
+
+        <SplitSheetCard projectId={projectId} members={displayMembers} isReal={!!real || (projectId && projectId !== 'sample')} />
       </Box>
 
       {/* Høyre: Chat + Oppgaver + Milepæler */}
@@ -231,6 +233,77 @@ const InviteMemberDialog: React.FC<{ open: boolean; onClose: () => void; project
         <Button variant="contained" onClick={submit} disabled={busy || !email.trim()} startIcon={busy ? <CircularProgress size={14} color="inherit" /> : null}>{busy ? 'Sender…' : 'Send invitasjon'}</Button>
       </DialogActions>
     </Dialog>
+  );
+};
+
+const SplitSheetCard: React.FC<{ projectId: string; members: any[]; isReal: boolean }> = ({ projectId, members, isReal }) => {
+  const [shares, setShares] = useState<any[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    if (!isReal) {
+      // demo: seed jevn fordeling fra medlemmer
+      const n = members.length || 1;
+      const even = Math.floor(100 / n);
+      setShares(members.map((m, i) => ({ name: m.name, role: m.role, percent: i === 0 ? 100 - even * (n - 1) : even })));
+      return;
+    }
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/split-sheet`)
+      .then((r: any) => {
+        if (Array.isArray(r?.shares) && r.shares.length > 0) setShares(r.shares.map((s: any) => ({ name: s.name, role: s.role, email: s.email, percent: s.percent })));
+        else setShares(members.map((m) => ({ name: m.name, role: m.role, percent: 0 })));
+      })
+      .catch(() => setShares(members.map((m) => ({ name: m.name, role: m.role, percent: 0 }))));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, isReal]);
+
+  const total = shares.reduce((s, x) => s + (Number(x.percent) || 0), 0);
+  const valid = Math.round(total) === 100;
+
+  const setPct = (i: number, v: string) => {
+    const pct = Math.max(0, Math.min(100, Number(v) || 0));
+    setShares((p) => p.map((x, idx) => (idx === i ? { ...x, percent: pct } : x)));
+    setSaved(false);
+  };
+  const split = () => { const n = shares.length || 1; const even = Math.floor(100 / n); setShares((p) => p.map((x, i) => ({ ...x, percent: i === 0 ? 100 - even * (n - 1) : even }))); setSaved(false); };
+  const save = async () => {
+    if (!isReal) { window.alert('Lagres når prosjektet er ekte (ikke demo).'); return; }
+    if (!valid) { window.alert(`Fordelingen må summere til 100 % (nå: ${total}%).`); return; }
+    setSaving(true);
+    try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/split-sheet`, { method: 'PUT', body: { shares } }); setSaved(true); }
+    catch (e: any) { window.alert(e?.message || 'Kunne ikke lagre'); } finally { setSaving(false); }
+  };
+
+  return (
+    <WsCard>
+      <WsSectionTitle title="Split sheet — honorar-fordeling" action={<Button size="small" onClick={split} sx={{ color: ws.accent, textTransform: 'none' }}>Del likt</Button>} />
+      <Typography sx={{ fontSize: 12, color: ws.textDim, mb: 1.5 }}>Hvor stor andel av prosjekt-honoraret hvert teammedlem får. Må summere til 100 %.</Typography>
+      <Stack spacing={1}>
+        {shares.map((s, i) => (
+          <Stack key={i} direction="row" spacing={1.5} alignItems="center">
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography noWrap sx={{ fontSize: 13, fontWeight: 600 }}>{s.name}</Typography>
+              {s.role && <Typography noWrap sx={{ fontSize: 11, color: ws.textFaint }}>{s.role}</Typography>}
+            </Box>
+            <Box sx={{ flex: 1.5 }}><WsBar value={Number(s.percent) || 0} /></Box>
+            <TextField type="number" size="small" value={s.percent} onChange={(e) => setPct(i, e.target.value)}
+              InputProps={{ endAdornment: <Typography sx={{ fontSize: 12, color: ws.textDim }}>%</Typography> }}
+              sx={{ width: 88, '& .MuiOutlinedInput-root': { bgcolor: ws.panelInput, fontSize: 13 } }} />
+          </Stack>
+        ))}
+      </Stack>
+      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 1.5, pt: 1.5, borderTop: `1px solid ${ws.border}` }}>
+        <Stack direction="row" spacing={1} alignItems="center">
+          <Typography sx={{ fontSize: 13, fontWeight: 700 }}>Sum:</Typography>
+          <WsTag label={`${total} %`} tone={valid ? 'green' : 'red'} />
+        </Stack>
+        <Button variant="contained" size="small" onClick={save} disabled={saving || !valid}
+          sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>
+          {saving ? 'Lagrer…' : saved ? 'Lagret ✓' : 'Lagre fordeling'}
+        </Button>
+      </Stack>
+    </WsCard>
   );
 };
 

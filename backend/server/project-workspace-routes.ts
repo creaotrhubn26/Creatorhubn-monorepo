@@ -72,6 +72,18 @@ async function ensureSchema(pool: any): Promise<void> {
           updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
         CREATE INDEX IF NOT EXISTS idx_pd_project ON project_deliverables (project_id, order_index);
+
+        CREATE TABLE IF NOT EXISTS project_split_shares (
+          id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          project_id  VARCHAR(64) NOT NULL,
+          name        VARCHAR(255),
+          email       VARCHAR(255),
+          role        VARCHAR(40),
+          percent     NUMERIC(5,2) NOT NULL DEFAULT 0,
+          order_index INTEGER NOT NULL DEFAULT 0,
+          created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_pss_project ON project_split_shares (project_id, order_index);
       `).catch(() => undefined);
     })();
   }
@@ -145,6 +157,78 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     const uid = await guard(req, res); if (!uid) return;
     try { await ensureSchema(pool); await pool.query(`DELETE FROM project_board_tasks WHERE id = $1 AND project_id = $2`, [req.params.id, req.params.projectId]); res.json({ success: true }); }
     catch (e) { console.error("DELETE board-tasks", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  // ─────────── Split sheet (honorar-fordeling mellom team) ───────────
+  app.get("/api/projects/:projectId/split-sheet", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureSchema(pool);
+      const r = await pool.query(
+        `SELECT id, name, email, role, percent, order_index FROM project_split_shares WHERE project_id = $1 ORDER BY order_index, created_at`,
+        [req.params.projectId],
+      );
+      const shares = r.rows.map((s: any) => ({ id: s.id, name: s.name, email: s.email, role: s.role, percent: Number(s.percent) }));
+      const total = shares.reduce((sum: number, s: any) => sum + (s.percent || 0), 0);
+      res.json({ shares, total });
+    } catch (e) { console.error("GET split-sheet", e); res.status(500).json({ error: "failed" }); }
+  });
+  // PUT — erstatt hele fordelingen (enklere enn per-rad-diff). Validerer ~100%.
+  app.put("/api/projects/:projectId/split-sheet", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureSchema(pool);
+      const rows = Array.isArray(req.body?.shares) ? req.body.shares : [];
+      const clean = rows
+        .map((s: any, i: number) => ({
+          name: typeof s.name === "string" ? s.name.trim() : null,
+          email: typeof s.email === "string" ? s.email.trim().toLowerCase() : null,
+          role: typeof s.role === "string" ? s.role.trim() : null,
+          percent: Math.max(0, Math.min(100, Number(s.percent) || 0)),
+          order: i,
+        }))
+        .filter((s: any) => s.name || s.email);
+      const total = clean.reduce((sum: number, s: any) => sum + s.percent, 0);
+      if (clean.length > 0 && Math.round(total) !== 100) {
+        return res.status(400).json({ error: "must_sum_100", total });
+      }
+      const projectId = req.params.projectId;
+      await pool.query(`DELETE FROM project_split_shares WHERE project_id = $1`, [projectId]);
+      for (const s of clean) {
+        await pool.query(
+          `INSERT INTO project_split_shares (project_id, name, email, role, percent, order_index)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [projectId, s.name, s.email, s.role, s.percent, s.order],
+        );
+      }
+      res.json({ success: true, total });
+    } catch (e) { console.error("PUT split-sheet", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  // ─────────── Showcase / klient-galleri (LESER photographer_client_galleries) ───
+  // Kobler Leveranser til det EKTE leveranse-systemet: klient-galleriet/showcasen
+  // klienten faktisk ser. project_id-scopet + canAccessProject. shareUrl =
+  // /client/gallery/<access_token> (frontend prepender origin).
+  app.get("/api/projects/:projectId/galleries", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const r = await pool.query(
+        `SELECT id, project_title, client_name, client_email, access_token, status, created_at, completed_at
+           FROM photographer_client_galleries
+          WHERE project_id = $1
+          ORDER BY created_at DESC`,
+        [req.params.projectId],
+      ).catch(() => ({ rows: [] }));
+      res.json({
+        galleries: r.rows.map((g: any) => ({
+          id: g.id, title: g.project_title || g.client_name || "Galleri",
+          clientName: g.client_name, clientEmail: g.client_email,
+          status: g.status, accessToken: g.access_token,
+          sharePath: g.access_token ? `/client/gallery/${g.access_token}` : null,
+          createdAt: g.created_at, completedAt: g.completed_at,
+        })),
+      });
+    } catch (e) { console.error("GET project galleries", e); res.json({ galleries: [] }); }
   });
 
   // ─────────── Shotlist (LESER shot_lists wizarden skrev) ───────────
