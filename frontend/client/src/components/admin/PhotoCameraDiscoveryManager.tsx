@@ -168,7 +168,7 @@ export const PhotoCameraDiscoveryManager: React.FC<PhotoCameraDiscoveryManagerPr
 
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h5" fontWeight={700} sx={{ mb: 2 }}>
+      <Typography variant="h5" component="h2" fontWeight={700} sx={{ mb: 2 }}>
         Photo Camera Discovery Manager
       </Typography>
 
@@ -266,7 +266,7 @@ export const PhotoCameraDiscoveryManager: React.FC<PhotoCameraDiscoveryManagerPr
           <List dense>
             {discoveryResults.map((result, index) => (
               <ListItem key={`${result.source}-${result.timestamp}-${index}`}>
-                {result.success ? <CheckCircle color="success" sx={{ mr: 1 }} /> : <ErrorIcon color="error" sx={{ mr: 1 }} />}
+                {result.success ? <CheckCircle color="success" sx={{ mr: 1 }} aria-hidden /> : <ErrorIcon color="error" sx={{ mr: 1 }} aria-hidden />}
                 <ListItemText
                   primary={`${result.source}: ${result.success ? 'OK' : 'Failed'}`}
                   secondary={`Found ${result.cameras.length} cameras at ${formatDate(result.timestamp)}`}
@@ -288,7 +288,7 @@ export const PhotoCameraDiscoveryManager: React.FC<PhotoCameraDiscoveryManagerPr
               <ListItemText
                 primary={
                   <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-                    <CameraAlt fontSize="small" />
+                    <CameraAlt fontSize="small" aria-hidden />
                     <Typography variant="body2" fontWeight={600}>
                       {camera.brand} {camera.model}
                     </Typography>

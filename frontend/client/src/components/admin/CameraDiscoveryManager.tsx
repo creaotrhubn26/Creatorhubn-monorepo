@@ -136,8 +136,8 @@ const CameraDiscoveryManager: React.FC<CameraDiscoveryManagerProps> = ({
 
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h4" gutterBottom sx={{ color: theming.colors.primary }}>
-        <CameraAlt sx={{ mr: 1, verticalAlign: 'middle' }} />
+      <Typography variant="h4" component="h2" gutterBottom sx={{ color: theming.colors.primary }}>
+        <CameraAlt aria-hidden="true" sx={{ mr: 1, verticalAlign: 'middle' }} />
         Camera Discovery Manager
       </Typography>
 
@@ -217,7 +217,7 @@ const CameraDiscoveryManager: React.FC<CameraDiscoveryManagerProps> = ({
 
           {isDiscovering && (
             <Alert severity="info" sx={{ mb: 2 }}>
-              <AutoAwesome sx={{ mr: 1 }} />
+              <AutoAwesome aria-hidden="true" sx={{ mr: 1 }} />
               Discovering new cameras from all enabled sources...
             </Alert>
           )}
@@ -262,7 +262,7 @@ const CameraDiscoveryManager: React.FC<CameraDiscoveryManagerProps> = ({
 
           {discoveredCameras.length === 0 ? (
             <Alert severity="info">
-              <Info sx={{ mr: 1 }} />
+              <Info aria-hidden="true" sx={{ mr: 1 }} />
               No new cameras discovered. Click "Discover Cameras" to search for new models.
             </Alert>
           ) : (
@@ -273,6 +273,7 @@ const CameraDiscoveryManager: React.FC<CameraDiscoveryManagerProps> = ({
                     <TableCell padding="checkbox">
                       <input
                         type="checkbox"
+                        aria-label="Velg alle kameraer"
                         checked={selectedCameras.length === discoveredCameras.length}
                         onChange={handleSelectAll}
                       />
@@ -292,6 +293,7 @@ const CameraDiscoveryManager: React.FC<CameraDiscoveryManagerProps> = ({
                       <TableCell padding="checkbox">
                         <input
                           type="checkbox"
+                          aria-label={`Velg kamera ${camera.brand} ${camera.model}`}
                           checked={selectedCameras.includes(camera.id)}
                           onChange={() => handleCameraSelect(camera.id)}
                         />
@@ -377,7 +379,7 @@ const CameraDiscoveryManager: React.FC<CameraDiscoveryManagerProps> = ({
               ))}
           </List>
           <Alert severity="warning" sx={{ mt: 2 }}>
-            <Warning sx={{ mr: 1 }} />
+            <Warning aria-hidden="true" sx={{ mr: 1 }} />
             These cameras will be permanently added to the database and will be available for all users.
           </Alert>
         </DialogContent>

@@ -362,7 +362,7 @@ export default function TestingDashboard() {
             alignItems: 'center',
             mb:  3}}
         >
-          <Typography variant="h5" sx={{  color: adminTokens.color.brand, fontWeight: 600}}>
+          <Typography variant="h5" component="h2" sx={{  color: adminTokens.color.brand, fontWeight: 600}}>
             🧪 Testing & Deployment Dashboard
           </Typography>
           <Box sx={{ display: 'flex', gap:  2 }}>
@@ -400,7 +400,7 @@ export default function TestingDashboard() {
                 justifyContent: 'between'}}
             >
               <Box sx={{ flex:  1 }}>
-                <Typography variant="h6" sx={{  color: 'white', fontWeight: 600}}>
+                <Typography variant="h6" component="h3" sx={{  color: 'white', fontWeight: 600}}>
                   Deployment Readiness
                 </Typography>
                 <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.9)', mb:  2 }}>
@@ -614,7 +614,7 @@ export default function TestingDashboard() {
       <TabPanel value={tabValue} index={1}>
         <Card sx={theming.getThemedCardSx()}>
           <CardContent sx={theming.getThemedCardSx()}>
-            <Typography variant="h6" sx={{  mb:  3  }}>
+            <Typography variant="h6" component="h2" sx={{  mb:  3  }}>
               🔄 Automated Test Pipeline
             </Typography>
 
@@ -768,8 +768,8 @@ export default function TestingDashboard() {
           <Grid item xs={12} md={6}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" sx={{  mb: 2, display: 'flex', alignItems: 'center' }}>
-                  <MonitorIcon sx={{ mr:  1 }} />
+                <Typography variant="h6" component="h3" sx={{  mb: 2, display: 'flex', alignItems: 'center' }}>
+                  <MonitorIcon sx={{ mr:  1 }} aria-hidden="true" />
                   System Health
                 </Typography>
                 <Grid container spacing={2}>
@@ -801,8 +801,8 @@ export default function TestingDashboard() {
           <Grid item xs={12} md={6}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" sx={{  mb: 2, display: 'flex', alignItems: 'center' }}>
-                  <ReportIcon sx={{ mr:  1 }} />
+                <Typography variant="h6" component="h3" sx={{  mb: 2, display: 'flex', alignItems: 'center' }}>
+                  <ReportIcon sx={{ mr:  1 }} aria-hidden="true" />
                   Test Coverage
                 </Typography>
                 <Box sx={{ mb:  2 }}>
@@ -856,7 +856,7 @@ export default function TestingDashboard() {
       >
         <DialogTitle>
           <Box display="flex" alignItems="center" gap={1}>
-            <DeployIcon sx={{ color: adminTokens.color.brand}} />
+            <DeployIcon sx={{ color: adminTokens.color.brand}} aria-hidden="true" />
             Deploy til Production
           </Box>
         </DialogTitle>

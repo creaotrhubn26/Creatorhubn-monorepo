@@ -180,7 +180,7 @@ const AdminAnalyticsHub: React.FC = () => {
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3, flexWrap: 'wrap', gap: 2 }}>
         <Box>
           <Stack direction="row" alignItems="center" spacing={1.5}>
-            <Avatar sx={{ bgcolor: alpha('#7c3aed', 0.15), color: '#c084fc' }}>
+            <Avatar aria-hidden sx={{ bgcolor: alpha('#7c3aed', 0.15), color: '#c084fc' }}>
               <InsightsIcon />
             </Avatar>
             <Box>
@@ -204,7 +204,7 @@ const AdminAnalyticsHub: React.FC = () => {
             <ToggleButton value="7d">7d</ToggleButton>
             <ToggleButton value="30d">30d</ToggleButton>
           </ToggleButtonGroup>
-          <IconButton onClick={() => { refetchOv(); refetchSt(); }} disabled={ovFetching}>
+          <IconButton aria-label="Oppdater analysedata" onClick={() => { refetchOv(); refetchSt(); }} disabled={ovFetching}>
             <RefreshIcon />
           </IconButton>
           <Button
@@ -253,7 +253,7 @@ const AdminAnalyticsHub: React.FC = () => {
                     {k.sub}
                   </Typography>
                 </Box>
-                <Box sx={{ color: k.color, opacity: 0.6 }}>{k.icon}</Box>
+                <Box aria-hidden sx={{ color: k.color, opacity: 0.6 }}>{k.icon}</Box>
               </Stack>
             </CardContent>
           </Card>

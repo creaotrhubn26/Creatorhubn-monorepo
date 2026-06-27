@@ -120,12 +120,12 @@ function formatProfession(profession: string) {
 function getGrowthTone(value: number) {
   return value >= 0
     ? {
-        icon: <TrendingUp sx={{ fontSize: 18, color: '#86efac' }} />,
+        icon: <TrendingUp aria-hidden="true" sx={{ fontSize: 18, color: '#86efac' }} />,
         color: '#86efac',
         bg: '#e9f7ef',
       }
     : {
-        icon: <TrendingDown sx={{ fontSize: 18, color: '#fca5a5' }} />,
+        icon: <TrendingDown aria-hidden="true" sx={{ fontSize: 18, color: '#fca5a5' }} />,
         color: '#fca5a5',
         bg: '#fff1f1',
       };
@@ -171,6 +171,7 @@ function MetricCard({
           </Typography>
         </Box>
         <Box
+          aria-hidden="true"
           sx={{
             width: 44,
             height: 44,
@@ -460,6 +461,7 @@ export default function ReportsPanel({ onFileDownload }: ReportsPanelProps) {
                               <LinearProgress
                                 variant="determinate"
                                 value={share}
+                                aria-label={`Andel av brukere: ${share}%`}
                                 sx={{
                                   flex: 1,
                                   height: 8,

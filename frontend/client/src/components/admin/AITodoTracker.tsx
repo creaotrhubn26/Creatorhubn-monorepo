@@ -283,7 +283,7 @@ export const AITodoTracker: React.FC = () => {
         {/* Header with Progress */}
         <Box sx={{ mb: 3 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-            <Typography variant="h6">
+            <Typography variant="h6" component="h2">
               🎯 AI-Generated Tasks
             </Typography>
             <Chip 
@@ -338,9 +338,18 @@ export const AITodoTracker: React.FC = () => {
                     isBlocked ? 'error.main' : 'grey.300'
               }}
               >
-                <ListItem 
+                <ListItem
                   onClick={() => toggleExpanded(todo.id)}
-                  sx={{ 
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={isExpanded}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      toggleExpanded(todo.id);
+                  }
+                }}
+                  sx={{
                     bgcolor: todo.status === 'completed' ? 'success.light' : 
                             todo.status === 'in_progress' ? 'primary.light' :
                             'transparent',
@@ -386,8 +395,8 @@ export const AITodoTracker: React.FC = () => {
                       </Box>
                   }
                   />
-                  <IconButton size="small">
-                    <ExpandIcon 
+                  <IconButton size="small" aria-label={isExpanded ? 'Skjul detaljer' : 'Vis detaljer'}>
+                    <ExpandIcon
                       sx={{ 
                         transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
                         transition: 'transform 0.3s'
