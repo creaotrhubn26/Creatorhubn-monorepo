@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
@@ -24,6 +23,7 @@ import {
 } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Area, AreaChart } from 'recharts';
 import { QUERY_KEYS } from '@/lib/queryKeys';
+import { AdminCard, AdminButton } from './design-system';
 
 interface AnalyticsMetric {
   label: string;
@@ -227,13 +227,12 @@ export default function UnifiedAnalyticsDashboard() {
               <SelectItem value="1y">Last year</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" size="sm" onClick={exportData}>
-            <Download className="h-4 w-4 mr-2" />
+          <AdminButton tone="ghost" size="small" startIcon={<Download className="h-4 w-4" />} onClick={exportData}>
             Export
-          </Button>
-          <Button variant="outline" size="sm">
+          </AdminButton>
+          <AdminButton tone="ghost" size="small">
             <RefreshCw className="h-4 w-4" />
-          </Button>
+          </AdminButton>
         </div>
       </div>
 
@@ -271,38 +270,27 @@ export default function UnifiedAnalyticsDashboard() {
 
         {/* Overview Tab */}
         <TabsContent value="overview" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Performance Trend</CardTitle>
-              <CardDescription>Engagement across all marketing channels over time</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {timeSeries.length > 0 && (
-                <ResponsiveContainer width="100%" height={350}>
-                  <AreaChart data={timeSeries}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="date" />
-                    <YAxis />
-                    <Tooltip />
-                    <Legend />
-                    <Area type="monotone" dataKey="social" stackId="1" stroke="#3b82f6" fill="#3b82f6" name="Social Media" />
-                    <Area type="monotone" dataKey="email" stackId="1" stroke="#8b5cf6" fill="#8b5cf6" name="Email" />
-                    <Area type="monotone" dataKey="workflow" stackId="1" stroke="#10b981" fill="#10b981" name="Automation" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              )}
-            </CardContent>
-          </Card>
+          <AdminCard title="Performance Trend" subtitle="Engagement across all marketing channels over time">
+            {timeSeries.length > 0 && (
+              <ResponsiveContainer width="100%" height={350}>
+                <AreaChart data={timeSeries}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" />
+                  <YAxis />
+                  <Tooltip />
+                  <Legend />
+                  <Area type="monotone" dataKey="social" stackId="1" stroke="#3b82f6" fill="#3b82f6" name="Social Media" />
+                  <Area type="monotone" dataKey="email" stackId="1" stroke="#8b5cf6" fill="#8b5cf6" name="Email" />
+                  <Area type="monotone" dataKey="workflow" stackId="1" stroke="#10b981" fill="#10b981" name="Automation" />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
+          </AdminCard>
 
           <div className="grid gap-4 md:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle>Channel Distribution</CardTitle>
-                <CardDescription>Engagement by marketing channel</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <PieChart>
+            <AdminCard title="Channel Distribution" subtitle="Engagement by marketing channel">
+              <ResponsiveContainer width="100%" height={300}>
+                <PieChart>
                     <Pie
                       data={[
                         { name: 'Social Media', value: socialPlatforms.reduce((s, p) => s + p.engagement, 0) || 0 },
@@ -324,58 +312,45 @@ export default function UnifiedAnalyticsDashboard() {
                     <Tooltip />
                   </PieChart>
                 </ResponsiveContainer>
-              </CardContent>
-            </Card>
+            </AdminCard>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Top Performers</CardTitle>
-                <CardDescription>Best performing content this period</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {socialPlatforms.slice(0, 3).map((platform, idx) => (
-                    <div key={idx} className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline">{platform.platform}</Badge>
-                        <span className="text-sm">Social Posts</span>
-                      </div>
-                      <div className="text-right">
-                        <div className="font-semibold">{formatNumber(platform.engagement)}</div>
-                        <div className="text-xs text-muted-foreground">engagement</div>
-                      </div>
+            <AdminCard title="Top Performers" subtitle="Best performing content this period">
+              <div className="space-y-4">
+                {socialPlatforms.slice(0, 3).map((platform, idx) => (
+                  <div key={idx} className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline">{platform.platform}</Badge>
+                      <span className="text-sm">Social Posts</span>
                     </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+                    <div className="text-right">
+                      <div className="font-semibold">{formatNumber(platform.engagement)}</div>
+                      <div className="text-xs text-muted-foreground">engagement</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </AdminCard>
           </div>
         </TabsContent>
 
         {/* Social Media Tab */}
         <TabsContent value="social" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Social Media Performance</CardTitle>
-              <CardDescription>Detailed metrics by platform</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {socialPlatforms.length > 0 && (
-                <ResponsiveContainer width="100%" height={350}>
-                  <BarChart data={socialPlatforms}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="platform" />
-                    <YAxis />
-                    <Tooltip />
-                    <Legend />
-                    <Bar dataKey="engagement" fill="#3b82f6" name="Engagement" />
-                    <Bar dataKey="reach" fill="#8b5cf6" name="Reach" />
-                    <Bar dataKey="clicks" fill="#10b981" name="Clicks" />
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
-            </CardContent>
-          </Card>
+          <AdminCard title="Social Media Performance" subtitle="Detailed metrics by platform">
+            {socialPlatforms.length > 0 && (
+              <ResponsiveContainer width="100%" height={350}>
+                <BarChart data={socialPlatforms}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="platform" />
+                  <YAxis />
+                  <Tooltip />
+                  <Legend />
+                  <Bar dataKey="engagement" fill="#3b82f6" name="Engagement" />
+                  <Bar dataKey="reach" fill="#8b5cf6" name="Reach" />
+                  <Bar dataKey="clicks" fill="#10b981" name="Clicks" />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </AdminCard>
 
           <div className="grid gap-4 md: grid-cols-2, lg:grid-cols-3">
             {socialPlatforms.map((platform, idx) => (
@@ -421,27 +396,21 @@ export default function UnifiedAnalyticsDashboard() {
 
         {/* Email Campaigns Tab */}
         <TabsContent value="email" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Email Campaign Performance</CardTitle>
-              <CardDescription>Open and click rates by campaign</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {emailCampaigns.length > 0 && (
-                <ResponsiveContainer width="100%" height={350}>
-                  <BarChart data={emailCampaigns}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="campaign" />
-                    <YAxis />
-                    <Tooltip />
-                    <Legend />
-                    <Bar dataKey="openRate" fill="#3b82f6" name="Open Rate %" />
-                    <Bar dataKey="clickRate" fill="#10b981" name="Click Rate %" />
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
-            </CardContent>
-          </Card>
+          <AdminCard title="Email Campaign Performance" subtitle="Open and click rates by campaign">
+            {emailCampaigns.length > 0 && (
+              <ResponsiveContainer width="100%" height={350}>
+                <BarChart data={emailCampaigns}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="campaign" />
+                  <YAxis />
+                  <Tooltip />
+                  <Legend />
+                  <Bar dataKey="openRate" fill="#3b82f6" name="Open Rate %" />
+                  <Bar dataKey="clickRate" fill="#10b981" name="Click Rate %" />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </AdminCard>
 
           <div className="space-y-4">
             {emailCampaigns.map((campaign, idx) => (
@@ -483,28 +452,22 @@ export default function UnifiedAnalyticsDashboard() {
 
         {/* Automation Tab */}
         <TabsContent value="automation" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Workflow Performance</CardTitle>
-              <CardDescription>Conversion rates and revenue by workflow</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {workflowList.length > 0 && (
-                <ResponsiveContainer width="100%" height={350}>
-                  <BarChart data={workflowList}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" />
-                    <YAxis yAxisId="left" />
-                    <YAxis yAxisId="right" orientation="right" />
-                    <Tooltip />
-                    <Legend />
-                    <Bar yAxisId="left" dataKey="conversions" fill="#3b82f6" name="Conversions" />
-                    <Bar yAxisId="right" dataKey="revenue" fill="#10b981" name="Revenue ($)" />
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
-            </CardContent>
-          </Card>
+          <AdminCard title="Workflow Performance" subtitle="Conversion rates and revenue by workflow">
+            {workflowList.length > 0 && (
+              <ResponsiveContainer width="100%" height={350}>
+                <BarChart data={workflowList}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" />
+                  <YAxis yAxisId="left" />
+                  <YAxis yAxisId="right" orientation="right" />
+                  <Tooltip />
+                  <Legend />
+                  <Bar yAxisId="left" dataKey="conversions" fill="#3b82f6" name="Conversions" />
+                  <Bar yAxisId="right" dataKey="revenue" fill="#10b981" name="Revenue ($)" />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </AdminCard>
 
           <div className="space-y-4">
             {workflowList.map((workflow, idx) => (
@@ -542,13 +505,8 @@ export default function UnifiedAnalyticsDashboard() {
 
         {/* Comparison Tab */}
         <TabsContent value="comparison" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Channel Comparison</CardTitle>
-              <CardDescription>Performance metrics across all marketing channels</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={400}>
+          <AdminCard title="Channel Comparison" subtitle="Performance metrics across all marketing channels">
+            <ResponsiveContainer width="100%" height={400}>
                 <BarChart
                   data={[
                     {
@@ -578,8 +536,7 @@ export default function UnifiedAnalyticsDashboard() {
                   <Bar dataKey="engagement" fill="#3b82f6" name="Engagement" />
                 </BarChart>
               </ResponsiveContainer>
-            </CardContent>
-          </Card>
+          </AdminCard>
         </TabsContent>
       </Tabs>
     </div>

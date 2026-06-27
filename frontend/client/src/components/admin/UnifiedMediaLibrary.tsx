@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -32,6 +32,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { QUERY_KEYS } from '@/lib/queryKeys';
 import { useToast } from '@/hooks/use-toast';
+import { AdminCard, AdminButton } from './design-system';
 
 type MediaType = 'all' | 'image' | 'video' | 'audio' | 'document';
 type ViewMode = 'grid' | 'list';
@@ -293,10 +294,9 @@ export default function UnifiedMediaLibrary({ onSelectFile }: { onSelectFile?: (
         </div>
         <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
           <DialogTrigger asChild>
-            <Button>
-              <CloudUpload className="h-4 w-4 mr-2" />
+            <AdminButton tone="primary" startIcon={<CloudUpload className="h-4 w-4" />}>
               Upload to Drive
-            </Button>
+            </AdminButton>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
@@ -353,13 +353,13 @@ export default function UnifiedMediaLibrary({ onSelectFile }: { onSelectFile?: (
               <SelectItem value="usage">Most Used</SelectItem>
             </SelectContent>
           </Select>
-          <Button
-            variant={showFavoritesOnly ? 'default' : 'outline'}
+          <AdminButton
+            tone={showFavoritesOnly ? 'primary' : 'secondary'}
             onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
+            startIcon={<Star className={`h-4 w-4 ${showFavoritesOnly ? 'fill-current' : ', '}`} />}
           >
-            <Star className={`h-4 w-4 mr-2 ${showFavoritesOnly ? 'fill-current' : ', '}`} />
             Favorites
-          </Button>
+          </AdminButton>
           <div className="flex gap-1 border rounded-md p-1">
             <Button
               variant={viewMode === 'grid' ? 'default' : 'ghost'}
@@ -407,35 +407,36 @@ export default function UnifiedMediaLibrary({ onSelectFile }: { onSelectFile?: (
       <div className="grid grid-cols-12 gap-6">
         {/* Folders Sidebar */}
         <div className="col-span-3">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
+          <AdminCard
+            title={
+              <span className="text-lg flex items-center gap-2">
                 <Folder className="h-5 w-5" />
                 Folders
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <Button
-                variant={selectedFolderId === null ? 'default' : 'ghost'}
+              </span>
+            }
+          >
+            <div className="space-y-2">
+              <AdminButton
+                tone={selectedFolderId === null ? 'primary' : 'ghost'}
                 className="w-full justify-start"
                 onClick={() => setSelectedFolderId(null)}
+                startIcon={<FolderOpen className="h-4 w-4" />}
               >
-                <FolderOpen className="h-4 w-4 mr-2" />
                 All Files ({files.length})
-              </Button>
+              </AdminButton>
               {folders.map(folder => (
-                <Button
+                <AdminButton
                   key={folder.id}
-                  variant={selectedFolderId === folder.id ? 'default' : 'ghost'}
+                  tone={selectedFolderId === folder.id ? 'primary' : 'ghost'}
                   className="w-full justify-start"
                   onClick={() => setSelectedFolderId(folder.id)}
+                  startIcon={<Folder className="h-4 w-4" />}
                 >
-                  <Folder className="h-4 w-4 mr-2" />
                   {folder.name} ({folder.fileCount})
-                </Button>
+                </AdminButton>
               ))}
-            </CardContent>
-          </Card>
+            </div>
+          </AdminCard>
         </div>
 
         {/* File Grid/List */}
@@ -546,15 +547,18 @@ export default function UnifiedMediaLibrary({ onSelectFile }: { onSelectFile?: (
                                   {renderFilePreview(file)}
                                 </div>
                                 <div className="flex gap-2">
-                                  <Button onClick={() => handleUseFile(file)} className="flex-1">
+                                  <AdminButton tone="primary" onClick={() => handleUseFile(file)} className="flex-1">
                                     Use File
-                                  </Button>
-                                  <Button variant="outline" asChild>
-                                    <a href={file.url} download>
-                                      <Download className="h-4 w-4 mr-2" />
-                                      Download
-                                    </a>
-                                  </Button>
+                                  </AdminButton>
+                                  <AdminButton
+                                    tone="secondary"
+                                    component="a"
+                                    href={file.url}
+                                    download
+                                    startIcon={<Download className="h-4 w-4" />}
+                                  >
+                                    Download
+                                  </AdminButton>
                                 </div>
                               </DialogContent>
                             </Dialog>

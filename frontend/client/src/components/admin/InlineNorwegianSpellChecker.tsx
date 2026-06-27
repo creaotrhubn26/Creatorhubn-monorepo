@@ -11,7 +11,6 @@ import {
   Paper,
   Typography,
   IconButton,
-  Button,
   Chip,
   Stack,
   Tooltip,
@@ -32,6 +31,7 @@ import {
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
+import { AdminCard, AdminButton, adminTokens } from './design-system';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // TYPES
@@ -181,8 +181,8 @@ export default function InlineNorwegianSpellChecker({
 
   return (
     <Fade in={errors.length > 0 || isChecking}>
-      <Paper
-        elevation={3}
+      <AdminCard
+        disablePadding
         sx={{
           position: 'fixed',
           bottom: 16,
@@ -191,8 +191,7 @@ export default function InlineNorwegianSpellChecker({
           maxHeight: 'calc(100vh - 200px)',
           overflow: 'hidden',
           zIndex: 130,
-          border: '2px solid',
-          borderColor: 'warning.main'}}
+          border: `2px solid ${adminTokens.color.warning}`}}
       >
         {/* Header */}
         <Box
@@ -332,26 +331,25 @@ export default function InlineNorwegianSpellChecker({
                     {/* Actions */}
                     <Stack direction="row" spacing={0.5} justifyContent="flex-end">
                       {error.suggestions.length > 0 && (
-                        <Button
+                        <AdminButton
                           size="small"
-                          variant="contained"
-                          color="success"
+                          tone="primary"
                           onClick={() => handleReplace(error, error.suggestions[0])}
                           startIcon={<CheckCircleIcon />}
-                          sx={{ textTransform: 'none', fontSize: '0.7rem' }}
+                          sx={{ fontSize: '0.7rem' }}
                         >
                           Bruk
-                        </Button>
+                        </AdminButton>
                       )}
-                      <Button
+                      <AdminButton
                         size="small"
-                        variant="outlined"
+                        tone="ghost"
                         onClick={() => handleIgnore(error.word)}
                         startIcon={<CloseIcon />}
-                        sx={{ textTransform: 'none', fontSize: '0.7rem' }}
+                        sx={{ fontSize: '0.7rem' }}
                       >
                         Ignorer
-                      </Button>
+                      </AdminButton>
                     </Stack>
 
                     {/* More suggestions */}
@@ -375,16 +373,15 @@ export default function InlineNorwegianSpellChecker({
 
               {/* More errors indicator */}
               {hasMoreErrors && (
-                <Button
+                <AdminButton
                   fullWidth
-                  variant="outlined"
-                  color="warning"
+                  tone="ghost"
                   onClick={onOpenPanel}
                   startIcon={<LightbulbIcon />}
                   endIcon={<OpenInNewIcon />}
                 >
                   Se {errors.length - maxInlineErrors} flere forslag
-                </Button>
+                </AdminButton>
               )}
             </Stack>
           </Box>
@@ -405,7 +402,7 @@ export default function InlineNorwegianSpellChecker({
             </Typography>
           </Box>
         )}
-      </Paper>
+      </AdminCard>
     </Fade>
   );
 }
