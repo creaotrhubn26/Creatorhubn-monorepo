@@ -55,7 +55,7 @@ const TeamWorkspacePage: React.FC = () => {
   const [, paramsTab] = useRoute('/workspace/:projectId/:tab');
   const projectId = paramsTab?.projectId || params?.projectId || 'sample';
   const [, navigate] = useLocation();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
 
   const [tab, setTab] = useState<string>(paramsTab?.tab || 'oversikt');
   const [accepted, setAccepted] = useState<string | null>(null);
@@ -99,6 +99,7 @@ const TeamWorkspacePage: React.FC = () => {
   const wsUser = {
     name: user?.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : (user?.name || user?.email || 'Bruker'),
     role: user?.profession === 'videographer' ? 'Videograf' : 'Fotograf',
+    email: user?.email || null,
     avatarUrl: user?.avatarUrl || null,
   };
 
@@ -130,6 +131,7 @@ const TeamWorkspacePage: React.FC = () => {
       user={wsUser}
       online={online}
       onNewProject={() => setShowCreate(true)}
+      onLogout={() => { try { (logout as any)?.(); } catch { window.location.href = '/login'; } }}
       activeTab={tab}
       onTab={(key) => {
         setTab(key);

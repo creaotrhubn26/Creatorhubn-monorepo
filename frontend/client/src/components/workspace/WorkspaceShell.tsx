@@ -11,7 +11,12 @@ import React from 'react';
 import { ThemeProvider } from '@mui/material/styles';
 import {
   Box, Stack, Typography, Avatar, AvatarGroup, Chip, Button, IconButton, Badge, Tooltip,
+  Menu, MenuItem, Divider, ListItemIcon,
 } from '@mui/material';
+import Person from '@mui/icons-material/Person';
+import Palette from '@mui/icons-material/Palette';
+import Lock from '@mui/icons-material/Lock';
+import Logout from '@mui/icons-material/Logout';
 import Dashboard from '@mui/icons-material/Dashboard';
 import AccountTree from '@mui/icons-material/AccountTree';
 import Map from '@mui/icons-material/Map';
@@ -65,6 +70,7 @@ export interface WorkspaceProject {
 export interface WorkspaceUser {
   name: string;
   role?: string;
+  email?: string | null;
   avatarUrl?: string | null;
 }
 
@@ -75,6 +81,7 @@ interface ShellProps {
   onTab: (key: string) => void;
   online?: number | null;
   onNewProject?: () => void;
+  onLogout?: () => void;
   headerActions?: React.ReactNode;
   children: React.ReactNode;
 }
@@ -110,8 +117,10 @@ function NavItem({ item, active, onClick }: any) {
   );
 }
 
-const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab, online, onNewProject, headerActions, children }) => {
+const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab, online, onNewProject, onLogout, headerActions, children }) => {
   const groups: Array<'hoved' | 'rom' | 'klient'> = ['hoved', 'rom', 'klient'];
+  const [userMenu, setUserMenu] = React.useState<null | HTMLElement>(null);
+  const go = (path: string) => { setUserMenu(null); window.location.href = path; };
 
   return (
     <ThemeProvider theme={workspaceDarkTheme}>
@@ -169,9 +178,30 @@ const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab,
                 <Typography noWrap sx={{ fontSize: 13, fontWeight: 700 }}>{user.name}</Typography>
                 <Typography noWrap sx={{ fontSize: 11.5, color: ws.textDim }}>{user.role}</Typography>
               </Box>
-              <IconButton size="small" sx={{ color: ws.textDim }}><KeyboardArrowDown fontSize="small" /></IconButton>
-              <IconButton size="small" sx={{ color: ws.textDim }}><Settings fontSize="small" /></IconButton>
+              <IconButton size="small" onClick={(e) => setUserMenu(e.currentTarget)} sx={{ color: ws.textDim }}><KeyboardArrowDown fontSize="small" /></IconButton>
+              <IconButton size="small" onClick={(e) => setUserMenu(e.currentTarget)} sx={{ color: ws.textDim }}><Settings fontSize="small" /></IconButton>
             </Stack>
+
+            <Menu
+              anchorEl={userMenu}
+              open={!!userMenu}
+              onClose={() => setUserMenu(null)}
+              anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+              transformOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+            >
+              <Box sx={{ px: 2, py: 1 }}>
+                <Typography sx={{ fontSize: 13, fontWeight: 700 }}>{user.name}</Typography>
+                <Typography sx={{ fontSize: 11.5, color: ws.textDim }}>{user.email || user.role}</Typography>
+              </Box>
+              <Divider />
+              <MenuItem onClick={() => go('/settings')}><ListItemIcon><Person fontSize="small" /></ListItemIcon>Profil & innstillinger</MenuItem>
+              <MenuItem onClick={() => go('/business-branding')}><ListItemIcon><Palette fontSize="small" /></ListItemIcon>Merkevare</MenuItem>
+              <MenuItem onClick={() => go('/innstillinger/sikkerhet')}><ListItemIcon><Lock fontSize="small" /></ListItemIcon>Sikkerhet</MenuItem>
+              <Divider />
+              <MenuItem onClick={() => { setUserMenu(null); onLogout ? onLogout() : (window.location.href = '/login'); }}>
+                <ListItemIcon><Logout fontSize="small" /></ListItemIcon>Logg ut
+              </MenuItem>
+            </Menu>
           </Box>
         </Box>
 
