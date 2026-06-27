@@ -20,6 +20,7 @@ import ShotlistTab from './tabs/ShotlistTab';
 import MoodboardTab from './tabs/MoodboardTab';
 import MediaTab from './tabs/MediaTab';
 import LeveranserTab from './tabs/LeveranserTab';
+import OppgaverTab from './tabs/OppgaverTab';
 import TeamTab from './tabs/TeamTab';
 import WorkspaceChatPanel from './WorkspaceChatPanel';
 import { usePresence } from './usePresence';
@@ -109,6 +110,7 @@ const TeamWorkspacePage: React.FC = () => {
     moodboard: <MoodboardTab projectId={projectId} />,
     media: <MediaTab projectId={projectId} />,
     leveranser: <LeveranserTab projectId={projectId} />,
+    oppgaver: <OppgaverTab projectId={projectId} />,
     team: <TeamTab projectId={projectId} />,
     chat: (
       <Box sx={{ height: 'calc(100vh - 160px)', maxWidth: 760, mx: 'auto' }}>
