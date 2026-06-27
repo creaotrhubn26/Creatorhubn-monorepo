@@ -233,7 +233,7 @@ export default function VideoGenerationWorkflowModal({
               <VideoLibrary color="primary" />
               <Typography variant="h6">Video Generation Workflow</Typography>
             </Box>
-            <IconButton onClick={onClose} size="small">
+            <IconButton onClick={onClose} size="small" aria-label="Lukk">
               <Close />
             </IconButton>
           </Box>
@@ -309,6 +309,7 @@ export default function VideoGenerationWorkflowModal({
                                 <video
                                   src={generatedVideo.videoUrl}
                                   controls
+                                  aria-label="Generert video – forhåndsvisning"
                                   style={{ width: '100%', maxHeight: 300, borderRadius: 8 }} />
                                 <AdminButton
                                   tone="primary"

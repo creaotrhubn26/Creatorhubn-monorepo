@@ -526,7 +526,7 @@ export default function VisualCMSDashboard() {
     <Box sx={{ p:  3 }}>
       {/* Header */}
       <Box sx={{ mb:  4 }}>
-        <Typography variant="h4" sx={{  mb: 1, fontWeight: 600}}>
+        <Typography variant="h4" component="h2" sx={{  mb: 1, fontWeight: 600}}>
           Visual CMS Editor
         </Typography>
         <Typography variant="subtitle1" color="text.secondary">
@@ -626,13 +626,16 @@ export default function VisualCMSDashboard() {
         <Grid container spacing={3}>
           {/* API Categories Overview */}
           <Grid item xs={12}>
-            <Typography variant="h5" sx={{  mb:  2  }}>
+            <Typography variant="h5" component="h3" sx={{  mb:  2  }}>
               API Bank Status
             </Typography>
             <Grid container spacing={2}>
               {apiCategories.map((category) => (
                 <Grid item xs={12} sm={6} md={3} key={category.id}>
                   <Card
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Åpne ${category.name}`}
                     sx={{
                       cursor: 'pointer',
                       transition: 'all 0.2',
@@ -643,6 +646,13 @@ export default function VisualCMSDashboard() {
                     onClick={() => {
                       setSelectedCategory(category.id);
                       setSelectedView('api-bank');
+                  }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setSelectedCategory(category.id);
+                        setSelectedView('api-bank');
+                    }
                   }}
                   >
                     <CardContent sx={theming.getThemedCardSx()}>
@@ -681,7 +691,7 @@ export default function VisualCMSDashboard() {
 
           {/* Workflow Status */}
           <Grid item xs={12} md={8}>
-            <Typography variant="h5" sx={{  mb:  2  }}>
+            <Typography variant="h5" component="h3" sx={{  mb:  2  }}>
               Deployment Workflow
             </Typography>
             <Card sx={theming.getThemedCardSx()}>
@@ -723,7 +733,7 @@ export default function VisualCMSDashboard() {
 
           {/* Quick Actions */}
           <Grid item xs={12} md={4}>
-            <Typography variant="h5" sx={{  mb:  2  }}>
+            <Typography variant="h5" component="h3" sx={{  mb:  2  }}>
               Quick Actions
             </Typography>
             <Stack spacing={2}>

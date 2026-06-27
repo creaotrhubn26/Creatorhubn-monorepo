@@ -96,10 +96,10 @@ const AdminPaymentStatusCard: React.FC = () => {
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
           <Stack direction="row" alignItems="center" spacing={1.5}>
             <Box sx={{ p: 1, borderRadius: 2, bgcolor: alpha('#635bff', 0.1), color: '#635bff' }}>
-              <PaymentIcon />
+              <PaymentIcon aria-hidden="true" />
             </Box>
             <Box>
-              <Typography variant="h6" sx={{ fontWeight: 700 }}>
+              <Typography variant="h6" component="h2" sx={{ fontWeight: 700 }}>
                 Stripe-status & betalinger
               </Typography>
               <Stack direction="row" spacing={1}>
@@ -118,7 +118,7 @@ const AdminPaymentStatusCard: React.FC = () => {
               </Stack>
             </Box>
           </Stack>
-          <IconButton size="small" onClick={() => { paymentEvents.statusRefreshed(); refetch(); }} disabled={isFetching}>
+          <IconButton aria-label="Oppdater betalingsstatus" size="small" onClick={() => { paymentEvents.statusRefreshed(); refetch(); }} disabled={isFetching}>
             <RefreshIcon fontSize="small" />
           </IconButton>
         </Stack>

@@ -239,7 +239,7 @@ export const HARViewer: React.FC<HARViewerProps> = ({
                         </Tooltip>
                       </TableCell>
                       <TableCell align="center">
-                        <IconButton size="small" onClick={() => setSelectedEntry(entry)}>
+                        <IconButton size="small" aria-label="Vis forespørselsdetaljer" onClick={() => setSelectedEntry(entry)}>
                           <ViewIcon fontSize="small" />
                         </IconButton>
                       </TableCell>

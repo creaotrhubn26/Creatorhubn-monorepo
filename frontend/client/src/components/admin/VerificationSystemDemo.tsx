@@ -336,7 +336,7 @@ export default function VerificationSystemDemo() {
 
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h4" gutterBottom sx={{ fontWeight: 'bold', color: theming.colors.primary }}>
+      <Typography variant="h4" component="h2" gutterBottom sx={{ fontWeight: 'bold', color: theming.colors.primary }}>
         🔍 Verification System Demo
       </Typography>
 
@@ -531,6 +531,7 @@ export default function VerificationSystemDemo() {
               value={userValidationData.rating}
               onChange={(_, value) => setUserValidationData(prev => ({ ...prev, rating: value || 0 }))}
               size="large"
+              aria-label="Vurder kvaliteten på fiksen"
             />
           </Box>
         </DialogContent>

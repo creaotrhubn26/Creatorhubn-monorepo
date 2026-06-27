@@ -182,8 +182,8 @@ export const CodeExplainerPanel: React.FC<{ file?: string; errors?: any[] }> = (
     <Box sx={{ p: 3 }}>
       {/* Header */}
       <Box sx={{ mb: 4 }}>
-        <Typography variant="h4" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <LearnIcon sx={{ fontSize: 40, color: theming.colors.primary }} />
+        <Typography variant="h4" component="h2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <LearnIcon aria-hidden sx={{ fontSize: 40, color: theming.colors.primary }} />
           Code Explainer & Learning Center
         </Typography>
         <Typography variant="body1" color="text.secondary">
@@ -362,6 +362,7 @@ export const CodeExplainerPanel: React.FC<{ file?: string; errors?: any[] }> = (
             value={file}
             onChange={(e) => setFile(e.target.value)}
             placeholder="Enter file path (e.g., client/src/components/OpenAIChat.tsx)"
+            aria-label="Filsti for avhengighetsanalyse"
             sx={{ mb: 2 }}
           />
 
@@ -565,6 +566,7 @@ export const CodeExplainerPanel: React.FC<{ file?: string; errors?: any[] }> = (
             value={file}
             onChange={(e) => setFile(e.target.value)}
             placeholder="Enter file path"
+            aria-label="Filsti for filforklaring"
             sx={{ mb: 2 }}
           />
 
@@ -611,6 +613,7 @@ export const CodeExplainerPanel: React.FC<{ file?: string; errors?: any[] }> = (
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search concepts (e.g., hooks, types, material-ui)"
+            aria-label="Søk i konseptbiblioteket"
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
@@ -623,11 +626,20 @@ export const CodeExplainerPanel: React.FC<{ file?: string; errors?: any[] }> = (
           <Grid container spacing={2}>
             {filteredConcepts.map((concept) => (
               <Grid item xs={12} md={6} key={concept.id}>
-                <Card 
-                  sx={{ 
+                <Card
+                  sx={{
                     cursor: 'pointer','&:hover': { boxShadow: 4 }
                 }}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Vis konsept: ${concept.name}`}
                   onClick={() => setSelectedConcept(concept)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setSelectedConcept(concept);
+                    }
+                }}
                 >
                   <CardContent>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>

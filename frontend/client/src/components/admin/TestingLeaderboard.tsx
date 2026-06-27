@@ -102,9 +102,9 @@ export default function TestingLeaderboard() {
     <Box>
       <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between" sx={{ mb: 3 }}>
         <Stack direction="row" spacing={2} alignItems="center">
-          <EmojiEvents sx={{ fontSize: 32, color: '#ffd700' }} />
+          <EmojiEvents aria-hidden sx={{ fontSize: 32, color: '#ffd700' }} />
           <Box>
-            <Typography variant="h5" sx={{ fontWeight: 600}}>
+            <Typography variant="h5" component="h2" sx={{ fontWeight: 600}}>
               Testing Leaderboard
             </Typography>
             <Typography variant="body2" color="text.secondary">
@@ -125,7 +125,7 @@ export default function TestingLeaderboard() {
             <ToggleButton value="all">All Time</ToggleButton>
           </ToggleButtonGroup>
           
-          <IconButton onClick={() => queryClient.invalidateQueries({ queryKey: ['/api/admin/testing-leaderboard'] })}>
+          <IconButton aria-label="Oppdater ledertavle" onClick={() => queryClient.invalidateQueries({ queryKey: ['/api/admin/testing-leaderboard'] })}>
             <Refresh />
           </IconButton>
         </Stack>
@@ -269,7 +269,7 @@ export default function TestingLeaderboard() {
                     <TableCell>
                       <Stack direction="row" spacing={1} alignItems="center">
                         <Avatar sx={{ width: 32, height: 32, bgcolor: themeColors.primary }}>
-                          <Science sx={{ fontSize: 18 }} />
+                          <Science aria-hidden sx={{ fontSize: 18 }} />
                         </Avatar>
                         <Box>
                           <Typography variant="body2" sx={{ fontWeight: 600}}>
@@ -277,7 +277,7 @@ export default function TestingLeaderboard() {
                           </Typography>
                           {tester.streak > 0 && (
                             <Typography variant="caption" color="error.main">
-                              <LocalFireDepartment sx={{ fontSize: 12, verticalAlign: 'middle' }} />
+                              <LocalFireDepartment aria-hidden sx={{ fontSize: 12, verticalAlign: 'middle' }} />
                               {tester.streak} day streak
                             </Typography>
                           )}

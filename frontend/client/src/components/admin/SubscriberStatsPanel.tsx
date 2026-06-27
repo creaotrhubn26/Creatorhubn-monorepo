@@ -242,7 +242,7 @@ export default function SubscriberStatsPanel({
         <Stack direction="row" alignItems="center" spacing={2}>
           <PeopleIcon sx={{ fontSize: 32, color: '#4caf50' }} />
           <Box>
-            <Typography variant="h6" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+            <Typography variant="h6" component="h2" sx={{ fontWeight: 600, color: theming.colors.primary }}>
               Abonnentstatistikk
             </Typography>
             <Typography variant="body2" color="text.secondary">
@@ -251,7 +251,7 @@ export default function SubscriberStatsPanel({
           </Box>
         </Stack>
         <Tooltip title="Oppdater statistikk">
-          <IconButton onClick={handleRefresh} size="small">
+          <IconButton onClick={handleRefresh} size="small" aria-label="Oppdater statistikk">
             <RefreshIcon />
           </IconButton>
         </Tooltip>
@@ -320,8 +320,8 @@ export default function SubscriberStatsPanel({
       {showDetails && (
         <>
           <Divider sx={{ my: 3 }} />
-          <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
-            <BusinessIcon />
+          <Typography variant="h6" component="h3" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+            <BusinessIcon aria-hidden="true" />
             Pakkefordeling
           </Typography>
           

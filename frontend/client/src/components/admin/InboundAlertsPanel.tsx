@@ -132,9 +132,9 @@ export default function InboundAlertsPanel() {
       {/* Header + unread badge */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2, flexWrap: 'wrap' }}>
         <Badge badgeContent={unreadCount} color="error" max={999} showZero={false}>
-          <Inbox color="primary" />
+          <Inbox color="primary" aria-hidden="true" />
         </Badge>
-        <Typography variant="h5" sx={{ fontWeight: 600 }}>
+        <Typography variant="h5" component="h2" sx={{ fontWeight: 600 }}>
           Innkommende varsler
         </Typography>
         <Box sx={{ flexGrow: 1 }} />
