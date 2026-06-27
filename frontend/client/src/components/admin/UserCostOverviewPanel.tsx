@@ -157,7 +157,7 @@ export const UserCostOverviewPanel: React.FC = () => {
         direction="row"
         justifyContent="space-between"
         alignItems="flex-start"
-        sx={{ mb: 3 }}
+        sx={{ mb: 3, flexWrap: 'wrap', gap: 2 }}
       >
         <Box>
           <Typography variant="h5" component="h2" sx={{ fontWeight: 700 }}>

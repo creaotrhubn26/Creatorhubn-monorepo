@@ -34,7 +34,7 @@ import {
 } from '@mui/icons-material';
 import { QUERY_KEYS } from '@/lib/queryKeys';
 import { useToast } from '@/hooks/use-toast';
-import { AdminButton, StatusChip, AdminLoading, AdminEmpty } from './design-system';
+import { AdminButton, StatusChip, AdminLoading, AdminEmpty, useIsMobile } from './design-system';
 
 export type ApprovalStatus = 'pending' | 'in_review' | 'approved' | 'rejected' | 'published';
 export type ApprovalRole = 'creator' | 'reviewer' | 'approver';
@@ -109,6 +109,7 @@ export default function ApprovalWorkflow() {
   const [reviewComment, setReviewComment] = useState('');
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const isMobile = useIsMobile();
 
   const requestsQuery = useQuery({
     queryKey: [...QUERY_KEYS.APPROVALS, selectedTab],
@@ -399,6 +400,7 @@ export default function ApprovalWorkflow() {
         }}
         fullWidth
         maxWidth="lg"
+        fullScreen={isMobile}
       >
         <DialogTitle>{selectedRequest?.title || 'Review request'}</DialogTitle>
         <DialogContent dividers>

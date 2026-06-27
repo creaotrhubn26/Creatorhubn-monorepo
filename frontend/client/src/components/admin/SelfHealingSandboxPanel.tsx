@@ -197,7 +197,7 @@ export const SelfHealingSandboxPanel: React.FC = () => {
         </Grid>
 
         {/* Actions */}
-        <Box display="flex" gap={1} mb={2}>
+        <Box display="flex" gap={1} mb={2} sx={{ flexWrap: 'wrap' }}>
           <AdminButton
             tone="secondary"
             startIcon={<ExportIcon />}
