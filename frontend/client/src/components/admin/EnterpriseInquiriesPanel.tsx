@@ -33,6 +33,7 @@ import {
   Tab,
   Tooltip,
   Grid,
+  InputAdornment,
 } from '@mui/material';
 import {
   Business,
@@ -49,6 +50,7 @@ import {
   Done,
   Close,
   Refresh,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
@@ -105,6 +107,7 @@ export default function EnterpriseInquiriesPanel({ onNavigateToPricing }: Enterp
   const isMobile = useIsMobile();
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [search, setSearch] = useState('');
   const [selectedInquiry, setSelectedInquiry] = useState<EnterpriseInquiry | null>(null);
   const [showDetailDialog, setShowDetailDialog] = useState(false);
   const [adminNotes, setAdminNotes] = useState('');
@@ -130,6 +133,13 @@ export default function EnterpriseInquiriesPanel({ onNavigateToPricing }: Enterp
   };
 
   const inquiries: EnterpriseInquiry[] = Array.isArray(data?.inquiries) ? data.inquiries : [];
+  const filteredInquiries = search.trim()
+    ? inquiries.filter((i) =>
+        [i.company_name, i.contact_email, i.industry, i.org_number]
+          .filter(Boolean)
+          .some((field) => (field as string).toLowerCase().includes(search.toLowerCase())),
+      )
+    : inquiries;
   const stats: InquiryStats = data?.stats || { total: 0, pending: 0, reviewing: 0, approved: 0, rejected: 0, converted: 0 };
 
   // Update mutation
@@ -234,6 +244,24 @@ export default function EnterpriseInquiriesPanel({ onNavigateToPricing }: Enterp
         </Button>
       </Box>
 
+      {/* Search */}
+      <Box sx={{ mb: 2 }}>
+        <TextField
+          size="small"
+          fullWidth
+          placeholder="Søk etter bedrift, e-post eller bransje …"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon fontSize="small" />
+              </InputAdornment>
+            ),
+          }}
+        />
+      </Box>
+
       {/* Table */}
       <AdminTableContainer ariaLabel="Enterprise-forespørsler">
         <Table>
@@ -253,13 +281,13 @@ export default function EnterpriseInquiriesPanel({ onNavigateToPricing }: Enterp
               <TableRow>
                 <TableCell colSpan={7} align="center"><AdminLoading /></TableCell>
               </TableRow>
-            ) : inquiries.length === 0 ? (
+            ) : filteredInquiries.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} align="center">
                   <AdminEmpty title="Ingen forespørsler funnet" />
                 </TableCell>
               </TableRow>
-            ) : inquiries.map((inquiry) => (
+            ) : filteredInquiries.map((inquiry) => (
               <TableRow key={inquiry.id} hover>
                 <TableCell>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>

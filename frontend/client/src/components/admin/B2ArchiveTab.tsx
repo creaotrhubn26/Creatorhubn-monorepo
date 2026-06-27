@@ -16,6 +16,7 @@ import {
   Breadcrumbs,
   Chip,
   IconButton,
+  InputAdornment,
   LinearProgress,
   Link,
   Stack,
@@ -30,6 +31,7 @@ import {
   Typography,
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import SearchIcon from '@mui/icons-material/Search';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import DownloadIcon from '@mui/icons-material/Download';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
@@ -94,6 +96,7 @@ export default function B2ArchiveTab(): JSX.Element {
   const [continuationToken, setContinuationToken] = useState<string | undefined>();
   const [truncated, setTruncated] = useState(false);
   const [prefix, setPrefix] = useState('');
+  const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(false);
   const [refreshingUsage, setRefreshingUsage] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -232,6 +235,12 @@ export default function B2ArchiveTab(): JSX.Element {
     },
     [prefix, loadFiles, loadUsage],
   );
+
+  const filteredFiles = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return files;
+    return files.filter((file) => file.key.toLowerCase().includes(q));
+  }, [files, search]);
 
   const prefixCrumbs = useMemo(() => {
     if (!prefix) return [];
@@ -379,6 +388,21 @@ export default function B2ArchiveTab(): JSX.Element {
           </Breadcrumbs>
         )}
 
+        <TextField
+          size="small"
+          placeholder="Søk i filsti …"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          sx={{ maxWidth: 360 }}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon fontSize="small" />
+              </InputAdornment>
+            ),
+          }}
+        />
+
         <AdminCard disablePadding>
           {loading && <LinearProgress />}
           <AdminTableContainer ariaLabel="B2-arkivfiler">
@@ -408,7 +432,7 @@ export default function B2ArchiveTab(): JSX.Element {
                     </TableCell>
                   </TableRow>
                 )}
-                {files.map((file) => (
+                {filteredFiles.map((file) => (
                   <TableRow key={file.key}>
                     <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.82rem' }}>
                       {file.key}

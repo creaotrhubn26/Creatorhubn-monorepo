@@ -1,5 +1,5 @@
 import { useTheming } from '../../utils/theming-helper';
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { apiRequest } from '@/lib/queryClient';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
@@ -21,6 +21,8 @@ import {
   TableCell,
   TableHead,
   TableRow,
+  TextField,
+  InputAdornment,
 } from '@mui/material';
 import {
   CheckCircle,
@@ -29,6 +31,7 @@ import {
   Api,
   Code,
   IntegrationInstructions,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import {
   AdminButton,
@@ -64,6 +67,7 @@ interface RegistryEndpoint {
 
 const APIEndpointMonitor: React.FC = () => {
   const queryClient = useQueryClient();
+  const [search, setSearch] = useState('');
 
   // Enhanced Master Integration
   const { auth, analytics, features } = useEnhancedMasterIntegration();
@@ -353,9 +357,34 @@ const APIEndpointMonitor: React.FC = () => {
       )}
 
       {/* API Endpoints by Category */}
+      {registryData?.categorizedEndpoints && (
+        <TextField
+          size="small"
+          fullWidth
+          placeholder="Søk i endepunkter (path, method, beskrivelse) …"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          sx={{ mb: 2 }}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon fontSize="small" />
+              </InputAdornment>
+            ),
+          }}
+        />
+      )}
       {registryData?.categorizedEndpoints &&
         Object.entries(registryData.categorizedEndpoints).map(([category, endpoints]) => {
-          const endpointsArray = Array.isArray(endpoints) ? (endpoints as RegistryEndpoint[]) : [];
+          const endpointsArrayAll = Array.isArray(endpoints) ? (endpoints as RegistryEndpoint[]) : [];
+          const endpointsArray = endpointsArrayAll.filter((e) =>
+            [e.path, e.method, e.description]
+              .filter(Boolean)
+              .join(' ')
+              .toLowerCase()
+              .includes(search.toLowerCase()),
+          );
+          if (search && endpointsArray.length === 0) return null;
           const healthyCount = healthEndpoints.filter(
             (h) =>
               endpointsArray.some((e: RegistryEndpoint) => e.path === h.endpoint) &&

@@ -30,6 +30,7 @@ import {
   Tooltip,
   Stack,
   Snackbar,
+  InputAdornment,
 } from '@mui/material';
 import type { TableHeadProps } from '@mui/material/TableHead';
 import {
@@ -38,6 +39,7 @@ import {
   Visibility,
   Email,
   SelectAll,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import { AdminButton, StatusChip, AdminLoading, AdminEmpty, useIsMobile } from './design-system';
 
@@ -74,6 +76,7 @@ export default function RefundRequestsTable() {
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [bulkAction, setBulkAction] = useState<'approve' | 'reject' | null>(null);
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string }>({ open: false, message: '' });
+  const [search, setSearch] = useState('');
 
   // Fetch refund requests
   const { data: refundRequests, isLoading } = useQuery({
@@ -244,6 +247,15 @@ export default function RefundRequestsTable() {
   };
 
   const pendingCount = requests.filter((r: RefundRequest) => r.status === 'pending').length;
+  const filteredRequests = requests.filter((r: RefundRequest) => {
+    const q = search.toLowerCase();
+    return (
+      `${r.first_name ?? ''} ${r.last_name ?? ''}`.toLowerCase().includes(q) ||
+      (r.user_email ?? '').toLowerCase().includes(q) ||
+      (r.transaction_id ?? '').toLowerCase().includes(q) ||
+      (r.reason ?? '').toLowerCase().includes(q)
+    );
+  });
   const renderedProfessionIcon = React.isValidElement(professionIcon)
     ? React.cloneElement(
         professionIcon as React.ReactElement<{ sx?: Record<string, unknown> }>,
@@ -336,13 +348,29 @@ export default function RefundRequestsTable() {
         </Toolbar>
       )}
 
+      <TextField
+        size="small"
+        fullWidth
+        placeholder="Søk i navn, e-post, transaksjons-ID eller årsak …"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        sx={{ mb: 2 }}
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start">
+              <SearchIcon fontSize="small" />
+            </InputAdornment>
+          ),
+        }}
+      />
+
       <Paper style={{ height: 600, width: '100%' }}>
         {/*
           react-virtuoso expects function components with plain table props for table sections.
           MUI's overridable component types need a tiny wrapper to satisfy that contract.
         */}
         <TableVirtuoso
-          data={requests}
+          data={filteredRequests}
           components={{
             Scroller: React.forwardRef<HTMLDivElement>((props, ref) => (
               <TableContainer component={Paper} {...props} ref={ref} />
@@ -557,7 +585,7 @@ export default function RefundRequestsTable() {
         onClose={() => {
           setActionDialog(null);
           setBulkAction(null);
-          setRejectionReason(', ');
+          setRejectionReason('');
         }}
         maxWidth="sm"
         fullWidth

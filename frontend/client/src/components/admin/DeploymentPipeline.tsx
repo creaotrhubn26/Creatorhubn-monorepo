@@ -36,10 +36,13 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  TextField,
+  InputAdornment,
 } from '@mui/material';
 import {
   CloudUpload as DeployIcon,
   History as RollbackIcon,
+  Search as SearchIcon,
   PlayArrow as PlayIcon,
   Refresh as RefreshIcon,
   Timeline as TimelineIcon,
@@ -116,6 +119,7 @@ export default function DeploymentPipeline() {
   const [deploymentDialogOpen, setDeploymentDialogOpen] = useState(false);
   const [rollbackDialogOpen, setRollbackDialogOpen] = useState(false);
   const [selectedDeployment, setSelectedDeployment] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
 
   // Fetch data
   const fetchWithAuth = async (url: string) => {
@@ -328,6 +332,22 @@ export default function DeploymentPipeline() {
 
       {/* Recent Deployments */}
       <AdminCard title="📊 Recent Deployments" disablePadding sx={{ mb: 4, ...theming.getThemedCardSx() }}>
+          <Box sx={{ px: 2, pt: 2 }}>
+            <TextField
+              size="small"
+              fullWidth
+              placeholder="Søk i deployments …"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon fontSize="small" />
+                  </InputAdornment>
+                ),
+              }}
+            />
+          </Box>
           <AdminTableContainer ariaLabel="Nylige deployments">
             <Table>
               <TableHead>
@@ -342,7 +362,7 @@ export default function DeploymentPipeline() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {(Array.isArray(deploymentsData?.deployments) ? deploymentsData.deployments : []).map((deployment) => (
+                {(Array.isArray(deploymentsData?.deployments) ? deploymentsData.deployments : []).filter((deployment) => `${deployment.version} ${deployment.environment} ${deployment.status} ${deployment.commitHash} ${deployment.initiatedBy}`.toLowerCase().includes(search.toLowerCase())).map((deployment) => (
                   <TableRow key={deployment.id} hover>
                     <TableCell>
                       <Typography variant="body2" fontWeight={600}>

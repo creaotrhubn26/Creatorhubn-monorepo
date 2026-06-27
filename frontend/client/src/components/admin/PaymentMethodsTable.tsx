@@ -14,12 +14,15 @@ import {
   Chip,
   IconButton,
   Typography,
+  TextField,
+  InputAdornment,
 } from '@mui/material';
 import {
   Edit,
   Delete,
   Visibility,
   CheckCircle,
+  Search,
 } from '@mui/icons-material';
 import { AdminLoading, AdminEmpty } from './design-system';
 
@@ -38,6 +41,8 @@ interface PaymentMethod {
 }
 
 export default function PaymentMethodsTable() {
+  const [search, setSearch] = React.useState("");
+
   // Fetch payment methods
   const { data: paymentMethods, isLoading } = useQuery({
     queryKey: [ '/api/admin/payment-methods'],
@@ -73,10 +78,32 @@ export default function PaymentMethodsTable() {
     }
   };
 
+  const query = search.toLowerCase();
+  const filteredMethods = methods.filter((method: PaymentMethod) =>
+    `${method.first_name} ${method.last_name} ${method.user_email} ${method.payment_type} ${method.last_four}`
+      .toLowerCase()
+      .includes(query)
+  );
+
   return (
+    <Box>
+      <TextField
+        size="small"
+        placeholder="Søk etter navn, e-post, betalingsmetode …"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        sx={{ mb: 2, width: { xs: '100%', sm: 360 } }}
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start">
+              <Search fontSize="small" />
+            </InputAdornment>
+          ),
+        }}
+      />
     <Paper style={{ height: 600, width: '100%' }}>
       <TableVirtuoso
-        data={methods}
+        data={filteredMethods}
         components={{
           Scroller: React.forwardRef<HTMLDivElement>((props, ref) => (
             <TableContainer component={Paper} {...props} ref={ref} />
@@ -178,5 +205,6 @@ export default function PaymentMethodsTable() {
         )}
       />
     </Paper>
+    </Box>
   );
 }

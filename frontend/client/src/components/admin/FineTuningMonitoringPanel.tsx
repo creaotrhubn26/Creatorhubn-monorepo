@@ -21,6 +21,8 @@ import {
   Divider,
   Stack,
   ThemeProvider,
+  TextField,
+  InputAdornment,
   type ChipProps,
 } from '@mui/material';
 import { adminDarkTheme } from './adminDarkTheme';
@@ -35,6 +37,7 @@ import {
   Storage,
   CloudUpload,
   Psychology,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
@@ -110,6 +113,7 @@ export default function FineTuningMonitoringPanel() {
   const queryClient = useQueryClient();
   const [isRunningTest, setIsRunningTest] = useState(false);
   const [testResults, setTestResults] = useState<TestStatus[]>([]);
+  const [search, setSearch] = useState("");
 
   // Fetch training data statistics
   const { data: trainingStats, isLoading: statsLoading } = useQuery<TrainingDataStats>({
@@ -578,6 +582,21 @@ export default function FineTuningMonitoringPanel() {
               {allModelsLoading ? (
                 <LinearProgress />
               ) : allModels && allModels.length > 0 ? (
+                <>
+                <TextField
+                  size="small"
+                  placeholder="Søk modeller …"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  sx={{ mb: 2, width: { xs: '100%', sm: 320 } }}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <SearchIcon fontSize="small" />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
                 <TableContainer>
                   <Table>
                     <TableHead>
@@ -590,7 +609,13 @@ export default function FineTuningMonitoringPanel() {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {allModels.map((model, idx) => (
+                      {allModels.filter((model) =>
+                        [model.model_type, model.storage_type, model.r2_key, model.base_path]
+                          .filter(Boolean)
+                          .join(' ')
+                          .toLowerCase()
+                          .includes(search.toLowerCase())
+                      ).map((model, idx) => (
                         <TableRow key={idx}>
                           <TableCell>
                             <Chip label={model.model_type} size="small" color="primary" />
@@ -624,6 +649,7 @@ export default function FineTuningMonitoringPanel() {
                     </TableBody>
                   </Table>
                 </TableContainer>
+                </>
               ) : (
                 <Alert severity="info">No models found in database</Alert>
               )}
