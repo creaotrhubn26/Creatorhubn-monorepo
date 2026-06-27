@@ -35,6 +35,7 @@ import PersonAdd from '@mui/icons-material/PersonAdd';
 import KeyboardArrowDown from '@mui/icons-material/KeyboardArrowDown';
 import Settings from '@mui/icons-material/Settings';
 import HexagonOutlined from '@mui/icons-material/HexagonOutlined';
+import Add from '@mui/icons-material/Add';
 import { ws, workspaceDarkTheme, WS_NAV } from './workspaceTheme';
 
 const ICONS: Record<string, React.ElementType> = {
@@ -73,6 +74,7 @@ interface ShellProps {
   activeTab: string;
   onTab: (key: string) => void;
   online?: number | null;
+  onNewProject?: () => void;
   headerActions?: React.ReactNode;
   children: React.ReactNode;
 }
@@ -108,7 +110,7 @@ function NavItem({ item, active, onClick }: any) {
   );
 }
 
-const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab, online, headerActions, children }) => {
+const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab, online, onNewProject, headerActions, children }) => {
   const groups: Array<'hoved' | 'rom' | 'klient'> = ['hoved', 'rom', 'klient'];
 
   return (
@@ -124,6 +126,14 @@ const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab,
             <HexagonOutlined sx={{ color: ws.accent }} />
             <Typography sx={{ fontWeight: 800, letterSpacing: 1, fontSize: 15 }}>CREATORHUB</Typography>
           </Stack>
+
+          {/* + Nytt prosjekt (åpner ProjectCreationWithMemoryCards) */}
+          <Box sx={{ px: 1.5, pb: 1 }}>
+            <Button fullWidth onClick={onNewProject} startIcon={<Add />} variant="contained"
+              sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, borderRadius: 999, py: 1, '&:hover': { bgcolor: ws.accentHover } }}>
+              Nytt prosjekt
+            </Button>
+          </Box>
 
           {/* Prosjekt-kort */}
           <Box sx={{ mx: 1.5, mb: 1, p: 1, borderRadius: `${ws.radiusSm}px`, bgcolor: 'rgba(255,255,255,0.04)', border: `1px solid ${ws.borderSoft}` }}>

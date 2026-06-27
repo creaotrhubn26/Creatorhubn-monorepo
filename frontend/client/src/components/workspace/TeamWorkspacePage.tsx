@@ -8,9 +8,10 @@
  */
 import React, { useState, useEffect } from 'react';
 import { useRoute, useLocation } from 'wouter';
-import { Box, Typography, Stack, Snackbar, Alert } from '@mui/material';
+import { Box, Typography, Stack, Snackbar, Alert, Dialog, DialogContent } from '@mui/material';
 import { useAuth } from '@/hooks/useAuth';
 import { apiRequest } from '@/lib/queryClient';
+import ProjectCreationWithMemoryCards from '../project/ProjectCreationWithMemoryCards';
 import WorkspaceShell from './WorkspaceShell';
 import OversiktTab from './tabs/OversiktTab';
 import ProsjektplanTab from './tabs/ProsjektplanTab';
@@ -55,6 +56,7 @@ const TeamWorkspacePage: React.FC = () => {
 
   const [tab, setTab] = useState<string>(paramsTab?.tab || 'oversikt');
   const [accepted, setAccepted] = useState<string | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
   const { online } = usePresence(projectId, `/workspace/${projectId}/${tab}`);
 
   // Aksepter team-invitasjon når man åpner lenken (?invite=<token>).
@@ -121,6 +123,7 @@ const TeamWorkspacePage: React.FC = () => {
       project={project}
       user={wsUser}
       online={online}
+      onNewProject={() => setShowCreate(true)}
       activeTab={tab}
       onTab={(key) => {
         setTab(key);
@@ -134,6 +137,22 @@ const TeamWorkspacePage: React.FC = () => {
       <Snackbar open={!!accepted} autoHideDuration={5000} onClose={() => setAccepted(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
         <Alert severity="success" variant="filled" onClose={() => setAccepted(null)}>{accepted}</Alert>
       </Snackbar>
+
+      {/* Nytt prosjekt — ProjectCreationWithMemoryCards-wizarden */}
+      <Dialog open={showCreate} onClose={() => setShowCreate(false)} fullWidth maxWidth="lg">
+        <DialogContent dividers sx={{ p: 0 }}>
+          {showCreate && (
+            <ProjectCreationWithMemoryCards
+              profession={(user?.profession as string) || 'photographer'}
+              userId={user?.id}
+              onProjectCreated={(p: any) => {
+                setShowCreate(false);
+                if (p?.id) navigate(`/workspace/${p.id}`);
+              }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </WorkspaceShell>
   );
 };
