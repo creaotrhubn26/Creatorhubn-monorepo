@@ -165,7 +165,7 @@ export default function AIAnalyticsInsights({
   return (
     <Box sx={{ mb: 4 }}>
       {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2, mb: 3 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <AutoAwesome aria-hidden="true" sx={{ color: '#ff6b35', fontSize: 32 }} />
           <Box>

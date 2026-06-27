@@ -35,7 +35,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
-import { AdminButton, StatusChip } from './design-system';
+import { AdminButton, StatusChip, useIsMobile } from './design-system';
 
 type Profession = 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'other' | 'enterprise';
 
@@ -192,6 +192,7 @@ function toCsv(applications: PrototypeTesterApplication[]): string {
 
 export default function PrototypeTesterApplicationPanel() {
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
   const { analytics, performance, lifecycle, auth } = useEnhancedMasterIntegration();
 
   const [selectedApplication, setSelectedApplication] = useState<PrototypeTesterApplication | null>(null);
@@ -575,7 +576,7 @@ export default function PrototypeTesterApplicationPanel() {
         </Paper>
       )}
 
-      <Dialog open={detailDialogOpen} onClose={() => setDetailDialogOpen(false)} maxWidth="md" fullWidth>
+      <Dialog open={detailDialogOpen} onClose={() => setDetailDialogOpen(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle>Application details</DialogTitle>
         <DialogContent>
           {selectedApplication ? (
@@ -610,7 +611,7 @@ export default function PrototypeTesterApplicationPanel() {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={actionDialogOpen} onClose={() => setActionDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={actionDialogOpen} onClose={() => setActionDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>{actionType === 'approve' ? 'Approve application' : 'Reject application'}</DialogTitle>
         <DialogContent>
           {selectedApplication && (

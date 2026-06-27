@@ -41,7 +41,7 @@ import {
 } from '@mui/icons-material';
 import { mockBackendService } from '../../services/MockBackendService';
 import UniversalChatWidget from '../chat/UniversalChatWidget';
-import { AdminButton, StatusChip, adminTokens } from './design-system';
+import { AdminButton, StatusChip, adminTokens, useIsMobile } from './design-system';
 
 interface LiveDemoState {
   isRunning: boolean;
@@ -59,6 +59,7 @@ interface LiveDemoState {
 export default function LiveVerificationDemo() {
   // Theming system
   const theming = useTheming('prototype_tester');
+  const isMobile = useIsMobile();
 
   const [demoState, setDemoState] = useState<LiveDemoState>({
     isRunning: false,
@@ -338,7 +339,7 @@ export default function LiveVerificationDemo() {
       {/* Demo Controls */}
       <Card sx={{ mb: 3, ...theming.getThemedCardSx() }}>
         <CardContent sx={theming.getThemedCardSx()}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2}}>
             <Box>
               <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary }}>
                 Demo Controls
@@ -350,7 +351,7 @@ export default function LiveVerificationDemo() {
                 />
               </Typography>
             </Box>
-            <Box sx={{ display: 'flex', gap: 2 }}>
+            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
               <AdminButton
                 tone="primary"
                 startIcon={theming.getThemedIcon('play')}
@@ -512,7 +513,7 @@ export default function LiveVerificationDemo() {
       )}
 
       {/* User Validation Dialog */}
-      <Dialog open={demoState.showValidationDialog} maxWidth="md" fullWidth>
+      <Dialog open={demoState.showValidationDialog} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle sx={{ bgcolor: adminTokens.color.brand, color: 'white'}}>
           🔍 User Validation Required
         </DialogTitle>

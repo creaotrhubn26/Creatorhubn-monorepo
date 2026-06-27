@@ -101,7 +101,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
 import TaskListVisualizer from './TaskListVisualizer';
 import MonacoEditor from '@monaco-editor/react';
-import { AdminButton } from './design-system';
+import { AdminButton, useIsMobile } from './design-system';
 
 interface APIEndpoint {
   id: string;
@@ -163,6 +163,7 @@ export default function VisualCMSDashboard() {
   // Theming system
   const theming = useTheming('prototype_tester');
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
 
   // State management
   const [selectedView, setSelectedView] = useState<
@@ -826,6 +827,7 @@ export default function VisualCMSDashboard() {
         onClose={() => setDeploymentDialogOpen(false)}
         maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>Deploy til Produksjon</DialogTitle>
         <DialogContent>

@@ -65,7 +65,7 @@ import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions'
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
-import { AdminCard, AdminButton, StatusChip, AdminLoading, AdminTableContainer } from './design-system';
+import { AdminCard, AdminButton, StatusChip, AdminLoading, AdminTableContainer, useIsMobile } from './design-system';
 
 interface EmailCampaign {
   id: string;
@@ -117,6 +117,8 @@ export default function EmailAnalyticsDashboard() {
   // Theming system - use dynamic profession
   const theming = useTheming(currentProfession);
   const themeColors = { ...theming.colors, primary: '#ff8c00' };
+
+  const isMobile = useIsMobile();
 
   const [selectedCampaign, setSelectedCampaign] = useState<string | null>(null);
   const [timeRange, setTimeRange] = useState<string>('7d');
@@ -472,11 +474,12 @@ export default function EmailAnalyticsDashboard() {
       )}
 
       {/* Link Analytics Dialog */}
-      <Dialog 
-        open={!!selectedCampaign} 
-        onClose={() => setSelectedCampaign(null)} 
-        maxWidth="md" 
+      <Dialog
+        open={!!selectedCampaign}
+        onClose={() => setSelectedCampaign(null)}
+        maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>
           <Stack direction="row" spacing={2} alignItems="center">
@@ -536,7 +539,7 @@ export default function EmailAnalyticsDashboard() {
       </Dialog>
 
       {/* Create A/B Test Dialog */}
-      <Dialog open={showABTestDialog} onClose={() => setShowABTestDialog(false)} maxWidth="sm" fullWidth>
+      <Dialog open={showABTestDialog} onClose={() => setShowABTestDialog(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>Create A/B Test</DialogTitle>
         <DialogContent>
           <Alert severity="info" sx={{ mb: 2 }}>

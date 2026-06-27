@@ -50,6 +50,7 @@ import {
   AdminButton,
   StatusChip,
   AdminTableContainer,
+  useIsMobile,
 } from './design-system';
 import type { StatusTone } from './design-system';
 
@@ -315,6 +316,7 @@ function getStatusTone(status: UserRecord['status'] | UserRecord['subscriptionSt
 
 const VisualUserManagement: FC = () => {
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
   const [tabValue, setTabValue] = useState(0);
   const [selectedUser, setSelectedUser] = useState<UserRecord | null>(null);
   const [userDialogOpen, setUserDialogOpen] = useState(false);
@@ -702,7 +704,7 @@ const VisualUserManagement: FC = () => {
         </TabPanel>
       </Box>
 
-      <Dialog open={userDialogOpen} onClose={() => setUserDialogOpen(false)} fullWidth maxWidth="sm">
+      <Dialog open={userDialogOpen} onClose={() => setUserDialogOpen(false)} fullScreen={isMobile} fullWidth maxWidth="sm">
         <DialogTitle>User Details</DialogTitle>
         <DialogContent>
           {selectedUser ? (
@@ -735,7 +737,7 @@ const VisualUserManagement: FC = () => {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={validationDialogOpen} onClose={() => setValidationDialogOpen(false)} fullWidth maxWidth="md">
+      <Dialog open={validationDialogOpen} onClose={() => setValidationDialogOpen(false)} fullScreen={isMobile} fullWidth maxWidth="md">
         <DialogTitle>Service Validation</DialogTitle>
         <DialogContent>
           <List disablePadding>

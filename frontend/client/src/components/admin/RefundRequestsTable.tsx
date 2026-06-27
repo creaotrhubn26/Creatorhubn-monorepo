@@ -39,7 +39,7 @@ import {
   Email,
   SelectAll,
 } from '@mui/icons-material';
-import { AdminButton, StatusChip, AdminLoading, AdminEmpty } from './design-system';
+import { AdminButton, StatusChip, AdminLoading, AdminEmpty, useIsMobile } from './design-system';
 
 interface RefundRequest {
   id: number;
@@ -57,6 +57,7 @@ interface RefundRequest {
 
 export default function RefundRequestsTable() {
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
   const { analytics } = useEnhancedMasterIntegration();
   const { professionConfigs: apiProfessionConfigs } = useProfessionConfigs();
   const professionAdapter = useProfessionAdapter();
@@ -475,7 +476,7 @@ export default function RefundRequestsTable() {
       </Paper>
 
       {/* Approve Dialog */}
-      <Dialog open={actionDialog === 'approve'} onClose={() => setActionDialog(null)}>
+      <Dialog open={actionDialog === 'approve'} onClose={() => setActionDialog(null)} fullScreen={isMobile}>
         <DialogTitle>Godkjenn Refundering</DialogTitle>
         <DialogContent>
           <Alert severity="warning" sx={{ mb: 2 }}>
@@ -511,7 +512,7 @@ export default function RefundRequestsTable() {
       </Dialog>
 
       {/* Reject Dialog */}
-      <Dialog open={actionDialog === 'reject'} onClose={() => setActionDialog(null)}>
+      <Dialog open={actionDialog === 'reject'} onClose={() => setActionDialog(null)} fullScreen={isMobile}>
         <DialogTitle>Avvis Refundering</DialogTitle>
         <DialogContent>
           <Alert severity="error" sx={{ mb: 2 }}>
@@ -560,6 +561,7 @@ export default function RefundRequestsTable() {
         }}
         maxWidth="sm"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>
           {bulkAction === 'approve' ? 'Godkjenn flere refunderinger' : 'Avvis flere refunderinger'}
