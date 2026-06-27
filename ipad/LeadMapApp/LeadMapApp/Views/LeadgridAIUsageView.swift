@@ -282,7 +282,8 @@ struct LeadgridAIUsageView: View {
     private func describe(_ error: Error) -> String {
         if let api = error as? APIError {
             switch api {
-            case .statusCode(let code) where code == 403:
+            case .forbidden,
+                 .statusCode(403):
                 return "Du har ikke tilgang til AI-kost (krever billing.view_ai_usage)."
             case .statusCode(let code):
                 return "Serverfeil (\(code))."
@@ -292,6 +293,10 @@ struct LeadgridAIUsageView: View {
                 return "Ugyldig URL."
             case .serverError(let code, _):
                 return "Serverfeil (\(code))."
+            // Nye cases fra APIError-rapporterings-fix: LocalizedError gir
+            // konkrete brukermeldinger på norsk, så fall til den.
+            case .networkFailure, .decodingFailure, .unauthorized, .tooManyRequests:
+                return api.errorDescription ?? error.localizedDescription
             }
         }
         return error.localizedDescription

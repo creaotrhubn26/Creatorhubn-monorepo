@@ -144,6 +144,7 @@ struct RootView: View {
     @Environment(\.horizontalSizeClass) private var hSize
 
     var body: some View {
+        @Bindable var bindableState = appState
         Group {
             if appState.isAuthenticated {
                 if UIDevice.current.userInterfaceIdiom == .pad && hSize == .regular {
@@ -154,6 +155,20 @@ struct RootView: View {
             } else {
                 PairingView()
             }
+        }
+        // Session-expiry-sheet — vises når en API-call returnerer 401.
+        // Gir brukeren en synlig "Logg inn på nytt"-handling i stedet for
+        // en kryptisk "APIError error 0" eller evig spinner.
+        .sheet(isPresented: $bindableState.sessionExpired) {
+            SessionExpiredSheet(
+                onSignIn: {
+                    appState.signOut()
+                    // signOut nullstiller authToken → RootView re-renderer
+                    // PairingView automatisk. Sheet lukkes av sessionExpired=false
+                    // som signOut allerede setter.
+                }
+            )
+            .interactiveDismissDisabled()
         }
         .task {
             await appState.bootstrap()
@@ -205,6 +220,51 @@ struct RootView: View {
                 LeadgridRealtimeClient.shared.disconnect()
             }
         }
+    }
+}
+
+/// Session-expiry-modal — vises når en API-call returnerte 401.
+/// Forklarer at økten er utløpt og leder brukeren til pairing-flyten via
+/// `signOut()`. `interactiveDismissDisabled` på sheet-en sørger for at
+/// brukeren aktivt må trykke for å fortsette (ikke utilsiktet swipe-bort).
+struct SessionExpiredSheet: View {
+    let onSignIn: () -> Void
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "lock.circle.fill")
+                .font(.system(size: 56))
+                .foregroundStyle(Color(red: 0.36, green: 0.18, blue: 0.62))
+                .padding(.top, 32)
+
+            VStack(spacing: 8) {
+                Text("Din økt er utløpt")
+                    .font(.title2.bold())
+                Text("Av sikkerhetsgrunner må du logge inn på nytt for å fortsette.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+            }
+
+            Spacer()
+
+            Button {
+                onSignIn()
+            } label: {
+                Text("Logg inn på nytt")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(Color(red: 0.36, green: 0.18, blue: 0.62), in: RoundedRectangle(cornerRadius: 12))
+                    .foregroundStyle(.white)
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 24)
+            .padding(.bottom, 32)
+        }
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.hidden)
     }
 }
 

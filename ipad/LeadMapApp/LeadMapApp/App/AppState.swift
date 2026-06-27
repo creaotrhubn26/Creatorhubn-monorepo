@@ -72,6 +72,26 @@ final class AppState {
     var pendingVisitsCount: Int = 0
     var isUsingStaleCache: Bool = false
 
+    // ── Session-expiry (PR fix/leadmap-apierror-localized-description) ──
+    /// True når en API-call returnerte 401 (token utløpt eller ugyldig).
+    /// `RootView` observer dette og presenter et "Logg inn på nytt"-sheet
+    /// så brukeren slipper å se "APIError error 0" eller en evig spinner.
+    /// Resetter til false ved `signOut()` / `signIn(...)`.
+    var sessionExpired: Bool = false
+
+    /// Sentralisert error-handler som setter `sessionExpired = true` hvis
+    /// feilen er en `APIError.unauthorized`. Per-fetch sites kan kalle
+    /// dette i sin `catch`-blokk for å trigge re-login-flyt uten å duplisere
+    /// 401-sjekken overalt.
+    @discardableResult
+    func handleAPIError(_ error: Error) -> Bool {
+        if let apiError = error as? APIError, apiError.requiresReauth {
+            self.sessionExpired = true
+            return true
+        }
+        return false
+    }
+
     // ── Org + RBAC (PR #611–#615) ───────────────────────────────
     var organizations: [OrganizationSummary] = []
     var activeOrganizationId: String? {
@@ -457,6 +477,7 @@ final class AppState {
         self.authToken = token
         self.userEmail = email
         self.api = APIClient(token: token)
+        self.sessionExpired = false
         // Last user-role FØR refreshAll så SuperAdminHub-section i
         // LeadgridHubView låses opp umiddelbart for super_admin. Uten
         // dette ble userRole nil helt til neste app-start (bootstrap)
@@ -474,6 +495,7 @@ final class AppState {
         AuthClient.saveToken(token, email: nil)
         self.authToken = token
         self.api = APIClient(token: token)
+        self.sessionExpired = false
         Task {
             await loadOrganizations()
             await loadOrgContext()
@@ -507,6 +529,7 @@ final class AppState {
         self.workloadLeads = []
         self.quota = nil
         self.memberLocations = []
+        self.sessionExpired = false
         Task { await OfflineCache.shared.clear() }
     }
 
@@ -549,7 +572,9 @@ final class AppState {
                 }
             } catch {
                 print("[AppState] fetchProjects failed: \(error)")
-                self.projectsLoadState = .failed(error.localizedDescription)
+                handleAPIError(error)
+                let retryable = (error as? APIError)?.isRetryable ?? true
+                self.projectsLoadState = .failed(error.localizedDescription, isRetryable: retryable)
             }
 
             self.leads = newLeads
@@ -579,11 +604,13 @@ final class AppState {
         } catch {
             print("[AppState] refresh failed (using cache): \(error)")
             self.isUsingStaleCache = true
+            handleAPIError(error)
             // Hvis vi var midt i en initial-fetch og ALT feilet (typisk
             // network down + ingen cache), surface error i kortet i stedet
             // for å la det stå evig på «laster prosjekter…».
             if case .loading = projectsLoadState {
-                self.projectsLoadState = .failed(error.localizedDescription)
+                let retryable = (error as? APIError)?.isRetryable ?? true
+                self.projectsLoadState = .failed(error.localizedDescription, isRetryable: retryable)
             }
         }
     }
@@ -681,18 +708,23 @@ struct OfflineEnqueuedError: LocalizedError {
 ///   - `.loading`  — fetch pågår, vis skeleton
 ///   - `.loaded`   — fetch fullført; bruk `projects.isEmpty` for ekte empty
 ///   - `.failed`   — nettverksfeil; vis retry-card
+///
+/// `failed`-casen carries en lokalisert melding + `isRetryable`-flag som
+/// ErrorProjectCard bruker for å velge mellom "Prøv igjen" og
+/// "Logg inn på nytt"-CTA. Default-init (bakvert-kompat) gir
+/// `isRetryable: true`.
 enum ProjectsLoadState: Equatable {
     case idle
     case loading
     case loaded
-    case failed(String)
+    case failed(String, isRetryable: Bool = true)
 
     static func == (lhs: ProjectsLoadState, rhs: ProjectsLoadState) -> Bool {
         switch (lhs, rhs) {
         case (.idle, .idle), (.loading, .loading), (.loaded, .loaded):
             return true
-        case (.failed(let a), .failed(let b)):
-            return a == b
+        case let (.failed(a, ar), .failed(b, br)):
+            return a == b && ar == br
         default:
             return false
         }
