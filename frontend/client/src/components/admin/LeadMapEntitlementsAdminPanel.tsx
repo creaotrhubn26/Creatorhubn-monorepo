@@ -171,8 +171,8 @@ export default function LeadMapEntitlementsAdminPanel() {
     <Box>
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
         <Stack direction="row" alignItems="center" spacing={1}>
-          <VerifiedIcon sx={{ color: '#fbbf24' }} />
-          <Typography variant="h6" sx={{ fontWeight: 700 }}>
+          <VerifiedIcon sx={{ color: '#fbbf24' }} aria-hidden="true" />
+          <Typography variant="h6" component="h2" sx={{ fontWeight: 700 }}>
             Lead Map module-entitlements
           </Typography>
         </Stack>
@@ -357,6 +357,7 @@ export default function LeadMapEntitlementsAdminPanel() {
             />
             <Select
               fullWidth value={grantForm.tier}
+              aria-label="Velg tier (nivå)"
               onChange={(e) => setGrantForm({ ...grantForm, tier: e.target.value as 'discover'|'pro'|'agency' })}
             >
               <MenuItem value="discover">Discover (50 leads, 299 kr/mnd verdi)</MenuItem>

@@ -356,14 +356,14 @@ export default function GooglePayStatusIndicator({
 
           <Stack direction="row" spacing={1}>
             <Tooltip title="Oppdater status">
-              <IconButton size="small" onClick={handleRefresh} disabled={!isInitialized}>
+              <IconButton size="small" onClick={handleRefresh} disabled={!isInitialized} aria-label="Oppdater status">
                 <RefreshIcon />
               </IconButton>
             </Tooltip>
             
             {showDetails && (
               <Tooltip title={isExpanded ? 'Skjul detaljer' : 'Vis detaljer'}>
-                <IconButton size="small" onClick={() => setIsExpanded(!isExpanded)}>
+                <IconButton size="small" onClick={() => setIsExpanded(!isExpanded)} aria-label={isExpanded ? 'Skjul detaljer' : 'Vis detaljer'}>
                   {isExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
                 </IconButton>
               </Tooltip>

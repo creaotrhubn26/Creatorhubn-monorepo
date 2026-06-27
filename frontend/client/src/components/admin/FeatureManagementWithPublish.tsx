@@ -304,7 +304,7 @@ export default function FeatureManagementWithPublish() {
 
   return (
     <Box sx={{ p:  3 }}>
-      <Typography variant="h4" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+      <Typography variant="h4" component="h2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
         {theming.getThemedIcon('settings')}
         Feature Flag Management & Deployment
       </Typography>
@@ -362,8 +362,8 @@ export default function FeatureManagementWithPublish() {
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb:  2 }}>
-                <Typography variant="h6" sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
-                  <CloudUpload color="primary" />
+                <Typography variant="h6" component="h3" sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
+                  <CloudUpload color="primary" aria-hidden="true" />
                   Staging Environment
                 </Typography>
                 <Chip label="Latest" color="primary" size="small" />
@@ -388,8 +388,8 @@ export default function FeatureManagementWithPublish() {
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb:  2 }}>
-                <Typography variant="h6" sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
-                  <CloudDownload color="success" />
+                <Typography variant="h6" component="h3" sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
+                  <CloudDownload color="success" aria-hidden="true" />
                   Production Environment
                 </Typography>
                 <Chip label="Live" color="success" size="small" />
@@ -427,7 +427,7 @@ export default function FeatureManagementWithPublish() {
         {/* Environment Comparison Tab */}
         {tabValue === 0 && (
           <Box sx={{ p:  3 }}>
-            <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+            <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary }}>
               Staging vs Production Differences
             </Typography>
             {environmentDiff?.summary && (
@@ -509,7 +509,7 @@ export default function FeatureManagementWithPublish() {
           <Box sx={{ p:  3 }}>
             <Grid container spacing={3}>
               <Grid item xs={12} md={6}>
-                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary }}>
                   Staging History
                 </Typography>
                 {(Array.isArray(stagingHistory?.history) ? stagingHistory.history : []).map((entry: PublishHistory) => (
@@ -542,7 +542,7 @@ export default function FeatureManagementWithPublish() {
                 ))}
               </Grid>
               <Grid item xs={12} md={6}>
-                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary }}>
                   Production History
                 </Typography>
                 {(Array.isArray(productionHistory?.history) ? productionHistory.history : []).map((entry: PublishHistory) => (
@@ -581,7 +581,7 @@ export default function FeatureManagementWithPublish() {
         {/* Feature Flags Tab */}
         {tabValue === 2 && (
           <Box sx={{ p:  3 }}>
-            <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+            <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary }}>
               Current Feature Flags
             </Typography>
             <Grid container spacing={2}>
@@ -646,6 +646,7 @@ export default function FeatureManagementWithPublish() {
             <Select
               value={selectedEnvironment}
               onChange={(e) => setSelectedEnvironment(e.target.value as 'staging' | 'production')}
+              aria-label="Miljø"
             >
               <MenuItem value="staging">Staging</MenuItem>
               <MenuItem value="production">Production</MenuItem>

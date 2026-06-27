@@ -223,7 +223,7 @@ export function DependenciesManager() {
     <Box sx={{ width: '100%' }}>
       {/* Header with global controls */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" sx={{ color: theming.colors.primary }}>
+        <Typography variant="h4" component="h2" sx={{ color: theming.colors.primary }}>
           Dependencies Manager
         </Typography>
         <Stack direction="row" spacing={2} alignItems="center">
@@ -476,8 +476,9 @@ export function DependenciesManager() {
                       <TableCell>
                         <Stack direction="row" spacing={1}>
                           <Tooltip title="View Details">
-                            <IconButton 
+                            <IconButton
                               size="small"
+                              aria-label="Vis detaljer"
                               onClick={() => setSelectedDependency(dependency)}
                             >
                               {theming.getThemedIcon('visibility')}
@@ -485,9 +486,10 @@ export function DependenciesManager() {
                           </Tooltip>
                           {dependency.isOutdated && (
                             <Tooltip title="Update">
-                              <IconButton 
-                                size="small" 
+                              <IconButton
+                                size="small"
                                 color="primary"
+                                aria-label="Oppdater"
                                 onClick={() => {
                                   setSelectedDependency(dependency);
                                   setUpdateDialog(true);

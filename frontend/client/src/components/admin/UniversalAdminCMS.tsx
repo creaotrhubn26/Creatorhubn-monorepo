@@ -252,7 +252,7 @@ export default function UniversalAdminCMS() {
   // Render dashboard overview
   const renderDashboard = () => (
     <Box>
-      <Typography variant="h4" gutterBottom sx={{ color: theming.colors.primary }}>
+      <Typography variant="h4" component="h2" gutterBottom sx={{ color: theming.colors.primary }}>
         🎛️ Admin Dashboard
       </Typography>
 
@@ -334,7 +334,7 @@ export default function UniversalAdminCMS() {
         <Grid item xs={12} md={8}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+              <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary }}>
                 📊 System Oversikt
               </Typography>
               <List>
@@ -367,7 +367,7 @@ export default function UniversalAdminCMS() {
         <Grid item xs={12} md={4}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+              <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary }}>
                 🚀 Quick Actions
               </Typography>
               <Stack spacing={2}>
@@ -402,7 +402,7 @@ export default function UniversalAdminCMS() {
   const renderCMSPages = () => (
     <Box>
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb:  3 }}>
-        <Typography variant="h5" sx={{ color: theming.colors.primary }}>📄 CMS Sider</Typography>
+        <Typography variant="h5" component="h2" sx={{ color: theming.colors.primary }}>📄 CMS Sider</Typography>
         <AdminButton
           tone="primary"
           startIcon={<AddIcon />}
@@ -475,7 +475,7 @@ export default function UniversalAdminCMS() {
       case 'cms-history':
         return (
           <Box>
-            <Typography variant="h5" gutterBottom sx={{ color: theming.colors.primary }}>
+            <Typography variant="h5" component="h2" gutterBottom sx={{ color: theming.colors.primary }}>
               📋 CMS Historikk & Versjonering
             </Typography>
             <Alert severity="info">
@@ -486,7 +486,7 @@ export default function UniversalAdminCMS() {
       case 'users':
         return (
           <Box>
-            <Typography variant="h5" gutterBottom sx={{ color: theming.colors.primary }}>
+            <Typography variant="h5" component="h2" gutterBottom sx={{ color: theming.colors.primary }}>
               👥 Brukeradministrasjon
             </Typography>
             <Typography variant="body1">Totalt {(Array.isArray(users) ? users : []).length} brukere registrert</Typography>
@@ -508,7 +508,7 @@ export default function UniversalAdminCMS() {
         gap={2}
       >
         <ErrorIcon color="error" sx={{ fontSize: 64}} />
-        <Typography variant="h5" sx={{ color: theming.colors.primary }}>Tilgang nektet</Typography>
+        <Typography variant="h5" component="h2" sx={{ color: theming.colors.primary }}>Tilgang nektet</Typography>
         <Typography variant="body1" color="textSecondary">
           Du må være logget inn som administrator for å få tilgang til denne siden.
         </Typography>
@@ -525,6 +525,7 @@ export default function UniversalAdminCMS() {
             color="inherit"
             onClick={() => setDrawerOpen(!drawerOpen)}
             edge="start"
+            aria-label="Veksle sidemeny"
             sx={{ mr:  2 }}
           >
             <MenuIcon />

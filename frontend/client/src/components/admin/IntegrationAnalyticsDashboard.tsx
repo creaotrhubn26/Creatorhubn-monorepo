@@ -623,7 +623,7 @@ const IntegrationAnalyticsDashboard: React.FC = () => {
     <Box sx={{ p: 3 }}>
       <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', md: 'center' }} spacing={2} sx={{ mb: 3 }}>
         <Box>
-          <Typography variant="h4" sx={{ fontWeight: 700 }}>
+          <Typography variant="h4" component="h2" sx={{ fontWeight: 700 }}>
             Integration Analytics Dashboard
           </Typography>
           <Typography variant="body2" color="text.secondary">
@@ -775,7 +775,7 @@ const IntegrationAnalyticsDashboard: React.FC = () => {
             </Box>
 
             <Box sx={{ flex: 1 }}>
-              <Typography variant="h6" sx={{ mb: 1 }}>
+              <Typography variant="h6" component="h2" sx={{ mb: 1 }}>
                 Systemhelse
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>

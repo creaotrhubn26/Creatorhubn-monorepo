@@ -128,7 +128,7 @@ export const SelfHealingSandboxPanel: React.FC = () => {
       <CardContent>
         <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
           <Box display="flex" alignItems="center" gap={1}>
-            <AutoFixIcon />
+            <AutoFixIcon aria-hidden />
             <Typography variant="h6">
               🔧 Self-Healing Sandbox
             </Typography>
@@ -262,12 +262,12 @@ export const SelfHealingSandboxPanel: React.FC = () => {
                     </TableCell>
                     <TableCell align="center">
                       <Tooltip title="View Mapping">
-                        <IconButton size="small" onClick={() => handleViewMapping(call)}>
+                        <IconButton size="small" aria-label="Vis mapping" onClick={() => handleViewMapping(call)}>
                           <ViewIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Save to WireMock">
-                        <IconButton size="small" onClick={() => handleSaveMapping(call)} color="success">
+                        <IconButton size="small" aria-label="Lagre til WireMock" onClick={() => handleSaveMapping(call)} color="success">
                           <SaveIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>

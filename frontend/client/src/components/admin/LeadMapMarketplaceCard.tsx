@@ -198,6 +198,7 @@ export default function LeadMapMarketplaceCard({
           {/* Prev/Next */}
           <IconButton
             size="small"
+            aria-label="Forrige skjermbilde"
             onClick={() => setPreviewIdx((i) => (i - 1 + PREVIEWS.length) % PREVIEWS.length)}
             sx={{
               position: 'absolute', top: '50%', left: 4, transform: 'translateY(-50%)',
@@ -209,6 +210,7 @@ export default function LeadMapMarketplaceCard({
           </IconButton>
           <IconButton
             size="small"
+            aria-label="Neste skjermbilde"
             onClick={() => setPreviewIdx((i) => (i + 1) % PREVIEWS.length)}
             sx={{
               position: 'absolute', top: '50%', right: 4, transform: 'translateY(-50%)',
@@ -225,7 +227,16 @@ export default function LeadMapMarketplaceCard({
           }}>
             {PREVIEWS.map((_, i) => (
               <Box key={i}
+                role="button"
+                tabIndex={0}
+                aria-label={`Gå til skjermbilde ${i + 1}`}
                 onClick={() => setPreviewIdx(i)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setPreviewIdx(i);
+                  }
+                }}
                 sx={{
                   width: i === previewIdx ? 18 : 6, height: 6, borderRadius: 3,
                   bgcolor: i === previewIdx ? '#fbbf24' : 'rgba(255,255,255,0.4)',

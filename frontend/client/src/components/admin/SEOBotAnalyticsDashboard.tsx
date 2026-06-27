@@ -217,8 +217,8 @@ export default function SEOBotAnalyticsDashboard() {
       {/* Header */}
       <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Box>
-          <Typography variant="h4" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <BotIcon fontSize="large" />
+          <Typography variant="h4" component="h2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <BotIcon fontSize="large" aria-hidden="true" />
             SEO Bot Analytics Dashboard
           </Typography>
           <Typography variant="body2" color="text.secondary">
@@ -347,7 +347,7 @@ export default function SEOBotAnalyticsDashboard() {
         {/* Tab 1: Bot Analytics */}
         <TabPanel value={tabValue} index={0}>
           <Box sx={{ p: 3 }}>
-            <Typography variant="h6" gutterBottom>
+            <Typography variant="h6" component="h3" gutterBottom>
               Bot Visit Analytics
             </Typography>
             
@@ -430,7 +430,7 @@ export default function SEOBotAnalyticsDashboard() {
         {/* Tab 2: Render Tests */}
         <TabPanel value={tabValue} index={1}>
           <Box sx={{ p: 3 }}>
-            <Typography variant="h6" gutterBottom>
+            <Typography variant="h6" component="h3" gutterBottom>
               JavaScript Rendering Tests
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
@@ -559,7 +559,7 @@ export default function SEOBotAnalyticsDashboard() {
         {/* Tab 3: Mobile Usability */}
         <TabPanel value={tabValue} index={2}>
           <Box sx={{ p: 3 }}>
-            <Typography variant="h6" gutterBottom>
+            <Typography variant="h6" component="h3" gutterBottom>
               Mobile Usability Testing
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
@@ -670,7 +670,7 @@ export default function SEOBotAnalyticsDashboard() {
         {/* Tab 4: Crawl Budget */}
         <TabPanel value={tabValue} index={3}>
           <Box sx={{ p: 3 }}>
-            <Typography variant="h6" gutterBottom>
+            <Typography variant="h6" component="h3" gutterBottom>
               Crawl Budget Optimization
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
@@ -766,7 +766,7 @@ export default function SEOBotAnalyticsDashboard() {
         {/* Tab 6: Recommendations */}
         <TabPanel value={tabValue} index={5}>
           <Box sx={{ p: 3 }}>
-            <Typography variant="h6" gutterBottom>
+            <Typography variant="h6" component="h3" gutterBottom>
               AI-Powered SEO Recommendations
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
