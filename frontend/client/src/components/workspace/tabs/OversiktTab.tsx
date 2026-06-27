@@ -4,8 +4,9 @@
  * Dagens tidslinje + Samkjøringsboard + Team Sync / Sjekkliste / Referanser
  * + Team Chat (høyre). Bruker prøvedata nå; wires mot ekte backend i wire-fasen.
  */
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Box, Stack, Typography, Avatar, IconButton, Button, Chip } from '@mui/material';
+import { apiRequest } from '@/lib/queryClient';
 import AccessTime from '@mui/icons-material/AccessTime';
 import ChevronLeft from '@mui/icons-material/ChevronLeft';
 import ChevronRight from '@mui/icons-material/ChevronRight';
@@ -65,7 +66,43 @@ const CHECKLIST = [
 
 const RULER = ['08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00'];
 
+function eventIcon(title: string): string {
+  const t = (title || '').toLowerCase();
+  if (t.includes('first look')) return '💗';
+  if (t.includes('viel') || t.includes('seremoni')) return '⛪';
+  if (t.includes('golden')) return '🌅';
+  if (t.includes('tale') || t.includes('toast')) return '🎙️';
+  if (t.includes('fest') || t.includes('dans')) return '🎉';
+  if (t.includes('forbered') || t.includes('getting ready')) return '🤍';
+  return '⏱️';
+}
+function addMinutes(hhmm: string, mins: number): string {
+  if (!hhmm || !/^\d{2}:\d{2}$/.test(hhmm)) return '';
+  const [h, m] = hhmm.split(':').map(Number);
+  const total = (h * 60 + m + (mins || 0)) % 1440;
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+}
+
 const OversiktTab: React.FC<{ projectId: string }> = ({ projectId }) => {
+  const [progress, setProgress] = useState<{ pct: number; done: number; total: number } | null>(null);
+  const [events, setEvents] = useState<any[] | null>(null);
+
+  useEffect(() => {
+    if (!projectId || projectId === 'sample') return;
+    apiRequest(`/api/photographer/projects/${encodeURIComponent(projectId)}/milestones`)
+      .then((r: any) => { if (r) setProgress({ pct: Math.round(r.totalProgress || 0), done: r.completedCount || 0, total: (r.milestones || []).length }); })
+      .catch(() => {});
+    apiRequest(`/api/wedding/timeline/project/${encodeURIComponent(projectId)}`)
+      .then((r: any) => { const evs = Array.isArray(r?.events) ? r.events : []; if (evs.length) setEvents(evs); })
+      .catch(() => {});
+  }, [projectId]);
+
+  const fremdriftPct = progress ? progress.pct : 68;
+  const fremdriftText = progress ? `${progress.done} av ${progress.total} oppgaver fullført` : '14 av 21 oppgaver fullført';
+  const phaseItems = events
+    ? events.map((e: any) => ({ icon: eventIcon(e.title), label: e.title || 'Hendelse', time: e.time ? `${e.time}${e.durationMinutes ? ' – ' + addMinutes(e.time, e.durationMinutes) : ''}` : '', active: e.status === 'in_progress' || e.status === 'current' }))
+    : PHASES;
+
   return (
     <Stack direction="row" spacing={2.5} sx={{ alignItems: 'stretch' }}>
       {/* ───────── Hovedkolonne ───────── */}
@@ -73,9 +110,9 @@ const OversiktTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         {/* Fremdrift */}
         <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 2 }}>
           <Typography sx={{ fontSize: 13, color: ws.textDim }}>Fremdrift</Typography>
-          <Typography sx={{ fontSize: 15, fontWeight: 800, color: ws.accent }}>68 %</Typography>
-          <Box sx={{ flex: 1, maxWidth: 360 }}><WsBar value={68} /></Box>
-          <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>14 av 21 oppgaver fullført</Typography>
+          <Typography sx={{ fontSize: 15, fontWeight: 800, color: ws.accent }}>{fremdriftPct} %</Typography>
+          <Box sx={{ flex: 1, maxWidth: 360 }}><WsBar value={fremdriftPct} /></Box>
+          <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>{fremdriftText}</Typography>
         </Stack>
 
         {/* Dagens tidslinje */}
@@ -106,7 +143,7 @@ const OversiktTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           </Box>
           {/* Faser */}
           <Stack direction="row" spacing={1.25} sx={{ overflowX: 'auto', pb: 0.5 }}>
-            {PHASES.map((p) => (
+            {phaseItems.map((p) => (
               <Box key={p.label} sx={{
                 minWidth: 150, p: 1.25, borderRadius: `${ws.radiusSm}px`,
                 bgcolor: p.active ? ws.accentSoft : 'rgba(255,255,255,0.03)',

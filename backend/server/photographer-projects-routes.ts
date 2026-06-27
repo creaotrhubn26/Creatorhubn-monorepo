@@ -1281,12 +1281,10 @@ export function setupPhotographerProjectsRoutes(
     if (!projectId) return res.status(400).json({ error: 'missing_project_id' });
 
     try {
-      // Verify project ownership
-      const owned = await pool.query(
-        `SELECT 1 FROM projects WHERE id = $1 AND user_id = $2 LIMIT 1`,
-        [projectId, photographerId],
-      );
-      if (owned.rowCount === 0) return res.status(404).json({ error: 'project_not_found' });
+      // Team Workspace: eier ELLER aktivt team-medlem.
+      if (!(await canAccessProject(pool, photographerId, projectId))) {
+        return res.status(404).json({ error: 'project_not_found' });
+      }
 
       const r = await pool.query(
         `SELECT id, title, description, category, type, due_date, scheduled_date,
@@ -1294,9 +1292,9 @@ export function setupPhotographerProjectsRoutes(
                 client_approval_status, google_calendar_event_id,
                 actual_cost, budget_allocated, created_at, updated_at
            FROM project_milestones
-          WHERE project_id = $1 AND user_id = $2
+          WHERE project_id = $1
           ORDER BY due_date ASC NULLS LAST, created_at ASC`,
-        [projectId, photographerId],
+        [projectId],
       );
 
       const milestones = r.rows.map((m: Record<string, unknown>) => ({
