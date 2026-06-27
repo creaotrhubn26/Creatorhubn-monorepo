@@ -33,7 +33,7 @@ import {
   VideoLibrary,
 } from '@mui/icons-material';
 import AIVideoGenerator from './AIVideoGenerator';
-import { AdminButton, StatusChip } from './design-system';
+import { AdminButton, StatusChip, useIsMobile } from './design-system';
 import { useVideoJourneyBridge } from '@/hooks/useVideoJourneyBridge';
 import { useNavigate } from 'react-router-dom';
 
@@ -85,6 +85,7 @@ export default function VideoGenerationWorkflowModal({
 }: VideoGenerationWorkflowModalProps) {
   const navigate = useNavigate();
   const videoJourneyBridge = useVideoJourneyBridge();
+  const isMobile = useIsMobile();
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STATE
@@ -226,7 +227,7 @@ export default function VideoGenerationWorkflowModal({
 
   return (
     <>
-      <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle>
           <Box display="flex" alignItems="center" justifyContent="space-between">
             <Box display="flex" alignItems="center" gap={1}>

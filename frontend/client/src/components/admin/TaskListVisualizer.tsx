@@ -44,7 +44,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '../../lib/queryClient';
 import { useToast } from '../../hooks/use-toast';
-import { AdminButton, StatusChip } from './design-system';
+import { AdminButton, StatusChip, useIsMobile } from './design-system';
 
 type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'blocked';
 type TaskCategory = 'critical' | 'high' | 'medium' | 'low';
@@ -431,6 +431,7 @@ export default function TaskListVisualizer({
 }: TaskListVisualizerProps) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const isMobile = useIsMobile();
 
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -863,7 +864,7 @@ export default function TaskListVisualizer({
         </CardContent>
       </Card>
 
-      <Dialog open={retryDialogOpen} onClose={() => setRetryDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={retryDialogOpen} onClose={() => setRetryDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>Retry failed task</DialogTitle>
         <DialogContent dividers>
           {selectedTask ? (
@@ -896,7 +897,7 @@ export default function TaskListVisualizer({
         </DialogActions>
       </Dialog>
 
-      <Dialog open={bypassDialogOpen} onClose={() => setBypassDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={bypassDialogOpen} onClose={() => setBypassDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle sx={{ color: 'error.main' }}>Emergency bypass</DialogTitle>
         <DialogContent dividers>
           {selectedGate ? (

@@ -45,6 +45,7 @@ import {
   AdminError,
   AdminLoading,
   StatusChip,
+  useIsMobile,
 } from './design-system';
 
 type TidumAccessRequest = {
@@ -156,6 +157,7 @@ function getStatusChip(status: string) {
 }
 
 export default function TidumAccessRequestsPanel() {
+  const isMobile = useIsMobile();
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRequest, setSelectedRequest] = useState<TidumAccessRequest | null>(null);
@@ -522,6 +524,7 @@ export default function TidumAccessRequestsPanel() {
       <Dialog
         open={Boolean(selectedRequest)}
         onClose={resetApprovalDialog}
+        fullScreen={isMobile}
         fullWidth
         maxWidth="md"
       >

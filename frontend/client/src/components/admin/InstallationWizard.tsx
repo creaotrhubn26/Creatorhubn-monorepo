@@ -33,7 +33,7 @@ import {
   SmartToy,
   Warning,
 } from '@mui/icons-material';
-import { AdminButton, StatusChip } from './design-system';
+import { AdminButton, StatusChip, useIsMobile } from './design-system';
 
 export interface InstallationStep {
   id: string;
@@ -232,6 +232,7 @@ async function createAIAnalysis(mode: 'install' | 'update', packages: PackageInf
 }
 
 const InstallationWizard: React.FC<InstallationWizardProps> = ({ open, onClose, packages, mode, onComplete }) => {
+  const isMobile = useIsMobile();
   const [activeStep, setActiveStep] = useState(0);
   const [steps, setSteps] = useState<InstallationStep[]>([]);
   const [isRunning, setIsRunning] = useState(false);
@@ -305,7 +306,7 @@ const InstallationWizard: React.FC<InstallationWizardProps> = ({ open, onClose, 
   }, [activeStep, isRunning, onComplete, runStep, steps.length, updateStep]);
 
   return (
-    <Dialog open={open} onClose={isRunning ? undefined : onClose} maxWidth="md" fullWidth disableEscapeKeyDown={isRunning}>
+    <Dialog open={open} onClose={isRunning ? undefined : onClose} maxWidth="md" fullWidth fullScreen={isMobile} disableEscapeKeyDown={isRunning}>
       <DialogTitle>
         <Stack direction="row" alignItems="center" spacing={1.5}>
           <SmartToy color="primary" />

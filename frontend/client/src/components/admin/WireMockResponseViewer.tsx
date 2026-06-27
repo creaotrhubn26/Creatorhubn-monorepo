@@ -19,7 +19,7 @@ import {
   Error as ErrorIcon,
   AccessTime as TimeIcon,
 } from '@mui/icons-material';
-import { AdminButton } from './design-system';
+import { AdminButton, useIsMobile } from './design-system';
 
 export interface WireMockTestResult {
   id: string;
@@ -86,7 +86,7 @@ export const WireMockResponseViewer: React.FC<WireMockResponseViewerProps> = ({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
+    <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth fullScreen={useIsMobile()}>
       <DialogTitle>
         <Box display="flex" justifyContent="space-between" alignItems="center">
           <Box display="flex" alignItems="center" gap={2}>

@@ -42,7 +42,7 @@ import {
 } from '@mui/icons-material';
 import { QUERY_KEYS } from '../../lib/queryKeys';
 import { useToast } from '../../hooks/use-toast';
-import { AdminButton, AdminEmpty } from './design-system';
+import { AdminButton, AdminEmpty, useIsMobile } from './design-system';
 
 type SortBy = 'recent' | 'popular' | 'name';
 type CategoryValue =
@@ -147,6 +147,7 @@ export default function EmailTemplateLibrary({
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const isMobile = useIsMobile();
 
   const {
     data: templates = [],
@@ -533,6 +534,7 @@ export default function EmailTemplateLibrary({
         onClose={() => setPreviewTemplate(null)}
         maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>{previewTemplate?.name ?? 'Template Preview'}</DialogTitle>
         <DialogContent dividers>
@@ -574,6 +576,7 @@ export default function EmailTemplateLibrary({
         onClose={() => setDeleteConfirmId(null)}
         maxWidth="xs"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>Delete Template</DialogTitle>
         <DialogContent>
