@@ -27,6 +27,7 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [filter, setFilter] = useState('alle');
   const web = useProjectImages(projectId, 'media');
   const isReal = projectId && projectId !== 'sample';
+  const [selAsset, setSelAsset] = useState<any | null>(null);
   const [folders, setFolders] = useState<any[]>([]);
   const [templates, setTemplates] = useState<any[]>([]);
   const [tplMenu, setTplMenu] = useState<any>(null);
@@ -155,24 +156,37 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
             : QUICK.map(([n, c]) => <WsTag key={n} label={`${n} ${c}`} tone="neutral" />)}
         </Stack>
 
-        <WsImageGrid columns={4} addLabel="Last opp media" images={gridImages} onUpload={web.onUpload} />
+        <WsImageGrid columns={4} addLabel="Last opp media" images={gridImages} onUpload={web.onUpload}
+          onSelect={(im) => setSelAsset(assets.find((a) => a.id === im.id) || { filename: im.label, previewUrl: im.url, rating: im.rating, flaggedForClient: im.flag })} />
       </Box>
 
       {/* Asset-detaljer */}
       <Box sx={{ width: 280, flexShrink: 0 }}>
-        <WsCard>
-          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
-            <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>A7IV_1234.CR3</Typography>
-            <Star sx={{ fontSize: 16, color: ws.amber }} />
-          </Stack>
-          <WsImageGrid columns={1} ratio="4 / 3" allowAdd={false} />
-          <Stack spacing={0.75} sx={{ mt: 1.5 }}>
-            {[['Filtype', 'RAW Image'], ['Kamera', 'Sony A7IV'], ['Objektiv', '85mm f/1.4 GM'], ['Dato', '14. sep 2024, 09:15'], ['Størrelse', '45 MB'], ['ISO', '800'], ['Blender', 'f/1.4']].map(([k, v]) => <Stack key={k} direction="row" justifyContent="space-between"><Typography sx={{ fontSize: 12, color: ws.textDim }}>{k}</Typography><Typography sx={{ fontSize: 12, fontWeight: 600 }}>{v}</Typography></Stack>)}
-          </Stack>
-          <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: ws.textFaint, mt: 1.5, mb: 0.5 }}>LABELS</Typography>
-          <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}><WsTag label="For Edit" tone="accent" /><WsTag label="Highlights" tone="amber" /><WsTag label="Details" tone="blue" /></Stack>
-          <Button fullWidth size="small" variant="contained" sx={{ mt: 1.5, bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Last ned</Button>
-        </WsCard>
+        {(() => {
+          const det = selAsset || (isReal ? null : { filename: 'A7IV_1234.CR3', flaggedForClient: true });
+          if (!det) return (
+            <WsCard><Typography sx={{ fontSize: 12.5, color: ws.textDim, py: 3, textAlign: 'center' }}>Klikk et bilde for å se detaljer.</Typography></WsCard>
+          );
+          const meta = isReal
+            ? [['Filtype', det.mime || '—'], ['Størrelse', det.sizeBytes ? `${Math.round(det.sizeBytes / 1024 / 1024)} MB` : '—'], ['Rating', det.rating ? '★'.repeat(det.rating) : '–'], ['Status', det.state || '—']]
+            : [['Filtype', 'RAW Image'], ['Kamera', 'Sony A7IV'], ['Objektiv', '85mm f/1.4 GM'], ['Størrelse', '45 MB'], ['ISO', '800']];
+          return (
+            <WsCard>
+              <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+                <Typography noWrap sx={{ fontSize: 13.5, fontWeight: 700 }}>{det.filename || 'Bilde'}</Typography>
+                {det.flaggedForClient && <Star sx={{ fontSize: 16, color: ws.amber }} />}
+              </Stack>
+              {det.previewUrl
+                ? <Box sx={{ aspectRatio: '4 / 3', borderRadius: `${ws.radiusSm}px`, background: `center/cover no-repeat url(${det.previewUrl})`, border: `1px solid ${ws.borderSoft}` }} />
+                : <WsImageGrid columns={1} ratio="4 / 3" allowAdd={false} />}
+              <Stack spacing={0.75} sx={{ mt: 1.5 }}>
+                {meta.map(([k, v]) => <Stack key={k} direction="row" justifyContent="space-between"><Typography sx={{ fontSize: 12, color: ws.textDim }}>{k}</Typography><Typography sx={{ fontSize: 12, fontWeight: 600 }}>{v}</Typography></Stack>)}
+              </Stack>
+              {det.flaggedForClient && <><Typography sx={{ fontSize: 11.5, fontWeight: 700, color: ws.textFaint, mt: 1.5, mb: 0.5 }}>LABELS</Typography><Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}><WsTag label="Highlights" tone="amber" /></Stack></>}
+              {det.previewUrl && <Button fullWidth size="small" variant="contained" onClick={() => window.open(det.previewUrl, '_blank')} sx={{ mt: 1.5, bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Åpne / last ned</Button>}
+            </WsCard>
+          );
+        })()}
       </Box>
     </Stack>
   );

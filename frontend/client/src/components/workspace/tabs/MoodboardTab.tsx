@@ -6,7 +6,8 @@
  * Alle bilde-flater bruker WsImageGrid (legg til / last opp).
  */
 import React, { useState, useEffect } from 'react';
-import { Box, Stack, Typography, Button, TextField, Avatar } from '@mui/material';
+import { Box, Stack, Typography, Button, TextField, Avatar, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
+import Edit from '@mui/icons-material/Edit';
 import { apiRequest } from '@/lib/queryClient';
 import Image from '@mui/icons-material/Image';
 import Star from '@mui/icons-material/Star';
@@ -28,6 +29,8 @@ const MoodboardTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const shared = useProjectImages(projectId, 'moodboard-shared');
   const isReal = projectId && projectId !== 'sample';
   const [meta, setMeta] = useState<any | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const loadMeta = () => { if (isReal) apiRequest(`/api/projects/${encodeURIComponent(projectId)}/moodboard-meta`).then((r: any) => setMeta(r?.meta || null)).catch(() => {}); };
   useEffect(() => {
     if (!isReal) return;
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/moodboard-meta`).then((r: any) => setMeta(r?.meta || null)).catch(() => {});
@@ -41,7 +44,10 @@ const MoodboardTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   return (
     <Stack direction="row" spacing={2.5} sx={{ alignItems: 'flex-start' }}>
       <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Typography sx={{ fontSize: 20, fontWeight: 800, mb: 2 }}>Moodboard</Typography>
+        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+          <Typography sx={{ fontSize: 20, fontWeight: 800 }}>Moodboard</Typography>
+          {isReal && <Button size="small" startIcon={<Edit sx={{ fontSize: 15 }} />} onClick={() => setEditOpen(true)} sx={{ color: ws.text, textTransform: 'none', border: `1px solid ${ws.border}` }}>Rediger</Button>}
+        </Stack>
 
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', lg: 'repeat(4, 1fr)' }, gap: 1.5, mb: 2 }}>
           <WsStat icon={<Image sx={{ fontSize: 20 }} />} label="Antall referanser" value={refCount} sub={isReal ? 'i moodboardet' : '+12 denne uken'} />
@@ -103,7 +109,48 @@ const MoodboardTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           </Stack>
         </WsCard>
       </Box>
+
+      <MetaEditDialog open={editOpen} onClose={() => setEditOpen(false)} projectId={projectId} meta={meta} onSaved={() => { setEditOpen(false); loadMeta(); }} />
     </Stack>
+  );
+};
+
+const MetaEditDialog: React.FC<{ open: boolean; onClose: () => void; projectId: string; meta: any; onSaved: () => void }> = ({ open, onClose, projectId, meta, onSaved }) => {
+  const [style, setStyle] = useState('');
+  const [notes, setNotes] = useState('');
+  const [must, setMust] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    setStyle(meta?.style || '');
+    setNotes((meta?.notes || []).join('\n'));
+    setMust((meta?.mustCapture || []).map((m: any) => (m.label || m[0] || m)).join('\n'));
+  }, [open, meta]);
+  const save = async () => {
+    setBusy(true);
+    try {
+      await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/moodboard-meta`, {
+        method: 'PUT',
+        body: { style: style.trim(), notes: notes.split('\n').map((s) => s.trim()).filter(Boolean), mustCapture: must.split('\n').map((s) => ({ label: s.trim(), done: false })).filter((x) => x.label), palette: meta?.palette || [] },
+      });
+      onSaved();
+    } catch (e: any) { window.alert(e?.message || 'Kunne ikke lagre'); } finally { setBusy(false); }
+  };
+  return (
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
+      <DialogTitle>Rediger moodboard</DialogTitle>
+      <DialogContent dividers>
+        <Stack spacing={2} sx={{ pt: 0.5 }}>
+          <TextField label="Stil retning" value={style} onChange={(e) => setStyle(e.target.value)} fullWidth size="small" placeholder="f.eks. Romantisk / Editorial" />
+          <TextField label="Stilnotater (én per linje)" value={notes} onChange={(e) => setNotes(e.target.value)} fullWidth multiline minRows={4} size="small" />
+          <TextField label="Må fanges (én per linje)" value={must} onChange={(e) => setMust(e.target.value)} fullWidth multiline minRows={3} size="small" />
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose} disabled={busy}>Avbryt</Button>
+        <Button variant="contained" onClick={save} disabled={busy}>{busy ? 'Lagrer…' : 'Lagre'}</Button>
+      </DialogActions>
+    </Dialog>
   );
 };
 

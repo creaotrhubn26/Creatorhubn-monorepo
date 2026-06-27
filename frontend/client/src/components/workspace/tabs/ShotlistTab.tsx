@@ -37,6 +37,7 @@ const STATUS_TONE: Record<string, string> = { ferdig: 'green', done: 'green', co
 const ShotlistTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [cat, setCat] = useState('alle');
   const [real, setReal] = useState<{ shots: any[]; meta: any } | null>(null);
+  const [selShot, setSelShot] = useState<any | null>(null);
   const refs = useProjectImages(projectId, 'references');
 
   useEffect(() => {
@@ -79,6 +80,7 @@ const ShotlistTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           <Box sx={{ mb: 1.5 }}><WsPills items={CATS} value={cat} onChange={setCat} /></Box>
           <WsTable
             columns={['Prioritet', 'Shot', 'Kategori', 'Foto', 'Video', 'Lokasjon', 'Ansvarlig', 'Status']}
+            onRowClick={(i) => setSelShot(rows[i])}
             rows={rows.map((s) => [
               <WsTag label={s[0]} tone={s[1]} />,
               <Typography sx={{ fontSize: 13, fontWeight: 600 }}>{s[2]}</Typography>,
@@ -114,7 +116,8 @@ const ShotlistTab: React.FC<{ projectId: string }> = ({ projectId }) => {
             <Typography sx={{ fontSize: 14, fontWeight: 700 }}>Shot detaljer</Typography>
             <WsTag label="2 av 68" tone="neutral" />
           </Stack>
-          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}><WsTag label="Kritisk" tone="red" /><Typography sx={{ fontSize: 15, fontWeight: 700, flex: 1 }}>Brud inngang</Typography><WsTag label="Vielse" tone="accent" /></Stack>
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}><WsTag label={selShot ? selShot[0] : 'Kritisk'} tone={selShot ? selShot[1] : 'red'} /><Typography sx={{ fontSize: 15, fontWeight: 700, flex: 1 }}>{selShot ? selShot[2] : 'Brud inngang'}</Typography><WsTag label={selShot ? (selShot[3] || 'Shot') : 'Vielse'} tone="accent" /></Stack>
+          {selShot && <Typography sx={{ fontSize: 11.5, color: ws.textFaint, mb: 1 }}>📍 {selShot[4] || '—'} · {selShot[5] || '—'}</Typography>}
           <WsImageGrid columns={1} ratio="4 / 3" addLabel="Last opp referanse" />
           <Typography sx={{ fontSize: 12.5, color: ws.textDim, my: 1.25 }}>Bruden går ned midtgangen. Fokus på reaksjonene til brudgommen og gjestene.</Typography>
           <Typography sx={{ fontSize: 12, fontWeight: 700, color: ws.textFaint, mb: 0.5 }}>UTSTYR & INNSTILLINGER</Typography>
