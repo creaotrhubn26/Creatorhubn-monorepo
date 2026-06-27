@@ -12,29 +12,46 @@ import VideoCall from '@mui/icons-material/VideoCall';
 import Add from '@mui/icons-material/Add';
 import Person from '@mui/icons-material/Person';
 import Event from '@mui/icons-material/Event';
+import Payments from '@mui/icons-material/Payments';
+import OpenInNew from '@mui/icons-material/OpenInNew';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
-import { WsCard, WsSectionTitle, WsTag } from '../ui';
+import { WsCard, WsSectionTitle, WsTag, WsBar } from '../ui';
 
 const fmtDate = (s: string) => s ? new Date(s).toLocaleString('nb-NO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+const nok = (n: number) => (n || n === 0) ? `${Math.round(n).toLocaleString('nb-NO')} kr` : '–';
 
 const AvtalerTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const isReal = projectId && projectId !== 'sample';
   const [contract, setContract] = useState<any | null>(null);
   const [crm, setCrm] = useState<any | null>(null);
   const [meetings, setMeetings] = useState<any[]>([]);
+  const [pricing, setPricing] = useState<any | null>(null);
   const [newOpen, setNewOpen] = useState(false);
 
   const load = () => {
     if (!isReal) return;
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/contract/status`).then((r: any) => setContract(r || null)).catch(() => {});
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/avtaler`).then((r: any) => { setCrm(r?.crmCustomer || null); setMeetings(Array.isArray(r?.meetings) ? r.meetings : []); }).catch(() => {});
+    apiRequest(`/api/photographer/projects/${encodeURIComponent(projectId)}`).then((r: any) => setPricing(r?.project || null)).catch(() => {});
+  };
+
+  const editPrice = async () => {
+    if (!isReal) return;
+    const cur = pricing?.servicePriceGross ?? pricing?.servicePrice ?? 0;
+    const val = window.prompt('Tjenestepris (inkl. MVA, kr):', String(cur));
+    if (val == null) return;
+    const num = Number(val.replace(/[^0-9.]/g, ''));
+    if (!Number.isFinite(num)) return;
+    try { await apiRequest(`/api/photographer/projects/${encodeURIComponent(projectId)}`, { method: 'PATCH', body: { servicePrice: num } }); load(); }
+    catch (e: any) { window.alert(e?.message || 'Kunne ikke oppdatere pris'); }
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [projectId]);
 
   // Demo-fallback
   const dContract = contract || { hasContract: true, isSigned: false, status: 'sent', clientName: 'Sara & Amir' };
   const dCrm = crm || { name: 'Sara & Amir', email: 'sara.amir@email.com', status: 'customer', projectType: 'Bryllup' };
+  const dPricing = pricing || { servicePriceGross: 45000, servicePriceNet: 36000, vatRate: 25, vatAmount: 9000, trackedCost: 12000, totalCost: 14000, marginPct: 61, profitAmount: 22000 };
   const dMeetings = (isReal ? meetings : [
     { id: 'd1', title: 'Forhåndssamtale', scheduledAt: '2025-05-10T18:00:00', durationMinutes: 30, meetLink: 'https://meet.google.com/xxx' },
     { id: 'd2', title: 'Gjennomgang av leveranse', scheduledAt: '2025-06-02T17:00:00', durationMinutes: 45, meetLink: null },
@@ -95,6 +112,41 @@ const AvtalerTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           )}
         </WsCard>
       </Box>
+
+      {/* Pris & økonomi */}
+      <WsCard sx={{ mb: 2 }}>
+        <WsSectionTitle
+          icon={<Payments sx={{ fontSize: 18, color: ws.accent }} />}
+          title="Pris & økonomi"
+          action={
+            <Stack direction="row" spacing={1}>
+              <Button size="small" onClick={editPrice} disabled={!isReal} sx={{ color: ws.text, textTransform: 'none', border: `1px solid ${ws.border}` }}>Rediger pris</Button>
+              <Button size="small" startIcon={<OpenInNew sx={{ fontSize: 14 }} />} onClick={() => window.open('/price-administration', '_blank')} sx={{ color: ws.accent, textTransform: 'none' }}>Prisadministrasjon</Button>
+            </Stack>
+          }
+        />
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(4, 1fr)' }, gap: 2 }}>
+          <Box>
+            <Typography sx={{ fontSize: 11.5, color: ws.textDim }}>Tjenestepris (inkl. MVA)</Typography>
+            <Typography sx={{ fontSize: 20, fontWeight: 800 }}>{nok(dPricing.servicePriceGross)}</Typography>
+            <Typography sx={{ fontSize: 11, color: ws.textFaint }}>Netto {nok(dPricing.servicePriceNet)} · MVA {dPricing.vatRate || 25}%</Typography>
+          </Box>
+          <Box>
+            <Typography sx={{ fontSize: 11.5, color: ws.textDim }}>Kostnad</Typography>
+            <Typography sx={{ fontSize: 20, fontWeight: 800 }}>{nok(dPricing.totalCost)}</Typography>
+            <Typography sx={{ fontSize: 11, color: ws.textFaint }}>Sporet {nok(dPricing.trackedCost)}</Typography>
+          </Box>
+          <Box>
+            <Typography sx={{ fontSize: 11.5, color: ws.textDim }}>Fortjeneste</Typography>
+            <Typography sx={{ fontSize: 20, fontWeight: 800, color: ws.green }}>{nok(dPricing.profitAmount)}</Typography>
+          </Box>
+          <Box>
+            <Typography sx={{ fontSize: 11.5, color: ws.textDim }}>Margin</Typography>
+            <Typography sx={{ fontSize: 20, fontWeight: 800, color: (dPricing.marginPct ?? 0) >= 40 ? ws.green : ws.amber }}>{dPricing.marginPct != null ? `${Math.round(dPricing.marginPct)}%` : '–'}</Typography>
+            <Box sx={{ mt: 0.5 }}><WsBar value={Math.max(0, Math.min(100, dPricing.marginPct || 0))} color={(dPricing.marginPct ?? 0) >= 40 ? ws.green : ws.amber} height={5} /></Box>
+          </Box>
+        </Box>
+      </WsCard>
 
       {/* Møter */}
       <WsCard>
