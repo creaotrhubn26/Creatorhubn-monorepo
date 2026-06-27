@@ -19,6 +19,10 @@ export type AdminButtonTone = "primary" | "danger" | "secondary" | "ghost";
 export interface AdminButtonProps extends Omit<ButtonProps, "color" | "variant"> {
   tone?: AdminButtonTone;
   loading?: boolean;
+  /** Render som lenke (MUI Button støtter dette i runtime; eksplisitt typet her). */
+  href?: string;
+  target?: string;
+  rel?: string;
 }
 
 const toneSx = (tone: AdminButtonTone) => {
