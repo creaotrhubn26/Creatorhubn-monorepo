@@ -128,6 +128,21 @@ const OversiktTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const checkItems = (checks && checks.length > 0) ? checks.map((c) => ({ id: c.id, t: c.label, ok: c.checked, real: true })) : CHECKLIST;
   const refs = useProjectImages(projectId, 'references');
 
+  // Capture & backup — live-status fra iPad CaptureApp + One Desk (poll 20s).
+  const [capture, setCapture] = useState<any | null>(null);
+  useEffect(() => {
+    if (!isReal) return;
+    const fetchCap = () => {
+      if (document.hidden) return;
+      apiRequest(`/api/projects/${encodeURIComponent(projectId)}/capture-status`).then((r: any) => setCapture(r || null)).catch(() => {});
+    };
+    fetchCap();
+    const t = setInterval(fetchCap, 20000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
+  const cap = isReal ? capture : { hasSession: true, shootingNow: true, session: { name: 'EOS R5 — Vielse' }, assets: { total: 842, securedToB2: 842, securedPct: 100, lastCaptureAt: new Date().toISOString() } };
+
   const toggleTask = async (id: string, status: string) => {
     if (!isReal) return;
     setTasks((p) => (p || []).map((t) => (t.id === id ? { ...t, status: status === 'done' ? 'todo' : 'done' } : t)));
@@ -169,6 +184,33 @@ const OversiktTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           <Box sx={{ flex: 1, maxWidth: 360 }}><WsBar value={fremdriftPct} /></Box>
           <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>{fremdriftText}</Typography>
         </Stack>
+
+        {/* Capture & backup — live fra iPad CaptureApp + One Desk */}
+        {cap?.hasSession && (
+          <WsCard sx={{ mb: 2 }}>
+            <Stack direction="row" alignItems="center" spacing={2} flexWrap="wrap" gap={1.5}>
+              <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 180 }}>
+                <Typography sx={{ fontSize: 17 }}>📷</Typography>
+                <Box>
+                  <Stack direction="row" spacing={0.75} alignItems="center">
+                    <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>Capture & backup</Typography>
+                    {cap.shootingNow && <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}><Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: ws.red }} /><Typography sx={{ fontSize: 10.5, color: ws.red, fontWeight: 700 }}>SKYTER NÅ</Typography></Box>}
+                  </Stack>
+                  <Typography sx={{ fontSize: 11, color: ws.textFaint }}>{cap.session?.name || 'Capture-session'}</Typography>
+                </Box>
+              </Stack>
+              <Box sx={{ textAlign: 'center', px: 1 }}>
+                <Typography sx={{ fontSize: 18, fontWeight: 800 }}>{cap.assets?.total ?? 0}</Typography>
+                <Typography sx={{ fontSize: 10.5, color: ws.textDim }}>bilder</Typography>
+              </Box>
+              <Box sx={{ flex: 1, minWidth: 160 }}>
+                <Stack direction="row" justifyContent="space-between"><Typography sx={{ fontSize: 11.5, color: ws.textDim }}>☁️ Sikret i B2 (One Desk)</Typography><Typography sx={{ fontSize: 11.5, fontWeight: 700, color: (cap.assets?.securedPct ?? 0) >= 100 ? ws.green : ws.amber }}>{cap.assets?.securedPct ?? 0}%</Typography></Stack>
+                <WsBar value={cap.assets?.securedPct ?? 0} color={(cap.assets?.securedPct ?? 0) >= 100 ? ws.green : ws.amber} height={5} />
+                <Typography sx={{ fontSize: 10.5, color: ws.textFaint, mt: 0.25 }}>{cap.assets?.securedToB2 ?? 0} av {cap.assets?.total ?? 0} originaler verifisert</Typography>
+              </Box>
+            </Stack>
+          </WsCard>
+        )}
 
         {/* Dagens tidslinje */}
         <WsCard sx={{ mb: 2 }}>

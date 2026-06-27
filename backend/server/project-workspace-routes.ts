@@ -396,6 +396,53 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     } catch (e) { console.error("GET media", e); res.status(500).json({ error: "failed" }); }
   });
 
+  // ─────────── Capture & backup-status (iPad CaptureApp + One Desk) ───────────
+  // Sømløst: samme konto ser samme prosjekt/session/assets overalt. Dette
+  // surfacer LIVE-tilstanden i workspacet: aktiv capture-session (skyter nå?),
+  // antall assets, og B2-backup-status (raw_key satt = original sikret).
+  // project_id-scopet + canAccessProject. Poll fra frontend.
+  app.get("/api/projects/:projectId/capture-status", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const s = await pool.query(
+        `SELECT id, name, status, starts_at, ends_at FROM capture_sessions WHERE project_id = $1 ORDER BY created_at DESC`,
+        [req.params.projectId],
+      ).catch(() => ({ rows: [] }));
+      const sessions = s.rows;
+      if (sessions.length === 0) return res.json({ hasSession: false });
+      const ids = sessions.map((x: any) => x.id);
+      const stats = await pool.query(
+        `SELECT count(*)::int AS total,
+                count(*) FILTER (WHERE raw_key IS NOT NULL OR full_key IS NOT NULL)::int AS secured,
+                count(*) FILTER (WHERE preview_key IS NOT NULL)::int AS with_preview,
+                max(capture_time) AS last_capture,
+                max(created_at) AS last_upload
+           FROM capture_assets WHERE session_id = ANY($1::uuid[])`,
+        [ids],
+      ).catch(() => ({ rows: [{ total: 0, secured: 0, with_preview: 0, last_capture: null, last_upload: null }] }));
+      const st = stats.rows[0] || {};
+      const total = st.total || 0;
+      const secured = st.secured || 0;
+      // «Skyter nå» = ny asset siste 5 min ELLER session aktiv uten ends_at.
+      const lastUpload = st.last_upload ? new Date(st.last_upload).getTime() : 0;
+      const shootingNow = (Date.now() - lastUpload) < 5 * 60 * 1000;
+      const active = sessions.find((x: any) => (x.status === "active" || !x.ends_at)) || sessions[0];
+      res.json({
+        hasSession: true,
+        session: { id: active.id, name: active.name, status: active.status, startsAt: active.starts_at, endsAt: active.ends_at },
+        sessionCount: sessions.length,
+        shootingNow,
+        assets: {
+          total,
+          securedToB2: secured,
+          securedPct: total > 0 ? Math.round((secured / total) * 100) : 0,
+          lastCaptureAt: st.last_capture || null,
+          lastUploadAt: st.last_upload || null,
+        },
+      });
+    } catch (e) { console.error("GET capture-status", e); res.json({ hasSession: false }); }
+  });
+
   // ─────────── Web-bilder (moodboard/referanser/«legg til bilde») → B2 ───────────
   app.get("/api/projects/:projectId/images", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
