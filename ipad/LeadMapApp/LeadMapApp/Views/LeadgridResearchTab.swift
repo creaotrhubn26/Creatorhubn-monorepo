@@ -269,21 +269,39 @@ private struct FindLeadsSegment: View {
     @State private var isStarting = false
     @State private var errorText: String?
     @State private var startResponse: LeadDiscoveryStartResponse?
-    @State private var batchProgress: BulkUrlBatchProgress?
     @State private var resultDetail: LeadDiscoveryResultResponse?
     @State private var pollingTask: Task<Void, Never>?
-    @State private var showSuccessHero = false
+    /// Hint vist i stage 1 ("fotograf i Oslo") — bygges fra inputs idet
+    /// vi POST-er; persisteres på state slik at vi kan vise den i progress-
+    /// kortet selv etter at config-form er borte.
+    @State private var lastDiscoveryQueryHint: String?
+    @State private var lastRadiusKmHint: Int?
+    /// State-machine for stage-by-stage progress.
+    @State private var discoveryState = DiscoveryRunState()
 
     private static let brandPurple = Color(red: 0.58, green: 0.20, blue: 0.92)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            if let resp = startResponse, showSuccessHero {
-                successHero(response: resp)
-            } else if startResponse != nil {
-                progressCard
-            } else {
+            switch discoveryState.stage {
+            case .idle:
                 configForm
+            case .starting, .foundCandidates, .processing, .finalizing,
+                 .success, .failed:
+                DiscoveryProgressView(
+                    state: discoveryState,
+                    discoveryQueryHint: lastDiscoveryQueryHint,
+                    radiusKmHint: lastRadiusKmHint,
+                    onCancel: { Task { await cancelBatch() } },
+                    onShowOnMap: { showAllPinsOnMap() },
+                    onImportMore: { resetForNewRun() },
+                    onClose: { resetForNewRun() },
+                )
+                if let err = errorText {
+                    Label(err, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
             }
         }
         .task(id: pollingTask?.hashValue) { /* trigger re-eval at onAppear */ }
@@ -423,181 +441,6 @@ private struct FindLeadsSegment: View {
         .disabled(isStarting || appState.activeProjectId == nil)
     }
 
-    // MARK: - Progress card
-
-    @ViewBuilder
-    private var progressCard: some View {
-        VStack(spacing: 14) {
-            let projectName = startResponse?.projectName ?? currentProjectName ?? "prosjektet"
-            HStack {
-                Image(systemName: "sparkles")
-                    .foregroundStyle(Self.brandPurple)
-                Text("Finner leads for \(projectName) …")
-                    .font(.headline)
-                Spacer()
-            }
-            if let p = batchProgress {
-                ProgressView(value: p.progress.fraction)
-                    .tint(Self.brandPurple)
-                HStack {
-                    Text("\(p.progress.completed + p.progress.failed) / \(p.progress.total)")
-                        .font(.callout.monospacedDigit())
-                    Spacer()
-                    if let eta = p.etaSeconds, eta > 0 {
-                        Text("~\(eta)s igjen")
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                HStack(spacing: 14) {
-                    badge(icon: "checkmark.circle.fill", tint: .green,
-                          label: "\(p.progress.completed) ferdig")
-                    if p.progress.failed > 0 {
-                        badge(icon: "xmark.circle.fill", tint: .red,
-                              label: "\(p.progress.failed) feilet")
-                    }
-                    badge(icon: "mappin.and.ellipse", tint: Self.brandPurple,
-                          label: "\(p.progress.pinned) pin")
-                }
-                .font(.caption)
-            } else {
-                ProgressView().tint(Self.brandPurple)
-            }
-
-            // Avbryt-knapp
-            if let rid = startResponse?.batchId {
-                Button(role: .destructive) {
-                    Task { await cancelBatch(rid) }
-                } label: {
-                    Label("Avbryt", systemImage: "stop.circle")
-                        .frame(maxWidth: .infinity, minHeight: 40)
-                }
-                .buttonStyle(.bordered)
-            }
-        }
-        .padding(14)
-        .background(Self.brandPurple.opacity(0.08),
-                     in: RoundedRectangle(cornerRadius: 14))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .stroke(Self.brandPurple.opacity(0.25), lineWidth: 1)
-        )
-    }
-
-    // MARK: - Success hero (Daniels signaturen)
-
-    @ViewBuilder
-    private func successHero(response: LeadDiscoveryStartResponse) -> some View {
-        let projectName = response.projectName ?? currentProjectName ?? "prosjektet"
-        let totalPinned = batchProgress?.progress.pinned ?? response.foundCount
-        VStack(spacing: 16) {
-            Image(systemName: totalPinned > 0
-                  ? "mappin.circle.fill" : "exclamationmark.triangle.fill")
-                .font(.system(size: 64))
-                .foregroundStyle(totalPinned > 0 ? Self.brandPurple : .orange)
-
-            Text(totalPinned > 0
-                 ? "Vi fant \(totalPinned) leads for \(projectName)!"
-                 : "Ingen leads kunne pinned for \(projectName).")
-                .font(.title3.bold())
-                .multilineTextAlignment(.center)
-
-            if let r = resultDetail {
-                breakdownCard(r.breakdown)
-            }
-
-            actionButtons(response: response)
-        }
-        .padding(20)
-        .frame(maxWidth: .infinity)
-        .background(.regularMaterial,
-                     in: RoundedRectangle(cornerRadius: 18))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18)
-                .stroke(Self.brandPurple.opacity(0.30), lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(0.15), radius: 10, x: 0, y: 4)
-    }
-
-    @ViewBuilder
-    private func breakdownCard(_ b: LeadDiscoveryBreakdown) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if b.exact > 0 {
-                breakdownRow(symbol: "checkmark.circle.fill", tint: .green,
-                             label: "\(b.exact) med eksakt lokasjon (Google Places)")
-            }
-            if b.geocoded > 0 {
-                breakdownRow(symbol: "location.fill", tint: .yellow,
-                             label: "\(b.geocoded) geokodet (Brreg-adresse)")
-            }
-            if b.approximate > 0 {
-                breakdownRow(symbol: "mappin.slash", tint: .orange,
-                             label: "\(b.approximate) by-sentroid (manuell verifisering anbefales)")
-            }
-            if b.unknown > 0 {
-                breakdownRow(symbol: "questionmark.circle", tint: .gray,
-                             label: "\(b.unknown) uten lokasjon")
-            }
-            if b.failed > 0 {
-                breakdownRow(symbol: "xmark.circle.fill", tint: .red,
-                             label: "\(b.failed) hadde for lite info")
-            }
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.secondarySystemBackground),
-                     in: RoundedRectangle(cornerRadius: 12))
-    }
-
-    private func breakdownRow(symbol: String, tint: Color, label: String) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: symbol).foregroundStyle(tint).frame(width: 22)
-            Text(label).font(.callout)
-            Spacer()
-        }
-    }
-
-    @ViewBuilder
-    private func actionButtons(response: LeadDiscoveryStartResponse) -> some View {
-        VStack(spacing: 10) {
-            Button {
-                showAllPinsOnMap()
-            } label: {
-                Label("Vis alle på kartet", systemImage: "map")
-                    .font(.headline)
-                    .frame(maxWidth: .infinity, minHeight: 48)
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(Self.brandPurple)
-
-            HStack(spacing: 10) {
-                Button {
-                    importMore()
-                } label: {
-                    Label("Importer flere", systemImage: "plus.circle")
-                        .frame(maxWidth: .infinity, minHeight: 40)
-                }
-                .buttonStyle(.bordered)
-
-                Button {
-                    dismissHero()
-                } label: {
-                    Text("Lukk").frame(maxWidth: .infinity, minHeight: 40)
-                }
-                .buttonStyle(.bordered)
-            }
-        }
-    }
-
-    // MARK: - Badge
-
-    private func badge(icon: String, tint: Color, label: String) -> some View {
-        HStack(spacing: 4) {
-            Image(systemName: icon).foregroundStyle(tint)
-            Text(label)
-        }
-    }
-
     // MARK: - Helpers
 
     private var currentProjectName: String? {
@@ -634,6 +477,13 @@ private struct FindLeadsSegment: View {
             request.city = cityQuery
         }
 
+        // Build stage 1-hint ("fotograf i Oslo") for DiscoveryProgressView
+        lastDiscoveryQueryHint = buildQueryHint(request: request)
+        lastRadiusKmHint = useCurrentLocation ? Int(radiusKm) : nil
+
+        // Initialize state-machine — stage = .starting, startedAt set.
+        discoveryState.begin(projectName: currentProjectName)
+
         isStarting = true
         defer { isStarting = false }
         do {
@@ -642,16 +492,48 @@ private struct FindLeadsSegment: View {
                 request: request,
             )
             startResponse = resp
-            if let bid = resp.batchId {
+            discoveryState.projectName = resp.projectName ?? currentProjectName
+            if let bid = resp.batchId, resp.foundCount > 0 {
+                discoveryState.batchId = bid
+                discoveryState.total = resp.foundCount
+                discoveryState.stage = .foundCandidates(resp.foundCount)
                 startPolling(projectId: projectId, batchId: bid)
             } else {
-                // foundCount==0 — vis tom hero med Daniels signaturlinje
-                // ("ingen nye …"); brukeren kan kjøre på nytt m/ annen query.
-                showSuccessHero = true
-                resultDetail = nil
+                // foundCount==0 — vis tom hero ("ingen nye …"); brukeren
+                // kan kjøre på nytt m/ annen query.
+                discoveryState.stage = .success(
+                    DiscoverySuccessSummary(
+                        totalPinned: 0,
+                        totalAttempted: 0,
+                        breakdown: .zero,
+                        totalDurationSeconds: discoveryState.elapsedSeconds,
+                        projectName: discoveryState.projectName,
+                    )
+                )
             }
         } catch {
-            errorText = "Kunne ikke starte: \(error.localizedDescription)"
+            let msg = error.localizedDescription
+            errorText = "Kunne ikke starte: \(msg)"
+            discoveryState.stage = .failed(msg)
+        }
+    }
+
+    /// Bygg stage 1-hint som "fotograf i Oslo". Foretrekker industry+city;
+    /// faller tilbake til "kandidater" hvis ingen er gitt.
+    private func buildQueryHint(request: LeadDiscoveryRequest) -> String? {
+        let industry = request.industryQuery?
+            .trimmingCharacters(in: .whitespaces) ?? ""
+        var locationStr = ""
+        if let c = request.city?.trimmingCharacters(in: .whitespaces), !c.isEmpty {
+            locationStr = c
+        } else if request.geo != nil {
+            locationStr = "min posisjon"
+        }
+        switch (industry.isEmpty, locationStr.isEmpty) {
+        case (false, false): return "\(industry) i \(locationStr)"
+        case (false, true):  return industry
+        case (true, false):  return "bedrifter i \(locationStr)"
+        case (true, true):   return nil
         }
     }
 
@@ -661,41 +543,94 @@ private struct FindLeadsSegment: View {
             while !Task.isCancelled {
                 guard let api = appState.api else { return }
                 do {
+                    // Hent lett-vekt progress + full detail (m/ per-item-status).
                     let p = try await api.pollBulkUrlResearchProgress(batchId: batchId)
-                    batchProgress = p
-                    if !p.status.isActive {
-                        // Hent full breakdown
+                    discoveryState.completed = p.progress.completed
+                    discoveryState.failed = p.progress.failed
+                    discoveryState.pinned = p.progress.pinned
+                    discoveryState.total = p.progress.total
+
+                    // Periodisk fetch av full detail for per-URL-listen.
+                    // Hent kun hvis status fortsatt aktiv (én siste hentes
+                    // i finish-blokken under). Soft-fail på error.
+                    if p.status.isActive {
                         do {
-                            resultDetail = try await api.fetchLeadDiscoveryResult(
-                                projectId: projectId,
+                            let d = try await api.fetchBulkUrlResearchBatch(
                                 batchId: batchId,
                             )
+                            discoveryState.items = d.items
                         } catch {
-                            // Stille — vi har basic counters fra progress
+                            // Stille — vi har counters fra progress.
                         }
-                        showSuccessHero = true
+                    }
+
+                    // Bytt stage etter hva backend rapporterer.
+                    if p.status.isActive {
+                        let done = p.progress.completed + p.progress.failed
+                        if done > 0 || !discoveryState.items.isEmpty {
+                            discoveryState.stage = .processing
+                        }
+                    } else {
+                        // Ferdig — hent full breakdown.
+                        discoveryState.stage = .finalizing
+                        let result = try? await api.fetchLeadDiscoveryResult(
+                            projectId: projectId,
+                            batchId: batchId,
+                        )
+                        resultDetail = result
+
+                        // Forsøk å hente siste items-snapshot også.
+                        if let d = try? await api.fetchBulkUrlResearchBatch(
+                            batchId: batchId,
+                        ) {
+                            discoveryState.items = d.items
+                        }
+
+                        let breakdown = result.map {
+                            DiscoveryConfidenceBreakdown(
+                                exact: $0.breakdown.exact,
+                                geocoded: $0.breakdown.geocoded,
+                                approximate: $0.breakdown.approximate,
+                                unknown: $0.breakdown.unknown,
+                                failed: $0.breakdown.failed,
+                            )
+                        } ?? .zero
+
+                        let summary = DiscoverySuccessSummary(
+                            totalPinned: p.progress.pinned,
+                            totalAttempted: p.progress.total,
+                            breakdown: breakdown,
+                            totalDurationSeconds: discoveryState.elapsedSeconds,
+                            projectName: discoveryState.projectName,
+                        )
+                        discoveryState.stage = .success(summary)
+
                         // Trigger en bakgrunns-refresh så MapScreen får
                         // de nye pins-ene synlige uten å vente på user.
                         Task { await appState.refreshAll() }
                         return
                     }
                 } catch {
+                    // Tolerer transient feil — vent 5s og prøv igjen.
                     errorText = "Poll-feil: \(error.localizedDescription)"
+                    try? await Task.sleep(nanoseconds: 5_000_000_000)
+                    continue
                 }
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
             }
         }
     }
 
-    private func cancelBatch(_ batchId: String) async {
-        guard let api = appState.api else { return }
+    private func cancelBatch() async {
+        guard let api = appState.api, let batchId = discoveryState.batchId else {
+            resetForNewRun()
+            return
+        }
         do {
             try await api.cancelBulkUrlBatch(batchId: batchId)
             pollingTask?.cancel()
             pollingTask = nil
-            startResponse = nil
-            batchProgress = nil
-            resultDetail = nil
+            resetForNewRun()
         } catch {
             errorText = "Avbryt feilet: \(error.localizedDescription)"
         }
@@ -704,8 +639,7 @@ private struct FindLeadsSegment: View {
     private func showAllPinsOnMap() {
         // Bygg liste over koordinater fra resultatet
         guard let r = resultDetail else {
-            // Fallback — be MapScreen om å bare zoome til siste pin-batch
-            // ved å sende empty coordinates, MapScreen vil ignorere det.
+            switchToMapTab()
             return
         }
         // resultDetail har items + breakdown, men ikke lat/lng direkte.
@@ -720,14 +654,12 @@ private struct FindLeadsSegment: View {
             .map { ($0.latitude, $0.longitude) }
 
         if coords.isEmpty {
-            // Drifter på BulkUrlBatchZoomToBounds-mekanismen — om alle
-            // pins fortsatt ikke er sync'et inn, ber vi bare bytte fane.
             switchToMapTab()
             return
         }
         let userInfo: [String: Any] = [
             "coordinates": coords.map { ["lat": $0.0, "lng": $0.1] },
-            "batch_id": startResponse?.batchId ?? "",
+            "batch_id": discoveryState.batchId ?? "",
         ]
         NotificationCenter.default.post(
             name: .leadgridBulkUrlBatchZoomToBounds,
@@ -744,18 +676,18 @@ private struct FindLeadsSegment: View {
         NotificationCenter.default.post(name: .leadgridSwitchToMapTab, object: nil)
     }
 
-    private func importMore() {
-        // Reset state
-        startResponse = nil
-        batchProgress = nil
-        resultDetail = nil
-        showSuccessHero = false
+    /// Tilbakestill alt state slik at "Finn leads"-config-formen vises igjen.
+    /// Brukes av "Importer flere", "Lukk" og "Avbryt" — alle reset'er til
+    /// .idle slik at view-en re-rendrer config-form.
+    private func resetForNewRun() {
         pollingTask?.cancel()
         pollingTask = nil
-    }
-
-    private func dismissHero() {
-        importMore()
+        discoveryState.reset()
+        startResponse = nil
+        resultDetail = nil
+        errorText = nil
+        lastDiscoveryQueryHint = nil
+        lastRadiusKmHint = nil
     }
 }
 
