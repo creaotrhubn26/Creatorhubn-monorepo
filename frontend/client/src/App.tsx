@@ -225,6 +225,7 @@ import { trackMarketingPageView } from '@/lib/marketingPixelsRuntime';
 const LandingMobileBackupSep19 = React.lazy(() => import('@/pages/landing-mobile-backup-sep19'));
 const AdminRoomPage = React.lazy(() => import('./pages/AdminRoom'));
 const AdminWorkspacePage = React.lazy(() => import('./pages/AdminWorkspace'));
+const TeamWorkspacePage = React.lazy(() => import('./components/workspace/TeamWorkspacePage'));
 const DeckEditorPage = React.lazy(() => import('./pages/DeckEditor'));
 const DemoAnimaticPage = React.lazy(() => import('@/components/role-room/demo/DemoAnimaticPage'));
 const PostAgentLinkPage = React.lazy(() => import('@/components/role-room/PostAgentLinkPage'));
@@ -622,6 +623,9 @@ function App() {
                 <Switch>
                   {/* Login route */}
                   <Route path="/login" component={LoginPageSimple} />
+                  {/* Per-prosjekt Team Workspace (dark) */}
+                  <Route path="/workspace/:projectId/:tab" component={TeamWorkspacePage} />
+                  <Route path="/workspace/:projectId" component={TeamWorkspacePage} />
                   {/* Dans tester-invite landing */}
                   <Route path="/lead-map/accept">
                     {() => {

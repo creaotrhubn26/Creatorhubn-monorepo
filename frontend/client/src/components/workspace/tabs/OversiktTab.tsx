@@ -1,0 +1,299 @@
+// @ts-nocheck
+/**
+ * OversiktTab — workspace-forsiden (design #1), dark CreatorHub.
+ * Dagens tidslinje + Samkjøringsboard + Team Sync / Sjekkliste / Referanser
+ * + Team Chat (høyre). Bruker prøvedata nå; wires mot ekte backend i wire-fasen.
+ */
+import React, { useState, useEffect } from 'react';
+import { Box, Stack, Typography, Avatar, IconButton, Button, Chip } from '@mui/material';
+import { apiRequest } from '@/lib/queryClient';
+import AccessTime from '@mui/icons-material/AccessTime';
+import ChevronLeft from '@mui/icons-material/ChevronLeft';
+import ChevronRight from '@mui/icons-material/ChevronRight';
+import ViewKanban from '@mui/icons-material/ViewKanban';
+import CheckCircle from '@mui/icons-material/CheckCircle';
+import RadioButtonUnchecked from '@mui/icons-material/RadioButtonUnchecked';
+import Warning from '@mui/icons-material/Warning';
+import Add from '@mui/icons-material/Add';
+import { ws } from '../workspaceTheme';
+import { WsCard, WsSectionTitle, WsRing, WsBar, WsImageGrid } from '../ui';
+import WorkspaceChatPanel from '../WorkspaceChatPanel';
+
+const PHASES = [
+  { icon: '🤍', label: 'Forberedelser', time: '08:00 – 10:00', color: ws.textDim },
+  { icon: '💗', label: 'First look', time: '10:30 – 11:00', color: ws.red },
+  { icon: '⛪', label: 'Vielse', time: '11:30 – 12:30', color: ws.accent, active: true },
+  { icon: '🌅', label: 'Golden hour', time: '16:30 – 17:30', color: ws.amber },
+  { icon: '🎙️', label: 'Taler', time: '19:00 – 20:00', color: ws.blue },
+  { icon: '🎉', label: 'Fest', time: '20:30 – 00:00', color: ws.green },
+];
+
+const BOARD = [
+  { role: 'Fotograf (Daniel)', icon: '📷', tasks: [
+    { t: 'Detaljer: ringer & tilbehør', time: '07:30 – 08:00', done: true },
+    { t: 'Forberedelser – candids', time: '08:00 – 10:00', done: true },
+    { t: 'Portretter av brud & brudgom', time: '10:00 – 10:30', done: false },
+    { t: 'Close-ups av ringer', time: '11:20 – 11:30', done: false },
+  ]},
+  { role: 'Videograf (Emma)', icon: '🎥', tasks: [
+    { t: 'Etableringsbilder + lydsjekk', time: '07:30 – 08:30', done: true },
+    { t: 'Forberedelser – video', time: '08:00 – 10:00', done: true },
+    { t: 'First look – video', time: '10:30 – 11:00', done: false },
+    { t: 'Vielse – flere vinkler', time: '11:30 – 12:30', done: false },
+  ]},
+  { role: 'Begge', icon: '👥', tasks: [
+    { t: 'First look – reaksjoner', time: '10:30 – 11:00', done: true },
+    { t: 'Vielse: inngang & første kyss', time: '11:30 – 12:30', done: false },
+    { t: 'Gruppebilder familie', time: '13:00 – 13:45', done: false },
+    { t: 'Golden hour – parbilder', time: '16:30 – 17:30', done: false },
+  ]},
+  { role: 'Editor (Lukas)', icon: '🎬', tasks: [
+    { t: 'Råmateriale backup', time: 'Løpende', done: true },
+    { t: 'Marker sterke øyeblikk', time: 'Løpende', done: false },
+    { t: 'Highlight-klipp (2–3 min)', time: 'Etter festen', done: false },
+    { t: 'Langfilm (20–30 min)', time: 'Levering', done: false },
+  ]},
+];
+
+const SYNC_ITEMS = ['Brief lest', 'Lydplan', 'Backup plan', 'Kundeønsker gjennomgått'];
+const CHECKLIST = [
+  { t: 'Utstyr sjekket', ok: true },
+  { t: 'Batterier & minnekort', ok: true },
+  { t: 'Værmelding', ok: false },
+  { t: 'Transport & parkering', ok: true },
+  { t: 'Backup lokasjon', ok: false },
+];
+
+const RULER = ['08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00'];
+
+function eventIcon(title: string): string {
+  const t = (title || '').toLowerCase();
+  if (t.includes('first look')) return '💗';
+  if (t.includes('viel') || t.includes('seremoni')) return '⛪';
+  if (t.includes('golden')) return '🌅';
+  if (t.includes('tale') || t.includes('toast')) return '🎙️';
+  if (t.includes('fest') || t.includes('dans')) return '🎉';
+  if (t.includes('forbered') || t.includes('getting ready')) return '🤍';
+  return '⏱️';
+}
+function addMinutes(hhmm: string, mins: number): string {
+  if (!hhmm || !/^\d{2}:\d{2}$/.test(hhmm)) return '';
+  const [h, m] = hhmm.split(':').map(Number);
+  const total = (h * 60 + m + (mins || 0)) % 1440;
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+}
+
+const OversiktTab: React.FC<{ projectId: string }> = ({ projectId }) => {
+  const [progress, setProgress] = useState<{ pct: number; done: number; total: number } | null>(null);
+  const [events, setEvents] = useState<any[] | null>(null);
+  const [tasks, setTasks] = useState<any[] | null>(null);
+  const [checks, setChecks] = useState<any[] | null>(null);
+
+  const isReal = projectId && projectId !== 'sample';
+
+  const loadTasks = () => {
+    if (!isReal) return;
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/board-tasks`)
+      .then((r: any) => { setTasks(Array.isArray(r?.tasks) ? r.tasks : []); })
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    if (!isReal) return;
+    apiRequest(`/api/photographer/projects/${encodeURIComponent(projectId)}/milestones`)
+      .then((r: any) => { if (r) setProgress({ pct: Math.round(r.totalProgress || 0), done: r.completedCount || 0, total: (r.milestones || []).length }); })
+      .catch(() => {});
+    apiRequest(`/api/wedding/timeline/project/${encodeURIComponent(projectId)}`)
+      .then((r: any) => { const evs = Array.isArray(r?.events) ? r.events : []; if (evs.length) setEvents(evs); })
+      .catch(() => {});
+    loadTasks();
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/checklist`)
+      .then((r: any) => { setChecks(Array.isArray(r?.items) ? r.items : []); })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
+
+  const toggleCheck = async (id: string, checked: boolean) => {
+    if (!isReal) return;
+    setChecks((p) => (p || []).map((c) => (c.id === id ? { ...c, checked: !checked } : c)));
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/checklist/${id}`, { method: 'PATCH', body: { checked: !checked } }).catch(() => {});
+  };
+  const addCheck = async () => {
+    if (!isReal) return;
+    const label = window.prompt('Nytt sjekkpunkt:'); if (!label) return;
+    try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/checklist`, { method: 'POST', body: { label: label.trim() } }); apiRequest(`/api/projects/${encodeURIComponent(projectId)}/checklist`).then((r: any) => setChecks(r?.items || [])); }
+    catch (e: any) { window.alert(e?.message || 'Kunne ikke legge til'); }
+  };
+  const checkItems = (checks && checks.length > 0) ? checks.map((c) => ({ id: c.id, t: c.label, ok: c.checked, real: true })) : CHECKLIST;
+
+  const toggleTask = async (id: string, status: string) => {
+    if (!isReal) return;
+    setTasks((p) => (p || []).map((t) => (t.id === id ? { ...t, status: status === 'done' ? 'todo' : 'done' } : t)));
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/board-tasks/${id}`, { method: 'PATCH', body: { status: status === 'done' ? 'todo' : 'done' } }).catch(loadTasks);
+  };
+  const addTask = async (crewRole: string) => {
+    if (!isReal) return;
+    const title = window.prompt('Ny oppgave:'); if (!title) return;
+    try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/board-tasks`, { method: 'POST', body: { title: title.trim(), crewRole } }); loadTasks(); }
+    catch (e: any) { window.alert(e?.message || 'Kunne ikke legge til'); }
+  };
+
+  // Bygg de 4 rolle-kolonnene fra ekte tasks, ellers sample.
+  const COLS = [
+    { role: 'Fotograf (Daniel)', icon: '📷', crew: 'fotograf' },
+    { role: 'Videograf (Emma)', icon: '🎥', crew: 'videograf' },
+    { role: 'Begge', icon: '👥', crew: 'begge' },
+    { role: 'Editor (Lukas)', icon: '🎬', crew: 'editor' },
+  ];
+  const realBoard = tasks && tasks.length > 0
+    ? COLS.map((c) => ({ ...c, tasks: tasks.filter((t) => (t.crewRole || 'begge') === c.crew).map((t) => ({ id: t.id, t: t.title, time: t.timeLabel || '', done: t.status === 'done', real: true })) }))
+    : null;
+  const boardCols = realBoard || BOARD.map((c, i) => ({ role: c.role, icon: c.icon, crew: COLS[i]?.crew || 'begge', tasks: c.tasks }));
+
+  const fremdriftPct = progress ? progress.pct : 68;
+  const fremdriftText = progress ? `${progress.done} av ${progress.total} oppgaver fullført` : '14 av 21 oppgaver fullført';
+  const phaseItems = events
+    ? events.map((e: any) => ({ icon: eventIcon(e.title), label: e.title || 'Hendelse', time: e.time ? `${e.time}${e.durationMinutes ? ' – ' + addMinutes(e.time, e.durationMinutes) : ''}` : '', active: e.status === 'in_progress' || e.status === 'current' }))
+    : PHASES;
+
+  return (
+    <Stack direction="row" spacing={2.5} sx={{ alignItems: 'stretch' }}>
+      {/* ───────── Hovedkolonne ───────── */}
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        {/* Fremdrift */}
+        <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 2 }}>
+          <Typography sx={{ fontSize: 13, color: ws.textDim }}>Fremdrift</Typography>
+          <Typography sx={{ fontSize: 15, fontWeight: 800, color: ws.accent }}>{fremdriftPct} %</Typography>
+          <Box sx={{ flex: 1, maxWidth: 360 }}><WsBar value={fremdriftPct} /></Box>
+          <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>{fremdriftText}</Typography>
+        </Stack>
+
+        {/* Dagens tidslinje */}
+        <WsCard sx={{ mb: 2 }}>
+          <WsSectionTitle
+            icon={<AccessTime sx={{ fontSize: 18, color: ws.textDim }} />}
+            title="Dagens tidslinje"
+            action={
+              <Stack direction="row" spacing={0.5} alignItems="center">
+                <Button size="small" sx={{ color: ws.text, textTransform: 'none', minWidth: 0 }}>I dag</Button>
+                <IconButton size="small" sx={{ color: ws.textDim }}><ChevronLeft fontSize="small" /></IconButton>
+                <IconButton size="small" sx={{ color: ws.textDim }}><ChevronRight fontSize="small" /></IconButton>
+              </Stack>
+            }
+          />
+          {/* Ruler */}
+          <Box sx={{ position: 'relative', mb: 1.5 }}>
+            <Stack direction="row" justifyContent="space-between" sx={{ px: 0.5 }}>
+              {RULER.map((t) => <Typography key={t} sx={{ fontSize: 11, color: ws.textFaint }}>{t}</Typography>)}
+            </Stack>
+            <Box sx={{ position: 'relative', height: 1, bgcolor: ws.border, mt: 0.5 }}>
+              {/* now-marker ~12:15 → ((12.25-8)/14)*100 ≈ 30.4% */}
+              <Box sx={{ position: 'absolute', left: '30.4%', top: -18, transform: 'translateX(-50%)' }}>
+                <Chip size="small" label="12:15" sx={{ height: 18, bgcolor: ws.accent, color: ws.accentContrast, fontWeight: 800, fontSize: 11 }} />
+                <Box sx={{ width: 1, height: 60, bgcolor: ws.accent, mx: 'auto', mt: 0.5, opacity: 0.6 }} />
+              </Box>
+            </Box>
+          </Box>
+          {/* Faser */}
+          <Stack direction="row" spacing={1.25} sx={{ overflowX: 'auto', pb: 0.5 }}>
+            {phaseItems.map((p) => (
+              <Box key={p.label} sx={{
+                minWidth: 150, p: 1.25, borderRadius: `${ws.radiusSm}px`,
+                bgcolor: p.active ? ws.accentSoft : 'rgba(255,255,255,0.03)',
+                border: `1px solid ${p.active ? ws.accentBorder : ws.borderSoft}`,
+              }}>
+                <Stack direction="row" spacing={0.75} alignItems="center">
+                  <Typography sx={{ fontSize: 16 }}>{p.icon}</Typography>
+                  <Typography sx={{ fontSize: 13, fontWeight: 700 }}>{p.label}</Typography>
+                </Stack>
+                <Typography sx={{ fontSize: 11.5, color: ws.textDim, mt: 0.5 }}>{p.time}</Typography>
+              </Box>
+            ))}
+          </Stack>
+        </WsCard>
+
+        {/* Samkjøringsboard */}
+        <WsCard sx={{ mb: 2 }}>
+          <WsSectionTitle icon={<ViewKanban sx={{ fontSize: 18, color: ws.textDim }} />} title="Samkjøringsboard" />
+          <Stack direction="row" spacing={1.5} sx={{ overflowX: 'auto' }}>
+            {boardCols.map((col) => (
+              <Box key={col.role} sx={{ minWidth: 220, flex: 1 }}>
+                <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 1 }}>
+                  <Typography sx={{ fontSize: 14 }}>{col.icon}</Typography>
+                  <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: ws.textDim }}>{col.role}</Typography>
+                </Stack>
+                <Stack spacing={1}>
+                  {col.tasks.map((task, i) => (
+                    <Box key={task.id || i} sx={{
+                      p: 1.25, borderRadius: `${ws.radiusSm}px`, bgcolor: 'rgba(255,255,255,0.03)',
+                      border: `1px solid ${ws.borderSoft}`,
+                    }}>
+                      <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>
+                        <Box>
+                          <Typography sx={{ fontSize: 12.5, fontWeight: 600, color: ws.text }}>{task.t}</Typography>
+                          {task.time && <Typography sx={{ fontSize: 11, color: ws.textFaint, mt: 0.25 }}>{task.time}</Typography>}
+                        </Box>
+                        <Box onClick={() => task.real && toggleTask(task.id, task.done ? 'done' : 'todo')} sx={{ cursor: task.real ? 'pointer' : 'default', display: 'flex' }}>
+                          {task.done
+                            ? <CheckCircle sx={{ fontSize: 18, color: ws.green }} />
+                            : <RadioButtonUnchecked sx={{ fontSize: 18, color: ws.textFaint }} />}
+                        </Box>
+                      </Stack>
+                    </Box>
+                  ))}
+                  <Button size="small" startIcon={<Add sx={{ fontSize: 15 }} />} onClick={() => addTask(col.crew)} disabled={!isReal} sx={{ color: ws.textDim, textTransform: 'none', justifyContent: 'flex-start' }}>
+                    Legg til oppgave
+                  </Button>
+                </Stack>
+              </Box>
+            ))}
+          </Stack>
+        </WsCard>
+
+        {/* Bunn-rad: Team Sync / Sjekkliste / Referanser */}
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr 1fr' }, gap: 2 }}>
+          <WsCard>
+            <Typography sx={{ fontSize: 14, fontWeight: 700, mb: 1.5 }}>Samkjøring (Team Sync)</Typography>
+            <Stack direction="row" spacing={2} alignItems="center">
+              <WsRing value={82} size={104} label="82%" sub="Klar" />
+              <Stack spacing={0.75} sx={{ flex: 1 }}>
+                {SYNC_ITEMS.map((s) => (
+                  <Stack key={s} direction="row" spacing={0.75} alignItems="center">
+                    <CheckCircle sx={{ fontSize: 16, color: ws.green }} />
+                    <Typography sx={{ fontSize: 12.5, color: ws.text }}>{s}</Typography>
+                  </Stack>
+                ))}
+              </Stack>
+            </Stack>
+            <Button fullWidth size="small" sx={{ mt: 1.5, color: ws.textDim, textTransform: 'none', border: `1px solid ${ws.border}` }}>Se detaljer</Button>
+          </WsCard>
+
+          <WsCard>
+            <Typography sx={{ fontSize: 14, fontWeight: 700, mb: 1.5 }}>Sjekkliste</Typography>
+            <Stack spacing={1}>
+              {checkItems.map((c, i) => (
+                <Stack key={c.id || i} direction="row" spacing={0.75} alignItems="center" onClick={() => c.real && toggleCheck(c.id, c.ok)} sx={{ cursor: c.real ? 'pointer' : 'default' }}>
+                  {c.ok ? <CheckCircle sx={{ fontSize: 17, color: ws.green }} /> : <Warning sx={{ fontSize: 17, color: ws.amber }} />}
+                  <Typography sx={{ fontSize: 12.5, color: ws.text }}>{c.t}</Typography>
+                </Stack>
+              ))}
+            </Stack>
+            <Button fullWidth size="small" onClick={addCheck} disabled={!isReal} sx={{ mt: 1.5, color: ws.textDim, textTransform: 'none', border: `1px solid ${ws.border}` }}>{isReal ? '+ Legg til sjekkpunkt' : 'Se alle'}</Button>
+          </WsCard>
+
+          <WsCard>
+            <WsSectionTitle title="Referanser & shots" action={<Button size="small" sx={{ color: ws.accent, textTransform: 'none' }}>Se alle</Button>} />
+            <WsImageGrid columns={3} addLabel="Legg til referanse" />
+          </WsCard>
+        </Box>
+      </Box>
+
+      {/* ───────── Team Chat (høyre) ───────── */}
+      <Box sx={{ width: 340, flexShrink: 0 }}>
+        <WorkspaceChatPanel projectId={projectId} />
+      </Box>
+    </Stack>
+  );
+};
+
+export default OversiktTab;

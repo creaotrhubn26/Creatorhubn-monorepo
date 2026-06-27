@@ -2,6 +2,7 @@ import express from "express";
 import type { Pool } from "pg";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
+import { canAccessProject } from "./project-team-routes";
 
 let photographerProjectsSchemaReadyShared: Promise<void> | null = null;
 export function ensurePhotographerProjectsSchemaShared(pool: Pool): Promise<void> {
@@ -64,6 +65,27 @@ export function ensurePhotographerProjectsSchemaShared(pool: Pool): Promise<void
           -- stale FK so time logging works (app-managed table, no FK needed).
           ALTER TABLE project_time_tracking
             DROP CONSTRAINT IF EXISTS project_time_tracking_project_id_integrated_projects_id_fk;
+          -- Team Workspace deling: prosjekt-listingen JOINer mot denne, så den
+          -- MÅ finnes før listing-queryen kjører (ellers kaster Postgres på
+          -- manglende relasjon). Full DDL + indekser eies av project-team-routes.
+          CREATE TABLE IF NOT EXISTS project_team_members (
+            id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            project_id     VARCHAR(64) NOT NULL,
+            user_id        VARCHAR(64),
+            email          VARCHAR(255) NOT NULL,
+            name           VARCHAR(255),
+            role           VARCHAR(20) NOT NULL DEFAULT 'member',
+            crew_role      VARCHAR(20),
+            permissions    JSONB NOT NULL DEFAULT '{"canRead":true,"canEdit":false}'::jsonb,
+            status         VARCHAR(20) NOT NULL DEFAULT 'pending',
+            invite_token   VARCHAR(80),
+            invited_by     VARCHAR(64),
+            invited_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            accepted_at    TIMESTAMPTZ,
+            deactivated_at TIMESTAMPTZ
+          );
+          CREATE INDEX IF NOT EXISTS idx_ptm_project ON project_team_members (project_id) WHERE deactivated_at IS NULL;
+          CREATE INDEX IF NOT EXISTS idx_ptm_user ON project_team_members (user_id) WHERE deactivated_at IS NULL;
         `);
       } catch (err) {
         console.warn('[photographer-projects] schema-ensure failed:', err);
@@ -133,6 +155,11 @@ export function setupPhotographerProjectsRoutes(
             GROUP BY project_id
          ) t ON t.project_id = p.id
          WHERE p.user_id = $1
+            OR EXISTS (
+                 SELECT 1 FROM project_team_members m
+                  WHERE m.project_id = p.id AND m.user_id = $1
+                    AND m.status = 'active' AND m.deactivated_at IS NULL
+               )
          ORDER BY COALESCE(p.event_date, p.created_at::date) DESC NULLS LAST`,
         [photographerId],
       );
@@ -606,6 +633,10 @@ export function setupPhotographerProjectsRoutes(
 
     try {
       await ensurePhotographerProjectsSchema();
+      // Team Workspace: eier ELLER aktivt team-medlem kan åpne prosjektet.
+      if (!(await canAccessProject(pool, photographerId, projectId))) {
+        return res.status(404).json({ error: 'project_not_found' });
+      }
       const projectQ = await pool.query(
         `SELECT
            p.id, p.title, p.name, p.client_id, p.client_name, p.description,
@@ -618,9 +649,9 @@ export function setupPhotographerProjectsRoutes(
            c.first_name, c.last_name, c.email, c.phone
          FROM projects p
          LEFT JOIN clients c ON c.id = p.client_id
-         WHERE p.id = $1 AND p.user_id = $2
+         WHERE p.id = $1
          LIMIT 1`,
-        [projectId, photographerId],
+        [projectId],
       );
       if (projectQ.rowCount === 0) return res.status(404).json({ error: 'project_not_found' });
       const p = projectQ.rows[0];
@@ -1250,12 +1281,10 @@ export function setupPhotographerProjectsRoutes(
     if (!projectId) return res.status(400).json({ error: 'missing_project_id' });
 
     try {
-      // Verify project ownership
-      const owned = await pool.query(
-        `SELECT 1 FROM projects WHERE id = $1 AND user_id = $2 LIMIT 1`,
-        [projectId, photographerId],
-      );
-      if (owned.rowCount === 0) return res.status(404).json({ error: 'project_not_found' });
+      // Team Workspace: eier ELLER aktivt team-medlem.
+      if (!(await canAccessProject(pool, photographerId, projectId))) {
+        return res.status(404).json({ error: 'project_not_found' });
+      }
 
       const r = await pool.query(
         `SELECT id, title, description, category, type, due_date, scheduled_date,
@@ -1263,9 +1292,9 @@ export function setupPhotographerProjectsRoutes(
                 client_approval_status, google_calendar_event_id,
                 actual_cost, budget_allocated, created_at, updated_at
            FROM project_milestones
-          WHERE project_id = $1 AND user_id = $2
+          WHERE project_id = $1
           ORDER BY due_date ASC NULLS LAST, created_at ASC`,
-        [projectId, photographerId],
+        [projectId],
       );
 
       const milestones = r.rows.map((m: Record<string, unknown>) => ({

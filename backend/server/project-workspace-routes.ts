@@ -1,0 +1,390 @@
+/**
+ * project-workspace-routes.ts — Team Workspace egne panel-data (project_id-scopet)
+ *
+ * HELT UAVHENGIG av Role Room / casting / wedding. Dedikerte tabeller for
+ * foto/video-prosjektets workspace, alle scopet til public.projects.id og
+ * gated via canAccessProject (eier ELLER aktivt team-medlem).
+ *
+ * Ressurser:
+ *   project_board_tasks   — Samkjøringsboard / Oppgaver (kanban per crew_role)
+ *   project_checklist_items — Sjekkliste (utstyr/backup)
+ *   project_deliverables  — Leveranser
+ *
+ * Endpoints (alle /api/projects/:projectId/...):
+ *   GET/POST  board-tasks      PATCH/DELETE board-tasks/:id
+ *   GET/POST  checklist        PATCH/DELETE checklist/:id
+ *   GET/POST  deliverables     PATCH/DELETE deliverables/:id
+ */
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+import type express from "express";
+import { canAccessProject } from "./project-team-routes";
+
+export interface ProjectWorkspaceRoutesDeps {
+  app: express.Application;
+  pool: any;
+  requireUserSession: (
+    req: any,
+    res: any,
+  ) => { userId: string; email: string; name: string; role: string } | null;
+}
+
+let schemaReady: Promise<void> | null = null;
+async function ensureSchema(pool: any): Promise<void> {
+  if (!schemaReady) {
+    schemaReady = (async () => {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS project_board_tasks (
+          id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          project_id  VARCHAR(64) NOT NULL,
+          crew_role   VARCHAR(20) NOT NULL DEFAULT 'begge',
+          title       TEXT NOT NULL,
+          time_label  VARCHAR(60),
+          status      VARCHAR(20) NOT NULL DEFAULT 'todo',
+          order_index INTEGER NOT NULL DEFAULT 0,
+          created_by  VARCHAR(64),
+          created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_pbt_project ON project_board_tasks (project_id, crew_role, order_index);
+
+        CREATE TABLE IF NOT EXISTS project_checklist_items (
+          id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          project_id  VARCHAR(64) NOT NULL,
+          label       TEXT NOT NULL,
+          checked     BOOLEAN NOT NULL DEFAULT FALSE,
+          category    VARCHAR(40),
+          order_index INTEGER NOT NULL DEFAULT 0,
+          created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_pci_project ON project_checklist_items (project_id, order_index);
+
+        CREATE TABLE IF NOT EXISTS project_deliverables (
+          id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          project_id  VARCHAR(64) NOT NULL,
+          title       TEXT NOT NULL,
+          type        VARCHAR(60),
+          status      VARCHAR(20) NOT NULL DEFAULT 'not_started',
+          due_date    DATE,
+          order_index INTEGER NOT NULL DEFAULT 0,
+          created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_pd_project ON project_deliverables (project_id, order_index);
+
+        CREATE TABLE IF NOT EXISTS project_split_shares (
+          id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          project_id  VARCHAR(64) NOT NULL,
+          name        VARCHAR(255),
+          email       VARCHAR(255),
+          role        VARCHAR(40),
+          percent     NUMERIC(5,2) NOT NULL DEFAULT 0,
+          order_index INTEGER NOT NULL DEFAULT 0,
+          created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_pss_project ON project_split_shares (project_id, order_index);
+      `).catch(() => undefined);
+    })();
+  }
+  return schemaReady;
+}
+
+export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): void {
+  const { app, pool, requireUserSession } = deps;
+
+  // Felles gate: innlogget + canAccessProject. Returnerer userId, eller null
+  // (og har allerede sendt respons).
+  const guard = async (req: any, res: any): Promise<string | null> => {
+    const session = requireUserSession(req, res);
+    if (!session) return null;
+    const projectId = String(req.params.projectId || "").trim();
+    if (!projectId) { res.status(400).json({ error: "missing_project_id" }); return null; }
+    if (!(await canAccessProject(pool, session.userId, projectId))) {
+      res.status(403).json({ error: "no_access" });
+      return null;
+    }
+    return session.userId;
+  };
+
+  // ─────────── Samkjøringsboard / Oppgaver ───────────
+  app.get("/api/projects/:projectId/board-tasks", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureSchema(pool);
+      const r = await pool.query(
+        `SELECT * FROM project_board_tasks WHERE project_id = $1 ORDER BY crew_role, order_index, created_at`,
+        [req.params.projectId],
+      );
+      res.json({ tasks: r.rows.map((t: any) => ({ id: t.id, crewRole: t.crew_role, title: t.title, timeLabel: t.time_label, status: t.status, orderIndex: t.order_index })) });
+    } catch (e) { console.error("GET board-tasks", e); res.status(500).json({ error: "failed" }); }
+  });
+  app.post("/api/projects/:projectId/board-tasks", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureSchema(pool);
+      const b = req.body ?? {};
+      const title = typeof b.title === "string" ? b.title.trim() : "";
+      if (!title) return res.status(400).json({ error: "title_required" });
+      const r = await pool.query(
+        `INSERT INTO project_board_tasks (project_id, crew_role, title, time_label, status, order_index, created_by)
+         VALUES ($1, $2, $3, $4, $5, COALESCE($6, 0), $7) RETURNING *`,
+        [req.params.projectId, (b.crewRole || "begge"), title, b.timeLabel || null, b.status || "todo", b.orderIndex ?? null, uid],
+      );
+      const t = r.rows[0];
+      res.status(201).json({ id: t.id, crewRole: t.crew_role, title: t.title, timeLabel: t.time_label, status: t.status, orderIndex: t.order_index });
+    } catch (e) { console.error("POST board-tasks", e); res.status(500).json({ error: "failed" }); }
+  });
+  app.patch("/api/projects/:projectId/board-tasks/:id", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureSchema(pool);
+      const b = req.body ?? {};
+      const r = await pool.query(
+        `UPDATE project_board_tasks SET
+            title = COALESCE($1, title), status = COALESCE($2, status),
+            time_label = COALESCE($3, time_label), crew_role = COALESCE($4, crew_role),
+            updated_at = NOW()
+          WHERE id = $5 AND project_id = $6 RETURNING *`,
+        [b.title ?? null, b.status ?? null, b.timeLabel ?? null, b.crewRole ?? null, req.params.id, req.params.projectId],
+      );
+      if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      const t = r.rows[0];
+      res.json({ id: t.id, crewRole: t.crew_role, title: t.title, timeLabel: t.time_label, status: t.status, orderIndex: t.order_index });
+    } catch (e) { console.error("PATCH board-tasks", e); res.status(500).json({ error: "failed" }); }
+  });
+  app.delete("/api/projects/:projectId/board-tasks/:id", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try { await ensureSchema(pool); await pool.query(`DELETE FROM project_board_tasks WHERE id = $1 AND project_id = $2`, [req.params.id, req.params.projectId]); res.json({ success: true }); }
+    catch (e) { console.error("DELETE board-tasks", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  // ─────────── Delivery-fase utledet fra EKTE showcase-tilstand ───────────
+  // Stepperen (Editing→Internal Review→Client Review→Revisions→Approved) drives
+  // av galleriets livssyklus + klient-aktivitet, ikke manuelt:
+  //   1 Editing        — ingen galleri opprettet
+  //   3 Client Review  — galleri finnes (delt med klient), ingen klient-handling
+  //   4 Revisions      — klient har comments eller (ikke-innsendte) selections
+  //   5 Approved       — klient sendte utvalg (submitted_at) ELLER galleri completed
+  app.get("/api/projects/:projectId/delivery-status", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const gq = await pool.query(
+        `SELECT id, status, completed_at FROM photographer_client_galleries WHERE project_id = $1`,
+        [req.params.projectId],
+      ).catch(() => ({ rows: [] }));
+      const galleries = gq.rows;
+      if (galleries.length === 0) {
+        return res.json({ phase: 1, phaseKey: "editing", signals: { hasGallery: false, selections: 0, submitted: 0, comments: 0, completed: false } });
+      }
+      const ids = galleries.map((g: any) => g.id);
+      const [selQ, subQ, comQ] = await Promise.all([
+        pool.query(`SELECT count(*)::int c FROM client_image_selections WHERE gallery_id = ANY($1::uuid[])`, [ids]).catch(() => ({ rows: [{ c: 0 }] })),
+        pool.query(`SELECT count(*)::int c FROM client_image_selections WHERE gallery_id = ANY($1::uuid[]) AND submitted_at IS NOT NULL`, [ids]).catch(() => ({ rows: [{ c: 0 }] })),
+        pool.query(`SELECT count(*)::int c FROM client_image_comments WHERE gallery_id = ANY($1::uuid[])`, [ids]).catch(() => ({ rows: [{ c: 0 }] })),
+      ]);
+      const selections = selQ.rows[0]?.c || 0;
+      const submitted = subQ.rows[0]?.c || 0;
+      const comments = comQ.rows[0]?.c || 0;
+      const completed = galleries.some((g: any) => g.status === "completed" || g.completed_at);
+
+      let phase = 3, phaseKey = "client_review";
+      if (completed || submitted > 0) { phase = 5; phaseKey = "approved"; }
+      else if (comments > 0 || selections > 0) { phase = 4; phaseKey = "revisions"; }
+      res.json({ phase, phaseKey, signals: { hasGallery: true, selections, submitted, comments, completed } });
+    } catch (e) { console.error("GET delivery-status", e); res.json({ phase: 1, phaseKey: "editing", signals: {} }); }
+  });
+
+  // ─────────── Split sheet (honorar-fordeling mellom team) ───────────
+  app.get("/api/projects/:projectId/split-sheet", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureSchema(pool);
+      const r = await pool.query(
+        `SELECT id, name, email, role, percent, order_index FROM project_split_shares WHERE project_id = $1 ORDER BY order_index, created_at`,
+        [req.params.projectId],
+      );
+      const shares = r.rows.map((s: any) => ({ id: s.id, name: s.name, email: s.email, role: s.role, percent: Number(s.percent) }));
+      const total = shares.reduce((sum: number, s: any) => sum + (s.percent || 0), 0);
+      res.json({ shares, total });
+    } catch (e) { console.error("GET split-sheet", e); res.status(500).json({ error: "failed" }); }
+  });
+  // PUT — erstatt hele fordelingen (enklere enn per-rad-diff). Validerer ~100%.
+  app.put("/api/projects/:projectId/split-sheet", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureSchema(pool);
+      const rows = Array.isArray(req.body?.shares) ? req.body.shares : [];
+      const clean = rows
+        .map((s: any, i: number) => ({
+          name: typeof s.name === "string" ? s.name.trim() : null,
+          email: typeof s.email === "string" ? s.email.trim().toLowerCase() : null,
+          role: typeof s.role === "string" ? s.role.trim() : null,
+          percent: Math.max(0, Math.min(100, Number(s.percent) || 0)),
+          order: i,
+        }))
+        .filter((s: any) => s.name || s.email);
+      const total = clean.reduce((sum: number, s: any) => sum + s.percent, 0);
+      if (clean.length > 0 && Math.round(total) !== 100) {
+        return res.status(400).json({ error: "must_sum_100", total });
+      }
+      const projectId = req.params.projectId;
+      await pool.query(`DELETE FROM project_split_shares WHERE project_id = $1`, [projectId]);
+      for (const s of clean) {
+        await pool.query(
+          `INSERT INTO project_split_shares (project_id, name, email, role, percent, order_index)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [projectId, s.name, s.email, s.role, s.percent, s.order],
+        );
+      }
+      res.json({ success: true, total });
+    } catch (e) { console.error("PUT split-sheet", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  // ─────────── Showcase / klient-galleri (LESER photographer_client_galleries) ───
+  // Kobler Leveranser til det EKTE leveranse-systemet: klient-galleriet/showcasen
+  // klienten faktisk ser. project_id-scopet + canAccessProject. shareUrl =
+  // /client/gallery/<access_token> (frontend prepender origin).
+  app.get("/api/projects/:projectId/galleries", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const r = await pool.query(
+        `SELECT id, project_title, client_name, client_email, access_token, status, created_at, completed_at
+           FROM photographer_client_galleries
+          WHERE project_id = $1
+          ORDER BY created_at DESC`,
+        [req.params.projectId],
+      ).catch(() => ({ rows: [] }));
+      res.json({
+        galleries: r.rows.map((g: any) => ({
+          id: g.id, title: g.project_title || g.client_name || "Galleri",
+          clientName: g.client_name, clientEmail: g.client_email,
+          status: g.status, accessToken: g.access_token,
+          sharePath: g.access_token ? `/client/gallery/${g.access_token}` : null,
+          createdAt: g.created_at, completedAt: g.completed_at,
+        })),
+      });
+    } catch (e) { console.error("GET project galleries", e); res.json({ galleries: [] }); }
+  });
+
+  // ─────────── Shotlist (LESER shot_lists wizarden skrev) ───────────
+  // GET — drift-trygt: rå SQL mot de EKTE kolonnene (shots_data/name/
+  // template_type/critical_shots), IKKE Drizzle-helperen som har skjema-drift.
+  // ProjectCreationWithMemoryCards skriver shot_lists via POST; her leser vi den.
+  app.get("/api/projects/:projectId/shot-list", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const r = await pool.query(
+        `SELECT id, name, template_type, culture, shots_data,
+                total_shots, completed_shots, critical_shots, completed_critical_shots, updated_at
+           FROM shot_lists
+          WHERE project_id = $1 AND is_active = TRUE
+          ORDER BY updated_at DESC NULLS LAST LIMIT 1`,
+        [req.params.projectId],
+      );
+      if (r.rowCount === 0) return res.json({ shotList: null, shots: [] });
+      const s = r.rows[0];
+      const shots = Array.isArray(s.shots_data) ? s.shots_data : [];
+      res.json({
+        shotList: {
+          id: s.id, name: s.name, templateType: s.template_type, culture: s.culture,
+          totalShots: s.total_shots ?? shots.length, completedShots: s.completed_shots ?? 0,
+          criticalShots: s.critical_shots ?? 0, completedCriticalShots: s.completed_critical_shots ?? 0,
+        },
+        shots,
+      });
+    } catch (e) { console.error("GET shot-list", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  // ─────────── Sjekkliste ───────────
+  app.get("/api/projects/:projectId/checklist", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureSchema(pool);
+      const r = await pool.query(`SELECT * FROM project_checklist_items WHERE project_id = $1 ORDER BY order_index, created_at`, [req.params.projectId]);
+      res.json({ items: r.rows.map((i: any) => ({ id: i.id, label: i.label, checked: i.checked, category: i.category })) });
+    } catch (e) { console.error("GET checklist", e); res.status(500).json({ error: "failed" }); }
+  });
+  app.post("/api/projects/:projectId/checklist", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureSchema(pool);
+      const b = req.body ?? {};
+      const label = typeof b.label === "string" ? b.label.trim() : "";
+      if (!label) return res.status(400).json({ error: "label_required" });
+      const r = await pool.query(
+        `INSERT INTO project_checklist_items (project_id, label, checked, category, order_index)
+         VALUES ($1, $2, COALESCE($3, FALSE), $4, COALESCE($5, 0)) RETURNING *`,
+        [req.params.projectId, label, b.checked ?? false, b.category || null, b.orderIndex ?? null],
+      );
+      const i = r.rows[0];
+      res.status(201).json({ id: i.id, label: i.label, checked: i.checked, category: i.category });
+    } catch (e) { console.error("POST checklist", e); res.status(500).json({ error: "failed" }); }
+  });
+  app.patch("/api/projects/:projectId/checklist/:id", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureSchema(pool);
+      const b = req.body ?? {};
+      const r = await pool.query(
+        `UPDATE project_checklist_items SET checked = COALESCE($1, checked), label = COALESCE($2, label) WHERE id = $3 AND project_id = $4 RETURNING *`,
+        [typeof b.checked === "boolean" ? b.checked : null, b.label ?? null, req.params.id, req.params.projectId],
+      );
+      if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      const i = r.rows[0];
+      res.json({ id: i.id, label: i.label, checked: i.checked, category: i.category });
+    } catch (e) { console.error("PATCH checklist", e); res.status(500).json({ error: "failed" }); }
+  });
+  app.delete("/api/projects/:projectId/checklist/:id", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try { await ensureSchema(pool); await pool.query(`DELETE FROM project_checklist_items WHERE id = $1 AND project_id = $2`, [req.params.id, req.params.projectId]); res.json({ success: true }); }
+    catch (e) { console.error("DELETE checklist", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  // ─────────── Leveranser ───────────
+  app.get("/api/projects/:projectId/deliverables", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureSchema(pool);
+      const r = await pool.query(`SELECT * FROM project_deliverables WHERE project_id = $1 ORDER BY order_index, due_date NULLS LAST, created_at`, [req.params.projectId]);
+      res.json({ deliverables: r.rows.map((d: any) => ({ id: d.id, title: d.title, type: d.type, status: d.status, dueDate: d.due_date })) });
+    } catch (e) { console.error("GET deliverables", e); res.status(500).json({ error: "failed" }); }
+  });
+  app.post("/api/projects/:projectId/deliverables", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureSchema(pool);
+      const b = req.body ?? {};
+      const title = typeof b.title === "string" ? b.title.trim() : "";
+      if (!title) return res.status(400).json({ error: "title_required" });
+      const r = await pool.query(
+        `INSERT INTO project_deliverables (project_id, title, type, status, due_date, order_index)
+         VALUES ($1, $2, $3, $4, $5, COALESCE($6, 0)) RETURNING *`,
+        [req.params.projectId, title, b.type || null, b.status || "not_started", b.dueDate || null, b.orderIndex ?? null],
+      );
+      const d = r.rows[0];
+      res.status(201).json({ id: d.id, title: d.title, type: d.type, status: d.status, dueDate: d.due_date });
+    } catch (e) { console.error("POST deliverables", e); res.status(500).json({ error: "failed" }); }
+  });
+  app.patch("/api/projects/:projectId/deliverables/:id", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureSchema(pool);
+      const b = req.body ?? {};
+      const r = await pool.query(
+        `UPDATE project_deliverables SET title = COALESCE($1, title), type = COALESCE($2, type),
+            status = COALESCE($3, status), due_date = COALESCE($4, due_date), updated_at = NOW()
+          WHERE id = $5 AND project_id = $6 RETURNING *`,
+        [b.title ?? null, b.type ?? null, b.status ?? null, b.dueDate ?? null, req.params.id, req.params.projectId],
+      );
+      if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      const d = r.rows[0];
+      res.json({ id: d.id, title: d.title, type: d.type, status: d.status, dueDate: d.due_date });
+    } catch (e) { console.error("PATCH deliverables", e); res.status(500).json({ error: "failed" }); }
+  });
+  app.delete("/api/projects/:projectId/deliverables/:id", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try { await ensureSchema(pool); await pool.query(`DELETE FROM project_deliverables WHERE id = $1 AND project_id = $2`, [req.params.id, req.params.projectId]); res.json({ success: true }); }
+    catch (e) { console.error("DELETE deliverables", e); res.status(500).json({ error: "failed" }); }
+  });
+}
