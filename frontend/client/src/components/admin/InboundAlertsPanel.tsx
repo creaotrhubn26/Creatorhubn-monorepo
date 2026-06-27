@@ -42,6 +42,13 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import {
+  AdminButton,
+  StatusChip,
+  AdminLoading,
+  AdminEmpty,
+  AdminTableContainer,
+} from './design-system';
 
 interface InboundAlert {
   id: string;
@@ -131,30 +138,29 @@ export default function InboundAlertsPanel() {
           Innkommende varsler
         </Typography>
         <Box sx={{ flexGrow: 1 }} />
-        <Chip
+        <StatusChip
+          tone={unreadCount > 0 ? 'error' : 'neutral'}
           label={`${unreadCount} uleste`}
-          color={unreadCount > 0 ? 'error' : 'default'}
-          size="small"
-          variant={unreadCount > 0 ? 'filled' : 'outlined'}
         />
-        <Button
+        <AdminButton
+          tone="secondary"
           startIcon={<Refresh />}
           onClick={refresh}
           size="small"
-          variant="outlined"
           disabled={isFetching}
         >
           Oppdater
-        </Button>
-        <Button
+        </AdminButton>
+        <AdminButton
+          tone="primary"
           startIcon={<DoneAll />}
           onClick={() => markAllReadMutation.mutate()}
           size="small"
-          variant="contained"
+          loading={markAllReadMutation.isPending}
           disabled={markAllReadMutation.isPending || unreadCount === 0}
         >
           Marker alle lest
-        </Button>
+        </AdminButton>
       </Box>
 
       {/* Filters */}
@@ -199,7 +205,7 @@ export default function InboundAlertsPanel() {
       </Card>
 
       {/* Table */}
-      <TableContainer component={Paper}>
+      <AdminTableContainer ariaLabel="Innkommende varsler">
         <Table size="small">
           <TableHead>
             <TableRow>
@@ -218,13 +224,13 @@ export default function InboundAlertsPanel() {
             {isLoading ? (
               <TableRow>
                 <TableCell colSpan={9} align="center" sx={{ py: 4 }}>
-                  <CircularProgress />
+                  <AdminLoading />
                 </TableCell>
               </TableRow>
             ) : alerts.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={9} align="center" sx={{ py: 4 }}>
-                  <Typography color="text.secondary">Ingen varsler funnet</Typography>
+                  <AdminEmpty title="Ingen varsler funnet" />
                 </TableCell>
               </TableRow>
             ) : (
@@ -312,14 +318,15 @@ export default function InboundAlertsPanel() {
                     </TableCell>
                     <TableCell align="right">
                       {isUnread ? (
-                        <Button
+                        <AdminButton
+                          tone="ghost"
                           size="small"
                           startIcon={<Done />}
                           onClick={() => markReadMutation.mutate(alert.id)}
                           disabled={markReadMutation.isPending}
                         >
                           Marker lest
-                        </Button>
+                        </AdminButton>
                       ) : (
                         <Typography variant="caption" color="text.disabled">
                           Lest
@@ -332,7 +339,7 @@ export default function InboundAlertsPanel() {
             )}
           </TableBody>
         </Table>
-      </TableContainer>
+      </AdminTableContainer>
     </Box>
   );
 }

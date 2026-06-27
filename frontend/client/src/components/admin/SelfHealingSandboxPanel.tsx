@@ -6,14 +6,11 @@ import {
   Typography,
   Switch,
   FormControlLabel,
-  Button,
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
-  Chip,
   IconButton,
   Tooltip,
   Alert,
@@ -30,6 +27,7 @@ import {
 import type { RecordedCall, WireMockMapping } from '../../utils/selfHealingSandbox';
 import { selfHealingSandbox } from '../../utils/selfHealingSandbox';
 import { toast } from '../../hooks/use-toast';
+import { AdminButton, StatusChip, AdminTableContainer, AdminEmpty } from './design-system';
 
 export const SelfHealingSandboxPanel: React.FC = () => {
   const [autoConvertEnabled, setAutoConvertEnabled] = useState(false);
@@ -200,36 +198,32 @@ export const SelfHealingSandboxPanel: React.FC = () => {
 
         {/* Actions */}
         <Box display="flex" gap={1} mb={2}>
-          <Button
-            size="small"
-            variant="outlined"
+          <AdminButton
+            tone="secondary"
             startIcon={<ExportIcon />}
             onClick={handleExport}
             disabled={recordedCalls.length === 0}
           >
             Export Mappings
-          </Button>
-          <Button
-            size="small"
-            variant="outlined"
-            color="error"
+          </AdminButton>
+          <AdminButton
+            tone="danger"
             startIcon={<ClearIcon />}
             onClick={handleClear}
             disabled={recordedCalls.length === 0}
           >
             Clear
-          </Button>
+          </AdminButton>
         </Box>
 
         {/* Recorded Calls Table */}
         {recordedCalls.length === 0 ? (
-          <Box sx={{ p: 4, textAlign: 'center', color: 'text.secondary' }}>
-            <Typography>
-              No calls recorded yet. {autoConvertEnabled ? 'Make API calls to see them here.' : 'Enable auto-convert to start recording.'}
-            </Typography>
-          </Box>
+          <AdminEmpty
+            title="No calls recorded yet"
+            description={autoConvertEnabled ? 'Make API calls to see them here.' : 'Enable auto-convert to start recording.'}
+          />
         ) : (
-          <TableContainer sx={{ maxHeight: 400 }}>
+          <AdminTableContainer ariaLabel="Recorded API calls" sx={{ maxHeight: 400 }}>
             <Table stickyHeader size="small">
               <TableHead>
                 <TableRow>
@@ -248,7 +242,7 @@ export const SelfHealingSandboxPanel: React.FC = () => {
                       {new Date(call.timestamp).toLocaleTimeString()}
                     </TableCell>
                     <TableCell>
-                      <Chip label={call.request.method} size="small" color="primary" />
+                      <StatusChip tone="brand" label={call.request.method} />
                     </TableCell>
                     <TableCell>
                       <Tooltip title={call.request.url}>
@@ -258,10 +252,9 @@ export const SelfHealingSandboxPanel: React.FC = () => {
                       </Tooltip>
                     </TableCell>
                     <TableCell>
-                      <Chip
-                        label={call.response.status}
-                        size="small"
-                        color={call.response.status >= 200 && call.response.status < 300 ? 'success' : 'error'}
+                      <StatusChip
+                        label={String(call.response.status)}
+                        tone={call.response.status >= 200 && call.response.status < 300 ? 'success' : 'error'}
                       />
                     </TableCell>
                     <TableCell align="right">
@@ -283,7 +276,7 @@ export const SelfHealingSandboxPanel: React.FC = () => {
                 ))}
               </TableBody>
             </Table>
-          </TableContainer>
+          </AdminTableContainer>
         )}
 
         {/* Mapping Preview */}

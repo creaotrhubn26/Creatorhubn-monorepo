@@ -1,17 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import {
   Box,
-  Card,
-  CardContent,
   Typography,
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   Chip,
-  Button,
   Grid,
   LinearProgress,
   Tooltip,
@@ -21,10 +17,10 @@ import {
   FileDownload as ExportIcon,
   Delete as ClearIcon,
   Visibility as ViewIcon,
-  Timeline as TimelineIcon,
 } from '@mui/icons-material';
 import type { HAREntry } from '../../utils/harRecorder';
 import { harRecorder } from '../../utils/harRecorder';
+import { AdminCard, AdminButton, AdminEmpty, AdminTableContainer } from './design-system';
 
 interface HARViewerProps {
   autoRefresh?: boolean;
@@ -102,38 +98,31 @@ export const HARViewer: React.FC<HARViewerProps> = ({
   const maxTime = Math.max(...entries.map(e => e.time), 1);
 
   return (
-    <Card>
-      <CardContent>
-        <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-          <Box display="flex" alignItems="center" gap={1}>
-            <TimelineIcon />
-            <Typography variant="h6">
-              📊 HAR Event Log & Waterfall
-            </Typography>
-          </Box>
-          <Box display="flex" gap={1}>
-            <Button
-              size="small"
-              variant="outlined"
-              startIcon={<ExportIcon />}
-              onClick={handleExport}
-              disabled={entries.length === 0}
-            >
-              Export HAR
-            </Button>
-            <Button
-              size="small"
-              variant="outlined"
-              color="error"
-              startIcon={<ClearIcon />}
-              onClick={handleClear}
-              disabled={entries.length === 0}
-            >
-              Clear
-            </Button>
-          </Box>
+    <AdminCard
+      title="📊 HAR Event Log & Waterfall"
+      action={
+        <Box display="flex" gap={1}>
+          <AdminButton
+            tone="ghost"
+            size="small"
+            startIcon={<ExportIcon />}
+            onClick={handleExport}
+            disabled={entries.length === 0}
+          >
+            Export HAR
+          </AdminButton>
+          <AdminButton
+            tone="danger"
+            size="small"
+            startIcon={<ClearIcon />}
+            onClick={handleClear}
+            disabled={entries.length === 0}
+          >
+            Clear
+          </AdminButton>
         </Box>
-
+      }
+    >
         {/* Statistics */}
         <Grid container spacing={2} sx={{ mb: 3 }}>
           <Grid item xs={6} sm={3}>
@@ -180,11 +169,12 @@ export const HARViewer: React.FC<HARViewerProps> = ({
 
         {/* Waterfall Table */}
         {entries.length === 0 ? (
-          <Box sx={{ p: 4, textAlign: 'center', color: 'text.secondary' }}>
-            <Typography>No requests recorded yet. Run a WireMock test to see traffic here.</Typography>
-          </Box>
+          <AdminEmpty
+            title="No requests recorded yet"
+            description="Run a WireMock test to see traffic here."
+          />
         ) : (
-          <TableContainer sx={{ maxHeight: 500 }}>
+          <AdminTableContainer ariaLabel="HAR event log and waterfall" sx={{ maxHeight: 500 }}>
             <Table stickyHeader size="small">
               <TableHead>
                 <TableRow>
@@ -258,10 +248,9 @@ export const HARViewer: React.FC<HARViewerProps> = ({
                 })}
               </TableBody>
             </Table>
-          </TableContainer>
+          </AdminTableContainer>
         )}
-      </CardContent>
-    </Card>
+    </AdminCard>
   );
 };
 

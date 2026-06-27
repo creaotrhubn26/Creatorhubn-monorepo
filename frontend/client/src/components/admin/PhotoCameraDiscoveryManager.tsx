@@ -3,11 +3,9 @@ import {
   Alert,
   Badge,
   Box,
-  Button,
   Card,
   CardContent,
   Chip,
-  CircularProgress,
   FormControlLabel,
   Grid,
   List,
@@ -30,6 +28,7 @@ import {
 import type { PhotoCamera } from '../../data/photo-camera-database';
 import type { CameraDiscoveryResult} from '../../data/photo-camera-discovery';
 import { photoCameraDiscovery } from '../../data/photo-camera-discovery';
+import { AdminButton, AdminCard } from './design-system';
 
 interface PhotoCameraDiscoveryManagerProps {
   onCameraUpdate?: (cameras: PhotoCamera[]) => void;
@@ -249,23 +248,21 @@ export const PhotoCameraDiscoveryManager: React.FC<PhotoCameraDiscoveryManagerPr
               control={<Switch checked={showNewOnly} onChange={(event) => setShowNewOnly(event.target.checked)} />}
               label="Show New/Updated only"
             />
-            <Button
-              variant="contained"
-              startIcon={isDiscovering ? <CircularProgress size={16} /> : <Refresh />}
+            <AdminButton
+              tone="primary"
+              loading={isDiscovering}
+              startIcon={<Refresh />}
               disabled={isDiscovering}
               onClick={() => void triggerDiscovery()}
             >
               {isDiscovering ? 'Discovering...' : 'Trigger Discovery'}
-            </Button>
+            </AdminButton>
           </Stack>
         </Stack>
       </Paper>
 
       {discoveryResults.length > 0 && (
-        <Paper sx={{ p: 2, mb: 2 }}>
-          <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1 }}>
-            Latest Discovery Results
-          </Typography>
+        <AdminCard title="Latest Discovery Results" sx={{ mb: 2 }}>
           <List dense>
             {discoveryResults.map((result, index) => (
               <ListItem key={`${result.source}-${result.timestamp}-${index}`}>
@@ -277,14 +274,10 @@ export const PhotoCameraDiscoveryManager: React.FC<PhotoCameraDiscoveryManagerPr
               </ListItem>
             ))}
           </List>
-        </Paper>
+        </AdminCard>
       )}
 
-      <Paper sx={{ p: 2 }}>
-        <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1 }}>
-          Cameras ({visibleCameras.length})
-        </Typography>
-
+      <AdminCard title={`Cameras (${visibleCameras.length})`}>
         {visibleCameras.length === 0 && (
           <Alert severity="info">Ingen kameraer å vise ennå. Kjør discovery for å hente nye modeller.</Alert>
         )}
@@ -319,7 +312,7 @@ export const PhotoCameraDiscoveryManager: React.FC<PhotoCameraDiscoveryManagerPr
             </ListItem>
           ))}
         </List>
-      </Paper>
+      </AdminCard>
     </Box>
   );
 };

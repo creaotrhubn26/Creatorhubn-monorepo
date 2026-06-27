@@ -1,21 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import {
   Box,
-  Card,
-  CardContent,
   Typography,
   Grid,
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   Chip,
   LinearProgress,
 } from '@mui/material';
 import {
-  TrendingUp as TrendingIcon,
   Speed as SpeedIcon,
   Error as ErrorIcon,
   CheckCircle as SuccessIcon,
@@ -27,6 +23,7 @@ import {
   formatBytes,
   type WireMockTestResult as AnalyticsWireMockTestResult,
 } from '../../utils/wireMockAnalytics';
+import { AdminCard, AdminEmpty, AdminTableContainer } from './design-system';
 
 interface EndpointStats {
   endpoint: string;
@@ -120,15 +117,7 @@ export const WireMockBehaviorAnalytics: React.FC = () => {
   };
 
   return (
-    <Card>
-      <CardContent>
-        <Box display="flex" alignItems="center" gap={1} mb={3}>
-          <TrendingIcon />
-          <Typography variant="h6">
-            📊 WireMock Behavior Analytics
-          </Typography>
-        </Box>
-
+    <AdminCard title="📊 WireMock Behavior Analytics">
         {/* Global Statistics */}
         <Grid container spacing={2} sx={{ mb: 3 }}>
           <Grid item xs={6} sm={3}>
@@ -179,11 +168,9 @@ export const WireMockBehaviorAnalytics: React.FC = () => {
         </Typography>
 
         {endpointStats.length === 0 ? (
-          <Box sx={{ p: 4, textAlign: 'center', color: 'text.secondary' }}>
-            <Typography>No data yet. Run WireMock tests to see analytics.</Typography>
-          </Box>
+          <AdminEmpty description="No data yet. Run WireMock tests to see analytics." />
         ) : (
-          <TableContainer sx={{ maxHeight: 400 }}>
+          <AdminTableContainer ariaLabel="Endpoint performance" sx={{ maxHeight: 400 }}>
             <Table stickyHeader size="small">
               <TableHead>
                 <TableRow>
@@ -263,9 +250,8 @@ export const WireMockBehaviorAnalytics: React.FC = () => {
                 ))}
               </TableBody>
             </Table>
-          </TableContainer>
+          </AdminTableContainer>
         )}
-      </CardContent>
-    </Card>
+    </AdminCard>
   );
 };

@@ -13,8 +13,6 @@ import {
   TableRow,
   Chip,
   IconButton,
-  Alert,
-  CircularProgress,
   Typography,
 } from '@mui/material';
 import {
@@ -23,6 +21,7 @@ import {
   Visibility,
   CheckCircle,
 } from '@mui/icons-material';
+import { AdminLoading, AdminEmpty } from './design-system';
 
 interface PaymentMethod {
   id: number;
@@ -47,24 +46,17 @@ export default function PaymentMethodsTable() {
   });
 
   if (isLoading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
-        <CircularProgress />
-      </Box>
-    );
+    return <AdminLoading />;
   }
 
   const methods = paymentMethods?.paymentMethods || [];
 
   if (methods.length === 0) {
     return (
-      <Alert severity="info">
-        Ingen betalingsmetoder registrert ennå.
-        <br />
-        <Typography variant="caption">
-          Betalingsmetoder fra brukere vil vises her når de legger til dem.
-        </Typography>
-      </Alert>
+      <AdminEmpty
+        title="Ingen betalingsmetoder registrert ennå."
+        description="Betalingsmetoder fra brukere vil vises her når de legger til dem."
+      />
     );
   }
 

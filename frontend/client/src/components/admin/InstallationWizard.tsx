@@ -1,10 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
-  Button,
   Card,
   CardContent,
-  Chip,
   CircularProgress,
   Dialog,
   DialogActions,
@@ -35,6 +33,7 @@ import {
   SmartToy,
   Warning,
 } from '@mui/icons-material';
+import { AdminButton, StatusChip } from './design-system';
 
 export interface InstallationStep {
   id: string;
@@ -313,7 +312,7 @@ const InstallationWizard: React.FC<InstallationWizardProps> = ({ open, onClose, 
           <Typography variant="h6" sx={{ fontWeight: 800 }}>
             AI {mode === 'install' ? 'Installation' : 'Update'} Wizard
           </Typography>
-          <Chip size="small" label={`${packages.length} package(s)`} color="primary" />
+          <StatusChip tone="brand" label={`${packages.length} package(s)`} />
         </Stack>
       </DialogTitle>
 
@@ -365,9 +364,9 @@ const InstallationWizard: React.FC<InstallationWizardProps> = ({ open, onClose, 
                     secondary={pkg.description}
                   />
                   <Stack direction="row" spacing={0.75}>
-                    {pkg.breaking ? <Chip size="small" color="warning" icon={<Warning />} label="breaking" /> : null}
+                    {pkg.breaking ? <StatusChip tone="warning" label="breaking" /> : null}
                     {pkg.vulnerabilities > 0 ? (
-                      <Chip size="small" color="error" icon={<Security />} label={`${pkg.vulnerabilities} vuln`} />
+                      <StatusChip tone="error" label={`${pkg.vulnerabilities} vuln`} />
                     ) : null}
                   </Stack>
                 </ListItem>
@@ -492,19 +491,20 @@ const InstallationWizard: React.FC<InstallationWizardProps> = ({ open, onClose, 
       </DialogContent>
 
       <DialogActions>
-        <Button onClick={onClose} disabled={isRunning}>
+        <AdminButton tone="ghost" onClick={onClose} disabled={isRunning}>
           {isRunning ? 'Running...' : 'Cancel'}
-        </Button>
-        <Button
-          variant="contained"
-          startIcon={isRunning ? <CircularProgress size={14} /> : <RocketLaunch />}
+        </AdminButton>
+        <AdminButton
+          tone="primary"
+          loading={isRunning}
+          startIcon={<RocketLaunch />}
           onClick={() => {
             void startInstallation();
           }}
           disabled={isRunning || packages.length === 0}
         >
           {isRunning ? 'Executing...' : mode === 'install' ? 'Start Install' : 'Start Update'}
-        </Button>
+        </AdminButton>
       </DialogActions>
     </Dialog>
   );
