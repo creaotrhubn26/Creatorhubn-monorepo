@@ -3,7 +3,7 @@ import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
 import { PlanFeaturePreview } from '../subscription/PlanFeaturePreview';
@@ -303,7 +303,7 @@ export default function InviteManagementDashboard() {
     }
   };
 
-  const filteredInvitations = invitations.filter((invite: any) => {
+  const filteredInvitations = useMemo(() => invitations.filter((invite: any) => {
     switch (currentTab) {
       case 1: return invite.status === 'pending';
       case 2: return invite.status === 'under_review';
@@ -311,7 +311,7 @@ export default function InviteManagementDashboard() {
       case 4: return invite.status === 'rejected';
       default: return true;
 }
-});
+}), [invitations, currentTab]);
 
   if (isLoading) {
     return (
@@ -386,7 +386,7 @@ export default function InviteManagementDashboard() {
         </Grid>
         
         <Grid item xs={12} md={3}>
-          <MuiCard sx={{ backgroundColor: 'rgba(255, 1520.1)' }}>
+          <MuiCard sx={{ backgroundColor: 'rgba(255, 152, 0, 0.1)' }}>
             <CardContent >
               <Box sx={{ display: 'flex', alignItems: 'center' }}>
                 <Schedule sx={{ color: 'warning.main', mr: 2 }} />
