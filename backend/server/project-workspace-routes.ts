@@ -181,6 +181,58 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     catch (e) { console.error("DELETE board-tasks", e); res.status(500).json({ error: "failed" }); }
   });
 
+  // ─────────── Klient-feedback + aktivitet (galleri-kommentarer) ───────────
+  app.get("/api/projects/:projectId/client-feedback", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const g = await pool.query(`SELECT id FROM photographer_client_galleries WHERE project_id = $1`, [req.params.projectId]).catch(() => ({ rows: [] }));
+      const ids = g.rows.map((x: any) => x.id);
+      if (ids.length === 0) return res.json({ feedback: [], activity: [] });
+      const cm = await pool.query(
+        `SELECT client_name, comment, comment_type, created_at FROM client_image_comments
+          WHERE gallery_id = ANY($1::uuid[]) ORDER BY created_at DESC LIMIT 20`,
+        [ids],
+      ).catch(() => ({ rows: [] }));
+      const feedback = cm.rows.map((c: any) => ({ clientName: c.client_name, comment: c.comment, type: c.comment_type, at: c.created_at }));
+      // Aktivitet = nylige kommentarer + innsendte utvalg.
+      const sub = await pool.query(
+        `SELECT count(*)::int n, max(submitted_at) AS at FROM client_image_selections
+          WHERE gallery_id = ANY($1::uuid[]) AND submitted_at IS NOT NULL`,
+        [ids],
+      ).catch(() => ({ rows: [{ n: 0, at: null }] }));
+      const activity = [
+        ...feedback.slice(0, 5).map((f: any) => ({ who: f.clientName || 'Klient', what: 'la igjen en kommentar', at: f.at })),
+      ];
+      if (sub.rows[0]?.n > 0) activity.unshift({ who: 'Klient', what: `sendte inn ${sub.rows[0].n} utvalgte bilder`, at: sub.rows[0].at });
+      res.json({ feedback, activity });
+    } catch (e) { console.error("GET client-feedback", e); res.json({ feedback: [], activity: [] }); }
+  });
+
+  // ─────────── Moodboard-meta (stil/palett/notater) ───────────
+  app.get("/api/projects/:projectId/moodboard-meta", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await pool.query(`CREATE TABLE IF NOT EXISTS project_moodboard_meta (project_id VARCHAR(64) PRIMARY KEY, style TEXT, palette JSONB, notes JSONB, must_capture JSONB, client_approved VARCHAR(20), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`).catch(() => undefined);
+      const r = await pool.query(`SELECT style, palette, notes, must_capture, client_approved FROM project_moodboard_meta WHERE project_id = $1`, [req.params.projectId]).catch(() => ({ rows: [] }));
+      const m = r.rows[0];
+      res.json({ meta: m ? { style: m.style, palette: m.palette || [], notes: m.notes || [], mustCapture: m.must_capture || [], clientApproved: m.client_approved } : null });
+    } catch (e) { console.error("GET moodboard-meta", e); res.json({ meta: null }); }
+  });
+  app.put("/api/projects/:projectId/moodboard-meta", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await pool.query(`CREATE TABLE IF NOT EXISTS project_moodboard_meta (project_id VARCHAR(64) PRIMARY KEY, style TEXT, palette JSONB, notes JSONB, must_capture JSONB, client_approved VARCHAR(20), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`).catch(() => undefined);
+      const b = req.body ?? {};
+      await pool.query(
+        `INSERT INTO project_moodboard_meta (project_id, style, palette, notes, must_capture, client_approved, updated_at)
+         VALUES ($1,$2,$3::jsonb,$4::jsonb,$5::jsonb,$6,NOW())
+         ON CONFLICT (project_id) DO UPDATE SET style=EXCLUDED.style, palette=EXCLUDED.palette, notes=EXCLUDED.notes, must_capture=EXCLUDED.must_capture, client_approved=EXCLUDED.client_approved, updated_at=NOW()`,
+        [req.params.projectId, b.style || null, JSON.stringify(b.palette || []), JSON.stringify(b.notes || []), JSON.stringify(b.mustCapture || []), b.clientApproved || null],
+      );
+      res.json({ success: true });
+    } catch (e) { console.error("PUT moodboard-meta", e); res.status(500).json({ error: "failed" }); }
+  });
+
   // ─────────── Delivery-fase utledet fra EKTE showcase-tilstand ───────────
   // Stepperen (Editing→Internal Review→Client Review→Revisions→Approved) drives
   // av galleriets livssyklus + klient-aktivitet, ikke manuelt:
