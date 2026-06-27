@@ -585,7 +585,7 @@ export function LSDMonitoringPanel(): JSX.Element {
   return (
     <Box>
       {/* Header */}
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+      <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2} mb={3}>
         <Box display="flex" alignItems="center">
           <MonitorHeart sx={{ mr: 2, fontSize: 32, color: theme.palette.primary.main }} />
           <Box>

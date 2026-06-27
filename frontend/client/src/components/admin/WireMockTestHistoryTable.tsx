@@ -133,7 +133,7 @@ export const WireMockTestHistoryTable: React.FC<WireMockTestHistoryTableProps> =
         </Grid>
 
         {/* Filters */}
-        <Box display="flex" gap={2} mb={2}>
+        <Box display="flex" flexWrap="wrap" gap={2} mb={2}>
           <TextField
             select
             size="small"

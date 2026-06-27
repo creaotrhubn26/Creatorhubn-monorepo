@@ -183,7 +183,7 @@ export function PostAgentPricingPanel({ theming, priceManagementSurfaceSx }: Pro
             <Grid size={{ xs: 12, md: 8 }}>
               <Card sx={priceManagementSurfaceSx}>
                 <CardContent>
-                  <Typography variant="h6" component="h2" sx={{ mb: 2, display: 'flex', alignItems: 'center', color: theming.colors.primary }}>
+                  <Typography variant="h6" component="h2" sx={{ mb: 2, display: 'flex', alignItems: 'center', flexWrap: 'wrap', color: theming.colors.primary }}>
                     <MoneyIcon aria-hidden sx={{ mr: 1 }} />
                     Base-priser (eks. MVA)
                     <StatusChip
@@ -297,7 +297,7 @@ export function PostAgentPricingPanel({ theming, priceManagementSurfaceSx }: Pro
                 <Box sx={{ mt: 1 }}>
                   <Typography variant="caption" color="text.secondary">Aktive priser i Stripe ({data.prices.length})</Typography>
                   {data.prices.map((p) => (
-                    <Box key={p.id} sx={{ display: 'flex', gap: 1, alignItems: 'center', mt: 0.5 }}>
+                    <Box key={p.id} sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap', mt: 0.5 }}>
                       <code style={{ fontSize: 11 }}>{p.id}</code>
                       <StatusChip tone="neutral" label={`${(p.unit_amount ?? 0) / 100} ${p.currency.toUpperCase()}/${p.recurring?.interval}`} />
                       {!p.active && <StatusChip tone="neutral" label="archived" />}

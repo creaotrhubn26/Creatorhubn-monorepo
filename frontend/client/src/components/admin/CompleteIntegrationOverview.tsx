@@ -430,7 +430,7 @@ export default function CompleteIntegrationOverview() {
         </CardContent>
       </Card>
 
-      <Stack direction="row" spacing={1}>
+      <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
         <AdminButton
           tone="primary"
           startIcon={<RefreshIcon />}
