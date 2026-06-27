@@ -37,6 +37,7 @@ import {
   MenuItem,
   FormControl,
   InputLabel,
+  InputAdornment,
   Snackbar,
 } from '@mui/material';
 import {
@@ -105,6 +106,7 @@ export default function SEOBotAnalyticsDashboard() {
   const [testUrl, setTestUrl] = useState('');
   const [selectedBot, setSelectedBot] = useState('Googlebot');
   const [days, setDays] = useState(7);
+  const [botSearch, setBotSearch] = useState('');
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
     message: string;
@@ -382,6 +384,22 @@ export default function SEOBotAnalyticsDashboard() {
                 </Box>
 
                 {/* Bot Details Table */}
+                <Box sx={{ mb: 2 }}>
+                  <TextField
+                    size="small"
+                    fullWidth
+                    placeholder="Søk etter bot eller kategori …"
+                    value={botSearch}
+                    onChange={(e) => setBotSearch(e.target.value)}
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <SearchIcon fontSize="small" />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                </Box>
                 <AdminTableContainer ariaLabel="Bot detaljer">
                   <Table>
                     <TableHead>
@@ -395,7 +413,9 @@ export default function SEOBotAnalyticsDashboard() {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {analyticsRows.map((bot: any) => (
+                      {analyticsRows.filter((bot: any) =>
+                        `${bot.bot_name ?? ''} ${bot.bot_category ?? ''}`.toLowerCase().includes(botSearch.toLowerCase())
+                      ).map((bot: any) => (
                         <TableRow key={bot.bot_name}>
                           <TableCell>{bot.bot_name}</TableCell>
                           <TableCell>

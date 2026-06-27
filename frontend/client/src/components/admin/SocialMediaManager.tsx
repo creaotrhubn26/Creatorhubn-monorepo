@@ -38,6 +38,7 @@ import {
   DialogContent,
   DialogActions,
   Snackbar,
+  InputAdornment,
 } from '@mui/material';
 import {
   Instagram as InstagramIcon,
@@ -56,6 +57,7 @@ import {
   Visibility as PreviewIcon,
   CalendarMonth as CalendarIcon,
   Campaign as _CampaignIcon,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import { PUBLIC_BRAND_LINKS } from '@/lib/publicBrandLinks';
 import { AdminButton, useIsMobile } from './design-system';
@@ -154,6 +156,7 @@ export default function SocialMediaManager() {
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
   const [errorSnackbar, setErrorSnackbar] = useState<{ open: boolean; message: string }>({ open: false, message: '' });
   const [autoPublish, setAutoPublish] = useState(false);
+  const [search, setSearch] = useState('');
   const isMobile = useIsMobile();
 
   const queryClient = useQueryClient();
@@ -736,8 +739,28 @@ export default function SocialMediaManager() {
             <Typography variant="h6" component="h3" gutterBottom>
               Publiserte Innlegg
             </Typography>
+            <TextField
+              size="small"
+              placeholder="Søk i publiserte innlegg …"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              sx={{ mb: 2, maxWidth: 360 }}
+              fullWidth
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon fontSize="small" />
+                  </InputAdornment>
+                ),
+              }}
+            />
             <Grid container spacing={2}>
               {publishedPosts
+                .filter((post: SocialPost) =>
+                  `${post.content} ${platformConfig[post.platform as keyof typeof platformConfig]?.name ?? ''}`
+                    .toLowerCase()
+                    .includes(search.toLowerCase())
+                )
                 .map((post: SocialPost) => {
                   const Icon = platformConfig[post.platform as keyof typeof platformConfig].icon;
                   const config = platformConfig[post.platform as keyof typeof platformConfig];

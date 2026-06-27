@@ -130,6 +130,7 @@ import {
   Chat as ChatProtocolIcon,
   Shield as ShieldIcon,
   Search as SeoIcon,
+  Search as SearchIcon,
   MovieCreation as _VideoIcon,
   AudioFile as _AudioIcon,
   AutoFixHigh as EnhancementIcon,
@@ -285,6 +286,7 @@ export default function IntegrationsManagementPanel({
 
   // State management
   const [tabValue, setTabValue] = useState(0);
+  const [search, setSearch] = useState("");
   const [keyDialogOpen, setKeyDialogOpen] = useState(false);
   const [webhookDialogOpen, setWebhookDialogOpen] = useState(false);
   const [oauthDialogOpen, setOAuthDialogOpen] = useState(false);
@@ -5177,6 +5179,22 @@ export default function IntegrationsManagementPanel({
           </Button>
         </Box>
 
+        <TextField
+          size="small"
+          placeholder="Søk i API-nøkler (tjeneste, navn, type) …"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          sx={{ mb: 2, maxWidth: 360 }}
+          fullWidth
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon fontSize="small" />
+              </InputAdornment>
+            ),
+          }}
+        />
+
         <Card>
           <CardContent sx={{ p: 0 }}>
             <TableContainer>
@@ -5204,7 +5222,13 @@ export default function IntegrationsManagementPanel({
                         </TableRow>
                       ))
                   ) : (
-                    (Array.isArray(apiKeysData?.apiKeys) ? apiKeysData.apiKeys : []).map((apiKey: ApiKey) => (
+                    (Array.isArray(apiKeysData?.apiKeys) ? apiKeysData.apiKeys : [])
+                      .filter((apiKey: ApiKey) =>
+                        `${apiKey.service} ${apiKey.name} ${apiKey.keyType}`
+                          .toLowerCase()
+                          .includes(search.toLowerCase())
+                      )
+                      .map((apiKey: ApiKey) => (
                         <TableRow key={apiKey.id} hover>
                           <TableCell>
                             <Typography variant="body2" fontWeight={600}>
