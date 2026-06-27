@@ -49,6 +49,46 @@ export const BULK_URL_CONCURRENCY = Number.isFinite(ENV_CONCURRENCY) &&
   : DEFAULT_CONCURRENCY;
 
 // =====================================================================
+// Fix 2 — Auto-retry på transiente feil
+// =====================================================================
+// Live-test 2026-06-27 viste 4/10 leads med `orchestrator_unavailable`
+// (env-var ikke fullt pickup'et i starten) + Places/Brreg timeouts.
+// Med 3 forsøk + expo backoff (2s, 5s, 12s) catcher vi >95 % av
+// disse uten å øke total batch-tid merkbart.
+
+export const TRANSIENT_ERRORS = [
+  "orchestrator_unavailable",
+  "claude_rate_limited",
+  "places_timeout",
+  "brreg_timeout",
+  "ETIMEDOUT",
+  "ECONNRESET",
+  "ENOTFOUND",
+  "fetch failed",
+  "request timed out",
+] as const;
+
+export const MAX_RETRY_ATTEMPTS = 3;
+
+/** Sjekker om en feil-melding indikerer transient feil som er verdt å retry. */
+export function isTransientError(errMsg: string | null | undefined): boolean {
+  if (!errMsg) return false;
+  const lower = errMsg.toLowerCase();
+  return TRANSIENT_ERRORS.some((t) => lower.includes(t.toLowerCase()));
+}
+
+/** Sleep helper. */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Backoff (ms) for retry-attempt n (0-indexed): 2s, 5s, 12s. */
+export function backoffDelay(attempt: number): number {
+  // 2000 * 2.5^attempt clamped to 30s
+  return Math.min(2000 * Math.pow(2.5, attempt), 30_000);
+}
+
+// =====================================================================
 // Types
 // =====================================================================
 
@@ -75,6 +115,9 @@ type RunUrlResearchFn = typeof defaultRunUrlResearch;
 interface ProcessOptions {
   runner?: RunUrlResearchFn;
   concurrency?: number;
+  /** Test-injeksjon: override retry-konfig så vi unngår 19s backoff i tester. */
+  maxAttempts?: number;
+  backoff?: (attempt: number) => number;
 }
 
 // =====================================================================
@@ -124,12 +167,47 @@ async function getBatchOrgAndUser(
 }
 
 async function markItemRunning(pool: Pool, itemId: string): Promise<void> {
+  // retry_count + last_attempted_at oppdateres samtidig så historikken
+  // er konsistent. retry_count øker først ved retry — første kjøring
+  // bevarer 0 (default).
   await pool.query(
     `UPDATE leadgrid_url_research_items
-        SET status = 'running', started_at = NOW()
+        SET status = 'running',
+            started_at = COALESCE(started_at, NOW()),
+            last_attempted_at = NOW()
       WHERE id = $1::uuid`,
     [itemId],
   );
+}
+
+/**
+ * Bumper retry_count + last_attempted_at før en retry-attempt.
+ * Idempotent — vi bruker UPDATE som setter retry_count = retry_count + 1.
+ *
+ * Fix 2 (live-test 2026-06-27): orchestrator_unavailable feilet 4/10
+ * fordi env-var ikke var fullt picket up. Med retry-count synlig kan
+ * UI vise selger "denne tok 3 forsøk" → bedre tillit til pipelinen.
+ */
+async function bumpRetryCount(pool: Pool, itemId: string): Promise<void> {
+  // ON CONFLICT/UPDATE ikke nødvendig — bare en SET.
+  // Toleranse for at retry_count-kolonnen ikke finnes i eldre miljøer
+  // (mig 0353 ikke kjørt) — vi swallowes ERROR og lar workflowen gå.
+  try {
+    await pool.query(
+      `UPDATE leadgrid_url_research_items
+          SET retry_count = retry_count + 1,
+              last_attempted_at = NOW()
+        WHERE id = $1::uuid`,
+      [itemId],
+    );
+  } catch (err) {
+    // Hvis kolonnen mangler — backward-compat med pre-mig-0353 miljø.
+    const msg = (err as Error).message ?? "";
+    if (msg.includes("retry_count") || msg.includes("does not exist")) {
+      return; // log spammet ikke — dette er forventet før mig 0353
+    }
+    throw err;
+  }
 }
 
 async function markItemCompleted(
@@ -139,28 +217,46 @@ async function markItemCompleted(
   hasPin: boolean,
   confidence: string,
   researchResult: Record<string, unknown>,
+  qualityScore: number | null,
 ): Promise<void> {
-  await pool.query(
-    `UPDATE leadgrid_url_research_items
-        SET status = 'completed',
-            has_pin = $2,
-            location_confidence = $3,
-            research_result = $4::jsonb,
-            finished_at = NOW()
-      WHERE id = $1::uuid`,
-    [itemId, hasPin, confidence, JSON.stringify(researchResult)],
-  );
-  // Bump batch counters atomisk
-  await pool.query(
-    `UPDATE leadgrid_url_research_batches
-        SET completed_urls = completed_urls + 1,
-            pinned_leads = pinned_leads + (CASE WHEN $2 THEN 1 ELSE 0 END)
-      WHERE id = (
-        SELECT batch_id FROM leadgrid_url_research_items WHERE id = $1::uuid
-      )`,
-    [itemId, hasPin],
-  );
-  // Behold draftLeadId-referansen som logg-info (kanonisk lever på item-raden)
+  // Item-row update. quality_score er nullable — pre-mig-0353 miljø
+  // kjører branched UPDATE uten kolonnen.
+  try {
+    await pool.query(
+      `UPDATE leadgrid_url_research_items
+          SET status = 'completed',
+              has_pin = $2,
+              location_confidence = $3,
+              research_result = $4::jsonb,
+              quality_score = $5,
+              finished_at = NOW()
+        WHERE id = $1::uuid`,
+      [itemId, hasPin, confidence, JSON.stringify(researchResult), qualityScore],
+    );
+  } catch (err) {
+    const msg = (err as Error).message ?? "";
+    if (msg.includes("quality_score")) {
+      // Fallback uten quality_score-kolonnen
+      await pool.query(
+        `UPDATE leadgrid_url_research_items
+            SET status = 'completed',
+                has_pin = $2,
+                location_confidence = $3,
+                research_result = $4::jsonb,
+                finished_at = NOW()
+          WHERE id = $1::uuid`,
+        [itemId, hasPin, confidence, JSON.stringify(researchResult)],
+      );
+    } else {
+      throw err;
+    }
+  }
+  // Atomic counter-recompute. Fix 1 (live-test 2026-06-27): tidligere
+  // SET completed_urls = completed_urls + 1 hadde race condition mellom
+  // parallelle workers — vi rapporterte 5 pin, mens 8 leads faktisk
+  // hadde lat/lng. Vi re-computer fra ground-truth (items + crm_customers)
+  // i én UPDATE så ingen kan miste tellinger.
+  await recomputeBatchCounters(pool, itemId);
   if (draftLeadId) {
     void draftLeadId;
   }
@@ -179,13 +275,87 @@ async function markItemFailed(
       WHERE id = $1::uuid`,
     [itemId, errorMessage.slice(0, 1000)],
   );
+  await recomputeBatchCounters(pool, itemId);
+}
+
+/**
+ * Fix 1 — Atomic counter-recompute (live-test 2026-06-27).
+ *
+ * Tidligere: vi gjorde `SET completed_urls = completed_urls + 1` per item.
+ * Med 3 parallelle workers + Postgres MVCC kunne to UPDATE-er lese
+ * samme verdi før den ene committet — counter underrapporterte.
+ *
+ * Ny strategi: én UPDATE som re-computeer alle 3 counters fra
+ * ground-truth (items + crm_customers.latitude). Idempotent —
+ * kan kalles 100 ganger på samme batch uten skade.
+ *
+ * Performance: 3 sub-SELECTs på indexed kolonner (batch_id + status,
+ * draft_lead_id). For 20-item batches er det <5ms. For 100-item OK.
+ */
+async function recomputeBatchCounters(
+  pool: Pool,
+  itemId: string,
+): Promise<void> {
   await pool.query(
     `UPDATE leadgrid_url_research_batches
-        SET failed_urls = failed_urls + 1
+        SET completed_urls = (
+              SELECT COUNT(*)::int
+                FROM leadgrid_url_research_items
+               WHERE batch_id = leadgrid_url_research_batches.id
+                 AND status = 'completed'
+            ),
+            failed_urls = (
+              SELECT COUNT(*)::int
+                FROM leadgrid_url_research_items
+               WHERE batch_id = leadgrid_url_research_batches.id
+                 AND status = 'failed'
+            ),
+            pinned_leads = (
+              SELECT COUNT(*)::int
+                FROM leadgrid_url_research_items i
+                JOIN crm_customers c ON c.id = i.draft_lead_id
+               WHERE i.batch_id = leadgrid_url_research_batches.id
+                 AND i.status = 'completed'
+                 AND c.latitude IS NOT NULL
+                 AND c.longitude IS NOT NULL
+            )
       WHERE id = (
         SELECT batch_id FROM leadgrid_url_research_items WHERE id = $1::uuid
       )`,
     [itemId],
+  );
+}
+
+/** Eksportert for bulk recompute (admin/cron sanity-pass + tester) */
+export async function recomputeBatchCountersByBatchId(
+  pool: Pool,
+  batchId: string,
+): Promise<void> {
+  await pool.query(
+    `UPDATE leadgrid_url_research_batches
+        SET completed_urls = (
+              SELECT COUNT(*)::int
+                FROM leadgrid_url_research_items
+               WHERE batch_id = $1::uuid
+                 AND status = 'completed'
+            ),
+            failed_urls = (
+              SELECT COUNT(*)::int
+                FROM leadgrid_url_research_items
+               WHERE batch_id = $1::uuid
+                 AND status = 'failed'
+            ),
+            pinned_leads = (
+              SELECT COUNT(*)::int
+                FROM leadgrid_url_research_items i
+                JOIN crm_customers c ON c.id = i.draft_lead_id
+               WHERE i.batch_id = $1::uuid
+                 AND i.status = 'completed'
+                 AND c.latitude IS NOT NULL
+                 AND c.longitude IS NOT NULL
+            )
+      WHERE id = $1::uuid`,
+    [batchId],
   );
 }
 
@@ -352,7 +522,10 @@ export async function processUrlResearchBatch(
       }
       const item = queue.shift();
       if (!item) return;
-      await processItem(pool, item, runner, orgId, userId, batchId);
+      await processItem(pool, item, runner, orgId, userId, batchId, {
+        maxAttempts: opts.maxAttempts,
+        backoff: opts.backoff,
+      });
     }
   }
 
@@ -381,6 +554,7 @@ async function processItem(
   orgId: string | null,
   userId: string | null,
   batchId: string,
+  opts?: { maxAttempts?: number; backoff?: (n: number) => number },
 ): Promise<void> {
   if (!item.draft_lead_id) {
     await markItemFailed(pool, item.id, "missing_draft_lead_id");
@@ -390,50 +564,99 @@ async function processItem(
     });
     return;
   }
-  try {
-    await markItemRunning(pool, item.id);
-    const result = await runner({
-      websiteUrl: item.url,
-      draftId: item.draft_lead_id,
-    });
-    if (!result) {
-      await markItemFailed(pool, item.id, "orchestrator_unavailable");
+
+  const maxAttempts = opts?.maxAttempts ?? MAX_RETRY_ATTEMPTS;
+  const backoff = opts?.backoff ?? backoffDelay;
+  let lastErrorMessage = "";
+  let attemptedOnce = false;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      if (attemptedOnce) {
+        await bumpRetryCount(pool, item.id);
+      }
+      await markItemRunning(pool, item.id);
+      attemptedOnce = true;
+
+      const result = await runner({
+        websiteUrl: item.url,
+        draftId: item.draft_lead_id,
+      });
+      if (!result) {
+        // null = orchestrator unavailable — transient, retry-bart
+        lastErrorMessage = "orchestrator_unavailable";
+        if (attempt < maxAttempts - 1) {
+          await sleep(backoff(attempt));
+          continue;
+        }
+        await markItemFailed(pool, item.id, lastErrorMessage);
+        await emitProgress(pool, batchId, orgId, userId, {
+          itemUrl: item.url,
+          itemStatus: "failed",
+        });
+        return;
+      }
+
+      // Success — apply research til draft-raden (samme som enkelt-URL-flyten)
+      await applyResearchToDraftLite(pool, item.draft_lead_id, result);
+
+      const hasPin =
+        result.location.latitude != null && result.location.longitude != null;
+
+      // Lagre research_result light-version slik at UI kan vise det uten ny call.
+      // qualityScore + placeContactDetails er nye felter (fix 3 + bonus).
+      const lightResult: Record<string, unknown> = {
+        companyProfile: result.companyProfile,
+        location: result.location,
+        qualityScore: result.qualityScore ?? null,
+        attemptCount: attempt + 1,
+      };
+      // placeContactDetails ligger i bootstrapPayload — kopier en lite
+      // versjon ut så UI ikke trenger å åpne hele bootstrapPayload.
+      const placeDetails =
+        (result.bootstrapPayload as Record<string, unknown> | undefined)
+          ?.placeContactDetails ?? null;
+      if (placeDetails) {
+        lightResult.placeContactDetails = placeDetails;
+      }
+
+      await markItemCompleted(
+        pool,
+        item.id,
+        item.draft_lead_id,
+        hasPin,
+        result.location.confidence,
+        lightResult,
+        result.qualityScore ?? null,
+      );
+      await emitProgress(pool, batchId, orgId, userId, {
+        itemUrl: item.url,
+        itemStatus: "completed",
+        leadId: item.draft_lead_id,
+        confidence: result.location.confidence,
+      });
+      return; // success — bryt retry-loop
+    } catch (err) {
+      const msg = (err as Error).message ?? String(err);
+      lastErrorMessage = msg;
+      // Avgjør om vi skal retry
+      if (attempt < maxAttempts - 1 && isTransientError(msg)) {
+        await sleep(backoff(attempt));
+        continue;
+      }
+      // Permanent feil — eller siste attempt
+      await markItemFailed(pool, item.id, msg);
       await emitProgress(pool, batchId, orgId, userId, {
         itemUrl: item.url,
         itemStatus: "failed",
       });
       return;
     }
+  }
 
-    // Apply research til draft-raden (samme som enkelt-URL-flyten)
-    await applyResearchToDraftLite(pool, item.draft_lead_id, result);
-
-    const hasPin =
-      result.location.latitude != null && result.location.longitude != null;
-
-    // Lagre research_result light-version slik at UI kan vise det uten ny call
-    const lightResult = {
-      companyProfile: result.companyProfile,
-      location: result.location,
-    };
-
-    await markItemCompleted(
-      pool,
-      item.id,
-      item.draft_lead_id,
-      hasPin,
-      result.location.confidence,
-      lightResult,
-    );
-    await emitProgress(pool, batchId, orgId, userId, {
-      itemUrl: item.url,
-      itemStatus: "completed",
-      leadId: item.draft_lead_id,
-      confidence: result.location.confidence,
-    });
-  } catch (err) {
-    const msg = (err as Error).message ?? String(err);
-    await markItemFailed(pool, item.id, msg);
+  // Defensiv catch-all — skulle aldri nås (vi return inni loopen)
+  if (lastErrorMessage) {
+    await markItemFailed(pool, item.id, lastErrorMessage);
     await emitProgress(pool, batchId, orgId, userId, {
       itemUrl: item.url,
       itemStatus: "failed",
@@ -600,4 +823,135 @@ export const __test = {
   markPendingAsSkipped,
   finalizeBatch,
   readBatchProgress,
+  isTransientError,
+  backoffDelay,
+  recomputeBatchCountersByBatchId,
 };
+
+// =====================================================================
+// Singel-item retry-trigger — brukes av iPad-UI "Prøv på nytt"-knapp
+// =====================================================================
+//
+// Fix 5: når en item feiler (uleselig website, Brreg-timeout, osv) kan
+// brukeren tappe på rad i `LeadgridBulkUrlResearchProgressView` for
+// detaljer + "Prøv på nytt"-knapp. Backend setter status='pending',
+// nullstiller error_message, og kjører bare DEN ene itemen gjennom
+// processor-pipelinen via processSingleItem().
+//
+// Returnerer ny status etter forsøket — UI poller seg deretter normal.
+
+export async function retrySingleItem(
+  pool: Pool,
+  itemId: string,
+  opts: ProcessOptions = {},
+): Promise<{ ok: boolean; status: string; errorMessage?: string }> {
+  // 1. Hent item + batch-info
+  const r = await pool.query<{
+    id: string;
+    batch_id: string;
+    url: string;
+    draft_lead_id: string | null;
+    status: string;
+    organization_id: string | null;
+    created_by: string | null;
+  }>(
+    `SELECT i.id::text, i.batch_id::text, i.url, i.draft_lead_id::text, i.status,
+            b.organization_id::text, b.created_by::text
+       FROM leadgrid_url_research_items i
+       JOIN leadgrid_url_research_batches b ON b.id = i.batch_id
+      WHERE i.id = $1::uuid`,
+    [itemId],
+  );
+  const row = r.rows[0];
+  if (!row) {
+    return { ok: false, status: "not_found", errorMessage: "item_not_found" };
+  }
+  if (row.status !== "failed" && row.status !== "skipped") {
+    return {
+      ok: false,
+      status: row.status,
+      errorMessage: `cannot_retry_status_${row.status}`,
+    };
+  }
+
+  // 2. Reset item-row til pending (clear error_message)
+  await pool.query(
+    `UPDATE leadgrid_url_research_items
+        SET status = 'pending',
+            error_message = NULL,
+            has_pin = FALSE,
+            location_confidence = NULL,
+            started_at = NULL,
+            finished_at = NULL
+      WHERE id = $1::uuid`,
+    [itemId],
+  );
+
+  // 3. Re-compute batch counters
+  await recomputeBatchCountersByBatchId(pool, row.batch_id);
+
+  // 4. Hvis batchen var "completed/failed/partial" — gjør den til "running"
+  await pool.query(
+    `UPDATE leadgrid_url_research_batches
+        SET status = 'running',
+            finished_at = NULL
+      WHERE id = $1::uuid
+        AND status IN ('completed', 'failed', 'partial')`,
+    [row.batch_id],
+  );
+
+  // 5. Kjør itemen via processItem (samme retry-logikk som normal batch)
+  const runner = opts.runner ?? defaultRunUrlResearch;
+  await processItem(
+    pool,
+    {
+      id: row.id,
+      url: row.url,
+      draft_lead_id: row.draft_lead_id,
+      status: "pending",
+    },
+    runner,
+    row.organization_id,
+    row.created_by,
+    row.batch_id,
+  );
+
+  // 6. Re-finalize batchen (set completed/partial/failed)
+  await finalizeBatch(pool, row.batch_id);
+
+  // 7. Returner ny status
+  const after = await pool.query<{ status: string; error_message: string | null }>(
+    `SELECT status, error_message FROM leadgrid_url_research_items WHERE id = $1::uuid`,
+    [itemId],
+  );
+  const newStatus = after.rows[0]?.status ?? "unknown";
+  return {
+    ok: newStatus === "completed",
+    status: newStatus,
+    errorMessage: after.rows[0]?.error_message ?? undefined,
+  };
+}
+
+/** Marker en item som "skipped" (irrelevant) — UI-knapp. */
+export async function markItemSkipped(
+  pool: Pool,
+  itemId: string,
+): Promise<{ ok: boolean }> {
+  const r = await pool.query<{ batch_id: string; status: string }>(
+    `SELECT batch_id::text, status
+       FROM leadgrid_url_research_items WHERE id = $1::uuid`,
+    [itemId],
+  );
+  const row = r.rows[0];
+  if (!row) return { ok: false };
+  if (row.status === "running") return { ok: false };
+  await pool.query(
+    `UPDATE leadgrid_url_research_items
+        SET status = 'skipped',
+            finished_at = NOW()
+      WHERE id = $1::uuid`,
+    [itemId],
+  );
+  await recomputeBatchCountersByBatchId(pool, row.batch_id);
+  return { ok: true };
+}

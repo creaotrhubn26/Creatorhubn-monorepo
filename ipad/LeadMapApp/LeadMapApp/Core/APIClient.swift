@@ -1398,6 +1398,54 @@ actor APIClient {
         try Self.validate(response)
     }
 
+    // MARK: - Fix 5 (mig 0353) — per-URL retry/skip/detail
+
+    /// Hent full detail for én URL i en batch (m/ retry_count + sist-prøvd-tid +
+    /// error-melding). Brukes av "Prøv på nytt"-sheet.
+    func fetchBulkUrlItemDetail(
+        batchId: String,
+        itemId: String,
+    ) async throws -> BulkUrlItemDetail {
+        return try await get(
+            "/api/leadgrid/url-research/batches/\(batchId)/items/\(itemId)",
+        )
+    }
+
+    /// Retry én feilet URL — backend kjører bare denne ene gjennom processoren
+    /// med samme retry-logikk (3 forsøk m/ expo backoff på transiente feil).
+    /// Returnerer ny status — kan være .completed, .failed, eller .running.
+    @discardableResult
+    func retryBulkUrlItem(
+        batchId: String,
+        itemId: String,
+    ) async throws -> BulkUrlItemRetryResponse {
+        var req = makeRequest(
+            "/api/leadgrid/url-research/batches/\(batchId)/items/\(itemId)/retry",
+            method: "POST",
+        )
+        req.httpBody = Data("{}".utf8)
+        let (data, response) = try await session.data(for: req)
+        try Self.validate(response)
+        return try Self.decoder.decode(BulkUrlItemRetryResponse.self, from: data)
+    }
+
+    /// Marker en URL som irrelevant ('skipped') — fjernes fra UI-listen og
+    /// teller ikke som feil i totalen.
+    @discardableResult
+    func skipBulkUrlItem(
+        batchId: String,
+        itemId: String,
+    ) async throws -> BulkUrlItemSkipResponse {
+        var req = makeRequest(
+            "/api/leadgrid/url-research/batches/\(batchId)/items/\(itemId)/skip",
+            method: "POST",
+        )
+        req.httpBody = Data("{}".utf8)
+        let (data, response) = try await session.data(for: req)
+        try Self.validate(response)
+        return try Self.decoder.decode(BulkUrlItemSkipResponse.self, from: data)
+    }
+
     // MARK: - AI Lead-discovery for prosjekt (mig 0352)
     //
     // "Finn leads for {prosjekt}" → backend kombinerer prosjekt-context

@@ -96,6 +96,37 @@ struct BulkUrlBatchItem: Codable, Sendable, Identifiable {
     let researchResult: BulkUrlItemResearchResult?
 }
 
+// MARK: - Fix 5 — per-URL retry/detail (mig 0353)
+
+/// Full detail for én item — brukes av "Prøv på nytt"-sheet for å vise
+/// retry-count, sist-prøvd-tid, og full error-message.
+struct BulkUrlItemDetail: Codable, Sendable, Identifiable {
+    let id: String
+    let url: String
+    let orderIndex: Int
+    let status: BulkUrlItemStatus
+    let draftLeadId: String?
+    let hasPin: Bool
+    let locationConfidence: LocationConfidence?
+    let errorMessage: String?
+    let researchResult: BulkUrlItemResearchResult?
+    let retryCount: Int
+    let lastAttemptedAt: String?
+    let qualityScore: Int?
+    let startedAt: String?
+    let finishedAt: String?
+}
+
+struct BulkUrlItemRetryResponse: Codable, Sendable {
+    let ok: Bool
+    let status: BulkUrlItemStatus
+    let errorMessage: String?
+}
+
+struct BulkUrlItemSkipResponse: Codable, Sendable {
+    let ok: Bool
+}
+
 /// Light-version av research_result som lagres på item-raden (companyProfile + location).
 /// Vi har ikke full synthesis/brreg her — bruk fetchUrlResearchPreview hvis du trenger detaljene.
 struct BulkUrlItemResearchResult: Codable, Sendable {

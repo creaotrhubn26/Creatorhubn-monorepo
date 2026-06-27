@@ -262,6 +262,39 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
       },
     ],
   },
+
+  // ─── Mig 0353 — Continuous Lead Discovery ────────────────────────────
+  {
+    key: "continuous_lead_discovery",
+    name: "Daglig lead-discovery per prosjekt",
+    description:
+      "Hver morgen kl 06:00 — kjør AI lead-discovery for hvert aktivt prosjekt. " +
+      "Bransje + by hentes fra leadgrid_project_discovery_config. " +
+      "Varsler eier i innboks med antall nye leads. Krever at brukeren " +
+      "har satt auto_discover_enabled=TRUE for prosjektet og fylt " +
+      "industry_query + city_filter.",
+    category: "AI Automation",
+    trigger: {
+      type: "schedule.cron",
+      cron: "0 6 * * *",
+      timezone: "Europe/Oslo",
+    },
+    conditions: [],
+    actions: [
+      {
+        type: "leadgrid.discover_leads",
+        count: 10,
+      },
+      {
+        type: "send_internal_notification",
+        recipient: "owner",
+        title: "Nye leads funnet",
+        body:
+          "Vi fant {{event.pinned_leads}} nye leads for {{event.project_name}} " +
+          "({{event.discovery_query}}). Sjekk Lead Map for å starte outreach.",
+      },
+    ],
+  },
 ];
 
 export function findTemplate(key: string): WorkflowTemplate | undefined {

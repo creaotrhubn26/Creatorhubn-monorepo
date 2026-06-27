@@ -968,6 +968,59 @@ async function runAction(
       }
     }
 
+    case "leadgrid.discover_leads": {
+      // Cron-triggered "continuous lead discovery" — project_id kommer
+      // typisk fra trigger.project_id (cron-scheduler legger den i
+      // event.data). Vi kjører discovery via processUrlResearchBatch
+      // direkte (samme stack som /discover-leads-endpointet).
+      const projectId =
+        action.project_id ??
+        (typeof event.data.project_id === "string"
+          ? event.data.project_id
+          : null);
+      if (!projectId) {
+        return { status: "error", message: "missing_project_id" };
+      }
+      try {
+        // Dynamic import for å unngå sirkulær avhengighet
+        // (leadgrid-project-lead-discovery-routes importerer engine).
+        const { runDiscoveryForProject } = await import(
+          "./leadgrid-continuous-discovery.js"
+        );
+        const result = await runDiscoveryForProject(pool, {
+          projectId,
+          ownerUserId:
+            event.actorUserId ?? (typeof event.data.owner_user_id === "string"
+              ? event.data.owner_user_id
+              : ""),
+          organizationId: event.organizationId,
+          count: action.count ?? 10,
+          industryQueryOverride: action.industry_query,
+          cityOverride: action.city,
+        });
+        if (!result.ok) {
+          return {
+            status: "error",
+            message: result.reason ?? "discovery_failed",
+          };
+        }
+        return {
+          status: "ok",
+          message: `discovered:${result.foundCount}`,
+          data: {
+            batch_id: result.batchId,
+            found_count: result.foundCount,
+            discovery_query: result.discoveryQuery,
+          },
+        };
+      } catch (err) {
+        return {
+          status: "error",
+          message: String((err as Error)?.message ?? err).slice(0, 200),
+        };
+      }
+    }
+
     default:
       return { status: "skipped", message: "unknown_action" };
   }

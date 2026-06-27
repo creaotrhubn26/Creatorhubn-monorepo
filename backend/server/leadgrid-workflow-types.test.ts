@@ -4,6 +4,7 @@ import {
   validateCondition,
   validateAction,
   validateWorkflowPayload,
+  isValidCronExpression,
 } from "./leadgrid-workflow-types.js";
 
 describe("validateTrigger", () => {
@@ -177,5 +178,92 @@ describe("validateWorkflowPayload", () => {
     });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toBe("actions_too_many");
+  });
+});
+
+// =====================================================================
+// Mig 0353 — schedule.cron + leadgrid.discover_leads validators
+// =====================================================================
+
+describe("isValidCronExpression", () => {
+  it("godtar 5-felt cron", () => {
+    expect(isValidCronExpression("0 6 * * *")).toBe(true);
+    expect(isValidCronExpression("*/15 * * * *")).toBe(true);
+    expect(isValidCronExpression("0 0 1 * *")).toBe(true);
+    expect(isValidCronExpression("0 9-17 * * 1-5")).toBe(true);
+  });
+  it("godtar 6-felt cron (med sekunder)", () => {
+    expect(isValidCronExpression("0 0 6 * * *")).toBe(true);
+  });
+  it("avviser ugyldig syntax", () => {
+    expect(isValidCronExpression("")).toBe(false);
+    expect(isValidCronExpression("not a cron")).toBe(false);
+    expect(isValidCronExpression("a b c d e")).toBe(false);
+    expect(isValidCronExpression("0 6 *")).toBe(false); // for få felter
+    expect(isValidCronExpression(null)).toBe(false);
+    expect(isValidCronExpression(undefined)).toBe(false);
+    expect(isValidCronExpression(123)).toBe(false);
+  });
+});
+
+describe("validateTrigger — schedule.cron (mig 0353)", () => {
+  it("accepts daglig cron 06:00", () => {
+    const r = validateTrigger({
+      type: "schedule.cron",
+      cron: "0 6 * * *",
+      timezone: "Europe/Oslo",
+    });
+    expect(r.ok).toBe(true);
+  });
+  it("rejects ugyldig cron", () => {
+    const r = validateTrigger({
+      type: "schedule.cron",
+      cron: "ugyldig",
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toBe("trigger_cron_invalid");
+  });
+  it("accepts cron med project_id", () => {
+    const r = validateTrigger({
+      type: "schedule.cron",
+      cron: "0 6 * * *",
+      project_id: "proj-123",
+    });
+    expect(r.ok).toBe(true);
+  });
+});
+
+describe("validateAction — leadgrid.discover_leads (mig 0353)", () => {
+  it("accepts uten params (project_id tas fra trigger)", () => {
+    const r = validateAction({ type: "leadgrid.discover_leads" });
+    expect(r.ok).toBe(true);
+  });
+  it("accepts med count + industry_query", () => {
+    const r = validateAction({
+      type: "leadgrid.discover_leads",
+      count: 15,
+      industry_query: "fotograf",
+      city: "Oslo",
+    });
+    expect(r.ok).toBe(true);
+  });
+  it("rejects count utenfor [1, 50]", () => {
+    expect(
+      validateAction({ type: "leadgrid.discover_leads", count: 0 }).ok,
+    ).toBe(false);
+    expect(
+      validateAction({ type: "leadgrid.discover_leads", count: 51 }).ok,
+    ).toBe(false);
+    expect(
+      validateAction({ type: "leadgrid.discover_leads", count: 3.5 }).ok,
+    ).toBe(false);
+  });
+  it("rejects ikke-string industry_query", () => {
+    expect(
+      validateAction({
+        type: "leadgrid.discover_leads",
+        industry_query: 123,
+      }).ok,
+    ).toBe(false);
   });
 });

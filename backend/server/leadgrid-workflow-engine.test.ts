@@ -217,6 +217,8 @@ describe("WORKFLOW_TEMPLATES", () => {
       "meeting.no_show",
       "proposal.opened",
       "contract.signed",
+      // mig 0353
+      "schedule.cron",
     ]);
     for (const tpl of WORKFLOW_TEMPLATES) {
       expect(valid.has(tpl.trigger.type)).toBe(true);

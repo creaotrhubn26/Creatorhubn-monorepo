@@ -368,6 +368,11 @@ type RoleRoomAgentReviewQuote = {
 
 export type RoleRoomAgentBusinessSignals = {
   source: "google_places";
+  /** Places v1 place_id — vil aldri være null fra fetchGooglePlacesBusinessSignals
+   *  (vi setter den fra bestCandidate.id). Brukes av leadgrid-url-research
+   *  for å hente Places-Details (phone/website) på et andre kall.
+   *  Optional/null for bakover-kompat med eksisterende callers. */
+  placeId?: string | null;
   displayName?: string;
   formattedAddress?: string | null;
   location?: RoleRoomAgentGeoPoint | null;
@@ -2893,6 +2898,7 @@ export async function fetchGooglePlacesBusinessSignals(
 
   return {
     source: "google_places",
+    placeId,
     displayName: hasText(displayNameRecord.text) ? normalizeWhitespace(displayNameRecord.text) : companyName,
     formattedAddress: hasText(placeRecord.formattedAddress) ? normalizeWhitespace(placeRecord.formattedAddress) : null,
     location: readGooglePlaceLocation(placeRecord),
@@ -2908,6 +2914,241 @@ export async function fetchGooglePlacesBusinessSignals(
     topReviews,
     serviceSignals,
   };
+}
+
+/**
+ * RoleRoomAgentPlaceContactDetails
+ *
+ * Strukturert kontakt-info hentet via Google Places Details v1 m/ utvidet
+ * field-mask. Bygges av `fetchGooglePlaceDetails` etter at vi har en
+ * place_id fra `fetchGooglePlacesBusinessSignals` eller searchPlaces.
+ *
+ * Email er ikke direkte tilgjengelig fra Places API, men hvis website
+ * er satt prøver caller en sekundær HTML-scrape etter mailto:.
+ */
+export interface RoleRoomAgentPlaceContactDetails {
+  phone: string | null;
+  website: string | null;
+  openingHours: string[] | null;
+  rating: number | null;
+  reviewCount: number | null;
+  primaryType: string | null;
+  primaryTypeDisplayName: string | null;
+  googleMapsUri: string | null;
+}
+
+/**
+ * fetchGooglePlaceDetails — slå opp full kontakt-info på et placeId.
+ *
+ * Brukes når business-signals returnerte place_id, men ikke phone/website
+ * (Daniels live-test 2026-06-27 viste at discovery-flyten fyller pin
+ * eksakt, men leadene har blank email/phone/website — ubrukelig for
+ * outreach).
+ *
+ * Returnerer null hvis API-nøkkel mangler, place_id er tom, eller HTTP
+ * feiler. Caller bør behandle null som "no enrichment".
+ *
+ * Best-effort: 12s timeout, ingen retries (caller har retry-logikk via
+ * leadgrid-url-batch-processor).
+ */
+export async function fetchGooglePlaceDetails(
+  placeId: string,
+  apiKey?: string,
+): Promise<RoleRoomAgentPlaceContactDetails | null> {
+  const key = apiKey ?? process.env.GOOGLE_PLACES_API_KEY;
+  if (!hasText(key) || !hasText(placeId)) {
+    return null;
+  }
+  const fieldMask = [
+    "id",
+    "nationalPhoneNumber",
+    "internationalPhoneNumber",
+    "websiteUri",
+    "regularOpeningHours",
+    "rating",
+    "userRatingCount",
+    "primaryType",
+    "primaryTypeDisplayName",
+    "googleMapsUri",
+  ].join(",");
+
+  try {
+    const response = await fetch(
+      `https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}`,
+      {
+        headers: {
+          "X-Goog-Api-Key": key,
+          "X-Goog-FieldMask": fieldMask,
+          "Accept-Language": "nb-NO,nb;q=0.9,en;q=0.8",
+        },
+        signal: AbortSignal.timeout(12_000),
+      },
+    );
+    if (!response.ok) {
+      console.warn(
+        `[places-details] status=${response.status} placeId=${placeId}`,
+      );
+      return null;
+    }
+    const payload = (await response.json().catch(() => null)) as Record<
+      string,
+      unknown
+    > | null;
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+      return null;
+    }
+
+    const phone =
+      (hasText(payload.nationalPhoneNumber)
+        ? normalizeWhitespace(payload.nationalPhoneNumber as string)
+        : null) ??
+      (hasText(payload.internationalPhoneNumber)
+        ? normalizeWhitespace(payload.internationalPhoneNumber as string)
+        : null);
+
+    const website = hasText(payload.websiteUri)
+      ? normalizeWhitespace(payload.websiteUri as string)
+      : null;
+
+    let openingHours: string[] | null = null;
+    if (
+      payload.regularOpeningHours &&
+      typeof payload.regularOpeningHours === "object" &&
+      !Array.isArray(payload.regularOpeningHours)
+    ) {
+      const oh = payload.regularOpeningHours as Record<string, unknown>;
+      if (Array.isArray(oh.weekdayDescriptions)) {
+        openingHours = (oh.weekdayDescriptions as unknown[])
+          .filter((s): s is string => typeof s === "string" && s.length > 0)
+          .map((s) => normalizeWhitespace(s));
+      }
+    }
+
+    const primaryTypeDisplayRecord =
+      payload.primaryTypeDisplayName &&
+      typeof payload.primaryTypeDisplayName === "object" &&
+      !Array.isArray(payload.primaryTypeDisplayName)
+        ? (payload.primaryTypeDisplayName as Record<string, unknown>)
+        : {};
+
+    return {
+      phone,
+      website,
+      openingHours,
+      rating: asNumber(payload.rating),
+      reviewCount: asNumber(payload.userRatingCount),
+      primaryType: hasText(payload.primaryType)
+        ? normalizeWhitespace(payload.primaryType as string)
+        : null,
+      primaryTypeDisplayName: hasText(primaryTypeDisplayRecord.text)
+        ? normalizeWhitespace(primaryTypeDisplayRecord.text as string)
+        : null,
+      googleMapsUri: hasText(payload.googleMapsUri)
+        ? normalizeWhitespace(payload.googleMapsUri as string)
+        : null,
+    };
+  } catch (err) {
+    console.warn(
+      `[places-details] threw: ${err instanceof Error ? err.message : String(err)} placeId=${placeId}`,
+    );
+    return null;
+  }
+}
+
+/**
+ * extractEmailFromWebsite — best-effort sekundær scrape for å finne
+ * mailto:-lenker på fronten av en company-website når Places ikke har
+ * email (ingen Places API har). Vi henter kun forsiden, max 200KB,
+ * 8s timeout. Returnerer null på alle feil.
+ *
+ * Brukes som siste-resort av leadgrid-url-batch-processor når Places
+ * Details har gitt oss phone+website men ingen email.
+ */
+export async function extractEmailFromWebsite(
+  websiteUrl: string,
+): Promise<string | null> {
+  if (!hasText(websiteUrl)) return null;
+  const normalized = normalizeWebsiteUrl(websiteUrl);
+  if (!normalized) return null;
+  try {
+    const response = await fetch(normalized, {
+      method: "GET",
+      signal: AbortSignal.timeout(8_000),
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (compatible; LeadgridResearchBot/1.0; +https://leadgrid.no)",
+        Accept: "text/html,application/xhtml+xml",
+      },
+    });
+    if (!response.ok) return null;
+    // Stream-limit: ikke last hele PDFen om noen serverer 50MB
+    const contentType = response.headers.get("content-type") ?? "";
+    if (!contentType.toLowerCase().includes("text/html")) return null;
+    const text = (await response.text()).slice(0, 200_000);
+    // Match mailto:foo@bar.no eller bare foo@bar.no
+    const mailtoMatch = /mailto:([^"'<>\s?#]+)/i.exec(text);
+    if (mailtoMatch?.[1]) {
+      const candidate = decodeURIComponent(mailtoMatch[1].split("?")[0]).trim();
+      if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidate)) {
+        return candidate.toLowerCase();
+      }
+    }
+    // Fallback: plain-text email (ekskluder typisk støy som @example/sentry)
+    const plainMatch = /\b([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})\b/i.exec(
+      text,
+    );
+    if (plainMatch?.[1]) {
+      const candidate = plainMatch[1].toLowerCase();
+      const lowerHost = candidate.split("@")[1] ?? "";
+      // Filtrer bort åpenbare tredjeparts-leverandører
+      const blocked = [
+        "sentry.io",
+        "example.com",
+        "example.no",
+        "wixpress.com",
+        "wordpress.com",
+        "googleapis.com",
+      ];
+      if (!blocked.some((b) => lowerHost.endsWith(b))) {
+        return candidate;
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * calculateLeadQuality — score 0-100 basert på Places-data + Brreg-status.
+ *
+ * Beregningen er bevisst enkel og forklarlig — selger skal kunne forstå
+ * hvorfor en lead er "60" vs "85" uten å sjekke en ML-modell.
+ *
+ *   baseline           : 50
+ *   rating >= 4.0      : +15
+ *   reviewCount >= 10  : +10
+ *   website set        : +10
+ *   phone set          : +5
+ *   brreg active       : +10
+ *
+ *   resultat klampes til [0, 100].
+ */
+export function calculateLeadQuality(opts: {
+  rating?: number | null;
+  reviewCount?: number | null;
+  website?: string | null;
+  phone?: string | null;
+  brregActiveRegistered?: boolean;
+}): number {
+  let score = 50;
+  if (typeof opts.rating === "number" && opts.rating >= 4.0) score += 15;
+  if (typeof opts.reviewCount === "number" && opts.reviewCount >= 10)
+    score += 10;
+  if (hasText(opts.website)) score += 10;
+  if (hasText(opts.phone)) score += 5;
+  if (opts.brregActiveRegistered === true) score += 10;
+  return Math.max(0, Math.min(100, score));
 }
 
 /**

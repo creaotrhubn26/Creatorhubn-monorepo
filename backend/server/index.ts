@@ -556,6 +556,8 @@ import { registerLeadgridMomentumRoutes } from "./leadgrid-momentum-routes.js";
 import { registerLeadgridImportRoutes } from "./leadgrid-import-routes.js";
 import { registerLeadgridUrlResearchRoutes } from "./leadgrid-url-research-routes.js";
 import { registerLeadgridProjectLeadDiscoveryRoutes } from "./leadgrid-project-lead-discovery-routes.js";
+import { registerLeadgridContinuousDiscoveryCron } from "./leadgrid-continuous-discovery.js";
+import { registerLeadgridDiscoveryConfigRoutes } from "./leadgrid-discovery-config-routes.js";
 import { registerLeadgridIndustriesRoutes } from "./leadgrid-industries-routes.js";
 import { registerLeadgridDealsRoutes } from "./leadgrid-deals-routes.js";
 import { registerLeadgridWorkflowRoutes } from "./leadgrid-workflow-routes.js";
@@ -24647,6 +24649,11 @@ registerLeadgridUrlResearchRoutes({ app, pool, activeSessions });
 //   GET  /api/leadgrid/projects/:projectId/discover-leads/:batchId/result
 // Gated på lead_research.run.
 registerLeadgridProjectLeadDiscoveryRoutes({ app, pool, activeSessions });
+// Mig 0353 — Continuous Lead Discovery (workflow-action + cron-poller).
+// CRUD for per-prosjekt-config + 5-min poller som kjører discovery
+// for auto_discover_enabled prosjekter.
+registerLeadgridDiscoveryConfigRoutes({ app, pool, activeSessions });
+registerLeadgridContinuousDiscoveryCron(pool);
 // Industries-katalog + member-spesialiseringer (mig 329).
 // 3-lags bransje-system: industries (global+custom) + crm_customers.industry_id
 // + organization_member_industries (sales-rep × bransje × expertise).

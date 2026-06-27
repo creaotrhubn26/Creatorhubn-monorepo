@@ -44,9 +44,13 @@ import { requireLeadMapPermission } from "./lead-map-rbac-helper.js";
 import { classifyIndustryForLead } from "./leadgrid-industry-classify.js";
 import { runOrchestratedBootstrap } from "./role-room-agent-bootstrap-orchestrator.js";
 import {
+  fetchGooglePlaceDetails,
   fetchGooglePlacesBusinessSignals,
+  extractEmailFromWebsite,
+  calculateLeadQuality,
   type RoleRoomAgentBrregCompany,
   type RoleRoomAgentBusinessSignals,
+  type RoleRoomAgentPlaceContactDetails,
   type RoleRoomAgentProducerBootstrapInput,
   type RoleRoomAgentWebsiteInsights,
 } from "./role-room-agent.js";
@@ -54,6 +58,8 @@ import {
   processUrlResearchBatch,
   readBatchProgress,
   normalizeAndValidateUrls,
+  retrySingleItem,
+  markItemSkipped,
 } from "./leadgrid-url-batch-processor.js";
 
 // =====================================================================
@@ -110,6 +116,9 @@ interface ResearchRunResult {
   companyProfile: DerivedCompanyProfile;
   location: ResolvedLocation;
   bootstrapPayload: Record<string, unknown>;
+  /** 0-100 — beregnet via calculateLeadQuality(). Persisteres på
+   *  crm_customers.ai_opportunity_score som hover-over til selger. */
+  qualityScore: number | null;
 }
 
 // =====================================================================
@@ -529,12 +538,30 @@ export async function runUrlResearch(opts: {
     }
   }
 
+  // Fix 3 (live-test 2026-06-27): hent Google Place Details for å fylle
+  // phone/website/openingHours/rating når business-signals returnerte
+  // place_id men ikke contact-info. Discovery-flyten har samme problem
+  // — vi gjør én ekstra call så leads ikke er ubrukelig for outreach.
+  let placeContactDetails: RoleRoomAgentPlaceContactDetails | null = null;
+  const placeIdFromSignals = businessSignals?.placeId ?? null;
+  if (placeIdFromSignals) {
+    try {
+      placeContactDetails = await fetchGooglePlaceDetails(placeIdFromSignals);
+    } catch {
+      // Best-effort — Place Details er valgfritt
+    }
+  }
+
   const companyProfile = deriveCompanyProfile(
     orch.synthesis as Record<string, unknown> | null,
     businessSignals,
     orch.brregCompany,
     opts.websiteUrl,
   );
+
+  // Berik companyProfile med Places-Details + email-scrape. Brytes ut
+  // i egen funksjon for testbarhet.
+  await enrichCompanyProfileWithContact(companyProfile, placeContactDetails);
 
   const location = await resolveLocation({
     businessSignals,
@@ -562,18 +589,80 @@ export async function runUrlResearch(opts: {
     },
   });
 
+  // Beregn quality-score basert på Places-data + Brreg-status.
+  // En aktiv Brreg-bedrift med 4.0+ rating + 10+ reviews + website +
+  // phone scorer 100. Brukes som hover-info i UI.
+  const brregActiveRegistered = Boolean(
+    orch.brregCompany &&
+      (orch.brregCompany.businessRegisterRegistered === true ||
+        orch.brregCompany.vatRegistered === true) &&
+      !(orch.brregCompany.statusFlags?.bankrupt === true) &&
+      !(orch.brregCompany.statusFlags?.underLiquidation === true) &&
+      !(orch.brregCompany.statusFlags?.deleted === true),
+  );
+  const qualityScore = calculateLeadQuality({
+    rating: placeContactDetails?.rating ?? businessSignals?.rating ?? null,
+    reviewCount:
+      placeContactDetails?.reviewCount ?? businessSignals?.userRatingCount ?? null,
+    website: companyProfile.website,
+    phone: companyProfile.phone,
+    brregActiveRegistered,
+  });
+
+  // Sett qualityScore på companyProfile.aiOpportunityScore hvis ikke
+  // allerede satt (orchestrator-synthesis kan eventuelt overstyre).
+  if (companyProfile.aiOpportunityScore == null) {
+    companyProfile.aiOpportunityScore = qualityScore;
+  }
+
   return {
     companyProfile,
     location,
+    qualityScore,
     bootstrapPayload: {
       synthesis: orch.synthesis,
       brregCompany: orch.brregCompany,
       websiteInsights: orch.websiteInsights,
       businessSignals,
+      placeContactDetails,
+      qualityScore,
       toolCallsLog: orch.toolCallsLog,
       resolvedLocation: location,
     },
   };
+}
+
+/**
+ * Berik en companyProfile med kontakt-info fra Places-Details + (hvis
+ * fortsatt mangler email) website-scrape.
+ *
+ * Mutates companyProfile in-place — kalles fra `runUrlResearch` + tester.
+ */
+export async function enrichCompanyProfileWithContact(
+  companyProfile: DerivedCompanyProfile,
+  placeDetails: RoleRoomAgentPlaceContactDetails | null,
+): Promise<void> {
+  // 1. Bruk Places-data først (mer pålitelig enn website-scrape)
+  if (placeDetails) {
+    if (!companyProfile.phone && placeDetails.phone) {
+      companyProfile.phone = placeDetails.phone;
+    }
+    if (!companyProfile.website && placeDetails.website) {
+      companyProfile.website = placeDetails.website;
+    }
+  }
+
+  // 2. Hvis email fortsatt mangler + vi har en website: scrape mailto:
+  if (!companyProfile.email && companyProfile.website) {
+    try {
+      const email = await extractEmailFromWebsite(companyProfile.website);
+      if (email) {
+        companyProfile.email = email;
+      }
+    } catch {
+      // Best-effort
+    }
+  }
 }
 
 // =====================================================================
@@ -1518,6 +1607,212 @@ export function registerLeadgridUrlResearchRoutes(deps: Deps): void {
       } catch (err) {
         return res.status(500).json({
           error: "cancel_failed",
+          detail: (err as Error).message,
+        });
+      }
+    },
+  );
+
+  // -------------------------------------------------------------------
+  // Fix 5: POST /api/leadgrid/url-research/batches/:id/items/:itemId/retry
+  //
+  // iPad-UI: når en item er 'failed' kan brukeren tappe på den for å se
+  // detaljer + "Prøv på nytt"-knapp. Backend resetter item-row til
+  // pending og kjører bare DEN ene URL'en på nytt via processItem.
+  //
+  // Returnerer den nye statusen + error_message (hvis den feilet igjen).
+  // -------------------------------------------------------------------
+  app.post(
+    "/api/leadgrid/url-research/batches/:id/items/:itemId/retry",
+    permUrl,
+    async (req: Request, res: Response) => {
+      const session = getSession(req, activeSessions);
+      if (!session?.userId) {
+        return res.status(401).json({ error: "Innlogging kreves" });
+      }
+      const batchId = req.params.id;
+      const itemId = req.params.itemId;
+      try {
+        // Verifiser eierskap
+        const own = await pool.query<{ created_by: string }>(
+          `SELECT b.created_by::text
+             FROM leadgrid_url_research_items i
+             JOIN leadgrid_url_research_batches b ON b.id = i.batch_id
+            WHERE i.id = $1::uuid AND i.batch_id = $2::uuid`,
+          [itemId, batchId],
+        );
+        if (!own.rows[0]) {
+          return res.status(404).json({ error: "item_not_found" });
+        }
+        if (own.rows[0].created_by !== session.userId) {
+          return res.status(403).json({ error: "forbidden" });
+        }
+        const result = await retrySingleItem(pool, itemId);
+        return res.json({
+          ok: result.ok,
+          status: result.status,
+          error_message: result.errorMessage ?? null,
+        });
+      } catch (err) {
+        return res.status(500).json({
+          error: "retry_failed",
+          detail: (err as Error).message,
+        });
+      }
+    },
+  );
+
+  // -------------------------------------------------------------------
+  // Fix 5: POST /api/leadgrid/url-research/batches/:id/items/:itemId/skip
+  //
+  // "Marker som irrelevant" — bruker har bestemt seg for å ikke prøve
+  // URL'en på nytt (kanskje den er en konkurrent eller feil bransje).
+  // Setter status='skipped' så batchen kan finaliseres.
+  // -------------------------------------------------------------------
+  app.post(
+    "/api/leadgrid/url-research/batches/:id/items/:itemId/skip",
+    permUrl,
+    async (req: Request, res: Response) => {
+      const session = getSession(req, activeSessions);
+      if (!session?.userId) {
+        return res.status(401).json({ error: "Innlogging kreves" });
+      }
+      const batchId = req.params.id;
+      const itemId = req.params.itemId;
+      try {
+        const own = await pool.query<{ created_by: string }>(
+          `SELECT b.created_by::text
+             FROM leadgrid_url_research_items i
+             JOIN leadgrid_url_research_batches b ON b.id = i.batch_id
+            WHERE i.id = $1::uuid AND i.batch_id = $2::uuid`,
+          [itemId, batchId],
+        );
+        if (!own.rows[0]) {
+          return res.status(404).json({ error: "item_not_found" });
+        }
+        if (own.rows[0].created_by !== session.userId) {
+          return res.status(403).json({ error: "forbidden" });
+        }
+        const result = await markItemSkipped(pool, itemId);
+        return res.json({ ok: result.ok });
+      } catch (err) {
+        return res.status(500).json({
+          error: "skip_failed",
+          detail: (err as Error).message,
+        });
+      }
+    },
+  );
+
+  // -------------------------------------------------------------------
+  // Fix 5 (bonus): GET /api/leadgrid/url-research/batches/:id/items/:itemId
+  //
+  // Hent full detalj for én item (error_message, retry_count,
+  // last_attempted_at, research_result). Brukes av "Prøv på nytt"-sheet.
+  // -------------------------------------------------------------------
+  app.get(
+    "/api/leadgrid/url-research/batches/:id/items/:itemId",
+    permUrl,
+    async (req: Request, res: Response) => {
+      const session = getSession(req, activeSessions);
+      if (!session?.userId) {
+        return res.status(401).json({ error: "Innlogging kreves" });
+      }
+      const batchId = req.params.id;
+      const itemId = req.params.itemId;
+      try {
+        const own = await pool.query<{ created_by: string }>(
+          `SELECT b.created_by::text
+             FROM leadgrid_url_research_items i
+             JOIN leadgrid_url_research_batches b ON b.id = i.batch_id
+            WHERE i.id = $1::uuid AND i.batch_id = $2::uuid`,
+          [itemId, batchId],
+        );
+        if (!own.rows[0]) {
+          return res.status(404).json({ error: "item_not_found" });
+        }
+        if (own.rows[0].created_by !== session.userId) {
+          return res.status(403).json({ error: "forbidden" });
+        }
+        // Hent item — tolerér at retry_count/quality_score-kolonner
+        // mangler i pre-mig-0353 miljø.
+        const itemRes = await pool
+          .query<{
+            id: string;
+            url: string;
+            order_index: number;
+            status: string;
+            draft_lead_id: string | null;
+            has_pin: boolean;
+            location_confidence: string | null;
+            error_message: string | null;
+            research_result: Record<string, unknown> | null;
+            retry_count: number | null;
+            last_attempted_at: Date | null;
+            quality_score: number | null;
+            started_at: Date | null;
+            finished_at: Date | null;
+          }>(
+            `SELECT id::text, url, order_index, status, draft_lead_id::text,
+                    has_pin, location_confidence, error_message, research_result,
+                    retry_count, last_attempted_at, quality_score,
+                    started_at, finished_at
+               FROM leadgrid_url_research_items
+              WHERE id = $1::uuid`,
+            [itemId],
+          )
+          .catch(async () => {
+            // Fallback uten retry_count/quality_score
+            return await pool.query<{
+              id: string;
+              url: string;
+              order_index: number;
+              status: string;
+              draft_lead_id: string | null;
+              has_pin: boolean;
+              location_confidence: string | null;
+              error_message: string | null;
+              research_result: Record<string, unknown> | null;
+              retry_count: number | null;
+              last_attempted_at: Date | null;
+              quality_score: number | null;
+              started_at: Date | null;
+              finished_at: Date | null;
+            }>(
+              `SELECT id::text, url, order_index, status, draft_lead_id::text,
+                      has_pin, location_confidence, error_message, research_result,
+                      NULL::integer AS retry_count,
+                      NULL::timestamptz AS last_attempted_at,
+                      NULL::integer AS quality_score,
+                      started_at, finished_at
+                 FROM leadgrid_url_research_items
+                WHERE id = $1::uuid`,
+              [itemId],
+            );
+          });
+        const item = itemRes.rows[0];
+        if (!item) {
+          return res.status(404).json({ error: "item_not_found" });
+        }
+        return res.json({
+          id: item.id,
+          url: item.url,
+          order_index: item.order_index,
+          status: item.status,
+          draft_lead_id: item.draft_lead_id,
+          has_pin: item.has_pin,
+          location_confidence: item.location_confidence,
+          error_message: item.error_message,
+          research_result: item.research_result,
+          retry_count: item.retry_count ?? 0,
+          last_attempted_at: item.last_attempted_at?.toISOString() ?? null,
+          quality_score: item.quality_score,
+          started_at: item.started_at?.toISOString() ?? null,
+          finished_at: item.finished_at?.toISOString() ?? null,
+        });
+      } catch (err) {
+        return res.status(500).json({
+          error: "fetch_item_failed",
           detail: (err as Error).message,
         });
       }

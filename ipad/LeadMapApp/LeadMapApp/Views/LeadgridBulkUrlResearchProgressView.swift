@@ -28,6 +28,8 @@ struct LeadgridBulkUrlResearchProgressView: View {
     @State private var pollingTask: Task<Void, Never>?
     @State private var isCancelling = false
     @State private var hasZoomedToBounds = false
+    // Fix 5 — per-URL retry/skip-sheet (mig 0353)
+    @State private var selectedItemForRetry: BulkUrlBatchItem?
 
     // MARK: - Body
 
@@ -57,6 +59,16 @@ struct LeadgridBulkUrlResearchProgressView: View {
         .onDisappear {
             pollingTask?.cancel()
             pollingTask = nil
+        }
+        .sheet(item: $selectedItemForRetry) { item in
+            LeadgridBulkUrlItemRetrySheet(
+                batchId: batchId,
+                item: item,
+                onChanged: {
+                    Task { await fetchDetail() }
+                },
+            )
+            .environment(appState)
         }
     }
 
@@ -227,7 +239,8 @@ struct LeadgridBulkUrlResearchProgressView: View {
     }
 
     private func itemRow(_ item: BulkUrlBatchItem) -> some View {
-        HStack(spacing: 10) {
+        let isTappable = item.status == .failed
+        let content = HStack(spacing: 10) {
             statusIcon(for: item)
                 .frame(width: 22)
             VStack(alignment: .leading, spacing: 2) {
@@ -248,9 +261,29 @@ struct LeadgridBulkUrlResearchProgressView: View {
                 Image(systemName: "mappin.and.ellipse")
                     .foregroundStyle(.purple)
                     .font(.caption)
+            } else if isTappable {
+                // Vis chevron så det er klart at raden er trykkbar
+                Image(systemName: "chevron.right")
+                    .foregroundStyle(.secondary)
+                    .font(.caption2)
             }
         }
         .padding(12)
+        .contentShape(Rectangle())
+
+        return Group {
+            if isTappable {
+                Button {
+                    selectedItemForRetry = item
+                } label: {
+                    content
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Trykk for detaljer og prøv på nytt")
+            } else {
+                content
+            }
+        }
     }
 
     @ViewBuilder
