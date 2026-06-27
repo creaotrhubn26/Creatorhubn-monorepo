@@ -21,6 +21,7 @@ import MediaTab from './tabs/MediaTab';
 import LeveranserTab from './tabs/LeveranserTab';
 import TeamTab from './tabs/TeamTab';
 import WorkspaceChatPanel from './WorkspaceChatPanel';
+import { usePresence } from './usePresence';
 import { ws, WS_NAV } from './workspaceTheme';
 
 // Prøveprosjekt (Sara & Amir) — byttes med ekte prosjekt-fetch i wire-fasen.
@@ -54,6 +55,7 @@ const TeamWorkspacePage: React.FC = () => {
 
   const [tab, setTab] = useState<string>(paramsTab?.tab || 'oversikt');
   const [accepted, setAccepted] = useState<string | null>(null);
+  const { online } = usePresence(projectId, `/workspace/${projectId}/${tab}`);
 
   // Aksepter team-invitasjon når man åpner lenken (?invite=<token>).
   useEffect(() => {
@@ -100,6 +102,7 @@ const TeamWorkspacePage: React.FC = () => {
     <WorkspaceShell
       project={project}
       user={wsUser}
+      online={online}
       activeTab={tab}
       onTab={(key) => {
         setTab(key);

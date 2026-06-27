@@ -72,6 +72,7 @@ interface ShellProps {
   user: WorkspaceUser;
   activeTab: string;
   onTab: (key: string) => void;
+  online?: number | null;
   headerActions?: React.ReactNode;
   children: React.ReactNode;
 }
@@ -107,7 +108,7 @@ function NavItem({ item, active, onClick }: any) {
   );
 }
 
-const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab, headerActions, children }) => {
+const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab, online, headerActions, children }) => {
   const groups: Array<'hoved' | 'rom' | 'klient'> = ['hoved', 'rom', 'klient'];
 
   return (
@@ -197,6 +198,12 @@ const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab,
 
             <Box sx={{ flex: 1 }} />
 
+            {typeof online === 'number' && (
+              <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mr: 0.5 }}>
+                <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: online > 0 ? ws.green : ws.textFaint }} />
+                <Typography sx={{ fontSize: 12, color: ws.textDim }}>{online} online</Typography>
+              </Stack>
+            )}
             <AvatarGroup max={5} sx={{ '& .MuiAvatar-root': { width: 30, height: 30, fontSize: 12, border: `2px solid ${ws.bg}` } }}>
               {(project.members || []).map((m) => (
                 <Avatar key={m.id} src={m.avatarUrl || undefined}>{m.name?.[0]}</Avatar>
