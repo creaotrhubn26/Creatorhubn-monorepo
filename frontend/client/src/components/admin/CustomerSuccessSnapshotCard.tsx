@@ -12,14 +12,13 @@
 
 import React, { useState } from 'react';
 import {
-  Alert, Box, Button, Card, CardContent, Chip, CircularProgress,
-  Snackbar, Stack, Typography,
+  Alert, Box,
+  Snackbar, Typography,
 } from '@mui/material';
 import {
-  Insights as InsightsIcon,
   PlayArrow as RunIcon,
-  Schedule as ScheduleIcon,
 } from '@mui/icons-material';
+import { AdminCard, AdminButton, StatusChip } from './design-system';
 
 interface SnapshotResult {
   processed: number;
@@ -70,26 +69,15 @@ export default function CustomerSuccessSnapshotCard() {
   };
 
   return (
-    <Card sx={{
-      bgcolor: 'rgba(96, 165, 250, 0.05)',
-      border: '1px solid rgba(96, 165, 250, 0.2)',
-    }}>
-      <CardContent>
-        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
-          <Stack direction="row" alignItems="center" spacing={1}>
-            <InsightsIcon sx={{ color: '#60a5fa' }} />
-            <Typography variant="h6" sx={{ fontWeight: 700 }}>
-              Customer Success-snapshot
-            </Typography>
-          </Stack>
-          <Chip
-            icon={<ScheduleIcon sx={{ fontSize: 14 }} />}
-            label="Cron: 08:00 daglig"
-            size="small"
-            sx={{ bgcolor: 'rgba(96, 165, 250, 0.15)', color: '#60a5fa' }}
-          />
-        </Stack>
-
+    <AdminCard
+      title="Customer Success-snapshot"
+      action={
+        <StatusChip
+          tone="info"
+          label="Cron: 08:00 daglig"
+        />
+      }
+    >
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           Beregner health-score, oppdaterer renewal-pipeline og logger interactions
           for alle aktive abonnementer. Brukes når man vil tvinge en oppdatering
@@ -110,18 +98,17 @@ export default function CustomerSuccessSnapshotCard() {
           <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>
         )}
 
-        <Button
-          variant="contained" onClick={handleRun} disabled={running}
-          startIcon={running ? <CircularProgress size={14} /> : <RunIcon />}
-          sx={{ bgcolor: '#60a5fa', color: '#0a0a0f', '&:hover': { bgcolor: '#3b82f6' } }}
+        <AdminButton
+          tone="primary" onClick={handleRun} disabled={running}
+          loading={running}
+          startIcon={<RunIcon />}
         >
           {running ? 'Kjører snapshot…' : 'Kjør CS-snapshot nå'}
-        </Button>
-      </CardContent>
+        </AdminButton>
       <Snackbar
         open={!!snack} autoHideDuration={6000}
         onClose={() => setSnack(null)} message={snack}
       />
-    </Card>
+    </AdminCard>
   );
 }
