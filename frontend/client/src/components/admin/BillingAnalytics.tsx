@@ -12,10 +12,7 @@ import {
   Typography,
   Grid,
   Alert,
-  CircularProgress,
-  Chip,
   Divider,
-  Button,
   TextField,
   MenuItem,
   IconButton,
@@ -32,6 +29,7 @@ import {
   FilterList,
   Refresh,
 } from '@mui/icons-material';
+import { AdminButton, StatusChip, AdminLoading } from './design-system';
 
 interface BillingAnalyticsProps {
   compact?: boolean;
@@ -384,11 +382,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
   }, [revenueData]);
 
   if (loadingCancellations || loadingRefunds || loadingRevenue || loadingChurn) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
-        <CircularProgress />
-      </Box>
-    );
+    return <AdminLoading />;
   }
 
   // Revenue trends line chart with REAL DATA
@@ -598,13 +592,13 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
       {/* Toolbar with filters and export */}
       <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
         <Stack direction="row" spacing={2} alignItems="center">
-          <Button
-            variant="outlined"
+          <AdminButton
+            tone="ghost"
             startIcon={<FilterList />}
             onClick={() => setShowFilters(!showFilters)}
           >
             Filtre
-          </Button>
+          </AdminButton>
           <Tooltip title="Oppdater data">
             <IconButton onClick={handleRefresh} color="primary">
               <Refresh />
@@ -613,22 +607,22 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
         </Stack>
 
         <Stack direction="row" spacing={1}>
-          <Button
-            variant="contained"
+          <AdminButton
+            tone="primary"
             startIcon={<FileDownload />}
             onClick={exportToCSV}
             size="small"
           >
             Eksporter CSV
-          </Button>
-          <Button
-            variant="outlined"
+          </AdminButton>
+          <AdminButton
+            tone="ghost"
             startIcon={<FileDownload />}
             onClick={exportToPDF}
             size="small"
           >
             Eksporter PDF
-          </Button>
+          </AdminButton>
         </Stack>
       </Box>
 
@@ -703,8 +697,8 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
                 {refundStats.totalRequests || 0}
               </Typography>
               <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
-                <Chip label={`${refundStats.pending || 0} ventende`} size="small" color="warning" />
-                <Chip label={`${refundStats.approved || 0} godkjent`} size="small" color="success" />
+                <StatusChip label={`${refundStats.pending || 0} ventende`} tone="warning" />
+                <StatusChip label={`${refundStats.approved || 0} godkjent`} tone="success" />
               </Box>
             </CardContent>
           </Card>
@@ -882,30 +876,27 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
                       <Typography variant="body2" color="text.secondary">
                         Godkjent
                       </Typography>
-                      <Chip
-                        label={refundStats.approved || 0}
-                        size="small"
-                        color="success"
+                      <StatusChip
+                        label={`${refundStats.approved || 0}`}
+                        tone="success"
                       />
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <Typography variant="body2" color="text.secondary">
                         Ventende
                       </Typography>
-                      <Chip
-                        label={refundStats.pending || 0}
-                        size="small"
-                        color="warning"
+                      <StatusChip
+                        label={`${refundStats.pending || 0}`}
+                        tone="warning"
                       />
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <Typography variant="body2" color="text.secondary">
                         Avvist
                       </Typography>
-                      <Chip
-                        label={refundStats.rejected || 0}
-                        size="small"
-                        color="error"
+                      <StatusChip
+                        label={`${refundStats.rejected || 0}`}
+                        tone="error"
                       />
                     </Box>
                     <Divider />
