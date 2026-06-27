@@ -72,7 +72,25 @@ const TeamWorkspacePage: React.FC = () => {
       .catch(() => { /* ugyldig/utløpt — stille */ });
   }, []);
 
-  const project = { ...SAMPLE_PROJECT, id: projectId };
+  // Last ekte prosjekt-data i headeren (fallback til sample for /workspace/sample).
+  const [realProject, setRealProject] = useState<any | null>(null);
+  useEffect(() => {
+    if (!projectId || projectId === 'sample') { setRealProject(null); return; }
+    apiRequest(`/api/photographer/projects/${encodeURIComponent(projectId)}`)
+      .then((r: any) => {
+        const p = r?.project;
+        if (!p) return;
+        const date = p.eventDate ? new Date(p.eventDate).toLocaleDateString('nb-NO', { day: 'numeric', month: 'short', year: 'numeric' }) : undefined;
+        setRealProject({
+          id: p.id, name: p.title || 'Uten tittel', type: p.projectType || undefined,
+          status: p.status === 'active' ? 'Pågående' : (p.status || undefined),
+          date, location: p.location || undefined, coverUrl: p.coverUrl || null, members: [],
+        });
+      })
+      .catch(() => setRealProject(null));
+  }, [projectId]);
+
+  const project = realProject || { ...SAMPLE_PROJECT, id: projectId };
   const wsUser = {
     name: user?.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : (user?.name || user?.email || 'Bruker'),
     role: user?.profession === 'videographer' ? 'Videograf' : 'Fotograf',

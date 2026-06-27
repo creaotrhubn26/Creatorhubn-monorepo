@@ -2,6 +2,7 @@ import express from "express";
 import type { Pool } from "pg";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
+import { canAccessProject } from "./project-team-routes";
 
 let photographerProjectsSchemaReadyShared: Promise<void> | null = null;
 export function ensurePhotographerProjectsSchemaShared(pool: Pool): Promise<void> {
@@ -632,6 +633,10 @@ export function setupPhotographerProjectsRoutes(
 
     try {
       await ensurePhotographerProjectsSchema();
+      // Team Workspace: eier ELLER aktivt team-medlem kan åpne prosjektet.
+      if (!(await canAccessProject(pool, photographerId, projectId))) {
+        return res.status(404).json({ error: 'project_not_found' });
+      }
       const projectQ = await pool.query(
         `SELECT
            p.id, p.title, p.name, p.client_id, p.client_name, p.description,
@@ -644,9 +649,9 @@ export function setupPhotographerProjectsRoutes(
            c.first_name, c.last_name, c.email, c.phone
          FROM projects p
          LEFT JOIN clients c ON c.id = p.client_id
-         WHERE p.id = $1 AND p.user_id = $2
+         WHERE p.id = $1
          LIMIT 1`,
-        [projectId, photographerId],
+        [projectId],
       );
       if (projectQ.rowCount === 0) return res.status(404).json({ error: 'project_not_found' });
       const p = projectQ.rows[0];
