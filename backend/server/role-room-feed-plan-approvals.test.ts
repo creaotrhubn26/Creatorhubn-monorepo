@@ -137,7 +137,19 @@ describe('normalizeFeedPostsPayload — approval-state preservation', () => {
 // ── markFeedPlanPostFailed ─────────────────────────────────────────────
 
 function makePool(impl: (sql: string, args: unknown[]) => Promise<{ rows: unknown[]; rowCount?: number }>) {
-  return { query: vi.fn(async (sql: string, args: unknown[] = []) => impl(sql, args)) };
+  // mutateFeedPlanLocked acquires a client and wraps the read-modify-write in
+  // BEGIN/SELECT … FOR UPDATE/INSERT/COMMIT, so the mock pool must support
+  // connect() in addition to query(). BEGIN/COMMIT/ROLLBACK resolve to empty;
+  // everything else routes through the same impl.
+  const clientQuery = vi.fn(async (sql: string, args: unknown[] = []) => {
+    const verb = sql.trim().toUpperCase();
+    if (verb === 'BEGIN' || verb === 'COMMIT' || verb === 'ROLLBACK') return { rows: [] };
+    return impl(sql, args);
+  });
+  return {
+    query: vi.fn(async (sql: string, args: unknown[] = []) => impl(sql, args)),
+    connect: vi.fn(async () => ({ query: clientQuery, release: vi.fn() })),
+  };
 }
 
 describe('markFeedPlanPostFailed', () => {

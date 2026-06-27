@@ -258,6 +258,124 @@ export async function saveFeedPlan(
   }
 }
 
+export interface FeedPlanMutationResult {
+  posts: RoleRoomFeedPostInput[];
+  /** Omit (undefined) to preserve the persisted brand_snapshot. */
+  brandSnapshot?: unknown;
+  updatedBy?: string | null;
+}
+
+/**
+ * Transactional read-modify-write for a single feed plan. Locks the plan row
+ * with SELECT … FOR UPDATE so concurrent approval/save mutations serialize
+ * instead of clobbering each other's full-array writes. The mutator gets the
+ * freshly-locked current row (or null if the plan doesn't exist) and returns
+ * the next posts; returning null aborts the write and the call resolves to the
+ * unchanged current row.
+ *
+ * Caveat: when the plan doesn't exist yet, FOR UPDATE locks nothing, so two
+ * concurrent first-creates can still race — the unique (project_id, platform)
+ * constraint + ON CONFLICT collapses them into one row (last writer wins).
+ * Updates to an existing plan are fully serialized, which is the case that
+ * matters for approval state.
+ */
+export async function mutateFeedPlanLocked(
+  pool: Pool,
+  projectId: string,
+  platform: RoleRoomFeedPlatform,
+  mutate: (current: RoleRoomFeedPlanRow | null) => FeedPlanMutationResult | null,
+): Promise<RoleRoomFeedPlanRow | null> {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const existing = await client.query(
+      `SELECT id, project_id, platform, posts, brand_snapshot, updated_by, created_at, updated_at
+         FROM role_room_feed_plans
+        WHERE project_id = $1 AND platform = $2
+        LIMIT 1
+        FOR UPDATE`,
+      [projectId, platform],
+    );
+    const current = existing.rows[0] ? mapRow(existing.rows[0]) : null;
+    const next = mutate(current);
+    if (!next) {
+      await client.query('ROLLBACK');
+      return current;
+    }
+    const brandToWrite =
+      next.brandSnapshot === undefined ? current?.brandSnapshot ?? null : next.brandSnapshot;
+    const result = await client.query(
+      `INSERT INTO role_room_feed_plans (project_id, platform, posts, brand_snapshot, updated_by, updated_at)
+       VALUES ($1, $2, $3::jsonb, $4::jsonb, $5, now())
+       ON CONFLICT (project_id, platform) DO UPDATE SET
+         posts = EXCLUDED.posts,
+         brand_snapshot = EXCLUDED.brand_snapshot,
+         updated_by = EXCLUDED.updated_by,
+         updated_at = now()
+       RETURNING id, project_id, platform, posts, brand_snapshot, updated_by, created_at, updated_at`,
+      [
+        projectId,
+        platform,
+        JSON.stringify(next.posts),
+        brandToWrite === null || brandToWrite === undefined ? null : JSON.stringify(brandToWrite),
+        next.updatedBy ?? null,
+      ],
+    );
+    await client.query('COMMIT');
+    return result.rows[0] ? mapRow(result.rows[0]) : null;
+  } catch (error) {
+    try {
+      await client.query('ROLLBACK');
+    } catch {
+      /* ignore rollback failure */
+    }
+    console.error('[role-room-feed-plan] mutateFeedPlanLocked failed', error);
+    return null;
+  } finally {
+    client.release();
+  }
+}
+
+// Approval/review fields form a state machine owned exclusively by the
+// /approve and /submit-review endpoints (and the auto-approve sweep). A
+// producer content-save must never carry these — see
+// mergeFeedPostsPreservingApproval.
+const PRESERVED_APPROVAL_KEYS = [
+  'approvalState',
+  'approvalChangedAt',
+  'approvalChangedBy',
+  'approvalNote',
+  'reviewRequestedAt',
+  'reviewRequestedBy',
+  'reviewDeadline',
+] as const;
+
+/**
+ * Merge producer-supplied posts with the persisted plan so a content save
+ * (caption/image/order edits) can never overwrite the approval/review state.
+ * For each incoming post that already exists, the persisted approval fields
+ * win; brand-new posts keep their incoming (default 'draft') values. This is
+ * what stops a producer's stale auto-save from silently wiping a client's
+ * approval made on another surface.
+ */
+export function mergeFeedPostsPreservingApproval(
+  incoming: RoleRoomFeedPostInput[],
+  current: RoleRoomFeedPostInput[] | null | undefined,
+): RoleRoomFeedPostInput[] {
+  if (!current || current.length === 0) return incoming;
+  const byId = new Map(current.map((p) => [p.id, p]));
+  return incoming.map((post) => {
+    const prev = byId.get(post.id);
+    if (!prev) return post;
+    const merged: RoleRoomFeedPostInput = { ...post };
+    for (const key of PRESERVED_APPROVAL_KEYS) {
+      (merged as Record<string, unknown>)[key] =
+        (prev as Record<string, unknown>)[key] ?? null;
+    }
+    return merged;
+  });
+}
+
 export function isSupportedPlatform(value: unknown): value is RoleRoomFeedPlatform {
   return typeof value === 'string' && SUPPORTED_FEED_PLATFORMS.includes(value as RoleRoomFeedPlatform);
 }
@@ -307,27 +425,27 @@ export async function markFeedPlanPostFailed(
   // hvilken som helst (IG og FB-Page deler 'instagram'-key i tabellen).
   for (const platform of SUPPORTED_FEED_PLATFORMS) {
     try {
-      const plan = await loadFeedPlan(pool, projectId, platform);
-      if (!plan) continue;
-      const idx = plan.posts.findIndex((p) => p.id === feedPlanPostId);
-      if (idx === -1) continue;
-      const now = new Date().toISOString();
-      const nextPosts = plan.posts.map((p, i) =>
-        i === idx
-          ? {
-              ...p,
-              approvalState: 'needs_changes' as RoleRoomFeedApprovalState,
-              approvalChangedAt: now,
-              approvalChangedBy: 'system:publish-worker',
-              approvalNote: `Publisering feilet: ${errorMessage.slice(0, 800)}`,
-            }
-          : p,
-      );
-      await saveFeedPlan(pool, projectId, platform, nextPosts, {
-        brandSnapshot: plan.brandSnapshot,
-        updatedBy: 'system:publish-worker',
+      let found = false;
+      await mutateFeedPlanLocked(pool, projectId, platform, (current) => {
+        if (!current) return null;
+        const idx = current.posts.findIndex((p) => p.id === feedPlanPostId);
+        if (idx === -1) return null;
+        found = true;
+        const now = new Date().toISOString();
+        const nextPosts = current.posts.map((p, i) =>
+          i === idx
+            ? {
+                ...p,
+                approvalState: 'needs_changes' as RoleRoomFeedApprovalState,
+                approvalChangedAt: now,
+                approvalChangedBy: 'system:publish-worker',
+                approvalNote: `Publisering feilet: ${errorMessage.slice(0, 800)}`,
+              }
+            : p,
+        );
+        return { posts: nextPosts, updatedBy: 'system:publish-worker' };
       });
-      return { touched: true };
+      if (found) return { touched: true };
     } catch (error) {
       console.warn(
         `[feed-plan] markFeedPlanPostFailed failed for ${projectId}/${platform}/${feedPlanPostId}`,
