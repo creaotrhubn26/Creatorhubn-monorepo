@@ -9,7 +9,7 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  Box, Card, CardContent, Typography, Button, Chip, Stack, Tabs, Tab, Divider,
+  Box, Card, CardContent, Typography, Chip, Stack, Tabs, Tab, Divider,
   Dialog, DialogTitle, DialogContent, DialogActions, RadioGroup, FormControlLabel,
   Radio, TextField, MenuItem, Alert, CircularProgress, Tooltip, Snackbar,
   ThemeProvider, Switch,
@@ -20,6 +20,7 @@ import StorefrontIcon from "@mui/icons-material/Storefront";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import { apiRequest } from "@/lib/queryClient";
 import PrototypeTeamsOverview from "./PrototypeTeamsOverview";
+import { AdminButton, StatusChip } from "./design-system";
 
 interface PartnerApp {
   id: string; company_name: string; contact_name: string; contact_email: string;
@@ -103,12 +104,12 @@ function PrototypeReportSettings() {
             control={<Switch checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />}
             label="På"
           />
-          <Button variant="contained" size="small" disabled={save.isPending} onClick={() => save.mutate()}>
+          <AdminButton tone="primary" size="small" loading={save.isPending} onClick={() => save.mutate()}>
             Lagre
-          </Button>
-          <Button variant="outlined" size="small" disabled={sendNow.isPending} onClick={() => sendNow.mutate()}>
+          </AdminButton>
+          <AdminButton tone="secondary" size="small" loading={sendNow.isPending} onClick={() => sendNow.mutate()}>
             Send nå
-          </Button>
+          </AdminButton>
         </Stack>
         <Snackbar open={!!snack} autoHideDuration={4000} onClose={() => setSnack("")} message={snack} />
       </CardContent>
@@ -179,7 +180,7 @@ export default function EditingPartnersAdminPanel() {
             Legg inn prospekter som leads og inviter dem til å søke selv (de bestemmer + samtykker). Godkjenn søknader som prototype-tester (0 % i en periode) eller vanlig kunde (fee). Endre type/varighet/fee når som helst.
           </Typography>
         </Box>
-        <Button variant="outlined" size="small" onClick={() => setAddLeadOpen(true)}>+ Legg til lead</Button>
+        <AdminButton tone="secondary" size="small" onClick={() => setAddLeadOpen(true)}>+ Legg til lead</AdminButton>
       </Stack>
 
       <Tabs value={filter} onChange={(_, v) => setFilter(v)} sx={{ mb: 2 }} variant="scrollable" scrollButtons="auto">
@@ -208,8 +209,8 @@ export default function EditingPartnersAdminPanel() {
                     {a.portfolio_url && <Typography variant="caption" display="block"><a href={a.portfolio_url} target="_blank" rel="noopener">Portfolio</a>{a.website && <> · <a href={a.website} target="_blank" rel="noopener">Nettside</a></>}</Typography>}
                   </Box>
                   <Stack direction="row" spacing={1}>
-                    <Button variant="contained" size="small" onClick={() => setTarget({ kind: "app", app: a })}>Godkjenn…</Button>
-                    <Button variant="outlined" color="error" size="small" disabled={reject.isPending} onClick={() => { if (confirm(`Avvis søknaden fra ${a.company_name}?`)) reject.mutate(a.id); }}>Avvis</Button>
+                    <AdminButton tone="primary" size="small" onClick={() => setTarget({ kind: "app", app: a })}>Godkjenn…</AdminButton>
+                    <AdminButton tone="danger" size="small" loading={reject.isPending} onClick={() => { if (confirm(`Avvis søknaden fra ${a.company_name}?`)) reject.mutate(a.id); }}>Avvis</AdminButton>
                   </Stack>
                 </Stack>
               </CardContent>
@@ -232,8 +233,8 @@ export default function EditingPartnersAdminPanel() {
                     <Chip size="small" label="Lead — har ikke søkt selv ennå" sx={{ mt: 0.6 }} />
                   </Box>
                   <Stack direction="row" spacing={1}>
-                    <Button variant="contained" size="small" disabled={invite.isPending} onClick={() => invite.mutate(a.id)}>Inviter til å søke</Button>
-                    <Button variant="outlined" size="small" onClick={() => setTarget({ kind: "app", app: a })}>Godkjenn likevel…</Button>
+                    <AdminButton tone="primary" size="small" loading={invite.isPending} onClick={() => invite.mutate(a.id)}>Inviter til å søke</AdminButton>
+                    <AdminButton tone="secondary" size="small" onClick={() => setTarget({ kind: "app", app: a })}>Godkjenn likevel…</AdminButton>
                   </Stack>
                 </Stack>
               </CardContent>
@@ -271,9 +272,8 @@ export default function EditingPartnersAdminPanel() {
                       <Stack direction="row" spacing={1} sx={{ mt: 0.6 }} alignItems="center">
                         <Chip size="small" color={tl.color} icon={tl.icon as React.ReactElement | undefined} label={tl.label} />
                         {v.partner_type === "prototype" && fb ? (
-                          <Chip
-                            size="small"
-                            color={fb.escalation === "warning" ? "error" : fb.escalation === "due" ? "warning" : "success"}
+                          <StatusChip
+                            tone={fb.escalation === "warning" ? "error" : fb.escalation === "due" ? "warning" : "success"}
                             label={fb.everGiven ? `Tilbakemelding: ${fb.daysSince}d siden` : "Ingen tilbakemelding"}
                           />
                         ) : null}
@@ -292,7 +292,7 @@ export default function EditingPartnersAdminPanel() {
                         {v.review_count ? <Typography variant="caption" color="text.secondary">★ {Number(v.rating).toFixed(1)} ({v.review_count})</Typography> : null}
                       </Stack>
                     </Box>
-                    <Button variant="outlined" size="small" onClick={() => setTarget({ kind: "vendor", vendor: v })}>Endre type</Button>
+                    <AdminButton tone="secondary" size="small" onClick={() => setTarget({ kind: "vendor", vendor: v })}>Endre type</AdminButton>
                   </Stack>
                 </CardContent>
               </Card>
@@ -342,8 +342,8 @@ function AddLeadDialog({ onClose, onDone }: { onClose: () => void; onDone: () =>
         </Stack>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Avbryt</Button>
-        <Button variant="contained" onClick={() => save.mutate()} disabled={save.isPending}>{save.isPending ? "Lagrer…" : "Legg til"}</Button>
+        <AdminButton tone="ghost" onClick={onClose}>Avbryt</AdminButton>
+        <AdminButton tone="primary" onClick={() => save.mutate()} loading={save.isPending}>Legg til</AdminButton>
       </DialogActions>
     </Dialog>
   );
@@ -410,10 +410,10 @@ function DecisionDialog({ target, onClose, onDone }: { target: DecisionTarget; o
         </Stack>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Avbryt</Button>
-        <Button variant="contained" onClick={() => submit.mutate()} disabled={submit.isPending}>
-          {submit.isPending ? "Lagrer…" : target.kind === "app" ? "Godkjenn + send lenke" : "Lagre"}
-        </Button>
+        <AdminButton tone="ghost" onClick={onClose}>Avbryt</AdminButton>
+        <AdminButton tone="primary" onClick={() => submit.mutate()} loading={submit.isPending}>
+          {target.kind === "app" ? "Godkjenn + send lenke" : "Lagre"}
+        </AdminButton>
       </DialogActions>
     </Dialog>
   );

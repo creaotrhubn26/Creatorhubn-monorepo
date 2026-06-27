@@ -45,6 +45,13 @@ import {
 } from '@mui/icons-material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import {
+  AdminCard,
+  AdminButton,
+  StatusChip,
+  AdminTableContainer,
+} from './design-system';
+import type { StatusTone } from './design-system';
 
 interface UserRecord {
   id: string;
@@ -294,7 +301,7 @@ function formatProfessionLabel(profession: string): string {
   return profession.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-function getStatusColor(status: UserRecord['status'] | UserRecord['subscriptionStatus']) {
+function getStatusTone(status: UserRecord['status'] | UserRecord['subscriptionStatus']): StatusTone {
   if (status === 'active' || status === 'trial') {
     return 'success';
   }
@@ -303,7 +310,7 @@ function getStatusColor(status: UserRecord['status'] | UserRecord['subscriptionS
     return 'warning';
   }
 
-  return 'default';
+  return 'neutral';
 }
 
 const VisualUserManagement: FC = () => {
@@ -429,9 +436,9 @@ const VisualUserManagement: FC = () => {
         <Typography variant="h5" fontWeight={700}>
           Visual User Management
         </Typography>
-        <Button startIcon={<Refresh />} variant="outlined" onClick={handleRefresh}>
+        <AdminButton tone="secondary" startIcon={<Refresh />} onClick={handleRefresh}>
           Refresh
-        </Button>
+        </AdminButton>
       </Stack>
 
       {operationMessage ? (
@@ -544,8 +551,8 @@ const VisualUserManagement: FC = () => {
             </FormControl>
           </Stack>
 
-          <Card>
-            <CardContent sx={{ p: 0 }}>
+          <AdminCard disablePadding>
+            <AdminTableContainer ariaLabel="Users">
               <Table size="small">
                 <TableHead>
                   <TableRow>
@@ -581,10 +588,10 @@ const VisualUserManagement: FC = () => {
                       </TableCell>
                       <TableCell>{user.packageTier}</TableCell>
                       <TableCell>
-                        <Chip size="small" label={user.status} color={getStatusColor(user.status)} />
+                        <StatusChip tone={getStatusTone(user.status)} label={user.status} />
                       </TableCell>
                       <TableCell>
-                        <Chip size="small" label={user.subscriptionStatus} color={getStatusColor(user.subscriptionStatus)} />
+                        <StatusChip tone={getStatusTone(user.subscriptionStatus)} label={user.subscriptionStatus} />
                       </TableCell>
                       <TableCell>{user.activeFeatures.length}</TableCell>
                       <TableCell>
@@ -617,8 +624,8 @@ const VisualUserManagement: FC = () => {
                   ))}
                 </TableBody>
               </Table>
-            </CardContent>
-          </Card>
+            </AdminTableContainer>
+          </AdminCard>
         </TabPanel>
 
         <TabPanel value={tabValue} index={1}>
@@ -667,38 +674,28 @@ const VisualUserManagement: FC = () => {
         <TabPanel value={tabValue} index={2}>
           <Grid container spacing={2}>
             <Grid item xs={12} md={6}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Security Posture
-                  </Typography>
-                  <Stack spacing={1}>
-                    <Alert severity={analytics.failedLogins24h > 3 ? 'warning' : 'success'}>
-                      Failed logins (24h): {analytics.failedLogins24h}
-                    </Alert>
-                    <Alert severity={analytics.mfaEnabledUsers > 0 ? 'success' : 'warning'}>
-                      MFA enabled users: {analytics.mfaEnabledUsers}
-                    </Alert>
-                  </Stack>
-                </CardContent>
-              </Card>
+              <AdminCard title="Security Posture">
+                <Stack spacing={1}>
+                  <Alert severity={analytics.failedLogins24h > 3 ? 'warning' : 'success'}>
+                    Failed logins (24h): {analytics.failedLogins24h}
+                  </Alert>
+                  <Alert severity={analytics.mfaEnabledUsers > 0 ? 'success' : 'warning'}>
+                    MFA enabled users: {analytics.mfaEnabledUsers}
+                  </Alert>
+                </Stack>
+              </AdminCard>
             </Grid>
             <Grid item xs={12} md={6}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Immediate Actions
-                  </Typography>
-                  <Stack spacing={1}>
-                    <Button variant="outlined" onClick={() => setStatusFilter('suspended')}>
-                      Show Suspended Users
-                    </Button>
-                    <Button variant="outlined" onClick={() => setStatusFilter('all')}>
-                      Reset User Filters
-                    </Button>
-                  </Stack>
-                </CardContent>
-              </Card>
+              <AdminCard title="Immediate Actions">
+                <Stack spacing={1}>
+                  <AdminButton tone="secondary" onClick={() => setStatusFilter('suspended')}>
+                    Show Suspended Users
+                  </AdminButton>
+                  <AdminButton tone="secondary" onClick={() => setStatusFilter('all')}>
+                    Reset User Filters
+                  </AdminButton>
+                </Stack>
+              </AdminCard>
             </Grid>
           </Grid>
         </TabPanel>
@@ -733,7 +730,7 @@ const VisualUserManagement: FC = () => {
           ) : null}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setUserDialogOpen(false)}>Close</Button>
+          <AdminButton tone="ghost" onClick={() => setUserDialogOpen(false)}>Close</AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -761,9 +758,8 @@ const VisualUserManagement: FC = () => {
                     </>
                   }
                 />
-                <Chip
-                  size="small"
-                  color={
+                <StatusChip
+                  tone={
                     result.status === 'configured' ? 'success' : result.status === 'missing' ? 'warning' : 'error'
                   }
                   label={result.status}
@@ -773,7 +769,7 @@ const VisualUserManagement: FC = () => {
           </List>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setValidationDialogOpen(false)}>Close</Button>
+          <AdminButton tone="ghost" onClick={() => setValidationDialogOpen(false)}>Close</AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

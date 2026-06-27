@@ -54,6 +54,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
+import { StatusChip } from './design-system';
 
 interface ViralContentCreatorProps {
   showcase: any;
@@ -264,14 +265,14 @@ export default function ViralContentCreator({
                   </Grid>
                   <Grid item xs={4} >
                     <Box sx={{ textAlign: 'center'}}>
-                      <Chip
+                      <StatusChip
                         icon={<Star fontSize="small" />}
                         label={
                           viralStrategy.analysis?.qualityScore > 85
                             ? 'HØYT POTENSIAL'
                             : 'MIDDELS POTENSIAL'
                       }
-                        color={viralStrategy.analysis?.qualityScore > 85 ? 'success' : 'warning'}
+                        tone={viralStrategy.analysis?.qualityScore > 85 ? 'success' : 'warning'}
                         sx={{ fontWeight: 'bold'}}
                       />
                     </Box>
@@ -470,10 +471,10 @@ export default function ViralContentCreator({
                   InputLabelProps={{ shrink: true }}
                   sx={{ mr:  2 }}
                 />
-                <Chip
+                <StatusChip
                   icon={<Schedule fontSize="small" />}
                   label="Optimal for norske seere: 19:00-21:00"
-                  color="info"
+                  tone="info"
                 />
               </CardContent>
             </Card>

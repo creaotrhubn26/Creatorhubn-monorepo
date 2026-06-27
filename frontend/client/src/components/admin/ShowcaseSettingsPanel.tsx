@@ -49,6 +49,7 @@ import {
 import { useAuth } from '../../hooks/useAuth';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
 import { useTheming } from '../../utils/theming-helper';
+import { AdminButton } from './design-system';
 
 interface ShowcaseSettings {
   // Button Visibility
@@ -835,7 +836,7 @@ export function ShowcaseSettingsPanel({ profession = 'photographer' }: ShowcaseS
                     </Select>
                   </FormControl>
 
-                  {/* Card Border Radius , *, /}
+                  {/* Card Border Radius */}
                   <FormControl fullWidth>
                     <InputLabel>Kant-runding</InputLabel>
                     <Select
@@ -2209,23 +2210,23 @@ export function ShowcaseSettingsPanel({ profession = 'photographer' }: ShowcaseS
                   {loading ? 'Lagrer...' : 'Lagre innstillinger'}
                 </Button>
                 
-                <Button
-                  variant="outlined"
+                <AdminButton
+                  tone="secondary"
                   startIcon={<Refresh />}
                   onClick={resetSettings}
                   fullWidth
                 >
                   Tilbakestill
-                </Button>
-                
-                <Button
-                  variant="text"
+                </AdminButton>
+
+                <AdminButton
+                  tone="ghost"
                   startIcon={<Settings />}
                   onClick={() => setActiveTab(0)}
                   fullWidth
                 >
                   Gå til knapper
-                </Button>
+                </AdminButton>
               </Stack>
             </CardContent>
           </Card>

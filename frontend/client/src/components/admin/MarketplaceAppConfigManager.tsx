@@ -51,6 +51,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { marketplaceAdminEvents } from '@/utils/creatorhub-events';
+import { AdminCard, AdminButton, StatusChip, AdminLoading, AdminEmpty, AdminError, AdminTableContainer, adminTokens } from './design-system';
 
 interface SubscriptionTier {
   id: string;
@@ -202,20 +203,20 @@ const MarketplaceAppConfigManager: React.FC = () => {
           </Typography>
         </Box>
         <Stack direction="row" spacing={1}>
-          <Button
-            variant="outlined"
+          <AdminButton
+            tone="secondary"
             onClick={() => driftMutation.mutate()}
-            disabled={driftMutation.isPending}
+            loading={driftMutation.isPending}
           >
             {driftMutation.isPending ? 'Sjekker…' : 'Sjekk pris-drift'}
-          </Button>
-          <Button
-            variant="contained"
+          </AdminButton>
+          <AdminButton
+            tone="primary"
             startIcon={<AddIcon />}
             onClick={() => { setEditingApp(emptyApp()); setCreating(true); }}
           >
             Ny app
-          </Button>
+          </AdminButton>
         </Stack>
       </Stack>
 
@@ -266,7 +267,8 @@ const MarketplaceAppConfigManager: React.FC = () => {
         </Alert>
       )}
 
-      <Card>
+      <AdminCard disablePadding>
+        <AdminTableContainer ariaLabel="Marketplace-apper">
         <Table>
           <TableHead>
             <TableRow>
@@ -317,7 +319,7 @@ const MarketplaceAppConfigManager: React.FC = () => {
                 </TableCell>
                 <TableCell>
                   {app.pricing?.free ? (
-                    <Chip size="small" label="Gratis" color="success" />
+                    <StatusChip tone="success" label="Gratis" />
                   ) : (
                     <Typography variant="caption" sx={{ fontWeight: 600 }}>
                       {app.pricing?.displayPrice || (app.pricing?.price ? `${app.pricing.price} ${app.pricing.currency || ''}` : '—')}
@@ -348,11 +350,11 @@ const MarketplaceAppConfigManager: React.FC = () => {
                 </TableCell>
                 <TableCell align="center">
                   {app.isActive === false ? (
-                    <Chip size="small" label="Skjult" />
+                    <StatusChip tone="neutral" label="Skjult" />
                   ) : app.featured ? (
-                    <Chip size="small" label="Utvalgt" color="primary" />
+                    <StatusChip tone="brand" label="Utvalgt" />
                   ) : (
-                    <Chip size="small" label="Aktiv" color="success" />
+                    <StatusChip tone="success" label="Aktiv" />
                   )}
                 </TableCell>
                 <TableCell align="right">
@@ -383,7 +385,8 @@ const MarketplaceAppConfigManager: React.FC = () => {
             ))}
           </TableBody>
         </Table>
-      </Card>
+        </AdminTableContainer>
+      </AdminCard>
 
       {editingApp && (
         <MarketplaceAppEditDialog
@@ -703,15 +706,16 @@ const MarketplaceAppEditDialog: React.FC<{
       </DialogContent>
 
       <DialogActions sx={{ p: 2.5, borderTop: 1, borderColor: 'divider' }}>
-        <Button onClick={onClose}>Avbryt</Button>
-        <Button
-          variant="contained"
+        <AdminButton tone="ghost" onClick={onClose}>Avbryt</AdminButton>
+        <AdminButton
+          tone="primary"
           startIcon={<SaveIcon />}
+          loading={saving}
           disabled={!form.id || !form.name || saving}
           onClick={() => onSave(form)}
         >
           {saving ? 'Lagrer…' : 'Lagre'}
-        </Button>
+        </AdminButton>
       </DialogActions>
     </Dialog>
   );

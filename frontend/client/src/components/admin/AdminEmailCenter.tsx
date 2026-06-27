@@ -24,12 +24,10 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Chip,
   List,
   ListItem,
   ListItemText,
   ListItemIcon,
-  CircularProgress,
   Tabs,
   Tab,
   Divider,
@@ -46,7 +44,6 @@ import {
   Announcement,
   SystemUpdate,
   CheckCircle,
-  ErrorOutline,
   AttachFile,
   Science,
   Edit,
@@ -56,6 +53,7 @@ import {
   Refresh,
 } from '@mui/icons-material';
 import EmailDesignerComplete from '../EmailDesigner/EmailDesignerComplete';
+import { AdminCard, AdminButton, StatusChip, adminTokens } from './design-system';
 
 interface EmailTemplate {
   id: string;
@@ -413,11 +411,9 @@ export default function AdminEmailCenter() {
               <Typography variant="h5" sx={{ fontWeight: 600, color: theming.colors.primary }}>
                 Admin E-postsenter
               </Typography>
-              <Chip 
+              <StatusChip
+                tone={gmailUserInfo?.authenticated ? "success" : "brand"}
                 label={gmailUserInfo?.authenticated ? `Gmail: ${gmailUserInfo?.userEmail || 'Tilkoblet'}` : "Gmail API"}
-                color={gmailUserInfo?.authenticated ? "success" : "primary"}
-                size="small"
-                icon={gmailUserInfo?.authenticated ? <CheckCircle /> : <ErrorOutline />}
               />
             </Box>
             <Stack direction="row" spacing={1}>
@@ -463,13 +459,14 @@ export default function AdminEmailCenter() {
           <MuiCardContent>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
               <Typography variant="h6" sx={{ color: theming.colors.primary }}>Skriv Ny E-post</Typography>
-              <Button variant="contained"
+              <AdminButton
+                tone="primary"
                 startIcon={<Send />}
                 onClick={() => setShowComposeDialog(true)}
                 sx={{ bgcolor: '#ea4335', '&:hover': { bgcolor: '#d33b2c' } }}
               >
                 Ny E-post
-              </Button>
+              </AdminButton>
             </Box>
 
             {/* Zero Toast Compliance - Info as Typography only */}
@@ -515,7 +512,7 @@ export default function AdminEmailCenter() {
                       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                         {template.description}
                       </Typography>
-                      <Chip label={template.subject} size="small" variant="outlined" />
+                      <StatusChip tone="neutral" label={template.subject} />
                     </MuiCardContent>
                   </MuiCard>
                 </Grid>
@@ -540,14 +537,16 @@ export default function AdminEmailCenter() {
                     sx={{ mb: 2 }}
                     onChange={(e) => setEmailForm(prev => ({ ...prev, to: e.target.value }))}
                   />
-                  <Button variant="contained"
+                  <AdminButton
+                    tone="primary"
                     fullWidth
                     onClick={() => handleQuickEmail('welcome', { email: emailForm.to })}
                     sx={theming.getThemedButtonSx()}
+                    loading={sendWelcomeMutation.isPending}
                     disabled={!emailForm.to || sendWelcomeMutation.isPending}
                   >
-                    {sendWelcomeMutation.isPending ? <CircularProgress size={20} /> : 'Send Velkomst'}
-                  </Button>
+                    Send Velkomst
+                  </AdminButton>
                 </MuiCard>
               </Grid>
 
@@ -575,17 +574,19 @@ export default function AdminEmailCenter() {
                     <MenuItem value="music_producer">{getProfessionDisplayName('music_producer')}</MenuItem>
                     <MenuItem value="vendor">{getProfessionDisplayName('vendor')}</MenuItem>
                   </TextField>
-                  <Button variant="contained"
+                  <AdminButton
+                    tone="primary"
                     fullWidth
                     onClick={() => handleQuickEmail('dashboard_access', {
                       userEmail: emailForm.to,
                       dashboards: emailForm.cc ? emailForm.cc.split(', ') : []
                   })}
                     sx={theming.getThemedButtonSx()}
+                    loading={sendDashboardAccessMutation.isPending}
                     disabled={!emailForm.to || !emailForm.cc || sendDashboardAccessMutation.isPending}
                   >
-                    {sendDashboardAccessMutation.isPending ? <CircularProgress size={20} /> : 'Send Tilgang'}
-                  </Button>
+                    Send Tilgang
+                  </AdminButton>
                 </MuiCard>
               </Grid>
 
@@ -613,7 +614,8 @@ export default function AdminEmailCenter() {
                     sx={{ mb: 2 }}
                     onChange={(e) => setEmailForm(prev => ({ ...prev, html: e.target.value }))}
                   />
-                  <Button variant="contained"
+                  <AdminButton
+                    tone="primary"
                     fullWidth
                     onClick={() => handleQuickEmail('feature_announcement', {
                       recipients: emailForm.to ? emailForm.to.split(', ').map(e => e.trim()) : [],
@@ -621,10 +623,11 @@ export default function AdminEmailCenter() {
                       description: emailForm.html
                   })}
                     sx={theming.getThemedButtonSx()}
+                    loading={sendFeatureAnnouncementMutation.isPending}
                     disabled={!emailForm.to || !emailForm.subject || !emailForm.html || sendFeatureAnnouncementMutation.isPending}
                   >
-                    {sendFeatureAnnouncementMutation.isPending ? <CircularProgress size={20} /> : 'Send Kunngjøring'}
-                  </Button>
+                    Send Kunngjøring
+                  </AdminButton>
                 </MuiCard>
               </Grid>
             </Grid>
@@ -658,10 +661,9 @@ export default function AdminEmailCenter() {
                 </Typography>
               </Box>
               {pendingInvitations.length > 0 && (
-                <Chip 
-                  label={`${pendingInvitations.length} pending`} 
-                  color="error" 
-                  size="small"
+                <StatusChip
+                  tone="error"
+                  label={`${pendingInvitations.length} pending`}
                 />
               )}
             </Stack>
@@ -700,8 +702,8 @@ export default function AdminEmailCenter() {
                           <Typography variant="subtitle1" sx={{ fontWeight: 600}}>
                             {invite.name}
                           </Typography>
-                          <Chip label={invite.profession} size="small" color="primary" />
-                          <Chip label={invite.experience} size="small" variant="outlined" />
+                          <StatusChip tone="brand" label={invite.profession} />
+                          <StatusChip tone="neutral" label={invite.experience} />
                         </Stack>
                       }
                       secondary={
@@ -716,8 +718,8 @@ export default function AdminEmailCenter() {
                       }
                     />
                     <Stack direction="column" spacing={1} sx={{ minWidth: 200 }}>
-                      <Button
-                        variant="outlined"
+                      <AdminButton
+                        tone="secondary"
                         size="small"
                         startIcon={<Email />}
                         onClick={() => {
@@ -735,11 +737,10 @@ export default function AdminEmailCenter() {
                         fullWidth
                       >
                         Send Standard Email
-                      </Button>
-                      <Button
-                        variant="contained"
+                      </AdminButton>
+                      <AdminButton
+                        tone="primary"
                         size="small"
-                        color="primary"
                         startIcon={<Edit />}
                         onClick={() => {
                           // Open EmailDesigner modal with invitation data
@@ -758,7 +759,7 @@ export default function AdminEmailCenter() {
                         sx={theming.getThemedButtonSx()}
                       >
                         Open Designer
-                      </Button>
+                      </AdminButton>
                     </Stack>
                   </ListItem>
                 ))}
@@ -775,7 +776,7 @@ export default function AdminEmailCenter() {
             <Email sx={{ color: '#ea4335' }} />
             Skriv E-post
             {selectedTemplate && (
-              <Chip label={`Mal: ${selectedTemplate.name}`} size="small" color="primary" />
+              <StatusChip tone="brand" label={`Mal: ${selectedTemplate.name}`} />
             )}
           </Box>
         </DialogTitle>
@@ -828,14 +829,14 @@ export default function AdminEmailCenter() {
               />
             </Grid>
             <Grid item xs={12}>
-              <Button
-                variant="outlined"
+              <AdminButton
+                tone="secondary"
                 startIcon={<AttachFile />}
                 size="small"
                 sx={{ mr: 1 }}
               >
                 Legg til vedlegg
-              </Button>
+              </AdminButton>
             </Grid>
             <Grid item xs={12}>
               <Button
@@ -868,17 +869,18 @@ export default function AdminEmailCenter() {
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowComposeDialog(false)}>
+          <AdminButton tone="ghost" onClick={() => setShowComposeDialog(false)}>
             Avbryt
-          </Button>
-          <Button onClick={handleSendEmail}
-            variant="contained"
+          </AdminButton>
+          <AdminButton onClick={handleSendEmail}
+            tone="primary"
+            loading={sendEmailMutation.isPending}
             disabled={!emailForm.to || !emailForm.subject || !emailForm.html || sendEmailMutation.isPending}
-            startIcon={sendEmailMutation.isPending ? <CircularProgress size={20} /> : <Send />}
+            startIcon={<Send />}
             sx={{ bgcolor: '#ea4335','&:hover': { bgcolor: '#d33b2c' } }}
           >
             Send E-post
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -905,12 +907,12 @@ export default function AdminEmailCenter() {
                 )}
               </Box>
             </Box>
-            <Button 
-              variant="outlined" 
+            <AdminButton
+              tone="secondary"
               onClick={() => setShowEmailDesigner(false)}
             >
               Close
-            </Button>
+            </AdminButton>
           </Box>
         </DialogTitle>
         <DialogContent sx={{ p: 0 }}>
@@ -947,7 +949,7 @@ export default function AdminEmailCenter() {
             </Box>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setPushSettingsOpen(false)}>Lukk</Button>
+            <AdminButton tone="ghost" onClick={() => setPushSettingsOpen(false)}>Lukk</AdminButton>
           </DialogActions>
         </Dialog>
       )}

@@ -2,10 +2,8 @@ import React, { useMemo, useState } from 'react';
 import {
   Alert,
   Box,
-  Button,
   Card,
   CardContent,
-  Chip,
   Dialog,
   DialogActions,
   DialogContent,
@@ -43,6 +41,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { QUERY_KEYS } from '@/lib/queryKeys';
 import { useToast } from '@/hooks/use-toast';
+import { AdminButton, StatusChip } from './design-system';
 
 type TestStatus = 'draft' | 'running' | 'paused' | 'completed' | 'cancelled';
 type TestType = 'email' | 'social';
@@ -215,14 +214,14 @@ export default function ABTestingManager() {
     },
   });
 
-  const getStatusColor = (
+  const getStatusTone = (
     status: TestStatus,
-  ): 'default' | 'primary' | 'secondary' | 'success' | 'error' | 'warning' => {
+  ): 'success' | 'warning' | 'brand' | 'error' | 'neutral' => {
     if (status === 'running') return 'success';
     if (status === 'paused') return 'warning';
-    if (status === 'completed') return 'primary';
+    if (status === 'completed') return 'brand';
     if (status === 'cancelled') return 'error';
-    return 'default';
+    return 'neutral';
   };
 
   const getTypeIcon = (type: TestType) => {
@@ -321,9 +320,9 @@ export default function ABTestingManager() {
             Optimize campaigns with controlled experiments and measurable winners.
           </Typography>
         </Box>
-        <Button startIcon={<AddIcon />} variant="contained" onClick={() => setCreateDialogOpen(true)}>
+        <AdminButton tone="primary" startIcon={<AddIcon />} onClick={() => setCreateDialogOpen(true)}>
           Create Test
-        </Button>
+        </AdminButton>
       </Box>
 
       <Grid container spacing={2}>
@@ -401,9 +400,9 @@ export default function ABTestingManager() {
         <Card>
           <CardContent sx={{ textAlign: 'center', py: 6 }}>
             <Typography color="text.secondary">No tests found for this filter.</Typography>
-            <Button sx={{ mt: 2 }} startIcon={<AddIcon />} onClick={() => setCreateDialogOpen(true)}>
+            <AdminButton tone="ghost" sx={{ mt: 2 }} startIcon={<AddIcon />} onClick={() => setCreateDialogOpen(true)}>
               Create your first test
-            </Button>
+            </AdminButton>
           </CardContent>
         </Card>
       ) : (
@@ -424,7 +423,7 @@ export default function ABTestingManager() {
                       <Stack direction="row" alignItems="center" spacing={1}>
                         {getTypeIcon(test.type)}
                         <Typography variant="h6">{test.name}</Typography>
-                        <Chip size="small" label={test.status} color={getStatusColor(test.status)} />
+                        <StatusChip tone={getStatusTone(test.status)} label={test.status} />
                       </Stack>
                       <Typography color="text.secondary" variant="body2">
                         {variants.length} variants | primary metric: {test.config.primaryMetric}
@@ -432,49 +431,48 @@ export default function ABTestingManager() {
                     </Box>
                     <Stack direction="row" spacing={1}>
                       {test.status === 'draft' && (
-                        <Button
+                        <AdminButton
+                          tone="primary"
                           size="small"
-                          variant="contained"
                           startIcon={<PlayIcon />}
                           onClick={() => startTestMutation.mutate(test.id)}
                           disabled={isBusy}
                         >
                           Start
-                        </Button>
+                        </AdminButton>
                       )}
                       {test.status === 'running' && (
                         <>
-                          <Button
+                          <AdminButton
+                            tone="secondary"
                             size="small"
-                            variant="outlined"
                             startIcon={<PauseIcon />}
                             onClick={() => pauseTestMutation.mutate(test.id)}
                             disabled={isBusy}
                           >
                             Pause
-                          </Button>
-                          <Button
+                          </AdminButton>
+                          <AdminButton
+                            tone="danger"
                             size="small"
-                            variant="outlined"
-                            color="error"
                             startIcon={<StopIcon />}
                             onClick={() => stopTestMutation.mutate(test.id)}
                             disabled={isBusy}
                           >
                             Stop
-                          </Button>
+                          </AdminButton>
                         </>
                       )}
                       {test.status === 'paused' && (
-                        <Button
+                        <AdminButton
+                          tone="primary"
                           size="small"
-                          variant="contained"
                           startIcon={<PlayIcon />}
                           onClick={() => startTestMutation.mutate(test.id)}
                           disabled={isBusy}
                         >
                           Resume
-                        </Button>
+                        </AdminButton>
                       )}
                     </Stack>
                   </Stack>
@@ -558,10 +556,9 @@ export default function ABTestingManager() {
                           <Typography variant="body2" color="text.secondary">
                             Winner
                           </Typography>
-                          <Chip
-                            size="small"
+                          <StatusChip
+                            tone={winner ? 'success' : 'neutral'}
                             label={winner?.name ?? 'No winner'}
-                            color={winner ? 'success' : 'default'}
                           />
                         </Stack>
                         <Stack direction="row" justifyContent="space-between">
@@ -664,14 +661,15 @@ export default function ABTestingManager() {
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setCreateDialogOpen(false)}>Cancel</Button>
-          <Button
+          <AdminButton tone="ghost" onClick={() => setCreateDialogOpen(false)}>Cancel</AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={handleCreateTest}
-            variant="contained"
-            disabled={createTestMutation.isPending || !newTestName.trim()}
+            loading={createTestMutation.isPending}
+            disabled={!newTestName.trim()}
           >
             Create Test
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

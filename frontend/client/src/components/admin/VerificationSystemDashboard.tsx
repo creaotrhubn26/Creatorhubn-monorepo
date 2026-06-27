@@ -28,6 +28,7 @@ import VerificationSystemDemo from './VerificationSystemDemo';
 import LiveVerificationDemo from './LiveVerificationDemo';
 import PrototypeFeedbackPanel from './PrototypeFeedbackPanel';
 import CompleteDeploymentManager from './CompleteDeploymentManager';
+import { adminTokens } from './design-system';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -80,10 +81,10 @@ export default function VerificationSystemDashboard() {
 
   const getTabColor = (index: number) => {
     switch (index) {
-      case 0: return '#ff8c00';
+      case 0: return adminTokens.color.brand;
       case 1: return '#2196f3';
-      case 2: return '#f44336';
-      case 3: return '#4caf50';
+      case 2: return adminTokens.color.error;
+      case 3: return adminTokens.color.success;
       default: return '#757575';
   }
 };
@@ -102,7 +103,7 @@ export default function VerificationSystemDashboard() {
         }}
       >
         <Box sx={{ p: 3 }}>
-          <Typography variant="h4" gutterBottom sx={{ color: '#ff8c00', fontWeight: 'bold' }}>
+          <Typography variant="h4" gutterBottom sx={{ color: adminTokens.color.brand, fontWeight: 'bold' }}>
             Verification System Testing Dashboard
           </Typography>
           <Typography variant="body1" sx={{ mb: 2, color: 'rgba(255,255,255,0.7)' }}>
@@ -179,7 +180,7 @@ export default function VerificationSystemDashboard() {
 
       {/* Main Content */}
       <Box sx={{ flexGrow: 1 }}>
-        <Box sx={{ borderBottom: '1px solid rgba(255,255,255,0.12)', bgcolor: 'rgba(255,255,255,0.04)' }}>
+        <Box sx={{ borderBottom: `1px solid ${adminTokens.color.border}`, bgcolor: adminTokens.color.surface }}>
           <Tabs 
             value={activeTab} 
             onChange={handleTabChange} 
@@ -254,10 +255,10 @@ export default function VerificationSystemDashboard() {
       {/* Footer Info */}
       <Box
         sx={{
-          bgcolor: 'rgba(255,255,255,0.04)',
+          bgcolor: adminTokens.color.surface,
           p: 3,
           mt: 3,
-          borderTop: '1px solid rgba(255,255,255,0.12)',
+          borderTop: `1px solid ${adminTokens.color.border}`,
           color: '#fff',
         }}
       >
@@ -284,7 +285,7 @@ export default function VerificationSystemDashboard() {
               sx={{
                 height: '100%',
                 bgcolor: 'rgba(255,255,255,0.06)',
-                border: '1px solid rgba(255,255,255,0.12)',
+                border: `1px solid ${adminTokens.color.border}`,
                 backdropFilter: 'blur(8px)',
                 color: '#fff',
                 boxShadow: 'none',
@@ -308,7 +309,7 @@ export default function VerificationSystemDashboard() {
               sx={{
                 height: '100%',
                 bgcolor: 'rgba(255,255,255,0.06)',
-                border: '1px solid rgba(255,255,255,0.12)',
+                border: `1px solid ${adminTokens.color.border}`,
                 backdropFilter: 'blur(8px)',
                 color: '#fff',
                 boxShadow: 'none',
@@ -332,7 +333,7 @@ export default function VerificationSystemDashboard() {
               sx={{
                 height: '100%',
                 bgcolor: 'rgba(255,255,255,0.06)',
-                border: '1px solid rgba(255,255,255,0.12)',
+                border: `1px solid ${adminTokens.color.border}`,
                 backdropFilter: 'blur(8px)',
                 color: '#fff',
                 boxShadow: 'none',

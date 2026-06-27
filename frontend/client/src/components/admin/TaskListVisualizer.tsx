@@ -44,6 +44,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '../../lib/queryClient';
 import { useToast } from '../../hooks/use-toast';
+import { AdminButton, StatusChip } from './design-system';
 
 type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'blocked';
 type TaskCategory = 'critical' | 'high' | 'medium' | 'low';
@@ -768,11 +769,9 @@ export default function TaskListVisualizer({
                               <Stack direction="row" spacing={0.5}>
                                 {check.validationRules.map((rule, index) => (
                                   <Tooltip key={`${check.id}-rule-${index}`} title={rule.message}>
-                                    <Chip
-                                      size="small"
-                                      variant="outlined"
+                                    <StatusChip
+                                      tone={rule.passed ? 'success' : 'error'}
                                       label={rule.rule}
-                                      color={rule.passed ? 'success' : 'error'}
                                     />
                                   </Tooltip>
                                 ))}
@@ -797,14 +796,14 @@ export default function TaskListVisualizer({
                           ) : null}
 
                           {check.status !== 'completed' ? (
-                            <Button
+                            <AdminButton
+                              tone="primary"
                               size="small"
-                              variant="contained"
                               onClick={() => completeTaskMutation.mutate(check.id)}
-                              disabled={completeTaskMutation.isPending}
+                              loading={completeTaskMutation.isPending}
                             >
                               Complete
-                            </Button>
+                            </AdminButton>
                           ) : null}
                         </Stack>
                       </ListItem>
@@ -882,10 +881,9 @@ export default function TaskListVisualizer({
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setRetryDialogOpen(false)}>Cancel</Button>
-          <Button
-            variant="contained"
-            color="warning"
+          <AdminButton tone="ghost" onClick={() => setRetryDialogOpen(false)}>Cancel</AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={() => {
               if (selectedTaskId) {
                 retryTaskMutation.mutate(selectedTaskId);
@@ -894,7 +892,7 @@ export default function TaskListVisualizer({
             }}
           >
             Retry task
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -914,10 +912,9 @@ export default function TaskListVisualizer({
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setBypassDialogOpen(false)}>Cancel</Button>
-          <Button
-            variant="contained"
-            color="error"
+          <AdminButton tone="ghost" onClick={() => setBypassDialogOpen(false)}>Cancel</AdminButton>
+          <AdminButton
+            tone="danger"
             onClick={() => {
               if (selectedGateId) {
                 bypassGateMutation.mutate(selectedGateId);
@@ -926,7 +923,7 @@ export default function TaskListVisualizer({
             }}
           >
             Activate bypass
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
