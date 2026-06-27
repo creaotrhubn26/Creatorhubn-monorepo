@@ -11,8 +11,6 @@ import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions'
 import { useMutation } from '@tanstack/react-query';
 import {
   Box,
-  Card,
-  CardContent,
   TextField,
   Button,
   FormControl,
@@ -48,6 +46,7 @@ import WhatsNewModal from '../WhatsNewModal';
 import MarketingWorkflowIntegration from './MarketingWorkflowIntegration';
 import EmailDesigner from '../EmailDesigner/EmailDesigner';
 import { PUBLIC_BRAND_LINKS } from '@/lib/publicBrandLinks';
+import { AdminCard, AdminButton } from './design-system';
 
 interface AnnouncementForm {
   title: string;
@@ -349,12 +348,7 @@ export default function AnnouncementCreator() {
 
   return (
     <Box>
-      <Card>
-        <CardContent>
-          <Typography variant="h5" sx={{ mb: 3, fontWeight: 600}}>
-            Opprett Ny Kunngjøring
-          </Typography>
-
+      <AdminCard title="Opprett Ny Kunngjøring">
           {successMessage && (
             <Alert severity="success" sx={{ mb: 3 }}>
               {successMessage}
@@ -770,13 +764,14 @@ export default function AnnouncementCreator() {
                   >
                     Design E-post
                   </Button>
-                  <Button
+                  <AdminButton
+                    tone="ghost"
                     startIcon={<ClearIcon />}
                     onClick={handleClear}
                     disabled={createMutation.isPending}
                   >
                     Tøm
-                  </Button>
+                  </AdminButton>
                   <Button
                     variant="outlined"
                     startIcon={<PreviewIcon />}
@@ -786,22 +781,20 @@ export default function AnnouncementCreator() {
                   >
                     Forhåndsvis
                   </Button>
-                  <Button
-                    variant="contained"
+                  <AdminButton
+                    tone="primary"
                     startIcon={<SaveIcon />}
                     onClick={handleCreate}
+                    loading={createMutation.isPending}
                     disabled={!form.title || !form.content || createMutation.isPending}
-                    sx={{
-                      bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67e00' }}}
                   >
                     {form.sendEmail ? 'Opprett & Send E-post' : 'Opprett Kunngjøring'}
-                  </Button>
+                  </AdminButton>
                 </Box>
               </Box>
             </Grid>
           </Grid>
-        </CardContent>
-      </Card>
+      </AdminCard>
 
       {/* Preview Modal */}
       <WhatsNewModal

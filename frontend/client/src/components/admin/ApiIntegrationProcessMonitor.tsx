@@ -62,6 +62,7 @@ import {
 } from '@mui/icons-material';
 import { useToast } from '@/hooks/use-toast';
 import { useTheming } from '../../utils/theming-helper';
+import { AdminButton, StatusChip } from './design-system';
 
 type StepStatus = 'pending' | 'active' | 'completed' | 'error';
 type ProcessStatus = 'initializing' | 'processing' | 'completed' | 'failed';
@@ -607,17 +608,16 @@ export function ApiIntegrationProcessMonitor({ service }: { service?: string }) 
                 <StepLabel icon={getStepIcon(step)}>
                   <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
                     <Typography variant="subtitle1">{step.title}</Typography>
-                    <Chip
-                      size="small"
+                    <StatusChip
                       label={step.status.toUpperCase()}
-                      color={
+                      tone={
                         step.status === 'completed'
                           ? 'success'
                           : step.status === 'active'
-                            ? 'primary'
+                            ? 'brand'
                             : step.status === 'error'
                               ? 'error'
-                              : 'default'
+                              : 'neutral'
                       }
                     />
                   </Stack>
@@ -704,41 +704,37 @@ export function ApiIntegrationProcessMonitor({ service }: { service?: string }) 
             Quick actions for {targetService.toUpperCase()}
           </Typography>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-            <Button
-              size="small"
-              variant="outlined"
+            <AdminButton
+              tone="secondary"
               startIcon={<RefreshIcon />}
               onClick={() => startIntegrationMutation.mutate()}
-              disabled={startIntegrationMutation.isPending}
+              loading={startIntegrationMutation.isPending}
             >
               Restart process
-            </Button>
-            <Button
-              size="small"
-              variant="outlined"
+            </AdminButton>
+            <AdminButton
+              tone="secondary"
               startIcon={<ScienceIcon />}
               onClick={() => runTestsMutation.mutate()}
-              disabled={runTestsMutation.isPending}
+              loading={runTestsMutation.isPending}
             >
               Run tests
-            </Button>
-            <Button
-              size="small"
-              variant="outlined"
+            </AdminButton>
+            <AdminButton
+              tone="secondary"
               startIcon={<CloudDoneIcon />}
               onClick={() => refreshMutation.mutate()}
-              disabled={refreshMutation.isPending}
+              loading={refreshMutation.isPending}
             >
               Refresh integration
-            </Button>
-            <Button
-              size="small"
-              variant="text"
+            </AdminButton>
+            <AdminButton
+              tone="ghost"
               startIcon={realTimeUpdate ? <StopIcon /> : <PlayIcon />}
               onClick={() => setRealTimeUpdate((value) => !value)}
             >
               {realTimeUpdate ? 'Pause live' : 'Resume live'}
-            </Button>
+            </AdminButton>
           </Stack>
 
           {processQuery.isLoading && (
@@ -783,7 +779,7 @@ export function ApiIntegrationProcessMonitor({ service }: { service?: string }) 
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setSelectedStep(null)}>Close</Button>
+          <AdminButton tone="ghost" onClick={() => setSelectedStep(null)}>Close</AdminButton>
         </DialogActions>
       </Dialog>
     </Box>

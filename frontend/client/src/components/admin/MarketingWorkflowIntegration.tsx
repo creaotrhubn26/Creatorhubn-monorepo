@@ -48,6 +48,7 @@ import {
   Schedule as ScheduleIcon,
 } from '@mui/icons-material';
 import EmailDesigner from '../EmailDesigner/EmailDesigner';
+import { AdminButton, adminTokens } from './design-system';
 
 interface WorkflowIntegrationProps {
   open: boolean;
@@ -310,11 +311,11 @@ export default function MarketingWorkflowIntegration({
                       cursor: 'pointer',
                       border: 2,
                       borderColor: 'divider', '&:hover': {
-                        borderColor: '#ff8c00',
+                        borderColor: adminTokens.color.brand,
                       }}}
                   >
                     <CardContent sx={{ textAlign: 'center' }}>
-                      <Box sx={{ color: '#ff8c00', mb: 2 }}>{item.icon}</Box>
+                      <Box sx={{ color: adminTokens.color.brand, mb: 2 }}>{item.icon}</Box>
                       <Typography variant="h6">{item.label}</Typography>
                       <Typography variant="body2" color="text.secondary">
                         {item.description}
@@ -365,14 +366,13 @@ export default function MarketingWorkflowIntegration({
                 </CardContent>
               </Card>
             ) : (
-              <Button
-                variant="contained"
+              <AdminButton
+                tone="primary"
                 startIcon={<EmailIcon />}
                 onClick={() => setEmailDesignerOpen(true)}
-                sx={{ bgcolor: '#ff8c00','&:hover': { bgcolor: '#e67e00' } }}
               >
                 Åpne E-postdesigner
-              </Button>
+              </AdminButton>
             )}
 
             <Box mt={3}>
@@ -684,7 +684,7 @@ export default function MarketingWorkflowIntegration({
       <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
         <DialogTitle>
           <Box display="flex" alignItems="center" gap={2}>
-            <CampaignIcon sx={{ color: '#ff8c00' }} />
+            <CampaignIcon sx={{ color: adminTokens.color.brand }} />
             <Typography variant="h6">Marketing Workflow</Typography>
           </Box>
         </DialogTitle>
@@ -706,25 +706,24 @@ export default function MarketingWorkflowIntegration({
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={onClose} disabled={createWorkflowMutation.isPending}>
+          <AdminButton tone="ghost" onClick={onClose} disabled={createWorkflowMutation.isPending}>
             Avbryt
-          </Button>
+          </AdminButton>
           {activeStep > 0 && (
-            <Button onClick={handleBack} disabled={createWorkflowMutation.isPending}>
+            <AdminButton tone="ghost" onClick={handleBack} disabled={createWorkflowMutation.isPending}>
               Tilbake
-            </Button>
+            </AdminButton>
           )}
-          <Button
-            variant="contained"
+          <AdminButton
+            tone="primary"
             onClick={handleNext}
-            disabled={createWorkflowMutation.isPending}
+            loading={createWorkflowMutation.isPending}
             startIcon={
               activeStep === steps.length - 1 ? <SendIcon /> : undefined
             }
-            sx={{ bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67e00' } }}
           >
             {activeStep === steps.length - 1 ? 'Publiser' : 'Neste'}
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 

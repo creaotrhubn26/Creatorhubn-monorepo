@@ -6,7 +6,6 @@ import {
   Card,
   CardContent,
   Grid,
-  Button,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -25,6 +24,7 @@ import {
   ThemeProvider,
 } from '@mui/material';
 import { adminDarkTheme } from './adminDarkTheme';
+import { AdminButton, AdminEmpty } from './design-system';
 import {
   NoteAdd,
   Notes,
@@ -390,13 +390,12 @@ export default function AdvancedNotesManager({
           </Grid>
           <Grid item xs={12} md={5}>
             <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
-              <Button variant="contained"
+              <AdminButton tone="primary"
                 startIcon={<NoteAdd />}
                 onClick={() => setIsCreateDialogOpen(true)}
-                sx={theming.getThemedButtonSx()}
               >
                 Nytt Notat
-              </Button>
+              </AdminButton>
             </Box>
           </Grid>
         </Grid>
@@ -512,15 +511,11 @@ export default function AdvancedNotesManager({
         </Grid>
 
         {filteredNotes.length === 0 && (
-          <Box sx={{ textAlign: 'center', py: 8 }}>
-            <Notes sx={{ fontSize: 64, color: 'text.disabled', mb: 2 }} />
-            <Typography variant="h6" color="text.secondary" sx={{ color: themeColors.primary }}>
-              Ingen notater funnet
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              {searchQuery ? 'Prøv å endre søkekriteriene' : 'Opprett ditt første notat'}
-            </Typography>
-          </Box>
+          <AdminEmpty
+            icon={<Notes sx={{ fontSize: 64 }} />}
+            title="Ingen notater funnet"
+            description={searchQuery ? 'Prøv å endre søkekriteriene' : 'Opprett ditt første notat'}
+          />
         )}
       </Box>
 
@@ -618,15 +613,14 @@ export default function AdvancedNotesManager({
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setIsCreateDialogOpen(false)}>Avbryt</Button>
-          <Button 
+          <AdminButton tone="ghost" onClick={() => setIsCreateDialogOpen(false)}>Avbryt</AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={handleCreateNote}
-            variant="contained"
             disabled={!noteForm.title.trim() || !noteForm.content.trim()}
-            sx={theming.getThemedButtonSx()}
           >
             Opprett Notat
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
@@ -723,15 +717,14 @@ export default function AdvancedNotesManager({
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setIsEditDialogOpen(false)}>Avbryt</Button>
-          <Button 
+          <AdminButton tone="ghost" onClick={() => setIsEditDialogOpen(false)}>Avbryt</AdminButton>
+          <AdminButton
+            tone="primary"
             onClick={handleEditNote}
-            variant="contained"
             disabled={!noteForm.title.trim() || !noteForm.content.trim()}
-            sx={theming.getThemedButtonSx()}
           >
             Oppdater Notat
-          </Button>
+          </AdminButton>
         </DialogActions>
       </Dialog>
 
