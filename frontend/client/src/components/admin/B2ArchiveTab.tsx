@@ -245,7 +245,7 @@ export default function B2ArchiveTab(): JSX.Element {
   return (
     <Box sx={{ p: { xs: 1.5, sm: 2.5 } }}>
       <Box sx={{ mb: 2 }}>
-        <Typography variant="h5" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Typography variant="h5" component="h2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
           B2-arkiv (Creatorhub AS)
         </Typography>
         <Typography variant="body2" color="text.secondary">
@@ -285,7 +285,7 @@ export default function B2ArchiveTab(): JSX.Element {
                 </Typography>
               </Box>
             </Stack>
-            <IconButton onClick={() => void loadHealth()} size="small">
+            <IconButton onClick={() => void loadHealth()} size="small" aria-label="Oppdater tilkoblingsstatus">
               <RefreshIcon fontSize="small" />
             </IconButton>
           </Stack>
@@ -417,12 +417,12 @@ export default function B2ArchiveTab(): JSX.Element {
                     <TableCell>{formatDate(file.lastModified)}</TableCell>
                     <TableCell align="right">
                       <Tooltip title="Last ned">
-                        <IconButton size="small" onClick={() => void handleDownload(file.key)}>
+                        <IconButton size="small" onClick={() => void handleDownload(file.key)} aria-label="Last ned">
                           <DownloadIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Slett">
-                        <IconButton size="small" onClick={() => void handleDelete(file.key)} color="error">
+                        <IconButton size="small" onClick={() => void handleDelete(file.key)} color="error" aria-label="Slett">
                           <DeleteOutlineIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>

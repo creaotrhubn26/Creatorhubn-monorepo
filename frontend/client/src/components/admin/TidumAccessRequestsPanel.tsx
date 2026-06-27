@@ -332,7 +332,7 @@ export default function TidumAccessRequestsPanel() {
             py: 0.5,
           }}
         />
-        <Typography variant="h5" sx={{ fontWeight: 700, color: '#ffffff' }}>
+        <Typography variant="h5" component="h2" sx={{ fontWeight: 700, color: '#ffffff' }}>
           Tidum tilgangsforespørsler
         </Typography>
         <Typography sx={{ mt: 0.75, color: 'rgba(255,255,255,0.6)', maxWidth: 760 }}>
@@ -343,10 +343,10 @@ export default function TidumAccessRequestsPanel() {
 
       <Grid container spacing={2}>
         {[
-          { label: 'Totalt', value: stats.total, icon: <Mail />, tone: '#7c3aed', background: 'rgba(124,58,237,0.18)' },
-          { label: 'Venter', value: stats.pending, icon: <HourglassTop />, tone: '#b45309', background: 'rgba(180,83,9,0.20)' },
-          { label: 'Godkjent', value: stats.approved, icon: <CheckCircle />, tone: '#166534', background: 'rgba(22,101,52,0.22)' },
-          { label: 'Virksomheter', value: vendors.length, icon: <Apartment />, tone: '#1d4ed8', background: 'rgba(29,78,216,0.20)' },
+          { label: 'Totalt', value: stats.total, icon: <Mail aria-hidden="true" />, tone: '#7c3aed', background: 'rgba(124,58,237,0.18)' },
+          { label: 'Venter', value: stats.pending, icon: <HourglassTop aria-hidden="true" />, tone: '#b45309', background: 'rgba(180,83,9,0.20)' },
+          { label: 'Godkjent', value: stats.approved, icon: <CheckCircle aria-hidden="true" />, tone: '#166534', background: 'rgba(22,101,52,0.22)' },
+          { label: 'Virksomheter', value: vendors.length, icon: <Apartment aria-hidden="true" />, tone: '#1d4ed8', background: 'rgba(29,78,216,0.20)' },
         ].map((item) => (
           <Grid item xs={12} sm={6} lg={3} key={item.label}>
             <Card sx={{ borderRadius: '20px', border: '1px solid rgba(255,255,255,0.12)', boxShadow: 'none' }}>
@@ -456,12 +456,12 @@ export default function TidumAccessRequestsPanel() {
                     <TableCell>
                       <Stack spacing={0.5}>
                         <Stack direction="row" spacing={1} alignItems="center">
-                          <Mail fontSize="small" />
+                          <Mail fontSize="small" aria-hidden="true" />
                           <Typography variant="body2">{request.email}</Typography>
                         </Stack>
                         {request.phone ? (
                           <Stack direction="row" spacing={1} alignItems="center">
-                            <Phone fontSize="small" />
+                            <Phone fontSize="small" aria-hidden="true" />
                             <Typography variant="body2">{request.phone}</Typography>
                           </Stack>
                         ) : null}

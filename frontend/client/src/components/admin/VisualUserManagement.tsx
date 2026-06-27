@@ -433,7 +433,7 @@ const VisualUserManagement: FC = () => {
   return (
     <Box sx={{ p: 2 }}>
       <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ xs: 'start', md: 'center' }} gap={2}>
-        <Typography variant="h5" fontWeight={700}>
+        <Typography variant="h5" component="h2" fontWeight={700}>
           Visual User Management
         </Typography>
         <AdminButton tone="secondary" startIcon={<Refresh />} onClick={handleRefresh}>
@@ -638,6 +638,7 @@ const VisualUserManagement: FC = () => {
                     divider
                     secondaryAction={
                       <Switch
+                        inputProps={{ 'aria-label': `Slå funksjon ${flag.name} av eller på` }}
                         checked={flag.enabled}
                         onChange={(event) =>
                           updateFeatureFlagMutation.mutate({

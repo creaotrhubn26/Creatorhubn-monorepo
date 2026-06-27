@@ -217,7 +217,7 @@ export default function UnifiedAnalyticsDashboard() {
         </div>
         <div className="flex items-center gap-2">
           <Select value={timeRange} onValueChange={setTimeRange}>
-            <SelectTrigger className="w-[150px]">
+            <SelectTrigger className="w-[150px]" aria-label="Velg tidsperiode">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -227,11 +227,11 @@ export default function UnifiedAnalyticsDashboard() {
               <SelectItem value="1y">Last year</SelectItem>
             </SelectContent>
           </Select>
-          <AdminButton tone="ghost" size="small" startIcon={<Download className="h-4 w-4" />} onClick={exportData}>
+          <AdminButton tone="ghost" size="small" startIcon={<Download className="h-4 w-4" aria-hidden="true" />} onClick={exportData}>
             Export
           </AdminButton>
-          <AdminButton tone="ghost" size="small">
-            <RefreshCw className="h-4 w-4" />
+          <AdminButton tone="ghost" size="small" aria-label="Oppdater analysedata">
+            <RefreshCw className="h-4 w-4" aria-hidden="true" />
           </AdminButton>
         </div>
       </div>
