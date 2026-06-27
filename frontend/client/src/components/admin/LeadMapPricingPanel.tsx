@@ -150,8 +150,8 @@ export default function LeadMapPricingPanel() {
       {/* Header */}
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
         <Stack direction="row" alignItems="center" spacing={1}>
-          <MoneyIcon sx={{ color: '#fbbf24' }} />
-          <Typography variant="h6" sx={{ fontWeight: 700 }}>
+          <MoneyIcon aria-hidden sx={{ color: '#fbbf24' }} />
+          <Typography variant="h6" component="h2" sx={{ fontWeight: 700 }}>
             Lead Map — Prising
           </Typography>
           <StatusChip
@@ -187,7 +187,7 @@ export default function LeadMapPricingPanel() {
             <CardContent>
               <Typography variant="caption" sx={{ color: 'text.secondary' }}>MRR (NOK)</Typography>
               <Typography variant="h4" sx={{ fontWeight: 700, color: '#fbbf24' }}>
-                <TrendingIcon sx={{ fontSize: 24, mr: 0.5, verticalAlign: 'middle' }} />
+                <TrendingIcon aria-hidden sx={{ fontSize: 24, mr: 0.5, verticalAlign: 'middle' }} />
                 {(data.usageMetrics.revenueMonthlyNok ?? 0).toLocaleString('nb-NO')}
               </Typography>
             </CardContent>
@@ -211,10 +211,10 @@ export default function LeadMapPricingPanel() {
                       bgcolor: `${meta.color}22`, border: `1px solid ${meta.color}`,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                     }}>
-                      <MoneyIcon sx={{ color: meta.color }} />
+                      <MoneyIcon aria-hidden sx={{ color: meta.color }} />
                     </Box>
                     <Stack>
-                      <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                      <Typography variant="h6" component="h3" sx={{ fontWeight: 700 }}>
                         Lead Map {meta.label}
                       </Typography>
                       <Typography variant="caption" sx={{ color: 'text.secondary' }}>
@@ -245,7 +245,7 @@ export default function LeadMapPricingPanel() {
 
                 {isPlaceholder && (
                   <Alert severity="warning" sx={{ mb: 1, fontSize: '0.8rem' }}>
-                    <WarningIcon sx={{ fontSize: 14, mr: 0.5, verticalAlign: 'text-bottom' }} />
+                    <WarningIcon aria-hidden sx={{ fontSize: 14, mr: 0.5, verticalAlign: 'text-bottom' }} />
                     Placeholder-pris ({t.envValue}). Endre prisen for å opprette ekte Stripe-pris.
                   </Alert>
                 )}

@@ -167,9 +167,9 @@ export default function AIAnalyticsInsights({
       {/* Header */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <AutoAwesome sx={{ color: '#ff6b35', fontSize: 32 }} />
+          <AutoAwesome aria-hidden="true" sx={{ color: '#ff6b35', fontSize: 32 }} />
           <Box>
-            <Typography variant="h5" sx={{ fontWeight: 700, color: '#ffffff' }}>
+            <Typography variant="h5" component="h2" sx={{ fontWeight: 700, color: '#ffffff' }}>
               AI Analytics Insights
             </Typography>
             <Typography variant="body2" sx={{ color: '#ffa726' }}>

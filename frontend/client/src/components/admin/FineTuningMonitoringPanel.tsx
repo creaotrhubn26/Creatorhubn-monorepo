@@ -238,8 +238,8 @@ export default function FineTuningMonitoringPanel() {
     <Box sx={{ p: 3 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
         <Box>
-          <Typography variant="h5" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-            <Psychology color="primary" />
+          <Typography variant="h5" component="h2" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+            <Psychology color="primary" aria-hidden="true" />
             Training Systems Monitor
           </Typography>
           <Typography variant="body2" color="text.secondary">
@@ -273,8 +273,8 @@ export default function FineTuningMonitoringPanel() {
         <Grid item xs={12}>
           <Card>
             <CardContent>
-              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Storage color="primary" />
+              <Typography variant="h6" component="h3" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Storage color="primary" aria-hidden="true" />
                 System Status
               </Typography>
               <Divider sx={{ my: 2 }} />
@@ -393,8 +393,8 @@ export default function FineTuningMonitoringPanel() {
         <Grid item xs={12} md={6}>
           <Card>
             <CardContent>
-              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Storage color="primary" />
+              <Typography variant="h6" component="h3" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Storage color="primary" aria-hidden="true" />
                 Training Data
               </Typography>
               <Divider sx={{ my: 2 }} />
@@ -482,8 +482,8 @@ export default function FineTuningMonitoringPanel() {
         <Grid item xs={12} md={6}>
           <Card>
             <CardContent>
-              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <TrendingUp color="primary" />
+              <Typography variant="h6" component="h3" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <TrendingUp color="primary" aria-hidden="true" />
                 Fine-Tuning Pipeline
               </Typography>
               <Divider sx={{ my: 2 }} />
@@ -569,8 +569,8 @@ export default function FineTuningMonitoringPanel() {
         <Grid item xs={12}>
           <Card>
             <CardContent>
-              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <CloudUpload color="primary" />
+              <Typography variant="h6" component="h3" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <CloudUpload color="primary" aria-hidden="true" />
                 All Models in R2 Storage
               </Typography>
               <Divider sx={{ my: 2 }} />
@@ -635,8 +635,8 @@ export default function FineTuningMonitoringPanel() {
         <Grid item xs={12}>
           <Card>
             <CardContent>
-              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <TrendingUp color="primary" />
+              <Typography variant="h6" component="h3" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <TrendingUp color="primary" aria-hidden="true" />
                 All Training Systems
               </Typography>
               <Divider sx={{ my: 2 }} />
@@ -773,8 +773,8 @@ export default function FineTuningMonitoringPanel() {
         <Grid item xs={12}>
           <Card>
             <CardContent>
-              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <CloudUpload color="primary" />
+              <Typography variant="h6" component="h3" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <CloudUpload color="primary" aria-hidden="true" />
                 Fine-Tuned Model Versions
               </Typography>
               <Divider sx={{ my: 2 }} />

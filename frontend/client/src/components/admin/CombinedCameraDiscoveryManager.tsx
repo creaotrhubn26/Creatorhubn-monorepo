@@ -252,7 +252,7 @@ const CombinedCameraDiscoveryManager: React.FC<CombinedCameraDiscoveryManagerPro
 
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h4" gutterBottom sx={{ color: theming.colors.primary }}>
+      <Typography variant="h4" component="h2" gutterBottom sx={{ color: theming.colors.primary }}>
         Combined Camera Discovery Manager
       </Typography>
 
@@ -260,7 +260,7 @@ const CombinedCameraDiscoveryManager: React.FC<CombinedCameraDiscoveryManagerPro
         <Grid item xs={12} md={3}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+              <Typography variant="h6" component="h3" sx={{ color: theming.colors.primary }}>
                 Total Cameras
               </Typography>
               <Typography variant="h4" sx={{ color: theming.colors.primary }}>
@@ -272,7 +272,7 @@ const CombinedCameraDiscoveryManager: React.FC<CombinedCameraDiscoveryManagerPro
         <Grid item xs={12} md={3}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+              <Typography variant="h6" component="h3" sx={{ color: theming.colors.primary }}>
                 Inserted
               </Typography>
               <Typography variant="h4" sx={{ color: theming.colors.primary }}>
@@ -284,7 +284,7 @@ const CombinedCameraDiscoveryManager: React.FC<CombinedCameraDiscoveryManagerPro
         <Grid item xs={12} md={3}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+              <Typography variant="h6" component="h3" sx={{ color: theming.colors.primary }}>
                 Updated
               </Typography>
               <Typography variant="h4" sx={{ color: theming.colors.primary }}>
@@ -296,7 +296,7 @@ const CombinedCameraDiscoveryManager: React.FC<CombinedCameraDiscoveryManagerPro
         <Grid item xs={12} md={3}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+              <Typography variant="h6" component="h3" sx={{ color: theming.colors.primary }}>
                 Rejected/Conflicts
               </Typography>
               <Typography variant="h4" sx={{ color: theming.colors.primary }}>
