@@ -383,7 +383,7 @@ const PackageMarketplace: FC = () => {
         <Stack direction="row" spacing={1.5} alignItems="center">
           <Store color="primary" sx={{ fontSize: 36 }} />
           <Box>
-            <Typography variant="h5" fontWeight={700}>
+            <Typography variant="h5" component="h2" fontWeight={700}>
               Package Marketplace
             </Typography>
             <Typography variant="body2" color="text.secondary">
@@ -495,7 +495,7 @@ const PackageMarketplace: FC = () => {
             </FormControl>
             <Stack direction="row" alignItems="center" spacing={1}>
               <Typography variant="body2">Installed only</Typography>
-              <Switch checked={showInstalledOnly} onChange={(event) => setShowInstalledOnly(event.target.checked)} />
+              <Switch aria-label="Vis kun installerte pakker" checked={showInstalledOnly} onChange={(event) => setShowInstalledOnly(event.target.checked)} />
             </Stack>
           </Stack>
 
@@ -657,6 +657,7 @@ const PackageMarketplace: FC = () => {
         <DialogTitle>Generated Install Script</DialogTitle>
         <DialogContent>
           <TextField
+            aria-label="Generert installasjons-skript"
             multiline
             minRows={10}
             value={generatedScript}

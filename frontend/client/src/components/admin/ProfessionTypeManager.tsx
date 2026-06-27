@@ -135,7 +135,7 @@ export default function ProfessionTypeManager() {
   // Dynamic tab filtering using feature access
   const activeProfessionsAccess = features.checkFeatureAccess('admin-active-professions');
   const templatesAccess = features.checkFeatureAccess('admin-profession-templates');
-  const ssbDataAccess = features.checkFeatureAccess('admin-ssb-proff-data, ');
+  const ssbDataAccess = features.checkFeatureAccess('admin-ssb-proff-data');
   const createProfessionAccess = features.checkFeatureAccess('admin-create-profession');
   
   // Build dynamic tab configuration
@@ -427,7 +427,7 @@ export default function ProfessionTypeManager() {
               <Category sx={{ fontSize: 30, color: 'white' }} />
             </Avatar>
             <Box>
-              <Typography variant="h4" sx={{ color: 'white', fontWeight: 700}}>
+              <Typography variant="h4" component="h2" sx={{ color: 'white', fontWeight: 700}}>
                 Profession Type Manager
               </Typography>
               <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.8)' }}>
@@ -561,7 +561,7 @@ export default function ProfessionTypeManager() {
       {/* Active Professions */}
       {selectedTab === 0 && (
         <Paper sx={{ p: 3 }}>
-          <Typography variant="h5" sx={{ mb: 3, fontWeight: 600, display: 'flex', alignItems: 'center' }}>
+          <Typography variant="h5" component="h2" sx={{ mb: 3, fontWeight: 600, display: 'flex', alignItems: 'center' }}>
             <CheckCircle sx={{ mr: 2, color: 'success.main' }} />
             Aktive Profesjoner
           </Typography>
@@ -666,8 +666,9 @@ export default function ProfessionTypeManager() {
                       >
                         Forhåndsvisning
                       </AdminButton>
-                      <IconButton 
-                        size="small" 
+                      <IconButton
+                        size="small"
+                        aria-label="Rediger profesjon"
                         onClick={() => handleEditProfession(profession)}
                         sx={{ color: profession.iconColor }}
                       >
@@ -685,7 +686,7 @@ export default function ProfessionTypeManager() {
       {/* Available Templates */}
       {selectedTab === 1 && (
         <Paper sx={{ p: 3 }}>
-          <Typography variant="h5" sx={{ mb: 3, fontWeight: 600, display: 'flex', alignItems: 'center' }}>
+          <Typography variant="h5" component="h2" sx={{ mb: 3, fontWeight: 600, display: 'flex', alignItems: 'center' }}>
             <Extension sx={{ mr: 2, color: 'primary.main' }} />
             Tilgjengelige Profesjonsmaler
           </Typography>
@@ -806,6 +807,7 @@ export default function ProfessionTypeManager() {
                       </AdminButton>
                       <AdminButton
                         tone="secondary"
+                        aria-label="Forhåndsvisning"
                         onClick={() => handlePreview(template)}
                         sx={{ minWidth: 'auto', px: 2 }}
                       >
@@ -823,7 +825,7 @@ export default function ProfessionTypeManager() {
       {/* SSB/Proff.no Data Tab */}
       {selectedTab === 2 && (
         <Paper sx={{ p: 3 }}>
-          <Typography variant="h5" sx={{ mb: 3, fontWeight: 600}}>
+          <Typography variant="h5" component="h2" sx={{ mb: 3, fontWeight: 600}}>
             SSB og Proff.no Integrasjon
           </Typography>
           

@@ -300,7 +300,7 @@ export default function ApprovalWorkflow() {
   return (
     <Box sx={{ display: 'grid', gap: 2 }}>
       <Box>
-        <Typography variant="h4" sx={{ fontWeight: 700 }}>
+        <Typography variant="h4" component="h2" sx={{ fontWeight: 700 }}>
           Approval Workflow
         </Typography>
         <Typography variant="body2" color="text.secondary">
@@ -373,7 +373,7 @@ export default function ApprovalWorkflow() {
                   }
                   action={
                     <Tooltip title="Review request">
-                      <IconButton onClick={() => setSelectedRequest(request)}>
+                      <IconButton aria-label="Gjennomgå forespørsel" onClick={() => setSelectedRequest(request)}>
                         <RemoveRedEyeIcon />
                       </IconButton>
                     </Tooltip>
@@ -405,7 +405,7 @@ export default function ApprovalWorkflow() {
           {selectedRequest && (
             <Stack spacing={3}>
               <Box>
-                <Typography variant="h6" sx={{ mb: 1 }}>
+                <Typography variant="h6" component="h3" sx={{ mb: 1 }}>
                   Approval Stages
                 </Typography>
                 <Grid container spacing={1}>
@@ -440,7 +440,7 @@ export default function ApprovalWorkflow() {
               </Box>
 
               <Box>
-                <Typography variant="h6" sx={{ mb: 1 }}>
+                <Typography variant="h6" component="h3" sx={{ mb: 1 }}>
                   Preview
                 </Typography>
                 <Card variant="outlined">
@@ -459,7 +459,7 @@ export default function ApprovalWorkflow() {
               </Box>
 
               <Box>
-                <Typography variant="h6" sx={{ mb: 1 }}>
+                <Typography variant="h6" component="h3" sx={{ mb: 1 }}>
                   Comments
                 </Typography>
                 <Stack spacing={1.5} sx={{ mb: 2 }}>

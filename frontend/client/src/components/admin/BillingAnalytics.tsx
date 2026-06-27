@@ -600,7 +600,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
             Filtre
           </AdminButton>
           <Tooltip title="Oppdater data">
-            <IconButton onClick={handleRefresh} color="primary">
+            <IconButton onClick={handleRefresh} color="primary" aria-label="Oppdater data">
               <Refresh />
             </IconButton>
           </Tooltip>
@@ -672,7 +672,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
           <Card>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                <Cancel color="error" />
+                <Cancel color="error" aria-hidden="true" />
                 <Typography variant="subtitle2" color="text.secondary">
                   Totale Kanselleringer
                 </Typography>
@@ -688,7 +688,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
           <Card>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                <MoneyOff color="warning" />
+                <MoneyOff color="warning" aria-hidden="true" />
                 <Typography variant="subtitle2" color="text.secondary">
                   Refunderingsforespørsler
                 </Typography>
@@ -708,7 +708,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
           <Card>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                <TrendingDown color="error" />
+                <TrendingDown color="error" aria-hidden="true" />
                 <Typography variant="subtitle2" color="text.secondary">
                   Totalt Refundert
                 </Typography>
@@ -724,7 +724,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
           <Card>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                <TrendingUp color="info" />
+                <TrendingUp color="info" aria-hidden="true" />
                 <Typography variant="subtitle2" color="text.secondary">
                   Gjennomsnittlig Refundering
                 </Typography>
@@ -741,7 +741,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
           <Card sx={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                <TrendingUp sx={{ color: 'white' }} />
+                <TrendingUp sx={{ color: 'white' }} aria-hidden="true" />
                 <Typography variant="subtitle2" sx={{ color: 'rgba(255,255,255,0.9)' }}>
                   Månedlig Tilbakevendende Inntekt (MRR)
                 </Typography>
@@ -760,7 +760,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
           <Card sx={{ background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' }}>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                <TrendingDown sx={{ color: 'white' }} />
+                <TrendingDown sx={{ color: 'white' }} aria-hidden="true" />
                 <Typography variant="subtitle2" sx={{ color: 'rgba(255,255,255,0.9)' }}>
                   Churn Rate
                 </Typography>
@@ -779,7 +779,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
           <Card sx={{ background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' }}>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                <TrendingUp sx={{ color: 'white' }} />
+                <TrendingUp sx={{ color: 'white' }} aria-hidden="true" />
                 <Typography variant="subtitle2" sx={{ color: 'rgba(255,255,255,0.9)' }}>
                   Customer Lifetime Value (CLV)
                 </Typography>

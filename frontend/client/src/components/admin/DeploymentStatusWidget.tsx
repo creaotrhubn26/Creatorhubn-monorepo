@@ -100,13 +100,13 @@ export default function DeploymentStatusWidget({ onOpenFeatureManagement }: Depl
           </Typography>
           <Box sx={{ display: 'flex', gap: 1 }}>
             <Tooltip title="Refresh Status">
-              <IconButton size="small" onClick={() => window.location.reload()}>
+              <IconButton size="small" aria-label="Oppdater status" onClick={() => window.location.reload()}>
                 {theming.getThemedIcon('refresh')}
               </IconButton>
             </Tooltip>
             {onOpenFeatureManagement && (
               <Tooltip title="Open Feature Management">
-                <IconButton size="small" onClick={onOpenFeatureManagement}>
+                <IconButton size="small" aria-label="Åpne funksjonsstyring" onClick={onOpenFeatureManagement}>
                   <Compare />
                 </IconButton>
               </Tooltip>
