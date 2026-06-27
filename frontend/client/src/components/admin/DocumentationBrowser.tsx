@@ -494,7 +494,7 @@ export default function DocumentationBrowser() {
               <Typography variant="h5" fontWeight="bold" gutterBottom>
                 📚 Documentation Browser
               </Typography>
-              <Stack direction="row" spacing={2} alignItems="center">
+              <Stack direction="row" spacing={2} alignItems="center" sx={{ flexWrap: 'wrap' }}>
                 <Typography variant="body2" sx={{ opacity: 0.9 }}>
                   {DOC_CATEGORIES.reduce((sum, cat) => sum + cat.fileCount, 0)} docs
                 </Typography>
@@ -933,7 +933,7 @@ export default function DocumentationBrowser() {
                   </Stack>
                 }
                 action={
-                  <Stack direction="row" spacing={1}>
+                  <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
                     <Button
                       size="small"
                       startIcon={<ChevronRightIcon sx={{ transform: 'rotate(180deg)' }} />}

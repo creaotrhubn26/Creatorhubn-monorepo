@@ -35,7 +35,7 @@ import {
   Security as SecurityIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { AdminCard, AdminButton, StatusChip, AdminLoading, AdminEmpty } from './design-system';
+import { AdminCard, AdminButton, StatusChip, AdminLoading, AdminEmpty, useIsMobile } from './design-system';
 
 interface BackupItem {
   id: string;
@@ -66,6 +66,7 @@ interface CreateBackupOptions {
 
 export default function BackupManagementInterface() {
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
 
   // Theming system
   const theming = useTheming('prototype_tester');
@@ -251,7 +252,7 @@ export default function BackupManagementInterface() {
       </Grid>
 
       {/* Action Buttons */}
-      <Box sx={{ mb: 4, display: 'flex', gap: 2 }}>
+      <Box sx={{ mb: 4, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
         <AdminButton
           tone="primary"
           startIcon={<CloudUploadIcon />}
@@ -398,6 +399,7 @@ export default function BackupManagementInterface() {
         onClose={() => setCreateDialogOpen(false)}
         maxWidth="sm"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>Opprett Ny Backup</DialogTitle>
         <DialogContent>

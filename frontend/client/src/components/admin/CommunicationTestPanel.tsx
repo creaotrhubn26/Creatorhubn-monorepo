@@ -663,7 +663,7 @@ export default function CommunicationTestPanel({
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* Header */}
       <Paper elevation={2} sx={{ p: 2, mb: 2 ,  ...theming.getThemedCardSx() }}>
-        <Box display="flex" alignItems="center" justifyContent="space-between">
+        <Box display="flex" alignItems="center" justifyContent="space-between" flexWrap="wrap">
           <Box>
             <Box display="flex" alignItems="center" gap={1}>
               <ChatIcon color={getStatusColor() as any} />
@@ -1081,7 +1081,7 @@ export default function CommunicationTestPanel({
                     Message Testing
                   </Typography>
 
-                  <Box display="flex" gap={1} mb={2}>
+                  <Box display="flex" gap={1} mb={2} flexWrap="wrap">
                     <TextField
                       fullWidth
                       label="Test Message"
