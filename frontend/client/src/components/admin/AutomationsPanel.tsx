@@ -32,7 +32,7 @@ import {
   ThemeProvider,
 } from '@mui/material';
 import { adminDarkTheme } from './adminDarkTheme';
-import { AdminButton, StatusChip, AdminLoading, AdminTableContainer } from './design-system';
+import { AdminButton, StatusChip, AdminLoading, AdminTableContainer, useIsMobile } from './design-system';
 import {
   AutoAwesome,
   Schedule,
@@ -109,7 +109,8 @@ export default function AutomationsPanel({
   const [tabValue, setTabValue] = useState(0);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedAutomation, setSelectedAutomation] = useState<any>(null);
-  
+  const isMobile = useIsMobile();
+
   const queryClient = useQueryClient();
 
   // Get auth from master integration
@@ -443,7 +444,7 @@ export default function AutomationsPanel({
       </MuiCard>
 
       {/* Create/Edit Dialog */}
-      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>
           {selectedAutomation ? 'Rediger Automatisering' : 'Ny Automatisering'}
         </DialogTitle>

@@ -41,7 +41,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { QUERY_KEYS } from '@/lib/queryKeys';
 import { useToast } from '@/hooks/use-toast';
-import { AdminButton, StatusChip } from './design-system';
+import { AdminButton, StatusChip, useIsMobile } from './design-system';
 
 type TestStatus = 'draft' | 'running' | 'paused' | 'completed' | 'cancelled';
 type TestType = 'email' | 'social';
@@ -120,6 +120,7 @@ export default function ABTestingManager() {
   const [newMinSampleSize, setNewMinSampleSize] = useState<number>(1000);
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const isMobile = useIsMobile();
 
   const { data: tests = [], isLoading } = useQuery({
     queryKey: [...QUERY_KEYS.AB_TESTS, selectedTab],
@@ -311,7 +312,7 @@ export default function ABTestingManager() {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
         <Box>
           <Typography variant="h4" component="h2" sx={{ fontWeight: 700 }}>
             A/B Testing
@@ -595,7 +596,7 @@ export default function ABTestingManager() {
         </Stack>
       )}
 
-      <Dialog open={createDialogOpen} onClose={() => setCreateDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={createDialogOpen} onClose={() => setCreateDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>Create A/B Test</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '12px !important' }}>
           <TextField

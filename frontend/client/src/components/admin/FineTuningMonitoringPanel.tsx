@@ -236,7 +236,7 @@ export default function FineTuningMonitoringPanel() {
   return (
     <ThemeProvider theme={adminDarkTheme}>
     <Box sx={{ p: 3 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3, flexWrap: 'wrap', gap: 2 }}>
         <Box>
           <Typography variant="h5" component="h2" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
             <Psychology color="primary" aria-hidden="true" />

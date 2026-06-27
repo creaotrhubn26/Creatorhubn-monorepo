@@ -569,7 +569,7 @@ export const LintingAIFixPanel: React.FC = () => {
             )}
 
             <Grid container spacing={2} sx={{ mb: 3 }}>
-              <Grid item xs={3}>
+              <Grid item xs={6} sm={3}>
                 <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'success.light' }}>
                   <Typography variant="h4" sx={{ color: 'success.contrastText' }}>
                     {fixResults.filter(r => r.status === 'success').length}
@@ -579,7 +579,7 @@ export const LintingAIFixPanel: React.FC = () => {
                   </Typography>
                 </Paper>
               </Grid>
-              <Grid item xs={3}>
+              <Grid item xs={6} sm={3}>
                 <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'error.light' }}>
                   <Typography variant="h4" sx={{ color: 'error.contrastText' }}>
                     {fixResults.filter(r => r.status === 'failed').length}
@@ -589,7 +589,7 @@ export const LintingAIFixPanel: React.FC = () => {
                   </Typography>
                 </Paper>
               </Grid>
-              <Grid item xs={3}>
+              <Grid item xs={6} sm={3}>
                 <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'primary.light' }}>
                   <Typography variant="h4" sx={{ color: 'primary.contrastText' }}>
                     {fixResults.reduce((sum, r) => sum + r.fixedErrors, 0)}
@@ -599,7 +599,7 @@ export const LintingAIFixPanel: React.FC = () => {
                   </Typography>
                 </Paper>
               </Grid>
-              <Grid item xs={3}>
+              <Grid item xs={6} sm={3}>
                 <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'warning.light' }}>
                   <Typography variant="h4" sx={{ color: 'warning.contrastText' }}>
                     {fixResults.reduce((sum, r) => sum + r.remainingErrors, 0)}

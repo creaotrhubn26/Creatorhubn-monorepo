@@ -36,7 +36,7 @@ import { usePushNotifications } from '../../hooks/usePushNotifications';
 import { PushNotificationSettings } from '../shared/PushNotificationSettings';
 import { useTheming } from '../../utils/theming-helper';
 import { apiRequest } from '@/lib/queryClient';
-import { AdminButton, StatusChip } from './design-system';
+import { AdminButton, StatusChip, useIsMobile } from './design-system';
 
 interface EmailContact {
   id: string;
@@ -148,6 +148,7 @@ export default function IntegratedEmailMarketingCenter(): JSX.Element {
   const queryClient = useQueryClient();
   const { auth } = useEnhancedMasterIntegration();
   const theming = useTheming('prototype_tester');
+  const isMobile = useIsMobile();
 
   const currentUser = auth.state.user;
   const adminEmail = currentUser?.email;
@@ -546,7 +547,7 @@ export default function IntegratedEmailMarketingCenter(): JSX.Element {
         <Send />
       </Fab>
 
-      <Dialog open={contactDialogOpen} onClose={() => setContactDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={contactDialogOpen} onClose={() => setContactDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>Opprett ny kontakt</DialogTitle>
         <DialogContent>
           <TextField
@@ -599,7 +600,7 @@ export default function IntegratedEmailMarketingCenter(): JSX.Element {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={quickEmailOpen} onClose={() => setQuickEmailOpen(false)} maxWidth="md" fullWidth>
+      <Dialog open={quickEmailOpen} onClose={() => setQuickEmailOpen(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle>Send hurtig e-post</DialogTitle>
         <DialogContent>
           <TextField
@@ -636,7 +637,7 @@ export default function IntegratedEmailMarketingCenter(): JSX.Element {
       </Dialog>
 
       {isSupported && (
-        <Dialog open={pushSettingsOpen} onClose={() => setPushSettingsOpen(false)} maxWidth="sm" fullWidth>
+        <Dialog open={pushSettingsOpen} onClose={() => setPushSettingsOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
           <DialogTitle>Push-varsler innstillinger</DialogTitle>
           <DialogContent>
             <Box sx={{ mt: 2 }}>

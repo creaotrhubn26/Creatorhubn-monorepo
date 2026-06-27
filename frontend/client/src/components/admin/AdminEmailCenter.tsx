@@ -53,7 +53,7 @@ import {
   Refresh,
 } from '@mui/icons-material';
 import EmailDesignerComplete from '../EmailDesigner/EmailDesignerComplete';
-import { AdminCard, AdminButton, StatusChip, adminTokens } from './design-system';
+import { AdminCard, AdminButton, StatusChip, adminTokens, useIsMobile } from './design-system';
 
 interface EmailTemplate {
   id: string;
@@ -96,6 +96,9 @@ export default function AdminEmailCenter() {
   
   // Dynamic profession system
   const { getProfessionDisplayName } = useDynamicProfessions();
+
+  // Responsive: full-screen dialogs on mobile
+  const isMobile = useIsMobile();
   
   // Check for invitation data from query params
   const [invitationData, setInvitationData] = React.useState<any>(null);
@@ -722,7 +725,7 @@ export default function AdminEmailCenter() {
                         </Box>
                       }
                     />
-                    <Stack direction="column" spacing={1} sx={{ minWidth: 200 }}>
+                    <Stack direction="column" spacing={1} sx={{ minWidth: { xs: "auto", md: 200 } }}>
                       <AdminButton
                         tone="secondary"
                         size="small"
@@ -775,7 +778,7 @@ export default function AdminEmailCenter() {
       </TabPanel>
 
       {/* Compose Email Dialog */}
-      <Dialog open={showComposeDialog} onClose={() => setShowComposeDialog(false)} maxWidth="md" fullWidth>
+      <Dialog open={showComposeDialog} onClose={() => setShowComposeDialog(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             <Email sx={{ color: '#ea4335' }} />
@@ -946,7 +949,7 @@ export default function AdminEmailCenter() {
 
       {/* Push Notification Settings Dialog */}
       {isSupported && (
-        <Dialog open={pushSettingsOpen} onClose={() => setPushSettingsOpen(false)} maxWidth="sm" fullWidth>
+        <Dialog open={pushSettingsOpen} onClose={() => setPushSettingsOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
           <DialogTitle>Push-varsler innstillinger</DialogTitle>
           <DialogContent>
             <Box sx={{ mt: 2 }}>

@@ -201,7 +201,7 @@ export default function DatabaseIntegrityChecker() {
               </Box>
             </Grid>
             <Grid item xs={12} md={5}>
-              <Box sx={{ display: 'flex', justifyContent: { xs: 'flex-start', md: 'flex-end' }, gap: 1 }}>
+              <Box sx={{ display: 'flex', justifyContent: { xs: 'flex-start', md: 'flex-end' }, gap: 1, flexWrap: 'wrap' }}>
                 <Chip icon={statusDisplay.icon} label={`Status: ${statusDisplay.label}`} color={statusDisplay.color} />
                 <Chip
                   icon={autoSyncStatus?.autoSyncEnabled ? <AutoModeIcon /> : <SyncDisabledIcon />}
