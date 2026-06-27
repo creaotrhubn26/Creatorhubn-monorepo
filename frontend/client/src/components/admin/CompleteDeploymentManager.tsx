@@ -54,6 +54,7 @@ import {
   FormControlLabel,
   Skeleton,
   LinearProgress,
+  InputAdornment,
 } from '@mui/material';
 import {
   ExpandMore as ExpandMoreIcon,
@@ -78,6 +79,7 @@ import {
   Build as BuildIcon,
   Science as ScienceIcon,
   CloudUpload as CloudUploadIcon,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 const PackageIcon = InventoryIcon;
 import { apiRequest } from '@/lib/queryClient';
@@ -663,6 +665,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
   // ✅ NY: Feedback integration state
   const [activeTab, setActiveTab] = useState(0);
   const [selectedFeedback, setSelectedFeedback] = useState<FeedbackItem | null>(null);
+  const [feedbackSearch, setFeedbackSearch] = useState("");
   const [showFeedbackDialog, setShowFeedbackDialog] = useState(false);
   const [feedbackDeployments, setFeedbackDeployments] = useState<FeedbackDeployment[]>([]);
   
@@ -2284,6 +2287,22 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
             Deploy fixes automatically based on prototype tester feedback
           </Typography>
 
+          <TextField
+            size="small"
+            fullWidth
+            placeholder="Søk i tilbakemeldinger …"
+            value={feedbackSearch}
+            onChange={(e) => setFeedbackSearch(e.target.value)}
+            sx={{ mb: 3, maxWidth: 420 }}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" />
+                </InputAdornment>
+              ),
+            }}
+          />
+
           {feedbackLoading ? (
             <Box sx={{ py:  2 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
@@ -2312,7 +2331,18 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
             </Box>
           ) : (
             <Grid container spacing={2}>
-              {(Array.isArray(feedbackData?.feedback) ? feedbackData.feedback : []).map((feedback) => (
+              {(Array.isArray(feedbackData?.feedback) ? feedbackData.feedback : [])
+                .filter((feedback) => {
+                  const q = feedbackSearch.toLowerCase();
+                  if (!q) return true;
+                  return (
+                    feedback.title.toLowerCase().includes(q) ||
+                    feedback.description.toLowerCase().includes(q) ||
+                    feedback.feedbackType.toLowerCase().includes(q) ||
+                    (feedback.locationContext?.profession || '').toLowerCase().includes(q)
+                  );
+                })
+                .map((feedback) => (
                 <Grid item xs={12} md={6} key={feedback.id}>
                   <Card sx={{ height: '100%'}}>
                     <CardContent>

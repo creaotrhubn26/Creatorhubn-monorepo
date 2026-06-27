@@ -1,5 +1,5 @@
 import { useTheming } from '../../utils/theming-helper';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Box,
   Container,
@@ -45,6 +45,7 @@ import {
   MenuItem,
   Switch,
   FormControlLabel,
+  InputAdornment,
 } from '@mui/material';
 import {
   Storage,
@@ -72,6 +73,7 @@ import {
   Security,
   Backup,
   Restore,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -115,6 +117,7 @@ export default function DatabaseManagementPanel() {
   const [isOperationRunning, setIsOperationRunning] = useState(false);
   const [customSQL, setCustomSQL] = useState('');
   const [selectedTable, setSelectedTable] = useState<string>('');
+  const [search, setSearch] = useState("");
   const [showSQLDialog, setShowSQLDialog] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' | 'warning' | 'info' });
   const [page, setPage] = useState(0);
@@ -1102,6 +1105,16 @@ export default function DatabaseManagementPanel() {
     return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
 };
 
+  // Filtered database tables for the search field in the Tables tab
+  const filteredTables = useMemo(() => {
+    const list = Array.isArray(tables) ? tables : [];
+    const q = search.toLowerCase();
+    if (!q) return list;
+    return list.filter((table: DatabaseTable) =>
+      `${table.table_name ?? ''} ${table.table_schema ?? ''} ${table.table_type ?? ''}`.toLowerCase().includes(q)
+    );
+}, [tables, search]);
+
   return (
     <Container maxWidth="xl" sx={{ py: 3 }}>
       {/* Master Workflow Guidance Banner */}
@@ -1523,6 +1536,22 @@ export default function DatabaseManagementPanel() {
               </Button>
             </Box>
             
+            <TextField
+              size="small"
+              fullWidth
+              placeholder="Søk i tabeller (navn, skjema, type)…"
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+              sx={{ mb: 2 }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon fontSize="small" />
+                  </InputAdornment>
+                ),
+              }}
+            />
+
             {tablesLoading ? (
               <LinearProgress />
             ) : (
@@ -1540,7 +1569,7 @@ export default function DatabaseManagementPanel() {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {(Array.isArray(tables) ? tables : []).slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((table: DatabaseTable) => (
+                    {filteredTables.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((table: DatabaseTable) => (
                       <TableRow key={table.table_name}>
                         <TableCell>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -1577,7 +1606,7 @@ export default function DatabaseManagementPanel() {
                 <TablePagination
                   rowsPerPageOptions={[5, 10, 25]}
                   component="div"
-                  count={tables?.length || 0}
+                  count={filteredTables.length}
                   rowsPerPage={rowsPerPage}
                   page={page}
                   onPageChange={(e, newPage) => setPage(newPage)}
