@@ -36,6 +36,7 @@ import {
   InputLabel,
   Alert,
   Divider,
+  InputAdornment,
   alpha,
 } from '@mui/material';
 import {
@@ -47,6 +48,7 @@ import {
   Storefront as StoreIcon,
   Image as ImageIcon,
   AttachMoney as MoneyIcon,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
@@ -129,6 +131,7 @@ const MarketplaceAppConfigManager: React.FC = () => {
   const queryClient = useQueryClient();
   const [editingApp, setEditingApp] = useState<MarketplaceApp | null>(null);
   const [creating, setCreating] = useState(false);
+  const [search, setSearch] = useState("");
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['admin-marketplace-apps'],
@@ -139,6 +142,14 @@ const MarketplaceAppConfigManager: React.FC = () => {
   });
 
   const apps = Array.isArray(data) ? data : [];
+
+  const filteredApps = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return apps;
+    return apps.filter((app) =>
+      `${app.name || ''} ${app.id || ''} ${app.category || ''}`.toLowerCase().includes(q)
+    );
+  }, [apps, search]);
 
   const saveMutation = useMutation({
     mutationFn: async (app: MarketplaceApp) => {
@@ -267,6 +278,24 @@ const MarketplaceAppConfigManager: React.FC = () => {
         </Alert>
       )}
 
+      <Box sx={{ mb: 2 }}>
+        <TextField
+          size="small"
+          fullWidth
+          placeholder="Søk etter navn, ID eller kategori …"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon fontSize="small" />
+              </InputAdornment>
+            ),
+          }}
+          sx={{ maxWidth: 420 }}
+        />
+      </Box>
+
       <AdminCard disablePadding>
         <AdminTableContainer ariaLabel="Marketplace-apper">
         <Table>
@@ -296,7 +325,14 @@ const MarketplaceAppConfigManager: React.FC = () => {
                 </TableCell>
               </TableRow>
             )}
-            {apps.map((app) => (
+            {!isLoading && apps.length > 0 && filteredApps.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={7} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                  Ingen apper matcher "{search}".
+                </TableCell>
+              </TableRow>
+            )}
+            {filteredApps.map((app) => (
               <TableRow key={app.id} sx={{ opacity: app.isActive === false ? 0.5 : 1 }}>
                 <TableCell>
                   <Avatar

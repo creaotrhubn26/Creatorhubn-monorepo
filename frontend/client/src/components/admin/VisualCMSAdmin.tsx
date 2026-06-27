@@ -14,6 +14,7 @@ import {
   FormControlLabel,
   Grid,
   IconButton,
+  InputAdornment,
   InputLabel,
   LinearProgress,
   List,
@@ -541,6 +542,20 @@ function FieldsPanel({
   onEdit: (field: CMSField) => void;
   onDelete: (id: string) => void;
 }) {
+  const [search, setSearch] = useState('');
+
+  const visibleFields = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (query.length === 0) {
+      return fields;
+    }
+    return fields.filter((field) =>
+      [field.label, field.name, field.type, field.beskrivelse]
+        .filter((value): value is string => typeof value === 'string')
+        .some((value) => value.toLowerCase().includes(query)),
+    );
+  }, [fields, search]);
+
   return (
     <AdminCard
       title="CMS-felter"
@@ -551,8 +566,23 @@ function FieldsPanel({
       }
     >
       <Divider sx={{ mb: 2 }} />
+      <TextField
+        size="small"
+        fullWidth
+        placeholder="Søk i felter …"
+        value={search}
+        onChange={(event) => setSearch(event.target.value)}
+        sx={{ mb: 2 }}
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start">
+              <SearchIcon fontSize="small" />
+            </InputAdornment>
+          ),
+        }}
+      />
       <List disablePadding>
-        {fields.map((field) => (
+        {visibleFields.map((field) => (
           <ListItem
             key={field.id ?? field.name}
             secondaryAction={
@@ -580,7 +610,7 @@ function FieldsPanel({
             />
           </ListItem>
         ))}
-        {fields.length === 0 && (
+        {visibleFields.length === 0 && (
           <ListItem>
             <ListItemText primary="Ingen felter funnet" />
           </ListItem>

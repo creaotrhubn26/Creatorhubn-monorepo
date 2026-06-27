@@ -13,6 +13,7 @@ import {
   FormControl,
   Grid,
   IconButton,
+  InputAdornment,
   InputLabel,
   MenuItem,
   Paper,
@@ -37,6 +38,7 @@ import {
   Group,
   CheckCircle,
   Warning,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
@@ -210,6 +212,7 @@ export default function ProfessionCMSManager() {
   const isMobile = useIsMobile();
 
   const [currentTab, setCurrentTab] = useState(0);
+  const [search, setSearch] = useState('');
   const [openDialog, setOpenDialog] = useState(false);
   const [selectedProfessionForJourney, setSelectedProfessionForJourney] = useState('photographer');
   const [editingProfessionId, setEditingProfessionId] = useState<string | null>(null);
@@ -417,6 +420,22 @@ export default function ProfessionCMSManager() {
           )}
 
           {!professionsQuery.isLoading && !professionsQuery.isError && (
+            <>
+            <TextField
+              size="small"
+              placeholder="Søk etter key, navn eller status …"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              sx={{ mb: 2, maxWidth: 360 }}
+              fullWidth
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon fontSize="small" />
+                  </InputAdornment>
+                ),
+              }}
+            />
             <AdminTableContainer ariaLabel="Profesjoner">
               <Table size="small">
                 <TableHead>
@@ -430,7 +449,13 @@ export default function ProfessionCMSManager() {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {professions.map((profession) => (
+                  {professions
+                    .filter((profession) =>
+                      `${profession.key} ${profession.name} ${profession.status}`
+                        .toLowerCase()
+                        .includes(search.toLowerCase()),
+                    )
+                    .map((profession) => (
                     <TableRow key={profession.id ?? profession.key} hover>
                       <TableCell>{profession.key}</TableCell>
                       <TableCell>{profession.name}</TableCell>
@@ -476,6 +501,7 @@ export default function ProfessionCMSManager() {
                 </TableBody>
               </Table>
             </AdminTableContainer>
+            </>
           )}
         </>
       )}

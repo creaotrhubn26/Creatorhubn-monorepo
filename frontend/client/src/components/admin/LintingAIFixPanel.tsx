@@ -37,6 +37,8 @@ import {
   TableCell,
   TableHead,
   TableRow,
+  TextField,
+  InputAdornment,
 } from '@mui/material';
 import {
   BugReport as BugIcon,
@@ -48,6 +50,7 @@ import {
   Refresh as RefreshIcon,
   PlayArrow as RunIcon,
   School as ExplainIcon,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import CodeExplainerPanel from './CodeExplainerPanel';
 import { AdminButton, StatusChip, AdminTableContainer } from './design-system';
@@ -68,6 +71,7 @@ export const LintingAIFixPanel: React.FC = () => {
   const [dryRunMode, setDryRunMode] = useState(true);
   const [progress, setProgress] = useState<{ current: number; total: number; file: string } | null>(null);
   const [selectedFileForExplanation, setSelectedFileForExplanation] = useState<{ file: string; errors: any[] } | null>(null);
+  const [search, setSearch] = useState("");
 
   // Register component
   React.useEffect(() => {
@@ -611,6 +615,22 @@ export const LintingAIFixPanel: React.FC = () => {
               </Grid>
             </Grid>
 
+            <TextField
+              size="small"
+              fullWidth
+              placeholder="Søk etter fil …"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              sx={{ mb: 2 }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon fontSize="small" />
+                  </InputAdornment>
+                ),
+              }}
+            />
+
             <AdminTableContainer ariaLabel="Fix results">
               <Table size="small">
                 <TableHead>
@@ -623,7 +643,11 @@ export const LintingAIFixPanel: React.FC = () => {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {fixResults.map((result, idx) => (
+                  {fixResults
+                    .filter((result) =>
+                      String(result.file || '').toLowerCase().includes(search.toLowerCase())
+                    )
+                    .map((result, idx) => (
                     <TableRow key={idx}>
                       <TableCell>
                         <Typography variant="caption">{result.file}</Typography>
