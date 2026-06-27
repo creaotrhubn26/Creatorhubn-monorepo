@@ -53,7 +53,7 @@ import {
 import { apiRequest } from '@/lib/queryClient';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { AdminButton, AdminLoading, AdminTableContainer } from './design-system';
+import { AdminButton, AdminLoading, AdminTableContainer, useIsMobile } from './design-system';
 
 interface FikenRequest {
   id: string;
@@ -106,6 +106,7 @@ export default function FikenIntegrationRequestsPanel() {
   const queryClient = useQueryClient();
   const { auth } = useEnhancedMasterIntegration();
   const theming = useTheming('prototype_tester');
+  const isMobile = useIsMobile();
 
   const [selectedRequest, setSelectedRequest] = useState<FikenRequest | null>(null);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
@@ -512,7 +513,7 @@ export default function FikenIntegrationRequestsPanel() {
       </AdminTableContainer>
 
       {/* Details Dialog */}
-      <Dialog open={showDetailsDialog} onClose={() => setShowDetailsDialog(false)} maxWidth="sm" fullWidth>
+      <Dialog open={showDetailsDialog} onClose={() => setShowDetailsDialog(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <AccountBalance color="primary" />
@@ -582,6 +583,7 @@ export default function FikenIntegrationRequestsPanel() {
         onClose={() => setShowExportDialog(false)}
         maxWidth="sm"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <PictureAsPdf sx={{ color: '#f59e0b' }} />

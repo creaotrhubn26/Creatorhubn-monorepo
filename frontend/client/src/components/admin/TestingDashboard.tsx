@@ -73,7 +73,7 @@ import {
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
-import { AdminButton, StatusChip, adminTokens } from './design-system';
+import { AdminButton, StatusChip, adminTokens, useIsMobile } from './design-system';
 import type { StatusTone } from './design-system';
 
 interface TestItem {
@@ -159,7 +159,8 @@ const TabPanel = (props: TabPanelProps) => {
 
 export default function TestingDashboard() {
   const { toast } = useToast();
-  
+  const isMobile = useIsMobile();
+
   // Theming system
   const theming = useTheming('prototype_tester');
   const queryClient = useQueryClient();
@@ -853,6 +854,7 @@ export default function TestingDashboard() {
         onClose={() => setDeploymentDialogOpen(false)}
         maxWidth="sm"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>
           <Box display="flex" alignItems="center" gap={1}>

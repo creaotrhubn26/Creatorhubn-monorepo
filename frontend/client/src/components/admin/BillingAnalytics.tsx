@@ -696,7 +696,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
               <Typography variant="h5" sx={{ fontWeight: 700, color: '#ff9800' }}>
                 {refundStats.totalRequests || 0}
               </Typography>
-              <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+              <Box sx={{ display: 'flex', gap: 1, mt: 1, flexWrap: 'wrap' }}>
                 <StatusChip label={`${refundStats.pending || 0} ventende`} tone="warning" />
                 <StatusChip label={`${refundStats.approved || 0} godkjent`} tone="success" />
               </Box>

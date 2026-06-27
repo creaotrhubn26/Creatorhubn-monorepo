@@ -71,7 +71,7 @@ import {
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
-import { AdminButton, StatusChip, AdminEmpty } from './design-system';
+import { AdminButton, StatusChip, AdminEmpty, useIsMobile } from './design-system';
 
 interface MembershipCard {
   id: string;
@@ -145,6 +145,7 @@ export default function GoogleWalletMembershipManager({
   const [deleteConfirmDialog, setDeleteConfirmDialog] = useState<{ open: boolean; cardId: string | null }>({ open: false, cardId: null });
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
 
   // Master integration system for "everything interacts with everything"
   const { integration, communication, dataFlow, componentRegistry, auth } = useEnhancedMasterIntegration();
@@ -765,7 +766,7 @@ export default function GoogleWalletMembershipManager({
         setShowCreateDialog(false);
         setShowEditDialog(false);
         setSelectedCard(null);
-    }} maxWidth="md" fullWidth>
+    }} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle>
           {showCreateDialog ? 'Create Membership Card' : 'Edit Membership Card'}
         </DialogTitle>
@@ -894,6 +895,7 @@ export default function GoogleWalletMembershipManager({
       <Dialog
         open={deleteConfirmDialog.open}
         onClose={() => setDeleteConfirmDialog({ open: false, cardId: null })}
+        fullScreen={isMobile}
       >
         <DialogTitle>Confirm Delete</DialogTitle>
         <DialogContent>

@@ -118,6 +118,7 @@ import {
   AdminButton,
   AdminLoading,
   AdminTableContainer,
+  useIsMobile,
 } from './design-system';
 
 interface ReportTemplate {
@@ -179,6 +180,7 @@ const AutomatedBusinessReports: React.FC = () => {
   const [selectedReport, setSelectedReport] = useState<GeneratedReport | null>(null);
 
   const { toast } = useToast();
+  const isMobile = useIsMobile();
 
   // Theming system
   const theming = useTheming('prototype_tester');
@@ -807,6 +809,8 @@ const AutomatedBusinessReports: React.FC = () => {
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 2,
             mb: 3}}
         >
           <Box>
@@ -1506,6 +1510,7 @@ const AutomatedBusinessReports: React.FC = () => {
           onClose={() => setGenerateDialogOpen(false)}
           maxWidth="md"
           fullWidth
+          fullScreen={isMobile}
         >
           <DialogTitle>📊 Generer Forretningsrapport</DialogTitle>
           <DialogContent>
@@ -1591,6 +1596,7 @@ const AutomatedBusinessReports: React.FC = () => {
           onClose={() => setCreateDialogOpen(false)}
           maxWidth="md"
           fullWidth
+          fullScreen={isMobile}
         >
           <DialogTitle>➕ Opprett Ny Rapportmal</DialogTitle>
           <DialogContent>

@@ -181,7 +181,7 @@ const UnifiedAdminAnalytics: React.FC = () => {
   return (
     <Box>
       {/* Header */}
-      <Box sx={{ mb:  3, display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+      <Box sx={{ mb:  3, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
         <Typography variant="h4" component="h1" sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
           <AnalyticsIcon color="primary" />
           Unified Admin Analytics

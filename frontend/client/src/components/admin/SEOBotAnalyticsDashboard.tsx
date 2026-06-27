@@ -215,7 +215,7 @@ export default function SEOBotAnalyticsDashboard() {
   return (
     <Box sx={{ p: 3 }}>
       {/* Header */}
-      <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
         <Box>
           <Typography variant="h4" component="h2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <BotIcon fontSize="large" aria-hidden="true" />
@@ -225,7 +225,7 @@ export default function SEOBotAnalyticsDashboard() {
             Professional bot detection like Screaming Frog + Real-time analytics
           </Typography>
         </Box>
-        <Box sx={{ display: 'flex', gap: 2 }}>
+        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
           <FormControl size="small" sx={{ minWidth: 120 }}>
             <InputLabel>Time Period</InputLabel>
             <Select

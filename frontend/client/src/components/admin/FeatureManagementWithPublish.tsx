@@ -59,7 +59,7 @@ import {
   VisibilityOff,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
-import { AdminButton, AdminTableContainer } from './design-system';
+import { AdminButton, AdminTableContainer, useIsMobile } from './design-system';
 
 interface FeatureFlag {
   id: string;
@@ -118,6 +118,7 @@ export default function FeatureManagementWithPublish() {
 
   const queryClient = useQueryClient();
   const { auth } = useEnhancedMasterIntegration();
+  const isMobile = useIsMobile();
 
   // Theming system
   const theming = useTheming('prototype_tester');
@@ -615,7 +616,7 @@ export default function FeatureManagementWithPublish() {
       </Card>
 
       {/* Publish Dialog */}
-      <Dialog open={publishDialogOpen} onClose={() => setPublishDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={publishDialogOpen} onClose={() => setPublishDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>Publish to Staging</DialogTitle>
         <DialogContent>
           <TextField
@@ -638,7 +639,7 @@ export default function FeatureManagementWithPublish() {
       </Dialog>
 
       {/* Revert Dialog */}
-      <Dialog open={revertDialogOpen} onClose={() => setRevertDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={revertDialogOpen} onClose={() => setRevertDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>Revert Feature Flags</DialogTitle>
         <DialogContent>
           <FormControl fullWidth sx={{ mt: 2, mb: 2 }}>
@@ -671,7 +672,7 @@ export default function FeatureManagementWithPublish() {
       </Dialog>
 
       {/* Emergency Rollback Dialog */}
-      <Dialog open={emergencyDialogOpen} onClose={() => setEmergencyDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={emergencyDialogOpen} onClose={() => setEmergencyDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle sx={{ color: 'error.main'}}>Emergency Rollback</DialogTitle>
         <DialogContent>
           <Alert severity="error" sx={{ mb:  2 }}>

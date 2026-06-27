@@ -24,7 +24,7 @@ import {
   ThemeProvider,
 } from '@mui/material';
 import { adminDarkTheme } from './adminDarkTheme';
-import { AdminButton, AdminEmpty } from './design-system';
+import { AdminButton, AdminEmpty, useIsMobile } from './design-system';
 import {
   NoteAdd,
   Notes,
@@ -75,6 +75,7 @@ interface AdvancedNotesManagerProps {
 export default function AdvancedNotesManager({ 
   className,
 }: AdvancedNotesManagerProps) {
+  const isMobile = useIsMobile();
   const [notes, setNotes] = useState<NotesData[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -521,11 +522,12 @@ export default function AdvancedNotesManager({
       </Box>
 
       {/* Create Note Dialog */}
-      <Dialog 
+      <Dialog
         open={isCreateDialogOpen}
         onClose={() => setIsCreateDialogOpen(false)}
         maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>Opprett Nytt Notat</DialogTitle>
         <DialogContent>
@@ -626,11 +628,12 @@ export default function AdvancedNotesManager({
       </Dialog>
 
       {/* Edit Note Dialog */}
-      <Dialog 
+      <Dialog
         open={isEditDialogOpen}
         onClose={() => setIsEditDialogOpen(false)}
         maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>Rediger Notat</DialogTitle>
         <DialogContent>
