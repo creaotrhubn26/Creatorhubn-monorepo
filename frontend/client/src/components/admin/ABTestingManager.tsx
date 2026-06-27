@@ -313,7 +313,7 @@ export default function ABTestingManager() {
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <Box>
-          <Typography variant="h4" sx={{ fontWeight: 700 }}>
+          <Typography variant="h4" component="h2" sx={{ fontWeight: 700 }}>
             A/B Testing
           </Typography>
           <Typography color="text.secondary">
@@ -509,7 +509,7 @@ export default function ABTestingManager() {
                             </Typography>
                             <Stack direction="row" justifyContent="space-between">
                               <Stack direction="row" spacing={0.5} alignItems="center">
-                                <ViewsIcon fontSize="small" />
+                                <ViewsIcon fontSize="small" aria-hidden />
                                 <Typography variant="caption">Views</Typography>
                               </Stack>
                               <Typography variant="caption" sx={{ fontWeight: 600 }}>
@@ -518,7 +518,7 @@ export default function ABTestingManager() {
                             </Stack>
                             <Stack direction="row" justifyContent="space-between">
                               <Stack direction="row" spacing={0.5} alignItems="center">
-                                <ClicksIcon fontSize="small" />
+                                <ClicksIcon fontSize="small" aria-hidden />
                                 <Typography variant="caption">Clicks</Typography>
                               </Stack>
                               <Typography variant="caption" sx={{ fontWeight: 600 }}>
@@ -527,7 +527,7 @@ export default function ABTestingManager() {
                             </Stack>
                             <Stack direction="row" justifyContent="space-between">
                               <Stack direction="row" spacing={0.5} alignItems="center">
-                                <ConversionIcon fontSize="small" />
+                                <ConversionIcon fontSize="small" aria-hidden />
                                 <Typography variant="caption">Conversions</Typography>
                               </Stack>
                               <Typography variant="caption" sx={{ fontWeight: 600 }}>

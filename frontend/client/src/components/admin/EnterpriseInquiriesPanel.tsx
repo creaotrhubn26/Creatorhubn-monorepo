@@ -180,7 +180,16 @@ export default function EnterpriseInquiriesPanel({ onNavigateToPricing }: Enterp
           return (
             <Grid item xs={6} sm={4} md={2} key={key}>
               <Card sx={{ textAlign: 'center', cursor: 'pointer', '&:hover': { boxShadow: 3 } }}
-                onClick={() => setStatusFilter(key)}>
+                role="button"
+                tabIndex={0}
+                aria-label={`Filtrer på ${config?.label}`}
+                onClick={() => setStatusFilter(key)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setStatusFilter(key);
+                  }
+                }}>
                 <CardContent sx={{ py: 1.5 }}>
                   <Typography variant="h4" sx={{ color: `${config?.color}.main` }}>{value}</Typography>
                   <Typography variant="caption" color="text.secondary">{config?.label}</Typography>
@@ -191,7 +200,16 @@ export default function EnterpriseInquiriesPanel({ onNavigateToPricing }: Enterp
         })}
         <Grid item xs={6} sm={4} md={2}>
           <Card sx={{ textAlign: 'center', cursor: 'pointer', bgcolor: 'primary.main', color: 'white' }}
-            onClick={() => setStatusFilter('all')}>
+            role="button"
+            tabIndex={0}
+            aria-label="Vis alle forespørsler"
+            onClick={() => setStatusFilter('all')}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setStatusFilter('all');
+              }
+            }}>
             <CardContent sx={{ py: 1.5 }}>
               <Typography variant="h4">{stats.total}</Typography>
               <Typography variant="caption">Totalt</Typography>
@@ -275,7 +293,7 @@ export default function EnterpriseInquiriesPanel({ onNavigateToPricing }: Enterp
                   <Typography variant="caption">{formatDate(inquiry.created_at)}</Typography>
                 </TableCell>
                 <TableCell>
-                  <IconButton size="small" onClick={() => handleViewDetails(inquiry)}>
+                  <IconButton size="small" aria-label="Vis detaljer" onClick={() => handleViewDetails(inquiry)}>
                     <Visibility />
                   </IconButton>
                 </TableCell>

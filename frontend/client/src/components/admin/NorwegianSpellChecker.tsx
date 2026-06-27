@@ -445,14 +445,14 @@ export const NorwegianSpellChecker: React.FC<NorwegianSpellCheckerProps> = ({
   return (
     <Box sx={{ p: 3 }}>
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-        <Typography variant="h5" fontWeight={700} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Spellcheck color="primary" />
+        <Typography variant="h5" component="h2" fontWeight={700} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Spellcheck color="primary" aria-hidden />
           Norsk stavekontroll
         </Typography>
 
         <Stack direction="row" spacing={1}>
           <Tooltip title="Kopier korrigert tekst">
-            <IconButton onClick={() => void copyCorrectedText()}>
+            <IconButton aria-label="Kopier korrigert tekst" onClick={() => void copyCorrectedText()}>
               <ContentCopy />
             </IconButton>
           </Tooltip>
@@ -523,8 +523,8 @@ export const NorwegianSpellChecker: React.FC<NorwegianSpellCheckerProps> = ({
       {result && result.errorCount > 0 && (
         <Card>
           <CardContent>
-            <Typography variant="h6" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Lightbulb color="warning" />
+            <Typography variant="h6" component="h3" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Lightbulb color="warning" aria-hidden />
               Forslag ({result.errorCount})
             </Typography>
             <Divider sx={{ mb: 1 }} />

@@ -344,7 +344,7 @@ export function TutorialApprovalPanel({ open, onClose, isAdmin = true }: Tutoria
               <Chip size="small" label="Pending" color="warning" />
             </Badge>
           </Box>
-          <IconButton onClick={onClose}>
+          <IconButton onClick={onClose} aria-label="Lukk">
             <Close />
           </IconButton>
         </DialogTitle>

@@ -152,7 +152,7 @@ export default function AutomatedTestCaseGenerator() {
         <Stack direction="row" spacing={2} alignItems="center">
           <AutoAwesome sx={{ fontSize: 32, color: '#ce93d8' }} />
           <Box>
-            <Typography variant="h5" sx={{ fontWeight: 600}}>
+            <Typography variant="h5" component="h2" sx={{ fontWeight: 600}}>
               Automated Test Case Generator
             </Typography>
             <Typography variant="body2" color="text.secondary">
@@ -161,7 +161,7 @@ export default function AutomatedTestCaseGenerator() {
           </Box>
         </Stack>
         
-        <IconButton onClick={() => queryClient.invalidateQueries()}>
+        <IconButton aria-label="Oppdater" onClick={() => queryClient.invalidateQueries()}>
           <Refresh />
         </IconButton>
       </Stack>

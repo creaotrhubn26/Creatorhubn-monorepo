@@ -157,7 +157,7 @@ export default function ContentCalendar() {
               {professionIcon}
             </Box>
           )}
-          <Typography variant="h5" sx={{ fontWeight: 600}}>
+          <Typography variant="h5" component="h2" sx={{ fontWeight: 600}}>
             {enhancedProfessionConfig?.displayName || professionConfig?.displayName
               ? `${enhancedProfessionConfig?.displayName || professionConfig.displayName} - Innholdskalender`
               : 'Innholdskalender'}
@@ -191,13 +191,13 @@ export default function ContentCalendar() {
 
       {/* Month Navigation */}
       <Box display="flex" alignItems="center" justifyContent="center" gap={2} mb={3}>
-        <IconButton onClick={handlePrevMonth}>
+        <IconButton onClick={handlePrevMonth} aria-label="Forrige måned">
           <ChevronLeft />
         </IconButton>
         <Typography variant="h6" sx={{ minWidth: 200, textAlign: 'center' }}>
           {format(currentMonth, 'MMMM yyyy', { locale: nb })}
         </Typography>
-        <IconButton onClick={handleNextMonth}>
+        <IconButton onClick={handleNextMonth} aria-label="Neste måned">
           <ChevronRight />
         </IconButton>
       </Box>
@@ -241,6 +241,15 @@ export default function ContentCalendar() {
                 <Grid item xs={12 / 7} key={day.toString()}>
                   <Box
                     onClick={() => handleDateClick(day)}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={format(day, 'd. MMMM yyyy', { locale: nb })}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        handleDateClick(day);
+                      }
+                    }}
                     sx={{
                       minHeight: 120,
                       p: 1,

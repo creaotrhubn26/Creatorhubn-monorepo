@@ -94,7 +94,7 @@ const AdminConfigStatusCard: React.FC = () => {
   if (error) {
     return (
       <Alert severity="error" sx={{ mb: 2 }} action={
-        <IconButton size="small" onClick={load}><RefreshIcon fontSize="small" /></IconButton>
+        <IconButton size="small" onClick={load} aria-label="Prøv å hente config-status på nytt"><RefreshIcon fontSize="small" /></IconButton>
       }>{error}</Alert>
     );
   }
@@ -112,10 +112,10 @@ const AdminConfigStatusCard: React.FC = () => {
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.5 }}>
           <Stack direction="row" alignItems="center" spacing={1}>
             <ConfigIcon color={statusInfo.color} />
-            <Typography variant="h6">Produksjons-config</Typography>
+            <Typography variant="h6" component="h2">Produksjons-config</Typography>
             <StatusChip tone={statusInfo.color} label={statusInfo.label} />
           </Stack>
-          <IconButton size="small" onClick={load} disabled={loading}>
+          <IconButton size="small" onClick={load} disabled={loading} aria-label="Oppdater produksjons-config">
             {loading ? <CircularProgress size={16} /> : <RefreshIcon fontSize="small" />}
           </IconButton>
         </Stack>

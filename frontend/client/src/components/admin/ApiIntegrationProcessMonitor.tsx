@@ -548,8 +548,8 @@ export function ApiIntegrationProcessMonitor({ service }: { service?: string }) 
         <CardContent>
           <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={2} sx={{ mb: 2 }}>
             <Box>
-              <Typography variant="h5" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <TimelineIcon sx={{ color: theme.colors.primary }} />
+              <Typography variant="h5" component="h2" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <TimelineIcon aria-hidden sx={{ color: theme.colors.primary }} />
                 API Integration Process Monitor
               </Typography>
               <Typography variant="body2" color="text.secondary">
@@ -599,7 +599,7 @@ export function ApiIntegrationProcessMonitor({ service }: { service?: string }) 
             </Alert>
           )}
 
-          <Typography variant="h6" sx={{ mb: 1 }}>
+          <Typography variant="h6" component="h3" sx={{ mb: 1 }}>
             Mandatory Fullstack Protocol (10 steps)
           </Typography>
           <Stepper orientation="vertical">
@@ -634,6 +634,7 @@ export function ApiIntegrationProcessMonitor({ service }: { service?: string }) 
                     <Tooltip title={expandedStep === step.id ? 'Hide step details' : 'Expand step details'}>
                       <IconButton
                         size="small"
+                        aria-label={expandedStep === step.id ? 'Skjul trinndetaljer' : 'Vis trinndetaljer'}
                         onClick={() => setExpandedStep(expandedStep === step.id ? null : step.id)}
                       >
                         {expandedStep === step.id ? <ExpandLessIcon /> : <ExpandMoreIcon />}
@@ -667,7 +668,7 @@ export function ApiIntegrationProcessMonitor({ service }: { service?: string }) 
 
           <Collapse in={showDevSteps}>
             <Divider sx={{ my: 3 }} />
-            <Typography variant="h6" sx={{ mb: 1 }}>
+            <Typography variant="h6" component="h3" sx={{ mb: 1 }}>
               Developer Workflow (4 steps)
             </Typography>
             <Stepper orientation="vertical">

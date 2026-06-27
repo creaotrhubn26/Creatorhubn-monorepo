@@ -612,6 +612,7 @@ export function LSDMonitoringPanel(): JSX.Element {
           
           <Tooltip title="Refresh All Data">
             <IconButton
+              aria-label="Oppdater alle data"
               onClick={() => {
                 refetchDiagnostics();
                 queryClient.invalidateQueries({ queryKey: ['/api/admin/lsd-monitoring'] });

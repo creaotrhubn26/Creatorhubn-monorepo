@@ -398,7 +398,7 @@ export default function AdminWidgets({ userId }: AdminWidgetsProps) {
     <Box>
       {/* Widget Controls */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
-        <Typography variant="h6" fontWeight={600} sx={{ color: theming.colors.primary }}>
+        <Typography variant="h6" component="h2" fontWeight={600} sx={{ color: theming.colors.primary }}>
           Admin Dashboard Widgets
         </Typography>
         <Box sx={{ display: 'flex', gap: 1 }}>
@@ -479,6 +479,7 @@ export default function AdminWidgets({ userId }: AdminWidgetsProps) {
                             </Typography>
                             <IconButton
                               size="small"
+                              aria-label="Dra for å flytte widget"
                               {...provided.dragHandleProps}
                               sx={{ cursor: 'grab' }}
                             >
@@ -528,6 +529,7 @@ export default function AdminWidgets({ userId }: AdminWidgetsProps) {
                       checked={widget.enabled}
                       onChange={() => toggleWidget(widget.id)}
                       color="primary"
+                      aria-label={`Vis widget ${widget.title}`}
                     />
                 }
                   label=""

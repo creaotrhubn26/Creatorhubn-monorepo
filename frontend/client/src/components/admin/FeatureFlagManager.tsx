@@ -164,7 +164,7 @@ const FeatureFlagManager: React.FC = () => {
 
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h4" gutterBottom sx={{ color: theming.colors.primary }}>
+      <Typography variant="h4" component="h2" gutterBottom sx={{ color: theming.colors.primary }}>
         Feature Flag Manager
       </Typography>
       <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
@@ -185,7 +185,7 @@ const FeatureFlagManager: React.FC = () => {
             >
               <CardContent sx={theming.getThemedCardSx()}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
-                  <Typography variant="h6" component="div" sx={{ color: theming.colors.primary }}>
+                  <Typography variant="h6" component="h3" sx={{ color: theming.colors.primary }}>
                     {flag.name}
                   </Typography>
                   <StatusChip
