@@ -130,11 +130,10 @@ const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab,
           width: 260, flexShrink: 0, bgcolor: ws.bgSidebar, borderRight: `1px solid ${ws.border}`,
           display: 'flex', flexDirection: 'column',
         }}>
-          {/* Logo */}
-          <Stack direction="row" alignItems="center" spacing={1} sx={{ px: 2, py: 2 }}>
-            <HexagonOutlined sx={{ color: ws.accent }} />
-            <Typography sx={{ fontWeight: 800, letterSpacing: 1, fontSize: 15 }}>CREATORHUB</Typography>
-          </Stack>
+          {/* Logo — ekte CreatorHub-lockup (creatorhub-wordmark-light.png) */}
+          <Box sx={{ px: 1.75, pt: 2, pb: 1.5 }}>
+            <Box component="img" src="/creatorhub-wordmark-light.png" alt="CreatorHub · Norge" sx={{ width: '100%', display: 'block' }} />
+          </Box>
 
           {/* + Nytt prosjekt (åpner ProjectCreationWithMemoryCards) */}
           <Box sx={{ px: 1.5, pb: 1 }}>
