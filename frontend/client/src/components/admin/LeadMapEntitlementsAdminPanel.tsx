@@ -13,7 +13,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert, Box, Card, CardContent, Chip,
-  Dialog, DialogActions, DialogContent, DialogTitle, MenuItem,
+  Dialog, DialogActions, DialogContent, DialogTitle, InputAdornment, MenuItem,
   Select, Snackbar, Stack, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, TextField, Typography, ThemeProvider, Paper,
 } from '@mui/material';
@@ -25,6 +25,7 @@ import {
   Block as RevokeIcon,
   AddCircleOutline as GrantIcon,
   Refresh as RefreshIcon,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import {
   AdminButton, StatusChip, AdminLoading, AdminEmpty, adminTokens, useIsMobile,
@@ -76,6 +77,7 @@ export default function LeadMapEntitlementsAdminPanel() {
   const [error, setError] = useState<string | null>(null);
   const [snackbar, setSnackbar] = useState<string | null>(null);
   const [showRevoked, setShowRevoked] = useState(false);
+  const [search, setSearch] = useState('');
 
   // Grant dialog
   const [grantOpen, setGrantOpen] = useState(false);
@@ -159,8 +161,16 @@ export default function LeadMapEntitlementsAdminPanel() {
   };
 
   const filteredRows = useMemo(
-    () => (showRevoked ? rows : rows.filter((r) => !r.revoked_at)),
-    [rows, showRevoked],
+    () => {
+      const base = showRevoked ? rows : rows.filter((r) => !r.revoked_at);
+      const q = search.trim().toLowerCase();
+      if (!q) return base;
+      return base.filter((r) => [
+        r.producer_first_name, r.producer_last_name, r.producer_email,
+        r.config_client_name, r.tier, r.status, r.source,
+      ].filter(Boolean).join(' ').toLowerCase().includes(q));
+    },
+    [rows, showRevoked, search],
   );
 
   // Sammenfatning
@@ -233,6 +243,22 @@ export default function LeadMapEntitlementsAdminPanel() {
       </Stack>
 
       {error && <Alert severity="warning" sx={{ mb: 2 }}>{error}</Alert>}
+
+      <TextField
+        size="small"
+        fullWidth
+        placeholder="Søk producer, e-post, klient, tier eller kilde …"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        sx={{ mb: 2 }}
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start">
+              <SearchIcon fontSize="small" />
+            </InputAdornment>
+          ),
+        }}
+      />
 
       {loading ? (
         <AdminLoading />
