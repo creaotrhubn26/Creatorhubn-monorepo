@@ -27,6 +27,7 @@ const AvtalerTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [crm, setCrm] = useState<any | null>(null);
   const [meetings, setMeetings] = useState<any[]>([]);
   const [pricing, setPricing] = useState<any | null>(null);
+  const [quotes, setQuotes] = useState<any[]>([]);
   const [newOpen, setNewOpen] = useState(false);
 
   const load = () => {
@@ -34,7 +35,9 @@ const AvtalerTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/contract/status`).then((r: any) => setContract(r || null)).catch(() => {});
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/avtaler`).then((r: any) => { setCrm(r?.crmCustomer || null); setMeetings(Array.isArray(r?.meetings) ? r.meetings : []); }).catch(() => {});
     apiRequest(`/api/photographer/projects/${encodeURIComponent(projectId)}`).then((r: any) => setPricing(r?.project || null)).catch(() => {});
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/quotes`).then((r: any) => setQuotes(Array.isArray(r?.quotes) ? r.quotes : [])).catch(() => {});
   };
+  const QUOTE_TONE: Record<string, string> = { draft: 'neutral', sent: 'amber', accepted: 'green', signed: 'green', declined: 'red', expired: 'red' };
 
   const editPrice = async () => {
     if (!isReal) return;
@@ -112,6 +115,24 @@ const AvtalerTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           )}
         </WsCard>
       </Box>
+
+      {/* Tilbud */}
+      {isReal && quotes.length > 0 && (
+        <WsCard sx={{ mb: 2 }}>
+          <WsSectionTitle icon={<Description sx={{ fontSize: 18, color: ws.accent }} />} title="Tilbud" />
+          <Stack spacing={1}>
+            {quotes.map((q) => (
+              <Stack key={q.id} direction="row" justifyContent="space-between" alignItems="center" sx={{ p: 1, borderRadius: 1.5, border: `1px solid ${ws.borderSoft}` }}>
+                <Box>
+                  <Typography sx={{ fontSize: 13, fontWeight: 700 }}>{q.title || q.quoteNumber || 'Tilbud'}</Typography>
+                  <Typography sx={{ fontSize: 11, color: ws.textFaint }}>{q.quoteNumber}{q.total != null ? ` · ${Math.round(q.total).toLocaleString('nb-NO')} kr` : ''}{q.validUntil ? ` · gyldig til ${new Date(q.validUntil).toLocaleDateString('nb-NO')}` : ''}</Typography>
+                </Box>
+                <WsTag label={q.status || 'utkast'} tone={QUOTE_TONE[q.status] || 'neutral'} />
+              </Stack>
+            ))}
+          </Stack>
+        </WsCard>
+      )}
 
       {/* Pris & økonomi */}
       <WsCard sx={{ mb: 2 }}>

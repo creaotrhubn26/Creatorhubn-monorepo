@@ -36,6 +36,8 @@ const LeveranserTab: React.FC<{ projectId: string }> = ({ projectId }) => {
 
   const [galleries, setGalleries] = useState<any[]>([]);
   const [delivery, setDelivery] = useState<{ phase: number; signals: any } | null>(null);
+  const [editingJobs, setEditingJobs] = useState<any[]>([]);
+  const [revisions, setRevisions] = useState<any[]>([]);
   const load = () => {
     if (!isReal) return;
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/deliverables`)
@@ -47,7 +49,14 @@ const LeveranserTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/delivery-status`)
       .then((r: any) => { if (r && typeof r.phase === 'number') setDelivery({ phase: r.phase, signals: r.signals || {} }); })
       .catch(() => {});
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/editing-jobs`)
+      .then((r: any) => setEditingJobs(Array.isArray(r?.jobs) ? r.jobs : []))
+      .catch(() => {});
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/revision-requests`)
+      .then((r: any) => setRevisions(Array.isArray(r?.requests) ? r.requests : []))
+      .catch(() => {});
   };
+  const EJ_TONE: Record<string, string> = { requested: 'amber', pending: 'amber', accepted: 'blue', in_progress: 'blue', delivered: 'green', completed: 'green', paid: 'green' };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [projectId]);
 
   // Aktiv fase: ekte (utledet fra showcase) eller demo = 1.
@@ -181,6 +190,43 @@ const LeveranserTab: React.FC<{ projectId: string }> = ({ projectId }) => {
                 ))}
               </Stack>
             )}
+          </WsCard>
+        )}
+        {isReal && editingJobs.length > 0 && (
+          <WsCard sx={{ mb: 2 }}>
+            <WsSectionTitle title="Editor-handoff" />
+            <Stack spacing={1}>
+              {editingJobs.map((j) => (
+                <Box key={j.id} sx={{ p: 1, borderRadius: 1.5, border: `1px solid ${ws.borderSoft}` }}>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center">
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography noWrap sx={{ fontSize: 12.5, fontWeight: 700 }}>{j.vendorName || 'Redigerings-vendor'}</Typography>
+                      <Typography noWrap sx={{ fontSize: 11, color: ws.textFaint }}>{(j.services || []).join(', ') || 'Redigering'}{j.amount != null ? ` · ${Math.round(j.amount).toLocaleString('nb-NO')} ${j.currency || 'kr'}` : ''}</Typography>
+                    </Box>
+                    <WsTag label={j.status || 'sendt'} tone={EJ_TONE[j.status] || 'neutral'} />
+                  </Stack>
+                </Box>
+              ))}
+            </Stack>
+          </WsCard>
+        )}
+        {isReal && revisions.length > 0 && (
+          <WsCard sx={{ mb: 2 }}>
+            <WsSectionTitle title={`Revisjoner (${revisions.filter((r) => r.status !== 'resolved' && r.status !== 'done').length} åpne)`} />
+            <Stack spacing={1}>
+              {revisions.slice(0, 6).map((r) => (
+                <Box key={r.id} sx={{ p: 1, borderRadius: 1.5, border: `1px solid ${ws.borderSoft}` }}>
+                  <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography noWrap sx={{ fontSize: 12.5, fontWeight: 600 }}>{r.filename || 'Bilde'}</Typography>
+                      <Typography sx={{ fontSize: 11, color: ws.textDim }}>{r.note}</Typography>
+                      <Typography noWrap sx={{ fontSize: 10.5, color: ws.textFaint }}>{r.clientEmail || ''}</Typography>
+                    </Box>
+                    <WsTag label={r.status === 'resolved' || r.status === 'done' ? 'Løst' : 'Åpen'} tone={r.status === 'resolved' || r.status === 'done' ? 'green' : 'amber'} />
+                  </Stack>
+                </Box>
+              ))}
+            </Stack>
           </WsCard>
         )}
         <WsCard sx={{ mb: 2 }}>
