@@ -1592,12 +1592,22 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
             <Grid container spacing={2}>
               {deploymentTargets.map((target, index) => (
                 <Grid item xs={12} key={index}>
-                  <Card 
-                    sx={{ 
+                  <Card
+                    sx={{
                       cursor: 'pointer',
                       border: selectedTarget === target.name.toLowerCase().split(' ')[0] ? 2 : 1,
                       borderColor: selectedTarget === target.name.toLowerCase().split(' ')[0] ? 'primary.main' : 'divider'}}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Velg distribusjonsmål ${target.name}`}
+                    aria-pressed={selectedTarget === target.name.toLowerCase().split(' ')[0]}
                     onClick={() => setSelectedTarget(target.name.toLowerCase().split(' ')[0])}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setSelectedTarget(target.name.toLowerCase().split(' ')[0]);
+                      }
+                    }}
                   >
                     <CardContent>
                       <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
@@ -1726,7 +1736,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
             {/* ✅ NY: Feature Flag Integration */}
             <Box sx={{ mt: 3, p: 2, border: '1px solid #ccc', borderRadius: 1, bgcolor: '#f8f9fa' }}>
               <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
-                <SettingsIcon color="primary" />
+                <SettingsIcon color="primary" aria-hidden="true" />
                 Feature Flag Integration
               </Typography>
               <FormControlLabel
@@ -1753,7 +1763,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
             {/* ✅ EnhancedMasterIntegrationProvider Integration */}
             <Box sx={{ mt: 3, p: 2, border: '1px solid #e3f2fd', borderRadius: 1, bgcolor: '#e3f2fd' }}>
               <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
-                <CheckCircleIcon color="primary" />
+                <CheckCircleIcon color="primary" aria-hidden="true" />
                 Enhanced Master Integration Provider
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
@@ -2560,7 +2570,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
                       <TableCell>
                         <Box sx={{ display: 'flex', gap: 1 }}>
                           <Tooltip title="View Details">
-                            <IconButton size="small">
+                            <IconButton size="small" aria-label="Vis detaljer">
                               <VisibilityIcon />
                             </IconButton>
                           </Tooltip>
@@ -2569,6 +2579,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
                               <IconButton
                                 size="small"
                                 color="warning"
+                                aria-label="Rull tilbake distribusjon"
                                 onClick={() => handleRollbackDeployment('production', 'v1.0.0')}
                               >
                                 <RefreshIcon />

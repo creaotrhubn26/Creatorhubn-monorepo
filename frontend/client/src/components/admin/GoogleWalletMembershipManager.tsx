@@ -388,7 +388,7 @@ export default function GoogleWalletMembershipManager({
   return (
     <ThemeProvider theme={adminDarkTheme}>
     <Box className={className}>
-      <Typography variant="h4" sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1, color: themeColors.primary }}>
+      <Typography variant="h4" component="h2" sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1, color: themeColors.primary }}>
         <MembershipIcon color="primary" />
         Google Wallet - Digital Membership Cards
       </Typography>
@@ -490,7 +490,7 @@ export default function GoogleWalletMembershipManager({
       {tabValue === 0 && (
         <Box>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
-            <Typography variant="h6" sx={{ color: themeColors.primary }}>
+            <Typography variant="h6" component="h3" sx={{ color: themeColors.primary }}>
               Digital Membership Cards
             </Typography>
             <Button variant="contained"
@@ -573,16 +573,16 @@ export default function GoogleWalletMembershipManager({
                     </Box>
 
                     <Box sx={{ display: 'flex', gap: 1 }}>
-                      <IconButton size="small" onClick={() => setSelectedCard(card)}>
+                      <IconButton size="small" aria-label="Vis medlemskort" onClick={() => setSelectedCard(card)}>
                         <ViewIcon />
                       </IconButton>
-                      <IconButton size="small" onClick={() => {
+                      <IconButton size="small" aria-label="Rediger medlemskort" onClick={() => {
                         setSelectedCard(card);
                         setShowEditDialog(true);
                     }}>
                         <EditIcon />
                       </IconButton>
-                      <IconButton size="small" onClick={() => {
+                      <IconButton size="small" aria-label="Slett medlemskort" onClick={() => {
                         setDeleteConfirmDialog({ open: true, cardId: card.id });
                     }}>
                         <DeleteIcon />
@@ -616,7 +616,7 @@ export default function GoogleWalletMembershipManager({
       {/* Organizations Tab */}
       {tabValue === 1 && (
         <Box>
-          <Typography variant="h6" sx={{ mb: 3, color: themeColors.primary }}>
+          <Typography variant="h6" component="h3" sx={{ mb: 3, color: themeColors.primary }}>
             Available Organizations
           </Typography>
           <Grid container spacing={3}>
@@ -659,7 +659,7 @@ export default function GoogleWalletMembershipManager({
       {/* Templates Tab */}
       {tabValue === 2 && (
         <Box>
-          <Typography variant="h6" sx={{ mb: 3, color: themeColors.primary }}>
+          <Typography variant="h6" component="h3" sx={{ mb: 3, color: themeColors.primary }}>
             Membership Card Templates
           </Typography>
           <Grid container spacing={3}>
@@ -718,7 +718,7 @@ export default function GoogleWalletMembershipManager({
       {/* Settings Tab */}
       {tabValue === 3 && (
         <Box>
-          <Typography variant="h6" sx={{ mb: 3, color: themeColors.primary }}>
+          <Typography variant="h6" component="h3" sx={{ mb: 3, color: themeColors.primary }}>
             Google Wallet Settings
           </Typography>
           <Card sx={theming.getThemedCardSx()}>
@@ -732,7 +732,7 @@ export default function GoogleWalletMembershipManager({
                     primary="Auto-renewal"
                     secondary="Automatically renew expiring memberships"
                   />
-                  <Switch defaultChecked />
+                  <Switch defaultChecked inputProps={{ 'aria-label': 'Automatisk fornyelse' }} />
                 </ListItem>
                 <ListItem>
                   <ListItemIcon>
@@ -742,7 +742,7 @@ export default function GoogleWalletMembershipManager({
                     primary="QR Code Display"
                     secondary="Show QR codes on membership cards"
                   />
-                  <Switch defaultChecked />
+                  <Switch defaultChecked inputProps={{ 'aria-label': 'Vis QR-kode' }} />
                 </ListItem>
                 <ListItem>
                   <ListItemIcon>

@@ -152,7 +152,7 @@ export default function CustomerProjectsPanel({
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <Group color="primary" sx={{ fontSize: 32 }} />
-          <Typography variant="h5" sx={{ fontWeight: 600, color: themeColors.primary }}>
+          <Typography variant="h5" component="h2" sx={{ fontWeight: 600, color: themeColors.primary }}>
             Kunder & Prosjekter
           </Typography>
         </Box>
@@ -271,10 +271,11 @@ export default function CustomerProjectsPanel({
             placeholder="Søk kunder, prosjekter eller leverandører..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
+            inputProps={{ 'aria-label': 'Søk kunder, prosjekter eller leverandører' }}
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
-                  <Search />
+                  <Search aria-hidden="true" />
                 </InputAdornment>
               )}}
             sx={{ mb: 3 }}
@@ -317,10 +318,10 @@ export default function CustomerProjectsPanel({
                         <TableCell>{project.value || 0} kr</TableCell>
                         <TableCell>{project.deadline || 'Ikke satt'}</TableCell>
                         <TableCell>
-                          <IconButton size="small">
+                          <IconButton size="small" aria-label="Vis prosjekt">
                             <Visibility />
                           </IconButton>
-                          <IconButton size="small">
+                          <IconButton size="small" aria-label="Rediger prosjekt">
                             <Edit />
                           </IconButton>
                         </TableCell>
@@ -363,10 +364,10 @@ export default function CustomerProjectsPanel({
                         <TableCell>{customer.activeProjects || 0}</TableCell>
                         <TableCell>{customer.totalValue || 0} kr</TableCell>
                         <TableCell>
-                          <IconButton size="small">
+                          <IconButton size="small" aria-label="Vis kunde">
                             <Visibility />
                           </IconButton>
-                          <IconButton size="small">
+                          <IconButton size="small" aria-label="Rediger kunde">
                             <Edit />
                           </IconButton>
                         </TableCell>
@@ -411,10 +412,10 @@ export default function CustomerProjectsPanel({
                         <TableCell>{vendor.activeOrders || 0}</TableCell>
                         <TableCell>kr {vendor.totalRevenue?.toLocaleString() || '0'}</TableCell>
                         <TableCell>
-                          <IconButton size="small" color="primary">
+                          <IconButton size="small" color="primary" aria-label="Vis leverandør">
                             <Visibility />
                           </IconButton>
-                          <IconButton size="small" color="secondary">
+                          <IconButton size="small" color="secondary" aria-label="Rediger leverandør">
                             <Edit />
                           </IconButton>
                         </TableCell>

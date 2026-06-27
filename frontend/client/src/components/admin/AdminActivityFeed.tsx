@@ -281,10 +281,11 @@ export default function AdminActivityFeed({
             
             {isSupported && (
               <Tooltip title="Push-varsler innstillinger">
-                <IconButton 
-                  size="small" 
+                <IconButton
+                  size="small"
                   onClick={() => setPushSettingsOpen(true)}
                   color={pushEnabled ? 'primary' : 'default'}
+                  aria-label="Push-varsler innstillinger"
                 >
                   {pushEnabled ? <NotificationsActive /> : <Notifications />}
                 </IconButton>
@@ -561,6 +562,9 @@ export default function AdminActivityFeed({
               {activities.map((activity: ActivityItem) => (
                 <Box
                   key={activity.id}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Vis detaljer for ${activity.title}`}
                   sx={{
                     position: 'relative',
                     cursor: 'pointer', '&: hover': {
@@ -570,6 +574,12 @@ export default function AdminActivityFeed({
                     }
                   }}
                   onClick={() => handleActivityClick(activity)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleActivityClick(activity);
+                    }
+                  }}
                 >
                   {/* Timeline Dot */}
                   <Box

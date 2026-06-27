@@ -601,7 +601,8 @@ export default function AdminCommunicationPanel({
                 </Box>
                 <Box sx={{ display: 'flex', gap: 1 }}>
                   <Tooltip title="Legg til ny bruker">
-                    <IconButton 
+                    <IconButton
+                      aria-label="Legg til ny bruker"
                       size="small"
                       onClick={() => setAddUserDialogOpen(true)}
                     >
@@ -743,16 +744,16 @@ export default function AdminCommunicationPanel({
                     </Box>
                     <Box>
                       <Tooltip title="Video samtale">
-                        <IconButton>
+                        <IconButton aria-label="Video samtale">
                           <VideoCallIcon />
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Ring">
-                        <IconButton>
+                        <IconButton aria-label="Ring">
                           <PhoneIcon />
                         </IconButton>
                       </Tooltip>
-                      <IconButton onClick={(e) => setAnchorEl(e.currentTarget)}>
+                      <IconButton aria-label="Flere valg" onClick={(e) => setAnchorEl(e.currentTarget)}>
                         <MoreVertIcon />
                       </IconButton>
                     </Box>
@@ -814,7 +815,7 @@ export default function AdminCommunicationPanel({
                       InputProps={{
                         startAdornment: (
                           <InputAdornment position="start">
-                            <IconButton size="small">
+                            <IconButton aria-label="Legg ved fil" size="small">
                               <AttachFileIcon />
                             </IconButton>
                           </InputAdornment>

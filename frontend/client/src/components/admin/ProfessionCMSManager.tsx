@@ -452,11 +452,12 @@ export default function ProfessionCMSManager() {
                       </TableCell>
                       <TableCell>
                         <Stack direction="row" spacing={1}>
-                          <IconButton size="small" onClick={() => openEditDialog(profession)}>
+                          <IconButton size="small" aria-label="Rediger profesjon" onClick={() => openEditDialog(profession)}>
                             <Edit fontSize="small" />
                           </IconButton>
                           <IconButton
                             size="small"
+                            aria-label="Slett profesjon"
                             onClick={() => {
                               if (profession.id) {
                                 deleteProfessionMutation.mutate(profession.id);

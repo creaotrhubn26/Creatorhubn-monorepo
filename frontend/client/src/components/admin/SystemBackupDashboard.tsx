@@ -271,7 +271,7 @@ export default function SystemBackupDashboard(props: SystemBackupDashboardProps)
         }}
       >
         <Box>
-          <Typography variant="h4" gutterBottom sx={{ color: theming.colors.primary }}>
+          <Typography variant="h4" component="h2" gutterBottom sx={{ color: theming.colors.primary }}>
             💾 System Backup Dashboard
           </Typography>
           <Typography variant="body2" color="text.secondary">
@@ -379,7 +379,7 @@ export default function SystemBackupDashboard(props: SystemBackupDashboardProps)
         <CardHeader
           title="System Backups"
           action={
-            <IconButton onClick={() => refetchBackups()}>
+            <IconButton onClick={() => refetchBackups()} aria-label="Oppdater backup-liste">
               <RefreshIcon />
             </IconButton>
           }
@@ -434,6 +434,7 @@ export default function SystemBackupDashboard(props: SystemBackupDashboardProps)
                             <IconButton
                               onClick={() => handleDownload(backup)}
                               disabled={!backup.success}
+                              aria-label="Last ned backup"
                             >
                               <DownloadIcon />
                             </IconButton>
@@ -443,6 +444,7 @@ export default function SystemBackupDashboard(props: SystemBackupDashboardProps)
                           <IconButton
                             onClick={() => deleteBackupMutation.mutate(backup.id)}
                             color="error"
+                            aria-label="Slett backup"
                           >
                             <DeleteIcon />
                           </IconButton>
@@ -477,7 +479,7 @@ export default function SystemBackupDashboard(props: SystemBackupDashboardProps)
             placeholder="f.eks. Pre-deployment backup"
           />
 
-          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+          <Typography variant="h6" component="h3" gutterBottom sx={{ color: theming.colors.primary }}>
             Inkluder i backup:
           </Typography>
 

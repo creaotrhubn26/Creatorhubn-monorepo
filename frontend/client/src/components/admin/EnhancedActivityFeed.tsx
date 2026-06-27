@@ -354,7 +354,7 @@ useEffect(() => {
                     sx={{ fontSize: '0.7rem', height: 20 }}
                   />
                 )}
-                <IconButton size="small" onClick={() => handleActivityClick(activity)}>
+                <IconButton size="small" aria-label="Åpne aktivitet" onClick={() => handleActivityClick(activity)}>
                   <ArrowForward fontSize="small" />
                 </IconButton>
               </Stack>
@@ -423,13 +423,21 @@ useEffect(() => {
             <TimelineConnector />
           </TimelineSeparator>
           <TimelineContent>
-            <Paper 
-              elevation={1} 
-              sx={{ 
-                p: 2, 
+            <Paper
+              elevation={1}
+              role="button"
+              tabIndex={0}
+              sx={{
+                p: 2,
                 cursor: 'pointer','&:hover': { bgcolor: 'action.hover' }
               }}
               onClick={() => handleActivityClick(activity)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  handleActivityClick(activity);
+                }
+              }}
             >
               <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
                 <Typography variant="subtitle2" sx={{ fontWeight: 600}}>
@@ -501,7 +509,7 @@ useEffect(() => {
               
               {isSupported && (
                 <Tooltip title="Push-varsler innstillinger">
-                  <IconButton size="small" onClick={() => setPushSettingsOpen(true)} color={pushEnabled ? 'primary' : 'default'}>
+                  <IconButton size="small" aria-label="Push-varsler innstillinger" onClick={() => setPushSettingsOpen(true)} color={pushEnabled ? 'primary' : 'default'}>
                     <Notifications />
                   </IconButton>
                 </Tooltip>
@@ -509,14 +517,14 @@ useEffect(() => {
               
               {enableExport && (
                 <Tooltip title="Export to CSV">
-                  <IconButton size="small" onClick={handleExportCSV}>
+                  <IconButton size="small" aria-label="Export to CSV" onClick={handleExportCSV}>
                     <FileDownload />
                   </IconButton>
                 </Tooltip>
               )}
               
               <Tooltip title="Refresh">
-                <IconButton size="small" onClick={handleRefresh}>
+                <IconButton size="small" aria-label="Refresh" onClick={handleRefresh}>
                   <Refresh />
                 </IconButton>
               </Tooltip>
@@ -528,6 +536,7 @@ useEffect(() => {
             <TextField
               size="small"
               placeholder="Search activities..."
+              aria-label="Søk i aktiviteter"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               InputProps={{
@@ -547,12 +556,12 @@ useEffect(() => {
                 exclusive
                 onChange={(_, newMode) => newMode && setViewMode(newMode)}
               >
-                <ToggleButton value="list">
+                <ToggleButton value="list" aria-label="Listevisning">
                   <Tooltip title="List View">
                     <ViewList fontSize="small" />
                   </Tooltip>
                 </ToggleButton>
-                <ToggleButton value="timeline">
+                <ToggleButton value="timeline" aria-label="Tidslinjevisning">
                   <Tooltip title="Timeline View">
                     <ViewTimeline fontSize="small" />
                   </Tooltip>
@@ -560,7 +569,7 @@ useEffect(() => {
               </ToggleButtonGroup>
             )}
             
-            <IconButton size="small" onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}>
+            <IconButton size="small" aria-label="Vis avanserte filtre" onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}>
               <FilterList />
             </IconButton>
           </Stack>
