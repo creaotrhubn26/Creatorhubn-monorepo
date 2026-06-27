@@ -150,7 +150,7 @@ export default function ContentCalendar() {
   return (
     <Box>
       {/* Header */}
-      <Box display="flex" alignItems="center" justifyContent="space-between" mb={3}>
+      <Box display="flex" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={2} mb={3}>
         <Box display="flex" alignItems="center" gap={2}>
           {professionIcon && (
             <Box sx={{ color: professionColor, display: 'flex', alignItems: 'center' }}>

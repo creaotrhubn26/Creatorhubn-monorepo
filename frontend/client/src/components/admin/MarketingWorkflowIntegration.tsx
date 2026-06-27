@@ -48,7 +48,7 @@ import {
   Schedule as ScheduleIcon,
 } from '@mui/icons-material';
 import EmailDesigner from '../EmailDesigner/EmailDesigner';
-import { AdminButton, adminTokens } from './design-system';
+import { AdminButton, adminTokens, useIsMobile } from './design-system';
 
 interface WorkflowIntegrationProps {
   open: boolean;
@@ -425,7 +425,7 @@ export default function MarketingWorkflowIntegration({
               sx={{ mb: 2 }}
             />
             <Grid container spacing={2}>
-              <Grid item xs={6}>
+              <Grid item xs={12} sm={6}>
                 <FormControl fullWidth>
                   <InputLabel>Kategori</InputLabel>
                   <Select
@@ -444,7 +444,7 @@ export default function MarketingWorkflowIntegration({
                   </Select>
                 </FormControl>
               </Grid>
-              <Grid item xs={6}>
+              <Grid item xs={12} sm={6}>
                 <FormControl fullWidth>
                   <InputLabel>Viktighet</InputLabel>
                   <Select
@@ -486,7 +486,7 @@ export default function MarketingWorkflowIntegration({
 
             {!workflowData.publishImmediately && (
               <Grid container spacing={2}>
-                <Grid item xs={6}>
+                <Grid item xs={12} sm={6}>
                   <TextField
                     fullWidth
                     type="date"
@@ -498,7 +498,7 @@ export default function MarketingWorkflowIntegration({
                     InputLabelProps={{ shrink: true }}
                   />
                 </Grid>
-                <Grid item xs={6}>
+                <Grid item xs={12} sm={6}>
                   <TextField
                     fullWidth
                     type="time"
@@ -681,7 +681,7 @@ export default function MarketingWorkflowIntegration({
 
   return (
     <>
-      <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth fullScreen={useIsMobile()}>
         <DialogTitle>
           <Box display="flex" alignItems="center" gap={2}>
             <CampaignIcon sx={{ color: adminTokens.color.brand }} aria-hidden="true" />
@@ -733,6 +733,7 @@ export default function MarketingWorkflowIntegration({
         onClose={() => setEmailDesignerOpen(false)}
         maxWidth="xl"
         fullWidth
+        fullScreen={useIsMobile()}
       >
         <DialogTitle>E-postdesigner</DialogTitle>
         <DialogContent>

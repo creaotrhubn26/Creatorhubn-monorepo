@@ -97,7 +97,7 @@ import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIn
 // Visual CMS Components
 import MaterialIconLibrary from '../cms/MaterialIconLibrary';
 
-import { AdminButton, StatusChip, AdminLoading } from './design-system';
+import { AdminButton, StatusChip, AdminLoading, useIsMobile } from './design-system';
 
 interface AdminUser {
   id: string;
@@ -136,6 +136,7 @@ export default function UniversalAdminCMS() {
   const { auth } = useEnhancedMasterIntegration();
   const user = auth.state.user ?? auth.getUserProfile();
   const isAuthenticated = !!user;
+  const isMobile = useIsMobile();
 
   // State management
   const [activeTab, setActiveTab] = useState(0);
@@ -434,7 +435,7 @@ export default function UniversalAdminCMS() {
                   </Stack>
 
                   <Typography variant="caption" color="textSecondary">
-                    Sist endret: {new Date(page.lastModified).toLocaleDateString(', ')}
+                    Sist endret: {new Date(page.lastModified).toLocaleDateString('nb-NO')}
                   </Typography>
 
                   <Stack direction="row" spacing={1}>
@@ -631,6 +632,7 @@ export default function UniversalAdminCMS() {
         onClose={() => setCreatePageDialog(false)}
         maxWidth="md"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>Opprett ny side</DialogTitle>
         <DialogContent>

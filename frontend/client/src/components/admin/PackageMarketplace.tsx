@@ -52,6 +52,7 @@ import {
   AdminError,
   AdminTableContainer,
   adminTokens,
+  useIsMobile,
 } from './design-system';
 
 interface MarketplacePackage {
@@ -257,6 +258,7 @@ echo "Done"
 
 const PackageMarketplace: FC = () => {
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
   const [tabValue, setTabValue] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -628,7 +630,7 @@ const PackageMarketplace: FC = () => {
         </TabPanel>
       </Box>
 
-      <Dialog open={detailsDialogOpen} onClose={() => setDetailsDialogOpen(false)} fullWidth maxWidth="sm">
+      <Dialog open={detailsDialogOpen} onClose={() => setDetailsDialogOpen(false)} fullScreen={isMobile} fullWidth maxWidth="sm">
         <DialogTitle>Package Details</DialogTitle>
         <DialogContent>
           {packageDetails ? (
@@ -653,7 +655,7 @@ const PackageMarketplace: FC = () => {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={scriptDialogOpen} onClose={() => setScriptDialogOpen(false)} fullWidth maxWidth="md">
+      <Dialog open={scriptDialogOpen} onClose={() => setScriptDialogOpen(false)} fullScreen={isMobile} fullWidth maxWidth="md">
         <DialogTitle>Generated Install Script</DialogTitle>
         <DialogContent>
           <TextField

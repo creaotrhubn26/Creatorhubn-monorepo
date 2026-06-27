@@ -58,7 +58,7 @@ import { useLocation } from 'wouter';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
 import { PushNotificationSettings } from '../shared/PushNotificationSettings';
-import { AdminButton, StatusChip, AdminEmpty, AdminError } from './design-system';
+import { AdminButton, StatusChip, AdminEmpty, AdminError, useIsMobile } from './design-system';
 
 interface ActivityItem {
   id: string;
@@ -94,6 +94,7 @@ export default function AdminActivityFeed({
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const theming = useTheming('prototype_tester');
+  const isMobile = useIsMobile();
 
   // Get auth from master integration
   const { auth } = useEnhancedMasterIntegration();
@@ -104,7 +105,7 @@ export default function AdminActivityFeed({
   const [viewMode, setViewMode] = useState<'list' | 'timeline'>('list');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [startDate, setStartDate] = useState<string>('');
-  const [endDate, setEndDate] = useState<string>(', ');
+  const [endDate, setEndDate] = useState<string>('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [pushSettingsOpen, setPushSettingsOpen] = useState(false);
@@ -429,7 +430,7 @@ export default function AdminActivityFeed({
                   onClick={() => {
                     setSearchQuery('');
                     setStartDate('');
-                    setEndDate(', ');
+                    setEndDate('');
                     setCategoryFilter('all');
                   }}
                 >
@@ -663,7 +664,7 @@ export default function AdminActivityFeed({
       </CardContent>
 
       {/* Activity Details Dialog */}
-      <Dialog open={!!selectedActivity} onClose={() => setSelectedActivity(null)} maxWidth="sm" fullWidth>
+      <Dialog open={!!selectedActivity} onClose={() => setSelectedActivity(null)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         {selectedActivity && (
           <>
             <DialogTitle>
@@ -718,7 +719,7 @@ export default function AdminActivityFeed({
       </Dialog>
 
       {/* Filter Dialog */}
-      <Dialog open={showFilterDialog} onClose={() => setShowFilterDialog(false)} maxWidth="xs" fullWidth>
+      <Dialog open={showFilterDialog} onClose={() => setShowFilterDialog(false)} maxWidth="xs" fullWidth fullScreen={isMobile}>
         <DialogTitle>Filter Activity</DialogTitle>
         <DialogContent>
           <Stack spacing={1} sx={{ mt: 1 }}>
@@ -774,7 +775,7 @@ export default function AdminActivityFeed({
 
       {/* Push Notification Settings Dialog */}
       {isSupported && (
-        <Dialog open={pushSettingsOpen} onClose={() => setPushSettingsOpen(false)} maxWidth="sm" fullWidth>
+        <Dialog open={pushSettingsOpen} onClose={() => setPushSettingsOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
           <DialogTitle>Push-varsler innstillinger</DialogTitle>
           <DialogContent>
             <Box sx={{ mt: 2 }}>
