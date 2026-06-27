@@ -68,11 +68,14 @@ struct MapProjectCard: View {
                     // skeleton over noe brukeren allerede ser.
                     pager
                 }
-            case .failed(let message):
+            case .failed(let message, let isRetryable):
                 if appState.projects.isEmpty {
-                    ErrorProjectCard(message: message) {
-                        Task { await appState.refreshAll() }
-                    }
+                    ErrorProjectCard(
+                        message: message,
+                        isRetryable: isRetryable,
+                        onRetry: { Task { await appState.refreshAll() } },
+                        onReauth: { appState.sessionExpired = true }
+                    )
                     .frame(height: cardHeight)
                     .padding(.horizontal, 12)
                 } else {

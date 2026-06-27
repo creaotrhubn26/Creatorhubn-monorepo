@@ -1448,72 +1448,137 @@ actor APIClient {
     }
 
     private func get<T: Decodable>(_ path: String) async throws -> T {
-        let req = makeRequest(path)
-        let (data, response) = try await session.data(for: req)
-        try Self.validate(response)
-        return try Self.decoder.decode(T.self, from: data)
+        do {
+            let req = makeRequest(path)
+            let (data, response) = try await session.data(for: req)
+            try Self.validate(response, data: data)
+            return try Self.decoder.decode(T.self, from: data)
+        } catch {
+            throw Self.mapNetworkError(error)
+        }
     }
 
     private func patch(_ path: String, body: [String: Any]) async throws {
-        var req = makeRequest(path, method: "PATCH")
-        req.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (_, response) = try await session.data(for: req)
-        try Self.validate(response)
+        do {
+            var req = makeRequest(path, method: "PATCH")
+            req.httpBody = try JSONSerialization.data(withJSONObject: body)
+            let (data, response) = try await session.data(for: req)
+            try Self.validate(response, data: data)
+        } catch {
+            throw Self.mapNetworkError(error)
+        }
     }
 
     private func patchReturning<T: Decodable>(_ path: String, body: [String: Any]) async throws -> T {
-        var req = makeRequest(path, method: "PATCH")
-        req.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (data, response) = try await session.data(for: req)
-        try Self.validate(response)
-        return try Self.decoder.decode(T.self, from: data)
+        do {
+            var req = makeRequest(path, method: "PATCH")
+            req.httpBody = try JSONSerialization.data(withJSONObject: body)
+            let (data, response) = try await session.data(for: req)
+            try Self.validate(response, data: data)
+            return try Self.decoder.decode(T.self, from: data)
+        } catch {
+            throw Self.mapNetworkError(error)
+        }
     }
 
     private func post<T: Decodable>(_ path: String, body: [String: Any]? = nil) async throws -> T {
-        var req = makeRequest(path, method: "POST")
-        if let body {
-            req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        do {
+            var req = makeRequest(path, method: "POST")
+            if let body {
+                req.httpBody = try JSONSerialization.data(withJSONObject: body)
+            }
+            let (data, response) = try await session.data(for: req)
+            try Self.validate(response, data: data)
+            return try Self.decoder.decode(T.self, from: data)
+        } catch {
+            throw Self.mapNetworkError(error)
         }
-        let (data, response) = try await session.data(for: req)
-        try Self.validate(response)
-        return try Self.decoder.decode(T.self, from: data)
     }
 
     private func post(_ path: String, body: [String: Any]) async throws {
-        var req = makeRequest(path, method: "POST")
-        req.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (_, response) = try await session.data(for: req)
-        try Self.validate(response)
+        do {
+            var req = makeRequest(path, method: "POST")
+            req.httpBody = try JSONSerialization.data(withJSONObject: body)
+            let (data, response) = try await session.data(for: req)
+            try Self.validate(response, data: data)
+        } catch {
+            throw Self.mapNetworkError(error)
+        }
     }
 
     private func delete(_ path: String) async throws {
-        let req = makeRequest(path, method: "DELETE")
-        let (_, response) = try await session.data(for: req)
-        try Self.validate(response)
+        do {
+            let req = makeRequest(path, method: "DELETE")
+            let (data, response) = try await session.data(for: req)
+            try Self.validate(response, data: data)
+        } catch {
+            throw Self.mapNetworkError(error)
+        }
     }
 
     private func put(_ path: String, body: [String: Any]) async throws {
-        var req = makeRequest(path, method: "PUT")
-        req.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (_, response) = try await session.data(for: req)
-        try Self.validate(response)
+        do {
+            var req = makeRequest(path, method: "PUT")
+            req.httpBody = try JSONSerialization.data(withJSONObject: body)
+            let (data, response) = try await session.data(for: req)
+            try Self.validate(response, data: data)
+        } catch {
+            throw Self.mapNetworkError(error)
+        }
     }
 
     private func put<T: Decodable>(_ path: String, body: [String: Any]) async throws -> T {
-        var req = makeRequest(path, method: "PUT")
-        req.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (data, response) = try await session.data(for: req)
-        try Self.validate(response)
-        return try Self.decoder.decode(T.self, from: data)
+        do {
+            var req = makeRequest(path, method: "PUT")
+            req.httpBody = try JSONSerialization.data(withJSONObject: body)
+            let (data, response) = try await session.data(for: req)
+            try Self.validate(response, data: data)
+            return try Self.decoder.decode(T.self, from: data)
+        } catch {
+            throw Self.mapNetworkError(error)
+        }
     }
 
-    private static func validate(_ response: URLResponse) throws {
+    /// Map HTTP-status til spesifikke APIError-cases så caller
+    /// (og `error.localizedDescription`) får konkrete meldinger:
+    /// 401 → `.unauthorized`, 403 → `.forbidden`, 429 → `.tooManyRequests`,
+    /// 5xx → `.serverError(code, detail)`. Andre 4xx → `.statusCode(code)`.
+    private static func validate(_ response: URLResponse, data: Data = Data()) throws {
         guard let http = response as? HTTPURLResponse else {
             throw APIError.invalidResponse
         }
-        guard (200..<300).contains(http.statusCode) else {
+        switch http.statusCode {
+        case 200..<300:
+            return
+        case 401:
+            throw APIError.unauthorized
+        case 403:
+            throw APIError.forbidden
+        case 429:
+            throw APIError.tooManyRequests
+        case 500..<600:
+            let raw = String(data: data, encoding: .utf8) ?? ""
+            let detail = String(raw.prefix(200))
+            throw APIError.serverError(http.statusCode, detail)
+        default:
             throw APIError.statusCode(http.statusCode)
         }
+    }
+
+    /// Internal helper som mapper `URLError` → `APIError.networkFailure`.
+    /// Brukes som siste catch i alle generic fetchers så vi aldri lekker
+    /// rå URLError til UI (den gir kryptisk localizedDescription).
+    private static func mapNetworkError(_ error: Error) -> Error {
+        if let apiError = error as? APIError {
+            return apiError
+        }
+        if let urlError = error as? URLError {
+            return APIError.networkFailure(urlError)
+        }
+        if let decodingError = error as? DecodingError {
+            return APIError.decodingFailure(decodingError)
+        }
+        return error
     }
 
     private static let decoder: JSONDecoder = {
@@ -1530,22 +1595,34 @@ actor APIClient {
 
     /// Raw execute for OfflineActionQueue. Returnerer Data ved 2xx, throws ellers.
     func executeRaw(method: String, path: String, body: Data?) async throws -> Data {
-        var req = URLRequest(url: baseURL.appendingPathComponent(path))
-        req.httpMethod = method
-        req.timeoutInterval = 30
-        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        if let body = body {
-            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            req.httpBody = body
+        do {
+            var req = URLRequest(url: baseURL.appendingPathComponent(path))
+            req.httpMethod = method
+            req.timeoutInterval = 30
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            if let body = body {
+                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                req.httpBody = body
+            }
+            let (data, resp) = try await session.data(for: req)
+            guard let http = resp as? HTTPURLResponse else {
+                throw APIError.invalidResponse
+            }
+            switch http.statusCode {
+            case 200..<300:
+                return data
+            case 401:
+                throw APIError.unauthorized
+            case 403:
+                throw APIError.forbidden
+            case 429:
+                throw APIError.tooManyRequests
+            default:
+                throw APIError.serverError(http.statusCode, String(data: data, encoding: .utf8) ?? "")
+            }
+        } catch {
+            throw Self.mapNetworkError(error)
         }
-        let (data, resp) = try await session.data(for: req)
-        guard let http = resp as? HTTPURLResponse else {
-            throw APIError.invalidResponse
-        }
-        if http.statusCode >= 400 {
-            throw APIError.serverError(http.statusCode, String(data: data, encoding: .utf8) ?? "")
-        }
-        return data
     }
 }
 
@@ -2514,11 +2591,92 @@ struct AnyCodableShim: Codable, Hashable {
     }
 }
 
-enum APIError: Error {
+/// Strukturerte API-feil for LeadMap iPad-appen.
+///
+/// Conformer til `LocalizedError` så `error.localizedDescription` gir
+/// konkrete norske brukermeldinger — ikke "APIError error 0".
+/// ErrorProjectCard + andre error-bannere bruker disse automatisk.
+///
+/// Bakvert-kompatibel: de fire opprinnelige casene (`invalidResponse`,
+/// `statusCode`, `invalidURL`, `serverError`) er beholdt. De fem nye
+/// (`networkFailure`, `decodingFailure`, `unauthorized`, `forbidden`,
+/// `tooManyRequests`) lar oss skille reagerbare feil fra retry-bare.
+enum APIError: Error, LocalizedError {
     case invalidResponse
     case statusCode(Int)
     case invalidURL
     case serverError(Int, String)
+    /// Connection-timeout, DNS, TLS-feil. Wrapper underliggende URLError
+    /// så vi kan branche på `.notConnectedToInternet`, `.timedOut`, etc.
+    case networkFailure(URLError)
+    /// JSON-decode-feil — typisk når backend endrer schema og iPad er stale.
+    case decodingFailure(DecodingError)
+    /// HTTP 401 — session utløpt / token ugyldig. UI bør trigge re-login.
+    case unauthorized
+    /// HTTP 403 — RBAC-mangel. Bruker mangler permission for endepunktet.
+    case forbidden
+    /// HTTP 429 — rate-limit. Bruker bør vente og prøve igjen.
+    case tooManyRequests
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidResponse:
+            return "Uventet svar fra tjeneren"
+        case .statusCode(let code):
+            return "Tjeneren returnerte HTTP \(code)"
+        case .invalidURL:
+            return "Ugyldig URL"
+        case .serverError(let code, let detail):
+            if detail.isEmpty {
+                return "Tjeneren returnerte feil (HTTP \(code))"
+            }
+            return "Tjeneren returnerte feil (HTTP \(code))\n\(detail)"
+        case .networkFailure(let urlError):
+            switch urlError.code {
+            case .notConnectedToInternet:
+                return "Ingen internett-forbindelse"
+            case .timedOut:
+                return "Tjeneren svarte ikke i tide"
+            case .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed:
+                return "Kunne ikke nå tjeneren"
+            case .secureConnectionFailed, .serverCertificateUntrusted,
+                 .serverCertificateHasBadDate, .serverCertificateNotYetValid,
+                 .serverCertificateHasUnknownRoot:
+                return "Sikker tilkobling feilet"
+            case .networkConnectionLost:
+                return "Mistet nettverk-tilkoblingen — prøv igjen"
+            default:
+                return "Nettverk-feil: \(urlError.localizedDescription)"
+            }
+        case .decodingFailure(let err):
+            return "Klarte ikke å lese tjener-respons: \(String(describing: err))"
+        case .unauthorized:
+            return "Din økt er utløpt — logg inn på nytt"
+        case .forbidden:
+            return "Du har ikke tilgang til denne ressursen"
+        case .tooManyRequests:
+            return "Du gjør for mange forespørsler — vent litt og prøv igjen"
+        }
+    }
+
+    /// True hvis brukeren bør prøve igjen automatisk (vs. trenger handling
+    /// som re-login eller manglende permission). ErrorProjectCard bruker
+    /// dette for å velge mellom "Prøv igjen" og "Logg inn på nytt"-CTA.
+    var isRetryable: Bool {
+        switch self {
+        case .networkFailure, .statusCode, .serverError, .tooManyRequests, .invalidResponse:
+            return true
+        case .unauthorized, .forbidden, .invalidURL, .decodingFailure:
+            return false
+        }
+    }
+
+    /// True hvis feilen krever at brukeren logger inn på nytt.
+    /// AppState observer dette og setter `sessionExpired = true`.
+    var requiresReauth: Bool {
+        if case .unauthorized = self { return true }
+        return false
+    }
 }
 
 // MARK: - Response envelopes
