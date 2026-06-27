@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
@@ -185,12 +185,14 @@ export default function FikenIntegrationRequestsPanel() {
     }
   };
 
-  const filteredRequests = currentTab === 0
-    ? requests
-    : requests.filter(r => {
-        const statusMap = ['all','pending','contacted','connected','declined'];
-        return r.fikenIntegrationStatus === statusMap[currentTab];
-      });
+  const filteredRequests = useMemo(() => (
+    currentTab === 0
+      ? requests
+      : requests.filter(r => {
+          const statusMap = ['all','pending','contacted','connected','declined'];
+          return r.fikenIntegrationStatus === statusMap[currentTab];
+        })
+  ), [requests, currentTab]);
 
   // Toggle export column
   const handleToggleExportColumn = (key: string) => {

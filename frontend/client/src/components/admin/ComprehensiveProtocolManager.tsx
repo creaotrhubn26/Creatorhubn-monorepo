@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { apiRequest, getAuthHeader } from '@/lib/queryClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
@@ -313,7 +313,10 @@ const ComprehensiveProtocolManager: React.FC<ComprehensiveProtocolManagerProps> 
     }, // Oppdater hver 10. sekund
   });
 
-  const systemEvents: SystemEvent[] = Array.isArray(systemEventsData) ? systemEventsData : [];
+  const systemEvents: SystemEvent[] = useMemo(
+    () => (Array.isArray(systemEventsData) ? systemEventsData : []),
+    [systemEventsData]
+  );
   const protocolRules: ProtocolRule[] = Array.isArray(protocolRulesData) ? protocolRulesData : [];
 
   const getSeverityColor = (severity: string) => {
@@ -350,15 +353,15 @@ const ComprehensiveProtocolManager: React.FC<ComprehensiveProtocolManagerProps> 
     return icons[category] || <Info />;
 };
 
-  const filteredEvents = systemEvents.filter((event: SystemEvent) => {
+  const filteredEvents = useMemo(() => systemEvents.filter((event: SystemEvent) => {
     const matchesSeverity = filterSeverity === 'all' || event.severity === filterSeverity;
     const matchesCategory = filterCategory === 'all' || event.category === filterCategory;
-    const matchesSearch = searchTerm.trim() === '' || 
+    const matchesSearch = searchTerm.trim() === '' ||
       event.message.toLowerCase().includes(searchTerm.toLowerCase()) ||
       event.source.toLowerCase().includes(searchTerm.toLowerCase());
-    
+
     return matchesSeverity && matchesCategory && matchesSearch;
-});
+}), [systemEvents, filterSeverity, filterCategory, searchTerm]);
 
   const toggleEventExpansion = (eventId: string) => {
     const newExpanded = new Set(expandedEvents);
@@ -370,9 +373,9 @@ const ComprehensiveProtocolManager: React.FC<ComprehensiveProtocolManagerProps> 
     setExpandedEvents(newExpanded);
 };
 
-  const criticalEventsCount = systemEvents.filter((e: SystemEvent) => e.severity === 'critical' && !e.resolved).length;
-  const highEventsCount = systemEvents.filter((e: SystemEvent) => e.severity === 'high' && !e.resolved).length;
-  const unresolvedCount = systemEvents.filter((e: SystemEvent) => !e.resolved).length;
+  const criticalEventsCount = useMemo(() => systemEvents.filter((e: SystemEvent) => e.severity === 'critical' && !e.resolved).length, [systemEvents]);
+  const highEventsCount = useMemo(() => systemEvents.filter((e: SystemEvent) => e.severity === 'high' && !e.resolved).length, [systemEvents]);
+  const unresolvedCount = useMemo(() => systemEvents.filter((e: SystemEvent) => !e.resolved).length, [systemEvents]);
 
   return (
     <Box sx={{ p: 2 }}>

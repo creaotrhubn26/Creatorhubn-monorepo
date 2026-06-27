@@ -429,7 +429,10 @@ export default function ReceiptTemplateManager() {
   });
 
   const templates = templatesQuery.data ?? [];
-  const renderedPreview = selectedTemplate ? buildPreviewHtml(selectedTemplate, businessSettings) : '';
+  const renderedPreview = useMemo(
+    () => (selectedTemplate ? buildPreviewHtml(selectedTemplate, businessSettings) : ''),
+    [selectedTemplate, businessSettings],
+  );
 
   const openCreateDialog = (type: ReceiptTemplateType) => {
     setSelectedTemplate(null);
