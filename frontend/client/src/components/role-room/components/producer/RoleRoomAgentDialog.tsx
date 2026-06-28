@@ -65,6 +65,8 @@ import roleRoomAgentService, {
 import RoleRoomAgentChatPanel from '../ai/RoleRoomAgentChatPanel';
 import RoleRoomFeedPlannerPanel from './RoleRoomFeedPlannerPanel';
 import MarketingPlanPanel from './MarketingPlanPanel';
+import { DailyBriefCard } from './DailyBriefCard';
+import AgentDockLauncher from './AgentDockLauncher';
 import ResearchVersionsPickerInline from './ResearchVersionsPickerInline';
 import MerchSuppliersPanel from './MerchSuppliersPanel';
 
@@ -906,6 +908,17 @@ export default function RoleRoomAgentDialog({
               />
             </Box>
           ) : null}
+
+        {/* Proactive "Dagens brief" — surfaces the nightly cross-tab scan on
+            the landing/research tab with one-click jump to the relevant tab. */}
+        {activeTab === 'research' ? (
+          <Box sx={{ px: { xs: 1.4, md: 2 }, pt: { xs: 1.4, md: 2 } }}>
+            <DailyBriefCard
+              projectId={projectId}
+              onNavigate={(tab) => setActiveTab(tab as typeof activeTab)}
+            />
+          </Box>
+        ) : null}
 
         {activeTab === 'chat' && currentUserId ? (
           <Box
@@ -2209,6 +2222,15 @@ export default function RoleRoomAgentDialog({
         primaryActionLabel="Til Marketing Plan"
         onPrimaryAction={() => setActiveTab('marketing-plan')}
       />
+
+      {/* Docked agent — reachable from any tab without leaving your place. */}
+      {currentUserId ? (
+        <AgentDockLauncher
+          projectId={projectId}
+          currentUserId={currentUserId}
+          context={{ briefSummary: initialExtraContext ?? undefined }}
+        />
+      ) : null}
     </Dialog>
   );
 }
