@@ -357,6 +357,14 @@ struct MoreTabView: View {
                             )
                         }
                     }
+                    // Pin-guide — Daniel-feedback 2026-06-28: gi brukere
+                    // oversikt over hva hver pin-variant betyr.
+                    NavigationLink {
+                        PinGuideView()
+                    } label: {
+                        moreRow(icon: "mappin.and.ellipse",
+                                color: .purple, title: "Forstå pinsene")
+                    }
                 }
                 Section("Team & marked") {
                     NavigationLink {
