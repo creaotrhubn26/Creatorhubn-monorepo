@@ -26,6 +26,7 @@ import { signAssetReadUrl } from "./capture-upload-service";
 import { archiveToRoleRoomB2, presignRoleRoomB2Download, slugifyForKey } from "./b2-archive-helper";
 import { createGoogleMeetLink } from "./google-meet";
 import { classifySession } from "./capture-culling-service";
+import { enqueuePhotoEnhancerJobFromBuffer, listPhotoEnhancerJobsByProjectId } from "./photo-enhancer-routes";
 
 // Web-opplasting holdes i minne og skyves server-side til B2 (Role Room-bøtta).
 // 60 MB tak — store RAW/originaler skal uansett gjennom capture multipart-flyten.
@@ -207,6 +208,73 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       if (sub.rows[0]?.n > 0) activity.unshift({ who: 'Klient', what: `sendte inn ${sub.rows[0].n} utvalgte bilder`, at: sub.rows[0].at });
       res.json({ feedback, activity });
     } catch (e) { console.error("GET client-feedback", e); res.json({ feedback: [], activity: [] }); }
+  });
+
+  // ─────────── Klient-review-overflate — klientens hjerter/kommentarer/utvalg ──
+  // Full review-tråd: kommentarer m/ type + status + produsent-svar + bilde-
+  // thumbnail, fordeling pr type, og utvalgs-sammendrag. Teamet ser hva klienten
+  // har sagt på showcase-galleriene og kan svare — uten å forlate workspacet.
+  app.get("/api/projects/:projectId/client-reviews", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const g = await pool.query(`SELECT id FROM photographer_client_galleries WHERE project_id = $1`, [req.params.projectId]).catch(() => ({ rows: [] }));
+      const ids = g.rows.map((x: any) => x.id);
+      if (ids.length === 0) return res.json({ hasGallery: false, comments: [], counts: {}, selections: { selected: 0, submitted: 0 } });
+      const [cm, cnt, sel] = await Promise.all([
+        pool.query(
+          `SELECT c.id, c.client_name, c.client_email, c.comment, c.comment_type, c.status,
+                  c.photographer_response, c.responded_at, c.created_at, c.image_id,
+                  i.thumbnail_url
+             FROM client_image_comments c
+             LEFT JOIN client_gallery_images i ON i.id = c.image_id
+            WHERE c.gallery_id = ANY($1::uuid[]) ORDER BY c.created_at DESC LIMIT 60`,
+          [ids],
+        ).catch(() => ({ rows: [] })),
+        pool.query(
+          `SELECT comment_type, count(*)::int n FROM client_image_comments
+            WHERE gallery_id = ANY($1::uuid[]) GROUP BY comment_type`,
+          [ids],
+        ).catch(() => ({ rows: [] })),
+        pool.query(
+          `SELECT count(*)::int selected, count(*) FILTER (WHERE submitted_at IS NOT NULL)::int submitted
+             FROM client_image_selections WHERE gallery_id = ANY($1::uuid[])`,
+          [ids],
+        ).catch(() => ({ rows: [{ selected: 0, submitted: 0 }] })),
+      ]);
+      const counts: any = {};
+      cnt.rows.forEach((r: any) => { counts[r.comment_type || "comment"] = r.n; });
+      res.json({
+        hasGallery: true,
+        comments: cm.rows.map((c: any) => ({
+          id: c.id, clientName: c.client_name || "Klient", comment: c.comment,
+          type: c.comment_type || "comment", status: c.status || "open",
+          photographerResponse: c.photographer_response || null, respondedAt: c.responded_at || null,
+          thumbUrl: c.thumbnail_url || null, at: c.created_at,
+        })),
+        counts,
+        selections: { selected: sel.rows[0]?.selected || 0, submitted: sel.rows[0]?.submitted || 0 },
+      });
+    } catch (e) { console.error("GET client-reviews", e); res.json({ hasGallery: false, comments: [], counts: {}, selections: { selected: 0, submitted: 0 } }); }
+  });
+
+  // Produsent/team svarer på en klient-kommentar (uten å åpne showcase-admin).
+  app.post("/api/projects/:projectId/client-reviews/:commentId/respond", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const response = String((req.body?.response ?? "")).trim();
+      if (!response) return res.status(400).json({ error: "response_required" });
+      // Verifiser at kommentaren tilhører ETT av prosjektets gallerier (ikke IDOR).
+      const g = await pool.query(`SELECT id FROM photographer_client_galleries WHERE project_id = $1`, [req.params.projectId]).catch(() => ({ rows: [] }));
+      const ids = g.rows.map((x: any) => x.id);
+      if (ids.length === 0) return res.status(404).json({ error: "no_gallery" });
+      const upd = await pool.query(
+        `UPDATE client_image_comments SET photographer_response = $1, responded_at = NOW(), status = 'responded'
+          WHERE id = $2 AND gallery_id = ANY($3::uuid[]) RETURNING id`,
+        [response, req.params.commentId, ids],
+      ).catch(() => ({ rows: [] }));
+      if (upd.rows.length === 0) return res.status(404).json({ error: "comment_not_found" });
+      res.json({ ok: true, id: upd.rows[0].id });
+    } catch (e) { console.error("POST client-review respond", e); res.status(500).json({ error: "failed" }); }
   });
 
   // ─────────── Moodboard-meta (stil/palett/notater) ───────────
@@ -705,11 +773,62 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
         processingMs: r.processing_time ?? null, error: r.error_message || null,
         createdAt: r.created_at, completedAt: r.completed_at,
       }));
-      const done = jobs.filter((j: any) => j.status === "completed" || j.status === "done").length;
-      const running = jobs.filter((j: any) => j.status === "processing" || j.status === "running" || j.status === "queued" || j.status === "pending").length;
-      const failed = jobs.filter((j: any) => j.status === "failed" || j.status === "error").length;
-      res.json({ hasJobs: jobs.length > 0, jobs, summary: { total: jobs.length, done, running, failed } });
+      // Flett inn in-memory-jobber utløst FRA workspacet/capture-deliver (lever
+      // ikke i DB-tabellen), deduplisert på id. Statusene normaliseres til DB-form.
+      const memJobs = listPhotoEnhancerJobsByProjectId(pid).map((m: any) => ({
+        id: m.id, photoId: m.fileName, type: "ai-enhance", model: m.preset || "AI",
+        originalUrl: null, enhancedUrl: m.enhancedUrl || null, thumbUrl: m.thumbUrl || null,
+        status: m.status === "completed" ? "completed" : m.status === "failed" ? "failed" : m.status === "cancelled" ? "failed" : "processing",
+        progress: m.progress ?? null, processingMs: null, error: null,
+        createdAt: m.createdAt, completedAt: m.completedAt, inMemory: true,
+      }));
+      const seen = new Set(jobs.map((j: any) => j.id));
+      const merged = [...memJobs.filter((m: any) => !seen.has(m.id)), ...jobs];
+      const done = merged.filter((j: any) => j.status === "completed" || j.status === "done").length;
+      const running = merged.filter((j: any) => j.status === "processing" || j.status === "running" || j.status === "queued" || j.status === "pending").length;
+      const failed = merged.filter((j: any) => j.status === "failed" || j.status === "error").length;
+      res.json({ hasJobs: merged.length > 0, jobs: merged, summary: { total: merged.length, done, running, failed } });
     } catch (e) { console.error("GET enhance-status", e); res.json({ hasJobs: false, jobs: [] }); }
+  });
+
+  // ─────────── Send til AI-forbedring — utløs enhance på valgte/markerte bilder ─
+  // Team-handling: send prosjektets bilder gjennom photo-enhancer-pipelinen
+  // (GFPGAN/Real-ESRGAN) FRA workspacet. canAccessProject-gatet. Henter buffer
+  // fra B2 (full_key ?? preview_key) og køer via enqueuePhotoEnhancerJobFromBuffer.
+  app.post("/api/projects/:projectId/enhance-picks", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const pid = req.params.projectId;
+      const body = (req.body ?? {}) as { assetIds?: unknown; preset?: unknown };
+      const preset = typeof body.preset === "string" && body.preset ? body.preset : "auto";
+      const sessions = await pool.query(`SELECT id FROM capture_sessions WHERE project_id = $1`, [pid]).catch(() => ({ rows: [] }));
+      const sessionIds = sessions.rows.map((s: any) => s.id);
+      if (sessionIds.length === 0) return res.status(404).json({ error: "no_session" });
+      const requested = Array.isArray(body.assetIds) ? body.assetIds.filter((v: any) => typeof v === "string" && v) : [];
+      // Eksplisitt liste, ellers default til klient-markerte bilder (picks).
+      const rows = requested.length
+        ? await pool.query(`SELECT id, full_key, preview_key, mime, original_filename FROM capture_assets WHERE session_id = ANY($1::uuid[]) AND id = ANY($2::uuid[]) AND rejected IS NOT TRUE`, [sessionIds, requested]).catch(() => ({ rows: [] }))
+        : await pool.query(`SELECT id, full_key, preview_key, mime, original_filename FROM capture_assets WHERE session_id = ANY($1::uuid[]) AND flagged_for_client IS TRUE AND rejected IS NOT TRUE ORDER BY rating DESC NULLS LAST LIMIT 30`, [sessionIds]).catch(() => ({ rows: [] }));
+      if (rows.rows.length === 0) return res.status(400).json({ error: "no_assets", message: "Ingen bilder å forbedre (marker bilder for klient først, eller send assetIds)." });
+      const jobs: any[] = []; const failures: any[] = [];
+      for (const r of rows.rows) {
+        const sourceKey = r.full_key || r.preview_key;
+        if (!sourceKey) { failures.push({ assetId: r.id, reason: "no_source_key" }); continue; }
+        try {
+          const url = await signAssetReadUrl(sourceKey);
+          const resp = await fetch(url);
+          if (!resp.ok) { failures.push({ assetId: r.id, reason: `b2_fetch_${resp.status}` }); continue; }
+          const buffer = Buffer.from(await resp.arrayBuffer());
+          const jobId = await enqueuePhotoEnhancerJobFromBuffer({
+            buffer, fileName: r.original_filename || `${r.id}.jpg`, mimeType: r.mime || "image/jpeg",
+            projectId: pid, owner: uid, userId: uid, preset,
+          });
+          if (!jobId) { failures.push({ assetId: r.id, reason: "enqueue_failed" }); continue; }
+          jobs.push({ assetId: r.id, jobId });
+        } catch { failures.push({ assetId: r.id, reason: "fetch_threw" }); }
+      }
+      res.status(202).json({ queued: jobs.length, jobs, failures });
+    } catch (e) { console.error("POST enhance-picks", e); res.status(500).json({ error: "failed" }); }
   });
 
   // ─────────── AI-cull-forslag — classifySession på prosjektets capture_assets ──
@@ -785,7 +904,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     const uid = await guard(req, res); if (!uid) return;
     try {
       const pid = req.params.projectId;
-      const [dest, jobs] = await Promise.all([
+      const [dest, jobs, takes] = await Promise.all([
         pool.query(`SELECT id, destination_type, label, storage_type, status, cloud_provider FROM dit_destinations WHERE project_id = $1 ORDER BY priority NULLS LAST, created_at`, [pid]).catch(() => ({ rows: [] })),
         pool.query(
           `SELECT count(*)::int total,
@@ -799,6 +918,21 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
              FROM dit_backup_jobs WHERE project_id = $1`,
           [pid],
         ).catch(() => ({ rows: [{}] })),
+        // Per-take-rollup: hver take = ett opptak; vis hvor mange destinasjoner
+        // den er speilet+hash-verifisert til. Trygt på tom tabell (rows=[]).
+        pool.query(
+          `SELECT take_id,
+                  count(*)::int total,
+                  count(DISTINCT destination_id)::int destinations,
+                  count(*) FILTER (WHERE status = 'completed')::int completed,
+                  count(*) FILTER (WHERE status = 'completed' AND dest_hash IS NOT NULL AND dest_hash = source_hash)::int verified,
+                  count(*) FILTER (WHERE status IN ('copying','running','started'))::int copying,
+                  count(*) FILTER (WHERE status = 'failed')::int failed,
+                  max(completed_at) last_completed
+             FROM dit_backup_jobs WHERE project_id = $1 AND take_id IS NOT NULL
+            GROUP BY take_id ORDER BY max(COALESCE(completed_at, started_at, queued_at)) DESC NULLS LAST LIMIT 40`,
+          [pid],
+        ).catch(() => ({ rows: [] })),
       ]);
       const j = jobs.rows[0] || {};
       res.json({
@@ -808,6 +942,12 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
           total: j.total || 0, completed: j.completed || 0, copying: j.copying || 0, failed: j.failed || 0,
           verified: j.verified || 0, bytes: j.bytes ? Number(j.bytes) : 0, lastCompleted: j.last_completed || null,
         },
+        takes: takes.rows.map((t: any) => ({
+          takeId: t.take_id, destinations: t.destinations || 0, total: t.total || 0,
+          completed: t.completed || 0, verified: t.verified || 0, copying: t.copying || 0,
+          failed: t.failed || 0, lastCompleted: t.last_completed || null,
+          fullyVerified: (t.total || 0) > 0 && (t.verified || 0) === (t.total || 0),
+        })),
         oneDeskHosts: Array.isArray(j.hosts) ? j.hosts.filter(Boolean) : [],
       });
     } catch (e) { console.error("GET dit-status", e); res.json({ hasBackup: false }); }

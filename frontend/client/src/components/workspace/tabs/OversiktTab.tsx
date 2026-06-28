@@ -299,6 +299,24 @@ const OversiktTab: React.FC<{ projectId: string }> = ({ projectId }) => {
                     <Typography sx={{ fontSize: 10, color: ws.textFaint }}>{dit.jobs?.completed ?? 0} av {dit.jobs?.total ?? 0} jobber · xxHash64</Typography>
                   </Box>
                 </Stack>
+
+                {/* Per-take-rollup — hver take speilet+verifisert til N destinasjoner */}
+                {Array.isArray(dit.takes) && dit.takes.length > 0 && (
+                  <Box sx={{ mt: 1 }}>
+                    <Typography sx={{ fontSize: 10, color: ws.textFaint, mb: 0.5 }}>
+                      {dit.takes.length} take{dit.takes.length > 1 ? 's' : ''} · {dit.takes.filter((t: any) => t.fullyVerified).length} fullt verifisert
+                    </Typography>
+                    <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
+                      {dit.takes.slice(0, 12).map((t: any) => (
+                        <Stack key={t.takeId} direction="row" spacing={0.4} alignItems="center" sx={{ px: 0.75, py: 0.25, borderRadius: 1, bgcolor: ws.panelAlt, border: `1px solid ${ws.borderSoft}` }}>
+                          <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: t.failed ? ws.red : t.fullyVerified ? ws.green : t.copying ? ws.amber : ws.textFaint }} />
+                          <Typography sx={{ fontSize: 10, color: ws.textDim, maxWidth: 90 }} noWrap>{t.takeId}</Typography>
+                          <Typography sx={{ fontSize: 9.5, color: ws.textFaint }}>{t.verified}/{t.total}</Typography>
+                        </Stack>
+                      ))}
+                    </Stack>
+                  </Box>
+                )}
               </Box>
             )}
           </WsCard>

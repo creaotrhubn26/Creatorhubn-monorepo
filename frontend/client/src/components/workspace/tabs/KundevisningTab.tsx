@@ -26,6 +26,8 @@ const KundevisningTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const isReal = projectId && projectId !== 'sample';
   const [galleries, setGalleries] = useState<any[]>([]);
   const [timelineToken, setTimelineToken] = useState<string | null>(null);
+  const [reviews, setReviews] = useState<any | null>(null);
+  const loadReviews = () => { if (!isReal) return; apiRequest(`/api/projects/${encodeURIComponent(projectId)}/client-reviews`).then((r: any) => setReviews(r || null)).catch(() => {}); };
 
   useEffect(() => {
     if (!isReal) return;
@@ -36,7 +38,15 @@ const KundevisningTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     apiRequest(`/api/wedding/timeline/project/${encodeURIComponent(projectId)}`)
       .then((r: any) => { const t = r?.clientAccessToken; if (t) setTimelineToken(t); })
       .catch(() => {});
+    loadReviews();
   }, [projectId, isReal]);
+
+  const respondToReview = async (commentId: string) => {
+    const response = window.prompt('Svar til klienten:'); if (!response) return;
+    try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/client-reviews/${commentId}/respond`, { method: 'POST', body: { response: response.trim() } }); loadReviews(); }
+    catch (e: any) { window.alert(e?.message || 'Kunne ikke svare'); }
+  };
+  const reviewIcon = (type: string) => type === 'heart' || type === 'love' || type === 'favorite' ? '❤️' : type === 'change' || type === 'change-request' || type === 'revision' ? '✏️' : type === 'approval' || type === 'approve' ? '✅' : '💬';
 
   const timelinePath = (isReal && timelineToken) ? `/wedding/timeline/${timelineToken}` : (!isReal ? '/wedding/timeline/demo' : null);
 
@@ -68,6 +78,51 @@ const KundevisningTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           </Typography>
         </Stack>
       </WsCard>
+
+      {/* Klient-review — hjerter/kommentarer/endringer fra showcasen */}
+      {(isReal ? reviews?.hasGallery : true) && (() => {
+        const r = isReal ? reviews : { counts: { heart: 24, comment: 7, change: 2 }, selections: { selected: 38, submitted: 1 }, comments: [
+          { id: 'c1', clientName: 'Sara', type: 'heart', comment: 'Elsker denne!', thumbUrl: null, at: new Date().toISOString(), photographerResponse: null },
+          { id: 'c2', clientName: 'Amir', type: 'change', comment: 'Kan vi få denne litt lysere?', thumbUrl: null, at: new Date().toISOString(), photographerResponse: null },
+        ] };
+        const c = r?.counts || {}; const sel = r?.selections || {}; const comments = r?.comments || [];
+        const totalC = Object.values(c).reduce((a: any, b: any) => a + (b || 0), 0);
+        if (isReal && totalC === 0 && (sel.selected || 0) === 0) return null;
+        return (
+          <WsCard sx={{ mb: 2 }}>
+            <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.25 }}>
+              <Typography sx={{ fontSize: 14 }}>💬</Typography>
+              <Typography sx={{ fontSize: 14, fontWeight: 700 }}>Klient-tilbakemeldinger</Typography>
+              <Box sx={{ flex: 1 }} />
+              <Stack direction="row" spacing={1}>
+                {(c.heart || c.love || c.favorite) ? <Typography sx={{ fontSize: 12, color: ws.textDim }}>❤️ {(c.heart || 0) + (c.love || 0) + (c.favorite || 0)}</Typography> : null}
+                {(c.comment) ? <Typography sx={{ fontSize: 12, color: ws.textDim }}>💬 {c.comment}</Typography> : null}
+                {(c.change || c['change-request'] || c.revision) ? <Typography sx={{ fontSize: 12, color: ws.amber }}>✏️ {(c.change || 0) + (c['change-request'] || 0) + (c.revision || 0)}</Typography> : null}
+                {(sel.selected) ? <Typography sx={{ fontSize: 12, color: ws.green }}>✓ {sel.selected} valgt{sel.submitted ? ' (innsendt)' : ''}</Typography> : null}
+              </Stack>
+            </Stack>
+            <Stack spacing={1}>
+              {comments.slice(0, 8).map((cm: any) => (
+                <Stack key={cm.id} direction="row" spacing={1.25} alignItems="flex-start" sx={{ p: 1, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.panelAlt, border: `1px solid ${ws.borderSoft}` }}>
+                  {cm.thumbUrl
+                    ? <Box sx={{ width: 38, height: 38, borderRadius: 1, background: `center/cover no-repeat url(${cm.thumbUrl})`, flexShrink: 0 }} />
+                    : <Box sx={{ width: 38, height: 38, borderRadius: 1, bgcolor: 'rgba(255,255,255,0.06)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>{reviewIcon(cm.type)}</Box>}
+                  <Box sx={{ minWidth: 0, flex: 1 }}>
+                    <Stack direction="row" spacing={0.75} alignItems="center">
+                      <Typography sx={{ fontSize: 12.5, fontWeight: 700 }}>{cm.clientName}</Typography>
+                      <Typography sx={{ fontSize: 13 }}>{reviewIcon(cm.type)}</Typography>
+                    </Stack>
+                    {cm.comment && <Typography sx={{ fontSize: 12.5, color: ws.text, mt: 0.25 }}>«{cm.comment}»</Typography>}
+                    {cm.photographerResponse
+                      ? <Box sx={{ mt: 0.75, pl: 1, borderLeft: `2px solid ${ws.accentBorder}` }}><Typography sx={{ fontSize: 11.5, color: ws.textDim }}><b>Svar:</b> {cm.photographerResponse}</Typography></Box>
+                      : isReal && <Button size="small" onClick={() => respondToReview(cm.id)} sx={{ mt: 0.5, color: ws.accent, textTransform: 'none', fontSize: 11.5, p: 0, minWidth: 0 }}>Svar</Button>}
+                  </Box>
+                </Stack>
+              ))}
+            </Stack>
+          </WsCard>
+        );
+      })()}
 
       {/* Wedding timeline — kundevisning (run-of-day) */}
       {timelinePath && (

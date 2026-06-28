@@ -4653,6 +4653,36 @@ export function getPhotoEnhancerJobStatusSnapshot(jobId: string): {
   return { state, enhancedUrl };
 }
 
+/// Workspace-bro: list in-memory enhancer-jobber for ETT prosjekt, i en
+/// kompakt form Team Workspace sin enhance-status kan flette med DB-tabellen
+/// (`photo_enhancement_jobs`). Capture-deliver/workspace-jobber lever bare i
+/// minnet (photoEnhancerJobs), så uten dette ville nyutløste jobber være
+/// usynlige i workspacet til de evt. persisteres.
+export function listPhotoEnhancerJobsByProjectId(projectId: string): Array<{
+  id: string; projectId: string; status: string; progress: number;
+  fileName: string | null; enhancedUrl: string | null; thumbUrl: string | null;
+  preset: string | null; createdAt: string | null; completedAt: string | null;
+}> {
+  if (!projectId) return [];
+  const out: Array<ReturnType<typeof toCompact>> = [];
+  const toCompact = (job: PhotoEnhancerQueuedJob) => ({
+    id: job.id,
+    projectId: job.projectId,
+    status: job.status,
+    progress: typeof job.progress === "number" ? job.progress : 0,
+    fileName: job.source?.fileName ?? null,
+    enhancedUrl: job.artifacts?.find((a) => a.type === "enhanced-image")?.url ?? null,
+    thumbUrl: job.artifacts?.find((a) => { const t = a.type as string; return t === "preview" || t === "thumbnail"; })?.url ?? null,
+    preset: job.preset ?? null,
+    createdAt: job.createdAt ?? null,
+    completedAt: job.completedAt ?? null,
+  });
+  for (const job of photoEnhancerJobs.values()) {
+    if (job.projectId === projectId) out.push(toCompact(job));
+  }
+  return out;
+}
+
 export function createPhotoEnhancerRouter(pool?: Pool) {
   const router = express.Router();
 
