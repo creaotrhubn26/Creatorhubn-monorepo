@@ -25,6 +25,7 @@ import { canAccessProject } from "./project-team-routes";
 import { signAssetReadUrl } from "./capture-upload-service";
 import { archiveToRoleRoomB2, presignRoleRoomB2Download, getFromRoleRoomB2, slugifyForKey } from "./b2-archive-helper";
 import { Vibrant } from "node-vibrant/node";
+import { GEN_MODELS, publicModelList, isAiWhitelisted, aiDailyCapUsd, falConfigured, falSubmit, falPoll } from "./generative-media";
 import { createGoogleMeetLink } from "./google-meet";
 import { classifySession } from "./capture-culling-service";
 import { enqueuePhotoEnhancerJobFromBuffer, listPhotoEnhancerJobsByProjectId } from "./photo-enhancer-routes";
@@ -1162,6 +1163,164 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       if (!upd.rows.length) return res.status(404).json({ error: "not_found" });
       res.json({ ok: true });
     } catch (e) { console.error("PATCH photo-comments", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  // ─────────── Generativ AI (fal) — pilot: Nano Banana 2-redigering i Photo ───
+  // Gjennomtenkt styring: per-prosjekt SAMTYKKE (persondata→tredjepart utenfor
+  // EØS) + WHITELIST (pilot) + global DAGSTAK-kostnadsbrems. Async via fal queue,
+  // resultat lagres til B2 (permanent), kilde+resultat presignes til Før/Etter.
+  const ensureGenSchema = async () => {
+    await pool.query(`CREATE TABLE IF NOT EXISTS generative_ai_jobs (
+      id uuid PRIMARY KEY, project_id uuid NOT NULL, user_id varchar, user_email varchar,
+      model varchar, kind varchar, status varchar DEFAULT 'queued', provider varchar,
+      fal_request_id varchar, response_url text, input jsonb, source_asset_id uuid,
+      output_b2_key text, output_url_temp text, est_cost_usd numeric DEFAULT 0,
+      error text, created_at timestamptz DEFAULT now(), completed_at timestamptz)`).catch(() => {});
+    await pool.query(`CREATE TABLE IF NOT EXISTS project_ai_consent (
+      project_id varchar PRIMARY KEY, consented boolean DEFAULT false,
+      consented_by varchar, consented_at timestamptz)`).catch(() => {});
+  };
+  const userIdentity = async (uid: string) => {
+    const r = await pool.query(`SELECT email, role FROM users WHERE id = $1 LIMIT 1`, [uid]).catch(() => ({ rows: [] }));
+    return { email: r.rows[0]?.email || null, role: r.rows[0]?.role || null };
+  };
+  const spentTodayUsd = async (): Promise<number> => {
+    const r = await pool.query(`SELECT COALESCE(SUM(est_cost_usd),0)::float s FROM generative_ai_jobs WHERE created_at::date = NOW()::date`).catch(() => ({ rows: [{ s: 0 }] }));
+    return Number(r.rows[0]?.s || 0);
+  };
+
+  // Konfig: hva er tillatt for denne brukeren + samtykke-status + budsjett.
+  app.get("/api/projects/:projectId/ai/config", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureGenSchema();
+      const me = await userIdentity(uid);
+      const consent = await pool.query(`SELECT consented, consented_by, consented_at FROM project_ai_consent WHERE project_id = $1`, [req.params.projectId]).catch(() => ({ rows: [] }));
+      res.json({
+        enabled: falConfigured(),
+        whitelisted: isAiWhitelisted(me.email, me.role),
+        consent: consent.rows[0] ? { consented: !!consent.rows[0].consented, by: consent.rows[0].consented_by, at: consent.rows[0].consented_at } : { consented: false },
+        dailyCapUsd: aiDailyCapUsd(),
+        spentTodayUsd: await spentTodayUsd(),
+        models: publicModelList(),
+      });
+    } catch (e) { console.error("GET ai/config", e); res.json({ enabled: false }); }
+  });
+
+  // Sett/oppdater per-prosjekt-samtykke (persondata til tredjeparts AI).
+  app.put("/api/projects/:projectId/ai/consent", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureGenSchema();
+      const me = await userIdentity(uid);
+      const consented = !!req.body?.consented;
+      await pool.query(
+        `INSERT INTO project_ai_consent (project_id, consented, consented_by, consented_at)
+         VALUES ($1,$2,$3,NOW())
+         ON CONFLICT (project_id) DO UPDATE SET consented=EXCLUDED.consented, consented_by=EXCLUDED.consented_by, consented_at=NOW()`,
+        [req.params.projectId, consented, me.email || uid],
+      );
+      res.json({ ok: true, consented });
+    } catch (e) { console.error("PUT ai/consent", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  // Start AI-bilde-redigering på ett capture-bilde (Nano Banana 2).
+  app.post("/api/projects/:projectId/ai/image-edit", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureGenSchema();
+      const pid = req.params.projectId;
+      const me = await userIdentity(uid);
+      if (!falConfigured()) return res.status(503).json({ error: "fal_not_configured" });
+      if (!isAiWhitelisted(me.email, me.role)) return res.status(403).json({ error: "not_whitelisted", message: "AI-redigering er begrenset i pilot." });
+      const model = GEN_MODELS["nano-banana-2-edit"];
+      // Samtykke-gate (persondata → tredjepart).
+      const consent = await pool.query(`SELECT consented FROM project_ai_consent WHERE project_id = $1`, [pid]).catch(() => ({ rows: [] }));
+      if (!consent.rows[0]?.consented) return res.status(409).json({ error: "consent_required", message: "Krever samtykke: kundebilder sendes til tredjeparts AI utenfor EØS." });
+      // Dagstak-brems.
+      const spent = await spentTodayUsd();
+      if (spent + model.estCostUsd > aiDailyCapUsd()) return res.status(429).json({ error: "daily_cap", message: `Dagstak nådd ($${aiDailyCapUsd()}). Prøv igjen i morgen.` });
+      const prompt = String(req.body?.prompt || "").trim().slice(0, 1000);
+      const assetId = req.body?.assetId;
+      if (!prompt || !assetId) return res.status(400).json({ error: "assetId_and_prompt_required" });
+      // Kilde fra B2 → presignet URL (fal henter den; 1t holder i kø).
+      const a = await pool.query(`SELECT full_key, preview_key, original_filename FROM capture_assets WHERE id = $1`, [assetId]).catch(() => ({ rows: [] }));
+      const srcKey = a.rows[0]?.full_key || a.rows[0]?.preview_key;
+      if (!srcKey) return res.status(404).json({ error: "asset_not_found" });
+      const srcUrl = await signAssetReadUrl(srcKey);
+      if (!srcUrl) return res.status(503).json({ error: "source_unavailable" });
+      const sub = await falSubmit(model.falPath, { prompt, image_urls: [srcUrl], num_images: 1, output_format: "png" });
+      if (sub.error || !sub.requestId) return res.status(502).json({ error: sub.error || "fal_submit_failed" });
+      const id = crypto.randomUUID();
+      await pool.query(
+        `INSERT INTO generative_ai_jobs (id, project_id, user_id, user_email, model, kind, status, provider, fal_request_id, response_url, input, source_asset_id, est_cost_usd)
+         VALUES ($1,$2,$3,$4,$5,$6,'queued',$7,$8,$9,$10::jsonb,$11,$12)`,
+        [id, pid, uid, me.email, model.key, model.kind, model.provider, sub.requestId, sub.responseUrl || null, JSON.stringify({ prompt }), assetId, model.estCostUsd],
+      );
+      res.status(202).json({ jobId: id, status: "queued" });
+    } catch (e) { console.error("POST ai/image-edit", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  // Poll en AI-jobb — finaliserer ved fullføring (laster fal-resultat til B2).
+  app.get("/api/projects/:projectId/ai/jobs/:jobId", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const pid = req.params.projectId;
+      const j = await pool.query(`SELECT * FROM generative_ai_jobs WHERE id = $1 AND project_id = $2`, [req.params.jobId, pid]).catch(() => ({ rows: [] }));
+      const job = j.rows[0];
+      if (!job) return res.status(404).json({ error: "not_found" });
+      const beforeUrl = job.source_asset_id ? await (async () => {
+        const a = await pool.query(`SELECT preview_key, full_key FROM capture_assets WHERE id = $1`, [job.source_asset_id]).catch(() => ({ rows: [] }));
+        const k = a.rows[0]?.preview_key || a.rows[0]?.full_key; return k ? signAssetReadUrl(k) : null;
+      })() : null;
+      // Allerede ferdig?
+      if (job.status === "completed" && job.output_b2_key) {
+        return res.json({ status: "completed", beforeUrl, afterUrl: await presignRoleRoomB2Download(job.output_b2_key, undefined, 3600), prompt: job.input?.prompt });
+      }
+      if (job.status === "failed") return res.json({ status: "failed", error: job.error, beforeUrl });
+      // Poll fal.
+      if (!job.response_url) return res.json({ status: job.status || "queued", beforeUrl });
+      const p = await falPoll(job.response_url);
+      if (p.status !== "COMPLETED") {
+        if (p.status === "ERROR") { await pool.query(`UPDATE generative_ai_jobs SET status='failed', error=$1 WHERE id=$2`, [p.error || "fal_error", job.id]).catch(() => {}); return res.json({ status: "failed", error: p.error, beforeUrl }); }
+        await pool.query(`UPDATE generative_ai_jobs SET status='running' WHERE id=$1`, [job.id]).catch(() => {});
+        return res.json({ status: "running", beforeUrl });
+      }
+      // Ferdig → hent fal-output, lagre til B2 (permanent).
+      const outUrl = p.result?.images?.[0]?.url;
+      if (!outUrl) { await pool.query(`UPDATE generative_ai_jobs SET status='failed', error='no_output' WHERE id=$1`, [job.id]).catch(() => {}); return res.json({ status: "failed", error: "no_output", beforeUrl }); }
+      let b2Key: string | null = null;
+      try {
+        const r = await fetch(outUrl);
+        if (r.ok) {
+          const buf = Buffer.from(await r.arrayBuffer());
+          const ct = r.headers.get("content-type") || "image/png";
+          const key = `workspace/${pid}/ai-edits/${job.id}.${ct.includes("jpeg") ? "jpg" : "png"}`;
+          const stored = await archiveToRoleRoomB2(key, buf, ct);
+          if (stored) b2Key = key;
+        }
+      } catch { /* fallback til temp-url */ }
+      await pool.query(
+        `UPDATE generative_ai_jobs SET status='completed', output_b2_key=$1, output_url_temp=$2, completed_at=NOW() WHERE id=$3`,
+        [b2Key, b2Key ? null : outUrl, job.id],
+      ).catch(() => {});
+      res.json({ status: "completed", beforeUrl, afterUrl: b2Key ? await presignRoleRoomB2Download(b2Key, undefined, 3600) : outUrl, prompt: job.input?.prompt });
+    } catch (e) { console.error("GET ai/jobs/:id", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  // Siste AI-jobber for prosjektet (galleri av AI-redigeringer).
+  app.get("/api/projects/:projectId/ai/jobs", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureGenSchema();
+      const r = await pool.query(`SELECT id, model, kind, status, source_asset_id, output_b2_key, output_url_temp, input, created_at, completed_at FROM generative_ai_jobs WHERE project_id = $1 ORDER BY created_at DESC LIMIT 30`, [req.params.projectId]).catch(() => ({ rows: [] }));
+      const jobs = await Promise.all(r.rows.map(async (j: any) => ({
+        id: j.id, model: j.model, kind: j.kind, status: j.status, sourceAssetId: j.source_asset_id,
+        prompt: j.input?.prompt || null, createdAt: j.created_at, completedAt: j.completed_at,
+        afterUrl: j.output_b2_key ? await presignRoleRoomB2Download(j.output_b2_key, undefined, 3600) : (j.output_url_temp || null),
+      })));
+      res.json({ jobs });
+    } catch (e) { console.error("GET ai/jobs", e); res.json({ jobs: [] }); }
   });
 
   // ─────────── Video Room — produsent-side frame.io-review (versjoner + ───────

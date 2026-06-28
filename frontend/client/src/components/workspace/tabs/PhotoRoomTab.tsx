@@ -18,7 +18,8 @@ import Block from '@mui/icons-material/Block';
 import Send from '@mui/icons-material/Send';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
-import { WsCard, WsTag } from '../ui';
+import AutoFixHigh from '@mui/icons-material/AutoFixHigh';
+import { WsCard, WsTag, WsModal } from '../ui';
 
 const STATUS_META: any = {
   approved: { label: 'Godkjent', tone: 'green', dot: ws.green, icon: '✓' },
@@ -38,12 +39,20 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [cScope, setCScope] = useState('internal');
   const [enhanceMap, setEnhanceMap] = useState<Record<string, any>>({});
   const [baPos, setBaPos] = useState(50);
+  // Generativ AI (Nano Banana 2-redigering)
+  const [aiCfg, setAiCfg] = useState<any | null>(null);
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [aiJob, setAiJob] = useState<any | null>(null); // {status, beforeUrl, afterUrl}
+  const [aiBusy, setAiBusy] = useState(false);
+  const loadAiCfg = () => { if (isReal) apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/config`).then((r: any) => setAiCfg(r || null)).catch(() => {}); };
 
   const load = () => {
     if (!isReal) { setLoading(false); return; }
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/photo-review`)
       .then((r: any) => { setData(r || null); if (!selId && r?.assets?.length) setSelId(r.assets[0].id); })
       .catch(() => {}).finally(() => setLoading(false));
+    loadAiCfg();
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/photo-comments`).then((r: any) => setComments(r?.comments || [])).catch(() => {});
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/enhance-status`).then((r: any) => {
       const m: Record<string, any> = {};
@@ -83,6 +92,31 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     try { const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/photo-review/approve`, { method: 'POST', body: {} }); window.alert(`${r?.approved || 0} bilder godkjent.`); load(); }
     catch (e: any) { window.alert(e?.message || 'Kunne ikke godkjenne'); }
   };
+
+  const setConsent = async (consented: boolean) => {
+    try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/consent`, { method: 'PUT', body: { consented } }); loadAiCfg(); }
+    catch (e: any) { window.alert(e?.message || 'Kunne ikke lagre samtykke'); }
+  };
+  const QUICK_PROMPTS = ['Fjern bakgrunnen, behold personen', 'Demp sterke reflekser i bakgrunnen', 'Fjern uønskede objekter i bakgrunnen', 'Gjør lyset varmere og mykere'];
+  const openAi = () => { setAiPrompt(''); setAiJob(null); setBaPos(50); setAiOpen(true); };
+  const startEdit = async () => {
+    if (!sel?.id || !aiPrompt.trim() || aiBusy) return;
+    setAiBusy(true); setAiJob({ status: 'queued' });
+    try {
+      const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/image-edit`, { method: 'POST', body: { assetId: sel.id, prompt: aiPrompt.trim() } });
+      if (!r?.jobId) throw new Error('Kunne ikke starte');
+      // Poll til ferdig (maks ~60s).
+      for (let i = 0; i < 30; i++) {
+        await new Promise((res) => setTimeout(res, 2500));
+        const s: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/jobs/${r.jobId}`);
+        setAiJob(s);
+        if (s.status === 'completed' || s.status === 'failed') break;
+      }
+      loadAiCfg();
+    } catch (e: any) { window.alert(e?.message || 'AI-redigering feilet'); setAiJob({ status: 'failed' }); }
+    finally { setAiBusy(false); }
+  };
+  const aiAvailable = aiCfg?.enabled && aiCfg?.whitelisted;
 
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', py: 10 }}><CircularProgress sx={{ color: ws.accent }} /></Box>;
   if (isReal && !data?.hasSession) return (
@@ -172,6 +206,8 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
                     variant={sel.reviewStatus === st ? 'contained' : 'outlined'}
                     sx={{ textTransform: 'none', fontWeight: 600, fontSize: 12, color: sel.reviewStatus === st ? '#06281c' : col, borderColor: col, bgcolor: sel.reviewStatus === st ? col : 'transparent', '&:hover': { borderColor: col, bgcolor: sel.reviewStatus === st ? col : `${col}22` } }}>{label}</Button>
                 ))}
+                <Box sx={{ flex: 1 }} />
+                {aiAvailable && <Button size="small" startIcon={<AutoFixHigh sx={{ fontSize: 16 }} />} onClick={openAi} sx={{ textTransform: 'none', fontWeight: 700, fontSize: 12, color: ws.accentContrast, bgcolor: ws.accent, '&:hover': { bgcolor: ws.accentHover } }}>AI-rediger</Button>}
               </Stack>
             </WsCard>
           )}
@@ -269,6 +305,61 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           <Button variant="contained" startIcon={<CheckCircle />} onClick={approveSelection} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Godkjenn utvalg</Button>
         </Stack>
       )}
+
+      {/* AI-rediger (Nano Banana 2) */}
+      <WsModal open={aiOpen} onClose={() => { if (!aiBusy) setAiOpen(false); }} title={`AI-rediger — ${sel?.filename || 'bilde'}`} maxWidth="sm">
+        {!aiCfg?.consent?.consented ? (
+          <Stack spacing={2}>
+            <Box sx={{ p: 1.5, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.amberSoft, border: `1px solid ${ws.amber}55` }}>
+              <Typography sx={{ fontSize: 13, fontWeight: 700, color: ws.amber, mb: 0.5 }}>⚠️ Samtykke kreves</Typography>
+              <Typography sx={{ fontSize: 12.5, color: ws.text }}>AI-redigering sender kundens bilde til en tredjeparts AI-modell (Google Nano Banana 2) som kan behandle data utenfor EØS. Bekreft at du har grunnlag for dette per prosjekt før du fortsetter.</Typography>
+            </Box>
+            <Stack direction="row" justifyContent="flex-end" spacing={1}>
+              <Button onClick={() => setAiOpen(false)} sx={{ color: ws.textDim, textTransform: 'none' }}>Avbryt</Button>
+              <Button variant="contained" onClick={() => setConsent(true)} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Samtykk og fortsett</Button>
+            </Stack>
+          </Stack>
+        ) : aiJob && (aiJob.status === 'completed' || aiJob.afterUrl) ? (
+          <Stack spacing={2}>
+            <Box sx={{ position: 'relative', width: '100%', aspectRatio: '3 / 2', borderRadius: `${ws.radiusSm}px`, overflow: 'hidden', bgcolor: '#000' }}>
+              <Box component="img" src={aiJob.afterUrl} sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }} />
+              {aiJob.beforeUrl && <Box sx={{ position: 'absolute', inset: 0, clipPath: `inset(0 ${100 - baPos}% 0 0)` }}><Box component="img" src={aiJob.beforeUrl} sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }} /></Box>}
+              <Box sx={{ position: 'absolute', top: 0, bottom: 0, left: `${baPos}%`, width: '2px', bgcolor: ws.accent }} />
+              <Box sx={{ position: 'absolute', top: 8, left: 8, px: 1, py: 0.25, borderRadius: 1, bgcolor: 'rgba(0,0,0,0.6)', fontSize: 10.5, fontWeight: 700, color: '#fff' }}>FØR</Box>
+              <Box sx={{ position: 'absolute', top: 8, right: 8, px: 1, py: 0.25, borderRadius: 1, bgcolor: 'rgba(255,140,0,0.85)', fontSize: 10.5, fontWeight: 700, color: ws.accentContrast }}>ETTER (AI)</Box>
+            </Box>
+            <input type="range" min={0} max={100} value={baPos} onChange={(e) => setBaPos(Number(e.target.value))} style={{ width: '100%', accentColor: ws.accent }} />
+            <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <Typography sx={{ fontSize: 11.5, color: ws.textFaint }}>«{aiJob.prompt}»</Typography>
+              <Stack direction="row" spacing={1}>
+                <Button size="small" onClick={() => { setAiJob(null); }} sx={{ color: ws.textDim, textTransform: 'none' }}>Ny redigering</Button>
+                <Button size="small" variant="contained" onClick={() => window.open(aiJob.afterUrl, '_blank')} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Åpne / last ned</Button>
+              </Stack>
+            </Stack>
+          </Stack>
+        ) : aiBusy || (aiJob && aiJob.status !== 'failed') ? (
+          <Stack spacing={2} alignItems="center" sx={{ py: 3 }}>
+            <CircularProgress sx={{ color: ws.accent }} />
+            <Typography sx={{ fontSize: 13, color: ws.textDim }}>AI redigerer bildet… ({aiJob?.status === 'running' ? 'kjører' : 'i kø'})</Typography>
+          </Stack>
+        ) : (
+          <Stack spacing={2}>
+            {aiJob?.status === 'failed' && <Typography sx={{ fontSize: 12.5, color: ws.red }}>Redigeringen feilet. Prøv en annen instruksjon.</Typography>}
+            <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Beskriv hva AI-en skal gjøre med bildet (Nano Banana 2):</Typography>
+            <TextField value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} fullWidth multiline minRows={2} size="small" placeholder="f.eks. Fjern søppelbøtta i bakgrunnen" />
+            <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
+              {QUICK_PROMPTS.map((q) => <Box key={q} onClick={() => setAiPrompt(q)} sx={{ px: 1, py: 0.4, borderRadius: 2, cursor: 'pointer', fontSize: 11, color: ws.accent, bgcolor: ws.accentSoft, border: `1px solid ${ws.accentBorder}` }}>{q}</Box>)}
+            </Stack>
+            <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <Typography sx={{ fontSize: 10.5, color: ws.textFaint }}>~${(aiCfg?.models?.[0]?.estCostUsd ?? 0.06).toFixed(2)}/bilde · brukt i dag ${(aiCfg?.spentTodayUsd ?? 0).toFixed(2)}/${aiCfg?.dailyCapUsd ?? 20}</Typography>
+              <Stack direction="row" spacing={1}>
+                <Button onClick={() => setAiOpen(false)} sx={{ color: ws.textDim, textTransform: 'none' }}>Avbryt</Button>
+                <Button variant="contained" disabled={!aiPrompt.trim() || aiBusy} onClick={startEdit} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Rediger med AI</Button>
+              </Stack>
+            </Stack>
+          </Stack>
+        )}
+      </WsModal>
     </Box>
   );
 };
