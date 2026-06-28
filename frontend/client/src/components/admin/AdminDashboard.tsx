@@ -124,6 +124,7 @@ import AdminConfigStatusCard from './AdminConfigStatusCard';
 import AdminPaymentStatusCard from './AdminPaymentStatusCard';
 import AdminAnalyticsHub from './AdminAnalyticsHub';
 import AdminAICostDashboard from './AdminAICostDashboard';
+import GenerativeAiAdminPanel from './GenerativeAiAdminPanel';
 import AdminDesignTokensPanel from './AdminDesignTokensPanel';
 import BillingManagementPanel from './BillingManagementPanel';
 import UserCostOverviewPanel from './UserCostOverviewPanel';
@@ -1397,6 +1398,7 @@ export default function AdminDashboard({
     { id: 'marketplace-apps', label: 'Marketplace-apper', icon: Storefront },
     { id: 'analytics-hub', label: 'Analytics Hub', icon: Assessment },
     { id: 'ai-cost', label: 'AI-kostnader', icon: Psychology },
+    { id: 'generative-ai', label: 'Generativ AI', icon: Psychology },
     { id: 'design-tokens', label: 'Design-tokens', icon: Palette },
     { id: 'reports', label: 'Rapporter', icon: Assessment },
     { id: 'academy', label: 'Academy', icon: School },
@@ -3573,6 +3575,8 @@ export default function AdminDashboard({
         return <AdminAnalyticsHub />;
       case 'ai-cost':
         return <AdminAICostDashboard />;
+      case 'generative-ai':
+        return <GenerativeAiAdminPanel />;
       case 'design-tokens':
         return <AdminDesignTokensPanel />;
       case 'reports':

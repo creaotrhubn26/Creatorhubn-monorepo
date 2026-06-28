@@ -25,7 +25,7 @@ import { canAccessProject } from "./project-team-routes";
 import { signAssetReadUrl } from "./capture-upload-service";
 import { archiveToRoleRoomB2, presignRoleRoomB2Download, getFromRoleRoomB2, slugifyForKey } from "./b2-archive-helper";
 import { Vibrant } from "node-vibrant/node";
-import { GEN_MODELS, publicModelList, isAiWhitelisted, aiDailyCapUsd, falConfigured, falSubmit, falPoll } from "./generative-media";
+import { GEN_MODELS, publicModelList, getGenSettings, isWhitelisted, invalidateGenSettings, emitGenAiMeter, falConfigured, falSubmit, falPoll } from "./generative-media";
 import { createGoogleMeetLink } from "./google-meet";
 import { classifySession } from "./capture-culling-service";
 import { enqueuePhotoEnhancerJobFromBuffer, listPhotoEnhancerJobsByProjectId } from "./photo-enhancer-routes";
@@ -1195,12 +1195,14 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     try {
       await ensureGenSchema();
       const me = await userIdentity(uid);
+      const settings = await getGenSettings(pool);
       const consent = await pool.query(`SELECT consented, consented_by, consented_at FROM project_ai_consent WHERE project_id = $1`, [req.params.projectId]).catch(() => ({ rows: [] }));
       res.json({
-        enabled: falConfigured(),
-        whitelisted: isAiWhitelisted(me.email, me.role),
+        enabled: settings.enabled && falConfigured(),
+        whitelisted: settings.enabled && isWhitelisted(settings, me.email, me.role),
+        billingMode: settings.billingMode,
         consent: consent.rows[0] ? { consented: !!consent.rows[0].consented, by: consent.rows[0].consented_by, at: consent.rows[0].consented_at } : { consented: false },
-        dailyCapUsd: aiDailyCapUsd(),
+        dailyCapUsd: settings.dailyCapUsd,
         spentTodayUsd: await spentTodayUsd(),
         models: publicModelList(),
       });
@@ -1231,15 +1233,16 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       await ensureGenSchema();
       const pid = req.params.projectId;
       const me = await userIdentity(uid);
-      if (!falConfigured()) return res.status(503).json({ error: "fal_not_configured" });
-      if (!isAiWhitelisted(me.email, me.role)) return res.status(403).json({ error: "not_whitelisted", message: "AI-redigering er begrenset i pilot." });
+      const settings = await getGenSettings(pool);
+      if (!settings.enabled || !falConfigured()) return res.status(503).json({ error: "ai_disabled" });
+      if (!isWhitelisted(settings, me.email, me.role)) return res.status(403).json({ error: "not_whitelisted", message: "AI-redigering er ikke aktivert for din konto." });
       const model = GEN_MODELS["nano-banana-2-edit"];
       // Samtykke-gate (persondata → tredjepart).
       const consent = await pool.query(`SELECT consented FROM project_ai_consent WHERE project_id = $1`, [pid]).catch(() => ({ rows: [] }));
       if (!consent.rows[0]?.consented) return res.status(409).json({ error: "consent_required", message: "Krever samtykke: kundebilder sendes til tredjeparts AI utenfor EØS." });
-      // Dagstak-brems.
+      // Dagstak-brems (global sikkerhets-bryter).
       const spent = await spentTodayUsd();
-      if (spent + model.estCostUsd > aiDailyCapUsd()) return res.status(429).json({ error: "daily_cap", message: `Dagstak nådd ($${aiDailyCapUsd()}). Prøv igjen i morgen.` });
+      if (spent + model.estCostUsd > settings.dailyCapUsd) return res.status(429).json({ error: "daily_cap", message: `Dagstak nådd ($${settings.dailyCapUsd}). Prøv igjen i morgen.` });
       const prompt = String(req.body?.prompt || "").trim().slice(0, 1000);
       const assetId = req.body?.assetId;
       if (!prompt || !assetId) return res.status(400).json({ error: "assetId_and_prompt_required" });
@@ -1304,6 +1307,9 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
         `UPDATE generative_ai_jobs SET status='completed', output_b2_key=$1, output_url_temp=$2, completed_at=NOW() WHERE id=$3`,
         [b2Key, b2Key ? null : outUrl, job.id],
       ).catch(() => {});
+      // Sovende Stripe-metering: no-op i free-modus / til måler-env satt. Idempotent
+      // nok i praksis (kjøres ved første fullførings-poll når status går queued→completed).
+      try { await emitGenAiMeter(pool, { userId: job.user_id, valueUsd: Number(job.est_cost_usd || 0), settings: await getGenSettings(pool) }); } catch { /* metering skal aldri blokkere resultatet */ }
       res.json({ status: "completed", beforeUrl, afterUrl: b2Key ? await presignRoleRoomB2Download(b2Key, undefined, 3600) : outUrl, prompt: job.input?.prompt });
     } catch (e) { console.error("GET ai/jobs/:id", e); res.status(500).json({ error: "failed" }); }
   });
@@ -1321,6 +1327,60 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       })));
       res.json({ jobs });
     } catch (e) { console.error("GET ai/jobs", e); res.json({ jobs: [] }); }
+  });
+
+  // ─────────── Admin: generativ-AI-innstillinger (aktiver/styr fra dashboard) ──
+  // super_admin-gatet (auth uten prosjekt). Lar admin skru av/på, bytte billing-
+  // modus (gratis-whitelist ↔ metered), sette dagstak/whitelist/kvote — uten env.
+  const adminGuard = async (req: any, res: any): Promise<string | null> => {
+    const session = requireUserSession(req, res); if (!session) return null;
+    const { role } = await userIdentity(session.userId);
+    if (role !== "super_admin") { res.status(403).json({ error: "admin_only" }); return null; }
+    return session.userId;
+  };
+  app.get("/api/admin/generative-ai-settings", async (req, res) => {
+    const uid = await adminGuard(req, res); if (!uid) return;
+    try {
+      const s = await getGenSettings(pool);
+      const today = await spentTodayUsd();
+      res.json({
+        settings: s,
+        falConfigured: falConfigured(),
+        meterConfigured: !!process.env.STRIPE_OVERAGE_GENAI_METER_EVENT_NAME,
+        spentTodayUsd: today,
+        models: publicModelList(),
+      });
+    } catch (e) { console.error("GET admin genai-settings", e); res.status(500).json({ error: "failed" }); }
+  });
+  app.put("/api/admin/generative-ai-settings", async (req, res) => {
+    const uid = await adminGuard(req, res); if (!uid) return;
+    try {
+      await getGenSettings(pool); // sikrer at tabellen finnes
+      const me = await userIdentity(uid);
+      const b = req.body || {};
+      const whitelist = Array.isArray(b.whitelist) ? b.whitelist.map((s: any) => String(s).trim().toLowerCase()).filter(Boolean) : undefined;
+      await pool.query(
+        `INSERT INTO generative_ai_settings (id, enabled, billing_mode, daily_cap_usd, whitelist, included_quota, updated_by, updated_at)
+         VALUES (1,$1,$2,$3,$4::jsonb,$5,$6,NOW())
+         ON CONFLICT (id) DO UPDATE SET
+           enabled=COALESCE($1, generative_ai_settings.enabled),
+           billing_mode=COALESCE($2, generative_ai_settings.billing_mode),
+           daily_cap_usd=COALESCE($3, generative_ai_settings.daily_cap_usd),
+           whitelist=COALESCE($4::jsonb, generative_ai_settings.whitelist),
+           included_quota=COALESCE($5, generative_ai_settings.included_quota),
+           updated_by=$6, updated_at=NOW()`,
+        [
+          typeof b.enabled === "boolean" ? b.enabled : null,
+          b.billingMode === "metered" || b.billingMode === "free_whitelist" ? b.billingMode : null,
+          b.dailyCapUsd != null ? Number(b.dailyCapUsd) : null,
+          whitelist ? JSON.stringify(whitelist) : null,
+          b.includedQuota != null ? Number(b.includedQuota) : null,
+          me.email || uid,
+        ],
+      );
+      invalidateGenSettings();
+      res.json({ ok: true, settings: await getGenSettings(pool) });
+    } catch (e) { console.error("PUT admin genai-settings", e); res.status(500).json({ error: "failed" }); }
   });
 
   // ─────────── Video Room — produsent-side frame.io-review (versjoner + ───────
