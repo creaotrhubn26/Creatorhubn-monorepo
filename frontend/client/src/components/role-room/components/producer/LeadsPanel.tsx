@@ -129,13 +129,21 @@ export default function LeadsPanel() {
 
   const queryClient = useQueryClient();
   const [segmentFilter, setSegmentFilter] = useState<Segment | 'alle'>('alle');
-  const setSegment = useMutation({
+  const setSegment = useMutation<{ success?: boolean; error?: string }, Error, { leadId: string; segment: Segment | null }>({
     mutationFn: async (vars: { leadId: string; segment: Segment | null }) =>
       apiRequest('/api/role-room/leads/producer/segment', {
         method: 'POST',
         body: JSON.stringify({ connectionId, leadId: vars.leadId, segment: vars.segment }),
       }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['leads-list', connectionId, formId] }),
+    onSuccess: (data) => {
+      if (data && data.success === false) {
+        setFollowupMsg({ severity: 'error', text: data.error || 'Kunne ikke lagre segmentet.' });
+        return;
+      }
+      queryClient.invalidateQueries({ queryKey: ['leads-list', connectionId, formId] });
+    },
+    onError: (err) =>
+      setFollowupMsg({ severity: 'error', text: err instanceof Error ? err.message : 'Kunne ikke lagre segmentet.' }),
   });
   const autoSegment = useMutation<{ success: boolean; applied?: unknown[]; error?: string }, Error, void>({
     mutationFn: async () =>
@@ -172,21 +180,37 @@ export default function LeadsPanel() {
     queryClient.invalidateQueries({ queryKey: ['leads-list', connectionId, formId] });
     queryClient.invalidateQueries({ queryKey: ['leads-summary', connectionId, formId] });
   };
-  const setOutcome = useMutation({
+  const setOutcome = useMutation<{ success?: boolean; error?: string }, Error, { leadId: string; stage: Stage | null; valueKr?: number }>({
     mutationFn: async (vars: { leadId: string; stage: Stage | null; valueKr?: number }) =>
       apiRequest('/api/role-room/leads/producer/outcome', {
         method: 'POST',
         body: JSON.stringify({ connectionId, formId, leadId: vars.leadId, stage: vars.stage, valueKr: vars.valueKr ?? 0 }),
       }),
-    onSuccess: invalidateRoi,
+    onSuccess: (data) => {
+      if (data && data.success === false) {
+        setFollowupMsg({ severity: 'error', text: data.error || 'Kunne ikke lagre status.' });
+        return;
+      }
+      invalidateRoi();
+    },
+    onError: (err) =>
+      setFollowupMsg({ severity: 'error', text: err instanceof Error ? err.message : 'Kunne ikke lagre status.' }),
   });
-  const setSpend = useMutation({
+  const setSpend = useMutation<{ success?: boolean; error?: string }, Error, number>({
     mutationFn: async (spendKr: number) =>
       apiRequest('/api/role-room/leads/producer/spend', {
         method: 'POST',
         body: JSON.stringify({ connectionId, formId, spendKr }),
       }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['leads-summary', connectionId, formId] }),
+    onSuccess: (data) => {
+      if (data && data.success === false) {
+        setFollowupMsg({ severity: 'error', text: data.error || 'Kunne ikke lagre annonsekostnaden.' });
+        return;
+      }
+      queryClient.invalidateQueries({ queryKey: ['leads-summary', connectionId, formId] });
+    },
+    onError: (err) =>
+      setFollowupMsg({ severity: 'error', text: err instanceof Error ? err.message : 'Kunne ikke lagre annonsekostnaden.' }),
   });
   // Local spend input, seeded from the saved summary; saved on blur.
   const [spendInput, setSpendInput] = useState('');
