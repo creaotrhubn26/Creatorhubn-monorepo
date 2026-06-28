@@ -523,7 +523,7 @@ export async function listDealsAtRisk(
     owner_user_id: string;
   }>(
     `SELECT c.id::text AS lead_id,
-            c.business_name AS name,
+            COALESCE(c.company, c.name) AS name,
             c.pipeline_stage,
             c.deal_amount::text AS deal_amount,
             c.deal_probability,
