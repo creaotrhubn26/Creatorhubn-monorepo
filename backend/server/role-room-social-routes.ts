@@ -71,6 +71,11 @@ import {
 } from "./social-publisher.js";
 import { buildAgentFeedbackInsights } from "./role-room-agent-feedback-insights.js";
 import { getPublishQueueStats } from "./role-room-instagram-publish.js";
+import {
+  checkEndpointRateLimit,
+  RateLimitExceededError,
+} from "./role-room-agent-ratelimit.js";
+import { claimIdempotencyKey } from "./role-room-social-idempotency.js";
 
 interface AdminSession {
   userId: string;
@@ -122,7 +127,7 @@ function ownedSocialAccountIdsSql(userParam: string): string {
  * connection up by id alone (IDOR — one tenant could fetch/persist another
  * tenant's insights using their connection token).
  */
-async function userOwnsSocialConnection(
+export async function userOwnsSocialConnection(
   pool: Pool,
   connectionId: string,
   userId: string,
@@ -142,6 +147,19 @@ async function userOwnsSocialConnection(
     console.error("[social-routes] ownership check failed", error);
     return false;
   }
+}
+
+/** Translate a RateLimitExceededError into an HTTP 429 + Retry-After. */
+function send429(
+  res: express.Response,
+  err: RateLimitExceededError,
+): express.Response {
+  res.setHeader("Retry-After", String(err.retryAfterSeconds));
+  return res.status(429).json({
+    success: false,
+    error: "rate_limited",
+    retryAfterSeconds: err.retryAfterSeconds,
+  });
 }
 
 export function setupRoleRoomSocialRoutes(
@@ -568,6 +586,52 @@ export function setupRoleRoomSocialRoutes(
       return res.status(400).json({ success: false, error: "post.connectionId er påkrevd" });
     }
 
+    // Per-user rate limit — publish hits external Graph APIs + costs quota.
+    try {
+      checkEndpointRateLimit(session.userId, "social_publish", 30);
+    } catch (rlErr) {
+      if (rlErr instanceof RateLimitExceededError) return send429(res, rlErr);
+      throw rlErr;
+    }
+
+    // Ownership gate. For instagram/facebook_page the connectionId is a
+    // role_room_instagram_connections row id; dispatchPublish (FB page) derives
+    // the connection's owner from that row rather than the session, so without
+    // this check one tenant could publish using another tenant's stored Page
+    // token (IDOR). LinkedIn/YouTube resolve the connection from the session
+    // userId directly (connectionId is ignored there), so they're already
+    // user-scoped and don't need this gate.
+    if (platform === "instagram" || platform === "facebook_page") {
+      if (
+        !(await userOwnsSocialConnection(pool, String(post.connectionId), session.userId))
+      ) {
+        return res.status(404).json({ success: false, error: "connection_not_found" });
+      }
+    }
+
+    // Idempotency: if the client supplied a stable key, the first claim wins
+    // and a duplicate short-circuits without re-publishing. Best-effort — a
+    // store error falls through to normal processing.
+    const idempotencyKey =
+      typeof body.idempotencyKey === "string" && body.idempotencyKey.trim()
+        ? body.idempotencyKey.trim()
+        : null;
+    if (idempotencyKey) {
+      try {
+        const claim = await claimIdempotencyKey(
+          pool,
+          "social_publish",
+          session.userId,
+          idempotencyKey,
+        );
+        if (!claim.fresh) {
+          return res.status(200).json({ success: true, deduped: true });
+        }
+      } catch (idemErr) {
+        console.warn("[social-publish] idempotency claim failed", idemErr);
+      }
+    }
+
     const projectId = String(post.projectId || "").trim();
     const feedPlanPostId =
       typeof post.feedPlanPostId === "string" ? post.feedPlanPostId : undefined;
@@ -652,8 +716,9 @@ export function setupRoleRoomSocialRoutes(
             }>(
               `SELECT CASE WHEN $1 = 'facebook_page' THEN facebook_page_id
                            ELSE ig_business_account_id END AS account_id
-                 FROM role_room_instagram_connections WHERE id = $2 LIMIT 1`,
-              [platform, post.connectionId],
+                 FROM role_room_instagram_connections
+                WHERE id = $2 AND user_id = $3 LIMIT 1`,
+              [platform, post.connectionId, session.userId],
             );
             accountId = accountRow.rows[0]?.account_id ?? null;
           } else if (!accountId && platform === 'linkedin') {
@@ -764,11 +829,39 @@ export function setupRoleRoomSocialRoutes(
     if (!platform || !connectionId) {
       return res.status(400).json({ success: false, error: "platform + connectionId påkrevd" });
     }
+    // Per-user rate limit — each snapshot triggers a platform insights call.
+    try {
+      checkEndpointRateLimit(session.userId, "social_snapshot", 60);
+    } catch (rlErr) {
+      if (rlErr instanceof RateLimitExceededError) return send429(res, rlErr);
+      throw rlErr;
+    }
     // Ownership gate: without this, any user could pass another tenant's
     // connectionId to fetch (and persist) their insights using the stored
     // token — and the snapshots came back in the response.
     if (!(await userOwnsSocialConnection(pool, connectionId, session.userId))) {
       return res.status(404).json({ success: false, error: "connection_not_found" });
+    }
+    // Idempotency: dedup repeated snapshot requests carrying the same key so we
+    // don't double-insert the same time-series rows. Best-effort.
+    const snapshotIdempotencyKey =
+      typeof body.idempotencyKey === "string" && body.idempotencyKey.trim()
+        ? body.idempotencyKey.trim()
+        : null;
+    if (snapshotIdempotencyKey) {
+      try {
+        const claim = await claimIdempotencyKey(
+          pool,
+          "social_snapshot",
+          session.userId,
+          snapshotIdempotencyKey,
+        );
+        if (!claim.fresh) {
+          return res.status(200).json({ success: true, deduped: true, snapshots: [] });
+        }
+      } catch (idemErr) {
+        console.warn("[social-metrics] idempotency claim failed", idemErr);
+      }
     }
     try {
       const snapshots = await dispatchFetchInsights(
