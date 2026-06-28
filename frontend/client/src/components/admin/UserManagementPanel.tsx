@@ -73,6 +73,7 @@ import UserInstallationsPanel from './UserInstallationsPanel';
 import AcademyAdminPanel from './AcademyAdminPanel';
 import EnterpriseInquiriesPanel from './EnterpriseInquiriesPanel';
 import { useAdminPresence, OnlineStatusDot } from './shared/useAdminPresence';
+import UserGenAiUsageDialog from './UserGenAiUsageDialog';
 import {
   AdminButton,
   StatusChip,
@@ -192,6 +193,8 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
   const [usersPage, setUsersPage] = useState(1);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [genAiUserId, setGenAiUserId] = useState<string | null>(null);
+  const [genAiUserName, setGenAiUserName] = useState<string>('');
   const [editProfessionOpen, setEditProfessionOpen] = useState(false);
   const [editProfessionValue, setEditProfessionValue] = useState<string>('');
   const [editRoleOpen, setEditRoleOpen] = useState(false);
@@ -1233,6 +1236,19 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
       <MenuItem onClick={handleOpenMessageDialog} disabled={!selectedUser}>
         <EmailIcon sx={{ mr: 1, fontSize: 18 }} />
         Send melding
+      </MenuItem>
+      <MenuItem
+        disabled={!selectedUser}
+        onClick={() => {
+          if (selectedUser) {
+            setGenAiUserId(selectedUser.id);
+            setGenAiUserName(String((selectedUser as any).name || selectedUser.email || ''));
+          }
+          handleMenuClose();
+        }}
+      >
+        <Box component="span" sx={{ mr: 1, fontSize: 16 }}>✨</Box>
+        Generativ AI-bruk
       </MenuItem>
       {selectedUser?.status === 'pending' ? (
         <MenuItem
@@ -2691,6 +2707,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
           {errorSnackbar.message}
         </Alert>
       </Snackbar>
+      <UserGenAiUsageDialog userId={genAiUserId} userName={genAiUserName} onClose={() => setGenAiUserId(null)} />
     </Box>
     </ThemeProvider>
   );

@@ -1197,6 +1197,16 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const me = await userIdentity(uid);
       const settings = await getGenSettings(pool);
       const consent = await pool.query(`SELECT consented, consented_by, consented_at FROM project_ai_consent WHERE project_id = $1`, [req.params.projectId]).catch(() => ({ rows: [] }));
+      // Brukerens EGET forbruk denne kalendermåneden (det de selv ser).
+      const mine = await pool.query(
+        `SELECT count(*) FILTER (WHERE status='completed')::int gens,
+                COALESCE(SUM(est_cost_usd) FILTER (WHERE status='completed'),0)::float cost
+           FROM generative_ai_jobs
+          WHERE user_id = $1 AND date_trunc('month', created_at) = date_trunc('month', NOW())`,
+        [uid],
+      ).catch(() => ({ rows: [{ gens: 0, cost: 0 }] }));
+      const myGens = mine.rows[0]?.gens || 0;
+      const myCost = Number(mine.rows[0]?.cost || 0);
       res.json({
         enabled: settings.enabled && falConfigured(),
         whitelisted: settings.enabled && isWhitelisted(settings, me.email, me.role),
@@ -1205,6 +1215,13 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
         dailyCapUsd: settings.dailyCapUsd,
         spentTodayUsd: await spentTodayUsd(),
         models: publicModelList(),
+        myUsage: {
+          generationsThisMonth: myGens,
+          includedQuota: settings.includedQuota,
+          includedRemaining: settings.includedQuota > 0 ? Math.max(0, settings.includedQuota - myGens) : null,
+          unitPriceUsd: settings.billingMode === "metered" ? (GEN_MODELS["nano-banana-2-edit"].estCostUsd * settings.markupMultiplier) : 0,
+          billedThisMonthUsd: settings.billingMode === "metered" ? myCost * settings.markupMultiplier : 0,
+        },
       });
     } catch (e) { console.error("GET ai/config", e); res.json({ enabled: false }); }
   });
@@ -1352,6 +1369,104 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       });
     } catch (e) { console.error("GET admin genai-settings", e); res.status(500).json({ error: "failed" }); }
   });
+  // Per-bruker forbruk + ØKONOMI: vår-kost vs inntekt (kost×påslag) vs margin.
+  app.get("/api/admin/generative-ai-usage", async (req, res) => {
+    const uid = await adminGuard(req, res); if (!uid) return;
+    try {
+      const days = Math.min(365, Math.max(1, parseInt(String(req.query.days || "30"), 10) || 30));
+      const s = await getGenSettings(pool);
+      const markup = s.markupMultiplier || 1;
+      const rows = await pool.query(
+        `SELECT COALESCE(user_email, user_id, 'ukjent') AS who,
+                count(*) FILTER (WHERE status='completed')::int generations,
+                count(*) FILTER (WHERE status='failed')::int failed,
+                COALESCE(SUM(est_cost_usd) FILTER (WHERE status='completed'),0)::float our_cost,
+                max(created_at) last_used,
+                array_agg(DISTINCT model) FILTER (WHERE model IS NOT NULL) models
+           FROM generative_ai_jobs
+          WHERE created_at >= NOW() - ($1 || ' days')::interval
+          GROUP BY 1 ORDER BY our_cost DESC LIMIT 200`,
+        [days],
+      ).catch(() => ({ rows: [] }));
+      const users = rows.rows.map((r: any) => {
+        const ourCost = Number(r.our_cost || 0);
+        const revenue = ourCost * markup;
+        return { user: r.who, generations: r.generations || 0, failed: r.failed || 0, ourCostUsd: ourCost, revenueUsd: revenue, marginUsd: revenue - ourCost, models: r.models || [], lastUsed: r.last_used };
+      });
+      const totals = users.reduce((a: any, u: any) => ({ generations: a.generations + u.generations, ourCostUsd: a.ourCostUsd + u.ourCostUsd, revenueUsd: a.revenueUsd + u.revenueUsd, marginUsd: a.marginUsd + u.marginUsd }), { generations: 0, ourCostUsd: 0, revenueUsd: 0, marginUsd: 0 });
+      res.json({ days, billingMode: s.billingMode, markupMultiplier: markup, users, totals });
+    } catch (e) { console.error("GET genai-usage", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  // Én brukers AI-forbruk + betaling/Stripe-status (vises på brukerprofil).
+  app.get("/api/admin/users/:userId/genai-usage", async (req, res) => {
+    const uid = await adminGuard(req, res); if (!uid) return;
+    try {
+      const target = req.params.userId;
+      const s = await getGenSettings(pool);
+      const markup = s.markupMultiplier || 1;
+      const agg = await pool.query(
+        `SELECT count(*) FILTER (WHERE status='completed')::int total_gens,
+                count(*) FILTER (WHERE status='completed' AND date_trunc('month',created_at)=date_trunc('month',NOW()))::int month_gens,
+                COALESCE(SUM(est_cost_usd) FILTER (WHERE status='completed'),0)::float total_cost,
+                COALESCE(SUM(est_cost_usd) FILTER (WHERE status='completed' AND date_trunc('month',created_at)=date_trunc('month',NOW())),0)::float month_cost,
+                max(created_at) last_used
+           FROM generative_ai_jobs WHERE user_id = $1`,
+        [target],
+      ).catch(() => ({ rows: [{}] }));
+      const a = agg.rows[0] || {};
+      const totalCost = Number(a.total_cost || 0); const monthCost = Number(a.month_cost || 0);
+      const recent = await pool.query(
+        `SELECT model, kind, status, input->>'prompt' prompt, est_cost_usd, created_at
+           FROM generative_ai_jobs WHERE user_id = $1 ORDER BY created_at DESC LIMIT 10`,
+        [target],
+      ).catch(() => ({ rows: [] }));
+      // Betaling / Stripe
+      const cust = await pool.query(`SELECT stripe_customer_id FROM stripe_customers WHERE user_id = $1 AND stripe_customer_id IS NOT NULL LIMIT 1`, [target]).catch(() => ({ rows: [] }));
+      const sub = await pool.query(`SELECT status, tier_id, amount, currency, next_billing FROM subscriptions WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1`, [target]).catch(() => ({ rows: [] }));
+      const subRow = sub.rows[0];
+      // ALLE AI-kostnader (Claude/Anthropic m.m.) fra ai_usage_log — pr feature.
+      const allAi = await pool.query(
+        `SELECT feature,
+                count(*)::int calls,
+                COALESCE(SUM(cost_usd),0)::float cost,
+                COALESCE(SUM(cost_usd) FILTER (WHERE date_trunc('month',created_at)=date_trunc('month',NOW())),0)::float month_cost
+           FROM ai_usage_log WHERE user_id = $1 GROUP BY feature ORDER BY cost DESC LIMIT 30`,
+        [target],
+      ).catch(() => ({ rows: [] }));
+      const otherTotal = allAi.rows.reduce((a: number, r: any) => a + Number(r.cost || 0), 0);
+      const otherMonth = allAi.rows.reduce((a: number, r: any) => a + Number(r.month_cost || 0), 0);
+      res.json({
+        billingMode: s.billingMode, markupMultiplier: markup,
+        allAiCosts: {
+          totalUsd: otherTotal + totalCost,            // ai_usage_log + generativ
+          monthUsd: otherMonth + monthCost,
+          otherTotalUsd: otherTotal, otherMonthUsd: otherMonth,
+          generativeTotalUsd: totalCost,
+          byFeature: allAi.rows.map((r: any) => ({ feature: r.feature || "ukjent", calls: r.calls || 0, costUsd: Number(r.cost || 0), monthUsd: Number(r.month_cost || 0) })),
+        },
+        usage: {
+          totalGenerations: a.total_gens || 0, monthGenerations: a.month_gens || 0,
+          ourCostUsd: totalCost, revenueUsd: totalCost * markup, marginUsd: totalCost * markup - totalCost,
+          monthOurCostUsd: monthCost, monthRevenueUsd: monthCost * markup,
+          includedQuota: s.includedQuota, includedRemaining: s.includedQuota > 0 ? Math.max(0, s.includedQuota - (a.month_gens || 0)) : null,
+          lastUsed: a.last_used || null,
+        },
+        billing: {
+          stripeLinked: !!cust.rows[0]?.stripe_customer_id,
+          stripeCustomerId: cust.rows[0]?.stripe_customer_id || null,
+          subscriptionStatus: subRow?.status || null,
+          plan: subRow ? { tierId: subRow.tier_id, amount: subRow.amount != null ? Number(subRow.amount) : null, currency: subRow.currency, nextBilling: subRow.next_billing } : null,
+          paid: !!subRow && (subRow.status === "active" || subRow.status === "trialing" || subRow.status === "paid"),
+          // Faktisk genai-fakturering går via Stripe-måleren (billingMode=metered);
+          // her vises vårt estimat (kost×påslag) for denne måneden.
+          genaiBilledThisMonthUsd: s.billingMode === "metered" ? monthCost * markup : 0,
+        },
+        recentJobs: recent.rows.map((r: any) => ({ model: r.model, kind: r.kind, status: r.status, prompt: r.prompt, costUsd: Number(r.est_cost_usd || 0), createdAt: r.created_at })),
+      });
+    } catch (e) { console.error("GET user genai-usage", e); res.status(500).json({ error: "failed" }); }
+  });
+
   app.put("/api/admin/generative-ai-settings", async (req, res) => {
     const uid = await adminGuard(req, res); if (!uid) return;
     try {
@@ -1360,21 +1475,23 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const b = req.body || {};
       const whitelist = Array.isArray(b.whitelist) ? b.whitelist.map((s: any) => String(s).trim().toLowerCase()).filter(Boolean) : undefined;
       await pool.query(
-        `INSERT INTO generative_ai_settings (id, enabled, billing_mode, daily_cap_usd, whitelist, included_quota, updated_by, updated_at)
-         VALUES (1,$1,$2,$3,$4::jsonb,$5,$6,NOW())
+        `INSERT INTO generative_ai_settings (id, enabled, billing_mode, daily_cap_usd, whitelist, included_quota, markup_multiplier, updated_by, updated_at)
+         VALUES (1,$1,$2,$3,$4::jsonb,$5,$6,$7,NOW())
          ON CONFLICT (id) DO UPDATE SET
            enabled=COALESCE($1, generative_ai_settings.enabled),
            billing_mode=COALESCE($2, generative_ai_settings.billing_mode),
            daily_cap_usd=COALESCE($3, generative_ai_settings.daily_cap_usd),
            whitelist=COALESCE($4::jsonb, generative_ai_settings.whitelist),
            included_quota=COALESCE($5, generative_ai_settings.included_quota),
-           updated_by=$6, updated_at=NOW()`,
+           markup_multiplier=COALESCE($6, generative_ai_settings.markup_multiplier),
+           updated_by=$7, updated_at=NOW()`,
         [
           typeof b.enabled === "boolean" ? b.enabled : null,
           b.billingMode === "metered" || b.billingMode === "free_whitelist" ? b.billingMode : null,
           b.dailyCapUsd != null ? Number(b.dailyCapUsd) : null,
           whitelist ? JSON.stringify(whitelist) : null,
           b.includedQuota != null ? Number(b.includedQuota) : null,
+          b.markupMultiplier != null ? Number(b.markupMultiplier) : null,
           me.email || uid,
         ],
       );
