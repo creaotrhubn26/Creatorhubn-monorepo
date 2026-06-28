@@ -117,14 +117,25 @@ export function publicModelList() {
 // Konfig ligger i generative_ai_settings (singleton id=1) slik at admin kan
 // skru av/på, bytte billing-modus, sette dagstak/whitelist/kvote fra Admin
 // Dashboard — uten å røre env. Env brukes kun som default når raden mangler.
+export interface CreditPack { id: string; creditUsd: number; priceNok: number; }
 export interface GenSettings {
   enabled: boolean;
-  billingMode: "free_whitelist" | "metered";
+  billingMode: "free_whitelist" | "metered" | "credits";
   dailyCapUsd: number;
   whitelist: string[];     // e-poster (lowercase)
   includedQuota: number;   // inkluderte genereringer pr bruker pr mnd (metered)
   markupMultiplier: number; // kunde-pris = vår-kost × dette (margin = profitt for CreatorHub)
+  creditPacks: CreditPack[]; // selvbetjente forhåndsbetalte pakker (credits-modus)
 }
+
+// Standard kredittpakker (retail USD-verdi brukeren kan bruke + pris i NOK).
+// Profitt sikres av påslaget når kreditter BRUKES (kost×påslag trekkes, vi betaler
+// kun kost) — pluss float på ubrukt saldo.
+export const DEFAULT_CREDIT_PACKS: CreditPack[] = [
+  { id: "starter", creditUsd: 10, priceNok: 129 },
+  { id: "pro", creditUsd: 25, priceNok: 299 },
+  { id: "studio", creditUsd: 60, priceNok: 649 },
+];
 let _settingsCache: { at: number; val: GenSettings } | null = null;
 export function invalidateGenSettings() { _settingsCache = null; }
 
@@ -136,18 +147,22 @@ export async function getGenSettings(pool: any): Promise<GenSettings> {
     whitelist jsonb DEFAULT '[]'::jsonb, included_quota int DEFAULT 0,
     updated_by varchar, updated_at timestamptz DEFAULT now())`).catch(() => {});
   await pool.query(`ALTER TABLE generative_ai_settings ADD COLUMN IF NOT EXISTS markup_multiplier numeric DEFAULT 3`).catch(() => {});
+  await pool.query(`ALTER TABLE generative_ai_settings ADD COLUMN IF NOT EXISTS credit_packs jsonb`).catch(() => {});
   const r = await pool.query(`SELECT * FROM generative_ai_settings WHERE id = 1`).catch(() => ({ rows: [] }));
   const envWl = (process.env.GENERATIVE_AI_WHITELIST || "daniel@creatorhubn.com").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
   const envCap = Number(process.env.GENERATIVE_AI_DAILY_CAP_USD || 20);
   const row = r.rows[0];
+  const bm = (m: any): GenSettings["billingMode"] => (m === "metered" || m === "credits") ? m : "free_whitelist";
+  const packs = (p: any): CreditPack[] => Array.isArray(p) && p.length ? p.map((x: any) => ({ id: String(x.id), creditUsd: Number(x.creditUsd), priceNok: Number(x.priceNok) })).filter((x: any) => x.id && x.creditUsd > 0 && x.priceNok > 0) : DEFAULT_CREDIT_PACKS;
   const val: GenSettings = row ? {
     enabled: row.enabled !== false,
-    billingMode: row.billing_mode === "metered" ? "metered" : "free_whitelist",
+    billingMode: bm(row.billing_mode),
     dailyCapUsd: Number(row.daily_cap_usd ?? envCap) || envCap,
     whitelist: Array.isArray(row.whitelist) && row.whitelist.length ? row.whitelist.map((x: any) => String(x).toLowerCase()) : envWl,
     includedQuota: Number(row.included_quota ?? 0) || 0,
     markupMultiplier: Number(row.markup_multiplier ?? 3) || 3,
-  } : { enabled: true, billingMode: "free_whitelist", dailyCapUsd: envCap > 0 ? envCap : 20, whitelist: envWl, includedQuota: 0, markupMultiplier: 3 };
+    creditPacks: packs(row.credit_packs),
+  } : { enabled: true, billingMode: "free_whitelist", dailyCapUsd: envCap > 0 ? envCap : 20, whitelist: envWl, includedQuota: 0, markupMultiplier: 3, creditPacks: DEFAULT_CREDIT_PACKS };
   _settingsCache = { at: Date.now(), val };
   return val;
 }
