@@ -62,7 +62,7 @@ struct StatusPin: View {
     }
 }
 
-private struct DropPinShape: Shape {
+private struct LegacyStatusPinShape: Shape {
     func path(in rect: CGRect) -> Path {
         var p = Path()
         let r = rect.width / 2

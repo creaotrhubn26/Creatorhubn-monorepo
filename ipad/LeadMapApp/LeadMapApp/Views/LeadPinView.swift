@@ -1,17 +1,27 @@
 // LeadPinView.swift
 //
-// Pin for leads i kartet — speiler det visuelle systemet i web:
-//   • Hot lead (leadTemperature='hot' eller pipeline_stage='meeting_booked'
-//     m/ høy score) → STOR pulserende lilla pin (mest oppmerksomhetstung).
-//   • Return / følg opp (status='return')             → gul
-//   • Ikke til stede (status='not_present')           → grå
-//   • Avslått (status='declined' / 'lost')            → rød
-//   • Interessert / møte booket / vunnet              → grønn
-//   • Default                                          → blå (uvisited)
+// Pin for leads i kartet — Daniel-feedback 2026-06-28 ("pixel-perfect"):
 //
-// Bedrifts-logo brukes som "kjerne" når den finnes (mig 288), men status-
-// fargen er ALLTID synlig som ring/hale så salgskonsulenten ser pipeline
-// uten å zoome. Mønstre fra LeadgridForecastingCard for purple-glow.
+// - Drop-pin form (Bezier-path, ikke sirkel+triangle) som matcher
+//   marketing-mocken.
+// - Glow-farge avhengig av temperatur:
+//     • Hot (lead_temperature='hot', score≥90, eller pipeline_stage=qualified+)
+//       → RØD glow (signaliserer "ild/klar for kontakt")
+//     • Varm (score 50-69)
+//       → ORANSJE glow
+//     • Normal/kald → ingen glow
+// - Status-badge oppå pin når status har et tydelig ikon:
+//     • meeting_booked  → calendar (lilla)
+//     • visited         → checkmark (grønn)
+//     • interested/won  → star.fill (grønn)
+//     • declined/lost   → xmark (rød)
+//     • next-action har ringe/email → phone.fill / envelope.fill (blå)
+// - Indre lys-gradient på pinnen (3D-effekt).
+//
+// Pin-fyll-farge avhenger av status + score-bånd (samme logikk som før).
+//
+// Brukes på Lead Map (MapScreen.swift). Snapshot-tester finnes i
+// LeadPinViewTests.swift.
 
 import SwiftUI
 
@@ -20,16 +30,11 @@ struct LeadPinView: View {
     let selected: Bool
     @Environment(AppState.self) private var appState
 
-    /// True når pin nettopp dukket opp via real-time `lead.created`-event
-    /// (typisk fra batch-research). Driver en 3-sek "new-pin"-pulse over
-    /// den vanlige hot-pulse-ringen.
     private var isNewlyArrived: Bool {
         appState.recentlyAddedLeadIds.contains(lead.id)
     }
 
-    /// Returner true når vi skal vise stor pulserende lilla pin.
-    /// Driver av `lead_temperature='hot'` (Intelligence Engine), score ≥90,
-    /// eller pipeline_stage='meeting_booked' uten avsluttende status.
+    /// True når vi skal vise rød hot-glow.
     private var isHotLead: Bool {
         if let t = lead.leadTemperature?.lowercased(), t == "hot" || t == "ready" {
             return true
@@ -47,67 +52,82 @@ struct LeadPinView: View {
         return false
     }
 
-    /// Effektiv pin-farge basert på STATUS + SCORE + PIPELINE — i den
-    /// prioriteringen mocken viser. Hot/varm/lunken-farger speiler 90+/70+/50+
-    /// score-bånd. Synlig som ring rundt logoen og som hale på dropp-pinen.
-    private var statusColor: Color {
-        if isHotLead {
-            return Color(red: 0.66, green: 0.32, blue: 0.99) // brand-lilla (#a855f7)
-        }
-        // Score-band når status ikke har en sterk farge
+    /// True når lead-en er "varm" — score 50-69 + status er uvisited/visited
+    /// (dvs ikke avgjort enda; potensial men ikke hot).
+    private var isWarmLead: Bool {
+        guard !isHotLead else { return false }
+        guard let s = lead.leadScore, (50..<70).contains(s) else { return false }
+        return lead.status == .unvisited || lead.status == .visited
+    }
+
+    /// Pin-fyll-farge.
+    private var fillColor: Color {
+        if isHotLead { return Color(red: 0.66, green: 0.32, blue: 0.99) } // brand-lilla
         if let score = lead.leadScore, lead.status == .unvisited || lead.status == .visited {
             switch score {
-            case 70...:  return Color(red: 0.66, green: 0.32, blue: 0.99) // lilla 70–89
+            case 70...:  return Color(red: 0.66, green: 0.32, blue: 0.99) // lilla
             case 50..<70: return Color(red: 0.98, green: 0.75, blue: 0.14) // varm gul
-            default:     return Color(red: 0.55, green: 0.60, blue: 0.68) // grå < 50
+            default:     return Color(red: 0.55, green: 0.60, blue: 0.68) // grå
             }
         }
         switch lead.status {
-        case .won, .interested:
-            return Color(red: 0.20, green: 0.85, blue: 0.60)   // grønn — interessert
-        case .meetingBooked:
-            return Color(red: 0.66, green: 0.32, blue: 0.99)   // lilla — booket møte
-        case .lost, .declined:
-            return Color(red: 0.97, green: 0.44, blue: 0.44)   // rød — avslått
-        case .proposalSent:
-            return Color(red: 0.75, green: 0.52, blue: 0.99)
-        case .return:
-            return Color(red: 0.98, green: 0.75, blue: 0.14)   // gul — kom tilbake
-        case .notPresent:
-            return Color(red: 0.55, green: 0.60, blue: 0.68)   // grå — ikke til stede
-        case .doNotContact:
-            return Color(red: 0.30, green: 0.30, blue: 0.36)
-        case .visited:
-            return Color(red: 0.55, green: 0.60, blue: 0.68)
-        default:
-            return Color(red: 0.376, green: 0.647, blue: 0.980) // blå — uvisited
+        case .won, .interested:     return Color(red: 0.20, green: 0.85, blue: 0.60)
+        case .meetingBooked:        return Color(red: 0.66, green: 0.32, blue: 0.99)
+        case .lost, .declined:      return Color(red: 0.97, green: 0.44, blue: 0.44)
+        case .proposalSent:         return Color(red: 0.75, green: 0.52, blue: 0.99)
+        case .return:               return Color(red: 0.98, green: 0.75, blue: 0.14)
+        case .notPresent:           return Color(red: 0.55, green: 0.60, blue: 0.68)
+        case .doNotContact:         return Color(red: 0.30, green: 0.30, blue: 0.36)
+        case .visited:              return Color(red: 0.55, green: 0.60, blue: 0.68)
+        default:                    return Color(red: 0.376, green: 0.647, blue: 0.980)
+        }
+    }
+
+    /// Status-badge SF Symbol (vises top-right på pin).
+    private var statusBadgeIcon: String? {
+        switch lead.status {
+        case .meetingBooked:    return "calendar"
+        case .visited:          return "checkmark"
+        case .won, .interested: return "star.fill"
+        case .declined, .lost:  return "xmark"
+        default:                return nil
+        }
+    }
+
+    /// Bakgrunnsfarge for status-badge (mindre intens enn pin-fyll).
+    private var statusBadgeColor: Color {
+        switch lead.status {
+        case .meetingBooked:    return Color(red: 0.66, green: 0.32, blue: 0.99)
+        case .visited:          return Color(red: 0.20, green: 0.65, blue: 0.55)
+        case .won, .interested: return Color(red: 0.20, green: 0.85, blue: 0.60)
+        case .declined, .lost:  return Color(red: 0.97, green: 0.44, blue: 0.44)
+        default:                return fillColor
         }
     }
 
     var body: some View {
         ZStack {
             if isNewlyArrived {
-                // Lilla brand-glow "just landed" — en stor pulserende
-                // ring som ligger under hot-pulsen og forsvinner etter 3s.
                 NewPinPulse(color: Color(red: 0.66, green: 0.32, blue: 0.99))
-                    .frame(width: selected ? 84 : 76, height: selected ? 84 : 76)
+                    .frame(width: selected ? 110 : 100, height: selected ? 110 : 100)
                     .transition(.scale.combined(with: .opacity))
             }
+
+            // Glow halo — rød for hot, oransje for varm.
             if isHotLead {
-                HotPulseRing(color: statusColor)
-                    .frame(width: selected ? 64 : 56, height: selected ? 64 : 56)
+                GlowHalo(color: Color(red: 0.95, green: 0.20, blue: 0.20))
+            } else if isWarmLead {
+                GlowHalo(color: Color(red: 0.98, green: 0.55, blue: 0.10))
             }
 
-            // Mock-paritet: lead score VISES INNI pinen (stort hvitt tall).
-            // Når score finnes prioriterer vi den over logo — det er det
-            // som gir kart-feedet sin lesbarhet på avstand.
+            // Pin selv (alltid score hvis tilgjengelig, ellers logo, ellers status-fallback)
             if let score = lead.leadScore {
-                scorePin(score: score)
+                scoreDropPin(score: score)
                     .scaleEffect(isNewlyArrived ? 1.18 : 1.0)
                     .animation(.spring(response: 0.6, dampingFraction: 0.55),
                                value: isNewlyArrived)
             } else if let logoUrl = lead.logoUrl, let url = URL(string: logoUrl) {
-                logoPin(url: url)
+                logoDropPin(url: url)
                     .scaleEffect(isNewlyArrived ? 1.18 : 1.0)
                     .animation(.spring(response: 0.6, dampingFraction: 0.55),
                                value: isNewlyArrived)
@@ -117,118 +137,181 @@ struct LeadPinView: View {
                     .animation(.spring(response: 0.6, dampingFraction: 0.55),
                                value: isNewlyArrived)
             }
+
+            // Status-badge overlay (oppå pin, top-right)
+            if let icon = statusBadgeIcon {
+                StatusBadge(icon: icon, color: statusBadgeColor)
+                    .offset(x: 14, y: -24)
+            }
         }
         .accessibilityLabel(accessibilityLabel)
     }
 
-    /// Score-pin: rund pill m/ score-tallet i hvit bold-font, status-farget
-    /// fyll + ring. Speiler marketing-mocken direkte.
     @ViewBuilder
-    private func scorePin(score: Int) -> some View {
-        let size: CGFloat = selected ? 50 : (isHotLead ? 46 : 40)
-        VStack(spacing: 0) {
-            ZStack {
-                Circle()
-                    .fill(statusColor)
-                Circle()
-                    .stroke(Color.white.opacity(0.95), lineWidth: 2)
-                Text("\(score)")
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
-                    .monospacedDigit()
-            }
-            .frame(width: size, height: size)
-            .shadow(color: isHotLead ? statusColor.opacity(0.7) : .black.opacity(0.35),
-                    radius: isHotLead ? 6 : 2)
-
-            // Droppin-hale (peker mot kartpunkt)
-            Triangle()
-                .fill(statusColor)
-                .frame(width: 10, height: 8)
-                .offset(y: -2)
+    private func scoreDropPin(score: Int) -> some View {
+        let w: CGFloat = selected ? 46 : 42
+        let h: CGFloat = w * 1.3
+        ZStack {
+            DropPinShape()
+                .fill(LinearGradient(
+                    colors: [fillColor, fillColor.opacity(0.88)],
+                    startPoint: .top, endPoint: .bottom
+                ))
+            DropPinShape()
+                .fill(LinearGradient(
+                    colors: [Color.white.opacity(0.35), Color.white.opacity(0.0)],
+                    startPoint: .top, endPoint: .center
+                ))
+            DropPinShape()
+                .stroke(Color.white.opacity(0.95), lineWidth: 2)
+            Text("\(score)")
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
+                .monospacedDigit()
+                .offset(y: -h * 0.13)
         }
-    }
-
-    /// VoiceOver-tekst — formidler status + om pin er hot.
-    private var accessibilityLabel: String {
-        var parts = [lead.name, lead.status.label]
-        if isHotLead { parts.append("Hot lead") }
-        if let score = lead.leadScore { parts.append("Score \(score)") }
-        return parts.joined(separator: ", ")
+        .frame(width: w, height: h)
+        .shadow(color: isHotLead ? Color(red: 0.95, green: 0.20, blue: 0.20).opacity(0.7)
+                                 : .black.opacity(0.4),
+                radius: isHotLead ? 10 : 3, x: 0, y: 2)
     }
 
     @ViewBuilder
-    private func logoPin(url: URL) -> some View {
-        let size: CGFloat = selected ? 48 : (isHotLead ? 44 : 38)
-        let ringWidth: CGFloat = isHotLead ? 4 : (selected ? 4 : 3)
-        VStack(spacing: 0) {
+    private func logoDropPin(url: URL) -> some View {
+        let w: CGFloat = selected ? 48 : 44
+        let h: CGFloat = w * 1.3
+        ZStack {
+            DropPinShape()
+                .fill(fillColor)
+            DropPinShape()
+                .stroke(Color.white.opacity(0.95), lineWidth: 2)
             AsyncImage(url: url) { phase in
                 switch phase {
                 case .success(let img):
                     img.resizable().scaledToFit()
                 case .failure:
-                    StatusPin(status: lead.status, selected: selected)
+                    Text(initials)
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(.white)
                 default:
                     ProgressView().controlSize(.mini)
                 }
             }
-            .frame(width: size - 8, height: size - 8)
+            .frame(width: w - 14, height: w - 14)
             .background(Color.white)
             .clipShape(Circle())
-            .overlay(Circle().stroke(statusColor, lineWidth: ringWidth))
-            .shadow(color: isHotLead ? statusColor.opacity(0.7) : .black.opacity(0.35),
-                    radius: isHotLead ? 6 : 2)
-            // Droppin-hale (peker mot kartpunkt)
-            Triangle()
-                .fill(statusColor)
-                .frame(width: 10, height: 8)
-                .offset(y: -2)
+            .offset(y: -h * 0.13)
         }
+        .frame(width: w, height: h)
+        .shadow(color: isHotLead ? Color(red: 0.95, green: 0.20, blue: 0.20).opacity(0.7)
+                                 : .black.opacity(0.4),
+                radius: isHotLead ? 10 : 3, x: 0, y: 2)
+    }
+
+    private var initials: String {
+        let words = lead.name.split(separator: " ")
+        return words.prefix(2).map { String($0.prefix(1)) }.joined().uppercased()
+    }
+
+    private var accessibilityLabel: String {
+        var parts = [lead.name, lead.status.label]
+        if isHotLead { parts.append("Hot lead") }
+        else if isWarmLead { parts.append("Varm lead") }
+        if let score = lead.leadScore { parts.append("Score \(score)") }
+        return parts.joined(separator: ", ")
     }
 }
 
-/// Pulserende ring rundt hot leads — bruker SwiftUI .repeatForever for
-/// kontinuerlig oppmerksomhet uten å trekke på CPU.
-private struct HotPulseRing: View {
+/// Klassisk Google Maps drop-pin: bred sirkel-topp + spisset bunn.
+/// Eksponert som public type så `PinGuideView` (og snapshot-tester) kan
+/// rendre samme form uten å duplisere geometrien.
+struct DropPinShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        let w = rect.width
+        let h = rect.height
+        let r = w / 2
+
+        p.addArc(
+            center: CGPoint(x: w/2, y: r),
+            radius: r,
+            startAngle: .degrees(180),
+            endAngle: .degrees(360),
+            clockwise: false
+        )
+        p.addQuadCurve(
+            to: CGPoint(x: w/2, y: h),
+            control: CGPoint(x: w * 0.85, y: h * 0.65)
+        )
+        p.addQuadCurve(
+            to: CGPoint(x: 0, y: r),
+            control: CGPoint(x: w * 0.15, y: h * 0.65)
+        )
+        p.closeSubpath()
+        return p
+    }
+}
+
+/// Glow halo bak pinen (rød for hot, oransje for varm).
+struct GlowHalo: View {
     let color: Color
-    @State private var pulse = false
 
     var body: some View {
         ZStack {
+            // Outer soft halo
             Circle()
-                .stroke(color.opacity(0.65), lineWidth: 2)
-                .scaleEffect(pulse ? 1.4 : 0.85)
-                .opacity(pulse ? 0.0 : 0.85)
+                .fill(RadialGradient(
+                    colors: [color.opacity(0.55), color.opacity(0.0)],
+                    center: .center,
+                    startRadius: 18, endRadius: 48
+                ))
+                .frame(width: 96, height: 96)
+                .blur(radius: 6)
+            // Inner intense ring
             Circle()
-                .fill(color.opacity(0.18))
-                .scaleEffect(pulse ? 1.15 : 0.95)
-        }
-        .onAppear {
-            withAnimation(.easeOut(duration: 1.4).repeatForever(autoreverses: false)) {
-                pulse = true
-            }
+                .fill(RadialGradient(
+                    colors: [color.opacity(0.85), color.opacity(0.1)],
+                    center: .center,
+                    startRadius: 8, endRadius: 28
+                ))
+                .frame(width: 56, height: 56)
+                .blur(radius: 2)
         }
         .allowsHitTesting(false)
     }
 }
 
-/// "New pin"-pulse — kraftigere enn HotPulseRing, men lever bare i ~3s.
-/// Tre konsentriske ringer som ekspanderer ut + en lilla glow-kjerne.
-/// Brukes når et nytt lead landet via WebSocket (batch-research-flyten).
+/// Liten sirkulær badge med SF Symbol — overlayes oppå pinens topp-høyre.
+struct StatusBadge: View {
+    let icon: String
+    let color: Color
+
+    var body: some View {
+        ZStack {
+            Circle().fill(color)
+            Circle().stroke(Color.white, lineWidth: 1.5)
+            Image(systemName: icon)
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(.white)
+        }
+        .frame(width: 20, height: 20)
+        .shadow(color: .black.opacity(0.4), radius: 2, x: 0, y: 1)
+    }
+}
+
+/// "New pin"-pulse — 3 konsentriske ringer som ekspanderer ut. Brukes når
+/// et nytt lead landet via WebSocket (batch-research-flyten).
 private struct NewPinPulse: View {
     let color: Color
     @State private var phase: CGFloat = 0
 
     var body: some View {
         ZStack {
-            // Ytterste ring — størst, mest fadet
             Circle()
-                .stroke(color.opacity(0.8 - Double(phase) * 0.8),
-                        lineWidth: 3)
+                .stroke(color.opacity(0.8 - Double(phase) * 0.8), lineWidth: 3)
                 .scaleEffect(0.6 + phase * 1.0)
             Circle()
-                .stroke(color.opacity(0.65 - Double(phase) * 0.6),
-                        lineWidth: 2)
+                .stroke(color.opacity(0.65 - Double(phase) * 0.6), lineWidth: 2)
                 .scaleEffect(0.55 + phase * 0.7)
             Circle()
                 .fill(color.opacity(0.25 - Double(phase) * 0.2))
@@ -240,16 +323,5 @@ private struct NewPinPulse: View {
             }
         }
         .allowsHitTesting(false)
-    }
-}
-
-private struct Triangle: Shape {
-    func path(in rect: CGRect) -> Path {
-        var p = Path()
-        p.move(to: CGPoint(x: rect.midX, y: rect.maxY))
-        p.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
-        p.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
-        p.closeSubpath()
-        return p
     }
 }
