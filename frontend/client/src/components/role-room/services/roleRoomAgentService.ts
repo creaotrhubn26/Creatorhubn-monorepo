@@ -1887,6 +1887,43 @@ export const roleRoomAgentService = {
     }
   },
 
+  /**
+   * Draft an on-brand reply to ONE inbox event (Phase 2b). Privacy: only that
+   * single comment's text is sent to the agent — user-initiated, per-element.
+   * Returns the draft text, or an error string the caller can surface.
+   */
+  async draftInboxReply(
+    eventId: string,
+    options: { brandVoice?: string; instructions?: string } = {},
+  ): Promise<{ draft?: string; model?: string; error?: string }> {
+    try {
+      const response = await fetch(
+        `/api/role-room/social/inbox/${encodeURIComponent(eventId)}/draft-reply`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...readRoleRoomAgentHeaders(),
+          },
+          body: JSON.stringify({
+            brandVoice: options.brandVoice,
+            instructions: options.instructions,
+          }),
+        },
+      );
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.success || typeof payload.draft !== 'string') {
+        if (response.status === 429) {
+          return { error: 'For mange forespørsler. Vent litt og prøv igjen.' };
+        }
+        return { error: payload?.error || 'Kunne ikke generere svarforslag.' };
+      }
+      return { draft: payload.draft, model: payload.model };
+    } catch (err) {
+      return { error: (err as Error).message };
+    }
+  },
+
   async listLinkedInCompanies(): Promise<{
     companies: RoleRoomLinkedInCompany[];
     scopeMissing: boolean;

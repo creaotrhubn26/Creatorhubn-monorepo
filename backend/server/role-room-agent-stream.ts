@@ -28,6 +28,7 @@ import {
   ROLE_ROOM_AGENT_TOOLS,
 } from './role-room-agent-definition.js';
 import { modelIdForTier, pickModelForMessage } from './role-room-agent-cache.js';
+import { buildWorkspaceContextBlock } from './role-room-agent-workspace-context.js';
 import {
   appendMessage,
   createStreamingPlaceholder,
@@ -301,17 +302,26 @@ export async function handleAgentStream(
     }
   });
 
+  // Aggregate, PII-free cross-tab status (Inbox/Leads/Analytics/Feed) in a
+  // FRESH uncached system block so it stays current without busting the cached
+  // project-context prefix. Best-effort: omitted when null.
+  const workspaceBlock = await buildWorkspaceContextBlock(pool, { userId, projectId });
+
   try {
+    const systemBlocks: Array<{ type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }> = [
+      {
+        type: 'text',
+        text: cachedSystem,
+        cache_control: { type: 'ephemeral' },
+      },
+    ];
+    if (workspaceBlock) {
+      systemBlocks.push({ type: 'text', text: workspaceBlock });
+    }
     const stream = client.messages.stream({
       model: modelId,
       max_tokens: 1200,
-      system: [
-        {
-          type: 'text',
-          text: cachedSystem,
-          cache_control: { type: 'ephemeral' },
-        },
-      ],
+      system: systemBlocks,
       tools: ROLE_ROOM_AGENT_TOOLS,
       messages: [{ role: 'user', content: pseudonymizedMessage }],
     });
