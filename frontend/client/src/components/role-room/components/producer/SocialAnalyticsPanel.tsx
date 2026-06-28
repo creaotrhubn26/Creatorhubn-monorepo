@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Box,
@@ -41,6 +41,7 @@ import roleRoomAgentService, {
   type RoleRoomSocialAnalyticsSummary,
   type RoleRoomTopPostMetric,
 } from '../../services/roleRoomAgentService';
+import { useSequencedFetch } from '../../hooks/useSequencedFetch';
 
 const PLATFORM_COLOR: Record<string, string> = {
   instagram: '#ec4899',
@@ -160,27 +161,27 @@ export default function SocialAnalyticsPanel(): React.ReactElement {
   const [publishesPerPlatform, setPublishesPerPlatform] = useState<RoleRoomPublishCountEntry[]>([]);
 
   // Drop stale/out-of-order responses (rapid refresh clicks) and post-unmount
-  // updates — only the latest request's result is applied.
-  const reqSeqRef = useRef(0);
-  const mountedRef = useRef(true);
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  // updates — useSequencedFetch applies only the latest request's result.
+  const sequencedFetch = useSequencedFetch();
 
   const refresh = useCallback(async () => {
-    const seq = ++reqSeqRef.current;
     setLoading(true);
     setError(null);
-    const result = await roleRoomAgentService.fetchSocialAnalytics();
-    if (seq !== reqSeqRef.current || !mountedRef.current) return;
-    if (result.error) setError(result.error);
-    setSummary(result.summary ?? null);
-    setSentimentBreakdown(result.sentimentBreakdown ?? []);
-    setDailyEvents(result.dailyEvents ?? []);
-    setDailySentiment(result.dailySentiment ?? []);
-    setAccountMetrics(result.accountMetrics ?? []);
-    setTopPosts(result.topPosts ?? []);
-    setPublishesPerPlatform(result.publishesPerPlatform ?? []);
-    setLoading(false);
-  }, []);
+    await sequencedFetch(
+      () => roleRoomAgentService.fetchSocialAnalytics(),
+      (result) => {
+        if (result.error) setError(result.error);
+        setSummary(result.summary ?? null);
+        setSentimentBreakdown(result.sentimentBreakdown ?? []);
+        setDailyEvents(result.dailyEvents ?? []);
+        setDailySentiment(result.dailySentiment ?? []);
+        setAccountMetrics(result.accountMetrics ?? []);
+        setTopPosts(result.topPosts ?? []);
+        setPublishesPerPlatform(result.publishesPerPlatform ?? []);
+        setLoading(false);
+      },
+    );
+  }, [sequencedFetch]);
 
   useEffect(() => {
     void refresh();
