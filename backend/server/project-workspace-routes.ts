@@ -23,7 +23,8 @@ import crypto from "crypto";
 import multer from "multer";
 import { canAccessProject } from "./project-team-routes";
 import { signAssetReadUrl } from "./capture-upload-service";
-import { archiveToRoleRoomB2, presignRoleRoomB2Download, slugifyForKey } from "./b2-archive-helper";
+import { archiveToRoleRoomB2, presignRoleRoomB2Download, getFromRoleRoomB2, slugifyForKey } from "./b2-archive-helper";
+import { Vibrant } from "node-vibrant/node";
 import { createGoogleMeetLink } from "./google-meet";
 import { classifySession } from "./capture-culling-service";
 import { enqueuePhotoEnhancerJobFromBuffer, listPhotoEnhancerJobsByProjectId } from "./photo-enhancer-routes";
@@ -303,6 +304,71 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       );
       res.json({ success: true });
     } catch (e) { console.error("PUT moodboard-meta", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  // Auto-uttrekk av fargepalett fra moodboard-referansebildene (node-vibrant).
+  // Henter referansene fra B2 server-side (ingen CORS), kjører Vibrant pr bilde,
+  // slår sammen + deduperer dominante farger på tvers, navngir til norsk, og
+  // lagrer på project_moodboard_meta.palette. canAccessProject-gatet.
+  app.post("/api/projects/:projectId/moodboard-meta/extract-palette", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    const hexToRgb = (h: string) => { const x = h.replace("#", ""); return [parseInt(x.slice(0, 2), 16), parseInt(x.slice(2, 4), 16), parseInt(x.slice(4, 6), 16)]; };
+    const NAMED: Array<[string, number[]]> = [
+      ["Elfenben", [246, 242, 235]], ["Krem", [248, 243, 230]], ["Champagne", [234, 217, 193]], ["Sand", [220, 201, 177]], ["Beige", [225, 210, 185]], ["Taupe", [180, 160, 140]],
+      ["Terrakotta", [200, 110, 80]], ["Rust", [160, 82, 45]], ["Brun", [120, 80, 55]], ["Mørk brun", [70, 50, 40]], ["Mokka", [110, 85, 70]],
+      ["Gull", [212, 160, 23]], ["Oker", [204, 160, 40]], ["Sennep", [200, 170, 60]],
+      ["Salvie", [166, 180, 154]], ["Mørk grønn", [46, 74, 59]], ["Oliven", [120, 128, 80]], ["Skoggrønn", [60, 100, 70]], ["Mynte", [170, 200, 180]], ["Petrol", [40, 90, 100]],
+      ["Marineblå", [40, 55, 90]], ["Himmelblå", [150, 180, 210]], ["Støvet blå", [120, 140, 160]],
+      ["Lavendel", [180, 170, 200]], ["Plomme", [110, 70, 100]], ["Rosa", [220, 180, 180]], ["Pudderrosa", [230, 200, 195]], ["Vinrød", [120, 40, 50]], ["Korall", [240, 140, 120]],
+      ["Kull", [40, 40, 44]], ["Grafitt", [70, 72, 78]], ["Grå", [140, 140, 145]], ["Lys grå", [200, 200, 205]], ["Sort", [20, 20, 22]], ["Hvit", [250, 250, 250]],
+    ];
+    const nearestName = (hex: string) => {
+      const [r, g, b] = hexToRgb(hex); let best = "Farge", bd = Infinity;
+      for (const [name, [nr, ng, nb]] of NAMED) { const d = (r - nr) ** 2 + (g - ng) ** 2 + (b - nb) ** 2; if (d < bd) { bd = d; best = name; } }
+      return best;
+    };
+    try {
+      const pid = req.params.projectId;
+      const imgs = await pool.query(
+        `SELECT b2_key FROM project_images WHERE project_id = $1 AND panel IN ('references','moodboard','moodboard-shared') ORDER BY created_at DESC LIMIT 8`,
+        [pid],
+      ).catch(() => ({ rows: [] }));
+      if (imgs.rows.length === 0) return res.status(400).json({ error: "no_references", message: "Last opp referansebilder først." });
+      const collected: Array<{ hex: string; pop: number }> = [];
+      for (const im of imgs.rows) {
+        const obj = await getFromRoleRoomB2(im.b2_key).catch(() => null);
+        if (!obj?.body) continue;
+        try {
+          const palette: any = await Vibrant.from(obj.body).getPalette();
+          for (const key of ["Vibrant", "Muted", "DarkVibrant", "DarkMuted", "LightVibrant", "LightMuted"]) {
+            const sw = palette[key]; if (sw?.hex) collected.push({ hex: sw.hex, pop: sw.population || 1 });
+          }
+        } catch { /* ikke-dekodbar */ }
+      }
+      if (collected.length === 0) return res.status(422).json({ error: "extract_failed", message: "Klarte ikke lese farger fra referansene." });
+      // Dedupe like farger (RGB-avstand < ~48), behold høyest populasjon.
+      collected.sort((a, b) => b.pop - a.pop);
+      const merged: Array<{ hex: string; pop: number }> = [];
+      for (const c of collected) {
+        const [r, g, b] = hexToRgb(c.hex);
+        const dup = merged.find((m) => { const [mr, mg, mb] = hexToRgb(m.hex); return ((r - mr) ** 2 + (g - mg) ** 2 + (b - mb) ** 2) < 48 * 48; });
+        if (!dup) merged.push(c);
+        if (merged.length >= 6) break;
+      }
+      const usedNames = new Set<string>();
+      const palette = merged.map((c) => {
+        let name = nearestName(c.hex); if (usedNames.has(name)) name = `${name} ${[...usedNames].filter((n) => n.startsWith(name)).length + 1}`;
+        usedNames.add(name); return { name, hex: c.hex.toUpperCase() };
+      });
+      // Lagre på meta (behold style/notes/mustCapture).
+      await pool.query(`CREATE TABLE IF NOT EXISTS project_moodboard_meta (project_id VARCHAR(64) PRIMARY KEY, style TEXT, palette JSONB, notes JSONB, must_capture JSONB, client_approved VARCHAR(20), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`).catch(() => undefined);
+      await pool.query(
+        `INSERT INTO project_moodboard_meta (project_id, palette, updated_at) VALUES ($1,$2::jsonb,NOW())
+         ON CONFLICT (project_id) DO UPDATE SET palette=EXCLUDED.palette, updated_at=NOW()`,
+        [pid, JSON.stringify(palette)],
+      );
+      res.json({ palette, fromImages: imgs.rows.length });
+    } catch (e) { console.error("POST extract-palette", e); res.status(500).json({ error: "failed" }); }
   });
 
   // ─────────── Delivery-fase utledet fra EKTE showcase-tilstand ───────────
