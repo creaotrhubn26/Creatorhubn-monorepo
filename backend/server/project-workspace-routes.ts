@@ -25,6 +25,7 @@ import { canAccessProject } from "./project-team-routes";
 import { signAssetReadUrl } from "./capture-upload-service";
 import { archiveToRoleRoomB2, presignRoleRoomB2Download, slugifyForKey } from "./b2-archive-helper";
 import { createGoogleMeetLink } from "./google-meet";
+import { classifySession } from "./capture-culling-service";
 
 // Web-opplasting holdes i minne og skyves server-side til B2 (Role Room-bøtta).
 // 60 MB tak — store RAW/originaler skal uansett gjennom capture multipart-flyten.
@@ -680,6 +681,74 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       }));
       res.json({ events, hasActivity: events.length > 0 });
     } catch (e) { console.error("GET capture-activity", e); res.json({ events: [], hasActivity: false }); }
+  });
+
+  // ─────────── AI-forbedring-status — photo_enhancement_jobs pr prosjekt ───────
+  // Persistent jobb-tabell (project_id-scopet) fra photo-enhancer-pipelinen
+  // (GFPGAN/Real-ESRGAN). Surfacer fremdrift + Før/Etter i Media.
+  app.get("/api/projects/:projectId/enhance-status", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const pid = req.params.projectId;
+      const rows = await pool.query(
+        `SELECT id, photo_id, enhancement_type, model_used, original_image_url,
+                enhanced_image_url, thumbnail_url, status, progress, processing_time,
+                error_message, created_at, completed_at
+           FROM photo_enhancement_jobs WHERE project_id = $1
+          ORDER BY created_at DESC LIMIT 60`,
+        [pid],
+      ).catch(() => ({ rows: [] }));
+      const jobs = rows.rows.map((r: any) => ({
+        id: r.id, photoId: r.photo_id, type: r.enhancement_type, model: r.model_used,
+        originalUrl: r.original_image_url || null, enhancedUrl: r.enhanced_image_url || null,
+        thumbUrl: r.thumbnail_url || null, status: r.status, progress: r.progress ?? null,
+        processingMs: r.processing_time ?? null, error: r.error_message || null,
+        createdAt: r.created_at, completedAt: r.completed_at,
+      }));
+      const done = jobs.filter((j: any) => j.status === "completed" || j.status === "done").length;
+      const running = jobs.filter((j: any) => j.status === "processing" || j.status === "running" || j.status === "queued" || j.status === "pending").length;
+      const failed = jobs.filter((j: any) => j.status === "failed" || j.status === "error").length;
+      res.json({ hasJobs: jobs.length > 0, jobs, summary: { total: jobs.length, done, running, failed } });
+    } catch (e) { console.error("GET enhance-status", e); res.json({ hasJobs: false, jobs: [] }); }
+  });
+
+  // ─────────── AI-cull-forslag — classifySession på prosjektets capture_assets ──
+  // Samme cull-motor som iPad-en (capture-culling-service). Teamet ser AI sine
+  // hero/keep/weak/reject-bøtter + dub-klynger uten å åpne iPad-en. Read-only.
+  app.get("/api/projects/:projectId/cull-suggestions", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const sessions = await pool.query(
+        `SELECT id FROM capture_sessions WHERE project_id = $1`,
+        [req.params.projectId],
+      ).catch(() => ({ rows: [] }));
+      const sessionIds = sessions.rows.map((s: any) => s.id);
+      if (sessionIds.length === 0) return res.json({ hasAssets: false, total: 0, counts: {}, weak: [], reject: [] });
+      const strictnessRaw = String(req.query.strictness || "").trim().toLowerCase();
+      const strictness: any = (strictnessRaw === "conservative" || strictnessRaw === "aggressive") ? strictnessRaw : "balanced";
+      const a = await pool.query(
+        `SELECT id, rating, rejected, flagged_for_client, signals, original_filename, preview_key
+           FROM capture_assets WHERE session_id = ANY($1::uuid[]) ORDER BY capture_time ASC NULLS LAST`,
+        [sessionIds],
+      ).catch(() => ({ rows: [] }));
+      const meta = new Map<string, any>(a.rows.map((r: any) => [r.id, r]));
+      const forCulling = a.rows.map((r: any) => ({
+        id: r.id, rating: r.rating ?? 0, rejected: r.rejected ?? false,
+        flaggedForClient: r.flagged_for_client ?? false, signals: (r.signals ?? {}),
+      }));
+      const summary: any = classifySession(forCulling as any, { strictness });
+      // Berik weak/reject med filnavn + presignet thumbnail (det teamet vurderer).
+      const enrich = async (list: any[]) => Promise.all((list || []).slice(0, 24).map(async (s: any) => {
+        const m = meta.get(s.assetId) || {};
+        return { assetId: s.assetId, score: s.score, reasons: s.reasons || [], filename: m.original_filename || null, thumbUrl: m.preview_key ? await signAssetReadUrl(m.preview_key) : null };
+      }));
+      const [weak, reject] = await Promise.all([enrich(summary.weak), enrich(summary.reject)]);
+      res.json({
+        hasAssets: true, total: summary.total || 0, strictness,
+        counts: { hero: (summary.hero || []).length, keep: (summary.keep || []).length, weak: (summary.weak || []).length, reject: (summary.reject || []).length, duplicates: Object.keys(summary.duplicateClusters || {}).length },
+        weak, reject,
+      });
+    } catch (e) { console.error("GET cull-suggestions", e); res.json({ hasAssets: false, total: 0, counts: {}, weak: [], reject: [] }); }
   });
 
   // ─────────── Team Sync % (ekte readiness fra board + sjekkliste + presence) ───

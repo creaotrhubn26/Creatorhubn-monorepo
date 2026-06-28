@@ -74,10 +74,21 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const loadVoice = () => { if (!isReal) return; apiRequest(`/api/projects/${encodeURIComponent(projectId)}/voice-notes`).then((r: any) => setVoiceNotes(Array.isArray(r?.notes) ? r.notes : [])).catch(() => {}); };
   useEffect(() => { loadVoice(); /* eslint-disable-next-line */ }, [projectId, isReal]);
 
+  // AI-forbedring (photo_enhancement_jobs) + AI-cull-forslag (classifySession).
+  const [enhance, setEnhance] = useState<any | null>(null);
+  const [cullAi, setCullAi] = useState<any | null>(null);
+  const loadAi = () => {
+    if (!isReal) return;
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/enhance-status`).then((r: any) => setEnhance(r || null)).catch(() => {});
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/cull-suggestions`).then((r: any) => setCullAi(r || null)).catch(() => {});
+  };
+  useEffect(() => { loadAi(); /* eslint-disable-next-line */ }, [projectId, isReal]);
+
   // Sanntid: refetch media INSTANT når iPad skyter/culler (WS).
   const { live: capLive } = useCaptureRealtime(projectId, () => {
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/media`).then((r: any) => { setAssets(Array.isArray(r?.assets) ? r.assets : []); setCull(r?.cullStats || {}); }).catch(() => {});
     loadVoice();
+    loadAi();
   });
 
   // Cull-aware items: rating + pick (flagged_for_client) fra iPad-culling.
@@ -199,6 +210,80 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
               </Stack>
               {det.flaggedForClient && <><Typography sx={{ fontSize: 11.5, fontWeight: 700, color: ws.textFaint, mt: 1.5, mb: 0.5 }}>LABELS</Typography><Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}><WsTag label="Highlights" tone="amber" /></Stack></>}
               {det.previewUrl && <Button fullWidth size="small" variant="contained" onClick={() => window.open(det.previewUrl, '_blank')} sx={{ mt: 1.5, bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Åpne / last ned</Button>}
+            </WsCard>
+          );
+        })()}
+
+        {/* AI-cull-forslag — samme cull-motor som iPad (classifySession) */}
+        {(isReal ? cullAi?.hasAssets : true) && (() => {
+          const c = isReal ? (cullAi?.counts || {}) : { hero: 18, keep: 96, weak: 31, reject: 12, duplicates: 4 };
+          const tot = isReal ? (cullAi?.total || 0) : 157;
+          const rej = isReal ? (cullAi?.reject || []) : [{ assetId: 'r1', filename: 'A7IV_1090.CR3', reasons: ['soft focus', 'eyes closed'], thumbUrl: null }];
+          const buckets = [['Hero', c.hero || 0, ws.amber], ['Behold', c.keep || 0, ws.green], ['Svak', c.weak || 0, ws.textDim], ['Forkast', c.reject || 0, ws.red]];
+          return (
+            <WsCard sx={{ mt: 2 }}>
+              <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 1 }}>
+                <Typography sx={{ fontSize: 14 }}>🤖</Typography>
+                <Typography sx={{ fontSize: 13, fontWeight: 700 }}>AI-cull-forslag</Typography>
+                <Box sx={{ flex: 1 }} />
+                <Typography sx={{ fontSize: 10.5, color: ws.textFaint }}>{tot} bilder</Typography>
+              </Stack>
+              <Stack direction="row" spacing={0.75} sx={{ mb: 1 }}>
+                {buckets.map(([label, n, col]: any) => (
+                  <Box key={label} sx={{ flex: 1, textAlign: 'center', py: 0.65, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.panelAlt, border: `1px solid ${ws.borderSoft}` }}>
+                    <Typography sx={{ fontSize: 15, fontWeight: 800, color: col }}>{n}</Typography>
+                    <Typography sx={{ fontSize: 9.5, color: ws.textFaint }}>{label}</Typography>
+                  </Box>
+                ))}
+              </Stack>
+              {(c.duplicates || 0) > 0 && <Typography sx={{ fontSize: 10.5, color: ws.textFaint, mb: 0.5 }}>{c.duplicates} duplikat-klynge{(c.duplicates || 0) > 1 ? 'r' : ''} oppdaget</Typography>}
+              {rej.length > 0 && <>
+                <Typography sx={{ fontSize: 10.5, fontWeight: 700, color: ws.textFaint, mt: 0.5, mb: 0.5 }}>FORESLÅTT FORKASTET</Typography>
+                <Stack spacing={0.5}>
+                  {rej.slice(0, 3).map((s: any) => (
+                    <Stack key={s.assetId} direction="row" spacing={1} alignItems="center">
+                      {s.thumbUrl
+                        ? <Box sx={{ width: 26, height: 26, borderRadius: 0.75, background: `center/cover no-repeat url(${s.thumbUrl})`, flexShrink: 0 }} />
+                        : <Box sx={{ width: 26, height: 26, borderRadius: 0.75, bgcolor: 'rgba(255,255,255,0.06)', flexShrink: 0 }} />}
+                      <Box sx={{ minWidth: 0, flex: 1 }}>
+                        <Typography noWrap sx={{ fontSize: 11, fontWeight: 600 }}>{s.filename || s.assetId}</Typography>
+                        <Typography noWrap sx={{ fontSize: 10, color: ws.red }}>{(s.reasons || []).slice(0, 2).join(', ')}</Typography>
+                      </Box>
+                    </Stack>
+                  ))}
+                </Stack>
+              </>}
+            </WsCard>
+          );
+        })()}
+
+        {/* AI-forbedring — photo_enhancement_jobs (GFPGAN/Real-ESRGAN) */}
+        {(isReal ? enhance?.hasJobs : true) && (() => {
+          const s = isReal ? (enhance?.summary || {}) : { total: 12, done: 9, running: 2, failed: 1 };
+          const jobs = isReal ? (enhance?.jobs || []) : [{ id: 'e1', photoId: 'A7IV_1188', model: 'gfpgan', status: 'completed', thumbUrl: null }];
+          return (
+            <WsCard sx={{ mt: 2 }}>
+              <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 1 }}>
+                <Typography sx={{ fontSize: 14 }}>✨</Typography>
+                <Typography sx={{ fontSize: 13, fontWeight: 700 }}>AI-forbedring</Typography>
+                <Box sx={{ flex: 1 }} />
+                <Typography sx={{ fontSize: 10.5, color: ws.green, fontWeight: 700 }}>{s.done || 0}/{s.total || 0} ferdig</Typography>
+              </Stack>
+              {(s.running || 0) > 0 && <Typography sx={{ fontSize: 10.5, color: ws.amber, mb: 0.75 }}>⏳ {s.running} forbedres nå…{(s.failed || 0) > 0 ? ` · ${s.failed} feilet` : ''}</Typography>}
+              <Stack spacing={0.5}>
+                {jobs.slice(0, 4).map((j: any) => (
+                  <Stack key={j.id} direction="row" spacing={1} alignItems="center" sx={{ p: 0.65, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.panelAlt }}>
+                    {(j.thumbUrl || j.enhancedUrl)
+                      ? <Box sx={{ width: 26, height: 26, borderRadius: 0.75, background: `center/cover no-repeat url(${j.thumbUrl || j.enhancedUrl})`, flexShrink: 0 }} />
+                      : <Box sx={{ width: 26, height: 26, borderRadius: 0.75, bgcolor: 'rgba(255,255,255,0.06)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12 }}>✨</Box>}
+                    <Box sx={{ minWidth: 0, flex: 1 }}>
+                      <Typography noWrap sx={{ fontSize: 11, fontWeight: 600 }}>{j.photoId || j.id}</Typography>
+                      <Typography sx={{ fontSize: 10, color: ws.textFaint }}>{j.model || 'AI'}{j.processingMs ? ` · ${(j.processingMs / 1000).toFixed(1)}s` : ''}</Typography>
+                    </Box>
+                    <WsTag label={j.status === 'completed' || j.status === 'done' ? 'Ferdig' : j.status === 'failed' || j.status === 'error' ? 'Feilet' : 'Kjører'} tone={j.status === 'completed' || j.status === 'done' ? 'green' : j.status === 'failed' || j.status === 'error' ? 'red' : 'amber'} />
+                  </Stack>
+                ))}
+              </Stack>
             </WsCard>
           );
         })()}
