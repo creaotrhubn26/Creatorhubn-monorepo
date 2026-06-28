@@ -57,3 +57,27 @@ export async function claimIdempotencyKey(
   );
   return { fresh: (result.rowCount ?? 0) > 0 };
 }
+
+/**
+ * Delete idempotency rows older than `olderThanDays`. Keys only need to live
+ * long enough to absorb client retries of the same logical operation (seconds
+ * to minutes), so a daily prune keeps the table bounded. Call from a cron/
+ * scheduler, not per-request. Best-effort: returns 0 on any error.
+ */
+export async function pruneSocialIdempotency(
+  pool: Pool,
+  olderThanDays = 7,
+): Promise<number> {
+  try {
+    await ensureIdempotencySchema(pool);
+    const result = await pool.query(
+      `DELETE FROM role_room_social_idempotency
+        WHERE created_at < now() - make_interval(days => $1)`,
+      [olderThanDays],
+    );
+    return result.rowCount ?? 0;
+  } catch (error) {
+    console.warn("[social-idempotency] prune failed", error);
+    return 0;
+  }
+}
