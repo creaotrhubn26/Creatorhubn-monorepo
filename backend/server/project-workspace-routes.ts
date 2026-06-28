@@ -1361,6 +1361,37 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     } catch (e) { console.error("POST ai/image-edit", e); res.status(500).json({ error: "failed" }); }
   });
 
+  // Moodboard konsept-generering (tekst→bilde, Nano Banana 2). Ingen samtykke
+  // (genererer fra tekst, ikke kundedata). Resultatet legges auto i moodboardet.
+  app.post("/api/projects/:projectId/ai/concept-image", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureGenSchema();
+      const pid = req.params.projectId;
+      const me = await userIdentity(uid);
+      const settings = await getGenSettings(pool);
+      if (!settings.enabled || !falConfigured()) return res.status(503).json({ error: "ai_disabled" });
+      if (!isWhitelisted(settings, me.email, me.role)) return res.status(403).json({ error: "not_whitelisted" });
+      const model = GEN_MODELS["nano-banana-2-t2i"];
+      const spent = await spentTodayUsd();
+      if (spent + model.estCostUsd > settings.dailyCapUsd) return res.status(429).json({ error: "daily_cap", message: `Dagstak nådd ($${settings.dailyCapUsd}).` });
+      const pf = await creditPreflight(settings, uid, model.estCostUsd);
+      if (!pf.ok) return res.status(402).json({ error: "insufficient_credits", message: `Ikke nok kreditter (rest $${pf.balance.toFixed(2)}, trenger $${pf.retail.toFixed(2)}). Kjøp mer.` });
+      const prompt = String(req.body?.prompt || "").trim().slice(0, 1000);
+      if (!prompt) return res.status(400).json({ error: "prompt_required" });
+      const sub = await falSubmit(model.falPath, { prompt, num_images: 1, output_format: "png" });
+      if (sub.error || !sub.requestId) return res.status(502).json({ error: sub.error || "fal_submit_failed" });
+      const id = crypto.randomUUID();
+      // input.addToMoodboard=true → finalize legger resultatet i moodboardet.
+      await pool.query(
+        `INSERT INTO generative_ai_jobs (id, project_id, user_id, user_email, model, kind, status, provider, fal_request_id, response_url, input, est_cost_usd)
+         VALUES ($1,$2,$3,$4,$5,$6,'queued',$7,$8,$9,$10::jsonb,$11)`,
+        [id, pid, uid, me.email, model.key, model.kind, model.provider, sub.requestId, sub.responseUrl || null, JSON.stringify({ prompt, addToMoodboard: true }), model.estCostUsd],
+      );
+      res.status(202).json({ jobId: id, status: "queued" });
+    } catch (e) { console.error("POST ai/concept-image", e); res.status(500).json({ error: "failed" }); }
+  });
+
   // Animer et stillbilde → kort AI-video (Seedance 2.0). Samme gater. Async/treg
   // (video tar minutter) — jobben poller via /ai/jobs/:id som resten.
   // «Foreslå» — Claude vision ser bildet (+ moodboard-stil) → 3 skreddersydde
@@ -1553,6 +1584,17 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       // (b) credits → trekk retail (kost×påslag) fra brukerens lommebok.
       if (fsettings.billingMode === "credits") {
         try { await creditMove(job.user_id, "spend", -(Number(job.est_cost_usd || 0) * (fsettings.markupMultiplier || 1)), `job:${job.id}`, `${job.model}`); } catch { /* */ }
+      }
+      // Konsept-bilder legges auto i moodboardet (idempotent på job-id i b2_key).
+      if (job.input?.addToMoodboard && b2Key) {
+        try {
+          await ensureSchema(pool);
+          const ex = await pool.query(`SELECT 1 FROM project_images WHERE b2_key = $1`, [b2Key]).catch(() => ({ rows: [] }));
+          if (!ex.rows.length) await pool.query(
+            `INSERT INTO project_images (project_id, panel, b2_key, label, category, content_type, uploaded_by) VALUES ($1,'moodboard',$2,$3,'ai-konsept','image/png',$4)`,
+            [pid, b2Key, `AI-konsept: ${String(job.input?.prompt || "").slice(0, 60)}`, job.user_id],
+          );
+        } catch { /* */ }
       }
       res.json({ status: "completed", kind: job.kind, isVideo: out.isVideo, beforeUrl, afterUrl: b2Key ? await presignRoleRoomB2Download(b2Key, undefined, 3600) : outUrl, prompt: job.input?.prompt });
     } catch (e) { console.error("GET ai/jobs/:id", e); res.status(500).json({ error: "failed" }); }

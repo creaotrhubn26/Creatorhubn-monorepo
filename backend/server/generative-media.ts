@@ -50,6 +50,18 @@ export const GEN_MODELS: Record<string, GenModel> = {
     imageField: "image_url", outputField: "video",
     sendsPersonalData: true,
   },
+  // Nano Banana 2 — tekst→bilde (konsept-generering for moodboard). Ikke
+  // persondata (genererer fra tekst) → ingen samtykke-gate nødvendig.
+  "nano-banana-2-t2i": {
+    key: "nano-banana-2-t2i",
+    label: "Nano Banana 2 — konsept (tekst→bilde)",
+    falPath: "fal-ai/nano-banana-2",
+    kind: "text-to-image",
+    provider: "google",
+    estCostUsd: 0.06,
+    outputField: "images",
+    sendsPersonalData: false,
+  },
   // SwitchX (Beeble) — video-til-video relighting/restyle. Bevarer bevegelse/
   // performance, endrer kun lys/atmosfære/stil. Egen provider (ikke fal).
   "switchx-restyle": {

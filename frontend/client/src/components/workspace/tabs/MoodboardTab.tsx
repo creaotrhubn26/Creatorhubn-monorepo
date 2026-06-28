@@ -6,7 +6,7 @@
  * Alle bilde-flater bruker WsImageGrid (legg til / last opp).
  */
 import React, { useState, useEffect } from 'react';
-import { Box, Stack, Typography, Button, TextField, Avatar, IconButton, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
+import { Box, Stack, Typography, Button, TextField, Avatar, IconButton, CircularProgress, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
 import Edit from '@mui/icons-material/Edit';
 import Close from '@mui/icons-material/Close';
 import Add from '@mui/icons-material/Add';
@@ -18,7 +18,8 @@ import Palette from '@mui/icons-material/Palette';
 import CheckCircle from '@mui/icons-material/CheckCircle';
 import Search from '@mui/icons-material/Search';
 import { ws } from '../workspaceTheme';
-import { WsCard, WsSectionTitle, WsStat, WsPills, WsTag, WsImageGrid } from '../ui';
+import { WsCard, WsSectionTitle, WsStat, WsPills, WsTag, WsImageGrid, WsModal } from '../ui';
+import AiBuyCreditsModal from '../AiBuyCreditsModal';
 import { useProjectImages } from '../useProjectImages';
 
 const CATS = [{ key: 'alle', label: 'Alle 86' }, { key: 'forb', label: 'Forberedelser 12' }, { key: 'vielse', label: 'Vielse 14' }, { key: 'portrett', label: 'Portretter 16' }, { key: 'golden', label: 'Golden hour 10' }, { key: 'detaljer', label: 'Detaljer 12' }, { key: 'fest', label: 'Fest 14' }];
@@ -36,6 +37,42 @@ const MoodboardTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [extracting, setExtracting] = useState(false);
   const [search, setSearch] = useState('');
   const [genNotes, setGenNotes] = useState(false);
+  // AI konsept-generering (tekst→bilde) + kreditt
+  const [aiCfg, setAiCfg] = useState<any | null>(null);
+  const [credits, setCredits] = useState<any | null>(null);
+  const [buyOpen, setBuyOpen] = useState(false);
+  const [conceptOpen, setConceptOpen] = useState(false);
+  const [conceptPrompt, setConceptPrompt] = useState('');
+  const [conceptBusy, setConceptBusy] = useState(false);
+  const [conceptStatus, setConceptStatus] = useState('');
+  const loadCredits = () => { if (isReal) apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/credits`).then((r: any) => setCredits(r || null)).catch(() => {}); };
+  const buyPack = async (id: string) => { try { const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/credits/checkout`, { method: 'POST', body: { packId: id } }); if (r?.url) window.location.href = r.url; } catch (e: any) { window.alert(e?.message || 'Feil'); } };
+  useEffect(() => {
+    if (!isReal) return;
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/config`).then((r: any) => setAiCfg(r || null)).catch(() => {});
+    loadCredits();
+    try { const p = new URLSearchParams(window.location.search); if (p.get('ai_credits') === 'ok' && p.get('cs')) { apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/credits/confirm`, { method: 'POST', body: { sessionId: p.get('cs') } }).then(() => { loadCredits(); window.alert('Kreditter lagt til ✓'); }).catch(() => {}).finally(() => { const u = new URL(window.location.href); u.searchParams.delete('ai_credits'); u.searchParams.delete('cs'); window.history.replaceState({}, '', u.toString()); }); } } catch { /* */ }
+    // eslint-disable-next-line
+  }, [projectId]);
+  const generateConcept = async () => {
+    if (!conceptPrompt.trim() || conceptBusy) return;
+    setConceptBusy(true); setConceptStatus('Genererer…');
+    try {
+      const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/concept-image`, { method: 'POST', body: { prompt: conceptPrompt.trim() } });
+      if (!r?.jobId) throw new Error('Kunne ikke starte');
+      for (let i = 0; i < 20; i++) {
+        await new Promise((res) => setTimeout(res, 2500));
+        const s: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/jobs/${r.jobId}`);
+        if (s.status === 'completed') { setConceptStatus('✓ Lagt i moodboardet'); mood.reload && mood.reload(); loadCredits(); break; }
+        if (s.status === 'failed') { setConceptStatus('Feilet'); break; }
+      }
+    } catch (e: any) {
+      const msg = String(e?.message || '').toLowerCase();
+      if (msg.includes('kreditt') || msg.includes('insufficient')) { setConceptOpen(false); setBuyOpen(true); }
+      else window.alert(e?.message || 'Konsept-generering feilet');
+      setConceptStatus('');
+    } finally { setConceptBusy(false); }
+  };
   const loadMeta = () => { if (isReal) apiRequest(`/api/projects/${encodeURIComponent(projectId)}/moodboard-meta`).then((r: any) => setMeta(r?.meta || null)).catch(() => {}); };
   const generateNotes = async () => {
     if (!isReal || genNotes) return;
@@ -75,7 +112,10 @@ const MoodboardTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
           <Typography sx={{ fontSize: 20, fontWeight: 800 }}>Moodboard</Typography>
-          {isReal && <Button size="small" startIcon={<Edit sx={{ fontSize: 15 }} />} onClick={() => setEditOpen(true)} sx={{ color: ws.text, textTransform: 'none', border: `1px solid ${ws.border}` }}>Rediger</Button>}
+          <Stack direction="row" spacing={1}>
+            {isReal && aiCfg?.enabled && aiCfg?.whitelisted && <Button size="small" startIcon={<AutoAwesome sx={{ fontSize: 15 }} />} onClick={() => { setConceptPrompt(''); setConceptStatus(''); setConceptOpen(true); }} sx={{ color: ws.accentContrast, bgcolor: ws.accent, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Generer konsept</Button>}
+            {isReal && <Button size="small" startIcon={<Edit sx={{ fontSize: 15 }} />} onClick={() => setEditOpen(true)} sx={{ color: ws.text, textTransform: 'none', border: `1px solid ${ws.border}` }}>Rediger</Button>}
+          </Stack>}
         </Stack>
 
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', lg: 'repeat(4, 1fr)' }, gap: 1.5, mb: 2 }}>
@@ -149,6 +189,27 @@ const MoodboardTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       </Box>
 
       <MetaEditDialog open={editOpen} onClose={() => setEditOpen(false)} projectId={projectId} meta={meta} onSaved={() => { setEditOpen(false); loadMeta(); }} />
+
+      {/* AI konsept-generering (tekst→bilde) */}
+      <WsModal open={conceptOpen} onClose={() => { if (!conceptBusy) setConceptOpen(false); }} title="Generer konsept-bilde (AI)" maxWidth="sm">
+        <Stack spacing={2}>
+          <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Beskriv stemningen/scenen, så genererer Nano Banana 2 et referansebilde rett inn i moodboardet.</Typography>
+          <TextField value={conceptPrompt} onChange={(e) => setConceptPrompt(e.target.value)} fullWidth multiline minRows={2} size="small" placeholder="f.eks. romantisk editorial bryllup, varmt motlys, myke filmtoner" disabled={conceptBusy} />
+          <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
+            {['Varmt golden hour-motlys', 'Editorial fine-art, dempede toner', 'Moody og filmatisk', 'Lyst og luftig, naturlig'].map((p) => <Box key={p} onClick={() => setConceptPrompt(p)} sx={{ px: 1, py: 0.4, borderRadius: 2, cursor: 'pointer', fontSize: 11, color: ws.accent, bgcolor: ws.accentSoft, border: `1px solid ${ws.accentBorder}` }}>{p}</Box>)}
+          </Stack>
+          {conceptBusy && <Stack direction="row" spacing={1} alignItems="center"><CircularProgress size={16} sx={{ color: ws.accent }} /><Typography sx={{ fontSize: 12, color: ws.textDim }}>{conceptStatus}</Typography></Stack>}
+          {!conceptBusy && conceptStatus && <Typography sx={{ fontSize: 12, color: ws.green }}>{conceptStatus}</Typography>}
+          <Stack direction="row" justifyContent="space-between" alignItems="center">
+            <Typography sx={{ fontSize: 10.5, color: ws.textFaint }}>~$0,06/bilde{credits?.billingMode === 'credits' ? <> · saldo ${(credits?.balanceUsd ?? 0).toFixed(2)} · <Box component="span" onClick={() => { setConceptOpen(false); setBuyOpen(true); }} sx={{ color: ws.accent, cursor: 'pointer', fontWeight: 700 }}>Kjøp</Box></> : null}</Typography>
+            <Stack direction="row" spacing={1}>
+              <Button onClick={() => setConceptOpen(false)} disabled={conceptBusy} sx={{ color: ws.textDim, textTransform: 'none' }}>Lukk</Button>
+              <Button variant="contained" disabled={!conceptPrompt.trim() || conceptBusy} onClick={generateConcept} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>{conceptBusy ? 'Genererer…' : 'Generer'}</Button>
+            </Stack>
+          </Stack>
+        </Stack>
+      </WsModal>
+      <AiBuyCreditsModal open={buyOpen} onClose={() => setBuyOpen(false)} credits={credits} onBuy={buyPack} />
     </Stack>
   );
 };
