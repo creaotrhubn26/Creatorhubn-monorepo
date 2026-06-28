@@ -69,9 +69,15 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     return () => clearInterval(t);
   }, [projectId, isReal]);
 
+  // Talenotater — fotografens innspilte voice-memos på bilder (capture_reviews).
+  const [voiceNotes, setVoiceNotes] = useState<any[]>([]);
+  const loadVoice = () => { if (!isReal) return; apiRequest(`/api/projects/${encodeURIComponent(projectId)}/voice-notes`).then((r: any) => setVoiceNotes(Array.isArray(r?.notes) ? r.notes : [])).catch(() => {}); };
+  useEffect(() => { loadVoice(); /* eslint-disable-next-line */ }, [projectId, isReal]);
+
   // Sanntid: refetch media INSTANT når iPad skyter/culler (WS).
   const { live: capLive } = useCaptureRealtime(projectId, () => {
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/media`).then((r: any) => { setAssets(Array.isArray(r?.assets) ? r.assets : []); setCull(r?.cullStats || {}); }).catch(() => {});
+    loadVoice();
   });
 
   // Cull-aware items: rating + pick (flagged_for_client) fra iPad-culling.
@@ -196,6 +202,38 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
             </WsCard>
           );
         })()}
+
+        {/* Talenotater — fotografens innspilte voice-memos (Capture-appen) */}
+        {(isReal ? voiceNotes.length > 0 : true) && (
+          <WsCard sx={{ mt: 2 }}>
+            <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 1 }}>
+              <Typography sx={{ fontSize: 14 }}>🎙️</Typography>
+              <Typography sx={{ fontSize: 13, fontWeight: 700 }}>Talenotater</Typography>
+              <Box sx={{ flex: 1 }} />
+              <Typography sx={{ fontSize: 11, color: ws.textFaint }}>{isReal ? voiceNotes.length : 2} fra fotograf</Typography>
+            </Stack>
+            <Stack spacing={1}>
+              {(isReal ? voiceNotes : [
+                { id: 's1', filename: 'A7IV_1188.CR3', comment: 'Hero-bilde — prioriter denne i redigering', durationSeconds: 8, thumbUrl: null },
+                { id: 's2', filename: 'A7IV_1241.CR3', comment: 'Fiks refleksen i vinduet bak', durationSeconds: 5, thumbUrl: null },
+              ]).map((n: any) => (
+                <Box key={n.id} sx={{ p: 1, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.panelAlt, border: `1px solid ${ws.borderSoft}` }}>
+                  <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
+                    {n.thumbUrl
+                      ? <Box sx={{ width: 28, height: 28, borderRadius: 1, background: `center/cover no-repeat url(${n.thumbUrl})`, flexShrink: 0 }} />
+                      : <Box sx={{ width: 28, height: 28, borderRadius: 1, bgcolor: 'rgba(255,255,255,0.06)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13 }}>🖼️</Box>}
+                    <Box sx={{ minWidth: 0, flex: 1 }}>
+                      <Typography noWrap sx={{ fontSize: 11.5, fontWeight: 600 }}>{n.filename || 'Bilde'}</Typography>
+                      <Typography sx={{ fontSize: 10, color: ws.textFaint }}>{n.durationSeconds ? `${n.durationSeconds}s` : ''} talenotat</Typography>
+                    </Box>
+                  </Stack>
+                  {n.comment && <Typography sx={{ fontSize: 11.5, color: ws.textDim, mb: n.audioUrl ? 0.5 : 0 }}>«{n.comment}»</Typography>}
+                  {n.audioUrl && <audio controls preload="none" src={n.audioUrl} style={{ width: '100%', height: 32 }} />}
+                </Box>
+              ))}
+            </Stack>
+          </WsCard>
+        )}
       </Box>
     </Stack>
   );
