@@ -605,6 +605,46 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     } catch (e) { console.error("GET media", e); res.status(500).json({ error: "failed" }); }
   });
 
+  // ─────────── Talenotater — fotografens innspilte voice-memos på bilder ───────
+  // Capture-appen lar fotografen spille inn en talenotat (AAC/m4a) på et enkelt
+  // bilde (capture_reviews.audio_key). Editor/team hører konteksten direkte:
+  // «dette er hero-bildet», «fiks refleksen her». Presignet lyd + thumbnail.
+  app.get("/api/projects/:projectId/voice-notes", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const sessions = await pool.query(
+        `SELECT id FROM capture_sessions WHERE project_id = $1`,
+        [req.params.projectId],
+      ).catch(() => ({ rows: [] }));
+      const sessionIds = sessions.rows.map((s: any) => s.id);
+      if (sessionIds.length === 0) return res.json({ notes: [], hasNotes: false });
+      const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit || "40"), 10) || 40));
+      const rows = await pool.query(
+        `SELECT r.id, r.asset_id, r.reviewer_id, r.comment, r.rating, r.heart,
+                r.audio_key, r.audio_duration_seconds, r.created_at,
+                a.original_filename, a.preview_key
+           FROM capture_reviews r
+           JOIN capture_assets a ON a.id = r.asset_id
+          WHERE a.session_id = ANY($1::uuid[]) AND r.audio_key IS NOT NULL
+          ORDER BY r.created_at DESC LIMIT $2`,
+        [sessionIds, limit],
+      ).catch(() => ({ rows: [] }));
+      const notes = await Promise.all(rows.rows.map(async (r: any) => ({
+        id: r.id,
+        assetId: r.asset_id,
+        filename: r.original_filename,
+        comment: r.comment || null,
+        rating: r.rating || null,
+        heart: r.heart || false,
+        durationSeconds: r.audio_duration_seconds || null,
+        audioUrl: r.audio_key ? await signAssetReadUrl(r.audio_key) : null,
+        thumbUrl: r.preview_key ? await signAssetReadUrl(r.preview_key) : null,
+        createdAt: r.created_at,
+      })));
+      res.json({ notes, hasNotes: notes.length > 0 });
+    } catch (e) { console.error("GET voice-notes", e); res.json({ notes: [], hasNotes: false }); }
+  });
+
   // ─────────── Team Sync % (ekte readiness fra board + sjekkliste + presence) ───
   app.get("/api/projects/:projectId/team-sync", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
