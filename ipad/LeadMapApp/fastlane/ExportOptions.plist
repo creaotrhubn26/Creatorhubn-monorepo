@@ -24,6 +24,8 @@
         <string>LeadMap App Store</string>
         <key>com.creatorhubn.LeadMapApp.LeadMapWidget</key>
         <string>LeadMap Widget App Store</string>
+        <key>com.creatorhubn.LeadMapApp.watchkitapp</key>
+        <string>LeadMap Watch App Store</string>
     </dict>
     <key>uploadBitcode</key>
     <false/>
