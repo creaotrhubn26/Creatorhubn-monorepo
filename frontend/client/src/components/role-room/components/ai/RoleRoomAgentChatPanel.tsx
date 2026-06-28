@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * RoleRoomAgentChatPanel — the conversational surface for "The Role Room
  * Agent". Shares the branding with the existing bootstrap dialog but is
