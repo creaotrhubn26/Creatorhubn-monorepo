@@ -93,8 +93,9 @@ export const WS_NAV: WsNavItem[] = [
   // Smart Rom (lenker til eksisterende verktøy senere)
   { key: 'photo-room', label: 'Photo Room', icon: 'PhotoCamera', group: 'rom', online: true, route: true },
   { key: 'video-room', label: 'Video Room', icon: 'Videocam', group: 'rom', online: true, route: true },
-  { key: 'edit-room', label: 'Edit Room', icon: 'Movie', group: 'rom', online: true },
   { key: 'sound-room', label: 'Sound Room', icon: 'GraphicEq', group: 'rom', online: true, route: true },
+  // Edit Room skjult inntil videre — planlegges senere (redigerer-/leveranse-cockpit).
+  // { key: 'edit-room', label: 'Edit Room', icon: 'Movie', group: 'rom', online: true },
   // Kundeportal
   { key: 'kundevisning', label: 'Kundevisning', icon: 'Visibility', group: 'klient' },
   { key: 'avtaler', label: 'Avtaler', icon: 'EventNote', group: 'klient' },
