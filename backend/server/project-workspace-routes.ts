@@ -913,6 +913,191 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     } catch (e) { console.error("GET audio-room", e); res.status(500).json({ error: "failed" }); }
   });
 
+  // ─────────── Photo Room — produsent-side bilde-review-cockpit ───────────────
+  // Gjenbruker capture_assets (rating/flagged/rejected/exif/preview_key fra iPad-
+  // culling). Net-nytt: per-bilde review-status (godkjent/trenger-redigering) +
+  // interne/klient foto-kommentarer. canAccessProject-gatet.
+  const ensurePhotoSchema = async () => {
+    await pool.query(`CREATE TABLE IF NOT EXISTS project_photo_review (
+      asset_id uuid PRIMARY KEY, project_id uuid NOT NULL,
+      review_status text, updated_by varchar, updated_at timestamptz DEFAULT now())`).catch(() => {});
+    await pool.query(`CREATE TABLE IF NOT EXISTS project_photo_comments (
+      id uuid PRIMARY KEY, project_id uuid NOT NULL, asset_id uuid,
+      scope text DEFAULT 'internal', author_name text, author_kind text DEFAULT 'creator',
+      comment text NOT NULL, status text DEFAULT 'open', tag text, pinned boolean DEFAULT false,
+      parent_id uuid, like_count int DEFAULT 0, created_at timestamptz DEFAULT now())`).catch(() => {});
+  };
+  const photoSessionIds = async (pid: string) => {
+    const s = await pool.query(`SELECT id FROM capture_sessions WHERE project_id = $1`, [pid]).catch(() => ({ rows: [] }));
+    return s.rows.map((x: any) => x.id);
+  };
+
+  // Konsolidert cockpit-state: statistikk + utvalgs-stadier + bilder (m/ exif + status).
+  app.get("/api/projects/:projectId/photo-review", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensurePhotoSchema();
+      const pid = req.params.projectId;
+      const sessionIds = await photoSessionIds(pid);
+      if (sessionIds.length === 0) return res.json({ hasSession: false, stats: {}, stages: [], assets: [] });
+      const limit = Math.min(400, Math.max(1, parseInt(String(req.query.limit || "200"), 10) || 200));
+      const a = await pool.query(
+        `SELECT a.id, a.original_filename, a.mime, a.size_bytes, a.state, a.rating, a.color_label,
+                a.flagged_for_client, a.rejected, a.preview_key, a.exif, a.created_at,
+                r.review_status
+           FROM capture_assets a
+           LEFT JOIN project_photo_review r ON r.asset_id = a.id
+          WHERE a.session_id = ANY($1::uuid[])
+          ORDER BY a.created_at DESC LIMIT $2`,
+        [sessionIds, limit],
+      ).catch(() => ({ rows: [] }));
+      const assets = await Promise.all(a.rows.map(async (r: any) => {
+        const ex = r.exif || {};
+        return {
+          id: r.id, filename: r.original_filename, rating: r.rating || 0,
+          flagged: !!r.flagged_for_client, rejected: !!r.rejected, colorLabel: r.color_label,
+          reviewStatus: r.review_status || (r.rejected ? "rejected" : r.flagged_for_client ? "flagged" : null),
+          thumbUrl: r.preview_key ? await signAssetReadUrl(r.preview_key) : null,
+          exif: {
+            iso: ex.iso ?? ex.ISO ?? null, lens: ex.lens ?? ex.lensModel ?? ex.LensModel ?? null,
+            aperture: ex.aperture ?? ex.fNumber ?? ex.FNumber ?? null,
+            shutter: ex.shutter ?? ex.exposureTime ?? ex.ExposureTime ?? null,
+            camera: ex.camera ?? ex.model ?? ex.Model ?? null, focalLength: ex.focalLength ?? ex.FocalLength ?? null,
+            width: ex.width ?? ex.ImageWidth ?? null, height: ex.height ?? ex.ImageHeight ?? null,
+            capturedAt: ex.capturedAt ?? ex.DateTimeOriginal ?? r.created_at,
+          },
+          createdAt: r.created_at,
+        };
+      }));
+      // Statistikk
+      const st = await pool.query(
+        `SELECT count(*)::int total,
+                count(*) FILTER (WHERE a.rejected IS TRUE)::int rejected,
+                count(*) FILTER (WHERE a.flagged_for_client IS TRUE)::int flagged,
+                count(*) FILTER (WHERE a.rating >= 4)::int favorites,
+                count(*) FILTER (WHERE r.review_status = 'approved')::int approved,
+                count(*) FILTER (WHERE r.review_status = 'needs_edit')::int needs_edit,
+                count(*) FILTER (WHERE r.review_status IS NOT NULL OR a.rating >= 1)::int reviewed
+           FROM capture_assets a LEFT JOIN project_photo_review r ON r.asset_id = a.id
+          WHERE a.session_id = ANY($1::uuid[])`,
+        [sessionIds],
+      ).catch(() => ({ rows: [{}] }));
+      const s = st.rows[0] || {};
+      const total = s.total || 0;
+      const pending = Math.max(0, total - (s.approved || 0) - (s.needs_edit || 0) - (s.rejected || 0));
+      const cm = await pool.query(`SELECT count(*)::int n, count(*) FILTER (WHERE scope='internal')::int interne, count(*) FILTER (WHERE scope='client')::int klient FROM project_photo_comments WHERE project_id = $1`, [pid]).catch(() => ({ rows: [{}] }));
+      const cc = cm.rows[0] || {};
+      res.json({
+        hasSession: true,
+        stats: { total, pending, approved: s.approved || 0, needsEdit: s.needs_edit || 0, rejected: s.rejected || 0, flagged: s.flagged || 0, comments: cc.n || 0, reviewed: s.reviewed || 0 },
+        commentScopes: { all: cc.n || 0, internal: cc.interne || 0, client: cc.klient || 0 },
+        stages: [
+          { key: "raw", label: "RAW", count: total },
+          { key: "color", label: "Fargekorrigert", count: total },
+          { key: "retouch", label: "Retusjert", count: s.favorites || 0 },
+          { key: "final", label: "Final selects", count: (s.approved || 0) + (s.flagged || 0), locked: false },
+        ],
+        assets,
+      });
+    } catch (e) { console.error("GET photo-review", e); res.json({ hasSession: false, stats: {}, stages: [], assets: [] }); }
+  });
+
+  // Sett review-status på ett bilde (approved/needs_edit/rejected/flagged/null).
+  app.patch("/api/projects/:projectId/photo-review/:assetId", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensurePhotoSchema();
+      const status = req.body?.reviewStatus ? String(req.body.reviewStatus).slice(0, 20) : null;
+      await pool.query(
+        `INSERT INTO project_photo_review (asset_id, project_id, review_status, updated_by, updated_at)
+         VALUES ($1,$2,$3,$4,NOW())
+         ON CONFLICT (asset_id) DO UPDATE SET review_status = EXCLUDED.review_status, updated_by = EXCLUDED.updated_by, updated_at = NOW()`,
+        [req.params.assetId, req.params.projectId, status, uid],
+      );
+      // Speil rejected/flagged tilbake til capture_assets så iPad/Media er i sync.
+      if (status === "rejected") await pool.query(`UPDATE capture_assets SET rejected = TRUE WHERE id = $1`, [req.params.assetId]).catch(() => {});
+      if (status === "flagged") await pool.query(`UPDATE capture_assets SET flagged_for_client = TRUE WHERE id = $1`, [req.params.assetId]).catch(() => {});
+      res.json({ ok: true });
+    } catch (e) { console.error("PATCH photo-review", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  // Bulk-godkjenn (Godkjenn utvalg): alle flaggede, eller eksplisitt assetIds.
+  app.post("/api/projects/:projectId/photo-review/approve", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensurePhotoSchema();
+      const pid = req.params.projectId;
+      const ids = Array.isArray(req.body?.assetIds) ? req.body.assetIds.filter((v: any) => typeof v === "string") : [];
+      let targets = ids;
+      if (targets.length === 0) {
+        const sessionIds = await photoSessionIds(pid);
+        const f = await pool.query(`SELECT id FROM capture_assets WHERE session_id = ANY($1::uuid[]) AND flagged_for_client IS TRUE AND rejected IS NOT TRUE`, [sessionIds]).catch(() => ({ rows: [] }));
+        targets = f.rows.map((r: any) => r.id);
+      }
+      let n = 0;
+      for (const aid of targets) {
+        await pool.query(
+          `INSERT INTO project_photo_review (asset_id, project_id, review_status, updated_by, updated_at)
+           VALUES ($1,$2,'approved',$3,NOW())
+           ON CONFLICT (asset_id) DO UPDATE SET review_status='approved', updated_at=NOW()`,
+          [aid, pid, uid],
+        ).catch(() => {}); n++;
+      }
+      res.json({ ok: true, approved: n });
+    } catch (e) { console.error("POST photo approve", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  // Foto-kommentarer (interne/klient) — pr bilde eller hele prosjektet.
+  app.get("/api/projects/:projectId/photo-comments", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensurePhotoSchema();
+      const pid = req.params.projectId;
+      const assetId = req.query.assetId ? String(req.query.assetId) : null;
+      const rows = await pool.query(
+        `SELECT * FROM project_photo_comments WHERE project_id = $1 ${assetId ? "AND asset_id = $2" : ""} ORDER BY pinned DESC, created_at DESC LIMIT 200`,
+        assetId ? [pid, assetId] : [pid],
+      ).catch(() => ({ rows: [] }));
+      res.json({ comments: rows.rows.map((c: any) => ({
+        id: c.id, assetId: c.asset_id, scope: c.scope, authorName: c.author_name || "Team", authorKind: c.author_kind,
+        comment: c.comment, status: c.status, tag: c.tag, pinned: c.pinned, parentId: c.parent_id, likeCount: c.like_count || 0, createdAt: c.created_at,
+      })) });
+    } catch (e) { console.error("GET photo-comments", e); res.json({ comments: [] }); }
+  });
+
+  app.post("/api/projects/:projectId/photo-comments", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensurePhotoSchema();
+      const b = req.body || {};
+      if (!b.comment) return res.status(400).json({ error: "comment_required" });
+      const id = crypto.randomUUID();
+      await pool.query(
+        `INSERT INTO project_photo_comments (id, project_id, asset_id, scope, author_name, author_kind, comment, tag, pinned, parent_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+        [id, req.params.projectId, b.assetId || null, String(b.scope || "internal").slice(0, 20),
+         String(b.authorName || "").slice(0, 200) || null, String(b.authorKind || "creator").slice(0, 20),
+         String(b.comment).slice(0, 4000), b.tag ? String(b.tag).slice(0, 40) : null, !!b.pinned, b.parentId || null],
+      );
+      res.status(201).json({ id });
+    } catch (e) { console.error("POST photo-comments", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  app.patch("/api/projects/:projectId/photo-comments/:commentId", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const b = req.body || {};
+      const sets: string[] = []; const vals: any[] = []; let i = 1;
+      if (b.status != null) { sets.push(`status = $${i++}`); vals.push(String(b.status).slice(0, 20)); }
+      if (b.pinned != null) { sets.push(`pinned = $${i++}`); vals.push(!!b.pinned); }
+      if (sets.length === 0) return res.status(400).json({ error: "nothing_to_update" });
+      vals.push(req.params.commentId, req.params.projectId);
+      const upd = await pool.query(`UPDATE project_photo_comments SET ${sets.join(", ")} WHERE id = $${i++} AND project_id = $${i} RETURNING id`, vals).catch(() => ({ rows: [] }));
+      if (!upd.rows.length) return res.status(404).json({ error: "not_found" });
+      res.json({ ok: true });
+    } catch (e) { console.error("PATCH photo-comments", e); res.status(500).json({ error: "failed" }); }
+  });
+
   // ─────────── Video Room — produsent-side frame.io-review (versjoner + ───────
   // tidsstemplede kommentarer + chapters + godkjenning). Prosjekt-scopet i VÅRE
   // tabeller; gjenbruker CinematicVideoPlayer-formen på frontend. Cloudflare

@@ -91,7 +91,7 @@ export const WS_NAV: WsNavItem[] = [
   { key: 'team', label: 'Team', icon: 'Group', group: 'hoved', route: true },
   { key: 'chat', label: 'Chat', icon: 'ChatBubbleOutline', group: 'hoved', route: true },
   // Smart Rom (lenker til eksisterende verktøy senere)
-  { key: 'photo-room', label: 'Photo Room', icon: 'PhotoCamera', group: 'rom', online: true },
+  { key: 'photo-room', label: 'Photo Room', icon: 'PhotoCamera', group: 'rom', online: true, route: true },
   { key: 'video-room', label: 'Video Room', icon: 'Videocam', group: 'rom', online: true, route: true },
   { key: 'edit-room', label: 'Edit Room', icon: 'Movie', group: 'rom', online: true },
   { key: 'sound-room', label: 'Sound Room', icon: 'GraphicEq', group: 'rom', online: true, route: true },
