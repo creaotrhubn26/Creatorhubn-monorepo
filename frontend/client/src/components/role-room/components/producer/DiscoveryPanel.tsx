@@ -15,6 +15,7 @@ import {
   ThumbUpOutlined as LikeIcon, ChatBubbleOutline as CommentIcon,
 } from '@mui/icons-material';
 import ConnectionPicker from './ConnectionPicker';
+import { LoadingSkeleton, PanelHeader } from './ui';
 
 type Mode = 'hashtag' | 'ig-profile' | 'fb-page' | 'embed';
 const MODES: { key: Mode; label: string; icon: React.ReactNode; placeholder: string; hint: string }[] = [
@@ -74,19 +75,15 @@ export default function DiscoveryPanel() {
 
   return (
     <Stack spacing={1.6} sx={{ p: { xs: 1, md: 2 } }}>
-      <Stack direction="row" spacing={1} alignItems="center">
-        <DiscoveryIcon sx={{ color: '#22d3ee' }} />
-        <Box sx={{ flex: 1 }}>
-          <Typography sx={{ color: '#f8fafc', fontWeight: 800, fontSize: '1.05rem' }}>Oppdag</Typography>
-          <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '0.84rem' }}>
-            Research på konkurrenter, samarbeidspartnere og innholdsidéer i kundens nisje.
-          </Typography>
-        </Box>
-        <ConnectionPicker connections={connections} value={connectionId} onChange={setConnectionId} label="Velg konto" />
-      </Stack>
+      <PanelHeader
+        icon={<DiscoveryIcon />}
+        title="Oppdag"
+        subtitle="Research på konkurrenter, samarbeidspartnere og innholdsidéer i kundens nisje."
+        actions={<ConnectionPicker connections={connections} value={connectionId} onChange={setConnectionId} label="Velg konto" />}
+      />
 
       {connLoading ? (
-        <Box sx={{ textAlign: 'center', py: 4 }}><CircularProgress /></Box>
+        <LoadingSkeleton variant="lines" />
       ) : connections.length === 0 ? (
         <Alert severity="info">Koble til kundens Facebook-/Instagram-konto først (under Feed-planner) for å bruke Oppdag.</Alert>
       ) : (

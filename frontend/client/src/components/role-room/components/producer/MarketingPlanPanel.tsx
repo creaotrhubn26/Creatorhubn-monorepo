@@ -85,6 +85,7 @@ import type { RoleRoomAgentProducerBootstrapResult } from '../../services/roleRo
 import RoleRoomAgentInsightsBanner from './RoleRoomAgentInsightsBanner';
 import RoleRoomAgentApprovalsWidget from './RoleRoomAgentApprovalsWidget';
 import { MarketingGenerationProgress } from './MarketingGenerationProgress';
+import { LoadingSkeleton, ErrorAlert } from './ui';
 
 interface MarketingPlanPanelProps {
   projectId: string;
@@ -336,11 +337,7 @@ export default function MarketingPlanPanel({
   }, [readiness]);
 
   if (loading) {
-    return (
-      <Stack alignItems="center" sx={{ py: 6 }}>
-        <CircularProgress sx={{ color: '#22d3ee' }} />
-      </Stack>
-    );
+    return <LoadingSkeleton variant="lines" />;
   }
 
   return (
@@ -398,11 +395,7 @@ export default function MarketingPlanPanel({
 
       {generating ? <MarketingGenerationProgress active mode="plan" /> : null}
 
-      {error ? (
-        <Alert severity="error" sx={{ bgcolor: 'rgba(239,68,68,0.08)', color: '#fecaca', border: '1px solid rgba(239,68,68,0.24)' }}>
-          {error}
-        </Alert>
-      ) : null}
+      {error ? <ErrorAlert message={error} /> : null}
 
       {gateMessage}
 

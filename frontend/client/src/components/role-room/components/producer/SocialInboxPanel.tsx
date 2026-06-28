@@ -34,6 +34,7 @@ import roleRoomAgentService, {
   type RoleRoomSocialEvent,
 } from '../../services/roleRoomAgentService';
 import { useSequencedFetch } from '../../hooks/useSequencedFetch';
+import { LoadingSkeleton, PanelHeader, EmptyState, ErrorAlert } from './ui';
 
 type FilterPlatform = 'all' | 'instagram' | 'facebook_page' | 'linkedin' | 'youtube';
 type FilterKind = 'all' | 'comment' | 'reply' | 'mention' | 'dm' | 'reaction';
@@ -231,22 +232,18 @@ export default function SocialInboxPanel(): React.ReactElement {
         borderRadius: 2,
       }}
     >
-      <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
-        <Stack direction="row" spacing={1} alignItems="center">
-          <InboxHeaderIcon sx={{ color: '#22d3ee' }} />
-          <Box>
-            <Typography sx={{ color: '#f8fafc', fontWeight: 800, fontSize: '1.05rem' }}>Inbox</Typography>
-            <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '0.84rem' }}>
-              {events.length} hendelser{counts.unread > 0 ? ` · ${counts.unread} ulest` : ''}
-            </Typography>
-          </Box>
-        </Stack>
-        <Tooltip title="Oppdater">
-          <IconButton size="small" aria-label="Oppdater inbox" onClick={() => void refresh()} disabled={loading}>
-            <RefreshIcon fontSize="small" sx={{ color: 'rgba(226,232,240,0.7)' }} />
-          </IconButton>
-        </Tooltip>
-      </Stack>
+      <PanelHeader
+        icon={<InboxHeaderIcon />}
+        title="Inbox"
+        subtitle={`${events.length} hendelser${counts.unread > 0 ? ` · ${counts.unread} ulest` : ''}`}
+        actions={
+          <Tooltip title="Oppdater">
+            <IconButton size="small" aria-label="Oppdater inbox" onClick={() => void refresh()} disabled={loading}>
+              <RefreshIcon fontSize="small" sx={{ color: 'rgba(226,232,240,0.7)' }} />
+            </IconButton>
+          </Tooltip>
+        }
+      />
 
       <Stack direction="row" spacing={1.2} alignItems="center" flexWrap="wrap" useFlexGap>
         <ToggleButtonGroup
@@ -305,78 +302,21 @@ export default function SocialInboxPanel(): React.ReactElement {
         </ToggleButton>
       </Stack>
 
-      {error ? (
-        <Alert severity="error" sx={{ bgcolor: 'rgba(239,68,68,0.08)', color: '#fecaca' }}>
-          {error}
-        </Alert>
-      ) : null}
+      {error ? <ErrorAlert message={error} onRetry={() => void refresh()} /> : null}
 
       {loading && events.length === 0 ? (
-        <Stack alignItems="center" sx={{ py: 4 }}>
-          <CircularProgress size={20} />
-        </Stack>
+        <LoadingSkeleton variant="list" />
       ) : events.length === 0 ? (
-        <Box
-          sx={{
-            textAlign: 'center',
-            py: 4,
-            px: 2,
-            color: 'rgba(226,232,240,0.7)',
-            bgcolor: 'rgba(15,23,42,0.4)',
-            borderRadius: 2,
-            border: '1px dashed rgba(148,163,184,0.25)',
-          }}
-        >
-          <Typography sx={{ fontSize: '0.95rem', fontWeight: 700, mb: 0.5 }}>
-            Ingen events ennå
-          </Typography>
-          <Typography sx={{ fontSize: '0.78rem', mb: 1.5, opacity: 0.85 }}>
-            Når koblede plattformer mottar comments, mentions, eller DMs, lander de her med
-            sentiment-score og avsender-info.
-          </Typography>
-          <Stack
-            direction="row"
-            spacing={1}
-            justifyContent="center"
-            flexWrap="wrap"
-            useFlexGap
-            sx={{ mt: 1.5, fontSize: '0.74rem' }}
-          >
-            <Typography sx={{ color: 'rgba(226,232,240,0.55)', fontSize: '0.74rem' }}>
-              Sjekk:
-            </Typography>
-            <Chip
-              size="small"
-              label="1. Kontoer koblet (bar øverst)"
-              sx={{
-                fontSize: '0.7rem',
-                bgcolor: 'rgba(34,211,238,0.12)',
-                color: '#22d3ee',
-                border: '1px solid rgba(34,211,238,0.3)',
-              }}
-            />
-            <Chip
-              size="small"
-              label="2. Webhook subscribed (skjer auto ved connect)"
-              sx={{
-                fontSize: '0.7rem',
-                bgcolor: 'rgba(134,239,172,0.12)',
-                color: '#86efac',
-                border: '1px solid rgba(134,239,172,0.3)',
-              }}
-            />
-            <Chip
-              size="small"
-              label="3. Posts publisert (Plan-fase)"
-              sx={{
-                fontSize: '0.7rem',
-                bgcolor: 'rgba(236,72,153,0.12)',
-                color: '#f9a8d4',
-                border: '1px solid rgba(236,72,153,0.3)',
-              }}
-            />
-          </Stack>
-        </Box>
+        <EmptyState
+          title="Ingen events ennå"
+          description="Når koblede plattformer mottar comments, mentions, eller DMs, lander de her med sentiment-score og avsender-info."
+          hintsLabel="Sjekk:"
+          hints={[
+            { label: '1. Kontoer koblet (bar øverst)', tone: 'accent' },
+            { label: '2. Webhook subscribed (skjer auto ved connect)', tone: 'positive' },
+            { label: '3. Posts publisert (Plan-fase)', tone: 'neutral' },
+          ]}
+        />
       ) : (
         <Stack spacing={1} data-testid="inbox-event-list">
           {events.map((e) => {
