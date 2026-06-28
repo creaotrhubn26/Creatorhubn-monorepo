@@ -41,19 +41,72 @@ export function publicModelList() {
   return Object.values(GEN_MODELS).map((m) => ({ key: m.key, label: m.label, kind: m.kind, provider: m.provider, estCostUsd: m.estCostUsd }));
 }
 
-// ─── Styring ───────────────────────────────────────────────────────────────
-// Whitelist: super_admin alltid, ellers e-post i GENERATIVE_AI_WHITELIST
-// (komma-separert). Default inkluderer eieren så pilot kan testes umiddelbart.
-export function isAiWhitelisted(email?: string | null, role?: string | null): boolean {
-  if (role === "super_admin") return true;
-  const raw = process.env.GENERATIVE_AI_WHITELIST || "daniel@creatorhubn.com";
-  const list = raw.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
-  return !!email && list.includes(email.toLowerCase());
+// ─── Styring (DB-basert, admin-redigerbar — env som fallback) ────────────────
+// Konfig ligger i generative_ai_settings (singleton id=1) slik at admin kan
+// skru av/på, bytte billing-modus, sette dagstak/whitelist/kvote fra Admin
+// Dashboard — uten å røre env. Env brukes kun som default når raden mangler.
+export interface GenSettings {
+  enabled: boolean;
+  billingMode: "free_whitelist" | "metered";
+  dailyCapUsd: number;
+  whitelist: string[];     // e-poster (lowercase)
+  includedQuota: number;   // inkluderte genereringer pr bruker pr mnd (metered)
+}
+let _settingsCache: { at: number; val: GenSettings } | null = null;
+export function invalidateGenSettings() { _settingsCache = null; }
+
+export async function getGenSettings(pool: any): Promise<GenSettings> {
+  if (_settingsCache && Date.now() - _settingsCache.at < 30_000) return _settingsCache.val;
+  await pool.query(`CREATE TABLE IF NOT EXISTS generative_ai_settings (
+    id int PRIMARY KEY DEFAULT 1, enabled boolean DEFAULT true,
+    billing_mode text DEFAULT 'free_whitelist', daily_cap_usd numeric DEFAULT 20,
+    whitelist jsonb DEFAULT '[]'::jsonb, included_quota int DEFAULT 0,
+    updated_by varchar, updated_at timestamptz DEFAULT now())`).catch(() => {});
+  const r = await pool.query(`SELECT * FROM generative_ai_settings WHERE id = 1`).catch(() => ({ rows: [] }));
+  const envWl = (process.env.GENERATIVE_AI_WHITELIST || "daniel@creatorhubn.com").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+  const envCap = Number(process.env.GENERATIVE_AI_DAILY_CAP_USD || 20);
+  const row = r.rows[0];
+  const val: GenSettings = row ? {
+    enabled: row.enabled !== false,
+    billingMode: row.billing_mode === "metered" ? "metered" : "free_whitelist",
+    dailyCapUsd: Number(row.daily_cap_usd ?? envCap) || envCap,
+    whitelist: Array.isArray(row.whitelist) && row.whitelist.length ? row.whitelist.map((x: any) => String(x).toLowerCase()) : envWl,
+    includedQuota: Number(row.included_quota ?? 0) || 0,
+  } : { enabled: true, billingMode: "free_whitelist", dailyCapUsd: envCap > 0 ? envCap : 20, whitelist: envWl, includedQuota: 0 };
+  _settingsCache = { at: Date.now(), val };
+  return val;
 }
 
-export function aiDailyCapUsd(): number {
-  const n = Number(process.env.GENERATIVE_AI_DAILY_CAP_USD || 20);
-  return Number.isFinite(n) && n > 0 ? n : 20;
+export function isWhitelisted(settings: GenSettings, email?: string | null, role?: string | null): boolean {
+  if (role === "super_admin") return true;
+  return !!email && settings.whitelist.includes(email.toLowerCase());
+}
+
+// ─── Sovende Stripe-metering-hook ────────────────────────────────────────────
+// No-op i free_whitelist-modus ELLER til måler-env er satt. Når admin setter
+// billingMode='metered' OG STRIPE_OVERAGE_GENAI_METER_EVENT_NAME finnes, emittes
+// ett meter-event pr generering (samme mønster som role-room-ads-meter-emitter).
+export async function emitGenAiMeter(
+  pool: any,
+  opts: { userId?: string | null; valueUsd: number; settings: GenSettings },
+): Promise<{ emitted?: boolean; skipped?: string; error?: string }> {
+  if (opts.settings.billingMode !== "metered") return { skipped: "free_mode" };
+  const eventName = process.env.STRIPE_OVERAGE_GENAI_METER_EVENT_NAME;
+  const secret = process.env.STRIPE_SECRET_KEY;
+  if (!eventName) return { skipped: "meter_not_configured" };
+  if (!secret) return { skipped: "no_stripe" };
+  if (!opts.userId) return { skipped: "no_user" };
+  try {
+    const u = await pool.query(`SELECT stripe_customer_id FROM stripe_customers WHERE user_id = $1 AND stripe_customer_id IS NOT NULL LIMIT 1`, [opts.userId]).catch(() => ({ rows: [] }));
+    const customerId = u.rows[0]?.stripe_customer_id;
+    if (!customerId) return { skipped: "no_customer" };
+    const mod: any = await import("stripe");
+    const Stripe = mod.default ?? mod;
+    const stripe = new Stripe(secret);
+    const value = String(Math.max(0, Math.round(opts.valueUsd * 100))); // USD-cent
+    await stripe.billing.meterEvents.create({ event_name: eventName, payload: { stripe_customer_id: String(customerId), value } });
+    return { emitted: true };
+  } catch (e: any) { return { error: String(e?.message || e) }; }
 }
 
 // ─── fal queue-klient (REST, ingen SDK) ──────────────────────────────────────
