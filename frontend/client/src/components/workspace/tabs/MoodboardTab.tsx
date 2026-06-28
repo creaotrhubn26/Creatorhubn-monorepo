@@ -115,7 +115,7 @@ const MoodboardTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           <Stack direction="row" spacing={1}>
             {isReal && aiCfg?.enabled && aiCfg?.whitelisted && <Button size="small" startIcon={<AutoAwesome sx={{ fontSize: 15 }} />} onClick={() => { setConceptPrompt(''); setConceptStatus(''); setConceptOpen(true); }} sx={{ color: ws.accentContrast, bgcolor: ws.accent, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Generer konsept</Button>}
             {isReal && <Button size="small" startIcon={<Edit sx={{ fontSize: 15 }} />} onClick={() => setEditOpen(true)} sx={{ color: ws.text, textTransform: 'none', border: `1px solid ${ws.border}` }}>Rediger</Button>}
-          </Stack>}
+          </Stack>
         </Stack>
 
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', lg: 'repeat(4, 1fr)' }, gap: 1.5, mb: 2 }}>
