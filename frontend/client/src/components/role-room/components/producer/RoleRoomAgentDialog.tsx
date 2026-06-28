@@ -67,6 +67,7 @@ import RoleRoomFeedPlannerPanel from './RoleRoomFeedPlannerPanel';
 import MarketingPlanPanel from './MarketingPlanPanel';
 import { DailyBriefCard } from './DailyBriefCard';
 import AgentDockLauncher from './AgentDockLauncher';
+import AgentCommandPalette from './AgentCommandPalette';
 import ResearchVersionsPickerInline from './ResearchVersionsPickerInline';
 import MerchSuppliersPanel from './MerchSuppliersPanel';
 
@@ -267,6 +268,20 @@ export default function RoleRoomAgentDialog({
     if (initialTab) setActiveTab(initialTab);
   }, [initialTab]);
   const [systemStatusOpen, setSystemStatusOpen] = useState(false);
+  const [cmdkOpen, setCmdkOpen] = useState(false);
+
+  // Cmd/Ctrl+K — "hopp til fane"-palett. Only active while the dialog is open.
+  useEffect(() => {
+    if (!open) return undefined;
+    const handler = (e: KeyboardEvent): void => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        setCmdkOpen((v) => !v);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [open]);
 
   // Item #155 — lytt etter cross-component navigasjon (MarketingPlanPanel
   // sin "Send til feed-planner"-knapp dispatcher denne). Vi gjør det med
@@ -2231,6 +2246,14 @@ export default function RoleRoomAgentDialog({
           context={{ briefSummary: initialExtraContext ?? undefined }}
         />
       ) : null}
+
+      {/* Cmd/Ctrl+K — hopp til hvilken som helst fane. */}
+      <AgentCommandPalette
+        open={cmdkOpen}
+        onClose={() => setCmdkOpen(false)}
+        includeChat={Boolean(currentUserId)}
+        onSelect={(tab) => setActiveTab(tab as typeof activeTab)}
+      />
     </Dialog>
   );
 }
