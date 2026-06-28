@@ -11,6 +11,10 @@ import {
   runOrchestratedBootstrap,
 } from "./role-room-agent-bootstrap-orchestrator.js";
 import { makeStructuredLogger } from "./role-room-agent-llm-util.js";
+import {
+  groundBootstrapPayload,
+  type RoleRoomAgentGroundingSources,
+} from "./role-room-agent-grounding.js";
 import { enrichCompetitorWithMetaPage } from "./role-room-meta-pages.js";
 
 export type RoleRoomAgentProducerBootstrapInput = {
@@ -5599,10 +5603,22 @@ export async function generateRoleRoomAgentProducerBootstrap(
 
   const finalize = <T extends Omit<RoleRoomAgentNormalizedPayload, "researchId" | "bootstrapStartedAt" | "bootstrapFinishedAt" | "serviceLatencies" | "fallbacksUsed">>(
     payload: T,
+    groundingSources?: RoleRoomAgentGroundingSources,
   ): RoleRoomAgentNormalizedPayload => {
     serviceLatencies.totalMs = Date.now() - startedAtMs;
+    // Research grounding: strip hallucinated HARD facts (ungrounded
+    // org-number, unverified competitors, ungrounded contact info) from the
+    // synthesized payload before it reaches the producer. Conservative and
+    // deterministic — creative/strategy text is never touched. strippedReasons
+    // feed the same fallbacksUsed telemetry below so ops can see what fired.
+    const grounded = groundingSources
+      ? groundBootstrapPayload(payload, groundingSources)
+      : { payload, strippedReasons: [] as string[] };
+    if (grounded.strippedReasons.length > 0) {
+      fallbacksUsed.push(...grounded.strippedReasons);
+    }
     const finalPayload = {
-      ...payload,
+      ...grounded.payload,
       researchId,
       bootstrapStartedAt,
       bootstrapFinishedAt: new Date().toISOString(),
@@ -5672,7 +5688,12 @@ export async function generateRoleRoomAgentProducerBootstrap(
         orch.businessSignals,
         "anthropic",
         process.env.ROLE_ROOM_BOOTSTRAP_CLAUDE_MODEL || "claude-sonnet-4-5",
-      ));
+      ), {
+        brregCompany: orch.brregCompany,
+        websiteInsights: orchWebsiteInsights,
+        businessSignals: orch.businessSignals,
+        competitorAnalysis: orchFallback.competitorAnalysis,
+      });
     }
     // Orchestrator returned nothing usable — fall through to deterministic.
     fallbacksUsed.push("orchestrator_unusable_fell_through_to_deterministic");
@@ -5760,6 +5781,16 @@ export async function generateRoleRoomAgentProducerBootstrap(
     merchSuppliers,
     brandColors,
   );
+  // Shared grounding sources for the deterministic synthesis paths (Claude /
+  // OpenAI / OpenAI-retry / fallback). finalize() runs groundBootstrapPayload
+  // with these to strip any hallucinated org-number / unverified competitor /
+  // ungrounded contact field the synthesis model may have introduced.
+  const groundingSources: RoleRoomAgentGroundingSources = {
+    brregCompany: initialBrregCompany,
+    websiteInsights,
+    businessSignals,
+    competitorAnalysis,
+  };
   // Model dispatcher. `ROLE_ROOM_BOOTSTRAP_MODEL=claude` routes synthesis
   // through Anthropic; anything else (default) keeps the existing OpenAI
   // path. The deterministic fetchers above (Brreg, Places, website scrape)
@@ -5821,11 +5852,11 @@ export async function generateRoleRoomAgentProducerBootstrap(
           fallback,
           businessSignals,
           "openai",
-        ));
+        ), groundingSources);
       }
     }
     fallbacksUsed.push("synthesis_unavailable_returning_fallback");
-    return finalize(fallback);
+    return finalize(fallback, groundingSources);
   }
 
   return finalize(normalizeBootstrapPayload(
@@ -5838,5 +5869,5 @@ export async function generateRoleRoomAgentProducerBootstrap(
     useClaude
       ? (process.env.ROLE_ROOM_BOOTSTRAP_CLAUDE_MODEL || "claude-sonnet-4-5")
       : undefined,
-  ));
+  ), groundingSources);
 }
