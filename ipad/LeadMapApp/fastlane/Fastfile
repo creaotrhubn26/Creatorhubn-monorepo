@@ -138,6 +138,7 @@ platform :ios do
   # matcher de Daniel laget manuelt 2026-06-25 så ExportOptions.plist sin
   # provisioningProfiles-mapping fortsatt fungerer.
   private_lane :download_app_store_profiles do
+    # iOS-bundles (hovedapp + widget-extension).
     [
       { bundle: "com.creatorhubn.LeadMapApp",               name: "LeadMap App Store" },
       { bundle: "com.creatorhubn.LeadMapApp.LeadMapWidget", name: "LeadMap Widget App Store" },
@@ -149,6 +150,18 @@ platform :ios do
         platform: "ios",
       )
     end
+
+    # watchOS-bundle (LeadgridWatchApp, roadmap #403).
+    # Profile-navn følger samme mønster som widget. Hvis Apple ikke har
+    # bundle-id-en registrert ennå, vil sigh feile — Daniel må da
+    # registrere `com.creatorhubn.LeadMapApp.watchkitapp` på
+    # developer.apple.com → Identifiers → App IDs én gang manuelt.
+    sigh(
+      app_identifier: "com.creatorhubn.LeadMapApp.watchkitapp",
+      provisioning_name: "LeadMap Watch App Store",
+      force: true,
+      platform: "ios",
+    )
   end
 
   # Returnerer xcargs-streng med auth-flags hvis ASC-nøkkel er satt opp,
