@@ -22,6 +22,13 @@ struct LeadgridHubView: View {
                 }
 
                 Section("CRM") {
+                    // Oversikt-dashboard m/ KPI, kart, salgsledelse.
+                    // Toppnivå-inngangspunkt for hele Leadgrid-erfaringen.
+                    NavigationLink {
+                        OversiktView()
+                    } label: {
+                        Label("Oversikt", systemImage: "rectangle.grid.2x2.fill")
+                    }
                     if let api = appState.api {
                         NavigationLink {
                             LeadgridLeadInboxView(api: api)
