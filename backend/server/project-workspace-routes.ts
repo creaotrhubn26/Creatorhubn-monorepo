@@ -910,6 +910,162 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     } catch (e) { console.error("GET audio-room", e); res.status(500).json({ error: "failed" }); }
   });
 
+  // ─────────── Video Room — produsent-side frame.io-review (versjoner + ───────
+  // tidsstemplede kommentarer + chapters + godkjenning). Prosjekt-scopet i VÅRE
+  // tabeller; gjenbruker CinematicVideoPlayer-formen på frontend. Cloudflare
+  // Stream / B2 host video; vi lagrer file_url/stream_uid + chapters (jsonb).
+  const ensureVideoSchema = async () => {
+    await pool.query(`CREATE TABLE IF NOT EXISTS project_video_versions (
+      id uuid PRIMARY KEY,
+      project_id uuid NOT NULL,
+      version_label text,
+      version_number int NOT NULL DEFAULT 1,
+      file_url text,
+      stream_uid text,
+      thumbnail_url text,
+      duration numeric,
+      chapters jsonb,
+      status text DEFAULT 'under_review',
+      uploaded_by varchar,
+      created_at timestamptz DEFAULT now()
+    )`).catch(() => {});
+    await pool.query(`CREATE TABLE IF NOT EXISTS project_video_comments (
+      id uuid PRIMARY KEY,
+      version_id uuid NOT NULL,
+      project_id uuid NOT NULL,
+      timecode_sec numeric NOT NULL DEFAULT 0,
+      end_timecode_sec numeric,
+      comment text NOT NULL,
+      author_name text,
+      author_kind text DEFAULT 'creator',
+      category text,
+      status text DEFAULT 'open',
+      is_decision boolean DEFAULT false,
+      parent_id uuid,
+      like_count int DEFAULT 0,
+      created_at timestamptz DEFAULT now()
+    )`).catch(() => {});
+  };
+  const mapVideoComment = (r: any) => ({
+    id: r.id, timecodeSec: Number(r.timecode_sec), endTimecodeSec: r.end_timecode_sec != null ? Number(r.end_timecode_sec) : null,
+    comment: r.comment, clientName: r.author_name || null, authorKind: r.author_kind || "creator",
+    status: r.status || "open", isDecision: !!r.is_decision, category: r.category || null,
+    parentId: r.parent_id || null, likeCount: r.like_count || 0, createdAt: r.created_at,
+  });
+
+  // Hele cockpit-staten: versjoner + nåværende + kommentarer + chapters + fase.
+  app.get("/api/projects/:projectId/video-room", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureVideoSchema();
+      const pid = req.params.projectId;
+      const vs = await pool.query(
+        `SELECT id, version_label, version_number, file_url, stream_uid, thumbnail_url, duration, chapters, status, created_at,
+                (SELECT count(*) FROM project_video_comments c WHERE c.version_id = v.id)::int comment_count,
+                (SELECT count(*) FROM project_video_comments c WHERE c.version_id = v.id AND c.status NOT IN ('resolved','done'))::int open_count
+           FROM project_video_versions v WHERE project_id = $1 ORDER BY version_number ASC`,
+        [pid],
+      ).catch(() => ({ rows: [] }));
+      const versions = vs.rows.map((v: any) => ({
+        id: v.id, versionLabel: v.version_label || `V${v.version_number}`, versionNumber: v.version_number,
+        fileUrl: v.file_url || null, streamUid: v.stream_uid || null, thumbnailUrl: v.thumbnail_url || null,
+        duration: v.duration != null ? Number(v.duration) : null, status: v.status, createdAt: v.created_at,
+        commentCount: v.comment_count || 0, openCount: v.open_count || 0,
+      }));
+      const cur = vs.rows.find((v: any) => v.status === "under_review") || vs.rows[vs.rows.length - 1] || null;
+      let comments: any[] = []; let chapters: any[] = [];
+      if (cur) {
+        chapters = Array.isArray(cur.chapters) ? cur.chapters : (cur.chapters ? cur.chapters : []);
+        const cm = await pool.query(`SELECT * FROM project_video_comments WHERE version_id = $1 ORDER BY timecode_sec ASC, created_at ASC`, [cur.id]).catch(() => ({ rows: [] }));
+        comments = cm.rows.map(mapVideoComment);
+      }
+      res.json({ hasVersions: versions.length > 0, versions, currentVersionId: cur?.id || null, chapters, comments });
+    } catch (e) { console.error("GET video-room", e); res.json({ hasVersions: false, versions: [], comments: [], chapters: [] }); }
+  });
+
+  // Ny versjon (V1/V2/…) — file_url eller stream_uid + valgfrie chapters.
+  app.post("/api/projects/:projectId/video-versions", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureVideoSchema();
+      const pid = req.params.projectId;
+      const b = req.body || {};
+      if (!b.fileUrl && !b.streamUid) return res.status(400).json({ error: "fileUrl_or_streamUid_required" });
+      const n = await pool.query(`SELECT COALESCE(MAX(version_number),0)+1 AS n FROM project_video_versions WHERE project_id = $1`, [pid]);
+      const vn = n.rows[0].n;
+      // Eldre versjoner går fra under_review → superseded.
+      await pool.query(`UPDATE project_video_versions SET status='superseded' WHERE project_id=$1 AND status='under_review'`, [pid]).catch(() => {});
+      const id = crypto.randomUUID();
+      await pool.query(
+        `INSERT INTO project_video_versions (id, project_id, version_label, version_number, file_url, stream_uid, thumbnail_url, duration, chapters, status, uploaded_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'under_review',$10)`,
+        [id, pid, String(b.versionLabel || `V${vn}`).slice(0, 80), vn, b.fileUrl || null, b.streamUid || null,
+         b.thumbnailUrl || null, b.duration != null ? Number(b.duration) : null,
+         b.chapters ? JSON.stringify(b.chapters) : null, uid],
+      );
+      res.status(201).json({ id, versionNumber: vn });
+    } catch (e) { console.error("POST video-versions", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  // Tidsstemplet kommentar.
+  app.post("/api/projects/:projectId/video-comments", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureVideoSchema();
+      const pid = req.params.projectId; const b = req.body || {};
+      if (!b.versionId || !b.comment) return res.status(400).json({ error: "versionId_and_comment_required" });
+      const id = crypto.randomUUID();
+      await pool.query(
+        `INSERT INTO project_video_comments (id, version_id, project_id, timecode_sec, end_timecode_sec, comment, author_name, author_kind, category, is_decision, parent_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+        [id, b.versionId, pid, Number(b.timecodeSec || 0), b.endTimecodeSec != null ? Number(b.endTimecodeSec) : null,
+         String(b.comment).slice(0, 4000), String(b.authorName || "").slice(0, 200) || null,
+         String(b.authorKind || "creator").slice(0, 20), b.category ? String(b.category).slice(0, 40) : null,
+         !!b.isDecision, b.parentId || null],
+      );
+      const row = await pool.query(`SELECT * FROM project_video_comments WHERE id = $1`, [id]);
+      res.status(201).json(mapVideoComment(row.rows[0]));
+    } catch (e) { console.error("POST video-comments", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  // Resolve/endre status på kommentar.
+  app.patch("/api/projects/:projectId/video-comments/:commentId", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const status = String(req.body?.status || "").slice(0, 20);
+      if (!status) return res.status(400).json({ error: "status_required" });
+      const upd = await pool.query(
+        `UPDATE project_video_comments SET status=$1 WHERE id=$2 AND project_id=$3 RETURNING id`,
+        [status, req.params.commentId, req.params.projectId],
+      ).catch(() => ({ rows: [] }));
+      if (!upd.rows.length) return res.status(404).json({ error: "not_found" });
+      res.json({ ok: true });
+    } catch (e) { console.error("PATCH video-comments", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  // Godkjenn versjon → approved (+ resten superseded).
+  app.post("/api/projects/:projectId/video-versions/:vid/approve", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const pid = req.params.projectId;
+      const upd = await pool.query(`UPDATE project_video_versions SET status='approved' WHERE id=$1 AND project_id=$2 RETURNING id`, [req.params.vid, pid]).catch(() => ({ rows: [] }));
+      if (!upd.rows.length) return res.status(404).json({ error: "not_found" });
+      res.json({ ok: true });
+    } catch (e) { console.error("POST video approve", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  // Sett chapters (segment-bar) på en versjon.
+  app.patch("/api/projects/:projectId/video-versions/:vid/chapters", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const chapters = Array.isArray(req.body?.chapters) ? req.body.chapters : [];
+      const upd = await pool.query(`UPDATE project_video_versions SET chapters=$1 WHERE id=$2 AND project_id=$3 RETURNING id`,
+        [JSON.stringify(chapters), req.params.vid, req.params.projectId]).catch(() => ({ rows: [] }));
+      if (!upd.rows.length) return res.status(404).json({ error: "not_found" });
+      res.json({ ok: true });
+    } catch (e) { console.error("PATCH video chapters", e); res.status(500).json({ error: "failed" }); }
+  });
+
   // ─────────── Team Sync % (ekte readiness fra board + sjekkliste + presence) ───
   app.get("/api/projects/:projectId/team-sync", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
