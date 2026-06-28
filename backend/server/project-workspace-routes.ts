@@ -25,7 +25,7 @@ import { canAccessProject } from "./project-team-routes";
 import { signAssetReadUrl } from "./capture-upload-service";
 import { archiveToRoleRoomB2, presignRoleRoomB2Download, getFromRoleRoomB2, slugifyForKey } from "./b2-archive-helper";
 import { Vibrant } from "node-vibrant/node";
-import { GEN_MODELS, publicModelList, getGenSettings, isWhitelisted, invalidateGenSettings, emitGenAiMeter, falConfigured, falSubmit, falPoll } from "./generative-media";
+import { GEN_MODELS, publicModelList, getGenSettings, isWhitelisted, invalidateGenSettings, emitGenAiMeter, falConfigured, falSubmit, falPoll, falOutputUrl } from "./generative-media";
 import { createGoogleMeetLink } from "./google-meet";
 import { classifySession } from "./capture-culling-service";
 import { enqueuePhotoEnhancerJobFromBuffer, listPhotoEnhancerJobsByProjectId } from "./photo-enhancer-routes";
@@ -1349,6 +1349,44 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     } catch (e) { console.error("POST ai/image-edit", e); res.status(500).json({ error: "failed" }); }
   });
 
+  // Animer et stillbilde → kort AI-video (Seedance 2.0). Samme gater. Async/treg
+  // (video tar minutter) — jobben poller via /ai/jobs/:id som resten.
+  app.post("/api/projects/:projectId/ai/image-to-video", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureGenSchema();
+      const pid = req.params.projectId;
+      const me = await userIdentity(uid);
+      const settings = await getGenSettings(pool);
+      if (!settings.enabled || !falConfigured()) return res.status(503).json({ error: "ai_disabled" });
+      if (!isWhitelisted(settings, me.email, me.role)) return res.status(403).json({ error: "not_whitelisted", message: "AI-video er ikke aktivert for din konto." });
+      const model = GEN_MODELS["seedance-2-i2v"];
+      const consent = await pool.query(`SELECT consented FROM project_ai_consent WHERE project_id = $1`, [pid]).catch(() => ({ rows: [] }));
+      if (!consent.rows[0]?.consented) return res.status(409).json({ error: "consent_required", message: "Krever samtykke: kundebilder sendes til tredjeparts AI utenfor EØS." });
+      const duration = Math.min(15, Math.max(4, parseInt(String(req.body?.duration || 5), 10) || 5));
+      const estCost = duration * (model.costPerSecondUsd || 0.1);
+      const spent = await spentTodayUsd();
+      if (spent + estCost > settings.dailyCapUsd) return res.status(429).json({ error: "daily_cap", message: `Dagstak nådd ($${settings.dailyCapUsd}). En ${duration}s-video koster ~$${estCost.toFixed(2)}.` });
+      const prompt = String(req.body?.prompt || "").trim().slice(0, 1000);
+      const assetId = req.body?.assetId;
+      if (!prompt || !assetId) return res.status(400).json({ error: "assetId_and_prompt_required" });
+      const a = await pool.query(`SELECT full_key, preview_key FROM capture_assets WHERE id = $1`, [assetId]).catch(() => ({ rows: [] }));
+      const srcKey = a.rows[0]?.preview_key || a.rows[0]?.full_key; // preview (mindre) holder som startbilde
+      if (!srcKey) return res.status(404).json({ error: "asset_not_found" });
+      const srcUrl = await signAssetReadUrl(srcKey);
+      if (!srcUrl) return res.status(503).json({ error: "source_unavailable" });
+      const sub = await falSubmit(model.falPath, { prompt, image_url: srcUrl, duration: String(duration), resolution: "720p" });
+      if (sub.error || !sub.requestId) return res.status(502).json({ error: sub.error || "fal_submit_failed" });
+      const id = crypto.randomUUID();
+      await pool.query(
+        `INSERT INTO generative_ai_jobs (id, project_id, user_id, user_email, model, kind, status, provider, fal_request_id, response_url, input, source_asset_id, est_cost_usd)
+         VALUES ($1,$2,$3,$4,$5,$6,'queued',$7,$8,$9,$10::jsonb,$11,$12)`,
+        [id, pid, uid, me.email, model.key, model.kind, model.provider, sub.requestId, sub.responseUrl || null, JSON.stringify({ prompt, duration }), assetId, estCost],
+      );
+      res.status(202).json({ jobId: id, status: "queued", estCostUsd: estCost });
+    } catch (e) { console.error("POST ai/image-to-video", e); res.status(500).json({ error: "failed" }); }
+  });
+
   // Poll en AI-jobb — finaliserer ved fullføring (laster fal-resultat til B2).
   app.get("/api/projects/:projectId/ai/jobs/:jobId", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
@@ -1361,29 +1399,32 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
         const a = await pool.query(`SELECT preview_key, full_key FROM capture_assets WHERE id = $1`, [job.source_asset_id]).catch(() => ({ rows: [] }));
         const k = a.rows[0]?.preview_key || a.rows[0]?.full_key; return k ? signAssetReadUrl(k) : null;
       })() : null;
+      const isVideoKind = job.kind === "image-to-video";
       // Allerede ferdig?
       if (job.status === "completed" && job.output_b2_key) {
-        return res.json({ status: "completed", beforeUrl, afterUrl: await presignRoleRoomB2Download(job.output_b2_key, undefined, 3600), prompt: job.input?.prompt });
+        return res.json({ status: "completed", kind: job.kind, isVideo: isVideoKind, beforeUrl, afterUrl: await presignRoleRoomB2Download(job.output_b2_key, undefined, 3600), prompt: job.input?.prompt });
       }
-      if (job.status === "failed") return res.json({ status: "failed", error: job.error, beforeUrl });
+      if (job.status === "failed") return res.json({ status: "failed", kind: job.kind, error: job.error, beforeUrl });
       // Poll fal.
-      if (!job.response_url) return res.json({ status: job.status || "queued", beforeUrl });
+      if (!job.response_url) return res.json({ status: job.status || "queued", kind: job.kind, beforeUrl });
       const p = await falPoll(job.response_url);
       if (p.status !== "COMPLETED") {
-        if (p.status === "ERROR") { await pool.query(`UPDATE generative_ai_jobs SET status='failed', error=$1 WHERE id=$2`, [p.error || "fal_error", job.id]).catch(() => {}); return res.json({ status: "failed", error: p.error, beforeUrl }); }
+        if (p.status === "ERROR") { await pool.query(`UPDATE generative_ai_jobs SET status='failed', error=$1 WHERE id=$2`, [p.error || "fal_error", job.id]).catch(() => {}); return res.json({ status: "failed", kind: job.kind, error: p.error, beforeUrl }); }
         await pool.query(`UPDATE generative_ai_jobs SET status='running' WHERE id=$1`, [job.id]).catch(() => {});
-        return res.json({ status: "running", beforeUrl });
+        return res.json({ status: "running", kind: job.kind, beforeUrl });
       }
-      // Ferdig → hent fal-output, lagre til B2 (permanent).
-      const outUrl = p.result?.images?.[0]?.url;
-      if (!outUrl) { await pool.query(`UPDATE generative_ai_jobs SET status='failed', error='no_output' WHERE id=$1`, [job.id]).catch(() => {}); return res.json({ status: "failed", error: "no_output", beforeUrl }); }
+      // Ferdig → hent fal-output (bilde eller video), lagre til B2 (permanent).
+      const out = falOutputUrl(p.result);
+      const outUrl = out.url;
+      if (!outUrl) { await pool.query(`UPDATE generative_ai_jobs SET status='failed', error='no_output' WHERE id=$1`, [job.id]).catch(() => {}); return res.json({ status: "failed", kind: job.kind, error: "no_output", beforeUrl }); }
       let b2Key: string | null = null;
       try {
         const r = await fetch(outUrl);
         if (r.ok) {
           const buf = Buffer.from(await r.arrayBuffer());
-          const ct = r.headers.get("content-type") || "image/png";
-          const key = `workspace/${pid}/ai-edits/${job.id}.${ct.includes("jpeg") ? "jpg" : "png"}`;
+          const ct = r.headers.get("content-type") || (out.isVideo ? "video/mp4" : "image/png");
+          const ext = out.isVideo ? "mp4" : ct.includes("jpeg") ? "jpg" : "png";
+          const key = `workspace/${pid}/ai-${out.isVideo ? "video" : "edits"}/${job.id}.${ext}`;
           const stored = await archiveToRoleRoomB2(key, buf, ct);
           if (stored) b2Key = key;
         }
@@ -1395,7 +1436,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       // Sovende Stripe-metering: no-op i free-modus / til måler-env satt. Idempotent
       // nok i praksis (kjøres ved første fullførings-poll når status går queued→completed).
       try { await emitGenAiMeter(pool, { userId: job.user_id, valueUsd: Number(job.est_cost_usd || 0), settings: await getGenSettings(pool) }); } catch { /* metering skal aldri blokkere resultatet */ }
-      res.json({ status: "completed", beforeUrl, afterUrl: b2Key ? await presignRoleRoomB2Download(b2Key, undefined, 3600) : outUrl, prompt: job.input?.prompt });
+      res.json({ status: "completed", kind: job.kind, isVideo: out.isVideo, beforeUrl, afterUrl: b2Key ? await presignRoleRoomB2Download(b2Key, undefined, 3600) : outUrl, prompt: job.input?.prompt });
     } catch (e) { console.error("GET ai/jobs/:id", e); res.status(500).json({ error: "failed" }); }
   });
 

@@ -21,6 +21,9 @@ export interface GenModel {
   kind: "image-edit" | "image-to-video" | "text-to-image" | "text-to-video";
   provider: string;         // google | bytedance | kuaishou | alibaba …
   estCostUsd: number;       // grovt estimat pr generering (for dagstak + visning)
+  costPerSecondUsd?: number; // for video: kost pr sekund (estimat = sek × dette)
+  imageField?: string;      // fal-input-feltnavn for kildebildet (image_url/image_urls/start_image_url)
+  outputField?: "images" | "video"; // hvor resultatet ligger i fal-responsen
   sendsPersonalData: boolean; // sender kilde-bildet/-videoen (kundedata) til tredjepart
 }
 
@@ -33,9 +36,29 @@ export const GEN_MODELS: Record<string, GenModel> = {
     kind: "image-edit",
     provider: "google",
     estCostUsd: 0.06,
+    imageField: "image_urls", outputField: "images",
+    sendsPersonalData: true,
+  },
+  "seedance-2-i2v": {
+    key: "seedance-2-i2v",
+    label: "Seedance 2.0 — bilde→video",
+    falPath: "bytedance/seedance-2.0/image-to-video",
+    kind: "image-to-video",
+    provider: "bytedance",
+    estCostUsd: 0.5,
+    costPerSecondUsd: 0.10,
+    imageField: "image_url", outputField: "video",
     sendsPersonalData: true,
   },
 };
+
+// Hent ut resultat-URL fra en fal-respons (bilde vs video).
+export function falOutputUrl(result: any): { url: string | null; isVideo: boolean } {
+  if (result?.video?.url) return { url: result.video.url, isVideo: true };
+  if (Array.isArray(result?.images) && result.images[0]?.url) return { url: result.images[0].url, isVideo: false };
+  if (result?.image?.url) return { url: result.image.url, isVideo: false };
+  return { url: null, isVideo: false };
+}
 
 export function publicModelList() {
   return Object.values(GEN_MODELS).map((m) => ({ key: m.key, label: m.label, kind: m.kind, provider: m.provider, estCostUsd: m.estCostUsd }));
