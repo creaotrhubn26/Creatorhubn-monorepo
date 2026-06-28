@@ -47,6 +47,7 @@ import {
 import roleRoomAgentService from '../../services/roleRoomAgentService';
 import ClientRequestModal from './ClientRequestModal';
 import ClientRequestsThread from './ClientRequestsThread';
+import { LoadingSkeleton, ErrorAlert } from './ui';
 import type { DataSourcePlatformKey } from '../../utils/dataSourceClientOnboarding';
 
 type DataSourcesPayload = NonNullable<Awaited<ReturnType<typeof roleRoomAgentService.fetchDataSources>>>;
@@ -217,18 +218,15 @@ const DataSourcesPanel: React.FC<DataSourcesPanelProps> = ({ projectId }) => {
   }, [data]);
 
   if (loading && !data) {
-    return (
-      <Stack alignItems="center" sx={{ py: 4 }}>
-        <CircularProgress size={32} sx={{ color: '#22d3ee' }} />
-      </Stack>
-    );
+    return <LoadingSkeleton variant="list" />;
   }
 
   if (!data) {
     return (
-      <Alert severity="error" sx={{ bgcolor: 'rgba(239,68,68,0.1)' }}>
-        {error ?? 'Kunne ikke laste datakilder.'}
-      </Alert>
+      <ErrorAlert
+        message={error ?? 'Kunne ikke laste datakilder.'}
+        onRetry={() => void load()}
+      />
     );
   }
 

@@ -10,6 +10,7 @@ import {
 } from '@mui/material';
 import { EventOutlined as EventIcon, DeleteOutline as DeleteIcon } from '@mui/icons-material';
 import ConnectionPicker from './ConnectionPicker';
+import { LoadingSkeleton, PanelHeader } from './ui';
 
 interface IgConnection { id: string; igUsername: string | null; facebookPageName: string | null }
 interface IgEvent {
@@ -67,16 +68,12 @@ export default function EventsPanel() {
 
   return (
     <Stack spacing={1.6} sx={{ p: { xs: 1, md: 2 } }}>
-      <Stack direction="row" spacing={1} alignItems="center">
-        <EventIcon sx={{ color: '#22d3ee' }} />
-        <Box sx={{ flex: 1 }}>
-          <Typography sx={{ color: '#f8fafc', fontWeight: 800, fontSize: '1.05rem' }}>Arrangement</Typography>
-          <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '0.84rem' }}>
-            Lag Instagram-arrangement (åpen dag, gratis konsultasjon, webinar) som følgere kan melde seg på — en kilde til nye leads.
-          </Typography>
-        </Box>
-        <ConnectionPicker connections={connections} value={connectionId} onChange={setConnectionId} label="Velg konto" />
-      </Stack>
+      <PanelHeader
+        icon={<EventIcon />}
+        title="Arrangement"
+        subtitle="Lag Instagram-arrangement (åpen dag, gratis konsultasjon, webinar) som følgere kan melde seg på — en kilde til nye leads."
+        actions={<ConnectionPicker connections={connections} value={connectionId} onChange={setConnectionId} label="Velg konto" />}
+      />
 
       {connLoading ? (
         <Box sx={{ textAlign: 'center', py: 4 }}><CircularProgress /></Box>
@@ -113,7 +110,7 @@ export default function EventsPanel() {
 
           <Divider>Kommende arrangement</Divider>
           {isLoading ? (
-            <Box sx={{ py: 3, textAlign: 'center' }}><CircularProgress size={22} /></Box>
+            <LoadingSkeleton variant="list" count={3} />
           ) : events.length === 0 ? (
             <Typography sx={{ p: 2, color: 'rgba(226,232,240,0.5)', fontSize: '0.84rem' }}>Ingen kommende arrangement ennå.</Typography>
           ) : (

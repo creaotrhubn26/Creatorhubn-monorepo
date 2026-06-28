@@ -17,6 +17,7 @@ import TagIcon from '@mui/icons-material/Tag';
 import LaunchIcon from '@mui/icons-material/Launch';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import { useAuth } from '@/hooks/useAuth';
+import { ErrorAlert } from './ui';
 
 interface HashtagPost {
   id: string | null;
@@ -261,7 +262,7 @@ export function IgHashtagInspector() {
               {suggesting ? 'Genererer forslag…' : 'Foreslå hashtags (AI + Meta)'}
             </Button>
           </Stack>
-          {suggestError ? <Alert severity="error">{suggestError}</Alert> : null}
+          {suggestError ? <ErrorAlert message={suggestError} /> : null}
           {suggestions.length > 0 ? (
             <Stack
               data-testid="ig-hashtag-suggestions"

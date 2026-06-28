@@ -11,6 +11,7 @@ import roleRoomAgentService, {
 } from '../../services/roleRoomAgentService';
 import { InstagramBrandLogo } from './SocialBrandLogo';
 import SocialAccessRequestDialog from './SocialAccessRequestDialog';
+import { ErrorAlert } from './ui';
 
 function formatCount(n: number | null | undefined): string {
   if (n == null) return '—';
@@ -310,11 +311,7 @@ export default function InstagramConnectionCard({
         </Stack>
       )}
 
-      {error ? (
-        <Alert severity="error" sx={{ bgcolor: 'rgba(239,68,68,0.08)', color: '#fecaca' }}>
-          {error}
-        </Alert>
-      ) : null}
+      {error ? <ErrorAlert message={error} /> : null}
     </Stack>
   );
 }
