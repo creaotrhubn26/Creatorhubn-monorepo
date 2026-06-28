@@ -38,6 +38,7 @@ import {
   Tune as TuneIcon,
   QueryStats as QueryStatsIcon,
   Rocket as RocketIcon,
+  KeyboardArrowDown as KeyboardArrowDownIcon,
 } from '@mui/icons-material';
 import RoleRoomResearchCompleteOverlay from './RoleRoomResearchCompleteOverlay';
 import ResearchProgressLive from './ResearchProgressLive';
@@ -68,6 +69,7 @@ import MarketingPlanPanel from './MarketingPlanPanel';
 import { DailyBriefCard } from './DailyBriefCard';
 import AgentDockLauncher from './AgentDockLauncher';
 import AgentCommandPalette from './AgentCommandPalette';
+import { isAdvancedTab } from './agentTabs';
 import ResearchVersionsPickerInline from './ResearchVersionsPickerInline';
 import MerchSuppliersPanel from './MerchSuppliersPanel';
 
@@ -269,6 +271,7 @@ export default function RoleRoomAgentDialog({
   }, [initialTab]);
   const [systemStatusOpen, setSystemStatusOpen] = useState(false);
   const [cmdkOpen, setCmdkOpen] = useState(false);
+  const [advancedAnchor, setAdvancedAnchor] = useState<null | HTMLElement>(null);
 
   // Cmd/Ctrl+K — "hopp til fane"-palett. Only active while the dialog is open.
   useEffect(() => {
@@ -735,15 +738,24 @@ export default function RoleRoomAgentDialog({
         </Button>
       </Stack>
       {showAllTabs ? (
+      <Stack
+        direction="row"
+        alignItems="center"
+        sx={{ borderBottom: '1px solid rgba(148,163,184,0.14)' }}
+      >
       <Tabs
-        value={activeTab}
+        // When an "Avansert" tab is active it isn't rendered inline, so we set
+        // value=false to avoid MUI's "value not in tabs" warning; the Avansert
+        // button shows the active state instead.
+        value={isAdvancedTab(activeTab) ? false : activeTab}
         onChange={(_, next) => setActiveTab(next as typeof activeTab)}
         variant="scrollable"
         scrollButtons="auto"
         allowScrollButtonsMobile
         sx={{
+          flex: 1,
+          minWidth: 0,
           px: { xs: 1, md: 2 },
-          borderBottom: '1px solid rgba(148,163,184,0.14)',
           minHeight: { xs: 42, md: 48 },
           '& .MuiTab-root': {
             color: 'rgba(226,232,240,0.72)',
@@ -763,7 +775,6 @@ export default function RoleRoomAgentDialog({
         }}
       >
         <Tab value="research" label="Research" icon={<AutoFixHighIcon fontSize="small" />} iconPosition="start" />
-        <Tab value="discovery" label="Oppdag" icon={<DiscoveryTabIcon fontSize="small" />} iconPosition="start" data-testid="agent-tab-discovery" />
         <Tab
           value="merch"
           label="Merch"
@@ -783,24 +794,11 @@ export default function RoleRoomAgentDialog({
           iconPosition="start"
         />
         <Tab
-          value="ads-attribution"
-          label="Ads Attribution"
-          icon={<QueryStatsIcon fontSize="small" />}
-          iconPosition="start"
-        />
-        <Tab
           value="social-inbox"
           label="Inbox"
           icon={<InboxIcon fontSize="small" />}
           iconPosition="start"
           data-testid="agent-tab-social-inbox"
-        />
-        <Tab
-          value="mentions"
-          label="Omtaler"
-          icon={<MentionsTabIcon fontSize="small" />}
-          iconPosition="start"
-          data-testid="agent-tab-mentions"
         />
         <Tab
           value="leads"
@@ -827,6 +825,51 @@ export default function RoleRoomAgentDialog({
           <Tab value="chat" label="Chat" icon={<ChatIcon fontSize="small" />} iconPosition="start" />
         ) : null}
       </Tabs>
+      {/* Secondary "tool" tabs tucked into an overflow so the strip stays
+          scannable. Tip: Cmd/Ctrl+K hopper rett til hvilken som helst fane. */}
+      <Button
+        size="small"
+        onClick={(e) => setAdvancedAnchor(e.currentTarget)}
+        endIcon={<KeyboardArrowDownIcon fontSize="small" />}
+        data-testid="agent-tab-advanced"
+        sx={{
+          flexShrink: 0,
+          textTransform: 'none',
+          mr: { xs: 0.5, md: 1 },
+          fontSize: { xs: '0.78rem', md: '0.875rem' },
+          fontWeight: isAdvancedTab(activeTab) ? 700 : 600,
+          color: isAdvancedTab(activeTab) ? '#22d3ee' : 'rgba(226,232,240,0.72)',
+        }}
+      >
+        Avansert
+      </Button>
+      <Menu
+        anchorEl={advancedAnchor}
+        open={Boolean(advancedAnchor)}
+        onClose={() => setAdvancedAnchor(null)}
+      >
+        <MenuItem
+          selected={activeTab === 'discovery'}
+          onClick={() => { setActiveTab('discovery'); setAdvancedAnchor(null); }}
+          data-testid="agent-tab-discovery"
+        >
+          <DiscoveryTabIcon fontSize="small" sx={{ mr: 1 }} /> Oppdag
+        </MenuItem>
+        <MenuItem
+          selected={activeTab === 'mentions'}
+          onClick={() => { setActiveTab('mentions'); setAdvancedAnchor(null); }}
+          data-testid="agent-tab-mentions"
+        >
+          <MentionsTabIcon fontSize="small" sx={{ mr: 1 }} /> Omtaler
+        </MenuItem>
+        <MenuItem
+          selected={activeTab === 'ads-attribution'}
+          onClick={() => { setActiveTab('ads-attribution'); setAdvancedAnchor(null); }}
+        >
+          <QueryStatsIcon fontSize="small" sx={{ mr: 1 }} /> Ads Attribution
+        </MenuItem>
+      </Menu>
+      </Stack>
       ) : null}
       {hasUnsavedAgentWork ? (
         <Alert
