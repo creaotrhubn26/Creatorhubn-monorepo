@@ -25,7 +25,7 @@ import { canAccessProject } from "./project-team-routes";
 import { signAssetReadUrl } from "./capture-upload-service";
 import { archiveToRoleRoomB2, presignRoleRoomB2Download, getFromRoleRoomB2, slugifyForKey } from "./b2-archive-helper";
 import { Vibrant } from "node-vibrant/node";
-import { GEN_MODELS, publicModelList, getGenSettings, isWhitelisted, invalidateGenSettings, emitGenAiMeter, falConfigured, falSubmit, falPoll, falOutputUrl } from "./generative-media";
+import { GEN_MODELS, publicModelList, getGenSettings, isWhitelisted, invalidateGenSettings, emitGenAiMeter, falConfigured, falSubmit, falPoll, falOutputUrl, beebleConfigured, beebleSubmit, beeblePoll } from "./generative-media";
 import { createGoogleMeetLink } from "./google-meet";
 import { classifySession } from "./capture-culling-service";
 import { enqueuePhotoEnhancerJobFromBuffer, listPhotoEnhancerJobsByProjectId } from "./photo-enhancer-routes";
@@ -1278,6 +1278,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       res.json({
         enabled: settings.enabled && falConfigured(),
         whitelisted: settings.enabled && isWhitelisted(settings, me.email, me.role),
+        beebleConfigured: beebleConfigured(),
         billingMode: settings.billingMode,
         consent: consent.rows[0] ? { consented: !!consent.rows[0].consented, by: consent.rows[0].consented_by, at: consent.rows[0].consented_at } : { consented: false },
         dailyCapUsd: settings.dailyCapUsd,
@@ -1431,6 +1432,52 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     } catch (e) { console.error("POST ai/image-to-video", e); res.status(500).json({ error: "failed" }); }
   });
 
+  // Video Room: Restyle / Relight en videoversjon (SwitchX/Beeble). Bevarer
+  // bevegelse, endrer lys/atmosfære/stil. Kilde = versjonens B2-video (presignet).
+  app.post("/api/projects/:projectId/ai/video-restyle", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureGenSchema();
+      const pid = req.params.projectId;
+      const me = await userIdentity(uid);
+      const settings = await getGenSettings(pool);
+      if (!settings.enabled) return res.status(503).json({ error: "ai_disabled" });
+      if (!isWhitelisted(settings, me.email, me.role)) return res.status(403).json({ error: "not_whitelisted" });
+      if (!beebleConfigured()) return res.status(503).json({ error: "beeble_not_configured", message: "SwitchX (BEEBLE_API_KEY) er ikke konfigurert." });
+      const model = GEN_MODELS["switchx-restyle"];
+      const consent = await pool.query(`SELECT consented FROM project_ai_consent WHERE project_id = $1`, [pid]).catch(() => ({ rows: [] }));
+      if (!consent.rows[0]?.consented) return res.status(409).json({ error: "consent_required", message: "Krever samtykke: video sendes til tredjeparts AI utenfor EØS." });
+      const spent = await spentTodayUsd();
+      if (spent + model.estCostUsd > settings.dailyCapUsd) return res.status(429).json({ error: "daily_cap", message: `Dagstak nådd ($${settings.dailyCapUsd}).` });
+      const prompt = String(req.body?.prompt || "").trim().slice(0, 1000);
+      const versionId = req.body?.versionId;
+      const maxResolution = req.body?.maxResolution === 1080 ? 1080 : 720;
+      if (!prompt || !versionId) return res.status(400).json({ error: "versionId_and_prompt_required" });
+      // Kilde-video fra versjonen (B2-key presignes; ekstern file_url som fallback).
+      const v = await pool.query(`SELECT b2_key, file_url FROM project_video_versions WHERE id = $1 AND project_id = $2`, [versionId, pid]).catch(() => ({ rows: [] }));
+      if (!v.rows.length) return res.status(404).json({ error: "version_not_found" });
+      const sourceUri = v.rows[0].b2_key ? await presignRoleRoomB2Download(v.rows[0].b2_key, undefined, 3600) : v.rows[0].file_url;
+      if (!sourceUri) return res.status(503).json({ error: "source_unavailable" });
+      // Valgfritt referansebilde (et capture-asset preview).
+      let referenceImageUri: string | null = null;
+      if (req.body?.referenceAssetId) {
+        const ra = await pool.query(`SELECT preview_key, full_key FROM capture_assets WHERE id = $1`, [req.body.referenceAssetId]).catch(() => ({ rows: [] }));
+        const rk = ra.rows[0]?.preview_key || ra.rows[0]?.full_key;
+        if (rk) referenceImageUri = await signAssetReadUrl(rk);
+      }
+      const sub = await beebleSubmit({ sourceUri, prompt, referenceImageUri, maxResolution });
+      if (sub.error || !sub.id) return res.status(sub.error === "INSUFFICIENT_BALANCE" ? 402 : 502).json({ error: sub.error || "beeble_submit_failed", message: sub.error === "INSUFFICIENT_BALANCE" ? "Beeble-kontoen mangler kreditter — fyll på i billing-portalen." : undefined });
+      const id = crypto.randomUUID();
+      // fal_request_id gjenbrukes til Beeble generation-id; response_url=null → poll via provider.
+      await pool.query(
+        `INSERT INTO generative_ai_jobs (id, project_id, user_id, user_email, model, kind, status, provider, fal_request_id, response_url, input, source_asset_id, est_cost_usd)
+         VALUES ($1,$2,$3,$4,$5,'video-to-video','queued','beeble',$6,NULL,$7::jsonb,NULL,$8)`,
+        [id, pid, uid, me.email, model.key, sub.id, JSON.stringify({ prompt, versionId, maxResolution }), model.estCostUsd],
+      );
+      res.status(202).json({ jobId: id, status: "queued" });
+    } catch (e) { console.error("POST ai/video-restyle", e); res.status(500).json({ error: "failed" }); }
+  });
+
   // Poll en AI-jobb — finaliserer ved fullføring (laster fal-resultat til B2).
   app.get("/api/projects/:projectId/ai/jobs/:jobId", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
@@ -1450,8 +1497,15 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       }
       if (job.status === "failed") return res.json({ status: "failed", kind: job.kind, error: job.error, beforeUrl });
       // Poll fal.
-      if (!job.response_url) return res.json({ status: job.status || "queued", kind: job.kind, beforeUrl });
-      const p = await falPoll(job.response_url);
+      // Poll riktig provider: Beeble (response_url=null, generation-id i fal_request_id) vs fal.
+      let p: { status: string; result?: any; error?: string };
+      if (job.provider === "beeble") {
+        const bp = await beeblePoll(job.fal_request_id);
+        p = { status: bp.status, result: bp.outputUrl ? { video: { url: bp.outputUrl } } : null, error: bp.error };
+      } else {
+        if (!job.response_url) return res.json({ status: job.status || "queued", kind: job.kind, beforeUrl });
+        p = await falPoll(job.response_url);
+      }
       if (p.status !== "COMPLETED") {
         if (p.status === "ERROR") { await pool.query(`UPDATE generative_ai_jobs SET status='failed', error=$1 WHERE id=$2`, [p.error || "fal_error", job.id]).catch(() => {}); return res.json({ status: "failed", kind: job.kind, error: p.error, beforeUrl }); }
         await pool.query(`UPDATE generative_ai_jobs SET status='running' WHERE id=$1`, [job.id]).catch(() => {});

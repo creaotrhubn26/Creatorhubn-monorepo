@@ -13,6 +13,7 @@ import { Box, Stack, Typography, Button, Chip, TextField, CircularProgress } fro
 import CloudUpload from '@mui/icons-material/CloudUpload';
 import CheckCircle from '@mui/icons-material/CheckCircle';
 import EditNote from '@mui/icons-material/EditNote';
+import AutoAwesome from '@mui/icons-material/AutoAwesome';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
 import { WsCard, WsTag, WsModal } from '../ui';
@@ -33,8 +34,32 @@ const VideoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [addOpen, setAddOpen] = useState(false);
   const [vFile, setVFile] = useState<any>(null); const [vLabel, setVLabel] = useState('');
   const [uploadPct, setUploadPct] = useState(0); const [busy, setBusy] = useState(false);
+  // AI restyle/relight (SwitchX)
+  const [aiCfg, setAiCfg] = useState<any | null>(null);
+  const [reOpen, setReOpen] = useState(false); const [rePrompt, setRePrompt] = useState(''); const [reRes, setReRes] = useState(720);
+  const [reJob, setReJob] = useState<any | null>(null); const [reBusy, setReBusy] = useState(false);
+  const RE_PRESETS = ['Golden hour — varmt, filmatisk motlys', 'Blå time — kjølig, stemningsfull', 'Natt-neon — urbant, fargerikt', 'Overskyet studio — mykt, nøytralt lys'];
+  const loadAiCfg = () => apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/config`).then((r: any) => setAiCfg(r || null)).catch(() => {});
+  const setConsent = async (c: boolean) => { try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/consent`, { method: 'PUT', body: { consented: c } }); loadAiCfg(); } catch (e: any) { window.alert(e?.message || 'Feil'); } };
+  const openRe = () => { setRePrompt(''); setReJob(null); setReOpen(true); };
+  const startRestyle = async () => {
+    if (!current?.id || !rePrompt.trim() || reBusy) return;
+    setReBusy(true); setReJob({ status: 'queued' });
+    try {
+      const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/video-restyle`, { method: 'POST', body: { versionId: current.id, prompt: rePrompt.trim(), maxResolution: reRes } });
+      if (!r?.jobId) throw new Error('Kunne ikke starte');
+      for (let i = 0; i < 60; i++) {
+        await new Promise((res) => setTimeout(res, 5000));
+        const s: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/jobs/${r.jobId}`);
+        setReJob(s);
+        if (s.status === 'completed' || s.status === 'failed') break;
+      }
+    } catch (e: any) { window.alert(e?.message || 'Restyle feilet'); setReJob({ status: 'failed' }); }
+    finally { setReBusy(false); }
+  };
 
   const load = () => {
+    loadAiCfg();
     if (!isReal) { setLoading(false); return; }
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/video-room`)
       .then((r: any) => setData(r || null)).catch(() => {}).finally(() => setLoading(false));
@@ -235,6 +260,7 @@ const VideoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       {current && (
         <Stack direction="row" spacing={1.5} justifyContent="center" sx={{ mt: 2.5 }}>
           <Button variant="outlined" startIcon={<EditNote />} disabled sx={{ color: ws.textDim, borderColor: ws.border, textTransform: 'none', fontWeight: 600 }}>Be om endringer</Button>
+          {aiCfg?.enabled && aiCfg?.whitelisted && <Button variant="outlined" startIcon={<AutoAwesome />} onClick={openRe} sx={{ color: ws.accent, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 600 }}>Restyle / Relight</Button>}
           <Button variant="outlined" startIcon={<CloudUpload />} onClick={() => setAddOpen(true)} sx={{ color: ws.text, borderColor: ws.border, textTransform: 'none', fontWeight: 600 }}>Last opp ny versjon</Button>
           <Button variant="contained" startIcon={<CheckCircle />} onClick={approve} disabled={current.status === 'approved'} sx={{ bgcolor: ws.green, color: '#06281c', textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: '#2bbf8a' } }}>{current.status === 'approved' ? 'Godkjent' : 'Godkjenn video'}</Button>
         </Stack>
@@ -257,6 +283,59 @@ const VideoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
             <Button variant="contained" onClick={uploadVersion} disabled={busy || !vFile} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>{busy ? 'Laster opp…' : 'Last opp versjon'}</Button>
           </Stack>
         </Stack>
+      </WsModal>
+
+      {/* Restyle / Relight (SwitchX) */}
+      <WsModal open={reOpen} onClose={() => { if (!reBusy) setReOpen(false); }} title="Restyle / Relight (AI)" maxWidth="sm">
+        {!aiCfg?.beebleConfigured ? (
+          <Box sx={{ p: 1.5, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.amberSoft, border: `1px solid ${ws.amber}55` }}>
+            <Typography sx={{ fontSize: 13, color: ws.text }}>SwitchX (Beeble) er ikke konfigurert ennå. Sett <b>BEEBLE_API_KEY</b> på backend + fyll på kreditter i Beeble billing-portal, så blir Restyle aktiv.</Typography>
+          </Box>
+        ) : !aiCfg?.consent?.consented ? (
+          <Stack spacing={2}>
+            <Box sx={{ p: 1.5, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.amberSoft, border: `1px solid ${ws.amber}55` }}>
+              <Typography sx={{ fontSize: 13, fontWeight: 700, color: ws.amber, mb: 0.5 }}>⚠️ Samtykke kreves</Typography>
+              <Typography sx={{ fontSize: 12.5, color: ws.text }}>Restyle sender videoen til en tredjeparts AI (SwitchX / Beeble) som kan behandle data utenfor EØS.</Typography>
+            </Box>
+            <Stack direction="row" justifyContent="flex-end" spacing={1}>
+              <Button onClick={() => setReOpen(false)} sx={{ color: ws.textDim, textTransform: 'none' }}>Avbryt</Button>
+              <Button variant="contained" onClick={() => setConsent(true)} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Samtykk og fortsett</Button>
+            </Stack>
+          </Stack>
+        ) : reJob && reJob.status === 'completed' && reJob.afterUrl ? (
+          <Stack spacing={2}>
+            <Box component="video" src={reJob.afterUrl} controls autoPlay loop sx={{ width: '100%', borderRadius: `${ws.radiusSm}px`, bgcolor: '#000', aspectRatio: '16 / 9' }} />
+            <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <Typography sx={{ fontSize: 11.5, color: ws.textFaint }}>«{reJob.prompt}» — bevegelsen er bevart, kun lys/stil endret.</Typography>
+              <Stack direction="row" spacing={1}>
+                <Button size="small" onClick={() => setReJob(null)} sx={{ color: ws.textDim, textTransform: 'none' }}>Ny</Button>
+                <Button size="small" variant="contained" onClick={() => window.open(reJob.afterUrl, '_blank')} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Last ned</Button>
+              </Stack>
+            </Stack>
+          </Stack>
+        ) : reBusy || (reJob && reJob.status !== 'failed') ? (
+          <Stack spacing={2} alignItems="center" sx={{ py: 3 }}>
+            <CircularProgress sx={{ color: ws.accent }} />
+            <Typography sx={{ fontSize: 13, color: ws.textDim, textAlign: 'center' }}>SwitchX restyler videoen… tar noen minutter.<br /><Typography component="span" sx={{ fontSize: 11.5, color: ws.textFaint }}>Du kan lukke — jobben fortsetter.</Typography></Typography>
+          </Stack>
+        ) : (
+          <Stack spacing={2}>
+            {reJob?.status === 'failed' && <Typography sx={{ fontSize: 12.5, color: ws.red }}>Restyle feilet. Sjekk at Beeble-kontoen har kreditter, og prøv igjen.</Typography>}
+            <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Beskriv det nye lyset/stilen (bevegelse + performance bevares):</Typography>
+            <TextField value={rePrompt} onChange={(e) => setRePrompt(e.target.value)} fullWidth multiline minRows={2} size="small" placeholder="f.eks. varmt golden hour-motlys, filmatisk og stemningsfullt" />
+            <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
+              {RE_PRESETS.map((p) => <Box key={p} onClick={() => setRePrompt(p)} sx={{ px: 1, py: 0.4, borderRadius: 2, cursor: 'pointer', fontSize: 11, color: ws.accent, bgcolor: ws.accentSoft, border: `1px solid ${ws.accentBorder}` }}>{p}</Box>)}
+            </Stack>
+            <Stack direction="row" spacing={1} alignItems="center">
+              <Typography sx={{ fontSize: 12, color: ws.textDim }}>Oppløsning:</Typography>
+              {[720, 1080].map((r) => <Box key={r} onClick={() => setReRes(r)} sx={{ px: 1.25, py: 0.4, borderRadius: 2, cursor: 'pointer', fontSize: 12, fontWeight: reRes === r ? 700 : 500, color: reRes === r ? ws.accentContrast : ws.textDim, bgcolor: reRes === r ? ws.accent : 'rgba(255,255,255,0.05)' }}>{r}p</Box>)}
+            </Stack>
+            <Stack direction="row" justifyContent="flex-end" spacing={1}>
+              <Button onClick={() => setReOpen(false)} sx={{ color: ws.textDim, textTransform: 'none' }}>Avbryt</Button>
+              <Button variant="contained" disabled={!rePrompt.trim() || reBusy} onClick={startRestyle} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Restyle video</Button>
+            </Stack>
+          </Stack>
+        )}
       </WsModal>
     </Box>
   );
