@@ -636,6 +636,7 @@ import { setupRoleRoomCandidateStatusRoutes } from "./role-room-candidate-status
 import { setupRoleRoomAgentInspectRoutes } from "./role-room-agent-inspect-routes";
 import { setupRoleRoomWhatsAppRoutes } from "./role-room-whatsapp-routes";
 import { setupRoleRoomSocialRoutes } from "./role-room-social-routes";
+import { setupRoleRoomAgentInboxReplyRoutes } from "./role-room-agent-inbox-reply-routes";
 import { setupRoleRoomSocialMetaRoutes } from "./role-room-social-meta-routes";
 import { setupRoleRoomIgMessagingRoutes } from "./role-room-ig-messaging-routes.js";
 import { setupRoleRoomLeadsProducerRoutes } from "./role-room-leads-producer-routes.js";
@@ -24922,6 +24923,13 @@ setupRoleRoomEventsProducerRoutes({ app, pool, requireAdminSession });
 // ── Role Room social (non-Meta) — flyttet til ./role-room-social-routes.ts
 //   16 endpoints: linkedin, youtube, tiktok, og generelle /social/*.
 setupRoleRoomSocialRoutes({
+  app,
+  pool,
+  requireAdminSession,
+  isCompatAdminFeatureEnabled,
+});
+
+setupRoleRoomAgentInboxReplyRoutes({
   app,
   pool,
   requireAdminSession,
