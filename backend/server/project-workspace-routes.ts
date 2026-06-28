@@ -27,6 +27,7 @@ import { archiveToRoleRoomB2, presignRoleRoomB2Download, getFromRoleRoomB2, slug
 import { Vibrant } from "node-vibrant/node";
 import { GEN_MODELS, publicModelList, getGenSettings, isWhitelisted, invalidateGenSettings, emitGenAiMeter, falConfigured, falSubmit, falPoll, falOutputUrl, beebleConfigured, beebleSubmit, beeblePoll, DEFAULT_CREDIT_PACKS } from "./generative-media";
 import Stripe from "stripe";
+import { ensureCreditSchema as ensureCreditSchemaShared, getUserCredits as getUserCreditsShared, creditMove as creditMoveShared } from "./ai-credits";
 import { createGoogleMeetLink } from "./google-meet";
 import { classifySession } from "./capture-culling-service";
 import { enqueuePhotoEnhancerJobFromBuffer, listPhotoEnhancerJobsByProjectId } from "./photo-enhancer-routes";
@@ -1261,45 +1262,9 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
   // ─── Forhåndsbetalt AI-kreditt-lommebok (selvbetjent) ───────────────────────
   // balance_usd = RETAIL-verdi brukeren kan bruke. Hver generering trekker
   // kost×påslag; vi betaler kun kost → margin (påslag-delen) er garantert profitt.
-  const ensureCreditSchema = async () => {
-    await pool.query(`CREATE TABLE IF NOT EXISTS user_ai_credits (
-      user_id varchar PRIMARY KEY, balance_usd numeric NOT NULL DEFAULT 0,
-      lifetime_purchased_usd numeric NOT NULL DEFAULT 0, lifetime_spent_usd numeric NOT NULL DEFAULT 0,
-      updated_at timestamptz DEFAULT now())`).catch(() => {});
-    await pool.query(`CREATE TABLE IF NOT EXISTS ai_credit_ledger (
-      id uuid PRIMARY KEY, user_id varchar, type varchar, amount_usd numeric, balance_after_usd numeric,
-      ref varchar, note text, created_at timestamptz DEFAULT now())`).catch(() => {});
-    // Unik ref (ikke-partial; NULL-er er distinkte i Postgres). Alle våre kall
-    // setter ref (stripe:… / job:…), så dette gater dobbel kreditering/trekk.
-    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_credit_ref ON ai_credit_ledger (ref)`).catch(() => {});
-  };
-  const getUserCredits = async (uid: string) => {
-    await ensureCreditSchema();
-    const r = await pool.query(`SELECT balance_usd, lifetime_purchased_usd, lifetime_spent_usd FROM user_ai_credits WHERE user_id = $1`, [uid]).catch(() => ({ rows: [] }));
-    const w = r.rows[0] || {};
-    return { balanceUsd: Number(w.balance_usd || 0), purchasedUsd: Number(w.lifetime_purchased_usd || 0), spentUsd: Number(w.lifetime_spent_usd || 0) };
-  };
-  // Idempotent kreditt-bevegelse: ledger-rad FØRST (unik ref gater dobbel) → så saldo.
-  const creditMove = async (uid: string, type: string, amountUsd: number, ref: string | null, note: string): Promise<boolean> => {
-    await ensureCreditSchema();
-    const led = await pool.query(
-      `INSERT INTO ai_credit_ledger (id, user_id, type, amount_usd, ref, note) VALUES ($1,$2,$3,$4,$5,$6)
-       ON CONFLICT (ref) DO NOTHING RETURNING id`,
-      [crypto.randomUUID(), uid, type, amountUsd, ref, note],
-    ).catch(() => ({ rows: [] }));
-    if (!led.rows.length) return false; // duplikat ref → allerede behandlet
-    const purchaseCol = amountUsd > 0 ? `, lifetime_purchased_usd = user_ai_credits.lifetime_purchased_usd + ${amountUsd}` : "";
-    const spendCol = amountUsd < 0 ? `, lifetime_spent_usd = user_ai_credits.lifetime_spent_usd + ${-amountUsd}` : "";
-    const upd = await pool.query(
-      `INSERT INTO user_ai_credits (user_id, balance_usd, lifetime_purchased_usd, lifetime_spent_usd, updated_at)
-       VALUES ($1, $2, $3, $4, NOW())
-       ON CONFLICT (user_id) DO UPDATE SET balance_usd = user_ai_credits.balance_usd + $2, updated_at = NOW() ${purchaseCol} ${spendCol}
-       RETURNING balance_usd`,
-      [uid, amountUsd, amountUsd > 0 ? amountUsd : 0, amountUsd < 0 ? -amountUsd : 0],
-    ).catch(() => ({ rows: [] }));
-    await pool.query(`UPDATE ai_credit_ledger SET balance_after_usd = $1 WHERE id = $2`, [Number(upd.rows[0]?.balance_usd || 0), led.rows[0].id]).catch(() => {});
-    return true;
-  };
+  // Delt kreditt-logikk (samme modul som Stripe-webhooken bruker).
+  const getUserCredits = (uid: string) => getUserCreditsShared(pool, uid);
+  const creditMove = (uid: string, type: string, amountUsd: number, ref: string | null, note: string) => creditMoveShared(pool, uid, type, amountUsd, ref, note);
 
   // Konfig: hva er tillatt for denne brukeren + samtykke-status + budsjett.
   app.get("/api/projects/:projectId/ai/config", async (req, res) => {
