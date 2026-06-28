@@ -3649,3 +3649,82 @@ extension APIClient {
         }
     }
 }
+
+// ============================================================
+// MARK: - Internal helpers for Codable-baserte extensions
+// ============================================================
+//
+// `private` helpers ovenfor (get/post/patch/delete med [String:Any]-body)
+// er file-scoped og ikke synlige fra extensions i andre filer. Codable-
+// baserte extensions (APIClient+SalesLeadership.swift, fremtidige sales-
+// suite-utvidelser) trenger _internal_ ekvivalenter som tar Encodable
+// body og dekoder Decodable response. Disse bruker samme session/token/
+// validate som de private originalene — bare med Codable-encoding.
+
+extension APIClient {
+    static let _sharedDecoder: JSONDecoder = {
+        let d = JSONDecoder()
+        d.keyDecodingStrategy = .convertFromSnakeCase
+        d.dateDecodingStrategy = .iso8601
+        return d
+    }()
+
+    static let _sharedEncoder: JSONEncoder = {
+        let e = JSONEncoder()
+        e.keyEncodingStrategy = .convertToSnakeCase
+        e.dateEncodingStrategy = .iso8601
+        return e
+    }()
+
+    func _request(
+        _ path: String,
+        method: String = "GET",
+        body: Data? = nil,
+        contentType: String = "application/json"
+    ) async throws -> Data {
+        var req = URLRequest(url: baseURL.appendingPathComponent(path))
+        req.httpMethod = method
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        req.setValue(contentType, forHTTPHeaderField: "Content-Type")
+        req.httpBody = body
+        let (data, response) = try await session.data(for: req)
+        try Self.validate(response, data: data)
+        return data
+    }
+
+    func _get<R: Decodable>(_ path: String) async throws -> R {
+        let data = try await _request(path, method: "GET")
+        return try Self._sharedDecoder.decode(R.self, from: data)
+    }
+
+    func _post<B: Encodable, R: Decodable>(_ path: String, body: B) async throws -> R {
+        let payload = try Self._sharedEncoder.encode(body)
+        let data = try await _request(path, method: "POST", body: payload)
+        return try Self._sharedDecoder.decode(R.self, from: data)
+    }
+
+    func _post<B: Encodable>(_ path: String, body: B) async throws {
+        let payload = try Self._sharedEncoder.encode(body)
+        _ = try await _request(path, method: "POST", body: payload)
+    }
+
+    func _postEmpty<R: Decodable>(_ path: String) async throws -> R {
+        let data = try await _request(path, method: "POST")
+        return try Self._sharedDecoder.decode(R.self, from: data)
+    }
+
+    func _patch<B: Encodable, R: Decodable>(_ path: String, body: B) async throws -> R {
+        let payload = try Self._sharedEncoder.encode(body)
+        let data = try await _request(path, method: "PATCH", body: payload)
+        return try Self._sharedDecoder.decode(R.self, from: data)
+    }
+
+    func _patch<B: Encodable>(_ path: String, body: B) async throws {
+        let payload = try Self._sharedEncoder.encode(body)
+        _ = try await _request(path, method: "PATCH", body: payload)
+    }
+
+    func _delete(_ path: String) async throws {
+        _ = try await _request(path, method: "DELETE")
+    }
+}

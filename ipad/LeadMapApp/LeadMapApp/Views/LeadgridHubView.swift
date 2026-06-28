@@ -99,6 +99,18 @@ struct LeadgridHubView: View {
                     }
                 }
 
+                // Salgsledelse-suite — provisjons-konfig, konkurranser,
+                // premie-katalog og fulfillment-flyt. Isolert flate som
+                // backend-kobles mot sales-leadership-routes.ts (mig 0354).
+                Section("Salgsledelse") {
+                    NavigationLink {
+                        SalesLeadershipDashboardView()
+                    } label: {
+                        Label("Provisjon, konkurranser, premier",
+                              systemImage: "rosette")
+                    }
+                }
+
                 // Analytics Dashboard (PR #858 backend) — 7 KPI-endepunkter
                 // som SwiftUI Charts (5 seksjoner).
                 Section("Analyse") {

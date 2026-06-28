@@ -14,6 +14,7 @@ import Close from '@mui/icons-material/Close';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
 import { WsCard, WsTag, WsImageGrid, WsModal } from '../ui';
+import AiBuyCreditsModal from '../AiBuyCreditsModal';
 import { useProjectImages } from '../useProjectImages';
 import { useCaptureRealtime } from '../useCaptureRealtime';
 
@@ -86,14 +87,29 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   };
   useEffect(() => { loadAi(); /* eslint-disable-next-line */ }, [projectId, isReal]);
   const [enhancing, setEnhancing] = useState(false);
+  // Kreditt (for «Send til AI-forbedring»)
+  const [credits, setCredits] = useState<any | null>(null);
+  const [buyOpen, setBuyOpen] = useState(false);
+  const loadCredits = () => { if (isReal) apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/credits`).then((r: any) => setCredits(r || null)).catch(() => {}); };
+  const buyPack = async (id: string) => { try { const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/credits/checkout`, { method: 'POST', body: { packId: id } }); if (r?.url) window.location.href = r.url; } catch (e: any) { window.alert(e?.message || 'Feil'); } };
+  useEffect(() => {
+    if (!isReal) return;
+    loadCredits();
+    try { const p = new URLSearchParams(window.location.search); if (p.get('ai_credits') === 'ok' && p.get('cs')) { apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/credits/confirm`, { method: 'POST', body: { sessionId: p.get('cs') } }).then(() => { loadCredits(); window.alert('Kreditter lagt til ✓'); }).catch(() => {}).finally(() => { const u = new URL(window.location.href); u.searchParams.delete('ai_credits'); u.searchParams.delete('cs'); window.history.replaceState({}, '', u.toString()); }); } } catch { /* */ }
+    // eslint-disable-next-line
+  }, [projectId]);
   const triggerEnhance = async (assetIds?: string[]) => {
     if (!isReal || enhancing) return;
     setEnhancing(true);
     try {
       const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/enhance-picks`, { method: 'POST', body: assetIds?.length ? { assetIds } : {} });
       window.alert(`Sendte ${r?.queued ?? 0} bilde(r) til AI-forbedring.${r?.failures?.length ? ` (${r.failures.length} feilet)` : ''}`);
-      loadAi();
-    } catch (e: any) { window.alert(e?.message || 'Kunne ikke sende til AI-forbedring'); }
+      loadAi(); loadCredits();
+    } catch (e: any) {
+      const msg = String(e?.message || '').toLowerCase();
+      if (msg.includes('kreditt') || msg.includes('insufficient')) setBuyOpen(true);
+      else window.alert(e?.message || 'Kunne ikke sende til AI-forbedring');
+    }
     finally { setEnhancing(false); }
   };
 
@@ -371,6 +387,7 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           </Box>
         )}
       </WsModal>
+      <AiBuyCreditsModal open={buyOpen} onClose={() => setBuyOpen(false)} credits={credits} onBuy={buyPack} />
     </Stack>
   );
 };
