@@ -50,7 +50,56 @@ export const GEN_MODELS: Record<string, GenModel> = {
     imageField: "image_url", outputField: "video",
     sendsPersonalData: true,
   },
+  // SwitchX (Beeble) — video-til-video relighting/restyle. Bevarer bevegelse/
+  // performance, endrer kun lys/atmosfære/stil. Egen provider (ikke fal).
+  "switchx-restyle": {
+    key: "switchx-restyle",
+    label: "SwitchX — relight / restyle",
+    falPath: "", // bruker beeble-helperne, ikke fal
+    kind: "image-to-video", // video-til-video; gjenbruker video-output-håndtering
+    provider: "beeble",
+    estCostUsd: 0.8,            // ~240 frames @720p ≈ 8×$0.10
+    costPerSecondUsd: 0.08,    // ~24fps/30×$0.10
+    sendsPersonalData: true,
+  },
 };
+
+// ─── Beeble SwitchX-klient (video relight/restyle) ──────────────────────────
+// Verifisert skjema: POST https://api.beeble.ai/v1/switchx/generations m/
+// x-api-key. Krav: generation_type, source_uri, alpha_mode (auto|fill|custom|
+// select), max_resolution (720|1080), prompt. Valgfri reference_image_uri.
+const BEEBLE_BASE = "https://api.beeble.ai/v1/switchx";
+
+export function beebleConfigured(): boolean { return !!process.env.BEEBLE_API_KEY; }
+
+export async function beebleSubmit(opts: { sourceUri: string; prompt: string; referenceImageUri?: string | null; maxResolution?: 720 | 1080 }): Promise<{ id?: string; error?: string }> {
+  const key = process.env.BEEBLE_API_KEY;
+  if (!key) return { error: "beeble_not_configured" };
+  try {
+    const body: any = { generation_type: "video", source_uri: opts.sourceUri, alpha_mode: "auto", max_resolution: opts.maxResolution || 720, prompt: opts.prompt };
+    if (opts.referenceImageUri) body.reference_image_uri = opts.referenceImageUri;
+    const r = await fetch(`${BEEBLE_BASE}/generations`, { method: "POST", headers: { "x-api-key": key, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const j: any = await r.json().catch(() => ({}));
+    if (!r.ok) return { error: j?.error?.code || j?.error?.message || `beeble_${r.status}` };
+    const id = j.id || j.generation_id || j.generationId;
+    return id ? { id } : { error: "beeble_no_id" };
+  } catch (e: any) { return { error: `beeble_submit_threw:${e?.message || e}` }; }
+}
+
+export async function beeblePoll(generationId: string): Promise<{ status: string; outputUrl?: string | null; error?: string }> {
+  const key = process.env.BEEBLE_API_KEY;
+  if (!key) return { status: "ERROR", error: "beeble_not_configured" };
+  try {
+    const r = await fetch(`${BEEBLE_BASE}/generations/${generationId}`, { headers: { "x-api-key": key } });
+    const j: any = await r.json().catch(() => ({}));
+    if (!r.ok) return { status: "ERROR", error: j?.error?.code || `beeble_${r.status}` };
+    const raw = String(j.status || j.state || "").toLowerCase();
+    const out = j.output_uri || j.result_uri || j.output?.uri || j.output?.url || j.video?.uri || j.video?.url || j.result?.uri || null;
+    if (raw === "completed" || raw === "succeeded" || raw === "success" || raw === "done" || out) return { status: "COMPLETED", outputUrl: out };
+    if (raw === "failed" || raw === "error" || raw === "canceled" || raw === "cancelled") return { status: "ERROR", error: j?.error?.message || raw };
+    return { status: raw ? raw.toUpperCase() : "IN_PROGRESS" };
+  } catch (e: any) { return { status: "ERROR", error: `beeble_poll_threw:${e?.message || e}` }; }
+}
 
 // Hent ut resultat-URL fra en fal-respons (bilde vs video).
 export function falOutputUrl(result: any): { url: string | null; isVideo: boolean } {
