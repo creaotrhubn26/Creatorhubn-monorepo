@@ -51,6 +51,7 @@ export interface GenSettings {
   dailyCapUsd: number;
   whitelist: string[];     // e-poster (lowercase)
   includedQuota: number;   // inkluderte genereringer pr bruker pr mnd (metered)
+  markupMultiplier: number; // kunde-pris = vår-kost × dette (margin = profitt for CreatorHub)
 }
 let _settingsCache: { at: number; val: GenSettings } | null = null;
 export function invalidateGenSettings() { _settingsCache = null; }
@@ -62,6 +63,7 @@ export async function getGenSettings(pool: any): Promise<GenSettings> {
     billing_mode text DEFAULT 'free_whitelist', daily_cap_usd numeric DEFAULT 20,
     whitelist jsonb DEFAULT '[]'::jsonb, included_quota int DEFAULT 0,
     updated_by varchar, updated_at timestamptz DEFAULT now())`).catch(() => {});
+  await pool.query(`ALTER TABLE generative_ai_settings ADD COLUMN IF NOT EXISTS markup_multiplier numeric DEFAULT 3`).catch(() => {});
   const r = await pool.query(`SELECT * FROM generative_ai_settings WHERE id = 1`).catch(() => ({ rows: [] }));
   const envWl = (process.env.GENERATIVE_AI_WHITELIST || "daniel@creatorhubn.com").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
   const envCap = Number(process.env.GENERATIVE_AI_DAILY_CAP_USD || 20);
@@ -72,7 +74,8 @@ export async function getGenSettings(pool: any): Promise<GenSettings> {
     dailyCapUsd: Number(row.daily_cap_usd ?? envCap) || envCap,
     whitelist: Array.isArray(row.whitelist) && row.whitelist.length ? row.whitelist.map((x: any) => String(x).toLowerCase()) : envWl,
     includedQuota: Number(row.included_quota ?? 0) || 0,
-  } : { enabled: true, billingMode: "free_whitelist", dailyCapUsd: envCap > 0 ? envCap : 20, whitelist: envWl, includedQuota: 0 };
+    markupMultiplier: Number(row.markup_multiplier ?? 3) || 3,
+  } : { enabled: true, billingMode: "free_whitelist", dailyCapUsd: envCap > 0 ? envCap : 20, whitelist: envWl, includedQuota: 0, markupMultiplier: 3 };
   _settingsCache = { at: Date.now(), val };
   return val;
 }
@@ -103,9 +106,11 @@ export async function emitGenAiMeter(
     const mod: any = await import("stripe");
     const Stripe = mod.default ?? mod;
     const stripe = new Stripe(secret);
-    const value = String(Math.max(0, Math.round(opts.valueUsd * 100))); // USD-cent
+    // Kunde-pris = vår-kost × påslag → faktureres i USD-cent (Stripe-pris = $0.01/enhet).
+    const billedUsd = opts.valueUsd * (opts.settings.markupMultiplier || 1);
+    const value = String(Math.max(0, Math.round(billedUsd * 100)));
     await stripe.billing.meterEvents.create({ event_name: eventName, payload: { stripe_customer_id: String(customerId), value } });
-    return { emitted: true };
+    return { emitted: true, billedUsd };
   } catch (e: any) { return { error: String(e?.message || e) }; }
 }
 

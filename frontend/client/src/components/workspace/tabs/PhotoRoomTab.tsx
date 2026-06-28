@@ -351,7 +351,16 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
               {QUICK_PROMPTS.map((q) => <Box key={q} onClick={() => setAiPrompt(q)} sx={{ px: 1, py: 0.4, borderRadius: 2, cursor: 'pointer', fontSize: 11, color: ws.accent, bgcolor: ws.accentSoft, border: `1px solid ${ws.accentBorder}` }}>{q}</Box>)}
             </Stack>
             <Stack direction="row" justifyContent="space-between" alignItems="center">
-              <Typography sx={{ fontSize: 10.5, color: ws.textFaint }}>~${(aiCfg?.models?.[0]?.estCostUsd ?? 0.06).toFixed(2)}/bilde · brukt i dag ${(aiCfg?.spentTodayUsd ?? 0).toFixed(2)}/${aiCfg?.dailyCapUsd ?? 20}</Typography>
+              <Typography sx={{ fontSize: 10.5, color: ws.textFaint }}>
+                {(() => {
+                  const u = aiCfg?.myUsage; const gens = u?.generationsThisMonth ?? 0;
+                  if (aiCfg?.billingMode === 'metered') {
+                    const rem = u?.includedRemaining;
+                    return `Du: ${gens} redigeringer denne mnd${rem != null ? ` · ${rem} inkludert igjen` : ''} · ~$${(u?.unitPriceUsd ?? 0).toFixed(2)}/bilde`;
+                  }
+                  return `Du: ${gens} redigeringer denne mnd · gratis i pilot`;
+                })()}
+              </Typography>
               <Stack direction="row" spacing={1}>
                 <Button onClick={() => setAiOpen(false)} sx={{ color: ws.textDim, textTransform: 'none' }}>Avbryt</Button>
                 <Button variant="contained" disabled={!aiPrompt.trim() || aiBusy} onClick={startEdit} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Rediger med AI</Button>
