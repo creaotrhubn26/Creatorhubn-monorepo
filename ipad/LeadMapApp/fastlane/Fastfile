@@ -152,16 +152,50 @@ platform :ios do
     end
 
     # watchOS-bundle (LeadgridWatchApp, roadmap #403).
-    # Profile-navn følger samme mønster som widget. Hvis Apple ikke har
-    # bundle-id-en registrert ennå, vil sigh feile — Daniel må da
-    # registrere `com.creatorhubn.LeadMapApp.watchkitapp` på
-    # developer.apple.com → Identifiers → App IDs én gang manuelt.
+    # Sikre at App ID-en eksisterer paa Apple foer sigh kjoeres — produce
+    # er idempotent (returnerer success hvis App ID allerede finnes).
+    ensure_watch_app_id
+
     sigh(
       app_identifier: "com.creatorhubn.LeadMapApp.watchkitapp",
       provisioning_name: "LeadMap Watch App Store",
       force: true,
       platform: "ios",
     )
+  end
+
+  # Idempotent App ID-creation via produce. Krever ASC-noekkel med
+  # Admin- eller Account-Holder-rolle (App Manager er IKKE nok for App
+  # ID-creation, bare for app-management i ASC). Hvis kallet feiler pga
+  # utilstrekkelig rolle, faller vi tilbake til klar feilmelding om
+  # Daniels manuelle steg.
+  #
+  # `--skip_itc` hopper over App Store Connect-opprettelse (watchkitapp
+  # er ikke en egen ASC-app, bare en del av hovedappen).
+  private_lane :ensure_watch_app_id do
+    bundle = "com.creatorhubn.LeadMapApp.watchkitapp"
+    name   = "LeadMap Watch App"
+
+    begin
+      produce(
+        app_identifier: bundle,
+        app_name: name,
+        skip_itc: true,
+        platform: "ios",
+      )
+      UI.success("App ID #{bundle} er klar paa Apple Developer Portal")
+    rescue StandardError => e
+      UI.error("ensure_watch_app_id feilet: #{e.message}")
+      UI.error("")
+      UI.error("Daniels manuelle steg (engangs):")
+      UI.error("  1. https://developer.apple.com/account")
+      UI.error("  2. Certificates, IDs & Profiles -> Identifiers -> + -> App IDs -> App")
+      UI.error("  3. Bundle ID: #{bundle}")
+      UI.error("  4. Description: #{name}")
+      UI.error("  5. Capabilities: App Groups (group.com.creatorhubn.LeadMapApp)")
+      UI.error("  6. Save")
+      UI.user_error!("App ID mangler paa Apple — re-trigg workflow etter manuell oppsett.")
+    end
   end
 
   # Returnerer xcargs-streng med auth-flags hvis ASC-nøkkel er satt opp,
