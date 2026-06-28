@@ -645,6 +645,43 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     } catch (e) { console.error("GET voice-notes", e); res.json({ notes: [], hasNotes: false }); }
   });
 
+  // ─────────── Capture-aktivitet — live hendelseslogg fra iPad + One Desk ──────
+  // capture_events er den ekte aktivitetsstrømmen (skudd lastet, rating endret,
+  // culling, handoff, levert). Web backfiller siste N her og appender deretter
+  // live via capture-WS (broadcastCaptureEvent sender samme rad-form).
+  app.get("/api/projects/:projectId/capture-activity", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const sessions = await pool.query(
+        `SELECT id FROM capture_sessions WHERE project_id = $1`,
+        [req.params.projectId],
+      ).catch(() => ({ rows: [] }));
+      const sessionIds = sessions.rows.map((s: any) => s.id);
+      if (sessionIds.length === 0) return res.json({ events: [], hasActivity: false });
+      const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit || "40"), 10) || 40));
+      const rows = await pool.query(
+        `SELECT e.id, e.session_id, e.asset_id, e.actor_id, e.event_type, e.metadata, e.created_at,
+                a.original_filename, u.name AS actor_name
+           FROM capture_events e
+           LEFT JOIN capture_assets a ON a.id = e.asset_id
+           LEFT JOIN users u ON u.id = e.actor_id
+          WHERE e.session_id = ANY($1::uuid[])
+          ORDER BY e.created_at DESC LIMIT $2`,
+        [sessionIds, limit],
+      ).catch(() => ({ rows: [] }));
+      const events = rows.rows.map((r: any) => ({
+        id: r.id,
+        type: r.event_type,
+        assetId: r.asset_id || null,
+        filename: r.original_filename || null,
+        actorName: r.actor_name || null,
+        metadata: r.metadata || null,
+        createdAt: r.created_at,
+      }));
+      res.json({ events, hasActivity: events.length > 0 });
+    } catch (e) { console.error("GET capture-activity", e); res.json({ events: [], hasActivity: false }); }
+  });
+
   // ─────────── Team Sync % (ekte readiness fra board + sjekkliste + presence) ───
   app.get("/api/projects/:projectId/team-sync", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
