@@ -6,8 +6,10 @@
  * Alle bilde-flater bruker WsImageGrid (legg til / last opp).
  */
 import React, { useState, useEffect } from 'react';
-import { Box, Stack, Typography, Button, TextField, Avatar, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
+import { Box, Stack, Typography, Button, TextField, Avatar, IconButton, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
 import Edit from '@mui/icons-material/Edit';
+import Close from '@mui/icons-material/Close';
+import Add from '@mui/icons-material/Add';
 import { apiRequest } from '@/lib/queryClient';
 import Image from '@mui/icons-material/Image';
 import Star from '@mui/icons-material/Star';
@@ -30,7 +32,15 @@ const MoodboardTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const isReal = projectId && projectId !== 'sample';
   const [meta, setMeta] = useState<any | null>(null);
   const [editOpen, setEditOpen] = useState(false);
+  const [extracting, setExtracting] = useState(false);
   const loadMeta = () => { if (isReal) apiRequest(`/api/projects/${encodeURIComponent(projectId)}/moodboard-meta`).then((r: any) => setMeta(r?.meta || null)).catch(() => {}); };
+  const extractPalette = async () => {
+    if (!isReal || extracting) return;
+    setExtracting(true);
+    try { const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/moodboard-meta/extract-palette`, { method: 'POST', body: {} }); setMeta((m: any) => ({ ...(m || {}), palette: r.palette })); }
+    catch (e: any) { window.alert(e?.message || 'Kunne ikke trekke ut farger — last opp referansebilder først.'); }
+    finally { setExtracting(false); }
+  };
   useEffect(() => {
     if (!isReal) return;
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/moodboard-meta`).then((r: any) => setMeta(r?.meta || null)).catch(() => {});
@@ -55,7 +65,7 @@ const MoodboardTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           <WsCard pad={1.75}>
             <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}><Palette sx={{ fontSize: 18, color: ws.accent }} /><Typography sx={{ fontSize: 12, color: ws.textDim }}>Fargepalett</Typography></Stack>
             <Stack direction="row" spacing={0.5}>{pal.map(([n, c]) => <Box key={n} sx={{ width: 22, height: 22, borderRadius: 1, bgcolor: c, border: `1px solid ${ws.borderSoft}` }} />)}</Stack>
-            <Typography sx={{ fontSize: 11, color: ws.textFaint, mt: 0.75 }}>6 farger</Typography>
+            <Typography sx={{ fontSize: 11, color: ws.textFaint, mt: 0.75 }}>{pal.length} farger{(!meta?.palette || !meta.palette.length) && isReal ? ' · eksempel' : ''}</Typography>
           </WsCard>
           <WsStat icon={<CheckCircle sx={{ fontSize: 20 }} />} label="Godkjent av kunde" value={<Typography sx={{ fontSize: 15, fontWeight: 800 }}>Delvis</Typography>} sub="Sist oppdatert 23. mai" />
         </Box>
@@ -71,8 +81,12 @@ const MoodboardTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         {/* Fargepalett + Stilnotater + Må fanges */}
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr 1fr' }, gap: 2, mb: 2 }}>
           <WsCard>
-            <Typography sx={{ fontSize: 14, fontWeight: 700, mb: 1.5 }}>Fargepalett</Typography>
-            <Stack spacing={0.75}>{pal.map(([n, c]) => <Stack key={n} direction="row" spacing={1} alignItems="center"><Box sx={{ width: 20, height: 20, borderRadius: 1, bgcolor: c }} /><Typography sx={{ fontSize: 12.5, flex: 1 }}>{n}</Typography><Typography sx={{ fontSize: 11, color: ws.textFaint }}>{c}</Typography></Stack>)}</Stack>
+            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
+              <Typography sx={{ fontSize: 14, fontWeight: 700 }}>Fargepalett</Typography>
+              {isReal && <Button size="small" startIcon={<Palette sx={{ fontSize: 15 }} />} onClick={extractPalette} disabled={extracting} sx={{ color: ws.accent, textTransform: 'none', fontWeight: 600, fontSize: 11.5 }}>{extracting ? 'Trekker ut…' : 'Auto fra referanser'}</Button>}
+            </Stack>
+            <Stack spacing={0.75}>{pal.map(([n, c]) => <Stack key={`${n}${c}`} direction="row" spacing={1} alignItems="center"><Box sx={{ width: 20, height: 20, borderRadius: 1, bgcolor: c, border: `1px solid ${ws.borderSoft}` }} /><Typography sx={{ fontSize: 12.5, flex: 1 }}>{n}</Typography><Typography sx={{ fontSize: 11, color: ws.textFaint }}>{c}</Typography></Stack>)}</Stack>
+            {(!meta?.palette || !meta.palette.length) && isReal && <Typography sx={{ fontSize: 10.5, color: ws.textFaint, mt: 1 }}>Eksempel-palett — trykk «Auto fra referanser» for å trekke ut ekte farger.</Typography>}
           </WsCard>
           <WsCard>
             <Typography sx={{ fontSize: 14, fontWeight: 700, mb: 1.5 }}>Stilnotater</Typography>
@@ -119,19 +133,24 @@ const MetaEditDialog: React.FC<{ open: boolean; onClose: () => void; projectId: 
   const [style, setStyle] = useState('');
   const [notes, setNotes] = useState('');
   const [must, setMust] = useState('');
+  const [palette, setPalette] = useState<any[]>([]);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     if (!open) return;
     setStyle(meta?.style || '');
     setNotes((meta?.notes || []).join('\n'));
     setMust((meta?.mustCapture || []).map((m: any) => (m.label || m[0] || m)).join('\n'));
+    setPalette((meta?.palette || []).map((p: any) => ({ name: p.name || p[0] || '', hex: p.hex || p[1] || '#cccccc' })));
   }, [open, meta]);
+  const setColor = (i: number, k: string, v: string) => setPalette((p) => p.map((c, j) => j === i ? { ...c, [k]: v } : c));
+  const addColor = () => setPalette((p) => [...p, { name: '', hex: '#cccccc' }]);
+  const removeColor = (i: number) => setPalette((p) => p.filter((_, j) => j !== i));
   const save = async () => {
     setBusy(true);
     try {
       await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/moodboard-meta`, {
         method: 'PUT',
-        body: { style: style.trim(), notes: notes.split('\n').map((s) => s.trim()).filter(Boolean), mustCapture: must.split('\n').map((s) => ({ label: s.trim(), done: false })).filter((x) => x.label), palette: meta?.palette || [] },
+        body: { style: style.trim(), notes: notes.split('\n').map((s) => s.trim()).filter(Boolean), mustCapture: must.split('\n').map((s) => ({ label: s.trim(), done: false })).filter((x) => x.label), palette: palette.filter((c) => c.hex).map((c) => ({ name: c.name.trim() || c.hex, hex: c.hex })) },
       });
       onSaved();
     } catch (e: any) { window.alert(e?.message || 'Kunne ikke lagre'); } finally { setBusy(false); }
@@ -144,6 +163,20 @@ const MetaEditDialog: React.FC<{ open: boolean; onClose: () => void; projectId: 
           <TextField label="Stil retning" value={style} onChange={(e) => setStyle(e.target.value)} fullWidth size="small" placeholder="f.eks. Romantisk / Editorial" />
           <TextField label="Stilnotater (én per linje)" value={notes} onChange={(e) => setNotes(e.target.value)} fullWidth multiline minRows={4} size="small" />
           <TextField label="Må fanges (én per linje)" value={must} onChange={(e) => setMust(e.target.value)} fullWidth multiline minRows={3} size="small" />
+          <Box>
+            <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: ws.textDim, mb: 0.75 }}>Fargepalett</Typography>
+            <Stack spacing={0.75}>
+              {palette.map((c, i) => (
+                <Stack key={i} direction="row" spacing={1} alignItems="center">
+                  <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(c.hex) ? c.hex : '#cccccc'} onChange={(e) => setColor(i, 'hex', e.target.value)} style={{ width: 32, height: 32, border: 'none', background: 'none', cursor: 'pointer' }} />
+                  <TextField value={c.name} onChange={(e) => setColor(i, 'name', e.target.value)} size="small" placeholder="Navn" sx={{ flex: 1 }} />
+                  <TextField value={c.hex} onChange={(e) => setColor(i, 'hex', e.target.value)} size="small" sx={{ width: 110 }} />
+                  <IconButton size="small" onClick={() => removeColor(i)}><Close sx={{ fontSize: 16 }} /></IconButton>
+                </Stack>
+              ))}
+              <Button size="small" startIcon={<Add sx={{ fontSize: 15 }} />} onClick={addColor} sx={{ alignSelf: 'flex-start', color: ws.accent, textTransform: 'none' }}>Legg til farge</Button>
+            </Stack>
+          </Box>
         </Stack>
       </DialogContent>
       <DialogActions>
