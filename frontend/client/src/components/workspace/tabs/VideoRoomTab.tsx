@@ -31,8 +31,8 @@ const VideoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('alle');
   const [addOpen, setAddOpen] = useState(false);
-  const [vUrl, setVUrl] = useState(''); const [vLabel, setVLabel] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [vFile, setVFile] = useState<any>(null); const [vLabel, setVLabel] = useState('');
+  const [uploadPct, setUploadPct] = useState(0); const [busy, setBusy] = useState(false);
 
   const load = () => {
     if (!isReal) { setLoading(false); return; }
@@ -77,11 +77,27 @@ const VideoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/video-versions/${current.id}/approve`, { method: 'POST', body: {} }); load(); }
     catch (e: any) { window.alert(e?.message || 'Kunne ikke godkjenne'); }
   };
-  const addVersion = async () => {
-    if (!vUrl.trim()) return;
-    setBusy(true);
-    try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/video-versions`, { method: 'POST', body: { fileUrl: vUrl.trim(), versionLabel: vLabel.trim() || undefined } }); setAddOpen(false); setVUrl(''); setVLabel(''); load(); }
-    catch (e: any) { window.alert(e?.message || 'Kunne ikke legge til versjon'); }
+  // Last opp videofil → B2 (server-side multer) m/ fremdrift via XHR.
+  const uploadVersion = async () => {
+    if (!vFile) return;
+    setBusy(true); setUploadPct(0);
+    try {
+      const fd = new FormData();
+      fd.append('file', vFile);
+      if (vLabel.trim()) fd.append('versionLabel', vLabel.trim());
+      await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', `/api/projects/${encodeURIComponent(projectId)}/video-versions/upload`);
+        xhr.withCredentials = true;
+        const tok = localStorage.getItem('creatorhub_auth_token') || localStorage.getItem('token');
+        if (tok) xhr.setRequestHeader('Authorization', `Bearer ${tok}`);
+        xhr.upload.onprogress = (e) => { if (e.lengthComputable) setUploadPct(Math.round((e.loaded / e.total) * 100)); };
+        xhr.onload = () => (xhr.status >= 200 && xhr.status < 300) ? resolve(null) : reject(new Error(`Opplasting feilet (${xhr.status})`));
+        xhr.onerror = () => reject(new Error('Nettverksfeil under opplasting'));
+        xhr.send(fd);
+      });
+      setAddOpen(false); setVFile(null); setVLabel(''); setUploadPct(0); load();
+    } catch (e: any) { window.alert(e?.message || 'Kunne ikke laste opp'); }
     finally { setBusy(false); }
   };
 
@@ -224,15 +240,21 @@ const VideoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         </Stack>
       )}
 
-      {/* Ny versjon-dialog */}
-      <WsModal open={addOpen} onClose={() => setAddOpen(false)} title="Ny videoversjon" maxWidth="sm">
+      {/* Ny versjon-dialog — last opp videofil til B2 */}
+      <WsModal open={addOpen} onClose={() => { if (!busy) setAddOpen(false); }} title="Ny videoversjon" maxWidth="sm">
         <Stack spacing={2}>
-          <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Lim inn en video-URL (B2/Cloudflare Stream/levert lenke). Direkte filopplasting til Stream kommer som neste steg.</Typography>
-          <TextField label="Video-URL" value={vUrl} onChange={(e) => setVUrl(e.target.value)} fullWidth size="small" placeholder="https://…/film.mp4" />
-          <TextField label="Versjonsnavn (valgfritt)" value={vLabel} onChange={(e) => setVLabel(e.target.value)} fullWidth size="small" placeholder="V2 – Revidert kutt" />
+          <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Last opp en review-kopi (komprimert MP4/MOV, ≤500 MB). Lagres på B2; avspilling streames derfra.</Typography>
+          <Box component="label" sx={{ display: 'block', p: 2, border: `1.5px dashed ${ws.accentBorder}`, borderRadius: `${ws.radiusSm}px`, textAlign: 'center', cursor: busy ? 'default' : 'pointer', bgcolor: ws.accentSoft }}>
+            <input type="file" accept="video/*" hidden disabled={busy} onChange={(e) => { const f = e.target.files?.[0]; if (f) { setVFile(f); if (!vLabel) setVLabel(''); } }} />
+            <CloudUpload sx={{ color: ws.accent, fontSize: 28 }} />
+            <Typography sx={{ fontSize: 13, fontWeight: 700, mt: 0.5 }}>{vFile ? vFile.name : 'Velg videofil'}</Typography>
+            {vFile && <Typography sx={{ fontSize: 11, color: ws.textFaint }}>{(vFile.size / 1024 / 1024).toFixed(1)} MB</Typography>}
+          </Box>
+          <TextField label="Versjonsnavn (valgfritt)" value={vLabel} onChange={(e) => setVLabel(e.target.value)} fullWidth size="small" placeholder="V2 – Revidert kutt" disabled={busy} />
+          {busy && <Box><Box sx={{ height: 6, borderRadius: 3, bgcolor: ws.panelAlt, overflow: 'hidden' }}><Box sx={{ width: `${uploadPct}%`, height: '100%', bgcolor: ws.accent, transition: 'width 0.2s' }} /></Box><Typography sx={{ fontSize: 11, color: ws.textDim, mt: 0.5 }}>Laster opp… {uploadPct}%</Typography></Box>}
           <Stack direction="row" justifyContent="flex-end" spacing={1}>
-            <Button onClick={() => setAddOpen(false)} sx={{ color: ws.textDim, textTransform: 'none' }}>Avbryt</Button>
-            <Button variant="contained" onClick={addVersion} disabled={busy || !vUrl.trim()} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>{busy ? 'Legger til…' : 'Legg til versjon'}</Button>
+            <Button onClick={() => setAddOpen(false)} disabled={busy} sx={{ color: ws.textDim, textTransform: 'none' }}>Avbryt</Button>
+            <Button variant="contained" onClick={uploadVersion} disabled={busy || !vFile} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>{busy ? 'Laster opp…' : 'Last opp versjon'}</Button>
           </Stack>
         </Stack>
       </WsModal>

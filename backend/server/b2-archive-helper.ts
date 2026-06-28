@@ -159,6 +159,31 @@ export async function presignRoleRoomB2Download(
 }
 
 /**
+ * Presignet PUT-URL for DIREKTE klient→B2-opplasting (store filer som video
+ * skal IKKE bufres i server-minne). Klienten gjør `fetch(url, {method:'PUT',
+ * body:file})`. Les senere via presignRoleRoomB2Download(key).
+ */
+export async function presignRoleRoomB2Upload(
+  key: string,
+  contentType: string,
+  expiresInSeconds = 3600,
+): Promise<string | null> {
+  const config = getRoleRoomB2Client();
+  if (!config) return null;
+  try {
+    const command = new PutObjectCommand({
+      Bucket: config.bucket,
+      Key: key,
+      ContentType: contentType || "application/octet-stream",
+    });
+    return await getSignedUrl(config.client, command, { expiresIn: expiresInSeconds });
+  } catch (err) {
+    console.warn("[b2-archive] presign upload failed", { key, err: (err as Error).message });
+    return null;
+  }
+}
+
+/**
  * Bygg key for newsletter-issue-arkivering.
  * F.eks. `newsletters/issues/2026-06/{issueId}.html`
  */

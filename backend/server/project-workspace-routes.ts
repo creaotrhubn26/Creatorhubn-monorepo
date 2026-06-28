@@ -31,6 +31,9 @@ import { enqueuePhotoEnhancerJobFromBuffer, listPhotoEnhancerJobsByProjectId } f
 // Web-opplasting holdes i minne og skyves server-side til B2 (Role Room-bøtta).
 // 60 MB tak — store RAW/originaler skal uansett gjennom capture multipart-flyten.
 const mediaUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 60 * 1024 * 1024 } });
+// Video-review-kopier (komprimert H.264/H.265) — 500 MB tak. Større mastere
+// hører hjemme i capture/leveranse-flyten, ikke review-rommet.
+const videoUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 500 * 1024 * 1024 } });
 
 export interface ProjectWorkspaceRoutesDeps {
   app: express.Application;
@@ -929,6 +932,9 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       uploaded_by varchar,
       created_at timestamptz DEFAULT now()
     )`).catch(() => {});
+    // Videofilene ligger på B2 (Cloudflare Stream = kun streaming-lag). b2_key
+    // presignes til en avspillings-URL ved lesing.
+    await pool.query(`ALTER TABLE project_video_versions ADD COLUMN IF NOT EXISTS b2_key text`).catch(() => {});
     await pool.query(`CREATE TABLE IF NOT EXISTS project_video_comments (
       id uuid PRIMARY KEY,
       version_id uuid NOT NULL,
@@ -960,18 +966,20 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       await ensureVideoSchema();
       const pid = req.params.projectId;
       const vs = await pool.query(
-        `SELECT id, version_label, version_number, file_url, stream_uid, thumbnail_url, duration, chapters, status, created_at,
+        `SELECT id, version_label, version_number, file_url, b2_key, stream_uid, thumbnail_url, duration, chapters, status, created_at,
                 (SELECT count(*) FROM project_video_comments c WHERE c.version_id = v.id)::int comment_count,
                 (SELECT count(*) FROM project_video_comments c WHERE c.version_id = v.id AND c.status NOT IN ('resolved','done'))::int open_count
            FROM project_video_versions v WHERE project_id = $1 ORDER BY version_number ASC`,
         [pid],
       ).catch(() => ({ rows: [] }));
-      const versions = vs.rows.map((v: any) => ({
+      // B2-nøkkel → presignet avspillings-URL (1t). file_url (ekstern) brukes som fallback.
+      const versions = await Promise.all(vs.rows.map(async (v: any) => ({
         id: v.id, versionLabel: v.version_label || `V${v.version_number}`, versionNumber: v.version_number,
-        fileUrl: v.file_url || null, streamUid: v.stream_uid || null, thumbnailUrl: v.thumbnail_url || null,
+        fileUrl: v.b2_key ? await presignRoleRoomB2Download(v.b2_key, undefined, 3600) : (v.file_url || null),
+        streamUid: v.stream_uid || null, thumbnailUrl: v.thumbnail_url || null,
         duration: v.duration != null ? Number(v.duration) : null, status: v.status, createdAt: v.created_at,
         commentCount: v.comment_count || 0, openCount: v.open_count || 0,
-      }));
+      })));
       const cur = vs.rows.find((v: any) => v.status === "under_review") || vs.rows[vs.rows.length - 1] || null;
       let comments: any[] = []; let chapters: any[] = [];
       if (cur) {
@@ -990,21 +998,49 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       await ensureVideoSchema();
       const pid = req.params.projectId;
       const b = req.body || {};
-      if (!b.fileUrl && !b.streamUid) return res.status(400).json({ error: "fileUrl_or_streamUid_required" });
+      if (!b.b2Key && !b.fileUrl && !b.streamUid) return res.status(400).json({ error: "b2Key_or_fileUrl_or_streamUid_required" });
       const n = await pool.query(`SELECT COALESCE(MAX(version_number),0)+1 AS n FROM project_video_versions WHERE project_id = $1`, [pid]);
       const vn = n.rows[0].n;
       // Eldre versjoner går fra under_review → superseded.
       await pool.query(`UPDATE project_video_versions SET status='superseded' WHERE project_id=$1 AND status='under_review'`, [pid]).catch(() => {});
       const id = crypto.randomUUID();
       await pool.query(
-        `INSERT INTO project_video_versions (id, project_id, version_label, version_number, file_url, stream_uid, thumbnail_url, duration, chapters, status, uploaded_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'under_review',$10)`,
-        [id, pid, String(b.versionLabel || `V${vn}`).slice(0, 80), vn, b.fileUrl || null, b.streamUid || null,
+        `INSERT INTO project_video_versions (id, project_id, version_label, version_number, file_url, b2_key, stream_uid, thumbnail_url, duration, chapters, status, uploaded_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'under_review',$11)`,
+        [id, pid, String(b.versionLabel || `V${vn}`).slice(0, 80), vn, b.fileUrl || null, b.b2Key || null, b.streamUid || null,
          b.thumbnailUrl || null, b.duration != null ? Number(b.duration) : null,
          b.chapters ? JSON.stringify(b.chapters) : null, uid],
       );
       res.status(201).json({ id, versionNumber: vn });
     } catch (e) { console.error("POST video-versions", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  // Last opp videofil → B2 → opprett versjon. Server-side (samme beviste mønster
+  // som /images): multer → archiveToRoleRoomB2. Cloudflare Stream = kun streaming,
+  // kilden bor på B2. b2_key presignes til avspilling i GET /video-room.
+  app.post("/api/projects/:projectId/video-versions/upload", videoUpload.single("file"), async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureVideoSchema();
+      const pid = req.params.projectId;
+      const file = (req as any).file;
+      if (!file) return res.status(400).json({ error: "file_required" });
+      if (!String(file.mimetype || "").startsWith("video/")) return res.status(415).json({ error: "video_only" });
+      const key = `workspace/${pid}/video-versions/${crypto.randomUUID()}-${slugifyForKey(file.originalname || "video.mp4")}`;
+      const stored = await archiveToRoleRoomB2(key, file.buffer, file.mimetype);
+      if (!stored) return res.status(503).json({ error: "b2_not_configured" });
+      const n = await pool.query(`SELECT COALESCE(MAX(version_number),0)+1 AS n FROM project_video_versions WHERE project_id = $1`, [pid]);
+      const vn = n.rows[0].n;
+      await pool.query(`UPDATE project_video_versions SET status='superseded' WHERE project_id=$1 AND status='under_review'`, [pid]).catch(() => {});
+      const id = crypto.randomUUID();
+      const label = String(req.body?.versionLabel || `V${vn}`).slice(0, 80);
+      await pool.query(
+        `INSERT INTO project_video_versions (id, project_id, version_label, version_number, b2_key, status, uploaded_by)
+         VALUES ($1,$2,$3,$4,$5,'under_review',$6)`,
+        [id, pid, label, vn, key, uid],
+      );
+      res.status(201).json({ id, versionNumber: vn });
+    } catch (e) { console.error("POST video upload", e); res.status(500).json({ error: "failed" }); }
   });
 
   // Tidsstemplet kommentar.
