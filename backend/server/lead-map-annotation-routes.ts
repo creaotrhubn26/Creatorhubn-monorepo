@@ -88,8 +88,8 @@ export function registerLeadMapAnnotationRoutes({ app, pool, activeSessions }: D
                   a.assigned_to_user_id, a.target_lead_id,
                   a.expires_at::text, a.archived_at::text, a.meta,
                   a.created_at::text, a.updated_at::text,
-                  creator.name AS created_by_name,
-                  assignee.name AS assigned_to_name,
+                  NULLIF(TRIM(CONCAT_WS(' ', creator.first_name, creator.last_name)), '') AS created_by_name,
+                  NULLIF(TRIM(CONCAT_WS(' ', assignee.first_name, assignee.last_name)), '') AS assigned_to_name,
                   l.name AS target_lead_name
              FROM map_annotations a
              LEFT JOIN users creator ON creator.id = a.created_by_user_id

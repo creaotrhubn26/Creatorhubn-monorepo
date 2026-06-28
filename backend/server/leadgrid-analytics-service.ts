@@ -321,7 +321,7 @@ export async function computeSourcePerformance(
        FROM crm_customers
       WHERE owner_user_id IN (${ORG_MEMBERS_SUBQUERY})
         AND archived_at IS NULL
-      GROUP BY source
+      GROUP BY COALESCE(lead_source, 'unknown')
       ORDER BY COUNT(*) DESC`,
     [orgId],
   );

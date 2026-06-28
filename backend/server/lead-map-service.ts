@@ -248,7 +248,7 @@ export async function getLeadById(
             c.industry_id::text AS industry_id
      FROM crm_customers c
      LEFT JOIN users u ON u.id = c.owner_user_id
-     WHERE id = $1::uuid AND ${tenantConds.join(' AND ')}`,
+     WHERE c.id = $1::uuid AND ${tenantConds.join(' AND ')}`,
     params,
   );
   return r.rowCount && r.rowCount > 0 ? rowToLead(r.rows[0]) : null;
