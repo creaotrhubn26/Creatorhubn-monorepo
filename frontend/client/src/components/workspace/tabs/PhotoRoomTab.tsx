@@ -21,6 +21,7 @@ import { ws } from '../workspaceTheme';
 import AutoFixHigh from '@mui/icons-material/AutoFixHigh';
 import Movie from '@mui/icons-material/Movie';
 import { WsCard, WsTag, WsModal } from '../ui';
+import AiBuyCreditsModal from '../AiBuyCreditsModal';
 
 const STATUS_META: any = {
   approved: { label: 'Godkjent', tone: 'green', dot: ws.green, icon: '✓' },
@@ -136,7 +137,12 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         if (s.status === 'completed' || s.status === 'failed') break;
       }
       loadAiCfg();
-    } catch (e: any) { window.alert(e?.message || 'AI-redigering feilet'); setAiJob({ status: 'failed' }); }
+    } catch (e: any) {
+      const msg = String(e?.message || '').toLowerCase();
+      if (msg.includes('kreditt') || msg.includes('insufficient')) { setAiOpen(false); setBuyOpen(true); }
+      else window.alert(e?.message || 'AI-redigering feilet');
+      setAiJob({ status: 'failed' });
+    }
     finally { setAiBusy(false); }
   };
   // AI-video (animer stillbilde → Seedance 2.0)
@@ -160,7 +166,12 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         if (s.status === 'completed' || s.status === 'failed') break;
       }
       loadAiCfg();
-    } catch (e: any) { window.alert(e?.message || 'AI-video feilet'); setAnimJob({ status: 'failed' }); }
+    } catch (e: any) {
+      const msg = String(e?.message || '').toLowerCase();
+      if (msg.includes('kreditt') || msg.includes('insufficient')) { setAnimOpen(false); setBuyOpen(true); }
+      else window.alert(e?.message || 'AI-video feilet');
+      setAnimJob({ status: 'failed' });
+    }
     finally { setAnimBusy(false); }
   };
   // «Foreslå» (Claude vision → kontekst-tilpassede prompts)
@@ -430,24 +441,7 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         )}
       </WsModal>
 
-      {/* Kjøp AI-kreditter */}
-      <WsModal open={buyOpen} onClose={() => setBuyOpen(false)} title="Kjøp AI-kreditter" maxWidth="sm">
-        <Stack spacing={2}>
-          <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Forhåndsbetalt saldo for AI-redigering, -video og -restyle. Nåværende saldo: <b style={{ color: ws.green }}>${(credits?.balanceUsd ?? 0).toFixed(2)}</b></Typography>
-          <Stack spacing={1}>
-            {(credits?.packs || []).map((p: any) => (
-              <Stack key={p.id} direction="row" alignItems="center" spacing={1.5} sx={{ p: 1.5, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.panelAlt, border: `1px solid ${ws.borderSoft}` }}>
-                <Box sx={{ flex: 1 }}>
-                  <Typography sx={{ fontSize: 14, fontWeight: 800 }}>${p.creditUsd} kreditt</Typography>
-                  <Typography sx={{ fontSize: 11, color: ws.textFaint }}>{Math.round(p.creditUsd / 0.18)}+ AI-redigeringer · {Math.round(p.creditUsd / 0.5)}+ korte videoer</Typography>
-                </Box>
-                <Button variant="contained" onClick={() => buyPack(p.id)} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>{p.priceNok} kr</Button>
-              </Stack>
-            ))}
-          </Stack>
-          <Typography sx={{ fontSize: 10.5, color: ws.textFaint }}>Sikker betaling via Stripe. Kreditter trekkes per generering.</Typography>
-        </Stack>
-      </WsModal>
+      <AiBuyCreditsModal open={buyOpen} onClose={() => setBuyOpen(false)} credits={credits} onBuy={buyPack} />
 
       {/* Animer (AI-video, Seedance 2.0) */}
       <WsModal open={animOpen} onClose={() => { if (!animBusy) setAnimOpen(false); }} title={`Animer — ${sel?.filename || 'bilde'}`} maxWidth="sm">
@@ -494,7 +488,7 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
               {[4, 5, 8, 10].map((d) => <Box key={d} onClick={() => setAnimDuration(d)} sx={{ px: 1.25, py: 0.4, borderRadius: 2, cursor: 'pointer', fontSize: 12, fontWeight: animDuration === d ? 700 : 500, color: animDuration === d ? ws.accentContrast : ws.textDim, bgcolor: animDuration === d ? ws.accent : 'rgba(255,255,255,0.05)' }}>{d}s</Box>)}
             </Stack>
             <Stack direction="row" justifyContent="space-between" alignItems="center">
-              <Typography sx={{ fontSize: 10.5, color: ws.textFaint }}>~${(animDuration * 0.1).toFixed(2)} ({animDuration}s)</Typography>
+              <Typography sx={{ fontSize: 10.5, color: ws.textFaint }}>~${(animDuration * 0.1).toFixed(2)} ({animDuration}s){credits?.billingMode === 'credits' ? <> · saldo ${(credits?.balanceUsd ?? 0).toFixed(2)} · <Box component="span" onClick={() => { setAnimOpen(false); setBuyOpen(true); }} sx={{ color: ws.accent, cursor: 'pointer', fontWeight: 700 }}>Kjøp</Box></> : null}</Typography>
               <Stack direction="row" spacing={1}>
                 <Button onClick={() => setAnimOpen(false)} sx={{ color: ws.textDim, textTransform: 'none' }}>Avbryt</Button>
                 <Button variant="contained" disabled={!animPrompt.trim() || animBusy} onClick={startAnimate} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Lag video</Button>

@@ -17,6 +17,7 @@ import AutoAwesome from '@mui/icons-material/AutoAwesome';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
 import { WsCard, WsTag, WsModal } from '../ui';
+import AiBuyCreditsModal from '../AiBuyCreditsModal';
 import CinematicVideoPlayer from '@/components/gallery/CinematicVideoPlayer';
 
 const PHASES = ['Brief', 'V1', 'Klient-review', 'Revisjoner', 'Levert'];
@@ -40,6 +41,9 @@ const VideoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [reJob, setReJob] = useState<any | null>(null); const [reBusy, setReBusy] = useState(false);
   const RE_PRESETS = ['Golden hour — varmt, filmatisk motlys', 'Blå time — kjølig, stemningsfull', 'Natt-neon — urbant, fargerikt', 'Overskyet studio — mykt, nøytralt lys'];
   const loadAiCfg = () => apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/config`).then((r: any) => setAiCfg(r || null)).catch(() => {});
+  const [credits, setCredits] = useState<any | null>(null); const [buyOpen, setBuyOpen] = useState(false);
+  const loadCredits = () => apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/credits`).then((r: any) => setCredits(r || null)).catch(() => {});
+  const buyPack = async (packId: string) => { try { const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/credits/checkout`, { method: 'POST', body: { packId } }); if (r?.url) window.location.href = r.url; } catch (e: any) { window.alert(e?.message || 'Feil'); } };
   const setConsent = async (c: boolean) => { try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/consent`, { method: 'PUT', body: { consented: c } }); loadAiCfg(); } catch (e: any) { window.alert(e?.message || 'Feil'); } };
   const openRe = () => { setRePrompt(''); setReJob(null); setReOpen(true); };
   const startRestyle = async () => {
@@ -54,12 +58,18 @@ const VideoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         setReJob(s);
         if (s.status === 'completed' || s.status === 'failed') break;
       }
-    } catch (e: any) { window.alert(e?.message || 'Restyle feilet'); setReJob({ status: 'failed' }); }
-    finally { setReBusy(false); }
+    } catch (e: any) {
+      const msg = String(e?.message || '').toLowerCase();
+      if (msg.includes('kreditt') || msg.includes('insufficient')) { setReOpen(false); setBuyOpen(true); }
+      else window.alert(e?.message || 'Restyle feilet');
+      setReJob({ status: 'failed' });
+    }
+    finally { setReBusy(false); loadCredits(); }
   };
 
   const load = () => {
-    loadAiCfg();
+    loadAiCfg(); loadCredits();
+    try { const p = new URLSearchParams(window.location.search); if (p.get('ai_credits') === 'ok' && p.get('cs')) { apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/credits/confirm`, { method: 'POST', body: { sessionId: p.get('cs') } }).then(() => { loadCredits(); window.alert('Kreditter lagt til ✓'); }).catch(() => {}).finally(() => { const u = new URL(window.location.href); u.searchParams.delete('ai_credits'); u.searchParams.delete('cs'); window.history.replaceState({}, '', u.toString()); }); } } catch { /* */ }
     if (!isReal) { setLoading(false); return; }
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/video-room`)
       .then((r: any) => setData(r || null)).catch(() => {}).finally(() => setLoading(false));
@@ -330,13 +340,18 @@ const VideoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
               <Typography sx={{ fontSize: 12, color: ws.textDim }}>Oppløsning:</Typography>
               {[720, 1080].map((r) => <Box key={r} onClick={() => setReRes(r)} sx={{ px: 1.25, py: 0.4, borderRadius: 2, cursor: 'pointer', fontSize: 12, fontWeight: reRes === r ? 700 : 500, color: reRes === r ? ws.accentContrast : ws.textDim, bgcolor: reRes === r ? ws.accent : 'rgba(255,255,255,0.05)' }}>{r}p</Box>)}
             </Stack>
-            <Stack direction="row" justifyContent="flex-end" spacing={1}>
-              <Button onClick={() => setReOpen(false)} sx={{ color: ws.textDim, textTransform: 'none' }}>Avbryt</Button>
-              <Button variant="contained" disabled={!rePrompt.trim() || reBusy} onClick={startRestyle} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Restyle video</Button>
+            <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <Typography sx={{ fontSize: 10.5, color: ws.textFaint }}>~$0,80{credits?.billingMode === 'credits' ? <> · saldo ${(credits?.balanceUsd ?? 0).toFixed(2)} · <Box component="span" onClick={() => { setReOpen(false); setBuyOpen(true); }} sx={{ color: ws.accent, cursor: 'pointer', fontWeight: 700 }}>Kjøp</Box></> : null}</Typography>
+              <Stack direction="row" spacing={1}>
+                <Button onClick={() => setReOpen(false)} sx={{ color: ws.textDim, textTransform: 'none' }}>Avbryt</Button>
+                <Button variant="contained" disabled={!rePrompt.trim() || reBusy} onClick={startRestyle} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Restyle video</Button>
+              </Stack>
             </Stack>
           </Stack>
         )}
       </WsModal>
+
+      <AiBuyCreditsModal open={buyOpen} onClose={() => setBuyOpen(false)} credits={credits} onBuy={buyPack} />
     </Box>
   );
 };

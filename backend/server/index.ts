@@ -40,6 +40,7 @@ import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 import { load as loadHtml } from "cheerio";
 import Stripe from "stripe";
+import { creditFromStripeSession } from "./ai-credits";
 import {
   GetObjectCommand,
   HeadObjectCommand,
@@ -1298,6 +1299,40 @@ import { installSecretRedactor } from "./log-redaction.js";
 installSecretRedactor();
 
 const app = express();
+
+// AI-kreditt topp-opp webhook (robust backup for confirm-on-return). Begge er
+// idempotente på ref=stripe:<session> → ingen dobbel-kreditt. Dvale til
+// STRIPE_AI_CREDITS_WEBHOOK_SECRET er satt + Stripe-webhook opprettet.
+app.post(
+  "/api/ai/credits/webhook",
+  express.raw({ type: "application/json" }),
+  async (req, res) => {
+    const secret = process.env.STRIPE_SECRET_KEY;
+    const whSecret = process.env.STRIPE_AI_CREDITS_WEBHOOK_SECRET;
+    if (!secret || !whSecret) return res.status(503).json({ error: "not_configured" });
+    const stripe = new Stripe(secret.trim());
+    const sig = req.headers["stripe-signature"];
+    const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from(String(req.body ?? ""), "utf8");
+    let event: Stripe.Event;
+    try {
+      if (typeof sig !== "string" || !sig.trim()) return res.status(400).json({ error: "missing_signature" });
+      event = stripe.webhooks.constructEvent(rawBody, sig, whSecret);
+    } catch (e) {
+      console.error("[ai-credits webhook] signature error", e);
+      return res.status(400).json({ error: "bad_signature" });
+    }
+    try {
+      if (event.type === "checkout.session.completed" || event.type === "checkout.session.async_payment_succeeded") {
+        const session = event.data.object as Stripe.Checkout.Session;
+        if ((session as any)?.metadata?.kind === "ai_credits") await creditFromStripeSession(pool, session);
+      }
+      res.json({ received: true });
+    } catch (e) {
+      console.error("[ai-credits webhook] handler error", e);
+      res.status(500).json({ error: "handler_failed" });
+    }
+  },
+);
 
 app.post(
   "/api/role-room/billing/webhook",
