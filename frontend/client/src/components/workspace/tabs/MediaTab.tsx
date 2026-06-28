@@ -13,7 +13,7 @@ import AutoAwesomeMotion from '@mui/icons-material/AutoAwesomeMotion';
 import Close from '@mui/icons-material/Close';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
-import { WsCard, WsTag, WsImageGrid } from '../ui';
+import { WsCard, WsTag, WsImageGrid, WsModal } from '../ui';
 import { useProjectImages } from '../useProjectImages';
 import { useCaptureRealtime } from '../useCaptureRealtime';
 
@@ -77,6 +77,8 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   // AI-forbedring (photo_enhancement_jobs) + AI-cull-forslag (classifySession).
   const [enhance, setEnhance] = useState<any | null>(null);
   const [cullAi, setCullAi] = useState<any | null>(null);
+  const [beforeAfter, setBeforeAfter] = useState<any | null>(null); // valgt enhance-jobb → Før/Etter-modal
+  const [baPos, setBaPos] = useState(50); // slider-posisjon 0–100
   const loadAi = () => {
     if (!isReal) return;
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/enhance-status`).then((r: any) => setEnhance(r || null)).catch(() => {});
@@ -271,18 +273,21 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
               </Stack>
               {(s.running || 0) > 0 && <Typography sx={{ fontSize: 10.5, color: ws.amber, mb: 0.75 }}>⏳ {s.running} forbedres nå…{(s.failed || 0) > 0 ? ` · ${s.failed} feilet` : ''}</Typography>}
               <Stack spacing={0.5}>
-                {jobs.slice(0, 4).map((j: any) => (
-                  <Stack key={j.id} direction="row" spacing={1} alignItems="center" sx={{ p: 0.65, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.panelAlt }}>
+                {jobs.slice(0, 4).map((j: any) => {
+                  const canCompare = !!(j.originalUrl && j.enhancedUrl);
+                  return (
+                  <Stack key={j.id} direction="row" spacing={1} alignItems="center" onClick={() => { if (canCompare) { setBaPos(50); setBeforeAfter(j); } }} sx={{ p: 0.65, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.panelAlt, cursor: canCompare ? 'pointer' : 'default', '&:hover': canCompare ? { bgcolor: 'rgba(255,255,255,0.06)' } : undefined }}>
                     {(j.thumbUrl || j.enhancedUrl)
                       ? <Box sx={{ width: 26, height: 26, borderRadius: 0.75, background: `center/cover no-repeat url(${j.thumbUrl || j.enhancedUrl})`, flexShrink: 0 }} />
                       : <Box sx={{ width: 26, height: 26, borderRadius: 0.75, bgcolor: 'rgba(255,255,255,0.06)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12 }}>✨</Box>}
                     <Box sx={{ minWidth: 0, flex: 1 }}>
-                      <Typography noWrap sx={{ fontSize: 11, fontWeight: 600 }}>{j.photoId || j.id}</Typography>
+                      <Typography noWrap sx={{ fontSize: 11, fontWeight: 600 }}>{j.photoId || j.id}{canCompare && <Typography component="span" sx={{ fontSize: 9.5, color: ws.accent, ml: 0.5 }}>Før/Etter ›</Typography>}</Typography>
                       <Typography sx={{ fontSize: 10, color: ws.textFaint }}>{j.model || 'AI'}{j.processingMs ? ` · ${(j.processingMs / 1000).toFixed(1)}s` : ''}</Typography>
                     </Box>
                     <WsTag label={j.status === 'completed' || j.status === 'done' ? 'Ferdig' : j.status === 'failed' || j.status === 'error' ? 'Feilet' : 'Kjører'} tone={j.status === 'completed' || j.status === 'done' ? 'green' : j.status === 'failed' || j.status === 'error' ? 'red' : 'amber'} />
                   </Stack>
-                ))}
+                  );
+                })}
               </Stack>
             </WsCard>
           );
@@ -320,6 +325,39 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           </WsCard>
         )}
       </Box>
+
+      {/* Før/Etter — interaktiv AI-forbedring-sammenligning */}
+      <WsModal open={!!beforeAfter} onClose={() => setBeforeAfter(null)} title={`Før / Etter — ${beforeAfter?.photoId || 'AI-forbedring'}`} maxWidth="md">
+        {beforeAfter && (
+          <Box>
+            <Box sx={{ position: 'relative', width: '100%', aspectRatio: '3 / 2', borderRadius: `${ws.radiusSm}px`, overflow: 'hidden', userSelect: 'none', bgcolor: '#000' }}>
+              {/* Etter (full, under) */}
+              <Box component="img" src={beforeAfter.enhancedUrl} alt="Etter" sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }} />
+              {/* Før (klippet av slider-posisjon, over) */}
+              <Box sx={{ position: 'absolute', inset: 0, clipPath: `inset(0 ${100 - baPos}% 0 0)` }}>
+                <Box component="img" src={beforeAfter.originalUrl} alt="Før" sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }} />
+              </Box>
+              {/* Skille-linje */}
+              <Box sx={{ position: 'absolute', top: 0, bottom: 0, left: `${baPos}%`, width: '2px', bgcolor: ws.accent, boxShadow: '0 0 8px rgba(0,0,0,0.6)', transform: 'translateX(-1px)' }} />
+              {/* Etiketter */}
+              <Box sx={{ position: 'absolute', top: 8, left: 8, px: 1, py: 0.25, borderRadius: 1, bgcolor: 'rgba(0,0,0,0.6)', fontSize: 11, fontWeight: 700, color: '#fff' }}>FØR</Box>
+              <Box sx={{ position: 'absolute', top: 8, right: 8, px: 1, py: 0.25, borderRadius: 1, bgcolor: 'rgba(255,140,0,0.85)', fontSize: 11, fontWeight: 700, color: ws.accentContrast }}>ETTER</Box>
+            </Box>
+            <Box sx={{ px: 1, mt: 2 }}>
+              <input type="range" min={0} max={100} value={baPos} onChange={(e) => setBaPos(Number(e.target.value))} style={{ width: '100%', accentColor: ws.accent }} />
+            </Box>
+            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 1.5, px: 0.5 }}>
+              <Typography sx={{ fontSize: 12, color: ws.textDim }}>
+                {beforeAfter.model || 'AI'}{beforeAfter.type ? ` · ${beforeAfter.type}` : ''}{beforeAfter.processingMs ? ` · ${(beforeAfter.processingMs / 1000).toFixed(1)}s` : ''}
+              </Typography>
+              <Stack direction="row" spacing={1}>
+                <Button size="small" onClick={() => window.open(beforeAfter.originalUrl, '_blank')} sx={{ color: ws.textDim, textTransform: 'none' }}>Original</Button>
+                <Button size="small" variant="contained" onClick={() => window.open(beforeAfter.enhancedUrl, '_blank')} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Last ned forbedret</Button>
+              </Stack>
+            </Stack>
+          </Box>
+        )}
+      </WsModal>
     </Stack>
   );
 };
