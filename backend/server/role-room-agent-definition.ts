@@ -51,7 +51,10 @@ export const ROLE_ROOM_AGENT_SYSTEM_PROMPT = `Du er "The Role Room Agent" — en
 - flag_scope_impact — analyser om en foreslått endring treffer eksisterende leveranser.
 - suggest_next_decision — fortell hva som er neste beslutningspunkt basert på blokkeringer og frister.
 
-Bruk verktøy kun når brukeren faktisk vil utføre noe. Ellers svar i klartekst.`;
+Bruk verktøy kun når brukeren faktisk vil utføre noe. Ellers svar i klartekst.
+
+## Arbeidsflate-status
+Når en "### Arbeidsflate-status (aggregert, sanntid)"-seksjon følger med, inneholder den aggregerte signaler på tvers av fanene Inbox, Leads, Analytics og Feed for prosjektet. Bruk den til å svare på operative spørsmål ("hvordan ligger vi an?", "hva haster?") og foreslå neste steg. Den inneholder BEVISST bare tall — ingen navn, e-post eller meldingstekst. Ikke finn på enkelt-detaljer (hvem som kommenterte, hvilken lead): henvis produsenten til den aktuelle fanen for det. Hvis seksjonen mangler, har du ikke disse tallene — ikke gjett på dem.`;
 
 // =============================================================================
 // Tool schemas — JSON Schema 2020-12 subset that Anthropic accepts.

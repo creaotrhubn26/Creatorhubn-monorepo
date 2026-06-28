@@ -38,6 +38,12 @@ type ClaudeMessageParam = {
 export interface RunClaudeAgentInput {
   /** Cached prefix for prompt caching (project context, briefs, reviews). */
   cachedSystem: string;
+  /**
+   * Optional FRESH (uncached) system block appended after the cached prefix.
+   * Used for volatile content — e.g. the aggregate workspace-status block —
+   * that should always be current and must NOT bust the cached-prefix cache.
+   */
+  freshSystem?: string;
   /** Uncached user-specific message (should be small). */
   userMessage: string;
   /**
@@ -133,13 +139,19 @@ export async function runClaudeAgent(input: RunClaudeAgentInput): Promise<RunCla
   // The cached prefix is placed in a `system` block with cache_control. This
   // gives roughly 90% cost reduction for follow-up calls within the 5-minute
   // ephemeral cache TTL.
-  const system = [
+  type SystemBlock = { type: 'text'; text: string; cache_control?: { type: 'ephemeral' } };
+  const system: SystemBlock[] = [
     {
-      type: 'text' as const,
+      type: 'text',
       text: input.cachedSystem,
-      cache_control: { type: 'ephemeral' as const },
+      cache_control: { type: 'ephemeral' },
     },
   ];
+  // Volatile content goes in its own uncached block so it stays fresh without
+  // invalidating the cached prefix above.
+  if (typeof input.freshSystem === 'string' && input.freshSystem.trim().length > 0) {
+    system.push({ type: 'text', text: input.freshSystem });
+  }
 
   const start = Date.now();
   const response = await client.messages.create({

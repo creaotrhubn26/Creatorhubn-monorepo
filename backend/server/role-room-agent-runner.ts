@@ -36,6 +36,7 @@ import {
   ROLE_ROOM_AGENT_TOOLS,
   ROLE_ROOM_AGENT_DEFAULT_MAX_TOKENS,
 } from './role-room-agent-definition.js';
+import { buildWorkspaceContextBlock } from './role-room-agent-workspace-context.js';
 import {
   buildBackendPseudonymMap,
   countScrubbed,
@@ -369,9 +370,15 @@ export async function invokeRoleRoomAgent(
   const modelTier = pickModelForMessage(input.userMessage);
   const modelId = modelIdForTier(modelTier);
 
+  // Aggregate, PII-free cross-tab status so the agent can answer operational
+  // questions (Inbox/Leads/Analytics/Feed) without the producer pasting numbers.
+  // Best-effort: a null block simply omits it.
+  const workspaceBlock = await buildWorkspaceContextBlock(pool, { userId, projectId });
+
   try {
     const raw = await runClaudeAgent({
       cachedSystem,
+      freshSystem: workspaceBlock ?? undefined,
       userMessage: pseudonymizedUserMessage,
       tools: ROLE_ROOM_AGENT_TOOLS,
       maxTokens: ROLE_ROOM_AGENT_DEFAULT_MAX_TOKENS,
