@@ -85,6 +85,17 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/cull-suggestions`).then((r: any) => setCullAi(r || null)).catch(() => {});
   };
   useEffect(() => { loadAi(); /* eslint-disable-next-line */ }, [projectId, isReal]);
+  const [enhancing, setEnhancing] = useState(false);
+  const triggerEnhance = async (assetIds?: string[]) => {
+    if (!isReal || enhancing) return;
+    setEnhancing(true);
+    try {
+      const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/enhance-picks`, { method: 'POST', body: assetIds?.length ? { assetIds } : {} });
+      window.alert(`Sendte ${r?.queued ?? 0} bilde(r) til AI-forbedring.${r?.failures?.length ? ` (${r.failures.length} feilet)` : ''}`);
+      loadAi();
+    } catch (e: any) { window.alert(e?.message || 'Kunne ikke sende til AI-forbedring'); }
+    finally { setEnhancing(false); }
+  };
 
   // Sanntid: refetch media INSTANT når iPad skyter/culler (WS).
   const { live: capLive } = useCaptureRealtime(projectId, () => {
@@ -212,6 +223,7 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
               </Stack>
               {det.flaggedForClient && <><Typography sx={{ fontSize: 11.5, fontWeight: 700, color: ws.textFaint, mt: 1.5, mb: 0.5 }}>LABELS</Typography><Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}><WsTag label="Highlights" tone="amber" /></Stack></>}
               {det.previewUrl && <Button fullWidth size="small" variant="contained" onClick={() => window.open(det.previewUrl, '_blank')} sx={{ mt: 1.5, bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Åpne / last ned</Button>}
+              {isReal && det.id && <Button fullWidth size="small" variant="outlined" disabled={enhancing} onClick={() => triggerEnhance([det.id])} startIcon={<Typography sx={{ fontSize: 13 }}>✨</Typography>} sx={{ mt: 1, color: ws.accent, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 600, '&:hover': { borderColor: ws.accent, bgcolor: ws.accentSoft } }}>{enhancing ? 'Sender…' : 'Send til AI-forbedring'}</Button>}
             </WsCard>
           );
         })()}
@@ -271,6 +283,7 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
                 <Box sx={{ flex: 1 }} />
                 <Typography sx={{ fontSize: 10.5, color: ws.green, fontWeight: 700 }}>{s.done || 0}/{s.total || 0} ferdig</Typography>
               </Stack>
+              {isReal && <Button fullWidth size="small" variant="outlined" disabled={enhancing} onClick={() => triggerEnhance()} sx={{ mb: 1, color: ws.accent, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 600, fontSize: 11.5, '&:hover': { borderColor: ws.accent, bgcolor: ws.accentSoft } }}>{enhancing ? 'Sender…' : '✨ Forbedre alle klient-markerte'}</Button>}
               {(s.running || 0) > 0 && <Typography sx={{ fontSize: 10.5, color: ws.amber, mb: 0.75 }}>⏳ {s.running} forbedres nå…{(s.failed || 0) > 0 ? ` · ${s.failed} feilet` : ''}</Typography>}
               <Stack spacing={0.5}>
                 {jobs.slice(0, 4).map((j: any) => {
