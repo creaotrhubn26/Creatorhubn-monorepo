@@ -51,6 +51,7 @@ const GenerativeAiAdminPanel: React.FC = () => {
 
   const meterReady = data?.meterConfigured;
   const metered = form.billingMode === 'metered';
+  const monetized = form.billingMode === 'metered' || form.billingMode === 'credits';
 
   return (
     <Box sx={{ maxWidth: 760 }}>
@@ -78,8 +79,10 @@ const GenerativeAiAdminPanel: React.FC = () => {
             <Typography variant="caption" color="text.secondary">Modus</Typography>
             <Select fullWidth size="small" value={form.billingMode || 'free_whitelist'} onChange={(e) => setForm((f: any) => ({ ...f, billingMode: e.target.value }))} sx={{ mt: 0.5 }}>
               <MenuItem value="free_whitelist">Gratis — kun whitelist (pilot)</MenuItem>
-              <MenuItem value="metered">Metered — fakturer pr bruk (Stripe)</MenuItem>
+              <MenuItem value="metered">Metered — fakturer pr bruk (Stripe, etterskudd)</MenuItem>
+              <MenuItem value="credits">Kreditter — selvbetjent forhåndsbetaling (Stripe)</MenuItem>
             </Select>
+            {form.billingMode === 'credits' && <Alert severity="success" sx={{ mt: 1 }}>Brukeren kjøper forhåndsbetalt saldo selv. Hver generering trekker <b>vår-kost × påslag</b> ({Number(form.markupMultiplier || 3)}×) — vi betaler kun kost, så margin ({Math.round((1 - 1 / Number(form.markupMultiplier || 3)) * 100)}%) er garantert profitt. Standardpakker: $10/129kr, $25/299kr, $60/649kr.</Alert>}
             {metered && !meterReady && <Alert severity="info" sx={{ mt: 1 }}>Metered-modus er valgt, men Stripe-måleren er ikke konfigurert ennå. Sett env <b>STRIPE_OVERAGE_GENAI_METER_EVENT_NAME</b> (+ måler/pris i Stripe) på backend — så begynner metering automatisk. Til da er hooken sovende (no-op).</Alert>}
             {metered && meterReady && <Alert severity="success" sx={{ mt: 1 }}>Stripe-måler konfigurert — metering er aktiv.</Alert>}
           </Box>
@@ -90,12 +93,12 @@ const GenerativeAiAdminPanel: React.FC = () => {
             <Typography variant="caption" color="text.secondary" sx={{ ml: 1.5 }}>Brukt i dag: ${(data?.spentTodayUsd ?? 0).toFixed(2)}</Typography>
           </Box>
 
-          {metered && (
+          {monetized && (
             <>
-              <Box>
+              {metered && <Box>
                 <Typography variant="caption" color="text.secondary">Inkludert kvote pr bruker/mnd (overage faktureres)</Typography>
                 <TextField type="number" size="small" value={form.includedQuota ?? 0} onChange={(e) => setForm((f: any) => ({ ...f, includedQuota: e.target.value }))} sx={{ mt: 0.5, width: 160 }} />
-              </Box>
+              </Box>}
               <Box>
                 <Typography variant="caption" color="text.secondary">Påslag (kunde betaler vår-kost × dette) — CreatorHubs margin</Typography>
                 <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mt: 0.5 }}>

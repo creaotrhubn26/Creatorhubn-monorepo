@@ -25,7 +25,8 @@ import { canAccessProject } from "./project-team-routes";
 import { signAssetReadUrl } from "./capture-upload-service";
 import { archiveToRoleRoomB2, presignRoleRoomB2Download, getFromRoleRoomB2, slugifyForKey } from "./b2-archive-helper";
 import { Vibrant } from "node-vibrant/node";
-import { GEN_MODELS, publicModelList, getGenSettings, isWhitelisted, invalidateGenSettings, emitGenAiMeter, falConfigured, falSubmit, falPoll, falOutputUrl, beebleConfigured, beebleSubmit, beeblePoll } from "./generative-media";
+import { GEN_MODELS, publicModelList, getGenSettings, isWhitelisted, invalidateGenSettings, emitGenAiMeter, falConfigured, falSubmit, falPoll, falOutputUrl, beebleConfigured, beebleSubmit, beeblePoll, DEFAULT_CREDIT_PACKS } from "./generative-media";
+import Stripe from "stripe";
 import { createGoogleMeetLink } from "./google-meet";
 import { classifySession } from "./capture-culling-service";
 import { enqueuePhotoEnhancerJobFromBuffer, listPhotoEnhancerJobsByProjectId } from "./photo-enhancer-routes";
@@ -1257,6 +1258,49 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     return Number(r.rows[0]?.s || 0);
   };
 
+  // ─── Forhåndsbetalt AI-kreditt-lommebok (selvbetjent) ───────────────────────
+  // balance_usd = RETAIL-verdi brukeren kan bruke. Hver generering trekker
+  // kost×påslag; vi betaler kun kost → margin (påslag-delen) er garantert profitt.
+  const ensureCreditSchema = async () => {
+    await pool.query(`CREATE TABLE IF NOT EXISTS user_ai_credits (
+      user_id varchar PRIMARY KEY, balance_usd numeric NOT NULL DEFAULT 0,
+      lifetime_purchased_usd numeric NOT NULL DEFAULT 0, lifetime_spent_usd numeric NOT NULL DEFAULT 0,
+      updated_at timestamptz DEFAULT now())`).catch(() => {});
+    await pool.query(`CREATE TABLE IF NOT EXISTS ai_credit_ledger (
+      id uuid PRIMARY KEY, user_id varchar, type varchar, amount_usd numeric, balance_after_usd numeric,
+      ref varchar, note text, created_at timestamptz DEFAULT now())`).catch(() => {});
+    // Unik ref (ikke-partial; NULL-er er distinkte i Postgres). Alle våre kall
+    // setter ref (stripe:… / job:…), så dette gater dobbel kreditering/trekk.
+    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_credit_ref ON ai_credit_ledger (ref)`).catch(() => {});
+  };
+  const getUserCredits = async (uid: string) => {
+    await ensureCreditSchema();
+    const r = await pool.query(`SELECT balance_usd, lifetime_purchased_usd, lifetime_spent_usd FROM user_ai_credits WHERE user_id = $1`, [uid]).catch(() => ({ rows: [] }));
+    const w = r.rows[0] || {};
+    return { balanceUsd: Number(w.balance_usd || 0), purchasedUsd: Number(w.lifetime_purchased_usd || 0), spentUsd: Number(w.lifetime_spent_usd || 0) };
+  };
+  // Idempotent kreditt-bevegelse: ledger-rad FØRST (unik ref gater dobbel) → så saldo.
+  const creditMove = async (uid: string, type: string, amountUsd: number, ref: string | null, note: string): Promise<boolean> => {
+    await ensureCreditSchema();
+    const led = await pool.query(
+      `INSERT INTO ai_credit_ledger (id, user_id, type, amount_usd, ref, note) VALUES ($1,$2,$3,$4,$5,$6)
+       ON CONFLICT (ref) DO NOTHING RETURNING id`,
+      [crypto.randomUUID(), uid, type, amountUsd, ref, note],
+    ).catch(() => ({ rows: [] }));
+    if (!led.rows.length) return false; // duplikat ref → allerede behandlet
+    const purchaseCol = amountUsd > 0 ? `, lifetime_purchased_usd = user_ai_credits.lifetime_purchased_usd + ${amountUsd}` : "";
+    const spendCol = amountUsd < 0 ? `, lifetime_spent_usd = user_ai_credits.lifetime_spent_usd + ${-amountUsd}` : "";
+    const upd = await pool.query(
+      `INSERT INTO user_ai_credits (user_id, balance_usd, lifetime_purchased_usd, lifetime_spent_usd, updated_at)
+       VALUES ($1, $2, $3, $4, NOW())
+       ON CONFLICT (user_id) DO UPDATE SET balance_usd = user_ai_credits.balance_usd + $2, updated_at = NOW() ${purchaseCol} ${spendCol}
+       RETURNING balance_usd`,
+      [uid, amountUsd, amountUsd > 0 ? amountUsd : 0, amountUsd < 0 ? -amountUsd : 0],
+    ).catch(() => ({ rows: [] }));
+    await pool.query(`UPDATE ai_credit_ledger SET balance_after_usd = $1 WHERE id = $2`, [Number(upd.rows[0]?.balance_usd || 0), led.rows[0].id]).catch(() => {});
+    return true;
+  };
+
   // Konfig: hva er tillatt for denne brukeren + samtykke-status + budsjett.
   app.get("/api/projects/:projectId/ai/config", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
@@ -1329,6 +1373,8 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       // Dagstak-brems (global sikkerhets-bryter).
       const spent = await spentTodayUsd();
       if (spent + model.estCostUsd > settings.dailyCapUsd) return res.status(429).json({ error: "daily_cap", message: `Dagstak nådd ($${settings.dailyCapUsd}). Prøv igjen i morgen.` });
+      const pf = await creditPreflight(settings, uid, model.estCostUsd);
+      if (!pf.ok) return res.status(402).json({ error: "insufficient_credits", message: `Ikke nok kreditter (rest $${pf.balance.toFixed(2)}, trenger $${pf.retail.toFixed(2)}). Kjøp mer.` });
       const prompt = String(req.body?.prompt || "").trim().slice(0, 1000);
       const assetId = req.body?.assetId;
       if (!prompt || !assetId) return res.status(400).json({ error: "assetId_and_prompt_required" });
@@ -1412,6 +1458,8 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const estCost = duration * (model.costPerSecondUsd || 0.1);
       const spent = await spentTodayUsd();
       if (spent + estCost > settings.dailyCapUsd) return res.status(429).json({ error: "daily_cap", message: `Dagstak nådd ($${settings.dailyCapUsd}). En ${duration}s-video koster ~$${estCost.toFixed(2)}.` });
+      const pfv = await creditPreflight(settings, uid, estCost);
+      if (!pfv.ok) return res.status(402).json({ error: "insufficient_credits", message: `Ikke nok kreditter (rest $${pfv.balance.toFixed(2)}, trenger $${pfv.retail.toFixed(2)}). Kjøp mer.` });
       const prompt = String(req.body?.prompt || "").trim().slice(0, 1000);
       const assetId = req.body?.assetId;
       if (!prompt || !assetId) return res.status(400).json({ error: "assetId_and_prompt_required" });
@@ -1449,6 +1497,8 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       if (!consent.rows[0]?.consented) return res.status(409).json({ error: "consent_required", message: "Krever samtykke: video sendes til tredjeparts AI utenfor EØS." });
       const spent = await spentTodayUsd();
       if (spent + model.estCostUsd > settings.dailyCapUsd) return res.status(429).json({ error: "daily_cap", message: `Dagstak nådd ($${settings.dailyCapUsd}).` });
+      const pfr = await creditPreflight(settings, uid, model.estCostUsd);
+      if (!pfr.ok) return res.status(402).json({ error: "insufficient_credits", message: `Ikke nok kreditter (rest $${pfr.balance.toFixed(2)}, trenger $${pfr.retail.toFixed(2)}). Kjøp mer.` });
       const prompt = String(req.body?.prompt || "").trim().slice(0, 1000);
       const versionId = req.body?.versionId;
       const maxResolution = req.body?.maxResolution === 1080 ? 1080 : 720;
@@ -1531,9 +1581,14 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
         `UPDATE generative_ai_jobs SET status='completed', output_b2_key=$1, output_url_temp=$2, completed_at=NOW() WHERE id=$3`,
         [b2Key, b2Key ? null : outUrl, job.id],
       ).catch(() => {});
-      // Sovende Stripe-metering: no-op i free-modus / til måler-env satt. Idempotent
-      // nok i praksis (kjøres ved første fullførings-poll når status går queued→completed).
-      try { await emitGenAiMeter(pool, { userId: job.user_id, valueUsd: Number(job.est_cost_usd || 0), settings: await getGenSettings(pool) }); } catch { /* metering skal aldri blokkere resultatet */ }
+      // Fakturering ved fullføring (idempotent på job-id):
+      const fsettings = await getGenSettings(pool);
+      // (a) metered → Stripe-måler-event (dvale til env satt);
+      try { await emitGenAiMeter(pool, { userId: job.user_id, valueUsd: Number(job.est_cost_usd || 0), settings: fsettings }); } catch { /* metering skal aldri blokkere resultatet */ }
+      // (b) credits → trekk retail (kost×påslag) fra brukerens lommebok.
+      if (fsettings.billingMode === "credits") {
+        try { await creditMove(job.user_id, "spend", -(Number(job.est_cost_usd || 0) * (fsettings.markupMultiplier || 1)), `job:${job.id}`, `${job.model}`); } catch { /* */ }
+      }
       res.json({ status: "completed", kind: job.kind, isVideo: out.isVideo, beforeUrl, afterUrl: b2Key ? await presignRoleRoomB2Download(b2Key, undefined, 3600) : outUrl, prompt: job.input?.prompt });
     } catch (e) { console.error("GET ai/jobs/:id", e); res.status(500).json({ error: "failed" }); }
   });
@@ -1551,6 +1606,69 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       })));
       res.json({ jobs });
     } catch (e) { console.error("GET ai/jobs", e); res.json({ jobs: [] }); }
+  });
+
+  // Pre-sjekk: i credits-modus må saldo dekke retail-pris (kost×påslag).
+  const creditPreflight = async (settings: any, uid: string, estCost: number): Promise<{ ok: boolean; retail: number; balance: number }> => {
+    const retail = estCost * (settings.markupMultiplier || 1);
+    if (settings.billingMode !== "credits") return { ok: true, retail, balance: 0 };
+    const w = await getUserCredits(uid);
+    return { ok: w.balanceUsd >= retail, retail, balance: w.balanceUsd };
+  };
+
+  // Brukerens kreditt-saldo + pakker (credits-modus).
+  app.get("/api/projects/:projectId/ai/credits", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const settings = await getGenSettings(pool);
+      const w = await getUserCredits(uid);
+      res.json({ billingMode: settings.billingMode, balanceUsd: w.balanceUsd, purchasedUsd: w.purchasedUsd, spentUsd: w.spentUsd, packs: settings.creditPacks, nokPerUsd: Number(process.env.ROLE_ROOM_NOK_PER_USD || process.env.USD_NOK_RATE || 11) });
+    } catch (e) { console.error("GET ai/credits", e); res.json({ balanceUsd: 0, packs: DEFAULT_CREDIT_PACKS }); }
+  });
+
+  // Start Stripe Checkout for en kredittpakke → returnerer url.
+  app.post("/api/projects/:projectId/ai/credits/checkout", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const settings = await getGenSettings(pool);
+      const me = await userIdentity(uid);
+      const pack = settings.creditPacks.find((p: any) => p.id === req.body?.packId);
+      if (!pack) return res.status(400).json({ error: "unknown_pack" });
+      const secret = process.env.STRIPE_SECRET_KEY;
+      if (!secret) return res.status(503).json({ error: "stripe_not_configured" });
+      const stripe = new Stripe(secret.trim());
+      const base = (process.env.PUBLIC_APP_URL || "https://creatorhubn.com").replace(/\/$/, "");
+      const ret = `${base}/workspace/${req.params.projectId}/photo-room`;
+      const session = await stripe.checkout.sessions.create({
+        mode: "payment",
+        success_url: `${ret}?ai_credits=ok&cs={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${ret}?ai_credits=cancel`,
+        client_reference_id: uid,
+        customer_email: me.email || undefined,
+        line_items: [{ quantity: 1, price_data: { currency: "nok", unit_amount: Math.round(pack.priceNok * 100), product_data: { name: `CreatorHub AI-kreditt — $${pack.creditUsd}` } } }],
+        metadata: { kind: "ai_credits", user_id: uid, pack_id: pack.id, credit_usd: String(pack.creditUsd) },
+      });
+      res.json({ url: session.url });
+    } catch (e) { console.error("POST ai/credits/checkout", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  // Bekreft kjøp ved retur (idempotent på session-id) → krediter lommeboka.
+  app.post("/api/projects/:projectId/ai/credits/confirm", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const sessionId = String(req.body?.sessionId || "");
+      if (!sessionId) return res.status(400).json({ error: "sessionId_required" });
+      const secret = process.env.STRIPE_SECRET_KEY;
+      if (!secret) return res.status(503).json({ error: "stripe_not_configured" });
+      const stripe = new Stripe(secret.trim());
+      const s: any = await stripe.checkout.sessions.retrieve(sessionId);
+      if (s?.metadata?.kind !== "ai_credits" || s?.metadata?.user_id !== uid) return res.status(403).json({ error: "not_yours" });
+      if (s.payment_status !== "paid") return res.json({ credited: false, status: s.payment_status });
+      const creditUsd = Number(s.metadata?.credit_usd || 0);
+      const added = await creditMove(uid, "purchase", creditUsd, `stripe:${sessionId}`, `Kjøp pakke ${s.metadata?.pack_id}`);
+      const w = await getUserCredits(uid);
+      res.json({ credited: added, balanceUsd: w.balanceUsd });
+    } catch (e) { console.error("POST ai/credits/confirm", e); res.status(500).json({ error: "failed" }); }
   });
 
   // ─────────── Admin: generativ-AI-innstillinger (aktiver/styr fra dashboard) ──
@@ -1681,9 +1799,10 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const me = await userIdentity(uid);
       const b = req.body || {};
       const whitelist = Array.isArray(b.whitelist) ? b.whitelist.map((s: any) => String(s).trim().toLowerCase()).filter(Boolean) : undefined;
+      const packs = Array.isArray(b.creditPacks) ? b.creditPacks.map((p: any) => ({ id: String(p.id || "").trim(), creditUsd: Number(p.creditUsd), priceNok: Number(p.priceNok) })).filter((p: any) => p.id && p.creditUsd > 0 && p.priceNok > 0) : undefined;
       await pool.query(
-        `INSERT INTO generative_ai_settings (id, enabled, billing_mode, daily_cap_usd, whitelist, included_quota, markup_multiplier, updated_by, updated_at)
-         VALUES (1,$1,$2,$3,$4::jsonb,$5,$6,$7,NOW())
+        `INSERT INTO generative_ai_settings (id, enabled, billing_mode, daily_cap_usd, whitelist, included_quota, markup_multiplier, credit_packs, updated_by, updated_at)
+         VALUES (1,$1,$2,$3,$4::jsonb,$5,$6,$8::jsonb,$7,NOW())
          ON CONFLICT (id) DO UPDATE SET
            enabled=COALESCE($1, generative_ai_settings.enabled),
            billing_mode=COALESCE($2, generative_ai_settings.billing_mode),
@@ -1691,15 +1810,17 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
            whitelist=COALESCE($4::jsonb, generative_ai_settings.whitelist),
            included_quota=COALESCE($5, generative_ai_settings.included_quota),
            markup_multiplier=COALESCE($6, generative_ai_settings.markup_multiplier),
+           credit_packs=COALESCE($8::jsonb, generative_ai_settings.credit_packs),
            updated_by=$7, updated_at=NOW()`,
         [
           typeof b.enabled === "boolean" ? b.enabled : null,
-          b.billingMode === "metered" || b.billingMode === "free_whitelist" ? b.billingMode : null,
+          (b.billingMode === "metered" || b.billingMode === "free_whitelist" || b.billingMode === "credits") ? b.billingMode : null,
           b.dailyCapUsd != null ? Number(b.dailyCapUsd) : null,
           whitelist ? JSON.stringify(whitelist) : null,
           b.includedQuota != null ? Number(b.includedQuota) : null,
           b.markupMultiplier != null ? Number(b.markupMultiplier) : null,
           me.email || uid,
+          packs ? JSON.stringify(packs) : null,
         ],
       );
       invalidateGenSettings();

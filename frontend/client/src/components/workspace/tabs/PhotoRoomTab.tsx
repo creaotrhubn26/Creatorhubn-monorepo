@@ -47,6 +47,28 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [aiJob, setAiJob] = useState<any | null>(null); // {status, beforeUrl, afterUrl}
   const [aiBusy, setAiBusy] = useState(false);
   const loadAiCfg = () => { if (isReal) apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/config`).then((r: any) => setAiCfg(r || null)).catch(() => {}); };
+  // Kreditt-lommebok (selvbetjent)
+  const [credits, setCredits] = useState<any | null>(null);
+  const [buyOpen, setBuyOpen] = useState(false);
+  const loadCredits = () => { if (isReal) apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/credits`).then((r: any) => setCredits(r || null)).catch(() => {}); };
+  const buyPack = async (packId: string) => {
+    try { const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/credits/checkout`, { method: 'POST', body: { packId } }); if (r?.url) window.location.href = r.url; }
+    catch (e: any) { window.alert(e?.message || 'Kunne ikke starte kjøp'); }
+  };
+  // Confirm-ved-retur fra Stripe (?ai_credits=ok&cs=<session>)
+  useEffect(() => {
+    if (!isReal) return;
+    try {
+      const p = new URLSearchParams(window.location.search);
+      if (p.get('ai_credits') === 'ok' && p.get('cs')) {
+        apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/credits/confirm`, { method: 'POST', body: { sessionId: p.get('cs') } })
+          .then(() => { loadCredits(); window.alert('Kreditter lagt til ✓'); }).catch(() => {})
+          .finally(() => { const u = new URL(window.location.href); u.searchParams.delete('ai_credits'); u.searchParams.delete('cs'); window.history.replaceState({}, '', u.toString()); });
+      }
+    } catch { /* */ }
+    loadCredits();
+    // eslint-disable-next-line
+  }, [projectId]);
 
   const load = () => {
     if (!isReal) { setLoading(false); return; }
@@ -390,16 +412,15 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
               {(suggestions.length ? suggestions : QUICK_PROMPTS).map((q) => <Box key={q} onClick={() => setAiPrompt(q)} sx={{ px: 1, py: 0.4, borderRadius: 2, cursor: 'pointer', fontSize: 11, color: ws.accent, bgcolor: ws.accentSoft, border: `1px solid ${ws.accentBorder}` }}>{q}</Box>)}
             </Stack>
             <Stack direction="row" justifyContent="space-between" alignItems="center">
-              <Typography sx={{ fontSize: 10.5, color: ws.textFaint }}>
-                {(() => {
-                  const u = aiCfg?.myUsage; const gens = u?.generationsThisMonth ?? 0;
-                  if (aiCfg?.billingMode === 'metered') {
-                    const rem = u?.includedRemaining;
-                    return `Du: ${gens} redigeringer denne mnd${rem != null ? ` · ${rem} inkludert igjen` : ''} · ~$${(u?.unitPriceUsd ?? 0).toFixed(2)}/bilde`;
-                  }
-                  return `Du: ${gens} redigeringer denne mnd · gratis i pilot`;
-                })()}
-              </Typography>
+              {credits?.billingMode === 'credits'
+                ? <Typography sx={{ fontSize: 10.5, color: ws.textFaint }}>Saldo: <b style={{ color: ws.green }}>${(credits?.balanceUsd ?? 0).toFixed(2)}</b> · <Box component="span" onClick={() => setBuyOpen(true)} sx={{ color: ws.accent, cursor: 'pointer', fontWeight: 700 }}>Kjøp kreditter</Box></Typography>
+                : <Typography sx={{ fontSize: 10.5, color: ws.textFaint }}>
+                    {(() => {
+                      const u = aiCfg?.myUsage; const gens = u?.generationsThisMonth ?? 0;
+                      if (aiCfg?.billingMode === 'metered') { const rem = u?.includedRemaining; return `Du: ${gens} redigeringer denne mnd${rem != null ? ` · ${rem} inkludert igjen` : ''} · ~$${(u?.unitPriceUsd ?? 0).toFixed(2)}/bilde`; }
+                      return `Du: ${gens} redigeringer denne mnd · gratis i pilot`;
+                    })()}
+                  </Typography>}
               <Stack direction="row" spacing={1}>
                 <Button onClick={() => setAiOpen(false)} sx={{ color: ws.textDim, textTransform: 'none' }}>Avbryt</Button>
                 <Button variant="contained" disabled={!aiPrompt.trim() || aiBusy} onClick={startEdit} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Rediger med AI</Button>
@@ -407,6 +428,25 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
             </Stack>
           </Stack>
         )}
+      </WsModal>
+
+      {/* Kjøp AI-kreditter */}
+      <WsModal open={buyOpen} onClose={() => setBuyOpen(false)} title="Kjøp AI-kreditter" maxWidth="sm">
+        <Stack spacing={2}>
+          <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Forhåndsbetalt saldo for AI-redigering, -video og -restyle. Nåværende saldo: <b style={{ color: ws.green }}>${(credits?.balanceUsd ?? 0).toFixed(2)}</b></Typography>
+          <Stack spacing={1}>
+            {(credits?.packs || []).map((p: any) => (
+              <Stack key={p.id} direction="row" alignItems="center" spacing={1.5} sx={{ p: 1.5, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.panelAlt, border: `1px solid ${ws.borderSoft}` }}>
+                <Box sx={{ flex: 1 }}>
+                  <Typography sx={{ fontSize: 14, fontWeight: 800 }}>${p.creditUsd} kreditt</Typography>
+                  <Typography sx={{ fontSize: 11, color: ws.textFaint }}>{Math.round(p.creditUsd / 0.18)}+ AI-redigeringer · {Math.round(p.creditUsd / 0.5)}+ korte videoer</Typography>
+                </Box>
+                <Button variant="contained" onClick={() => buyPack(p.id)} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>{p.priceNok} kr</Button>
+              </Stack>
+            ))}
+          </Stack>
+          <Typography sx={{ fontSize: 10.5, color: ws.textFaint }}>Sikker betaling via Stripe. Kreditter trekkes per generering.</Typography>
+        </Stack>
       </WsModal>
 
       {/* Animer (AI-video, Seedance 2.0) */}
