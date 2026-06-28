@@ -62,6 +62,7 @@ import crypto from "crypto";
 
 import { requireLeadMapPermission } from "./lead-map-rbac-helper.js";
 import { searchPlaces } from "./lead-map-service.js";
+import { runBrandScan } from "./brand-kit-service.js";
 import {
   processUrlResearchBatch,
   readBatchProgress,
@@ -87,6 +88,12 @@ interface DiscoverBody {
   industry_query?: string;
   radius_km?: number;
   geo?: { lat?: number; lng?: number; radius_km?: number };
+  /**
+   * Daniel-fiks 2026-06-28: når satt, scanner vi nettsiden FØR discovery
+   * (auto-brand-scan) så vi kjenner kundens ICP. Brukes når brand_kit
+   * ennå ikke finnes for prosjektet.
+   */
+  website_url?: string;
 }
 
 interface ProjectContext {
@@ -99,6 +106,15 @@ interface ProjectContext {
   cityHint: string | null;
   positioningSummary: string | null;
   websiteUrl: string | null;
+  // Daniel-fiks 2026-06-28: ICP-felt fra brand-scan (target_audience-setning).
+  // Brukes til å utlede søkbar Places-query når industry er en generisk
+  // SaaS-kategori (b2b_saas / ecommerce / etc.) — discovery skal lete
+  // etter KUNDENE deres, ikke andre i samme bransje.
+  targetAudienceHint: string | null;
+  brandDescriptionHint: string | null;
+  // Tag/kategori-felt fra `brand_profile.industry` — vanligvis grov
+  // (`b2b_saas`, `restaurant`); brukes som siste fallback.
+  industryCategoryRaw: string | null;
 }
 
 // =====================================================================
@@ -191,10 +207,27 @@ async function loadProjectContext(
     [projectId, userId],
   );
 
-  const industryHint =
-    (typeof bp.industry === "string" ? (bp.industry as string) : null) ??
-    ms.rows[0]?.industry ??
-    null;
+  // Daniel-fiks 2026-06-28: les FLERE felt fra brand_profile. Tidligere
+  // brukte vi bare `bp.industry` som var en grov kategori (`b2b_saas`,
+  // `restaurant`) — Places-søket "b2b_saas i Norge" gir ingen
+  // meningsfulle treff. Nå plukker vi opp `targetAudience` +
+  // `description` så vi kan utlede en søkbar ICP-query
+  // (`buildDiscoveryQueryFromICP` håndterer mappingen til Places-tekst).
+  const targetAudienceHint =
+    (typeof bp.targetAudience === "string"
+      ? (bp.targetAudience as string)
+      : null) ??
+    (typeof bp.target_audience === "string"
+      ? (bp.target_audience as string)
+      : null);
+  const brandDescriptionHint =
+    typeof bp.description === "string" ? (bp.description as string) : null;
+  const industryCategoryRaw =
+    typeof bp.industry === "string" ? (bp.industry as string) : null;
+
+  // `industryHint` er rådata for fallback når ICP-mapping ikke gir noe;
+  // sett til market_scan.industry hvis brand_profile mangler.
+  const industryHint = industryCategoryRaw ?? ms.rows[0]?.industry ?? null;
   const cityHint =
     (typeof bp.region === "string" ? (bp.region as string) : null) ??
     ms.rows[0]?.region ??
@@ -212,7 +245,86 @@ async function loadProjectContext(
         ? (bp.positioning_summary as string)
         : null,
     websiteUrl: bk.rows[0]?.source_url ?? null,
+    targetAudienceHint,
+    brandDescriptionHint,
+    industryCategoryRaw,
   };
+}
+
+// =====================================================================
+// ICP-mapping: utled søkbar Places-query fra brand-scan-data
+// =====================================================================
+// Brand-scan gir oss en grov industri-kategori (`b2b_saas`, `restaurant`,
+// `ecommerce`) + en setning som beskriver målgruppen (`targetAudience` =
+// "Norske leger og helsepersonell..."). Når discovery skal jakte på
+// KUNDENE deres må vi finne et søkbart Places-begrep (`legekontor`).
+//
+// Heuristikk: regex-match mot kjente patterns. Brand-scan-orchestratoren
+// kan i en senere PR populere `brand_profile.searchableICP` direkte fra
+// Claude — denne mappingen er fallback for prosjekter scannet før det.
+
+interface ICPRule {
+  // Regex som matcher targetAudience/description (lowercase, no-NB)
+  pattern: RegExp;
+  // Søkbar Places-query (norsk, entall)
+  placesQuery: string;
+}
+
+const ICP_RULES: ICPRule[] = [
+  // Helse — leger, tannleger, helsesentre
+  { pattern: /\b(leger|lege(r)?|helsepersonell|allmennlege)\b/i, placesQuery: "legekontor" },
+  { pattern: /\b(tannlege(r)?|tannklinikk(er)?|tannhelse)\b/i, placesQuery: "tannklinikk" },
+  { pattern: /\b(fysioterapeut(er)?|kiropraktor(er)?)\b/i, placesQuery: "fysioterapi" },
+  { pattern: /\b(psykolog(er)?|terapeut(er)?|mental.helse)\b/i, placesQuery: "psykolog" },
+  // Finans / regnskap / advokat
+  { pattern: /\b(regnskapsbyr(å|aer)|regnskap|bokf(ø|oe)ring)\b/i, placesQuery: "regnskapsbyrå" },
+  { pattern: /\b(advokat(er)?|jurist(er)?|advokatkontor)\b/i, placesQuery: "advokatkontor" },
+  // Eiendom / bygg
+  { pattern: /\b(eiendomsmegler(e)?|meglerhus)\b/i, placesQuery: "eiendomsmegler" },
+  { pattern: /\b(arkitekt(er)?|byggmester)\b/i, placesQuery: "arkitekt" },
+  // Kreative / kultur
+  { pattern: /\b(fotograf(er)?|videoproduksjon|filmskaper)\b/i, placesQuery: "fotograf" },
+  { pattern: /\b(byråer|reklamebyr(å|aer)|markedsf(ø|oer)ringsbyr)\b/i, placesQuery: "reklamebyrå" },
+  // Mat / utelivet
+  { pattern: /\b(restaurant(er)?|spisesteder|matsted)\b/i, placesQuery: "restaurant" },
+  { pattern: /\b(kaf(e|é|eer)|coffee.shop)\b/i, placesQuery: "kafé" },
+  { pattern: /\b(frisør(er)?|salong(er)?)\b/i, placesQuery: "frisør" },
+  { pattern: /\b(butikk(er)?|nettbutikk|retail)\b/i, placesQuery: "butikk" },
+];
+
+const GENERIC_INDUSTRY_CATEGORIES = new Set([
+  "b2b_saas",
+  "saas",
+  "ecommerce",
+  "e-commerce",
+  "marketplace",
+  "platform",
+  "agency",
+  "consulting",
+  "software",
+]);
+
+/**
+ * Utled søkbar Places-query fra brand-scan-data. Foretrekker
+ * targetAudience-setning over generisk industri-kategori.
+ *
+ * Returnerer `null` hvis vi ikke kan utlede et meningsfullt søk.
+ */
+function deriveSearchableICP(ctx: ProjectContext): string | null {
+  const sourceText = [
+    ctx.targetAudienceHint,
+    ctx.brandDescriptionHint,
+    ctx.positioningSummary,
+  ]
+    .filter((v): v is string => typeof v === "string" && v.length > 0)
+    .join(" ");
+  if (sourceText.length === 0) return null;
+  for (const rule of ICP_RULES) {
+    if (rule.pattern.test(sourceText)) {
+      return rule.placesQuery;
+    }
+  }
+  return null;
 }
 
 // =====================================================================
@@ -229,10 +341,20 @@ function buildDiscoveryQuery(
   ctx: ProjectContext,
   body: DiscoverBody,
 ): ResolvedDiscoveryQuery | null {
-  const industry =
-    (body.industry_query && body.industry_query.trim()) ||
-    ctx.industryHint ||
-    "";
+  // Prioritet (Daniel-fiks 2026-06-28):
+  // 1. Eksplisitt override fra request body
+  // 2. Utledet søkbar ICP fra brand-scan-data (targetAudience etc.)
+  // 3. industryHint hvis det ikke er en generisk kategori
+  //    (`b2b_saas`/`saas`/`ecommerce` etc. — disse er ikke søkbare i Places)
+  const bodyIndustry = body.industry_query?.trim();
+  const derivedICP = deriveSearchableICP(ctx);
+  const fallbackIndustry =
+    ctx.industryHint &&
+    !GENERIC_INDUSTRY_CATEGORIES.has(ctx.industryHint.toLowerCase())
+      ? ctx.industryHint
+      : null;
+
+  const industry = bodyIndustry || derivedICP || fallbackIndustry || "";
   const city = (body.city && body.city.trim()) || ctx.cityHint || "";
   if (!industry) {
     return null;
@@ -294,9 +416,39 @@ export function registerLeadgridProjectLeadDiscoveryRoutes(deps: Deps): void {
 
       try {
         // 1. Hent prosjekt-kontekst (bransje/by + brand-kit).
-        const ctx = await loadProjectContext(pool, projectId, session.userId);
+        let ctx = await loadProjectContext(pool, projectId, session.userId);
         if (!ctx) {
           return res.status(404).json({ error: "project_not_found" });
+        }
+
+        // 1b. AUTO-BRAND-SCAN (Daniel-fiks 2026-06-28): hvis brand_kit
+        // mangler ICP-data + bruker har sendt en URL i body → scann
+        // nettsiden FØRST så vi vet hvem prosjektet selger til. Discovery
+        // skal aldri gjette industri blindt — feil ICP gir feil leads
+        // (f.eks. tannklinikker når MedSide faktisk selger til leger).
+        const needsAutoScan =
+          !ctx.targetAudienceHint &&
+          !ctx.industryHint &&
+          !body.industry_query;
+        const scanUrl = body.website_url?.trim() || ctx.websiteUrl;
+        if (needsAutoScan && scanUrl) {
+          try {
+            await runBrandScan(pool, {
+              projectId: ctx.id,
+              workspaceOwnerUserId: session.userId,
+              url: scanUrl,
+            });
+            // Last context på nytt — brand_profile er nå populert.
+            ctx = (await loadProjectContext(pool, projectId, session.userId)) ?? ctx;
+          } catch (scanErr) {
+            console.warn(
+              "[discover-leads] auto-brand-scan failed",
+              scanUrl,
+              scanErr,
+            );
+            // Fortsett — buildDiscoveryQuery vil returnere 400 hvis
+            // vi fortsatt ikke har en industry-hint.
+          }
         }
 
         // 2. Bygg discovery-query. Krever bransje (enten override eller hint).
@@ -306,7 +458,8 @@ export function registerLeadgridProjectLeadDiscoveryRoutes(deps: Deps): void {
             error: "industry_required",
             detail:
               "Mangler bransje. Sett `industry_query` i body eller knytt et " +
-              "brand-kit / market-scan til prosjektet med bransje-info.",
+              "brand-kit / market-scan til prosjektet med bransje-info. " +
+              "Du kan også sende `website_url` så scanner vi nettsiden først.",
           });
         }
 
