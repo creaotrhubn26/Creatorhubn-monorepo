@@ -870,6 +870,46 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     } catch (e) { console.error("GET cull-suggestions", e); res.json({ hasAssets: false, total: 0, counts: {}, weak: [], reject: [] }); }
   });
 
+  // ─────────── Sound Room — bro fra workspace-prosjekt → audio_review_project ──
+  // Audio Showcase («Universal Showcase»-review) har sitt EGET prosjekt-begrep
+  // (audio_review_projects). Vi finn-eller-oppretter ett koblet til workspace-
+  // prosjektet via bro-tabell project_audio_rooms, slik at Sound Room-fanen
+  // åpner den eksisterende full-skjerm review-opplevelsen for nettopp dette
+  // prosjektet. canAccessProject-gatet.
+  app.get("/api/projects/:projectId/audio-room", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const pid = req.params.projectId;
+      await pool.query(`CREATE TABLE IF NOT EXISTS project_audio_rooms (
+        project_id uuid PRIMARY KEY,
+        audio_review_project_id uuid NOT NULL,
+        created_at timestamptz DEFAULT now()
+      )`).catch(() => {});
+      // Eksisterende kobling? Verifiser at audio-review-prosjektet fortsatt finnes.
+      const ex = await pool.query(`SELECT audio_review_project_id FROM project_audio_rooms WHERE project_id = $1`, [pid]).catch(() => ({ rows: [] }));
+      if (ex.rows.length) {
+        const chk = await pool.query(`SELECT id FROM audio_review_projects WHERE id = $1::uuid`, [ex.rows[0].audio_review_project_id]).catch(() => ({ rows: [] }));
+        if (chk.rows.length) return res.json({ audioRoomId: ex.rows[0].audio_review_project_id, created: false });
+      }
+      // Opprett — seed tittel/band fra workspace-prosjektet, eid av prosjekteier.
+      const proj = await pool.query(`SELECT COALESCE(NULLIF(name,''), NULLIF(title,''), 'Lydrom') AS name, client_name, user_id FROM projects WHERE id = $1 LIMIT 1`, [pid]).catch(() => ({ rows: [] }));
+      const title = proj.rows[0]?.name || "Lydrom";
+      const band = proj.rows[0]?.client_name || null;
+      const owner = proj.rows[0]?.user_id || uid;
+      const created = await pool.query(
+        `INSERT INTO audio_review_projects (owner_user_id, title, band_name) VALUES ($1,$2,$3) RETURNING id`,
+        [owner, title, band],
+      );
+      const arId = created.rows[0].id;
+      await pool.query(
+        `INSERT INTO project_audio_rooms (project_id, audio_review_project_id) VALUES ($1,$2)
+         ON CONFLICT (project_id) DO UPDATE SET audio_review_project_id = EXCLUDED.audio_review_project_id`,
+        [pid, arId],
+      ).catch(() => {});
+      res.json({ audioRoomId: arId, created: true });
+    } catch (e) { console.error("GET audio-room", e); res.status(500).json({ error: "failed" }); }
+  });
+
   // ─────────── Team Sync % (ekte readiness fra board + sjekkliste + presence) ───
   app.get("/api/projects/:projectId/team-sync", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
