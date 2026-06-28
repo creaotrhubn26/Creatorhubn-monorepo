@@ -19,6 +19,7 @@ import Send from '@mui/icons-material/Send';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
 import AutoFixHigh from '@mui/icons-material/AutoFixHigh';
+import Movie from '@mui/icons-material/Movie';
 import { WsCard, WsTag, WsModal } from '../ui';
 
 const STATUS_META: any = {
@@ -116,6 +117,30 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     } catch (e: any) { window.alert(e?.message || 'AI-redigering feilet'); setAiJob({ status: 'failed' }); }
     finally { setAiBusy(false); }
   };
+  // AI-video (animer stillbilde → Seedance 2.0)
+  const [animOpen, setAnimOpen] = useState(false);
+  const [animPrompt, setAnimPrompt] = useState('');
+  const [animDuration, setAnimDuration] = useState(5);
+  const [animJob, setAnimJob] = useState<any | null>(null);
+  const [animBusy, setAnimBusy] = useState(false);
+  const openAnim = () => { setAnimPrompt(''); setAnimJob(null); setAnimDuration(5); setAnimOpen(true); };
+  const startAnimate = async () => {
+    if (!sel?.id || !animPrompt.trim() || animBusy) return;
+    setAnimBusy(true); setAnimJob({ status: 'queued' });
+    try {
+      const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/image-to-video`, { method: 'POST', body: { assetId: sel.id, prompt: animPrompt.trim(), duration: animDuration } });
+      if (!r?.jobId) throw new Error('Kunne ikke starte');
+      // Video tar minutter — poll tålmodig (~4 min), ellers fortsetter i bakgrunnen.
+      for (let i = 0; i < 48; i++) {
+        await new Promise((res) => setTimeout(res, 5000));
+        const s: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/jobs/${r.jobId}`);
+        setAnimJob(s);
+        if (s.status === 'completed' || s.status === 'failed') break;
+      }
+      loadAiCfg();
+    } catch (e: any) { window.alert(e?.message || 'AI-video feilet'); setAnimJob({ status: 'failed' }); }
+    finally { setAnimBusy(false); }
+  };
   const aiAvailable = aiCfg?.enabled && aiCfg?.whitelisted;
 
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', py: 10 }}><CircularProgress sx={{ color: ws.accent }} /></Box>;
@@ -207,6 +232,7 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
                     sx={{ textTransform: 'none', fontWeight: 600, fontSize: 12, color: sel.reviewStatus === st ? '#06281c' : col, borderColor: col, bgcolor: sel.reviewStatus === st ? col : 'transparent', '&:hover': { borderColor: col, bgcolor: sel.reviewStatus === st ? col : `${col}22` } }}>{label}</Button>
                 ))}
                 <Box sx={{ flex: 1 }} />
+                {aiAvailable && <Button size="small" startIcon={<Movie sx={{ fontSize: 16 }} />} onClick={openAnim} sx={{ textTransform: 'none', fontWeight: 600, fontSize: 12, color: ws.accent, borderColor: ws.accentBorder }} variant="outlined">Animer</Button>}
                 {aiAvailable && <Button size="small" startIcon={<AutoFixHigh sx={{ fontSize: 16 }} />} onClick={openAi} sx={{ textTransform: 'none', fontWeight: 700, fontSize: 12, color: ws.accentContrast, bgcolor: ws.accent, '&:hover': { bgcolor: ws.accentHover } }}>AI-rediger</Button>}
               </Stack>
             </WsCard>
@@ -364,6 +390,55 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
               <Stack direction="row" spacing={1}>
                 <Button onClick={() => setAiOpen(false)} sx={{ color: ws.textDim, textTransform: 'none' }}>Avbryt</Button>
                 <Button variant="contained" disabled={!aiPrompt.trim() || aiBusy} onClick={startEdit} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Rediger med AI</Button>
+              </Stack>
+            </Stack>
+          </Stack>
+        )}
+      </WsModal>
+
+      {/* Animer (AI-video, Seedance 2.0) */}
+      <WsModal open={animOpen} onClose={() => { if (!animBusy) setAnimOpen(false); }} title={`Animer — ${sel?.filename || 'bilde'}`} maxWidth="sm">
+        {!aiCfg?.consent?.consented ? (
+          <Stack spacing={2}>
+            <Box sx={{ p: 1.5, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.amberSoft, border: `1px solid ${ws.amber}55` }}>
+              <Typography sx={{ fontSize: 13, fontWeight: 700, color: ws.amber, mb: 0.5 }}>⚠️ Samtykke kreves</Typography>
+              <Typography sx={{ fontSize: 12.5, color: ws.text }}>AI-video sender bildet til en tredjeparts AI-modell (Seedance 2.0 / ByteDance) som kan behandle data utenfor EØS.</Typography>
+            </Box>
+            <Stack direction="row" justifyContent="flex-end" spacing={1}>
+              <Button onClick={() => setAnimOpen(false)} sx={{ color: ws.textDim, textTransform: 'none' }}>Avbryt</Button>
+              <Button variant="contained" onClick={() => setConsent(true)} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Samtykk og fortsett</Button>
+            </Stack>
+          </Stack>
+        ) : animJob && animJob.status === 'completed' && animJob.afterUrl ? (
+          <Stack spacing={2}>
+            <Box component="video" src={animJob.afterUrl} controls autoPlay loop sx={{ width: '100%', borderRadius: `${ws.radiusSm}px`, bgcolor: '#000', aspectRatio: '16 / 9' }} />
+            <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <Typography sx={{ fontSize: 11.5, color: ws.textFaint }}>«{animJob.prompt}»</Typography>
+              <Stack direction="row" spacing={1}>
+                <Button size="small" onClick={() => setAnimJob(null)} sx={{ color: ws.textDim, textTransform: 'none' }}>Ny</Button>
+                <Button size="small" variant="contained" onClick={() => window.open(animJob.afterUrl, '_blank')} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Last ned</Button>
+              </Stack>
+            </Stack>
+          </Stack>
+        ) : animBusy || (animJob && animJob.status !== 'failed') ? (
+          <Stack spacing={2} alignItems="center" sx={{ py: 3 }}>
+            <CircularProgress sx={{ color: ws.accent }} />
+            <Typography sx={{ fontSize: 13, color: ws.textDim, textAlign: 'center' }}>AI lager video… dette tar gjerne 1–3 minutter.<br /><Typography component="span" sx={{ fontSize: 11.5, color: ws.textFaint }}>Du kan lukke — jobben fortsetter i bakgrunnen.</Typography></Typography>
+          </Stack>
+        ) : (
+          <Stack spacing={2}>
+            {animJob?.status === 'failed' && <Typography sx={{ fontSize: 12.5, color: ws.red }}>Video-genereringen feilet. Prøv en annen beskrivelse.</Typography>}
+            <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Beskriv bevegelsen AI-en skal lage fra stillbildet (Seedance 2.0):</Typography>
+            <TextField value={animPrompt} onChange={(e) => setAnimPrompt(e.target.value)} fullWidth multiline minRows={2} size="small" placeholder="f.eks. rolig kamera-innzoom, mykt vindpust i håret" />
+            <Stack direction="row" spacing={1} alignItems="center">
+              <Typography sx={{ fontSize: 12, color: ws.textDim }}>Lengde:</Typography>
+              {[4, 5, 8, 10].map((d) => <Box key={d} onClick={() => setAnimDuration(d)} sx={{ px: 1.25, py: 0.4, borderRadius: 2, cursor: 'pointer', fontSize: 12, fontWeight: animDuration === d ? 700 : 500, color: animDuration === d ? ws.accentContrast : ws.textDim, bgcolor: animDuration === d ? ws.accent : 'rgba(255,255,255,0.05)' }}>{d}s</Box>)}
+            </Stack>
+            <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <Typography sx={{ fontSize: 10.5, color: ws.textFaint }}>~${(animDuration * 0.1).toFixed(2)} ({animDuration}s)</Typography>
+              <Stack direction="row" spacing={1}>
+                <Button onClick={() => setAnimOpen(false)} sx={{ color: ws.textDim, textTransform: 'none' }}>Avbryt</Button>
+                <Button variant="contained" disabled={!animPrompt.trim() || animBusy} onClick={startAnimate} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Lag video</Button>
               </Stack>
             </Stack>
           </Stack>
