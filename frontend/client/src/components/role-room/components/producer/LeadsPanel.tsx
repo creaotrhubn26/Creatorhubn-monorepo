@@ -9,6 +9,7 @@ import {
   Box, Stack, Typography, Chip, Button, List, ListItemButton, ListItemText,
   CircularProgress, Alert, Divider, Table, TableBody, TableCell, TableHead, TableRow,
   Select, MenuItem, TextField, InputAdornment, Collapse, Tooltip, Switch, FormControlLabel,
+  Snackbar,
 } from '@mui/material';
 import {
   ContactPage as LeadsIcon, InstallMobile as FormIcon, BoltOutlined as FollowupIcon,
@@ -128,13 +129,21 @@ export default function LeadsPanel() {
 
   const queryClient = useQueryClient();
   const [segmentFilter, setSegmentFilter] = useState<Segment | 'alle'>('alle');
-  const setSegment = useMutation({
+  const setSegment = useMutation<{ success?: boolean; error?: string }, Error, { leadId: string; segment: Segment | null }>({
     mutationFn: async (vars: { leadId: string; segment: Segment | null }) =>
       apiRequest('/api/role-room/leads/producer/segment', {
         method: 'POST',
         body: JSON.stringify({ connectionId, leadId: vars.leadId, segment: vars.segment }),
       }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['leads-list', connectionId, formId] }),
+    onSuccess: (data) => {
+      if (data && data.success === false) {
+        setFollowupMsg({ severity: 'error', text: data.error || 'Kunne ikke lagre segmentet.' });
+        return;
+      }
+      queryClient.invalidateQueries({ queryKey: ['leads-list', connectionId, formId] });
+    },
+    onError: (err) =>
+      setFollowupMsg({ severity: 'error', text: err instanceof Error ? err.message : 'Kunne ikke lagre segmentet.' }),
   });
   const autoSegment = useMutation<{ success: boolean; applied?: unknown[]; error?: string }, Error, void>({
     mutationFn: async () =>
@@ -171,21 +180,37 @@ export default function LeadsPanel() {
     queryClient.invalidateQueries({ queryKey: ['leads-list', connectionId, formId] });
     queryClient.invalidateQueries({ queryKey: ['leads-summary', connectionId, formId] });
   };
-  const setOutcome = useMutation({
+  const setOutcome = useMutation<{ success?: boolean; error?: string }, Error, { leadId: string; stage: Stage | null; valueKr?: number }>({
     mutationFn: async (vars: { leadId: string; stage: Stage | null; valueKr?: number }) =>
       apiRequest('/api/role-room/leads/producer/outcome', {
         method: 'POST',
         body: JSON.stringify({ connectionId, formId, leadId: vars.leadId, stage: vars.stage, valueKr: vars.valueKr ?? 0 }),
       }),
-    onSuccess: invalidateRoi,
+    onSuccess: (data) => {
+      if (data && data.success === false) {
+        setFollowupMsg({ severity: 'error', text: data.error || 'Kunne ikke lagre status.' });
+        return;
+      }
+      invalidateRoi();
+    },
+    onError: (err) =>
+      setFollowupMsg({ severity: 'error', text: err instanceof Error ? err.message : 'Kunne ikke lagre status.' }),
   });
-  const setSpend = useMutation({
+  const setSpend = useMutation<{ success?: boolean; error?: string }, Error, number>({
     mutationFn: async (spendKr: number) =>
       apiRequest('/api/role-room/leads/producer/spend', {
         method: 'POST',
         body: JSON.stringify({ connectionId, formId, spendKr }),
       }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['leads-summary', connectionId, formId] }),
+    onSuccess: (data) => {
+      if (data && data.success === false) {
+        setFollowupMsg({ severity: 'error', text: data.error || 'Kunne ikke lagre annonsekostnaden.' });
+        return;
+      }
+      queryClient.invalidateQueries({ queryKey: ['leads-summary', connectionId, formId] });
+    },
+    onError: (err) =>
+      setFollowupMsg({ severity: 'error', text: err instanceof Error ? err.message : 'Kunne ikke lagre annonsekostnaden.' }),
   });
   // Local spend input, seeded from the saved summary; saved on blur.
   const [spendInput, setSpendInput] = useState('');
@@ -209,13 +234,27 @@ export default function LeadsPanel() {
       }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['leads-followup-config', connectionId] }),
   });
-  const sendFollowup = useMutation({
+  // Følg opp messages a real lead (SMS/e-post/WhatsApp), so a silent failure
+  // is the worst kind here — the producer assumes the lead was contacted.
+  // Surface both transport errors (apiRequest throws on non-2xx) and logical
+  // failures (2xx with success:false) in a snackbar.
+  const [followupMsg, setFollowupMsg] = useState<{ severity: 'success' | 'error'; text: string } | null>(null);
+  const sendFollowup = useMutation<{ success?: boolean; error?: string }, Error, Lead>({
     mutationFn: async (lead: Lead) =>
       apiRequest('/api/role-room/leads/producer/followup', {
         method: 'POST',
         body: JSON.stringify({ connectionId, formId, leadId: lead.id, name: lead.name, email: lead.email, phone: lead.phone, fields: lead.fields }),
       }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['leads-list', connectionId, formId] }),
+    onSuccess: (data) => {
+      if (!data || data.success !== true) {
+        setFollowupMsg({ severity: 'error', text: data?.error || 'Kunne ikke sende oppfølging.' });
+        return;
+      }
+      setFollowupMsg({ severity: 'success', text: 'Oppfølging sendt.' });
+      queryClient.invalidateQueries({ queryKey: ['leads-list', connectionId, formId] });
+    },
+    onError: (err) =>
+      setFollowupMsg({ severity: 'error', text: err instanceof Error ? err.message : 'Kunne ikke sende oppfølging.' }),
   });
   const channelsReady = (followupData?.smsConfigured || followupData?.emailConfigured || followupData?.whatsappConfigured) ?? false;
 
@@ -742,6 +781,23 @@ export default function LeadsPanel() {
           </Box>
         </>
       )}
+      <Snackbar
+        open={followupMsg !== null}
+        autoHideDuration={5000}
+        onClose={() => setFollowupMsg(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        {followupMsg ? (
+          <Alert
+            severity={followupMsg.severity}
+            variant="filled"
+            onClose={() => setFollowupMsg(null)}
+            sx={{ width: '100%' }}
+          >
+            {followupMsg.text}
+          </Alert>
+        ) : undefined}
+      </Snackbar>
     </Stack>
   );
 }

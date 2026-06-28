@@ -10,6 +10,7 @@ import {
   orchestratorEnabled,
   runOrchestratedBootstrap,
 } from "./role-room-agent-bootstrap-orchestrator.js";
+import { makeStructuredLogger } from "./role-room-agent-llm-util.js";
 import { enrichCompetitorWithMetaPage } from "./role-room-meta-pages.js";
 
 export type RoleRoomAgentProducerBootstrapInput = {
@@ -5105,6 +5106,15 @@ function buildFallbackBootstrap(
   };
 }
 
+/**
+ * Single-line structured diagnostics for the synthesis step. Previously the
+ * OpenAI path returned null on every failure (provider missing, non-2xx
+ * response, empty content, JSON parse error) without a trace, so the
+ * `openai_synthesis_returned_null` → `synthesis_unavailable_returning_fallback`
+ * fallback chain was undiagnosable. Grep `role-room-agent:synthesis`.
+ */
+const logBootstrapSynthesis = makeStructuredLogger("[role-room-agent:synthesis]");
+
 async function requestOpenAiBootstrap(
   input: RoleRoomAgentProducerBootstrapInput,
   websiteInsights: RoleRoomAgentWebsiteInsights,
@@ -5118,6 +5128,7 @@ async function requestOpenAiBootstrap(
 ): Promise<unknown | null> {
   const runtimeConfig = getRoleRoomAgentRuntimeConfig();
   if (!runtimeConfig.providerConfigured) {
+    logBootstrapSynthesis("openai_provider_not_configured");
     return null;
   }
 
@@ -5221,19 +5232,50 @@ async function requestOpenAiBootstrap(
     });
 
     if (!response.ok) {
+      const errorBody = await response.text().catch(() => "");
+      logBootstrapSynthesis("openai_http_error", {
+        status: response.status,
+        model: runtimeConfig.defaultModel,
+        // Truncate so a verbose provider error can't flood logs.
+        body: errorBody.slice(0, 500),
+      });
       return null;
     }
 
     const result = (await response.json().catch(() => null)) as
-      | { choices?: Array<{ message?: { content?: string | null } }> }
+      | {
+          choices?: Array<{
+            message?: { content?: string | null };
+            finish_reason?: string;
+          }>;
+        }
       | null;
     const content = result?.choices?.[0]?.message?.content;
     if (!hasText(content)) {
+      logBootstrapSynthesis("openai_empty_content", {
+        model: runtimeConfig.defaultModel,
+        finishReason: result?.choices?.[0]?.finish_reason ?? null,
+      });
       return null;
     }
 
-    return JSON.parse(content);
-  } catch {
+    try {
+      return JSON.parse(content);
+    } catch (parseErr) {
+      // `length` finish_reason means the JSON was truncated mid-object.
+      logBootstrapSynthesis("openai_json_parse_failed", {
+        model: runtimeConfig.defaultModel,
+        finishReason: result?.choices?.[0]?.finish_reason ?? null,
+        contentLength: content.length,
+        error: parseErr instanceof Error ? parseErr.message : String(parseErr),
+      });
+      return null;
+    }
+  } catch (err) {
+    logBootstrapSynthesis("openai_request_threw", {
+      model: runtimeConfig.defaultModel,
+      error: err instanceof Error ? err.message : String(err),
+    });
     return null;
   }
 }

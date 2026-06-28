@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Box, Button, Chip, CircularProgress, Skeleton, Stack, Typography } from '@mui/material';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
@@ -118,6 +118,41 @@ export default function RoleRoomFeedPlannerPanel({
   // touches something, so reopening the dialog doesn't write a no-op.
   const [dirty, setDirty] = useState(false);
 
+  // Identifies which (project, platform) the current `posts` were loaded for.
+  // The debounced auto-save below only fires when this matches the live
+  // (project, platform) — otherwise a slow load during a platform switch
+  // could let the previous platform's posts get written under the new
+  // platform's plan (cross-platform clobber).
+  const loadedKeyRef = useRef<string | null>(null);
+
+  // Single persistence path shared by the debounced auto-save and the
+  // flush-before-switch below, so both behave identically.
+  const persistFeedPlan = useCallback(
+    async (
+      targetPlatform: RoleRoomFeedPlatform,
+      postsSnapshot: RoleRoomFeedPost[],
+      snapshotBrand: RoleRoomFeedBrandSnapshot | null,
+    ) => {
+      setSaving(true);
+      setSaveError(null);
+      try {
+        const result = await roleRoomAgentService.saveFeedPlan(
+          projectId,
+          targetPlatform,
+          postsSnapshot,
+          snapshotBrand,
+        );
+        if (result?.updatedAt) setLastSavedAt(result.updatedAt);
+        setDirty(false);
+      } catch (error) {
+        setSaveError(describeProducerError(error, 'lagre feed-planen'));
+      } finally {
+        setSaving(false);
+      }
+    },
+    [projectId],
+  );
+
   const brandSnapshot = useMemo<RoleRoomFeedBrandSnapshot | null>(
     () => (bootstrap ? deriveBrandSnapshot(bootstrap) : null),
     [bootstrap],
@@ -139,6 +174,7 @@ export default function RoleRoomFeedPlannerPanel({
       return;
     }
     let cancelled = false;
+    const loadKey = `${projectId}::${platform}`;
     setLoadingPlan(true);
     setSaveError(null);
     void (async () => {
@@ -161,7 +197,12 @@ export default function RoleRoomFeedPlannerPanel({
           setDirty(false);
         }
       } finally {
-        if (!cancelled) setLoadingPlan(false);
+        if (!cancelled) {
+          // Mark the posts now in state as belonging to this key, which
+          // re-enables auto-save for it.
+          loadedKeyRef.current = loadKey;
+          setLoadingPlan(false);
+        }
       }
     })();
     return () => {
@@ -173,26 +214,16 @@ export default function RoleRoomFeedPlannerPanel({
   // is short enough to feel reactive, long enough to coalesce caption typing.
   useEffect(() => {
     if (!dirty || !bootstrap) return;
-    const handle = window.setTimeout(async () => {
-      setSaving(true);
-      setSaveError(null);
-      try {
-        const result = await roleRoomAgentService.saveFeedPlan(
-          projectId,
-          platform,
-          posts,
-          brandSnapshot,
-        );
-        if (result?.updatedAt) setLastSavedAt(result.updatedAt);
-        setDirty(false);
-      } catch (error) {
-        setSaveError(describeProducerError(error, 'lagre feed-planen'));
-      } finally {
-        setSaving(false);
-      }
+    // Only persist posts that belong to the live (project, platform). During
+    // a platform switch the new plan hasn't loaded yet, so the in-state posts
+    // still belong to the old platform — saving them now would write them
+    // under the wrong plan.
+    if (loadedKeyRef.current !== `${projectId}::${platform}`) return;
+    const handle = window.setTimeout(() => {
+      void persistFeedPlan(platform, posts, brandSnapshot);
     }, 1500);
     return () => window.clearTimeout(handle);
-  }, [dirty, posts, projectId, platform, brandSnapshot, bootstrap]);
+  }, [dirty, posts, projectId, platform, brandSnapshot, bootstrap, persistFeedPlan]);
 
   // Bulk-godkjenning: alle utkast (state='draft' eller 'needs_changes')
   // settes til 'approved'. Brukes av producer som har gått gjennom
@@ -221,6 +252,7 @@ export default function RoleRoomFeedPlannerPanel({
       return;
     }
     setBulkApproving(true);
+    setSaveError(null);
     try {
       const result = await roleRoomAgentService.setFeedPostApproval({
         projectId,
@@ -237,7 +269,15 @@ export default function RoleRoomFeedPlannerPanel({
               : p,
           ),
         );
+      } else {
+        // Server rejected the batch (e.g. client-approval policy) — surface it
+        // instead of leaving the button silently doing nothing.
+        setSaveError(
+          (result as { error?: string }).error || 'Kunne ikke godkjenne postene.',
+        );
       }
+    } catch (error) {
+      setSaveError(describeProducerError(error, 'godkjenne postene'));
     } finally {
       setBulkApproving(false);
     }
@@ -498,6 +538,17 @@ export default function RoleRoomFeedPlannerPanel({
                 label={allowed ? option.label : `${option.label} · ${requiredTier.shortName}`}
                 onClick={() => {
                   if (allowed) {
+                    if (option.id === platform) return;
+                    // Flush unsaved edits for the platform we're leaving before
+                    // switching — the 1.5s auto-save debounce would otherwise be
+                    // cancelled by the platform change and the edits lost.
+                    if (
+                      dirty &&
+                      bootstrap &&
+                      loadedKeyRef.current === `${projectId}::${platform}`
+                    ) {
+                      void persistFeedPlan(platform, posts, brandSnapshot);
+                    }
                     setPlatform(option.id);
                   } else {
                     // Åpne paywall så bruker kan oppgradere fra Spotlight til Headliner.

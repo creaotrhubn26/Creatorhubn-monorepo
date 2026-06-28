@@ -4,6 +4,9 @@
  * Daily auto-approval tick (MedInnova-avtalen §5.2): material the client hasn't
  * responded to within the business-day deadline is considered approved.
  *
+ * The same daily tick also prunes both idempotency stores (the social claim
+ * table + the shared idempotency-key table) so neither grows unbounded.
+ *
  * Cron tick: POST /api/internal/approval/auto-approve-tick
  *   (x-cron-secret = APPROVAL_CRON_SECRET). Run once per day.
  * Optional in-process loop: APPROVAL_SWEEP_INTERVAL_MINUTES.
@@ -12,6 +15,23 @@
 import type express from "express";
 import type { Pool } from "pg";
 import { runMaterialAutoApproveSweep } from "./role-room-material-approval.js";
+import { pruneSocialIdempotency } from "./role-room-social-idempotency.js";
+import { cleanupExpiredIdempotencyRows } from "./_shared-idempotency.js";
+
+/**
+ * Daily housekeeping that rides along with the approval tick: prune both
+ * idempotency stores so neither table grows unbounded. Best-effort — never
+ * throws, so a prune hiccup can't fail the approval sweep.
+ */
+async function pruneIdempotencyStores(
+  pool: Pool,
+): Promise<{ social: number; shared: number }> {
+  const [social, shared] = await Promise.all([
+    pruneSocialIdempotency(pool).catch(() => 0),
+    cleanupExpiredIdempotencyRows(pool).catch(() => 0),
+  ]);
+  return { social, shared };
+}
 
 export interface RoleRoomApprovalCronDeps {
   app: express.Application;
@@ -29,7 +49,8 @@ export function setupRoleRoomApprovalCron(deps: RoleRoomApprovalCronDeps): void 
     }
     try {
       const summary = await runMaterialAutoApproveSweep(pool);
-      res.json({ ok: true, summary });
+      const idempotencyPruned = await pruneIdempotencyStores(pool);
+      res.json({ ok: true, summary, idempotencyPruned });
     } catch (error) {
       res.status(500).json({ error: "approval_auto_approve_tick_failed", detail: String(error) });
     }
@@ -41,6 +62,9 @@ export function setupRoleRoomApprovalCron(deps: RoleRoomApprovalCronDeps): void 
       () => {
         void runMaterialAutoApproveSweep(pool).catch((e) =>
           console.error("[approval-sweep] interval run failed", e),
+        );
+        void pruneIdempotencyStores(pool).catch((e) =>
+          console.error("[approval-sweep] idempotency prune failed", e),
         );
       },
       intervalMinutes * 60 * 1000,

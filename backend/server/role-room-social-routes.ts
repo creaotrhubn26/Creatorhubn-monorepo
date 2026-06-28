@@ -71,6 +71,11 @@ import {
 } from "./social-publisher.js";
 import { buildAgentFeedbackInsights } from "./role-room-agent-feedback-insights.js";
 import { getPublishQueueStats } from "./role-room-instagram-publish.js";
+import {
+  checkEndpointRateLimit,
+  RateLimitExceededError,
+} from "./role-room-agent-ratelimit.js";
+import { claimIdempotencyKey } from "./role-room-social-idempotency.js";
 
 interface AdminSession {
   userId: string;
@@ -88,6 +93,73 @@ export interface RoleRoomSocialRoutesDeps {
     res: express.Response,
   ) => AdminSession | null;
   isCompatAdminFeatureEnabled: (featureId: string) => boolean;
+}
+
+/**
+ * SQL subquery returning every social account_id the given user owns —
+ * IG business + FB page + LinkedIn member + linked YouTube channels. Used to
+ * scope both the inbox read (GET) and the mark-as-read write (POST) to the
+ * caller's own data. `userParam` is a bind placeholder (e.g. "$2"); pass the
+ * same user id for it. Kept in one place so the read and write paths can never
+ * drift out of sync (which is how the mark-read endpoint became an IDOR).
+ */
+function ownedSocialAccountIdsSql(userParam: string): string {
+  return `
+    SELECT ig_business_account_id FROM role_room_instagram_connections WHERE user_id = ${userParam}
+    UNION
+    SELECT facebook_page_id FROM role_room_instagram_connections
+     WHERE user_id = ${userParam} AND facebook_page_id IS NOT NULL
+    UNION
+    SELECT linkedin_member_id FROM role_room_linkedin_connections
+     WHERE user_id = ${userParam} AND linkedin_member_id IS NOT NULL
+    UNION
+    SELECT DISTINCT account_id FROM social_metrics
+     WHERE platform = 'youtube'
+       AND connection_id IN (SELECT id FROM role_room_google_connections WHERE user_id = ${userParam})
+  `;
+}
+
+/**
+ * Does the given user own this social connection? Checks all three connection
+ * tables (IG/FB, LinkedIn, Google/YouTube) by id + user_id. Fail-closed: any
+ * error denies. `id::text` so a non-UUID id can't throw on a UUID column.
+ * Used to gate the metrics-snapshot endpoint, which otherwise looked the
+ * connection up by id alone (IDOR — one tenant could fetch/persist another
+ * tenant's insights using their connection token).
+ */
+export async function userOwnsSocialConnection(
+  pool: Pool,
+  connectionId: string,
+  userId: string,
+): Promise<boolean> {
+  try {
+    const result = await pool.query(
+      `SELECT 1 FROM role_room_instagram_connections WHERE id::text = $1 AND user_id = $2
+       UNION ALL
+       SELECT 1 FROM role_room_linkedin_connections WHERE id::text = $1 AND user_id = $2
+       UNION ALL
+       SELECT 1 FROM role_room_google_connections WHERE id::text = $1 AND user_id = $2
+       LIMIT 1`,
+      [connectionId, userId],
+    );
+    return (result.rowCount ?? 0) > 0;
+  } catch (error) {
+    console.error("[social-routes] ownership check failed", error);
+    return false;
+  }
+}
+
+/** Translate a RateLimitExceededError into an HTTP 429 + Retry-After. */
+function send429(
+  res: express.Response,
+  err: RateLimitExceededError,
+): express.Response {
+  res.setHeader("Retry-After", String(err.retryAfterSeconds));
+  return res.status(429).json({
+    success: false,
+    error: "rate_limited",
+    retryAfterSeconds: err.retryAfterSeconds,
+  });
 }
 
 export function setupRoleRoomSocialRoutes(
@@ -407,21 +479,7 @@ export function setupRoleRoomSocialRoutes(
     // Scope til brukerens egne tilkoblinger. Inkluderer IG-business-id +
     // FB-page-id + LinkedIn-member-id + YouTube-channel-ids (sistnevnte
     // via Google-connection-link på social_metrics-raden).
-    where.push(
-      `account_id IN (
-         SELECT ig_business_account_id FROM role_room_instagram_connections WHERE user_id = $${params.length + 1}
-         UNION
-         SELECT facebook_page_id FROM role_room_instagram_connections
-          WHERE user_id = $${params.length + 1} AND facebook_page_id IS NOT NULL
-         UNION
-         SELECT linkedin_member_id FROM role_room_linkedin_connections
-          WHERE user_id = $${params.length + 1} AND linkedin_member_id IS NOT NULL
-         UNION
-         SELECT DISTINCT account_id FROM social_metrics
-          WHERE platform = 'youtube'
-            AND connection_id IN (SELECT id FROM role_room_google_connections WHERE user_id = $${params.length + 1})
-       )`,
-    );
+    where.push(`account_id IN (${ownedSocialAccountIdsSql(`$${params.length + 1}`)})`);
     params.push(session.userId);
     if (platform) {
       where.push(`platform = $${params.length + 1}`);
@@ -491,12 +549,21 @@ export function setupRoleRoomSocialRoutes(
   });
 
   app.post("/api/role-room/social/inbox/:eventId/read", async (req, res) => {
-    if (!requireAdminSession(req, res)) return;
+    const session = requireAdminSession(req, res);
+    if (!session) return;
     try {
-      await pool.query(
-        `UPDATE social_events SET is_read = true WHERE id = $1`,
-        [req.params.eventId],
+      // Scope the write to the caller's own accounts — same filter as the GET.
+      // Previously this updated any social_events row by id, letting one user
+      // mark another tenant's events read (IDOR).
+      const result = await pool.query(
+        `UPDATE social_events SET is_read = true
+          WHERE id = $1
+            AND account_id IN (${ownedSocialAccountIdsSql("$2")})`,
+        [req.params.eventId, session.userId],
       );
+      if (result.rowCount === 0) {
+        return res.status(404).json({ success: false, error: "Fant ikke hendelsen." });
+      }
       return res.json({ success: true });
     } catch (error) {
       console.error("[social-inbox] mark read failed", error);
@@ -517,6 +584,52 @@ export function setupRoleRoomSocialRoutes(
     const post = body.post as Record<string, unknown> | undefined;
     if (!post || !post.connectionId) {
       return res.status(400).json({ success: false, error: "post.connectionId er påkrevd" });
+    }
+
+    // Per-user rate limit — publish hits external Graph APIs + costs quota.
+    try {
+      checkEndpointRateLimit(session.userId, "social_publish", 30);
+    } catch (rlErr) {
+      if (rlErr instanceof RateLimitExceededError) return send429(res, rlErr);
+      throw rlErr;
+    }
+
+    // Ownership gate. For instagram/facebook_page the connectionId is a
+    // role_room_instagram_connections row id; dispatchPublish (FB page) derives
+    // the connection's owner from that row rather than the session, so without
+    // this check one tenant could publish using another tenant's stored Page
+    // token (IDOR). LinkedIn/YouTube resolve the connection from the session
+    // userId directly (connectionId is ignored there), so they're already
+    // user-scoped and don't need this gate.
+    if (platform === "instagram" || platform === "facebook_page") {
+      if (
+        !(await userOwnsSocialConnection(pool, String(post.connectionId), session.userId))
+      ) {
+        return res.status(404).json({ success: false, error: "connection_not_found" });
+      }
+    }
+
+    // Idempotency: if the client supplied a stable key, the first claim wins
+    // and a duplicate short-circuits without re-publishing. Best-effort — a
+    // store error falls through to normal processing.
+    const idempotencyKey =
+      typeof body.idempotencyKey === "string" && body.idempotencyKey.trim()
+        ? body.idempotencyKey.trim()
+        : null;
+    if (idempotencyKey) {
+      try {
+        const claim = await claimIdempotencyKey(
+          pool,
+          "social_publish",
+          session.userId,
+          idempotencyKey,
+        );
+        if (!claim.fresh) {
+          return res.status(200).json({ success: true, deduped: true });
+        }
+      } catch (idemErr) {
+        console.warn("[social-publish] idempotency claim failed", idemErr);
+      }
     }
 
     const projectId = String(post.projectId || "").trim();
@@ -603,8 +716,9 @@ export function setupRoleRoomSocialRoutes(
             }>(
               `SELECT CASE WHEN $1 = 'facebook_page' THEN facebook_page_id
                            ELSE ig_business_account_id END AS account_id
-                 FROM role_room_instagram_connections WHERE id = $2 LIMIT 1`,
-              [platform, post.connectionId],
+                 FROM role_room_instagram_connections
+                WHERE id = $2 AND user_id = $3 LIMIT 1`,
+              [platform, post.connectionId, session.userId],
             );
             accountId = accountRow.rows[0]?.account_id ?? null;
           } else if (!accountId && platform === 'linkedin') {
@@ -715,6 +829,40 @@ export function setupRoleRoomSocialRoutes(
     if (!platform || !connectionId) {
       return res.status(400).json({ success: false, error: "platform + connectionId påkrevd" });
     }
+    // Per-user rate limit — each snapshot triggers a platform insights call.
+    try {
+      checkEndpointRateLimit(session.userId, "social_snapshot", 60);
+    } catch (rlErr) {
+      if (rlErr instanceof RateLimitExceededError) return send429(res, rlErr);
+      throw rlErr;
+    }
+    // Ownership gate: without this, any user could pass another tenant's
+    // connectionId to fetch (and persist) their insights using the stored
+    // token — and the snapshots came back in the response.
+    if (!(await userOwnsSocialConnection(pool, connectionId, session.userId))) {
+      return res.status(404).json({ success: false, error: "connection_not_found" });
+    }
+    // Idempotency: dedup repeated snapshot requests carrying the same key so we
+    // don't double-insert the same time-series rows. Best-effort.
+    const snapshotIdempotencyKey =
+      typeof body.idempotencyKey === "string" && body.idempotencyKey.trim()
+        ? body.idempotencyKey.trim()
+        : null;
+    if (snapshotIdempotencyKey) {
+      try {
+        const claim = await claimIdempotencyKey(
+          pool,
+          "social_snapshot",
+          session.userId,
+          snapshotIdempotencyKey,
+        );
+        if (!claim.fresh) {
+          return res.status(200).json({ success: true, deduped: true, snapshots: [] });
+        }
+      } catch (idemErr) {
+        console.warn("[social-metrics] idempotency claim failed", idemErr);
+      }
+    }
     try {
       const snapshots = await dispatchFetchInsights(
         platform as Parameters<typeof dispatchFetchInsights>[0],
@@ -729,8 +877,8 @@ export function setupRoleRoomSocialRoutes(
         const accountIdRow = await pool.query<{ account_id: string }>(
           `SELECT CASE WHEN $1 = 'facebook_page' THEN facebook_page_id
                        ELSE ig_business_account_id END AS account_id
-             FROM role_room_instagram_connections WHERE id = $2 LIMIT 1`,
-          [platform, connectionId],
+             FROM role_room_instagram_connections WHERE id = $2 AND user_id = $3 LIMIT 1`,
+          [platform, connectionId, session.userId],
         );
         const accountId = accountIdRow.rows[0]?.account_id;
         if (accountId) {

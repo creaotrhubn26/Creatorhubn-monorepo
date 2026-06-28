@@ -16,6 +16,12 @@
  */
 
 import { logAIUsage } from './ai-usage-tracker.js';
+import {
+  BOOTSTRAP_SYNTH_MAX_TOKENS,
+  extractJsonFromText,
+  makeStructuredLogger,
+  withTimeout,
+} from './role-room-agent-llm-util.js';
 import type {
   RoleRoomAgentAgreementSuggestion,
   RoleRoomAgentBrregCompany,
@@ -110,29 +116,13 @@ async function getAnthropicClient(): Promise<any> {
   return cachedAnthropicClient;
 }
 
-function extractJsonFromText(text: string): unknown | null {
-  if (!text) return null;
-  // Claude sometimes wraps JSON in markdown despite instructions; strip common fences.
-  const trimmed = text.trim();
-  const fenceMatch = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
-  const raw = fenceMatch ? fenceMatch[1] : trimmed;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    // As a last resort, try to locate the first { ... } block and parse it.
-    const firstBrace = raw.indexOf('{');
-    const lastBrace = raw.lastIndexOf('}');
-    if (firstBrace >= 0 && lastBrace > firstBrace) {
-      const slice = raw.slice(firstBrace, lastBrace + 1);
-      try {
-        return JSON.parse(slice);
-      } catch {
-        return null;
-      }
-    }
-    return null;
-  }
-}
+/**
+ * Single-line structured diagnostics, matching the orchestrator/synthesis
+ * loggers. Until now this path swallowed every failure (no client, API
+ * error, truncation, parse failure) and silently returned null. Grep
+ * `role-room-agent:claude-bootstrap`.
+ */
+const logClaudeBootstrap = makeStructuredLogger('[role-room-agent:claude-bootstrap]');
 
 // When a website provides a hero image via og:image / twitter:image we can
 // feed it to Claude vision alongside the structured text signals. This
@@ -174,7 +164,12 @@ export async function requestClaudeBootstrap(
   retrievalMeta: RoleRoomAgentRetrievalMeta | null,
 ): Promise<unknown | null> {
   const client = await getAnthropicClient();
-  if (!client) return null;
+  if (!client) {
+    logClaudeBootstrap('anthropic_client_unavailable', {
+      hasApiKey: Boolean(process.env.ANTHROPIC_API_KEY),
+    });
+    return null;
+  }
 
   const model = process.env.ROLE_ROOM_BOOTSTRAP_CLAUDE_MODEL || 'claude-sonnet-4-5';
   const visionEnabled = process.env.ROLE_ROOM_BOOTSTRAP_VISION !== 'false';
@@ -227,10 +222,12 @@ export async function requestClaudeBootstrap(
     });
 
     const bootstrapStartedAt = Date.now();
-    const response = await Promise.race([
+    const response = await withTimeout(
       client.messages.create({
         model,
-        max_tokens: 4096,
+        // 4096 truncated the large synthesis JSON, failing extractJsonFromText
+        // → null → silent deterministic fallback. 8192 lets it complete.
+        max_tokens: BOOTSTRAP_SYNTH_MAX_TOKENS,
         // Keep the large constraints block in the cached system prefix; the
         // per-call user message is just the project data.
         system: [
@@ -247,16 +244,19 @@ export async function requestClaudeBootstrap(
           },
         ],
       }),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('claude_bootstrap_timeout')), 60_000),
-      ),
-    ]);
+      60_000,
+      'claude_bootstrap_timeout',
+    );
 
     // Slice 9X.71 — cost-tracking (fire-and-forget)
     logAIUsage(response as any, {
       feature: 'role-room-bootstrap',
       durationMs: Date.now() - bootstrapStartedAt,
     }).catch(() => undefined);
+
+    if ((response as any)?.stop_reason === 'max_tokens') {
+      logClaudeBootstrap('response_truncated_max_tokens', { model });
+    }
 
     const blocks = (response as any)?.content ?? [];
     let text = '';
@@ -265,8 +265,20 @@ export async function requestClaudeBootstrap(
         text += block.text;
       }
     }
-    return extractJsonFromText(text);
-  } catch {
+    const parsed = extractJsonFromText(text);
+    if (!parsed) {
+      logClaudeBootstrap('synthesis_parse_failed', {
+        model,
+        textLength: text.length,
+        stopReason: (response as any)?.stop_reason ?? null,
+      });
+    }
+    return parsed;
+  } catch (err) {
+    logClaudeBootstrap('request_threw', {
+      model,
+      error: err instanceof Error ? err.message : String(err),
+    });
     return null;
   }
 }

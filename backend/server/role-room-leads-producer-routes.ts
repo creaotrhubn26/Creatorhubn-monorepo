@@ -31,6 +31,11 @@ import { sendSms, smsConfigured } from "./crm-sms.js";
 import { sendTransactionalEmail, isTransactionalEmailConfigured } from "./transactional-email-service.js";
 import { readEnvFallbackConfig, sendWhatsAppLeadFollowup } from "./casting-whatsapp-sender.js";
 import { callClaudeForJson } from "./claude-json-helper.js";
+import {
+  checkEndpointRateLimit,
+  RateLimitExceededError,
+} from "./role-room-agent-ratelimit.js";
+import { claimIdempotencyKey } from "./role-room-social-idempotency.js";
 
 /** WhatsApp lead follow-up needs an env-configured WA account + an approved template name. */
 function whatsappLeadConfig() {
@@ -972,11 +977,46 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
       res.status(400).json({ success: false, error: "connectionId, formId and leadId are required" });
       return;
     }
+    // Per-user rate limit — follow-up sends SMS/email/WhatsApp (real cost).
+    try {
+      checkEndpointRateLimit(session.userId, "leads_followup", 20);
+    } catch (rlErr) {
+      if (rlErr instanceof RateLimitExceededError) {
+        res.setHeader("Retry-After", String(rlErr.retryAfterSeconds));
+        res.status(429).json({ success: false, error: "rate_limited", retryAfterSeconds: rlErr.retryAfterSeconds });
+        return;
+      }
+      throw rlErr;
+    }
     try {
       const connection = await getConnection(pool, connectionId, session.userId);
       if (!connection) {
         res.status(404).json({ success: false, error: "connection_not_found" });
         return;
+      }
+      // Idempotency: dedup double-submits so we never re-send the follow-up.
+      // The DB log below is already idempotent, but claiming up-front also
+      // avoids re-hitting the SMS/email/WhatsApp providers. Best-effort.
+      const idempotencyKey =
+        typeof (body as { idempotencyKey?: unknown }).idempotencyKey === "string" &&
+        (body as { idempotencyKey?: string }).idempotencyKey!.trim()
+          ? (body as { idempotencyKey?: string }).idempotencyKey!.trim()
+          : null;
+      if (idempotencyKey) {
+        try {
+          const claim = await claimIdempotencyKey(
+            pool,
+            "leads_followup",
+            session.userId,
+            idempotencyKey,
+          );
+          if (!claim.fresh) {
+            res.status(200).json({ success: true, deduped: true });
+            return;
+          }
+        } catch (idemErr) {
+          console.warn("[leads-followup] idempotency claim failed", idemErr);
+        }
       }
       await ensureLeadFollowupSchema(pool);
       const config = await getFollowupConfig(pool, session.userId, connectionId);

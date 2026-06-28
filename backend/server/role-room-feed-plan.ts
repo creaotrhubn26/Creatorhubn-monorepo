@@ -258,6 +258,132 @@ export async function saveFeedPlan(
   }
 }
 
+export interface FeedPlanMutationResult {
+  posts: RoleRoomFeedPostInput[];
+  /** Omit (undefined) to preserve the persisted brand_snapshot. */
+  brandSnapshot?: unknown;
+  updatedBy?: string | null;
+}
+
+/**
+ * Transactional read-modify-write for a single feed plan. Takes a
+ * transaction-scoped advisory lock keyed by (projectId, platform) at the very
+ * start of the transaction — before the SELECT — so mutations serialize even
+ * when no plan row exists yet. The SELECT … FOR UPDATE then locks the row when
+ * it does exist. The mutator gets the freshly-locked current row (or null if
+ * the plan doesn't exist) and returns the next posts; returning null aborts the
+ * write and the call resolves to the unchanged current row.
+ *
+ * First-creates are serialized too: two concurrent first-writers for the same
+ * (project_id, platform) block on pg_advisory_xact_lock, so one fully completes
+ * (read empty → insert) before the other reads, and the second sees the
+ * freshly-inserted row instead of racing through ON CONFLICT. The advisory lock
+ * auto-releases on COMMIT/ROLLBACK — no manual unlock or migration needed.
+ */
+export async function mutateFeedPlanLocked(
+  pool: Pool,
+  projectId: string,
+  platform: RoleRoomFeedPlatform,
+  mutate: (current: RoleRoomFeedPlanRow | null) => FeedPlanMutationResult | null,
+): Promise<RoleRoomFeedPlanRow | null> {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    // Transaction-scoped advisory lock keyed by (projectId, platform) so even
+    // first-creates serialize: a non-existent row can't be locked by FOR UPDATE,
+    // so without this two concurrent first-writers would race through ON CONFLICT
+    // (last writer wins). Auto-releases on COMMIT/ROLLBACK.
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+      `${projectId}::${platform}`,
+    ]);
+    const existing = await client.query(
+      `SELECT id, project_id, platform, posts, brand_snapshot, updated_by, created_at, updated_at
+         FROM role_room_feed_plans
+        WHERE project_id = $1 AND platform = $2
+        LIMIT 1
+        FOR UPDATE`,
+      [projectId, platform],
+    );
+    const current = existing.rows[0] ? mapRow(existing.rows[0]) : null;
+    const next = mutate(current);
+    if (!next) {
+      await client.query('ROLLBACK');
+      return current;
+    }
+    const brandToWrite =
+      next.brandSnapshot === undefined ? current?.brandSnapshot ?? null : next.brandSnapshot;
+    const result = await client.query(
+      `INSERT INTO role_room_feed_plans (project_id, platform, posts, brand_snapshot, updated_by, updated_at)
+       VALUES ($1, $2, $3::jsonb, $4::jsonb, $5, now())
+       ON CONFLICT (project_id, platform) DO UPDATE SET
+         posts = EXCLUDED.posts,
+         brand_snapshot = EXCLUDED.brand_snapshot,
+         updated_by = EXCLUDED.updated_by,
+         updated_at = now()
+       RETURNING id, project_id, platform, posts, brand_snapshot, updated_by, created_at, updated_at`,
+      [
+        projectId,
+        platform,
+        JSON.stringify(next.posts),
+        brandToWrite === null || brandToWrite === undefined ? null : JSON.stringify(brandToWrite),
+        next.updatedBy ?? null,
+      ],
+    );
+    await client.query('COMMIT');
+    return result.rows[0] ? mapRow(result.rows[0]) : null;
+  } catch (error) {
+    try {
+      await client.query('ROLLBACK');
+    } catch {
+      /* ignore rollback failure */
+    }
+    console.error('[role-room-feed-plan] mutateFeedPlanLocked failed', error);
+    return null;
+  } finally {
+    client.release();
+  }
+}
+
+// Approval/review fields form a state machine owned exclusively by the
+// /approve and /submit-review endpoints (and the auto-approve sweep). A
+// producer content-save must never carry these — see
+// mergeFeedPostsPreservingApproval.
+const PRESERVED_APPROVAL_KEYS = [
+  'approvalState',
+  'approvalChangedAt',
+  'approvalChangedBy',
+  'approvalNote',
+  'reviewRequestedAt',
+  'reviewRequestedBy',
+  'reviewDeadline',
+] as const;
+
+/**
+ * Merge producer-supplied posts with the persisted plan so a content save
+ * (caption/image/order edits) can never overwrite the approval/review state.
+ * For each incoming post that already exists, the persisted approval fields
+ * win; brand-new posts keep their incoming (default 'draft') values. This is
+ * what stops a producer's stale auto-save from silently wiping a client's
+ * approval made on another surface.
+ */
+export function mergeFeedPostsPreservingApproval(
+  incoming: RoleRoomFeedPostInput[],
+  current: RoleRoomFeedPostInput[] | null | undefined,
+): RoleRoomFeedPostInput[] {
+  if (!current || current.length === 0) return incoming;
+  const byId = new Map(current.map((p) => [p.id, p]));
+  return incoming.map((post) => {
+    const prev = byId.get(post.id);
+    if (!prev) return post;
+    const merged: RoleRoomFeedPostInput = { ...post };
+    for (const key of PRESERVED_APPROVAL_KEYS) {
+      (merged as Record<string, unknown>)[key] =
+        (prev as Record<string, unknown>)[key] ?? null;
+    }
+    return merged;
+  });
+}
+
 export function isSupportedPlatform(value: unknown): value is RoleRoomFeedPlatform {
   return typeof value === 'string' && SUPPORTED_FEED_PLATFORMS.includes(value as RoleRoomFeedPlatform);
 }
@@ -307,27 +433,27 @@ export async function markFeedPlanPostFailed(
   // hvilken som helst (IG og FB-Page deler 'instagram'-key i tabellen).
   for (const platform of SUPPORTED_FEED_PLATFORMS) {
     try {
-      const plan = await loadFeedPlan(pool, projectId, platform);
-      if (!plan) continue;
-      const idx = plan.posts.findIndex((p) => p.id === feedPlanPostId);
-      if (idx === -1) continue;
-      const now = new Date().toISOString();
-      const nextPosts = plan.posts.map((p, i) =>
-        i === idx
-          ? {
-              ...p,
-              approvalState: 'needs_changes' as RoleRoomFeedApprovalState,
-              approvalChangedAt: now,
-              approvalChangedBy: 'system:publish-worker',
-              approvalNote: `Publisering feilet: ${errorMessage.slice(0, 800)}`,
-            }
-          : p,
-      );
-      await saveFeedPlan(pool, projectId, platform, nextPosts, {
-        brandSnapshot: plan.brandSnapshot,
-        updatedBy: 'system:publish-worker',
+      let found = false;
+      await mutateFeedPlanLocked(pool, projectId, platform, (current) => {
+        if (!current) return null;
+        const idx = current.posts.findIndex((p) => p.id === feedPlanPostId);
+        if (idx === -1) return null;
+        found = true;
+        const now = new Date().toISOString();
+        const nextPosts = current.posts.map((p, i) =>
+          i === idx
+            ? {
+                ...p,
+                approvalState: 'needs_changes' as RoleRoomFeedApprovalState,
+                approvalChangedAt: now,
+                approvalChangedBy: 'system:publish-worker',
+                approvalNote: `Publisering feilet: ${errorMessage.slice(0, 800)}`,
+              }
+            : p,
+        );
+        return { posts: nextPosts, updatedBy: 'system:publish-worker' };
       });
-      return { touched: true };
+      if (found) return { touched: true };
     } catch (error) {
       console.warn(
         `[feed-plan] markFeedPlanPostFailed failed for ${projectId}/${platform}/${feedPlanPostId}`,

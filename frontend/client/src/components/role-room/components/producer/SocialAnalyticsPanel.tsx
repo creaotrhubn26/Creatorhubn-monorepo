@@ -41,6 +41,7 @@ import roleRoomAgentService, {
   type RoleRoomSocialAnalyticsSummary,
   type RoleRoomTopPostMetric,
 } from '../../services/roleRoomAgentService';
+import { useSequencedFetch } from '../../hooks/useSequencedFetch';
 
 const PLATFORM_COLOR: Record<string, string> = {
   instagram: '#ec4899',
@@ -159,20 +160,28 @@ export default function SocialAnalyticsPanel(): React.ReactElement {
   const [topPosts, setTopPosts] = useState<RoleRoomTopPostMetric[]>([]);
   const [publishesPerPlatform, setPublishesPerPlatform] = useState<RoleRoomPublishCountEntry[]>([]);
 
+  // Drop stale/out-of-order responses (rapid refresh clicks) and post-unmount
+  // updates — useSequencedFetch applies only the latest request's result.
+  const sequencedFetch = useSequencedFetch();
+
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const result = await roleRoomAgentService.fetchSocialAnalytics();
-    if (result.error) setError(result.error);
-    setSummary(result.summary ?? null);
-    setSentimentBreakdown(result.sentimentBreakdown ?? []);
-    setDailyEvents(result.dailyEvents ?? []);
-    setDailySentiment(result.dailySentiment ?? []);
-    setAccountMetrics(result.accountMetrics ?? []);
-    setTopPosts(result.topPosts ?? []);
-    setPublishesPerPlatform(result.publishesPerPlatform ?? []);
-    setLoading(false);
-  }, []);
+    await sequencedFetch(
+      () => roleRoomAgentService.fetchSocialAnalytics(),
+      (result) => {
+        if (result.error) setError(result.error);
+        setSummary(result.summary ?? null);
+        setSentimentBreakdown(result.sentimentBreakdown ?? []);
+        setDailyEvents(result.dailyEvents ?? []);
+        setDailySentiment(result.dailySentiment ?? []);
+        setAccountMetrics(result.accountMetrics ?? []);
+        setTopPosts(result.topPosts ?? []);
+        setPublishesPerPlatform(result.publishesPerPlatform ?? []);
+        setLoading(false);
+      },
+    );
+  }, [sequencedFetch]);
 
   useEffect(() => {
     void refresh();

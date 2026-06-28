@@ -71,6 +71,26 @@ export function useRoleRoomAgentClaude(projectId: string | null): UseRoleRoomAge
   const [threadId, setThreadId] = useState<string | null>(() => readStoredThreadId(projectId));
   const [streaming, setStreaming] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  // `send` is memoized on [projectId] only (so an in-flight stream isn't torn
+  // down every time threadId changes). It therefore can't read threadId from
+  // closure — that value would be frozen at null and every turn would start a
+  // brand-new thread, fragmenting the conversation. Read the live value from
+  // this ref instead, kept in sync with the threadId state below.
+  const threadIdRef = useRef<string | null>(threadId);
+  useEffect(() => {
+    threadIdRef.current = threadId;
+  }, [threadId]);
+
+  // Abort any in-flight stream when the panel unmounts or the project
+  // changes. Without this the fetch keeps running detached, deltas keep
+  // calling setState on a gone component, and the stream races against the
+  // next project's conversation.
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+      abortRef.current = null;
+    };
+  }, [projectId]);
 
   // Load the active thread (if any) when the projectId changes, so the user
   // picks up where they left off across sessions.
@@ -149,7 +169,8 @@ export function useRoleRoomAgentClaude(projectId: string | null): UseRoleRoomAge
           },
         ]);
         setStreaming(true);
-        abortRef.current = new AbortController();
+        const controller = new AbortController();
+        abortRef.current = controller;
         // Tool_use events arrive between deltas and `done`; collect them so
         // both the per-message response *and* the running confirmation
         // dialogs see the same set.
@@ -162,11 +183,12 @@ export function useRoleRoomAgentClaude(projectId: string | null): UseRoleRoomAge
               userMessage: userMessage.trim(),
               requiredScope: options?.scope,
               context: options?.context,
-              threadId,
+              threadId: threadIdRef.current,
             },
             {
               onStart: (payload) => {
-                if (payload.threadId && payload.threadId !== threadId) {
+                if (payload.threadId && payload.threadId !== threadIdRef.current) {
+                  threadIdRef.current = payload.threadId;
                   setThreadId(payload.threadId);
                   writeStoredThreadId(projectId, payload.threadId);
                 }
@@ -194,6 +216,15 @@ export function useRoleRoomAgentClaude(projectId: string | null): UseRoleRoomAge
                 );
               },
               onDone: (payload) => {
+                // The thread id can first appear in `done` (e.g. when the
+                // backend creates the row only after a successful turn), so
+                // capture it here too — otherwise the next message would
+                // start a new thread.
+                if (payload.threadId && payload.threadId !== threadIdRef.current) {
+                  threadIdRef.current = payload.threadId;
+                  setThreadId(payload.threadId);
+                  writeStoredThreadId(projectId, payload.threadId);
+                }
                 // Merge tool_uses from the done payload (authoritative)
                 // with anything we already collected from streaming events.
                 for (const tool of payload.toolUses ?? []) {
@@ -229,12 +260,34 @@ export function useRoleRoomAgentClaude(projectId: string | null): UseRoleRoomAge
               },
               onError: (message) => {
                 setLastError({ code: 'stream_error', detail: message });
+                // An `error` SSE event (as opposed to a thrown/HTTP error)
+                // doesn't reject the stream promise, so without this the
+                // assistant placeholder would stay blank with no explanation.
+                // Only stamp the error when no text streamed in yet, so a
+                // late error doesn't wipe a partial-but-useful answer.
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantId && !m.text
+                      ? { ...m, error: message }
+                      : m,
+                  ),
+                );
               },
             },
-            abortRef.current.signal,
+            controller.signal,
           );
           return finalResponse;
         } catch (err) {
+          // The stream was deliberately aborted (panel closed / project
+          // switched mid-stream). That's not an error to surface — drop the
+          // dangling placeholder and bail quietly.
+          if (
+            controller.signal.aborted ||
+            (err instanceof DOMException && err.name === 'AbortError')
+          ) {
+            setMessages((prev) => prev.filter((m) => m.id !== assistantId));
+            return null;
+          }
           if (err instanceof RoleRoomAgentClaudeError) {
             setLastError({ code: err.code, detail: err.detail });
             setMessages((prev) =>
@@ -252,8 +305,13 @@ export function useRoleRoomAgentClaude(projectId: string | null): UseRoleRoomAge
                   userMessage: userMessage.trim(),
                   requiredScope: options?.scope,
                   context: options?.context,
-                  threadId,
+                  threadId: threadIdRef.current,
                 });
+                if (fallback.threadId && fallback.threadId !== threadIdRef.current) {
+                  threadIdRef.current = fallback.threadId;
+                  setThreadId(fallback.threadId);
+                  writeStoredThreadId(projectId, fallback.threadId);
+                }
                 setMessages((prev) =>
                   prev.map((m) =>
                     m.id === assistantId
@@ -291,9 +349,10 @@ export function useRoleRoomAgentClaude(projectId: string | null): UseRoleRoomAge
           userMessage: userMessage.trim(),
           requiredScope: options?.scope,
           context: options?.context,
-          threadId,
+          threadId: threadIdRef.current,
         });
-        if (response.threadId && response.threadId !== threadId) {
+        if (response.threadId && response.threadId !== threadIdRef.current) {
+          threadIdRef.current = response.threadId;
           setThreadId(response.threadId);
           writeStoredThreadId(projectId, response.threadId);
         }
@@ -338,6 +397,7 @@ export function useRoleRoomAgentClaude(projectId: string | null): UseRoleRoomAge
   }, []);
 
   const startNewThread = useCallback(() => {
+    threadIdRef.current = null;
     setThreadId(null);
     writeStoredThreadId(projectId, null);
     setMessages([]);
@@ -349,6 +409,7 @@ export function useRoleRoomAgentClaude(projectId: string | null): UseRoleRoomAge
       if (!projectId) return;
       const loaded = await getAgentThread(projectId, nextThreadId);
       if (!loaded) return;
+      threadIdRef.current = nextThreadId;
       setThreadId(nextThreadId);
       writeStoredThreadId(projectId, nextThreadId);
       setMessages(

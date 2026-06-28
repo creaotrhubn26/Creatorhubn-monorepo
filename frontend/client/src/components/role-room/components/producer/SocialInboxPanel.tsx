@@ -30,6 +30,7 @@ import roleRoomAgentService, {
   type RoleRoomSentimentLabel,
   type RoleRoomSocialEvent,
 } from '../../services/roleRoomAgentService';
+import { useSequencedFetch } from '../../hooks/useSequencedFetch';
 
 type FilterPlatform = 'all' | 'instagram' | 'facebook_page' | 'linkedin' | 'youtube';
 type FilterKind = 'all' | 'comment' | 'reply' | 'mention' | 'dm' | 'reaction';
@@ -91,20 +92,32 @@ export default function SocialInboxPanel(): React.ReactElement {
   const [sentimentFilter, setSentimentFilter] = useState<FilterSentiment>('all');
   const [unreadOnly, setUnreadOnly] = useState(false);
 
+  // The 30s auto-poll overlaps with filter changes and manual refreshes, so
+  // responses can arrive out of order — without guarding, a slow stale response
+  // could overwrite the freshly-filtered list (or flip `loading` off while a
+  // newer request is still in flight). useSequencedFetch applies only the
+  // latest request's result and skips post-unmount updates.
+  const sequencedFetch = useSequencedFetch();
+
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const result = await roleRoomAgentService.listSocialInbox({
-      platform: platformFilter === 'all' ? undefined : platformFilter,
-      kind: kindFilter === 'all' ? undefined : kindFilter,
-      sentiment: sentimentFilter === 'all' ? undefined : sentimentFilter,
-      unread: unreadOnly,
-      limit: 100,
-    });
-    if (result.error) setError(result.error);
-    setEvents(result.events);
-    setLoading(false);
-  }, [platformFilter, kindFilter, sentimentFilter, unreadOnly]);
+    await sequencedFetch(
+      () =>
+        roleRoomAgentService.listSocialInbox({
+          platform: platformFilter === 'all' ? undefined : platformFilter,
+          kind: kindFilter === 'all' ? undefined : kindFilter,
+          sentiment: sentimentFilter === 'all' ? undefined : sentimentFilter,
+          unread: unreadOnly,
+          limit: 100,
+        }),
+      (result) => {
+        if (result.error) setError(result.error);
+        setEvents(result.events);
+        setLoading(false);
+      },
+    );
+  }, [platformFilter, kindFilter, sentimentFilter, unreadOnly, sequencedFetch]);
 
   useEffect(() => {
     void refresh();

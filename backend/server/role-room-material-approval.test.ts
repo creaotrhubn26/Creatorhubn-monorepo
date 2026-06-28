@@ -42,6 +42,27 @@ function feedRow(platform: string, posts: RoleRoomFeedPostInput[]) {
   };
 }
 
+/**
+ * Wrap a query impl into a pool that also supports the connect()/client path
+ * used by mutateFeedPlanLocked (BEGIN/SELECT … FOR UPDATE/INSERT/COMMIT).
+ * BEGIN/COMMIT/ROLLBACK resolve empty; everything else routes through impl.
+ */
+function txPool(
+  impl: (sql: string, params: unknown[]) => Promise<{ rows: unknown[]; rowCount?: number }>,
+): Pool {
+  const clientQuery = async (sql: string, params: unknown[] = []) => {
+    const verb = sql.trim().toUpperCase();
+    if (verb === "BEGIN" || verb === "COMMIT" || verb === "ROLLBACK") return { rows: [] };
+    // Transaction-scoped advisory lock taken before the SELECT … FOR UPDATE.
+    if (sql.includes("pg_advisory_xact_lock")) return { rows: [] };
+    return impl(sql, params);
+  };
+  return {
+    query: vi.fn((sql: string, params: unknown[] = []) => impl(sql, params)),
+    connect: vi.fn(async () => ({ query: vi.fn(clientQuery), release: vi.fn() })),
+  } as unknown as Pool;
+}
+
 describe("addBusinessDaysIso", () => {
   it("never lands on a weekend", () => {
     for (let d = 1; d <= 12; d++) {
@@ -147,18 +168,16 @@ describe("assertPostPublishable (§5.1 gate)", () => {
 describe("submitPostsForReview", () => {
   it("moves posts to awaiting_client with a deadline", async () => {
     let savedPosts: RoleRoomFeedPostInput[] = [];
-    const pool = {
-      query: vi.fn(async (sql: string, params: unknown[]) => {
-        if (/FROM role_room_feed_plans\s+WHERE project_id/i.test(sql)) {
-          return { rows: [feedRow("instagram", [post({ id: "p1" }), post({ id: "p2" })])], rowCount: 1 };
-        }
-        if (/INSERT INTO role_room_feed_plans/i.test(sql)) {
-          savedPosts = JSON.parse(params[2] as string);
-          return { rows: [feedRow("instagram", savedPosts)], rowCount: 1 };
-        }
-        return { rows: [], rowCount: 0 };
-      }),
-    } as unknown as Pool;
+    const pool = txPool(async (sql: string, params: unknown[]) => {
+      if (/FROM role_room_feed_plans\s+WHERE project_id/i.test(sql)) {
+        return { rows: [feedRow("instagram", [post({ id: "p1" }), post({ id: "p2" })])], rowCount: 1 };
+      }
+      if (/INSERT INTO role_room_feed_plans/i.test(sql)) {
+        savedPosts = JSON.parse(params[2] as string);
+        return { rows: [feedRow("instagram", savedPosts)], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
 
     const result = await submitPostsForReview(pool, "proj-1", "instagram", ["p1"], "daniel@x.no");
     expect(result.submitted).toBe(1);
@@ -177,18 +196,21 @@ describe("runMaterialAutoApproveSweep (§5.2)", () => {
     let savedPosts: RoleRoomFeedPostInput[] = [];
     const overdue = post({ id: "p1", approvalState: "awaiting_client", reviewDeadline: "2026-06-01T00:00:00.000Z" });
     const future = post({ id: "p2", approvalState: "awaiting_client", reviewDeadline: "2999-01-01T00:00:00.000Z" });
-    const pool = {
-      query: vi.fn(async (sql: string, params: unknown[]) => {
-        if (/posts @>/i.test(sql)) {
-          return { rows: [feedRow("instagram", [overdue, future])], rowCount: 1 };
-        }
-        if (/INSERT INTO role_room_feed_plans/i.test(sql)) {
-          savedPosts = JSON.parse(params[2] as string);
-          return { rows: [feedRow("instagram", savedPosts)], rowCount: 1 };
-        }
-        return { rows: [], rowCount: 0 };
-      }),
-    } as unknown as Pool;
+    const pool = txPool(async (sql: string, params: unknown[]) => {
+      // The list scan (containment query) the sweep starts with.
+      if (/posts @>/i.test(sql)) {
+        return { rows: [feedRow("instagram", [overdue, future])], rowCount: 1 };
+      }
+      // The per-plan row lock the mutate re-reads under.
+      if (/FROM role_room_feed_plans\s+WHERE project_id/i.test(sql)) {
+        return { rows: [feedRow("instagram", [overdue, future])], rowCount: 1 };
+      }
+      if (/INSERT INTO role_room_feed_plans/i.test(sql)) {
+        savedPosts = JSON.parse(params[2] as string);
+        return { rows: [feedRow("instagram", savedPosts)], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
 
     const summary = await runMaterialAutoApproveSweep(pool, new Date("2026-06-10T12:00:00.000Z"));
     expect(summary.postsAutoApproved).toBe(1);
