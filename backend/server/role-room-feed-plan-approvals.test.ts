@@ -144,6 +144,9 @@ function makePool(impl: (sql: string, args: unknown[]) => Promise<{ rows: unknow
   const clientQuery = vi.fn(async (sql: string, args: unknown[] = []) => {
     const verb = sql.trim().toUpperCase();
     if (verb === 'BEGIN' || verb === 'COMMIT' || verb === 'ROLLBACK') return { rows: [] };
+    // Transaction-scoped advisory lock taken before the SELECT … FOR UPDATE —
+    // resolve to empty so it doesn't fall through to the impl's SELECT branch.
+    if (sql.includes('pg_advisory_xact_lock')) return { rows: [] };
     return impl(sql, args);
   });
   return {

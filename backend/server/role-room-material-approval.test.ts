@@ -53,6 +53,8 @@ function txPool(
   const clientQuery = async (sql: string, params: unknown[] = []) => {
     const verb = sql.trim().toUpperCase();
     if (verb === "BEGIN" || verb === "COMMIT" || verb === "ROLLBACK") return { rows: [] };
+    // Transaction-scoped advisory lock taken before the SELECT … FOR UPDATE.
+    if (sql.includes("pg_advisory_xact_lock")) return { rows: [] };
     return impl(sql, params);
   };
   return {

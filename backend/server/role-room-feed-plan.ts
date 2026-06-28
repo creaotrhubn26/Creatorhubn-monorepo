@@ -266,18 +266,19 @@ export interface FeedPlanMutationResult {
 }
 
 /**
- * Transactional read-modify-write for a single feed plan. Locks the plan row
- * with SELECT … FOR UPDATE so concurrent approval/save mutations serialize
- * instead of clobbering each other's full-array writes. The mutator gets the
- * freshly-locked current row (or null if the plan doesn't exist) and returns
- * the next posts; returning null aborts the write and the call resolves to the
- * unchanged current row.
+ * Transactional read-modify-write for a single feed plan. Takes a
+ * transaction-scoped advisory lock keyed by (projectId, platform) at the very
+ * start of the transaction — before the SELECT — so mutations serialize even
+ * when no plan row exists yet. The SELECT … FOR UPDATE then locks the row when
+ * it does exist. The mutator gets the freshly-locked current row (or null if
+ * the plan doesn't exist) and returns the next posts; returning null aborts the
+ * write and the call resolves to the unchanged current row.
  *
- * Caveat: when the plan doesn't exist yet, FOR UPDATE locks nothing, so two
- * concurrent first-creates can still race — the unique (project_id, platform)
- * constraint + ON CONFLICT collapses them into one row (last writer wins).
- * Updates to an existing plan are fully serialized, which is the case that
- * matters for approval state.
+ * First-creates are serialized too: two concurrent first-writers for the same
+ * (project_id, platform) block on pg_advisory_xact_lock, so one fully completes
+ * (read empty → insert) before the other reads, and the second sees the
+ * freshly-inserted row instead of racing through ON CONFLICT. The advisory lock
+ * auto-releases on COMMIT/ROLLBACK — no manual unlock or migration needed.
  */
 export async function mutateFeedPlanLocked(
   pool: Pool,
@@ -288,6 +289,13 @@ export async function mutateFeedPlanLocked(
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    // Transaction-scoped advisory lock keyed by (projectId, platform) so even
+    // first-creates serialize: a non-existent row can't be locked by FOR UPDATE,
+    // so without this two concurrent first-writers would race through ON CONFLICT
+    // (last writer wins). Auto-releases on COMMIT/ROLLBACK.
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+      `${projectId}::${platform}`,
+    ]);
     const existing = await client.query(
       `SELECT id, project_id, platform, posts, brand_snapshot, updated_by, created_at, updated_at
          FROM role_room_feed_plans
