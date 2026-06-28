@@ -177,3 +177,12 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         SWIFT_VERSION: "6"
         SWIFT_STRICT_CONCURRENCY: complete
+        # Manual signing (Daniel-fiks 2026-06-28). Automatic signing
+        # feilet i CI fordi xcodebuild's auto-registration trenger
+        # Admin-rolle paa ASC-noekkelen for aa registrere watch-bundle.
+        # Sigh laster ned profilen separat; vi peker eksplisitt paa
+        # navnet via PROVISIONING_PROFILE_SPECIFIER.
+        CODE_SIGN_STYLE: Manual
+        PROVISIONING_PROFILE_SPECIFIER: "LeadMap Watch App Store"
+        CODE_SIGN_IDENTITY: "Apple Distribution"
+        DEVELOPMENT_TEAM: "9TAUZCPK95"
