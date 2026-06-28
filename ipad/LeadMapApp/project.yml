@@ -163,9 +163,12 @@ targets:
         ITSAppUsesNonExemptEncryption: false
     entitlements:
       path: LeadgridWatchApp/Generated/LeadgridWatchApp.entitlements
-      properties:
-        com.apple.security.application-groups:
-          - group.com.creatorhubn.LeadMapApp
+      properties: {}
+        # App Groups droppet fra watch-target (Daniel-fiks 2026-06-28):
+        # WatchConnectivity gir oss alt vi trenger for å dele data med
+        # iPhone-appen (PhoneSession.swift bruker WCSession.transferUserInfo,
+        # ikke shared container). App Group krever Apple-side-binding
+        # som ikke kan automatiseres via ASC API i nåværende rolle.
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.creatorhubn.LeadMapApp.watchkitapp
