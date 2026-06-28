@@ -311,13 +311,17 @@ async function recomputeBatchCounters(
                  AND status = 'failed'
             ),
             pinned_leads = (
+              -- Bug-fiks 2026-06-28: tidligere JOIN på \`c.id = i.draft_lead_id\`
+              -- mistet leads hvor processor opprettet ny crm_customers-rad
+              -- istedenfor å beholde draft (batch 86c99d4e: counter=8,
+              -- faktisk=12). Bruk import_batch_id istedenfor — settes av
+              -- discovery + url-research-processor begge.
               SELECT COUNT(*)::int
-                FROM leadgrid_url_research_items i
-                JOIN crm_customers c ON c.id = i.draft_lead_id
-               WHERE i.batch_id = leadgrid_url_research_batches.id
-                 AND i.status = 'completed'
-                 AND c.latitude IS NOT NULL
-                 AND c.longitude IS NOT NULL
+                FROM crm_customers
+               WHERE import_batch_id = leadgrid_url_research_batches.id
+                 AND latitude IS NOT NULL
+                 AND longitude IS NOT NULL
+                 AND archived_at IS NULL
             )
       WHERE id = (
         SELECT batch_id FROM leadgrid_url_research_items WHERE id = $1::uuid
@@ -346,13 +350,13 @@ export async function recomputeBatchCountersByBatchId(
                  AND status = 'failed'
             ),
             pinned_leads = (
+              -- Bug-fiks 2026-06-28: bruk import_batch_id, ikke draft_lead_id-JOIN
               SELECT COUNT(*)::int
-                FROM leadgrid_url_research_items i
-                JOIN crm_customers c ON c.id = i.draft_lead_id
-               WHERE i.batch_id = $1::uuid
-                 AND i.status = 'completed'
-                 AND c.latitude IS NOT NULL
-                 AND c.longitude IS NOT NULL
+                FROM crm_customers
+               WHERE import_batch_id = $1::uuid
+                 AND latitude IS NOT NULL
+                 AND longitude IS NOT NULL
+                 AND archived_at IS NULL
             )
       WHERE id = $1::uuid`,
     [batchId],
@@ -577,6 +581,34 @@ async function processItem(
       }
       await markItemRunning(pool, item.id);
       attemptedOnce = true;
+
+      // Bug-fiks 2026-06-28: hvis URL er en maps.google.com/?cid=…-
+      // placeholder (når Places ikke ga websiteUri), skal vi IKKE kjøre
+      // URL-research. Den vil scrape Google Maps og returnere en
+      // tilfeldig fallback-bedrift (typisk en US-business som "Maps
+      // Credit Union, Salem OR") med koordinater i USA. Marker bare
+      // som completed med data fra Places-draften.
+      const isMapsPlaceholder = /^https?:\/\/maps\.google\.com\/\?cid=/i.test(
+        item.url,
+      );
+      if (isMapsPlaceholder) {
+        await markItemCompleted(
+          pool,
+          item.id,
+          item.draft_lead_id,
+          true, // hasPin (Places ga oss lat/lng på drafted)
+          "places_only",
+          { reason: "skipped_research_no_website", source: "places_only" },
+          null,
+        );
+        await emitProgress(pool, batchId, orgId, userId, {
+          itemUrl: item.url,
+          itemStatus: "completed",
+          leadId: item.draft_lead_id,
+          confidence: "places_only",
+        });
+        return;
+      }
 
       const result = await runner({
         websiteUrl: item.url,
