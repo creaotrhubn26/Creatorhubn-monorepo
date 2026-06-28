@@ -10,6 +10,7 @@ import { Box, Stack, Typography, Button, TextField, Avatar, IconButton, Dialog, 
 import Edit from '@mui/icons-material/Edit';
 import Close from '@mui/icons-material/Close';
 import Add from '@mui/icons-material/Add';
+import AutoAwesome from '@mui/icons-material/AutoAwesome';
 import { apiRequest } from '@/lib/queryClient';
 import Image from '@mui/icons-material/Image';
 import Star from '@mui/icons-material/Star';
@@ -33,7 +34,16 @@ const MoodboardTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [meta, setMeta] = useState<any | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [extracting, setExtracting] = useState(false);
+  const [search, setSearch] = useState('');
+  const [genNotes, setGenNotes] = useState(false);
   const loadMeta = () => { if (isReal) apiRequest(`/api/projects/${encodeURIComponent(projectId)}/moodboard-meta`).then((r: any) => setMeta(r?.meta || null)).catch(() => {}); };
+  const generateNotes = async () => {
+    if (!isReal || genNotes) return;
+    setGenNotes(true);
+    try { const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/moodboard-meta/generate-notes`, { method: 'POST', body: {} }); setMeta((m: any) => ({ ...(m || {}), style: r.styleDirection, notes: r.notes, mustCapture: r.mustCapture })); }
+    catch (e: any) { window.alert(e?.message || 'Kunne ikke generere notater — last opp referansebilder først.'); }
+    finally { setGenNotes(false); }
+  };
   const extractPalette = async () => {
     if (!isReal || extracting) return;
     setExtracting(true);
@@ -51,6 +61,15 @@ const MoodboardTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const capture = (meta?.mustCapture && meta.mustCapture.length) ? meta.mustCapture.map((c: any) => [c.label || c[0] || c, c.done ?? c[1] ?? false]) : CAPTURE;
   const refCount = isReal ? mood.images.length : 86;
   const styleDir = meta?.style || 'Romantisk / Editorial';
+  // Kategori-tellere + filtrering + søk (ekte data).
+  const catCount = (mood.images || []).reduce((m: any, im: any) => { if (im.category) m[im.category] = (m[im.category] || 0) + 1; return m; }, {});
+  const realCats = isReal
+    ? [{ key: 'alle', label: `Alle ${mood.images.length}` }, ...CATS.filter((c) => c.key !== 'alle').map((c) => ({ key: c.key, label: `${c.label.replace(/\s*\d+$/, '')} ${catCount[c.key] || 0}` }))]
+    : CATS;
+  const q = search.trim().toLowerCase();
+  const gridImages = isReal
+    ? mood.images.filter((im: any) => (cat === 'alle' || im.category === cat) && (!q || (im.label || '').toLowerCase().includes(q)))
+    : mood.images;
   return (
     <Stack direction="row" spacing={2.5} sx={{ alignItems: 'flex-start' }}>
       <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -72,10 +91,11 @@ const MoodboardTab: React.FC<{ projectId: string }> = ({ projectId }) => {
 
         <WsCard sx={{ mb: 2 }}>
           <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5, flexWrap: 'wrap', gap: 1 }}>
-            <WsPills items={CATS} value={cat} onChange={setCat} />
+            <WsPills items={realCats} value={cat} onChange={setCat} />
           </Stack>
-          <TextField fullWidth size="small" placeholder="Søk i moodboardet…" InputProps={{ startAdornment: <Search sx={{ fontSize: 18, color: ws.textFaint, mr: 1 }} /> }} sx={{ mb: 1.5, '& .MuiOutlinedInput-root': { bgcolor: ws.panelInput, fontSize: 13 } }} />
-          <WsImageGrid columns={4} addLabel="Last opp bilde" images={mood.images} onUpload={mood.onUpload} />
+          <TextField fullWidth size="small" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Søk i moodboardet…" InputProps={{ startAdornment: <Search sx={{ fontSize: 18, color: ws.textFaint, mr: 1 }} /> }} sx={{ mb: 1.5, '& .MuiOutlinedInput-root': { bgcolor: ws.panelInput, fontSize: 13 } }} />
+          {isReal && cat !== 'alle' && <Typography sx={{ fontSize: 11, color: ws.textFaint, mb: 1 }}>Nye opplastinger her merkes «{cat}».</Typography>}
+          <WsImageGrid columns={4} addLabel="Last opp bilde" images={gridImages} onUpload={(f: any) => mood.onUpload(f, cat === 'alle' ? undefined : cat)} />
         </WsCard>
 
         {/* Fargepalett + Stilnotater + Må fanges */}
@@ -89,8 +109,12 @@ const MoodboardTab: React.FC<{ projectId: string }> = ({ projectId }) => {
             {(!meta?.palette || !meta.palette.length) && isReal && <Typography sx={{ fontSize: 10.5, color: ws.textFaint, mt: 1 }}>Eksempel-palett — trykk «Auto fra referanser» for å trekke ut ekte farger.</Typography>}
           </WsCard>
           <WsCard>
-            <Typography sx={{ fontSize: 14, fontWeight: 700, mb: 1.5 }}>Stilnotater</Typography>
+            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
+              <Typography sx={{ fontSize: 14, fontWeight: 700 }}>Stilnotater</Typography>
+              {isReal && <Button size="small" startIcon={<AutoAwesome sx={{ fontSize: 15 }} />} onClick={generateNotes} disabled={genNotes} sx={{ color: ws.accent, textTransform: 'none', fontWeight: 600, fontSize: 11.5 }}>{genNotes ? 'Analyserer…' : 'AI fra referanser'}</Button>}
+            </Stack>
             <Stack spacing={0.75}>{notes.map((s) => <Typography key={s} sx={{ fontSize: 12.5, color: ws.textDim }}>· {s}</Typography>)}</Stack>
+            {(!meta?.notes || !meta.notes.length) && isReal && <Typography sx={{ fontSize: 10.5, color: ws.textFaint, mt: 1 }}>Eksempel — trykk «AI fra referanser» for å generere fra bildene.</Typography>}
           </WsCard>
           <WsCard>
             <Typography sx={{ fontSize: 14, fontWeight: 700, mb: 1.5 }}>Må fanges</Typography>
