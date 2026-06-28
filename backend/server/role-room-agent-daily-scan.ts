@@ -1,8 +1,11 @@
 /**
- * Proactive daily scan — nightly cron that asks the Role Room Agent to
- * look at each active project with AI consent and flag anything that
- * needs attention (over-frist reviews, blocked timeline items, overspend,
- * missing brief fields).
+ * Proactive daily scan ("Morning Brief") — nightly cron that asks the Role
+ * Room Agent to look at each active project with AI consent and flag what
+ * needs attention across the producer surfaces, grounded in the aggregate
+ * workspace-status block: Inbox (unread backlog / negative comments), Leads
+ * (cold warm-leads, weak ROI), Feed (overdue at client / needs-changes), and
+ * Analytics (sentiment / publish cadence). Aggregates only — no third-party
+ * names or quotes.
  *
  * Findings land in `producer_project_notifications` so they surface in
  * the Innboks the next morning. Nothing is acted on automatically —
@@ -20,22 +23,23 @@ import type { Pool } from 'pg';
 import { logAiCall } from './role-room-ai-audit.js';
 import { claudeAgentEnabled, runClaudeAgent } from './role-room-agent-claude.js';
 import { ROLE_ROOM_AGENT_SYSTEM_PROMPT } from './role-room-agent-definition.js';
+import { buildWorkspaceContextBlock } from './role-room-agent-workspace-context.js';
 
-const DAILY_SCAN_PROMPT = `Dette er en automatisert daglig prosjekt-scan. Kjør følgende vurdering av prosjektet:
+const DAILY_SCAN_PROMPT = `Dette er en automatisert daglig «Morning Brief»-scan. Vurder hva produsenten bør ta tak i i dag, på tvers av flatene. Bruk KUN tallene i "Arbeidsflate-status (aggregert)" — hvis et område ikke har data der, ikke flagg det (ikke gjett).
 
-1. Reviews: er noen over frist eller i 'changes_requested' mer enn 3 dager?
-2. Timeline: er det blokkerte items? Er det items uten frist?
-3. Økonomi: er det linjer hvor faktisk > godkjent? Er det 'blocked' linjer?
-4. Brief: mangler det obligatoriske felt?
-5. Skytedager: er det planlagte dager uten call-tid eller lokasjon?
+Se etter:
+1. Inbox: ubesvart bunke (mange uleste) eller negative kommentarer som bør håndteres.
+2. Leads: varme leads uten oppfølging, eller svak ROI (høy kost/kunde).
+3. Feed: poster forbi kunde-frist, eller poster som trenger endring.
+4. Analytics: tydelig negativ stemnings-vekt eller lav publiserings-rytme.
 
 Returner et kort JSON-objekt:
 {
-  "risks": [{ "area": "reviews|timeline|economy|brief|shoot", "severity": "high|medium|low", "title": "kort", "detail": "hvorfor" }],
+  "risks": [{ "area": "inbox|leads|feed|analytics", "severity": "high|medium|low", "title": "kort", "detail": "hvorfor — referer aggregerte tall, ingen navn/sitater" }],
   "headline": "én setning som beskriver helhetstilstanden"
 }
 
-Kun JSON, ingen markdown, ingen forklaring.`;
+Kun JSON, ingen markdown, ingen forklaring. Ikke finn på enkelt-detaljer (navn, sitater) — bare aggregerte signaler.`;
 
 interface DailyScanProjectRow {
   projectId: string;
@@ -125,8 +129,17 @@ function extractJson(text: string): any | null {
 
 async function scanOneProject(pool: Pool, row: DailyScanProjectRow): Promise<void> {
   try {
+    // Ground the scan in real aggregate signals across Inbox/Leads/Analytics/
+    // Feed. Without this the agent had no project data at all and could only
+    // guess. A null block (nothing happening) → the prompt tells it not to
+    // invent risks, so the scan simply produces no findings.
+    const workspaceBlock = await buildWorkspaceContextBlock(pool, {
+      userId: row.userId,
+      projectId: row.projectId,
+    });
     const raw = await runClaudeAgent({
       cachedSystem: ROLE_ROOM_AGENT_SYSTEM_PROMPT,
+      freshSystem: workspaceBlock ?? undefined,
       userMessage: `${DAILY_SCAN_PROMPT}\n\nProsjekt-id: ${row.projectId}`,
       maxTokens: 1024,
     });
