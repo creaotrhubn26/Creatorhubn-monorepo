@@ -50,6 +50,17 @@ export const GEN_MODELS: Record<string, GenModel> = {
     imageField: "image_url", outputField: "video",
     sendsPersonalData: true,
   },
+  // Photo enhancer (GFPGAN/Real-ESRGAN) — kjører på VÅR infra (CPU/RunPod-GPU),
+  // ikke fal. «Kost» = compute; margin via påslag. Egen kø (enqueuePhotoEnhancer…).
+  "photo-enhance": {
+    key: "photo-enhance",
+    label: "Foto-forbedring (GFPGAN/Real-ESRGAN)",
+    falPath: "",
+    kind: "image-edit",
+    provider: "creatorhub",
+    estCostUsd: 0.04,
+    sendsPersonalData: false,
+  },
   // Nano Banana 2 — tekst→bilde (konsept-generering for moodboard). Ikke
   // persondata (genererer fra tekst) → ingen samtykke-gate nødvendig.
   "nano-banana-2-t2i": {
@@ -182,6 +193,14 @@ export async function getGenSettings(pool: any): Promise<GenSettings> {
 export function isWhitelisted(settings: GenSettings, email?: string | null, role?: string | null): boolean {
   if (role === "super_admin") return true;
   return !!email && settings.whitelist.includes(email.toLowerCase());
+}
+
+// Hvem får BRUKE AI: whitelist KUN i gratis-pilot. I betalt-modus (metered/credits)
+// er det åpent for alle — faktisk bruk gates av kreditt-saldo / kunde-status.
+export function aiAllowed(settings: GenSettings, email?: string | null, role?: string | null): boolean {
+  if (!settings.enabled) return false;
+  if (settings.billingMode === "free_whitelist") return isWhitelisted(settings, email, role);
+  return true;
 }
 
 // ─── Sovende Stripe-metering-hook ────────────────────────────────────────────
