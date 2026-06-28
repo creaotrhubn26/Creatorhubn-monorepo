@@ -10,35 +10,44 @@
 import { useEffect, useState, useCallback } from 'react';
 import { apiRequest } from '@/lib/queryClient';
 
-export interface WsImageItem { id: string; url: string; label?: string }
+export interface WsImageItem { id: string; url: string; label?: string; category?: string | null }
 
 export function useProjectImages(projectId: string, panel: string) {
   const [images, setImages] = useState<WsImageItem[]>([]);
   const isReal = projectId && projectId !== 'sample';
 
-  useEffect(() => {
+  const reload = useCallback(() => {
     if (!isReal) return;
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/images?panel=${encodeURIComponent(panel)}`)
       .then((r: any) => { setImages(Array.isArray(r?.images) ? r.images : []); })
       .catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, panel]);
+  }, [projectId, panel, isReal]);
+
+  useEffect(() => { reload(); }, [reload]);
 
   // onUpload: multipart-POST (apiRequest serialiserer JSON, så vi bruker rå fetch
-  // med FormData + credentials). Returnerer det lagrede bildet (B2-URL).
-  const onUpload = useCallback(async (file: File): Promise<WsImageItem | void> => {
+  // med FormData + credentials). category valgfri (moodboard-tagging).
+  const onUpload = useCallback(async (file: File, category?: string): Promise<WsImageItem | void> => {
     if (!isReal) return; // demo: WsImageGrid beholder lokal forhåndsvisning
     const fd = new FormData();
     fd.append('file', file);
     fd.append('panel', panel);
     fd.append('label', file.name);
+    if (category) fd.append('category', category);
     const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/images`, {
       method: 'POST', body: fd, credentials: 'include',
     });
     if (!res.ok) throw new Error('Opplasting til B2 feilet');
     const saved = await res.json();
-    return { id: saved.id, url: saved.url, label: saved.label };
+    setImages((p) => [{ id: saved.id, url: saved.url, label: saved.label, category: saved.category }, ...p]);
+    return { id: saved.id, url: saved.url, label: saved.label, category: saved.category };
   }, [projectId, panel, isReal]);
 
-  return { images, onUpload, isReal };
+  const setCategory = useCallback(async (id: string, category: string | null) => {
+    if (!isReal) return;
+    setImages((p) => p.map((im) => im.id === id ? { ...im, category } : im));
+    try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/images/${id}`, { method: 'PATCH', body: { category } }); } catch { reload(); }
+  }, [projectId, isReal, reload]);
+
+  return { images, onUpload, setCategory, reload, isReal };
 }

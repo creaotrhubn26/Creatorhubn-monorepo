@@ -100,6 +100,7 @@ async function ensureSchema(pool: any): Promise<void> {
           uploaded_by  VARCHAR(64),
           created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
+        ALTER TABLE project_images ADD COLUMN IF NOT EXISTS category VARCHAR(40);
         CREATE INDEX IF NOT EXISTS idx_pi_project ON project_images (project_id, panel, created_at DESC);
 
         CREATE TABLE IF NOT EXISTS project_split_shares (
@@ -370,6 +371,73 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       );
       res.json({ palette, fromImages: imgs.rows.length });
     } catch (e) { console.error("POST extract-palette", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  // AI-stilnotater: analyser referansebildene m/ Claude vision → stil-retning,
+  // mood-deskriptorer, stilnotater og foreslåtte «må fanges»-shots. Lagres på meta.
+  app.post("/api/projects/:projectId/moodboard-meta/generate-notes", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const pid = req.params.projectId;
+      const imgs = await pool.query(
+        `SELECT b2_key, content_type FROM project_images WHERE project_id = $1 AND panel IN ('references','moodboard','moodboard-shared') ORDER BY created_at DESC LIMIT 6`,
+        [pid],
+      ).catch(() => ({ rows: [] }));
+      if (imgs.rows.length === 0) return res.status(400).json({ error: "no_references", message: "Last opp referansebilder først." });
+      // Bygg vision-innhold (base64 av referansene).
+      const content: any[] = [];
+      for (const im of imgs.rows) {
+        const obj = await getFromRoleRoomB2(im.b2_key).catch(() => null);
+        if (!obj?.body) continue;
+        const mime = im.content_type || obj.contentType || "image/jpeg";
+        if (!/^image\/(jpe?g|png|webp|gif)$/i.test(mime)) continue;
+        content.push({ type: "image", source: { type: "base64", media_type: mime, data: obj.body.toString("base64") } });
+        if (content.length >= 6) break;
+      }
+      if (content.length === 0) return res.status(422).json({ error: "no_usable_images" });
+      content.push({ type: "text", text: "Dette er moodboard-referanser for et foto/video-prosjekt. Kall moodboard_notes med stil-retning, mood-deskriptorer, konkrete stilnotater for fotografen, og foreslåtte «må fanges»-øyeblikk. Svar på NORSK." });
+      let client: any;
+      try {
+        const mod: any = await import("@anthropic-ai/sdk");
+        const Ctor = mod.default ?? mod.Anthropic;
+        client = new Ctor({ apiKey: process.env.ANTHROPIC_API_KEY, maxRetries: 1, timeout: 30_000 });
+      } catch { return res.status(503).json({ error: "ai_not_configured" }); }
+      const TOOL = {
+        name: "moodboard_notes",
+        description: "Strukturerte stilnotater fra moodboard-referanser.",
+        input_schema: {
+          type: "object",
+          properties: {
+            styleDirection: { type: "string", description: "Kort stil-retning, f.eks. 'Romantisk / Editorial'" },
+            moods: { type: "array", items: { type: "string" }, description: "3-6 mood-deskriptorer" },
+            notes: { type: "array", items: { type: "string" }, description: "4-8 konkrete stilnotater for fotografen" },
+            mustCapture: { type: "array", items: { type: "string" }, description: "3-6 må-fanges-øyeblikk" },
+          },
+          required: ["styleDirection", "moods", "notes", "mustCapture"],
+        },
+      };
+      const resp = await client.messages.create({
+        model: process.env.CAPTURE_ANALYZE_MODEL || "claude-opus-4-7",
+        max_tokens: 1024,
+        tools: [TOOL], tool_choice: { type: "tool", name: "moodboard_notes" },
+        messages: [{ role: "user", content }],
+      });
+      try { (await import("./ai-usage-tracker")).logAIUsage?.(resp as any, { feature: "workspace/moodboard-notes", userId: uid }); } catch { /* */ }
+      const tu = (resp.content || []).find((b: any) => b.type === "tool_use" && b.name === "moodboard_notes");
+      const out: any = tu?.input || {};
+      const styleDirection = String(out.styleDirection || "").slice(0, 200);
+      const notes = Array.isArray(out.notes) ? out.notes.map((s: any) => String(s).slice(0, 300)).filter(Boolean) : [];
+      const mustCapture = Array.isArray(out.mustCapture) ? out.mustCapture.map((s: any) => ({ label: String(s).slice(0, 200), done: false })).filter((x: any) => x.label) : [];
+      const moods = Array.isArray(out.moods) ? out.moods.map((s: any) => String(s).slice(0, 60)).filter(Boolean) : [];
+      // Lagre på meta (behold palette).
+      await pool.query(`CREATE TABLE IF NOT EXISTS project_moodboard_meta (project_id VARCHAR(64) PRIMARY KEY, style TEXT, palette JSONB, notes JSONB, must_capture JSONB, client_approved VARCHAR(20), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`).catch(() => undefined);
+      await pool.query(
+        `INSERT INTO project_moodboard_meta (project_id, style, notes, must_capture, updated_at) VALUES ($1,$2,$3::jsonb,$4::jsonb,NOW())
+         ON CONFLICT (project_id) DO UPDATE SET style=EXCLUDED.style, notes=EXCLUDED.notes, must_capture=EXCLUDED.must_capture, updated_at=NOW()`,
+        [pid, styleDirection || null, JSON.stringify(notes), JSON.stringify(mustCapture)],
+      );
+      res.json({ styleDirection, moods, notes, mustCapture, fromImages: content.length });
+    } catch (e) { console.error("POST generate-notes", e); res.status(500).json({ error: "failed" }); }
   });
 
   // ─────────── Delivery-fase utledet fra EKTE showcase-tilstand ───────────
@@ -1826,13 +1894,13 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       await ensureSchema(pool);
       const panel = typeof req.query.panel === "string" ? req.query.panel : null;
       const r = await pool.query(
-        `SELECT id, panel, b2_key, label, content_type, created_at FROM project_images
+        `SELECT id, panel, b2_key, label, category, content_type, created_at FROM project_images
           WHERE project_id = $1 ${panel ? "AND panel = $2" : ""}
           ORDER BY created_at DESC`,
         panel ? [req.params.projectId, panel] : [req.params.projectId],
       );
       const images = await Promise.all(r.rows.map(async (im: any) => ({
-        id: im.id, panel: im.panel, label: im.label,
+        id: im.id, panel: im.panel, label: im.label, category: im.category || null,
         url: await presignRoleRoomB2Download(im.b2_key, 3600),
         createdAt: im.created_at,
       })));
@@ -1848,21 +1916,34 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       if (!file || !file.buffer) return res.status(400).json({ error: "file_required" });
       const panel = typeof req.body?.panel === "string" ? req.body.panel : "media";
       const label = typeof req.body?.label === "string" ? req.body.label : file.originalname;
+      const category = typeof req.body?.category === "string" && req.body.category ? req.body.category.slice(0, 40) : null;
       const safeName = slugifyForKey(file.originalname || "bilde");
       const key = `workspace/${req.params.projectId}/${panel}/${crypto.randomUUID()}-${safeName}`;
       const result = await archiveToRoleRoomB2(key, file.buffer, file.mimetype || "application/octet-stream");
       if (!result) return res.status(502).json({ error: "b2_upload_failed" });
       const ins = await pool.query(
-        `INSERT INTO project_images (project_id, panel, b2_key, label, content_type, size_bytes, uploaded_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, created_at`,
-        [req.params.projectId, panel, key, label, file.mimetype || null, file.size || null, uid],
+        `INSERT INTO project_images (project_id, panel, b2_key, label, category, content_type, size_bytes, uploaded_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, created_at`,
+        [req.params.projectId, panel, key, label, category, file.mimetype || null, file.size || null, uid],
       );
       res.status(201).json({
-        id: ins.rows[0].id, panel, label,
+        id: ins.rows[0].id, panel, label, category,
         url: await presignRoleRoomB2Download(key, 3600),
         createdAt: ins.rows[0].created_at,
       });
     } catch (e) { console.error("POST images", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  // Re-kategoriser et bilde (moodboard-tagging).
+  app.patch("/api/projects/:projectId/images/:id", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureSchema(pool);
+      const category = typeof req.body?.category === "string" ? req.body.category.slice(0, 40) || null : null;
+      const upd = await pool.query(`UPDATE project_images SET category = $1 WHERE id = $2 AND project_id = $3 RETURNING id`, [category, req.params.id, req.params.projectId]).catch(() => ({ rows: [] }));
+      if (!upd.rows.length) return res.status(404).json({ error: "not_found" });
+      res.json({ ok: true });
+    } catch (e) { console.error("PATCH images", e); res.status(500).json({ error: "failed" }); }
   });
 
   app.delete("/api/projects/:projectId/images/:id", async (req, res) => {
