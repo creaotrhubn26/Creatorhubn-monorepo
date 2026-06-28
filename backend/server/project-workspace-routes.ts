@@ -1351,6 +1351,50 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
 
   // Animer et stillbilde → kort AI-video (Seedance 2.0). Samme gater. Async/treg
   // (video tar minutter) — jobben poller via /ai/jobs/:id som resten.
+  // «Foreslå» — Claude vision ser bildet (+ moodboard-stil) → 3 skreddersydde
+  // forslag: bevegelse (for Animer) eller redigeringer (for AI-rediger). Gjør
+  // verktøyene kontekst-bevisste uten at brukeren må formulere en god prompt.
+  app.post("/api/projects/:projectId/ai/suggest", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureGenSchema();
+      const pid = req.params.projectId;
+      const me = await userIdentity(uid);
+      const settings = await getGenSettings(pool);
+      if (!settings.enabled) return res.status(503).json({ error: "ai_disabled" });
+      if (!isWhitelisted(settings, me.email, me.role)) return res.status(403).json({ error: "not_whitelisted" });
+      const consent = await pool.query(`SELECT consented FROM project_ai_consent WHERE project_id = $1`, [pid]).catch(() => ({ rows: [] }));
+      if (!consent.rows[0]?.consented) return res.status(409).json({ error: "consent_required" });
+      const mode = req.body?.mode === "edit" ? "edit" : "motion";
+      const assetId = req.body?.assetId;
+      if (!assetId) return res.status(400).json({ error: "assetId_required" });
+      const a = await pool.query(`SELECT preview_key, full_key FROM capture_assets WHERE id = $1`, [assetId]).catch(() => ({ rows: [] }));
+      const srcKey = a.rows[0]?.preview_key || a.rows[0]?.full_key;
+      if (!srcKey) return res.status(404).json({ error: "asset_not_found" });
+      const obj = await getFromRoleRoomB2(srcKey).catch(() => null);
+      if (!obj?.body) return res.status(503).json({ error: "source_unavailable" });
+      const mime = obj.contentType && /^image\//.test(obj.contentType) ? obj.contentType : "image/jpeg";
+      const styleRow = await pool.query(`SELECT style FROM project_moodboard_meta WHERE project_id = $1`, [pid]).catch(() => ({ rows: [] }));
+      const style = styleRow.rows[0]?.style ? `Prosjektets stil-retning: «${styleRow.rows[0].style}». ` : "";
+      let client: any;
+      try { const mod: any = await import("@anthropic-ai/sdk"); client = new (mod.default ?? mod.Anthropic)({ apiKey: process.env.ANTHROPIC_API_KEY, maxRetries: 1, timeout: 25_000 }); }
+      catch { return res.status(503).json({ error: "ai_not_configured" }); }
+      const ask = mode === "motion"
+        ? `${style}Dette stillbildet skal animeres til en kort video (bilde→video). Kall suggest med 3 KONKRETE, korte bevegelses-beskrivelser tilpasset NETTOPP dette bildet (kamera-bevegelse + naturlig motiv-bevegelse). Norsk.`
+        : `${style}Dette bildet skal AI-redigeres. Kall suggest med 3 KONKRETE redigerings-instruksjoner tilpasset NETTOPP dette bildet (f.eks. fjern et spesifikt objekt, juster lys/bakgrunn). Norsk.`;
+      const TOOL = { name: "suggest", description: "3 forslag.", input_schema: { type: "object", properties: { suggestions: { type: "array", items: { type: "string" }, minItems: 3, maxItems: 3 } }, required: ["suggestions"] } };
+      const resp = await client.messages.create({
+        model: process.env.CAPTURE_ANALYZE_MODEL || "claude-opus-4-7",
+        max_tokens: 500, tools: [TOOL], tool_choice: { type: "tool", name: "suggest" },
+        messages: [{ role: "user", content: [{ type: "image", source: { type: "base64", media_type: mime, data: obj.body.toString("base64") } }, { type: "text", text: ask }] }],
+      });
+      try { (await import("./ai-usage-tracker")).logAIUsage?.(resp as any, { feature: `workspace/ai-suggest-${mode}`, userId: uid }); } catch { /* */ }
+      const tu = (resp.content || []).find((b: any) => b.type === "tool_use" && b.name === "suggest");
+      const suggestions = Array.isArray(tu?.input?.suggestions) ? tu.input.suggestions.map((s: any) => String(s).slice(0, 300)).filter(Boolean).slice(0, 3) : [];
+      res.json({ suggestions });
+    } catch (e) { console.error("POST ai/suggest", e); res.status(500).json({ error: "failed" }); }
+  });
+
   app.post("/api/projects/:projectId/ai/image-to-video", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
     try {
