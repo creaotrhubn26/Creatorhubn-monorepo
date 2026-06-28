@@ -102,18 +102,34 @@ struct ContestTemplateDTO: Codable, Hashable, Identifiable {
     }
 }
 
-/// Produkt i org-spesifikk premiekatalog.
+/// Produkt i org-spesifikk premiekatalog. Felt-navn matcher
+/// `sales_prize_catalog`-skjema i mig 0354 (title/description/
+/// estimated_value_nok/fulfillment_type). Convenience-getters under
+/// gir UI tilgang via gamle navn (`name`, `priceNok`).
 struct OrgPrizeProductDTO: Codable, Hashable, Identifiable {
     let id: UUID
-    let name: String
-    let icon: String
-    let category: String        // tech / travel / food / voucher / experience / cash
-    let priceNok: Int
-    let vendor: String?
+    let title: String
+    let description: String?
+    let category: String        // tech / travel / food / voucher / experience / cash / physical / digital
+    let estimatedValueNok: Int
+    let fulfillmentType: String  // digital_voucher / cash_on_payroll / physical_shipping / experience_ticket / travel_booking / internal_grant / digital_code / experience_voucher
     let imageUrl: String?
     let imageB2Key: String?
-    let fulfillmentMethod: String?
-    let archived: Bool
+    let metadata: JSONValue?     // vendor + icon + osv lagres her — backend har ikke disse som kolonner
+
+    // UI-aliaser (gamle navn fra preview-mock)
+    var name: String { title }
+    var priceNok: Int { estimatedValueNok }
+    var vendor: String? {
+        if case .object(let dict) = metadata, case .string(let v) = dict["vendor"] { return v }
+        return nil
+    }
+    var icon: String {
+        if case .object(let dict) = metadata, case .string(let v) = dict["icon"] { return v }
+        return "gift.fill"
+    }
+    var fulfillmentMethod: String? { fulfillmentType }
+    var archived: Bool { false }  // backend filtrerer allerede out archived; vises aldri
 }
 
 /// Konkurranse-instans m/ premier (rank → snapshot).
@@ -333,26 +349,45 @@ struct PrizeAwardDTO: Codable, Hashable, Identifiable {
 // MARK: - Input-payloads
 // ============================================================
 
+/// Felt-navn matcher backend POST `/prize-catalog`-body. `vendor` og `icon`
+/// pakkes inn i `metadata` siden tabellen ikke har egne kolonner for dem.
 struct OrgPrizeProductCreatePayload: Encodable, Hashable {
-    let name: String
-    let icon: String
+    let title: String
+    let description: String?
     let category: String
-    let priceNok: Int
-    let vendor: String?
+    let estimatedValueNok: Int
+    let fulfillmentType: String
     let imageUrl: String?
     let imageB2Key: String?
-    let fulfillmentMethod: String?
+    /// {"vendor": "...", "icon": "..."} – andre felter hoppes over.
+    let metadata: [String: String]
+
+    /// Convenience-init som matcher tidligere mockup-API (name/priceNok/etc).
+    init(name: String, icon: String, category: String, priceNok: Int,
+         vendor: String?, imageUrl: String? = nil, imageB2Key: String? = nil,
+         fulfillmentMethod: String? = nil, description: String? = nil) {
+        self.title = name
+        self.description = description
+        self.category = category
+        self.estimatedValueNok = priceNok
+        self.fulfillmentType = fulfillmentMethod ?? "physical_shipping"
+        self.imageUrl = imageUrl
+        self.imageB2Key = imageB2Key
+        var meta: [String: String] = ["icon": icon]
+        if let v = vendor { meta["vendor"] = v }
+        self.metadata = meta
+    }
 }
 
 struct OrgPrizeProductPatchPayload: Encodable, Hashable {
-    var name: String?
-    var icon: String?
+    var title: String?
+    var description: String?
     var category: String?
-    var priceNok: Int?
-    var vendor: String?
+    var estimatedValueNok: Int?
+    var fulfillmentType: String?
     var imageUrl: String?
     var imageB2Key: String?
-    var fulfillmentMethod: String?
+    var metadata: [String: String]?
     var archived: Bool?
 }
 
@@ -638,12 +673,28 @@ private struct SalesLeadershipTemplatesEnvelope: Decodable {
     let templates: [ContestTemplateDTO]
 }
 
+/// Backend returnerer `{prizes: [...]}` på catalog-GET (matcher
+/// rest av Leadgrid-mønster). Tilbyr begge nøkler for fremtidig
+/// API-evolusjon.
 private struct SalesLeadershipCatalogEnvelope: Decodable {
     let products: [OrgPrizeProductDTO]
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.products = try c.decodeIfPresent([OrgPrizeProductDTO].self, forKey: .prizes)
+            ?? c.decodeIfPresent([OrgPrizeProductDTO].self, forKey: .products) ?? []
+    }
+    private enum CodingKeys: String, CodingKey { case prizes, products }
 }
 
+/// Backend returnerer hel rad direkte (`res.json(r.rows[0])`) etter
+/// create/update — ingen envelope. Wrap her.
 private struct SalesLeadershipPrizeProductEnvelope: Decodable {
     let product: OrgPrizeProductDTO
+    init(from decoder: Decoder) throws {
+        // Først prøv envelope-format; fall til "rå rad" hvis nei.
+        let raw = try OrgPrizeProductDTO(from: decoder)
+        self.product = raw
+    }
 }
 
 private struct SalesLeadershipContestsEnvelope: Decodable {
