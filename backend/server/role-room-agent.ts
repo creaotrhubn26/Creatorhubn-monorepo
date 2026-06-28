@@ -10,6 +10,7 @@ import {
   orchestratorEnabled,
   runOrchestratedBootstrap,
 } from "./role-room-agent-bootstrap-orchestrator.js";
+import { makeStructuredLogger } from "./role-room-agent-llm-util.js";
 import { enrichCompetitorWithMetaPage } from "./role-room-meta-pages.js";
 
 export type RoleRoomAgentProducerBootstrapInput = {
@@ -4871,16 +4872,7 @@ function buildFallbackBootstrap(
  * `openai_synthesis_returned_null` → `synthesis_unavailable_returning_fallback`
  * fallback chain was undiagnosable. Grep `role-room-agent:synthesis`.
  */
-function logBootstrapSynthesis(reason: string, detail?: Record<string, unknown>): void {
-  try {
-    console.warn(
-      "[role-room-agent:synthesis]",
-      JSON.stringify({ reason, ...detail }),
-    );
-  } catch {
-    // diagnostics never throw
-  }
-}
+const logBootstrapSynthesis = makeStructuredLogger("[role-room-agent:synthesis]");
 
 async function requestOpenAiBootstrap(
   input: RoleRoomAgentProducerBootstrapInput,

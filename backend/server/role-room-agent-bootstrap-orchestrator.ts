@@ -25,6 +25,12 @@ import {
   type RoleRoomAgentProducerBootstrapInput,
   type RoleRoomAgentWebsiteInsights,
 } from './role-room-agent.js';
+import {
+  BOOTSTRAP_SYNTH_MAX_TOKENS,
+  extractJsonFromText,
+  makeStructuredLogger,
+  withTimeout,
+} from './role-room-agent-llm-util.js';
 
 const ORCHESTRATOR_SYSTEM_PROMPT = `Du er The Role Room Agents research-orchestrator. Målet ditt er å samle akkurat nok informasjon til å lage et godt første utkast for et innholdsproduksjons-prosjekt. Tenk strategisk:
 
@@ -96,16 +102,7 @@ async function getClient(): Promise<any> {
  * returned null silently, which is why "research kom gjennom, men kilden
  * svarte tomt" was impossible to diagnose from logs.
  */
-function logOrchestrator(reason: string, detail?: Record<string, unknown>): void {
-  try {
-    console.warn(
-      '[role-room-agent:orchestrator]',
-      JSON.stringify({ reason, ...detail }),
-    );
-  } catch {
-    // diagnostics never throw
-  }
-}
+const logOrchestrator = makeStructuredLogger('[role-room-agent:orchestrator]');
 
 export interface OrchestratorFetchResult {
   brregCompany: RoleRoomAgentBrregCompany | null;
@@ -113,27 +110,6 @@ export interface OrchestratorFetchResult {
   businessSignals: RoleRoomAgentBusinessSignals | null;
   synthesis: unknown | null;
   toolCallsLog: Array<{ tool: string; ok: boolean }>;
-}
-
-function extractJsonFromText(text: string): unknown | null {
-  if (!text) return null;
-  const trimmed = text.trim();
-  const fenceMatch = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
-  const raw = fenceMatch ? fenceMatch[1] : trimmed;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    const firstBrace = raw.indexOf('{');
-    const lastBrace = raw.lastIndexOf('}');
-    if (firstBrace >= 0 && lastBrace > firstBrace) {
-      try {
-        return JSON.parse(raw.slice(firstBrace, lastBrace + 1));
-      } catch {
-        return null;
-      }
-    }
-    return null;
-  }
 }
 
 export function orchestratorEnabled(): boolean {
@@ -227,7 +203,7 @@ export async function runOrchestratedBootstrap(
   for (let round = 0; round < maxRounds; round++) {
     let response: any;
     try {
-      response = await Promise.race([
+      response = await withTimeout(
         client.messages.create({
           model,
           // 4096 tokens routinely truncated the large synthesis JSON
@@ -235,7 +211,7 @@ export async function runOrchestratedBootstrap(
           // + nextRecommendedSteps), and the truncated body failed JSON.parse
           // → null synthesis → silent deterministic fallback. 8192 gives the
           // payload room to complete.
-          max_tokens: 8192,
+          max_tokens: BOOTSTRAP_SYNTH_MAX_TOKENS,
           system: [
             {
               type: 'text',
@@ -246,10 +222,9 @@ export async function runOrchestratedBootstrap(
           messages: conversation,
           tools: ORCHESTRATOR_TOOLS,
         }),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('orchestrator_timeout')), 60_000),
-        ),
-      ]);
+        60_000,
+        'orchestrator_timeout',
+      );
     } catch (err) {
       logOrchestrator('api_call_failed', {
         round,
@@ -309,10 +284,10 @@ export async function runOrchestratedBootstrap(
         'Du har nok informasjon nå. Returner KUN JSON-objektet med feltene companyProfile, intakeDraft, planningDraft, storyLogicDraft og nextRecommendedSteps. Ingen forklaring, ingen markdown — bare JSON.',
     });
     try {
-      const finalResponse: any = await Promise.race([
+      const finalResponse: any = await withTimeout(
         client.messages.create({
           model,
-          max_tokens: 8192,
+          max_tokens: BOOTSTRAP_SYNTH_MAX_TOKENS,
           system: [
             {
               type: 'text',
@@ -323,10 +298,9 @@ export async function runOrchestratedBootstrap(
           messages: conversation,
           // No tools — force a text/JSON answer.
         }),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('orchestrator_timeout')), 60_000),
-        ),
-      ]);
+        60_000,
+        'orchestrator_timeout',
+      );
       if (finalResponse?.stop_reason === 'max_tokens') {
         logOrchestrator('forced_synthesis_truncated_max_tokens');
       }

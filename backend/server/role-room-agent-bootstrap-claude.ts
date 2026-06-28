@@ -16,6 +16,12 @@
  */
 
 import { logAIUsage } from './ai-usage-tracker.js';
+import {
+  BOOTSTRAP_SYNTH_MAX_TOKENS,
+  extractJsonFromText,
+  makeStructuredLogger,
+  withTimeout,
+} from './role-room-agent-llm-util.js';
 import type {
   RoleRoomAgentAgreementSuggestion,
   RoleRoomAgentBrregCompany,
@@ -116,40 +122,7 @@ async function getAnthropicClient(): Promise<any> {
  * error, truncation, parse failure) and silently returned null. Grep
  * `role-room-agent:claude-bootstrap`.
  */
-function logClaudeBootstrap(reason: string, detail?: Record<string, unknown>): void {
-  try {
-    console.warn(
-      '[role-room-agent:claude-bootstrap]',
-      JSON.stringify({ reason, ...detail }),
-    );
-  } catch {
-    // diagnostics never throw
-  }
-}
-
-function extractJsonFromText(text: string): unknown | null {
-  if (!text) return null;
-  // Claude sometimes wraps JSON in markdown despite instructions; strip common fences.
-  const trimmed = text.trim();
-  const fenceMatch = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
-  const raw = fenceMatch ? fenceMatch[1] : trimmed;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    // As a last resort, try to locate the first { ... } block and parse it.
-    const firstBrace = raw.indexOf('{');
-    const lastBrace = raw.lastIndexOf('}');
-    if (firstBrace >= 0 && lastBrace > firstBrace) {
-      const slice = raw.slice(firstBrace, lastBrace + 1);
-      try {
-        return JSON.parse(slice);
-      } catch {
-        return null;
-      }
-    }
-    return null;
-  }
-}
+const logClaudeBootstrap = makeStructuredLogger('[role-room-agent:claude-bootstrap]');
 
 // When a website provides a hero image via og:image / twitter:image we can
 // feed it to Claude vision alongside the structured text signals. This
@@ -249,12 +222,12 @@ export async function requestClaudeBootstrap(
     });
 
     const bootstrapStartedAt = Date.now();
-    const response = await Promise.race([
+    const response = await withTimeout(
       client.messages.create({
         model,
         // 4096 truncated the large synthesis JSON, failing extractJsonFromText
         // → null → silent deterministic fallback. 8192 lets it complete.
-        max_tokens: 8192,
+        max_tokens: BOOTSTRAP_SYNTH_MAX_TOKENS,
         // Keep the large constraints block in the cached system prefix; the
         // per-call user message is just the project data.
         system: [
@@ -271,10 +244,9 @@ export async function requestClaudeBootstrap(
           },
         ],
       }),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('claude_bootstrap_timeout')), 60_000),
-      ),
-    ]);
+      60_000,
+      'claude_bootstrap_timeout',
+    );
 
     // Slice 9X.71 — cost-tracking (fire-and-forget)
     logAIUsage(response as any, {
