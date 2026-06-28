@@ -78,6 +78,31 @@ function eventIcon(title: string): string {
   if (t.includes('forbered') || t.includes('getting ready')) return '🤍';
   return '⏱️';
 }
+// Humaniser en capture_events.event_type (fri tekst fra iPad/One Desk) til ikon + tekst.
+function activityMeta(type: string): { icon: string; label: string } {
+  const t = (type || '').toLowerCase();
+  if (t.includes('asset') && (t.includes('add') || t.includes('upload') || t.includes('captur'))) return { icon: '📸', label: 'Nytt bilde lastet opp' };
+  if (t.includes('rating') || t.includes('rated')) return { icon: '⭐', label: 'Rating endret' };
+  if (t.includes('cull') || t.includes('reject')) return { icon: '🗑️', label: 'Culling' };
+  if (t.includes('flag') || t.includes('pick') || t.includes('highlight')) return { icon: '🚩', label: 'Markert for klient' };
+  if (t.includes('handoff')) return { icon: '🎬', label: 'Sendt til editor' };
+  if (t.includes('deliver')) return { icon: '📦', label: 'Levert' };
+  if (t.includes('backup') || t.includes('secured') || t.includes('mirror')) return { icon: '☁️', label: 'Sikkerhetskopiert' };
+  if (t.includes('session') && t.includes('start')) return { icon: '▶️', label: 'Capture-session startet' };
+  if (t.includes('enhance')) return { icon: '✨', label: 'AI-forbedring' };
+  if (t.includes('voice') || t.includes('memo') || t.includes('audio')) return { icon: '🎙️', label: 'Talenotat lagt til' };
+  if (t.includes('comment') || t.includes('review')) return { icon: '💬', label: 'Tilbakemelding' };
+  return { icon: '⚡', label: (type || 'Hendelse').replace(/_/g, ' ') };
+}
+function timeAgo(iso: string): string {
+  if (!iso) return '';
+  const d = new Date(iso).getTime(); if (!Number.isFinite(d)) return '';
+  const s = Math.max(0, Math.floor((Date.now() - d) / 1000));
+  if (s < 60) return 'nå nettopp';
+  if (s < 3600) return `${Math.floor(s / 60)} min siden`;
+  if (s < 86400) return `${Math.floor(s / 3600)} t siden`;
+  return `${Math.floor(s / 86400)} d siden`;
+}
 function addMinutes(hhmm: string, mins: number): string {
   if (!hhmm || !/^\d{2}:\d{2}$/.test(hhmm)) return '';
   const [h, m] = hhmm.split(':').map(Number);
@@ -161,10 +186,19 @@ const OversiktTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
+  // Capture-aktivitet — live hendelseslogg fra iPad + One Desk (backfill + WS).
+  const [activity, setActivity] = useState<any[]>([]);
+  const loadActivity = () => { if (!isReal) return; apiRequest(`/api/projects/${encodeURIComponent(projectId)}/capture-activity`).then((r: any) => setActivity(Array.isArray(r?.events) ? r.events : [])).catch(() => {}); };
+  useEffect(() => { loadActivity(); /* eslint-disable-next-line */ }, [projectId]);
+
   // Sanntid: oppdater Capture & backup INSTANT når iPad skyter/culler (WS).
-  const { live: capLive } = useCaptureRealtime(projectId, () => {
+  const { live: capLive } = useCaptureRealtime(projectId, (payload: any) => {
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/capture-status`).then((r: any) => setCapture(r || null)).catch(() => {});
     loadDit();
+    // Append innkommende hendelse øverst i strømmen (rad-form fra broadcastCaptureEvent).
+    if (payload?.id && payload?.event_type) {
+      setActivity((p) => [{ id: payload.id, type: payload.event_type, assetId: payload.asset_id || null, filename: null, actorName: null, metadata: payload.metadata || null, createdAt: payload.created_at || new Date().toISOString() }, ...p.filter((x) => x.id !== payload.id)].slice(0, 40));
+    } else { loadActivity(); }
   });
   const cap = isReal ? capture : { hasSession: true, shootingNow: true, session: { name: 'EOS R5 — Vielse' }, assets: { total: 842, securedToB2: 842, securedPct: 100, lastCaptureAt: new Date().toISOString() } };
 
@@ -390,8 +424,37 @@ const OversiktTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         </Box>
       </Box>
 
-      {/* ───────── Team Chat (høyre) ───────── */}
+      {/* ───────── Capture-aktivitet + Team Chat (høyre) ───────── */}
       <Box sx={{ width: 340, flexShrink: 0 }}>
+        {(isReal ? activity.length > 0 : true) && (
+          <WsCard sx={{ mb: 2 }}>
+            <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 1.25 }}>
+              <Typography sx={{ fontSize: 14 }}>⚡</Typography>
+              <Typography sx={{ fontSize: 13, fontWeight: 700 }}>Capture-aktivitet</Typography>
+              {capLive && <Stack direction="row" spacing={0.5} alignItems="center"><Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: ws.green }} /><Typography sx={{ fontSize: 10, color: ws.green, fontWeight: 700 }}>LIVE</Typography></Stack>}
+            </Stack>
+            <Stack spacing={0.25} sx={{ maxHeight: 280, overflowY: 'auto' }}>
+              {(isReal ? activity : [
+                { id: 'd1', type: 'asset_added', filename: 'A7IV_1188.CR3', createdAt: new Date(Date.now() - 30000).toISOString() },
+                { id: 'd2', type: 'flagged_for_client', filename: 'A7IV_1184.CR3', createdAt: new Date(Date.now() - 180000).toISOString() },
+                { id: 'd3', type: 'handoff_triggered', filename: null, createdAt: new Date(Date.now() - 900000).toISOString() },
+              ]).map((ev: any) => {
+                const m = activityMeta(ev.type);
+                return (
+                  <Stack key={ev.id} direction="row" spacing={1} alignItems="flex-start" sx={{ py: 0.65, px: 0.5, borderRadius: 1, '&:hover': { bgcolor: 'rgba(255,255,255,0.03)' } }}>
+                    <Typography sx={{ fontSize: 14, lineHeight: 1.3 }}>{m.icon}</Typography>
+                    <Box sx={{ minWidth: 0, flex: 1 }}>
+                      <Typography sx={{ fontSize: 12, color: ws.text, lineHeight: 1.35 }}>
+                        {m.label}{ev.filename ? <Typography component="span" sx={{ color: ws.textDim }}> · {ev.filename}</Typography> : null}
+                      </Typography>
+                      <Typography sx={{ fontSize: 10.5, color: ws.textFaint }}>{ev.actorName ? `${ev.actorName} · ` : ''}{timeAgo(ev.createdAt)}</Typography>
+                    </Box>
+                  </Stack>
+                );
+              })}
+            </Stack>
+          </WsCard>
+        )}
         <WorkspaceChatPanel projectId={projectId} />
       </Box>
     </Stack>
