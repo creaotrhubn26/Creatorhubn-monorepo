@@ -99,7 +99,7 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     catch (e: any) { window.alert(e?.message || 'Kunne ikke lagre samtykke'); }
   };
   const QUICK_PROMPTS = ['Fjern bakgrunnen, behold personen', 'Demp sterke reflekser i bakgrunnen', 'Fjern uønskede objekter i bakgrunnen', 'Gjør lyset varmere og mykere'];
-  const openAi = () => { setAiPrompt(''); setAiJob(null); setBaPos(50); setAiOpen(true); };
+  const openAi = () => { setAiPrompt(''); setAiJob(null); setBaPos(50); setSuggestions([]); setAiOpen(true); };
   const startEdit = async () => {
     if (!sel?.id || !aiPrompt.trim() || aiBusy) return;
     setAiBusy(true); setAiJob({ status: 'queued' });
@@ -123,7 +123,7 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [animDuration, setAnimDuration] = useState(5);
   const [animJob, setAnimJob] = useState<any | null>(null);
   const [animBusy, setAnimBusy] = useState(false);
-  const openAnim = () => { setAnimPrompt(''); setAnimJob(null); setAnimDuration(5); setAnimOpen(true); };
+  const openAnim = () => { setAnimPrompt(''); setAnimJob(null); setAnimDuration(5); setSuggestions([]); setAnimOpen(true); };
   const startAnimate = async () => {
     if (!sel?.id || !animPrompt.trim() || animBusy) return;
     setAnimBusy(true); setAnimJob({ status: 'queued' });
@@ -140,6 +140,16 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       loadAiCfg();
     } catch (e: any) { window.alert(e?.message || 'AI-video feilet'); setAnimJob({ status: 'failed' }); }
     finally { setAnimBusy(false); }
+  };
+  // «Foreslå» (Claude vision → kontekst-tilpassede prompts)
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const suggest = async (mode: 'motion' | 'edit') => {
+    if (!sel?.id || suggesting) return;
+    setSuggesting(true); setSuggestions([]);
+    try { const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/suggest`, { method: 'POST', body: { assetId: sel.id, mode } }); setSuggestions(Array.isArray(r?.suggestions) ? r.suggestions : []); }
+    catch (e: any) { window.alert(e?.message || 'Kunne ikke foreslå'); }
+    finally { setSuggesting(false); }
   };
   const aiAvailable = aiCfg?.enabled && aiCfg?.whitelisted;
 
@@ -371,10 +381,13 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         ) : (
           <Stack spacing={2}>
             {aiJob?.status === 'failed' && <Typography sx={{ fontSize: 12.5, color: ws.red }}>Redigeringen feilet. Prøv en annen instruksjon.</Typography>}
-            <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Beskriv hva AI-en skal gjøre med bildet (Nano Banana 2):</Typography>
+            <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Beskriv hva AI-en skal gjøre med bildet (Nano Banana 2):</Typography>
+              <Button size="small" startIcon={<AutoFixHigh sx={{ fontSize: 14 }} />} onClick={() => suggest('edit')} disabled={suggesting} sx={{ color: ws.accent, textTransform: 'none', fontWeight: 600, fontSize: 11 }}>{suggesting ? 'Ser på bildet…' : 'Foreslå'}</Button>
+            </Stack>
             <TextField value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} fullWidth multiline minRows={2} size="small" placeholder="f.eks. Fjern søppelbøtta i bakgrunnen" />
             <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
-              {QUICK_PROMPTS.map((q) => <Box key={q} onClick={() => setAiPrompt(q)} sx={{ px: 1, py: 0.4, borderRadius: 2, cursor: 'pointer', fontSize: 11, color: ws.accent, bgcolor: ws.accentSoft, border: `1px solid ${ws.accentBorder}` }}>{q}</Box>)}
+              {(suggestions.length ? suggestions : QUICK_PROMPTS).map((q) => <Box key={q} onClick={() => setAiPrompt(q)} sx={{ px: 1, py: 0.4, borderRadius: 2, cursor: 'pointer', fontSize: 11, color: ws.accent, bgcolor: ws.accentSoft, border: `1px solid ${ws.accentBorder}` }}>{q}</Box>)}
             </Stack>
             <Stack direction="row" justifyContent="space-between" alignItems="center">
               <Typography sx={{ fontSize: 10.5, color: ws.textFaint }}>
@@ -428,8 +441,14 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         ) : (
           <Stack spacing={2}>
             {animJob?.status === 'failed' && <Typography sx={{ fontSize: 12.5, color: ws.red }}>Video-genereringen feilet. Prøv en annen beskrivelse.</Typography>}
-            <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Beskriv bevegelsen AI-en skal lage fra stillbildet (Seedance 2.0):</Typography>
+            <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Beskriv bevegelsen AI-en skal lage fra stillbildet (Seedance 2.0):</Typography>
+              <Button size="small" startIcon={<AutoFixHigh sx={{ fontSize: 14 }} />} onClick={() => suggest('motion')} disabled={suggesting} sx={{ color: ws.accent, textTransform: 'none', fontWeight: 600, fontSize: 11 }}>{suggesting ? 'Ser på bildet…' : 'Foreslå'}</Button>
+            </Stack>
             <TextField value={animPrompt} onChange={(e) => setAnimPrompt(e.target.value)} fullWidth multiline minRows={2} size="small" placeholder="f.eks. rolig kamera-innzoom, mykt vindpust i håret" />
+            {suggestions.length > 0 && <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
+              {suggestions.map((q) => <Box key={q} onClick={() => setAnimPrompt(q)} sx={{ px: 1, py: 0.4, borderRadius: 2, cursor: 'pointer', fontSize: 11, color: ws.accent, bgcolor: ws.accentSoft, border: `1px solid ${ws.accentBorder}` }}>{q}</Box>)}
+            </Stack>}
             <Stack direction="row" spacing={1} alignItems="center">
               <Typography sx={{ fontSize: 12, color: ws.textDim }}>Lengde:</Typography>
               {[4, 5, 8, 10].map((d) => <Box key={d} onClick={() => setAnimDuration(d)} sx={{ px: 1.25, py: 0.4, borderRadius: 2, cursor: 'pointer', fontSize: 12, fontWeight: animDuration === d ? 700 : 500, color: animDuration === d ? ws.accentContrast : ws.textDim, bgcolor: animDuration === d ? ws.accent : 'rgba(255,255,255,0.05)' }}>{d}s</Box>)}
