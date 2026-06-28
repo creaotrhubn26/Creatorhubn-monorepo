@@ -3385,8 +3385,25 @@ struct SalesLeadershipSheet: View {
     let sellers: [TopSellersSheet.Seller]
     let currentUserName: String
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
     @State private var tab: Tab = .commission
     @State private var newContestOpen: Bool = false
+
+    // ── Backend-binding (PR #1097 oppfølging) ─────────────────────
+    // `loading` = initial fetch i gang (commission/contests/catalog/templates
+    // parallelt). `loadError` = vis errorCard m/ Prøv på nytt.
+    // `saveError` = vis toast/banner som auto-dismisses etter 3s.
+    @State private var loading: Bool = true
+    @State private var loadError: String?
+    @State private var saveError: String?
+    /// Debounced provisjons-lagring — kanselleres ved ny endring.
+    @State private var savePending: Task<Void, Never>?
+    /// Server-side commission config-payload (raw JSON-Data) — beholdes
+    /// så vi kan re-sende m/ kun endrede felter ved neste lagring.
+    @State private var commissionConfigData: Data = Data("{}".utf8)
+    /// Server-side template-overstyringer (kun for å unngå å miste data
+    /// fra felter UI-en ikke eksponerer).
+    @State private var serverTemplates: [ContestTemplateDTO] = []
 
     enum Tab: String, CaseIterable {
         case commission = "Provisjon"
@@ -3727,6 +3744,8 @@ struct SalesLeadershipSheet: View {
 
     struct Contest: Identifiable, Hashable {
         let id = UUID()
+        /// Server-UUID når konkurransen er persistert. nil = lokal kun.
+        var serverID: UUID? = nil
         var name: String
         var prize: String
         var kpi: String   // "Mest vunnet", "Flest møter", "Høyest snitt-deal"
@@ -3764,24 +3783,35 @@ struct SalesLeadershipSheet: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                tabBar
-                ScrollView {
-                    VStack(spacing: 16) {
-                        switch tab {
-                        case .commission: commissionTab
-                        case .contest:    contestTab
-                        case .catalog:    catalogTab
-                        case .goal:       goalTab
-                        }
-                        Spacer(minLength: 16)
+            ZStack {
+                Brand.bg.ignoresSafeArea()
+                if loading {
+                    VStack(spacing: 12) {
+                        ProgressView()
+                            .tint(Brand.purpleLight)
+                            .scaleEffect(1.3)
+                        Text("Laster salgsledelse …")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Brand.textSecondary)
                     }
-                    .padding(20)
+                } else if let loadError {
+                    errorCard(loadError)
+                        .padding(20)
+                } else {
+                    mainContent
+                }
+                if let saveError {
+                    VStack {
+                        Spacer()
+                        saveBanner(saveError)
+                            .padding(20)
+                    }
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
-            .background(Brand.bg.ignoresSafeArea())
             .navigationTitle("Salgsledelse")
             .navigationBarTitleDisplayMode(.inline)
+            .task { await loadInitial() }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button { dismiss() } label: {
@@ -3854,15 +3884,308 @@ struct SalesLeadershipSheet: View {
                         contestPrefilledTemplate = nil
                     }
                 )
+                .environment(appState)
             }
             .sheet(isPresented: $newProductOpen) {
-                CustomPrizeSheet { product in
+                CustomPrizeSheet(persistToCatalog: true) { product in
                     orgCatalog.append(product)
                     newProductOpen = false
                 }
+                .environment(appState)
             }
             .sheet(item: $fulfillContest) { c in
                 PrizeFulfillmentSheet(contest: c, sellers: sellers)
+                    .environment(appState)
+            }
+        }
+    }
+
+    // MARK: Hovedinnhold (vises etter loadInitial)
+
+    private var mainContent: some View {
+        VStack(spacing: 0) {
+            tabBar
+            ScrollView {
+                VStack(spacing: 16) {
+                    switch tab {
+                    case .commission: commissionTab
+                    case .contest:    contestTab
+                    case .catalog:    catalogTab
+                    case .goal:       goalTab
+                    }
+                    Spacer(minLength: 16)
+                }
+                .padding(20)
+            }
+        }
+    }
+
+    // MARK: Loading + Error UI
+
+    private func errorCard(_ message: String) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(Brand.orange)
+                Text("Kunne ikke laste salgsledelse")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(.white)
+                Spacer()
+            }
+            Text(message)
+                .font(.system(size: 12))
+                .foregroundStyle(Brand.textSecondary)
+                .lineLimit(6)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button {
+                Task { await loadInitial() }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 11, weight: .bold))
+                    Text("Prøv på nytt")
+                        .font(.system(size: 12, weight: .semibold))
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 14).padding(.vertical, 8)
+                .background(
+                    LinearGradient(
+                        colors: [Brand.purple, Brand.purpleLight],
+                        startPoint: .leading, endPoint: .trailing
+                    ),
+                    in: Capsule()
+                )
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(16)
+        .background(Brand.card, in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Brand.orange.opacity(0.4), lineWidth: 1.2))
+    }
+
+    private func saveBanner(_ message: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.circle.fill")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Brand.orange)
+            Text(message)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.white)
+                .lineLimit(3)
+            Spacer()
+        }
+        .padding(12)
+        .background(Brand.card, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Brand.orange.opacity(0.5), lineWidth: 1))
+        .shadow(color: .black.opacity(0.4), radius: 12, x: 0, y: 4)
+    }
+
+    // MARK: Backend-mapping
+
+    /// Konverter ContestDTO → lokal Contest (UI-vennlig). Server-feltene
+    /// brukes som best-effort fyll; mangler de, beholder vi placeholder.
+    private func mapContestDTOToLocal(_ dto: ContestDTO) -> Contest {
+        // endsInDays: differensiér ISO-streng mot nå.
+        let endsInDays: Int = {
+            guard let endsStr = dto.endsAt else { return 0 }
+            let f = ISO8601DateFormatter()
+            f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            let date = f.date(from: endsStr) ?? ISO8601DateFormatter().date(from: endsStr)
+            guard let d = date else { return 0 }
+            let secs = d.timeIntervalSince(Date())
+            return max(0, Int(secs / 86400))
+        }()
+        // prize-summary: ranks fra prizes[].productSnapshot (rå JSON-Data) —
+        // best-effort uten å typebinde produkt-strukturen i Swift.
+        let prizeText: String = {
+            if dto.prizes.isEmpty { return "Premie TBD" }
+            return dto.prizes
+                .sorted(by: { $0.rank < $1.rank })
+                .map { p in
+                    if let json = try? JSONSerialization.jsonObject(with: p.productSnapshot) as? [String: Any],
+                       let title = (json["title"] as? String) ?? (json["name"] as? String) {
+                        return "\(p.rank). \(title)"
+                    }
+                    return "\(p.rank). plass"
+                }
+                .joined(separator: " · ")
+        }()
+        return Contest(
+            serverID: dto.id,
+            name: dto.name,
+            prize: prizeText,
+            kpi: dto.kpi,
+            endsInDays: endsInDays,
+            leaderName: "—",
+            leaderValue: "—",
+            participants: 0
+        )
+    }
+
+    /// Konverter OrgPrizeProductDTO → lokal PrizeProduct.
+    /// Backend-DTO mapper ikke vendor (catalog-tabellen har det ikke);
+    /// vi setter vendor = "Egen" som default.
+    private func mapPrizeDTOToLocal(_ dto: OrgPrizeProductDTO) -> PrizeProduct {
+        let cat = PrizeCategory(rawValue: dto.category) ?? .voucher
+        let fulfillment: FulfillmentMethod? = dto.fulfillmentMethod.flatMap { FulfillmentMethod(rawValue: $0) }
+        return PrizeProduct(
+            name: dto.name,
+            icon: dto.icon.isEmpty ? cat.icon : dto.icon,
+            priceNok: dto.priceNok,
+            category: cat,
+            vendor: dto.vendor ?? "Egen",
+            imageURL: dto.imageUrl,
+            imageData: nil,
+            fulfillment: fulfillment
+        )
+    }
+
+    /// Anvender server-side commission-config på lokal state. Best-effort
+    /// parsing — feilende felter beholder lokal default.
+    private func applyCommissionConfig(_ dto: CommissionConfigDTO) {
+        // Behold rå Data så vi kan re-sende komplett payload ved neste lagring.
+        self.commissionConfigData = dto.config
+        if let preset = OrgPreset.allCases.first(where: { $0.rawValue == dto.preset }) {
+            self.preset = preset
+        }
+        let mapped = dto.activeModels.compactMap { ModelType(rawValue: $0) }
+        if !mapped.isEmpty {
+            self.activeModels = Set(mapped)
+        }
+        // Forsøk å parse konfig-objektet for kjente felt-navn (best-effort).
+        if let cfg = try? JSONSerialization.jsonObject(with: dto.config) as? [String: Any] {
+            if let v = (cfg["monthlyTargetK"] as? Double) ?? ((cfg["monthly_target_k"] as? NSNumber)?.doubleValue) {
+                self.monthlyTargetK = v
+            }
+            if let v = (cfg["acceleratorMult"] as? Double) ?? ((cfg["accelerator_mult"] as? NSNumber)?.doubleValue) {
+                self.acceleratorMult = v
+            }
+            if let v = (cfg["acceleratorThreshold"] as? Double) ?? ((cfg["accelerator_threshold"] as? NSNumber)?.doubleValue) {
+                self.acceleratorThreshold = v
+            }
+            if let v = (cfg["recurringPct"] as? Double) ?? ((cfg["recurring_pct"] as? NSNumber)?.doubleValue) {
+                self.recurringPct = v
+            }
+            if let v = (cfg["recurringMonths"] as? Double) ?? ((cfg["recurring_months"] as? NSNumber)?.doubleValue) {
+                self.recurringMonths = v
+            }
+            if let v = (cfg["splitDefaultPrimary"] as? Double) ?? ((cfg["split_default_primary"] as? NSNumber)?.doubleValue) {
+                self.splitDefaultPrimary = v
+            }
+            if let v = (cfg["marginPct"] as? Double) ?? ((cfg["margin_pct"] as? NSNumber)?.doubleValue) {
+                self.marginPct = v
+            }
+            if let v = (cfg["perActivityNok"] as? Double) ?? ((cfg["per_activity_nok"] as? NSNumber)?.doubleValue) {
+                self.perActivityNok = v
+            }
+            if let v = (cfg["teamPoolPct"] as? Double) ?? ((cfg["team_pool_pct"] as? NSNumber)?.doubleValue) {
+                self.teamPoolPct = v
+            }
+            if let v = (cfg["hybridBaseK"] as? Double) ?? ((cfg["hybrid_base_k"] as? NSNumber)?.doubleValue) {
+                self.hybridBaseK = v
+            }
+            if let v = (cfg["hybridDealThresholdK"] as? Double) ?? ((cfg["hybrid_deal_threshold_k"] as? NSNumber)?.doubleValue) {
+                self.hybridDealThresholdK = v
+            }
+        }
+    }
+
+    /// Lagre kun referansen — server-templates brukes av contest-fanen
+    /// indirekte (vi kjører lokalt mal-bibliotek for nå).
+    private func applyTemplates(_ dtos: [ContestTemplateDTO]) {
+        self.serverTemplates = dtos
+    }
+
+    // MARK: Backend-load
+
+    private func loadInitial() async {
+        guard let api = appState.api else {
+            // Ingen API — bli stående på lokal mock-state. Skjul spinner.
+            self.loading = false
+            return
+        }
+        self.loading = true
+        self.loadError = nil
+        defer { self.loading = false }
+        do {
+            async let cfgTask = api.fetchCommissionConfig()
+            async let contestsTask = api.fetchContests(status: nil)
+            async let catalogTask = api.fetchOrgPrizeCatalog()
+            async let templatesTask = api.fetchContestTemplates()
+            // 404 / fall-tilbake-til-default skal IKKE blokkere de andre.
+            let cfg: CommissionConfigDTO? = try? await cfgTask
+            let contestList: [ContestDTO] = (try? await contestsTask) ?? []
+            let catalog: [OrgPrizeProductDTO] = (try? await catalogTask) ?? []
+            let templates: [ContestTemplateDTO] = (try? await templatesTask) ?? []
+            await MainActor.run {
+                if let cfg { self.applyCommissionConfig(cfg) }
+                let mapped = contestList.map(self.mapContestDTOToLocal)
+                if !mapped.isEmpty { self.contests = mapped }
+                let mappedCatalog = catalog.map(self.mapPrizeDTOToLocal)
+                if !mappedCatalog.isEmpty { self.orgCatalog = mappedCatalog }
+                self.applyTemplates(templates)
+            }
+        }
+    }
+
+    // MARK: Provisjons-lagring (debounced)
+
+    /// Schedule en debounced save av provisjons-konfig. Cancel-erer
+    /// forrige task så slidere/toggles flomly-fly ikke spammer endpoint.
+    private func scheduleSave() {
+        savePending?.cancel()
+        savePending = Task {
+            try? await Task.sleep(nanoseconds: 800_000_000)
+            if Task.isCancelled { return }
+            await saveCommissionConfigToBackend()
+        }
+    }
+
+    private func currentCommissionConfigDTO() -> CommissionConfigDTO {
+        // Slå sammen kjente UI-verdier inn i server-konfig-objektet
+        // (behold ukjente felter fra server).
+        var base: [String: Any] = (try? JSONSerialization.jsonObject(with: commissionConfigData) as? [String: Any]) ?? [:]
+        base["monthlyTargetK"] = monthlyTargetK
+        base["acceleratorMult"] = acceleratorMult
+        base["acceleratorThreshold"] = acceleratorThreshold
+        base["recurringPct"] = recurringPct
+        base["recurringMonths"] = recurringMonths
+        base["splitDefaultPrimary"] = splitDefaultPrimary
+        base["marginPct"] = marginPct
+        base["perActivityNok"] = perActivityNok
+        base["teamPoolPct"] = teamPoolPct
+        base["hybridBaseK"] = hybridBaseK
+        base["hybridDealThresholdK"] = hybridDealThresholdK
+        base["tieredBands"] = tieredBands.map { ["fromK": $0.fromK, "pct": $0.pct] }
+        base["spiffs"] = spiffs.map { ["trigger": $0.trigger, "amountNok": $0.amountNok] }
+        base["tiers"] = tiers.map { ["category": $0.category, "basePct": $0.basePct, "bonusPct": $0.bonusPct] }
+        let data = (try? JSONSerialization.data(withJSONObject: base)) ?? Data("{}".utf8)
+        return CommissionConfigDTO(
+            preset: preset.rawValue,
+            activeModels: Array(activeModels).map(\.rawValue),
+            config: data
+        )
+    }
+
+    private func saveCommissionConfigToBackend() async {
+        guard let api = appState.api else { return }
+        let dto = currentCommissionConfigDTO()
+        do {
+            try await api.saveCommissionConfig(dto)
+            await MainActor.run {
+                // Behold sist-sendt config slik at server-shape ikke driftes.
+                self.commissionConfigData = dto.config
+            }
+        } catch {
+            await MainActor.run {
+                self.saveError = "Lagring feilet: \(error.localizedDescription)"
+            }
+            // Auto-dismiss banner etter 3s
+            Task {
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                await MainActor.run { self.saveError = nil }
             }
         }
     }
@@ -3904,6 +4227,23 @@ struct SalesLeadershipSheet: View {
             modelLibraryCard
             sellerOverrideCard
         }
+        // Debounce-save på alle slider-verdier i provisjons-fanen.
+        // `.onChange` på primitive-double trigger ved hver step, men
+        // `scheduleSave()` debouncer i 800ms.
+        .onChange(of: monthlyTargetK) { _, _ in scheduleSave() }
+        .onChange(of: acceleratorMult) { _, _ in scheduleSave() }
+        .onChange(of: acceleratorThreshold) { _, _ in scheduleSave() }
+        .onChange(of: recurringPct) { _, _ in scheduleSave() }
+        .onChange(of: recurringMonths) { _, _ in scheduleSave() }
+        .onChange(of: splitDefaultPrimary) { _, _ in scheduleSave() }
+        .onChange(of: marginPct) { _, _ in scheduleSave() }
+        .onChange(of: perActivityNok) { _, _ in scheduleSave() }
+        .onChange(of: teamPoolPct) { _, _ in scheduleSave() }
+        .onChange(of: hybridBaseK) { _, _ in scheduleSave() }
+        .onChange(of: hybridDealThresholdK) { _, _ in scheduleSave() }
+        .onChange(of: tiers) { _, _ in scheduleSave() }
+        .onChange(of: tieredBands) { _, _ in scheduleSave() }
+        .onChange(of: spiffs) { _, _ in scheduleSave() }
     }
 
     private var presetPickerCard: some View {
@@ -3931,6 +4271,7 @@ struct SalesLeadershipSheet: View {
                             if p != .custom {
                                 activeModels = p.activeModels
                             }
+                            scheduleSave()
                         } label: {
                             Text(p.rawValue)
                                 .font(.system(size: 12, weight: .semibold))
@@ -4020,6 +4361,7 @@ struct SalesLeadershipSheet: View {
                     set: { on in
                         if on { activeModels.insert(t) } else { activeModels.remove(t) }
                         preset = .custom  // bryter du presetet → custom
+                        scheduleSave()
                     }
                 ))
                 .labelsHidden()
@@ -5383,12 +5725,15 @@ struct NewContestSheet: View {
     var extraCatalog: [PrizeProduct] = []
     let onSave: (SalesLeadershipSheet.Contest) -> Void
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
     @State private var name: String = ""
     @State private var kpi: String = "Mest vunnet NOK"
     @State private var days: Double = 14
     @State private var prizes: [PrizeTier] = []
     @State private var pickerOpen: Bool = false
     @State private var pickerForRank: Int = 1
+    @State private var saving: Bool = false
+    @State private var saveError: String?
 
     private enum Brand {
         static let bg = Color(red: 0.05, green: 0.04, blue: 0.10)
@@ -5460,32 +5805,44 @@ struct NewContestSheet: View {
                     .background(Brand.card, in: RoundedRectangle(cornerRadius: 14))
                     .overlay(RoundedRectangle(cornerRadius: 14).stroke(Brand.stroke, lineWidth: 1))
 
+                    if let saveError {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(Color.orange)
+                            Text(saveError)
+                                .font(.system(size: 11))
+                                .foregroundStyle(.white)
+                        }
+                        .padding(10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.orange.opacity(0.15), in: RoundedRectangle(cornerRadius: 10))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.orange.opacity(0.5), lineWidth: 1))
+                    }
                     Button {
-                        let contest = SalesLeadershipSheet.Contest(
-                            name: name.isEmpty ? "Ny konkurranse" : name,
-                            prize: prizeSummary,
-                            kpi: kpi,
-                            endsInDays: Int(days),
-                            leaderName: "—",
-                            leaderValue: "—",
-                            participants: 0
-                        )
-                        onSave(contest)
+                        Task { await launchContest() }
                     } label: {
-                        Text("Lanser konkurranse")
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                            .background(
-                                LinearGradient(
-                                    colors: [Brand.purple, Brand.purpleLight],
-                                    startPoint: .leading, endPoint: .trailing
-                                ),
-                                in: RoundedRectangle(cornerRadius: 14)
-                            )
+                        HStack(spacing: 8) {
+                            if saving {
+                                ProgressView()
+                                    .tint(.white)
+                                    .scaleEffect(0.8)
+                            }
+                            Text(saving ? "Lanserer …" : "Lanser konkurranse")
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundStyle(.white)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(
+                            LinearGradient(
+                                colors: [Brand.purple, Brand.purpleLight],
+                                startPoint: .leading, endPoint: .trailing
+                            ),
+                            in: RoundedRectangle(cornerRadius: 14)
+                        )
                     }
                     .buttonStyle(.plain)
+                    .disabled(saving)
                     .padding(.top, 8)
                 }
                 .padding(20)
@@ -5735,6 +6092,78 @@ struct NewContestSheet: View {
                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(Brand.stroke, lineWidth: 1))
         }
     }
+
+    // MARK: Backend-call
+
+    /// Lager konkurransen på server hvis api er tilgjengelig; ellers
+    /// faller den til lokal-only m/ samme Contest-objekt (mock-modus).
+    private func launchContest() async {
+        let effectiveName = name.isEmpty ? "Ny konkurranse" : name
+        let templateType = template?.rawValue ?? "custom"
+        let endsAt = Date().addingTimeInterval(TimeInterval(Int(days) * 86400))
+
+        // Bygg payload-premier fra prizes (PrizeTier → CreateContestPrizePayload).
+        // productSnapshot serialiseres som JSON-objekt m/ kjente felter slik
+        // at backend kan lagre snapshot + bruke i fulfillment-flyt.
+        let prizePayloads: [CreateContestPrizePayload] = prizes.map { tier in
+            let p = tier.product
+            let snapshot: [String: Any] = [
+                "id": p.id.uuidString,
+                "name": p.name,
+                "title": p.name,
+                "icon": p.icon,
+                "category": p.category.rawValue,
+                "estimated_value_nok": p.priceNok,
+                "priceNok": p.priceNok,
+                "vendor": p.vendor ?? "",
+                "image_url": p.imageURL ?? "",
+                "fulfillment_type": (p.fulfillment ?? FulfillmentMethod.defaultFor(p.category)).rawValue,
+            ]
+            let data = (try? JSONSerialization.data(withJSONObject: snapshot)) ?? Data("{}".utf8)
+            return CreateContestPrizePayload(rank: tier.rank, productSnapshot: data)
+        }
+
+        let payload = CreateContestPayload(
+            name: effectiveName,
+            templateType: templateType,
+            kpi: kpi,
+            kpiConfig: nil,
+            endsAt: endsAt,
+            prizes: prizePayloads
+        )
+
+        await MainActor.run { saving = true; saveError = nil }
+        defer { Task { @MainActor in saving = false } }
+
+        // Bygg fall-back lokal Contest m/ aktuelle felt.
+        let fallback = SalesLeadershipSheet.Contest(
+            name: effectiveName,
+            prize: prizeSummary,
+            kpi: kpi,
+            endsInDays: Int(days),
+            leaderName: "—",
+            leaderValue: "—",
+            participants: 0
+        )
+
+        guard let api = appState.api else {
+            // Ingen api = mock-modus. Beholde tidligere oppførsel.
+            await MainActor.run { onSave(fallback) }
+            return
+        }
+        do {
+            let dto = try await api.createContest(payload)
+            await MainActor.run {
+                var c = fallback
+                c.serverID = dto.id
+                onSave(c)
+            }
+        } catch {
+            await MainActor.run {
+                saveError = "Kunne ikke lagre: \(error.localizedDescription)"
+            }
+        }
+    }
 }
 
 // MARK: - PrizePickerSheet
@@ -5844,7 +6273,10 @@ struct PrizePickerSheet: View {
                 }
             }
             .sheet(isPresented: $customSheetOpen) {
-                CustomPrizeSheet { product in
+                // persistToCatalog=false: vi brukt CustomPrizeSheet for engangs-
+                // premie via picker; produktet returneres lokalt og brukes kun
+                // i den ene konkurranse-konfiguren.
+                CustomPrizeSheet(persistToCatalog: false) { product in
                     customSheetOpen = false
                     onPick(product)
                 }
@@ -5953,14 +6385,21 @@ struct PrizePickerSheet: View {
 // navn, kategori, pris, og bilde (PhotosPicker fra iPad-galleri eller URL).
 
 struct CustomPrizeSheet: View {
+    /// `true` = persistér til org-katalog via API (POST /prize-catalog) FØR
+    /// `onSave` kalles. `false` = returner kun lokalt PrizeProduct
+    /// (engangs-bruk fra PrizePickerSheet).
+    var persistToCatalog: Bool = false
     let onSave: (PrizeProduct) -> Void
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
     @State private var name: String = ""
     @State private var category: PrizeCategory = .tech
     @State private var priceText: String = ""
     @State private var imageURL: String = ""
     @State private var photoItem: PhotosPickerItem?
     @State private var photoData: Data?
+    @State private var saving: Bool = false
+    @State private var saveError: String?
 
     private enum Brand {
         static let bg = Color(red: 0.05, green: 0.04, blue: 0.10)
@@ -6101,27 +6540,101 @@ struct CustomPrizeSheet: View {
         }
     }
 
+    @ViewBuilder
     private var saveButton: some View {
+        if let saveError {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(Color.orange)
+                Text(saveError)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.white)
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.orange.opacity(0.15), in: RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.orange.opacity(0.5), lineWidth: 1))
+        }
         Button {
-            onSave(preview)
+            Task { await persistAndReturn() }
         } label: {
-            Text("Bruk denne premien")
-                .font(.system(size: 15, weight: .bold))
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(
-                    LinearGradient(
-                        colors: [Brand.purple, Brand.purpleLight],
-                        startPoint: .leading, endPoint: .trailing
-                    ),
-                    in: RoundedRectangle(cornerRadius: 14)
-                )
+            HStack(spacing: 8) {
+                if saving {
+                    ProgressView()
+                        .tint(.white)
+                        .scaleEffect(0.8)
+                }
+                Text(saving ? "Lagrer …" : (persistToCatalog ? "Legg til i katalog" : "Bruk denne premien"))
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(
+                LinearGradient(
+                    colors: [Brand.purple, Brand.purpleLight],
+                    startPoint: .leading, endPoint: .trailing
+                ),
+                in: RoundedRectangle(cornerRadius: 14)
+            )
         }
         .buttonStyle(.plain)
         .padding(.top, 8)
-        .disabled(name.isEmpty)
-        .opacity(name.isEmpty ? 0.5 : 1)
+        .disabled(name.isEmpty || saving)
+        .opacity((name.isEmpty || saving) ? 0.5 : 1)
+    }
+
+    /// Lagrer til katalog (hvis `persistToCatalog == true` og api tilgj.),
+    /// uploads bilde først hvis vi har photoData, og returnerer deretter
+    /// PrizeProduct til caller. Engangs-bruk = bare returner uten persist.
+    private func persistAndReturn() async {
+        await MainActor.run { saving = true; saveError = nil }
+        defer { Task { @MainActor in saving = false } }
+
+        var product = preview
+        guard persistToCatalog, let api = appState.api else {
+            // Engangs-bruk eller ikke logget inn: returner produktet som-er.
+            await MainActor.run { onSave(product) }
+            return
+        }
+
+        // 1) Last opp bilde først (hvis vi har lokal Data) → URL + B2-key.
+        var uploadedURL: String? = product.imageURL
+        var uploadedKey: String?
+        if let data = photoData {
+            do {
+                let (url, key) = try await api.uploadPrizeImage(data: data, mimeType: "image/jpeg")
+                uploadedURL = url
+                uploadedKey = key
+            } catch {
+                // Bilde-opplasting feilet → fortsetter uten bilde, men logg.
+                print("[CustomPrizeSheet] image upload failed: \(error)")
+            }
+        }
+
+        // 2) Lagre i org-katalog.
+        let fulfillment = (product.fulfillment ?? FulfillmentMethod.defaultFor(category)).rawValue
+        let payload = OrgPrizeProductCreatePayload(
+            name: product.name,
+            icon: product.icon,
+            category: category.rawValue,
+            priceNok: Int(priceText) ?? 0,
+            vendor: "Egen",
+            imageUrl: uploadedURL,
+            imageB2Key: uploadedKey,
+            fulfillmentMethod: fulfillment
+        )
+        do {
+            _ = try await api.createPrizeProduct(payload)
+        } catch {
+            await MainActor.run {
+                saveError = "Lagring feilet: \(error.localizedDescription)"
+            }
+            return
+        }
+        // 3) Returner lokal-versjon (eventuelt m/ ny URL fra opplasting).
+        if let uploadedURL { product.imageURL = uploadedURL }
+        await MainActor.run { onSave(product) }
     }
 
     private func formField(label: String, placeholder: String, text: Binding<String>, keyboard: UIKeyboardType = .default) -> some View {
@@ -6157,6 +6670,10 @@ struct PrizeFulfillmentSheet: View {
     let contest: SalesLeadershipSheet.Contest
     let sellers: [TopSellersSheet.Seller]
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
+    @State private var loading: Bool = false
+    @State private var loadError: String?
+    @State private var advancing: Set<UUID> = []
 
     private enum Brand {
         static let bg = Color(red: 0.05, green: 0.04, blue: 0.10)
@@ -6186,10 +6703,23 @@ struct PrizeFulfillmentSheet: View {
             case .received: return "checkmark.circle.fill"
             }
         }
+        /// Map backend-status til UI-Step. `awaiting_address` mappes til
+        /// `pending` (UI viser samme stadium; backend håndterer adresse-flyt).
+        static func fromBackend(_ raw: String) -> Step {
+            switch raw {
+            case "pending", "awaiting_address": return .pending
+            case "ordered":                     return .ordered
+            case "shipped":                     return .shipped
+            case "received":                    return .received
+            default:                            return .pending
+            }
+        }
     }
 
     struct Award: Identifiable {
         let id = UUID()
+        /// Server-UUID (sales_prize_awards.id) — nil = lokal-only.
+        var serverID: UUID? = nil
         let rank: Int
         let winnerName: String
         let winnerAvatar: Color
@@ -6236,11 +6766,89 @@ struct PrizeFulfillmentSheet: View {
             .toolbarBackground(Brand.bg, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
-            .onAppear { seedAwards() }
+            .task { await loadAwards() }
         }
     }
 
-    private func seedAwards() {
+    /// Hent fulfillment-tildelinger fra server. Hvis konkurransen ikke er
+    /// closed enda, kall `closeContest()` først (oppretter award-rader).
+    /// Faller tilbake til lokal mock hvis api/server-ID mangler.
+    private func loadAwards() async {
+        // Hvis vi mangler server-ID for konkurransen, fall direkte til seed-mock.
+        guard let api = appState.api, let serverID = contest.serverID else {
+            await MainActor.run { seedMockAwards() }
+            return
+        }
+        await MainActor.run { loading = true; loadError = nil }
+        defer { Task { @MainActor in loading = false } }
+
+        do {
+            // Hent server-awards filtrert til denne konkurransen (org-wide).
+            var fetched = try await api.fetchAwards(status: nil, orgWide: true)
+                .filter { $0.contestId == serverID }
+
+            // Hvis tom (konkurransen ikke close'd enda), lukk + hent på nytt.
+            if fetched.isEmpty {
+                _ = try? await api.closeContest(id: serverID)
+                fetched = try await api.fetchAwards(status: nil, orgWide: true)
+                    .filter { $0.contestId == serverID }
+            }
+            await MainActor.run {
+                if !fetched.isEmpty {
+                    self.awards = fetched.map(mapAwardDTOToLocal)
+                } else {
+                    // Server returnerte ingenting; vis topp-3 mock som fall-back.
+                    seedMockAwards()
+                }
+            }
+        } catch {
+            await MainActor.run {
+                self.loadError = "\(error.localizedDescription)"
+                seedMockAwards()
+            }
+        }
+    }
+
+    /// Map server-DTO → lokal Award. winnerName slås opp via sellers-listen
+    /// hvis tilgjengelig (best-effort); ellers brukes userId direkte.
+    private func mapAwardDTOToLocal(_ dto: PrizeAwardDTO) -> Award {
+        // Vinner-info: vi har bare userId fra server. Hvis vi får navn i
+        // sellers-listen, bruk det; ellers fallback.
+        let winnerName = sellers.first(where: { _ in false })?.name ?? "Vinner #\(dto.userId.prefix(6))"
+        let winnerColor = sellers.first?.avatarColor ?? Color.purple
+        // Bygg PrizeProduct fra productSnapshot (rå JSON-Data) — best-effort.
+        let snapshot = (try? JSONSerialization.jsonObject(with: dto.productSnapshot) as? [String: Any]) ?? [:]
+        let title = (snapshot["title"] as? String) ?? (snapshot["name"] as? String) ?? "Premie"
+        let catRaw = (snapshot["category"] as? String) ?? "voucher"
+        let priceNok = (snapshot["estimated_value_nok"] as? Int)
+            ?? (snapshot["priceNok"] as? Int)
+            ?? Int(((snapshot["estimated_value_nok"] as? NSNumber)?.doubleValue ?? 0))
+        let cat = PrizeCategory(rawValue: catRaw) ?? .voucher
+        let fulfillRaw = (snapshot["fulfillment_type"] as? String) ?? dto.fulfillmentMethod
+        let fulfill = FulfillmentMethod(rawValue: fulfillRaw)
+        let product = PrizeProduct(
+            name: title,
+            icon: (snapshot["icon"] as? String) ?? cat.icon,
+            priceNok: priceNok,
+            category: cat,
+            vendor: snapshot["vendor"] as? String,
+            imageURL: snapshot["image_url"] as? String,
+            imageData: nil,
+            fulfillment: fulfill
+        )
+        // Rank kan vi ikke utlede fra DTO (server lagrer det separat); bruk
+        // award-status-ordering som fallback (1./2./3.plass i tildelings-rekkefølge).
+        return Award(
+            serverID: dto.id,
+            rank: 1,
+            winnerName: winnerName,
+            winnerAvatar: winnerColor,
+            product: product,
+            currentStep: Step.fromBackend(dto.status)
+        )
+    }
+
+    private func seedMockAwards() {
         guard awards.isEmpty else { return }
         let topThree = Array(sellers.prefix(3))
         // Plukk realistiske premier basert på konkurranse-navnet
@@ -6250,7 +6858,8 @@ struct PrizeFulfillmentSheet: View {
             PrizeCatalog.all.first { $0.name == "Restaurant-gavekort 3 000 kr" } ?? PrizeCatalog.all[2],
         ]
         awards = zip(topThree.indices, topThree).map { i, s in
-            Award(rank: i + 1,
+            Award(serverID: nil,
+                  rank: i + 1,
                   winnerName: s.name,
                   winnerAvatar: s.avatarColor,
                   product: products[min(i, products.count - 1)],
@@ -6443,14 +7052,19 @@ struct PrizeFulfillmentSheet: View {
         let a = award.wrappedValue
         let next = nextStep(a.currentStep)
         let cta = ctaLabel(currentStep: a.currentStep, method: a.product.effectiveFulfillment)
+        let isAdvancing = advancing.contains(a.id)
         return Button {
-            if let n = next {
-                award.wrappedValue.currentStep = n
-            }
+            Task { await advanceLocalAward(award: award) }
         } label: {
             HStack(spacing: 6) {
-                Image(systemName: a.currentStep == .received ? "checkmark.seal.fill" : "arrow.right.circle.fill")
-                    .font(.system(size: 12, weight: .bold))
+                if isAdvancing {
+                    ProgressView()
+                        .tint(.white)
+                        .scaleEffect(0.7)
+                } else {
+                    Image(systemName: a.currentStep == .received ? "checkmark.seal.fill" : "arrow.right.circle.fill")
+                        .font(.system(size: 12, weight: .bold))
+                }
                 Text(cta)
                     .font(.system(size: 12, weight: .bold))
                 Spacer()
@@ -6472,8 +7086,31 @@ struct PrizeFulfillmentSheet: View {
             )
         }
         .buttonStyle(.plain)
-        .disabled(next == nil)
-        .opacity(next == nil ? 0.85 : 1.0)
+        .disabled(next == nil || isAdvancing)
+        .opacity((next == nil || isAdvancing) ? 0.85 : 1.0)
+    }
+
+    /// Skyv award ett steg videre. Hvis vi har serverID + api, ring
+    /// advanceAward på backend; ellers oppdater kun lokalt (mock).
+    private func advanceLocalAward(award: Binding<Award>) async {
+        let a = award.wrappedValue
+        guard let next = nextStep(a.currentStep) else { return }
+        guard let api = appState.api, let serverID = a.serverID else {
+            // Lokal-only: bare mutér state
+            await MainActor.run { award.wrappedValue.currentStep = next }
+            return
+        }
+        await MainActor.run { _ = advancing.insert(a.id) }
+        defer { Task { @MainActor in advancing.remove(a.id) } }
+        do {
+            let dto = try await api.advanceAward(id: serverID, trackingNumber: nil, notes: nil)
+            await MainActor.run {
+                award.wrappedValue.currentStep = Step.fromBackend(dto.status)
+            }
+        } catch {
+            // Best-effort fall-back: stille
+            print("[PrizeFulfillmentSheet] advance failed: \(error)")
+        }
     }
 
     private func nextStep(_ s: Step) -> Step? {
