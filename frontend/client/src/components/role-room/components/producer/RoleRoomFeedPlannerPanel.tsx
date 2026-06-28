@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Box, Button, Chip, CircularProgress, Skeleton, Stack, Typography } from '@mui/material';
+import { Alert, Box, Button, Chip, CircularProgress, Stack, Typography } from '@mui/material';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   AutoAwesome as AutoAwesomeIcon,
@@ -53,6 +53,7 @@ import SocialBrandLogo, { InstagramBrandLogo } from './SocialBrandLogo';
 import { buildFeedPost } from '../../utils/feedPlanner';
 import { describeProducerError } from '../../utils/producerErrorMessage';
 import SortableFeedPostTile from './SortableFeedPostTile';
+import { LoadingSkeleton } from './ui';
 
 type RoleRoomFeedPlannerPanelProps = {
   projectId: string;
@@ -727,18 +728,7 @@ export default function RoleRoomFeedPlannerPanel({
         }}
       >
         {loadingPlan ? (
-          <Stack alignItems="center" spacing={1.4} sx={{ py: 6 }}>
-            <CircularProgress size={28} sx={{ color: '#22d3ee' }} />
-            <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.84rem' }}>
-              Henter lagret feed-plan…
-            </Typography>
-            <Skeleton
-              variant="rectangular"
-              width="100%"
-              height={420}
-              sx={{ maxWidth: 420, borderRadius: 4, bgcolor: 'rgba(34,211,238,0.08)' }}
-            />
-          </Stack>
+          <LoadingSkeleton variant="cards" count={9} />
         ) : posts.length === 0 ? (
           <Stack alignItems="center" spacing={1.2} sx={{ py: 6, px: 2, textAlign: 'center' }}>
             <Typography sx={{ color: '#e2e8f0', fontWeight: 700 }}>Ingen poster ennå</Typography>

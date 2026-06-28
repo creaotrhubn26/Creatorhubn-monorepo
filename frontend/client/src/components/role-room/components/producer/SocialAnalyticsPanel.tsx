@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Alert,
   Box,
   Chip,
-  CircularProgress,
   Divider,
   IconButton,
   Stack,
@@ -42,6 +40,7 @@ import roleRoomAgentService, {
   type RoleRoomTopPostMetric,
 } from '../../services/roleRoomAgentService';
 import { useSequencedFetch } from '../../hooks/useSequencedFetch';
+import { LoadingSkeleton, PanelHeader, EmptyState, ErrorAlert, MetricCard } from './ui';
 
 const PLATFORM_COLOR: Record<string, string> = {
   instagram: '#ec4899',
@@ -75,47 +74,6 @@ function formatNumber(n: number | null | undefined): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
   return String(n);
-}
-
-function KpiCard({
-  label,
-  value,
-  caption,
-  accent,
-  testId,
-}: {
-  label: string;
-  value: string;
-  caption?: string;
-  accent?: string;
-  testId?: string;
-}): React.ReactElement {
-  return (
-    <Box
-      data-testid={testId}
-      sx={{
-        flex: '1 1 160px',
-        minWidth: 160,
-        p: 1.4,
-        borderRadius: 2,
-        bgcolor: 'rgba(15,23,42,0.6)',
-        border: '1px solid rgba(148,163,184,0.18)',
-        borderLeft: `3px solid ${accent ?? '#22d3ee'}`,
-      }}
-    >
-      <Typography sx={{ color: 'rgba(226,232,240,0.55)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>
-        {label}
-      </Typography>
-      <Typography sx={{ color: '#e2e8f0', fontSize: '1.5rem', fontWeight: 800, mt: 0.3 }}>
-        {value}
-      </Typography>
-      {caption ? (
-        <Typography sx={{ color: 'rgba(226,232,240,0.55)', fontSize: '0.72rem', mt: 0.2 }}>
-          {caption}
-        </Typography>
-      ) : null}
-    </Box>
-  );
 }
 
 interface TimeSeriesPoint {
@@ -218,45 +176,35 @@ export default function SocialAnalyticsPanel(): React.ReactElement {
 
   return (
     <Stack spacing={2} data-testid="social-analytics-panel">
-      <Stack direction="row" justifyContent="space-between" alignItems="center">
-        <Stack direction="row" spacing={1} alignItems="center">
-          <AnalyticsHeaderIcon sx={{ color: '#22d3ee' }} />
-          <Box>
-            <Typography sx={{ color: '#f8fafc', fontSize: '1.05rem', fontWeight: 800 }}>Analyse</Typography>
-            <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '0.84rem' }}>
-              Måler resultatene av strategien — henvendelser, stemning og rekkevidde.
-            </Typography>
-          </Box>
-        </Stack>
-        <Tooltip title="Oppdater">
-          <IconButton size="small" aria-label="Oppdater analyse" onClick={() => void refresh()} disabled={loading}>
-            <RefreshIcon fontSize="small" sx={{ color: 'rgba(226,232,240,0.7)' }} />
-          </IconButton>
-        </Tooltip>
-      </Stack>
+      <PanelHeader
+        icon={<AnalyticsHeaderIcon />}
+        title="Analyse"
+        subtitle="Måler resultatene av strategien — henvendelser, stemning og rekkevidde."
+        actions={
+          <Tooltip title="Oppdater">
+            <IconButton size="small" aria-label="Oppdater analyse" onClick={() => void refresh()} disabled={loading}>
+              <RefreshIcon fontSize="small" sx={{ color: 'rgba(226,232,240,0.7)' }} />
+            </IconButton>
+          </Tooltip>
+        }
+      />
 
-      {error ? (
-        <Alert severity="error" sx={{ bgcolor: 'rgba(239,68,68,0.08)', color: '#fecaca' }}>
-          {error}
-        </Alert>
-      ) : null}
+      {error ? <ErrorAlert message={error} /> : null}
 
       {loading && !summary ? (
-        <Stack alignItems="center" sx={{ py: 4 }}>
-          <CircularProgress size={20} />
-        </Stack>
+        <LoadingSkeleton variant="cards" />
       ) : (
         <>
           {/* KPI cards */}
           <Stack direction="row" spacing={1.2} flexWrap="wrap" useFlexGap>
-            <KpiCard
+            <MetricCard
               label="Events 7d"
               value={formatNumber(summary?.last7d.totalEvents ?? 0)}
               caption={`${summary?.last7d.totalUnread ?? 0} ulest`}
               accent="#22d3ee"
               testId="kpi-events-7d"
             />
-            <KpiCard
+            <MetricCard
               label="Events 30d"
               value={formatNumber(summary?.last30d.totalEvents ?? 0)}
               caption="totalt"
@@ -264,7 +212,7 @@ export default function SocialAnalyticsPanel(): React.ReactElement {
               testId="kpi-events-30d"
             />
             {sentimentTotals.map((s) => (
-              <KpiCard
+              <MetricCard
                 key={s.name}
                 label={`${s.name} 30d`}
                 value={formatNumber(s.value)}
@@ -602,25 +550,16 @@ export default function SocialAnalyticsPanel(): React.ReactElement {
 
           {/* Empty state when truly nothing */}
           {(summary?.last30d.totalEvents ?? 0) === 0 && topPosts.length === 0 ? (
-            <Box
-              sx={{
-                p: 3,
-                textAlign: 'center',
-                color: 'rgba(226,232,240,0.6)',
-                bgcolor: 'rgba(15,23,42,0.4)',
-                borderRadius: 2,
-                border: '1px dashed rgba(148,163,184,0.25)',
-              }}
-            >
-              <Typography sx={{ fontSize: '0.9rem', fontWeight: 600, mb: 0.5 }}>
-                Ingen data å analysere ennå
-              </Typography>
-              <Typography sx={{ fontSize: '0.78rem' }}>
-                Når du publiserer poster og mottar comments/mentions, vil tall, sentiment-trender og top-posts
-                dukke opp her. Inbound webhook-events går automatisk til Inbox-fanen, og insights-snapshots tas
-                via <code>POST /api/role-room/social/metrics/snapshot</code>.
-              </Typography>
-            </Box>
+            <EmptyState
+              title="Ingen data å analysere ennå"
+              description={
+                <>
+                  Når du publiserer poster og mottar comments/mentions, vil tall, sentiment-trender og top-posts
+                  dukke opp her. Inbound webhook-events går automatisk til Inbox-fanen, og insights-snapshots tas
+                  via <code>POST /api/role-room/social/metrics/snapshot</code>.
+                </>
+              }
+            />
           ) : null}
 
           <Divider sx={{ borderColor: 'rgba(148,163,184,0.12)' }} />

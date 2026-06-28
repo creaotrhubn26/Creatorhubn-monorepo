@@ -7,7 +7,7 @@ import { apiRequest } from '@/lib/queryClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Box, Stack, Typography, Chip, Button, List, ListItemButton, ListItemText,
-  CircularProgress, Alert, Divider, Table, TableBody, TableCell, TableHead, TableRow,
+  Alert, Divider, Table, TableBody, TableCell, TableHead, TableRow,
   Select, MenuItem, TextField, InputAdornment, Collapse, Tooltip, Switch, FormControlLabel,
   Snackbar,
 } from '@mui/material';
@@ -18,6 +18,7 @@ import {
 import CtaCard from './CtaCard';
 import InsightsCard from './InsightsCard';
 import ConnectionPicker from './ConnectionPicker';
+import { LoadingSkeleton, PanelHeader, ErrorAlert } from './ui';
 
 type Segment = 'varm' | 'lunken' | 'kald' | 'tapt';
 const SEGMENTS: { key: Segment; label: string; hint: string; campaign: string; color: string }[] = [
@@ -313,24 +314,22 @@ export default function LeadsPanel() {
 
   return (
     <Stack spacing={1.6} sx={{ p: { xs: 1, md: 2 } }}>
-      <Stack direction="row" spacing={1} alignItems="center">
-        <LeadsIcon sx={{ color: '#22d3ee' }} />
-        <Box sx={{ flex: 1 }}>
-          <Typography sx={{ color: '#f8fafc', fontWeight: 800, fontSize: '1.05rem' }}>Leads til kunden</Typography>
-          <Typography sx={{ color: 'rgba(226,232,240,0.66)', fontSize: '0.84rem' }}>
-            Skjema-svar fra kundens Meta-annonser (Lead Ads). Hent dem inn her og lever til kunden.
-          </Typography>
-        </Box>
-        <ConnectionPicker
-          connections={connections}
-          value={connectionId}
-          onChange={(v) => { setConnectionId(v); setFormId(''); }}
-          label="Velg Facebook-side"
-        />
-      </Stack>
+      <PanelHeader
+        icon={<LeadsIcon />}
+        title="Leads til kunden"
+        subtitle="Skjema-svar fra kundens Meta-annonser (Lead Ads). Hent dem inn her og lever til kunden."
+        actions={
+          <ConnectionPicker
+            connections={connections}
+            value={connectionId}
+            onChange={(v) => { setConnectionId(v); setFormId(''); }}
+            label="Velg Facebook-side"
+          />
+        }
+      />
 
       {connLoading ? (
-        <Box sx={{ textAlign: 'center', py: 4 }}><CircularProgress /></Box>
+        <LoadingSkeleton variant="list" />
       ) : connections.length === 0 ? (
         <Alert severity="info">Koble til kundens Facebook-side først (under Feed-planner) for å hente leads.</Alert>
       ) : (
@@ -352,7 +351,7 @@ export default function LeadsPanel() {
                 Lead-skjemaer
               </Typography>
               {formsLoading ? (
-                <Box sx={{ p: 2, textAlign: 'center' }}><CircularProgress size={20} /></Box>
+                <Box sx={{ p: 1.5 }}><LoadingSkeleton variant="list" count={3} /></Box>
               ) : forms.length === 0 ? (
                 <Typography sx={{ p: 2, color: 'rgba(226,232,240,0.5)', fontSize: '0.82rem' }}>
                   Ingen lead-skjemaer funnet på kundens side ennå.
@@ -380,7 +379,7 @@ export default function LeadsPanel() {
                   <Typography variant="body2">Velg et lead-skjema til venstre for å se leads.</Typography>
                 </Box>
               ) : leadsLoading ? (
-                <Box sx={{ py: 3, textAlign: 'center' }}><CircularProgress size={22} /></Box>
+                <LoadingSkeleton variant="table" />
               ) : (
                 <Stack spacing={1}>
                   <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" useFlexGap>
@@ -657,7 +656,7 @@ export default function LeadsPanel() {
                                   <TextField label="Avsenderadresse" size="small" fullWidth value={fromInput} onChange={(e) => setFromInput(e.target.value)} placeholder="kontakt@tannlegen.no" />
                                 </Stack>
                                 {connectDomain.data && connectDomain.data.success === false ? (
-                                  <Alert severity="error">{connectDomain.data.error}</Alert>
+                                  <ErrorAlert message={connectDomain.data.error} />
                                 ) : null}
                                 <Stack direction="row" justifyContent="flex-end">
                                   <Button size="small" variant="outlined" onClick={() => connectDomain.mutate()} disabled={!domainInput || connectDomain.isPending}>
@@ -667,7 +666,7 @@ export default function LeadsPanel() {
                               </Stack>
                             )}
                           </Stack>
-                        ) : <CircularProgress size={18} />}
+                        ) : <LoadingSkeleton variant="lines" />}
                       </Box>
                     </Collapse>
                   </Box>
