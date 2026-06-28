@@ -25,7 +25,7 @@ import { canAccessProject } from "./project-team-routes";
 import { signAssetReadUrl } from "./capture-upload-service";
 import { archiveToRoleRoomB2, presignRoleRoomB2Download, getFromRoleRoomB2, slugifyForKey } from "./b2-archive-helper";
 import { Vibrant } from "node-vibrant/node";
-import { GEN_MODELS, publicModelList, getGenSettings, isWhitelisted, invalidateGenSettings, emitGenAiMeter, falConfigured, falSubmit, falPoll, falOutputUrl, beebleConfigured, beebleSubmit, beeblePoll, DEFAULT_CREDIT_PACKS } from "./generative-media";
+import { GEN_MODELS, publicModelList, getGenSettings, isWhitelisted, aiAllowed, invalidateGenSettings, emitGenAiMeter, falConfigured, falSubmit, falPoll, falOutputUrl, beebleConfigured, beebleSubmit, beeblePoll, DEFAULT_CREDIT_PACKS } from "./generative-media";
 import Stripe from "stripe";
 import { ensureCreditSchema as ensureCreditSchemaShared, getUserCredits as getUserCreditsShared, creditMove as creditMoveShared } from "./ai-credits";
 import { createGoogleMeetLink } from "./google-meet";
@@ -938,7 +938,11 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
   app.post("/api/projects/:projectId/enhance-picks", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
     try {
+      await ensureGenSchema();
       const pid = req.params.projectId;
+      const me = await userIdentity(uid);
+      const settings = await getGenSettings(pool);
+      const model = GEN_MODELS["photo-enhance"];
       const body = (req.body ?? {}) as { assetIds?: unknown; preset?: unknown };
       const preset = typeof body.preset === "string" && body.preset ? body.preset : "auto";
       const sessions = await pool.query(`SELECT id FROM capture_sessions WHERE project_id = $1`, [pid]).catch(() => ({ rows: [] }));
@@ -950,6 +954,15 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
         ? await pool.query(`SELECT id, full_key, preview_key, mime, original_filename FROM capture_assets WHERE session_id = ANY($1::uuid[]) AND id = ANY($2::uuid[]) AND rejected IS NOT TRUE`, [sessionIds, requested]).catch(() => ({ rows: [] }))
         : await pool.query(`SELECT id, full_key, preview_key, mime, original_filename FROM capture_assets WHERE session_id = ANY($1::uuid[]) AND flagged_for_client IS TRUE AND rejected IS NOT TRUE ORDER BY rating DESC NULLS LAST LIMIT 30`, [sessionIds]).catch(() => ({ rows: [] }));
       if (rows.rows.length === 0) return res.status(400).json({ error: "no_assets", message: "Ingen bilder å forbedre (marker bilder for klient først, eller send assetIds)." });
+      // Gate + dagstak + kreditt-pre-sjekk for HELE batchen (N bilder).
+      if (settings.enabled) {
+        if (!aiAllowed(settings, me.email, me.role)) return res.status(403).json({ error: "not_whitelisted", message: "AI-forbedring er ikke aktivert for din konto." });
+        const batchCost = rows.rows.length * model.estCostUsd;
+        const spent = await spentTodayUsd();
+        if (spent + batchCost > settings.dailyCapUsd) return res.status(429).json({ error: "daily_cap", message: `Dagstak nådd ($${settings.dailyCapUsd}).` });
+        const pf = await creditPreflight(settings, uid, batchCost);
+        if (!pf.ok) return res.status(402).json({ error: "insufficient_credits", message: `Ikke nok kreditter for ${rows.rows.length} bilder (rest $${pf.balance.toFixed(2)}, trenger $${pf.retail.toFixed(2)}). Kjøp mer.` });
+      }
       const jobs: any[] = []; const failures: any[] = [];
       for (const r of rows.rows) {
         const sourceKey = r.full_key || r.preview_key;
@@ -964,6 +977,17 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
             projectId: pid, owner: uid, userId: uid, preset,
           });
           if (!jobId) { failures.push({ assetId: r.id, reason: "enqueue_failed" }); continue; }
+          // Bill per faktisk køet bilde (charge-on-submit; enhancer kjører i egen kø).
+          if (settings.enabled) {
+            const gid = crypto.randomUUID();
+            await pool.query(
+              `INSERT INTO generative_ai_jobs (id, project_id, user_id, user_email, model, kind, status, provider, source_asset_id, est_cost_usd, completed_at, input)
+               VALUES ($1,$2,$3,$4,$5,'image-edit','completed',$6,$7,$8,NOW(),$9::jsonb)`,
+              [gid, pid, uid, me.email, model.key, model.provider, r.id, model.estCostUsd, JSON.stringify({ prompt: "Foto-forbedring", enhancerJobId: jobId })],
+            ).catch(() => {});
+            try { await emitGenAiMeter(pool, { userId: uid, valueUsd: model.estCostUsd, settings }); } catch { /* */ }
+            if (settings.billingMode === "credits") { try { await creditMove(uid, "spend", -(model.estCostUsd * (settings.markupMultiplier || 1)), `enhance:${jobId}`, "photo-enhance"); } catch { /* */ } }
+          }
           jobs.push({ assetId: r.id, jobId });
         } catch { failures.push({ assetId: r.id, reason: "fetch_threw" }); }
       }
@@ -1286,7 +1310,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const myCost = Number(mine.rows[0]?.cost || 0);
       res.json({
         enabled: settings.enabled && falConfigured(),
-        whitelisted: settings.enabled && isWhitelisted(settings, me.email, me.role),
+        whitelisted: aiAllowed(settings, me.email, me.role),
         beebleConfigured: beebleConfigured(),
         billingMode: settings.billingMode,
         consent: consent.rows[0] ? { consented: !!consent.rows[0].consented, by: consent.rows[0].consented_by, at: consent.rows[0].consented_at } : { consented: false },
@@ -1330,7 +1354,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const me = await userIdentity(uid);
       const settings = await getGenSettings(pool);
       if (!settings.enabled || !falConfigured()) return res.status(503).json({ error: "ai_disabled" });
-      if (!isWhitelisted(settings, me.email, me.role)) return res.status(403).json({ error: "not_whitelisted", message: "AI-redigering er ikke aktivert for din konto." });
+      if (!aiAllowed(settings, me.email, me.role)) return res.status(403).json({ error: "not_whitelisted", message: "AI-redigering er ikke aktivert for din konto." });
       const model = GEN_MODELS["nano-banana-2-edit"];
       // Samtykke-gate (persondata → tredjepart).
       const consent = await pool.query(`SELECT consented FROM project_ai_consent WHERE project_id = $1`, [pid]).catch(() => ({ rows: [] }));
@@ -1371,7 +1395,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const me = await userIdentity(uid);
       const settings = await getGenSettings(pool);
       if (!settings.enabled || !falConfigured()) return res.status(503).json({ error: "ai_disabled" });
-      if (!isWhitelisted(settings, me.email, me.role)) return res.status(403).json({ error: "not_whitelisted" });
+      if (!aiAllowed(settings, me.email, me.role)) return res.status(403).json({ error: "not_whitelisted" });
       const model = GEN_MODELS["nano-banana-2-t2i"];
       const spent = await spentTodayUsd();
       if (spent + model.estCostUsd > settings.dailyCapUsd) return res.status(429).json({ error: "daily_cap", message: `Dagstak nådd ($${settings.dailyCapUsd}).` });
@@ -1405,7 +1429,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const me = await userIdentity(uid);
       const settings = await getGenSettings(pool);
       if (!settings.enabled) return res.status(503).json({ error: "ai_disabled" });
-      if (!isWhitelisted(settings, me.email, me.role)) return res.status(403).json({ error: "not_whitelisted" });
+      if (!aiAllowed(settings, me.email, me.role)) return res.status(403).json({ error: "not_whitelisted" });
       const consent = await pool.query(`SELECT consented FROM project_ai_consent WHERE project_id = $1`, [pid]).catch(() => ({ rows: [] }));
       if (!consent.rows[0]?.consented) return res.status(409).json({ error: "consent_required" });
       const mode = req.body?.mode === "edit" ? "edit" : "motion";
@@ -1446,7 +1470,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const me = await userIdentity(uid);
       const settings = await getGenSettings(pool);
       if (!settings.enabled || !falConfigured()) return res.status(503).json({ error: "ai_disabled" });
-      if (!isWhitelisted(settings, me.email, me.role)) return res.status(403).json({ error: "not_whitelisted", message: "AI-video er ikke aktivert for din konto." });
+      if (!aiAllowed(settings, me.email, me.role)) return res.status(403).json({ error: "not_whitelisted", message: "AI-video er ikke aktivert for din konto." });
       const model = GEN_MODELS["seedance-2-i2v"];
       const consent = await pool.query(`SELECT consented FROM project_ai_consent WHERE project_id = $1`, [pid]).catch(() => ({ rows: [] }));
       if (!consent.rows[0]?.consented) return res.status(409).json({ error: "consent_required", message: "Krever samtykke: kundebilder sendes til tredjeparts AI utenfor EØS." });
@@ -1486,7 +1510,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const me = await userIdentity(uid);
       const settings = await getGenSettings(pool);
       if (!settings.enabled) return res.status(503).json({ error: "ai_disabled" });
-      if (!isWhitelisted(settings, me.email, me.role)) return res.status(403).json({ error: "not_whitelisted" });
+      if (!aiAllowed(settings, me.email, me.role)) return res.status(403).json({ error: "not_whitelisted" });
       if (!beebleConfigured()) return res.status(503).json({ error: "beeble_not_configured", message: "SwitchX (BEEBLE_API_KEY) er ikke konfigurert." });
       const model = GEN_MODELS["switchx-restyle"];
       const consent = await pool.query(`SELECT consented FROM project_ai_consent WHERE project_id = $1`, [pid]).catch(() => ({ rows: [] }));
