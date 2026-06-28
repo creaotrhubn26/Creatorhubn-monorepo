@@ -195,7 +195,16 @@ export async function listLeadsInBounds(
     { ownerUserId: opts.ownerUserId, agentConfigId: opts.agentConfigId, projectId: opts.projectId },
     params,
   );
-  const conditions: string[] = [...tenantConds, 'latitude IS NOT NULL', 'longitude IS NOT NULL'];
+  // Bug-fiks 2026-06-28: arkiverte leads ble vist på kartet og i lister
+  // (Daniel arkiverte 45 garbage-leads, men de fortsatte å vises i UI).
+  // Filtrer ut `archived_at IS NOT NULL` her — alle kart-views skal
+  // bare se aktive leads. Brukere som vil se arkivert har egen view.
+  const conditions: string[] = [
+    ...tenantConds,
+    'latitude IS NOT NULL',
+    'longitude IS NOT NULL',
+    'archived_at IS NULL',
+  ];
 
   if (opts.bounds) {
     params.push(opts.bounds.minLat); conditions.push(`latitude >= $${params.length}::numeric`);
