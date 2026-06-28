@@ -24,6 +24,7 @@ import OppgaverTab from './tabs/OppgaverTab';
 import AvtalerTab from './tabs/AvtalerTab';
 import KundevisningTab from './tabs/KundevisningTab';
 import TeamTab from './tabs/TeamTab';
+import SoundRoomTab from './tabs/SoundRoomTab';
 import WorkspaceChatPanel from './WorkspaceChatPanel';
 import { usePresence } from './usePresence';
 import { ws, WS_NAV } from './workspaceTheme';
@@ -117,6 +118,7 @@ const TeamWorkspacePage: React.FC = () => {
     avtaler: <AvtalerTab projectId={projectId} />,
     kundevisning: <KundevisningTab projectId={projectId} />,
     team: <TeamTab projectId={projectId} />,
+    'sound-room': <SoundRoomTab projectId={projectId} />,
     chat: (
       <Box sx={{ height: 'calc(100vh - 160px)', maxWidth: 760, mx: 'auto' }}>
         <WorkspaceChatPanel projectId={projectId} />

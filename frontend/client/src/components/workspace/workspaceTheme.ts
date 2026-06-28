@@ -94,7 +94,7 @@ export const WS_NAV: WsNavItem[] = [
   { key: 'photo-room', label: 'Photo Room', icon: 'PhotoCamera', group: 'rom', online: true },
   { key: 'video-room', label: 'Video Room', icon: 'Videocam', group: 'rom', online: true },
   { key: 'edit-room', label: 'Edit Room', icon: 'Movie', group: 'rom', online: true },
-  { key: 'sound-room', label: 'Sound Room', icon: 'GraphicEq', group: 'rom', online: true },
+  { key: 'sound-room', label: 'Sound Room', icon: 'GraphicEq', group: 'rom', online: true, route: true },
   // Kundeportal
   { key: 'kundevisning', label: 'Kundevisning', icon: 'Visibility', group: 'klient' },
   { key: 'avtaler', label: 'Avtaler', icon: 'EventNote', group: 'klient' },

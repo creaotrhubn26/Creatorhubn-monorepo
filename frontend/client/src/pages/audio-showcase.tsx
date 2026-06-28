@@ -77,6 +77,8 @@ const NavItem: React.FC<{ icon: React.ReactNode; label: string; active?: boolean
 export default function AudioShowcasePage() {
   const params = useParams() as { projectId?: string };
   const projectId = params.projectId || '';
+  // Åpnet fra Team Workspace sin Sound Room? (?ws=<workspaceProjectId>) → tilbake-lenke.
+  const wsBack = (() => { try { return new URLSearchParams(window.location.search).get('ws'); } catch { return null; } })();
 
   const [project, setProject] = React.useState<any>(null);
   const [versions, setVersions] = React.useState<any[]>([]);
@@ -325,6 +327,12 @@ export default function AudioShowcasePage() {
     <Box sx={{ bgcolor: BG, height: '100vh', color: TEXT, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {/* ═══ TOPBAR ═══ */}
       <Stack direction="row" alignItems="center" sx={{ px: 2.5, height: 60, borderBottom: `1px solid ${BORDER}`, flexShrink: 0, gap: 2 }}>
+        {wsBack && (
+          <a href={`/workspace/${wsBack}/sound-room`} title="Tilbake til workspace"
+            style={{ display: 'flex', alignItems: 'center', gap: 4, color: MUTED, textDecoration: 'none', fontSize: '0.82rem', fontWeight: 600, paddingRight: 8, borderRight: `1px solid ${BORDER}`, whiteSpace: 'nowrap' }}>
+            ← Workspace
+          </a>
+        )}
         <Stack direction="row" alignItems="center" spacing={1.25} sx={{ minWidth: 260 }}>
           <Box sx={{ width: 30, height: 30, borderRadius: '8px', bgcolor: ACCENT, display: 'flex', alignItems: 'center', justifyContent: 'center', clipPath: 'polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%)' }}><GraphicEq sx={{ fontSize: 18, color: '#150d05' }} /></Box>
           <Typography sx={{ fontWeight: 800, letterSpacing: 0.5, fontSize: '0.95rem' }}>CREATORHUB</Typography>
