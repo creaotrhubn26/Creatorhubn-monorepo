@@ -1107,7 +1107,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const pid = req.params.projectId;
       const trackId = String(req.body?.trackId || "");
       if (!trackId) return res.status(400).json({ error: "trackId_required" });
-      const tr = await pool.query(`SELECT id, title, artist, genre, bpm, musical_key FROM easeverse_tracks WHERE id = $1::uuid AND user_id = $2 LIMIT 1`, [trackId, uid]).catch(() => ({ rows: [] }));
+      const tr = await pool.query(`SELECT id, title, artist, genre, bpm, musical_key, collaborators FROM easeverse_tracks WHERE id = $1::uuid AND user_id = $2 LIMIT 1`, [trackId, uid]).catch(() => ({ rows: [] }));
       const track = tr.rows[0];
       if (!track) return res.status(404).json({ error: "track_not_found" });
       // Finn eksisterende review for track-en, ellers opprett (samme som send-to-review).
@@ -1128,8 +1128,101 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
          ON CONFLICT (project_id) DO UPDATE SET audio_review_project_id = EXCLUDED.audio_review_project_id`,
         [pid, arId],
       ).catch(() => {});
-      res.json({ audioRoomId: arId, linked: true });
+      // Auto-synk band-roster fra EaseVerse-collaborators → review-medlemmer m/ invite-token (samme som audio-showcase sync-collaborators).
+      let bandSynced = 0;
+      try {
+        const raw = track.collaborators;
+        const collabs: string[] = Array.isArray(raw) ? raw : (() => { try { return JSON.parse(raw || "[]"); } catch { return []; } })();
+        if (collabs.length) {
+          const existing = await pool.query(`SELECT name FROM audio_review_members WHERE project_id=$1::uuid`, [arId]).catch(() => ({ rows: [] }));
+          const have = new Set(existing.rows.map((r: any) => String(r.name || "").trim().toLowerCase()));
+          const PALETTE = ["#FF6B35", "#9b59b6", "#3fa7d6", "#e0a955", "#5fb88a", "#e0606a", "#8aa0b6"];
+          let idx = existing.rows.length;
+          for (const c of collabs) {
+            const nm = String(c || "").trim();
+            if (!nm || have.has(nm.toLowerCase())) continue;
+            const token = "inv_" + crypto.randomUUID().replace(/-/g, "");
+            await pool.query(
+              `INSERT INTO audio_review_members (project_id, name, role, avatar_color, is_owner, order_index, invite_token, invite_status, invited_at, invite_expires_at)
+               VALUES ($1::uuid,$2,'Bidragsyter',$3,false,$4,$5,'pending',NOW(),NOW()+INTERVAL '90 days')`,
+              [arId, nm, PALETTE[idx % PALETTE.length], idx, token],
+            ).catch(() => {});
+            have.add(nm.toLowerCase()); idx++; bandSynced++;
+          }
+        }
+      } catch { /* roster-synk er best-effort */ }
+      res.json({ audioRoomId: arId, linked: true, bandSynced });
     } catch (e) { console.error("POST link-easeverse", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  // Band-roster for det koblede lydrommet — medlemmer m/ invite-status + delelenke.
+  const resolveAudioRoomId = async (pid: string, uid: string): Promise<string | null> => {
+    const r = await pool.query(
+      `SELECT ar.audio_review_project_id FROM project_audio_rooms ar
+       JOIN audio_review_projects p ON p.id = ar.audio_review_project_id
+       WHERE ar.project_id = $1::uuid AND p.owner_user_id = $2 LIMIT 1`,
+      [pid, uid],
+    ).catch(() => ({ rows: [] }));
+    return r.rows[0]?.audio_review_project_id || null;
+  };
+
+  app.get("/api/projects/:projectId/audio-room/members", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const arId = await resolveAudioRoomId(req.params.projectId, uid);
+      if (!arId) return res.json({ members: [] });
+      const m = await pool.query(
+        `SELECT id, name, role, instrument, email, avatar_color, is_owner, invite_status, invite_token, easeverse_access
+         FROM audio_review_members WHERE project_id = $1::uuid ORDER BY is_owner DESC, order_index ASC, created_at ASC`,
+        [arId],
+      ).catch(() => ({ rows: [] }));
+      const members = m.rows.map((x: any) => ({
+        id: x.id, name: x.name, role: x.role, instrument: x.instrument || null, email: x.email || null,
+        avatarColor: x.avatar_color, isOwner: x.is_owner, status: x.invite_status,
+        inviteUrl: x.invite_token && !x.is_owner ? `/audio-review/invite/${x.invite_token}` : null,
+        easeverseAccess: x.easeverse_access || false,
+      }));
+      res.json({ audioRoomId: arId, members });
+    } catch (e) { console.error("GET audio-room/members", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  app.post("/api/projects/:projectId/audio-room/members", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      // Finn-eller-opprett lydrommet, så «Inviter band» fungerer selv før første låt er koblet.
+      let arId = await resolveAudioRoomId(req.params.projectId, uid);
+      if (!arId) {
+        // Opprett tomt lydrom koblet til workspace-prosjektet.
+        const ins = await pool.query(
+          `INSERT INTO audio_review_projects (owner_user_id, title, status) VALUES ($1,$2,'draft') RETURNING id`,
+          [uid, "Lydrom"],
+        );
+        arId = ins.rows[0].id;
+        await pool.query(`CREATE TABLE IF NOT EXISTS project_audio_rooms (project_id uuid PRIMARY KEY, audio_review_project_id uuid NOT NULL, created_at timestamptz DEFAULT now())`).catch(() => {});
+        await pool.query(
+          `INSERT INTO project_audio_rooms (project_id, audio_review_project_id) VALUES ($1,$2)
+           ON CONFLICT (project_id) DO UPDATE SET audio_review_project_id = EXCLUDED.audio_review_project_id`,
+          [req.params.projectId, arId],
+        ).catch(() => {});
+      }
+      const name = String(req.body?.name || "").trim();
+      if (!name) return res.status(400).json({ error: "name_required" });
+      const role = String(req.body?.role || "Bidragsyter").trim() || "Bidragsyter";
+      const instrument = req.body?.instrument ? String(req.body.instrument).trim() : null;
+      const email = req.body?.email ? String(req.body.email).trim() : null;
+      const dup = await pool.query(`SELECT 1 FROM audio_review_members WHERE project_id=$1::uuid AND lower(name)=lower($2) LIMIT 1`, [arId, name]).catch(() => ({ rows: [] }));
+      if (dup.rows.length) return res.status(409).json({ error: "member_exists" });
+      const cnt = await pool.query(`SELECT count(*)::int AS n FROM audio_review_members WHERE project_id=$1::uuid`, [arId]).catch(() => ({ rows: [{ n: 0 }] }));
+      const idx = cnt.rows[0]?.n || 0;
+      const PALETTE = ["#FF6B35", "#9b59b6", "#3fa7d6", "#e0a955", "#5fb88a", "#e0606a", "#8aa0b6"];
+      const token = "inv_" + crypto.randomUUID().replace(/-/g, "");
+      const created = await pool.query(
+        `INSERT INTO audio_review_members (project_id, name, role, avatar_color, is_owner, order_index, email, instrument, invite_token, invite_status, invited_at, invite_expires_at)
+         VALUES ($1::uuid,$2,$3,$4,false,$5,$6,$7,$8,'pending',NOW(),NOW()+INTERVAL '90 days') RETURNING id`,
+        [arId, name, role, PALETTE[idx % PALETTE.length], idx, email, instrument, token],
+      );
+      res.status(201).json({ id: created.rows[0].id, audioRoomId: arId, inviteUrl: `/audio-review/invite/${token}`, status: "pending" });
+    } catch (e) { console.error("POST audio-room/members", e); res.status(500).json({ error: "failed" }); }
   });
 
   // ─────────── Photo Room — produsent-side bilde-review-cockpit ───────────────
