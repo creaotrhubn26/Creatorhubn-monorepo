@@ -10,13 +10,18 @@
  * opplevelsen på /audio-review/:audioRoomId?ws=:projectId (med tilbake-lenke).
  */
 import React, { useEffect, useState } from 'react';
-import { Box, Stack, Typography, Button, CircularProgress } from '@mui/material';
+import { Box, Stack, Typography, Button, CircularProgress, TextField, Avatar, IconButton } from '@mui/material';
 import { useLocation } from 'wouter';
 import GraphicEq from '@mui/icons-material/GraphicEq';
 import OpenInFull from '@mui/icons-material/OpenInFull';
+import GroupAdd from '@mui/icons-material/GroupAdd';
+import ContentCopy from '@mui/icons-material/ContentCopy';
+import Check from '@mui/icons-material/Check';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
 import { WsCard, WsTag } from '../ui';
+
+const ti = { '& .MuiOutlinedInput-root': { fontSize: 13, color: ws.text, bgcolor: ws.panel, '& fieldset': { borderColor: ws.borderSoft }, '&:hover fieldset': { borderColor: ws.accentBorder }, '&.Mui-focused fieldset': { borderColor: ws.accent } }, '& input::placeholder': { color: ws.textFaint, opacity: 1 } } as const;
 
 const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const isReal = projectId && projectId !== 'sample';
@@ -27,8 +32,22 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [err, setErr] = useState<string | null>(null);
   const [ev, setEv] = useState<any | null>(null); // EaseVerse-tracks
   const [linking, setLinking] = useState<string | null>(null);
+  const [members, setMembers] = useState<any[] | null>(null);
+  const [invite, setInvite] = useState<{ name: string; role: string; instrument: string; email: string } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
 
   const loadEv = () => { if (isReal) apiRequest(`/api/projects/${encodeURIComponent(projectId)}/easeverse-tracks`).then((r: any) => setEv(r || null)).catch(() => {}); };
+  const loadMembers = () => { if (isReal) apiRequest(`/api/projects/${encodeURIComponent(projectId)}/audio-room/members`).then((r: any) => setMembers(r?.members || [])).catch(() => {}); };
+  const copyInvite = (url: string) => { const full = url.startsWith('http') ? url : window.location.origin + url; navigator.clipboard?.writeText(full).then(() => { setCopied(url); setTimeout(() => setCopied(null), 1800); }).catch(() => {}); };
+  const submitInvite = async () => {
+    if (!invite?.name?.trim() || saving) return; setSaving(true);
+    try {
+      await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/audio-room/members`, { method: 'POST', body: { name: invite.name.trim(), role: invite.role.trim() || 'Bidragsyter', instrument: invite.instrument.trim() || undefined, email: invite.email.trim() || undefined } });
+      setInvite(null); loadMembers(); if (!roomId) { try { const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/audio-room`); setRoomId(r?.audioRoomId || null); } catch { /* */ } }
+    } catch (e: any) { window.alert(e?.message === 'member_exists' ? 'Medlemmet finnes allerede' : (e?.message || 'Kunne ikke legge til')); }
+    finally { setSaving(false); }
+  };
   useEffect(() => {
     if (!isReal) { setLoading(false); return; }
     let stop = false;
@@ -44,13 +63,22 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       finally { if (!stop) setLoading(false); }
     })();
     loadEv();
+    loadMembers();
     return () => { stop = true; };
   }, [projectId, isReal]);
 
   const openRoom = () => { if (roomId) navigate(`/audio-review/${roomId}?ws=${encodeURIComponent(projectId)}`); };
   const linkTrack = async (trackId: string) => {
     if (linking) return; setLinking(trackId);
-    try { const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/audio-room/link-easeverse`, { method: 'POST', body: { trackId } }); if (r?.audioRoomId) navigate(`/audio-review/${r.audioRoomId}?ws=${encodeURIComponent(projectId)}`); }
+    try {
+      const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/audio-room/link-easeverse`, { method: 'POST', body: { trackId } });
+      if (r?.audioRoomId) {
+        setRoomId(r.audioRoomId);
+        try { const s: any = await apiRequest(`/api/audio-showcases/${r.audioRoomId}`); setSummary(s); } catch { /* */ }
+        loadEv(); loadMembers();
+        if (r.bandSynced > 0) window.alert(`${r.bandSynced} bandmedlem${r.bandSynced === 1 ? '' : 'mer'} fra EaseVerse lagt til i lydrommet med invitasjons-lenker.`);
+      }
+    }
     catch (e: any) { window.alert(e?.message || 'Kunne ikke koble track'); }
     finally { setLinking(null); }
   };
@@ -120,6 +148,54 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           <Button variant="contained" onClick={openRoom} sx={{ mt: 1.5, bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Åpne lydrommet</Button>
         </WsCard>
       )}
+
+      {/* Band-roster — medlemmer (auto-synket fra EaseVerse-collaborators) + invitér */}
+      <WsCard sx={{ mt: 2 }}>
+        <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.25 }}>
+          <GroupAdd sx={{ fontSize: 18, color: ws.accent }} />
+          <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>Band & bidragsytere</Typography>
+          <Box sx={{ flex: 1 }} />
+          {(members?.length || 0) > 0 && <WsTag label={`${members!.length}`} tone="neutral" />}
+          <Button size="small" variant="outlined" onClick={() => setInvite(invite ? null : { name: '', role: '', instrument: '', email: '' })} sx={{ color: ws.accent, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 600 }}>{invite ? 'Avbryt' : '+ Inviter'}</Button>
+        </Stack>
+
+        {invite && (
+          <Box sx={{ p: 1.5, mb: 1.5, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.panelAlt, border: `1px solid ${ws.accentBorder}` }}>
+            <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
+              <TextField size="small" placeholder="Navn *" value={invite.name} onChange={(e) => setInvite({ ...invite, name: e.target.value })} fullWidth sx={ti} />
+              <TextField size="small" placeholder="Instrument/rolle" value={invite.instrument} onChange={(e) => setInvite({ ...invite, instrument: e.target.value })} fullWidth sx={ti} />
+            </Stack>
+            <Stack direction="row" spacing={1} alignItems="center">
+              <TextField size="small" placeholder="E-post (valgfritt)" value={invite.email} onChange={(e) => setInvite({ ...invite, email: e.target.value })} fullWidth sx={ti} />
+              <Button variant="contained" disabled={!invite.name.trim() || saving} onClick={submitInvite} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, flexShrink: 0, '&:hover': { bgcolor: ws.accentHover } }}>{saving ? 'Legger til…' : 'Legg til'}</Button>
+            </Stack>
+          </Box>
+        )}
+
+        {(members?.length || 0) === 0 ? (
+          <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Ingen bandmedlemmer ennå. Koble en EaseVerse-låt under, så hentes bidragsyterne inn automatisk med invitasjons-lenker — eller legg til manuelt med «+ Inviter».</Typography>
+        ) : (
+          <Stack spacing={0.75}>
+            {members!.map((m: any) => (
+              <Stack key={m.id} direction="row" alignItems="center" spacing={1.25} sx={{ p: 1, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.panelAlt, border: `1px solid ${ws.borderSoft}` }}>
+                <Avatar sx={{ width: 30, height: 30, fontSize: 12, fontWeight: 700, bgcolor: m.avatarColor || ws.accent, color: '#fff' }}>{String(m.name || '?').charAt(0).toUpperCase()}</Avatar>
+                <Box sx={{ minWidth: 0, flex: 1 }}>
+                  <Stack direction="row" spacing={0.75} alignItems="center">
+                    <Typography sx={{ fontSize: 13, fontWeight: 700 }} noWrap>{m.name}</Typography>
+                    {m.isOwner ? <WsTag label="Eier" tone="green" /> : m.status === 'accepted' ? <WsTag label="Aktiv" tone="green" /> : <WsTag label="Invitert" tone="amber" />}
+                  </Stack>
+                  <Typography sx={{ fontSize: 10.5, color: ws.textFaint }} noWrap>{m.instrument || m.role || 'Bidragsyter'}{m.email ? ` · ${m.email}` : ''}</Typography>
+                </Box>
+                {m.inviteUrl && (
+                  <IconButton size="small" onClick={() => copyInvite(m.inviteUrl)} title="Kopier invitasjons-lenke" sx={{ color: copied === m.inviteUrl ? ws.green : ws.textDim }}>
+                    {copied === m.inviteUrl ? <Check sx={{ fontSize: 16 }} /> : <ContentCopy sx={{ fontSize: 15 }} />}
+                  </IconButton>
+                )}
+              </Stack>
+            ))}
+          </Stack>
+        )}
+      </WsCard>
 
       {/* EaseVerse-tracks — koble en låt fra EaseVerse inn i Sound Room (toveis-synk) */}
       <WsCard sx={{ mt: 2 }}>
