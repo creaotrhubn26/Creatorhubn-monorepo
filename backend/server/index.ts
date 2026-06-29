@@ -859,6 +859,7 @@ import {
 import { setupPhotographerMiscRoutes } from "./photographer-misc-routes";
 import { setupProjectTeamRoutes, canAccessProject } from "./project-team-routes";
 import { setupProjectWorkspaceRoutes } from "./project-workspace-routes";
+import { setupProToolsCompanionRoutes } from "./protools-companion-routes";
 import { setupGoogleDriveSyncRoutes } from "./google-drive-sync-routes";
 import { setupChunkedUploadRoutes } from "./chunked-upload-routes";
 import { setupUploadsRoutes } from "./uploads-routes";
@@ -65850,6 +65851,8 @@ setupProjectTeamRoutes({ app, pool, requireUserSession, escapeHtml });
 // Team Workspace egne panel-data (board-tasks/checklist/deliverables/shot-list GET)
 // — project_id-scopet, UAVHENGIG av Role Room.
 setupProjectWorkspaceRoutes({ app, pool, requireUserSession });
+// Pro Tools Companion (native desktop-agent) + EaseVerse/Sound Room-kobling.
+setupProToolsCompanionRoutes({ app, pool, requireUserSession });
 setupPhotographerMiscRoutes({
   app,
   pool,
