@@ -66,6 +66,7 @@ interface AppStoreItem {
   category: string;
   rating: number;
   reviews: number;
+  reviewsCount?: number;
   description: string;
   longDescription: string;
   featured?: boolean;
@@ -618,11 +619,12 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
   // produkter, 333 stk) og viste meningsløse tall (rating 1, downloads=reviews).
   const statsLoading = appsLoading;
   const marketplaceStats: MarketplaceStats = useMemo(() => {
+    const rc = (a: AppStoreItem) => a.reviewsCount ?? a.reviews ?? 0;
     const totalDownloads = apps.reduce((s, a) => s + (a.downloadCount || 0), 0);
-    const totalReviews = apps.reduce((s, a) => s + (a.reviewsCount || 0), 0);
-    const rated = apps.filter((a) => (a.rating || 0) > 0 && (a.reviewsCount || 0) > 0);
-    const weighted = rated.reduce((s, a) => s + (a.rating || 0) * (a.reviewsCount || 0), 0);
-    const ratingWeight = rated.reduce((s, a) => s + (a.reviewsCount || 0), 0);
+    const totalReviews = apps.reduce((s, a) => s + rc(a), 0);
+    const rated = apps.filter((a) => (a.rating || 0) > 0 && rc(a) > 0);
+    const weighted = rated.reduce((s, a) => s + (a.rating || 0) * rc(a), 0);
+    const ratingWeight = rated.reduce((s, a) => s + rc(a), 0);
     return {
       totalApps: apps.length,
       totalDownloads,
