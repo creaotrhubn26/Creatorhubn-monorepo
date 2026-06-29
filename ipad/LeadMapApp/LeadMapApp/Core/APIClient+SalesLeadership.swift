@@ -264,6 +264,32 @@ struct ContestWinnerDTO: Codable, Hashable, Identifiable {
     let awardedAt: String?
 }
 
+/// Salgs-teammedlem fra `/sales-leadership/team-members` — brukes til
+/// både TopSellers-listen (leaderboard) og fulfillment-vinner-oppslag
+/// (mapper userId → menneske-navn).
+///
+/// Backend aggregerer `won` + `leads` + `total_value_nok` per selger
+/// over inneværende periode + `trend` (antall plasser opp/ned vs. forrige
+/// periode). `title` kan være null (faller tilbake til "Selger" i UI).
+struct SalesTeamMemberDTO: Codable, Hashable, Identifiable {
+    let userId: String
+    let name: String
+    let email: String?
+    let title: String?
+    let won: Int
+    let leads: Int
+    let trend: Int
+    let totalValueNok: Int
+    var id: String { userId }
+}
+
+/// Envelope for `/sales-leadership/team-members`. `currentUserId` lar
+/// klienten markere «Du»-badgen uten å gjette på navn.
+struct SalesTeamMembersResponse: Decodable {
+    let members: [SalesTeamMemberDTO]
+    let currentUserId: String?
+}
+
 /// Fulfillment-tildeling per vinner (status-tidslinje pending → ordered
 /// → shipped → received).
 struct PrizeAwardDTO: Codable, Hashable, Identifiable {
@@ -636,6 +662,14 @@ extension APIClient {
             "/api/leadgrid/sales-leadership/awards/\(id.uuidString)/shipping-address",
             body: payload
         )
+    }
+
+    // -- Team members (leaderboard + winner-lookup) -------------
+
+    /// Hent alle salgs-teammedlemmer (org-scope) m/ aggregerte tall for
+    /// inneværende periode + currentUserId for «Du»-badge.
+    func fetchSalesTeamMembers() async throws -> SalesTeamMembersResponse {
+        try await _get("/api/leadgrid/sales-leadership/team-members")
     }
 }
 
