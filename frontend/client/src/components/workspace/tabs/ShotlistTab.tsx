@@ -6,6 +6,7 @@
  */
 import React, { useState, useEffect } from 'react';
 import { Box, Stack, Typography, Button, Avatar, TextField } from '@mui/material';
+import { useLocation } from 'wouter';
 import { apiRequest } from '@/lib/queryClient';
 import PhotoCameraBack from '@mui/icons-material/PhotoCameraBack';
 import CheckCircle from '@mui/icons-material/CheckCircle';
@@ -39,6 +40,13 @@ const ShotlistTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [real, setReal] = useState<{ shots: any[]; meta: any } | null>(null);
   const [selShot, setSelShot] = useState<any | null>(null);
   const [showAll, setShowAll] = useState(false);
+  const [, navigate] = useLocation();
+  const [comment, setComment] = useState('');
+  const sendComment = async () => {
+    const body = comment.trim(); if (!body || !projectId || projectId === 'sample') return;
+    try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/notes`, { method: 'POST', body: { body, context: 'shotlist' } }); setComment(''); }
+    catch (e: any) { window.alert(e?.message || 'Kunne ikke sende'); }
+  };
   const refs = useProjectImages(projectId, 'references');
 
   useEffect(() => {
@@ -100,11 +108,11 @@ const ShotlistTab: React.FC<{ projectId: string }> = ({ projectId }) => {
 
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '2fr 1fr' }, gap: 2, mt: 2 }}>
           <WsCard>
-            <WsSectionTitle title="Referanser & inspirasjon" action={<Button size="small" sx={{ color: ws.accent, textTransform: 'none' }}>Se alle</Button>} />
+            <WsSectionTitle title="Referanser & inspirasjon" action={<Button size="small" onClick={() => navigate(`/workspace/${projectId}/moodboard`)} sx={{ color: ws.accent, textTransform: 'none' }}>Se alle</Button>} />
             <WsImageGrid columns={5} addLabel="Legg til referanse" images={refs.images} onUpload={refs.onUpload} />
           </WsCard>
           <WsCard>
-            <WsSectionTitle title="Må huskes" action={<Button size="small" sx={{ color: ws.accent, textTransform: 'none' }}>Rediger</Button>} />
+            <WsSectionTitle title="Må huskes" action={<Button size="small" onClick={() => navigate(`/workspace/${projectId}/oppgaver`)} sx={{ color: ws.accent, textTransform: 'none' }}>Rediger</Button>} />
             <Stack spacing={0.75}>
               {[['Batterier ladet', true], ['Backup kort formatert', true], ['Lydopptaker testet', false], ['Reflektor / diffuser', false], ['Ekstra linser med', false]].map(([t, ok]) => <Stack key={t} direction="row" spacing={0.75} alignItems="center"><CheckCircle sx={{ fontSize: 16, color: ok ? ws.green : ws.textFaint }} /><Typography sx={{ fontSize: 12.5 }}>{t}</Typography></Stack>)}
             </Stack>
@@ -136,7 +144,7 @@ const ShotlistTab: React.FC<{ projectId: string }> = ({ projectId }) => {
               </Stack>
             ))}
           </Stack>
-          <TextField fullWidth size="small" placeholder="Skriv en kommentar…" sx={{ '& .MuiOutlinedInput-root': { bgcolor: ws.panelInput, fontSize: 13 } }} />
+          <TextField fullWidth size="small" placeholder="Skriv en kommentar…" value={comment} onChange={(e) => setComment(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') sendComment(); }} disabled={!projectId || projectId === 'sample'} sx={{ '& .MuiOutlinedInput-root': { bgcolor: ws.panelInput, fontSize: 13 } }} />
         </WsCard>
       </Box>
     </Stack>

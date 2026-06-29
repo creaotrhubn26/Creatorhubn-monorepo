@@ -61,6 +61,9 @@ const TeamWorkspacePage: React.FC = () => {
   const { user, logout } = useAuth();
 
   const [tab, setTab] = useState<string>(paramsTab?.tab || 'oversikt');
+  // URL er sannhetskilden for aktiv fane — så navigate('/workspace/:id/:tab')
+  // fra hvilken som helst fane (f.eks. «Se alle»-knapper) bytter fane.
+  useEffect(() => { const t = paramsTab?.tab; if (t && t !== tab) setTab(t); }, [paramsTab?.tab]);
   const [accepted, setAccepted] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const { online } = usePresence(projectId, `/workspace/${projectId}/${tab}`);

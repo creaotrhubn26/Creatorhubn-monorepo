@@ -92,6 +92,15 @@ const LeveranserTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     catch (e: any) { window.alert(e?.message || 'Kunne ikke legge til'); }
   };
 
+  const markDeliverableDone = async () => {
+    if (!isReal) return;
+    const pending = (real || []).find((d: any) => !['delivered', 'done', 'completed'].includes(d.status));
+    if (!pending?.id) { window.alert('Ingen åpne leveranser å markere som ferdig.'); return; }
+    if (!window.confirm(`Marker «${pending.title}» som levert?`)) return;
+    try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/deliverables/${pending.id}`, { method: 'PATCH', body: { status: 'delivered' } }); load(); }
+    catch (e: any) { window.alert(e?.message || 'Kunne ikke markere'); }
+  };
+
   const list = (real && real.length > 0)
     ? real.map((d: any) => [d.title, d.type || '', ...(STATUS_LABEL[d.status] || ['—', 'neutral']), d.dueDate ? new Date(d.dueDate).toLocaleDateString('nb-NO', { day: 'numeric', month: 'short' }) : '—', false])
     : DELIVERABLES;
@@ -124,7 +133,7 @@ const LeveranserTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
           <Stack direction="row" spacing={1} alignItems="center"><Typography sx={{ fontSize: 18, fontWeight: 800 }}>Highlight Film (6-8 min)</Typography><WsTag label="In progress" tone="amber" /></Stack>
-          <Button size="small" startIcon={<CheckCircle sx={{ fontSize: 16 }} />} sx={{ color: ws.green, textTransform: 'none', border: `1px solid ${ws.greenSoft}` }}>Marker som ferdig</Button>
+          <Button size="small" startIcon={<CheckCircle sx={{ fontSize: 16 }} />} onClick={markDeliverableDone} disabled={!isReal} sx={{ color: ws.green, textTransform: 'none', border: `1px solid ${ws.greenSoft}` }}>Marker som ferdig</Button>
         </Stack>
 
         <WsCard sx={{ mb: 2 }}>

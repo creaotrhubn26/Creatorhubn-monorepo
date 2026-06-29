@@ -7,6 +7,7 @@
  */
 import React, { useState, useEffect } from 'react';
 import { Box, Stack, Typography, Avatar, Button, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem, Alert, CircularProgress } from '@mui/material';
+import { useLocation } from 'wouter';
 import ChatBubbleOutline from '@mui/icons-material/ChatBubbleOutline';
 import MailOutline from '@mui/icons-material/MailOutline';
 import Phone from '@mui/icons-material/Phone';
@@ -38,6 +39,7 @@ const PROGRESS = [['Brief gjennomgått', 7, 8, ws.green], ['Shotlist bekreftet',
 const TASKS = [['Oppdater shotlist', 'Thomas', 'Gjort', 'green'], ['Bekreft drone tillatelse', 'Daniel', 'Venter', 'amber'], ['Fargeprofil godkjenning', 'Julie', 'Pågår', 'blue'], ['Utstyrssjekk', 'Nora', 'Gjort', 'green'], ['Backup lydplan', 'Marcus', 'Pågår', 'blue']];
 
 const TeamTab: React.FC<{ projectId: string }> = ({ projectId }) => {
+  const [, navigate] = useLocation();
   const totalRoles = ROLES.reduce((s, r) => s + r[1], 0);
   const [real, setReal] = useState<any[] | null>(null);
   const [isOwner, setIsOwner] = useState(false);
@@ -190,7 +192,7 @@ const TeamTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       {/* Høyre: Chat + Oppgaver + Milepæler */}
       <Box sx={{ width: 300, flexShrink: 0 }}>
         <WsCard sx={{ mb: 2 }}>
-          <WsSectionTitle title="Oppgaver" action={<Button size="small" sx={{ color: ws.accent, textTransform: 'none' }}>Se alle</Button>} />
+          <WsSectionTitle title="Oppgaver" action={<Button size="small" onClick={() => navigate(`/workspace/${projectId}/oppgaver`)} sx={{ color: ws.accent, textTransform: 'none' }}>Se alle</Button>} />
           <Stack spacing={1}>
             {taskList.map(([t, who, st, tone]) => (
               <Stack key={t} direction="row" alignItems="center" spacing={1}><Box sx={{ width: 14, height: 14, borderRadius: '50%', border: `2px solid ${ws.textFaint}` }} /><Typography sx={{ fontSize: 12.5, flex: 1 }}>{t}</Typography><Typography sx={{ fontSize: 11, color: ws.textFaint }}>{who}</Typography><WsTag label={st} tone={tone} /></Stack>
@@ -198,7 +200,7 @@ const TeamTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           </Stack>
         </WsCard>
         <WsCard>
-          <WsSectionTitle title="Kommende milepæler" action={<Button size="small" sx={{ color: ws.accent, textTransform: 'none' }}>Se alle</Button>} />
+          <WsSectionTitle title="Kommende milepæler" action={<Button size="small" onClick={() => navigate(`/workspace/${projectId}/prosjektplan`)} sx={{ color: ws.accent, textTransform: 'none' }}>Se alle</Button>} />
           <Stack spacing={1.25}>
             {msList.map(([d, mo, t, sub]) => (
               <Stack key={t} direction="row" spacing={1.25} alignItems="center">
