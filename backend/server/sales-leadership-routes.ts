@@ -6,12 +6,13 @@
  *
  * Prefix: /api/leadgrid/sales-leadership/*
  *
- * Endepunkter (22 totalt):
+ * Endepunkter (23 totalt):
  *   GET    /commission-config
  *   PUT    /commission-config
  *   GET    /contest-templates
  *   PUT    /contest-templates/:type
  *   GET    /prize-catalog
+ *   GET    /team-members
  *   POST   /prize-catalog
  *   PATCH  /prize-catalog/:id
  *   DELETE /prize-catalog/:id
@@ -422,6 +423,126 @@ export function registerSalesLeadershipRoutes(
     } catch (err) {
       console.error("[sales-leadership] prize-catalog GET failed:", err);
       return res.status(500).json({ error: "prize_catalog_failed", detail: String((err as Error).message) });
+    }
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // TEAM MEMBERS (selgere i org + stats for podium/leaderboard)
+  // Brukes av iPad TopSellersSheet + PrizeFulfillmentSheet (vinner-navn).
+  // Returnerer aktive selgere i org-en m/ aggregerte tall:
+  //   - won           : antall vunne premier (sales_prize_awards rows)
+  //   - leads         : antall crm_customers tilordnet brukeren
+  //   - total_value_nok: SUM av estimated_value_nok over vunne premier
+  //   - trend         : 0 (placeholder — iPad rendrer '--' inntil videre)
+  // Solo-modus: hvis brukeren ikke er i en enterprise-org (orgId === userId)
+  // returnerer vi kun den påloggede brukeren selv, med stats fra egne leads.
+  // ───────────────────────────────────────────────────────────────
+  app.get("/api/leadgrid/sales-leadership/team-members", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    const orgId = await resolveOrgIdForUser(pool, session.userId);
+
+    try {
+      // Hent kandidat-user_ids. I solo-modus (orgId === session.userId) hopper
+      // vi enterprise_team_members og bruker bare den påloggede brukeren.
+      let userIds: string[] = [];
+      if (orgId !== session.userId) {
+        const teamRes = await pool.query<{ user_id: string }>(
+          `SELECT DISTINCT user_id
+             FROM enterprise_team_members
+            WHERE organization_id = $1
+              AND status = 'active'
+              AND user_id IS NOT NULL`,
+          [orgId],
+        ).catch(() => ({ rows: [] as Array<{ user_id: string }> }));
+        userIds = teamRes.rows.map((r) => String(r.user_id));
+      }
+      // Sørg for at den påloggede selv alltid er med (god UX for highlight)
+      if (!userIds.includes(session.userId)) userIds.push(session.userId);
+
+      if (userIds.length === 0) {
+        return res.json({ members: [], current_user_id: session.userId });
+      }
+
+      // Aggreger per bruker. crm_customers har INGEN organization_id (jf.
+      // leadgrid-intelligence-cron.ts kommentar), så vi filtrerer via
+      // assigned_user_id IN (...). sales_prize_awards har ingen direkte
+      // verdi-kolonne — verdien hentes via JOIN på sales_contest_prizes.
+      const r = await pool.query(
+        `SELECT
+            u.id                                                AS user_id,
+            COALESCE(
+              NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''),
+              u.email
+            )                                                   AS name,
+            u.email                                             AS email,
+            COALESCE(u.role, 'Selger')                          AS title,
+            COALESCE((
+              SELECT COUNT(*)::int FROM sales_prize_awards a
+               WHERE a.winner_user_id = u.id
+                 AND a.status <> 'cancelled'
+            ), 0)                                               AS won,
+            COALESCE((
+              SELECT COUNT(*)::int FROM crm_customers c
+               WHERE c.assigned_user_id = u.id
+                 AND c.archived_at IS NULL
+            ), 0)                                               AS leads,
+            0                                                   AS trend,
+            COALESCE((
+              SELECT SUM(p.estimated_value_nok)::bigint
+                FROM sales_prize_awards a
+                JOIN sales_contest_prizes p ON p.id = a.prize_id
+               WHERE a.winner_user_id = u.id
+                 AND a.status <> 'cancelled'
+            ), 0)                                               AS total_value_nok
+           FROM users u
+          WHERE u.id = ANY($1::varchar[])
+          ORDER BY total_value_nok DESC, won DESC, name ASC`,
+        [userIds],
+      );
+
+      const members = r.rows.map((row) => ({
+        user_id: String(row.user_id),
+        name: String(row.name ?? ""),
+        email: String(row.email ?? ""),
+        title: String(row.title ?? "Selger"),
+        won: Number(row.won ?? 0),
+        leads: Number(row.leads ?? 0),
+        trend: Number(row.trend ?? 0),
+        total_value_nok: Number(row.total_value_nok ?? 0),
+      }));
+
+      return res.json({ members, current_user_id: session.userId });
+    } catch (err) {
+      // Graceful fallback — returnér i hvert fall den påloggede brukeren
+      // med null-stats, slik at iPad-UI kan rendre noe.
+      console.warn("[sales-leadership] team-members fallback:", (err as Error).message);
+      try {
+        const self = await pool.query<{
+          id: string; email: string; first_name: string | null; last_name: string | null; role: string | null;
+        }>(
+          `SELECT id, email, first_name, last_name, role FROM users WHERE id = $1 LIMIT 1`,
+          [session.userId],
+        );
+        const row = self.rows[0];
+        if (!row) return res.json({ members: [], current_user_id: session.userId });
+        const name = [row.first_name, row.last_name].filter(Boolean).join(" ").trim() || row.email;
+        return res.json({
+          members: [{
+            user_id: String(row.id),
+            name,
+            email: String(row.email ?? ""),
+            title: String(row.role ?? "Selger"),
+            won: 0,
+            leads: 0,
+            trend: 0,
+            total_value_nok: 0,
+          }],
+          current_user_id: session.userId,
+        });
+      } catch {
+        return res.json({ members: [], current_user_id: session.userId });
+      }
     }
   });
 
