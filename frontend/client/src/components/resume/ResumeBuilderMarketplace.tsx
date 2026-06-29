@@ -66,6 +66,7 @@ interface AppStoreItem {
   category: string;
   rating: number;
   reviews: number;
+  reviewsCount?: number;
   description: string;
   longDescription: string;
   featured?: boolean;
@@ -320,8 +321,6 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
     comment: '',
     userName: '',
   });
-  const [marketplaceStats, setMarketplaceStats] = useState<MarketplaceStats | null>(null);
-  const [statsLoading, setStatsLoading] = useState(false);
 
   const hardcodedApps: AppStoreItem[] = [
     {
@@ -500,148 +499,6 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
       categoryIcon: <ImageIcon />,
     },
     {
-      id: 'portfolio-pro',
-      name: 'Portfolio Pro',
-      category: 'Showcase',
-      rating: 0,
-      reviews: 0,
-      description: 'Imponerende porteføljer som konverterer',
-      longDescription: 'Bygget for kreative fagfolk. Vis frem dine beste prosjekter med moderne design og interaktive elementer.',
-      trending: false,
-      downloadCount: 0,
-      monthlyGrowth: 0,
-      features: [
-        { icon: <DocumentIcon />, text: 'Responsivt design' },
-        { icon: <AIIcon />, text: 'SEO-optimalisert' },
-        { icon: <AnalyzeIcon />, text: 'Analytics dashboard' },
-        { icon: <UploadIcon />, text: 'Drag & drop editor' },
-      ],
-      mediaGallery: marketplaceGalleryById['portfolio-pro'],
-      pricing: { free: true, price: 199, currency: 'kr/mnd' },
-      gradientStart: '#6366F1',
-      gradientEnd: '#EC4899',
-      categoryIcon: <ImageIcon />,
-    },
-    {
-      id: 'contract-genius',
-      name: 'Contract Genius',
-      category: 'Legal',
-      rating: 0,
-      reviews: 0,
-      description: 'Automatiserte juridiske avtaler',
-      longDescription: 'Opprett profesjonelle kontrakter på minutter. Maler for alle situasjoner, inkludert e‑signering.',
-      downloadCount: 0,
-      monthlyGrowth: 0,
-      features: [
-        { icon: <DocumentIcon />, text: 'Avtalmaler' },
-        { icon: <AIIcon />, text: 'E-signering' },
-        { icon: <CheckIcon />, text: 'Juridisk gjennomgang' },
-      ],
-      mediaGallery: marketplaceGalleryById['contract-genius'],
-      pricing: { free: false, price: 99, currency: 'kr/mnd' },
-      gradientStart: '#10B981',
-      gradientEnd: '#059669',
-      categoryIcon: <GavelIcon />,
-    },
-    {
-      id: 'accounting-integration',
-      name: 'Fakturaflyt og regnskapsoppsett',
-      category: 'Finance',
-      rating: 0,
-      reviews: 0,
-      description: 'For deg som vil gjøre veien fra avtale til faktura, betaling og regnskap enklere med Fiken eller Tripletex.',
-      longDescription: 'Vi setter opp fakturaflyt for CreatorHub og klargjør betalingshistorikk, kvitteringer og regnskapsgrunnlag slik at oppfølgingen blir enklere fra avtale til betaling og videre til regnskap.',
-      featured: true,
-      downloadCount: 0,
-      features: [
-        { icon: <ReceiptIcon />, text: 'Fakturaer, kvitteringer og historikk' },
-        { icon: <DriveIcon />, text: 'Oppsett av fakturaflyt' },
-        { icon: <AnalyzeIcon />, text: 'Bilagsgrunnlag for videre bokføring' },
-        { icon: <GroupsIcon />, text: 'Enterprise inkludert i avtalen' },
-      ],
-      mediaGallery: marketplaceGalleryById['accounting-integration'],
-      pricing: {
-        free: false,
-        displayPrice: 'Fra 6 900 kr',
-        currency: 'engangspris',
-        note: 'Løpende drift og overvåking fra 990 kr/mnd. Eventuelle lisenser håndteres direkte med leverandøren.',
-        enterpriseIncluded: true,
-      },
-      gradientStart: '#0f172a',
-      gradientEnd: '#1e293b',
-      categoryIcon: <ReceiptIcon />,
-      partnerLogos: [
-        { name: 'Fiken', src: fikenLogo, background: '#ffffff' },
-        { name: 'Tripletex', src: tripletexLogo, background: '#ffffff' },
-      ],
-      ctaLabel: 'Bestill oppsett',
-    },
-    {
-      id: 'invoice-pro',
-      name: 'Invoice Pro',
-      category: 'Finance',
-      rating: 0,
-      reviews: 0,
-      description: 'Profesjonelle fakturaer på sekunder',
-      longDescription: 'Effektiviser fakturering med automatisk sporing, påminnelser og integrasjoner med regnskapssystemer.',
-      featured: true,
-      downloadCount: 0,
-      monthlyGrowth: 0,
-      features: [
-        { icon: <DocumentIcon />, text: 'Automatisk fakturering' },
-        { icon: <AnalyzeIcon />, text: 'Betalingssporing' },
-        { icon: <UploadIcon />, text: 'Integrasjoner' },
-      ],
-      mediaGallery: marketplaceGalleryById['invoice-pro'],
-      pricing: { free: true, price: 79, currency: 'kr/mnd' },
-      gradientStart: '#F59E0B',
-      gradientEnd: '#D97706',
-      categoryIcon: <ReceiptIcon />,
-    },
-    {
-      id: 'client-management',
-      name: 'Client Hub',
-      category: 'Business',
-      rating: 0,
-      reviews: 0,
-      description: 'Alt-i-ett klientadministrasjon',
-      longDescription: 'Administrer alle klientinteraksjoner på ett sted: e-post, avtaler, prosjekter og betalinger.',
-      trending: false,
-      downloadCount: 0,
-      monthlyGrowth: 0,
-      features: [
-        { icon: <DocumentIcon />, text: 'CRM-system' },
-        { icon: <AIIcon />, text: 'Automatisering' },
-        { icon: <AnalyzeIcon />, text: 'Rapporter' },
-      ],
-      mediaGallery: marketplaceGalleryById['client-management'],
-      pricing: { free: false, price: 129, currency: 'kr/mnd' },
-      gradientStart: '#8B5CF6',
-      gradientEnd: '#6366F1',
-      categoryIcon: <GroupsIcon />,
-    },
-    {
-      id: 'time-tracker',
-      name: 'Time Tracker',
-      category: 'Productivity',
-      rating: 0,
-      reviews: 0,
-      description: 'Tidsregistrering og timeadministrasjon',
-      longDescription: 'Spor timer automatisk, generer timesedler og analyser tidsbruk – integrert med prosjekter.',
-      downloadCount: 0,
-      monthlyGrowth: 0,
-      features: [
-        { icon: <DocumentIcon />, text: 'Automatisk sporing' },
-        { icon: <AnalyzeIcon />, text: 'Timesedler' },
-        { icon: <TrendingIcon />, text: 'Produktivitetsanalyse' },
-      ],
-      mediaGallery: marketplaceGalleryById['time-tracker'],
-      pricing: { free: true, price: 49, currency: 'kr/mnd' },
-      gradientStart: '#06B6D4',
-      gradientEnd: '#0891B2',
-      categoryIcon: <TimerIcon />,
-    },
-    {
       id: 'role-room',
       name: 'The Role Room',
       category: 'Business',
@@ -738,7 +595,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
   // Slice 9X.70 — admin-styrt marketplace. Apper hentes fra
   // /api/marketplace/apps (admin-konfigurert). Faller tilbake på hardkodet
   // liste hvis backend ikke svarer eller tabellen er tom.
-  const { data: apiAppsData } = useQuery({
+  const { data: apiAppsData, isLoading: appsLoading } = useQuery({
     queryKey: ['marketplace-apps-public'],
     queryFn: async () => {
       try {
@@ -756,6 +613,26 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
     const hardcodedFallback = hardcodedApps.filter((a) => !adminIds.has(a.id));
     return [...apiApps, ...hardcodedFallback];
   }, [apiAppsData, hardcodedApps]);
+
+  // Stats utledes fra den faktiske app-lista (DB + katalog). Det gamle
+  // /api/marketplace/stats-endepunktet aggregerte feil tabell (editing-vendor-
+  // produkter, 333 stk) og viste meningsløse tall (rating 1, downloads=reviews).
+  const statsLoading = appsLoading;
+  const marketplaceStats: MarketplaceStats = useMemo(() => {
+    const rc = (a: AppStoreItem) => a.reviewsCount ?? a.reviews ?? 0;
+    const totalDownloads = apps.reduce((s, a) => s + (a.downloadCount || 0), 0);
+    const totalReviews = apps.reduce((s, a) => s + rc(a), 0);
+    const rated = apps.filter((a) => (a.rating || 0) > 0 && rc(a) > 0);
+    const weighted = rated.reduce((s, a) => s + (a.rating || 0) * rc(a), 0);
+    const ratingWeight = rated.reduce((s, a) => s + rc(a), 0);
+    return {
+      totalApps: apps.length,
+      totalDownloads,
+      averageRating: ratingWeight ? weighted / ratingWeight : 0,
+      totalReviews,
+      activeUsers: totalReviews, // 4. felt viser nå «Vurderinger»
+    };
+  }, [apps, appsLoading]);
 
   const categories = ['all', 'Career', 'Showcase', 'Legal', 'Finance', 'Business', 'Productivity'];
 
@@ -864,21 +741,6 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
     }
   }, [reviewDialogOpen, activeReviewApp]);
 
-  useEffect(() => {
-    const loadStats = async () => {
-      setStatsLoading(true);
-      try {
-        const stats = await apiRequest('/api/marketplace/stats');
-        setMarketplaceStats(stats);
-      } catch (error) {
-        setMarketplaceStats(null);
-      } finally {
-        setStatsLoading(false);
-      }
-    };
-
-    loadStats();
-  }, []);
 
   const formatCompactNumber = (value?: number | null) => {
     if (!value || Number.isNaN(value)) return '—';
@@ -1508,7 +1370,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                     : '—'}
               </Typography>
               <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.55)' }}>
-                Aktive brukere
+                Vurderinger
               </Typography>
             </Box>
           </Grid>
