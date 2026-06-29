@@ -25,7 +25,10 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [summary, setSummary] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const [ev, setEv] = useState<any | null>(null); // EaseVerse-tracks
+  const [linking, setLinking] = useState<string | null>(null);
 
+  const loadEv = () => { if (isReal) apiRequest(`/api/projects/${encodeURIComponent(projectId)}/easeverse-tracks`).then((r: any) => setEv(r || null)).catch(() => {}); };
   useEffect(() => {
     if (!isReal) { setLoading(false); return; }
     let stop = false;
@@ -40,10 +43,18 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       } catch (e: any) { if (!stop) setErr(e?.message || 'Kunne ikke åpne lydrommet'); }
       finally { if (!stop) setLoading(false); }
     })();
+    loadEv();
     return () => { stop = true; };
   }, [projectId, isReal]);
 
   const openRoom = () => { if (roomId) navigate(`/audio-review/${roomId}?ws=${encodeURIComponent(projectId)}`); };
+  const linkTrack = async (trackId: string) => {
+    if (linking) return; setLinking(trackId);
+    try { const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/audio-room/link-easeverse`, { method: 'POST', body: { trackId } }); if (r?.audioRoomId) navigate(`/audio-review/${r.audioRoomId}?ws=${encodeURIComponent(projectId)}`); }
+    catch (e: any) { window.alert(e?.message || 'Kunne ikke koble track'); }
+    finally { setLinking(null); }
+  };
+  const evStatus: any = { recording: ['Opptak', ws.textDim], mixing: ['Miksing', ws.amber], mastering: ['Mastering', ws.blue], completed: ['Ferdig', ws.green] };
 
   const proj = summary?.project || {};
   const versions = summary?.versions || [];
@@ -109,6 +120,40 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           <Button variant="contained" onClick={openRoom} sx={{ mt: 1.5, bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Åpne lydrommet</Button>
         </WsCard>
       )}
+
+      {/* EaseVerse-tracks — koble en låt fra EaseVerse inn i Sound Room (toveis-synk) */}
+      <WsCard sx={{ mt: 2 }}>
+        <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.25 }}>
+          <Typography sx={{ fontSize: 14 }}>🎵</Typography>
+          <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>EaseVerse-tracks</Typography>
+          <Box sx={{ flex: 1 }} />
+          {ev?.linkedTrackId && <WsTag label="Koblet" tone="green" />}
+        </Stack>
+        {(ev?.tracks || []).length === 0 ? (
+          <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Ingen EaseVerse-låter funnet. Spill inn i EaseVerse-appen, så kan du koble en track hit for tekst-synk, takes (vokalopptak), DAW-markører og status-synk begge veier.</Typography>
+        ) : (
+          <Stack spacing={1}>
+            {ev.tracks.map((t: any) => {
+              const st = evStatus[t.status] || [t.status || '—', ws.textFaint];
+              return (
+                <Stack key={t.id} direction="row" alignItems="center" spacing={1.5} sx={{ p: 1.25, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.panelAlt, border: `1px solid ${t.linked ? ws.accentBorder : ws.borderSoft}` }}>
+                  <Box sx={{ minWidth: 0, flex: 1 }}>
+                    <Stack direction="row" spacing={0.75} alignItems="center">
+                      <Typography sx={{ fontSize: 13, fontWeight: 700 }} noWrap>{t.title || 'Uten tittel'}</Typography>
+                      <Box sx={{ px: 0.75, py: 0.15, borderRadius: 1, fontSize: 9.5, fontWeight: 700, color: st[1], bgcolor: 'rgba(255,255,255,0.06)' }}>{st[0]}</Box>
+                      {t.linked && <WsTag label="I dette rommet" tone="green" />}
+                    </Stack>
+                    <Typography sx={{ fontSize: 10.5, color: ws.textFaint }}>{t.artist ? `${t.artist} · ` : ''}{t.bpm ? `${t.bpm} BPM · ` : ''}{t.key || ''}{t.hasReview && !t.linked ? ' · har review' : ''}</Typography>
+                  </Box>
+                  {t.linked
+                    ? <Button size="small" variant="contained" onClick={openRoom} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Åpne</Button>
+                    : <Button size="small" variant="outlined" disabled={linking === t.id} onClick={() => linkTrack(t.id)} sx={{ color: ws.accent, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 600 }}>{linking === t.id ? 'Kobler…' : 'Koble til Sound Room'}</Button>}
+                </Stack>
+              );
+            })}
+          </Stack>
+        )}
+      </WsCard>
     </Box>
   );
 };

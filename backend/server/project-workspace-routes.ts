@@ -1074,6 +1074,64 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     } catch (e) { console.error("GET audio-room", e); res.status(500).json({ error: "failed" }); }
   });
 
+  // Brukerens EaseVerse-tracks (for å koble inn i Sound Room). Markerer hvilken
+  // som er koblet til DETTE prosjektets Sound Room nå.
+  app.get("/api/projects/:projectId/easeverse-tracks", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const linked = await pool.query(
+        `SELECT a.easeverse_track_id FROM project_audio_rooms r JOIN audio_review_projects a ON a.id = r.audio_review_project_id WHERE r.project_id = $1`,
+        [req.params.projectId],
+      ).catch(() => ({ rows: [] }));
+      const linkedTrackId = linked.rows[0]?.easeverse_track_id || null;
+      const t = await pool.query(
+        `SELECT id, title, artist, status, bpm, musical_key, duration_seconds, updated_at,
+                EXISTS(SELECT 1 FROM audio_review_projects ar WHERE ar.easeverse_track_id = easeverse_tracks.id::text) AS has_review
+           FROM easeverse_tracks WHERE user_id = $1 ORDER BY updated_at DESC NULLS LAST LIMIT 50`,
+        [uid],
+      ).catch(() => ({ rows: [] }));
+      res.json({
+        connected: t.rows.length > 0,
+        linkedTrackId,
+        tracks: t.rows.map((r: any) => ({ id: r.id, title: r.title, artist: r.artist, status: r.status, bpm: r.bpm, key: r.musical_key, durationSeconds: r.duration_seconds, hasReview: !!r.has_review, linked: r.id === linkedTrackId })),
+      });
+    } catch (e) { console.error("GET easeverse-tracks", e); res.json({ connected: false, tracks: [] }); }
+  });
+
+  // Koble en EaseVerse-track til prosjektets Sound Room: finn/opprett review-rom
+  // (m/ easeverse_track_id → full toveis-synk: tekst/takes/DAW/status) og pek
+  // bro-tabellen på den. Krever at brukeren eier track-en.
+  app.post("/api/projects/:projectId/audio-room/link-easeverse", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const pid = req.params.projectId;
+      const trackId = String(req.body?.trackId || "");
+      if (!trackId) return res.status(400).json({ error: "trackId_required" });
+      const tr = await pool.query(`SELECT id, title, artist, genre, bpm, musical_key FROM easeverse_tracks WHERE id = $1::uuid AND user_id = $2 LIMIT 1`, [trackId, uid]).catch(() => ({ rows: [] }));
+      const track = tr.rows[0];
+      if (!track) return res.status(404).json({ error: "track_not_found" });
+      // Finn eksisterende review for track-en, ellers opprett (samme som send-to-review).
+      let arId: string | null = null;
+      const exist = await pool.query(`SELECT id FROM audio_review_projects WHERE easeverse_track_id = $1 AND owner_user_id = $2 AND status <> 'archived' ORDER BY created_at DESC LIMIT 1`, [trackId, uid]).catch(() => ({ rows: [] }));
+      if (exist.rows.length) arId = exist.rows[0].id;
+      else {
+        const ins = await pool.query(
+          `INSERT INTO audio_review_projects (owner_user_id, title, artist_name, genre, bpm, musical_key, status, easeverse_track_id, external_track_id)
+           VALUES ($1,$2,$3,$4,$5,$6,'draft',$7,$7) RETURNING id`,
+          [uid, track.title || "EaseVerse-låt", track.artist || null, track.genre || null, track.bpm || null, track.musical_key || null, trackId],
+        );
+        arId = ins.rows[0].id;
+      }
+      await pool.query(`CREATE TABLE IF NOT EXISTS project_audio_rooms (project_id uuid PRIMARY KEY, audio_review_project_id uuid NOT NULL, created_at timestamptz DEFAULT now())`).catch(() => {});
+      await pool.query(
+        `INSERT INTO project_audio_rooms (project_id, audio_review_project_id) VALUES ($1,$2)
+         ON CONFLICT (project_id) DO UPDATE SET audio_review_project_id = EXCLUDED.audio_review_project_id`,
+        [pid, arId],
+      ).catch(() => {});
+      res.json({ audioRoomId: arId, linked: true });
+    } catch (e) { console.error("POST link-easeverse", e); res.status(500).json({ error: "failed" }); }
+  });
+
   // ─────────── Photo Room — produsent-side bilde-review-cockpit ───────────────
   // Gjenbruker capture_assets (rating/flagged/rejected/exif/preview_key fra iPad-
   // culling). Net-nytt: per-bilde review-status (godkjent/trenger-redigering) +
