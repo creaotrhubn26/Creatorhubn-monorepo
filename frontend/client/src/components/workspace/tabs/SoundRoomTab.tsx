@@ -21,6 +21,8 @@ import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
 import { WsCard, WsTag } from '../ui';
 
+const fmtTime = (s: number) => { const n = Math.max(0, Math.floor(Number(s) || 0)); const m = Math.floor(n / 60); const sec = n % 60; return `${m}:${String(sec).padStart(2, '0')}`; };
+
 const ti = { '& .MuiOutlinedInput-root': { fontSize: 13, color: ws.text, bgcolor: ws.panel, '& fieldset': { borderColor: ws.borderSoft }, '&:hover fieldset': { borderColor: ws.accentBorder }, '&.Mui-focused fieldset': { borderColor: ws.accent } }, '& input::placeholder': { color: ws.textFaint, opacity: 1 } } as const;
 
 const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
@@ -36,6 +38,27 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [invite, setInvite] = useState<{ name: string; role: string; instrument: string; email: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
+  const [pt, setPt] = useState<any | null>(null); // Pro Tools companion-status
+  const [ptCode, setPtCode] = useState<{ code: string; expiresAt: number } | null>(null);
+  const [ptBusy, setPtBusy] = useState(false);
+
+  const loadPt = () => {
+    if (!isReal) return;
+    const q = roomId ? `?audioRoomId=${encodeURIComponent(roomId)}` : '';
+    apiRequest(`/api/protools/web/status${q}`).then((r: any) => setPt(r || null)).catch(() => {});
+  };
+  const makePtCode = async () => {
+    if (ptBusy) return; setPtBusy(true);
+    try { const r: any = await apiRequest(`/api/protools/pair/start`, { method: 'POST' }); if (r?.code) setPtCode({ code: r.code, expiresAt: Date.now() + (r.expiresInSeconds || 600) * 1000 }); }
+    catch (e: any) { window.alert(e?.message || 'Kunne ikke lage paringskode'); }
+    finally { setPtBusy(false); }
+  };
+  const unlinkPt = async () => {
+    if (ptBusy || !window.confirm('Koble fra Pro Tools-companionen på denne maskinen?')) return; setPtBusy(true);
+    try { await apiRequest(`/api/protools/web/unlink-device`, { method: 'POST' }); setPtCode(null); loadPt(); }
+    catch (e: any) { window.alert(e?.message || 'Kunne ikke koble fra'); }
+    finally { setPtBusy(false); }
+  };
 
   const loadEv = () => { if (isReal) apiRequest(`/api/projects/${encodeURIComponent(projectId)}/easeverse-tracks`).then((r: any) => setEv(r || null)).catch(() => {}); };
   const loadMembers = () => { if (isReal) apiRequest(`/api/projects/${encodeURIComponent(projectId)}/audio-room/members`).then((r: any) => setBandMembers(r?.members || [])).catch(() => {}); };
@@ -64,8 +87,13 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     })();
     loadEv();
     loadMembers();
-    return () => { stop = true; };
+    loadPt();
+    const ptPoll = setInterval(loadPt, 7000);
+    return () => { stop = true; clearInterval(ptPoll); };
   }, [projectId, isReal]);
+
+  // Re-last companion-status når lydrommet er løst (for audioRoomId-scoping).
+  useEffect(() => { if (roomId) loadPt(); }, [roomId]);
 
   const openRoom = () => { if (roomId) navigate(`/audio-review/${roomId}?ws=${encodeURIComponent(projectId)}`); };
   const linkTrack = async (trackId: string) => {
@@ -193,6 +221,73 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
                 )}
               </Stack>
             ))}
+          </Stack>
+        )}
+      </WsCard>
+
+      {/* Pro Tools Companion — native desktop-agent som synker markører + bounces hit */}
+      <WsCard sx={{ mt: 2 }}>
+        <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.25 }}>
+          <Typography sx={{ fontSize: 15 }}>🎛️</Typography>
+          <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>Pro Tools Companion</Typography>
+          <Box sx={{ flex: 1 }} />
+          {pt?.paired ? <WsTag label="Tilkoblet" tone="green" /> : <WsTag label="Ikke koblet" tone="neutral" />}
+          {pt?.paired && <Button size="small" onClick={unlinkPt} disabled={ptBusy} sx={{ color: ws.textDim, textTransform: 'none', fontWeight: 600, minWidth: 0 }}>Koble fra</Button>}
+        </Stack>
+
+        {!pt?.paired ? (
+          <Box>
+            <Typography sx={{ fontSize: 12.5, color: ws.textDim, mb: 1.25 }}>
+              Kjør Pro Tools-companionen ved siden av Pro Tools, så havner markører («Export Session Info as Text») som review-seksjoner og bounces som nye versjoner — automatisk i dette lydrommet.
+            </Typography>
+            {ptCode ? (
+              <Box sx={{ p: 1.5, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.accentSoft, border: `1px solid ${ws.accentBorder}`, textAlign: 'center' }}>
+                <Typography sx={{ fontSize: 11, color: ws.textDim, mb: 0.5 }}>Skriv denne koden inn i companion-appen:</Typography>
+                <Typography sx={{ fontSize: 30, fontWeight: 800, letterSpacing: 8, color: ws.accent, fontVariantNumeric: 'tabular-nums' }}>{ptCode.code}</Typography>
+                <Typography sx={{ fontSize: 11, color: ws.textFaint, mt: 0.5 }}>Utløper om {Math.max(0, Math.round((ptCode.expiresAt - Date.now()) / 1000))} s · koden virker én gang</Typography>
+              </Box>
+            ) : (
+              <Button variant="outlined" onClick={makePtCode} disabled={ptBusy} sx={{ color: ws.accent, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 600 }}>{ptBusy ? 'Lager kode…' : 'Lag paringskode'}</Button>
+            )}
+          </Box>
+        ) : (
+          <Stack spacing={1.25}>
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+              {pt?.session?.name && <WsTag label={pt.session.name} tone="neutral" />}
+              {pt?.playhead?.timecode && <WsTag label={`▶ ${pt.playhead.timecode}`} tone="amber" />}
+              {(pt?.markers?.length || 0) > 0 && <WsTag label={`${pt.markers.length} markører`} tone="green" />}
+            </Stack>
+
+            {(pt?.markers?.length || 0) > 0 && (
+              <Box>
+                <Typography sx={{ fontSize: 11, color: ws.textFaint, mb: 0.5 }}>Markører fra Pro Tools</Typography>
+                <Stack direction="row" spacing={0.75} sx={{ overflowX: 'auto', pb: 0.5 }}>
+                  {pt.markers.slice(0, 8).map((m: any, i: number) => (
+                    <Box key={i} sx={{ px: 1, py: 0.5, borderRadius: 1, bgcolor: ws.panelAlt, border: `1px solid ${ws.borderSoft}`, flexShrink: 0 }}>
+                      <Typography sx={{ fontSize: 11.5, fontWeight: 700 }} noWrap>{m.name}</Typography>
+                      <Typography sx={{ fontSize: 9.5, color: ws.textFaint }}>{fmtTime(m.start_seconds)}</Typography>
+                    </Box>
+                  ))}
+                </Stack>
+              </Box>
+            )}
+
+            {(pt?.bounces?.length || 0) > 0 && (
+              <Box>
+                <Typography sx={{ fontSize: 11, color: ws.textFaint, mb: 0.5 }}>Siste bounces</Typography>
+                <Stack spacing={0.5}>
+                  {pt.bounces.slice(0, 4).map((b: any) => (
+                    <Stack key={b.id} direction="row" alignItems="center" spacing={1} sx={{ p: 0.75, borderRadius: 1, bgcolor: ws.panelAlt, border: `1px solid ${ws.borderSoft}` }}>
+                      <Typography sx={{ fontSize: 13 }}>🎚️</Typography>
+                      <Typography sx={{ fontSize: 12, flex: 1, minWidth: 0 }} noWrap>{b.file_name || 'Bounce'}</Typography>
+                      {b.review_version_id && <WsTag label="→ versjon" tone="green" />}
+                    </Stack>
+                  ))}
+                </Stack>
+              </Box>
+            )}
+
+            {!pt?.session && <Typography sx={{ fontSize: 12, color: ws.textDim }}>Companionen er koblet til. Sett opp en sesjon i appen og start overvåking, så dukker markører og bounces opp her.</Typography>}
           </Stack>
         )}
       </WsCard>
