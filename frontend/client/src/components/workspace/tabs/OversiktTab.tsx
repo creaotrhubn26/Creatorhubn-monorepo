@@ -6,6 +6,7 @@
  */
 import React, { useState, useEffect } from 'react';
 import { Box, Stack, Typography, Avatar, IconButton, Button, Chip } from '@mui/material';
+import { useLocation } from 'wouter';
 import { apiRequest } from '@/lib/queryClient';
 import AccessTime from '@mui/icons-material/AccessTime';
 import ChevronLeft from '@mui/icons-material/ChevronLeft';
@@ -111,6 +112,8 @@ function addMinutes(hhmm: string, mins: number): string {
 }
 
 const OversiktTab: React.FC<{ projectId: string }> = ({ projectId }) => {
+  const [, navigate] = useLocation();
+  const go = (key: string) => navigate(`/workspace/${projectId}/${key}`);
   const [progress, setProgress] = useState<{ pct: number; done: number; total: number } | null>(null);
   const [events, setEvents] = useState<any[] | null>(null);
   const [tasks, setTasks] = useState<any[] | null>(null);
@@ -329,7 +332,7 @@ const OversiktTab: React.FC<{ projectId: string }> = ({ projectId }) => {
             title="Dagens tidslinje"
             action={
               <Stack direction="row" spacing={0.5} alignItems="center">
-                <Button size="small" sx={{ color: ws.text, textTransform: 'none', minWidth: 0 }}>I dag</Button>
+                <Button size="small" onClick={() => go('produksjonskart')} sx={{ color: ws.text, textTransform: 'none', minWidth: 0 }}>I dag</Button>
                 <IconButton size="small" sx={{ color: ws.textDim }}><ChevronLeft fontSize="small" /></IconButton>
                 <IconButton size="small" sx={{ color: ws.textDim }}><ChevronRight fontSize="small" /></IconButton>
               </Stack>
@@ -419,7 +422,7 @@ const OversiktTab: React.FC<{ projectId: string }> = ({ projectId }) => {
                 ))}
               </Stack>
             </Stack>
-            <Button fullWidth size="small" sx={{ mt: 1.5, color: ws.textDim, textTransform: 'none', border: `1px solid ${ws.border}` }}>Se detaljer</Button>
+            <Button fullWidth size="small" onClick={() => go('prosjektplan')} sx={{ mt: 1.5, color: ws.textDim, textTransform: 'none', border: `1px solid ${ws.border}` }}>Se detaljer</Button>
           </WsCard>
 
           <WsCard>
@@ -436,7 +439,7 @@ const OversiktTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           </WsCard>
 
           <WsCard>
-            <WsSectionTitle title="Referanser & shots" action={<Button size="small" sx={{ color: ws.accent, textTransform: 'none' }}>Se alle</Button>} />
+            <WsSectionTitle title="Referanser & shots" action={<Button size="small" onClick={() => go('shotlist')} sx={{ color: ws.accent, textTransform: 'none' }}>Se alle</Button>} />
             <WsImageGrid columns={3} addLabel="Legg til referanse" images={refs.images} onUpload={refs.onUpload} />
           </WsCard>
         </Box>

@@ -5,7 +5,8 @@
  * + Live koordinering (høyre) + Kritiske øyeblikk / Referanser.
  */
 import React, { useState, useEffect } from 'react';
-import { Box, Stack, Typography, Avatar, AvatarGroup, IconButton, Button, TextField } from '@mui/material';
+import { Box, Stack, Typography, Avatar, AvatarGroup, IconButton, Button, TextField, Menu, MenuItem } from '@mui/material';
+import { useLocation } from 'wouter';
 import { apiRequest } from '@/lib/queryClient';
 import Groups from '@mui/icons-material/Groups';
 import Cloud from '@mui/icons-material/Cloud';
@@ -51,11 +52,25 @@ const ProduksjonskartTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const isReal = projectId && projectId !== 'sample';
   const [events, setEvents] = useState<any[] | null>(null);
   const [sync, setSync] = useState<any | null>(null);
+  const [, navigate] = useLocation();
+  const [notes, setNotes] = useState<any[]>([]);
+  const [noteText, setNoteText] = useState('');
+  const [savingNote, setSavingNote] = useState(false);
+  const [filterMenu, setFilterMenu] = useState<null | HTMLElement>(null);
+
+  const loadNotes = () => { if (isReal) apiRequest(`/api/projects/${encodeURIComponent(projectId)}/notes?context=produksjonskart`).then((r: any) => setNotes(r?.notes || [])).catch(() => {}); };
+  const addNote = async () => {
+    const body = noteText.trim(); if (!body || savingNote) return; setSavingNote(true);
+    try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/notes`, { method: 'POST', body: { body, context: 'produksjonskart' } }); setNoteText(''); loadNotes(); }
+    catch (e: any) { window.alert(e?.message || 'Kunne ikke lagre notat'); }
+    finally { setSavingNote(false); }
+  };
 
   useEffect(() => {
     if (!isReal) return;
     apiRequest(`/api/wedding/timeline/project/${encodeURIComponent(projectId)}`).then((r: any) => { const e = Array.isArray(r?.events) ? r.events : []; if (e.length) setEvents(e); }).catch(() => {});
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/team-sync`).then((r: any) => setSync(r || null)).catch(() => {});
+    loadNotes();
   }, [projectId, isReal]);
 
   const syncPct = sync ? sync.pct : 82;
@@ -116,7 +131,11 @@ const ProduksjonskartTab: React.FC<{ projectId: string }> = ({ projectId }) => {
               <IconButton size="small" sx={{ color: ws.textDim }}><ChevronLeft fontSize="small" /></IconButton>
               <Typography sx={{ fontSize: 13, color: ws.text }}>Lørdag 24. mai 2025</Typography>
               <IconButton size="small" sx={{ color: ws.textDim }}><ChevronRight fontSize="small" /></IconButton>
-              <Button size="small" startIcon={<Tune sx={{ fontSize: 15 }} />} sx={{ color: ws.textDim, textTransform: 'none' }}>Filtre</Button>
+              <Button size="small" startIcon={<Tune sx={{ fontSize: 15 }} />} onClick={(e) => setFilterMenu(e.currentTarget)} sx={{ color: ws.textDim, textTransform: 'none' }}>Filtre</Button>
+              <Menu anchorEl={filterMenu} open={!!filterMenu} onClose={() => setFilterMenu(null)} PaperProps={{ sx: { bgcolor: ws.panel, color: ws.text, border: `1px solid ${ws.border}` } }}>
+                <MenuItem onClick={() => { setView('timeline'); setFilterMenu(null); }}>Tidslinje-visning</MenuItem>
+                <MenuItem onClick={() => { setView('list'); setFilterMenu(null); }}>Liste-visning</MenuItem>
+              </Menu>
             </Stack>
           </Stack>
           <WsTable
@@ -137,7 +156,7 @@ const ProduksjonskartTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         {/* Bunn: Kritiske øyeblikk + Referanser */}
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
           <WsCard>
-            <WsSectionTitle title="Kritiske øyeblikk" action={<Button size="small" sx={{ color: ws.accent, textTransform: 'none' }}>Se alle</Button>} />
+            <WsSectionTitle title="Kritiske øyeblikk" action={<Button size="small" onClick={() => navigate(`/workspace/${projectId}/shotlist`)} sx={{ color: ws.accent, textTransform: 'none' }}>Se alle</Button>} />
             <Stack spacing={1}>
               {[['12:15', 'Vielse', 'Kritisk', 'red'], ['16:30', 'Golden hour', 'Høy', 'amber'], ['20:15', 'Første dans', 'Høy', 'amber']].map(([t, m, lvl, tone]) => (
                 <Stack key={t} direction="row" spacing={1} alignItems="center"><Typography sx={{ fontSize: 12, color: ws.textDim, width: 44 }}>{t}</Typography><Typography sx={{ fontSize: 13, flex: 1 }}>{m}</Typography><WsTag label={lvl} tone={tone} /></Stack>
@@ -145,7 +164,7 @@ const ProduksjonskartTab: React.FC<{ projectId: string }> = ({ projectId }) => {
             </Stack>
           </WsCard>
           <WsCard>
-            <WsSectionTitle title="Referanser & shots" action={<Button size="small" sx={{ color: ws.accent, textTransform: 'none' }}>Se alle</Button>} />
+            <WsSectionTitle title="Referanser & shots" action={<Button size="small" onClick={() => navigate(`/workspace/${projectId}/moodboard`)} sx={{ color: ws.accent, textTransform: 'none' }}>Se alle</Button>} />
             <WsImageGrid columns={4} addLabel="Legg til" images={refs.images} onUpload={refs.onUpload} />
           </WsCard>
         </Box>
@@ -186,10 +205,20 @@ const ProduksjonskartTab: React.FC<{ projectId: string }> = ({ projectId }) => {
 
         <WsCard>
           <Typography sx={{ fontSize: 13, fontWeight: 700, mb: 1 }}>Hurtignotat</Typography>
-          <TextField fullWidth size="small" multiline minRows={2} placeholder="Skriv en rask notat…" sx={{ '& .MuiOutlinedInput-root': { bgcolor: ws.panelInput, fontSize: 13 } }} />
+          <TextField fullWidth size="small" multiline minRows={2} placeholder="Skriv en rask notat…" value={noteText} onChange={(e) => setNoteText(e.target.value)} disabled={!isReal} sx={{ '& .MuiOutlinedInput-root': { bgcolor: ws.panelInput, fontSize: 13 } }} />
           <Stack direction="row" justifyContent="flex-end" sx={{ mt: 1 }}>
-            <Button size="small" variant="contained" startIcon={<Send sx={{ fontSize: 15 }} />} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Legg til</Button>
+            <Button size="small" variant="contained" onClick={addNote} disabled={!isReal || !noteText.trim() || savingNote} startIcon={<Send sx={{ fontSize: 15 }} />} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>{savingNote ? 'Lagrer…' : 'Legg til'}</Button>
           </Stack>
+          {notes.length > 0 && (
+            <Stack spacing={0.75} sx={{ mt: 1.5 }}>
+              {notes.slice(0, 6).map((n: any) => (
+                <Box key={n.id} sx={{ p: 1, borderRadius: 1, bgcolor: ws.panelAlt, border: `1px solid ${ws.borderSoft}` }}>
+                  <Typography sx={{ fontSize: 12 }}>{n.body}</Typography>
+                  <Typography sx={{ fontSize: 10, color: ws.textFaint, mt: 0.25 }}>{n.author_name || 'Du'}</Typography>
+                </Box>
+              ))}
+            </Stack>
+          )}
         </WsCard>
       </Box>
     </Stack>

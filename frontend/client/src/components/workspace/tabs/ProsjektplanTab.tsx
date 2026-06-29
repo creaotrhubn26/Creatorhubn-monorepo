@@ -5,8 +5,9 @@
  * (Prosjektinformasjon / Milepæler / Ressursallokering / Hurtighandlinger)
  * + Faseoversikt-tabell.
  */
-import React, { useState, useEffect } from 'react';
-import { Box, Stack, Typography, Button, Switch, Avatar, AvatarGroup, IconButton } from '@mui/material';
+import React, { useState, useEffect, useRef } from 'react';
+import { Box, Stack, Typography, Button, Switch, Avatar, AvatarGroup, IconButton, Menu, MenuItem } from '@mui/material';
+import { useLocation } from 'wouter';
 import FilterList from '@mui/icons-material/FilterList';
 import Add from '@mui/icons-material/Add';
 import Flag from '@mui/icons-material/Flag';
@@ -60,13 +61,46 @@ const ProsjektplanTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const colW = 100 / WEEKS.length;
   const isReal = projectId && projectId !== 'sample';
   const [detail, setDetail] = useState<any | null>(null);
-  const [ms, setMs] = useState<any[]>([]);
+  const [msAll, setMsAll] = useState<any[]>([]);
   const [members, setMembers] = useState<any[]>([]);
+  const [, navigate] = useLocation();
+  const [filterMenu, setFilterMenu] = useState<null | HTMLElement>(null);
+  const [onlyUpcoming, setOnlyUpcoming] = useState(false);
+  const fileInput = useRef<HTMLInputElement | null>(null);
+  const ms = onlyUpcoming ? msAll.filter((m: any) => { const d = new Date(m.dueDate || m.scheduledDate || m.createdAt); return isNaN(d.getTime()) || d.getTime() >= Date.now(); }) : msAll;
+
+  const loadMs = () => { if (isReal) apiRequest(`/api/photographer/projects/${encodeURIComponent(projectId)}/milestones`).then((r: any) => setMsAll(Array.isArray(r?.milestones) ? r.milestones : [])).catch(() => {}); };
+
+  const addMilestone = async () => {
+    if (!isReal) return;
+    const title = window.prompt('Tittel på milepæl:'); if (!title?.trim()) return;
+    const date = window.prompt('Dato (ÅÅÅÅ-MM-DD), valgfritt:') || '';
+    try {
+      await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/milestones`, { method: 'POST', body: { title: title.trim(), dueDate: date.trim() || null, category: 'Milepæler' } });
+      loadMs();
+    } catch (e: any) { window.alert(e?.message || 'Kunne ikke legge til milepæl'); }
+  };
+
+  const importPlan = async (file: File) => {
+    try {
+      const text = await file.text();
+      const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+      let n = 0;
+      for (const line of lines) {
+        const [title, date] = line.split(/[;,\t]/).map((x) => (x || '').trim());
+        if (!title || /tittel|title/i.test(title)) continue; // hopp over header
+        await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/milestones`, { method: 'POST', body: { title, dueDate: date || null, category: 'Importert' } });
+        n++;
+      }
+      loadMs();
+      window.alert(`${n} milepæl${n === 1 ? '' : 'er'} importert.`);
+    } catch (e: any) { window.alert(e?.message || 'Kunne ikke importere planen'); }
+  };
 
   useEffect(() => {
     if (!isReal) return;
     apiRequest(`/api/photographer/projects/${encodeURIComponent(projectId)}`).then((r: any) => setDetail(r?.project || null)).catch(() => {});
-    apiRequest(`/api/photographer/projects/${encodeURIComponent(projectId)}/milestones`).then((r: any) => setMs(Array.isArray(r?.milestones) ? r.milestones : [])).catch(() => {});
+    loadMs();
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/team/members`).then((r: any) => setMembers(Array.isArray(r?.members) ? r.members : [])).catch(() => {});
   }, [projectId, isReal]);
 
@@ -121,7 +155,11 @@ const ProsjektplanTab: React.FC<{ projectId: string }> = ({ projectId }) => {
             <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Planlegg, organiser og hold oversikt over hele produksjonen.</Typography>
           </Box>
           <Stack direction="row" spacing={1} alignItems="center">
-            <Button size="small" startIcon={<FilterList sx={{ fontSize: 16 }} />} sx={{ color: ws.textDim, textTransform: 'none' }}>Filter</Button>
+            <Button size="small" startIcon={<FilterList sx={{ fontSize: 16 }} />} onClick={(e) => setFilterMenu(e.currentTarget)} sx={{ color: ws.textDim, textTransform: 'none' }}>Filter</Button>
+            <Menu anchorEl={filterMenu} open={!!filterMenu} onClose={() => setFilterMenu(null)} PaperProps={{ sx: { bgcolor: ws.panel, color: ws.text, border: `1px solid ${ws.border}` } }}>
+              <MenuItem onClick={() => { setOnlyUpcoming(false); setFilterMenu(null); }}>Alle milepæler</MenuItem>
+              <MenuItem onClick={() => { setOnlyUpcoming(true); setFilterMenu(null); }}>Kun kommende</MenuItem>
+            </Menu>
             <Stack direction="row" alignItems="center"><Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Vis milepæler</Typography><Switch size="small" defaultChecked /></Stack>
           </Stack>
         </Stack>
@@ -186,14 +224,14 @@ const ProsjektplanTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       {/* Høyre sidebar */}
       <Box sx={{ width: 300, flexShrink: 0 }}>
         <WsCard sx={{ mb: 2 }}>
-          <WsSectionTitle title="Prosjektinformasjon" action={<Button size="small" sx={{ color: ws.accent, textTransform: 'none' }}>Rediger</Button>} />
+          <WsSectionTitle title="Prosjektinformasjon" action={<Button size="small" onClick={() => navigate(`/workspace/${projectId}/avtaler`)} sx={{ color: ws.accent, textTransform: 'none' }}>Rediger</Button>} />
           <Stack spacing={1}>
             {infoRows.map(([k, v]) => <Stack key={k} direction="row" justifyContent="space-between"><Typography sx={{ fontSize: 12.5, color: ws.textDim }}>{k}</Typography><Typography sx={{ fontSize: 12.5, fontWeight: 600 }}>{v}</Typography></Stack>)}
           </Stack>
         </WsCard>
 
         <WsCard sx={{ mb: 2 }}>
-          <WsSectionTitle title="Milepæler" action={<Button size="small" startIcon={<Add sx={{ fontSize: 14 }} />} sx={{ color: ws.accent, textTransform: 'none' }}>Legg til</Button>} />
+          <WsSectionTitle title="Milepæler" action={<Button size="small" startIcon={<Add sx={{ fontSize: 14 }} />} onClick={addMilestone} disabled={!isReal} sx={{ color: ws.accent, textTransform: 'none' }}>Legg til</Button>} />
           <Stack spacing={1.25}>
             {msList.map(([t, d, c]) => <Stack key={t} direction="row" spacing={1} alignItems="center"><Flag sx={{ fontSize: 15, color: c }} /><Typography sx={{ fontSize: 12.5, flex: 1 }}>{t}</Typography><Typography sx={{ fontSize: 11.5, color: ws.textFaint }}>{d}</Typography></Stack>)}
           </Stack>
@@ -217,9 +255,10 @@ const ProsjektplanTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         <WsCard>
           <Typography sx={{ fontSize: 14, fontWeight: 700, mb: 1 }}>Hurtighandlinger</Typography>
           <Stack spacing={1}>
-            <Button fullWidth size="small" startIcon={<Add sx={{ fontSize: 15 }} />} sx={{ justifyContent: 'flex-start', color: ws.text, border: `1px solid ${ws.border}`, textTransform: 'none' }}>Ny oppgave</Button>
-            <Button fullWidth size="small" startIcon={<Flag sx={{ fontSize: 15 }} />} sx={{ justifyContent: 'flex-start', color: ws.text, border: `1px solid ${ws.border}`, textTransform: 'none' }}>Ny milepæl</Button>
-            <Button fullWidth size="small" startIcon={<UploadFile sx={{ fontSize: 15 }} />} sx={{ justifyContent: 'flex-start', color: ws.text, border: `1px solid ${ws.border}`, textTransform: 'none' }}>Importer plan</Button>
+            <Button fullWidth size="small" startIcon={<Add sx={{ fontSize: 15 }} />} onClick={() => navigate(`/workspace/${projectId}/oppgaver`)} sx={{ justifyContent: 'flex-start', color: ws.text, border: `1px solid ${ws.border}`, textTransform: 'none' }}>Ny oppgave</Button>
+            <Button fullWidth size="small" startIcon={<Flag sx={{ fontSize: 15 }} />} onClick={addMilestone} disabled={!isReal} sx={{ justifyContent: 'flex-start', color: ws.text, border: `1px solid ${ws.border}`, textTransform: 'none' }}>Ny milepæl</Button>
+            <Button fullWidth size="small" startIcon={<UploadFile sx={{ fontSize: 15 }} />} onClick={() => fileInput.current?.click()} disabled={!isReal} sx={{ justifyContent: 'flex-start', color: ws.text, border: `1px solid ${ws.border}`, textTransform: 'none' }}>Importer plan</Button>
+            <input ref={fileInput} type="file" accept=".csv,.txt" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) importPlan(f); e.target.value = ''; }} />
           </Stack>
         </WsCard>
       </Box>
