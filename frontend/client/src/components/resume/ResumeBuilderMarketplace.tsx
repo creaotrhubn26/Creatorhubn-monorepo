@@ -1309,7 +1309,7 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
           sx={{
             fontWeight: 900,
             mb: 1,
-            background: 'linear-gradient(135deg, #ff8c00 0%, #14b8a6 100%)',
+            background: 'linear-gradient(135deg, #ff8c00 0%, #ffb347 100%)',
             backgroundClip: 'text',
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent',
@@ -1560,8 +1560,8 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
                     fontWeight: 800,
                     textTransform: 'none',
                     borderRadius: 999,
-                    background: 'linear-gradient(135deg, #f59e0b 0%, #fb7185 100%)',
-                    color: '#111827',
+                    background: 'linear-gradient(135deg, #ff8c00 0%, #e67e00 100%)',
+                    color: '#150d05',
                     '&:hover': {
                       opacity: 0.94,
                     },
