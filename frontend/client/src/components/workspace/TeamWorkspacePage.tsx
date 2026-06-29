@@ -98,7 +98,26 @@ const TeamWorkspacePage: React.FC = () => {
       .catch(() => setRealProject(null));
   }, [projectId]);
 
-  const project = realProject || { ...SAMPLE_PROJECT, id: projectId };
+  // Ekte team-medlemmer til header-avatarene (eier + aktive medlemmer).
+  const [members, setMembers] = useState<{ id: string; name?: string; avatarUrl?: string | null }[]>([]);
+  useEffect(() => {
+    if (!projectId || projectId === 'sample') { setMembers([]); return; }
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/team/members`)
+      .then((r: any) => {
+        const list: any[] = [];
+        if (r?.owner) list.push({ id: r.owner.userId || 'owner', name: r.owner.name || r.owner.email, avatarUrl: r.owner.avatarUrl || null });
+        for (const m of (r?.members || [])) list.push({ id: m.id, name: m.name || m.email, avatarUrl: m.avatarUrl || m.avatar_url || null });
+        setMembers(list);
+      })
+      .catch(() => setMembers([]));
+  }, [projectId]);
+
+  const goTab = (key: string) => {
+    setTab(key);
+    if (WS_NAV.find((n) => n.key === key)?.route) navigate(`/workspace/${projectId}/${key}`, { replace: true });
+  };
+
+  const project = { ...(realProject || { ...SAMPLE_PROJECT, id: projectId }), members };
   const wsUser = {
     name: user?.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : (user?.name || user?.email || 'Bruker'),
     role: user?.profession === 'videographer' ? 'Videograf' : 'Fotograf',
@@ -139,13 +158,9 @@ const TeamWorkspacePage: React.FC = () => {
       onNewProject={() => setShowCreate(true)}
       onLogout={() => { try { (logout as any)?.(); } catch { window.location.href = '/login'; } }}
       activeTab={tab}
-      onTab={(key) => {
-        setTab(key);
-        // hold URL i sync for delbare lenker (uten full navigasjon-flimmer)
-        if (WS_NAV.find((n) => n.key === key)?.route) {
-          navigate(`/workspace/${projectId}/${key}`, { replace: true });
-        }
-      }}
+      onTab={goTab}
+      onClientView={() => goTab('kundevisning')}
+      onInvite={() => goTab('team')}
     >
       {content}
       <Snackbar open={!!accepted} autoHideDuration={5000} onClose={() => setAccepted(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
