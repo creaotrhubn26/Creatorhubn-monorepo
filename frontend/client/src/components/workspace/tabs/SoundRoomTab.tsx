@@ -32,13 +32,13 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [err, setErr] = useState<string | null>(null);
   const [ev, setEv] = useState<any | null>(null); // EaseVerse-tracks
   const [linking, setLinking] = useState<string | null>(null);
-  const [members, setMembers] = useState<any[] | null>(null);
+  const [bandMembers, setBandMembers] = useState<any[] | null>(null);
   const [invite, setInvite] = useState<{ name: string; role: string; instrument: string; email: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
 
   const loadEv = () => { if (isReal) apiRequest(`/api/projects/${encodeURIComponent(projectId)}/easeverse-tracks`).then((r: any) => setEv(r || null)).catch(() => {}); };
-  const loadMembers = () => { if (isReal) apiRequest(`/api/projects/${encodeURIComponent(projectId)}/audio-room/members`).then((r: any) => setMembers(r?.members || [])).catch(() => {}); };
+  const loadMembers = () => { if (isReal) apiRequest(`/api/projects/${encodeURIComponent(projectId)}/audio-room/members`).then((r: any) => setBandMembers(r?.members || [])).catch(() => {}); };
   const copyInvite = (url: string) => { const full = url.startsWith('http') ? url : window.location.origin + url; navigator.clipboard?.writeText(full).then(() => { setCopied(url); setTimeout(() => setCopied(null), 1800); }).catch(() => {}); };
   const submitInvite = async () => {
     if (!invite?.name?.trim() || saving) return; setSaving(true);
@@ -155,7 +155,7 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           <GroupAdd sx={{ fontSize: 18, color: ws.accent }} />
           <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>Band & bidragsytere</Typography>
           <Box sx={{ flex: 1 }} />
-          {(members?.length || 0) > 0 && <WsTag label={`${members!.length}`} tone="neutral" />}
+          {(bandMembers?.length || 0) > 0 && <WsTag label={`${bandMembers!.length}`} tone="neutral" />}
           <Button size="small" variant="outlined" onClick={() => setInvite(invite ? null : { name: '', role: '', instrument: '', email: '' })} sx={{ color: ws.accent, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 600 }}>{invite ? 'Avbryt' : '+ Inviter'}</Button>
         </Stack>
 
@@ -172,11 +172,11 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           </Box>
         )}
 
-        {(members?.length || 0) === 0 ? (
+        {(bandMembers?.length || 0) === 0 ? (
           <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Ingen bandmedlemmer ennå. Koble en EaseVerse-låt under, så hentes bidragsyterne inn automatisk med invitasjons-lenker — eller legg til manuelt med «+ Inviter».</Typography>
         ) : (
           <Stack spacing={0.75}>
-            {members!.map((m: any) => (
+            {bandMembers!.map((m: any) => (
               <Stack key={m.id} direction="row" alignItems="center" spacing={1.25} sx={{ p: 1, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.panelAlt, border: `1px solid ${ws.borderSoft}` }}>
                 <Avatar sx={{ width: 30, height: 30, fontSize: 12, fontWeight: 700, bgcolor: m.avatarColor || ws.accent, color: '#fff' }}>{String(m.name || '?').charAt(0).toUpperCase()}</Avatar>
                 <Box sx={{ minWidth: 0, flex: 1 }}>
