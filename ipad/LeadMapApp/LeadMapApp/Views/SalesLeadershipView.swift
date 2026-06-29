@@ -71,11 +71,26 @@ struct SalesLeadershipDashboardView: View {
 }
 
 struct TopSellersSheet: View {
+    /// Brukt som fallback-navn for «Du»-raden hvis backend ikke gir oss
+    /// `currentUserId` (matching gjøres da på navn — best-effort). Beholdt
+    /// som init-arg for at SalesLeadershipDashboardView fortsatt kan
+    /// avlede et display-navn fra `AppState.userEmail`.
     let currentUserName: String
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
     @State private var period: Period = .month
     @State private var selectedSeller: Seller?
     @State private var leadershipOpen: Bool = false
+
+    // ── Backend-binding (PR #1097 oppfølging) ─────────────────
+    // Initial state = mock-data (12 selgere) for at podium-subscriptene
+    // [0/1/2] aldri skal krasje + at UI har noe å vise mens lasting
+    // pågår. `.task` overskriver fra
+    // `/api/leadgrid/sales-leadership/team-members`. På feil/0 resultater
+    // beholdes mock-en (bedre enn tom liste).
+    @State private var sellers: [Seller] = []
+    @State private var loading: Bool = true
+    @State private var currentUserId: String?
 
     /// Sann hvis innlogget bruker har «salgssjef»-rolle og dermed kan sette
     /// provisjons-satser, opprette konkurranser, etc. I prod kobles dette
@@ -90,6 +105,10 @@ struct TopSellersSheet: View {
 
     struct Seller: Identifiable, Hashable {
         let id = UUID()
+        /// Server-side users.id (UUID-streng) — nil for mock-rader. Brukes
+        /// til å markere «Du»-badgen via match mot SalesTeamMembersResponse
+        /// .currentUserId, og til winner-lookup i PrizeFulfillmentSheet.
+        var userId: String? = nil
         let rank: Int
         let name: String
         let title: String
@@ -130,7 +149,11 @@ struct TopSellersSheet: View {
         let color: Color
     }
 
-    private var sellers: [Seller] {
+    /// Initial fallback-data brukt før backend svarer + når
+    /// `/team-members` returnerer 0 eller feiler. 12 selgere så
+    /// podium-subscriptene [0/1/2] er trygge og UI-en har realistisk
+    /// bredde å vise med en gang.
+    private func defaultMockSellers() -> [Seller] {
         [
             makeSeller(rank: 1, name: "Anniken Sørli", title: "Salgsdirektør",
                        color: Brand.purple, won: 312, leads: 1820, trend: 0,
@@ -320,12 +343,80 @@ struct TopSellersSheet: View {
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .sheet(item: $selectedSeller) { seller in
-                SellerDetailSheet(seller: seller, isCurrentUser: seller.name == currentUserName)
+                SellerDetailSheet(seller: seller, isCurrentUser: isCurrentUser(seller))
             }
             .sheet(isPresented: $leadershipOpen) {
                 SalesLeadershipSheet(sellers: sellers, currentUserName: currentUserName)
             }
+            .task {
+                // Seed mock først så podium-subscriptene aldri tomme.
+                if sellers.isEmpty { sellers = defaultMockSellers() }
+                await loadMembers()
+            }
         }
+    }
+
+    /// Hent ekte salgs-teammedlemmer fra
+    /// `/api/leadgrid/sales-leadership/team-members`. Beholder mock-listen
+    /// som fall-back hvis api/server-svar feiler eller er tomt.
+    private func loadMembers() async {
+        guard let api = appState.api else {
+            await MainActor.run { loading = false }
+            return
+        }
+        await MainActor.run { loading = true }
+        defer { Task { @MainActor in loading = false } }
+        do {
+            let resp = try await api.fetchSalesTeamMembers()
+            guard !resp.members.isEmpty else {
+                // 0 medlemmer fra backend (org ikke onboardet enda) =
+                // behold mock. Synlig for utvikler via print.
+                print("[TopSellers] team-members tom — beholder mock-data")
+                return
+            }
+            await MainActor.run {
+                self.currentUserId = resp.currentUserId
+                self.sellers = resp.members.enumerated().map { idx, m in
+                    Seller(
+                        userId: m.userId,
+                        rank: idx + 1,
+                        name: m.name,
+                        title: m.title ?? "Selger",
+                        avatarColor: colorForSeller(idx),
+                        won: m.won,
+                        leads: m.leads,
+                        trend: m.trend,
+                        totalValue: Double(m.totalValueNok),
+                        topDeals: [],
+                        regions: [],
+                        industries: []
+                    )
+                }
+            }
+        } catch {
+            // Stille fall-back: behold mock. Logging holder for nå —
+            // SalesLeadershipSheet har egen error-banner for sin egen load.
+            print("[TopSellers] team-members fetch failed: \(error)")
+        }
+    }
+
+    /// Roter gjennom Brand-paletten basert på indeks — gir hver selger
+    /// en stabil farge uten å duplisere makeBasicSeller-mønsteret.
+    private func colorForSeller(_ idx: Int) -> Color {
+        let palette: [Color] = [
+            Brand.purple, Brand.green, Brand.yellow, Brand.blue,
+            Brand.red, Brand.orange, Brand.purpleLight,
+        ]
+        return palette[idx % palette.count]
+    }
+
+    /// Sann hvis selgeren matcher innlogget bruker. Bruker server-side
+    /// `currentUserId` om vi har det; ellers fall-back til navn-match.
+    private func isCurrentUser(_ s: Seller) -> Bool {
+        if let cid = currentUserId, let uid = s.userId {
+            return cid == uid
+        }
+        return s.name == currentUserName
     }
 
     private var periodPicker: some View {
@@ -352,7 +443,21 @@ struct TopSellersSheet: View {
 
     // Klassisk podium-layout: nr 2 venstre (litt lavere), nr 1 midten (høyest),
     // nr 3 høyre (lavest). Hver podium har avatar + navn + won-count.
+    //
+    // Bruker `if sellers.count >= 3`-guard fordi `@State` starter tom og
+    // `.task` seeder mock før første nyttige render — men en initial
+    // render kan inntreffe FØR det. Tom liste = vis loading-shimmer i
+    // stedet for å krasje på subscript.
+    @ViewBuilder
     private var podiumSection: some View {
+        if sellers.count >= 3 {
+            podiumSectionContent
+        } else {
+            podiumPlaceholder
+        }
+    }
+
+    private var podiumSectionContent: some View {
         HStack(alignment: .bottom, spacing: 14) {
             podiumColumn(sellers[1], height: 90, accent: Color(red: 0.78, green: 0.78, blue: 0.85))   // Sølv
             podiumColumn(sellers[0], height: 120, accent: Brand.yellow)                                // Gull
@@ -371,6 +476,24 @@ struct TopSellersSheet: View {
                         ))
                 )
         )
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(Brand.stroke, lineWidth: 1))
+    }
+
+    /// Vist før mock seedes / data lastes — gir podium-området riktig
+    /// høyde så layout ikke hopper når data dukker opp.
+    private var podiumPlaceholder: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 18).fill(Brand.card)
+            if loading {
+                ProgressView()
+                    .tint(.white)
+            } else {
+                Text("Ingen selgere ennå")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Brand.textSecondary)
+            }
+        }
+        .frame(height: 200)
         .overlay(RoundedRectangle(cornerRadius: 18).stroke(Brand.stroke, lineWidth: 1))
     }
 
@@ -455,7 +578,7 @@ struct TopSellersSheet: View {
     }
 
     private func sellerRowContent(_ s: Seller) -> some View {
-        let isMe = s.name == currentUserName
+        let isMe = isCurrentUser(s)
         return HStack(spacing: 12) {
             Text("\(s.rank)")
                 .font(.system(size: 13, weight: .bold, design: .rounded))
@@ -4149,6 +4272,9 @@ struct PrizeFulfillmentSheet: View {
     @State private var loading: Bool = false
     @State private var loadError: String?
     @State private var advancing: Set<UUID> = []
+    /// Cache av team-members for å mappe `award.userId` → menneske-navn.
+    /// Lastes parallelt med awards i `loadAwards()`.
+    @State private var teamMembers: [SalesTeamMemberDTO] = []
 
     private enum Brand {
         static let bg = Color(red: 0.05, green: 0.04, blue: 0.10)
@@ -4248,6 +4374,9 @@ struct PrizeFulfillmentSheet: View {
     /// Hent fulfillment-tildelinger fra server. Hvis konkurransen ikke er
     /// closed enda, kall `closeContest()` først (oppretter award-rader).
     /// Faller tilbake til lokal mock hvis api/server-ID mangler.
+    ///
+    /// Henter også team-members parallelt så `mapAwardDTOToLocal` kan
+    /// slå opp vinner-NAVN (i stedet for «Vinner #abc123»).
     private func loadAwards() async {
         // Hvis vi mangler server-ID for konkurransen, fall direkte til seed-mock.
         guard let api = appState.api, let serverID = contest.serverID else {
@@ -4256,6 +4385,16 @@ struct PrizeFulfillmentSheet: View {
         }
         await MainActor.run { loading = true; loadError = nil }
         defer { Task { @MainActor in loading = false } }
+
+        // Last team-members i bakgrunnen (best-effort — feiler stille
+        // siden award-mapping har egen fallback til "Vinner #suffix").
+        async let membersTask: SalesTeamMembersResponse? = {
+            do { return try await api.fetchSalesTeamMembers() }
+            catch {
+                print("[PrizeFulfillmentSheet] team-members fetch failed: \(error)")
+                return nil
+            }
+        }()
 
         do {
             // Hent server-awards filtrert til denne konkurransen (org-wide).
@@ -4268,7 +4407,10 @@ struct PrizeFulfillmentSheet: View {
                 fetched = try await api.fetchAwards(status: nil, orgWide: true)
                     .filter { $0.contestId == serverID }
             }
+            // Vent på members (kan være nil ved feil).
+            let membersResp = await membersTask
             await MainActor.run {
+                self.teamMembers = membersResp?.members ?? []
                 if !fetched.isEmpty {
                     self.awards = fetched.map(mapAwardDTOToLocal)
                 } else {
@@ -4277,20 +4419,32 @@ struct PrizeFulfillmentSheet: View {
                 }
             }
         } catch {
+            // Selv ved award-feil — sett teamMembers så seed-mock kan
+            // også bruke det (om relevant).
+            let membersResp = await membersTask
             await MainActor.run {
+                self.teamMembers = membersResp?.members ?? []
                 self.loadError = "\(error.localizedDescription)"
                 seedMockAwards()
             }
         }
     }
 
-    /// Map server-DTO → lokal Award. winnerName slås opp via sellers-listen
-    /// hvis tilgjengelig (best-effort); ellers brukes userId direkte.
+    /// Map server-DTO → lokal Award. winnerName slås opp via teamMembers
+    /// (server-svar) FØRST, deretter sellers-listen (lokal/mock), og til
+    /// slutt fallback `Vinner #<userId-prefix>` om ingen match finnes.
     private func mapAwardDTOToLocal(_ dto: PrizeAwardDTO) -> Award {
-        // Vinner-info: vi har bare userId fra server. Hvis vi får navn i
-        // sellers-listen, bruk det; ellers fallback.
-        let winnerName = sellers.first(where: { _ in false })?.name ?? "Vinner #\(dto.userId.prefix(6))"
-        let winnerColor = sellers.first?.avatarColor ?? Color.purple
+        // 1) Server-svar (teamMembers): autoritativ kilde for userId → navn.
+        let nameFromMembers = teamMembers.first { $0.userId == dto.userId }?.name
+        // 2) Fall til sellers-listen (matcher Seller.userId først, ellers
+        //    første seller — for å gi en konsistent avatar-farge).
+        let sellerByUserId = sellers.first { $0.userId == dto.userId }
+        let winnerName = nameFromMembers
+            ?? sellerByUserId?.name
+            ?? "Vinner #\(dto.userId.prefix(6))"
+        let winnerColor = sellerByUserId?.avatarColor
+            ?? sellers.first?.avatarColor
+            ?? Color.purple
         // Bygg PrizeProduct fra productSnapshot (rå JSON-Data) — best-effort.
         let snapshot = (try? JSONSerialization.jsonObject(with: dto.productSnapshot) as? [String: Any]) ?? [:]
         let title = (snapshot["title"] as? String) ?? (snapshot["name"] as? String) ?? "Premie"
