@@ -819,6 +819,7 @@ import { setupGooglePhotosRoutes } from "./google-photos-routes";
 import { setupDeliveriesRoutes } from "./deliveries-routes";
 import { setupAudioSettingsRoutes } from "./audio-settings-routes";
 import { setupSalesRoutes } from "./sales-routes";
+import { registerSalesLeadershipRoutes } from "./sales-leadership-routes";
 import { setupExternalDataRoutes } from "./external-data-routes";
 import { setupInspirationsRoutes } from "./inspirations-routes";
 import { setupCmsRoutes } from "./cms-routes";
@@ -65513,6 +65514,10 @@ setupSalesRoutes({
   isMissingRelationError,
   isMissingColumnError,
 });
+
+// /api/leadgrid/sales-leadership/* — 18 endpoints (provisjons-modeller,
+// konkurranse-maler, premie-katalog, fulfillment). Forutsetter mig 0354.
+registerSalesLeadershipRoutes({ app, pool, requireUserSession });
 
 // /api/external-data/* — 7 unike endpoints (2 SSB-indikatorer +
 // 5 Kartverket-proxies). Selvstendig modul. 2 SSB-dups slettet i samme
