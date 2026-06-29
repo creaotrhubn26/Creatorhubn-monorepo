@@ -2519,4 +2519,51 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     try { await ensureSchema(pool); await pool.query(`DELETE FROM project_workspace_deliverables WHERE id = $1 AND project_id = $2`, [req.params.id, req.params.projectId]); res.json({ success: true }); }
     catch (e) { console.error("DELETE deliverables", e); res.status(500).json({ error: "failed" }); }
   });
+
+  // ─────────── Hurtignotater (Produksjonskart «rask notat» + Shotlist «kommentar») ───────────
+  const ensureNotesTable = () => pool.query(`CREATE TABLE IF NOT EXISTS project_workspace_notes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id VARCHAR(64) NOT NULL,
+    context VARCHAR(40) NOT NULL DEFAULT 'general',
+    body TEXT NOT NULL,
+    author_id VARCHAR(64),
+    author_name VARCHAR(255),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`).catch(() => {});
+
+  app.get("/api/projects/:projectId/notes", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureNotesTable();
+      const ctx = req.query?.context ? String(req.query.context).slice(0, 40) : null;
+      const r = ctx
+        ? await pool.query(`SELECT id, context, body, author_name, created_at FROM project_workspace_notes WHERE project_id=$1 AND context=$2 ORDER BY created_at DESC LIMIT 100`, [req.params.projectId, ctx])
+        : await pool.query(`SELECT id, context, body, author_name, created_at FROM project_workspace_notes WHERE project_id=$1 ORDER BY created_at DESC LIMIT 100`, [req.params.projectId]);
+      res.json({ notes: r.rows });
+    } catch (e) { console.error("GET notes", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  app.post("/api/projects/:projectId/notes", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureNotesTable();
+      const body = typeof req.body?.body === "string" ? req.body.body.trim() : "";
+      if (!body) return res.status(400).json({ error: "body_required" });
+      const ctx = req.body?.context ? String(req.body.context).slice(0, 40) : "general";
+      const nm = await pool.query(`SELECT COALESCE(NULLIF(TRIM(CONCAT(first_name,' ',last_name)),''), email) AS name FROM users WHERE id::text=$1 LIMIT 1`, [uid]).catch(() => ({ rows: [] }));
+      const name = nm.rows[0]?.name || null;
+      const r = await pool.query(
+        `INSERT INTO project_workspace_notes (project_id, context, body, author_id, author_name)
+         VALUES ($1,$2,$3,$4,$5) RETURNING id, context, body, author_name, created_at`,
+        [req.params.projectId, ctx, body.slice(0, 4000), uid, name],
+      );
+      res.status(201).json(r.rows[0]);
+    } catch (e) { console.error("POST notes", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  app.delete("/api/projects/:projectId/notes/:id", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try { await ensureNotesTable(); await pool.query(`DELETE FROM project_workspace_notes WHERE id=$1 AND project_id=$2`, [req.params.id, req.params.projectId]); res.json({ success: true }); }
+    catch (e) { console.error("DELETE notes", e); res.status(500).json({ error: "failed" }); }
+  });
 }
