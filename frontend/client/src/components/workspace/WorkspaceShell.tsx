@@ -83,6 +83,8 @@ interface ShellProps {
   onNewProject?: () => void;
   onLogout?: () => void;
   headerActions?: React.ReactNode;
+  onClientView?: () => void;
+  onInvite?: () => void;
   children: React.ReactNode;
 }
 
@@ -117,9 +119,10 @@ function NavItem({ item, active, onClick }: any) {
   );
 }
 
-const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab, online, onNewProject, onLogout, headerActions, children }) => {
+const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab, online, onNewProject, onLogout, headerActions, onClientView, onInvite, children }) => {
   const groups: Array<'hoved' | 'rom' | 'klient'> = ['hoved', 'rom', 'klient'];
   const [userMenu, setUserMenu] = React.useState<null | HTMLElement>(null);
+  const [projMenu, setProjMenu] = React.useState<null | HTMLElement>(null);
   const go = (path: string) => { setUserMenu(null); window.location.href = path; };
 
   return (
@@ -252,15 +255,21 @@ const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab,
             <Stack direction="row" spacing={1} alignItems="center">
               {headerActions ?? (
                 <>
-                  <Button size="small" startIcon={<Visibility sx={{ fontSize: 16 }} />}
+                  <Button size="small" startIcon={<Visibility sx={{ fontSize: 16 }} />} onClick={onClientView}
                     sx={{ color: ws.text, borderColor: ws.border, textTransform: 'none' }} variant="outlined">
                     Kundevisning
                   </Button>
-                  <Button size="small" startIcon={<PersonAdd sx={{ fontSize: 16 }} />}
+                  <Button size="small" startIcon={<PersonAdd sx={{ fontSize: 16 }} />} onClick={onInvite}
                     sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }} variant="contained">
                     Inviter medlem
                   </Button>
-                  <IconButton size="small" sx={{ color: ws.textDim }}><MoreVert fontSize="small" /></IconButton>
+                  <IconButton size="small" onClick={(e) => setProjMenu(e.currentTarget)} sx={{ color: ws.textDim }}><MoreVert fontSize="small" /></IconButton>
+                  <Menu anchorEl={projMenu} open={!!projMenu} onClose={() => setProjMenu(null)}
+                    PaperProps={{ sx: { bgcolor: ws.panel, color: ws.text, border: `1px solid ${ws.border}` } }}>
+                    <MenuItem onClick={() => { setProjMenu(null); onTab('team'); }}><ListItemIcon><PersonAdd fontSize="small" sx={{ color: ws.textDim }} /></ListItemIcon>Team & medlemmer</MenuItem>
+                    <MenuItem onClick={() => { setProjMenu(null); onTab('kundevisning'); }}><ListItemIcon><Visibility fontSize="small" sx={{ color: ws.textDim }} /></ListItemIcon>Åpne kundevisning</MenuItem>
+                    <MenuItem onClick={() => { setProjMenu(null); onTab('avtaler'); }}><ListItemIcon><Settings fontSize="small" sx={{ color: ws.textDim }} /></ListItemIcon>Avtaler & innstillinger</MenuItem>
+                  </Menu>
                 </>
               )}
             </Stack>
