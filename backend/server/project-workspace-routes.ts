@@ -8,7 +8,7 @@
  * Ressurser:
  *   project_board_tasks   — Samkjøringsboard / Oppgaver (kanban per crew_role)
  *   project_checklist_items — Sjekkliste (utstyr/backup)
- *   project_deliverables  — Leveranser
+ *   project_workspace_deliverables  — Leveranser
  *
  * Endpoints (alle /api/projects/:projectId/...):
  *   GET/POST  board-tasks      PATCH/DELETE board-tasks/:id
@@ -52,8 +52,14 @@ let schemaReady: Promise<void> | null = null;
 async function ensureSchema(pool: any): Promise<void> {
   if (!schemaReady) {
     schemaReady = (async () => {
-      await pool.query(`
-        CREATE TABLE IF NOT EXISTS project_board_tasks (
+      // VIKTIG: hver setning i SIN egen query med eget .catch. Tidligere kjørte
+      // alt i ÉN batch — da rev en kollisjon (eksisterende `project_workspace_deliverables`
+      // fra en annen feature mangler `order_index`, så `CREATE INDEX … order_index`
+      // feilet) med seg HELE batchen → board_tasks/checklist/images/split_shares
+      // ble aldri opprettet og alle tab-ene 500'et. Workspace-leveranser bruker nå
+      // sin egen tabell `project_workspace_deliverables` (ikke den kolliderende).
+      const stmts: string[] = [
+        `CREATE TABLE IF NOT EXISTS project_board_tasks (
           id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
           project_id  VARCHAR(64) NOT NULL,
           crew_role   VARCHAR(20) NOT NULL DEFAULT 'begge',
@@ -64,10 +70,9 @@ async function ensureSchema(pool: any): Promise<void> {
           created_by  VARCHAR(64),
           created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
           updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        );
-        CREATE INDEX IF NOT EXISTS idx_pbt_project ON project_board_tasks (project_id, crew_role, order_index);
-
-        CREATE TABLE IF NOT EXISTS project_checklist_items (
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_pbt_project ON project_board_tasks (project_id, crew_role, order_index)`,
+        `CREATE TABLE IF NOT EXISTS project_checklist_items (
           id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
           project_id  VARCHAR(64) NOT NULL,
           label       TEXT NOT NULL,
@@ -75,10 +80,9 @@ async function ensureSchema(pool: any): Promise<void> {
           category    VARCHAR(40),
           order_index INTEGER NOT NULL DEFAULT 0,
           created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        );
-        CREATE INDEX IF NOT EXISTS idx_pci_project ON project_checklist_items (project_id, order_index);
-
-        CREATE TABLE IF NOT EXISTS project_deliverables (
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_pci_project ON project_checklist_items (project_id, order_index)`,
+        `CREATE TABLE IF NOT EXISTS project_workspace_deliverables (
           id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
           project_id  VARCHAR(64) NOT NULL,
           title       TEXT NOT NULL,
@@ -88,10 +92,9 @@ async function ensureSchema(pool: any): Promise<void> {
           order_index INTEGER NOT NULL DEFAULT 0,
           created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
           updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        );
-        CREATE INDEX IF NOT EXISTS idx_pd_project ON project_deliverables (project_id, order_index);
-
-        CREATE TABLE IF NOT EXISTS project_images (
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_pwd_project ON project_workspace_deliverables (project_id, order_index)`,
+        `CREATE TABLE IF NOT EXISTS project_images (
           id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
           project_id   VARCHAR(64) NOT NULL,
           panel        VARCHAR(40),
@@ -101,11 +104,10 @@ async function ensureSchema(pool: any): Promise<void> {
           size_bytes   BIGINT,
           uploaded_by  VARCHAR(64),
           created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        );
-        ALTER TABLE project_images ADD COLUMN IF NOT EXISTS category VARCHAR(40);
-        CREATE INDEX IF NOT EXISTS idx_pi_project ON project_images (project_id, panel, created_at DESC);
-
-        CREATE TABLE IF NOT EXISTS project_split_shares (
+        )`,
+        `ALTER TABLE project_images ADD COLUMN IF NOT EXISTS category VARCHAR(40)`,
+        `CREATE INDEX IF NOT EXISTS idx_pi_project ON project_images (project_id, panel, created_at DESC)`,
+        `CREATE TABLE IF NOT EXISTS project_split_shares (
           id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
           project_id  VARCHAR(64) NOT NULL,
           name        VARCHAR(255),
@@ -114,9 +116,12 @@ async function ensureSchema(pool: any): Promise<void> {
           percent     NUMERIC(5,2) NOT NULL DEFAULT 0,
           order_index INTEGER NOT NULL DEFAULT 0,
           created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        );
-        CREATE INDEX IF NOT EXISTS idx_pss_project ON project_split_shares (project_id, order_index);
-      `).catch(() => undefined);
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_pss_project ON project_split_shares (project_id, order_index)`,
+      ];
+      for (const s of stmts) {
+        await pool.query(s).catch((e: any) => console.error("[workspace ensureSchema]", e?.message || e));
+      }
     })();
   }
   return schemaReady;
@@ -2473,7 +2478,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     const uid = await guard(req, res); if (!uid) return;
     try {
       await ensureSchema(pool);
-      const r = await pool.query(`SELECT * FROM project_deliverables WHERE project_id = $1 ORDER BY order_index, due_date NULLS LAST, created_at`, [req.params.projectId]);
+      const r = await pool.query(`SELECT * FROM project_workspace_deliverables WHERE project_id = $1 ORDER BY order_index, due_date NULLS LAST, created_at`, [req.params.projectId]);
       res.json({ deliverables: r.rows.map((d: any) => ({ id: d.id, title: d.title, type: d.type, status: d.status, dueDate: d.due_date })) });
     } catch (e) { console.error("GET deliverables", e); res.status(500).json({ error: "failed" }); }
   });
@@ -2485,7 +2490,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const title = typeof b.title === "string" ? b.title.trim() : "";
       if (!title) return res.status(400).json({ error: "title_required" });
       const r = await pool.query(
-        `INSERT INTO project_deliverables (project_id, title, type, status, due_date, order_index)
+        `INSERT INTO project_workspace_deliverables (project_id, title, type, status, due_date, order_index)
          VALUES ($1, $2, $3, $4, $5, COALESCE($6, 0)) RETURNING *`,
         [req.params.projectId, title, b.type || null, b.status || "not_started", b.dueDate || null, b.orderIndex ?? null],
       );
@@ -2499,7 +2504,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       await ensureSchema(pool);
       const b = req.body ?? {};
       const r = await pool.query(
-        `UPDATE project_deliverables SET title = COALESCE($1, title), type = COALESCE($2, type),
+        `UPDATE project_workspace_deliverables SET title = COALESCE($1, title), type = COALESCE($2, type),
             status = COALESCE($3, status), due_date = COALESCE($4, due_date), updated_at = NOW()
           WHERE id = $5 AND project_id = $6 RETURNING *`,
         [b.title ?? null, b.type ?? null, b.status ?? null, b.dueDate ?? null, req.params.id, req.params.projectId],
@@ -2511,7 +2516,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
   });
   app.delete("/api/projects/:projectId/deliverables/:id", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
-    try { await ensureSchema(pool); await pool.query(`DELETE FROM project_deliverables WHERE id = $1 AND project_id = $2`, [req.params.id, req.params.projectId]); res.json({ success: true }); }
+    try { await ensureSchema(pool); await pool.query(`DELETE FROM project_workspace_deliverables WHERE id = $1 AND project_id = $2`, [req.params.id, req.params.projectId]); res.json({ success: true }); }
     catch (e) { console.error("DELETE deliverables", e); res.status(500).json({ error: "failed" }); }
   });
 }
