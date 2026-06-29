@@ -104,21 +104,21 @@ const ProsjektplanTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/team/members`).then((r: any) => setMembers(Array.isArray(r?.members) ? r.members : [])).catch(() => {});
   }, [projectId, isReal]);
 
-  // Prosjektinformasjon
-  const infoRows = (isReal && detail) ? [
-    ['Klient', detail.clientName || '—'], ['Prosjekttype', detail.projectType || '—'],
-    ['Dato', detail.eventDate ? new Date(detail.eventDate).toLocaleDateString('nb-NO', { day: 'numeric', month: 'long', year: 'numeric' }) : '—'],
-    ['Lokasjon', detail.location || '—'], ['Status', detail.status || '—'],
+  // Prosjektinformasjon — ekte prosjekt viser ekte detaljer (manglende = «—»), mock kun på /sample.
+  const infoRows = isReal ? [
+    ['Klient', detail?.clientName || '—'], ['Prosjekttype', detail?.projectType || '—'],
+    ['Dato', detail?.eventDate ? new Date(detail.eventDate).toLocaleDateString('nb-NO', { day: 'numeric', month: 'long', year: 'numeric' }) : '—'],
+    ['Lokasjon', detail?.location || '—'], ['Status', detail?.status || '—'],
   ] : INFO;
   // Milepæler
-  const msList = (isReal && ms.length)
+  const msList = isReal
     ? ms.slice(0, 8).map((m: any, i: number) => [m.title, (m.dueDate || m.scheduledDate) ? new Date(m.dueDate || m.scheduledDate).toLocaleDateString('nb-NO', { day: 'numeric', month: 'short', year: 'numeric' }) : '—', PHASE_COLORS[i % PHASE_COLORS.length]])
     : MILESTONES;
   // Ressursallokering fra crew-roller
   const roleCount: Record<string, number> = {};
   members.forEach((m: any) => { const k = m.crewRole || 'annet'; roleCount[k] = (roleCount[k] || 0) + 1; });
   const ROLE_LABEL: Record<string, [string, string]> = { fotograf: ['Foto', ws.roleFoto], videograf: ['Video', ws.roleVideo], lyd: ['Lyd', ws.roleLyd], editor: ['Editor', ws.blue], begge: ['Foto+Video', ws.roleFoto], assistent: ['Assistent', ws.roleAnnet] };
-  const resources = (isReal && members.length) ? Object.entries(roleCount).map(([k, v]) => [ROLE_LABEL[k]?.[0] || k, v, ROLE_LABEL[k]?.[1] || ws.roleAnnet]) : RESOURCES;
+  const resources = isReal ? Object.entries(roleCount).map(([k, v]) => [ROLE_LABEL[k]?.[0] || k, v, ROLE_LABEL[k]?.[1] || ws.roleAnnet]) : RESOURCES;
   const total = resources.reduce((s, r) => s + r[1], 0);
   // Faser fra milestones gruppert på kategori; Gantt-bars posisjonert på dato.
   const dates = ms.map((m: any) => new Date(m.dueDate || m.scheduledDate || m.createdAt)).filter((d) => !isNaN(d.getTime()));
@@ -134,7 +134,7 @@ const ProsjektplanTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       return { label: m.title, start, span: 1.2, color: PHASE_COLORS[ci % PHASE_COLORS.length] };
     }),
   })) : null;
-  const phases = realPhases || PHASES;
+  const phases = isReal ? (realPhases || []) : PHASES;
   // Faseoversikt
   const faseRows = (isReal && ms.length) ? cats.map((cat, ci) => {
     const items = ms.filter((m: any) => (m.category || 'Milepæler') === cat);

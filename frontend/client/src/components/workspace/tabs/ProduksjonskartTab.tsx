@@ -76,8 +76,8 @@ const ProduksjonskartTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const syncPct = sync ? sync.pct : 82;
   const crewOnline = sync ? sync.online : 6;
   const crewTotal = sync ? sync.teamSize : 8;
-  const rows = events
-    ? events.map((e: any) => ({
+  const rows = isReal
+    ? (events || []).map((e: any) => ({
         tid: e.time ? `${e.time}${e.durationMinutes ? ' – ' + addMin(e.time, e.durationMinutes) : ''}` : '',
         moment: e.title || 'Hendelse', sub: e.location || '',
         foto: ['Foto'], video: ['Video'], lyd: ['Lyd'],

@@ -92,12 +92,12 @@ const MoodboardTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     if (!isReal) return;
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/moodboard-meta`).then((r: any) => setMeta(r?.meta || null)).catch(() => {});
   }, [projectId, isReal]);
-  // Ekte meta m/ sample-fallback.
-  const pal = (meta?.palette && meta.palette.length) ? meta.palette.map((p: any) => [p.name || p[0] || '', p.hex || p[1] || p]) : PALETTE;
-  const notes = (meta?.notes && meta.notes.length) ? meta.notes : STYLE_NOTES;
-  const capture = (meta?.mustCapture && meta.mustCapture.length) ? meta.mustCapture.map((c: any) => [c.label || c[0] || c, c.done ?? c[1] ?? false]) : CAPTURE;
+  // Ekte prosjekt → ekte meta (tomt = tom-tilstand). Mock kun på /workspace/sample.
+  const pal = isReal ? (meta?.palette || []).map((p: any) => [p.name || p[0] || '', p.hex || p[1] || p]) : PALETTE;
+  const notes = isReal ? (meta?.notes || []) : STYLE_NOTES;
+  const capture = isReal ? (meta?.mustCapture || []).map((c: any) => [c.label || c[0] || c, c.done ?? c[1] ?? false]) : CAPTURE;
   const refCount = isReal ? mood.images.length : 86;
-  const styleDir = meta?.style || 'Romantisk / Editorial';
+  const styleDir = isReal ? (meta?.style || '—') : 'Romantisk / Editorial';
   // Kategori-tellere + filtrering + søk (ekte data).
   const catCount = (mood.images || []).reduce((m: any, im: any) => { if (im.category) m[im.category] = (m[im.category] || 0) + 1; return m; }, {});
   const realCats = isReal
