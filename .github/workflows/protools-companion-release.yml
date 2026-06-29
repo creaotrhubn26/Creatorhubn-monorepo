@@ -1,0 +1,76 @@
+name: Pro Tools Companion Release
+
+# Bygger den native Pro Tools Companion-appen for macOS (Apple Silicon + Intel)
+# og Windows, og laster installerene opp til GitHub-release-en. Trigges av en
+# tag `protools-companion-v*` eller manuelt (workflow_dispatch).
+#
+# Backendens /api/protools/companion/release auto-oppdager assetene fra release-en,
+# så nye plattformer dukker opp i Sound Room-dialogen automatisk.
+
+on:
+  push:
+    tags:
+      - 'protools-companion-v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release-tag (f.eks. protools-companion-v0.1.1)'
+        required: true
+        default: 'protools-companion-v0.1.1'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-14        # Apple Silicon
+            target: aarch64-apple-darwin
+            args: '--target aarch64-apple-darwin'
+          - platform: macos-13        # Intel
+            target: x86_64-apple-darwin
+            args: '--target x86_64-apple-darwin'
+          - platform: windows-latest  # Windows x64
+            target: ''
+            args: ''
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache Rust
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/creatorhub-protools-companion/src-tauri
+
+      - name: Install frontend deps
+        working-directory: apps/creatorhub-protools-companion
+        run: npm install --no-audit --no-fund
+
+      - name: Build & publish (tauri-action)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: apps/creatorhub-protools-companion
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
+          releaseName: 'Pro Tools Companion __VERSION__'
+          releaseBody: |
+            Native Pro Tools Companion — synker markører («Export Session Info as Text») og bounces inn i koblet EaseVerse / Sound Room.
+
+            Usignert bygg: macOS → høyreklikk appen → **Åpne**. Windows → «Mer info» → «Kjør likevel».
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.args }}
