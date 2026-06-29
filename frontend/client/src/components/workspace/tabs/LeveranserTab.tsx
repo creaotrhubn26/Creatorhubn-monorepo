@@ -101,8 +101,9 @@ const LeveranserTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     catch (e: any) { window.alert(e?.message || 'Kunne ikke markere'); }
   };
 
-  const list = (real && real.length > 0)
-    ? real.map((d: any) => [d.title, d.type || '', ...(STATUS_LABEL[d.status] || ['—', 'neutral']), d.dueDate ? new Date(d.dueDate).toLocaleDateString('nb-NO', { day: 'numeric', month: 'short' }) : '—', false])
+  // Ekte prosjekt → ekte data (tomt = tom-tilstand). Mock kun på /workspace/sample.
+  const list = isReal
+    ? (real || []).map((d: any) => [d.title, d.type || '', ...(STATUS_LABEL[d.status] || ['—', 'neutral']), d.dueDate ? new Date(d.dueDate).toLocaleDateString('nb-NO', { day: 'numeric', month: 'short' }) : '—', false])
     : DELIVERABLES;
 
   return (
@@ -116,6 +117,7 @@ const LeveranserTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           </Stack>
           <Box sx={{ mb: 1.5 }}><WsPills items={[{ key: 'planned', label: 'Planned' }, { key: 'progress', label: 'In progress' }, { key: 'delivered', label: 'Delivered' }]} value={filter} onChange={setFilter} /></Box>
           <Stack spacing={0.75}>
+            {list.length === 0 && <Typography sx={{ fontSize: 12.5, color: ws.textDim, py: 2, textAlign: 'center' }}>Ingen leveranser ennå. Trykk «Ny» for å legge til.</Typography>}
             {list.map(([n, type, st, tone, due, active], i) => (
               <Box key={i} sx={{ p: 1.25, borderRadius: 2, cursor: 'pointer', border: `1px solid ${active ? ws.accentBorder : ws.borderSoft}`, bgcolor: active ? ws.accentSoft : 'transparent' }}>
                 <Stack direction="row" justifyContent="space-between" alignItems="flex-start">

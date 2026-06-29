@@ -71,16 +71,17 @@ const TeamTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [projectId]);
 
-  const displayMembers = real || MEMBERS;
+  // Ekte prosjekt → ekte data (tomt = tom-tilstand). Mock kun på /workspace/sample.
+  const displayMembers = isRealP ? (real || []) : MEMBERS;
 
   // Oppgaver (høyre) fra ekte board-tasks.
-  const taskList = (boardTasks && boardTasks.length)
-    ? boardTasks.slice(0, 6).map((t) => [t.title, '', t.status === 'done' ? 'Gjort' : t.status === 'in_progress' ? 'Pågår' : 'Venter', t.status === 'done' ? 'green' : t.status === 'in_progress' ? 'blue' : 'amber'])
+  const taskList = isRealP
+    ? (boardTasks || []).slice(0, 6).map((t) => [t.title, '', t.status === 'done' ? 'Gjort' : t.status === 'in_progress' ? 'Pågår' : 'Venter', t.status === 'done' ? 'green' : t.status === 'in_progress' ? 'blue' : 'amber'])
     : TASKS;
   // Kommende milepæler fra ekte milestones.
   const MO = ['JAN', 'FEB', 'MAR', 'APR', 'MAI', 'JUN', 'JUL', 'AUG', 'SEP', 'OKT', 'NOV', 'DES'];
   const upcoming = (milestones || []).filter((m: any) => { const d = m.dueDate || m.scheduledDate; return d && new Date(d) >= new Date(Date.now() - 864e5); }).slice(0, 3);
-  const msList = upcoming.length
+  const msList = isRealP
     ? upcoming.map((m: any) => { const d = new Date(m.dueDate || m.scheduledDate); return [String(d.getDate()), MO[d.getMonth()], m.title, d.toLocaleDateString('nb-NO', { weekday: 'long', day: 'numeric', month: 'short' })]; })
     : [['12', 'SEP', 'Location scout', 'Torsdag 12. sep 10:00'], ['14', 'SEP', 'Produksjonsdag', 'Lørdag 14. sep 09:00'], ['21', 'SEP', 'Teaser levering', 'Lørdag 21. sep 18:00']];
 
@@ -88,8 +89,8 @@ const TeamTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const ROLE_COLORS: Record<string, string> = { Fotograf: ws.roleFoto, Eier: ws.roleFoto, Videograf: ws.roleVideo, Editor: ws.blue, Lydtekniker: ws.roleLyd, Lyd: ws.roleLyd, Assistent: ws.roleAnnet };
   const roleCounts: Record<string, number> = {};
   displayMembers.forEach((m: any) => { const k = m.role || 'Medlem'; roleCounts[k] = (roleCounts[k] || 0) + 1; });
-  const teamRoles = real ? Object.entries(roleCounts).map(([n, v]) => [n, v, ROLE_COLORS[n] || ws.roleAnnet]) : ROLES;
-  const teamTotalRoles = real ? displayMembers.length : totalRoles;
+  const teamRoles = isRealP ? Object.entries(roleCounts).map(([n, v]) => [n, v, ROLE_COLORS[n] || ws.roleAnnet]) : ROLES;
+  const teamTotalRoles = isRealP ? displayMembers.length : totalRoles;
 
   return (
     <Stack direction="row" spacing={2.5} sx={{ alignItems: 'flex-start' }}>

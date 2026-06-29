@@ -55,7 +55,7 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const delFolder = async (id: string) => {
     try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/media-folders/${id}`, { method: 'DELETE' }); loadFolders(); } catch { /* */ }
   };
-  const folderList = (isReal && folders.length) ? folders.map((f) => [f.name, f.id]) : FOLDERS.map(([n]) => [n, null]);
+  const folderList = isReal ? folders.map((f) => [f.name, f.id]) : FOLDERS.map(([n]) => [n, null]);
 
   useEffect(() => {
     if (!isReal) return;

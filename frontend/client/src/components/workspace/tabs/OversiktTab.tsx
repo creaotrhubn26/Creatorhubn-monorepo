@@ -154,7 +154,7 @@ const OversiktTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/checklist`, { method: 'POST', body: { label: label.trim() } }); apiRequest(`/api/projects/${encodeURIComponent(projectId)}/checklist`).then((r: any) => setChecks(r?.items || [])); }
     catch (e: any) { window.alert(e?.message || 'Kunne ikke legge til'); }
   };
-  const checkItems = (checks && checks.length > 0) ? checks.map((c) => ({ id: c.id, t: c.label, ok: c.checked, real: true })) : CHECKLIST;
+  const checkItems = isReal ? (checks || []).map((c) => ({ id: c.id, t: c.label, ok: c.checked, real: true })) : CHECKLIST;
   const refs = useProjectImages(projectId, 'references');
   const [teamSync, setTeamSync] = useState<any | null>(null);
   useEffect(() => {
@@ -227,12 +227,12 @@ const OversiktTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const realBoard = tasks && tasks.length > 0
     ? COLS.map((c) => ({ ...c, tasks: tasks.filter((t) => (t.crewRole || 'begge') === c.crew).map((t) => ({ id: t.id, t: t.title, time: t.timeLabel || '', done: t.status === 'done', real: true })) }))
     : null;
-  const boardCols = realBoard || BOARD.map((c, i) => ({ role: c.role, icon: c.icon, crew: COLS[i]?.crew || 'begge', tasks: c.tasks }));
+  const boardCols = isReal ? (realBoard || COLS.map((c) => ({ role: c.role || c.label || c.crew, icon: c.icon || '👥', crew: c.crew, tasks: [] }))) : BOARD.map((c, i) => ({ role: c.role, icon: c.icon, crew: COLS[i]?.crew || 'begge', tasks: c.tasks }));
 
   const fremdriftPct = progress ? progress.pct : 68;
   const fremdriftText = progress ? `${progress.done} av ${progress.total} oppgaver fullført` : '14 av 21 oppgaver fullført';
-  const phaseItems = events
-    ? events.map((e: any) => ({ icon: eventIcon(e.title), label: e.title || 'Hendelse', time: e.time ? `${e.time}${e.durationMinutes ? ' – ' + addMinutes(e.time, e.durationMinutes) : ''}` : '', active: e.status === 'in_progress' || e.status === 'current' }))
+  const phaseItems = isReal
+    ? (events || []).map((e: any) => ({ icon: eventIcon(e.title), label: e.title || 'Hendelse', time: e.time ? `${e.time}${e.durationMinutes ? ' – ' + addMinutes(e.time, e.durationMinutes) : ''}` : '', active: e.status === 'in_progress' || e.status === 'current' }))
     : PHASES;
 
   return (

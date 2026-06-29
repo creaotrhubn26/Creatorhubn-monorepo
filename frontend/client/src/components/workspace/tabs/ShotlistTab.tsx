@@ -65,7 +65,9 @@ const ShotlistTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     const loc = s.location || s.lokasjon || '—';
     return [prio, PRIO_TONE[prio.toLowerCase()] || 'neutral', title, kat, loc, status, STATUS_TONE[status.toLowerCase()] || 'blue'];
   }) : null;
-  const rows = realRows || SHOTS;
+  // Ekte prosjekt → ekte shots (tomt = tom-tilstand). Mock kun på /workspace/sample.
+  const isRealP = projectId && projectId !== 'sample';
+  const rows = isRealP ? (realRows || []) : SHOTS;
 
   const total = real ? (real.meta.totalShots ?? real.shots.length) : 68;
   const done = real ? (real.meta.completedShots ?? 0) : 21;
@@ -87,7 +89,8 @@ const ShotlistTab: React.FC<{ projectId: string }> = ({ projectId }) => {
 
         <WsCard>
           <Box sx={{ mb: 1.5 }}><WsPills items={CATS} value={cat} onChange={setCat} /></Box>
-          <WsTable
+          {rows.length === 0 && <Typography sx={{ fontSize: 12.5, color: ws.textDim, py: 3, textAlign: 'center' }}>Ingen shots ennå. Shotlister opprettes fra prosjekt-oppsettet eller iPad-appen.</Typography>}
+          {rows.length > 0 && <WsTable
             columns={['Prioritet', 'Shot', 'Kategori', 'Foto', 'Video', 'Lokasjon', 'Ansvarlig', 'Status']}
             onRowClick={(i) => setSelShot(rows[i])}
             rows={rows.map((s) => [
@@ -100,8 +103,8 @@ const ShotlistTab: React.FC<{ projectId: string }> = ({ projectId }) => {
               <Avatar sx={{ width: 22, height: 22, fontSize: 10 }}>D</Avatar>,
               <WsTag label={s[5]} tone={s[6]} />,
             ])}
-          />
-          {(!real || real.shots.length > 12) && (
+          />}
+          {((isRealP && real && real.shots.length > 12) || (!isRealP)) && (
             <Stack alignItems="center" sx={{ mt: 1 }}><Button size="small" onClick={() => setShowAll((v) => !v)} sx={{ color: ws.textDim, textTransform: 'none' }}>{showAll ? 'Vis færre ▴' : `Vis ${real ? real.shots.length - 12 : 44} flere shots ▾`}</Button></Stack>
           )}
         </WsCard>
