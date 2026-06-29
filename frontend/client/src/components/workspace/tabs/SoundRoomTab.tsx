@@ -10,18 +10,22 @@
  * opplevelsen på /audio-review/:audioRoomId?ws=:projectId (med tilbake-lenke).
  */
 import React, { useEffect, useState } from 'react';
-import { Box, Stack, Typography, Button, CircularProgress, TextField, Avatar, IconButton } from '@mui/material';
+import { Box, Stack, Typography, Button, CircularProgress, TextField, Avatar, IconButton, Dialog, DialogContent, Divider } from '@mui/material';
 import { useLocation } from 'wouter';
 import GraphicEq from '@mui/icons-material/GraphicEq';
 import OpenInFull from '@mui/icons-material/OpenInFull';
 import GroupAdd from '@mui/icons-material/GroupAdd';
 import ContentCopy from '@mui/icons-material/ContentCopy';
 import Check from '@mui/icons-material/Check';
+import Download from '@mui/icons-material/Download';
+import Close from '@mui/icons-material/Close';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
 import { WsCard, WsTag } from '../ui';
 
 const fmtTime = (s: number) => { const n = Math.max(0, Math.floor(Number(s) || 0)); const m = Math.floor(n / 60); const sec = n % 60; return `${m}:${String(sec).padStart(2, '0')}`; };
+const detectOS = (): 'Windows' | 'macOS' => { const p = ((navigator as any).userAgent + ' ' + (navigator as any).platform).toLowerCase(); if (p.includes('win')) return 'Windows'; return 'macOS'; };
+const fmtMB = (b: number) => b ? `${(b / 1048576).toFixed(1)} MB` : '';
 
 const ti = { '& .MuiOutlinedInput-root': { fontSize: 13, color: ws.text, bgcolor: ws.panel, '& fieldset': { borderColor: ws.borderSoft }, '&:hover fieldset': { borderColor: ws.accentBorder }, '&.Mui-focused fieldset': { borderColor: ws.accent } }, '& input::placeholder': { color: ws.textFaint, opacity: 1 } } as const;
 
@@ -41,6 +45,11 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [pt, setPt] = useState<any | null>(null); // Pro Tools companion-status
   const [ptCode, setPtCode] = useState<{ code: string; expiresAt: number } | null>(null);
   const [ptBusy, setPtBusy] = useState(false);
+  const [ptDialog, setPtDialog] = useState(false);
+  const [ptRelease, setPtRelease] = useState<any | null>(null);
+
+  const loadRelease = () => { apiRequest(`/api/protools/companion/release`).then((r: any) => setPtRelease(r || null)).catch(() => {}); };
+  const openPtDialog = () => { setPtDialog(true); if (!ptRelease) loadRelease(); if (!ptCode) makePtCode(); };
 
   const loadPt = () => {
     if (!isReal) return;
@@ -232,22 +241,25 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>Pro Tools Companion</Typography>
           <Box sx={{ flex: 1 }} />
           {pt?.paired ? <WsTag label="Tilkoblet" tone="green" /> : <WsTag label="Ikke koblet" tone="neutral" />}
+          <Button size="small" startIcon={<Download sx={{ fontSize: 15 }} />} onClick={openPtDialog} sx={{ color: ws.accent, textTransform: 'none', fontWeight: 700, minWidth: 0 }}>Last ned appen</Button>
           {pt?.paired && <Button size="small" onClick={unlinkPt} disabled={ptBusy} sx={{ color: ws.textDim, textTransform: 'none', fontWeight: 600, minWidth: 0 }}>Koble fra</Button>}
         </Stack>
 
         {!pt?.paired ? (
           <Box>
             <Typography sx={{ fontSize: 12.5, color: ws.textDim, mb: 1.25 }}>
-              Kjør Pro Tools-companionen ved siden av Pro Tools, så havner markører («Export Session Info as Text») som review-seksjoner og bounces som nye versjoner — automatisk i dette lydrommet.
+              Last ned companion-appen og kjør den ved siden av Pro Tools, så havner markører («Export Session Info as Text») som review-seksjoner og bounces som nye versjoner — automatisk i dette lydrommet.
             </Typography>
-            {ptCode ? (
-              <Box sx={{ p: 1.5, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.accentSoft, border: `1px solid ${ws.accentBorder}`, textAlign: 'center' }}>
-                <Typography sx={{ fontSize: 11, color: ws.textDim, mb: 0.5 }}>Skriv denne koden inn i companion-appen:</Typography>
-                <Typography sx={{ fontSize: 30, fontWeight: 800, letterSpacing: 8, color: ws.accent, fontVariantNumeric: 'tabular-nums' }}>{ptCode.code}</Typography>
-                <Typography sx={{ fontSize: 11, color: ws.textFaint, mt: 0.5 }}>Utløper om {Math.max(0, Math.round((ptCode.expiresAt - Date.now()) / 1000))} s · koden virker én gang</Typography>
+            <Stack direction="row" spacing={1} alignItems="center">
+              <Button variant="contained" startIcon={<Download sx={{ fontSize: 17 }} />} onClick={openPtDialog} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Last ned & koble til</Button>
+              <Typography sx={{ fontSize: 11.5, color: ws.textFaint }}>macOS · Windows</Typography>
+            </Stack>
+            {ptCode && (
+              <Box sx={{ mt: 1.5, p: 1.5, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.accentSoft, border: `1px solid ${ws.accentBorder}`, textAlign: 'center' }}>
+                <Typography sx={{ fontSize: 11, color: ws.textDim, mb: 0.5 }}>Paringskode for companion-appen:</Typography>
+                <Typography sx={{ fontSize: 26, fontWeight: 800, letterSpacing: 7, color: ws.accent, fontVariantNumeric: 'tabular-nums' }}>{ptCode.code}</Typography>
+                <Typography sx={{ fontSize: 11, color: ws.textFaint, mt: 0.5 }}>Utløper om {Math.max(0, Math.round((ptCode.expiresAt - Date.now()) / 1000))} s · virker én gang</Typography>
               </Box>
-            ) : (
-              <Button variant="outlined" onClick={makePtCode} disabled={ptBusy} sx={{ color: ws.accent, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 600 }}>{ptBusy ? 'Lager kode…' : 'Lag paringskode'}</Button>
             )}
           </Box>
         ) : (
@@ -325,6 +337,95 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           </Stack>
         )}
       </WsCard>
+
+      {/* Nedlastings-/guide-dialog for Pro Tools Companion */}
+      <Dialog open={ptDialog} onClose={() => setPtDialog(false)} maxWidth="sm" fullWidth
+        PaperProps={{ sx: { bgcolor: ws.panel, color: ws.text, borderRadius: 3, border: `1px solid ${ws.borderSoft}` } }}>
+        <DialogContent sx={{ p: 0 }}>
+          {/* Hero med ikon — gjør det tydelig at dette er en app du laster ned */}
+          <Box sx={{ p: 3, pb: 2.5, background: `linear-gradient(160deg, ${ws.accentSoft} 0%, transparent 70%)`, position: 'relative' }}>
+            <IconButton onClick={() => setPtDialog(false)} sx={{ position: 'absolute', top: 10, right: 10, color: ws.textDim }}><Close sx={{ fontSize: 18 }} /></IconButton>
+            <Stack direction="row" spacing={2} alignItems="center">
+              <Box component="img" src={ptRelease?.icon || '/protools-companion-icon.png'} alt="Pro Tools Companion"
+                sx={{ width: 72, height: 72, borderRadius: 2.5, boxShadow: '0 6px 20px rgba(0,0,0,0.4)', flexShrink: 0 }} />
+              <Box>
+                <Typography sx={{ fontSize: 18, fontWeight: 800 }}>Pro Tools Companion</Typography>
+                <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Native app · macOS &amp; Windows{ptRelease?.version ? ` · v${ptRelease.version}` : ''}</Typography>
+              </Box>
+            </Stack>
+          </Box>
+
+          <Box sx={{ px: 3, pb: 3 }}>
+            <Typography sx={{ fontSize: 13, color: ws.text, mb: 2, lineHeight: 1.55 }}>
+              En liten app som kjører ved siden av Pro Tools på maskinen din. Den sender <b>markører</b> og <b>ferdige mikser (bounces)</b> rett inn i dette lydrommet — så bandet/klienten ser seksjoner og nye versjoner automatisk, uten manuell opplasting.
+            </Typography>
+
+            {/* Last ned pr plattform */}
+            <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: ws.textDim, textTransform: 'uppercase', letterSpacing: 0.5, mb: 1 }}>Last ned</Typography>
+            <Stack spacing={1} sx={{ mb: 2 }}>
+              {['macOS', 'Windows'].map((osName) => {
+                const dls = (ptRelease?.downloads || []).filter((d: any) => d.os === osName);
+                const isMine = detectOS() === osName;
+                if (!dls.length) {
+                  return (
+                    <Box key={osName} sx={{ p: 1.25, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.panelAlt, border: `1px dashed ${ws.borderSoft}`, opacity: 0.75 }}>
+                      <Typography sx={{ fontSize: 12.5, fontWeight: 600 }}>{osName} {osName === 'Windows' ? '🪟' : ''}<Box component="span" sx={{ color: ws.textFaint, fontWeight: 400 }}> — bygges, kommer snart</Box></Typography>
+                    </Box>
+                  );
+                }
+                return dls.map((d: any, i: number) => (
+                  <Button key={osName + i} variant={isMine ? 'contained' : 'outlined'} startIcon={<Download sx={{ fontSize: 17 }} />}
+                    href={d.url} target="_blank" rel="noopener" fullWidth
+                    sx={isMine
+                      ? { bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, justifyContent: 'flex-start', '&:hover': { bgcolor: ws.accentHover } }
+                      : { color: ws.text, borderColor: ws.borderSoft, textTransform: 'none', fontWeight: 600, justifyContent: 'flex-start' }}>
+                    {osName} · {d.arch} {d.sizeBytes ? `(${fmtMB(d.sizeBytes)})` : ''}{isMine ? '  — anbefalt for deg' : ''}
+                  </Button>
+                ));
+              })}
+            </Stack>
+            {(ptRelease?.downloads || []).some((d: any) => d.signed === false) && (
+              <Typography sx={{ fontSize: 11, color: ws.textFaint, mb: 2 }}>
+                Første gang: høyreklikk appen → <b>Åpne</b> (macOS) / «Kjør likevel» (Windows) — bygget er ennå ikke signert.
+              </Typography>
+            )}
+
+            <Divider sx={{ borderColor: ws.borderSoft, my: 2 }} />
+
+            {/* Slik fungerer det */}
+            <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: ws.textDim, textTransform: 'uppercase', letterSpacing: 0.5, mb: 1.25 }}>Slik fungerer det</Typography>
+            <Stack spacing={1.25} sx={{ mb: 2 }}>
+              {[
+                ['Installer & åpne appen', 'Last ned over, installer, og start companion-appen på samme maskin som Pro Tools.'],
+                ['Skriv inn paringskoden', `Bruk koden under (eller lag en ny). Den kobler appen til kontoen din.`],
+                ['Velg låt + mapper', 'I appen: velg EaseVerse-låten (dette rommet), «Session Info»-fila og «Bounced Files»-mappa.'],
+                ['Jobb som vanlig i Pro Tools', 'File → Export → Session Info as Text for markører, og bounce som vanlig. Appen sender alt hit automatisk.'],
+              ].map(([t, d], i) => (
+                <Stack key={i} direction="row" spacing={1.5} alignItems="flex-start">
+                  <Box sx={{ width: 22, height: 22, borderRadius: '50%', bgcolor: ws.accentSoft, color: ws.accent, fontSize: 12, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, mt: 0.2 }}>{i + 1}</Box>
+                  <Box>
+                    <Typography sx={{ fontSize: 13, fontWeight: 700 }}>{t}</Typography>
+                    <Typography sx={{ fontSize: 12, color: ws.textDim, lineHeight: 1.5 }}>{d}</Typography>
+                  </Box>
+                </Stack>
+              ))}
+            </Stack>
+
+            {/* Paringskode */}
+            <Box sx={{ p: 1.75, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.accentSoft, border: `1px solid ${ws.accentBorder}`, textAlign: 'center' }}>
+              <Typography sx={{ fontSize: 11, color: ws.textDim, mb: 0.5 }}>Paringskode</Typography>
+              {ptCode ? (
+                <>
+                  <Typography sx={{ fontSize: 30, fontWeight: 800, letterSpacing: 8, color: ws.accent, fontVariantNumeric: 'tabular-nums' }}>{ptCode.code}</Typography>
+                  <Typography sx={{ fontSize: 11, color: ws.textFaint, mt: 0.5 }}>Utløper om {Math.max(0, Math.round((ptCode.expiresAt - Date.now()) / 1000))} s · virker én gang</Typography>
+                </>
+              ) : (
+                <Button variant="text" onClick={makePtCode} disabled={ptBusy} sx={{ color: ws.accent, textTransform: 'none', fontWeight: 700 }}>{ptBusy ? 'Lager kode…' : 'Lag paringskode'}</Button>
+              )}
+            </Box>
+          </Box>
+        </DialogContent>
+      </Dialog>
     </Box>
   );
 };
