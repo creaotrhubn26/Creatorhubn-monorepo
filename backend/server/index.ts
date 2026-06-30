@@ -806,6 +806,7 @@ import { setupAdminInboundAlertsRoutes } from "./admin-inbound-alerts-routes";
 import { setupAdminAnnouncementsRoutes } from "./admin-announcements-routes";
 import { setupInviteRequestsRoutes } from "./invite-requests-routes";
 import { setupSubmissionsRoutes } from "./submissions-routes";
+import { setupContactFormsRoutes } from "./contact-forms-routes";
 import { setupGoogleWalletRoutes } from "./google-wallet-routes";
 import { setupUniversalVendorShowcaseRoutes } from "./universal-vendor-showcase-routes";
 import { setupBrandingRoutes } from "./branding-routes";
@@ -65341,6 +65342,10 @@ setupSubmissionsRoutes({
   getUserIdFromAuth,
   readString,
 });
+
+// /api/contact-forms/* + /api/public/contact-form/* — egendefinerte kontaktskjemaer
+// (drag-and-drop bygger) → innsendinger blir forespørsler i client_submissions.
+setupContactFormsRoutes({ app, pool, requireUserSession });
 
 // /api/google-wallet/* — 6 endpoints (membership-cards CRUD + send-to-wallet).
 // Bruker compat-storens membership-card-lager.
