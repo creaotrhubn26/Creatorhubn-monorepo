@@ -34,6 +34,7 @@ import GraphicEq from '@mui/icons-material/GraphicEq';
 import Album from '@mui/icons-material/Album';
 import LibraryMusic from '@mui/icons-material/LibraryMusic';
 import School from '@mui/icons-material/School';
+import MoveToInbox from '@mui/icons-material/MoveToInbox';
 import Visibility from '@mui/icons-material/Visibility';
 import EventNote from '@mui/icons-material/EventNote';
 import CalendarToday from '@mui/icons-material/CalendarToday';
@@ -49,7 +50,7 @@ import { ws, workspaceDarkTheme, WS_NAV, type WsNavItem } from './workspaceTheme
 const ICONS: Record<string, React.ElementType> = {
   Dashboard, AccountTree, Map, PhotoCameraBack, GridView, PermMedia, LocalShipping,
   CheckCircleOutline, Group, ChatBubbleOutline, PhotoCamera, Videocam, Movie, GraphicEq,
-  Visibility, EventNote, Album, LibraryMusic, School,
+  Visibility, EventNote, Album, LibraryMusic, School, MoveToInbox,
 };
 
 const GROUP_LABEL: Record<string, string> = {
@@ -89,6 +90,7 @@ interface ShellProps {
   onClientView?: () => void;
   onInvite?: () => void;
   navItems?: WsNavItem[]; // profesjons-filtrert nav (default WS_NAV)
+  badges?: Record<string, number>; // dynamiske nav-badges (key → antall), overstyrer item.badge
   children: React.ReactNode;
 }
 
@@ -123,7 +125,7 @@ function NavItem({ item, active, onClick }: any) {
   );
 }
 
-const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab, online, onNewProject, onLogout, headerActions, onClientView, onInvite, navItems = WS_NAV, children }) => {
+const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab, online, onNewProject, onLogout, headerActions, onClientView, onInvite, navItems = WS_NAV, badges, children }) => {
   const groups: Array<'hoved' | 'rom' | 'klient'> = ['hoved', 'rom', 'klient'];
   const [userMenu, setUserMenu] = React.useState<null | HTMLElement>(null);
   const [projMenu, setProjMenu] = React.useState<null | HTMLElement>(null);
@@ -172,9 +174,11 @@ const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab,
                   <Typography sx={{ px: 2.5, py: 0.75, fontSize: 10.5, fontWeight: 800, letterSpacing: 1.2, color: ws.textFaint }}>
                     {GROUP_LABEL[g]}
                   </Typography>
-                  {items.map((item) => (
-                    <NavItem key={item.key} item={item} active={activeTab === item.key} onClick={() => onTab(item.key)} />
-                  ))}
+                  {items.map((item) => {
+                    const dyn = badges?.[item.key];
+                    const merged = dyn != null ? { ...item, badge: dyn || undefined } : item;
+                    return <NavItem key={item.key} item={merged} active={activeTab === item.key} onClick={() => onTab(item.key)} />;
+                  })}
                 </Box>
               );
             })}
