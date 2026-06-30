@@ -490,7 +490,7 @@ import { setupShowcasePricingRoutes } from "./showcase-pricing-routes";
 import { setupPhotographerStripeConnectRoutes } from "./photographer-stripe-connect-routes";
 import { setupPhotographerReviewsRoutes } from "./photographer-reviews-routes";
 import { setupAudioShowcaseRoutes } from "./audio-showcase-routes";
-import { sendTransactionalEmail as sendAudioReviewEmail } from "./transactional-email-service";
+import { sendTransactionalEmail as sendAudioReviewEmail, sendTransactionalEmail } from "./transactional-email-service";
 import { setupShowcaseSmartAlbumsRoutes } from "./showcase-smart-albums-routes";
 import { setupShowcaseBatchOperationsRoutes } from "./showcase-batch-operations-routes";
 import { setupShowcaseGooglePhotosRoutes } from "./showcase-google-photos-routes";
@@ -22095,10 +22095,12 @@ async function notifyPhotographerOfDownload(input: {
     }
   }
 
-  // 4. E-post-varsling til fotografen
-  const mailUser = (process.env.GMAIL_USER || process.env.GOOGLE_WORKSPACE_EMAIL || '').trim();
-  const mailPass = (process.env.GMAIL_APP_PASSWORD || '').trim().replace(/\s+/g, '');
-  if (!mailUser || !mailPass || !ctx.photographer_email) {
+  // 4. E-post-varsling til fotografen — via appens KANONISKE transactional-tjeneste
+  //    (Resend foretrukket, Gmail SMTP-fallback) i stedet for hardkodet nodemailer/
+  //    Gmail. Slik sendes nedlastings-varselet hvis ENTEN Resend ELLER Gmail er
+  //    konfigurert på Render — ikke kun Gmail (som ikke er satt i prod). Stille
+  //    no-op hvis ingen provider er konfigurert.
+  if (!ctx.photographer_email) {
     return;
   }
 
@@ -22115,10 +22117,6 @@ async function notifyPhotographerOfDownload(input: {
       : '';
 
   try {
-    const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: { user: mailUser, pass: mailPass },
-    });
     const html = `
       <div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:560px;margin:0 auto;padding:24px;">
         <h2 style="color:#1a1a1a;margin:0 0 16px;">Klient-nedlasting registrert</h2>
@@ -22159,12 +22157,23 @@ async function notifyPhotographerOfDownload(input: {
         </p>
       </div>
     `;
-    await transporter.sendMail({
-      from: `"Creatorhubn" <${mailUser}>`,
+    const text = `${String(ctx.client_name ?? input.clientEmail)} (${input.clientEmail}) har lastet ned `
+      + `${input.newDownloadCount} nye bilder fra galleriet "${ctx.project_title}". `
+      + `Totalt brukt: ${limitText}.`
+      + (input.clientIp ? ` Fra IP: ${input.clientIp}.` : '');
+    const result = await sendTransactionalEmail({
       to: String(ctx.photographer_email),
       subject: `Klient lastet ned ${input.newDownloadCount} bilder — ${ctx.project_title}`,
       html,
+      text,
+      fromLabel: 'Creatorhubn',
+      kind: 'gallery_download',
+      projectId: ctx.project_id ? String(ctx.project_id) : null,
+      pool,
     });
+    if (!result.sent) {
+      console.warn('[download-notify] email not sent:', result.reason || result.errorMessage || 'no_provider_configured');
+    }
   } catch (err) {
     console.warn('[download-notify] email failed:', err);
   }
