@@ -35,7 +35,7 @@ def measure_yavg(ffmpeg: str, path: str, sample_seconds: float = 3.0) -> float |
         "-ss", "0",  # sample from start; faster than seeking midpoint
         "-t", str(sample_seconds),
         "-i", path,
-        "-vf", "signalstats,metadata=print:key=lavfi.signalstats.YAVG",
+        "-vf", "signalstats,metadata=print",
         "-f", "null", "-",
     ]
     try:
@@ -43,17 +43,22 @@ def measure_yavg(ffmpeg: str, path: str, sample_seconds: float = 3.0) -> float |
     except subprocess.TimeoutExpired:
         return None
 
-    values: list[float] = []
+    # Samle ALLE scope-relevante signalstats-verdier (samme tall Resolve-scopes viser):
+    #   Y* → histogram/waveform (eksponering, klipping)
+    #   U/V → RGB-parade-balanse / hvitbalanse-cast (nøytral ≈ 128)
+    #   SAT* → vectorscope-radius (metning/oversaturasjon)
+    keys = {"YAVG": [], "YMIN": [], "YMAX": [], "UAVG": [], "VAVG": [], "SATAVG": [], "SATMAX": []}
     for line in (result.stderr or "").splitlines():
-        m = re.search(r"YAVG=([\d.]+)", line)
-        if m:
-            try:
-                values.append(float(m.group(1)))
-            except ValueError:
-                continue
-    if not values:
+        for k in keys:
+            mm = re.search(rf"{k}=([\d.]+)", line)
+            if mm:
+                try:
+                    keys[k].append(float(mm.group(1)))
+                except ValueError:
+                    pass
+    if not keys["YAVG"]:
         return None
-    return sum(values) / len(values)
+    return {k: (sum(v) / len(v) if v else 0.0) for k, v in keys.items()}
 
 
 def yavg_to_ire(yavg: float) -> float:
@@ -68,6 +73,13 @@ def walk_clips(folder, acc):
 
 def run(params: dict, dry_run: bool) -> None:
     threshold_ire = float(params.get("thresholdIRE", 25))
+    # over-eksponering: YMAX-klipping (≥253 av 255) på et lyst klipp, ELLER veldig høyt snitt.
+    over_threshold_ire = float(params.get("overThresholdIRE", 82))
+    over_floor_ire = float(params.get("overFloorIRE", 48))
+    ymax_clip = float(params.get("ymaxClip", 253))
+    # cast: U/V-avvik fra nøytral 128 (parade/hvitbalanse). sat: SATMAX (vectorscope-radius).
+    cast_thresh = float(params.get("castThreshold", 18))
+    sat_thresh = float(params.get("satThreshold", 200))
     add_markers = bool(params.get("addMarkersInResolve", False))
     clip_paths = params.get("clipPaths") or []
 
@@ -104,22 +116,42 @@ def run(params: dict, dry_run: bool) -> None:
             if p and os.path.isfile(p):
                 paths.append((p, clip))
 
-    flagged: list[dict] = []
+    flagged: list[dict] = []        # under-eksponerte (histogram/waveform lavt)
+    flagged_over: list[dict] = []   # over-eksponerte (utbrente høylys — waveform/YMAX klipper)
+    flagged_color: list[dict] = []  # cast/oversaturasjon (parade/vectorscope)
     clean = 0
     measure_failures: list[str] = []
 
     for idx, (path, _) in enumerate(paths):
-        yavg = measure_yavg(ffmpeg, path)
-        if yavg is None:
+        s = measure_yavg(ffmpeg, path)
+        if s is None:
             measure_failures.append(os.path.basename(path))
             continue
+        yavg, ymax = s["YAVG"], s["YMAX"]
+        uavg, vavg, satmax = s["UAVG"], s["VAVG"], s["SATMAX"]
         ire = yavg_to_ire(yavg)
+        base = {"name": os.path.basename(path), "yavg": round(yavg, 1), "ire": round(ire, 1),
+                "ymax": round(ymax, 0), "uavg": round(uavg, 0), "vavg": round(vavg, 0),
+                "satmax": round(satmax, 0), "path": path}
+        # 1) EKSPONERING (histogram/waveform)
         if ire < threshold_ire:
-            flagged.append({"name": os.path.basename(path), "yavg": round(yavg, 1), "ire": round(ire, 1), "path": path})
+            flagged.append(base)
+        elif (ymax >= ymax_clip and ire > over_floor_ire) or ire > over_threshold_ire:
+            base["reason"] = "utbrente høylys (YMAX klipper)" if ymax >= ymax_clip else "for lyst totalt"
+            flagged_over.append(base)
         else:
             clean += 1
+        # 2) FARGE-CAST (parade/hvitbalanse) + 3) OVERSATURASJON (vectorscope) — uavhengig av eksponering
+        cast = max(abs(uavg - 128.0), abs(vavg - 128.0))
+        if cast > cast_thresh or satmax > sat_thresh:
+            why = []
+            if abs(vavg - 128.0) > cast_thresh: why.append("rød/grønn-cast" if vavg > 128 else "grønn-cast")
+            if abs(uavg - 128.0) > cast_thresh: why.append("varm/gul-cast" if uavg < 128 else "kald/blå-cast")
+            if satmax > sat_thresh: why.append("oversaturert")
+            c = dict(base); c["reason"] = ", ".join(why) or "farge-avvik"
+            flagged_color.append(c)
         if (idx + 1) % 10 == 0 or idx == len(paths) - 1:
-            bridge.log(f"Scanned {idx + 1}/{len(paths)} clips · flagged {len(flagged)}")
+            bridge.log(f"Scanned {idx + 1}/{len(paths)} · under {len(flagged)} · over {len(flagged_over)} · farge {len(flagged_color)}")
 
     if add_markers and conn and flagged:
         timeline = conn.project.GetCurrentTimeline()
@@ -146,8 +178,13 @@ def run(params: dict, dry_run: bool) -> None:
         "clipsScanned": len(paths),
         "cleanCount": clean,
         "flaggedCount": len(flagged),
+        "flaggedOverCount": len(flagged_over),
+        "flaggedColorCount": len(flagged_color),
         "measureFailures": measure_failures,
-        "flagged": flagged[:30],
+        "flagged": flagged[:30],          # under-eksponert (histogram/waveform)
+        "flaggedOver": flagged_over[:30],  # over-eksponert (waveform/YMAX-klipp)
+        "flaggedColor": flagged_color[:30],  # cast/oversaturasjon (parade/vectorscope)
+        "scopesNote": "Y*=histogram/waveform · U/V=parade/WB · SAT=vectorscope",
     })
 
 

@@ -181,3 +181,145 @@ pub async fn role_room_download_clip(
         .map_err(|e| format!("Write {} failed: {}", dest_path, e))?;
     Ok(len)
 }
+
+// ── Device-code pairing (sign-in) ────────────────────────────────────────────
+// These proxy the pre-auth pairing endpoints from the Rust side so they are NOT
+// subject to browser CORS. The backend does not return Access-Control-Allow-Origin
+// on /pairing/*, so a webview `fetch()` rejects with "TypeError: Load failed".
+// We return { status, body } so the frontend keeps the 202/410/429/200 semantics.
+
+fn pairing_base(base: Option<String>) -> String {
+    base.map(|s| s.trim().trim_end_matches('/').to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| DEFAULT_BASE.to_string())
+}
+
+async fn pairing_response_json(res: reqwest::Response) -> Value {
+    let status = res.status().as_u16();
+    let text = res.text().await.unwrap_or_default();
+    let body = serde_json::from_str::<Value>(&text).unwrap_or(Value::Null);
+    serde_json::json!({ "status": status, "body": body })
+}
+
+/// POST /api/post-agent/pairing/start → { code, expiresAt, verificationUrl, pollIntervalMs }
+/// No auth. Returns { status, body }.
+#[tauri::command]
+pub async fn pairing_start(base: Option<String>) -> Result<Value, String> {
+    let url = format!("{}/pairing/start", pairing_base(base));
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(20))
+        .build()
+        .map_err(|e| format!("HTTP client init failed: {}", e))?;
+    let res = client
+        .post(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Request to {} failed: {}", url, e))?;
+    Ok(pairing_response_json(res).await)
+}
+
+// ── Generisk autentisert proxy (utenom WKWebView-CORS) ───────────────────────
+// Deployed backend sender ingen Access-Control-Allow-Origin for tauri://localhost,
+// så ALLE browser-fetch fra appen blir CORS-blokkert. Disse kommandoene gjør
+// kallet fra Rust (reqwest) i stedet. Frontenden sender full URL + bearer-token.
+// Returnerer { status, body } så frontenden beholder statuskode-semantikken.
+
+async fn authed_response_json(res: reqwest::Response) -> Value {
+    let status = res.status().as_u16();
+    let text = res.text().await.unwrap_or_default();
+    let body = serde_json::from_str::<Value>(&text).unwrap_or(Value::Null);
+    serde_json::json!({ "status": status, "body": body })
+}
+
+fn authed_client() -> Result<reqwest::Client, String> {
+    reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(25))
+        .build()
+        .map_err(|e| format!("HTTP client init failed: {}", e))
+}
+
+/// GET <url> med Bearer-token. Returnerer { status, body }.
+#[tauri::command]
+pub async fn authed_get(url: String, token: String) -> Result<Value, String> {
+    let client = authed_client()?;
+    let mut req = client.get(&url);
+    if !token.trim().is_empty() {
+        req = req.bearer_auth(token.trim());
+    }
+    let res = req
+        .send()
+        .await
+        .map_err(|e| format!("GET {} feilet: {}", url, e))?;
+    Ok(authed_response_json(res).await)
+}
+
+/// Generell autentisert request (vilkårlig metode + headers + body som tekst).
+/// Brukt av den globale fetch-shimen i frontenden for å rute ALLE backend-kall
+/// utenom WKWebView-CORS. Returnerer { status, body } der body er rå tekst
+/// (så shimen kan bygge en ekte Response som .json()/.text() fungerer på).
+#[tauri::command]
+pub async fn authed_request(
+    method: String,
+    url: String,
+    headers: std::collections::HashMap<String, String>,
+    body: Option<String>,
+) -> Result<Value, String> {
+    let client = authed_client()?;
+    let m = reqwest::Method::from_bytes(method.to_uppercase().as_bytes())
+        .map_err(|e| format!("ugyldig metode {}: {}", method, e))?;
+    let mut req = client.request(m, &url);
+    for (k, v) in headers.iter() {
+        // hopp over headere reqwest setter selv / som ikke skal videresendes
+        let lk = k.to_ascii_lowercase();
+        if lk == "host" || lk == "content-length" || lk == "origin" {
+            continue;
+        }
+        req = req.header(k.as_str(), v.as_str());
+    }
+    if let Some(b) = body {
+        req = req.body(b);
+    }
+    let res = req
+        .send()
+        .await
+        .map_err(|e| format!("{} {} feilet: {}", method, url, e))?;
+    let status = res.status().as_u16();
+    let text = res.text().await.unwrap_or_default();
+    Ok(serde_json::json!({ "status": status, "body": text }))
+}
+
+/// POST <url> (JSON body) med Bearer-token. Returnerer { status, body }.
+#[tauri::command]
+pub async fn authed_post(url: String, token: String, body: Option<Value>) -> Result<Value, String> {
+    let client = authed_client()?;
+    let mut req = client.post(&url);
+    if !token.trim().is_empty() {
+        req = req.bearer_auth(token.trim());
+    }
+    if let Some(b) = body {
+        req = req.json(&b);
+    }
+    let res = req
+        .send()
+        .await
+        .map_err(|e| format!("POST {} feilet: {}", url, e))?;
+    Ok(authed_response_json(res).await)
+}
+
+/// POST /api/post-agent/pairing/poll  body { code } → 202 pending / 410 expired / 200 { bearerToken }
+/// No auth. Returns { status, body }.
+#[tauri::command]
+pub async fn pairing_poll(base: Option<String>, code: String) -> Result<Value, String> {
+    let url = format!("{}/pairing/poll", pairing_base(base));
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(20))
+        .build()
+        .map_err(|e| format!("HTTP client init failed: {}", e))?;
+    let res = client
+        .post(&url)
+        .json(&serde_json::json!({ "code": code }))
+        .send()
+        .await
+        .map_err(|e| format!("Request to {} failed: {}", url, e))?;
+    Ok(pairing_response_json(res).await)
+}

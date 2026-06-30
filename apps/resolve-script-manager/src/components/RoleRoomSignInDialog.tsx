@@ -8,6 +8,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { updateAppSettings } from "../api";
 import { IconCheck, IconX, IconSparkle, IconArrowRight } from "./Icons";
@@ -30,6 +31,13 @@ interface PairingStart {
 
 type Stage = "starting" | "awaiting" | "paired" | "error";
 
+/** Rust pairing_* commands proxy the HTTP call (bypasser browser-CORS) og
+ *  returnerer { status, body } så vi beholder 202/410/429/200-semantikken. */
+interface PairingHttp {
+  status: number;
+  body: unknown;
+}
+
 function getBaseUrl(): string {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -43,16 +51,38 @@ function getBaseUrl(): string {
   return "https://creatorhubn.com/api/post-agent";
 }
 
-async function saveBearerToSettings(token: string): Promise<void> {
-  const raw = localStorage.getItem(STORAGE_KEY);
-  const settings = raw ? JSON.parse(raw) : {};
-  settings.RR_BEARER_TOKEN = token;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-  // Also push to Rust side so currently-running Python subprocesses pick it up
-  await updateAppSettings({ RR_BEARER_TOKEN: token });
-  // Notify in-tab listeners (HeaderBar / UserProfile) so they re-render with
-  // the new auth state — localStorage 'storage' event doesn't fire same-tab.
-  window.dispatchEvent(new CustomEvent("trrpa:auth-changed"));
+/**
+ * Lagre bearer-token. ROBUST: hvert steg er best-effort og kaster ALDRI, slik at
+ * en feil i ÉN persisterings-kanal (full/korrupt localStorage, invoke-hikke) ikke
+ * strander en bruker som faktisk er paret (server har allerede konsumert koden).
+ * Returnerer en feilbeskrivelse hvis noe gikk galt — for diagnostikk i UI.
+ */
+async function saveBearerToSettings(token: string): Promise<string | null> {
+  const problems: string[] = [];
+  // 1) localStorage (for header/UI + persistens over restart)
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    const settings = raw ? JSON.parse(raw) : {};
+    settings.RR_BEARER_TOKEN = token;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+  } catch (e) {
+    problems.push("localStorage: " + String(e));
+    console.warn("[pairing] localStorage-lagring feilet:", e);
+  }
+  // 2) Rust-siden (så kjørende Python-subprosesser plukker opp token-en)
+  try {
+    await updateAppSettings({ RR_BEARER_TOKEN: token });
+  } catch (e) {
+    problems.push("updateAppSettings: " + String(e));
+    console.warn("[pairing] updateAppSettings feilet:", e);
+  }
+  // 3) Varsle in-tab-lyttere (HeaderBar / UserProfile)
+  try {
+    window.dispatchEvent(new CustomEvent("trrpa:auth-changed"));
+  } catch {
+    /* ignore */
+  }
+  return problems.length ? problems.join(" · ") : null;
 }
 
 export function RoleRoomSignInDialog({ onClose, onSignedIn }: Props) {
@@ -60,6 +90,9 @@ export function RoleRoomSignInDialog({ onClose, onSignedIn }: Props) {
   const [pairing, setPairing] = useState<PairingStart | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [secondsLeft, setSecondsLeft] = useState<number>(600);
+  const trace = useCallback((m: string) => {
+    console.log("[pairing]", m);
+  }, []);
   const pollTimer = useRef<number | null>(null);
   const startedAt = useRef<number>(Date.now());
 
@@ -69,14 +102,15 @@ export function RoleRoomSignInDialog({ onClose, onSignedIn }: Props) {
     setStage("starting");
     setError(null);
     try {
-      const res = await fetch(`${base}/pairing/start`, { method: "POST" });
-      if (!res.ok) {
+      // Via Rust (utenom CORS) — backend sender ikke ACAO på /pairing/*.
+      const res = await invoke<PairingHttp>("pairing_start", { base });
+      if (res.status < 200 || res.status >= 300) {
         if (res.status === 429) {
           throw new Error("For mange innloggings-forsøk. Vent 30 sekunder og prøv på nytt.");
         }
         throw new Error(`pairing/start: HTTP ${res.status}`);
       }
-      const data = (await res.json()) as PairingStart;
+      const data = res.body as PairingStart;
       setPairing(data);
       setStage("awaiting");
       startedAt.current = Date.now();
@@ -123,11 +157,11 @@ export function RoleRoomSignInDialog({ onClose, onSignedIn }: Props) {
       }
       setSecondsLeft(Math.max(0, Math.floor((startedAt.current + MAX_POLL_MS - Date.now()) / 1000)));
       try {
-        const res = await fetch(`${base}/pairing/poll`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ code: pairing.code }),
+        const res = await invoke<PairingHttp>("pairing_poll", {
+          base,
+          code: pairing.code,
         });
+        trace(`poll ${pairing.code} → status ${res?.status} body ${JSON.stringify(res?.body)?.slice(0, 80)}`);
         if (stopRef.stopped) return;
         if (res.status === 202) return; // still pending
         if (res.status === 410) {
@@ -136,29 +170,36 @@ export function RoleRoomSignInDialog({ onClose, onSignedIn }: Props) {
           setError("Pairing-koden er utløpt. Klikk 'Prøv på nytt'.");
           return;
         }
-        if (!res.ok) {
+        if (res.status < 200 || res.status >= 300) {
           stopPolling();
           setStage("error");
           setError(`pairing/poll: HTTP ${res.status}`);
           return;
         }
-        const data = (await res.json()) as { bearerToken?: string };
-        if (!data.bearerToken) {
+        const data = (res.body ?? {}) as { bearerToken?: string; token?: string; bearer?: string };
+        const gotToken = data.bearerToken || data.token || data.bearer;
+        trace(`success-branch, felt=[${Object.keys(data).join(",")}] token?${!!gotToken}`);
+        if (!gotToken) {
           stopPolling();
           setStage("error");
-          setError("Backend returnerte tomt token.");
+          setError("Backend returnerte tomt token. Felt: " + JSON.stringify(Object.keys(data)));
           return;
         }
         // Stopp polling FØR vi lagrer + setter state, så ingen ny tick
-        // kan fyre mens vi er midt i success-flyten.
+        // kan fyre mens vi er midt i success-flyten. saveBearerToSettings
+        // kaster ALDRI — så vi fullfører alltid innloggingen når token er mottatt.
         stopPolling();
-        await saveBearerToSettings(data.bearerToken);
+        trace("lagrer token…");
+        const saveProblem = await saveBearerToSettings(gotToken);
+        trace(`lagret (problem: ${saveProblem ?? "nei"}) → setStage(paired)`);
         setStage("paired");
+        trace("setStage(paired) kalt → kaller onSignedIn");
         onSignedIn();
+        trace("onSignedIn ferdig");
       } catch (e) {
         // Transient network error — keep polling. Don't burn the user's session
         // because of a flaky wifi blip.
-        console.warn("pairing/poll transient error", e);
+        trace(`poll KASTET: ${String(e)?.slice(0, 120)}`);
       }
     };
     pollTimer.current = window.setInterval(() => void tick(), POLL_INTERVAL_MS);

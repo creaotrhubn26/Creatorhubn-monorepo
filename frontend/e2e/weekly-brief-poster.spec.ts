@@ -36,7 +36,7 @@ test.describe('Marketing Feed Poster — E2E', () => {
     const headlineField = page.getByLabel(/Headline \(bryt linjer/);
     await expect(headlineField).toHaveValue(/Weekly[\s\S]*Norwegian[\s\S]*Casting Brief/);
     await expect(page.getByLabel(/Accent-ord/)).toHaveValue('Norwegian');
-    await expect(page.getByLabel(/QR-URL/)).toHaveValue('https://theroleroom.no/abonner');
+    await expect(page.getByLabel(/QR-URL/)).toHaveValue('https://thetheroleroom.com/abonner');
 
     expect(errors).toEqual([]);
   });
@@ -48,7 +48,7 @@ test.describe('Marketing Feed Poster — E2E', () => {
     await expect(dialog).toContainText('THE ROLE ROOM');
     await expect(dialog).toContainText('Norwegian');
     await expect(dialog).toContainText('Casting Brief');
-    await expect(dialog).toContainText('theroleroom.no');
+    await expect(dialog).toContainText('thetheroleroom.com');
     await expect(dialog).toContainText('Casting. Roles. Together.');
 
     // Ekte logo-asset lastes inn

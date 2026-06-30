@@ -79,6 +79,27 @@ export async function executeScript(
   return invoke<RunSummary>("execute_script", { scriptId, params, dryRun });
 }
 
+/**
+ * Autentiserte backend-kall MÅ gå via Rust (reqwest) — deployed backend sender
+ * ingen Access-Control-Allow-Origin for tauri://localhost, så browser-fetch
+ * CORS-blokkeres. Returnerer { status, body } så kallere beholder statuskoden.
+ */
+export interface AuthedHttp {
+  status: number;
+  body: unknown;
+}
+export async function authedGet(url: string, token: string): Promise<AuthedHttp> {
+  return invoke<AuthedHttp>("authed_get", { url, token });
+}
+
+/** Åpne webview-devtools (gates i App.tsx til daniel@creatorhubn.com). */
+export async function openDevtools(): Promise<void> {
+  return invoke<void>("open_devtools");
+}
+export async function authedPost(url: string, token: string, body?: unknown): Promise<AuthedHttp> {
+  return invoke<AuthedHttp>("authed_post", { url, token, body: body ?? null });
+}
+
 export async function openScriptFolder(): Promise<string> {
   return invoke<string>("open_script_folder");
 }

@@ -10,6 +10,7 @@
  */
 
 import { loadSettings } from "./components/SettingsModal";
+import { authedGet } from "./api";
 
 export type PostAgentModule = "demo_studio" | "marketing" | "capture" | "resolve";
 
@@ -75,11 +76,10 @@ export async function refreshEntitlements(): Promise<PostAgentModule[]> {
     return cachedModules;
   }
   try {
-    const res = await fetch(`${baseUrl()}/modules/entitlements`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (res.ok) {
-      const data = (await res.json()) as { modules?: string[] };
+    // Via Rust (authedGet) — backend mangler CORS for tauri://localhost.
+    const res = await authedGet(`${baseUrl()}/modules/entitlements`, token);
+    if (res.status >= 200 && res.status < 300) {
+      const data = (res.body ?? {}) as { modules?: string[] };
       const valid = (data.modules ?? []).filter(
         (m): m is PostAgentModule => m in MODULE_LABELS,
       );

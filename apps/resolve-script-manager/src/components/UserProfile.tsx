@@ -10,7 +10,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { updateAppSettings } from "../api";
+import { authedGet, updateAppSettings } from "../api";
 import { IconCheck, IconX, IconArrowRight } from "./Icons";
 
 interface Me {
@@ -82,11 +82,10 @@ export function UserProfile({ signedIn, onSignIn, onSignedOut }: Props) {
     }
     setLoading(true);
     try {
-      const res = await fetch(`${getBaseUrl()}/me`, {
-        headers: { Authorization: `Bearer ${bearer}` },
-      });
-      if (res.ok) {
-        setMe((await res.json()) as Me);
+      // Via Rust (authedGet) — backend mangler CORS for tauri://localhost.
+      const res = await authedGet(`${getBaseUrl()}/me`, bearer);
+      if (res.status >= 200 && res.status < 300) {
+        setMe((res.body ?? {}) as Me);
       } else if (res.status === 401) {
         // Token invalid — clear local state
         setMe(null);

@@ -103,8 +103,8 @@ const DEFAULT_FIELDS: MarketingPosterFields = {
   ctaTitle: 'Abonner for ukentlig innsikt',
   ctaTitleAccent: 'ukentlig innsikt',
   ctaSubtitle: 'Hold deg oppdatert. Ta bedre beslutninger. Bygg sterkere produksjoner.',
-  qrUrl: 'https://theroleroom.no/abonner',
-  footerLeft: 'theroleroom.no',
+  qrUrl: 'https://thetheroleroom.com/abonner',
+  footerLeft: 'thetheroleroom.com',
   footerCenter: 'Casting. Roles. Together.',
   socialIcons: ['linkedin', 'instagram', 'youtube'],
 };

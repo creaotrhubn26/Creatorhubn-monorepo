@@ -38,7 +38,7 @@ exporter.start(videoEl, { variant: 'iphone', fit: 'cover',
 ## Bruk — nettside → video
 
 ```bash
-node_modules/.bin/tsx scripts/url-to-video.ts https://theroleroom.no \
+node_modules/.bin/tsx scripts/url-to-video.ts https://thetheroleroom.com \
   --device iphone --seconds 10 --out theroleroom-iphone.webm
 # (engang: node_modules/.bin/playwright install chromium)
 ```

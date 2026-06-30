@@ -504,6 +504,13 @@ fn get_app_settings(state: tauri::State<AppSettings>) -> HashMap<String, String>
     state.snapshot()
 }
 
+/// Åpne webview-devtools. Gates i frontenden til daniel@creatorhubn.com (kun han
+/// kaller denne). open_devtools krever `devtools`-feature på tauri (satt i Cargo).
+#[tauri::command]
+fn open_devtools(window: tauri::WebviewWindow) {
+    window.open_devtools();
+}
+
 /// Start watching a folder for new video/audio files. Emits `folder-clips-added` when new clips land.
 #[tauri::command]
 fn start_watching_folder(
@@ -914,6 +921,12 @@ pub fn run() {
             role_room_api::role_room_my_seats,
             role_room_api::role_room_fetch_clip_download_urls,
             role_room_api::role_room_download_clip,
+            role_room_api::pairing_start,
+            role_room_api::pairing_poll,
+            role_room_api::authed_get,
+            role_room_api::authed_post,
+            role_room_api::authed_request,
+            open_devtools,
             media_probe::probe_media_files,
             mockup_render::mockup_render_video,
             playwright_render::playwright_status,

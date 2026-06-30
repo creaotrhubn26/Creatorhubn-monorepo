@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet">
+<style>
+  html,body{margin:0;background:transparent}
+  *{box-sizing:border-box}
+
+  #wrap{
+    position:relative;
+    width:max-content;
+    font-family:'Inter',system-ui,sans-serif;
+    padding:40px 56px 44px 44px;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* The whole block sits low-left like a documentary lower-third */
+  #block{
+    position:relative;
+    display:flex;
+    align-items:stretch;
+    gap:22px;
+  }
+
+  /* Vertical accent line that draws upward */
+  #rule{
+    position:relative;
+    width:3px;
+    align-self:stretch;
+    background:rgba(255,255,255,0.10);
+    overflow:hidden;
+    border-radius:2px;
+  }
+  #ruleFill{
+    position:absolute;
+    left:0; bottom:0; width:100%;
+    height:0%;
+    background:var(--accent,#c9a24b);
+    box-shadow:0 0 16px -1px var(--accent,#c9a24b);
+    border-radius:2px;
+  }
+
+  #content{
+    display:flex;
+    flex-direction:column;
+    justify-content:flex-end;
+    min-width:280px;
+  }
+
+  /* Eyebrow: thin caps title above the name (cinematic) */
+  #eyebrow{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    font-size:12px;
+    font-weight:600;
+    letter-spacing:0.42em;
+    text-transform:uppercase;
+    color:var(--accent,#c9a24b);
+    margin-bottom:14px;
+    opacity:0;
+    transform:translateY(8px);
+    white-space:nowrap;
+  }
+  #eyebrow .tick{
+    width:0px;
+    height:1px;
+    background:var(--accent,#c9a24b);
+    opacity:0.7;
+  }
+
+  #name{
+    font-size:54px;
+    font-weight:700;
+    line-height:0.98;
+    letter-spacing:-0.018em;
+    color:#fff;
+    text-shadow:0 2px 24px rgba(0,0,0,0.55), 0 1px 2px rgba(0,0,0,0.6);
+    white-space:nowrap;
+    opacity:0;
+    transform:translateY(14px);
+  }
+
+  #role{
+    margin-top:12px;
+    font-size:18px;
+    font-weight:500;
+    letter-spacing:0.01em;
+    color:rgba(255,255,255,0.78);
+    text-shadow:0 1px 12px rgba(0,0,0,0.5);
+    white-space:nowrap;
+    opacity:0;
+    transform:translateY(10px);
+  }
+
+  /* Social row */
+  #socials{
+    display:flex;
+    align-items:center;
+    gap:26px;
+    margin-top:20px;
+  }
+  .social{
+    display:flex;
+    align-items:center;
+    gap:9px;
+    font-size:15px;
+    font-weight:500;
+    color:rgba(255,255,255,0.86);
+    text-shadow:0 1px 10px rgba(0,0,0,0.5);
+    white-space:nowrap;
+    opacity:0;
+    transform:translateY(8px);
+  }
+  .social .material-icons-outlined{
+    font-size:19px;
+    color:var(--accent,#c9a24b);
+    line-height:1;
+  }
+  .social .at{ color:rgba(255,255,255,0.55); margin-right:-4px; font-weight:600; }
+
+  /* faint baseline underglow for separation from footage */
+  #baseline{
+    position:absolute;
+    left:44px; right:0; bottom:30px;
+    height:1px;
+    background:linear-gradient(90deg, var(--accent,#c9a24b) 0%, rgba(255,255,255,0.0) 70%);
+    opacity:0;
+    transform-origin:left center;
+    transform:scaleX(0);
+  }
+
+  #logo{
+    height:30px;
+    width:auto;
+    margin-bottom:14px;
+    opacity:0;
+    transform:translateY(8px);
+    filter:drop-shadow(0 2px 8px rgba(0,0,0,0.5));
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="block">
+    <div id="rule"><div id="ruleFill"></div></div>
+    <div id="content">
+      <img id="logo" alt="">
+      <div id="eyebrow"><span class="tick"></span><span id="eyebrowText">MEDVIRKENDE</span></div>
+      <div id="name">Astrid Lindholm</div>
+      <div id="role">Regissør &amp; manusforfatter</div>
+      <div id="socials">
+        <div class="social" id="s1"><span class="material-icons-outlined">photo_camera</span><span class="at">@</span><span id="h1">astridfilm</span></div>
+        <div class="social" id="s2"><span class="material-icons-outlined">play_circle</span><span class="at">@</span><span id="h2">astrid.lindholm</span></div>
+      </div>
+    </div>
+  </div>
+  <div id="baseline"></div>
+</div>
+
+<script>
+(function () {
+  var cfg = (window.__CFG__) || {};
+  var accent = cfg.accent || '#c9a24b';
+  document.documentElement.style.setProperty('--accent', accent);
+
+  var elName = document.getElementById('name');
+  var elRole = document.getElementById('role');
+  var elEye  = document.getElementById('eyebrowText');
+  var elH1   = document.getElementById('h1');
+  var elH2   = document.getElementById('h2');
+  var s1 = document.getElementById('s1');
+  var s2 = document.getElementById('s2');
+  var logo = document.getElementById('logo');
+
+  if (cfg.name)  elName.textContent = cfg.name;
+  if (cfg.title) elRole.textContent = cfg.title;
+  if (cfg.eyebrow) elEye.textContent = cfg.eyebrow;
+
+  function setHandle(span, parent, val){
+    if (val && String(val).trim()){
+      span.textContent = String(val).replace(/^@/,'');
+      parent.style.display = 'flex';
+      return true;
+    } else {
+      parent.style.display = 'none';
+      return false;
+    }
+  }
+  var has1 = setHandle(elH1, s1, cfg.handle1);
+  var has2 = setHandle(elH2, s2, cfg.handle2);
+
+  if (cfg.logo){ logo.src = cfg.logo; } else { logo.style.display = 'none'; }
+
+  function clamp(x){ return x<0?0:(x>1?1:x); }
+  function easeInOut(t){ return t<0.5 ? 4*t*t*t : 1-Math.pow(-2*t+2,3)/2; }
+  // segment helper: maps global p across [a,b] -> 0..1
+  function seg(p,a,b){ return clamp((p-a)/(b-a)); }
+
+  window.setProgress = function(p){
+    p = clamp(p);
+
+    // 1. vertical accent rule draws up (0 .. 0.30)
+    var ruleP = easeInOut(seg(p, 0.00, 0.30));
+    document.getElementById('ruleFill').style.height = (ruleP*100).toFixed(2)+'%';
+
+    // logo (0.05 .. 0.30)
+    if (cfg.logo){
+      var lP = easeInOut(seg(p,0.05,0.30));
+      logo.style.opacity = lP;
+      logo.style.transform = 'translateY('+((1-lP)*8)+'px)';
+    }
+
+    // 2. eyebrow + tick (0.10 .. 0.40)
+    var eP = easeInOut(seg(p,0.10,0.40));
+    var eye = document.getElementById('eyebrow');
+    eye.style.opacity = eP;
+    eye.style.transform = 'translateY('+((1-eP)*8)+'px)';
+    document.querySelector('#eyebrow .tick').style.width = (eP*26).toFixed(1)+'px';
+
+    // 3. name (0.18 .. 0.55)
+    var nP = easeInOut(seg(p,0.18,0.55));
+    elName.style.opacity = nP;
+    elName.style.transform = 'translateY('+((1-nP)*14)+'px)';
+
+    // 4. role (0.30 .. 0.62)
+    var rP = easeInOut(seg(p,0.30,0.62));
+    elRole.style.opacity = rP;
+    elRole.style.transform = 'translateY('+((1-rP)*10)+'px)';
+
+    // 5. baseline glow sweep (0.34 .. 0.70)
+    var bP = easeInOut(seg(p,0.34,0.70));
+    var bl = document.getElementById('baseline');
+    bl.style.opacity = (bP*0.9).toFixed(3);
+    bl.style.transform = 'scaleX('+bP.toFixed(3)+')';
+
+    // 6. socials staggered (0.46 .. 0.92)
+    var n = (has1?1:0)+(has2?1:0);
+    var idx = 0;
+    function animSocial(parent, active){
+      if(!active) return;
+      var start = 0.46 + idx*0.10;
+      var end = start + 0.30;
+      var sP = easeInOut(seg(p,start,end));
+      parent.style.opacity = sP;
+      parent.style.transform = 'translateY('+((1-sP)*8)+'px)';
+      idx++;
+    }
+    animSocial(s1, has1);
+    animSocial(s2, has2);
+  };
+
+  window.setProgress(0);
+})();
+</script>
+</body>
+</html>

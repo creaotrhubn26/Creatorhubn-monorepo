@@ -11,7 +11,7 @@
  *       [--width 1280] [--height 800] [--seconds 8] [--device iphone|ipad|desktop]
  *
  * Eksempel:
- *   node_modules/.bin/tsx scripts/url-to-video.ts https://theroleroom.no \
+ *   node_modules/.bin/tsx scripts/url-to-video.ts https://thetheroleroom.com \
  *       --device iphone --seconds 10 --out theroleroom-iphone.webm
  *
  * Krever Chromium for Playwright. Mangler den:

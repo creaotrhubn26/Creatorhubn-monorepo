@@ -263,7 +263,7 @@ export const MarketingFeedPoster = forwardRef<HTMLDivElement, MarketingFeedPoste
       ctaTitleAccent = 'ukentlig innsikt',
       ctaSubtitle = 'Hold deg oppdatert. Ta bedre beslutninger. Bygg sterkere produksjoner.',
       qrUrl,
-      footerLeft = 'theroleroom.no',
+      footerLeft = 'thetheroleroom.com',
       footerCenter = 'Casting. Roles. Together.',
       socialIcons = ['linkedin', 'instagram', 'youtube'],
     } = fields;

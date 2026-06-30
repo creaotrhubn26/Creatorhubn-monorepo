@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 import "./styles/animations.css";
 import {
+  authedGet,
+  openDevtools,
   executeScript,
   getRunHistory,
   listScripts,
@@ -38,6 +40,11 @@ import { DependenciesModal } from "./components/DependenciesModal";
 import { HighlightReviewView } from "./components/HighlightReviewView";
 import { CreativeEditorView } from "./components/CreativeEditorView";
 import { DemoStudioShell } from "./components/demo-studio/DemoStudioShell";
+import { SocialVerticalPanel } from "./components/SocialVerticalPanel";
+import { SyncDoctorPanel } from "./components/SyncDoctorPanel";
+import { RepairPanel } from "./components/RepairPanel";
+import { MediaToolsPanel } from "./components/MediaToolsPanel";
+import { RevisionPanel } from "./components/RevisionPanel";
 import { ModuleGate } from "./components/ModuleGate";
 import {
   getEntitledModules,
@@ -61,6 +68,9 @@ import { NewProjectModal } from "./components/NewProjectModal";
 import { GuidedWeddingWizard } from "./components/GuidedWeddingWizard";
 import { QcSourceVideoModal } from "./components/QcSourceVideoModal";
 import { CommandPalette } from "./components/CommandPalette";
+import ColorAutopilotPanel from "./components/ColorAutopilotPanel";
+import AudioMixPanel from "./components/AudioMixPanel";
+import QcPreflightPanel from "./components/QcPreflightPanel";
 import { LearningView } from "./components/LearningView";
 import { FirstRunSetupWizard, shouldShowFirstRun } from "./components/FirstRunSetupWizard";
 import { UpdaterDialog } from "./components/UpdaterDialog";
@@ -127,7 +137,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [pendingDialog, setPendingDialog] = useState<{ script: ScriptMeta; dryRun: boolean } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [view, setView] = useState<"pipeline" | "cull" | "audio" | "color" | "demo">("pipeline");
+  const [view, setView] = useState<"pipeline" | "cull" | "audio" | "color" | "demo" | "social" | "lipsync" | "repair" | "organiser" | "revisjon">("pipeline");
   const [showSetup, setShowSetup] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [runningScripts, setRunningScripts] = useState<Record<string, RunningScript>>({});
@@ -137,6 +147,9 @@ export default function App() {
   const [showDependencies, setShowDependencies] = useState(false);
   const [showPalette, setShowPalette] = useState(false);
   const [showLearning, setShowLearning] = useState(false);
+  const [showColorAutopilot, setShowColorAutopilot] = useState(false);
+  const [showAudioMixPanel, setShowAudioMixPanel] = useState(false);
+  const [showQcPreflight, setShowQcPreflight] = useState(false);
   const [highlightReviewPath, setHighlightReviewPath] = useState<string | null>(null);
   const [creativeEditorPath, setCreativeEditorPath] = useState<string | null>(null);
   // Auto-updater dialog-state. Set når sjekk finner ny versjon; null mens
@@ -542,6 +555,37 @@ export default function App() {
   // Role Room auth-status: undefined (sjekker), "ok" (gyldig token), "expired" (token finnes men 401), "none" (ingen token)
   const [authStatus, setAuthStatus] = useState<"checking" | "ok" | "expired" | "none">("checking");
   const [authUserEmail, setAuthUserEmail] = useState<string | null>(null);
+
+  // Devtools KUN for daniel@creatorhubn.com. `devtools`-featuren slår på
+  // høyreklikk-inspiser + native snarveier for ALLE — så for andre brukere
+  // undertrykker vi kontekstmenyen og devtools-snarveiene. Daniel åpner med
+  // Cmd+Option+I (programmatisk open_devtools).
+  useEffect(() => {
+    const isDaniel = () =>
+      (authUserEmail || "").trim().toLowerCase() === "daniel@creatorhubn.com";
+    const onKey = (e: KeyboardEvent) => {
+      const isDevtoolsCombo =
+        e.metaKey &&
+        e.altKey &&
+        (["i", "j", "c"].includes(e.key.toLowerCase()) ||
+          ["KeyI", "KeyJ", "KeyC"].includes(e.code));
+      if (!isDevtoolsCombo) return;
+      // Blokkér native devtools for alle; åpne kun for Daniel.
+      e.preventDefault();
+      if (isDaniel() && (e.key.toLowerCase() === "i" || e.code === "KeyI")) {
+        void openDevtools();
+      }
+    };
+    const onContextMenu = (e: MouseEvent) => {
+      if (!isDaniel()) e.preventDefault(); // skjul «Inspiser element» for andre
+    };
+    window.addEventListener("keydown", onKey, true);
+    window.addEventListener("contextmenu", onContextMenu, true);
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("contextmenu", onContextMenu, true);
+    };
+  }, [authUserEmail]);
   const [authMemberProfile, setAuthMemberProfile] = useState<{
     displayName: string | null;
     profileImageUrl: string | null;
@@ -566,16 +610,16 @@ export default function App() {
     }
     try {
       const base = (s.RR_POST_AGENT_BASE_URL || "https://creatorhubn.com/api/post-agent").replace(/\/$/, "");
-      const res = await fetch(`${base}/me`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
+      // Via Rust (authedGet) — backend sender ikke CORS-headere for tauri://localhost,
+      // så browser-fetch ville blitt CORS-blokkert ("checking login" i evig løkke).
+      const res = await authedGet(`${base}/me`, token);
+      if (res.status >= 200 && res.status < 300) {
         // Et 200-svar fra /me betyr at token-et er gyldig → brukeren ER
         // innlogget. Tidligere krevde vi `me.email`, men enkelte kontoer
         // (OAuth/migrert) mangler email i users-raden → 200-uten-email ble
         // feilaktig tolket som «Token utløpt». Nå: 200 = innlogget, email er
         // bare til visning.
-        const me = await res.json().catch(() => ({})) as { email?: string; name?: string };
+        const me = (res.body ?? {}) as { email?: string; name?: string };
         {
           setAuthStatus("ok");
           setAuthUserEmail(me?.email ?? null);
@@ -585,11 +629,9 @@ export default function App() {
           // Origin: strip /api/post-agent fra base for å nå sibling-endpoint
           try {
             const origin = base.replace(/\/api\/post-agent\/?$/, "");
-            const profRes = await fetch(`${origin}/api/role-room/profile/me`, {
-              headers: { Authorization: `Bearer ${token}` },
-            });
-            if (profRes.ok) {
-              const data = await profRes.json() as {
+            const profRes = await authedGet(`${origin}/api/role-room/profile/me`, token);
+            if (profRes.status >= 200 && profRes.status < 300) {
+              const data = (profRes.body ?? {}) as {
                 profile?: { displayName?: string | null; profileImageUrl?: string | null; professions?: string[] };
               };
               const p = data.profile;
@@ -821,6 +863,31 @@ export default function App() {
             onSignIn={() => setShowSignIn(true)}
           />
         ))}
+      {view === "social" && (
+        authStatus === "ok" && entitledModules.includes("resolve")
+          ? <SocialVerticalPanel onClose={() => setView("pipeline")} />
+          : <ModuleGate module="resolve" signedIn={authStatus === "ok"} onClose={() => setView("pipeline")} onSignIn={() => setShowSignIn(true)} />
+      )}
+      {view === "lipsync" && (
+        authStatus === "ok" && entitledModules.includes("resolve")
+          ? <SyncDoctorPanel onClose={() => setView("pipeline")} />
+          : <ModuleGate module="resolve" signedIn={authStatus === "ok"} onClose={() => setView("pipeline")} onSignIn={() => setShowSignIn(true)} />
+      )}
+      {view === "repair" && (
+        authStatus === "ok" && entitledModules.includes("resolve")
+          ? <RepairPanel onClose={() => setView("pipeline")} />
+          : <ModuleGate module="resolve" signedIn={authStatus === "ok"} onClose={() => setView("pipeline")} onSignIn={() => setShowSignIn(true)} />
+      )}
+      {view === "organiser" && (
+        authStatus === "ok" && entitledModules.includes("resolve")
+          ? <MediaToolsPanel onClose={() => setView("pipeline")} />
+          : <ModuleGate module="resolve" signedIn={authStatus === "ok"} onClose={() => setView("pipeline")} onSignIn={() => setShowSignIn(true)} />
+      )}
+      {view === "revisjon" && (
+        authStatus === "ok" && entitledModules.includes("resolve")
+          ? <RevisionPanel onClose={() => setView("pipeline")} />
+          : <ModuleGate module="resolve" signedIn={authStatus === "ok"} onClose={() => setView("pipeline")} onSignIn={() => setShowSignIn(true)} />
+      )}
 
       {advancedMode && view === "pipeline" && (
       <div className="body">
@@ -908,6 +975,9 @@ export default function App() {
       </footer>
 
       {showLearning && <LearningView onClose={() => setShowLearning(false)} />}
+      {showColorAutopilot && <ColorAutopilotPanel onClose={() => setShowColorAutopilot(false)} />}
+      {showAudioMixPanel && <AudioMixPanel onClose={() => setShowAudioMixPanel(false)} />}
+      {showQcPreflight && <QcPreflightPanel onClose={() => setShowQcPreflight(false)} />}
 
       <CommandPalette
         open={showPalette}
@@ -932,6 +1002,35 @@ export default function App() {
           { id: "open_learning", title: "Vis hva systemet har lært",
             subtitle: "per-project + global læringsprofil + sist 10 økter",
             handler: () => setShowLearning(true) },
+          { id: "open_color_autopilot", title: "Color Autopilot",
+            subtitle: "analyser timeline-scopes + auto-grade alle klipp (per-node + PowerGrade)",
+            handler: () => setShowColorAutopilot(true) },
+          { id: "open_audio_mix", title: "Åpne Audio Mix-panel",
+            subtitle: "VO analyze + repair + mix/master (ducking, LUFS)",
+            handler: () => setShowAudioMixPanel(true) },
+          { id: "open_qc_preflight", title: "QC Preflight",
+            subtitle: "samlet pre-render QC: gaps + uhørbar tale + media + loudness + farge",
+            handler: () => setShowQcPreflight(true) },
+          { id: "apply_powergrade_all", title: "Legg PowerGrade på alle klipp",
+            subtitle: "propagér merkevare-.drx (BRAND_GRADE_DRX) til alle V1-klipp",
+            handler: () => {
+              const drxPath = loadSettings().BRAND_GRADE_DRX?.trim();
+              if (!drxPath) { setShowSettings(true); return; }
+              void executeScript("apply_powergrade_all", { drxPath }, false);
+            } },
+          { id: "find_jump_cuts", title: "Finn jump cuts",
+            subtitle: "skann gjeldende timeline for flash cuts + jump-cut-risiko",
+            handler: () => { void executeScript("find_jump_cuts", {}, false); } },
+          { id: "generate_brand_vignette", title: "Generer brand-vignett fra logo",
+            subtitle: "lag gjennomsiktig brand-bug fra logo (BRAND_LOGO_PATH i Settings)",
+            handler: () => {
+              const logoPath = loadSettings().BRAND_LOGO_PATH?.trim();
+              if (!logoPath) { setShowSettings(true); return; }
+              void executeScript("generate_brand_vignette", { logoPath }, false);
+            } },
+          { id: "apply_brand_vignette", title: "Legg på brand-vignett",
+            subtitle: "legg brand-vignetten på et overlay-spor i aktiv timeline",
+            handler: () => { void executeScript("apply_brand_vignette", {}, false); } },
           { id: "toggle_media_pool", title: "Toggle Media Pool sidebar",
             subtitle: "show/hide right sidebar",
             handler: () => setShowMediaPool((s) => !s) },

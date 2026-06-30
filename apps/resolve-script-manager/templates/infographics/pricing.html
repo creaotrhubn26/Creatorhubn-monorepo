@@ -1,0 +1,176 @@
+<!doctype html><html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;font-family:'Inter',sans-serif}
+  html,body{margin:0;background:transparent}
+  #wrap{display:flex;gap:30px;align-items:stretch;padding:64px;width:max-content}
+  .logo{position:absolute;top:30px;left:64px;height:38px;opacity:0}
+  .card{position:relative;background:#fff;border-radius:26px;padding:40px 38px 38px;width:368px;
+        display:flex;flex-direction:column;
+        box-shadow:0 26px 64px rgba(20,40,80,.10),0 4px 14px rgba(20,40,80,.05);
+        border:1px solid rgba(20,40,80,.06);opacity:0;transform:translateY(30px)}
+  .card.pop{box-shadow:0 34px 80px rgba(20,40,80,.18),0 6px 18px rgba(20,40,80,.08);
+            transform-origin:center bottom}
+  .badge{position:absolute;top:-15px;left:50%;transform:translateX(-50%);
+         color:#fff;font-weight:700;font-size:14px;letter-spacing:.4px;text-transform:uppercase;
+         padding:8px 20px;border-radius:30px;white-space:nowrap;
+         box-shadow:0 10px 22px rgba(20,40,80,.20);opacity:0}
+  .pname{font-size:21px;font-weight:700;letter-spacing:.2px}
+  .pdesc{color:#7a899c;font-size:15px;font-weight:500;margin-top:6px;min-height:21px}
+  .pricerow{display:flex;align-items:baseline;gap:4px;margin-top:24px}
+  .cur{font-size:30px;font-weight:700;align-self:flex-start;margin-top:8px}
+  .price{font-size:62px;font-weight:800;letter-spacing:-2px;line-height:1}
+  .per{color:#8b99ab;font-size:18px;font-weight:500}
+  .rule{height:1px;background:rgba(20,40,80,.08);margin:28px 0 26px}
+  .feat{display:flex;align-items:center;gap:14px;margin-bottom:18px;opacity:0;transform:translateX(-10px)}
+  .feat .chk{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;flex:none}
+  .feat .chk .material-icons-outlined{font-size:17px;color:#fff}
+  .feat span.t{color:#39485c;font-size:17px;font-weight:500}
+  .cta{margin-top:auto;display:flex;align-items:center;justify-content:center;gap:8px;
+       padding:16px;border-radius:14px;font-size:17px;font-weight:700;cursor:default;
+       border:1.5px solid rgba(20,40,80,.12);background:#fff;opacity:0}
+  .cta .material-icons-outlined{font-size:19px}
+  .cta.solid{border:none;color:#fff;box-shadow:0 14px 28px rgba(20,40,80,.16)}
+</style></head>
+<body>
+<img id="logo" class="logo" alt="">
+<div id="wrap">
+
+  <div class="card" data-i="0">
+    <div class="pname" id="n0">Start</div>
+    <div class="pdesc" id="d0">For enkeltbrukere</div>
+    <div class="pricerow"><span class="cur" id="cur0">kr</span><span class="price" data-to="149">0</span><span class="per">/mnd</span></div>
+    <div class="rule"></div>
+    <div class="feats">
+      <div class="feat"><span class="chk"><span class="material-icons-outlined">check</span></span><span class="t" id="f0_1">1 bruker</span></div>
+      <div class="feat"><span class="chk"><span class="material-icons-outlined">check</span></span><span class="t" id="f0_2">10 prosjekter</span></div>
+      <div class="feat"><span class="chk"><span class="material-icons-outlined">check</span></span><span class="t" id="f0_3">E-poststøtte</span></div>
+    </div>
+    <div class="cta"><span id="cta0">Velg Start</span><span class="material-icons-outlined">arrow_forward</span></div>
+  </div>
+
+  <div class="card pop" data-i="1">
+    <div class="badge" id="badge">Mest populær</div>
+    <div class="pname" id="n1">Pro</div>
+    <div class="pdesc" id="d1">For voksende team</div>
+    <div class="pricerow"><span class="cur" id="cur1">kr</span><span class="price" data-to="349">0</span><span class="per">/mnd</span></div>
+    <div class="rule"></div>
+    <div class="feats">
+      <div class="feat"><span class="chk"><span class="material-icons-outlined">check</span></span><span class="t" id="f1_1">5 brukere</span></div>
+      <div class="feat"><span class="chk"><span class="material-icons-outlined">check</span></span><span class="t" id="f1_2">Ubegrensede prosjekter</span></div>
+      <div class="feat"><span class="chk"><span class="material-icons-outlined">check</span></span><span class="t" id="f1_3">Prioritert support</span></div>
+    </div>
+    <div class="cta solid"><span id="cta1">Velg Pro</span><span class="material-icons-outlined">arrow_forward</span></div>
+  </div>
+
+  <div class="card" data-i="2">
+    <div class="pname" id="n2">Enterprise</div>
+    <div class="pdesc" id="d2">For store organisasjoner</div>
+    <div class="pricerow"><span class="cur" id="cur2">kr</span><span class="price" data-to="899">0</span><span class="per">/mnd</span></div>
+    <div class="rule"></div>
+    <div class="feats">
+      <div class="feat"><span class="chk"><span class="material-icons-outlined">check</span></span><span class="t" id="f2_1">Ubegrenset brukere</span></div>
+      <div class="feat"><span class="chk"><span class="material-icons-outlined">check</span></span><span class="t" id="f2_2">SSO og revisjon</span></div>
+      <div class="feat"><span class="chk"><span class="material-icons-outlined">check</span></span><span class="t" id="f2_3">Dedikert rådgiver</span></div>
+    </div>
+    <div class="cta"><span id="cta2">Kontakt salg</span><span class="material-icons-outlined">arrow_forward</span></div>
+  </div>
+
+</div>
+<script>
+(function(){
+  var cfg = window.__CFG__ || {};
+  var accent = cfg.accent || '#3b82f6';
+  var ink = cfg.ink || '#1f2d4a';
+
+  function hexToRgb(h){h=h.replace('#','');if(h.length===3)h=h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+    return {r:parseInt(h.slice(0,2),16),g:parseInt(h.slice(2,4),16),b:parseInt(h.slice(4,6),16)};}
+  function rgba(h,a){var c=hexToRgb(h);return 'rgba('+c.r+','+c.g+','+c.b+','+a+')';}
+
+  // Apply config text
+  function setTxt(id,key,def){var el=document.getElementById(id);if(el&&cfg[key]!=null&&cfg[key]!=='')el.textContent=cfg[key];}
+  ['0','1','2'].forEach(function(i){
+    setTxt('n'+i,'name'+i);
+    setTxt('d'+i,'desc'+i);
+    setTxt('f'+i+'_1','feat'+i+'_1');
+    setTxt('f'+i+'_2','feat'+i+'_2');
+    setTxt('f'+i+'_3','feat'+i+'_3');
+    setTxt('cta'+i,'cta'+i);
+    var cur=document.getElementById('cur'+i);if(cur&&cfg.currency)cur.textContent=cfg.currency;
+  });
+  var prices=document.querySelectorAll('.price');
+  ['0','1','2'].forEach(function(i,idx){if(cfg['price'+i]!=null&&cfg['price'+i]!=='')prices[idx].dataset.to=cfg['price'+i];});
+  if(cfg.badge){document.getElementById('badge').textContent=cfg.badge;}
+
+  // Logo
+  if(cfg.logo){var lg=document.getElementById('logo');lg.src=cfg.logo;}
+
+  // Themed accent styling
+  var ink70 = rgba(ink,0.78);
+  document.querySelectorAll('.pname').forEach(function(e){e.style.color=ink;});
+  document.querySelectorAll('.price,.cur').forEach(function(e){e.style.color=ink;});
+  document.querySelectorAll('.feat .t').forEach(function(e){e.style.color=ink70;});
+  // standard checks neutral, popular card accent checks
+  document.querySelectorAll('.card .chk').forEach(function(e){e.style.background=rgba(ink,0.32);});
+  var pop=document.querySelector('.card.pop');
+  pop.style.background='#fff';
+  pop.querySelectorAll('.chk').forEach(function(e){e.style.background=accent;});
+  pop.style.boxShadow='0 34px 80px '+rgba(accent,0.28)+',0 6px 18px '+rgba(accent,0.12);
+  pop.style.border='1.5px solid '+rgba(accent,0.55);
+  document.getElementById('badge').style.background=accent;
+  document.querySelector('.cta.solid').style.background=accent;
+  document.querySelector('.cta.solid').style.boxShadow='0 14px 28px '+rgba(accent,0.30);
+  // outline CTAs hint ink
+  document.querySelectorAll('.cta:not(.solid)').forEach(function(e){e.style.color=ink;});
+
+  function clamp(v){return Math.max(0,Math.min(1,v));}
+  function ease(t){return t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;}
+
+  window.setProgress=function(p){
+    p=clamp(p);
+    // cards stagger in
+    document.querySelectorAll('.card').forEach(function(card){
+      var i=parseFloat(card.dataset.i)||0;
+      var d=i*0.10, span=0.5;
+      var e=ease(clamp((p-d)/span));
+      card.style.opacity=e;
+      if(card.classList.contains('pop')){
+        card.style.transform='translateY('+(30*(1-e))+'px) scale('+(0.96+0.04*e)+')';
+      } else {
+        card.style.transform='translateY('+(30*(1-e))+'px)';
+      }
+    });
+    // badge
+    var be=ease(clamp((p-0.30)/0.35));
+    var bd=document.getElementById('badge');
+    bd.style.opacity=be;
+    bd.style.transform='translateX(-50%) translateY('+(-8*(1-be))+'px)';
+    // logo
+    document.getElementById('logo').style.opacity=ease(clamp((p-0.05)/0.3));
+    // price count-up
+    document.querySelectorAll('.price[data-to]').forEach(function(el){
+      var to=parseFloat(el.dataset.to)||0;
+      var t=ease(clamp((p-0.20)/0.55));
+      el.textContent=Math.round(to*t).toLocaleString('nb-NO');
+    });
+    // features stagger per card
+    document.querySelectorAll('.card').forEach(function(card){
+      var ci=parseFloat(card.dataset.i)||0;
+      var base=0.34+ci*0.08;
+      card.querySelectorAll('.feat').forEach(function(f,fi){
+        var d=base+fi*0.07, span=0.3;
+        var e=ease(clamp((p-d)/span));
+        f.style.opacity=e;
+        f.style.transform='translateX('+(-10*(1-e))+'px)';
+      });
+      // CTA
+      var cd=0.58+ci*0.06;
+      var ce=ease(clamp((p-cd)/0.3));
+      card.querySelector('.cta').style.opacity=ce;
+    });
+  };
+  window.setProgress(0);
+})();
+</script>
+</body></html>
