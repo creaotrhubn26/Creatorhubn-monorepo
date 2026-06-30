@@ -414,6 +414,66 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     catch { return false; }
   }
 
+  // HTML-escape for varslings-e-poster.
+  const escH = (s: any) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+  // Legg til et bandmedlem som KUNDE av produsenten (clients-tabellen). Idempotent
+  // på (photographer_id, email). Best-effort — feiler aldri medlems-opprettelsen.
+  async function upsertBandClient(photographerId: string, m: { name?: string; email?: string | null; role?: string | null; instrument?: string | null }) {
+    const email = String(m.email || "").trim();
+    if (!email || !photographerId) return;
+    try {
+      const ex = await pool.query(`SELECT 1 FROM clients WHERE photographer_id=$1 AND lower(email)=lower($2) LIMIT 1`, [photographerId, email]);
+      if (ex.rows.length) return;
+      const parts = String(m.name || "").trim().split(/\s+/);
+      await pool.query(
+        `INSERT INTO clients (photographer_id, first_name, last_name, email, customer_type, notes, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,'band',$5,NOW(),NOW())`,
+        [photographerId, parts[0] || String(m.name || "Bandmedlem"), parts.slice(1).join(" ") || "", email,
+         `Bandmedlem (${m.instrument || m.role || "bidragsyter"}) – lagt til via Sound Room`]);
+    } catch { /* best-effort */ }
+  }
+
+  // Produsentens varslings-kontekst for et lydrom-prosjekt.
+  async function ownerNotifyCtx(projectId: string): Promise<{ title: string; email: string; name: string } | null> {
+    try {
+      const r = await pool.query(
+        `SELECT p.title, u.email, u.first_name, u.last_name FROM audio_review_projects p
+           LEFT JOIN users u ON u.id = p.owner_user_id WHERE p.id = $1::uuid LIMIT 1`, [projectId]);
+      const row = r.rows[0];
+      if (!row?.email) return null;
+      return { title: row.title || "lydrommet", email: row.email, name: [row.first_name, row.last_name].filter(Boolean).join(" ") || "Produsent" };
+    } catch { return null; }
+  }
+
+  // Varsle bandet (e-post, best-effort — band er eksterne uten konto) om ny versjon.
+  async function notifyBandNewVersion(projectId: string, version: any) {
+    if (!sendEmail) return;
+    const octx = await ownerNotifyCtx(projectId);
+    const title = octx?.title || "lydrommet";
+    const label = version?.version_label || `Mix V${version?.version_number || ""}`;
+    const mem = await pool.query(
+      `SELECT name, email, invite_token FROM audio_review_members
+        WHERE project_id=$1::uuid AND is_owner=false AND email IS NOT NULL AND email <> ''`, [projectId]).catch(() => ({ rows: [] as any[] }));
+    for (const m of mem.rows) {
+      const link = m.invite_token ? `${APP_URL}/audio-review/invite/${m.invite_token}` : APP_URL;
+      const html = `<div style="font-family:-apple-system,sans-serif;max-width:520px;margin:0 auto;padding:24px"><h2 style="margin:0 0 12px;color:#1a1a1a">Ny mix klar 🎧</h2><p style="font-size:15px;color:#333;line-height:1.6">Hei ${escH(m.name)},<br><br>Det er lagt opp en ny versjon — <b>${escH(label)}</b> — i «${escH(title)}». Hør og legg igjen tidsstemplet tilbakemelding:</p><div style="margin:22px 0"><a href="${link}" style="display:inline-block;background:#ff8c00;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600">Hør &amp; kommentér</a></div></div>`;
+      const text = `Ny versjon «${label}» er klar i ${title}. Hør og kommentér: ${link}`;
+      await sendEmail({ to: m.email, subject: `Ny mix klar: ${label} — ${title}`, html, text, kind: "audio_new_version" }).catch(() => {});
+    }
+  }
+
+  // Varsle produsenten (e-post) når et bandmedlem legger igjen en kommentar.
+  async function notifyOwnerBandComment(ctx: any, body: string, tc: number) {
+    if (!sendEmail) return;
+    const octx = await ownerNotifyCtx(ctx.project_id);
+    if (!octx) return;
+    const mmss = `${Math.floor(tc / 60)}:${String(Math.floor(tc % 60)).padStart(2, "0")}`;
+    const html = `<div style="font-family:-apple-system,sans-serif;max-width:520px;margin:0 auto;padding:24px"><h2 style="margin:0 0 12px;color:#1a1a1a">Ny tilbakemelding fra bandet</h2><p style="font-size:15px;color:#333"><b>${escH(ctx.name || "Et bandmedlem")}</b> (${escH(ctx.role || "band")}) kommenterte på <b>${mmss}</b> i «${escH(octx.title)}»:</p><blockquote style="border-left:3px solid #ff8c00;margin:14px 0;padding:8px 16px;color:#333">«${escH(body)}»</blockquote><div style="margin:18px 0"><a href="${APP_URL}/audio-review/${ctx.project_id}" style="display:inline-block;background:#ff8c00;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600">Åpne lydrommet</a></div></div>`;
+    const text = `${ctx.name || "Et bandmedlem"} kommenterte på ${mmss} i ${octx.title}: «${body}»`;
+    await sendEmail({ to: octx.email, subject: `${ctx.name || "Bandet"} kommenterte «${octx.title}» (${mmss})`, html, text, kind: "audio_band_comment" }).catch(() => {});
+  }
+
   // Hent koblet track + lokal tekst-tilstand for et review-rom.
   async function loadLinkedTrack(reviewId: string, userId: string): Promise<any | null> {
     const p = await pool.query(
@@ -532,6 +592,8 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
          num(req.body?.channels), str(req.body?.codec, 40) || null, num(req.body?.fileSize), s.userId],
       );
       await pool.query(`UPDATE audio_review_projects SET status='under_review', updated_at=NOW() WHERE id=$1::uuid`, [projectId]);
+      // Varsle bandet om at en ny versjon er klar å høre (best-effort).
+      void notifyBandNewVersion(projectId, r.rows[0]).catch(() => {});
       return res.status(201).json(r.rows[0]);
     } catch (e) {
       if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
@@ -756,6 +818,8 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
       const created = r.rows[0];
       let emailed = false;
       if (token && created.email) emailed = await emailInvite(created.id, id, s.name || "").catch(() => false);
+      // Legg bandmedlemmet til som kunde av produsenten (best-effort).
+      if (!isOwner && created.email) void upsertBandClient(s.userId, created);
       return res.status(201).json({ ...created, inviteToken: token, inviteUrl: token ? `/audio-review/invite/${token}` : null, emailed });
     } catch (e) {
       if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
@@ -1599,6 +1663,8 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
         [versionId, `member:${ctx.member_id}`, ctx.name, ctx.role, num(req.body?.timecodeSeconds) ?? 0, body,
          str(req.body?.category, 40) || "general", str(req.body?.sectionRef, 120) || null]);
+      // Varsle produsenten om band-tilbakemeldingen (best-effort).
+      void notifyOwnerBandComment(ctx, body, num(req.body?.timecodeSeconds) ?? 0).catch(() => {});
       return res.status(201).json(r.rows[0]);
     } catch (e) {
       if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });

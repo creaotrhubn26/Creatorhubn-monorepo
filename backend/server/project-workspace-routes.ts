@@ -1399,8 +1399,54 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
          VALUES ($1::uuid,$2,$3,$4,false,$5,$6,$7,$8,'pending',NOW(),NOW()+INTERVAL '90 days') RETURNING id`,
         [arId, name, role, PALETTE[idx % PALETTE.length], idx, email, instrument, token],
       );
+      // Legg bandmedlemmet til som KUNDE av produsenten (clients). Idempotent på
+      // (photographer_id, email). Best-effort — feiler aldri medlems-opprettelsen.
+      if (email) {
+        void (async () => {
+          try {
+            const ex = await pool.query(`SELECT 1 FROM clients WHERE photographer_id=$1 AND lower(email)=lower($2) LIMIT 1`, [uid, email]);
+            if (ex.rows.length) return;
+            const parts = name.trim().split(/\s+/);
+            await pool.query(
+              `INSERT INTO clients (photographer_id, first_name, last_name, email, customer_type, notes, created_at, updated_at)
+               VALUES ($1,$2,$3,$4,'band',$5,NOW(),NOW())`,
+              [uid, parts[0] || name, parts.slice(1).join(" ") || "", email,
+               `Bandmedlem (${instrument || role || "bidragsyter"}) – lagt til via Sound Room`]);
+          } catch { /* best-effort */ }
+        })();
+      }
       res.status(201).json({ id: created.rows[0].id, audioRoomId: arId, inviteUrl: `/audio-review/invite/${token}`, status: "pending" });
     } catch (e) { console.error("POST audio-room/members", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  // ── Ulest band-aktivitet (band-kommentarer produsenten ikke har sett) → badge på Sound Room.
+  const ensureAudioSeen = async () => {
+    await pool.query(`CREATE TABLE IF NOT EXISTS project_audio_seen (project_id VARCHAR(64) NOT NULL, user_id VARCHAR(64) NOT NULL, seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (project_id, user_id))`).catch(() => undefined);
+  };
+  app.get("/api/projects/:projectId/audio-room/unseen-comments", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureAudioSeen();
+      const link = await pool.query(`SELECT audio_review_project_id FROM project_audio_rooms WHERE project_id=$1::uuid LIMIT 1`, [req.params.projectId]).catch(() => ({ rows: [] }));
+      const arId = link.rows[0]?.audio_review_project_id;
+      if (!arId) return res.json({ unseenCount: 0 });
+      const seen = await pool.query(`SELECT seen_at FROM project_audio_seen WHERE project_id=$1 AND user_id=$2`, [req.params.projectId, uid]).catch(() => ({ rows: [] }));
+      const seenAt = seen.rows[0]?.seen_at || "1970-01-01";
+      const r = await pool.query(
+        `SELECT count(*)::int n FROM audio_review_comments c
+           JOIN audio_review_versions v ON v.id = c.version_id
+          WHERE v.project_id = $1::uuid AND c.user_id LIKE 'member:%' AND c.created_at > $2`,
+        [arId, seenAt]).catch(() => ({ rows: [{ n: 0 }] }));
+      res.json({ unseenCount: r.rows[0]?.n || 0 });
+    } catch (e) { console.error("GET audio unseen-comments", e); res.json({ unseenCount: 0 }); }
+  });
+  app.post("/api/projects/:projectId/audio-room/seen", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureAudioSeen();
+      await pool.query(`INSERT INTO project_audio_seen (project_id, user_id, seen_at) VALUES ($1,$2,NOW()) ON CONFLICT (project_id,user_id) DO UPDATE SET seen_at=NOW()`, [req.params.projectId, uid]).catch(() => undefined);
+      res.json({ ok: true });
+    } catch (e) { console.error("POST audio seen", e); res.json({ ok: false }); }
   });
 
   // ─────────── Sesjoner (musikk) — innspillings-/miks-sesjoner fra Pro Tools Companion ──
