@@ -76,27 +76,59 @@ export interface WsNavItem {
   group: 'hoved' | 'rom' | 'klient';
   online?: boolean;
   route?: boolean; // true = egen tab i workspacet
+  /**
+   * Profesjons-synlighet (deklarativt). Mangler feltet → universell (alle).
+   *   'visual' = foto/video-flater (Shotlist, Produksjonskart, Photo/Video Room)
+   *   'music'  = musikk-flater (Låter, Sesjoner, Sound Room)
+   * Se navForProfession().
+   */
+  professions?: Array<'visual' | 'music'>;
 }
 
-// Venstre-nav — eksakt rekkefølge fra Daniels design.
+// Venstre-nav — eksakt rekkefølge fra Daniels design. Items er tagget med
+// profesjon; navForProfession() filtrerer. Musikk- og visuell-varianter er
+// interleavet så rekkefølgen blir riktig for begge etter filtrering.
 export const WS_NAV: WsNavItem[] = [
   { key: 'oversikt', label: 'Oversikt', icon: 'Dashboard', group: 'hoved', route: true },
   { key: 'prosjektplan', label: 'Prosjektplan', icon: 'AccountTree', group: 'hoved', route: true },
-  { key: 'produksjonskart', label: 'Produksjonskart', icon: 'Map', group: 'hoved', route: true },
-  { key: 'shotlist', label: 'Shotlist', icon: 'PhotoCameraBack', group: 'hoved', route: true },
+  { key: 'produksjonskart', label: 'Produksjonskart', icon: 'Map', group: 'hoved', route: true, professions: ['visual'] },
+  { key: 'sesjoner', label: 'Sesjoner', icon: 'Album', group: 'hoved', route: true, professions: ['music'] },
+  { key: 'shotlist', label: 'Shotlist', icon: 'PhotoCameraBack', group: 'hoved', route: true, professions: ['visual'] },
+  { key: 'laater', label: 'Låter', icon: 'LibraryMusic', group: 'hoved', route: true, professions: ['music'] },
   { key: 'moodboard', label: 'Moodboard', icon: 'GridView', group: 'hoved', route: true },
   { key: 'media', label: 'Media', icon: 'PermMedia', group: 'hoved', route: true },
   { key: 'leveranser', label: 'Leveranser', icon: 'LocalShipping', group: 'hoved', route: true },
   { key: 'oppgaver', label: 'Oppgaver', icon: 'CheckCircleOutline', group: 'hoved', badge: 12, route: true },
   { key: 'team', label: 'Team', icon: 'Group', group: 'hoved', route: true },
   { key: 'chat', label: 'Chat', icon: 'ChatBubbleOutline', group: 'hoved', route: true },
-  // Smart Rom (lenker til eksisterende verktøy senere)
-  { key: 'photo-room', label: 'Photo Room', icon: 'PhotoCamera', group: 'rom', online: true, route: true },
-  { key: 'video-room', label: 'Video Room', icon: 'Videocam', group: 'rom', online: true, route: true },
-  { key: 'sound-room', label: 'Sound Room', icon: 'GraphicEq', group: 'rom', online: true, route: true },
+  // Smart Rom — profesjons-spesifikke
+  { key: 'photo-room', label: 'Photo Room', icon: 'PhotoCamera', group: 'rom', online: true, route: true, professions: ['visual'] },
+  { key: 'video-room', label: 'Video Room', icon: 'Videocam', group: 'rom', online: true, route: true, professions: ['visual'] },
+  { key: 'sound-room', label: 'Sound Room', icon: 'GraphicEq', group: 'rom', online: true, route: true, professions: ['music'] },
   // Edit Room skjult inntil videre — planlegges senere (redigerer-/leveranse-cockpit).
   // { key: 'edit-room', label: 'Edit Room', icon: 'Movie', group: 'rom', online: true },
   // Kundeportal
   { key: 'kundevisning', label: 'Kundevisning', icon: 'Visibility', group: 'klient' },
   { key: 'avtaler', label: 'Avtaler', icon: 'EventNote', group: 'klient' },
 ];
+
+// Profesjoner som regnes som musikk (Sound Room / Låter / Sesjoner i stedet for
+// Shotlist / Produksjonskart / Photo+Video Room). Alt annet = visuell (foto/video).
+const MUSIC_PROFESSIONS = ['music_producer', 'music-producer', 'musician', 'music'];
+
+export function isMusicProfession(profession?: string | null): boolean {
+  return MUSIC_PROFESSIONS.includes(String(profession || '').toLowerCase());
+}
+
+/**
+ * Filtrer WS_NAV til profesjonen: universelle items vises alltid; 'visual'-items
+ * for foto/video; 'music'-items for musikkprodusenter. Rekkefølgen i WS_NAV
+ * bevares (musikk- og visuell-varianter er interleavet på riktig plass).
+ */
+export function navForProfession(profession?: string | null): WsNavItem[] {
+  const music = isMusicProfession(profession);
+  return WS_NAV.filter((n) => {
+    if (!n.professions) return true;
+    return music ? n.professions.includes('music') : n.professions.includes('visual');
+  });
+}

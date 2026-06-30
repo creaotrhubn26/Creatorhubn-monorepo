@@ -1230,6 +1230,30 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     } catch (e) { console.error("POST audio-room/members", e); res.status(500).json({ error: "failed" }); }
   });
 
+  // ─────────── Sesjoner (musikk) — innspillings-/miks-sesjoner fra Pro Tools Companion ──
+  // Prosjekt-scopet: sesjonene koblet til prosjektets lydrom (project_audio_rooms →
+  // protools_companion_sessions.audio_review_project_id). Read-only oversikt for
+  // «Sesjoner»-fanen; selve sesjonene settes opp via companion-appen (se Sound Room).
+  app.get("/api/projects/:projectId/recording-sessions", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const link = await pool.query(`SELECT audio_review_project_id FROM project_audio_rooms WHERE project_id = $1::uuid LIMIT 1`, [req.params.projectId]).catch(() => ({ rows: [] }));
+      const arId = link.rows[0]?.audio_review_project_id || null;
+      if (!arId) return res.json({ sessions: [], audioRoomId: null });
+      const r = await pool.query(
+        `SELECT s.id, s.name, s.session_type, s.tempo, s.key_signature, s.sample_rate, s.bit_depth,
+                s.track_count, s.status, s.playhead, s.last_activity,
+                (SELECT count(*) FROM protools_companion_markers m WHERE m.session_id = s.id) AS marker_count,
+                (SELECT count(*) FROM protools_companion_bounces b WHERE b.session_id = s.id) AS bounce_count
+           FROM protools_companion_sessions s
+          WHERE s.audio_review_project_id = $1::uuid
+          ORDER BY s.last_activity DESC LIMIT 50`,
+        [arId],
+      ).catch(() => ({ rows: [] }));
+      res.json({ sessions: r.rows, audioRoomId: arId });
+    } catch (e) { console.error("GET recording-sessions", e); res.status(500).json({ error: "failed" }); }
+  });
+
   // ─────────── Photo Room — produsent-side bilde-review-cockpit ───────────────
   // Gjenbruker capture_assets (rating/flagged/rejected/exif/preview_key fra iPad-
   // culling). Net-nytt: per-bilde review-status (godkjent/trenger-redigering) +

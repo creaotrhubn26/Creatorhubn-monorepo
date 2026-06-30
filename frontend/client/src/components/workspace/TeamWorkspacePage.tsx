@@ -6,7 +6,7 @@
  * Rendrer WorkspaceShell + aktivt tab. Andre tabs enn Oversikt får et
  * pent «kommer»-skall inntil de wires (bygges ett om gangen).
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useRoute, useLocation } from 'wouter';
 import { Box, Typography, Stack, Snackbar, Alert, Dialog, DialogContent } from '@mui/material';
 import { useAuth } from '@/hooks/useAuth';
@@ -27,9 +27,11 @@ import TeamTab from './tabs/TeamTab';
 import SoundRoomTab from './tabs/SoundRoomTab';
 import VideoRoomTab from './tabs/VideoRoomTab';
 import PhotoRoomTab from './tabs/PhotoRoomTab';
+import LaaterTab from './tabs/LaaterTab';
+import SesjonerTab from './tabs/SesjonerTab';
 import WorkspaceChatPanel from './WorkspaceChatPanel';
 import { usePresence } from './usePresence';
-import { ws, WS_NAV } from './workspaceTheme';
+import { ws, WS_NAV, navForProfession, isMusicProfession } from './workspaceTheme';
 
 // Prøveprosjekt (Sara & Amir) — byttes med ekte prosjekt-fetch i wire-fasen.
 const SAMPLE_PROJECT = {
@@ -123,10 +125,23 @@ const TeamWorkspacePage: React.FC = () => {
   const project = { ...(realProject || { ...SAMPLE_PROJECT, id: projectId }), members };
   const wsUser = {
     name: user?.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : (user?.name || user?.email || 'Bruker'),
-    role: user?.profession === 'videographer' ? 'Videograf' : 'Fotograf',
+    role: isMusicProfession(user?.profession) ? 'Musikkprodusent' : (user?.profession === 'videographer' ? 'Videograf' : 'Fotograf'),
     email: user?.email || null,
     avatarUrl: user?.avatarUrl || null,
   };
+
+  // Profesjons-filtrert nav — musikkprodusent får Låter/Sesjoner/Sound Room
+  // i stedet for Shotlist/Produksjonskart/Photo+Video Room.
+  const nav = useMemo(() => navForProfession(user?.profession), [user?.profession]);
+  // Hvis aktiv fane ikke finnes i profesjonens nav (f.eks. delt lenke til
+  // 'shotlist' for en musikkprodusent), fall tilbake til Oversikt.
+  useEffect(() => {
+    if (!nav.length) return;
+    const valid = new Set(nav.map((n) => n.key));
+    // 'chat' og universelle finnes alltid i nav; rom/visuelle kan mangle.
+    if (!valid.has(tab) && tab !== 'oversikt') goTab('oversikt');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, nav]);
 
   const navItem = WS_NAV.find((n) => n.key === tab);
 
@@ -135,6 +150,8 @@ const TeamWorkspacePage: React.FC = () => {
     prosjektplan: <ProsjektplanTab projectId={projectId} />,
     produksjonskart: <ProduksjonskartTab projectId={projectId} />,
     shotlist: <ShotlistTab projectId={projectId} />,
+    laater: <LaaterTab projectId={projectId} />,
+    sesjoner: <SesjonerTab projectId={projectId} />,
     moodboard: <MoodboardTab projectId={projectId} />,
     media: <MediaTab projectId={projectId} />,
     leveranser: <LeveranserTab projectId={projectId} />,
@@ -162,6 +179,7 @@ const TeamWorkspacePage: React.FC = () => {
       onLogout={() => { try { (logout as any)?.(); } catch { window.location.href = '/login'; } }}
       activeTab={tab}
       onTab={goTab}
+      navItems={nav}
       onClientView={() => goTab('kundevisning')}
       onInvite={() => goTab('team')}
     >
