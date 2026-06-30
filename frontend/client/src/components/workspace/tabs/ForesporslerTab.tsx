@@ -21,8 +21,10 @@ import EmailOutlined from '@mui/icons-material/EmailOutlined';
 import PhoneOutlined from '@mui/icons-material/PhoneOutlined';
 import PlaceOutlined from '@mui/icons-material/PlaceOutlined';
 import Close from '@mui/icons-material/Close';
+import DesignServices from '@mui/icons-material/DesignServices';
 import { apiRequest } from '@/lib/queryClient';
 import ProjectCreationWithMemoryCards from '../../project/ProjectCreationWithMemoryCards';
+import ContactFormDesigner from '../ContactFormDesigner';
 import { ws } from '../workspaceTheme';
 import { WsCard, WsTag } from '../ui';
 
@@ -43,6 +45,7 @@ const fmtAmount = (n?: number) => (n && n > 0 ? `${Math.round(n).toLocaleString(
 const ForesporslerTab: React.FC<{ projectId: string; profession?: string; userId?: string; userName?: string }> = ({ profession, userId, userName }) => {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [designer, setDesigner] = useState(false);          // kontaktskjema-bygger
   const [active, setActive] = useState<any | null>(null);   // «Opprett prosjekt»
   const [replyTo, setReplyTo] = useState<any | null>(null);  // «Svar»
   const [replyText, setReplyText] = useState('');
@@ -95,6 +98,8 @@ const ForesporslerTab: React.FC<{ projectId: string; profession?: string; userId
     setToast('Prosjekt opprettet — henvendelsen og dialogen er lagt i prosjekt-chatten');
   };
 
+  if (designer) return <ContactFormDesigner onBack={() => setDesigner(false)} />;
+
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', py: 10 }}><CircularProgress sx={{ color: ws.accent }} /></Box>;
 
   return (
@@ -104,7 +109,11 @@ const ForesporslerTab: React.FC<{ projectId: string; profession?: string; userId
           <Typography sx={{ fontSize: 20, fontWeight: 800 }}>Forespørsler</Typography>
           <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Innkommende henvendelser fra potensielle kunder. Svar på e-post, eller opprett prosjekt med ett klikk — veiviseren fylles ut automatisk.</Typography>
         </Box>
-        {items.length > 0 && <WsTag label={`${items.length} nye`} tone="amber" />}
+        <Stack direction="row" spacing={1} alignItems="center">
+          {items.length > 0 && <WsTag label={`${items.length} nye`} tone="amber" />}
+          <Button size="small" variant="outlined" startIcon={<DesignServices sx={{ fontSize: 17 }} />} onClick={() => setDesigner(true)}
+            sx={{ color: ws.accent, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 600, whiteSpace: 'nowrap' }}>Kontaktskjema</Button>
+        </Stack>
       </Stack>
 
       <WsCard>
