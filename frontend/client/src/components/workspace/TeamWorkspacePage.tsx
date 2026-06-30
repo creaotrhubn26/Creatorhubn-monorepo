@@ -163,6 +163,16 @@ const TeamWorkspacePage: React.FC = () => {
       .catch(() => setClientActivityUnseen(0));
   }, [projectId, tab]);
 
+  // Ulest band-aktivitet (band-kommentarer) → badge på Sound Room. Nullstilles når
+  // Sound Room-fanen åpnes (marker sett).
+  const [bandUnseen, setBandUnseen] = useState(0);
+  useEffect(() => {
+    if (!projectId || projectId === 'sample') { setBandUnseen(0); return; }
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/audio-room/unseen-comments`)
+      .then((r: any) => setBandUnseen(r?.unseenCount || 0))
+      .catch(() => setBandUnseen(0));
+  }, [projectId, tab]);
+
   // Profesjons-filtrert nav — musikkprodusent får Låter/Sesjoner/Sound Room
   // i stedet for Shotlist/Produksjonskart/Photo+Video Room.
   const nav = useMemo(() => navForProfession(user?.profession, { isMentor }), [user?.profession, isMentor]);
@@ -215,7 +225,7 @@ const TeamWorkspacePage: React.FC = () => {
       activeTab={tab}
       onTab={goTab}
       navItems={nav}
-      badges={{ foresporsler: inboundCount, kundevisning: clientActivityUnseen }}
+      badges={{ foresporsler: inboundCount, kundevisning: clientActivityUnseen, 'sound-room': bandUnseen }}
       onClientView={() => goTab('kundevisning')}
       onInvite={() => goTab('team')}
     >

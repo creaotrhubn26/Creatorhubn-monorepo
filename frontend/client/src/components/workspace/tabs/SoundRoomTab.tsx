@@ -137,7 +137,14 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   }, [projectId, isReal]);
 
   // Re-last companion-status + utgivelse når lydrommet er løst (audioRoomId-scoping).
-  useEffect(() => { if (roomId) { loadPt(); loadShowcaseRelease(roomId); } }, [roomId]);
+  // Marker også band-kommentarer som sett (tømmer Sound Room-badgen).
+  useEffect(() => {
+    if (roomId) {
+      loadPt();
+      loadShowcaseRelease(roomId);
+      if (isReal) apiRequest(`/api/projects/${encodeURIComponent(projectId)}/audio-room/seen`, { method: 'POST', body: {} }).catch(() => {});
+    }
+  }, [roomId]);
 
   const openRoom = () => { if (roomId) navigate(`/audio-review/${roomId}?ws=${encodeURIComponent(projectId)}`); };
   const linkTrack = async (trackId: string) => {
