@@ -33,6 +33,7 @@ import Movie from '@mui/icons-material/Movie';
 import GraphicEq from '@mui/icons-material/GraphicEq';
 import Album from '@mui/icons-material/Album';
 import LibraryMusic from '@mui/icons-material/LibraryMusic';
+import School from '@mui/icons-material/School';
 import Visibility from '@mui/icons-material/Visibility';
 import EventNote from '@mui/icons-material/EventNote';
 import CalendarToday from '@mui/icons-material/CalendarToday';
@@ -48,7 +49,7 @@ import { ws, workspaceDarkTheme, WS_NAV, type WsNavItem } from './workspaceTheme
 const ICONS: Record<string, React.ElementType> = {
   Dashboard, AccountTree, Map, PhotoCameraBack, GridView, PermMedia, LocalShipping,
   CheckCircleOutline, Group, ChatBubbleOutline, PhotoCamera, Videocam, Movie, GraphicEq,
-  Visibility, EventNote, Album, LibraryMusic,
+  Visibility, EventNote, Album, LibraryMusic, School,
 };
 
 const GROUP_LABEL: Record<string, string> = {

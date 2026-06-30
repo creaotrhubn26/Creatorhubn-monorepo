@@ -29,6 +29,8 @@ import VideoRoomTab from './tabs/VideoRoomTab';
 import PhotoRoomTab from './tabs/PhotoRoomTab';
 import LaaterTab from './tabs/LaaterTab';
 import SesjonerTab from './tabs/SesjonerTab';
+import AcademyInstructorAdminStudio from '../academy/AcademyInstructorAdminStudio';
+import { AcademyProvider } from '@/contexts/AcademyContext';
 import WorkspaceChatPanel from './WorkspaceChatPanel';
 import { usePresence } from './usePresence';
 import { ws, WS_NAV, navForProfession, isMusicProfession } from './workspaceTheme';
@@ -66,6 +68,17 @@ const TeamWorkspacePage: React.FC = () => {
   // URL er sannhetskilden for aktiv fane — så navigate('/workspace/:id/:tab')
   // fra hvilken som helst fane (f.eks. «Se alle»-knapper) bytter fane.
   useEffect(() => { const t = paramsTab?.tab; if (t && t !== tab) setTab(t); }, [paramsTab?.tab]);
+
+  // Mentor/instruktør-status → Academy-admin-fane (samme gating som dashboardet).
+  const [isMentor, setIsMentor] = useState(false);
+  useEffect(() => {
+    const uid = user?.id;
+    if (!uid || uid === 'guest') { setIsMentor(false); return; }
+    if (user?.profession === 'enterprise' || (user as any)?.role === 'instructor') { setIsMentor(true); return; }
+    apiRequest(`/api/community/user/${encodeURIComponent(uid)}/roles`)
+      .then((r: any) => setIsMentor((r?.roles || []).some((role: any) => role?.name === 'Mentor')))
+      .catch(() => {});
+  }, [user?.id, user?.profession]);
   const [accepted, setAccepted] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const { online } = usePresence(projectId, `/workspace/${projectId}/${tab}`);
@@ -132,7 +145,7 @@ const TeamWorkspacePage: React.FC = () => {
 
   // Profesjons-filtrert nav — musikkprodusent får Låter/Sesjoner/Sound Room
   // i stedet for Shotlist/Produksjonskart/Photo+Video Room.
-  const nav = useMemo(() => navForProfession(user?.profession), [user?.profession]);
+  const nav = useMemo(() => navForProfession(user?.profession, { isMentor }), [user?.profession, isMentor]);
   // Hvis aktiv fane ikke finnes i profesjonens nav (f.eks. delt lenke til
   // 'shotlist' for en musikkprodusent), fall tilbake til Oversikt.
   useEffect(() => {
@@ -152,6 +165,7 @@ const TeamWorkspacePage: React.FC = () => {
     shotlist: <ShotlistTab projectId={projectId} />,
     laater: <LaaterTab projectId={projectId} />,
     sesjoner: <SesjonerTab projectId={projectId} />,
+    academy: <AcademyProvider><AcademyInstructorAdminStudio /></AcademyProvider>,
     moodboard: <MoodboardTab projectId={projectId} />,
     media: <MediaTab projectId={projectId} />,
     leveranser: <LeveranserTab projectId={projectId} />,

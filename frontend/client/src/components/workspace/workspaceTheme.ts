@@ -83,6 +83,8 @@ export interface WsNavItem {
    * Se navForProfession().
    */
   professions?: Array<'visual' | 'music'>;
+  /** Kun synlig for mentorer/instruktører (uavhengig av profesjon). */
+  mentorOnly?: boolean;
 }
 
 // Venstre-nav — eksakt rekkefølge fra Daniels design. Items er tagget med
@@ -101,6 +103,8 @@ export const WS_NAV: WsNavItem[] = [
   { key: 'oppgaver', label: 'Oppgaver', icon: 'CheckCircleOutline', group: 'hoved', badge: 12, route: true },
   { key: 'team', label: 'Team', icon: 'Group', group: 'hoved', route: true },
   { key: 'chat', label: 'Chat', icon: 'ChatBubbleOutline', group: 'hoved', route: true },
+  // Academy-administrasjon — kun mentorer/instruktører (uavhengig av profesjon)
+  { key: 'academy', label: 'Academy', icon: 'School', group: 'hoved', route: true, mentorOnly: true },
   // Smart Rom — profesjons-spesifikke
   { key: 'photo-room', label: 'Photo Room', icon: 'PhotoCamera', group: 'rom', online: true, route: true, professions: ['visual'] },
   { key: 'video-room', label: 'Video Room', icon: 'Videocam', group: 'rom', online: true, route: true, professions: ['visual'] },
@@ -125,9 +129,14 @@ export function isMusicProfession(profession?: string | null): boolean {
  * for foto/video; 'music'-items for musikkprodusenter. Rekkefølgen i WS_NAV
  * bevares (musikk- og visuell-varianter er interleavet på riktig plass).
  */
-export function navForProfession(profession?: string | null): WsNavItem[] {
+export function navForProfession(
+  profession?: string | null,
+  opts?: { isMentor?: boolean },
+): WsNavItem[] {
   const music = isMusicProfession(profession);
+  const isMentor = !!opts?.isMentor;
   return WS_NAV.filter((n) => {
+    if (n.mentorOnly && !isMentor) return false; // mentor-gated (uavhengig av profesjon)
     if (!n.professions) return true;
     return music ? n.professions.includes('music') : n.professions.includes('visual');
   });
