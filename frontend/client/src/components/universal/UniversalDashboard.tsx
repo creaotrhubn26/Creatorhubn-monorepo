@@ -2264,7 +2264,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
             left: 0,
             right: 0,
             height: '4px',
-            background: `linear-gradient(90deg, ${customBranding.color} 0%, #6366F1 50%, #10B981 100%)`,
+            background: `linear-gradient(90deg, ${customBranding.color} 0%, #ff8c00 50%, #ffb347 100%)`,
           }
         }}>
           <Typography variant="h6" sx={{ mb: 2.5, fontWeight: 700, color: 'text.primary', display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -3099,7 +3099,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
   // (matcher landing direkte); videograf rød, musikkprodusent blå,
   // vendor grønn, enterprise lilla. Alle på samme dark navy base så
   // CreatorHub-identitet er konsistent men hver fag har egen "lyd".
-  const professionAccent = customBranding.color || '#ffba6c';
+  const professionAccent = customBranding.color || '#ff8c00';
 
   // Redigeringsvendors (foto/video) ser KUN redigerings-arbeidsområdet
   // (Partner-dashboard + oppdrag/compliance/katalog/chat) — ALDRI den generiske
@@ -3574,9 +3574,9 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
           PaperProps={{
             sx: {
               borderRadius: '24px',
-              background: 'radial-gradient(circle at top, rgba(255,186,108,0.10) 0%, rgba(15,10,7,0.98) 36%, #0a0807 100%)',
+              background: 'radial-gradient(circle at top, rgba(255,140,0,0.10) 0%, rgba(15,10,7,0.98) 36%, #0a0807 100%)',
               color: '#fff5e8',
-              border: '1px solid rgba(255,186,108,0.18)',
+              border: '1px solid rgba(255,140,0,0.18)',
               boxShadow: '0 24px 80px rgba(0,0,0,0.55)',
               maxHeight: '92vh',
             }
@@ -3586,19 +3586,19 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
             px: 3,
             pt: 3,
             pb: 2,
-            background: 'linear-gradient(135deg, rgba(255,186,108,0.16), rgba(255,186,108,0.02))',
-            borderBottom: '1px solid rgba(255,186,108,0.18)',
+            background: 'linear-gradient(135deg, rgba(255,140,0,0.16), rgba(255,140,0,0.02))',
+            borderBottom: '1px solid rgba(255,140,0,0.18)',
             display: 'flex',
             alignItems: 'center',
             gap: 2,
             justifyContent: 'space-between',
           }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-              <Avatar sx={{ bgcolor: 'rgba(255,186,108,0.18)', color: '#ffba6c' }}>
+              <Avatar sx={{ bgcolor: 'rgba(255,140,0,0.18)', color: '#ff8c00' }}>
                 <AccountBalance />
               </Avatar>
               <Box>
-                <Typography variant="overline" sx={{ color: '#ffba6c', letterSpacing: '0.18em' }}>
+                <Typography variant="overline" sx={{ color: '#ff8c00', letterSpacing: '0.18em' }}>
                   Split Sheets
                 </Typography>
                 <Typography variant="h5" sx={{ fontFamily: '"Space Grotesk", sans-serif', fontWeight: 700 }}>
@@ -3614,7 +3614,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                   borderRadius: '999px',
                   px: 2.5,
                   py: 1,
-                  bgcolor: '#ffba6c',
+                  bgcolor: '#ff8c00',
                   color: '#150d05',
                   fontWeight: 700,
                   textTransform: 'none',
@@ -3638,8 +3638,8 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                   py: 1,
                   textTransform: 'none',
                   color: '#fff5e8',
-                  borderColor: 'rgba(255,186,108,0.32)',
-                  '&:hover': { borderColor: '#ffba6c', bgcolor: 'rgba(255,186,108,0.08)' },
+                  borderColor: 'rgba(255,140,0,0.32)',
+                  '&:hover': { borderColor: '#ff8c00', bgcolor: 'rgba(255,140,0,0.08)' },
                 }}
               >
                 Admin
@@ -3665,9 +3665,9 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                   color: 'rgba(246,242,234,0.62)',
                   minHeight: 40,
                   py: 0.5,
-                  '&.Mui-selected': { color: '#ffba6c' },
+                  '&.Mui-selected': { color: '#ff8c00' },
                 },
-                '& .MuiTabs-indicator': { backgroundColor: '#ffba6c', height: 3, borderRadius: 2 },
+                '& .MuiTabs-indicator': { backgroundColor: '#ff8c00', height: 3, borderRadius: 2 },
               }}
             >
               <Tab value="stats" label="Statistikk & honorar" />
@@ -3708,8 +3708,8 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                       borderRadius: '999px', px: 2, py: 0.75,
                       textTransform: 'none',
                       color: '#fff5e8',
-                      borderColor: 'rgba(255,186,108,0.32)',
-                      '&:hover': { borderColor: '#ffba6c', bgcolor: 'rgba(255,186,108,0.08)' },
+                      borderColor: 'rgba(255,140,0,0.32)',
+                      '&:hover': { borderColor: '#ff8c00', bgcolor: 'rgba(255,140,0,0.08)' },
                     }}
                   >
                     Kjør onboarding på nytt
@@ -3866,7 +3866,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
               startIcon={<Collections />}
               onClick={() => setShowShowcase(true)}
               sx={{ 
-                background: 'linear-gradient(135deg, #6366F1 0%, #4F46E5 100%)',
+                background: 'linear-gradient(135deg, #ff8c00 0%, #e67e00 100%)',
                 color: 'white',
                 px: 4,
                 py: 1.5,
@@ -3876,7 +3876,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                 boxShadow: '0 4px 20px rgba(99, 102, 241, 0.35)',
                 transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                 '&:hover': { 
-                  background: 'linear-gradient(135deg, #4F46E5 0%, #6366F1 100%)',
+                  background: 'linear-gradient(135deg, #e67e00 0%, #ff8c00 100%)',
                   transform: 'translateY(-3px)',
                   boxShadow: '0 8px 30px rgba(99, 102, 241, 0.45)',
                 },
@@ -3935,7 +3935,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                 left: 0,
                 right: 0,
                 height: '4px',
-                background: `linear-gradient(90deg, ${customBranding.color} 0%, ${customBranding.color}80 50%, #6366F1 100%)`,
+                background: `linear-gradient(90deg, ${customBranding.color} 0%, ${customBranding.color}80 50%, #ff8c00 100%)`,
               },
               '&:hover': {
                 boxShadow: '0 16px 48px rgba(0, 0, 0, 0.12)',
@@ -4549,7 +4549,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                 left: 0,
                 right: 0,
                 height: '3px',
-                background: `linear-gradient(90deg, #6366F1 0%, #818CF8 100%)`,
+                background: `linear-gradient(90deg, #ff8c00 0%, #ffb347 100%)`,
                 opacity: 0,
                 transition: 'opacity 0.3s ease',
               },
@@ -4571,7 +4571,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                     p: { xs: 1, sm: 1.5 },
                     borderRadius: 3,
                     bgcolor: 'rgba(99, 102, 241, 0.12)',
-                    color: '#6366F1',
+                    color: '#ff8c00',
                     minWidth: 'fit-content',
                     display: 'flex',
                     alignItems: 'center',
@@ -5376,7 +5376,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                     left: 0,
                     right: 0,
                     height: '4px',
-                    background: 'linear-gradient(90deg, #6366F1 0%, #10B981 50%, #F59E0B 100%)',
+                    background: 'linear-gradient(90deg, #ff8c00 0%, #ffb347 50%, #F59E0B 100%)',
                   }
                 }}>
                   <MuiCardContent sx={{ pt: 3 }}>
@@ -5429,7 +5429,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                               '&:hover': { bgcolor: 'rgba(99, 102, 241, 0.2)' }
                             }}
                           >
-                            <LocationOn sx={{ fontSize: '1.2rem', color: '#6366F1' }} />
+                            <LocationOn sx={{ fontSize: '1.2rem', color: '#ff8c00' }} />
                           </IconButton>
                         </Tooltip>
                       )}
@@ -5445,11 +5445,11 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                           border: '1px solid rgba(99, 102, 241, 0.1)',
                           height: '100%'
                         }}>
-                          <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600, color: '#6366F1', display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600, color: '#ff8c00', display: 'flex', alignItems: 'center', gap: 0.5 }}>
                             <WbCloudy sx={{ fontSize: '1.1rem' }} />
                             Værmelding
                           </Typography>
-                          <Typography variant="h4" sx={{ color: '#6366F1', fontWeight: 700 }}>
+                          <Typography variant="h4" sx={{ color: '#ff8c00', fontWeight: 700 }}>
                             {locationIntelligence.weatherData.temperature}°C
                           </Typography>
                           <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
@@ -8959,9 +8959,9 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
             maxHeight: '92vh',
             borderRadius: '24px',
             overflow: 'hidden',
-            background: 'radial-gradient(circle at top, rgba(255,186,108,0.10) 0%, rgba(15,10,7,0.98) 36%, #0a0807 100%)',
+            background: 'radial-gradient(circle at top, rgba(255,140,0,0.10) 0%, rgba(15,10,7,0.98) 36%, #0a0807 100%)',
             color: '#fff5e8',
-            border: '1px solid rgba(255,186,108,0.18)',
+            border: '1px solid rgba(255,140,0,0.18)',
             boxShadow: '0 24px 80px rgba(0,0,0,0.55)',
           }
         }}
@@ -8973,15 +8973,15 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          background: 'linear-gradient(135deg, rgba(255,186,108,0.16), rgba(255,186,108,0.02))',
-          borderBottom: '1px solid rgba(255,186,108,0.18)',
+          background: 'linear-gradient(135deg, rgba(255,140,0,0.16), rgba(255,140,0,0.02))',
+          borderBottom: '1px solid rgba(255,140,0,0.18)',
         }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            <Avatar sx={{ bgcolor: 'rgba(255,186,108,0.18)', color: '#ffba6c' }}>
+            <Avatar sx={{ bgcolor: 'rgba(255,140,0,0.18)', color: '#ff8c00' }}>
               <Store />
             </Avatar>
             <Box>
-              <Typography variant="overline" sx={{ color: '#ffba6c', letterSpacing: '0.18em' }}>
+              <Typography variant="overline" sx={{ color: '#ff8c00', letterSpacing: '0.18em' }}>
                 Marketplace
               </Typography>
               <Typography component="div" variant="h5" sx={{ fontWeight: 700, fontFamily: '"Space Grotesk", sans-serif' }}>
@@ -9004,10 +9004,10 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                 severity={marketplaceInstallNotice.severity}
                 sx={{
                   mb: 2,
-                  bgcolor: 'rgba(255,186,108,0.08)',
+                  bgcolor: 'rgba(255,140,0,0.08)',
                   color: '#fff5e8',
-                  border: '1px solid rgba(255,186,108,0.22)',
-                  '& .MuiAlert-icon': { color: '#ffba6c' },
+                  border: '1px solid rgba(255,140,0,0.22)',
+                  '& .MuiAlert-icon': { color: '#ff8c00' },
                 }}
               >
                 {marketplaceInstallNotice.message}
