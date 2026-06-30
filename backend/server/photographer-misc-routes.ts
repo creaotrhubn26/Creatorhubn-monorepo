@@ -28,7 +28,7 @@ export function setupPhotographerMiscRoutes(
       }
     };
 
-    const [unreadMessages, newGallerySubmissions, pendingPrintOrders] = await Promise.all([
+    const [unreadMessages, newGallerySubmissions, pendingPrintOrders, recentDownloads] = await Promise.all([
       safeCount('unread_messages', async () => {
         const r = await pool.query(
           `SELECT COUNT(*)::int AS c
@@ -66,9 +66,20 @@ export function setupPhotographerMiscRoutes(
         );
         return Number(r.rows[0]?.c ?? 0);
       }),
+      // Klient-nedlastinger siste 7 dager (showcase) — varsler ellers kun på e-post
+      safeCount('recent_downloads', async () => {
+        const r = await pool.query(
+          `SELECT COUNT(*)::int AS c
+           FROM gallery_download_audit
+           WHERE photographer_id = $1
+             AND downloaded_at > NOW() - INTERVAL '7 days'`,
+          [photographerId],
+        );
+        return Number(r.rows[0]?.c ?? 0);
+      }),
     ]);
 
-    res.json({ unreadMessages, newGallerySubmissions, pendingPrintOrders });
+    res.json({ unreadMessages, newGallerySubmissions, pendingPrintOrders, recentDownloads });
   });
 
   // ─────────────────────────────────────────────────────────────────────────
