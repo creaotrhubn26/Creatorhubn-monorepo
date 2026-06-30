@@ -1289,7 +1289,10 @@ export default function ProjectCreationWithMemoryCards({
   };
   const { getCurrentUserProfession, professionConfigs, isLoading: professionsLoading, getProfessionDisplayName, getProfessionIcon } = useDynamicProfessions();
   const userProfession = user?.profession || profession || getCurrentUserProfession();
-  
+  // Musikkprodusent → skjul foto/video-spesifikke seksjoner (Shot List, Minnekort,
+  // DaVinci, kamera). Musikk-arbeidsflyten + bidragsytere + TONO/GRAMO beholdes.
+  const isMusicProducer = userProfession === 'music_producer';
+
   // Narrowed profession types for components that require specific union types
   const memoryCardProfession: 'photographer' | 'videographer' = 
     userProfession === 'videographer' ? 'videographer' : 'photographer';
@@ -4404,7 +4407,9 @@ useEffect(() => {
          ========================================== */}
       {/* ==========================================
          CAMERA DETECTION SECTION (før Shot List — velg utstyr først)
+         Skjult for musikkprodusent (kamera/DaVinci er foto/video-spesifikt).
          ========================================== */}
+      {!isMusicProducer && (
       <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: 'rgba(20,22,30,0.92)' }}>
         <CardContent>
           <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary, mb: 2 }}>
@@ -4448,8 +4453,9 @@ useEffect(() => {
           </Button>
         </CardContent>
       </Card>
+      )}
 
-      <Collapse in={!!projectData.projectType}>
+      <Collapse in={!!projectData.projectType && !isMusicProducer}>
         <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: 'rgba(20,22,30,0.92)' }}>
           <CardContent>
             <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary, mb: 2 }}>
