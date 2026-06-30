@@ -428,7 +428,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
       const parts = String(m.name || "").trim().split(/\s+/);
       await pool.query(
         `INSERT INTO clients (photographer_id, first_name, last_name, email, customer_type, notes, created_at, updated_at)
-         VALUES ($1,$2,$3,$4,'band',$5,NOW(),NOW())`,
+         VALUES ($1,$2,$3,$4,'person',$5,NOW(),NOW())`,
         [photographerId, parts[0] || String(m.name || "Bandmedlem"), parts.slice(1).join(" ") || "", email,
          `Bandmedlem (${m.instrument || m.role || "bidragsyter"}) – lagt til via Sound Room`]);
     } catch { /* best-effort */ }

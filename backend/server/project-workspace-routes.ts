@@ -1409,7 +1409,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
             const parts = name.trim().split(/\s+/);
             await pool.query(
               `INSERT INTO clients (photographer_id, first_name, last_name, email, customer_type, notes, created_at, updated_at)
-               VALUES ($1,$2,$3,$4,'band',$5,NOW(),NOW())`,
+               VALUES ($1,$2,$3,$4,'person',$5,NOW(),NOW())`,
               [uid, parts[0] || name, parts.slice(1).join(" ") || "", email,
                `Bandmedlem (${instrument || role || "bidragsyter"}) – lagt til via Sound Room`]);
           } catch { /* best-effort */ }
