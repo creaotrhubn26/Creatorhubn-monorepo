@@ -3832,7 +3832,36 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
             >
               GÅ TIL ACADEMY
             </Button>
-            
+
+            {/* Mentor/instruktør → Academy-administrasjon (instruktør-hub). Samme
+                tilgang som Academy-fanen (isMentor || enterprise). */}
+            {(isMentor || profession === 'enterprise') && (
+              <Button
+                variant="outlined"
+                startIcon={<Settings />}
+                onClick={() => setLocation('/academy/instructors')}
+                sx={{
+                  color: customBranding.color,
+                  borderColor: alpha(customBranding.color, 0.45),
+                  px: 4,
+                  py: 1.5,
+                  fontSize: '1rem',
+                  fontWeight: 600,
+                  borderRadius: 3,
+                  textTransform: 'none',
+                  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                  '&:hover': {
+                    borderColor: customBranding.color,
+                    background: alpha(customBranding.color, 0.10),
+                    transform: 'translateY(-3px)',
+                  },
+                  '&:active': { transform: 'translateY(-1px)' },
+                }}
+              >
+                Administrer Academy
+              </Button>
+            )}
+
             <Button variant="contained"
               startIcon={<Collections />}
               onClick={() => setShowShowcase(true)}
