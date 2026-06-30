@@ -112,6 +112,7 @@ export const WS_NAV: WsNavItem[] = [
   // Edit Room skjult inntil videre — planlegges senere (redigerer-/leveranse-cockpit).
   // { key: 'edit-room', label: 'Edit Room', icon: 'Movie', group: 'rom', online: true },
   // Kundeportal
+  { key: 'foresporsler', label: 'Forespørsler', icon: 'MoveToInbox', group: 'klient', route: true },
   { key: 'kundevisning', label: 'Kundevisning', icon: 'Visibility', group: 'klient' },
   { key: 'avtaler', label: 'Avtaler', icon: 'EventNote', group: 'klient' },
 ];

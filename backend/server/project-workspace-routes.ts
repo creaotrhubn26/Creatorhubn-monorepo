@@ -685,6 +685,117 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     } catch (e) { console.error("GET revision-requests", e); res.json({ requests: [], openCount: 0 }); }
   });
 
+  // ─────────── Forespørsler (samlet innboks) ───────────────────────────────────
+  // Aggregerer innkommende klient-forespørsler ÉN plass: revisjons-forespørsler
+  // (capture_revision_requests) + klient-kommentarer/feedback (client_image_comments
+  // via prosjektets gallerier). Brukes av «Forespørsler»-fanen + nav-badgen.
+  app.get("/api/projects/:projectId/foresporsler", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const pid = req.params.projectId;
+      const items: any[] = [];
+      // 1) Revisjons-forespørsler
+      const rev = await pool.query(
+        `SELECT id, original_filename, client_email, note, status, source, created_at, resolved_at
+           FROM capture_revision_requests WHERE project_id = $1 ORDER BY created_at DESC LIMIT 100`,
+        [pid],
+      ).catch(() => ({ rows: [] }));
+      for (const x of rev.rows) {
+        const open = x.status !== "resolved" && x.status !== "done";
+        items.push({ id: `rev:${x.id}`, type: "revision", title: x.original_filename || "Revisjons-forespørsel", from: x.client_email || "Klient", note: x.note || "", status: x.status || "open", open, createdAt: x.created_at, tab: "leveranser" });
+      }
+      // 2) Klient-kommentarer/feedback (åpne = uten produsent-svar)
+      const g = await pool.query(`SELECT id FROM photographer_client_galleries WHERE project_id = $1`, [pid]).catch(() => ({ rows: [] }));
+      const gids = g.rows.map((r: any) => r.id);
+      if (gids.length) {
+        const cm = await pool.query(
+          `SELECT id, client_name, client_email, comment, comment_type, status, photographer_response, created_at
+             FROM client_image_comments WHERE gallery_id = ANY($1::uuid[]) ORDER BY created_at DESC LIMIT 100`,
+          [gids],
+        ).catch(() => ({ rows: [] }));
+        for (const c of cm.rows) {
+          const open = !c.photographer_response && c.status !== "resolved";
+          items.push({ id: `cmt:${c.id}`, type: c.comment_type === "change_request" ? "revision" : "feedback", title: c.comment_type === "change_request" ? "Endrings-ønske" : "Klient-kommentar", from: c.client_name || c.client_email || "Klient", note: c.comment || "", status: c.status || (c.photographer_response ? "answered" : "open"), open, createdAt: c.created_at, tab: "kundevisning" });
+        }
+      }
+      items.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      res.json({ items, openCount: items.filter((i) => i.open).length });
+    } catch (e) { console.error("GET foresporsler", e); res.json({ items: [], openCount: 0 }); }
+  });
+
+  // ─────────── Innkommende henvendelser / leads (BRUKER-scopet) ────────────────
+  // Leser `client_submissions` — SAMME kilde som UniversalDashboard sin
+  // CustomerInquiryCenter (skjema-innsendinger fra potensielle kunder), scopet på
+  // `vendor_email` = innlogget creator. status booked/converted = allerede gjort om
+  // til prosjekt (prosjekt-opprettelse setter SET status='booked'). Brukes av
+  // «Forespørsler»-fanen for å vise leads + «Opprett prosjekt». IKKE project_id-
+  // scopet (leads er pre-prosjekt) — egen session-gate i stedet for guard().
+  const INBOUND_DONE = new Set(["booked", "converted", "archived", "spam", "declined", "lost"]);
+  app.get("/api/foresporsler/inbound", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const exists = await pool.query(`SELECT to_regclass('public.client_submissions') AS t`).catch(() => ({ rows: [{ t: null }] }));
+      if (!exists.rows[0]?.t) return res.json({ items: [], openCount: 0 });
+      const cols = await pool.query(
+        `SELECT column_name FROM information_schema.columns WHERE table_name = 'client_submissions'`,
+      ).catch(() => ({ rows: [] as any[] }));
+      const has = new Set(cols.rows.map((c: any) => c.column_name));
+      const where = has.has("vendor_email") ? `WHERE vendor_email = $1` : ``;
+      const params = has.has("vendor_email") ? [session.email] : [];
+      const order = has.has("submitted_at") ? "submitted_at" : "created_at";
+      const r = await pool.query(
+        `SELECT * FROM client_submissions ${where} ORDER BY ${order} DESC NULLS LAST LIMIT 100`,
+        params,
+      ).catch(() => ({ rows: [] as any[] }));
+      const items = r.rows
+        .filter((s: any) => !INBOUND_DONE.has(String(s.status || "").toLowerCase()))
+        .filter((s: any) => !(has.has("project_id") && s.project_id))
+        .map((s: any) => ({
+          id: String(s.id),
+          source: "submission",
+          title: s.project_type ? `${s.project_type} – ${s.name || s.client_name || "Henvendelse"}` : (s.name || s.client_name || "Henvendelse"),
+          clientName: s.name || s.client_name || "Kunde",
+          clientEmail: s.email || s.client_email || "",
+          clientPhone: s.phone || s.client_phone || "",
+          eventType: s.project_type || s.event_type || "",
+          eventDate: s.event_date || null,
+          amount: s.budget != null ? Number(s.budget) || 0 : 0,
+          venueName: s.location || "",
+          note: s.description || s.message || "",
+          status: s.status || "new",
+          isRead: !!s.is_read,
+          createdAt: s.submitted_at || s.created_at || null,
+        }));
+      res.json({ items, openCount: items.filter((i: any) => !i.isRead).length || items.length });
+    } catch (e) { console.error("GET foresporsler/inbound", e); res.json({ items: [], openCount: 0 }); }
+  });
+
+  // Marker en henvendelse som konvertert til prosjekt (forsvinner fra innboksen).
+  // Prosjekt-opprettelse setter normalt selv status='booked' når den får
+  // submission-id-en, men dette er en idempotent backstop fra fanen.
+  app.post("/api/foresporsler/inbound/:id/convert", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    try {
+      const projectId = String(req.body?.projectId || "").trim() || null;
+      const cols = await pool.query(
+        `SELECT column_name FROM information_schema.columns WHERE table_name = 'client_submissions'`,
+      ).catch(() => ({ rows: [] as any[] }));
+      const has = new Set(cols.rows.map((c: any) => c.column_name));
+      if (!has.has("status")) return res.json({ ok: false });
+      const sets: string[] = [`status = 'booked'`];
+      const params: any[] = [];
+      if (projectId && has.has("project_id")) { params.push(projectId); sets.push(`project_id = $${params.length}`); }
+      if (has.has("updated_at")) sets.push(`updated_at = NOW()`);
+      params.push(req.params.id); const idIdx = params.length;
+      let q = `UPDATE client_submissions SET ${sets.join(", ")} WHERE id = $${idIdx}`;
+      if (has.has("vendor_email")) { params.push(session.email); q += ` AND vendor_email = $${params.length}`; }
+      await pool.query(q, params).catch(() => undefined);
+      res.json({ ok: true });
+    } catch (e) { console.error("POST foresporsler/inbound convert", e); res.json({ ok: false }); }
+  });
+
   // ─────────── Showcase / klient-galleri (LESER photographer_client_galleries) ───
   // Kobler Leveranser til det EKTE leveranse-systemet: klient-galleriet/showcasen
   // klienten faktisk ser. project_id-scopet + canAccessProject. shareUrl =

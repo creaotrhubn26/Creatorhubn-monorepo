@@ -29,6 +29,7 @@ import VideoRoomTab from './tabs/VideoRoomTab';
 import PhotoRoomTab from './tabs/PhotoRoomTab';
 import LaaterTab from './tabs/LaaterTab';
 import SesjonerTab from './tabs/SesjonerTab';
+import ForesporslerTab from './tabs/ForesporslerTab';
 import AcademyInstructorAdminStudio from '../academy/AcademyInstructorAdminStudio';
 import { AcademyProvider } from '@/contexts/AcademyContext';
 import WorkspaceChatPanel from './WorkspaceChatPanel';
@@ -143,6 +144,15 @@ const TeamWorkspacePage: React.FC = () => {
     avatarUrl: user?.avatarUrl || null,
   };
 
+  // Antall nye innkommende henvendelser (leads) → badge på Forespørsler-fanen.
+  const [inboundCount, setInboundCount] = useState(0);
+  useEffect(() => {
+    if (!user?.id) { setInboundCount(0); return; }
+    apiRequest('/api/foresporsler/inbound')
+      .then((r: any) => setInboundCount(Array.isArray(r?.items) ? r.items.length : (r?.openCount || 0)))
+      .catch(() => setInboundCount(0));
+  }, [user?.id, tab]);
+
   // Profesjons-filtrert nav — musikkprodusent får Låter/Sesjoner/Sound Room
   // i stedet for Shotlist/Produksjonskart/Photo+Video Room.
   const nav = useMemo(() => navForProfession(user?.profession, { isMentor }), [user?.profession, isMentor]);
@@ -171,6 +181,7 @@ const TeamWorkspacePage: React.FC = () => {
     leveranser: <LeveranserTab projectId={projectId} />,
     oppgaver: <OppgaverTab projectId={projectId} />,
     avtaler: <AvtalerTab projectId={projectId} />,
+    foresporsler: <ForesporslerTab projectId={projectId} profession={user?.profession} userId={user?.id} userName={user?.firstName || (user as any)?.name || user?.email} />,
     kundevisning: <KundevisningTab projectId={projectId} />,
     team: <TeamTab projectId={projectId} />,
     'sound-room': <SoundRoomTab projectId={projectId} />,
@@ -194,6 +205,7 @@ const TeamWorkspacePage: React.FC = () => {
       activeTab={tab}
       onTab={goTab}
       navItems={nav}
+      badges={{ foresporsler: inboundCount }}
       onClientView={() => goTab('kundevisning')}
       onInvite={() => goTab('team')}
     >
