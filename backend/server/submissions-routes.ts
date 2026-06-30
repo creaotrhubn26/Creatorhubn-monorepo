@@ -2,6 +2,10 @@ import express from "express";
 import type { Pool } from "pg";
 import crypto from "crypto";
 import { readNumber } from "./_shared";
+import { sendTransactionalEmail } from "./transactional-email-service";
+
+const APP_URL = (process.env.PUBLIC_APP_URL || "https://creatorhubn.com").replace(/\/+$/, "");
+const escH = (s: any) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 export interface SubmissionsRoutesDeps {
   app: express.Application;
@@ -180,6 +184,37 @@ export function setupSubmissionsRoutes(deps: SubmissionsRoutesDeps): void {
           }
         })();
       }
+
+      // Standard e-post-varsel til produsenten (via Resend) — sendes idet
+      // forespørselen kommer inn, til e-posten den er rutet til (vendor_email),
+      // ELLER produsentens konto-e-post (users.email via vendorId). Når produsenten
+      // logger inn ser de i tillegg badgen på Forespørsler-fanen. Best-effort.
+      void (async () => {
+        try {
+          let toEmail: string | null = (vendorEmail && String(vendorEmail).trim()) || null;
+          if (!toEmail && vendorId) {
+            const u = await pool.query(`SELECT email FROM users WHERE id = $1 LIMIT 1`, [vendorId]).catch(() => ({ rows: [] as any[] }));
+            toEmail = u.rows[0]?.email || null;
+          }
+          if (!toEmail) return;
+          const rows = [
+            projectType ? ["Type", projectType] : null,
+            eventDate ? ["Dato", eventDate] : null,
+            (budget != null && budget !== "") ? ["Budsjett", `${budget}`] : null,
+            location ? ["Sted", location] : null,
+            phone ? ["Telefon", phone] : null,
+          ].filter(Boolean) as [string, string][];
+          const table = rows.map(([k, v]) => `<tr><td style="padding:6px 10px;border-bottom:1px solid #eee;color:#666">${escH(k)}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right;font-weight:600">${escH(v)}</td></tr>`).join("");
+          const html = `<div style="font-family:-apple-system,sans-serif;max-width:540px;margin:0 auto;padding:24px"><h2 style="margin:0 0 12px;color:#1a1a1a">Ny forespørsel 🎉</h2><p style="font-size:15px;color:#333;line-height:1.6"><b>${escH(name)}</b> (${escH(email)}) har sendt deg en forespørsel.</p>${table ? `<table style="width:100%;border-collapse:collapse;margin:14px 0;font-size:14px">${table}</table>` : ""}${description ? `<blockquote style="border-left:3px solid #ff8c00;margin:12px 0;padding:8px 16px;color:#333">«${escH(description)}»</blockquote>` : ""}<div style="margin:20px 0"><a href="${APP_URL}" style="display:inline-block;background:#ff8c00;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600">Se forespørselen</a></div><p style="font-size:12px;color:#999">Du finner den under «Forespørsler» i workspacet og «Kundeforespørsler» på dashbordet.</p></div>`;
+          const text = `Ny forespørsel fra ${name} (${email}).` + rows.map(([k, v]) => ` ${k}: ${v}.`).join("") + (description ? ` «${description}»` : "") + ` Se den i CreatorHub: ${APP_URL}`;
+          await sendTransactionalEmail({
+            to: toEmail,
+            subject: `Ny forespørsel fra ${name}${projectType ? " – " + projectType : ""}`,
+            html, text, fromLabel: "CreatorHub", kind: "inquiry_received",
+            projectId: null, pool,
+          });
+        } catch (e: any) { console.warn("[submission] vendor-notify failed:", e?.message); }
+      })();
 
       res.status(201).json({
         success: true,
