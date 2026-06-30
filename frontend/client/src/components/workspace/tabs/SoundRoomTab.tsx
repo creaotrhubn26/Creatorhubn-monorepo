@@ -47,9 +47,44 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [ptBusy, setPtBusy] = useState(false);
   const [ptDialog, setPtDialog] = useState(false);
   const [ptRelease, setPtRelease] = useState<any | null>(null);
+  const [release, setRelease] = useState<any | null>(null);      // audio_releases (utgivelse/distribusjon)
+  const [validation, setValidation] = useState<any | null>(null); // pre-flight-sjekkliste
+  const [relBusy, setRelBusy] = useState(false);
 
   const loadRelease = () => { apiRequest(`/api/protools/companion/release`).then((r: any) => setPtRelease(r || null)).catch(() => {}); };
   const openPtDialog = () => { setPtDialog(true); if (!ptRelease) loadRelease(); if (!ptCode) makePtCode(); };
+
+  // ── Utgivelse / distribusjons-prep (audio_releases) ──────────────────────────
+  const safeName = (s: string) => String(s || 'fil').replace(/[^a-z0-9]/gi, '-').toLowerCase().slice(0, 60);
+  const authedDownload = async (url: string, filename: string) => {
+    try {
+      const token = localStorage.getItem('creatorhub_auth_token') || localStorage.getItem('role_room_auth_token') || localStorage.getItem('token') || '';
+      const r = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {}, credentials: 'include' });
+      if (!r.ok) throw new Error(`Nedlasting feilet (${r.status})`);
+      const blob = await r.blob();
+      const u = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = u; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(u), 5000);
+    } catch (e: any) { window.alert(e?.message || 'Kunne ikke laste ned'); }
+  };
+  const loadShowcaseRelease = async (rid: string | null) => {
+    if (!rid) return;
+    try {
+      const r: any = await apiRequest(`/api/audio-showcases/${encodeURIComponent(rid)}/release`);
+      const rel = r?.release || null;
+      setRelease(rel);
+      if (rel?.id) { const v: any = await apiRequest(`/api/releases/${encodeURIComponent(rel.id)}/validate`); setValidation(v || null); }
+      else setValidation(null);
+    } catch { /* eier-gated/ny */ }
+  };
+  const prepRelease = async () => {
+    if (!roomId || relBusy) return; setRelBusy(true);
+    try {
+      const r: any = await apiRequest(`/api/audio-showcases/${encodeURIComponent(roomId)}/release`, { method: 'POST' });
+      if (r?.release) { setRelease(r.release); const v: any = await apiRequest(`/api/releases/${encodeURIComponent(r.release.id)}/validate`); setValidation(v || null); }
+    } catch (e: any) { window.alert(e?.message || 'Kunne ikke klargjøre utgivelse'); }
+    finally { setRelBusy(false); }
+  };
 
   const loadPt = () => {
     if (!isReal) return;
@@ -101,8 +136,8 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     return () => { stop = true; clearInterval(ptPoll); };
   }, [projectId, isReal]);
 
-  // Re-last companion-status når lydrommet er løst (for audioRoomId-scoping).
-  useEffect(() => { if (roomId) loadPt(); }, [roomId]);
+  // Re-last companion-status + utgivelse når lydrommet er løst (audioRoomId-scoping).
+  useEffect(() => { if (roomId) { loadPt(); loadShowcaseRelease(roomId); } }, [roomId]);
 
   const openRoom = () => { if (roomId) navigate(`/audio-review/${roomId}?ws=${encodeURIComponent(projectId)}`); };
   const linkTrack = async (trackId: string) => {
@@ -183,6 +218,68 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         <WsCard sx={{ bgcolor: ws.accentSoft, border: `1px solid ${ws.accentBorder}` }}>
           <Typography sx={{ fontSize: 13, color: ws.text }}>Lydrommet er klart. Åpne det og last opp første mix/master-versjon — så får band/klient tidsstemplet review med versjonering og godkjenning.</Typography>
           <Button variant="contained" onClick={openRoom} sx={{ mt: 1.5, bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Åpne lydrommet</Button>
+        </WsCard>
+      )}
+
+      {/* Utgivelse — distribusjons-prep (metadata → validering → release-pakke + Canvas) */}
+      {roomId && (
+        <WsCard sx={{ mt: 2 }}>
+          <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.25 }}>
+            <Typography sx={{ fontSize: 15 }}>🚀</Typography>
+            <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>Utgivelse</Typography>
+            <Box sx={{ flex: 1 }} />
+            {release && validation && (
+              <WsTag
+                label={validation.valid ? 'Klar for distributør' : `${(validation.checks || []).filter((c: any) => !c.ok).length} mangler`}
+                tone={validation.valid ? 'green' : 'amber'}
+              />
+            )}
+          </Stack>
+
+          {!release ? (
+            <Box>
+              <Typography sx={{ fontSize: 12.5, color: ws.textDim, mb: 1.25, lineHeight: 1.55 }}>
+                Klargjør en utgivelse av masteren: metadata (ISRC/UPC/credits/splitt), pre-flight-validering, ferdig release-pakke og Spotify Canvas.
+                <b> Merk:</b> Spotify og andre strømmetjenester har ikke opplastings-API, så selve opplastingen skjer i distributøren din (DistroKid/TuneCore/CD&nbsp;Baby) — dette gjør alt klart til det.
+              </Typography>
+              <Button variant="contained" disabled={relBusy} onClick={prepRelease}
+                sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>
+                {relBusy ? 'Klargjør…' : 'Klargjør utgivelse'}
+              </Button>
+            </Box>
+          ) : (
+            <Stack spacing={1.5}>
+              <Stack direction="row" spacing={1.5} alignItems="center">
+                <Box sx={{ width: 46, height: 46, borderRadius: 1.5, bgcolor: ws.accentSoft, flexShrink: 0, backgroundImage: release.cover_url ? `url(${release.cover_url})` : undefined, backgroundSize: 'cover', backgroundPosition: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {!release.cover_url && <GraphicEq sx={{ color: ws.accent, fontSize: 22 }} />}
+                </Box>
+                <Box sx={{ minWidth: 0, flex: 1 }}>
+                  <Typography sx={{ fontSize: 13.5, fontWeight: 700 }} noWrap>{release.title || 'Uten tittel'}</Typography>
+                  <Typography sx={{ fontSize: 11, color: ws.textFaint }} noWrap>{[release.primary_artist, release.release_date, release.isrc].filter(Boolean).join(' · ') || 'Mangler metadata — fullfør i rommet'}</Typography>
+                </Box>
+              </Stack>
+
+              {(validation?.checks || []).length > 0 && (
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 0.5 }}>
+                  {validation.checks.map((c: any) => (
+                    <Stack key={c.key} direction="row" spacing={0.75} alignItems="center">
+                      <Box sx={{ width: 16, height: 16, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 10.5, fontWeight: 800, bgcolor: c.ok ? ws.greenSoft : 'rgba(255,255,255,0.06)', color: c.ok ? ws.green : ws.textFaint }}>{c.ok ? '✓' : '○'}</Box>
+                      <Typography noWrap sx={{ fontSize: 11.5, color: c.ok ? ws.textDim : ws.text }}>{c.label}</Typography>
+                    </Stack>
+                  ))}
+                </Box>
+              )}
+
+              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                <Button size="small" variant="outlined" onClick={openRoom} sx={{ color: ws.accent, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 600 }}>Fullfør metadata i rommet</Button>
+                <Button size="small" variant="outlined" startIcon={<Download sx={{ fontSize: 15 }} />} onClick={() => authedDownload(`/api/releases/${release.id}/package`, `release-${safeName(release.title)}.json`)} sx={{ color: ws.text, borderColor: ws.borderSoft, textTransform: 'none', fontWeight: 600 }}>Release-pakke</Button>
+                <Button size="small" variant="outlined" startIcon={<Download sx={{ fontSize: 15 }} />} onClick={() => authedDownload(`/api/releases/${release.id}/canvas`, `canvas-${safeName(release.title)}.mp4`)} sx={{ color: ws.text, borderColor: ws.borderSoft, textTransform: 'none', fontWeight: 600 }}>Spotify Canvas</Button>
+              </Stack>
+              <Typography sx={{ fontSize: 10.5, color: ws.textFaint, lineHeight: 1.5 }}>
+                Spotify/strømmetjenester har ikke opplastings-API — last opp release-pakka i distributøren din (DistroKid/TuneCore/CD&nbsp;Baby). Når sporet er ute, kan det embeddes i showcasen.
+              </Typography>
+            </Stack>
+          )}
         </WsCard>
       )}
 
