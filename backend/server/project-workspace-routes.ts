@@ -290,6 +290,68 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     } catch (e) { console.error("POST client-review respond", e); res.status(500).json({ error: "failed" }); }
   });
 
+  // ─────────── Klient-aktivitet (nedlasting + utvalg + kommentar) ──────────────
+  // Samlet feed av hva klienten gjør på showcase-galleriene — inkl. NEDLASTINGER
+  // (gallery_download_audit) som ellers KUN varsles på e-post (Slice 9.6). Gir
+  // teamet en in-app flate + uleste-teller (badge på Kundevisning) som tømmes når
+  // de åpner fanen (project_client_activity_seen). canAccessProject-gatet.
+  const ensureActivitySeen = async () => {
+    await pool.query(`CREATE TABLE IF NOT EXISTS project_client_activity_seen (project_id VARCHAR(64) NOT NULL, user_id VARCHAR(64) NOT NULL, seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (project_id, user_id))`).catch(() => undefined);
+  };
+  app.get("/api/projects/:projectId/client-activity", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const pid = req.params.projectId;
+      await ensureActivitySeen();
+      const g = await pool.query(`SELECT id FROM photographer_client_galleries WHERE project_id = $1`, [pid]).catch(() => ({ rows: [] }));
+      const ids = g.rows.map((x: any) => x.id);
+      if (ids.length === 0) return res.json({ items: [], unseenCount: 0, hasGallery: false });
+      const [dl, cm, sel, seenQ] = await Promise.all([
+        // nedlastinger: kollaps en batch (samme klient innen samme time) til ÉN rad
+        pool.query(
+          `SELECT g.project_title, a.client_email, COUNT(*)::int AS n, MAX(a.downloaded_at) AS at
+             FROM gallery_download_audit a JOIN photographer_client_galleries g ON g.id = a.gallery_id
+            WHERE a.gallery_id = ANY($1::uuid[])
+            GROUP BY g.project_title, a.client_email, date_trunc('hour', a.downloaded_at)
+            ORDER BY at DESC LIMIT 40`,
+          [ids],
+        ).catch(() => ({ rows: [] })),
+        pool.query(
+          `SELECT id, client_name, comment, comment_type, created_at FROM client_image_comments
+            WHERE gallery_id = ANY($1::uuid[]) ORDER BY created_at DESC LIMIT 40`,
+          [ids],
+        ).catch(() => ({ rows: [] })),
+        pool.query(
+          `SELECT gallery_id, COUNT(*)::int AS n, MAX(submitted_at) AS at FROM client_image_selections
+            WHERE gallery_id = ANY($1::uuid[]) AND submitted_at IS NOT NULL GROUP BY gallery_id ORDER BY at DESC LIMIT 10`,
+          [ids],
+        ).catch(() => ({ rows: [] })),
+        pool.query(`SELECT seen_at FROM project_client_activity_seen WHERE project_id = $1 AND user_id = $2`, [pid, uid]).catch(() => ({ rows: [] })),
+      ]);
+      const items: any[] = [];
+      for (const d of dl.rows) items.push({ id: `dl:${d.client_email}:${new Date(d.at).getTime()}`, type: "download", title: `Lastet ned ${d.n} ${d.n === 1 ? "bilde" : "bilder"}`, who: d.client_email || "Klient", note: d.project_title || "", at: d.at });
+      for (const c of cm.rows) items.push({ id: `cm:${c.id}`, type: c.comment_type === "change_request" ? "change" : "comment", title: c.comment_type === "change_request" ? "Ba om endring" : "Kommenterte", who: c.client_name || "Klient", note: c.comment || "", at: c.created_at });
+      for (const s of sel.rows) items.push({ id: `sel:${s.gallery_id}:${new Date(s.at).getTime()}`, type: "selection", title: `Sendte inn utvalg (${s.n} ${s.n === 1 ? "bilde" : "bilder"})`, who: "Klient", note: "", at: s.at });
+      items.sort((a, b) => new Date(b.at || 0).getTime() - new Date(a.at || 0).getTime());
+      const seenAt = seenQ.rows[0]?.seen_at ? new Date(seenQ.rows[0].seen_at).getTime() : 0;
+      const unseenCount = items.filter((i) => new Date(i.at || 0).getTime() > seenAt).length;
+      res.json({ items: items.slice(0, 60), unseenCount, hasGallery: true });
+    } catch (e) { console.error("GET client-activity", e); res.json({ items: [], unseenCount: 0, hasGallery: false }); }
+  });
+  // Marker klient-aktivitet som sett (tømmer badgen).
+  app.post("/api/projects/:projectId/client-activity/seen", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureActivitySeen();
+      await pool.query(
+        `INSERT INTO project_client_activity_seen (project_id, user_id, seen_at) VALUES ($1, $2, NOW())
+           ON CONFLICT (project_id, user_id) DO UPDATE SET seen_at = NOW()`,
+        [req.params.projectId, uid],
+      ).catch(() => undefined);
+      res.json({ ok: true });
+    } catch (e) { console.error("POST client-activity seen", e); res.json({ ok: false }); }
+  });
+
   // ─────────── Moodboard-meta (stil/palett/notater) ───────────
   app.get("/api/projects/:projectId/moodboard-meta", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;

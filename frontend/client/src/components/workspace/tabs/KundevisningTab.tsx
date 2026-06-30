@@ -14,9 +14,27 @@ import Collections from '@mui/icons-material/Collections';
 import ContentCopy from '@mui/icons-material/ContentCopy';
 import OpenInNew from '@mui/icons-material/OpenInNew';
 import AccessTime from '@mui/icons-material/AccessTime';
+import CloudDownloadOutlined from '@mui/icons-material/CloudDownloadOutlined';
+import ChatBubbleOutline from '@mui/icons-material/ChatBubbleOutline';
+import EditOutlined from '@mui/icons-material/EditOutlined';
+import CheckCircleOutline from '@mui/icons-material/CheckCircleOutline';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
 import { WsCard, WsSectionTitle, WsTag, WsImg } from '../ui';
+
+const ACT_META: Record<string, [any, string]> = {
+  download: [CloudDownloadOutlined, 'green'],
+  comment: [ChatBubbleOutline, 'blue'],
+  change: [EditOutlined, 'amber'],
+  selection: [CheckCircleOutline, 'blue'],
+};
+const actTimeAgo = (iso?: string) => {
+  if (!iso) return '';
+  const s = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
+  if (s < 3600) return `${Math.floor(s / 60)} min siden`;
+  if (s < 86400) return `${Math.floor(s / 3600)} t siden`;
+  return `${Math.floor(s / 86400)} d siden`;
+};
 
 const SAMPLE = [
   { id: 'd1', title: 'Sara & Amir — Galleri', clientName: 'Sara & Amir', status: 'active', sharePath: '/client/gallery/demo' },
@@ -27,6 +45,7 @@ const KundevisningTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [galleries, setGalleries] = useState<any[]>([]);
   const [timelineToken, setTimelineToken] = useState<string | null>(null);
   const [reviews, setReviews] = useState<any | null>(null);
+  const [activity, setActivity] = useState<any[]>([]);
   const loadReviews = () => { if (!isReal) return; apiRequest(`/api/projects/${encodeURIComponent(projectId)}/client-reviews`).then((r: any) => setReviews(r || null)).catch(() => {}); };
 
   useEffect(() => {
@@ -39,6 +58,11 @@ const KundevisningTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       .then((r: any) => { const t = r?.clientAccessToken; if (t) setTimelineToken(t); })
       .catch(() => {});
     loadReviews();
+    // Klient-aktivitet (nedlasting/utvalg/kommentar) + tøm badgen (marker sett).
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/client-activity`)
+      .then((r: any) => setActivity(Array.isArray(r?.items) ? r.items : []))
+      .catch(() => {});
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/client-activity/seen`, { method: 'POST', body: {} }).catch(() => {});
   }, [projectId, isReal]);
 
   const respondToReview = async (commentId: string) => {
@@ -78,6 +102,39 @@ const KundevisningTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           </Typography>
         </Stack>
       </WsCard>
+
+      {/* Klient-aktivitet — nedlastinger + utvalg + kommentarer (in-app, ikke kun e-post) */}
+      {isReal && activity.length > 0 && (
+        <WsCard sx={{ mb: 2 }}>
+          <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.25 }}>
+            <CloudDownloadOutlined sx={{ fontSize: 18, color: ws.green }} />
+            <Typography sx={{ fontSize: 14, fontWeight: 700 }}>Klient-aktivitet</Typography>
+            <Box sx={{ flex: 1 }} />
+            <Typography sx={{ fontSize: 11.5, color: ws.textDim }}>Sanntid fra showcasen — også nedlastinger</Typography>
+          </Stack>
+          <Stack spacing={0.75}>
+            {activity.slice(0, 12).map((a: any) => {
+              const [Icon, tone] = ACT_META[a.type] || [Visibility, 'neutral'];
+              return (
+                <Stack key={a.id} direction="row" spacing={1.25} alignItems="center" sx={{ p: 1, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.panelAlt, border: `1px solid ${ws.borderSoft}` }}>
+                  <Box sx={{ width: 30, height: 30, borderRadius: 1, bgcolor: ws.accentSoft, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Icon sx={{ fontSize: 16, color: ws.accent }} />
+                  </Box>
+                  <Box sx={{ minWidth: 0, flex: 1 }}>
+                    <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap>
+                      <Typography sx={{ fontSize: 12.5, fontWeight: 700 }}>{a.title}</Typography>
+                      {a.type === 'download' && <WsTag label="Nedlasting" tone="green" />}
+                      {a.type === 'change' && <WsTag label="Endring" tone="amber" />}
+                    </Stack>
+                    <Typography noWrap sx={{ fontSize: 11.5, color: ws.textDim }}>{a.who}{a.note ? ` · «${a.note}»` : ''}</Typography>
+                  </Box>
+                  <Typography sx={{ fontSize: 10.5, color: ws.textFaint, flexShrink: 0 }}>{actTimeAgo(a.at)}</Typography>
+                </Stack>
+              );
+            })}
+          </Stack>
+        </WsCard>
+      )}
 
       {/* Klient-review — hjerter/kommentarer/endringer fra showcasen */}
       {(isReal ? reviews?.hasGallery : true) && (() => {

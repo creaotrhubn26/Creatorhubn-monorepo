@@ -153,6 +153,16 @@ const TeamWorkspacePage: React.FC = () => {
       .catch(() => setInboundCount(0));
   }, [user?.id, tab]);
 
+  // Ulest klient-aktivitet (nedlasting/utvalg/kommentar) → badge på Kundevisning.
+  // Re-fetches ved tab-bytte; nullstilles når Kundevisning-fanen åpnes (marker sett).
+  const [clientActivityUnseen, setClientActivityUnseen] = useState(0);
+  useEffect(() => {
+    if (!projectId || projectId === 'sample') { setClientActivityUnseen(0); return; }
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/client-activity`)
+      .then((r: any) => setClientActivityUnseen(r?.unseenCount || 0))
+      .catch(() => setClientActivityUnseen(0));
+  }, [projectId, tab]);
+
   // Profesjons-filtrert nav — musikkprodusent får Låter/Sesjoner/Sound Room
   // i stedet for Shotlist/Produksjonskart/Photo+Video Room.
   const nav = useMemo(() => navForProfession(user?.profession, { isMentor }), [user?.profession, isMentor]);
@@ -205,7 +215,7 @@ const TeamWorkspacePage: React.FC = () => {
       activeTab={tab}
       onTab={goTab}
       navItems={nav}
-      badges={{ foresporsler: inboundCount }}
+      badges={{ foresporsler: inboundCount, kundevisning: clientActivityUnseen }}
       onClientView={() => goTab('kundevisning')}
       onInvite={() => goTab('team')}
     >
