@@ -182,6 +182,8 @@ import EvendiTimelineAdmin from '../wedding/WeddingTimelineAdmin';
 
 // Import Academy Dashboard
 import AcademyDashboard from '../academy/AcademyDashboardCinematic';
+// Import Academy instruktør-admin (full innholdsstyring) for mentor-fanen
+import AcademyInstructorAdminStudio from '../academy/AcademyInstructorAdminStudio';
 // Import Universal Showcase
 import UniversalShowcase from './UniversalShowcase';
 // Import CreatorHub Icons
@@ -3839,7 +3841,10 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
               <Button
                 variant="outlined"
                 startIcon={<Settings />}
-                onClick={() => setLocation('/academy/instructors')}
+                onClick={() => {
+                  const i = availableTabs.findIndex((tab) => tab.id === 'academy');
+                  if (i !== -1) setTabValue(i);
+                }}
                 sx={{
                   color: customBranding.color,
                   borderColor: alpha(customBranding.color, 0.45),
@@ -6860,6 +6865,15 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
               <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'support')}>
                 <HelpdeskSystem profession={profession} userId={userId} dashboardFeatures={[]} />
               </TabPanel>
+
+              {/* Academy — full instruktør-administrasjon (innholdsstyring: kurs,
+                  læreplan, leksjoner, quiz, kull, analyse, inntekt) rett i fanen.
+                  Fanen er allerede gated til mentor/enterprise i availableTabs. */}
+              {availableTabs.some((tab) => tab.id === 'academy') && (
+                <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'academy')}>
+                  <AcademyInstructorAdminStudio />
+                </TabPanel>
+              )}
 
               {/* Tab 15: Innstillinger */}
               <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'settings')}>
