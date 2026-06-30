@@ -31,6 +31,8 @@ import PhotoCamera from '@mui/icons-material/PhotoCamera';
 import Videocam from '@mui/icons-material/Videocam';
 import Movie from '@mui/icons-material/Movie';
 import GraphicEq from '@mui/icons-material/GraphicEq';
+import Album from '@mui/icons-material/Album';
+import LibraryMusic from '@mui/icons-material/LibraryMusic';
 import Visibility from '@mui/icons-material/Visibility';
 import EventNote from '@mui/icons-material/EventNote';
 import CalendarToday from '@mui/icons-material/CalendarToday';
@@ -41,12 +43,12 @@ import KeyboardArrowDown from '@mui/icons-material/KeyboardArrowDown';
 import Settings from '@mui/icons-material/Settings';
 import HexagonOutlined from '@mui/icons-material/HexagonOutlined';
 import Add from '@mui/icons-material/Add';
-import { ws, workspaceDarkTheme, WS_NAV } from './workspaceTheme';
+import { ws, workspaceDarkTheme, WS_NAV, type WsNavItem } from './workspaceTheme';
 
 const ICONS: Record<string, React.ElementType> = {
   Dashboard, AccountTree, Map, PhotoCameraBack, GridView, PermMedia, LocalShipping,
   CheckCircleOutline, Group, ChatBubbleOutline, PhotoCamera, Videocam, Movie, GraphicEq,
-  Visibility, EventNote,
+  Visibility, EventNote, Album, LibraryMusic,
 };
 
 const GROUP_LABEL: Record<string, string> = {
@@ -85,6 +87,7 @@ interface ShellProps {
   headerActions?: React.ReactNode;
   onClientView?: () => void;
   onInvite?: () => void;
+  navItems?: WsNavItem[]; // profesjons-filtrert nav (default WS_NAV)
   children: React.ReactNode;
 }
 
@@ -119,7 +122,7 @@ function NavItem({ item, active, onClick }: any) {
   );
 }
 
-const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab, online, onNewProject, onLogout, headerActions, onClientView, onInvite, children }) => {
+const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab, online, onNewProject, onLogout, headerActions, onClientView, onInvite, navItems = WS_NAV, children }) => {
   const groups: Array<'hoved' | 'rom' | 'klient'> = ['hoved', 'rom', 'klient'];
   const [userMenu, setUserMenu] = React.useState<null | HTMLElement>(null);
   const [projMenu, setProjMenu] = React.useState<null | HTMLElement>(null);
@@ -160,16 +163,20 @@ const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab,
 
           {/* Nav-grupper */}
           <Box sx={{ flex: 1, overflowY: 'auto', py: 0.5 }}>
-            {groups.map((g) => (
-              <Box key={g} sx={{ mb: 1 }}>
-                <Typography sx={{ px: 2.5, py: 0.75, fontSize: 10.5, fontWeight: 800, letterSpacing: 1.2, color: ws.textFaint }}>
-                  {GROUP_LABEL[g]}
-                </Typography>
-                {WS_NAV.filter((n) => n.group === g).map((item) => (
-                  <NavItem key={item.key} item={item} active={activeTab === item.key} onClick={() => onTab(item.key)} />
-                ))}
-              </Box>
-            ))}
+            {groups.map((g) => {
+              const items = navItems.filter((n) => n.group === g);
+              if (items.length === 0) return null; // skjul tom gruppe-overskrift
+              return (
+                <Box key={g} sx={{ mb: 1 }}>
+                  <Typography sx={{ px: 2.5, py: 0.75, fontSize: 10.5, fontWeight: 800, letterSpacing: 1.2, color: ws.textFaint }}>
+                    {GROUP_LABEL[g]}
+                  </Typography>
+                  {items.map((item) => (
+                    <NavItem key={item.key} item={item} active={activeTab === item.key} onClick={() => onTab(item.key)} />
+                  ))}
+                </Box>
+              );
+            })}
           </Box>
 
           {/* Bruker-footer */}
