@@ -893,6 +893,7 @@ import { setupBackupRoutes } from "./backup-routes";
 import { setupMaintenanceRoutes } from "./maintenance-routes";
 import { setupSplitSheetsRoutes } from "./split-sheets-routes";
 import { setupSplitSheetSigningRoutes } from "./split-sheet-signing-routes";
+import { setupEquipmentValueRoutes } from "./equipment-value-routes";
 import { setupSongflowDeprecatedAliasesRoutes } from "./songflow-deprecated-aliases-routes";
 import { setupEquipmentDiscoveryRoutes } from "./equipment-discovery-routes";
 import { setupEquipmentCatalogRoutes } from "./equipment-catalog-routes";
@@ -66157,6 +66158,7 @@ setupMaintenanceRoutes({
 });
 setupSplitSheetsRoutes({ app, pool, getSplitSheetUserId });
 setupSplitSheetSigningRoutes({ app, pool, getSplitSheetUserId });
+setupEquipmentValueRoutes({ app });
 // role-room/vendor-links — historisk wedged inn mellom equipment-routes (13228);
 // flyttet hit som del av equipment chunk 3-ekstraksjon for å fjerne stray-setup.
 setupRoleRoomVendorLinksRoutes({ app });
