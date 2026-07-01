@@ -105,6 +105,8 @@ export const WS_NAV: WsNavItem[] = [
   { key: 'chat', label: 'Chat', icon: 'ChatBubbleOutline', group: 'hoved', route: true },
   // Academy-administrasjon — kun mentorer/instruktører (uavhengig av profesjon)
   { key: 'academy', label: 'Academy', icon: 'School', group: 'hoved', route: true, mentorOnly: true },
+  // Community — for alle; mentorer får admin/styring inne i hub-en (MentorDashboard)
+  { key: 'community', label: 'Community', icon: 'Forum', group: 'hoved', route: true },
   // Smart Rom — profesjons-spesifikke
   { key: 'photo-room', label: 'Photo Room', icon: 'PhotoCamera', group: 'rom', online: true, route: true, professions: ['visual'] },
   { key: 'video-room', label: 'Video Room', icon: 'Videocam', group: 'rom', online: true, route: true, professions: ['visual'] },

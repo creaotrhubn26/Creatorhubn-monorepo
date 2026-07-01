@@ -32,6 +32,7 @@ import SesjonerTab from './tabs/SesjonerTab';
 import ForesporslerTab from './tabs/ForesporslerTab';
 import AcademyInstructorAdminStudio from '../academy/AcademyInstructorAdminStudio';
 import { AcademyProvider } from '@/contexts/AcademyContext';
+import CommunityHub from '../community/CommunityHub';
 import WorkspaceChatPanel from './WorkspaceChatPanel';
 import { usePresence } from './usePresence';
 import { ws, WS_NAV, navForProfession, isMusicProfession } from './workspaceTheme';
@@ -196,6 +197,7 @@ const TeamWorkspacePage: React.FC = () => {
     laater: <LaaterTab projectId={projectId} />,
     sesjoner: <SesjonerTab projectId={projectId} />,
     academy: <AcademyProvider><AcademyInstructorAdminStudio /></AcademyProvider>,
+    community: <CommunityHub userId={user?.id} userEmail={user?.email} profession={user?.profession || 'photographer'} />,
     moodboard: <MoodboardTab projectId={projectId} />,
     media: <MediaTab projectId={projectId} />,
     leveranser: <LeveranserTab projectId={projectId} />,
