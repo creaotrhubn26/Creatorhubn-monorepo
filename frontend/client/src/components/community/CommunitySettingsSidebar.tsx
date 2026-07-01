@@ -84,7 +84,7 @@ export default function CommunitySettingsSidebar({
           'linear-gradient(180deg, rgba(13, 18, 27, 0.94), rgba(8, 12, 18, 0.94))',
         border: '1px solid rgba(255,255,255,0.08)',
         boxShadow: '0 24px 60px rgba(0, 0, 0, 0.36)',
-        color: 'rgba(248, 241, 231, 0.92)'}}
+        color: 'rgba(255, 255, 255, 0.92)'}}
     >
       {/* Header with Collapse Toggle */}
       <Box
@@ -97,7 +97,7 @@ export default function CommunitySettingsSidebar({
           borderColor: 'rgba(255,255,255,0.08)'}}
       >
         {!isCollapsed && (
-          <Typography variant="subtitle1" fontWeight={600} sx={{ color: 'rgba(248, 241, 231, 0.92)' }}>
+          <Typography variant="subtitle1" fontWeight={600} sx={{ color: 'rgba(255, 255, 255, 0.92)' }}>
             Innstillinger
           </Typography>
         )}
@@ -105,12 +105,12 @@ export default function CommunitySettingsSidebar({
           onClick={onToggleCollapse}
           size="small"
           sx={{
-            color: 'rgba(248, 241, 231, 0.82)',
+            color: 'rgba(255, 255, 255, 0.82)',
             border: '1px solid rgba(255,255,255,0.08)',
             bgcolor: 'rgba(255,255,255,0.03)',
             '&:hover': {
-              bgcolor: 'rgba(245, 166, 35, 0.08)',
-              borderColor: 'rgba(245, 166, 35, 0.22)',
+              bgcolor: 'rgba(255, 140, 0, 0.08)',
+              borderColor: 'rgba(255, 140, 0, 0.22)',
             },
           }}
         >
@@ -127,15 +127,15 @@ export default function CommunitySettingsSidebar({
               sx={{
                 width: 48,
                 height: 48,
-                bgcolor: 'rgba(245, 166, 35, 0.18)',
-                color: '#f5a623',
-                border: '1px solid rgba(245, 166, 35, 0.22)',
+                bgcolor: 'rgba(255, 140, 0, 0.18)',
+                color: '#ff8c00',
+                border: '1px solid rgba(255, 140, 0, 0.22)',
               }}
             >
               {userName.charAt(0).toUpperCase()}
             </Avatar>
             <Box sx={{ flex: 1 }}>
-              <Typography variant="subtitle2" fontWeight={600} sx={{ color: 'rgba(248, 241, 231, 0.92)' }}>
+              <Typography variant="subtitle2" fontWeight={600} sx={{ color: 'rgba(255, 255, 255, 0.92)' }}>
                 {userName}
               </Typography>
               <Chip
@@ -143,9 +143,9 @@ export default function CommunitySettingsSidebar({
                 size="small"
                 sx={{
                   height: 20,
-                  bgcolor: 'rgba(245, 166, 35, 0.14)',
-                  color: '#f5a623',
-                  border: '1px solid rgba(245, 166, 35, 0.2)',
+                  bgcolor: 'rgba(255, 140, 0, 0.14)',
+                  color: '#ff8c00',
+                  border: '1px solid rgba(255, 140, 0, 0.2)',
                 }}
               />
             </Box>
@@ -162,9 +162,9 @@ export default function CommunitySettingsSidebar({
             sx={{
               borderRadius: 2,
               mx: 1,
-              color: 'rgba(248, 241, 231, 0.88)',
+              color: 'rgba(255, 255, 255, 0.88)',
               '& .MuiListItemIcon-root': {
-                color: 'rgba(248, 241, 231, 0.64)',
+                color: 'rgba(255, 255, 255, 0.64)',
                 minWidth: 38,
               },
               '&:hover': {
@@ -188,9 +188,9 @@ export default function CommunitySettingsSidebar({
             sx={{
               borderRadius: 2,
               mx: 1,
-              color: 'rgba(248, 241, 231, 0.88)',
+              color: 'rgba(255, 255, 255, 0.88)',
               '& .MuiListItemIcon-root': {
-                color: 'rgba(248, 241, 231, 0.64)',
+                color: 'rgba(255, 255, 255, 0.64)',
                 minWidth: 38,
               },
               '&:hover': {
@@ -205,9 +205,9 @@ export default function CommunitySettingsSidebar({
               <>
                 <ListItemText primary="Innstillinger" />
                 {settingsExpanded ? (
-                  <ExpandLess sx={{ color: 'rgba(248, 241, 231, 0.64)' }} />
+                  <ExpandLess sx={{ color: 'rgba(255, 255, 255, 0.64)' }} />
                 ) : (
-                  <ExpandMore sx={{ color: 'rgba(248, 241, 231, 0.64)' }} />
+                  <ExpandMore sx={{ color: 'rgba(255, 255, 255, 0.64)' }} />
                 )}
               </>
             )}
@@ -222,16 +222,16 @@ export default function CommunitySettingsSidebar({
               <ListItem
                 sx={{
                   pl: 4,
-                  color: 'rgba(248, 241, 231, 0.84)',
+                  color: 'rgba(255, 255, 255, 0.84)',
                   '& .MuiListItemIcon-root': {
-                    color: 'rgba(248, 241, 231, 0.72)',
+                    color: 'rgba(255, 255, 255, 0.72)',
                     minWidth: 34,
                   },
                   '& .MuiSwitch-switchBase.Mui-checked': {
-                    color: '#f5a623',
+                    color: '#ff8c00',
                   },
                   '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-                    backgroundColor: '#f5a623',
+                    backgroundColor: '#ff8c00',
                   },
                 }}
               >
@@ -250,16 +250,16 @@ export default function CommunitySettingsSidebar({
               <ListItem
                 sx={{
                   pl: 4,
-                  color: 'rgba(248, 241, 231, 0.84)',
+                  color: 'rgba(255, 255, 255, 0.84)',
                   '& .MuiListItemIcon-root': {
-                    color: 'rgba(248, 241, 231, 0.72)',
+                    color: 'rgba(255, 255, 255, 0.72)',
                     minWidth: 34,
                   },
                   '& .MuiSwitch-switchBase.Mui-checked': {
-                    color: '#f5a623',
+                    color: '#ff8c00',
                   },
                   '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-                    backgroundColor: '#f5a623',
+                    backgroundColor: '#ff8c00',
                   },
                 }}
               >
@@ -280,7 +280,7 @@ export default function CommunitySettingsSidebar({
         {/* Push Notifications Section */}
         {!isCollapsed && isSupported && (
           <Box sx={{ p: 2, borderTop: 1, borderColor: 'rgba(255,255,255,0.08)' }}>
-            <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600, color: 'rgba(248, 241, 231, 0.92)' }}>
+            <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600, color: 'rgba(255, 255, 255, 0.92)' }}>
               Push-varsler
             </Typography>
             <PushNotificationSettings userId={userId} showDescription={false} />
@@ -296,9 +296,9 @@ export default function CommunitySettingsSidebar({
             sx={{
               borderRadius: 2,
               mx: 1,
-              color: 'rgba(248, 241, 231, 0.88)',
+              color: 'rgba(255, 255, 255, 0.88)',
               '& .MuiListItemIcon-root': {
-                color: 'rgba(248, 241, 231, 0.64)',
+                color: 'rgba(255, 255, 255, 0.64)',
                 minWidth: 38,
               },
               '&:hover': {
@@ -320,9 +320,9 @@ export default function CommunitySettingsSidebar({
             sx={{
               borderRadius: 2,
               mx: 1,
-              color: 'rgba(248, 241, 231, 0.88)',
+              color: 'rgba(255, 255, 255, 0.88)',
               '& .MuiListItemIcon-root': {
-                color: 'rgba(248, 241, 231, 0.64)',
+                color: 'rgba(255, 255, 255, 0.64)',
                 minWidth: 38,
               },
               '&:hover': {
@@ -344,9 +344,9 @@ export default function CommunitySettingsSidebar({
             sx={{
               borderRadius: 2,
               mx: 1,
-              color: 'rgba(248, 241, 231, 0.88)',
+              color: 'rgba(255, 255, 255, 0.88)',
               '& .MuiListItemIcon-root': {
-                color: 'rgba(248, 241, 231, 0.64)',
+                color: 'rgba(255, 255, 255, 0.64)',
                 minWidth: 38,
               },
               '&:hover': {
@@ -371,9 +371,9 @@ export default function CommunitySettingsSidebar({
               borderRadius: 2,
               mx: 1,
               mb: 1,
-              color: 'rgba(248, 241, 231, 0.88)',
+              color: 'rgba(255, 255, 255, 0.88)',
               '& .MuiListItemIcon-root': {
-                color: 'rgba(248, 241, 231, 0.64)',
+                color: 'rgba(255, 255, 255, 0.64)',
                 minWidth: 38,
               },
               '&:hover': {

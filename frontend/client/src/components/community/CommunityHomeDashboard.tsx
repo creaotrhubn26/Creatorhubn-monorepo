@@ -109,8 +109,8 @@ interface CommunityHomeDashboardProps {
   mentorEligible: boolean;
 }
 
-const SHELL_TEXT = 'rgba(248, 241, 231, 0.92)';
-const SHELL_MUTED = 'rgba(248, 241, 231, 0.64)';
+const SHELL_TEXT = 'rgba(255, 255, 255, 0.92)';
+const SHELL_MUTED = 'rgba(255, 255, 255, 0.64)';
 const SHELL_BORDER = '1px solid rgba(255,255,255,0.08)';
 const SHELL_PANEL =
   'linear-gradient(180deg, rgba(13, 18, 27, 0.94), rgba(8, 12, 18, 0.94))';
@@ -185,9 +185,9 @@ export default function CommunityHomeDashboard({
                 size="small"
                 sx={{
                   mb: 1.5,
-                  bgcolor: 'rgba(245, 166, 35, 0.14)',
-                  color: '#f5a623',
-                  border: '1px solid rgba(245, 166, 35, 0.2)',
+                  bgcolor: 'rgba(255, 140, 0, 0.14)',
+                  color: '#ff8c00',
+                  border: '1px solid rgba(255, 140, 0, 0.2)',
                   fontWeight: 700,
                   letterSpacing: '0.08em',
                   textTransform: 'uppercase',
@@ -234,8 +234,8 @@ export default function CommunityHomeDashboard({
                     onClick={() => onOpenChannel(recommendedChannel.id)}
                     sx={{
                       borderRadius: 999,
-                      bgcolor: '#f5a623',
-                      color: '#05070b',
+                      bgcolor: '#ff8c00',
+                      color: '#0a0f1a',
                       fontWeight: 700,
                       '&:hover': {
                         bgcolor: '#ffcd73',
@@ -254,8 +254,8 @@ export default function CommunityHomeDashboard({
                     color: SHELL_TEXT,
                     borderColor: 'rgba(255,255,255,0.12)',
                     '&:hover': {
-                      borderColor: 'rgba(245, 166, 35, 0.24)',
-                      bgcolor: 'rgba(245, 166, 35, 0.08)',
+                      borderColor: 'rgba(255, 140, 0, 0.24)',
+                      bgcolor: 'rgba(255, 140, 0, 0.08)',
                     },
                   }}
                 >
@@ -339,11 +339,11 @@ export default function CommunityHomeDashboard({
                 <Chip
                   label={needsHelp.length === 0 ? 'Innboks ryddet' : `${needsHelp.length} åpne`}
                   sx={{
-                    bgcolor: needsHelp.length === 0 ? 'rgba(84, 181, 125, 0.14)' : 'rgba(245, 166, 35, 0.14)',
-                    color: needsHelp.length === 0 ? '#78df9c' : '#f5a623',
+                    bgcolor: needsHelp.length === 0 ? 'rgba(84, 181, 125, 0.14)' : 'rgba(255, 140, 0, 0.14)',
+                    color: needsHelp.length === 0 ? '#78df9c' : '#ff8c00',
                     border: needsHelp.length === 0
                       ? '1px solid rgba(84, 181, 125, 0.2)'
-                      : '1px solid rgba(245, 166, 35, 0.2)',
+                      : '1px solid rgba(255, 140, 0, 0.2)',
                   }}
                 />
               </Box>
@@ -379,8 +379,8 @@ export default function CommunityHomeDashboard({
                           sx={{
                             width: 40,
                             height: 40,
-                            bgcolor: 'rgba(245, 166, 35, 0.18)',
-                            color: '#f5a623',
+                            bgcolor: 'rgba(255, 140, 0, 0.18)',
+                            color: '#ff8c00',
                           }}
                         >
                           {question.user_name?.[0]}
@@ -399,8 +399,8 @@ export default function CommunityHomeDashboard({
                           onClick={() => onSelectQuestion(question)}
                           sx={{
                             borderRadius: 999,
-                            borderColor: 'rgba(245, 166, 35, 0.22)',
-                            color: '#f5a623',
+                            borderColor: 'rgba(255, 140, 0, 0.22)',
+                            color: '#ff8c00',
                             flexShrink: 0,
                           }}
                         >
@@ -437,7 +437,7 @@ export default function CommunityHomeDashboard({
                       </Typography>
                       <Button
                         variant="text"
-                        sx={{ mt: 1, color: '#f5a623' }}
+                        sx={{ mt: 1, color: '#ff8c00' }}
                         onClick={() =>
                           onUsePrompt(
                             'Hei! Jeg er ny i community. Dette jobber jeg med akkurat nå, og dette vil jeg gjerne lære mer om: ',
@@ -467,7 +467,7 @@ export default function CommunityHomeDashboard({
                         </Typography>
                         <Button
                           size="small"
-                          sx={{ mt: 1, color: '#f5a623' }}
+                          sx={{ mt: 1, color: '#ff8c00' }}
                           onClick={() => onOpenDiscussion(thread.channel_id, thread.id)}
                         >
                           Åpne tråd
@@ -512,8 +512,8 @@ export default function CommunityHomeDashboard({
                             label={item.is_solution ? 'Løsning' : `${item.thread_count || 0} svar`}
                             size="small"
                             sx={{
-                              bgcolor: item.is_solution ? 'rgba(84, 181, 125, 0.14)' : 'rgba(245, 166, 35, 0.14)',
-                              color: item.is_solution ? '#78df9c' : '#f5a623',
+                              bgcolor: item.is_solution ? 'rgba(84, 181, 125, 0.14)' : 'rgba(255, 140, 0, 0.14)',
+                              color: item.is_solution ? '#78df9c' : '#ff8c00',
                             }}
                           />
                           <Typography variant="caption" sx={{ color: SHELL_MUTED }}>
@@ -525,7 +525,7 @@ export default function CommunityHomeDashboard({
                         </Typography>
                         <Button
                           size="small"
-                          sx={{ mt: 1, color: '#f5a623' }}
+                          sx={{ mt: 1, color: '#ff8c00' }}
                           onClick={() => onOpenDiscussion(item.channel_id, item.id)}
                         >
                           Les svar
@@ -543,7 +543,7 @@ export default function CommunityHomeDashboard({
           <Card sx={surfaceCardSx}>
             <CardContent sx={{ p: { xs: 2.5, md: 3 } }}>
               <Stack direction="row" spacing={1.2} alignItems="center">
-                <School sx={{ color: '#f5a623' }} />
+                <School sx={{ color: '#ff8c00' }} />
                 <Typography variant="h5" sx={{ fontWeight: 700 }}>
                   Mentorer pålogget
                 </Typography>
@@ -585,8 +585,8 @@ export default function CommunityHomeDashboard({
                     onClick={onBecomeMentor}
                     sx={{
                       borderRadius: 999,
-                      bgcolor: '#f5a623',
-                      color: '#05070b',
+                      bgcolor: '#ff8c00',
+                      color: '#0a0f1a',
                     }}
                   >
                     Bli mentor
@@ -599,7 +599,7 @@ export default function CommunityHomeDashboard({
           <Card sx={surfaceCardSx}>
             <CardContent sx={{ p: { xs: 2.5, md: 3 } }}>
               <Stack direction="row" spacing={1.2} alignItems="center">
-                <WorkspacePremium sx={{ color: '#f5a623' }} />
+                <WorkspacePremium sx={{ color: '#ff8c00' }} />
                 <Typography variant="h5" sx={{ fontWeight: 700 }}>
                   Merkeprogresjon
                 </Typography>
@@ -633,7 +633,7 @@ export default function CommunityHomeDashboard({
                           bgcolor: 'rgba(255,255,255,0.08)',
                           '& .MuiLinearProgress-bar': {
                             borderRadius: 999,
-                            background: `linear-gradient(90deg, ${track.accent}, #f5a623)`,
+                            background: `linear-gradient(90deg, ${track.accent}, #ff8c00)`,
                           },
                         }}
                       />
@@ -647,7 +647,7 @@ export default function CommunityHomeDashboard({
           <Card sx={surfaceCardSx}>
             <CardContent sx={{ p: { xs: 2.5, md: 3 } }}>
               <Stack direction="row" spacing={1.2} alignItems="center">
-                <CalendarMonth sx={{ color: '#f5a623' }} />
+                <CalendarMonth sx={{ color: '#ff8c00' }} />
                 <Typography variant="h5" sx={{ fontWeight: 700 }}>
                   Kommende økter
                 </Typography>
@@ -668,8 +668,8 @@ export default function CommunityHomeDashboard({
                       size="small"
                       sx={{
                         mb: 1,
-                        bgcolor: 'rgba(245, 166, 35, 0.14)',
-                        color: '#f5a623',
+                        bgcolor: 'rgba(255, 140, 0, 0.14)',
+                        color: '#ff8c00',
                       }}
                     />
                     <Typography sx={{ color: SHELL_TEXT, fontWeight: 700 }}>
@@ -690,7 +690,7 @@ export default function CommunityHomeDashboard({
           <Card sx={surfaceCardSx}>
             <CardContent sx={{ p: { xs: 2.5, md: 3 } }}>
               <Stack direction="row" spacing={1.2} alignItems="center">
-                <MenuBook sx={{ color: '#f5a623' }} />
+                <MenuBook sx={{ color: '#ff8c00' }} />
                 <Typography variant="h5" sx={{ fontWeight: 700 }}>
                   Academy + fellesskapet
                 </Typography>
@@ -742,8 +742,8 @@ export default function CommunityHomeDashboard({
                     onClick={onOpenPublishDialog}
                     sx={{
                       borderRadius: 999,
-                      bgcolor: '#f5a623',
-                      color: '#05070b',
+                      bgcolor: '#ff8c00',
+                      color: '#0a0f1a',
                       '&:hover': {
                         bgcolor: '#ffcd73',
                       },
@@ -766,7 +766,7 @@ export default function CommunityHomeDashboard({
                           </Typography>
                           <Button
                             size="small"
-                            sx={{ mt: 0.8, color: '#f5a623' }}
+                            sx={{ mt: 0.8, color: '#ff8c00' }}
                             onClick={() => onOpenDiscussion(announcement.channel_id, announcement.id)}
                           >
                             Åpne diskusjon

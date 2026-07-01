@@ -160,17 +160,17 @@ interface CommunityLandingPageProps {
 }
 
 const COMMUNITY_SHELL_BACKGROUND = `
-  radial-gradient(circle at top right, rgba(245, 166, 35, 0.14), transparent 28%),
+  radial-gradient(circle at top right, rgba(255, 140, 0, 0.14), transparent 28%),
   radial-gradient(circle at bottom left, rgba(88, 122, 168, 0.18), transparent 32%),
-  linear-gradient(180deg, #05070b 0%, #091019 52%, #06080c 100%)
+  linear-gradient(180deg, #0a0f1a 0%, #091019 52%, #06080c 100%)
 `;
 const COMMUNITY_PANEL_BACKGROUND =
   'linear-gradient(180deg, rgba(13, 18, 27, 0.94), rgba(8, 12, 18, 0.94))';
 const COMMUNITY_PANEL_BORDER = '1px solid rgba(255, 255, 255, 0.08)';
 const COMMUNITY_PANEL_SHADOW = '0 24px 60px rgba(0, 0, 0, 0.36)';
-const COMMUNITY_TEXT_PRIMARY = 'rgba(248, 241, 231, 0.94)';
-const COMMUNITY_TEXT_MUTED = 'rgba(248, 241, 231, 0.68)';
-const COMMUNITY_ACCENT = '#f5a623';
+const COMMUNITY_TEXT_PRIMARY = 'rgba(255, 255, 255, 0.94)';
+const COMMUNITY_TEXT_MUTED = 'rgba(255, 255, 255, 0.68)';
+const COMMUNITY_ACCENT = '#ff8c00';
 const COMMUNITY_PROFILE_STORAGE_KEY = 'creatorhub-community-onboarding-profile-v1';
 const ONBOARDING_INTEREST_OPTIONS = [
   'Lys',
@@ -527,7 +527,7 @@ function CommunityLandingPageComponent({
               bgcolor: 'rgba(255,255,255,0.08)',
               '& .MuiLinearProgress-bar': {
                 borderRadius: 999,
-                background: 'linear-gradient(90deg, #f5a623 0%, #ffcd73 100%)',
+                background: 'linear-gradient(90deg, #ff8c00 0%, #ffcd73 100%)',
               },
             }}
           />
@@ -583,9 +583,9 @@ function CommunityLandingPageComponent({
                 size="small"
                 sx={{
                   mb: 1.5,
-                  bgcolor: 'rgba(245, 166, 35, 0.14)',
+                  bgcolor: 'rgba(255, 140, 0, 0.14)',
                   color: COMMUNITY_ACCENT,
-                  border: '1px solid rgba(245, 166, 35, 0.22)',
+                  border: '1px solid rgba(255, 140, 0, 0.22)',
                   fontWeight: 700,
                   letterSpacing: '0.08em',
                   textTransform: 'uppercase',
@@ -624,7 +624,7 @@ function CommunityLandingPageComponent({
                   startIcon={<Login />}
                   sx={{
                     bgcolor: COMMUNITY_ACCENT,
-                    color: '#05070b',
+                    color: '#0a0f1a',
                     textTransform: 'none',
                     px: 3,
                     py: 1,
@@ -643,7 +643,7 @@ function CommunityLandingPageComponent({
                 onClick={handleSkipWithAnalytics}
                 startIcon={<Close />}
                 sx={{
-                  borderColor: 'rgba(245, 166, 35, 0.28)',
+                  borderColor: 'rgba(255, 140, 0, 0.28)',
                   color: COMMUNITY_TEXT_PRIMARY,
                   textTransform: 'none',
                   px: 3,
@@ -652,8 +652,8 @@ function CommunityLandingPageComponent({
                   fontWeight: 600,
                   background: 'rgba(255,255,255,0.03)',
                   '&:hover': {
-                    borderColor: 'rgba(245, 166, 35, 0.42)',
-                    bgcolor: 'rgba(245, 166, 35, 0.12)',
+                    borderColor: 'rgba(255, 140, 0, 0.42)',
+                    bgcolor: 'rgba(255, 140, 0, 0.12)',
                   },
                 }}
               >
@@ -689,14 +689,14 @@ function CommunityLandingPageComponent({
                       width: 40,
                       height: 40,
                       borderRadius: '50%',
-                      background: 'linear-gradient(135deg, #f5a623 0%, #ffd27d 100%)',
+                      background: 'linear-gradient(135deg, #ff8c00 0%, #ffd27d 100%)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      boxShadow: '0 10px 24px rgba(245, 166, 35, 0.28)',
+                      boxShadow: '0 10px 24px rgba(255, 140, 0, 0.28)',
                     }}
                   >
-                    <CheckCircle sx={{ color: '#05070b', fontSize: 24 }} />
+                    <CheckCircle sx={{ color: '#0a0f1a', fontSize: 24 }} />
                   </Box>
                   <Typography
                     variant="h6"
@@ -711,11 +711,11 @@ function CommunityLandingPageComponent({
                 <Chip
                   label={`${completedSteps.size} / ${onboardingConfig.steps.length} fullført`}
                   sx={{
-                    bgcolor: 'rgba(245, 166, 35, 0.14)',
+                    bgcolor: 'rgba(255, 140, 0, 0.14)',
                     color: COMMUNITY_ACCENT,
                     fontWeight: 600,
                     px: 1,
-                    border: '1px solid rgba(245, 166, 35, 0.18)',
+                    border: '1px solid rgba(255, 140, 0, 0.18)',
                   }}
                 />
               </Box>
@@ -729,8 +729,8 @@ function CommunityLandingPageComponent({
                     bgcolor: 'rgba(255, 255, 255, 0.08)',
                     '& .MuiLinearProgress-bar': {
                       borderRadius: 6,
-                      background: 'linear-gradient(90deg, #f5a623 0%, #ffd27d 100%)',
-                      boxShadow: '0 2px 10px rgba(245, 166, 35, 0.3)',
+                      background: 'linear-gradient(90deg, #ff8c00 0%, #ffd27d 100%)',
+                      boxShadow: '0 2px 10px rgba(255, 140, 0, 0.3)',
                     },
                   }}
                 />
@@ -799,11 +799,11 @@ function CommunityLandingPageComponent({
                             borderRadius: 999,
                             textTransform: 'none',
                             bgcolor: selected ? COMMUNITY_ACCENT : 'transparent',
-                            color: selected ? '#05070b' : COMMUNITY_TEXT_PRIMARY,
+                            color: selected ? '#0a0f1a' : COMMUNITY_TEXT_PRIMARY,
                             borderColor: selected ? 'transparent' : 'rgba(255,255,255,0.12)',
                             '&:hover': {
-                              bgcolor: selected ? '#ffcd73' : 'rgba(245, 166, 35, 0.08)',
-                              borderColor: 'rgba(245, 166, 35, 0.24)',
+                              bgcolor: selected ? '#ffcd73' : 'rgba(255, 140, 0, 0.08)',
+                              borderColor: 'rgba(255, 140, 0, 0.24)',
                             },
                           }}
                         >
@@ -834,9 +834,9 @@ function CommunityLandingPageComponent({
                           sx={{
                             borderRadius: 999,
                             textTransform: 'none',
-                            bgcolor: selected ? 'rgba(245, 166, 35, 0.14)' : 'transparent',
+                            bgcolor: selected ? 'rgba(255, 140, 0, 0.14)' : 'transparent',
                             color: COMMUNITY_TEXT_PRIMARY,
-                            borderColor: selected ? 'rgba(245, 166, 35, 0.24)' : 'rgba(255,255,255,0.12)',
+                            borderColor: selected ? 'rgba(255, 140, 0, 0.24)' : 'rgba(255,255,255,0.12)',
                           }}
                         >
                           {goal}
@@ -875,7 +875,7 @@ function CommunityLandingPageComponent({
                             py: 1.2,
                             textTransform: 'none',
                             bgcolor: selected ? COMMUNITY_ACCENT : 'transparent',
-                            color: selected ? '#05070b' : COMMUNITY_TEXT_PRIMARY,
+                            color: selected ? '#0a0f1a' : COMMUNITY_TEXT_PRIMARY,
                             borderColor: selected ? 'transparent' : 'rgba(255,255,255,0.12)',
                           }}
                         >
@@ -889,8 +889,8 @@ function CommunityLandingPageComponent({
                       mt: 2,
                       p: 1.5,
                       borderRadius: 2.5,
-                      bgcolor: 'rgba(245, 166, 35, 0.08)',
-                      border: '1px solid rgba(245, 166, 35, 0.14)',
+                      bgcolor: 'rgba(255, 140, 0, 0.08)',
+                      border: '1px solid rgba(255, 140, 0, 0.14)',
                     }}
                   >
                     <Typography variant="caption" sx={{ color: COMMUNITY_TEXT_MUTED }}>
@@ -929,12 +929,12 @@ function CommunityLandingPageComponent({
                       width: 56,
                       height: 56,
                       borderRadius: 2,
-                      bgcolor: 'rgba(245, 166, 35, 0.14)',
+                      bgcolor: 'rgba(255, 140, 0, 0.14)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
                       backdropFilter: 'blur(10px)',
-                      border: '1px solid rgba(245, 166, 35, 0.18)',
+                      border: '1px solid rgba(255, 140, 0, 0.18)',
                     }}
                   >
                     <VideoLibrary sx={{ fontSize: 32, color: COMMUNITY_ACCENT }} />
@@ -1045,7 +1045,7 @@ function CommunityLandingPageComponent({
                       right: 0,
                       bottom: 0,
                       background:
-                        'radial-gradient(circle at 30% 50%, rgba(245, 166, 35, 0.18) 0%, transparent 55%)',
+                        'radial-gradient(circle at 30% 50%, rgba(255, 140, 0, 0.18) 0%, transparent 55%)',
                     },
                   }}
                 >
@@ -1055,7 +1055,7 @@ function CommunityLandingPageComponent({
                         width: 100,
                         height: 100,
                         borderRadius: '50%',
-                        bgcolor: 'rgba(245, 166, 35, 0.14)',
+                        bgcolor: 'rgba(255, 140, 0, 0.14)',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
@@ -1073,7 +1073,7 @@ function CommunityLandingPageComponent({
                             boxShadow: '0 12px 32px rgba(0, 0, 0, 0.3)',
                           },
                         },
-                        border: '1px solid rgba(245, 166, 35, 0.2)',
+                        border: '1px solid rgba(255, 140, 0, 0.2)',
                       }}
                     >
                       <EmojiEvents sx={{ fontSize: 60, color: COMMUNITY_ACCENT }} />
@@ -1101,7 +1101,7 @@ function CommunityLandingPageComponent({
                         py: 1.5,
                         borderRadius: 999,
                         bgcolor: COMMUNITY_ACCENT,
-                        color: '#05070b',
+                        color: '#0a0f1a',
                         fontWeight: 700,
                         fontSize: '1.1rem',
                         textTransform: 'none',

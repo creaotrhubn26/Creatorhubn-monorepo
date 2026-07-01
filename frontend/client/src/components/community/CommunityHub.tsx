@@ -125,7 +125,7 @@ export default function CommunityHub({ userId, userEmail, profession }: Communit
           justifyContent: 'center',
           alignItems: 'center',
           background:
-            'radial-gradient(circle at top right, rgba(245, 166, 35, 0.14), transparent 28%), linear-gradient(180deg, #05070b 0%, #091019 52%, #06080c 100%)',
+            'radial-gradient(circle at top right, rgba(255, 140, 0, 0.14), transparent 28%), linear-gradient(180deg, #0a0f1a 0%, #091019 52%, #06080c 100%)',
           px: 2,
         }}
       >
@@ -140,8 +140,8 @@ export default function CommunityHub({ userId, userEmail, profession }: Communit
             boxShadow: '0 24px 60px rgba(0, 0, 0, 0.36)',
           }}
         >
-          <CircularProgress sx={{ color: '#f5a623' }} />
-          <Typography variant="body1" sx={{ mt: 2, color: 'rgba(248, 241, 231, 0.68)' }}>
+          <CircularProgress sx={{ color: '#ff8c00' }} />
+          <Typography variant="body1" sx={{ mt: 2, color: 'rgba(255, 255, 255, 0.68)' }}>
             Laster community...
           </Typography>
         </Box>

@@ -225,9 +225,9 @@ interface CommunityProfilePreference {
 }
 
 const COMMUNITY_SHELL_BACKGROUND = `
-  radial-gradient(circle at top right, rgba(245, 166, 35, 0.14), transparent 28%),
+  radial-gradient(circle at top right, rgba(255, 140, 0, 0.14), transparent 28%),
   radial-gradient(circle at bottom left, rgba(88, 122, 168, 0.18), transparent 32%),
-  linear-gradient(180deg, #05070b 0%, #091019 52%, #06080c 100%)
+  linear-gradient(180deg, #0a0f1a 0%, #091019 52%, #06080c 100%)
 `;
 const COMMUNITY_PANEL_BACKGROUND =
   'linear-gradient(180deg, rgba(13, 18, 27, 0.94), rgba(8, 12, 18, 0.94))';
@@ -235,9 +235,9 @@ const COMMUNITY_PANEL_BORDER = '1px solid rgba(255,255,255,0.08)';
 const COMMUNITY_PANEL_SHADOW = '0 24px 60px rgba(0, 0, 0, 0.36)';
 const COMMUNITY_INSET_BACKGROUND = 'rgba(6, 9, 14, 0.58)';
 const COMMUNITY_HOVER_BACKGROUND = 'rgba(255,255,255,0.04)';
-const COMMUNITY_TEXT_PRIMARY = 'rgba(248, 241, 231, 0.92)';
-const COMMUNITY_TEXT_MUTED = 'rgba(248, 241, 231, 0.64)';
-const COMMUNITY_ACCENT = '#f5a623';
+const COMMUNITY_TEXT_PRIMARY = 'rgba(255, 255, 255, 0.92)';
+const COMMUNITY_TEXT_MUTED = 'rgba(255, 255, 255, 0.64)';
+const COMMUNITY_ACCENT = '#ff8c00';
 const COMMUNITY_PROFILE_STORAGE_KEY = 'creatorhub-community-onboarding-profile-v1';
 const COMMUNITY_UPCOMING_EVENTS = [
   {
@@ -1337,7 +1337,7 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
         detail: 'Koble læring til praksis ved å starte diskusjoner rundt kurs og leksjoner.',
         current: academyAnnouncements.length + publishedPosts.length,
         target: 3,
-        accent: '#f5a623',
+        accent: '#ff8c00',
       },
     ],
     [academyAnnouncements.length, publishedPosts.length, userStats.messages, userStats.solutions],
@@ -1425,9 +1425,9 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
             sx={{
               width: 50,
               height: 50,
-              bgcolor: 'rgba(245, 166, 35, 0.18)',
+              bgcolor: 'rgba(255, 140, 0, 0.18)',
               color: COMMUNITY_ACCENT,
-              border: '1px solid rgba(245, 166, 35, 0.2)',
+              border: '1px solid rgba(255, 140, 0, 0.2)',
             }}
           >
             {user?.name?.[0]}
@@ -1511,13 +1511,13 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                   color: COMMUNITY_TEXT_MUTED,
                 },
                 '&.Mui-selected': {
-                  background: 'rgba(245, 166, 35, 0.12)',
-                  border: '1px solid rgba(245, 166, 35, 0.22)',
+                  background: 'rgba(255, 140, 0, 0.12)',
+                  border: '1px solid rgba(255, 140, 0, 0.22)',
                   '& .MuiListItemIcon-root': {
                     color: COMMUNITY_ACCENT,
                   },
                   '&:hover': {
-                    background: 'rgba(245, 166, 35, 0.16)',
+                    background: 'rgba(255, 140, 0, 0.16)',
                   },
                 },
                 '&:hover': {
@@ -1567,13 +1567,13 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                       color: COMMUNITY_TEXT_MUTED,
                     },
                     '&.Mui-selected': {
-                      background: 'rgba(245, 166, 35, 0.12)',
-                      border: '1px solid rgba(245, 166, 35, 0.22)',
+                      background: 'rgba(255, 140, 0, 0.12)',
+                      border: '1px solid rgba(255, 140, 0, 0.22)',
                       '& .MuiListItemIcon-root': {
                         color: COMMUNITY_ACCENT,
                       },
                       '&:hover': {
-                        background: 'rgba(245, 166, 35, 0.16)',
+                        background: 'rgba(255, 140, 0, 0.16)',
                       },
                     },
                     '&.Mui-disabled': {
@@ -1627,12 +1627,12 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
             sx={{
               textTransform: 'none',
               justifyContent: 'flex-start',
-              color: selectedView === 'home' ? '#05070b' : COMMUNITY_TEXT_PRIMARY,
+              color: selectedView === 'home' ? '#0a0f1a' : COMMUNITY_TEXT_PRIMARY,
               borderColor: 'rgba(255,255,255,0.1)',
               bgcolor: selectedView === 'home' ? COMMUNITY_ACCENT : 'transparent',
               '&:hover': {
-                borderColor: 'rgba(245, 166, 35, 0.22)',
-                bgcolor: selectedView === 'home' ? '#ffcd73' : 'rgba(245, 166, 35, 0.08)',
+                borderColor: 'rgba(255, 140, 0, 0.22)',
+                bgcolor: selectedView === 'home' ? '#ffcd73' : 'rgba(255, 140, 0, 0.08)',
               },
             }}
           >
@@ -1653,8 +1653,8 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
               color: COMMUNITY_TEXT_PRIMARY,
               borderColor: 'rgba(255,255,255,0.1)',
               '&:hover': {
-                borderColor: 'rgba(245, 166, 35, 0.22)',
-                bgcolor: 'rgba(245, 166, 35, 0.08)',
+                borderColor: 'rgba(255, 140, 0, 0.22)',
+                bgcolor: 'rgba(255, 140, 0, 0.08)',
               },
             }}
           >
@@ -1699,8 +1699,8 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                   color: COMMUNITY_TEXT_PRIMARY,
                   borderColor: 'rgba(255,255,255,0.1)',
                   '&:hover': {
-                    borderColor: 'rgba(245, 166, 35, 0.22)',
-                    bgcolor: 'rgba(245, 166, 35, 0.08)',
+                    borderColor: 'rgba(255, 140, 0, 0.22)',
+                    bgcolor: 'rgba(255, 140, 0, 0.08)',
                   },
                 }}
               >
@@ -1720,8 +1720,8 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                   color: COMMUNITY_TEXT_PRIMARY,
                   borderColor: 'rgba(255,255,255,0.1)',
                   '&:hover': {
-                    borderColor: 'rgba(245, 166, 35, 0.22)',
-                    bgcolor: 'rgba(245, 166, 35, 0.08)',
+                    borderColor: 'rgba(255, 140, 0, 0.22)',
+                    bgcolor: 'rgba(255, 140, 0, 0.08)',
                   },
                 }}
               >
@@ -1746,7 +1746,7 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
           p: 2,
           borderRadius: 3,
           color: COMMUNITY_TEXT_PRIMARY,
-          background: isOwnMessage ? 'rgba(245, 166, 35, 0.04)' : 'transparent',
+          background: isOwnMessage ? 'rgba(255, 140, 0, 0.04)' : 'transparent',
           '&:hover': {
             bgcolor: COMMUNITY_HOVER_BACKGROUND,
           },
@@ -1790,9 +1790,9 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
               width: 40,
               height: 40,
               cursor: 'pointer',
-              bgcolor: 'rgba(245, 166, 35, 0.18)',
+              bgcolor: 'rgba(255, 140, 0, 0.18)',
               color: COMMUNITY_ACCENT,
-              border: '1px solid rgba(245, 166, 35, 0.18)',
+              border: '1px solid rgba(255, 140, 0, 0.18)',
               '&:hover': { opacity: 0.8 },
             }}
             onClick={() => {
@@ -1819,9 +1819,9 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                   height: 20,
                   fontSize: '10px',
                   fontWeight: 600,
-                  bgcolor: 'rgba(245, 166, 35, 0.14)',
+                  bgcolor: 'rgba(255, 140, 0, 0.14)',
                   color: COMMUNITY_ACCENT,
-                  border: '1px solid rgba(245, 166, 35, 0.18)',
+                  border: '1px solid rgba(255, 140, 0, 0.18)',
                 }}
               />
             )}
@@ -1885,10 +1885,10 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                       borderColor: 'rgba(255,255,255,0.1)',
                     },
                     '&:hover fieldset': {
-                      borderColor: 'rgba(245, 166, 35, 0.24)',
+                      borderColor: 'rgba(255, 140, 0, 0.24)',
                     },
                     '&.Mui-focused fieldset': {
-                      borderColor: 'rgba(245, 166, 35, 0.42)',
+                      borderColor: 'rgba(255, 140, 0, 0.42)',
                     },
                   },
                 }}
@@ -1900,7 +1900,7 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                   onClick={() => handleSaveEdit(message.id)}
                   sx={{
                     bgcolor: COMMUNITY_ACCENT,
-                    color: '#05070b',
+                    color: '#0a0f1a',
                     '&:hover': {
                       bgcolor: '#ffcd73',
                     },
@@ -2027,10 +2027,10 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                     height: 24,
                     color: COMMUNITY_TEXT_PRIMARY,
                     bgcolor: users.includes(userId)
-                      ? 'rgba(245, 166, 35, 0.16)'
+                      ? 'rgba(255, 140, 0, 0.16)'
                       : 'rgba(255,255,255,0.06)',
                     border: users.includes(userId)
-                      ? '1px solid rgba(245, 166, 35, 0.2)'
+                      ? '1px solid rgba(255, 140, 0, 0.2)'
                       : '1px solid rgba(255,255,255,0.08)',
                   }}
                 />
@@ -2191,7 +2191,7 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                       borderRadius: 999,
                       textTransform: 'none',
                       bgcolor: selectedView === 'home' ? COMMUNITY_ACCENT : 'transparent',
-                      color: selectedView === 'home' ? '#05070b' : COMMUNITY_TEXT_PRIMARY,
+                      color: selectedView === 'home' ? '#0a0f1a' : COMMUNITY_TEXT_PRIMARY,
                       borderColor: 'rgba(255,255,255,0.12)',
                     }}
                   >
@@ -2204,7 +2204,7 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                       sx={{
                         borderRadius: 999,
                         textTransform: 'none',
-                        bgcolor: selectedView === 'channel' ? 'rgba(245, 166, 35, 0.14)' : 'transparent',
+                        bgcolor: selectedView === 'channel' ? 'rgba(255, 140, 0, 0.14)' : 'transparent',
                         color: COMMUNITY_TEXT_PRIMARY,
                         borderColor: 'rgba(255,255,255,0.12)',
                       }}
@@ -2240,7 +2240,7 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                     sx={{
                       textTransform: 'none',
                       bgcolor: COMMUNITY_ACCENT,
-                      color: '#05070b',
+                      color: '#0a0f1a',
                     }}
                   >
                     Bli Mentor
@@ -2420,7 +2420,7 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                           selectedChannel.id,
                         )
                       }
-                      sx={{ bgcolor: 'rgba(245, 166, 35, 0.12)', color: '#f5a623' }}
+                      sx={{ bgcolor: 'rgba(255, 140, 0, 0.12)', color: '#ff8c00' }}
                     />
                     <Chip
                       label="Del takeaway"
@@ -2470,7 +2470,7 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                             </Box>
                             <Button
                               size="small"
-                              sx={{ color: '#f5a623', flexShrink: 0 }}
+                              sx={{ color: '#ff8c00', flexShrink: 0 }}
                               onClick={() => handleOpenDiscussion(suggestion.channel_id, suggestion.id)}
                             >
                               Vis
@@ -2522,10 +2522,10 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                           borderColor: 'rgba(255,255,255,0.1)',
                         },
                         '&:hover fieldset': {
-                          borderColor: 'rgba(245, 166, 35, 0.24)',
+                          borderColor: 'rgba(255, 140, 0, 0.24)',
                         },
                         '&.Mui-focused fieldset': {
-                          borderColor: 'rgba(245, 166, 35, 0.42)',
+                          borderColor: 'rgba(255, 140, 0, 0.42)',
                         },
                       },
                       '& .MuiInputBase-input::placeholder': {
@@ -2580,7 +2580,7 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                     p: 2,
                     borderTop: 1,
                     borderColor: 'rgba(255,255,255,0.08)',
-                    bgcolor: 'rgba(245, 166, 35, 0.08)',
+                    bgcolor: 'rgba(255, 140, 0, 0.08)',
                   }}
                 >
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
