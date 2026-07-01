@@ -99,13 +99,19 @@ function extractBody(payload: any): string {
   return "";
 }
 
-// Gmail-søk: kun kvittering-KANDIDATER (kjente leverandører + kvittering-ord).
-// Holder både haiku-kost og personvern nede — vi ser aldri på hele innboksen.
+// Gmail-søk: NØKKELORD-forankret på kvittering-ord (matcher hvor som helst i
+// meldingen). Tidligere brukte vi en bred from:(google.com OR microsoft.com …)-
+// gren UTEN nøkkelordkrav → innboksen flommet av varsler/nyhetsbrev fra de
+// domenene og presset de ekte kvitteringene ut av de nyeste treffene. Nå kreves
+// et kvittering-ord, så kandidatene faktisk ER kjøp/kvitteringer. haiku filtrerer
+// resten. Holder haiku-kost + personvern nede — vi ser aldri på hele innboksen.
 const GMAIL_RECEIPT_QUERY = [
-  "newer_than:2y",
+  "newer_than:3y",
   "(",
-  "subject:(invoice OR receipt OR kvittering OR faktura OR subscription OR abonnement OR renewal OR renew OR payment OR \"order confirmation\" OR ordrebekreftelse)",
-  "OR from:(adobe.com OR splice.com OR paddle.com OR fastspring.com OR native-instruments.com OR izotope.com OR waves.com OR u-he.com OR plugin-alliance.com OR ableton.com OR steinberg.net OR apple.com OR dropbox.com OR google.com OR microsoft.com OR paypal.com OR stripe.com OR gumroad.com OR distrokid.com OR backblaze.com)",
+  "receipt OR invoice OR kvittering OR faktura OR ordrebekreftelse",
+  "OR \"order confirmation\" OR \"order number\" OR \"your receipt\" OR \"payment received\"",
+  "OR \"payment confirmation\" OR \"subscription renewal\" OR \"your subscription\"",
+  "OR \"din kvittering\" OR betalingsbekreftelse OR \"takk for kjøpet\" OR \"thanks for your purchase\"",
   ")",
 ].join(" ");
 
@@ -319,11 +325,15 @@ export function setupSoftwareExpensesRoutes(deps: SoftwareExpensesRoutesDeps): v
         `SELECT source_email_id FROM software_expenses WHERE user_id=$1 AND source_email_id = ANY($2)`,
         [session.userId, ids]);
       const seen = new Set(existing.rows.map((r) => r.source_email_id));
-      const fresh = ids.filter((id) => !seen.has(id)).slice(0, 25); // cost-cap: maks 25 nye per skann
-      const duplicates = ids.length - fresh.length;
-      if (!fresh.length) return res.json({ status: "ok", scanned: ids.length, created: 0, duplicates, message: "Ingen nye kvitteringer siden sist." });
+      const notSeen = ids.filter((id) => !seen.has(id));
+      const fresh = notSeen.slice(0, 30); // cost-cap: maks 30 nye per skann
+      const duplicates = seen.size;               // faktiske dubletter (sett før)
+      const cappedOff = notSeen.length - fresh.length; // droppet pga taket
+      if (!fresh.length) return res.json({ status: "ok", scanned: ids.length, created: 0, duplicates, cappedOff, message: "Ingen nye kvitteringer siden sist." });
 
       // 4. Hent + parse hver kandidat isolert.
+      const debug = String((req.query as any)?.debug || (req.body as any)?.debug || "") === "1";
+      const debugRows: any[] = [];
       const Anthropic = (await import("@anthropic-ai/sdk")).default;
       const client = new Anthropic({ apiKey });
 
@@ -342,9 +352,10 @@ export function setupSoftwareExpensesRoutes(deps: SoftwareExpensesRoutesDeps): v
             messages: [{ role: "user", content: EXTRACT_PROMPT(subject, from, body) }],
           });
           const text = (resp?.content || []).map((c: any) => c?.text || "").join("").trim();
-          const m = text.match(/\{[\s\S]*\}/); if (!m) return null;
-          const p = JSON.parse(m[0]);
-          if (!p.isReceipt) return null;
+          const m = text.match(/\{[\s\S]*\}/);
+          const p = m ? JSON.parse(m[0]) : null;
+          if (debug) debugRows.push({ subject: subject.slice(0, 90), from: from.slice(0, 60), isReceipt: p?.isReceipt ?? null, vendor: p?.vendor ?? null, amount: p?.amount ?? null });
+          if (!p || !p.isReceipt) return null;
           const amount = p.amount == null ? null : Number(p.amount);
           const currency = String(p.currency || "NOK").toUpperCase().slice(0, 8);
           const cycle = normCycle(p.billingCycle);
@@ -384,8 +395,9 @@ export function setupSoftwareExpensesRoutes(deps: SoftwareExpensesRoutesDeps): v
       }
 
       res.json({
-        status: "ok", scanned: ids.length, candidates: fresh.length, created, duplicates,
+        status: "ok", scanned: ids.length, candidates: fresh.length, created, duplicates, cappedOff,
         message: created ? `Fant ${created} nye kvittering${created === 1 ? "" : "er"} til gjennomgang.` : "Ingen nye kvitteringer gjenkjent.",
+        ...(debug ? { debug: debugRows } : {}),
       });
     } catch (e) {
       console.error("[software-expenses] scan", e);
