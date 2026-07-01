@@ -215,6 +215,8 @@ import PhotographerSettings from '@/pages/photographer-settings';
 import WeddingAccessPage from '@/pages/wedding-access';
 import WeddingClientFormPage from '@/pages/wedding-client-form';
 import ContactFormPublic from '@/pages/contact-form-public';
+import SplitSheetSignPortal from '@/pages/split-sheet-sign-portal';
+import MyAgreementsPage from '@/pages/my-agreements';
 import PhotographerWeddingDay from '@/pages/photographer-wedding-day';
 import PhotographerWeddingWalkthrough from '@/pages/photographer-wedding-walkthrough';
 import PhotographerWeddingInvoice from '@/pages/photographer-wedding-invoice';
@@ -902,6 +904,8 @@ function App() {
                   <Route path="/client/gallery/:accessToken" component={ClientGallery as React.ComponentType<any>} />
                   <Route path="/client/portal/:token" component={ClientPortalMarketingPage as React.ComponentType<any>} />
                   <Route path="/skjema/:token" component={ContactFormPublic as React.ComponentType<any>} />
+                  <Route path="/signer/:code" component={SplitSheetSignPortal as React.ComponentType<any>} />
+                  <Route path="/mine-avtaler" component={MyAgreementsPage as React.ComponentType<any>} />
                   <Route path="/client/workspace/:projectId" component={ClientWorkspaceShell as React.ComponentType<any>} />
                   <Route path="/reset-passord/:token" component={ResetPasswordPage as React.ComponentType<any>} />
                   <Route path="/innstillinger/sikkerhet" component={SecuritySettingsPage as React.ComponentType<any>} />

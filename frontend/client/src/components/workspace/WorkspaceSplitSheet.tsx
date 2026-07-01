@@ -37,14 +37,22 @@ const WorkspaceSplitSheet: React.FC<{ projectId: string; profession?: string; us
 
   const persist = (next: any[]) => { setEntries(next); try { localStorage.setItem(storeKey, JSON.stringify(next)); } catch { /* */ } };
 
+  const [share, setShare] = useState<any | null>(null); // { shareUrl, accessCode, sheetId }
+  const [copied, setCopied] = useState(false);
+  const [status, setStatus] = useState<any | null>(null); // signeringsstatus + audit-logg
+
+  const loadStatus = async (sheetId: string) => {
+    if (!sheetId) return;
+    try { const r: any = await apiRequest(`/api/split-sheets/${sheetId}/signing-status`); setStatus(r); } catch { setStatus(null); }
+  };
+  const evLabel = (t: string) => ({ signing_enabled: 'Signering aktivert', viewed: 'Åpnet avtalen', signed: 'Signerte', completed: 'Alle signert ✓' } as any)[t] || t;
+  const evTime = (iso: string) => { try { return new Date(iso).toLocaleString('nb-NO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }); } catch { return ''; } };
+
   const onWizardSave = async (data: any) => {
-    const entry = { id: `local-${Date.now()}`, projectName: data.projectName, projectAmount: data.projectAmount, createdAt: new Date().toISOString(), model: data.model, participants: data.participants };
-    persist([entry, ...entries]);
-    setWizard(false);
-    setTab('stats');
-    // Varig lagring på prosjektet (best-effort) — samme backend som dashboardet.
+    const entry: any = { id: `local-${Date.now()}`, projectName: data.projectName, projectAmount: data.projectAmount, createdAt: new Date().toISOString(), model: data.model, participants: data.participants };
+    // Varig lagring på prosjektet + slå på signering → delingslenke til bandet.
     try {
-      await apiRequest('/api/split-sheets', {
+      const resp: any = await apiRequest('/api/split-sheets', {
         method: 'POST',
         body: {
           project_id: projectId,
@@ -53,8 +61,22 @@ const WorkspaceSplitSheet: React.FC<{ projectId: string; profession?: string; us
           contributors: (data.participants || []).map((p: any) => ({ name: p.name, email: p.email, role: p.roleLabel || p.role, percentage: p.sharePct })),
         },
       });
+      const sheetId = resp?.data?.id;
+      if (sheetId) {
+        entry.sheetId = sheetId;
+        try {
+          const en: any = await apiRequest(`/api/split-sheets/${sheetId}/enable-signing`, { method: 'POST', body: {} });
+          entry.accessCode = en?.accessCode; entry.shareUrl = en?.shareUrl;
+          setShare({ shareUrl: en?.shareUrl, accessCode: en?.accessCode, sheetId });
+        } catch { /* */ }
+      }
     } catch { /* */ }
+    persist([entry, ...entries]);
+    setWizard(false);
+    setTab('stats');
   };
+
+  const copyLink = (url: string) => { try { navigator.clipboard?.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1800); } catch { /* */ } };
 
   const totalKr = useMemo(() => entries.reduce((s, e) => s + (Number(e.projectAmount) || 0), 0), [entries]);
 
@@ -105,6 +127,44 @@ const WorkspaceSplitSheet: React.FC<{ projectId: string; profession?: string; us
         </Box>
 
         <DialogContent dividers sx={{ p: { xs: 2, md: 3 }, borderColor: ws.borderSoft }}>
+          {/* Delingslenke til bandet — de åpner den, ser fordelingen og signerer godkjennelse */}
+          {tab === 'stats' && (share?.shareUrl || entries.find((e: any) => e.shareUrl)) && (() => {
+            const link = share?.shareUrl || entries.find((e: any) => e.shareUrl)?.shareUrl;
+            return (
+              <Box sx={{ mb: 2, p: 1.75, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.accentSoft, border: `1px solid ${ws.accentBorder}` }}>
+                <Typography sx={{ fontSize: 13, fontWeight: 700, mb: 0.5 }}>🔗 Del til signering</Typography>
+                <Typography sx={{ fontSize: 12, color: ws.textDim, mb: 1 }}>Send lenken til bandet/bidragsyterne. De ser hele fordelingen og signerer godkjennelse — uten konto. Har de CreatorHub-konto med samme e-post, finner de avtalen igjen under «Mine avtaler».</Typography>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Box sx={{ flex: 1, px: 1.25, py: 0.9, borderRadius: 1, bgcolor: ws.panel, border: `1px solid ${ws.borderSoft}`, fontSize: 12, color: ws.textDim, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{link}</Box>
+                  <Button size="small" onClick={() => copyLink(link)} sx={{ color: copied ? ws.green : ws.accent, textTransform: 'none', fontWeight: 700, flexShrink: 0 }}>{copied ? 'Kopiert ✓' : 'Kopier'}</Button>
+                  <Button size="small" onClick={() => loadStatus(share?.sheetId || entries.find((e: any) => e.shareUrl)?.sheetId)} sx={{ color: ws.textDim, textTransform: 'none', fontWeight: 600, flexShrink: 0 }}>Status & logg</Button>
+                </Stack>
+
+                {status && (
+                  <Box sx={{ mt: 1.5, pt: 1.5, borderTop: `1px solid ${ws.borderSoft}` }}>
+                    <Typography sx={{ fontSize: 12, fontWeight: 700, mb: 0.75 }}>Signeringsstatus — {status.signedCount}/{status.total} signert</Typography>
+                    <Stack spacing={0.4} sx={{ mb: 1 }}>
+                      {(status.contributors || []).map((c: any) => (
+                        <Stack key={c.id} direction="row" alignItems="center" spacing={1}>
+                          <Typography sx={{ fontSize: 12, flex: 1 }} noWrap>{c.name}{c.role ? ` · ${c.role}` : ''} · {c.percentage}%</Typography>
+                          {c.signed ? <WsTag label="Signert" tone="green" /> : <WsTag label="Venter" tone="amber" />}
+                        </Stack>
+                      ))}
+                    </Stack>
+                    <Typography sx={{ fontSize: 11, fontWeight: 700, color: ws.textFaint, textTransform: 'uppercase', letterSpacing: 0.5, mb: 0.5 }}>Audit-logg</Typography>
+                    <Stack spacing={0.25}>
+                      {(status.events || []).length === 0 ? <Typography sx={{ fontSize: 11.5, color: ws.textFaint }}>Ingen hendelser ennå.</Typography> :
+                        (status.events || []).slice(0, 20).map((e: any, i: number) => (
+                          <Typography key={i} sx={{ fontSize: 11, color: ws.textDim }}>
+                            <b style={{ color: ws.textFaint }}>{evTime(e.at)}</b> · {evLabel(e.type)}{e.actor ? ` — ${e.actor}` : ''}{e.method ? ` (${e.method === 'drawn' ? 'tegnet' : 'skrevet'})` : ''}{e.ip ? ` · ${e.ip}` : ''}
+                          </Typography>
+                        ))}
+                    </Stack>
+                  </Box>
+                )}
+              </Box>
+            );
+          })()}
           {tab === 'stats' && (
             entries.length === 0 ? (
               <Stack alignItems="center" spacing={1.5} sx={{ py: 6 }}>
