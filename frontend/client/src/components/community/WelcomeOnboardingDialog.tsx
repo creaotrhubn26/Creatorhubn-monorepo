@@ -288,9 +288,9 @@ export default function WelcomeOnboardingDialog({
               label="Hurtigstart"
               size="small"
               sx={{
-                bgcolor: 'rgba(245, 166, 35, 0.14)',
+                bgcolor: 'rgba(255, 140, 0, 0.14)',
                 color: '#ffd27a',
-                border: '1px solid rgba(245, 166, 35, 0.24)',
+                border: '1px solid rgba(255, 140, 0, 0.24)',
                 fontWeight: 700,
                 letterSpacing: '0.08em',
                 textTransform: 'uppercase',
@@ -333,11 +333,11 @@ export default function WelcomeOnboardingDialog({
                       placeItems: 'center',
                       background:
                         activeStep === index
-                          ? 'linear-gradient(135deg, #f5a623 0%, #ffd27a 100%)'
+                          ? 'linear-gradient(135deg, #ff8c00 0%, #ffd27a 100%)'
                           : index < activeStep
                             ? 'linear-gradient(135deg, #78d6a3 0%, #9af0c1 100%)'
                             : 'rgba(255,255,255,0.05)',
-                      color: activeStep <= index ? COMMUNITY_DIALOG_TEXT : '#05070b',
+                      color: activeStep <= index ? COMMUNITY_DIALOG_TEXT : '#0a0f1a',
                       border: activeStep <= index ? '1px solid rgba(255,255,255,0.1)' : 'none',
                     }}
                   >

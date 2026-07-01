@@ -245,7 +245,7 @@ export default function UserProfileModal({
       >
         <DialogContent sx={COMMUNITY_DIALOG_CONTENT_SX}>
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-            <CircularProgress sx={{ color: '#f5a623' }} />
+            <CircularProgress sx={{ color: '#ff8c00' }} />
           </Box>
         </DialogContent>
       </Dialog>
@@ -284,9 +284,9 @@ export default function UserProfileModal({
             sx={{
               width: 80,
               height: 80,
-              bgcolor: 'rgba(245, 166, 35, 0.18)',
-              color: '#f5a623',
-              border: '1px solid rgba(245, 166, 35, 0.24)',
+              bgcolor: 'rgba(255, 140, 0, 0.18)',
+              color: '#ff8c00',
+              border: '1px solid rgba(255, 140, 0, 0.24)',
             }}
           >
             {profile.name?.charAt(0).toUpperCase()}

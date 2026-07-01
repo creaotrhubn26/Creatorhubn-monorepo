@@ -80,16 +80,16 @@ import { useSnackbar } from 'notistack';
 
 const TUTORIAL_ID = 'community-guide';
 const COMMUNITY_GUIDE_BACKGROUND = `
-  radial-gradient(circle at top right, rgba(245, 166, 35, 0.18), transparent 28%),
+  radial-gradient(circle at top right, rgba(255, 140, 0, 0.18), transparent 28%),
   radial-gradient(circle at bottom left, rgba(88, 122, 168, 0.16), transparent 30%),
-  linear-gradient(180deg, #05070b 0%, #091019 52%, #06080c 100%)
+  linear-gradient(180deg, #0a0f1a 0%, #091019 52%, #06080c 100%)
 `;
 const COMMUNITY_GUIDE_PANEL_ALT =
   'linear-gradient(180deg, rgba(18, 24, 34, 0.92), rgba(10, 14, 21, 0.96))';
 const COMMUNITY_GUIDE_BORDER = '1px solid rgba(255,255,255,0.08)';
-const COMMUNITY_GUIDE_TEXT = 'rgba(248, 241, 231, 0.94)';
-const COMMUNITY_GUIDE_MUTED = 'rgba(248, 241, 231, 0.66)';
-const COMMUNITY_GUIDE_ACCENT = '#f5a623';
+const COMMUNITY_GUIDE_TEXT = 'rgba(255, 255, 255, 0.94)';
+const COMMUNITY_GUIDE_MUTED = 'rgba(255, 255, 255, 0.66)';
+const COMMUNITY_GUIDE_ACCENT = '#ff8c00';
 const COMMUNITY_GUIDE_ACCENT_BRIGHT = '#ffd27a';
 const COMMUNITY_GUIDE_SUCCESS = '#78d6a3';
 const COMMUNITY_GUIDE_WARNING = '#f4b35e';
@@ -227,8 +227,8 @@ const COMMUNITY_GUIDE_STEP_CONTENT_SX = {
     borderColor: 'rgba(120, 214, 163, 0.28)',
   },
   '& .MuiChip-colorWarning': {
-    backgroundColor: 'rgba(245, 166, 35, 0.16) !important',
-    borderColor: 'rgba(245, 166, 35, 0.28)',
+    backgroundColor: 'rgba(255, 140, 0, 0.16) !important',
+    borderColor: 'rgba(255, 140, 0, 0.28)',
     color: COMMUNITY_GUIDE_ACCENT_BRIGHT,
   },
   '& .MuiChip-colorError': {
@@ -515,8 +515,8 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
               ...COMMUNITY_GUIDE_BASE_PAPER_SX,
               mt: 2,
               background:
-                'linear-gradient(180deg, rgba(245, 166, 35, 0.14), rgba(245, 166, 35, 0.05))',
-              border: '1px solid rgba(245, 166, 35, 0.22)',
+                'linear-gradient(180deg, rgba(255, 140, 0, 0.14), rgba(255, 140, 0, 0.05))',
+              border: '1px solid rgba(255, 140, 0, 0.22)',
             }}
           >
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
@@ -590,7 +590,7 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
             sx={{
               ...COMMUNITY_GUIDE_BASE_PAPER_SX,
               background: 'rgba(255,255,255,0.03)',
-              border: '1px dashed rgba(245, 166, 35, 0.32)',
+              border: '1px dashed rgba(255, 140, 0, 0.32)',
             }}
           >
             <Typography variant="body2">
@@ -1084,7 +1084,7 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
             width: 260,
             height: 260,
             background:
-              'radial-gradient(circle, rgba(245, 166, 35, 0.24) 0%, rgba(245, 166, 35, 0) 70%)',
+              'radial-gradient(circle, rgba(255, 140, 0, 0.24) 0%, rgba(255, 140, 0, 0) 70%)',
             pointerEvents: 'none',
           },
         }}
@@ -1097,8 +1097,8 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
               borderRadius: 2.5,
               display: 'grid',
               placeItems: 'center',
-              background: 'linear-gradient(135deg, rgba(245, 166, 35, 0.2), rgba(245, 166, 35, 0.08))',
-              border: '1px solid rgba(245, 166, 35, 0.28)',
+              background: 'linear-gradient(135deg, rgba(255, 140, 0, 0.2), rgba(255, 140, 0, 0.08))',
+              border: '1px solid rgba(255, 140, 0, 0.28)',
               color: COMMUNITY_GUIDE_ACCENT_BRIGHT,
               boxShadow: '0 14px 30px rgba(0, 0, 0, 0.24)',
             }}
@@ -1111,9 +1111,9 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
               size="small"
               sx={{
                 mb: 1,
-                bgcolor: 'rgba(245, 166, 35, 0.14)',
+                bgcolor: 'rgba(255, 140, 0, 0.14)',
                 color: COMMUNITY_GUIDE_ACCENT_BRIGHT,
-                border: '1px solid rgba(245, 166, 35, 0.24)',
+                border: '1px solid rgba(255, 140, 0, 0.24)',
                 fontWeight: 700,
                 letterSpacing: '0.08em',
                 textTransform: 'uppercase',
@@ -1157,8 +1157,8 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
             border: '1px solid rgba(255,255,255,0.08)',
             bgcolor: 'rgba(255,255,255,0.04)',
             '&:hover': {
-              bgcolor: 'rgba(245, 166, 35, 0.1)',
-              borderColor: 'rgba(245, 166, 35, 0.24)',
+              bgcolor: 'rgba(255, 140, 0, 0.1)',
+              borderColor: 'rgba(255, 140, 0, 0.24)',
             },
           }}
         >
@@ -1223,7 +1223,7 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
                           : 'none',
                       color:
                         activeStep === index || completedSteps.includes(index)
-                          ? '#05070b'
+                          ? '#0a0f1a'
                           : COMMUNITY_GUIDE_TEXT,
                     }}
                   >
@@ -1238,7 +1238,7 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
                 <Typography
                   sx={{
                     fontWeight: activeStep === index ? 700 : 600,
-                    color: activeStep === index ? COMMUNITY_GUIDE_TEXT : 'rgba(248, 241, 231, 0.82)',
+                    color: activeStep === index ? COMMUNITY_GUIDE_TEXT : 'rgba(255, 255, 255, 0.82)',
                   }}
                 >
                   {step.label}
@@ -1274,7 +1274,7 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
                       borderRadius: 999,
                       px: 1.8,
                       background: `linear-gradient(135deg, ${COMMUNITY_GUIDE_ACCENT} 0%, ${COMMUNITY_GUIDE_ACCENT_BRIGHT} 100%)`,
-                      color: '#05070b',
+                      color: '#0a0f1a',
                       fontWeight: 700,
                       boxShadow: '0 18px 30px rgba(0, 0, 0, 0.24)',
                       '&:hover': {
@@ -1396,11 +1396,11 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
                 borderRadius: 999,
                 px: 2,
                 color: COMMUNITY_GUIDE_ACCENT_BRIGHT,
-                borderColor: 'rgba(245, 166, 35, 0.24)',
-                backgroundColor: 'rgba(245, 166, 35, 0.08)',
+                borderColor: 'rgba(255, 140, 0, 0.24)',
+                backgroundColor: 'rgba(255, 140, 0, 0.08)',
                 '&:hover': {
-                  borderColor: 'rgba(245, 166, 35, 0.34)',
-                  backgroundColor: 'rgba(245, 166, 35, 0.12)',
+                  borderColor: 'rgba(255, 140, 0, 0.34)',
+                  backgroundColor: 'rgba(255, 140, 0, 0.12)',
                 },
               }}
             >

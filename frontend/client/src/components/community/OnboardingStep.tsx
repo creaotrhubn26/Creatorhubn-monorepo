@@ -69,8 +69,8 @@ const OnboardingStepComponent: React.FC<OnboardingStepProps> = ({
           <Box sx={{ mt: 2 }}>
             {step.content.items?.map((item: string, itemIndex: number) => (
               <Box key={itemIndex} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                <CheckCircle sx={{ color: '#f5a623' }} fontSize="small" />
-                <Typography variant="body2" sx={{ color: 'rgba(248, 241, 231, 0.82)' }}>
+                <CheckCircle sx={{ color: '#ff8c00' }} fontSize="small" />
+                <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.82)' }}>
                   {item}
                 </Typography>
               </Box>
@@ -83,7 +83,7 @@ const OnboardingStepComponent: React.FC<OnboardingStepProps> = ({
         return (
           <Typography
             variant="body1"
-            sx={{ mt: 2, whiteSpace: 'pre-wrap', color: 'rgba(248, 241, 231, 0.82)' }}
+            sx={{ mt: 2, whiteSpace: 'pre-wrap', color: 'rgba(255, 255, 255, 0.82)' }}
           >
             {step.content.text || step.description}
           </Typography>
@@ -96,19 +96,19 @@ const OnboardingStepComponent: React.FC<OnboardingStepProps> = ({
       <StepLabel
         sx={{
           '& .MuiStepLabel-label': {
-            color: `${isActive || isCompleted ? 'rgba(248, 241, 231, 0.95)' : 'rgba(248, 241, 231, 0.72)'} !important`,
+            color: `${isActive || isCompleted ? 'rgba(255, 255, 255, 0.95)' : 'rgba(255, 255, 255, 0.72)'} !important`,
           },
           '& .MuiStepIcon-root': {
-            color: isActive || isCompleted ? '#f5a623' : 'rgba(255,255,255,0.18)',
+            color: isActive || isCompleted ? '#ff8c00' : 'rgba(255,255,255,0.18)',
           },
           '& .MuiStepIcon-root.Mui-completed': {
-            color: '#f5a623',
+            color: '#ff8c00',
           },
           '& .MuiStepIcon-root.Mui-active': {
-            color: '#f5a623',
+            color: '#ff8c00',
           },
           '& .MuiStepIcon-text': {
-            fill: '#05070b',
+            fill: '#0a0f1a',
             fontWeight: 700,
           },
         }}
@@ -126,7 +126,7 @@ const OnboardingStepComponent: React.FC<OnboardingStepProps> = ({
       >
         <Typography
           variant="body2"
-          sx={{ mb: 2, color: 'rgba(248, 241, 231, 0.62)' }}
+          sx={{ mb: 2, color: 'rgba(255, 255, 255, 0.62)' }}
         >
           {step.description}
         </Typography>
@@ -143,14 +143,14 @@ const OnboardingStepComponent: React.FC<OnboardingStepProps> = ({
             sx={{
               borderRadius: 999,
               px: 2.25,
-              background: 'linear-gradient(135deg, #f5a623 0%, #ffd27d 100%)',
-              color: '#05070b',
+              background: 'linear-gradient(135deg, #ff8c00 0%, #ffd27d 100%)',
+              color: '#0a0f1a',
               fontWeight: 700,
               '&:hover': {
                 background: 'linear-gradient(135deg, #ffb845 0%, #ffe2a5 100%)',
               },
               '&.Mui-disabled': {
-                background: 'rgba(245, 166, 35, 0.24)',
+                background: 'rgba(255, 140, 0, 0.24)',
                 color: 'rgba(5, 7, 11, 0.55)',
               },
             }}
@@ -165,10 +165,10 @@ const OnboardingStepComponent: React.FC<OnboardingStepProps> = ({
               sx={{
                 borderRadius: 999,
                 borderColor: 'rgba(255,255,255,0.12)',
-                color: 'rgba(248, 241, 231, 0.82)',
+                color: 'rgba(255, 255, 255, 0.82)',
                 '&:hover': {
-                  borderColor: 'rgba(245, 166, 35, 0.24)',
-                  bgcolor: 'rgba(245, 166, 35, 0.08)',
+                  borderColor: 'rgba(255, 140, 0, 0.24)',
+                  bgcolor: 'rgba(255, 140, 0, 0.08)',
                 },
               }}
             >

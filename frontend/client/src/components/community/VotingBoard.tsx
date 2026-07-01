@@ -935,7 +935,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
                   '&:hover': {
                     transform: 'translateY(-2px)',
                     boxShadow: 4,
-                    borderColor: 'rgba(245, 166, 35, 0.24)',
+                    borderColor: 'rgba(255, 140, 0, 0.24)',
                   },
                   border: board.status !== 'active' ? '2px solid' : undefined,
                   borderColor: board.status === 'closed' ? 'error.main' : 'grey.400'}}
