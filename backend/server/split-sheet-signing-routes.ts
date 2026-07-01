@@ -8,8 +8,10 @@
  */
 import type express from "express";
 import type { Pool } from "pg";
+import { sendTransactionalEmail } from "./transactional-email-service";
 
 const APP_URL = (process.env.PUBLIC_APP_URL || "https://creatorhubn.com").replace(/\/+$/, "");
+const escH = (s: any) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const genCode = () => {
   const A = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // uten forvekslbare tegn
   let s = ""; for (let i = 0; i < 10; i++) s += A[Math.floor(Math.random() * A.length)];
@@ -64,6 +66,29 @@ export function setupSplitSheetSigningRoutes(deps: SplitSheetSigningDeps): void 
       void logEvent(req.params.id, "signing_enabled", { actorName: "Produsent", ip: ipOf(req) });
       res.json({ ok: true, accessCode: code, shareUrl: `${APP_URL}/signer/${code}` });
     } catch (e) { console.error("enable-signing", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  // Send signeringslenken DIREKTE til bidragsyterne på e-post (Resend).
+  app.post("/api/split-sheets/:id/send-invites", async (req, res) => {
+    try {
+      const userId = getSplitSheetUserId(req);
+      const own = await pool.query(`SELECT id, title, access_code FROM split_sheets WHERE id = $1::uuid AND user_id = $2 LIMIT 1`, [req.params.id, userId]).catch(() => ({ rows: [] as any[] }));
+      if (!own.rows.length) return res.status(404).json({ error: "not_found" });
+      let code = own.rows[0].access_code;
+      if (!code) { code = genCode(); await pool.query(`UPDATE split_sheets SET access_code = $1, status = 'pending_signatures', updated_at = NOW() WHERE id = $2::uuid`, [code, req.params.id]); }
+      const link = `${APP_URL}/signer/${code}`;
+      const title = own.rows[0].title || "Split sheet";
+      const c = await pool.query(`SELECT id, name, email FROM split_sheet_contributors WHERE split_sheet_id = $1::uuid AND email IS NOT NULL AND email <> '' AND signed_at IS NULL`, [req.params.id]).catch(() => ({ rows: [] as any[] }));
+      let sent = 0;
+      for (const m of c.rows) {
+        const html = `<div style="font-family:-apple-system,sans-serif;max-width:520px;margin:0 auto;padding:24px"><h2 style="margin:0 0 12px;color:#1a1a1a">Godkjenn fordelingen 🎵</h2><p style="font-size:15px;color:#333;line-height:1.6">Hei ${escH(m.name)},<br><br>Du er lagt til i split sheet-en «<b>${escH(title)}</b>». Se hele fordelingen og signer din godkjennelse:</p><div style="margin:22px 0"><a href="${link}" style="display:inline-block;background:#ff8c00;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600">Se &amp; signer</a></div><p style="font-size:12px;color:#999">Du trenger ingen konto. Har du CreatorHub-konto med samme e-post, finner du avtalen igjen under «Mine avtaler».</p></div>`;
+        const text = `Hei ${m.name}. Du er lagt til i split sheet «${title}». Se fordelingen og signer: ${link}`;
+        try { const r = await sendTransactionalEmail({ to: m.email, subject: `Godkjenn split sheet: ${title}`, html, text, fromLabel: "CreatorHub", kind: "split_sheet_invite", pool }); if (r.sent) sent++; } catch { /* */ }
+        await pool.query(`UPDATE split_sheet_contributors SET invitation_sent_at = NOW(), invitation_status = 'sent', updated_at = NOW() WHERE id = $1::uuid`, [m.id]).catch(() => undefined);
+      }
+      void logEvent(req.params.id, "invites_sent", { actorName: "Produsent", detail: `${sent} sendt`, ip: ipOf(req) });
+      res.json({ ok: true, sent, total: c.rows.length, shareUrl: link });
+    } catch (e) { console.error("send-invites", e); res.status(500).json({ error: "failed" }); }
   });
 
   // Produsentens status: hvem har signert (per ark).

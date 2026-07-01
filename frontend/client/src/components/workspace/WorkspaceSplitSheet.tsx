@@ -77,6 +77,13 @@ const WorkspaceSplitSheet: React.FC<{ projectId: string; profession?: string; us
   };
 
   const copyLink = (url: string) => { try { navigator.clipboard?.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1800); } catch { /* */ } };
+  const [sending, setSending] = useState(false);
+  const sendInvites = async (sheetId: string) => {
+    if (!sheetId || sending) return; setSending(true);
+    try { const r: any = await apiRequest(`/api/split-sheets/${encodeURIComponent(sheetId)}/send-invites`, { method: 'POST', body: {} }); window.alert(`Signeringslenken er sendt til ${r?.sent || 0} av ${r?.total || 0} bidragsytere med e-post.`); loadStatus(sheetId); }
+    catch (e: any) { window.alert(e?.message || 'Kunne ikke sende. Sjekk at bidragsyterne har e-post.'); }
+    finally { setSending(false); }
+  };
 
   const totalKr = useMemo(() => entries.reduce((s, e) => s + (Number(e.projectAmount) || 0), 0), [entries]);
 
@@ -136,6 +143,8 @@ const WorkspaceSplitSheet: React.FC<{ projectId: string; profession?: string; us
                 <Typography sx={{ fontSize: 12, color: ws.textDim, mb: 1 }}>Send lenken til bandet/bidragsyterne. De ser hele fordelingen og signerer godkjennelse — uten konto. Har de CreatorHub-konto med samme e-post, finner de avtalen igjen under «Mine avtaler».</Typography>
                 <Stack direction="row" spacing={1} alignItems="center">
                   <Box sx={{ flex: 1, px: 1.25, py: 0.9, borderRadius: 1, bgcolor: ws.panel, border: `1px solid ${ws.borderSoft}`, fontSize: 12, color: ws.textDim, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{link}</Box>
+                  <Button size="small" variant="contained" disabled={sending} onClick={() => sendInvites(share?.sheetId || entries.find((e: any) => e.shareUrl)?.sheetId)}
+                    sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, flexShrink: 0, whiteSpace: 'nowrap', '&:hover': { bgcolor: ws.accentHover } }}>{sending ? 'Sender…' : 'Send til bandet'}</Button>
                   <Button size="small" onClick={() => copyLink(link)} sx={{ color: copied ? ws.green : ws.accent, textTransform: 'none', fontWeight: 700, flexShrink: 0 }}>{copied ? 'Kopiert ✓' : 'Kopier'}</Button>
                   <Button size="small" onClick={() => loadStatus(share?.sheetId || entries.find((e: any) => e.shareUrl)?.sheetId)} sx={{ color: ws.textDim, textTransform: 'none', fontWeight: 600, flexShrink: 0 }}>Status & logg</Button>
                 </Stack>
