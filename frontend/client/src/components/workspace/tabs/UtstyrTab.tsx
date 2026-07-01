@@ -20,8 +20,8 @@ import { WsCard, WsTag } from '../ui';
 const isMusic = (p?: string) => ['music_producer', 'music-producer', 'musician', 'music'].includes(String(p || '').toLowerCase());
 const fmtKr = (n?: number) => (n && n > 0 ? `${Math.round(n).toLocaleString('nb-NO')} kr` : '—');
 const CATS_MUSIC = ['Mikrofon', 'Lydkort / interface', 'Studiomonitor', 'Hodetelefoner', 'MIDI / keyboard', 'Preamp / kompressor', 'Instrument', 'DAW (programvare)', 'Plugin', 'Virtuelt instrument', 'Samplepakke / lydbibliotek', 'Kabler / tilbehør', 'Annet'];
-const CATS_VISUAL = ['Kamera', 'Objektiv', 'Blits / lys', 'Stativ / rigg', 'Lyd', 'Drone', 'Minnekort / lagring', 'Programvare (redigering)', 'Plugin / preset', 'Tilbehør', 'Annet'];
-const SOFTWARE_CATS = new Set(['DAW (programvare)', 'Plugin', 'Virtuelt instrument', 'Samplepakke / lydbibliotek', 'Programvare (redigering)', 'Plugin / preset']);
+const CATS_VISUAL = ['Kamera', 'Objektiv', 'Blits / lys', 'Stativ / rigg', 'Lyd', 'Drone', 'Minnekort / lagring', 'Redigeringsprogramvare', 'Plugin / preset', 'LUT / fargepakke', 'Skylagring / tjeneste', 'Tilbehør', 'Annet'];
+const SOFTWARE_CATS = new Set(['DAW (programvare)', 'Plugin', 'Virtuelt instrument', 'Samplepakke / lydbibliotek', 'Redigeringsprogramvare', 'Plugin / preset', 'LUT / fargepakke', 'Skylagring / tjeneste']);
 const ti = { '& .MuiOutlinedInput-root': { fontSize: 13.5, color: ws.text, bgcolor: ws.panel, '& fieldset': { borderColor: ws.borderSoft }, '&:hover fieldset': { borderColor: ws.accentBorder }, '&.Mui-focused fieldset': { borderColor: ws.accent } }, '& input::placeholder': { color: ws.textFaint, opacity: 1 }, '& .MuiInputLabel-root': { color: ws.textDim } };
 
 const specOf = (it: any) => it?.specifications || it?.settings?.specifications || {};
@@ -209,8 +209,8 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
             </TextField>
             {(() => { const sw = SOFTWARE_CATS.has(form.category); return (
             <Stack direction="row" spacing={1.5}>
-              <TextField size="small" label={sw ? 'Leverandør' : 'Merke'} placeholder={sw ? 'FabFilter' : (music ? 'Neumann' : 'Canon')} value={form.brand} onChange={(e) => { setForm({ ...form, brand: e.target.value }); setVal(null); }} fullWidth sx={ti} />
-              <TextField size="small" label={sw ? 'Navn / versjon' : 'Modell'} placeholder={sw ? 'Pro-Q 3' : (music ? 'U 87 Ai' : 'R5')} value={form.model} onChange={(e) => { setForm({ ...form, model: e.target.value }); setVal(null); }} fullWidth sx={ti} />
+              <TextField size="small" label={sw ? 'Leverandør' : 'Merke'} placeholder={sw ? (music ? 'FabFilter' : 'Adobe') : (music ? 'Neumann' : 'Canon')} value={form.brand} onChange={(e) => { setForm({ ...form, brand: e.target.value }); setVal(null); }} fullWidth sx={ti} />
+              <TextField size="small" label={sw ? 'Navn / versjon' : 'Modell'} placeholder={sw ? (music ? 'Pro-Q 3' : 'Lightroom') : (music ? 'U 87 Ai' : 'R5')} value={form.model} onChange={(e) => { setForm({ ...form, model: e.target.value }); setVal(null); }} fullWidth sx={ti} />
             </Stack>
             ); })()}
 
