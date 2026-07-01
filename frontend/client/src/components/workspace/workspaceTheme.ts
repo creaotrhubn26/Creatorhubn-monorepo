@@ -99,6 +99,7 @@ export const WS_NAV: WsNavItem[] = [
   { key: 'laater', label: 'Låter', icon: 'LibraryMusic', group: 'hoved', route: true, professions: ['music'] },
   { key: 'moodboard', label: 'Moodboard', icon: 'GridView', group: 'hoved', route: true },
   { key: 'media', label: 'Media', icon: 'PermMedia', group: 'hoved', route: true },
+  { key: 'utstyr', label: 'Utstyr', icon: 'Inventory2', group: 'hoved', route: true },
   { key: 'leveranser', label: 'Leveranser', icon: 'LocalShipping', group: 'hoved', route: true },
   { key: 'oppgaver', label: 'Oppgaver', icon: 'CheckCircleOutline', group: 'hoved', badge: 12, route: true },
   { key: 'team', label: 'Team', icon: 'Group', group: 'hoved', route: true },
