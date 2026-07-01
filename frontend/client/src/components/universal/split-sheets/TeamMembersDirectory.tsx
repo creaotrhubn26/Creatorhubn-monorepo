@@ -181,7 +181,7 @@ const TeamMembersDirectory: React.FC<Props> = ({ mode = 'directory', onPick, ini
       <Stack direction="row" alignItems="center" justifyContent="space-between" gap={1.5} flexWrap="wrap">
         {!isPicker && (
           <Box>
-            <Typography variant="overline" sx={{ color: '#ffba6c', letterSpacing: '0.18em' }}>
+            <Typography variant="overline" sx={{ color: '#ff8c00', letterSpacing: '0.18em' }}>
               Team-direktorat
             </Typography>
             <Typography variant="h5" sx={{ fontFamily: '"Space Grotesk", sans-serif', fontWeight: 700, color: '#fff5e8' }}>
@@ -198,7 +198,7 @@ const TeamMembersDirectory: React.FC<Props> = ({ mode = 'directory', onPick, ini
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
-                  <SearchIcon sx={{ color: 'rgba(246,242,234,0.5)', fontSize: 18 }} />
+                  <SearchIcon sx={{ color: 'rgba(255, 255, 255,0.5)', fontSize: 18 }} />
                 </InputAdornment>
               ),
             }}
@@ -207,8 +207,8 @@ const TeamMembersDirectory: React.FC<Props> = ({ mode = 'directory', onPick, ini
               '& .MuiOutlinedInput-root': {
                 color: '#fff5e8',
                 '& fieldset': { borderColor: 'rgba(255,255,255,0.18)' },
-                '&:hover fieldset': { borderColor: 'rgba(255,186,108,0.4)' },
-                '&.Mui-focused fieldset': { borderColor: '#ffba6c' },
+                '&:hover fieldset': { borderColor: 'rgba(255, 140, 0,0.4)' },
+                '&.Mui-focused fieldset': { borderColor: '#ff8c00' },
               },
             }}
           />
@@ -219,7 +219,7 @@ const TeamMembersDirectory: React.FC<Props> = ({ mode = 'directory', onPick, ini
               borderRadius: '999px',
               px: 2,
               py: 0.9,
-              bgcolor: '#ffba6c',
+              bgcolor: '#ff8c00',
               color: '#150d05',
               fontWeight: 700,
               textTransform: 'none',
@@ -237,12 +237,12 @@ const TeamMembersDirectory: React.FC<Props> = ({ mode = 'directory', onPick, ini
           p: 5,
           textAlign: 'center',
           bgcolor: 'rgba(255,255,255,0.03)',
-          border: '1px dashed rgba(255,186,108,0.32)',
+          border: '1px dashed rgba(255, 140, 0,0.32)',
           borderRadius: 3,
           boxShadow: 'none',
-          color: 'rgba(246,242,234,0.72)',
+          color: 'rgba(255, 255, 255,0.72)',
         }}>
-          <GroupIcon sx={{ fontSize: 48, color: 'rgba(255,186,108,0.4)', mb: 1 }} />
+          <GroupIcon sx={{ fontSize: 48, color: 'rgba(255, 140, 0,0.4)', mb: 1 }} />
           <Typography variant="body1">{search ? 'Ingen treff' : 'Ingen team-medlemmer ennå'}</Typography>
           <Typography variant="caption">
             {search ? 'Prøv et annet søk' : 'Legg til personene du jobber sammen med'}
@@ -260,12 +260,12 @@ const TeamMembersDirectory: React.FC<Props> = ({ mode = 'directory', onPick, ini
                 sx={{
                   p: 2,
                   cursor: isPicker ? 'pointer' : 'default',
-                  bgcolor: isPicked ? 'rgba(255,186,108,0.10)' : 'rgba(255,255,255,0.04)',
-                  border: `1px solid ${isPicked ? '#ffba6c' : 'rgba(255,255,255,0.08)'}`,
+                  bgcolor: isPicked ? 'rgba(255, 140, 0,0.10)' : 'rgba(255,255,255,0.04)',
+                  border: `1px solid ${isPicked ? '#ff8c00' : 'rgba(255,255,255,0.08)'}`,
                   borderRadius: 2,
                   boxShadow: 'none',
                   transition: 'all 0.2s',
-                  '&:hover': { borderColor: 'rgba(255,186,108,0.4)', transform: isPicker ? 'translateY(-2px)' : 'none' },
+                  '&:hover': { borderColor: 'rgba(255, 140, 0,0.4)', transform: isPicker ? 'translateY(-2px)' : 'none' },
                 }}
               >
                 <Stack direction="row" spacing={1.5} alignItems="flex-start">
@@ -274,8 +274,8 @@ const TeamMembersDirectory: React.FC<Props> = ({ mode = 'directory', onPick, ini
                       checked={isPicked}
                       sx={{
                         p: 0.5,
-                        color: 'rgba(246,242,234,0.5)',
-                        '&.Mui-checked': { color: '#ffba6c' },
+                        color: 'rgba(255, 255, 255,0.5)',
+                        '&.Mui-checked': { color: '#ff8c00' },
                       }}
                     />
                   )}
@@ -284,8 +284,8 @@ const TeamMembersDirectory: React.FC<Props> = ({ mode = 'directory', onPick, ini
                     sx={{
                       width: 52,
                       height: 52,
-                      bgcolor: alpha('#ffba6c', 0.18),
-                      color: '#ffba6c',
+                      bgcolor: alpha('#ff8c00', 0.18),
+                      color: '#ff8c00',
                       fontWeight: 700,
                       fontSize: 18,
                     }}
@@ -302,14 +302,14 @@ const TeamMembersDirectory: React.FC<Props> = ({ mode = 'directory', onPick, ini
                           <IconButton
                             size="small"
                             onClick={() => setEditing(m)}
-                            sx={{ color: 'rgba(246,242,234,0.5)', '&:hover': { color: '#ffba6c' } }}
+                            sx={{ color: 'rgba(255, 255, 255,0.5)', '&:hover': { color: '#ff8c00' } }}
                           >
                             <EditIcon fontSize="small" />
                           </IconButton>
                           <IconButton
                             size="small"
                             onClick={() => removeMember(m.id)}
-                            sx={{ color: 'rgba(246,242,234,0.5)', '&:hover': { color: '#f44336' } }}
+                            sx={{ color: 'rgba(255, 255, 255,0.5)', '&:hover': { color: '#f44336' } }}
                           >
                             <DeleteIcon fontSize="small" />
                           </IconButton>
@@ -324,8 +324,8 @@ const TeamMembersDirectory: React.FC<Props> = ({ mode = 'directory', onPick, ini
                           mt: 0.5,
                           height: 20,
                           fontSize: '0.66rem',
-                          bgcolor: 'rgba(255,186,108,0.18)',
-                          color: '#ffba6c',
+                          bgcolor: 'rgba(255, 140, 0,0.18)',
+                          color: '#ff8c00',
                           fontWeight: 600,
                         }}
                       />
@@ -333,23 +333,23 @@ const TeamMembersDirectory: React.FC<Props> = ({ mode = 'directory', onPick, ini
                     <Stack spacing={0.25} sx={{ mt: 1 }}>
                       {m.email && (
                         <Stack direction="row" spacing={0.75} alignItems="center">
-                          <EmailIcon sx={{ fontSize: 13, color: 'rgba(246,242,234,0.5)' }} />
-                          <Typography variant="caption" sx={{ color: 'rgba(246,242,234,0.72)' }} noWrap>
+                          <EmailIcon sx={{ fontSize: 13, color: 'rgba(255, 255, 255,0.5)' }} />
+                          <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255,0.72)' }} noWrap>
                             {m.email}
                           </Typography>
                         </Stack>
                       )}
                       {m.phone && (
                         <Stack direction="row" spacing={0.75} alignItems="center">
-                          <PhoneIcon sx={{ fontSize: 13, color: 'rgba(246,242,234,0.5)' }} />
-                          <Typography variant="caption" sx={{ color: 'rgba(246,242,234,0.72)' }} noWrap>
+                          <PhoneIcon sx={{ fontSize: 13, color: 'rgba(255, 255, 255,0.5)' }} />
+                          <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255,0.72)' }} noWrap>
                             {m.phone}
                           </Typography>
                         </Stack>
                       )}
                     </Stack>
                     {m.notes && (
-                      <Typography variant="caption" sx={{ color: 'rgba(246,242,234,0.5)', display: 'block', mt: 0.5, fontStyle: 'italic' }} noWrap>
+                      <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255,0.5)', display: 'block', mt: 0.5, fontStyle: 'italic' }} noWrap>
                         {m.notes}
                       </Typography>
                     )}
@@ -364,7 +364,7 @@ const TeamMembersDirectory: React.FC<Props> = ({ mode = 'directory', onPick, ini
       {/* Picker bekreft-knapp */}
       {isPicker && (
         <Stack direction="row" justifyContent="flex-end" sx={{ pt: 1 }}>
-          <Typography variant="body2" sx={{ color: 'rgba(246,242,234,0.72)', alignSelf: 'center', mr: 2 }}>
+          <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255,0.72)', alignSelf: 'center', mr: 2 }}>
             {pickedIds.size} valgt
           </Typography>
           <Button
@@ -376,10 +376,10 @@ const TeamMembersDirectory: React.FC<Props> = ({ mode = 'directory', onPick, ini
               px: 3,
               fontWeight: 700,
               textTransform: 'none',
-              bgcolor: '#ffba6c',
+              bgcolor: '#ff8c00',
               color: '#150d05',
               '&:hover': { bgcolor: '#ffc788' },
-              '&.Mui-disabled': { bgcolor: 'rgba(255,186,108,0.3)', color: 'rgba(21,13,5,0.5)' },
+              '&.Mui-disabled': { bgcolor: 'rgba(255, 140, 0,0.3)', color: 'rgba(21,13,5,0.5)' },
             }}
           >
             Legg til {pickedIds.size > 0 ? `(${pickedIds.size})` : ''} i splitt
@@ -447,26 +447,26 @@ const MemberFormDialog: React.FC<{
       PaperProps={{
         sx: {
           borderRadius: '20px',
-          background: 'radial-gradient(circle at top, rgba(255,186,108,0.10) 0%, rgba(15,10,7,0.98) 40%, #0a0807 100%)',
+          background: 'radial-gradient(circle at top, rgba(255, 140, 0,0.10) 0%, rgba(15,10,7,0.98) 40%, #0a0807 100%)',
           color: '#fff5e8',
-          border: '1px solid rgba(255,186,108,0.18)',
-          '& .MuiInputLabel-root': { color: 'rgba(246,242,234,0.72)' },
-          '& .MuiInputLabel-root.Mui-focused': { color: '#ffba6c' },
+          border: '1px solid rgba(255, 140, 0,0.18)',
+          '& .MuiInputLabel-root': { color: 'rgba(255, 255, 255,0.72)' },
+          '& .MuiInputLabel-root.Mui-focused': { color: '#ff8c00' },
           '& .MuiOutlinedInput-root': {
             color: '#fff5e8',
             '& fieldset': { borderColor: 'rgba(255,255,255,0.18)' },
-            '&:hover fieldset': { borderColor: 'rgba(255,186,108,0.4)' },
-            '&.Mui-focused fieldset': { borderColor: '#ffba6c' },
+            '&:hover fieldset': { borderColor: 'rgba(255, 140, 0,0.4)' },
+            '&.Mui-focused fieldset': { borderColor: '#ff8c00' },
           },
-          '& .MuiSelect-icon': { color: 'rgba(246,242,234,0.72)' },
+          '& .MuiSelect-icon': { color: 'rgba(255, 255, 255,0.72)' },
         },
       }}
     >
-      <Box sx={{ px: 3, pt: 2.5, pb: 1.5, borderBottom: '1px solid rgba(255,186,108,0.18)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <Box sx={{ px: 3, pt: 2.5, pb: 1.5, borderBottom: '1px solid rgba(255, 140, 0,0.18)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant="h6" sx={{ fontWeight: 700 }}>
           {member ? 'Rediger team-medlem' : 'Nytt team-medlem'}
         </Typography>
-        <IconButton onClick={onClose} size="small" sx={{ color: 'rgba(246,242,234,0.72)' }}>
+        <IconButton onClick={onClose} size="small" sx={{ color: 'rgba(255, 255, 255,0.72)' }}>
           <CloseIcon />
         </IconButton>
       </Box>
@@ -475,7 +475,7 @@ const MemberFormDialog: React.FC<{
           <Stack direction="row" spacing={2} alignItems="center">
             <Avatar
               src={form.avatarUrl}
-              sx={{ width: 64, height: 64, bgcolor: alpha('#ffba6c', 0.18), color: '#ffba6c', fontWeight: 700, fontSize: 22 }}
+              sx={{ width: 64, height: 64, bgcolor: alpha('#ff8c00', 0.18), color: '#ff8c00', fontWeight: 700, fontSize: 22 }}
             >
               {form.name.charAt(0).toUpperCase() || '?'}
             </Avatar>
@@ -534,7 +534,7 @@ const MemberFormDialog: React.FC<{
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 2, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-        <Button onClick={onClose} sx={{ color: 'rgba(246,242,234,0.72)', textTransform: 'none' }}>
+        <Button onClick={onClose} sx={{ color: 'rgba(255, 255, 255,0.72)', textTransform: 'none' }}>
           Avbryt
         </Button>
         <Button
@@ -546,10 +546,10 @@ const MemberFormDialog: React.FC<{
             px: 3,
             fontWeight: 700,
             textTransform: 'none',
-            bgcolor: '#ffba6c',
+            bgcolor: '#ff8c00',
             color: '#150d05',
             '&:hover': { bgcolor: '#ffc788' },
-            '&.Mui-disabled': { bgcolor: 'rgba(255,186,108,0.3)', color: 'rgba(21,13,5,0.5)' },
+            '&.Mui-disabled': { bgcolor: 'rgba(255, 140, 0,0.3)', color: 'rgba(21,13,5,0.5)' },
           }}
         >
           Lagre

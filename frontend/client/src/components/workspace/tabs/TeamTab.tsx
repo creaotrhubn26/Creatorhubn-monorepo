@@ -15,6 +15,7 @@ import PersonAdd from '@mui/icons-material/PersonAdd';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
 import { WsCard, WsSectionTitle, WsBar, WsTag, WsTable } from '../ui';
+import WorkspaceSplitSheet from '../WorkspaceSplitSheet';
 
 const CREW_ROLES = [
   { value: 'fotograf', label: 'Fotograf', tone: 'accent' },
@@ -38,7 +39,7 @@ const ROLES = [['Fotograf', 2, ws.roleFoto], ['Videograf', 2, ws.roleVideo], ['E
 const PROGRESS = [['Brief gjennomgått', 7, 8, ws.green], ['Shotlist bekreftet', 6, 8, ws.accent], ['Produksjonskart klart', 8, 8, ws.green], ['Utstyrssjekk', 5, 8, ws.amber], ['Leveranseplan bekreftet', 7, 8, ws.blue]];
 const TASKS = [['Oppdater shotlist', 'Thomas', 'Gjort', 'green'], ['Bekreft drone tillatelse', 'Daniel', 'Venter', 'amber'], ['Fargeprofil godkjenning', 'Julie', 'Pågår', 'blue'], ['Utstyrssjekk', 'Nora', 'Gjort', 'green'], ['Backup lydplan', 'Marcus', 'Pågår', 'blue']];
 
-const TeamTab: React.FC<{ projectId: string }> = ({ projectId }) => {
+const TeamTab: React.FC<{ projectId: string; profession?: string; userId?: string; projectName?: string }> = ({ projectId, profession, userId, projectName }) => {
   const [, navigate] = useLocation();
   const totalRoles = ROLES.reduce((s, r) => s + r[1], 0);
   const [real, setReal] = useState<any[] | null>(null);
@@ -187,7 +188,7 @@ const TeamTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           />
         </WsCard>
 
-        <SplitSheetCard projectId={projectId} members={displayMembers} isReal={!!real || (projectId && projectId !== 'sample')} />
+        <WorkspaceSplitSheet projectId={projectId} profession={profession} userId={userId} projectName={projectName} />
       </Box>
 
       {/* Høyre: Chat + Oppgaver + Milepæler */}

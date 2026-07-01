@@ -205,7 +205,7 @@ const TeamWorkspacePage: React.FC = () => {
     avtaler: <AvtalerTab projectId={projectId} />,
     foresporsler: <ForesporslerTab projectId={projectId} profession={user?.profession} userId={user?.id} userName={user?.firstName || (user as any)?.name || user?.email} />,
     kundevisning: <KundevisningTab projectId={projectId} />,
-    team: <TeamTab projectId={projectId} />,
+    team: <TeamTab projectId={projectId} profession={user?.profession} userId={user?.id} projectName={(project as any)?.title || (project as any)?.name} />,
     'sound-room': <SoundRoomTab projectId={projectId} />,
     'video-room': <VideoRoomTab projectId={projectId} />,
     'photo-room': <PhotoRoomTab projectId={projectId} />,
