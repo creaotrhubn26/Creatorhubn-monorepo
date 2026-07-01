@@ -16,6 +16,9 @@ export function setupEquipmentValueRoutes(deps: EquipmentValueDeps): void {
 
   app.post("/api/equipment/estimate-value", async (req, res) => {
     try {
+      // AV som standard. Skru PÅ ved å sette EQUIPMENT_AI_VALUE=on på Render
+      // (single-key PUT /v1/services/{id}/env-vars/EQUIPMENT_AI_VALUE — ALDRI bulk).
+      if (process.env.EQUIPMENT_AI_VALUE !== "on") return res.status(503).json({ error: "ai_disabled" });
       const apiKey = process.env.ANTHROPIC_API_KEY;
       if (!apiKey) return res.status(503).json({ error: "ai_unconfigured" });
       const name = String(req.body?.name || "").trim();
