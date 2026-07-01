@@ -16,6 +16,7 @@ import PriceCheck from '@mui/icons-material/PriceCheck';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
 import { WsCard, WsTag } from '../ui';
+import SoftwareKostnaderPanel from './SoftwareKostnaderPanel';
 
 const isMusic = (p?: string) => ['music_producer', 'music-producer', 'musician', 'music'].includes(String(p || '').toLowerCase());
 const fmtKr = (n?: number) => (n && n > 0 ? `${Math.round(n).toLocaleString('nb-NO')} kr` : '—');
@@ -111,7 +112,10 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
         <Button variant="contained" startIcon={<AddCircleOutline />} onClick={() => setOpen(true)} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Legg til utstyr</Button>
       </Stack>
 
-      {/* Abonnementer & lisenser — løpende software-utgifter + kommende fornyelser */}
+      {/* Programvare & abonnement — Gmail-kvittering-skann + manuell + kostnadsoversikt */}
+      <SoftwareKostnaderPanel userId={userId} />
+
+      {/* Utstyrs-lisenser — abonnement knyttet til registrert utstyr */}
       {(() => {
         const subs = items.filter((it) => specOf(it).licenseType === 'subscription');
         if (subs.length === 0) return null;
@@ -121,7 +125,7 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
           <WsCard sx={{ mb: 2 }}>
             <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
               <Typography sx={{ fontSize: 15 }}>💳</Typography>
-              <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>Abonnementer & lisenser</Typography>
+              <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>Utstyrs-lisenser</Typography>
               <Box sx={{ flex: 1 }} />
               <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Løpende: <b style={{ color: ws.accent }}>{fmtKr(monthly)}/mnd</b> ≈ {fmtKr(monthly * 12)}/år</Typography>
             </Stack>
