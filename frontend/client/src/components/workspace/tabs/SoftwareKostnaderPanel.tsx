@@ -37,6 +37,7 @@ const SoftwareKostnaderPanel: React.FC<{ userId?: string }> = ({ userId }) => {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<any>({ vendor: '', product: '', category: CATS[0], amount: '', currency: 'NOK', billingCycle: 'monthly', isSubscription: true, renewalDate: '' });
   const [outlook, setOutlook] = useState<any>({ configured: false, connected: false, email: null });
+  const [aiCredits, setAiCredits] = useState<any>(null);
 
   const load = () => {
     apiRequest('/api/software/expenses')
@@ -44,13 +45,18 @@ const SoftwareKostnaderPanel: React.FC<{ userId?: string }> = ({ userId }) => {
       .catch(() => setData({ confirmed: [], suggestions: [], summary: null }))
       .finally(() => setLoading(false));
   };
+  const loadAiCredits = () => {
+    apiRequest('/api/software/ai-credits')
+      .then((r: any) => setAiCredits(r || null))
+      .catch(() => setAiCredits(null));
+  };
   const loadOutlook = () => {
     apiRequest('/api/creatorhub/microsoft/status')
       .then((r: any) => setOutlook({ configured: !!r?.configured, connected: !!r?.connected, email: r?.email || null }))
       .catch(() => setOutlook({ configured: false, connected: false, email: null }));
   };
   useEffect(() => {
-    load(); loadOutlook();
+    load(); loadOutlook(); loadAiCredits();
     // Etter Outlook-OAuth redirecter backend til ?outlook=connected — vis kvittering.
     try {
       const p = new URLSearchParams(window.location.search).get('outlook');
@@ -75,15 +81,17 @@ const SoftwareKostnaderPanel: React.FC<{ userId?: string }> = ({ userId }) => {
     setScanning(true); setScanMsg(null);
     try {
       const r: any = await apiRequest('/api/software/scan-receipts', { method: 'POST', body: {} });
+      const aiCost = r?.ai && r.ai.costNok > 0 ? ` · AI-kost: ${fmtKr(r.ai.costNok)}` : '';
       const map: any = {
         no_credentials: { tone: 'amber', text: 'Ingen e-post koblet. Koble til Google eller Outlook for å skanne kvitteringer.' },
         no_scope: { tone: 'amber', text: 'Mangler lesetilgang til Gmail. Koble til Google på nytt og godkjenn lesetilgang.' },
         ai_unconfigured: { tone: 'amber', text: 'AI-parsing er ikke konfigurert på serveren ennå.' },
+        insufficient_credits: { tone: 'amber', text: 'Tom AI-saldo. Fyll på AI-kreditt for å skanne kvitteringer med AI.' },
         failed: { tone: 'red', text: r?.message || 'Skanning feilet. Prøv igjen.' },
-        ok: { tone: r?.created ? 'green' : 'neutral', text: r?.message || 'Skann fullført.' },
+        ok: { tone: r?.created ? 'green' : 'neutral', text: `${r?.message || 'Skann fullført.'}${aiCost}` },
       };
       setScanMsg(map[r?.status] || { tone: 'neutral', text: r?.message || 'Skann fullført.' });
-      if (r?.status === 'ok') load();
+      if (r?.status === 'ok') { load(); loadAiCredits(); }
     } catch (e: any) { setScanMsg({ tone: 'red', text: e?.message || 'Skanning feilet.' }); }
     finally { setScanning(false); }
   };
@@ -134,6 +142,13 @@ const SoftwareKostnaderPanel: React.FC<{ userId?: string }> = ({ userId }) => {
           ? <Stack direction="row" alignItems="center" spacing={0.5}><WsTag label={`Outlook: ${outlook.email || 'koblet'}`} tone="green" /><IconButton size="small" onClick={disconnectOutlook} title="Koble fra Outlook" sx={{ color: ws.textFaint }}><Close sx={{ fontSize: 14 }} /></IconButton></Stack>
           : <Button size="small" onClick={connectOutlook} sx={{ color: ws.textDim, textTransform: 'none', fontWeight: 700, border: `1px solid ${ws.borderSoft}` }}>Koble til Outlook</Button>)}
       </Stack>
+
+      {aiCredits && (aiCredits.spentNok > 0 || aiCredits.billingMode === 'credits') && (
+        <Typography sx={{ fontSize: 11, color: ws.textFaint, mb: nothing ? 0 : 1.25 }}>
+          🤖 AI-forbruk (CreatorHub-lommebok): brukt <b style={{ color: ws.textDim }}>{fmtKr(aiCredits.spentNok)}</b>
+          {aiCredits.billingMode === 'credits' && aiCredits.balanceNok != null ? <> · saldo <b style={{ color: aiCredits.balanceNok > 0 ? ws.accent : '#fca5a5' }}>{fmtKr(aiCredits.balanceNok)}</b></> : ''}
+        </Typography>
+      )}
 
       {scanMsg && (
         <Box sx={{ mb: nothing ? 0 : 1.5, p: 1, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.panelAlt, border: `1px solid ${scanMsg.tone === 'red' ? '#7f1d1d' : scanMsg.tone === 'green' ? '#14532d' : ws.borderSoft}` }}>

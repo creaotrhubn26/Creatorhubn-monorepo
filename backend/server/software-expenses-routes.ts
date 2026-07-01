@@ -14,12 +14,38 @@
  *   - Cost-cap: pre-filtrert Gmail-søk + tak på antall meldinger + haiku-kall.
  *   - Auth via requireUserSession → kun innlogget bruker kan skanne SIN Gmail.
  */
+import crypto from "crypto";
 import type express from "express";
 import type { Pool } from "pg";
 import { getFreshMicrosoftAccessToken, listMicrosoftReceiptCandidates } from "./microsoft-graph.js";
+import { getGenSettings, emitGenAiMeter } from "./generative-media.js";
+import { getUserCredits, creditMove } from "./ai-credits.js";
 
 // KQL-søk for Outlook (Graph $search). Enkle tokens — haiku filtrerer resten.
 const MS_RECEIPT_SEARCH = "receipt OR invoice OR kvittering OR faktura OR ordrebekreftelse OR betalingsbekreftelse OR subscription OR renewal";
+
+// Claude Haiku 4.5-priser (USD per token). Brukes til å regne faktisk AI-kost.
+const HAIKU_IN_PER_TOKEN = 1.0 / 1_000_000;   // ~$1 / M input
+const HAIKU_OUT_PER_TOKEN = 5.0 / 1_000_000;  // ~$5 / M output
+const nokPerUsd = () => Number(process.env.ROLE_ROOM_NOK_PER_USD || process.env.USD_NOK_RATE || 11) || 11;
+
+// Belast AI-forbruk mot CreatorHubs Stripe-koblede AI-lommebok (samme system som
+// photo-enhance/Nano Banana). credits-modus: trekk retail (kost×påslag) fra saldo.
+// metered-modus: emit Stripe meter-event. free_whitelist: inkludert (ingen trekk).
+// Returnerer {retailUsd, retailNok} for visning. Feiler aldri hot-path.
+async function chargeAiUsage(pool: Pool, userId: string, settings: any, rawCostUsd: number):
+  Promise<{ retailUsd: number; retailNok: number }> {
+  const markup = settings?.markupMultiplier || 1;
+  const retailUsd = rawCostUsd * markup;
+  try {
+    if (settings?.billingMode === "credits" && retailUsd > 0) {
+      await creditMove(pool, userId, "spend", -retailUsd, `receipt-scan:${crypto.randomUUID()}`, "Kvittering-skann (AI)");
+    } else if (settings?.billingMode === "metered" && rawCostUsd > 0) {
+      await emitGenAiMeter(pool, { userId, valueUsd: rawCostUsd, settings });
+    }
+  } catch (e) { console.warn("[software-expenses] chargeAiUsage feilet", (e as any)?.message); }
+  return { retailUsd, retailNok: Math.round(retailUsd * nokPerUsd() * 100) / 100 };
+}
 
 type SessionUser = { userId: string; email: string; name: string; role: string };
 
@@ -314,6 +340,17 @@ export function setupSoftwareExpensesRoutes(deps: SoftwareExpensesRoutesDeps): v
       try { msToken = await getFreshMicrosoftAccessToken(pool, session.userId); if (msToken) providers.push("microsoft"); } catch { msToken = null; }
       if (!providers.length) return res.json({ status: "no_credentials", created: 0, message: "Ingen e-post koblet. Koble til Google eller Outlook for å skanne kvitteringer." });
 
+      // 1b. AI-cost preflight: i credits-modus må lommeboka ha saldo (skann bruker
+      // haiku). Blokker med insufficient_credits → panelet ber om Stripe-toppopp.
+      const genSettings = await getGenSettings(pool).catch(() => null as any);
+      if (genSettings?.billingMode === "credits") {
+        const w = await getUserCredits(pool, session.userId).catch(() => ({ balanceUsd: 0 } as any));
+        if (!(w.balanceUsd > 0)) {
+          return res.json({ status: "insufficient_credits", created: 0, billingMode: "credits", balanceUsd: w.balanceUsd || 0,
+            message: "Tom AI-saldo. Fyll på AI-kreditt for å skanne kvitteringer med AI." });
+        }
+      }
+
       // 2. Samle kandidater fra hver kilde. Meta bærer provider (+ ferdig tekst for Outlook).
       const candMeta = new Map<string, { provider: string; subject?: string; from?: string; body?: string }>();
       const allIds: string[] = [];
@@ -359,6 +396,7 @@ export function setupSoftwareExpensesRoutes(deps: SoftwareExpensesRoutesDeps): v
       const debugRows: any[] = [];
       const Anthropic = (await import("@anthropic-ai/sdk")).default;
       const client = new Anthropic({ apiKey });
+      let inTok = 0, outTok = 0; // faktisk haiku-forbruk (fra usage) → AI-kost
 
       const parsed = await runLimited(fresh, 4, async (id) => {
         const meta = candMeta.get(id);
@@ -379,6 +417,7 @@ export function setupSoftwareExpensesRoutes(deps: SoftwareExpensesRoutesDeps): v
             model: "claude-haiku-4-5-20251001", max_tokens: 300,
             messages: [{ role: "user", content: EXTRACT_PROMPT(subject, from, body) }],
           });
+          inTok += Number(resp?.usage?.input_tokens || 0); outTok += Number(resp?.usage?.output_tokens || 0);
           const text = (resp?.content || []).map((c: any) => c?.text || "").join("").trim();
           const m = text.match(/\{[\s\S]*\}/);
           const p = m ? JSON.parse(m[0]) : null;
@@ -422,14 +461,46 @@ export function setupSoftwareExpensesRoutes(deps: SoftwareExpensesRoutesDeps): v
         } catch (e) { console.warn("[software-expenses] insert suggestion failed", (e as any)?.message); }
       }
 
+      // 6. Belast faktisk AI-forbruk mot Stripe-lommeboka (credits/metered).
+      const rawCostUsd = inTok * HAIKU_IN_PER_TOKEN + outTok * HAIKU_OUT_PER_TOKEN;
+      const charge = await chargeAiUsage(pool, session.userId, genSettings, rawCostUsd);
+      let balanceUsd: number | null = null;
+      if (genSettings?.billingMode === "credits") {
+        const w = await getUserCredits(pool, session.userId).catch(() => null as any);
+        balanceUsd = w ? w.balanceUsd : null;
+      }
+
       res.json({
         status: "ok", scanned: allIds.length, candidates: fresh.length, created, duplicates, cappedOff, providers, sourceErrors,
         message: created ? `Fant ${created} nye kvittering${created === 1 ? "" : "er"} til gjennomgang.` : "Ingen nye kvitteringer gjenkjent.",
+        ai: {
+          billingMode: genSettings?.billingMode || "free_whitelist",
+          inputTokens: inTok, outputTokens: outTok,
+          costNok: Math.round(charge.retailNok * 100) / 100,
+          balanceNok: balanceUsd != null ? Math.round(balanceUsd * nokPerUsd() * 100) / 100 : null,
+        },
         ...(debug ? { debug: debugRows } : {}),
       });
     } catch (e) {
       console.error("[software-expenses] scan", e);
       res.status(500).json({ status: "failed", created: 0, error: "scan_failed", message: "Skanning feilet. Prøv igjen." });
     }
+  });
+
+  // ── AI-cost-oversikt (bruker-scopet speil av CreatorHubs Stripe-lommebok) ─────
+  app.get("/api/software/ai-credits", async (req, res) => {
+    const session = requireUserSession(req, res); if (!session) return;
+    try {
+      const settings = await getGenSettings(pool).catch(() => null as any);
+      const w = await getUserCredits(pool, session.userId).catch(() => ({ balanceUsd: 0, purchasedUsd: 0, spentUsd: 0 } as any));
+      const rate = nokPerUsd();
+      res.json({
+        billingMode: settings?.billingMode || "free_whitelist",
+        balanceNok: Math.round((w.balanceUsd || 0) * rate * 100) / 100,
+        spentNok: Math.round((w.spentUsd || 0) * rate * 100) / 100,
+        purchasedNok: Math.round((w.purchasedUsd || 0) * rate * 100) / 100,
+        nokPerUsd: rate,
+      });
+    } catch (e) { console.error("[software-expenses] ai-credits", e); res.json({ billingMode: "free_whitelist", balanceNok: 0, spentNok: 0, purchasedNok: 0 }); }
   });
 }
