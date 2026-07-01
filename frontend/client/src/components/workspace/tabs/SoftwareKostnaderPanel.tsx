@@ -1,8 +1,8 @@
 // @ts-nocheck
 /**
  * SoftwareKostnaderPanel — programvare- & abonnement-kostnader i workspace.
- * To kilder: (1) «Skann e-post» → Gmail-kvitteringer parses av AI → forslag
- * du godkjenner; (2) manuell registrering. Regner ut månedlig/årlig forbruk +
+ * To kilder: (1) «Skann e-post» → Gmail/Outlook-kvitteringer parses av AI →
+ * forslag du godkjenner; (2) manuell registrering. Regner ut månedlig/årlig forbruk +
  * kategori-fordeling + kommende fornyelser. Backend: /api/software/*.
  */
 import React, { useEffect, useState } from 'react';
@@ -36,6 +36,7 @@ const SoftwareKostnaderPanel: React.FC<{ userId?: string }> = ({ userId }) => {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<any>({ vendor: '', product: '', category: CATS[0], amount: '', currency: 'NOK', billingCycle: 'monthly', isSubscription: true, renewalDate: '' });
+  const [outlook, setOutlook] = useState<any>({ configured: false, connected: false, email: null });
 
   const load = () => {
     apiRequest('/api/software/expenses')
@@ -43,14 +44,39 @@ const SoftwareKostnaderPanel: React.FC<{ userId?: string }> = ({ userId }) => {
       .catch(() => setData({ confirmed: [], suggestions: [], summary: null }))
       .finally(() => setLoading(false));
   };
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [userId]);
+  const loadOutlook = () => {
+    apiRequest('/api/creatorhub/microsoft/status')
+      .then((r: any) => setOutlook({ configured: !!r?.configured, connected: !!r?.connected, email: r?.email || null }))
+      .catch(() => setOutlook({ configured: false, connected: false, email: null }));
+  };
+  useEffect(() => {
+    load(); loadOutlook();
+    // Etter Outlook-OAuth redirecter backend til ?outlook=connected — vis kvittering.
+    try {
+      const p = new URLSearchParams(window.location.search).get('outlook');
+      if (p === 'connected') setScanMsg({ tone: 'green', text: 'Outlook koblet til. Trykk «Skann e-post» for å hente kvitteringer.' });
+      else if (p && p !== 'connected') setScanMsg({ tone: 'amber', text: 'Outlook-tilkobling ble ikke fullført. Prøv igjen.' });
+    } catch { /* */ }
+    /* eslint-disable-next-line */
+  }, [userId]);
+
+  const connectOutlook = async () => {
+    try {
+      const r: any = await apiRequest('/api/creatorhub/microsoft/oauth/url');
+      if (r?.url) window.location.href = r.url;
+      else setScanMsg({ tone: 'amber', text: 'Outlook-integrasjon er ikke konfigurert på serveren ennå.' });
+    } catch (e: any) { setScanMsg({ tone: 'red', text: e?.message || 'Kunne ikke starte Outlook-tilkobling.' }); }
+  };
+  const disconnectOutlook = async () => {
+    try { await apiRequest('/api/creatorhub/microsoft/disconnect', { method: 'POST', body: {} }); loadOutlook(); } catch { /* */ }
+  };
 
   const scan = async () => {
     setScanning(true); setScanMsg(null);
     try {
       const r: any = await apiRequest('/api/software/scan-receipts', { method: 'POST', body: {} });
       const map: any = {
-        no_credentials: { tone: 'amber', text: 'Google/Gmail er ikke koblet. Koble til Google i innstillinger for å skanne kvitteringer.' },
+        no_credentials: { tone: 'amber', text: 'Ingen e-post koblet. Koble til Google eller Outlook for å skanne kvitteringer.' },
         no_scope: { tone: 'amber', text: 'Mangler lesetilgang til Gmail. Koble til Google på nytt og godkjenn lesetilgang.' },
         ai_unconfigured: { tone: 'amber', text: 'AI-parsing er ikke konfigurert på serveren ennå.' },
         failed: { tone: 'red', text: r?.message || 'Skanning feilet. Prøv igjen.' },
@@ -103,6 +129,10 @@ const SoftwareKostnaderPanel: React.FC<{ userId?: string }> = ({ userId }) => {
           {scanning ? 'Skanner e-post…' : 'Skann e-post for kvitteringer'}
         </Button>
         <Button size="small" startIcon={<AddCircleOutline />} onClick={() => setOpen(true)} sx={{ color: ws.accent, textTransform: 'none', fontWeight: 700 }}>Legg til manuelt</Button>
+        <Box sx={{ flex: 1 }} />
+        {outlook.configured && (outlook.connected
+          ? <Stack direction="row" alignItems="center" spacing={0.5}><WsTag label={`Outlook: ${outlook.email || 'koblet'}`} tone="green" /><IconButton size="small" onClick={disconnectOutlook} title="Koble fra Outlook" sx={{ color: ws.textFaint }}><Close sx={{ fontSize: 14 }} /></IconButton></Stack>
+          : <Button size="small" onClick={connectOutlook} sx={{ color: ws.textDim, textTransform: 'none', fontWeight: 700, border: `1px solid ${ws.borderSoft}` }}>Koble til Outlook</Button>)}
       </Stack>
 
       {scanMsg && (

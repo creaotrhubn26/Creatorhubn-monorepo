@@ -16,6 +16,10 @@
  */
 import type express from "express";
 import type { Pool } from "pg";
+import { getFreshMicrosoftAccessToken, listMicrosoftReceiptCandidates } from "./microsoft-graph.js";
+
+// KQL-søk for Outlook (Graph $search). Enkle tokens — haiku filtrerer resten.
+const MS_RECEIPT_SEARCH = "receipt OR invoice OR kvittering OR faktura OR ordrebekreftelse OR betalingsbekreftelse OR subscription OR renewal";
 
 type SessionUser = { userId: string; email: string; name: string; role: string };
 
@@ -299,52 +303,76 @@ export function setupSoftwareExpensesRoutes(deps: SoftwareExpensesRoutesDeps): v
     try {
       await ensureTable();
 
-      // 1. Auth-klient for brukerens Gmail (creatorhub-kobling foretrukket).
-      let oauthClient: any = null;
-      try { oauthClient = await getGoogleOAuthClient(pool, session.userId, "creatorhub"); } catch { oauthClient = null; }
-      if (!oauthClient) return res.json({ status: "no_credentials", created: 0, message: "Google/Gmail ikke koblet. Koble til Google for å skanne kvitteringer." });
-
-      const { google } = await import("googleapis");
-      const gmail = google.gmail({ version: "v1", auth: oauthClient });
-
-      // 2. List kandidater (kun kvittering-treff, cap 60).
-      let listData: any;
+      // 1. Finn koblede kilder (Gmail og/eller Outlook). Skann alle som er koblet.
+      const providers: string[] = [];
+      let gmail: any = null;
       try {
-        const r = await gmail.users.messages.list({ userId: "me", q: GMAIL_RECEIPT_QUERY, maxResults: 60 });
-        listData = r.data;
-      } catch (err: any) {
-        if (err?.code === 403 || err?.response?.status === 403)
-          return res.json({ status: "no_scope", created: 0, message: "Mangler gmail.readonly. Koble til Google på nytt og godkjenn lesetilgang." });
-        throw err;
-      }
-      const ids = (listData.messages || []).map((m: any) => m.id).filter(Boolean) as string[];
-      if (!ids.length) return res.json({ status: "ok", scanned: 0, created: 0, duplicates: 0, message: "Fant ingen kvitteringer." });
+        const oauthClient = await getGoogleOAuthClient(pool, session.userId, "creatorhub");
+        if (oauthClient) { const { google } = await import("googleapis"); gmail = google.gmail({ version: "v1", auth: oauthClient }); providers.push("google"); }
+      } catch { gmail = null; }
+      let msToken: string | null = null;
+      try { msToken = await getFreshMicrosoftAccessToken(pool, session.userId); if (msToken) providers.push("microsoft"); } catch { msToken = null; }
+      if (!providers.length) return res.json({ status: "no_credentials", created: 0, message: "Ingen e-post koblet. Koble til Google eller Outlook for å skanne kvitteringer." });
 
-      // 3. Hvilke er allerede sett? (dedup på Gmail message-id).
+      // 2. Samle kandidater fra hver kilde. Meta bærer provider (+ ferdig tekst for Outlook).
+      const candMeta = new Map<string, { provider: string; subject?: string; from?: string; body?: string }>();
+      const allIds: string[] = [];
+      const sourceErrors: string[] = [];
+
+      if (gmail) {
+        try {
+          const r = await gmail.users.messages.list({ userId: "me", q: GMAIL_RECEIPT_QUERY, maxResults: 60 });
+          for (const m of (r.data.messages || [])) {
+            if (m.id && !candMeta.has(m.id)) { candMeta.set(m.id, { provider: "google" }); allIds.push(m.id); }
+          }
+        } catch (err: any) {
+          if (err?.code === 403 || err?.response?.status === 403) sourceErrors.push("gmail_no_scope");
+          else sourceErrors.push("gmail_failed");
+        }
+      }
+      if (msToken) {
+        try {
+          const msgs = await listMicrosoftReceiptCandidates(msToken, MS_RECEIPT_SEARCH, 40);
+          for (const m of msgs) {
+            if (!candMeta.has(m.id)) { candMeta.set(m.id, { provider: "microsoft", subject: m.subject, from: m.from, body: m.body }); allIds.push(m.id); }
+          }
+        } catch (err: any) {
+          if (err?.status === 401 || err?.status === 403) sourceErrors.push("outlook_no_scope");
+          else sourceErrors.push("outlook_failed");
+        }
+      }
+      if (!allIds.length) return res.json({ status: "ok", scanned: 0, created: 0, duplicates: 0, cappedOff: 0, providers, sourceErrors, message: "Fant ingen kvitteringer." });
+
+      // 3. Dedup på tvers av kilder (source_email_id; Outlook-IDer har 'ms:'-prefiks).
       const existing = await pool.query(
         `SELECT source_email_id FROM software_expenses WHERE user_id=$1 AND source_email_id = ANY($2)`,
-        [session.userId, ids]);
+        [session.userId, allIds]);
       const seen = new Set(existing.rows.map((r) => r.source_email_id));
-      const notSeen = ids.filter((id) => !seen.has(id));
+      const notSeen = allIds.filter((id) => !seen.has(id));
       const fresh = notSeen.slice(0, 30); // cost-cap: maks 30 nye per skann
       const duplicates = seen.size;               // faktiske dubletter (sett før)
       const cappedOff = notSeen.length - fresh.length; // droppet pga taket
-      if (!fresh.length) return res.json({ status: "ok", scanned: ids.length, created: 0, duplicates, cappedOff, message: "Ingen nye kvitteringer siden sist." });
+      if (!fresh.length) return res.json({ status: "ok", scanned: allIds.length, created: 0, duplicates, cappedOff, providers, sourceErrors, message: "Ingen nye kvitteringer siden sist." });
 
-      // 4. Hent + parse hver kandidat isolert.
+      // 4. Hent + parse hver kandidat isolert (per kilde).
       const debug = String((req.query as any)?.debug || (req.body as any)?.debug || "") === "1";
       const debugRows: any[] = [];
       const Anthropic = (await import("@anthropic-ai/sdk")).default;
       const client = new Anthropic({ apiKey });
 
       const parsed = await runLimited(fresh, 4, async (id) => {
+        const meta = candMeta.get(id);
         let subject = "", from = "", body = "";
-        try {
-          const msg = await gmail.users.messages.get({ userId: "me", id, format: "full" });
-          const h = msg.data.payload?.headers || [];
-          subject = header(h, "Subject") || ""; from = header(h, "From") || "";
-          body = extractBody(msg.data.payload).slice(0, 4000);
-        } catch { return null; }
+        if (meta?.provider === "microsoft") {
+          subject = meta.subject || ""; from = meta.from || ""; body = (meta.body || "").slice(0, 4000);
+        } else {
+          try {
+            const msg = await gmail.users.messages.get({ userId: "me", id, format: "full" });
+            const h = msg.data.payload?.headers || [];
+            subject = header(h, "Subject") || ""; from = header(h, "From") || "";
+            body = extractBody(msg.data.payload).slice(0, 4000);
+          } catch { return null; }
+        }
         if (!subject && !body) return null;
         try {
           const resp: any = await client.messages.create({
@@ -395,7 +423,7 @@ export function setupSoftwareExpensesRoutes(deps: SoftwareExpensesRoutesDeps): v
       }
 
       res.json({
-        status: "ok", scanned: ids.length, candidates: fresh.length, created, duplicates, cappedOff,
+        status: "ok", scanned: allIds.length, candidates: fresh.length, created, duplicates, cappedOff, providers, sourceErrors,
         message: created ? `Fant ${created} nye kvittering${created === 1 ? "" : "er"} til gjennomgang.` : "Ingen nye kvitteringer gjenkjent.",
         ...(debug ? { debug: debugRows } : {}),
       });
