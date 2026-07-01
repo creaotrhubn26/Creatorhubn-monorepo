@@ -48,7 +48,11 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
       .catch(() => setItems([]))
       .finally(() => setLoading(false));
     apiRequest(`/api/equipment/firmware-updates/${encodeURIComponent(userId)}`)
-      .then((r: any) => setFirmware(Array.isArray(r) ? r : (r?.updates || r?.data || [])))
+      .then((r: any) => {
+        const arr = Array.isArray(r) ? r : (r?.updates || r?.data || []);
+        // Firmware gjelder hardware — filtrer bort programvare/plugins (får generisk 1.0.0).
+        setFirmware(arr.filter((f: any) => !SOFTWARE_CATS.has(f.deviceType || f.category)));
+      })
       .catch(() => setFirmware([]));
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [userId]);
