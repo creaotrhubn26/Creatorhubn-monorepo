@@ -154,3 +154,88 @@ Leadgrid er ikke bare et CRM — det er en lukket loop der plattformen selv:
 
 Det eneste hullet i kanalporteføljen i dag er SMS, som er designet inn i
 workflow-typene men ikke koblet til leverandør ennå.
+
+---
+
+## Go-to-market: bruke Leadgrid til å selge Leadgrid (dogfooding)
+
+Den sterkeste demoen av Leadgrid er at Leadgrid selv skaffer sine egne
+kunder. Alt under bruker kun funksjonalitet som allerede finnes i repoet.
+
+### Hvem vi jakter på (ICP)
+
+Produktet er bygget for team som driver oppsøkende salg mot lokale
+bedrifter. De mest naturlige segmentene:
+
+1. **Byråer** (marketing-/webbyrå) som selger til SMB — de har allerede
+   Agency-tier og partner-marketplace bygget for seg
+   (`leadgrid-partners-routes.ts`)
+2. **Feltsalgsteam** — telecom, energi, betalingsterminaler, forsikring:
+   dør-til-dør-teamene iPad-appen er designet for
+3. **Selvstendige selgere/konsulenter** — Solo Free → Solo Pro-stigen
+   med drypp og grace-period finnes allerede (`leadgrid-drips-routes.ts`)
+
+### Fase 1 — sett opp eget workspace
+
+1. Opprett Leadgrid-org med eget brand-kit (posisjonering + tone) — dette
+   mater `lead-outreach-strategy.ts` og rank-all, slik at AI-forslagene
+   selger *Leadgrid* med riktig stemme
+2. Aktiver varslingskanaler etter egen onboarding-guide
+   (`docs/leadgrid/customer-onboarding.md`): e-post-branding + WhatsApp
+   (egen WABA finnes allerede — se `leadgrid-whatsapp-templates.ts`)
+
+### Fase 2 — fyll kartet med prospekter (discovery)
+
+1. **Market Scan** per segment og region: «webbyrå i Bergen»,
+   «solcelleinstallatører i Viken» → auto-opprettede pins med
+   Places-berikelse (`leadgrid-market-scan-routes.ts`)
+2. **Kontinuerlig discovery** som cron-workflow («daglig 06:00») per
+   prioritert by, med dedup (`leadgrid-continuous-discovery.ts`)
+3. **Lead Scout** på hver lead: avdekk manglende GA4/pixel/SEO
+   (`lead-scout-service.ts`) — for byrå-segmentet er funnene i seg selv
+   samtaleåpneren: «kundene deres lekker målbar trafikk»
+4. **Inbound**: Meta Lead Ads + LinkedIn Lead Sync er allerede koblet
+   (`linkedin-leadsync-service.ts`) — landingssiden har GA4- og
+   Google Ads-konvertering på plass (`leadgrid-landing.tsx`)
+
+### Fase 3 — prioriter og ta kontakt
+
+1. **Rank-all** mot vår egen posisjonering → topp 20 «kjør outreach nå»
+2. **Outreach-strategi per lead** → kanal, åpningsreplikk, beste tidspunkt
+   og 3–5-trinns sekvens — generert av produktet vi selger
+3. Kjør sekvensen som **workflow**: branded e-post dag 0 →
+   `schedule_call` dag 3 → WhatsApp-oppfølging etter møtebooking →
+   `book_meeting` med kalenderinvitasjon
+
+### Fase 4 — klientportalen som salgsvåpen
+
+Det unike trikset produktet muliggjør: kjør full intelligensrapport på
+prospektet (`leadgrid-agent-bridge-service.ts`) og send dem **deres egen
+klientportal-lenke** (`/c/{token}`). Prospektet ser sin faktiske
+markeds-score, sine behov og konkurrentsignaler — gratis. Det er både
+verdi levert før første møte og en live-demo av produktet de vurderer.
+Hvert nye funn utløser branded varsel som drar dem tilbake.
+
+### Fase 5 — konverter og behold
+
+1. **Drypp-løpet** dag 1/3/7/14 etter aha-øyeblikket er allerede bygget,
+   inkl. rabattkode dag 14 (`leadgrid-drips-routes.ts`)
+2. **Partner-kanalen**: verifiserte byråer i marketplace
+   (`leadgrid-partner-dashboard.tsx`) videreselger Leadgrid til sine
+   SMB-kunder — én byrå-avtale gir mange sluttkunder
+3. Mål alt med **momentum-score** (daglige kontakter/møter mot mål) og
+   **forecasting** (p10/p50/p90 på pipeline) — samme dashboards som
+   kundene får
+
+### Målbilde per uke (én selger)
+
+| Steg | Verktøy | Volum |
+|---|---|---|
+| Nye leads på kart | Market Scan + kontinuerlig discovery | 100–200 |
+| Kvalifisert med scout + score | Lead Scout + Intelligence Engine | 40–60 |
+| Aktiv outreach-sekvens | Workflows (e-post/telefon/WhatsApp) | 20–30 |
+| Portal-lenker sendt | Agent bridge + klientportal | 10–15 |
+| Bookede møter | `book_meeting` + kalender | 3–5 |
+
+Hvert vunnet møte er samtidig et casestudie: «denne pipelinen fant deg,
+analyserte deg og booket dette møtet — det er produktet.»
