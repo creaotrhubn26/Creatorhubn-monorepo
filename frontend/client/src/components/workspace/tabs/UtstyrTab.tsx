@@ -108,15 +108,19 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
             <WsTag label={`${firmware.length}`} tone="amber" />
           </Stack>
           <Stack spacing={0.75}>
-            {firmware.slice(0, 6).map((f: any, i: number) => (
-              <Stack key={i} direction="row" alignItems="center" spacing={1.25} sx={{ p: 1, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.panelAlt, border: `1px solid ${ws.borderSoft}` }}>
-                <Box sx={{ minWidth: 0, flex: 1 }}>
-                  <Typography sx={{ fontSize: 13, fontWeight: 700 }} noWrap>{f.deviceName || f.name || f.model || 'Enhet'}</Typography>
-                  <Typography sx={{ fontSize: 11.5, color: ws.textFaint }}>{f.currentVersion || 'Ukjent'} → <b style={{ color: ws.accent }}>{f.latestVersion || 'ny'}</b></Typography>
-                </Box>
-                <WsTag label="Oppdatering klar" tone="amber" />
-              </Stack>
-            ))}
+            {firmware.slice(0, 8).map((f: any, i: number) => {
+              const dev = [f.deviceBrand, f.deviceModel].filter(Boolean).join(' ') || f.deviceName || f.name || f.model || 'Enhet';
+              return (
+                <Stack key={f.id || i} direction="row" alignItems="center" spacing={1.25} sx={{ p: 1, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.panelAlt, border: `1px solid ${ws.borderSoft}` }}>
+                  <Box sx={{ minWidth: 0, flex: 1 }}>
+                    <Typography sx={{ fontSize: 13, fontWeight: 700 }} noWrap>{dev}</Typography>
+                    <Typography sx={{ fontSize: 11.5, color: ws.textFaint }} noWrap>{f.currentVersion || 'Ukjent'} → <b style={{ color: ws.accent }}>{f.latestVersion || 'ny'}</b>{f.description ? ` · ${f.description}` : ''}</Typography>
+                  </Box>
+                  {f.downloadUrl && <Button size="small" href={f.downloadUrl} target="_blank" rel="noopener" sx={{ color: ws.accent, textTransform: 'none', fontWeight: 700, flexShrink: 0 }}>Last ned</Button>}
+                  <WsTag label={f.priority === 'high' ? 'Viktig' : 'Oppdatering'} tone={f.priority === 'high' ? 'red' : 'amber'} />
+                </Stack>
+              );
+            })}
           </Stack>
         </WsCard>
       )}
