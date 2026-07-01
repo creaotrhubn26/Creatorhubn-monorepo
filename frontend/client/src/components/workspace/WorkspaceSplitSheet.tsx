@@ -22,6 +22,11 @@ import { ws } from './workspaceTheme';
 import { WsCard, WsTag } from './ui';
 
 const isMusic = (p?: string) => ['music_producer', 'music-producer', 'musician', 'music'].includes(String(p || '').toLowerCase());
+// split_sheet_contributors.role har CHECK-constraint (kun disse slug-ene). Wizardens
+// roleId (f.eks. 'photo', 'second-shooter') og norske labels bryter den → map til
+// gyldig slug (ellers 'collaborator'); den lesbare rollen lagres i custom_fields.
+const ROLE_SLUGS = new Set(['producer', 'artist', 'songwriter', 'composer', 'lyricist', 'vocalist', 'instrumentalist', 'mix_engineer', 'mastering_engineer', 'arranger', 'featured_artist', 'backing_vocalist', 'session_musician', 'collaborator', 'publisher', 'label', 'other']);
+const toRoleSlug = (roleId?: string) => (roleId && ROLE_SLUGS.has(roleId) ? roleId : 'collaborator');
 
 const WorkspaceSplitSheet: React.FC<{ projectId: string; profession?: string; userId?: string; projectName?: string }> = ({ projectId, profession, userId, projectName }) => {
   const music = isMusic(profession);
@@ -58,7 +63,7 @@ const WorkspaceSplitSheet: React.FC<{ projectId: string; profession?: string; us
           project_id: projectId,
           title: data.projectName || 'Split sheet',
           description: data.projectAmount ? `Beløp: ${data.projectAmount} kr` : null,
-          contributors: (data.participants || []).map((p: any) => ({ name: p.name, email: p.email, role: p.roleLabel || p.role, percentage: p.sharePct })),
+          contributors: (data.participants || []).map((p: any) => ({ name: p.name, email: p.email, role: toRoleSlug(p.roleId), percentage: p.sharePct, custom_fields: { roleLabel: p.roleLabel || p.role || '' } })),
         },
       });
       const sheetId = resp?.data?.id;
