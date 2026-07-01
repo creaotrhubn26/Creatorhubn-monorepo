@@ -157,6 +157,22 @@ export function setupSplitSheetSigningRoutes(deps: SplitSheetSigningDeps): void 
       const allSigned = cnt.rows[0].total > 0 && cnt.rows[0].total === cnt.rows[0].signed;
       if (upd.rows.length > 0) void logEvent(sheetId, "signed", { actorName: signerName, contributorId, method, ip: ipOf(req) });
       if (allSigned) { await pool.query(`UPDATE split_sheets SET status = 'completed', completed_at = NOW(), updated_at = NOW() WHERE id = $1::uuid`, [sheetId]).catch(() => undefined); void logEvent(sheetId, "completed", { ip: ipOf(req) }); }
+      // Push-varsel til produsenten (Resend) om at noen signerte.
+      if (upd.rows.length > 0) void (async () => {
+        try {
+          const o = await pool.query(
+            `SELECT ss.title, COALESCE(cu.email, u.email) AS owner_email
+               FROM split_sheets ss LEFT JOIN creatorhub_users cu ON cu.id = ss.user_id LEFT JOIN users u ON u.id = ss.user_id
+              WHERE ss.id = $1::uuid LIMIT 1`, [sheetId]);
+          const row = o.rows[0]; if (!row?.owner_email) return;
+          const remaining = Number(cnt.rows[0].total) - Number(cnt.rows[0].signed);
+          const title = row.title || "Split sheet";
+          const subject = allSigned ? `Alle har signert: ${title}` : `${signerName} signerte «${title}»`;
+          const html = `<div style="font-family:-apple-system,sans-serif;max-width:520px;margin:0 auto;padding:24px"><h2 style="margin:0 0 12px;color:#1a1a1a">${allSigned ? "Fullt signert ✓" : "Ny signatur ✍️"}</h2><p style="font-size:15px;color:#333"><b>${escH(signerName)}</b> har godkjent fordelingen «${escH(title)}» (${method === "drawn" ? "tegnet" : "skrevet"} signatur).</p><p style="font-size:14px;color:#333">${allSigned ? "Alle bidragsytere har nå signert." : `Gjenstår: ${remaining} bidragsyter${remaining === 1 ? "" : "e"}.`}</p><div style="margin:18px 0"><a href="${APP_URL}" style="display:inline-block;background:#ff8c00;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600">Se status i workspacet</a></div></div>`;
+          const text = `${signerName} signerte «${title}». ${allSigned ? "Alle har signert." : remaining + " gjenstår."}`;
+          await sendTransactionalEmail({ to: row.owner_email, subject, html, text, fromLabel: "CreatorHub", kind: "split_sheet_signed", pool });
+        } catch { /* */ }
+      })();
       res.json({ ok: true, alreadySigned: upd.rows.length === 0, allSigned });
     } catch (e) { console.error("public sign", e); res.status(500).json({ error: "failed" }); }
   });
