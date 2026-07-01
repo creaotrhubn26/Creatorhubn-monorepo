@@ -98,8 +98,8 @@ export function setupSplitSheetSigningRoutes(deps: SplitSheetSigningDeps): void 
       const own = await pool.query(`SELECT id, title, access_code, status, description FROM split_sheets WHERE id = $1::uuid AND user_id = $2 LIMIT 1`, [req.params.id, userId]).catch(() => ({ rows: [] as any[] }));
       if (!own.rows.length) return res.status(404).json({ error: "not_found" });
       const s = own.rows[0];
-      const c = await pool.query(`SELECT id, name, email, role, percentage, signed_at FROM split_sheet_contributors WHERE split_sheet_id = $1::uuid ORDER BY order_index`, [req.params.id]).catch(() => ({ rows: [] as any[] }));
-      const contributors = c.rows.map((x: any) => ({ id: x.id, name: x.name, email: x.email, role: x.role, percentage: Number(x.percentage) || 0, signed: !!x.signed_at, signedAt: x.signed_at }));
+      const c = await pool.query(`SELECT id, name, email, role, percentage, signed_at, custom_fields FROM split_sheet_contributors WHERE split_sheet_id = $1::uuid ORDER BY order_index`, [req.params.id]).catch(() => ({ rows: [] as any[] }));
+      const contributors = c.rows.map((x: any) => ({ id: x.id, name: x.name, email: x.email, role: (x.custom_fields && x.custom_fields.roleLabel) || x.role, percentage: Number(x.percentage) || 0, signed: !!x.signed_at, signedAt: x.signed_at }));
       await ensureAudit();
       const ev = await pool.query(`SELECT event_type, actor_name, method, ip, detail, created_at FROM split_sheet_signing_events WHERE split_sheet_id = $1::uuid ORDER BY created_at DESC LIMIT 100`, [req.params.id]).catch(() => ({ rows: [] as any[] }));
       res.json({
@@ -118,10 +118,10 @@ export function setupSplitSheetSigningRoutes(deps: SplitSheetSigningDeps): void 
       const s = await pool.query(`SELECT id, title, description, status FROM split_sheets WHERE UPPER(access_code) = $1 LIMIT 1`, [code]).catch(() => ({ rows: [] as any[] }));
       if (!s.rows.length) return res.status(404).json({ error: "not_found" });
       const sheet = s.rows[0];
-      const c = await pool.query(`SELECT id, name, email, role, percentage, signed_at FROM split_sheet_contributors WHERE split_sheet_id = $1::uuid ORDER BY order_index`, [sheet.id]).catch(() => ({ rows: [] as any[] }));
+      const c = await pool.query(`SELECT id, name, email, role, percentage, signed_at, custom_fields FROM split_sheet_contributors WHERE split_sheet_id = $1::uuid ORDER BY order_index`, [sheet.id]).catch(() => ({ rows: [] as any[] }));
       const amount = parseAmount(sheet.description);
       const contributors = c.rows.map((x: any) => ({
-        id: x.id, name: x.name, role: x.role, percentage: Number(x.percentage) || 0,
+        id: x.id, name: x.name, role: (x.custom_fields && x.custom_fields.roleLabel) || x.role, percentage: Number(x.percentage) || 0,
         amountKr: amount ? Math.round((Number(x.percentage) || 0) / 100 * amount) : null,
         signed: !!x.signed_at,
       }));
@@ -192,7 +192,7 @@ export function setupSplitSheetSigningRoutes(deps: SplitSheetSigningDeps): void 
       if (!emails.length) return res.json({ agreements: [] });
       const r = await pool.query(
         `SELECT ss.id, ss.title, ss.status, ss.access_code, ss.description, ss.created_at, ss.completed_at,
-                c.name AS my_name, c.role AS my_role, c.percentage AS my_percentage, c.signed_at AS my_signed_at,
+                c.name AS my_name, COALESCE(c.custom_fields->>'roleLabel', c.role) AS my_role, c.percentage AS my_percentage, c.signed_at AS my_signed_at,
                 (SELECT COUNT(*)::int FROM split_sheet_contributors x WHERE x.split_sheet_id = ss.id) AS total,
                 (SELECT COUNT(signed_at)::int FROM split_sheet_contributors x WHERE x.split_sheet_id = ss.id) AS signed
            FROM split_sheets ss
