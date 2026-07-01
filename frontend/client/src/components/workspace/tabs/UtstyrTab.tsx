@@ -19,11 +19,15 @@ import { WsCard, WsTag } from '../ui';
 
 const isMusic = (p?: string) => ['music_producer', 'music-producer', 'musician', 'music'].includes(String(p || '').toLowerCase());
 const fmtKr = (n?: number) => (n && n > 0 ? `${Math.round(n).toLocaleString('nb-NO')} kr` : '—');
-const CATS_MUSIC = ['Mikrofon', 'Lydkort / interface', 'Studiomonitor', 'Hodetelefoner', 'MIDI / keyboard', 'Preamp / kompressor', 'Instrument', 'Kabler / tilbehør', 'Annet'];
-const CATS_VISUAL = ['Kamera', 'Objektiv', 'Blits / lys', 'Stativ / rigg', 'Lyd', 'Drone', 'Minnekort / lagring', 'Tilbehør', 'Annet'];
+const CATS_MUSIC = ['Mikrofon', 'Lydkort / interface', 'Studiomonitor', 'Hodetelefoner', 'MIDI / keyboard', 'Preamp / kompressor', 'Instrument', 'DAW (programvare)', 'Plugin', 'Virtuelt instrument', 'Samplepakke / lydbibliotek', 'Kabler / tilbehør', 'Annet'];
+const CATS_VISUAL = ['Kamera', 'Objektiv', 'Blits / lys', 'Stativ / rigg', 'Lyd', 'Drone', 'Minnekort / lagring', 'Programvare (redigering)', 'Plugin / preset', 'Tilbehør', 'Annet'];
+const SOFTWARE_CATS = new Set(['DAW (programvare)', 'Plugin', 'Virtuelt instrument', 'Samplepakke / lydbibliotek', 'Programvare (redigering)', 'Plugin / preset']);
 const ti = { '& .MuiOutlinedInput-root': { fontSize: 13.5, color: ws.text, bgcolor: ws.panel, '& fieldset': { borderColor: ws.borderSoft }, '&:hover fieldset': { borderColor: ws.accentBorder }, '&.Mui-focused fieldset': { borderColor: ws.accent } }, '& input::placeholder': { color: ws.textFaint, opacity: 1 }, '& .MuiInputLabel-root': { color: ws.textDim } };
 
-const gearValue = (it: any) => it?.specifications?.marketValueNok || it?.settings?.specifications?.marketValueNok || it?.currentValue || it?.current_value || 0;
+const specOf = (it: any) => it?.specifications || it?.settings?.specifications || {};
+const gearValue = (it: any) => specOf(it).marketValueNok || it?.currentValue || it?.current_value || 0;
+const monthlyOf = (it: any) => { const s = specOf(it); if (s.licenseType !== 'subscription' || !s.subscriptionCost) return 0; return s.billingCycle === 'yearly' ? Number(s.subscriptionCost) / 12 : Number(s.subscriptionCost); };
+const daysUntil = (iso?: string) => { if (!iso) return null; try { return Math.ceil((new Date(iso).getTime() - Date.now()) / 86400000); } catch { return null; } };
 
 const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: string }> = ({ profession, userId }) => {
   const music = isMusic(profession);
@@ -32,7 +36,7 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
   const [firmware, setFirmware] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState<any>({ name: '', brand: '', model: '', category: cats[0], condition: 'excellent' });
+  const [form, setForm] = useState<any>({ name: '', brand: '', model: '', category: cats[0], condition: 'excellent', licenseType: 'perpetual', billingCycle: 'monthly', subCost: '', renewalDate: '' });
   const [val, setVal] = useState<any | null>(null);   // markedsverdi-resultat
   const [valBusy, setValBusy] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -76,10 +80,14 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
           userId, profession: profession || null,
           name: form.name || `${form.brand} ${form.model}`, brand: form.brand, model: form.model,
           category: form.category, condition: form.condition,
-          specifications: { marketValueNok: val?.nok || null, valueSource: val?.source || null, valueNote: val?.note || null },
+          specifications: {
+            marketValueNok: val?.nok || null, valueSource: val?.source || null, valueNote: val?.note || null,
+            licenseType: form.licenseType,
+            ...(form.licenseType === 'subscription' ? { billingCycle: form.billingCycle, subscriptionCost: Number(form.subCost) || null, renewalDate: form.renewalDate || null } : {}),
+          },
         },
       });
-      setOpen(false); setForm({ name: '', brand: '', model: '', category: cats[0], condition: 'excellent' }); setVal(null);
+      setOpen(false); setForm({ name: '', brand: '', model: '', category: cats[0], condition: 'excellent', licenseType: 'perpetual', billingCycle: 'monthly', subCost: '', renewalDate: '' }); setVal(null);
       load();
     } catch (e: any) { window.alert(e?.message || 'Kunne ikke lagre'); }
     finally { setSaving(false); }
@@ -94,10 +102,41 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
       <Stack direction="row" justifyContent="space-between" alignItems="flex-end" sx={{ mb: 2 }}>
         <Box>
           <Typography sx={{ fontSize: 20, fontWeight: 800 }}>{music ? 'Studio-utstyr' : 'Utstyr'}</Typography>
-          <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Registrer utstyret ditt, få markedsverdi automatisk, og hold styr på vedlikehold & firmware.{totalValue ? ` Samlet verdi: ${fmtKr(totalValue)}.` : ''}</Typography>
+          <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Registrer {music ? 'utstyr, programvare (DAW) og plugins' : 'utstyr og programvare'}, få markedsverdi automatisk, og hold styr på vedlikehold & firmware.{totalValue ? ` Samlet verdi: ${fmtKr(totalValue)}.` : ''}</Typography>
         </Box>
         <Button variant="contained" startIcon={<AddCircleOutline />} onClick={() => setOpen(true)} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Legg til utstyr</Button>
       </Stack>
+
+      {/* Abonnementer & lisenser — løpende software-utgifter + kommende fornyelser */}
+      {(() => {
+        const subs = items.filter((it) => specOf(it).licenseType === 'subscription');
+        if (subs.length === 0) return null;
+        const monthly = items.reduce((s, it) => s + monthlyOf(it), 0);
+        const upcoming = subs.map((it) => ({ it, d: daysUntil(specOf(it).renewalDate) })).filter((x) => x.d != null && x.d <= 30).sort((a, b) => (a.d as number) - (b.d as number));
+        return (
+          <WsCard sx={{ mb: 2 }}>
+            <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
+              <Typography sx={{ fontSize: 15 }}>💳</Typography>
+              <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>Abonnementer & lisenser</Typography>
+              <Box sx={{ flex: 1 }} />
+              <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Løpende: <b style={{ color: ws.accent }}>{fmtKr(monthly)}/mnd</b> ≈ {fmtKr(monthly * 12)}/år</Typography>
+            </Stack>
+            <Stack spacing={0.5}>
+              {subs.map((it) => {
+                const s = specOf(it); const d = daysUntil(s.renewalDate);
+                return (
+                  <Stack key={it.id} direction="row" alignItems="center" spacing={1} sx={{ p: 0.85, borderRadius: 1, bgcolor: ws.panelAlt, border: `1px solid ${ws.borderSoft}` }}>
+                    <Typography sx={{ fontSize: 12.5, fontWeight: 700, flex: 1 }} noWrap>{it.name || `${it.brand} ${it.model}`}</Typography>
+                    <Typography sx={{ fontSize: 11.5, color: ws.textDim }}>{fmtKr(Number(s.subscriptionCost))}/{s.billingCycle === 'yearly' ? 'år' : 'mnd'}</Typography>
+                    {s.renewalDate && <WsTag label={d != null && d <= 7 ? `Fornyes om ${d} d` : `Fornyes ${new Date(s.renewalDate).toLocaleDateString('nb-NO', { day: '2-digit', month: 'short' })}`} tone={d != null && d <= 7 ? 'red' : 'neutral'} />}
+                  </Stack>
+                );
+              })}
+            </Stack>
+            {upcoming.length > 0 && <Typography sx={{ fontSize: 11.5, color: ws.amber, mt: 1 }}>⚠️ {upcoming.length} fornyelse{upcoming.length === 1 ? '' : 'r'} innen 30 dager.</Typography>}
+          </WsCard>
+        );
+      })()}
 
       {/* Firmware / vedlikehold */}
       {firmware.length > 0 && (
@@ -165,13 +204,15 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
         </Stack>
         <DialogContent>
           <Stack spacing={1.5} sx={{ mt: 0.5 }}>
-            <Stack direction="row" spacing={1.5}>
-              <TextField size="small" label="Merke" placeholder={music ? 'Neumann' : 'Canon'} value={form.brand} onChange={(e) => { setForm({ ...form, brand: e.target.value }); setVal(null); }} fullWidth sx={ti} />
-              <TextField size="small" label="Modell" placeholder={music ? 'U 87 Ai' : 'R5'} value={form.model} onChange={(e) => { setForm({ ...form, model: e.target.value }); setVal(null); }} fullWidth sx={ti} />
-            </Stack>
-            <TextField size="small" select label="Kategori" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} fullWidth sx={ti}>
+            <TextField size="small" select label="Kategori" value={form.category} onChange={(e) => { setForm({ ...form, category: e.target.value }); setVal(null); }} fullWidth sx={ti}>
               {cats.map((c) => <MenuItem key={c} value={c}>{c}</MenuItem>)}
             </TextField>
+            {(() => { const sw = SOFTWARE_CATS.has(form.category); return (
+            <Stack direction="row" spacing={1.5}>
+              <TextField size="small" label={sw ? 'Leverandør' : 'Merke'} placeholder={sw ? 'FabFilter' : (music ? 'Neumann' : 'Canon')} value={form.brand} onChange={(e) => { setForm({ ...form, brand: e.target.value }); setVal(null); }} fullWidth sx={ti} />
+              <TextField size="small" label={sw ? 'Navn / versjon' : 'Modell'} placeholder={sw ? 'Pro-Q 3' : (music ? 'U 87 Ai' : 'R5')} value={form.model} onChange={(e) => { setForm({ ...form, model: e.target.value }); setVal(null); }} fullWidth sx={ti} />
+            </Stack>
+            ); })()}
 
             {/* Markedsverdi */}
             <Box sx={{ p: 1.5, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.accentSoft, border: `1px solid ${ws.accentBorder}` }}>
@@ -192,6 +233,29 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
                 </Box>
               ) : <Typography sx={{ fontSize: 12, color: ws.textDim, mt: 0.75 }}>Fant ingen verdi. Fyll inn merke + modell og prøv igjen.</Typography>)}
             </Box>
+
+            {/* Lisens / abonnement (kun programvare/plugins) */}
+            {SOFTWARE_CATS.has(form.category) && (
+              <Box>
+                <Typography sx={{ fontSize: 12.5, color: ws.textDim, mb: 0.5 }}>Lisens</Typography>
+                <Stack direction="row" spacing={1} sx={{ mb: form.licenseType === 'subscription' ? 1.25 : 0 }}>
+                  {[['perpetual', 'Eierlisens'], ['subscription', 'Abonnement']].map(([v, l]) => (
+                    <button key={v} onClick={() => setForm({ ...form, licenseType: v })}
+                      style={{ flex: 1, padding: '8px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 700, border: `1px solid ${form.licenseType === v ? ws.accentBorder : ws.border}`, background: form.licenseType === v ? ws.accentSoft : 'transparent', color: form.licenseType === v ? ws.accent : ws.textDim }}>{l}</button>
+                  ))}
+                </Stack>
+                {form.licenseType === 'subscription' && (
+                  <Stack direction="row" spacing={1.5}>
+                    <TextField size="small" select label="Fakturering" value={form.billingCycle} onChange={(e) => setForm({ ...form, billingCycle: e.target.value })} sx={{ ...ti, width: 130 }}>
+                      <MenuItem value="monthly">Månedlig</MenuItem>
+                      <MenuItem value="yearly">Årlig</MenuItem>
+                    </TextField>
+                    <TextField size="small" type="number" label="Kostnad (kr)" value={form.subCost} onChange={(e) => setForm({ ...form, subCost: e.target.value })} fullWidth sx={ti} />
+                    <TextField size="small" type="date" label="Fornyes" InputLabelProps={{ shrink: true }} value={form.renewalDate} onChange={(e) => setForm({ ...form, renewalDate: e.target.value })} sx={{ ...ti, width: 150 }} />
+                  </Stack>
+                )}
+              </Box>
+            )}
           </Stack>
         </DialogContent>
         <DialogActions sx={{ px: 2.5, pb: 2 }}>

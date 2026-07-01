@@ -27,13 +27,14 @@ export function setupEquipmentValueRoutes(deps: EquipmentValueDeps): void {
 
       const Anthropic = (await import("@anthropic-ai/sdk")).default;
       const client = new Anthropic({ apiKey });
-      const prompt = `Du er ekspert på markedsverdi for musikk-, lyd- og foto/video-utstyr i Norge.
-Estimer markedsverdien i NORSKE KRONER (NOK) for dette utstyret:
-- Utstyr: ${label}${category ? ` (kategori: ${category})` : ""}
+      const prompt = `Du er ekspert på markedsverdi for musikk-/lyd-/foto/video-utstyr OG programvare/plugins/DAW-er i Norge.
+Estimer markedsverdien i NORSKE KRONER (NOK) for:
+- ${label}${category ? ` (kategori: ${category})` : ""}
 
-Gi et realistisk estimat basert på typiske norske priser. Svar KUN med gyldig JSON, ingen annen tekst:
-{"newNok": <ca. nypris i NOK, heltall>, "usedNok": <typisk bruktpris i NOK, heltall>, "confidence": "<low|medium|high>", "note": "<kort norsk merknad, maks 12 ord>"}
-Hvis du ikke kjenner utstyret, sett verdier til null og confidence low.`;
+For fysisk utstyr: gi ny- og typisk bruktpris. For programvare/plugin/DAW/virtuelt instrument/samplepakke: gi ordinær LISENS-/kjøpspris som newNok, og sett usedNok = null (programvare selges normalt ikke brukt). Bruk realistiske norske priser.
+Svar KUN med gyldig JSON, ingen annen tekst:
+{"newNok": <nypris/lisenspris i NOK, heltall el. null>, "usedNok": <bruktpris i NOK, heltall el. null>, "confidence": "<low|medium|high>", "note": "<kort norsk merknad, maks 12 ord>"}
+Hvis du ikke kjenner produktet, sett verdier null og confidence low.`;
 
       const resp: any = await client.messages.create({
         model: "claude-haiku-4-5-20251001",
