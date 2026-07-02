@@ -127,6 +127,70 @@ service, and never sold or used for our own ads."
 
 ---
 
+# Part 5 — ⭐ Verification Center form values (paste-ready, 2026-07-02)
+
+The actual consent screen has far more scopes than the Ads set: ~26 non-sensitive, ~76
+sensitive, plus restricted Drive/Gmail/Chat. Reviewers verify EACH against the demo video, so
+the justifications below are specific + true, and the trim list removes scopes with zero code
+usage that only draw scrutiny.
+
+## Remove first (0 code usage, high-scrutiny → reject risk)
+| Scope | Why |
+|---|---|
+| `analytics.manage.users` (+ `.readonly`) | GA user management — not called |
+| `analytics.user.deletion` | Deletes GA users — not called; red flag |
+| `calendar.acls` (+ `.readonly`) | Modifies calendar sharing — not called |
+| `chat.delete` | Deletes Chat conversations — not called |
+| `drive.metadata` (+ `.readonly`) | Subset of full `drive` — redundant |
+| `drive.activity` (write) | Drive Activity API v2 has no write method |
+
+## "What features will you use?" selections
+- **Drive:** Drive backup + Drive productivity. **Remove Drive sync client** (app is not a
+  desktop sync client; the Drive Desktop feature was dropped 2026-07-02).
+- **Gmail:** Email client (+ Email productivity). Remove Email backup/takeout + reporting/monitoring.
+- **Chat:** Chat app.
+
+## Justification text (paste into each box)
+
+**Sensitive scopes** (Analytics / Calendar / Search Console / Tag Manager):
+> CreatorHub / The Role Room is a B2B platform that content-production agencies use to run
+> marketing and coordinate shoots on behalf of their clients. Agencies connect their own Google
+> accounts from a private portal; consent is logged and revocable. We use the Analytics scopes
+> to create and configure the client's GA4 property and read traffic/conversion metrics for the
+> results dashboard we show the client; Search Console and Tag Manager to register/verify the
+> client's site and deploy conversion tracking; and Calendar scopes to schedule client shoots
+> and meetings, read availability, and create Google Meet links. Data is used only to deliver
+> the service the client requested — never sold, never used for our own advertising or model
+> training.
+
+**Drive restricted:**
+> Agencies connect their own Google Drive so CreatorHub can back up delivered client media
+> (photo/video galleries, edits, final deliverables), organize them into per-project folders,
+> upload signed contracts, and share the right folder with each client by managing Drive
+> permissions. drive.file is insufficient because we organize into and share across folders the
+> app did not itself create (the agency's existing project structure). drive.readonly reads
+> existing files before delivery; drive.meet.readonly reads Google Meet recordings/transcripts
+> to attach them to a project's meeting notes; drive.activity.readonly shows whether the client
+> has opened a delivered file; drive.scripts attaches a small Apps Script (branded formatting +
+> delivery-status macros) to the deliverables sheet. All access is agency-initiated, used only
+> to deliver the client's own work, and revocable.
+
+**Gmail restricted:**
+> The agency connects its own Gmail so client email is unified with the in-app conversation.
+> gmail.readonly finds the client's replies — only messages matching threads the app itself
+> sent, and only from the last 90 days — and surfaces them in the producer's inbox.
+> gmail.compose drafts and sends client updates, delivery notices and audition reminders from
+> the agency's own Gmail so the thread stays intact. We do not read the mailbox at large, and
+> access is revocable at any time.
+
+**Chat restricted:**
+> CreatorHub uses Google Chat so agencies and their clients can communicate inside the platform.
+> chat.messages.readonly reads messages in the connected space to display the conversation
+> in-app; chat.messages sends and updates messages the user composes from CreatorHub. Access is
+> limited to the spaces the user connects and is revocable at any time.
+
+---
+
 # Part 3 — ⭐ COMBINED verification video (RECORD THIS ONE)
 
 **Both OAuth clients are in the same GCP project — number `256648631702` (`creatorhubn-com`):**
