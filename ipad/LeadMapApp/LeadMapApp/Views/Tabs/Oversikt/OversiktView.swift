@@ -445,7 +445,8 @@ private struct HeaderRow: View {
                                         )
                                     }
                                 ),
-                            ]
+                            ],
+                            dayIndicators: HeaderRow.buildDayIndicators(from: leads)
                         )
                     }
                     if !isNarrow {
@@ -692,6 +693,37 @@ private struct HeaderRow: View {
         f.locale = Locale(identifier: "nb_NO")
         f.dateFormat = "d. MMM"
         return f.string(from: headerDate)
+    }
+
+    /// Bygg dato → aktivitets-indikator-map fra leads. Møter = leads med
+    /// status = .meetingBooked og `nextFollowUpAt` på den dagen (møte-
+    /// dato). Oppfølginger = alle andre leads med `nextFollowUpAt`.
+    /// Nøkkelen er start-of-day i Europe/Oslo — samme som kalender-cellen
+    /// sammenligner mot.
+    static func buildDayIndicators(
+        from leads: [LeadModel]
+    ) -> [Date: LeadgridDayIndicator] {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "Europe/Oslo") ?? .current
+        var meetings: [Date: Int] = [:]
+        var followUps: [Date: Int] = [:]
+        for lead in leads {
+            guard let d = lead.nextFollowUpAt else { continue }
+            let day = cal.startOfDay(for: d)
+            if lead.status == .meetingBooked {
+                meetings[day, default: 0] += 1
+            } else {
+                followUps[day, default: 0] += 1
+            }
+        }
+        var result: [Date: LeadgridDayIndicator] = [:]
+        for day in Set(meetings.keys).union(followUps.keys) {
+            result[day] = LeadgridDayIndicator(
+                meetings: meetings[day] ?? 0,
+                followUps: followUps[day] ?? 0
+            )
+        }
+        return result
     }
 
     /// Områder som kan filtreres på i header. Bygges dynamisk fra
@@ -1216,9 +1248,12 @@ private struct LeadsInAreaCard: View {
                         Annotation(lead.name,
                                    coordinate: CLLocationCoordinate2D(latitude: lead.latitude,
                                                                       longitude: lead.longitude)) {
-                            MiniPin(score: score,
-                                    isHot: score >= 90 || lead.status == .meetingBooked,
-                                    isWarm: (50..<70).contains(score))
+                            MiniPin(
+                                score: score,
+                                isHot: score >= 90 || lead.status == .meetingBooked,
+                                isWarm: (50..<70).contains(score),
+                                activityKind: miniPinActivityKind(for: lead)
+                            )
                         }
                     }
                     // "Meg her"-annotasjon: profil-avatar på user-location
@@ -1448,6 +1483,14 @@ private struct LeadsInAreaCard: View {
             .presentationDetents([.medium])
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.85), value: miniToast)
+    }
+
+    /// Aktivitets-badge på mini-kart-pin: viser om lead-en har møte booket
+    /// eller er merket med oppfølging. `nil` = ingen badge.
+    private func miniPinActivityKind(for lead: LeadModel) -> MiniPin.ActivityKind? {
+        if lead.status == .meetingBooked { return .meeting }
+        if lead.nextFollowUpAt != nil { return .followUp }
+        return nil
     }
 
     /// Auto-velg nærmeste lead (i mini-kart-data-settet) for VisitLogModal.
@@ -1719,6 +1762,14 @@ private struct MiniPin: View {
     let score: Int
     let isHot: Bool
     let isWarm: Bool
+    /// 2026-07-02: pin får en liten badge øverst-høyre som viser hva
+    /// slags aktivitet lead-en har booket:
+    ///   .meeting   → lilla kalender-ikon
+    ///   .followUp  → blå flagg-ikon
+    ///   nil        → ingen badge
+    var activityKind: ActivityKind? = nil
+
+    enum ActivityKind { case meeting, followUp }
 
     private var fillColor: Color {
         if isHot || score >= 70 { return Brand.purple }
@@ -1760,8 +1811,33 @@ private struct MiniPin: View {
             }
             .frame(width: 38, height: 48)
             .shadow(color: shadowColor, radius: 6, x: 0, y: 2)
+
+            // Aktivitets-badge (topp-høyre hjørne av pinnen)
+            if let kind = activityKind {
+                activityBadge(kind)
+                    .offset(x: 14, y: -20)
+            }
         }
         .frame(width: 100, height: 100)
+    }
+
+    @ViewBuilder
+    private func activityBadge(_ kind: ActivityKind) -> some View {
+        let (icon, color): (String, Color) = {
+            switch kind {
+            case .meeting:  return ("calendar.badge.plus", Brand.purpleLight)
+            case .followUp: return ("flag.fill", Brand.blue)
+            }
+        }()
+        ZStack {
+            Circle().fill(color)
+                .shadow(color: color.opacity(0.6), radius: 3)
+            Circle().strokeBorder(.white, lineWidth: 1.5)
+            Image(systemName: icon)
+                .font(.system(size: 8, weight: .bold))
+                .foregroundStyle(.white)
+        }
+        .frame(width: 18, height: 18)
     }
 }
 
