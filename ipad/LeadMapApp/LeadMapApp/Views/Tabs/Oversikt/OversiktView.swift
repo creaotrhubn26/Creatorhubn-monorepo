@@ -32,6 +32,9 @@ extension Notification.Name {
     /// { "date": Date, "action": String } med action ∈
     /// ["book_meeting","new_followup","new_lead","view_day"].
     static let oversiktCalendarActionRequested = Notification.Name("oversiktCalendarActionRequested")
+    /// Ny oppfølging ble lagret (fra NewFollowUpSheet). userInfo:
+    /// { "leadName": String, "date": Date }.
+    static let oversiktFollowUpCreated = Notification.Name("oversiktFollowUpCreated")
 }
 
 private enum Brand {
@@ -70,9 +73,10 @@ struct OversiktView: View {
     // constraint-exception når to sheets ble presentert samtidig.
     @State private var activeCalendarSheet: CalendarSheetKind?
     @State private var bookMeetingDay: Int = Calendar.current.component(.day, from: Date())
+    @State private var followUpDate: Date = Date()
 
     enum CalendarSheetKind: String, Identifiable {
-        case bookMeeting, addLead
+        case bookMeeting, addLead, newFollowUp
         var id: String { rawValue }
     }
 
@@ -104,6 +108,23 @@ struct OversiktView: View {
                     AddLeadSheet { _ in
                         // Sheet håndterer egen dismiss + save.
                     }
+                case .newFollowUp:
+                    NewFollowUpSheet(
+                        initialDate: followUpDate,
+                        leads: effectiveLeads,
+                        onSave: { payload in
+                            // Toast — backend-PATCH kommer når endepunktet
+                            // /leadgrid/leads/:id/follow-up bygges.
+                            NotificationCenter.default.post(
+                                name: .oversiktFollowUpCreated,
+                                object: nil,
+                                userInfo: [
+                                    "leadName": payload.leadName,
+                                    "date": payload.date,
+                                ]
+                            )
+                        }
+                    )
                 }
             }
             // Kalender-handlinger → åpne relevant flyt. Book møte og Ny lead
@@ -143,7 +164,12 @@ struct OversiktView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.65) {
                 activeCalendarSheet = .addLead
             }
-        case "new_followup", "view_day":
+        case "new_followup":
+            followUpDate = date
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.65) {
+                activeCalendarSheet = .newFollowUp
+            }
+        case "view_day":
             nextActionsOpen = true
         default:
             break
