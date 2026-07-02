@@ -991,10 +991,20 @@ private struct LeadsInAreaCard: View {
     /// (2026-07-02). Bruker kan lese basis-info + trykke «Les mer»
     /// for å hoppe til Leads-fanen og åpne full detalj.
     @State private var mapSelectedLead: LeadModel?
-    // Lokal måle-modus på mini-kartet (Daniel-fix 2026-07-01):
+    // Lokal måle-modus på mini-kartet (Daniel-fix 2026-07-01, utvidet 07-02):
     @State private var miniMeasureMode: Bool = false
     @State private var miniMeasureA: CLLocationCoordinate2D?
     @State private var miniMeasureB: CLLocationCoordinate2D?
+    // Utvidelser 2026-07-02: multi-modus (distance/radius/route),
+    // rute-array, enhet-toggle, lagrede ruter + share.
+    @State private var measureKind: MeasureKind = .distance
+    @State private var measureRoute: [MeasurePoint] = []
+    @State private var measureRadiusKm: Double = 2.0
+    @State private var measureRadiusCenter: CLLocationCoordinate2D?
+    @State private var measureUnit: MeasureUnit = .metric
+    @State private var measureSavedRoutes: [SavedMeasureRoute] = SavedMeasureRoute.loadAll()
+    @State private var showSaveMeasureSheet: Bool = false
+    @State private var showSavedMeasureSheet: Bool = false
 
     // MeMapPin tap-actions (2026-07-02)
     @State private var showMePinActions: Bool = false
@@ -1317,6 +1327,30 @@ private struct LeadsInAreaCard: View {
                             .stroke(Brand.green,
                                     style: StrokeStyle(lineWidth: 3, lineCap: .round, dash: [6, 4]))
                     }
+                    // Rute-modus: multi-punkts kjede + nummererte annotations
+                    if measureKind == .route && !measureRoute.isEmpty {
+                        ForEach(Array(measureRoute.enumerated()), id: \.offset) { i, p in
+                            Annotation("\(i + 1)", coordinate: p.coordinate) {
+                                miniMeasureMarker(label: "\(i + 1)")
+                            }
+                        }
+                        if measureRoute.count >= 2 {
+                            MapPolyline(coordinates: measureRoute.map(\.coordinate))
+                                .stroke(Brand.green,
+                                        style: StrokeStyle(lineWidth: 3, lineCap: .round,
+                                                            lineJoin: .round, dash: [6, 4]))
+                        }
+                    }
+                    // Radius-modus: sentrum-marker + fylt sirkel med lead-radius
+                    if measureKind == .radius, let center = measureRadiusCenter {
+                        Annotation("R", coordinate: center) {
+                            miniMeasureMarker(label: "R")
+                        }
+                        MapCircle(center: center, radius: measureRadiusKm * 1000)
+                            .foregroundStyle(Brand.green.opacity(0.15))
+                            .stroke(Brand.green.opacity(0.7),
+                                    style: StrokeStyle(lineWidth: 2, dash: [5, 3]))
+                    }
                 }
                 .mapStyle(miniMapStyle.mapKitStyle)
                 .environment(\.colorScheme, timeOfDayColorScheme)
@@ -1335,55 +1369,28 @@ private struct LeadsInAreaCard: View {
                 .onTapGesture(coordinateSpace: .local) { point in
                     guard miniMeasureMode,
                           let coord = proxy.convert(point, from: .local) else { return }
-                    if miniMeasureA == nil {
-                        miniMeasureA = coord
-                        miniShowToast("Punkt A satt — tap for punkt B")
-                    } else if miniMeasureB == nil {
-                        miniMeasureB = coord
-                    } else {
-                        // Begge satt — nullstill og start på nytt
-                        miniMeasureA = coord
-                        miniMeasureB = nil
-                        miniShowToast("Nullstill — punkt A satt igjen")
-                    }
+                    handleMeasureTapOnCoord(coord)
                 }
             }
 
             // Måle-modus-banner øverst-venstre (kun synlig når mode er på)
             if miniMeasureMode {
-                VStack {
-                    HStack(spacing: 8) {
-                        Image(systemName: "ruler.fill")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(Brand.green)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("MÅLE-MODUS")
-                                .font(.system(size: 9, weight: .black))
-                                .foregroundStyle(Brand.green).tracking(0.6)
-                            Text(miniMeasureBannerText)
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(.white)
-                        }
-                        Spacer()
-                        Button {
-                            miniMeasureMode = false
-                            miniMeasureA = nil
-                            miniMeasureB = nil
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 16))
-                                .foregroundStyle(.white.opacity(0.8))
-                        }.buttonStyle(.plain)
+                VStack(alignment: .leading, spacing: 8) {
+                    measureBannerHeader
+                    measureKindPicker
+                    if measureKind == .radius {
+                        measureRadiusSlider
                     }
-                    .padding(10)
-                    .background(Brand.card.opacity(0.92), in: RoundedRectangle(cornerRadius: 10))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Brand.green.opacity(0.5), lineWidth: 1)
-                    )
-                    .padding(14)
-                    Spacer()
+                    measureBottomToolbar
                 }
+                .padding(10)
+                .background(Brand.card.opacity(0.92), in: RoundedRectangle(cornerRadius: 12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Brand.green.opacity(0.5), lineWidth: 1)
+                )
+                .padding(14)
+                .frame(maxWidth: 380)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .allowsHitTesting(true)
             }
@@ -1488,6 +1495,84 @@ private struct LeadsInAreaCard: View {
         .sheet(isPresented: $showMiniLayers) {
             LayersSheet(selectedStyle: $miniMapStyle, activeOverlays: $miniActiveOverlays)
         }
+        // Måle-verktøy: lagre-sheet
+        .sheet(isPresented: $showSaveMeasureSheet) {
+            SaveMeasureRouteSheet(
+                kind: measureKind,
+                distanceMeters: {
+                    switch measureKind {
+                    case .distance:
+                        guard let a = miniMeasureA, let b = miniMeasureB else { return 0 }
+                        return MeasureMath.distanceMeters(a, b)
+                    case .route:
+                        return MeasureMath.totalDistanceMeters(measureRoute)
+                    case .radius:
+                        return measureRadiusKm * 1000.0
+                    }
+                }(),
+                unit: measureUnit,
+                onSave: { name in
+                    let pts: [MeasurePoint] = {
+                        switch measureKind {
+                        case .distance:
+                            var list: [MeasurePoint] = []
+                            if let a = miniMeasureA { list.append(MeasurePoint(coord: a)) }
+                            if let b = miniMeasureB { list.append(MeasurePoint(coord: b)) }
+                            return list
+                        case .route: return measureRoute
+                        case .radius:
+                            if let c = measureRadiusCenter { return [MeasurePoint(coord: c)] }
+                            return []
+                        }
+                    }()
+                    let route = SavedMeasureRoute(
+                        name: name,
+                        kind: measureKind,
+                        points: pts,
+                        radiusKm: measureKind == .radius ? measureRadiusKm : nil,
+                        createdAt: Date()
+                    )
+                    measureSavedRoutes = SavedMeasureRoute.append(route)
+                    showSaveMeasureSheet = false
+                    miniShowToast("Lagret: \(name)")
+                },
+                onCancel: { showSaveMeasureSheet = false }
+            )
+        }
+        // Måle-verktøy: liste over lagrede ruter (åpne / slett)
+        .sheet(isPresented: $showSavedMeasureSheet) {
+            SavedMeasureRoutesSheet(
+                routes: $measureSavedRoutes,
+                unit: measureUnit,
+                onOpen: { route in
+                    measureKind = route.kind
+                    measureResetAll()
+                    switch route.kind {
+                    case .distance:
+                        if route.points.count >= 1 { miniMeasureA = route.points[0].coordinate }
+                        if route.points.count >= 2 { miniMeasureB = route.points[1].coordinate }
+                    case .route:
+                        measureRoute = route.points
+                    case .radius:
+                        measureRadiusCenter = route.points.first?.coordinate
+                        if let r = route.radiusKm { measureRadiusKm = r }
+                    }
+                    // Zoom mini-kartet til ruta
+                    if !route.points.isEmpty {
+                        let c = MeasureMath.centroid(route.points)
+                        let region = MKCoordinateRegion(
+                            center: c,
+                            span: MKCoordinateSpan(latitudeDelta: 0.15, longitudeDelta: 0.20)
+                        )
+                        withAnimation(.easeInOut(duration: 0.5)) {
+                            miniCamera = .region(region)
+                            miniCurrentRegion = region
+                        }
+                    }
+                    showSavedMeasureSheet = false
+                }
+            )
+        }
         .sheet(isPresented: $showMiniAddLead) {
             AddLeadSheet { _ in
                 miniShowToast("Lead lagt til på \(miniCurrentRegion.center.latitude), \(miniCurrentRegion.center.longitude)")
@@ -1541,27 +1626,119 @@ private struct LeadsInAreaCard: View {
         .animation(.spring(response: 0.3, dampingFraction: 0.85), value: miniToast)
     }
 
-    /// Pin-tap i måle-modus: registrer lead-koordinatet som A- eller B-punkt
-    /// slik at bruker kan måle avstander presist mellom leadsene. Toaster
-    /// bekreftelse med lead-navn.
+    /// Pin-tap i måle-modus: håndter etter valgt måle-kind.
+    ///   .distance → A → B (legacy 2-punkt)
+    ///   .route    → append til rute-array
+    ///   .radius   → sett sentrum, radius justeres via slider
     private func handleMeasureTapOnLead(_ lead: LeadModel) {
         let coord = CLLocationCoordinate2D(latitude: lead.latitude, longitude: lead.longitude)
-        if miniMeasureA == nil {
-            miniMeasureA = coord
-            miniShowToast("A: \(lead.name) — tap neste lead for B")
-        } else if miniMeasureB == nil {
-            miniMeasureB = coord
-            let a = miniMeasureA!
-            let dist = CLLocation(latitude: a.latitude, longitude: a.longitude)
-                .distance(from: CLLocation(latitude: coord.latitude, longitude: coord.longitude))
-            let formatted = dist >= 1000
-                ? String(format: "%.2f km", dist / 1000)
-                : String(format: "%d m", Int(dist))
-            miniShowToast("B: \(lead.name) — \(formatted)")
-        } else {
-            miniMeasureA = coord
-            miniMeasureB = nil
-            miniShowToast("A: \(lead.name) — tap neste lead for B")
+        let point = MeasurePoint(coord: coord, leadName: lead.name)
+        switch measureKind {
+        case .distance:
+            if miniMeasureA == nil {
+                miniMeasureA = coord
+                miniShowToast("A: \(lead.name) — tap neste for B")
+            } else if miniMeasureB == nil {
+                miniMeasureB = coord
+                let d = MeasureMath.distanceMeters(miniMeasureA!, coord)
+                miniShowToast("B: \(lead.name) — \(measureUnit.format(d))")
+            } else {
+                miniMeasureA = coord
+                miniMeasureB = nil
+                miniShowToast("A: \(lead.name)")
+            }
+        case .route:
+            measureRoute.append(point)
+            if measureRoute.count == 1 {
+                miniShowToast("Start: \(lead.name)")
+            } else {
+                let total = MeasureMath.totalDistanceMeters(measureRoute)
+                let mins = MeasureMath.estimatedDriveMinutes(total)
+                miniShowToast("\(measureRoute.count) stopp — \(measureUnit.format(total)) · ~\(mins) min")
+            }
+        case .radius:
+            measureRadiusCenter = coord
+            let leadsIn = leadsWithinRadius(center: coord, km: measureRadiusKm)
+            miniShowToast("Sentrum: \(lead.name) — \(leadsIn) leads i \(Int(measureRadiusKm)) km")
+        }
+    }
+
+    /// Free-map-tap håndtering for måle-modus (uten pin) — samme kind-
+    /// verktøy men uten `leadName`. Brukes til å måle mot vilkårlig sted.
+    private func handleMeasureTapOnCoord(_ coord: CLLocationCoordinate2D) {
+        let point = MeasurePoint(coord: coord, leadName: nil)
+        switch measureKind {
+        case .distance:
+            if miniMeasureA == nil {
+                miniMeasureA = coord
+                miniShowToast("Punkt A satt")
+            } else if miniMeasureB == nil {
+                miniMeasureB = coord
+                let d = MeasureMath.distanceMeters(miniMeasureA!, coord)
+                miniShowToast("Avstand: \(measureUnit.format(d))")
+            } else {
+                miniMeasureA = coord
+                miniMeasureB = nil
+                miniShowToast("Nullstill — A satt igjen")
+            }
+        case .route:
+            measureRoute.append(point)
+            let total = MeasureMath.totalDistanceMeters(measureRoute)
+            let mins = MeasureMath.estimatedDriveMinutes(total)
+            if measureRoute.count == 1 {
+                miniShowToast("Start-punkt satt")
+            } else {
+                miniShowToast("\(measureRoute.count) stopp — \(measureUnit.format(total)) · ~\(mins) min")
+            }
+        case .radius:
+            measureRadiusCenter = coord
+            let leadsIn = leadsWithinRadius(center: coord, km: measureRadiusKm)
+            miniShowToast("Sentrum satt — \(leadsIn) leads i \(Int(measureRadiusKm)) km")
+        }
+    }
+
+    /// Tell hvor mange leads i mini-kartets data-sett som ligger innenfor
+    /// en gitt radius fra `center`. Brukes av radius-modus.
+    private func leadsWithinRadius(center: CLLocationCoordinate2D, km: Double) -> Int {
+        let radiusM = km * 1000.0
+        return pinnedLeads.filter { lead in
+            let d = MeasureMath.distanceMeters(
+                center,
+                CLLocationCoordinate2D(latitude: lead.latitude, longitude: lead.longitude)
+            )
+            return d <= radiusM
+        }.count
+    }
+
+    /// Nullstill alle måle-punkter (uansett kind). Brukes av «Nullstill»-
+    /// knappen i banneret + når vi bytter kind.
+    private func measureResetAll() {
+        miniMeasureA = nil
+        miniMeasureB = nil
+        measureRoute.removeAll()
+        measureRadiusCenter = nil
+    }
+
+    /// Bygg en delbar streng-representasjon av aktuell måling. Bruker share.
+    private func measureShareText() -> String {
+        switch measureKind {
+        case .distance:
+            guard let a = miniMeasureA, let b = miniMeasureB else {
+                return "Ingen måling å dele."
+            }
+            let d = MeasureMath.distanceMeters(a, b)
+            return "Avstand: \(measureUnit.format(d))"
+        case .route:
+            guard measureRoute.count >= 2 else { return "Ingen rute å dele." }
+            let total = MeasureMath.totalDistanceMeters(measureRoute)
+            let mins = MeasureMath.estimatedDriveMinutes(total)
+            let fuel = MeasureMath.estimatedFuelKr(total)
+            let names = measureRoute.map(\.displayName).joined(separator: " → ")
+            return "\(names)\n\(measureUnit.format(total)) · ~\(mins) min · ~\(fuel) kr drivstoff"
+        case .radius:
+            guard let c = measureRadiusCenter else { return "Ingen radius å dele." }
+            let leads = leadsWithinRadius(center: c, km: measureRadiusKm)
+            return "Radius: \(Int(measureRadiusKm)) km · \(leads) leads innenfor"
         }
     }
 
@@ -1654,20 +1831,191 @@ private struct LeadsInAreaCard: View {
         .shadow(color: Brand.green.opacity(0.6), radius: 5, y: 2)
     }
 
-    /// Instruksjon i måle-modus-banner. Viser avstand når begge punkter satt.
-    private var miniMeasureBannerText: String {
-        if let a = miniMeasureA, let b = miniMeasureB {
-            let la = CLLocation(latitude: a.latitude, longitude: a.longitude)
-            let lb = CLLocation(latitude: b.latitude, longitude: b.longitude)
-            let km = la.distance(from: lb) / 1000
-            if km < 1 {
-                return String(format: "Avstand: %.0f m", km * 1000)
+    // MARK: - Måle-banner UI
+
+    /// Rader i måle-banneret: header + mode-picker + radius-slider + toolbar
+    /// samt visualisering-lag (linjer / sirkel) rendret INNE i Map { … }.
+
+    private var measureBannerHeader: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "ruler.fill")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(Brand.green)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("MÅLE-VERKTØY")
+                    .font(.system(size: 9, weight: .black))
+                    .foregroundStyle(Brand.green).tracking(0.6)
+                Text(miniMeasureBannerText)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
             }
-            return String(format: "Avstand: %.2f km", km)
-                .replacingOccurrences(of: ".", with: ",")
+            Spacer()
+            Menu {
+                Section("Enhet") {
+                    ForEach(MeasureUnit.allCases) { u in
+                        Button {
+                            measureUnit = u
+                        } label: {
+                            if u == measureUnit {
+                                Label(u.label, systemImage: "checkmark")
+                            } else {
+                                Text(u.label)
+                            }
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 3) {
+                    Text(measureUnit.label)
+                        .font(.system(size: 10, weight: .semibold))
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 8, weight: .bold))
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 8).padding(.vertical, 4)
+                .background(Brand.cardHi, in: Capsule())
+            }
+            Button {
+                miniMeasureMode = false
+                measureResetAll()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 16))
+                    .foregroundStyle(.white.opacity(0.8))
+            }.buttonStyle(.plain)
         }
-        if miniMeasureA != nil { return "Tap for punkt B" }
-        return "Tap på kartet for punkt A"
+    }
+
+    private var measureKindPicker: some View {
+        HStack(spacing: 4) {
+            ForEach(MeasureKind.allCases) { kind in
+                let isActive = kind == measureKind
+                Button {
+                    measureKind = kind
+                    // Bytt kind = nullstill så vi ikke blander punkter
+                    measureResetAll()
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: kind.icon)
+                            .font(.system(size: 10, weight: .bold))
+                        Text(kind.label)
+                            .font(.system(size: 10, weight: .semibold))
+                    }
+                    .foregroundStyle(isActive ? .white : Brand.textSecondary)
+                    .padding(.horizontal, 8).padding(.vertical, 5)
+                    .background(
+                        isActive ? Brand.green.opacity(0.55) : Color.white.opacity(0.06),
+                        in: Capsule()
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private var measureRadiusSlider: some View {
+        HStack(spacing: 8) {
+            Text("Radius: \(Int(measureRadiusKm)) km")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 90, alignment: .leading)
+            Slider(value: $measureRadiusKm, in: 0.5...25, step: 0.5)
+                .tint(Brand.green)
+        }
+    }
+
+    private var measureBottomToolbar: some View {
+        HStack(spacing: 6) {
+            // Nullstill
+            Button {
+                measureResetAll()
+                miniShowToast("Nullstilt")
+            } label: {
+                Image(systemName: "arrow.counterclockwise")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(6)
+                    .background(Brand.cardHi, in: Circle())
+            }.buttonStyle(.plain)
+            // Del
+            ShareLink(item: measureShareText()) {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(6)
+                    .background(Brand.cardHi, in: Circle())
+            }
+            // Lagre
+            Button {
+                showSaveMeasureSheet = true
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "bookmark.fill")
+                        .font(.system(size: 10, weight: .bold))
+                    Text("Lagre")
+                        .font(.system(size: 10, weight: .bold))
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 8).padding(.vertical, 6)
+                .background(Brand.green, in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .disabled(!measureHasContent)
+            // Åpne lagret
+            Button {
+                showSavedMeasureSheet = true
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "list.bullet.rectangle")
+                        .font(.system(size: 10, weight: .bold))
+                    Text("Lagret (\(measureSavedRoutes.count))")
+                        .font(.system(size: 10, weight: .bold))
+                }
+                .foregroundStyle(Brand.purpleLight)
+                .padding(.horizontal, 8).padding(.vertical, 6)
+                .background(Brand.card, in: Capsule())
+                .overlay(Capsule().strokeBorder(Brand.stroke, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            Spacer(minLength: 0)
+        }
+    }
+
+    /// Har vi noe å lagre / dele? Brukes til å disable lagre-knappen.
+    private var measureHasContent: Bool {
+        switch measureKind {
+        case .distance: return miniMeasureA != nil && miniMeasureB != nil
+        case .route:    return measureRoute.count >= 2
+        case .radius:   return measureRadiusCenter != nil
+        }
+    }
+
+    /// Instruksjon i måle-modus-banner. Viser status pr. valgt kind.
+    private var miniMeasureBannerText: String {
+        switch measureKind {
+        case .distance:
+            if let a = miniMeasureA, let b = miniMeasureB {
+                let d = MeasureMath.distanceMeters(a, b)
+                return "Avstand: \(measureUnit.format(d))"
+            }
+            if miniMeasureA != nil { return "Tap for punkt B" }
+            return measureKind.tip
+        case .route:
+            if measureRoute.count >= 2 {
+                let d = MeasureMath.totalDistanceMeters(measureRoute)
+                let mins = MeasureMath.estimatedDriveMinutes(d)
+                return "\(measureRoute.count) stopp · \(measureUnit.format(d)) · ~\(mins) min"
+            }
+            if measureRoute.count == 1 { return "Tap neste stopp" }
+            return measureKind.tip
+        case .radius:
+            if let c = measureRadiusCenter {
+                let leads = leadsWithinRadius(center: c, km: measureRadiusKm)
+                return "\(Int(measureRadiusKm)) km · \(leads) leads innenfor"
+            }
+            return measureKind.tip
+        }
     }
 
     private func miniFABButton(icon: String, action: @escaping () -> Void) -> some View {
