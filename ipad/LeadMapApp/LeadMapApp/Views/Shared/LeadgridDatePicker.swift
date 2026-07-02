@@ -109,6 +109,15 @@ struct LeadgridCalendarAction: Identifiable {
     let onSelect: (Date) -> Void
 }
 
+/// Aktivitet på en bestemt dag — tegnes som fargede prikker under
+/// dag-tallet i kalender-griden så bruker ser umiddelbart hva som
+/// venter (møter vs oppfølginger).
+struct LeadgridDayIndicator {
+    let meetings: Int
+    let followUps: Int
+    var hasAny: Bool { meetings > 0 || followUps > 0 }
+}
+
 struct LeadgridDatePickerSheet: View {
     let initialDate: Date
     let showTime: Bool
@@ -117,6 +126,9 @@ struct LeadgridDatePickerSheet: View {
     /// Optional handlinger som vises som store CTA-knapper under kalenderen.
     /// Tomt = ingen handlinger-seksjon (bare bekreft/avbryt-knapper).
     var quickActions: [LeadgridCalendarAction] = []
+    /// Optional aktivitets-indikatorer per dato (start-of-day). Vises som
+    /// prikker i dag-cellene + en legend under griden.
+    var dayIndicators: [Date: LeadgridDayIndicator] = [:]
 
     @State private var displayedMonth: Date
     @State private var selectedDate: Date
@@ -141,13 +153,15 @@ struct LeadgridDatePickerSheet: View {
         showTime: Bool,
         onConfirm: @escaping (Date) -> Void,
         onCancel: @escaping () -> Void,
-        quickActions: [LeadgridCalendarAction] = []
+        quickActions: [LeadgridCalendarAction] = [],
+        dayIndicators: [Date: LeadgridDayIndicator] = [:]
     ) {
         self.initialDate = initialDate
         self.showTime = showTime
         self.onConfirm = onConfirm
         self.onCancel = onCancel
         self.quickActions = quickActions
+        self.dayIndicators = dayIndicators
         // Bruk Europe/Oslo også her (init går før self.cal er tilgjengelig).
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(identifier: "Europe/Oslo") ?? .current
@@ -168,6 +182,7 @@ struct LeadgridDatePickerSheet: View {
                     monthHeader
                     weekdayHeader
                     calendarGrid
+                    if hasIndicatorsThisMonth { indicatorLegend }
                     dateShortcutsBar
                     if showTime { timePicker }
                     if !quickActions.isEmpty { calendarActionButtons }
@@ -263,6 +278,7 @@ struct LeadgridDatePickerSheet: View {
     private func dayCell(_ day: DayCell) -> some View {
         let isToday = day.date.map { cal.isDateInToday($0) } ?? false
         let isSelected = day.date.map { cal.isDate($0, inSameDayAs: selectedDate) } ?? false
+        let indicator = day.date.flatMap { dayIndicators[cal.startOfDay(for: $0)] }
         return Button {
             if let d = day.date {
                 withAnimation(.easeOut(duration: 0.15)) {
@@ -270,33 +286,93 @@ struct LeadgridDatePickerSheet: View {
                 }
             }
         } label: {
-            ZStack {
-                if isSelected {
-                    Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: [LDP.purple, LDP.purpleLight],
-                                startPoint: .top, endPoint: .bottom
+            VStack(spacing: 2) {
+                ZStack {
+                    if isSelected {
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    colors: [LDP.purple, LDP.purpleLight],
+                                    startPoint: .top, endPoint: .bottom
+                                )
                             )
+                            .shadow(color: LDP.purpleGlow, radius: 8)
+                    } else if isToday {
+                        Circle()
+                            .strokeBorder(LDP.purpleLight.opacity(0.5), lineWidth: 1.5)
+                    }
+                    Text(day.number)
+                        .font(.system(size: 14, weight: isSelected ? .heavy : (isToday ? .bold : .medium), design: .rounded))
+                        .foregroundStyle(
+                            day.date == nil
+                                ? LDP.textTertiary
+                                : (isSelected ? .white : (isToday ? .white : LDP.textDim))
                         )
-                        .shadow(color: LDP.purpleGlow, radius: 8)
-                } else if isToday {
-                    Circle()
-                        .strokeBorder(LDP.purpleLight.opacity(0.5), lineWidth: 1.5)
                 }
-                Text(day.number)
-                    .font(.system(size: 14, weight: isSelected ? .heavy : (isToday ? .bold : .medium), design: .rounded))
-                    .foregroundStyle(
-                        day.date == nil
-                            ? LDP.textTertiary
-                            : (isSelected ? .white : (isToday ? .white : LDP.textDim))
-                    )
+                .frame(height: 30)
+                // Aktivitets-prikker (møter + oppfølginger)
+                if let ind = indicator, ind.hasAny {
+                    activityDots(for: ind, selected: isSelected)
+                } else {
+                    // Ta samme høyde så cellene ikke hopper
+                    Color.clear.frame(height: 6)
+                }
             }
-            .frame(height: 38)
+            .frame(height: 40)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(day.date == nil)
+    }
+
+    /// Opptil 3 prikker: lilla = møter, blå = oppfølginger. Selected-dagen
+    /// får hvit fyll så prikkene ikke drukner i gradient-en.
+    private func activityDots(for indicator: LeadgridDayIndicator, selected: Bool) -> some View {
+        let meetingColor: Color = selected ? .white : LDP.purpleLight
+        let followUpColor: Color = selected ? .white.opacity(0.85) : Color(red: 0.34, green: 0.60, blue: 0.98)
+        return HStack(spacing: 3) {
+            if indicator.meetings > 0 {
+                Circle().fill(meetingColor).frame(width: 5, height: 5)
+            }
+            if indicator.followUps > 0 {
+                Circle().fill(followUpColor).frame(width: 5, height: 5)
+            }
+            // Ekstra prikk hvis høy tetthet
+            if indicator.meetings + indicator.followUps >= 3 {
+                Circle().fill(meetingColor).frame(width: 5, height: 5)
+            }
+        }
+        .frame(height: 6)
+    }
+
+    /// Legend under kalenderen som forklarer hva prikkene betyr. Vises
+    /// bare hvis vi har noen aktiviteter i den viste måneden.
+    private var indicatorLegend: some View {
+        HStack(spacing: 14) {
+            HStack(spacing: 5) {
+                Circle().fill(LDP.purpleLight).frame(width: 6, height: 6)
+                Text("Møte")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(LDP.textDim)
+            }
+            HStack(spacing: 5) {
+                Circle().fill(Color(red: 0.34, green: 0.60, blue: 0.98)).frame(width: 6, height: 6)
+                Text("Oppfølging")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(LDP.textDim)
+            }
+            Spacer()
+        }
+    }
+
+    /// Er det noen aktivitet i den viste måneden?
+    private var hasIndicatorsThisMonth: Bool {
+        for (date, ind) in dayIndicators where ind.hasAny {
+            if cal.isDate(date, equalTo: displayedMonth, toGranularity: .month) {
+                return true
+            }
+        }
+        return false
     }
 
     private var dateShortcutsBar: some View {
