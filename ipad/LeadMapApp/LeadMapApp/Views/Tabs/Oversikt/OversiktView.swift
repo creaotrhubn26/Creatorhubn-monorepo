@@ -1262,6 +1262,10 @@ private struct LeadsInAreaCard: View {
                                 activityKind: miniPinActivityKind(for: lead)
                             )
                             .onTapGesture {
+                                // Ikke åpne info-card i måle-modus — bruker skal
+                                // få velge to punkter på kartet uten å bli
+                                // avbrutt av pin-detaljer.
+                                guard !miniMeasureMode else { return }
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
                                     mapSelectedLead = lead
                                 }
@@ -1400,6 +1404,12 @@ private struct LeadsInAreaCard: View {
                 miniFABButton(icon: miniMeasureMode ? "ruler.fill" : "ruler", action: {
                     miniMeasureMode.toggle()
                     if miniMeasureMode {
+                        // Lukk lead-info-overlay ved aktivering av måle-modus
+                        // så bruker kan tappe pin-koordinatet som måle-punkt
+                        // uten at gammelt info-card henger igjen.
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            mapSelectedLead = nil
+                        }
                         miniShowToast("Tap to punkter på kartet for å måle")
                     } else {
                         miniMeasureA = nil
