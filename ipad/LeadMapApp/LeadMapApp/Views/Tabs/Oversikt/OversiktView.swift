@@ -991,6 +991,10 @@ private struct LeadsInAreaCard: View {
     /// (2026-07-02). Bruker kan lese basis-info + trykke «Les mer»
     /// for å hoppe til Leads-fanen og åpne full detalj.
     @State private var mapSelectedLead: LeadModel?
+    /// Tidspunkt for åpning av info-kort. Brukes til å ignorere trivielle
+    /// camera-change-events rett etter åpning (layout kan trigge én liten
+    /// endring). Etter 300ms lukkes kortet ved neste map-pan/zoom.
+    @State private var mapSelectedLeadOpenTime: Date?
     // Lokal måle-modus på mini-kartet (Daniel-fix 2026-07-01, utvidet 07-02):
     @State private var miniMeasureMode: Bool = false
     @State private var miniMeasureA: CLLocationCoordinate2D?
@@ -1012,6 +1016,39 @@ private struct LeadsInAreaCard: View {
     @State private var measureShowHull: Bool = false
     // Snap-til-pin når bruker tapper nær en lead uten å treffe pinen.
     private static let measureSnapDistanceMeters: Double = 50
+    // Drag-startpunkt: låses ved start av drag så translation-basert
+    // konvertering ikke akkumuleres (fikser jitter/hopp på Mac Catalyst).
+    @State private var measureDragStartCoord: CLLocationCoordinate2D?
+    // Stabil drag (2026-07-02): markøren dras VISUELT via `.offset(...)` i
+    // pixler under drag. Annotation-koord endres KUN ved `onEnded`. Uten
+    // dette re-rendres Annotation hver frame, hit-target rebindes, og
+    // cursor + markør driver fra hverandre.
+    @State private var measureDragTargetId: String?
+    @State private var measureDragTranslation: CGSize = .zero
+    // Bounce-feedback (2026-07-02, iter 2): Dock-style bounce når rute-
+    // punkt festes på en lead. Counter per lead — `phaseAnimator` trigges
+    // hver gang counteren økes, som gir den karakteristiske «opp-ned-opp-
+    // ned»-bevegelsen fra macOS Dock. Vertikal translate (ikke scale) så
+    // pinen «hopper» i stedet for å vokse.
+    @State private var bounceCounters: [String: Int] = [:]
+
+    // Destinasjon-tildeling (2026-07-02): bruker velger en lead som sin
+    // nåværende destinasjon. Vises som stiplet linje fra avatar-en (MeMapPin)
+    // + toast øverst i kartet + spesial-highlight på destinasjons-pinen.
+    @State private var assignedDestination: LeadModel?
+    @State private var assignedDestinationToastVisible: Bool = false
+
+    // Team-tildeling (2026-07-02): salgssjef/teamleder sender selger/promotør
+    // til en lead. Sheet-state + suksess-toast for utført tildeling.
+    @State private var assignToTeamLead: LeadModel?  // sheet-item
+    @State private var lastCompletedAssignment: LeadAssignment?
+    @State private var assignmentSuccessToastVisible: Bool = false
+
+    // Team-på-kartet (2026-07-02): toggle via `.teamMembers` i lag-picker.
+    // Mock data hentes fra TeamOnMapMock; erstattes med live-data fra
+    // `GET /leadgrid/team-live-locations` (kommer i backend-pakke).
+    @State private var teamOnMap: [TeamMemberOnMap] = TeamOnMapMock.members()
+    @State private var selectedTeamMember: TeamMemberOnMap?
 
     // MeMapPin tap-actions (2026-07-02)
     @State private var showMePinActions: Bool = false
@@ -1286,6 +1323,50 @@ private struct LeadsInAreaCard: View {
                                 isWarm: (50..<70).contains(score),
                                 activityKind: miniPinActivityKind(for: lead)
                             )
+                            // Dock-style bounce (2026-07-02, iter 3):
+                            // `keyframeAnimator` gir nøyaktig kontroll per
+                            // fase — rask opp (0.14s), tung ned (0.28s med
+                            // spring-landing), 3 avtagende hopp (24→14→6pt).
+                            // Kombinert med scale-stretch (y-strekk på vei
+                            // opp, x-squash på landing) føles det som en
+                            // ekte fjæret bounce, ikke bare translate.
+                            .keyframeAnimator(
+                                initialValue: BounceKeyframe(),
+                                trigger: bounceCounters[lead.id] ?? 0
+                            ) { view, k in
+                                view
+                                    .scaleEffect(x: k.scaleX, y: k.scaleY, anchor: .bottom)
+                                    .offset(y: k.offsetY)
+                            } keyframes: { _ in
+                                // OffsetY — 3 avtagende hopp
+                                KeyframeTrack(\.offsetY) {
+                                    SpringKeyframe(-24, duration: 0.16, spring: .snappy)
+                                    SpringKeyframe(0,   duration: 0.22, spring: .bouncy)
+                                    SpringKeyframe(-14, duration: 0.14, spring: .snappy)
+                                    SpringKeyframe(0,   duration: 0.20, spring: .bouncy)
+                                    SpringKeyframe(-6,  duration: 0.12, spring: .snappy)
+                                    SpringKeyframe(0,   duration: 0.18, spring: .bouncy)
+                                }
+                                // ScaleY — stretch opp mens den akselererer,
+                                // squash ved landing (elastisk pin-følelse).
+                                KeyframeTrack(\.scaleY) {
+                                    CubicKeyframe(1.12, duration: 0.16)
+                                    CubicKeyframe(0.94, duration: 0.05)
+                                    CubicKeyframe(1.02, duration: 0.17)
+                                    CubicKeyframe(1.08, duration: 0.14)
+                                    CubicKeyframe(0.96, duration: 0.05)
+                                    CubicKeyframe(1.0,  duration: 0.35)
+                                }
+                                // ScaleX — inversen (squash + stretch)
+                                KeyframeTrack(\.scaleX) {
+                                    CubicKeyframe(0.92, duration: 0.16)
+                                    CubicKeyframe(1.08, duration: 0.05)
+                                    CubicKeyframe(0.98, duration: 0.17)
+                                    CubicKeyframe(0.94, duration: 0.14)
+                                    CubicKeyframe(1.06, duration: 0.05)
+                                    CubicKeyframe(1.0,  duration: 0.35)
+                                }
+                            }
                             .onTapGesture {
                                 if miniMeasureMode {
                                     // Måle-modus: registrer lead-ens eksakte
@@ -1297,6 +1378,7 @@ private struct LeadsInAreaCard: View {
                                     withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
                                         mapSelectedLead = lead
                                     }
+                                    mapSelectedLeadOpenTime = Date()
                                 }
                             }
                         }
@@ -1317,16 +1399,107 @@ private struct LeadsInAreaCard: View {
                                     zoomToMeAndOpenHUD(coord: coord)
                                 }
                         }
+                        // Destinasjons-linje (2026-07-02): stiplet grønn linje
+                        // fra avataren til tildelt destinasjon. Ren visuell
+                        // «send meg dit»-guide.
+                        if let dest = assignedDestination {
+                            let destCoord = CLLocationCoordinate2D(
+                                latitude: dest.latitude,
+                                longitude: dest.longitude
+                            )
+                            MapPolyline(coordinates: [coord, destCoord])
+                                .stroke(Brand.green,
+                                        style: StrokeStyle(lineWidth: 3,
+                                                           lineCap: .round,
+                                                           dash: [8, 6]))
+                        }
                     }
-                    // Måle-modus: A-punkt, B-punkt og polyline
+                    // Team-på-kartet (2026-07-02): synlig når `.teamMembers`
+                    // er aktivt i lag-picker. Hver medlem tegnes som avatar-
+                    // pin i team-farge + destinasjons-linje. Team-områder
+                    // vises som fargelagte soner med svevende prestasjons-
+                    // banner i sentrum.
+                    if miniActiveOverlays.contains(.teamMembers) {
+                        // Team-områder (bakerst, så pins ligger oppå)
+                        ForEach(LeadgridSalesTeamStore.shared.teams) { team in
+                            if let lat = team.areaCenterLat,
+                               let lng = team.areaCenterLng,
+                               let radiusKm = team.areaRadiusKm {
+                                let center = CLLocationCoordinate2D(latitude: lat, longitude: lng)
+                                MapCircle(center: center, radius: radiusKm * 1000)
+                                    .foregroundStyle(team.color.opacity(0.12))
+                                    .stroke(team.color.opacity(0.6),
+                                            style: StrokeStyle(lineWidth: 2, dash: [5, 4]))
+                                Annotation(team.name, coordinate: center, anchor: .center) {
+                                    TeamPerformanceBanner(
+                                        team: team,
+                                        performance: TeamPerformanceMock.performance(for: team)
+                                    )
+                                }
+                            }
+                        }
+                        // Team-medlem-avatarer
+                        ForEach(teamOnMap) { member in
+                            let team = LeadgridSalesTeamStore.shared.team(for: member.userId)
+                            Annotation(member.name, coordinate: member.coordinate, anchor: .center) {
+                                TeamMapPin(member: member, teamColor: team?.color)
+                                    .onTapGesture {
+                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                            selectedTeamMember = member
+                                            mapSelectedLead = nil
+                                        }
+                                    }
+                            }
+                            if let destCoord = member.destinationCoordinate {
+                                MapPolyline(coordinates: [member.coordinate, destCoord])
+                                    .stroke((team?.color ?? member.role.color).opacity(0.6),
+                                            style: StrokeStyle(lineWidth: 2,
+                                                               lineCap: .round,
+                                                               dash: [6, 4]))
+                            }
+                        }
+                    }
+                    // Destinasjons-highlight: pulserende grønn ring rundt
+                    // tildelt lead-pin for tydelig «du skal hit»-signal.
+                    if let dest = assignedDestination {
+                        let destCoord = CLLocationCoordinate2D(
+                            latitude: dest.latitude,
+                            longitude: dest.longitude
+                        )
+                        MapCircle(center: destCoord, radius: 60)
+                            .foregroundStyle(Brand.green.opacity(0.10))
+                            .stroke(Brand.green.opacity(0.7),
+                                    style: StrokeStyle(lineWidth: 2, dash: [4, 3]))
+                    }
+                    // Måle-modus: A-punkt, B-punkt og polyline. Draggable
+                    // (2026-07-02): bruker kan dra markørene for å justere
+                    // uten å nullstille. `anchor: .bottom` løfter markøren
+                    // OVER pin-en visuelt så tap på lead-pin under fortsatt
+                    // fungerer (fikser gjenintroduksjon av «andre pin»-bug).
                     if let a = miniMeasureA {
-                        Annotation("A", coordinate: a) {
+                        Annotation("A", coordinate: a, anchor: .center) {
                             miniMeasureMarker(label: "A")
+                                .offset(draggingOffset(for: "A"))
+                                .highPriorityGesture(dragGesture(
+                                    proxy: proxy,
+                                    targetId: "A",
+                                    startCoord: { miniMeasureA }
+                                ) { c in
+                                    miniMeasureA = c
+                                })
                         }
                     }
                     if let b = miniMeasureB {
-                        Annotation("B", coordinate: b) {
+                        Annotation("B", coordinate: b, anchor: .center) {
                             miniMeasureMarker(label: "B")
+                                .offset(draggingOffset(for: "B"))
+                                .highPriorityGesture(dragGesture(
+                                    proxy: proxy,
+                                    targetId: "B",
+                                    startCoord: { miniMeasureB }
+                                ) { c in
+                                    miniMeasureB = c
+                                })
                         }
                     }
                     if let a = miniMeasureA, let b = miniMeasureB {
@@ -1334,11 +1507,26 @@ private struct LeadsInAreaCard: View {
                             .stroke(Brand.green,
                                     style: StrokeStyle(lineWidth: 3, lineCap: .round, dash: [6, 4]))
                     }
-                    // Rute-modus: multi-punkts kjede + nummererte annotations
+                    // Rute-modus: multi-punkts kjede + nummererte annotations.
+                    // `anchor: .center` (2026-07-02): markøren sitter PÅ lead-
+                    // pinen (samme koord som MapPolyline-en ender på), slik
+                    // at linjen visuelt kobler seg til rute-punktet — ikke
+                    // ender i midten av pinen med markøren svevende over.
                     if measureKind == .route && !measureRoute.isEmpty {
                         ForEach(Array(measureRoute.enumerated()), id: \.offset) { i, p in
-                            Annotation("\(i + 1)", coordinate: p.coordinate) {
+                            Annotation("\(i + 1)", coordinate: p.coordinate, anchor: .center) {
                                 miniMeasureMarker(label: "\(i + 1)")
+                                    .offset(draggingOffset(for: "route-\(i)"))
+                                    .highPriorityGesture(dragGesture(
+                                        proxy: proxy,
+                                        targetId: "route-\(i)",
+                                        startCoord: { measureRoute.indices.contains(i) ? measureRoute[i].coordinate : nil }
+                                    ) { c in
+                                        guard i < measureRoute.count else { return }
+                                        measureRoute[i] = MeasurePoint(coord: c, leadName: nil)
+                                    } onEnded: {
+                                        Task { await recalcRealDriveTime() }
+                                    })
                             }
                         }
                         if measureRoute.count >= 2 {
@@ -1358,8 +1546,16 @@ private struct LeadsInAreaCard: View {
                     }
                     // Radius-modus: sentrum-marker + fylt sirkel med lead-radius
                     if measureKind == .radius, let center = measureRadiusCenter {
-                        Annotation("R", coordinate: center) {
+                        Annotation("R", coordinate: center, anchor: .center) {
                             miniMeasureMarker(label: "R")
+                                .offset(draggingOffset(for: "R"))
+                                .highPriorityGesture(dragGesture(
+                                    proxy: proxy,
+                                    targetId: "R",
+                                    startCoord: { measureRadiusCenter }
+                                ) { c in
+                                    measureRadiusCenter = c
+                                })
                         }
                         MapCircle(center: center, radius: measureRadiusKm * 1000)
                             .foregroundStyle(Brand.green.opacity(0.15))
@@ -1367,6 +1563,7 @@ private struct LeadsInAreaCard: View {
                                     style: StrokeStyle(lineWidth: 2, dash: [5, 3]))
                     }
                 }
+                .coordinateSpace(.named("miniMap"))
                 .mapStyle(miniMapStyle.mapKitStyle)
                 .environment(\.colorScheme, timeOfDayColorScheme)
                 // Strekkes naturlig — fyller resten av cardet
@@ -1380,11 +1577,24 @@ private struct LeadsInAreaCard: View {
                 )
                 .onMapCameraChange(frequency: .continuous) { ctx in
                     miniCurrentRegion = ctx.region
+                    // Fallback for scroll-zoom (trackpad pinch, scroll-hjul) —
+                    // disse fanges ikke av DragGesture-en lenger nede. Snappy
+                    // duration + kort buffer så det ikke føles laggete.
+                    closeInfoCardIfMapMoved()
                 }
+                .simultaneousGesture(
+                    // Fanger bruker-drag PÅ Map for umiddelbar respons — ingen
+                    // venting på onMapCameraChange-throttling. Krever bare 3pt
+                    // bevegelse, så respons føles direkte.
+                    DragGesture(minimumDistance: 3)
+                        .onChanged { _ in
+                            closeInfoCardIfMapMoved()
+                        }
+                )
                 .onTapGesture(coordinateSpace: .local) { point in
                     guard miniMeasureMode,
                           let coord = proxy.convert(point, from: .local) else { return }
-                    handleMeasureTapOnCoord(coord)
+                    handleMeasureTapOnCoord(coord, proxy: proxy)
                 }
             }
 
@@ -1488,24 +1698,134 @@ private struct LeadsInAreaCard: View {
             // Lead-info-overlay nederst på kartet — vises når bruker
             // tapper en pin. Har «Les mer»-CTA som hopper til Leads-fanen.
             if let sel = mapSelectedLead {
-                MapLeadInfoCard(lead: sel) {
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        mapSelectedLead = nil
-                    }
-                } onOpenLead: { lead in
-                    NotificationCenter.default.post(
-                        name: .oversiktRequestOpenLeadInLeadsTab,
-                        object: nil,
-                        userInfo: ["leadId": lead.id, "leadName": lead.name]
-                    )
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        mapSelectedLead = nil
-                    }
-                }
+                MapLeadInfoCard(
+                    lead: sel,
+                    onClose: {
+                        withAnimation(.snappy(duration: 0.18)) {
+                            mapSelectedLead = nil
+                        }
+                        mapSelectedLeadOpenTime = nil
+                    },
+                    onOpenLead: { lead in
+                        NotificationCenter.default.post(
+                            name: .oversiktRequestOpenLeadInLeadsTab,
+                            object: nil,
+                            userInfo: ["leadId": lead.id, "leadName": lead.name]
+                        )
+                        withAnimation(.snappy(duration: 0.18)) {
+                            mapSelectedLead = nil
+                        }
+                        mapSelectedLeadOpenTime = nil
+                    },
+                    onAssignAsDestination: { lead in
+                        assignAsMyDestination(lead)
+                        withAnimation(.snappy(duration: 0.18)) {
+                            mapSelectedLead = nil
+                        }
+                        mapSelectedLeadOpenTime = nil
+                    },
+                    onAssignToTeamMember: { lead in
+                        // Lukk info-kortet + åpne team-picker-sheet med lead.
+                        withAnimation(.snappy(duration: 0.18)) {
+                            mapSelectedLead = nil
+                        }
+                        mapSelectedLeadOpenTime = nil
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                            assignToTeamLead = lead
+                        }
+                    },
+                    canAssignToOthers: true  // TODO: bind til role — salgssjef/teamleder only
+                )
                 .padding(14)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
+                // Asymmetric transition (2026-07-02): fortsatt slide-opp
+                // ved åpning (naturlig "kommer fra pinen"), men rask fade
+                // + subtil scale-ned ved lukking. Ingen glide-til-bunn som
+                // føles laggete — kortet forsvinner i sin egen posisjon.
+                .transition(.asymmetric(
+                    insertion: .move(edge: .bottom).combined(with: .opacity),
+                    removal: .scale(scale: 0.94).combined(with: .opacity)
+                ))
             }
+
+            // Destinasjons-toast (2026-07-02): slide-in fra topp når bruker
+            // har tildelt seg en ny destinasjon. Auto-skjules etter 4s,
+            // men destinasjonen forblir aktiv til bruker fjerner den.
+            if assignedDestinationToastVisible, let dest = assignedDestination {
+                assignedDestinationToast(dest: dest)
+                    .padding(.top, 14)
+                    .padding(.horizontal, 14)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+
+            // Team-medlem info-kort (2026-07-02): vises ved tap på team-avatar.
+            // Rolle-fargekodet med Send lead / Ping / Profil-CTAer.
+            if let m = selectedTeamMember {
+                TeamMemberInfoCard(
+                    member: m,
+                    distanceFromMe: distanceFromMeKm(to: m.coordinate),
+                    onClose: {
+                        withAnimation(.snappy(duration: 0.18)) {
+                            selectedTeamMember = nil
+                        }
+                    },
+                    onOpenProfile: { member in
+                        withAnimation(.snappy(duration: 0.18)) {
+                            selectedTeamMember = nil
+                        }
+                        miniShowToast("Profil for \(member.name) — kommer")
+                    },
+                    onSendLead: { member in
+                        withAnimation(.snappy(duration: 0.18)) {
+                            selectedTeamMember = nil
+                        }
+                        miniShowToast("Send lead til \(member.name) — velg lead fra kartet")
+                    },
+                    onPing: { member in
+                        #if canImport(UIKit)
+                        UINotificationFeedbackGenerator().notificationOccurred(.success)
+                        #endif
+                        withAnimation(.snappy(duration: 0.18)) {
+                            selectedTeamMember = nil
+                        }
+                        miniShowToast("🔔 Ping sendt til \(member.name)")
+                    }
+                )
+                .padding(14)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                .transition(.asymmetric(
+                    insertion: .move(edge: .bottom).combined(with: .opacity),
+                    removal: .scale(scale: 0.94).combined(with: .opacity)
+                ))
+            }
+
+            // Suksess-toast etter team-tildeling — vises 3s deretter fade.
+            if assignmentSuccessToastVisible, let a = lastCompletedAssignment {
+                assignmentSuccessToast(assignment: a)
+                    .padding(.top, 14)
+                    .padding(.horizontal, 14)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        // Team-tildeling sheet — presenteres når salgssjef trykker
+        // «Tildel…» i info-kortet.
+        .sheet(item: $assignToTeamLead) { lead in
+            AssignToTeamMemberSheet(
+                leadName: lead.name,
+                leadAddress: lead.address ?? lead.city,
+                leadScore: lead.leadScore,
+                leadCoordinate: CLLocationCoordinate2D(
+                    latitude: lead.latitude,
+                    longitude: lead.longitude
+                ),
+                members: mockAssignableMembers(for: lead),
+                onAssign: { assignment in
+                    completeTeamAssignment(assignment)
+                },
+                onCancel: {}
+            )
         }
         .sheet(isPresented: $showMiniLayers) {
             LayersSheet(selectedStyle: $miniMapStyle, activeOverlays: $miniActiveOverlays)
@@ -1648,6 +1968,9 @@ private struct LeadsInAreaCard: View {
     private func handleMeasureTapOnLead(_ lead: LeadModel) {
         let coord = CLLocationCoordinate2D(latitude: lead.latitude, longitude: lead.longitude)
         let point = MeasurePoint(coord: coord, leadName: lead.name)
+        // Bounce ved direkte pin-tap i måle-modus — signaliserer at rute-
+        // punktet ble festet til leaden (samme feedback som snap-treff).
+        triggerLeadBounce(lead.id)
         switch measureKind {
         case .distance:
             if miniMeasureA == nil {
@@ -1692,13 +2015,19 @@ private struct LeadsInAreaCard: View {
     /// den RÅ `coord`-en i stedet for `effective`-koordinatet fra snap —
     /// så snap-til-pin fungerte bare i rute-modus. Nå gjelder snap alle
     /// tre modi konsistent.
-    private func handleMeasureTapOnCoord(_ coord: CLLocationCoordinate2D) {
-        // Snap-til-nærmeste-pin (2026-07-02, bølge 2): finn nærmeste
-        // lead innen 50m og bruk den i stedet så bruker slipper å pikse
-        // eksakt på pinen.
-        let snapped = snapCandidateFor(coord)
+    private func handleMeasureTapOnCoord(_ coord: CLLocationCoordinate2D, proxy: MapProxy) {
+        // Snap-til-nærmeste-pin (2026-07-02, bølge 3): bruker piksel-avstand
+        // via MapProxy istedenfor meter — meter blir vinzy små pikselavstander
+        // ved lave zoom-nivåer (50m ~= 5-10pt på Oslo-oversikt), som gjorde at
+        // bruker måtte tappe nærmest på pinen for at snap skulle utløses.
+        let snapped = snapCandidateFor(coord, proxy: proxy)
         let effective = snapped?.coord ?? coord
         let leadName = snapped?.name
+        // Bounce lead-pinen når snap-treff — gir visuell feedback om at
+        // rute-punktet ble festet PÅ leaden.
+        if let hitLeadId = snapped?.leadId {
+            triggerLeadBounce(hitLeadId)
+        }
         switch measureKind {
         case .distance:
             if miniMeasureA == nil {
@@ -1783,23 +2112,37 @@ private struct LeadsInAreaCard: View {
         return "\(str) km"
     }
 
-    /// Snap-kandidat: finn nærmeste lead innen `measureSnapDistanceMeters`
-    /// av gitt tap-koordinat. Nil = ingen match, bruker rå tap-punkt.
+    /// Snap-kandidat: finn nærmeste synlige lead-pin innen piksel-radius
+    /// (`Self.measureSnapPixels = 40pt`) av gitt tap-koordinat.
+    ///
+    /// Fix 2026-07-02 (bølge 3): tidligere brukte vi meter (50m), som ved
+    /// zoomet-ut kart-nivåer ble så små pikselavstander at snap knapt
+    /// utløses. Piksel-basert snap gir konsistent «komfortabel» hit-radius
+    /// uansett zoom-nivå.
+    private static let measureSnapPixels: CGFloat = 40
     private func snapCandidateFor(
-        _ coord: CLLocationCoordinate2D
-    ) -> (coord: CLLocationCoordinate2D, name: String)? {
-        // Fix 2026-07-02: bare snap til pins som faktisk vises på kartet
-        // (samme `.prefix(10)`-filter som ForEach-en bruker). Uten dette
-        // kunne bruker tappe midt på et tomt kart-område og bli «magisk»
+        _ coord: CLLocationCoordinate2D,
+        proxy: MapProxy
+    ) -> (coord: CLLocationCoordinate2D, name: String, leadId: String)? {
+        // Bare snap til pins som faktisk vises på kartet (samme
+        // `.prefix(10)`-filter som ForEach-en bruker). Uten dette kunne
+        // bruker tappe midt på et tomt kart-område og bli «magisk»
         // snappet til en usynlig lead — forvirrende UX.
         let visible = Array(pinnedLeads.prefix(10))
-        var best: (Double, LeadModel)? = nil
+        guard let tapPoint = proxy.convert(coord, to: .named("miniMap"))
+        else { return nil }
+        var best: (CGFloat, LeadModel)? = nil
         for lead in visible {
-            let d = MeasureMath.distanceMeters(
-                coord,
-                CLLocationCoordinate2D(latitude: lead.latitude, longitude: lead.longitude)
+            let leadCoord = CLLocationCoordinate2D(
+                latitude: lead.latitude,
+                longitude: lead.longitude
             )
-            if d <= Self.measureSnapDistanceMeters {
+            guard let pinPoint = proxy.convert(leadCoord, to: .named("miniMap"))
+            else { continue }
+            let dx = tapPoint.x - pinPoint.x
+            let dy = tapPoint.y - pinPoint.y
+            let d = sqrt(dx * dx + dy * dy)
+            if d <= Self.measureSnapPixels {
                 if let cur = best {
                     if d < cur.0 { best = (d, lead) }
                 } else {
@@ -1810,7 +2153,8 @@ private struct LeadsInAreaCard: View {
         guard let (_, lead) = best else { return nil }
         return (
             CLLocationCoordinate2D(latitude: lead.latitude, longitude: lead.longitude),
-            lead.name
+            lead.name,
+            lead.id
         )
     }
 
@@ -1936,11 +2280,337 @@ private struct LeadsInAreaCard: View {
             Circle().fill(Brand.green)
                 .overlay(Circle().stroke(.white, lineWidth: 2))
             Text(label)
-                .font(.system(size: 11, weight: .heavy, design: .rounded))
+                .font(.system(size: 10, weight: .heavy, design: .rounded))
                 .foregroundStyle(.white)
         }
-        .frame(width: 24, height: 24)
+        .frame(width: 22, height: 22)
         .shadow(color: Brand.green.opacity(0.6), radius: 5, y: 2)
+        // 2026-07-02 (iter 4): 22pt så pin-toppen med score fortsatt titter
+        // frem. Anchor `.center` gjør at markøren sitter PÅ lead-koord —
+        // MapPolyline-endepunkt = markørens sentrum = visuelt festet.
+    }
+
+    /// Stabil drag-gesture (2026-07-02, iteration 3). Markøren dras via
+    /// `.offset()` pixel-vis under drag; ekte koord oppdateres kun ved
+    /// `onEnded`. Det gjør Annotation-koord konstant gjennom hele drag →
+    /// ingen re-render, ingen hit-target rebind, ingen jitter.
+    ///
+    /// `targetId` skiller markørene så bare den aktive får offset. En
+    /// enkelt måle-modus krever bare én aktiv drag om gangen, så vi
+    /// deler global `measureDragTranslation`/`measureDragTargetId`.
+    private func dragGesture(
+        proxy: MapProxy,
+        targetId: String,
+        startCoord: @escaping () -> CLLocationCoordinate2D?,
+        onDrag: @escaping (CLLocationCoordinate2D) -> Void,
+        onEnded: (() -> Void)? = nil
+    ) -> some Gesture {
+        DragGesture(minimumDistance: 6, coordinateSpace: .named("miniMap"))
+            .onChanged { value in
+                if measureDragTargetId == nil {
+                    measureDragTargetId = targetId
+                    measureDragStartCoord = startCoord()
+                }
+                guard measureDragTargetId == targetId else { return }
+                measureDragTranslation = value.translation
+            }
+            .onEnded { value in
+                defer {
+                    measureDragTargetId = nil
+                    measureDragTranslation = .zero
+                    measureDragStartCoord = nil
+                }
+                guard measureDragTargetId == targetId,
+                      let start = measureDragStartCoord,
+                      let startPt = proxy.convert(start, to: .named("miniMap"))
+                else { return }
+                let endPt = CGPoint(
+                    x: startPt.x + value.translation.width,
+                    y: startPt.y + value.translation.height
+                )
+                if let newCoord = proxy.convert(endPt, from: .named("miniMap")) {
+                    onDrag(newCoord)
+                }
+                onEnded?()
+            }
+    }
+
+    /// Live offset for en markør under drag — pikselverdien. Alle andre
+    /// markører får `.zero`.
+    private func draggingOffset(for targetId: String) -> CGSize {
+        measureDragTargetId == targetId ? measureDragTranslation : .zero
+    }
+
+    /// Trigg Dock-style bounce på en lead-pin — visuell bekreftelse på at
+    /// rute-punktet «snappet på» leaden. `.keyframeAnimator` reagerer på
+    /// counter-endring og går gjennom 3 avtagende hopp med elastisk
+    /// stretch/squash. Samme rytme som macOS Dock når en app krever
+    /// oppmerksomhet.
+    private func triggerLeadBounce(_ leadId: String) {
+        bounceCounters[leadId, default: 0] += 1
+    }
+
+    /// Sett en lead som min nåværende destinasjon. Trigger bounce på leaden,
+    /// lagrer state, viser slide-in toast + tegner stiplet linje fra avatar
+    /// til lead. Kan avbrytes ved å klikke toasten eller velge annen lead.
+    private func assignAsMyDestination(_ lead: LeadModel) {
+        triggerLeadBounce(lead.id)
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+            assignedDestination = lead
+            assignedDestinationToastVisible = true
+        }
+        // Haptic på iPad + Mac Catalyst — bekrefter valget.
+        #if canImport(UIKit)
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        #endif
+        // Auto-skjul toasten etter 4 sek (destinasjonen forblir aktiv).
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
+            withAnimation(.snappy(duration: 0.25)) {
+                assignedDestinationToastVisible = false
+            }
+        }
+    }
+
+    /// Fullfør team-tildeling — vis suksess-toast + haptic. Backend-call
+    /// legges til her når `POST /leadgrid/lead-assignments` er live.
+    private func completeTeamAssignment(_ assignment: LeadAssignment) {
+        lastCompletedAssignment = assignment
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+            assignmentSuccessToastVisible = true
+        }
+        #if canImport(UIKit)
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        #endif
+        // Auto-skjul etter 3s
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+            withAnimation(.snappy(duration: 0.25)) {
+                assignmentSuccessToastVisible = false
+            }
+        }
+    }
+
+    /// Suksess-toast som viser hvem som fikk oppdraget + prioritet.
+    /// Bruker rolle-fargen for tydelig avsender-visning.
+    @ViewBuilder
+    private func assignmentSuccessToast(assignment a: LeadAssignment) -> some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle().fill(a.assigneeRole.color.opacity(0.22))
+                Circle().strokeBorder(a.assigneeRole.color.opacity(0.55), lineWidth: 1)
+                Image(systemName: "checkmark")
+                    .font(.system(size: 14, weight: .heavy))
+                    .foregroundStyle(a.assigneeRole.color)
+            }
+            .frame(width: 36, height: 36)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 5) {
+                    Text("OPPDRAG SENDT")
+                        .font(.system(size: 9, weight: .black, design: .rounded))
+                        .tracking(1.0)
+                        .foregroundStyle(a.assigneeRole.color)
+                    if a.priority != .normal {
+                        HStack(spacing: 3) {
+                            Image(systemName: a.priority.icon)
+                                .font(.system(size: 8, weight: .bold))
+                            Text(a.priority.label.uppercased())
+                                .font(.system(size: 8, weight: .heavy, design: .rounded))
+                                .tracking(0.6)
+                        }
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 5).padding(.vertical, 2)
+                        .background(a.priority.color, in: Capsule())
+                    }
+                }
+                Text("\(a.assigneeName) → \(a.leadName)")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            Button {
+                withAnimation(.snappy(duration: 0.2)) {
+                    assignmentSuccessToastVisible = false
+                }
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 16))
+                    .foregroundStyle(.white.opacity(0.6))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 12)
+        .background(Brand.card.opacity(0.98), in: RoundedRectangle(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .strokeBorder(a.assigneeRole.color.opacity(0.5), lineWidth: 1.5)
+        )
+        .shadow(color: .black.opacity(0.35), radius: 12, y: 4)
+        .frame(maxWidth: 420)
+    }
+
+    /// Mock team-medlem-liste for demo-modus. Byttes ut med live-data fra
+    /// `GET /leadgrid/sales-leadership/team-members` + `NearbyTeamMemberDTO`
+    /// for avstand fra lead-koord.
+    private func mockAssignableMembers(for lead: LeadModel) -> [AssignableTeamMember] {
+        let leadLoc = CLLocation(latitude: lead.latitude, longitude: lead.longitude)
+        func dist(_ lat: Double, _ lon: Double) -> Double {
+            leadLoc.distance(from: CLLocation(latitude: lat, longitude: lon)) / 1000.0
+        }
+        return [
+            AssignableTeamMember(
+                userId: "u-anne",
+                name: "Anne Berg",
+                email: "anne@leadgrid.no",
+                title: "Senior selger",
+                role: .seller,
+                distanceKm: dist(59.925, 10.750),
+                weeklyWon: 4,
+                isAvailable: true,
+                avatarInitials: "AB"
+            ),
+            AssignableTeamMember(
+                userId: "u-lars",
+                name: "Lars Kristiansen",
+                email: "lars@leadgrid.no",
+                title: "Selger",
+                role: .seller,
+                distanceKm: dist(59.910, 10.780),
+                weeklyWon: 6,
+                isAvailable: true,
+                avatarInitials: "LK"
+            ),
+            AssignableTeamMember(
+                userId: "u-marit",
+                name: "Marit Olsen",
+                email: "marit@leadgrid.no",
+                title: "Promotør",
+                role: .promoter,
+                distanceKm: dist(59.940, 10.730),
+                weeklyWon: 2,
+                isAvailable: false,
+                avatarInitials: "MO"
+            ),
+            AssignableTeamMember(
+                userId: "u-espen",
+                name: "Espen Haug",
+                email: "espen@leadgrid.no",
+                title: "Promotør",
+                role: .promoter,
+                distanceKm: dist(59.905, 10.760),
+                weeklyWon: 3,
+                isAvailable: true,
+                avatarInitials: "EH"
+            ),
+            AssignableTeamMember(
+                userId: "u-sofie",
+                name: "Sofie Dahl",
+                email: "sofie@leadgrid.no",
+                title: "Teamleder",
+                role: .manager,
+                distanceKm: dist(59.920, 10.770),
+                weeklyWon: 1,
+                isAvailable: true,
+                avatarInitials: "SD"
+            ),
+        ]
+    }
+
+    /// Avstand fra bruker til gitt koord i km. Nil hvis vi ikke har
+    /// user-koord (location-tillatelse ikke gitt).
+    private func distanceFromMeKm(to coord: CLLocationCoordinate2D) -> Double? {
+        guard let me = KartLocationManager.shared.currentCoordinate else { return nil }
+        return CLLocation(latitude: me.latitude, longitude: me.longitude)
+            .distance(from: CLLocation(latitude: coord.latitude, longitude: coord.longitude))
+            / 1000.0
+    }
+
+    /// Fjern nåværende destinasjon (bruker klikker toast eller X).
+    private func clearAssignedDestination() {
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
+            assignedDestination = nil
+            assignedDestinationToastVisible = false
+        }
+    }
+
+    /// Notification-style toast for tildelt destinasjon. Viser lead-navn,
+    /// «Naviger»-CTA (åpner Apple Maps) og X for å fjerne destinasjonen.
+    @ViewBuilder
+    private func assignedDestinationToast(dest: LeadModel) -> some View {
+        HStack(spacing: 12) {
+            // Grønn pulserende dot for «aktiv destinasjon»
+            Circle()
+                .fill(Brand.green)
+                .frame(width: 8, height: 8)
+                .shadow(color: Brand.green.opacity(0.7), radius: 4)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("NY DESTINASJON")
+                    .font(.system(size: 9, weight: .black, design: .rounded))
+                    .tracking(1.0)
+                    .foregroundStyle(Brand.green)
+                Text(dest.name)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            // Åpne Apple Maps direkte
+            Button {
+                let coord = CLLocationCoordinate2D(
+                    latitude: dest.latitude,
+                    longitude: dest.longitude
+                )
+                let item = MKMapItem(placemark: MKPlacemark(coordinate: coord))
+                item.name = dest.name
+                item.openInMaps(launchOptions: [
+                    MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving
+                ])
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "location.north.line.fill")
+                        .font(.system(size: 10, weight: .bold))
+                    Text("Naviger")
+                        .font(.system(size: 12, weight: .bold))
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 12).padding(.vertical, 7)
+                .background(Brand.green, in: Capsule())
+            }
+            .buttonStyle(.plain)
+            // Fjern destinasjon
+            Button {
+                clearAssignedDestination()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 16))
+                    .foregroundStyle(.white.opacity(0.6))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 12)
+        .background(Brand.card.opacity(0.98), in: RoundedRectangle(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .strokeBorder(Brand.green.opacity(0.5), lineWidth: 1.5)
+        )
+        .shadow(color: .black.opacity(0.35), radius: 12, y: 4)
+        .frame(maxWidth: 420)
+    }
+
+    /// Lukk info-kortet med snappy-animasjon. Gates på 80ms buffer siden
+    /// åpning (så åpnings-layoutens minimale camera-nudge ikke selv-lukker)
+    /// + hopper over hvis bruker drar en måle-markør. Kalles fra begge
+    /// gesture-lyttere så vi fanger både pan (via DragGesture) og scroll-
+    /// zoom (via onMapCameraChange) med samme respons.
+    private func closeInfoCardIfMapMoved() {
+        guard mapSelectedLead != nil,
+              measureDragTargetId == nil,
+              let openTime = mapSelectedLeadOpenTime,
+              Date().timeIntervalSince(openTime) > 0.08
+        else { return }
+        withAnimation(.snappy(duration: 0.18)) {
+            mapSelectedLead = nil
+        }
+        mapSelectedLeadOpenTime = nil
     }
 
     // MARK: - Måle-banner UI
@@ -2333,6 +3003,11 @@ private struct MapLeadInfoCard: View {
     let lead: LeadModel
     let onClose: () -> Void
     let onOpenLead: (LeadModel) -> Void
+    let onAssignAsDestination: (LeadModel) -> Void
+    let onAssignToTeamMember: (LeadModel) -> Void
+    /// Er innlogget bruker salgssjef/teamleder? Bestemmer om «Tildel til…»-
+    /// CTA vises. False for vanlige selgere/promotører.
+    let canAssignToOthers: Bool
 
     private var accentColor: Color {
         let score = lead.leadScore ?? 0
@@ -2465,29 +3140,153 @@ private struct MapLeadInfoCard: View {
     }
 
     private var actions: some View {
-        HStack(spacing: 10) {
+        VStack(spacing: 8) {
+            // Primær-CTA-rad: Send meg dit + (salgssjef) Tildel til…
+            HStack(spacing: 8) {
+                // Send meg dit — «reis dit selv»-CTA (grønn)
+                Button {
+                    onAssignAsDestination(lead)
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "target")
+                            .font(.system(size: 10, weight: .bold))
+                        Text("Send meg dit")
+                            .font(.system(size: 12, weight: .bold))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12).padding(.vertical, 8)
+                    .frame(maxWidth: .infinity)
+                    .background(
+                        LinearGradient(colors: [Brand.green, Brand.green.opacity(0.7)],
+                                       startPoint: .leading, endPoint: .trailing),
+                        in: Capsule()
+                    )
+                    .shadow(color: Brand.green.opacity(0.4), radius: 6, y: 2)
+                }
+                .buttonStyle(.plain)
+                .help("Sett \(lead.name) som min destinasjon")
+
+                // Tildel til teammedlem — synlig kun for salgssjef/teamleder
+                if canAssignToOthers {
+                    Button {
+                        onAssignToTeamMember(lead)
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "person.2.badge.plus.fill")
+                                .font(.system(size: 10, weight: .bold))
+                            Text("Tildel…")
+                                .font(.system(size: 12, weight: .bold))
+                        }
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12).padding(.vertical, 8)
+                        .frame(maxWidth: .infinity)
+                        .background(
+                            LinearGradient(colors: [Brand.purple, Brand.purpleLight],
+                                           startPoint: .leading, endPoint: .trailing),
+                            in: Capsule()
+                        )
+                        .shadow(color: Brand.purple.opacity(0.4), radius: 6, y: 2)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Send \(lead.name) til en selger eller promotør")
+                }
+            }
+
+            // Sekundær-rad: Naviger + Ring + E-post + Les mer
+            HStack(spacing: 8) {
+
+            // Naviger — åpner Apple Maps med kjøreanvisning til lead-koord.
+            Button {
+                openInAppleMaps()
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "location.north.line.fill")
+                        .font(.system(size: 10, weight: .bold))
+                    Text("Naviger")
+                        .font(.system(size: 12, weight: .bold))
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 12).padding(.vertical, 8)
+                .background(Brand.green, in: Capsule())
+                .shadow(color: Brand.green.opacity(0.35), radius: 5, y: 2)
+            }
+            .buttonStyle(.plain)
+            .help("Åpne kjørerute i Apple Maps")
+
+            // Ring — bare synlig hvis vi har telefonnummer.
+            if let phone = lead.phone, !phone.isEmpty,
+               let url = URL(string: "tel:\(phone.filter { $0.isNumber || $0 == "+" })") {
+                Link(destination: url) {
+                    Image(systemName: "phone.fill")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(8)
+                        .background(Brand.card, in: Circle())
+                        .overlay(Circle().strokeBorder(Brand.stroke, lineWidth: 1))
+                }
+                .help("Ring \(phone)")
+            }
+
+            // E-post — bare synlig hvis vi har e-postadresse.
+            if let email = lead.email, !email.isEmpty,
+               let url = URL(string: "mailto:\(email)") {
+                Link(destination: url) {
+                    Image(systemName: "envelope.fill")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(8)
+                        .background(Brand.card, in: Circle())
+                        .overlay(Circle().strokeBorder(Brand.stroke, lineWidth: 1))
+                }
+                .help("Send e-post til \(email)")
+            }
+
+            Spacer(minLength: 0)
+
+            // Les mer — primær-CTA som hopper til Leads-fanen.
             Button {
                 onOpenLead(lead)
             } label: {
-                HStack(spacing: 6) {
+                HStack(spacing: 5) {
                     Text("Les mer")
                         .font(.system(size: 12, weight: .bold))
                     Image(systemName: "arrow.right")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.system(size: 10, weight: .bold))
                 }
                 .foregroundStyle(.white)
-                .padding(.horizontal, 14).padding(.vertical, 8)
+                .padding(.horizontal, 12).padding(.vertical, 8)
                 .background(
                     LinearGradient(colors: [Brand.purple, Brand.purpleLight],
                                    startPoint: .leading, endPoint: .trailing),
                     in: Capsule()
                 )
-                .shadow(color: Brand.purple.opacity(0.35), radius: 6, y: 2)
+                .shadow(color: Brand.purple.opacity(0.35), radius: 5, y: 2)
             }
             .buttonStyle(.plain)
-            Spacer()
-        }
+            } // slutt HStack sekundær-rad
+        } // slutt VStack actions
     }
+
+    /// Åpne Apple Maps med kjørerute til lead-en. Fungerer identisk på
+    /// iOS/iPadOS/Mac Catalyst — MKMapItem tar over og lanserer maps-appen.
+    private func openInAppleMaps() {
+        let coord = CLLocationCoordinate2D(latitude: lead.latitude, longitude: lead.longitude)
+        let placemark = MKPlacemark(coordinate: coord)
+        let item = MKMapItem(placemark: placemark)
+        item.name = lead.name
+        item.openInMaps(launchOptions: [
+            MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving
+        ])
+    }
+}
+
+/// Keyframe-state for Dock-style bounce på lead-pins. `offsetY` er
+/// vertikal translate (negative = opp), `scaleX/scaleY` er elastisk
+/// stretch/squash for gummi-følelse ved landing.
+private struct BounceKeyframe {
+    var offsetY: CGFloat = 0
+    var scaleX: CGFloat = 1.0
+    var scaleY: CGFloat = 1.0
 }
 
 private struct MiniPin: View {
