@@ -359,9 +359,12 @@ export function setupSoftwareExpensesRoutes(deps: SoftwareExpensesRoutesDeps): v
       // Merke = PRODUSENT (brand_hint), ikke butikk (vendor). Butikk → purchaseVendor.
       const brand = (e.brand_hint || e.vendor || e.product || "Utstyr").slice(0, 120);
       const model = (e.product || e.vendor || "Ukjent").slice(0, 120);
+      // Unngå «Sony Sony A7 IV»: hvis modellen alt starter med merket, dropp merke-prefiks.
+      const displayName = (model.toLowerCase().startsWith(brand.toLowerCase()) ? model : `${brand} ${model}`).slice(0, 160);
       // Garanti/reklamasjon/kvittering legges under settings.specifications — det er
       // DET inventar-API-et eksponerer som `specifications` (settings selv returneres ikke).
       const settings = {
+        name: displayName,
         specifications: {
           source: "email-receipt", receiptEmailId: e.source_email_id, purchaseVendor: e.vendor,
           reklamasjonExpiry: reklam, warrantyExpiry, purchaseDate, purchasePriceNok: e.amount_nok,
