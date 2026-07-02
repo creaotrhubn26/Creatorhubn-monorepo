@@ -146,7 +146,7 @@ struct MePinActionsSheet: View {
                         }
                         .transition(.opacity)
                         if let kom = resolvedMunicipality, !kom.isEmpty {
-                            Text(kom.uppercased())
+                            Text(formatMunicipality(kom))
                                 .font(.system(size: 8, weight: .black, design: .rounded))
                                 .tracking(0.9)
                                 .foregroundStyle(HUDPalette.blue.opacity(0.85))
@@ -285,6 +285,28 @@ struct MePinActionsSheet: View {
 
     private func coordString(_ coord: CLLocationCoordinate2D) -> String {
         String(format: "%.4f, %.4f", coord.latitude, coord.longitude)
+    }
+
+    /// Rens kommune-navnet fra Apple CLGeocoder (som returnerer engelsk
+    /// «Lillestrøm Municipality») og legg til norsk «KOMMUNE»-suffix så
+    /// bruker ser umiddelbart at «Lillestrøm» refererer til kommunen
+    /// (ikke byen Lillestrøm). Kartverket-navn er allerede rene.
+    ///
+    /// Eksempler:
+    ///   "Lillestrøm Municipality" → "LILLESTRØM KOMMUNE"
+    ///   "LILLESTRØM"              → "LILLESTRØM KOMMUNE"
+    ///   "Oslo kommune"            → "OSLO KOMMUNE"  (unngår dobbel)
+    private func formatMunicipality(_ raw: String) -> String {
+        var s = raw
+            .replacingOccurrences(
+                of: " Municipality", with: "", options: .caseInsensitive
+            )
+            .replacingOccurrences(
+                of: " kommune", with: "", options: .caseInsensitive
+            )
+            .trimmingCharacters(in: .whitespaces)
+        s = s.uppercased()
+        return s.isEmpty ? "" : "\(s) KOMMUNE"
     }
 
     /// Reverse-geocode via KartverketService — bruker Kartverkets offisielle
