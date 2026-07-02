@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { executeScript, onScriptEvent, convertFileSrc } from "../api";
 import type { ScriptEvent } from "../types";
+import { SoMeLengthCheck } from "./SoMeLengthCheck";
+import { MusicDuckPanel } from "./MusicDuckPanel";
 
 /**
  * Social Vertikal (B-kamera) — veiviser som lager en 9:16-versjon av en ferdig
@@ -229,6 +231,13 @@ export function SocialVerticalPanel({ onClose }: { onClose: () => void }) {
         Lag en 9:16-versjon av en ferdig landscape-edit med eget vertikalt B-kamera. Kjør stegene i
         rekkefølge og godkjenn kontrollpunktene. Til slutt gjenstår kun gradering/finredigering.
       </p>
+
+      {/* SoMe lengde-indikator: format-mål (15/30/60/90s) + for lang B-roll + trim-forslag */}
+      <SoMeLengthCheck />
+
+      {/* Musikk-ducking / balanse: stabil blokk-basert ducking m/ justerbar dybde/overgang/nivå */}
+      <MusicDuckPanel />
+
       {busyLabel && (
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", marginBottom: 12,
           background: "#241f3a", border: "1px solid #4a3f7a", borderRadius: 8 }}>

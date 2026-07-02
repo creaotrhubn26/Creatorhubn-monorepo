@@ -2437,6 +2437,72 @@
       "requiresTimeline": false
     },
     {
+      "id": "some_length_check",
+      "name": "SoMe Lengde-sjekk",
+      "category": "social",
+      "scriptPath": "scripts/social/some_length_check.py",
+      "description": "Skann timelinen mot SoMe-mållengder (15/30/60/90s) og flagg for lang B-roll (partier uten dialog). Bruker undertekst-sporet som dialog-indikator (fallback: lyd-klipp på ikke-musikk-spor). Returnerer varighet, per-mål status (grønn/gul/rød), B-roll-hull med too_long-flagg, og trim-forslag for å nå nærmeste kortere mål.",
+      "requiredInputs": [],
+      "optionalInputs": [
+        {
+          "key": "targets",
+          "label": "Mål-lengder (sek)",
+          "type": "json"
+        },
+        {
+          "key": "gap_warn_s",
+          "label": "B-roll varsel-terskel (sek)",
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "id": "music_duck_balance",
+      "name": "Musikk-ducking / balanse",
+      "category": "social",
+      "scriptPath": "scripts/social/music_duck_balance.py",
+      "description": "Legg musikk-bed under dialogen med stabil, myk blokk-basert ducking (ingen pumping). Bruker undertekst-sporet: dukk pr HELE dialog-blokk. Justerbart: duck-dybde (dB), overgangs-hastighet (S-kurve sek), musikk-nivå (RMS), pre-roll. Kan legge resultatet direkte på et lyd-spor i timelinen.",
+      "requiredInputs": [
+        {
+          "key": "music_path",
+          "label": "Musikk-bed (.wav/.mp3)",
+          "type": "file"
+        }
+      ],
+      "optionalInputs": [
+        {
+          "key": "duck_db",
+          "label": "Duck-dybde (dB under stemmen)",
+          "type": "number"
+        },
+        {
+          "key": "ramp_s",
+          "label": "Overgangs-hastighet (sek, S-kurve)",
+          "type": "number"
+        },
+        {
+          "key": "music_rms_db",
+          "label": "Musikk-nivå (RMS dB)",
+          "type": "number"
+        },
+        {
+          "key": "pre_roll_s",
+          "label": "Pre-roll (dukk før stemmen, sek)",
+          "type": "number"
+        },
+        {
+          "key": "gap_fill_s",
+          "label": "Fyll pauser opp til (sek)",
+          "type": "number"
+        },
+        {
+          "key": "place_on_track",
+          "label": "Legg på lyd-spor (indeks)",
+          "type": "number"
+        }
+      ]
+    },
+    {
       "id": "extract_social_cut",
       "name": "Extract Social Cut",
       "category": "social",
