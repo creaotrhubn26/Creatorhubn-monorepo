@@ -821,6 +821,8 @@ import { setupDeliveriesRoutes } from "./deliveries-routes";
 import { setupAudioSettingsRoutes } from "./audio-settings-routes";
 import { setupSalesRoutes } from "./sales-routes";
 import { registerSalesLeadershipRoutes } from "./sales-leadership-routes";
+import { registerRoutesAdherenceRoutes } from "./routes-adherence-routes";
+import { registerLeadgridKartverketRoutes } from "./leadgrid-kartverket-routes";
 import { registerPondusRoutes } from "./pondus-routes";
 import { setupExternalDataRoutes } from "./external-data-routes";
 import { setupInspirationsRoutes } from "./inspirations-routes";
@@ -65539,6 +65541,17 @@ setupSalesRoutes({
 // /api/leadgrid/sales-leadership/* — 18 endpoints (provisjons-modeller,
 // konkurranse-maler, premie-katalog, fulfillment). Forutsetter mig 0354.
 registerSalesLeadershipRoutes({ app, pool, requireUserSession });
+
+// /api/leadgrid/routes/* — 10 endpoints (route adherence + MeMapPin tap-
+// actions: positions/my-route/assignments/visits/team-nearby/adherence-
+// report/leads-at-position/cleanup). Forutsetter mig 0358.
+registerRoutesAdherenceRoutes({ app, pool, requireUserSession });
+
+// /api/leadgrid/kartverket/* — 3 endpoints (reverse-geocoding +
+// kommune-info + kommune-grense GeoJSON). Ingen DB — proxier Geonorge
+// gratis-API-ene med 60s in-memory-cache. Brukes av MePinActionsSheet
+// (adresse i HUD) + Team-fanen (ekte kommunegrenser).
+registerLeadgridKartverketRoutes({ app, requireUserSession });
 
 // /api/leadgrid/pondus/* — 10 endpoints (Leadgrid Pondus-maler:
 // SuperAdmin publiserer maler, alle innloggede leser publiserte).
