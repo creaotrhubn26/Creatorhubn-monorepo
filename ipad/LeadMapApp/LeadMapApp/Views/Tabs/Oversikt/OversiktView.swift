@@ -219,6 +219,11 @@ private struct HeaderRow: View {
     let momentum: LeadgridMomentum?
     let leads: [LeadModel]
     @Environment(AppState.self) private var state
+    // Header-filtre (2026-07-02): gjør «dato»- og «områder»-pillene
+    // funksjonelle. Tidligere var pickerButton bare visuell.
+    @State private var headerDate: Date = Date()
+    @State private var headerDatePickerOpen: Bool = false
+    @State private var headerAreaFilter: String = "Alle områder"
 
     private var topActions: [LeadModel] {
         Array(leads
@@ -248,10 +253,47 @@ private struct HeaderRow: View {
                 }
                 Spacer()
                 HStack(spacing: 8) {
-                    pickerButton(icon: "calendar",
-                                 text: isNarrow ? Self.todayShortLabel : Self.todayLabel)
+                    // Fix 2026-07-02: pickerButton var bare et visuelt kort.
+                    // Nå er dato-pillen en Button som åpner LeadgridDatePicker,
+                    // og områder-pillen er en Menu med kommuner-filter.
+                    Button {
+                        headerDatePickerOpen = true
+                    } label: {
+                        pickerButton(icon: "calendar",
+                                     text: isNarrow ? headerDateShort() : headerDateFull())
+                    }
+                    .buttonStyle(.plain)
+                    .macCatalystHover()
+                    .sheet(isPresented: $headerDatePickerOpen) {
+                        LeadgridDatePickerSheet(
+                            initialDate: headerDate,
+                            showTime: false,
+                            onConfirm: { d in
+                                headerDate = d
+                                headerDatePickerOpen = false
+                            },
+                            onCancel: { headerDatePickerOpen = false }
+                        )
+                    }
                     if !isNarrow {
-                        pickerButton(icon: "location.fill", text: "Alle områder")
+                        Menu {
+                            ForEach(availableAreas, id: \.self) { area in
+                                Button {
+                                    headerAreaFilter = area
+                                } label: {
+                                    if area == headerAreaFilter {
+                                        Label(area, systemImage: "checkmark")
+                                    } else {
+                                        Text(area)
+                                    }
+                                }
+                            }
+                        } label: {
+                            pickerButton(icon: "location.fill", text: headerAreaFilter)
+                        }
+                        .menuStyle(.borderlessButton)
+                        .fixedSize()
+                        .macCatalystHover()
                     }
                     analyseButton
                     nextActionsButton
@@ -447,6 +489,44 @@ private struct HeaderRow: View {
         f.locale = Locale(identifier: "nb_NO")
         f.dateFormat = "d. MMM"
         return f.string(from: Date())
+    }
+
+    /// Formatter valgt header-dato — «I dag» hvis dagens dato, ellers
+    /// «5. juli 2026»/«5. jul» avhengig av bredde.
+    private func headerDateFull() -> String {
+        if Calendar.current.isDateInToday(headerDate) {
+            return "I dag"
+        }
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "nb_NO")
+        f.dateFormat = "d. MMM yyyy"
+        return f.string(from: headerDate)
+    }
+    private func headerDateShort() -> String {
+        if Calendar.current.isDateInToday(headerDate) {
+            return "I dag"
+        }
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "nb_NO")
+        f.dateFormat = "d. MMM"
+        return f.string(from: headerDate)
+    }
+
+    /// Områder som kan filtreres på i header. Bygges dynamisk fra
+    /// eksisterende leads sine `city`-felter + faste hurtigvalg.
+    private var availableAreas: [String] {
+        var seen = Set<String>()
+        var out: [String] = ["Alle områder"]
+        for lead in leads {
+            if let city = lead.city, !city.isEmpty, seen.insert(city).inserted {
+                out.append(city)
+            }
+        }
+        // Fallback-lokasjoner hvis vi ikke har leads enda
+        if out.count == 1 {
+            out.append(contentsOf: ["Oslo", "Bergen", "Trondheim", "Stavanger", "Lillestrøm"])
+        }
+        return out
     }
 
     /// Brukerinfo-versjon for trange headere (portrait iPad) — viser bare
