@@ -177,7 +177,17 @@ export function registerLeadgridRouteRoutes(deps: Deps): void {
   });
 
   // ─── GET /api/leadgrid/routes/:id ─────────────────────────────────
-  app.get("/api/leadgrid/routes/:id", permView, async (req: Request, res: Response) => {
+  //
+  // Router-fix (2026-07-02): kun match ekte UUID-er som `:id`. Ellers ville
+  // rutene `/routes/team-nearby`, `/routes/leads/at-position`, `/routes/positions`
+  // osv. (registrert i routes-adherence-routes.ts, LATER i index.ts) blitt
+  // slukt av dette `:id`-mønsteret og resultere i 500 (`invalid input syntax
+  // for type uuid`). UUID-regex-constraint gjør at Express faller igjennom til
+  // neste handler når `id` ikke er UUID-formatert.
+  app.get(
+    "/api/leadgrid/routes/:id([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})",
+    permView,
+    async (req: Request, res: Response) => {
     try {
       const r = await pool.query(
         `SELECT id::text, name, planned_date, status, start_lat, start_lng,
