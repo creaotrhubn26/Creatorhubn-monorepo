@@ -176,13 +176,13 @@ struct VisitLogModal: View {
                 }
             }
             TextField("Neste handling", text: $draft.nextAction)
-            DatePicker(
-                "Følg opp",
-                selection: Binding(
+            LeadgridDateFieldRow(
+                title: "Følg opp",
+                date: Binding(
                     get: { draft.nextFollowUpAt ?? Date().addingTimeInterval(86400 * 3) },
                     set: { draft.nextFollowUpAt = $0 }
                 ),
-                displayedComponents: [.date, .hourAndMinute]
+                showTime: true
             )
         } header: {
             Text("Hva blir neste steg?")
