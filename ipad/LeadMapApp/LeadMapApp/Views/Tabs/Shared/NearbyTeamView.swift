@@ -128,22 +128,62 @@ struct NearbyTeamView: View {
     // MARK: - Top strip
 
     private var topStrip: some View {
-        HStack(spacing: 10) {
-            titleBadge
-            Spacer(minLength: 8)
-            radiusPicker
+        // Kompakt HStack: kort tittel + segmented KM-picker + telle-badge +
+        // refresh + close. Passer inn i smale Mac Catalyst-sheets (~500px)
+        // uten at pills stabler seg vertikalt.
+        HStack(spacing: 8) {
+            HStack(spacing: 5) {
+                HUDLiveDot(color: HUDPalette.green, size: 6)
+                HUDLabel(text: "TEAM", size: 11, color: HUDPalette.green, tracking: 1.3)
+            }
+            .fixedSize()
+            Spacer(minLength: 6)
+            radiusPickerSegmented
             memberCountBadge
             HUDRefreshButton { Task { await refresh() } }
-            // Divider mellom refresh og close så X ikke ser ut som del av telle-badgen
             Rectangle()
                 .fill(Color.white.opacity(0.12))
-                .frame(width: 1, height: 22)
-                .padding(.horizontal, 2)
+                .frame(width: 1, height: 20)
+                .padding(.horizontal, 1)
             HUDCloseButton { dismiss() }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
         .hudGlass(cornerRadius: 18, glow: HUDPalette.blue, glowRadius: 8)
+    }
+
+    /// Kompakt segmented KM-picker. Alle 4 knapper på én rad m/ minimal padding
+    /// så vi ikke wrapper når sheeten er smal (Mac Catalyst).
+    private var radiusPickerSegmented: some View {
+        HStack(spacing: 3) {
+            ForEach([2.0, 5.0, 10.0, 25.0], id: \.self) { r in
+                radiusChip(r)
+            }
+        }
+        .padding(3)
+        .background(Color.white.opacity(0.06), in: Capsule())
+        .overlay(Capsule().strokeBorder(Color.white.opacity(0.12), lineWidth: 1))
+    }
+
+    private func radiusChip(_ r: Double) -> some View {
+        let isActive = radiusKm == r
+        return Button {
+            radiusKm = r
+            Task { await refresh() }
+        } label: {
+            Text("\(Int(r))")
+                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .foregroundStyle(isActive ? .white : HUDPalette.textDim)
+                .frame(minWidth: 22)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 4)
+                .background(
+                    isActive ? HUDPalette.blue.opacity(0.55) : Color.clear,
+                    in: Capsule()
+                )
+        }
+        .buttonStyle(.plain)
+        .macCatalystHover()
     }
 
     private var titleBadge: some View {
