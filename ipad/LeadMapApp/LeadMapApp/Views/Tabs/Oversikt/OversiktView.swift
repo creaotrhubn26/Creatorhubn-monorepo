@@ -100,6 +100,14 @@ struct OversiktView: View {
                                email: appState.userEmail,
                                leads: effectiveLeads)
             }
+            // Lytter på «Les mer»-request fra map-lead-overlay → bytt
+            // til Leads-fanen. Selve detalj-sheet-en åpnes av
+            // Leads-fanen når den observerer samme Notification.
+            .onReceive(NotificationCenter.default.publisher(
+                for: .oversiktRequestOpenLeadInLeadsTab
+            )) { _ in
+                appState.selectedSidebarItem = .leads
+            }
             // Kalender-handlinger → én sheet-slot (BookMeeting eller AddLead).
             // sheet(item:) hindrer at to sheets stakkes → unngår NSLayout-
             // exception som krasjet Mac Catalyst.
@@ -1262,12 +1270,16 @@ private struct LeadsInAreaCard: View {
                                 activityKind: miniPinActivityKind(for: lead)
                             )
                             .onTapGesture {
-                                // Ikke åpne info-card i måle-modus — bruker skal
-                                // få velge to punkter på kartet uten å bli
-                                // avbrutt av pin-detaljer.
-                                guard !miniMeasureMode else { return }
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                                    mapSelectedLead = lead
+                                if miniMeasureMode {
+                                    // Måle-modus: registrer lead-ens eksakte
+                                    // koordinat som måle-punkt (istedenfor å
+                                    // åpne info-card). Slik kan bruker måle
+                                    // avstander mellom leadsene helt presist.
+                                    handleMeasureTapOnLead(lead)
+                                } else {
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                        mapSelectedLead = lead
+                                    }
                                 }
                             }
                         }
@@ -1527,6 +1539,30 @@ private struct LeadsInAreaCard: View {
             .presentationDetents([.medium])
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.85), value: miniToast)
+    }
+
+    /// Pin-tap i måle-modus: registrer lead-koordinatet som A- eller B-punkt
+    /// slik at bruker kan måle avstander presist mellom leadsene. Toaster
+    /// bekreftelse med lead-navn.
+    private func handleMeasureTapOnLead(_ lead: LeadModel) {
+        let coord = CLLocationCoordinate2D(latitude: lead.latitude, longitude: lead.longitude)
+        if miniMeasureA == nil {
+            miniMeasureA = coord
+            miniShowToast("A: \(lead.name) — tap neste lead for B")
+        } else if miniMeasureB == nil {
+            miniMeasureB = coord
+            let a = miniMeasureA!
+            let dist = CLLocation(latitude: a.latitude, longitude: a.longitude)
+                .distance(from: CLLocation(latitude: coord.latitude, longitude: coord.longitude))
+            let formatted = dist >= 1000
+                ? String(format: "%.2f km", dist / 1000)
+                : String(format: "%d m", Int(dist))
+            miniShowToast("B: \(lead.name) — \(formatted)")
+        } else {
+            miniMeasureA = coord
+            miniMeasureB = nil
+            miniShowToast("A: \(lead.name) — tap neste lead for B")
+        }
     }
 
     /// Aktivitets-badge på mini-kart-pin: viser om lead-en har møte booket
