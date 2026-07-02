@@ -44,10 +44,20 @@ struct VisitLogModal: View {
             .navigationTitle(lead.name)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Avbryt") { dismiss() }
+                // Fix 2026-07-02: «Avbryt»-teksten kollapset til «A…» på
+                // Mac Catalyst-sheets (~500px bred) fordi tittelen tok plassen.
+                // Bytter til kompakt X-ikon med aria-label så både bredde og
+                // tilgjengelighet er OK.
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 14, weight: .semibold))
+                    }
+                    .accessibilityLabel("Avbryt")
                 }
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button {
                         Task { await save() }
                     } label: {
@@ -207,16 +217,20 @@ struct VisitLogModal: View {
             try await appState.enqueueOrSendVisit(leadId: lead.id, body: draft.toJSON())
             await appState.refreshAll()
             // Stopp Live Activity hvis aktiv (PR #642 — #184)
+            #if !targetEnvironment(macCatalyst)
             if #available(iOS 16.1, *) {
                 await ActiveVisitManager.shared.stop()
             }
+            #endif
             dismiss()
         } catch is OfflineEnqueuedError {
             errorMessage = "✓ Lagret offline. Sendes når dekning er tilbake."
             try? await Task.sleep(nanoseconds: 1_500_000_000)
+            #if !targetEnvironment(macCatalyst)
             if #available(iOS 16.1, *) {
                 await ActiveVisitManager.shared.stop()
             }
+            #endif
             dismiss()
         } catch {
             errorMessage = "Klarte ikke lagre: \(error.localizedDescription)"
