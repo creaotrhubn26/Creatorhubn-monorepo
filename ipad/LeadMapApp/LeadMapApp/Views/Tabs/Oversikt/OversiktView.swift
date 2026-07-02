@@ -64,10 +64,17 @@ struct OversiktView: View {
     @State private var analyseOpen = false
     @State private var profileOpen = false
     @State private var myProfileOpen = false
-    // Kalender-handlinger 2026-07-02: sheets startet fra dato-picker
-    @State private var showBookMeeting: Bool = false
+    // Kalender-handlinger 2026-07-02: sheets startet fra dato-picker.
+    // Bruker sheet(item:) med enum for å garantere at bare én sheet
+    // vises om gangen — SwiftUI/Mac Catalyst krasjet med UIView-
+    // constraint-exception når to sheets ble presentert samtidig.
+    @State private var activeCalendarSheet: CalendarSheetKind?
     @State private var bookMeetingDay: Int = Calendar.current.component(.day, from: Date())
-    @State private var showAddLead: Bool = false
+
+    enum CalendarSheetKind: String, Identifiable {
+        case bookMeeting, addLead
+        var id: String { rawValue }
+    }
 
     /// iPhone-kompakt = bottom-tabs + enkelt-kolonne (alt under hverandre).
     private var isCompact: Bool { hSize == .compact }
@@ -86,15 +93,17 @@ struct OversiktView: View {
                                email: appState.userEmail,
                                leads: effectiveLeads)
             }
-            // Kalender → Book møte: eksisterende BookMeetingSheet fra Møter-fanen
-            .sheet(isPresented: $showBookMeeting) {
-                BookMeetingSheet(dayOfMonth: bookMeetingDay)
-            }
-            // Kalender → Ny lead: eksisterende AddLeadSheet fra Kart-fanen
-            .sheet(isPresented: $showAddLead) {
-                AddLeadSheet { _ in
-                    // Sheet-ene har egen dismiss + save-flow. Toast håndteres
-                    // av bunn-refresh senere hvis vi trenger.
+            // Kalender-handlinger → én sheet-slot (BookMeeting eller AddLead).
+            // sheet(item:) hindrer at to sheets stakkes → unngår NSLayout-
+            // exception som krasjet Mac Catalyst.
+            .sheet(item: $activeCalendarSheet) { kind in
+                switch kind {
+                case .bookMeeting:
+                    BookMeetingSheet(dayOfMonth: bookMeetingDay)
+                case .addLead:
+                    AddLeadSheet { _ in
+                        // Sheet håndterer egen dismiss + save.
+                    }
                 }
             }
             // Kalender-handlinger → åpne relevant flyt. Book møte og Ny lead
@@ -124,13 +133,15 @@ struct OversiktView: View {
         switch action {
         case "book_meeting":
             bookMeetingDay = cal.component(.day, from: date)
-            // Liten delay så picker-sheeten rekker å lukke rent
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                showBookMeeting = true
+            // Vent lenger på Mac Catalyst så dato-picker rekker å lukke helt
+            // FØR nye sheet monteres — ellers krasjer UIView-hierarkiet med
+            // NSInternalInconsistencyException.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.65) {
+                activeCalendarSheet = .bookMeeting
             }
         case "new_lead":
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                showAddLead = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.65) {
+                activeCalendarSheet = .addLead
             }
         case "new_followup", "view_day":
             nextActionsOpen = true
