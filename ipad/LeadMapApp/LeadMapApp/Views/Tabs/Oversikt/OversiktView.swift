@@ -1005,6 +1005,13 @@ private struct LeadsInAreaCard: View {
     @State private var measureSavedRoutes: [SavedMeasureRoute] = SavedMeasureRoute.loadAll()
     @State private var showSaveMeasureSheet: Bool = false
     @State private var showSavedMeasureSheet: Bool = false
+    // Ekstra 2026-07-02 (bølge 2):
+    // MKDirections-resultat (async fetch etter rute-endring).
+    @State private var measureRealDrive: MeasureDirections.DirectionsResult?
+    // Konvex hull-toggle (rute-modus): tegn polygon rundt punkter.
+    @State private var measureShowHull: Bool = false
+    // Snap-til-pin når bruker tapper nær en lead uten å treffe pinen.
+    private static let measureSnapDistanceMeters: Double = 50
 
     // MeMapPin tap-actions (2026-07-02)
     @State private var showMePinActions: Bool = false
@@ -1340,6 +1347,14 @@ private struct LeadsInAreaCard: View {
                                         style: StrokeStyle(lineWidth: 3, lineCap: .round,
                                                             lineJoin: .round, dash: [6, 4]))
                         }
+                        // Konvex hull-polygon (bruker toggler i banneret)
+                        if measureShowHull && measureRoute.count >= 3 {
+                            let hull = MeasureMath.convexHull(measureRoute)
+                            MapPolygon(coordinates: hull)
+                                .foregroundStyle(Brand.purple.opacity(0.12))
+                                .stroke(Brand.purpleLight.opacity(0.55),
+                                        style: StrokeStyle(lineWidth: 2, dash: [3, 3]))
+                        }
                     }
                     // Radius-modus: sentrum-marker + fylt sirkel med lead-radius
                     if measureKind == .radius, let center = measureRadiusCenter {
@@ -1655,6 +1670,7 @@ private struct LeadsInAreaCard: View {
                 let total = MeasureMath.totalDistanceMeters(measureRoute)
                 let mins = MeasureMath.estimatedDriveMinutes(total)
                 miniShowToast("\(measureRoute.count) stopp — \(measureUnit.format(total)) · ~\(mins) min")
+                Task { await recalcRealDriveTime() }
             }
         case .radius:
             measureRadiusCenter = coord
@@ -1663,10 +1679,17 @@ private struct LeadsInAreaCard: View {
         }
     }
 
-    /// Free-map-tap håndtering for måle-modus (uten pin) — samme kind-
-    /// verktøy men uten `leadName`. Brukes til å måle mot vilkårlig sted.
+    /// Free-map-tap håndtering for måle-modus. Sjekker først om tappet
+    /// var innenfor snap-avstand av en lead-pin — i så fall snapper vi
+    /// til lead-koordinatet + arver leadName. Ellers brukes rå tap-punkt.
     private func handleMeasureTapOnCoord(_ coord: CLLocationCoordinate2D) {
-        let point = MeasurePoint(coord: coord, leadName: nil)
+        // Snap-til-nærmeste-pin (2026-07-02, bølge 2): finn nærmeste
+        // lead innen 50m og bruk den i stedet så bruker slipper å pikse
+        // eksakt på pinen.
+        let snapped = snapCandidateFor(coord)
+        let effective = snapped?.coord ?? coord
+        let leadName = snapped?.name
+        let point = MeasurePoint(coord: effective, leadName: leadName)
         switch measureKind {
         case .distance:
             if miniMeasureA == nil {
@@ -1686,9 +1709,11 @@ private struct LeadsInAreaCard: View {
             let total = MeasureMath.totalDistanceMeters(measureRoute)
             let mins = MeasureMath.estimatedDriveMinutes(total)
             if measureRoute.count == 1 {
-                miniShowToast("Start-punkt satt")
+                let where_ = leadName ?? "punkt"
+                miniShowToast("Start: \(where_)")
             } else {
                 miniShowToast("\(measureRoute.count) stopp — \(measureUnit.format(total)) · ~\(mins) min")
+                Task { await recalcRealDriveTime() }
             }
         case .radius:
             measureRadiusCenter = coord
@@ -1717,6 +1742,50 @@ private struct LeadsInAreaCard: View {
         miniMeasureB = nil
         measureRoute.removeAll()
         measureRadiusCenter = nil
+        measureRealDrive = nil
+    }
+
+    /// Snap-kandidat: finn nærmeste lead innen `measureSnapDistanceMeters`
+    /// av gitt tap-koordinat. Nil = ingen match, bruker rå tap-punkt.
+    private func snapCandidateFor(
+        _ coord: CLLocationCoordinate2D
+    ) -> (coord: CLLocationCoordinate2D, name: String)? {
+        var best: (Double, LeadModel)? = nil
+        for lead in pinnedLeads {
+            let d = MeasureMath.distanceMeters(
+                coord,
+                CLLocationCoordinate2D(latitude: lead.latitude, longitude: lead.longitude)
+            )
+            if d <= Self.measureSnapDistanceMeters {
+                if let cur = best {
+                    if d < cur.0 { best = (d, lead) }
+                } else {
+                    best = (d, lead)
+                }
+            }
+        }
+        guard let (_, lead) = best else { return nil }
+        return (
+            CLLocationCoordinate2D(latitude: lead.latitude, longitude: lead.longitude),
+            lead.name
+        )
+    }
+
+    /// Trigges når rute-modus har fått 2+ punkter — fetch ekte kjøretid
+    /// asynkront via MKDirections og oppdater state slik at banneret
+    /// bytter fra estimate til ekte tall.
+    @MainActor
+    private func recalcRealDriveTime() async {
+        guard measureKind == .route, measureRoute.count >= 2 else {
+            measureRealDrive = nil
+            return
+        }
+        let snapshot = measureRoute
+        if let res = await MeasureDirections.fetch(for: snapshot) {
+            // Bekreft at rute-array ikke har endret seg imens
+            guard snapshot == measureRoute else { return }
+            measureRealDrive = res
+        }
     }
 
     /// Bygg en delbar streng-representasjon av aktuell måling. Bruker share.
@@ -1938,6 +2007,29 @@ private struct LeadsInAreaCard: View {
                     .padding(6)
                     .background(Brand.cardHi, in: Circle())
             }.buttonStyle(.plain)
+            // Konvex hull-toggle (kun i rute-modus m/ 3+ punkter)
+            if measureKind == .route && measureRoute.count >= 3 {
+                Button {
+                    measureShowHull.toggle()
+                    let hull = MeasureMath.convexHull(measureRoute)
+                    let area = MeasureMath.polygonAreaMeters2(hull) / 1_000_000
+                    miniShowToast(
+                        measureShowHull
+                            ? String(format: "Dekker %.1f km²", area)
+                            : "Hull skjult"
+                    )
+                } label: {
+                    Image(systemName: measureShowHull ? "hexagon.fill" : "hexagon")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(measureShowHull ? Brand.purpleLight : .white)
+                        .padding(6)
+                        .background(
+                            measureShowHull ? Brand.purple.opacity(0.25) : Brand.cardHi,
+                            in: Circle()
+                        )
+                }
+                .buttonStyle(.plain)
+            }
             // Del
             ShareLink(item: measureShareText()) {
                 Image(systemName: "square.and.arrow.up")
@@ -2003,6 +2095,11 @@ private struct LeadsInAreaCard: View {
             return measureKind.tip
         case .route:
             if measureRoute.count >= 2 {
+                // Foretrekk ekte MKDirections når vi har svar; ellers Haversine-est.
+                if let real = measureRealDrive {
+                    let mins = Int((real.expectedTravelTime / 60).rounded())
+                    return "\(measureRoute.count) stopp · \(measureUnit.format(real.distanceMeters)) · \(mins) min"
+                }
                 let d = MeasureMath.totalDistanceMeters(measureRoute)
                 let mins = MeasureMath.estimatedDriveMinutes(d)
                 return "\(measureRoute.count) stopp · \(measureUnit.format(d)) · ~\(mins) min"

@@ -210,4 +210,109 @@ enum MeasureMath {
         let lon = points.map(\.longitude).reduce(0, +) / Double(points.count)
         return CLLocationCoordinate2D(latitude: lat, longitude: lon)
     }
+
+    /// Konvekst omhylle (Andrew's monotone chain) rundt et sett med
+    /// koordinater. Brukes til å tegne polygon rundt målte punkter i
+    /// rute-modus — «hvor stort areal dekker jeg med denne dagsruta?».
+    /// Returnerer punktene i CCW-rekkefølge (klar for MapPolygon).
+    static func convexHull(_ points: [MeasurePoint]) -> [CLLocationCoordinate2D] {
+        let pts = points.map(\.coordinate)
+        guard pts.count >= 3 else { return pts }
+        // Sorter etter longitude, deretter latitude
+        let sorted = pts.sorted { a, b in
+            if a.longitude != b.longitude { return a.longitude < b.longitude }
+            return a.latitude < b.latitude
+        }
+        func cross(_ o: CLLocationCoordinate2D,
+                   _ a: CLLocationCoordinate2D,
+                   _ b: CLLocationCoordinate2D) -> Double {
+            (a.longitude - o.longitude) * (b.latitude - o.latitude)
+            - (a.latitude - o.latitude) * (b.longitude - o.longitude)
+        }
+        var lower: [CLLocationCoordinate2D] = []
+        for p in sorted {
+            while lower.count >= 2 && cross(lower[lower.count - 2], lower[lower.count - 1], p) <= 0 {
+                lower.removeLast()
+            }
+            lower.append(p)
+        }
+        var upper: [CLLocationCoordinate2D] = []
+        for p in sorted.reversed() {
+            while upper.count >= 2 && cross(upper[upper.count - 2], upper[upper.count - 1], p) <= 0 {
+                upper.removeLast()
+            }
+            upper.append(p)
+        }
+        lower.removeLast()
+        upper.removeLast()
+        return lower + upper
+    }
+
+    /// Areal av polygon i m² (Shoelace-formel — grov approksimasjon for
+    /// små områder siden vi ignorerer jorda som sfære).
+    static func polygonAreaMeters2(_ coords: [CLLocationCoordinate2D]) -> Double {
+        guard coords.count >= 3 else { return 0 }
+        let R = 6371000.0
+        var sum: Double = 0
+        for i in 0..<coords.count {
+            let j = (i + 1) % coords.count
+            let lat1 = coords[i].latitude * .pi / 180
+            let lat2 = coords[j].latitude * .pi / 180
+            let dLon = (coords[j].longitude - coords[i].longitude) * .pi / 180
+            sum += dLon * (2 + sin(lat1) + sin(lat2))
+        }
+        return abs(sum * R * R / 2)
+    }
+}
+
+// MARK: - MKDirections async fetch
+
+import MapKit
+
+/// Ekte drive-time via MKDirections. Bruker Apple Maps direksjoner-API
+/// (samme som Kart-appen). Fallback til Haversine hvis feil eller ingen
+/// rute finnes. Cache-r ikke; kalles én gang per rute-endring.
+@MainActor
+enum MeasureDirections {
+    struct DirectionsResult: Sendable {
+        let distanceMeters: Double
+        let expectedTravelTime: TimeInterval  // sekunder
+    }
+
+    /// Beregn total avstand + kjøretid for en multi-punkts rute via
+    /// MKDirections. Grupperer stops parvis og summerer resultatene.
+    static func fetch(for points: [MeasurePoint]) async -> DirectionsResult? {
+        guard points.count >= 2 else { return nil }
+        var totalDist: Double = 0
+        var totalTime: TimeInterval = 0
+        for i in 1..<points.count {
+            let a = points[i - 1].coordinate
+            let b = points[i].coordinate
+            let req = MKDirections.Request()
+            req.source = MKMapItem(placemark: MKPlacemark(coordinate: a))
+            req.destination = MKMapItem(placemark: MKPlacemark(coordinate: b))
+            req.transportType = .automobile
+            let dir = MKDirections(request: req)
+            do {
+                let resp = try await dir.calculate()
+                if let r = resp.routes.first {
+                    totalDist += r.distance
+                    totalTime += r.expectedTravelTime
+                } else {
+                    // Fallback Haversine
+                    totalDist += MeasureMath.distanceMeters(a, b)
+                    totalTime += TimeInterval(MeasureMath.estimatedDriveMinutes(MeasureMath.distanceMeters(a, b)) * 60)
+                }
+            } catch {
+                // Apple Maps kan rate-limite eller nekte ved fjerntliggende
+                // koordinater — falback til Haversine.
+                totalDist += MeasureMath.distanceMeters(a, b)
+                totalTime += TimeInterval(MeasureMath.estimatedDriveMinutes(MeasureMath.distanceMeters(a, b)) * 60)
+            }
+        }
+        return DirectionsResult(
+            distanceMeters: totalDist,
+            expectedTravelTime: totalTime
+        )
+    }
 }
