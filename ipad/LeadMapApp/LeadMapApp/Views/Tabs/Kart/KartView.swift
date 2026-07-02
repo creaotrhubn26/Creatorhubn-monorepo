@@ -709,16 +709,18 @@ struct KartView: View {
                         .foregroundStyle(.green)
                     Text("Lead opprettet")
                         .font(.headline)
-                    Text(dto.name)
+                    Text(dto.displayName)
                         .font(.subheadline)
                     if let addr = dto.address {
                         Text(addr)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-                    Text(String(format: "%.4f, %.4f", dto.latitude, dto.longitude))
-                        .font(.caption2.monospaced())
-                        .foregroundStyle(.secondary)
+                    if let lat = dto.latitude, let lon = dto.longitude {
+                        Text(String(format: "%.4f, %.4f", lat, lon))
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(.secondary)
+                    }
                     Button("Ferdig") {
                         createdLeadAtPosition = nil
                     }

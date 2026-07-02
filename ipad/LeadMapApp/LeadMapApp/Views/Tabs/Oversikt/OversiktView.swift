@@ -1115,7 +1115,7 @@ private struct LeadsInAreaCard: View {
                         .foregroundStyle(.green)
                     Text("Lead opprettet")
                         .font(.headline)
-                    Text(dto.name)
+                    Text(dto.displayName)
                         .font(.subheadline)
                     if let addr = dto.address {
                         Text(addr).font(.caption).foregroundStyle(.secondary)
