@@ -26,9 +26,15 @@ targets:
     sources:
       - path: LeadMapApp
     dependencies:
+      # Widget + Watch-app embed KUN på iPhone/iPad (ikke Mac Catalyst).
+      # macOS-varianten kan ikke embedde iOS-appex / watchOS-app — Xcode
+      # kaster «target built for macOS but contains embedded content built
+      # for iOS» ellers. platformFilter=iOS ekskluderer Catalyst automatisk.
       - target: LeadMapWidget
+        platformFilter: iOS
       - target: LeadgridWatchApp
         embed: true
+        platformFilter: iOS
     info:
       path: LeadMapApp/Generated/Info.plist
       properties:
@@ -63,6 +69,10 @@ targets:
         NSMicrophoneUsageDescription: Leadgrid bruker mikrofonen til å diktere visit-notater etter besøk.
         # Tale-gjenkjenning: transkriber dikterte notater (#183).
         NSSpeechRecognitionUsageDescription: Leadgrid transkriberer din tale til tekst slik at du kan diktere visit-notater hands-free.
+        # Fotobibliotek (Pakke 10): PhotosPicker brukes til visittkort-import
+        # i Leadbook → Maler, profilbilde-velger i Min Profil, og bilde-bilag
+        # på Eksempler-fanen. Read-only — vi laster ikke opp uten brukerhandling.
+        NSPhotoLibraryUsageDescription: Leadgrid lar deg velge bilder fra galleriet for visittkort-import, profilbilder og bildebilag på samtale-eksempler.
         # Apple Pencil til notater i visit-loggen.
         UIApplicationSupportsIndirectInputEvents: true
         # Live Activities — 'Pågående besøk' på låseskjerm + Dynamic Island (#184).
@@ -92,8 +102,16 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.creatorhubn.LeadMapApp
         INFOPLIST_FILE: LeadMapApp/Generated/Info.plist
-        TARGETED_DEVICE_FAMILY: "1,2"
-        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: YES
+        # 1 = iPhone, 2 = iPad, 6 = Mac (Catalyst). «Pondus overalt» trinn 2-3:
+        # Universal iPhone+iPad + ekte Catalyst-app på macOS.
+        TARGETED_DEVICE_FAMILY: "1,2,6"
+        IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+        # Mac Catalyst — ekte Catalyst UI framfor «Designed for iPad»-shim.
+        SUPPORTS_MACCATALYST: YES
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+        SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD: NO
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER: NO
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
 
   # Widget Extension: 'Møter i dag' + 'Stille leads' på homescreen.
@@ -188,3 +206,48 @@ targets:
         # APP_GROUPS capability er registrert paa Apple, skal
         # automatic signing fungere — entitlements er tomme saa det
         # kreves ingen ekstra Apple-binding.
+
+  # ─────────────────────────────────────────────────────────────────
+  # LeadgridVisionApp (visionOS 2.0+, Apple Vision Pro).
+  # «Pondus overalt» trinn 4 — 2026-07-01.
+  #
+  # Målsetting: gi bruker en spatial pondus-coach der score-ring +
+  # steg-kort svever rundt dem i ImmersiveSpace. Deler backend + auth
+  # med iPad-target, men har egen kopi av modell-strukturer (siden
+  # target ikke deler kompileringsenhet).
+  #
+  # 2 scener:
+  #   • PondusVisionWindow — 2D-window med template-picker + score-liste
+  #   • PondusCoachSpace   — ImmersiveSpace med spatial 3D-visning
+  # ─────────────────────────────────────────────────────────────────
+  LeadgridVisionApp:
+    type: application
+    platform: visionOS
+    sources:
+      - path: LeadgridVisionApp
+    info:
+      path: LeadgridVisionApp/Generated/Info.plist
+      properties:
+        CFBundleDisplayName: Leadgrid
+        CFBundleName: Leadgrid
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: true
+        NSCameraUsageDescription: Leadgrid bruker kameraet til visittkort-scanning.
+        NSMicrophoneUsageDescription: Live transkripsjon under møter.
+        ITSAppUsesNonExemptEncryption: false
+    entitlements:
+      path: LeadgridVisionApp/Generated/LeadgridVisionApp.entitlements
+      properties: {}
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.creatorhubn.LeadMapApp.vision
+        INFOPLIST_FILE: LeadgridVisionApp/Generated/Info.plist
+        TARGETED_DEVICE_FAMILY: "7"
+        XROS_DEPLOYMENT_TARGET: "2.0"
+        SDKROOT: xros
+        SUPPORTED_PLATFORMS: "xros xrsimulator"
+        SWIFT_VERSION: "6"
+        SWIFT_STRICT_CONCURRENCY: complete
+        # AppIcon droppes for Vision-target — visionOS krever egen
+        # AppIcon.solidimagestack som ikke er generert enda. Standard-ikon
+        # brukes til bygg går grønt lokalt.

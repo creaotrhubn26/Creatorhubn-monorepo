@@ -27,9 +27,73 @@ final class AppState {
     var userEmail: String?
     var isAuthenticated: Bool { authToken != nil }
 
+    /// Vist navn i header-avatarer og «Min profil». Baseres på userEmail
+    /// (før login har vi ikke fullt navn tilgjengelig fra backend).
+    /// Trekker fornavn/etternavn fra e-postens local-part der mulig.
+    var displayName: String {
+        guard let email = userEmail, let local = email.split(separator: "@").first else {
+            return "Gjest"
+        }
+        let parts = local.split { $0 == "." || $0 == "_" || $0 == "-" }
+        return parts
+            .map { $0.prefix(1).uppercased() + $0.dropFirst() }
+            .joined(separator: " ")
+    }
+
+    /// 1-2 bokstavers initialer for avatar-badge. Faller tilbake til «?»
+    /// hvis brukeren ikke er innlogget (så UI ikke krasjer på nil).
+    var initials: String {
+        let name = displayName
+        guard name != "Gjest" else { return "?" }
+        let parts = name.split(separator: " ")
+        if parts.count >= 2 {
+            return String(parts[0].prefix(1) + parts[1].prefix(1)).uppercased()
+        }
+        return String(name.prefix(2)).uppercased()
+    }
+
     /// Aktivt valg i iPad-sidebar. Bevares mellom portrait/landscape så
     /// rotasjon ikke mister kontekst. Default = .oversikt (matcher mocken).
     var selectedSidebarItem: SidebarItem = .oversikt
+
+    // ── Pondus deep-link (App Intents / Watch → Leadbook > Pondus) ─────
+    /// Set av `AppStateBridge.navigateToPondus(...)` når en Siri Shortcut,
+    /// Spotlight-treff eller Watch-aktivering vil åpne Pondus-fanen. Består
+    /// gjennom cold-start: intent kjører → `perform()` setter dette → app
+    /// blir launched → LeadbookView-observer plukker opp første `.task`.
+    ///
+    /// `deepLinkPondusTemplateName` støtter aktivering m/ navn (Siri:
+    /// «Aktiver pondus første kontakt»), `deepLinkPondusTemplateId` for
+    /// stabil id-basert routing (Watch-siden sender uuid).
+    var deepLinkPondusTemplateId: String?
+    var deepLinkPondusTemplateName: String?
+    /// Tid da deep-link ble satt — brukes til å ignorere gamle deep-links
+    /// (>60s) som kan ha kommet fra en tidligere session-kø.
+    var deepLinkPondusRequestedAt: Date?
+
+    /// Singleton for lettvekts observable pondus-store som App Intents kan
+    /// lese uten å gå via SwiftUI-view-hierarkiet. LeadbookView bytter til
+    /// denne (i stedet for lokal @State) slik at `PondusScoreIntent` og
+    /// `ActivatePondusIntent` kan matche mot live data.
+    let pondusStore: PondusStore = PondusStore()
+
+    /// Sett deep-link + tidsstempel. Kalles av AppStateBridge (og indirekte
+    /// av App Intents). LeadbookView.onAppear/task/onChange plukker opp
+    /// dette og switch-er til Pondus-fanen.
+    func setPondusDeepLink(templateId: String? = nil, templateName: String? = nil) {
+        self.deepLinkPondusTemplateId = templateId
+        self.deepLinkPondusTemplateName = templateName
+        self.deepLinkPondusRequestedAt = Date()
+        self.selectedSidebarItem = .leadbook
+    }
+
+    /// Klarer deep-linken etter at LeadbookView har konsumert den. Vi
+    /// nuller ikke `selectedSidebarItem` — brukeren skal bli i Leadbook.
+    func clearPondusDeepLink() {
+        self.deepLinkPondusTemplateId = nil
+        self.deepLinkPondusTemplateName = nil
+        self.deepLinkPondusRequestedAt = nil
+    }
 
     // Klienter (lazy-init når token er satt)
     private(set) var api: APIClient?

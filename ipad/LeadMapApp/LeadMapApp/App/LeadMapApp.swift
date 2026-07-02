@@ -9,7 +9,22 @@ import UIKit
 
 @main
 struct LeadMapApp: App {
-    @State private var appState = AppState()
+    @State private var appState: AppState
+
+    // AppState opprettes i init for å garantere at AppStateBridge er
+    // registrert FØR SwiftUI-scenens `body` evalueres første gang. Dette
+    // er load-bearing for cold-start deep-linking: App Intent `.perform()`
+    // med `openAppWhenRun: true` kan starte prosessen; når scene-init er
+    // ferdig må bridge-en allerede peke på en gyldig AppState så
+    // pending deep-link kan flush-es.
+    init() {
+        let state = AppState()
+        self._appState = State(wrappedValue: state)
+        // MainActor-isolert; init er MainActor-implisitt for @main App.
+        MainActor.assumeIsolated {
+            AppStateBridge.shared.register(state)
+        }
+    }
     @UIApplicationDelegateAdaptor(NotificationAppDelegate.self) private var delegate
 
     var body: some Scene {
@@ -17,9 +32,15 @@ struct LeadMapApp: App {
             RootView()
                 .environment(appState)
                 .environment(NetworkMonitor.shared)
+                // Dark mode gjelder på alle plattformer inkl. Mac Catalyst.
+                // Var tidligere gated til !macCatalyst, men da fikk topp-
+                // menyen mørk bakgrunn + mørk system-tekst = usynlig text.
                 .preferredColorScheme(.dark)
                 .onAppear {
                     NotificationAppDelegate.appStateRef = appState
+                    // Flush eventuell buffret Pondus-deep-link fra en Intent
+                    // som kjørte før scene-init var ferdig.
+                    AppStateBridge.shared.flushPendingDeepLinks()
                 }
         }
     }
@@ -277,41 +298,43 @@ struct SessionExpiredSheet: View {
     }
 }
 
-/// Tabs (Pakke 9, 2026-06-26): I dag · Kart · Leads · Research · Mer.
-/// Erstatter "Ruter"-fanen (flyttet inn i Mer) med "Research" — lead-fokusert
-/// Role Room Agent (Finn leads / Brand scan / Markedsskann) som Daniel ba om.
-/// Forrige UX-overhaul (2026-06-25) komprimerte 8+ topp-faner ned til 5;
-/// vi beholder 5 her ved å sub-route Ruter til Mer-fanen.
+/// Tabs (Pakke 10, 2026-07-01): 6 hovedfaner portet fra preview-appene.
+/// Oversikt · Kart · Leads · Møter · Team · Leadbook.
+/// Erstatter forrige 5-tab-løsning (I dag/Kart/Leads/Research/Mer); de
+/// gamle visningene (MyDayView/LeadgridFollowUpQueueView/CalendarView/
+/// LeadgridResearchTab/MapScreen) ble slettet og overtatt av de nye
+/// preview-portene under `Views/Tabs/<Fane>/`.
 struct MainTabView: View {
     @Environment(AppState.self) private var state
 
     var body: some View {
-        TabView {
-            MyDayView()
-                .tabItem { Label("I dag", systemImage: "sun.max.fill") }
+        VStack(spacing: 0) {
+            MockDataBanner()
+            TabView {
+                OversiktView()
+                    .tabItem { Label("Oversikt", systemImage: "rectangle.3.group.fill") }
 
-            MapScreen()
-                .tabItem { Label("Kart", systemImage: "map.fill") }
+                KartView()
+                    .tabItem { Label("Kart", systemImage: "map.fill") }
 
-            // Lead-fokus: kø av tildelte leads med Claude-prioritet og
-            // status. Vi bruker LeadgridFollowUpQueueView som finnes alt.
-            LeadsTabHost()
-                .tabItem { Label("Leads", systemImage: "person.crop.rectangle.stack.fill") }
-                .badge(state.leadgridUnreadCount > 0 ? state.leadgridUnreadCount : 0)
+                LeadsView()
+                    .tabItem { Label("Leads", systemImage: "person.crop.rectangle.stack.fill") }
+                    .badge(state.leadgridUnreadCount > 0 ? state.leadgridUnreadCount : 0)
 
-            // Research — lead-fokusert Role Room Agent (Pakke 9).
-            // Segmenter: Finn leads (AI-discovery for prosjekt), Brand
-            // scan (URL→draft), Markedsskann (region+bransje).
-            LeadgridResearchTab()
-                .tabItem {
-                    Label("Research", systemImage: "sparkles.rectangle.stack.fill")
-                }
+                MeetingsView()
+                    .tabItem { Label("Møter", systemImage: "calendar") }
 
-            // Mer — samler øvrige flater for å holde top-bar enkel.
-            // Ruter er flyttet inn her etter Pakke 9 for å beholde 5 tabs.
-            MoreTabView()
-                .tabItem { Label("Mer", systemImage: "ellipsis.circle") }
-                .badge(state.unreadNotificationsCount)
+                TeamView()
+                    .tabItem { Label("Team", systemImage: "person.3.fill") }
+
+                LeadbookView()
+                    .tabItem { Label("Leadbook", systemImage: "book.pages.fill") }
+
+                // Salgsledelse-suite (Pakke 10.1) — provisjon, konkurranser,
+                // premie-katalog, fulfillment. Bør role-gates til salgssjefer.
+                SalgsledelseView()
+                    .tabItem { Label("Salgsledelse", systemImage: "rosette") }
+            }
         }
     }
 }
@@ -333,11 +356,8 @@ struct MoreTabView: View {
                         moreRow(icon: "bell.fill", color: .red, title: "Varsler",
                                 badge: state.unreadNotificationsCount)
                     }
-                    NavigationLink {
-                        CalendarView()
-                    } label: {
-                        moreRow(icon: "calendar", color: .blue, title: "Kalender")
-                    }
+                    // Kalender: portet inn i ny `MeetingsView` (Pakke 10) —
+                    // bruk hovedfanen «Møter» istedet.
                     NavigationLink {
                         StaleLeadsList()
                     } label: {
@@ -477,28 +497,10 @@ struct MoreTabView: View {
     }
 }
 
-/// Host som ekstraherer APIClient fra AppState og wrapper det i en
-/// NavigationStack — slik at de eksisterende view'ene som krever
-/// `api: APIClient` (LeadgridFollowUpQueueView, LeadgridRoutePlannerView)
-/// kan brukes direkte som tabs uten å endre signaturen deres.
-struct LeadsTabHost: View {
-    @Environment(AppState.self) private var state
-
-    var body: some View {
-        NavigationStack {
-            if let api = state.api {
-                LeadgridFollowUpQueueView(api: api)
-                    .navigationTitle("Leads")
-            } else {
-                ContentUnavailableView(
-                    "Logger inn …",
-                    systemImage: "person.crop.rectangle.stack",
-                    description: Text("Vent et øyeblikk mens vi henter dine leads.")
-                )
-            }
-        }
-    }
-}
+// LeadsTabHost fjernet i Pakke 10 — LeadsView fra Views/Tabs/Leads/ er ny
+// hovedinngang og tar ikke api-binding (bruker LeadsData mock-seed inntil
+// backend-port). Bring tilbake senere som thin wrapper hvis vi trenger
+// api-injeksjon ved API-port.
 
 struct RoutesTabHost: View {
     @Environment(AppState.self) private var state
@@ -519,47 +521,42 @@ struct RoutesTabHost: View {
     }
 }
 
-// MARK: - iPad Sidebar (mock-paritet)
+// MARK: - iPad Sidebar (6 hovedfaner, Pakke 10)
 
-/// Sidebar-elementer på iPad-landscape. Mapper 1-til-1 mot marketing-
-/// mockens venstre kolonne. Hver case er en ekte view i appen og bruker
-/// eksisterende komponenter (vi finner ikke opp nye flater her — vi
-/// gjenbruker MyDayView/MapScreen/LeadgridFollowUpQueueView/etc.).
+/// Sidebar-elementer på iPad-landscape. 6 hovedfaner portet fra preview.
+/// Hver case er en av de nye `Views/Tabs/<Fane>/`-toppvisningene.
 enum SidebarItem: String, CaseIterable, Identifiable, Hashable {
     case oversikt
     case kart
     case leads
-    case oppfolging
     case moter
-    case ruter
-    case analyse
-    case innstillinger
+    case team
+    case leadbook
+    case salgsledelse
 
     var id: String { rawValue }
 
     var label: String {
         switch self {
-        case .oversikt:      return "Oversikt"
-        case .kart:          return "Kart"
-        case .leads:         return "Leads"
-        case .oppfolging:    return "Oppfølging"
-        case .moter:         return "Møter"
-        case .ruter:         return "Ruter"
-        case .analyse:       return "Analyse"
-        case .innstillinger: return "Innstillinger"
+        case .oversikt:     return "Oversikt"
+        case .kart:         return "Kart"
+        case .leads:        return "Leads"
+        case .moter:        return "Møter"
+        case .team:         return "Team"
+        case .leadbook:     return "Leadbook"
+        case .salgsledelse: return "Salgsledelse"
         }
     }
 
     var systemImage: String {
         switch self {
-        case .oversikt:      return "rectangle.3.group.fill"
-        case .kart:          return "map.fill"
-        case .leads:         return "person.crop.rectangle.stack.fill"
-        case .oppfolging:    return "bell.badge.fill"
-        case .moter:         return "calendar"
-        case .ruter:         return "point.topleft.down.to.point.bottomright.curvepath"
-        case .analyse:       return "chart.line.uptrend.xyaxis"
-        case .innstillinger: return "gearshape.fill"
+        case .oversikt:     return "rectangle.3.group.fill"
+        case .kart:         return "map.fill"
+        case .leads:        return "person.crop.rectangle.stack.fill"
+        case .moter:        return "calendar"
+        case .team:         return "person.3.fill"
+        case .leadbook:     return "book.pages.fill"
+        case .salgsledelse: return "rosette"
         }
     }
 }
@@ -589,22 +586,13 @@ struct MainSidebarView: View {
         // iOS støtter ikke List(selection:content:) på den helt frie formen,
         // så vi bruker eksplisitt ForEach + .tag() i hver Section.
         List {
-            Section("Salg") {
-                ForEach([SidebarItem.oversikt, .kart, .leads, .oppfolging, .moter, .ruter]) { item in
-                    sidebarRow(item, badge: item == .oppfolging ? state.leadgridUnreadCount : 0,
-                               selection: $bindableState.selectedSidebarItem)
-                }
-            }
-            Section("Innsikt") {
-                ForEach([SidebarItem.analyse]) { item in
-                    sidebarRow(item, badge: 0,
-                               selection: $bindableState.selectedSidebarItem)
-                }
-            }
-            Section("Konto") {
-                ForEach([SidebarItem.innstillinger]) { item in
-                    sidebarRow(item, badge: 0,
-                               selection: $bindableState.selectedSidebarItem)
+            Section("Hovedfaner") {
+                ForEach(SidebarItem.allCases) { item in
+                    sidebarRow(
+                        item,
+                        badge: item == .leads ? state.leadgridUnreadCount : 0,
+                        selection: $bindableState.selectedSidebarItem
+                    )
                 }
             }
         }
@@ -652,40 +640,13 @@ struct MainSidebarView: View {
     @ViewBuilder
     private func detailFor(_ item: SidebarItem) -> some View {
         switch item {
-        case .oversikt:
-            OversiktView()
-        case .kart:
-            MapScreen()
-        case .leads:
-            if let api = state.api {
-                LeadgridFollowUpQueueView(api: api)
-                    .navigationTitle("Leads")
-            } else {
-                loadingPlaceholder("Leads", systemImage: "person.crop.rectangle.stack")
-            }
-        case .oppfolging:
-            StaleLeadsList()
-                .navigationTitle("Oppfølging")
-        case .moter:
-            CalendarView()
-                .navigationTitle("Møter")
-        case .ruter:
-            if let api = state.api {
-                LeadgridRoutePlannerView(api: api)
-                    .navigationTitle("Ruter")
-            } else {
-                loadingPlaceholder("Ruter", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
-            }
-        case .analyse:
-            if let api = state.api {
-                LeadgridAnalyticsDashboardView(api: api)
-                    .navigationTitle("Analyse")
-            } else {
-                loadingPlaceholder("Analyse", systemImage: "chart.line.uptrend.xyaxis")
-            }
-        case .innstillinger:
-            OrgSettingsView()
-                .navigationTitle("Innstillinger")
+        case .oversikt:     OversiktView()
+        case .kart:         KartView()
+        case .leads:        LeadsView()
+        case .moter:        MeetingsView()
+        case .team:         TeamView()
+        case .leadbook:     LeadbookView()
+        case .salgsledelse: SalgsledelseView()
         }
     }
 

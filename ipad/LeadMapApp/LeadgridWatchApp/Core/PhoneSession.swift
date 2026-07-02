@@ -50,6 +50,27 @@ final class PhoneSession: NSObject, ObservableObject {
         pendingAction = (lead, Date())
     }
 
+    /// Signaliser til iPhone at brukeren valgte en Pondus-mal på Watch.
+    /// iPhone-siden switcher Leadbook > Pondus + speiler valget.
+    /// Bruker `sendMessage` (foreground) hvis iPhone er reachable —
+    /// da får brukeren umiddelbar respons om hen løfter iPhone-en.
+    /// Ellers `transferUserInfo` (queued) så vi ikke mister eventet.
+    func sendPondusActivate(templateId: String) {
+        let payload: [String: Any] = [
+            "type": WatchPondusMessageType.templateActivate,
+            "templateId": templateId,
+            "ts": Date().timeIntervalSince1970,
+        ]
+        if session.isReachable {
+            session.sendMessage(payload, replyHandler: nil, errorHandler: { _ in
+                // Fallback til queued transfer hvis sendMessage feiler.
+                self.session.transferUserInfo(payload)
+            })
+        } else {
+            session.transferUserInfo(payload)
+        }
+    }
+
     private func loadFromDisk() {
         guard let data = UserDefaults.standard.data(forKey: storageKey),
               let decoded = try? JSONDecoder().decode([WatchLead].self, from: data)
@@ -96,6 +117,41 @@ extension PhoneSession: WCSessionDelegate {
             self.leads = decoded
             self.lastSync = Date()
             self.saveToDisk()
+        }
+    }
+
+    /// Mottar transferUserInfo-payloads fra iPhone. Bruker vi denne
+    /// mekanismen for pondus-templates siden det er bakgrunn-tolerant
+    /// og kan levere selv om Watch var av da iPhone pushet.
+    nonisolated func session(
+        _ session: WCSession,
+        didReceiveUserInfo userInfo: [String: Any] = [:]
+    ) {
+        handleIncomingPayload(userInfo)
+    }
+
+    /// Mottar sendMessage-payloads (foreground, raskest, ingen svar).
+    nonisolated func session(
+        _ session: WCSession,
+        didReceiveMessage message: [String: Any]
+    ) {
+        handleIncomingPayload(message)
+    }
+
+    /// Felles dispatcher for både transferUserInfo + sendMessage payloads.
+    nonisolated private func handleIncomingPayload(_ payload: [String: Any]) {
+        guard let type = payload["type"] as? String else { return }
+        switch type {
+        case WatchPondusMessageType.templatesSync:
+            let raw = payload["templates"] as? [[String: Any]] ?? []
+            guard let data = try? JSONSerialization.data(withJSONObject: raw, options: []),
+                  let decoded = try? JSONDecoder().decode([WatchPondusTemplate].self, from: data)
+            else { return }
+            Task { @MainActor in
+                WatchPondusStore.shared.apply(decoded)
+            }
+        default:
+            break
         }
     }
 }

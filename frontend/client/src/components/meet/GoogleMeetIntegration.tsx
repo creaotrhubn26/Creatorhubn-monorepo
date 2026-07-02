@@ -19,8 +19,10 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  Divider,
   FormControl,
   InputLabel,
+  Link,
   List,
   ListItem,
   ListItemIcon,
@@ -42,7 +44,10 @@ import {
   CheckCircle as CheckIcon,
   CalendarToday as CalendarIcon,
   Group as GroupIcon,
+  CloudDownload as CloudDownloadIcon,
+  AutoFixHigh as AutoFixHighIcon,
 } from '@mui/icons-material';
+import { apiRequest } from '@/lib/queryClient';
 import { useTheming } from '../../utils/theming-helper';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
 import { useProfessionSpecificNotifications } from '../../hooks/useProfessionSpecificNotifications';
@@ -134,6 +139,13 @@ function generateMockMeetings(profession: GoogleMeetIntegrationProps['profession
   ];
 }
 
+interface MeetArtifactItem {
+  type: 'recording' | 'transcript';
+  driveFileId: string | null;
+  name: string | null;
+  webViewLink: string | null;
+}
+
 export default function GoogleMeetIntegration({
   profession,
   userId,
@@ -149,6 +161,18 @@ export default function GoogleMeetIntegration({
   const [form, setForm] = useState<NewMeetingForm>(initialMeetingForm);
   const [waitingClients, setWaitingClients] = useState<string[]>([]);
   const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null);
+
+  // Meet-opptak-import (drive.meet.readonly + meetings.space.readonly).
+  const [meetLinkInput, setMeetLinkInput] = useState('');
+  const [importBusy, setImportBusy] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [artifacts, setArtifacts] = useState<MeetArtifactItem[]>([]);
+
+  // Apps Script-automatisering (script.projects + drive.scripts).
+  const [scriptFileId, setScriptFileId] = useState('');
+  const [scriptBusy, setScriptBusy] = useState(false);
+  const [scriptError, setScriptError] = useState<string | null>(null);
+  const [scriptResult, setScriptResult] = useState<{ webViewLink: string } | null>(null);
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const notifications = useProfessionSpecificNotifications(profession, userId);
@@ -268,6 +292,53 @@ export default function GoogleMeetIntegration({
     });
   };
 
+  const importRecordings = async (): Promise<void> => {
+    const link = meetLinkInput.trim();
+    if (!link) {
+      setImportError('Lim inn en Google Meet-lenke.');
+      return;
+    }
+    setImportBusy(true);
+    setImportError(null);
+    try {
+      const result = (await apiRequest('/api/creatorhub/google/meet/import-artifacts', {
+        method: 'POST',
+        body: { meetLink: link, userId },
+      })) as { artifacts?: MeetArtifactItem[] };
+      const list = Array.isArray(result?.artifacts) ? result.artifacts : [];
+      setArtifacts(list);
+      if (list.length === 0) {
+        setImportError('Fant ingen opptak eller transkripsjoner for dette møtet ennå.');
+      }
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : 'Kunne ikke hente opptak.');
+    } finally {
+      setImportBusy(false);
+    }
+  };
+
+  const attachAutomation = async (): Promise<void> => {
+    const fileId = scriptFileId.trim();
+    if (!fileId) {
+      setScriptError('Lim inn Drive-fil-ID til leveranse-arket.');
+      return;
+    }
+    setScriptBusy(true);
+    setScriptError(null);
+    setScriptResult(null);
+    try {
+      const result = (await apiRequest('/api/creatorhub/google/apps-script/attach', {
+        method: 'POST',
+        body: { parentFileId: fileId, userId },
+      })) as { webViewLink?: string };
+      setScriptResult({ webViewLink: result?.webViewLink ?? '' });
+    } catch (err) {
+      setScriptError(err instanceof Error ? err.message : 'Kunne ikke feste automatisering.');
+    } finally {
+      setScriptBusy(false);
+    }
+  };
+
   const joinMeeting = (meeting: Meeting): void => {
     setWaitingClients((prev) => prev.filter((name) => name !== meeting.clientName));
 
@@ -301,6 +372,113 @@ export default function GoogleMeetIntegration({
           Nytt møte
         </Button>
       </Box>
+
+      {!compact && (
+        <Card variant="outlined" sx={{ mb: 2 }}>
+          <CardContent>
+            <Typography
+              variant="subtitle1"
+              sx={{ fontWeight: 600, mb: 0.5, display: 'flex', alignItems: 'center', gap: 1 }}
+            >
+              <CloudDownloadIcon fontSize="small" /> Importer Meet-opptak
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+              Hent opptak og transkripsjoner fra et Google Meet-møte inn i prosjektet.
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+              <TextField
+                size="small"
+                label="Google Meet-lenke"
+                placeholder="https://meet.google.com/abc-defg-hij"
+                value={meetLinkInput}
+                onChange={(event) => setMeetLinkInput(event.target.value)}
+                sx={{ flex: 1, minWidth: 220 }}
+              />
+              <Button
+                variant="contained"
+                onClick={importRecordings}
+                disabled={importBusy}
+                startIcon={importBusy ? <CircularProgress size={16} /> : <CloudDownloadIcon />}
+              >
+                Importer opptak
+              </Button>
+            </Box>
+            {importError && (
+              <Alert severity="info" sx={{ mt: 1.5 }}>
+                {importError}
+              </Alert>
+            )}
+            {artifacts.length > 0 && (
+              <List dense sx={{ mt: 1 }}>
+                {artifacts.map((artifact, index) => (
+                  <ListItem key={artifact.driveFileId ?? index} disableGutters>
+                    <ListItemIcon sx={{ minWidth: 32 }}>
+                      {artifact.type === 'transcript' ? (
+                        <ScheduleIcon fontSize="small" />
+                      ) : (
+                        <MeetIcon fontSize="small" />
+                      )}
+                    </ListItemIcon>
+                    <ListItemText
+                      primary={artifact.name ?? (artifact.type === 'transcript' ? 'Transkripsjon' : 'Opptak')}
+                      secondary={artifact.type === 'transcript' ? 'Transkripsjon' : 'Opptak'}
+                    />
+                    {artifact.webViewLink && (
+                      <Link href={artifact.webViewLink} target="_blank" rel="noopener noreferrer">
+                        Åpne
+                      </Link>
+                    )}
+                  </ListItem>
+                ))}
+              </List>
+            )}
+
+            <Divider sx={{ my: 2 }} />
+
+            <Typography
+              variant="subtitle1"
+              sx={{ fontWeight: 600, mb: 0.5, display: 'flex', alignItems: 'center', gap: 1 }}
+            >
+              <AutoFixHighIcon fontSize="small" /> Leveranse-automatisering (Apps Script)
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+              Fest en «CreatorHub»-meny med auto-formatering og statusstyring på et leveranse-ark.
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+              <TextField
+                size="small"
+                label="Drive-fil-ID (leveranse-ark)"
+                value={scriptFileId}
+                onChange={(event) => setScriptFileId(event.target.value)}
+                sx={{ flex: 1, minWidth: 220 }}
+              />
+              <Button
+                variant="outlined"
+                onClick={attachAutomation}
+                disabled={scriptBusy}
+                startIcon={scriptBusy ? <CircularProgress size={16} /> : <AutoFixHighIcon />}
+              >
+                Legg til automatisering
+              </Button>
+            </Box>
+            {scriptError && (
+              <Alert severity="warning" sx={{ mt: 1.5 }}>
+                {scriptError}
+              </Alert>
+            )}
+            {scriptResult && (
+              <Alert severity="success" sx={{ mt: 1.5 }}>
+                Automatisering lagt til.{' '}
+                {scriptResult.webViewLink && (
+                  <Link href={scriptResult.webViewLink} target="_blank" rel="noopener noreferrer">
+                    Åpne skriptet
+                  </Link>
+                )}
+              </Alert>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {loading && <CircularProgress size={24} />}
 

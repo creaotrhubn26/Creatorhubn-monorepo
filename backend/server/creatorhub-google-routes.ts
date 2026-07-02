@@ -12,6 +12,8 @@ import {
   type GoogleWorkspaceOauthApp,
 } from './google-workspace-oauth.js';
 import { ensureGoogleWorkspaceConnectionsSchema } from './google-workspace-connections-schema.js';
+import { getAuthorizedWorkspaceClient, listMeetArtifactsForMeeting } from './google-meet.js';
+import { attachDeliverableAutomationScript } from './apps-script-service.js';
 
 type ActiveSessionData = {
   userId: string;
@@ -116,6 +118,12 @@ const CREATORHUB_GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/drive',
   'https://www.googleapis.com/auth/drive.file',
   'https://www.googleapis.com/auth/drive.readonly',
+  // Meet-opptak-import: lese Meet-genererte Drive-filer (opptak/transkript).
+  'https://www.googleapis.com/auth/drive.meet.readonly',
+  'https://www.googleapis.com/auth/meetings.space.readonly',
+  // Apps Script-automatisering: opprette/skrive container-bundne skript.
+  'https://www.googleapis.com/auth/drive.scripts',
+  'https://www.googleapis.com/auth/script.projects',
   'https://www.googleapis.com/auth/documents',
   'https://www.googleapis.com/auth/calendar',
   'https://www.googleapis.com/auth/calendar.events',
@@ -632,6 +640,72 @@ export function createCreatorHubGoogleRouter(
     } catch (error) {
       console.error('CreatorHub Google status error:', error);
       res.status(500).json({ error: 'Kunne ikke hente CreatorHub Google-status' });
+    }
+  });
+
+  // Meet-opptak-import: henter opptak + transkripsjoner for et Google Meet-møte
+  // og fester dem til Drive-filene (Meet REST API + drive.meet.readonly).
+  router.post('/meet/import-artifacts', async (req: Request, res: Response) => {
+    try {
+      const requestUser = await resolveOptionalRequestUser(req, pool, activeSessions);
+      const preferredUserId =
+        requestUser?.userId
+        ?? readOptionalHeaderValue(req, 'x-user-id')
+        ?? readStringValue(req.body?.userId);
+      if (!preferredUserId) {
+        return res.status(400).json({
+          error: 'Krever en innlogget, koblet Google Workspace-bruker.',
+        });
+      }
+      const result = await listMeetArtifactsForMeeting(
+        pool,
+        {
+          meetingCode: readStringValue(req.body?.meetingCode),
+          meetLink: readStringValue(req.body?.meetLink),
+          startTime: readStringValue(req.body?.startTime),
+        },
+        preferredUserId,
+      );
+      res.json(result);
+    } catch (error) {
+      console.error('CreatorHub Meet import error:', error);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Kunne ikke hente Meet-opptak',
+      });
+    }
+  });
+
+  // Apps Script-automatisering: fester et container-bundet skript (CreatorHub-meny
+  // + leveranse-makroer) på en Drive-fil (Apps Script API + drive.scripts).
+  router.post('/apps-script/attach', async (req: Request, res: Response) => {
+    try {
+      const requestUser = await resolveOptionalRequestUser(req, pool, activeSessions);
+      const preferredUserId =
+        requestUser?.userId
+        ?? readOptionalHeaderValue(req, 'x-user-id')
+        ?? readStringValue(req.body?.userId);
+      if (!preferredUserId) {
+        return res.status(400).json({
+          error: 'Krever en innlogget, koblet Google Workspace-bruker.',
+        });
+      }
+      const parentFileId =
+        readStringValue(req.body?.parentFileId) ?? readStringValue(req.body?.fileId);
+      if (!parentFileId) {
+        return res.status(400).json({
+          error: 'Mangler parentFileId (Drive-fila skriptet skal festes på).',
+        });
+      }
+      const oauthClient = await getAuthorizedWorkspaceClient(pool, preferredUserId);
+      const result = await attachDeliverableAutomationScript(oauthClient, parentFileId, {
+        title: readStringValue(req.body?.title) ?? undefined,
+      });
+      res.json(result);
+    } catch (error) {
+      console.error('CreatorHub Apps Script attach error:', error);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Kunne ikke feste Apps Script-automatisering',
+      });
     }
   });
 
