@@ -3682,7 +3682,20 @@ extension APIClient {
         body: Data? = nil,
         contentType: String = "application/json"
     ) async throws -> Data {
-        var req = URLRequest(url: baseURL.appendingPathComponent(path))
+        // Fix (2026-07-02): `baseURL.appendingPathComponent(path)` percent-koder
+        // `?` og `&` i path (behandler hele strengen som én path-segment) — så
+        // "/routes/team-nearby?lat=..." ble til "/routes/team-nearby%3Flat=..."
+        // og Express parset det som `id="team-nearby?lat=..."` → UUID-cast-500.
+        // Nå bygger vi URL-en via string-konkatenering slik at query-delen
+        // beholdes intakt.
+        let baseString = baseURL.absoluteString.hasSuffix("/")
+            ? String(baseURL.absoluteString.dropLast())
+            : baseURL.absoluteString
+        let normalizedPath = path.hasPrefix("/") ? path : "/\(path)"
+        guard let url = URL(string: baseString + normalizedPath) else {
+            throw URLError(.badURL)
+        }
+        var req = URLRequest(url: url)
         req.httpMethod = method
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         req.setValue(contentType, forHTTPHeaderField: "Content-Type")
@@ -3690,6 +3703,13 @@ extension APIClient {
         let (data, response) = try await session.data(for: req)
         try Self.validate(response, data: data)
         return data
+    }
+
+    /// Rå Data-fetch for eksterne response-format (GeoJSON, PDF, blobs).
+    /// Bruker samme URL-bygg + auth-header som `_get`, men returnerer
+    /// bytes-en uten Decodable-dekoding.
+    func _raw(_ path: String) async throws -> Data {
+        try await _request(path, method: "GET")
     }
 
     func _get<R: Decodable>(_ path: String) async throws -> R {
