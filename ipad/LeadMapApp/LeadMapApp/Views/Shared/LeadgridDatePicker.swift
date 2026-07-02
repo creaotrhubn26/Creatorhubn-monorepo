@@ -51,6 +51,7 @@ struct LeadgridDateFieldRow: View {
     private var formattedDate: String {
         let f = DateFormatter()
         f.locale = Locale(identifier: "nb_NO")
+        f.timeZone = TimeZone(identifier: "Europe/Oslo") ?? .current
         if showTime {
             f.dateFormat = "d. MMM yyyy, HH:mm"
         } else {
@@ -126,6 +127,11 @@ struct LeadgridDatePickerSheet: View {
         var c = Calendar(identifier: .gregorian)
         c.firstWeekday = 2 // Mandag først (norsk standard)
         c.locale = Locale(identifier: "nb_NO")
+        // Fix 2026-07-02: kalenderen viste feil dato («i går») på Mac Catalyst
+        // fordi TimeZone default falt tilbake til UTC på noen konfigurasjoner
+        // → dateComponents / isDateInToday-sammenligninger krysset midnatt.
+        // Låser til Europe/Oslo så vi alltid er i norsk tidssone.
+        c.timeZone = TimeZone(identifier: "Europe/Oslo") ?? .current
         return c
     }()
     private let weekdaySymbols: [String] = ["Man", "Tir", "Ons", "Tor", "Fre", "Lør", "Søn"]
@@ -142,7 +148,10 @@ struct LeadgridDatePickerSheet: View {
         self.onConfirm = onConfirm
         self.onCancel = onCancel
         self.quickActions = quickActions
-        let cal = Calendar(identifier: .gregorian)
+        // Bruk Europe/Oslo også her (init går før self.cal er tilgjengelig).
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "Europe/Oslo") ?? .current
+        cal.locale = Locale(identifier: "nb_NO")
         let comps = cal.dateComponents([.year, .month, .day, .hour, .minute], from: initialDate)
         _displayedMonth = State(initialValue: cal.date(from: DateComponents(
             year: comps.year, month: comps.month, day: 1
@@ -510,6 +519,7 @@ struct LeadgridDatePickerSheet: View {
     private func monthYearString() -> String {
         let f = DateFormatter()
         f.locale = Locale(identifier: "nb_NO")
+        f.timeZone = TimeZone(identifier: "Europe/Oslo") ?? .current
         f.dateFormat = "LLLL yyyy"
         return f.string(from: displayedMonth)
     }
