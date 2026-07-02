@@ -103,17 +103,46 @@ extension WatchSession: WCSessionDelegate {
     }
 
     /// Mottar quick-action fra Watch (sendt via `transferUserInfo`).
+    /// Ukjente message-typer (f.eks. pondus.template.activate) videresendes
+    /// til PondusWatchSync — vi kan ikke ha to WCSessionDelegates på samme
+    /// WCSession.default.
     nonisolated func session(
         _ session: WCSession,
         didReceiveUserInfo userInfo: [String : Any] = [:]
     ) {
-        guard userInfo["type"] as? String == "lead_action",
-              let leadId = userInfo["lead_id"] as? String,
-              let action = userInfo["action"] as? String
-        else { return }
+        if userInfo["type"] as? String == "lead_action",
+           let leadId = userInfo["lead_id"] as? String,
+           let action = userInfo["action"] as? String
+        {
+            Task { @MainActor in
+                self.onQuickAction?(leadId, action)
+            }
+            return
+        }
+        // Route ukjente meldinger til andre håndterere.
+        // Snapshotting userInfo som Sendable-dictionary for cross-actor-hop.
+        let snapshot = SendableWatchPayload(dict: userInfo)
         Task { @MainActor in
-            self.onQuickAction?(leadId, action)
+            PondusWatchSync.shared.handleIncomingMessage(snapshot.dict)
         }
     }
+
+    /// sendMessage-path (foreground). Samme routing som transferUserInfo.
+    nonisolated func session(
+        _ session: WCSession,
+        didReceiveMessage message: [String: Any]
+    ) {
+        let snapshot = SendableWatchPayload(dict: message)
+        Task { @MainActor in
+            PondusWatchSync.shared.handleIncomingMessage(snapshot.dict)
+        }
+    }
+}
+
+/// Sendable wrapper rundt ren-verdi [String: Any]-dictionary. Vi krysser
+/// aktør-grenser med primitive verdier (String/Int/Double), ikke referanser,
+/// så det er trygt å markere som Sendable via en unchecked wrapper.
+private struct SendableWatchPayload: @unchecked Sendable {
+    let dict: [String: Any]
 }
 
