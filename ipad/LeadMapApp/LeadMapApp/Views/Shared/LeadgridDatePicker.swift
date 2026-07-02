@@ -286,39 +286,37 @@ struct LeadgridDatePickerSheet: View {
                 }
             }
         } label: {
-            VStack(spacing: 2) {
-                ZStack {
-                    if isSelected {
-                        Circle()
-                            .fill(
-                                LinearGradient(
-                                    colors: [LDP.purple, LDP.purpleLight],
-                                    startPoint: .top, endPoint: .bottom
-                                )
+            ZStack {
+                if isSelected {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [LDP.purple, LDP.purpleLight],
+                                startPoint: .top, endPoint: .bottom
                             )
-                            .shadow(color: LDP.purpleGlow, radius: 8)
-                    } else if isToday {
-                        Circle()
-                            .strokeBorder(LDP.purpleLight.opacity(0.5), lineWidth: 1.5)
-                    }
-                    Text(day.number)
-                        .font(.system(size: 14, weight: isSelected ? .heavy : (isToday ? .bold : .medium), design: .rounded))
-                        .foregroundStyle(
-                            day.date == nil
-                                ? LDP.textTertiary
-                                : (isSelected ? .white : (isToday ? .white : LDP.textDim))
                         )
+                        .shadow(color: LDP.purpleGlow, radius: 8)
+                } else if isToday {
+                    Circle()
+                        .strokeBorder(LDP.purpleLight.opacity(0.5), lineWidth: 1.5)
                 }
-                .frame(height: 30)
-                // Aktivitets-prikker (møter + oppfølginger)
+                Text(day.number)
+                    .font(.system(size: 14, weight: isSelected ? .heavy : (isToday ? .bold : .medium), design: .rounded))
+                    .foregroundStyle(
+                        day.date == nil
+                            ? LDP.textTertiary
+                            : (isSelected ? .white : (isToday ? .white : LDP.textDim))
+                    )
+                // Aktivitets-prikker som overlay i bunn — bevarer fast
+                // cell-høyde 38pt (VStack med conditional Color.clear-spacer
+                // trigget UIView-constraint-conflict på Mac Catalyst).
                 if let ind = indicator, ind.hasAny {
                     activityDots(for: ind, selected: isSelected)
-                } else {
-                    // Ta samme høyde så cellene ikke hopper
-                    Color.clear.frame(height: 6)
+                        .frame(maxHeight: .infinity, alignment: .bottom)
+                        .padding(.bottom, 2)
                 }
             }
-            .frame(height: 40)
+            .frame(height: 38)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
