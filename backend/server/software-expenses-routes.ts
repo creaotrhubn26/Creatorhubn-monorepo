@@ -171,7 +171,9 @@ ${body}
 
 Svar KUN med gyldig JSON, ingen annen tekst:
 {"isReceipt": <true|false>, "itemType": "<hardware|software>",
- "vendor": "<selger/leverandør>", "product": "<produkt/modell/plan>",
+ "vendor": "<selger/butikk, f.eks. Elkjøp/Adobe>",
+ "brand": "<for hardware: PRODUSENT (Sony/Canon/Neumann); for software: samme som vendor>",
+ "product": "<produkt/modell/plan>",
  "category": "<for software én av: ${CATEGORIES.join(" | ")}; for hardware f.eks. Kamera|Objektiv|Mikrofon|Lydkort|Monitor|Instrument|PC|Drone|Tilbehør>",
  "amount": <tall uten valutategn, el. null>, "currency": "<ISO f.eks. USD|EUR|NOK>",
  "billingCycle": "<monthly|yearly|engang|unknown>", "isSubscription": <true|false>,
@@ -203,6 +205,7 @@ export function setupSoftwareExpensesRoutes(deps: SoftwareExpensesRoutesDeps): v
     await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS software_expenses_user_email_uidx ON software_expenses (user_id, source_email_id) WHERE source_email_id IS NOT NULL`);
     await pool.query(`ALTER TABLE software_expenses ADD COLUMN IF NOT EXISTS item_type varchar(16) DEFAULT 'software'`).catch(() => {});
     await pool.query(`ALTER TABLE software_expenses ADD COLUMN IF NOT EXISTS serial_hint varchar`).catch(() => {});
+    await pool.query(`ALTER TABLE software_expenses ADD COLUMN IF NOT EXISTS brand_hint varchar`).catch(() => {});
     ensured = true;
   }
 
@@ -353,11 +356,17 @@ export function setupSoftwareExpensesRoutes(deps: SoftwareExpensesRoutesDeps): v
       const reklam = reklamasjonExpiry(purchaseDate, 5);
       const warrantyYears = Number(req.body?.warrantyYears) > 0 ? Number(req.body.warrantyYears) : null;
       const warrantyExpiry = warrantyYears && purchaseDate ? reklamasjonExpiry(purchaseDate, warrantyYears) : null;
-      const brand = (e.vendor || e.product || "Utstyr").slice(0, 120);
+      // Merke = PRODUSENT (brand_hint), ikke butikk (vendor). Butikk → purchaseVendor.
+      const brand = (e.brand_hint || e.vendor || e.product || "Utstyr").slice(0, 120);
       const model = (e.product || e.vendor || "Ukjent").slice(0, 120);
+      // Garanti/reklamasjon/kvittering legges under settings.specifications — det er
+      // DET inventar-API-et eksponerer som `specifications` (settings selv returneres ikke).
       const settings = {
-        source: "email-receipt", receiptEmailId: e.source_email_id, receiptVendor: e.vendor,
-        reklamasjonExpiry: reklam, purchasePriceNok: e.amount_nok, serialNumber: e.serial_hint || null,
+        specifications: {
+          source: "email-receipt", receiptEmailId: e.source_email_id, purchaseVendor: e.vendor,
+          reklamasjonExpiry: reklam, warrantyExpiry, purchaseDate, purchasePriceNok: e.amount_nok,
+          serialNumber: e.serial_hint || null,
+        },
       };
       const eq = await pool.query(
         `INSERT INTO user_equipment
@@ -486,6 +495,7 @@ export function setupSoftwareExpensesRoutes(deps: SoftwareExpensesRoutesDeps): v
             source_email_id: id,
             item_type: itemType,
             vendor: String(p.vendor || "").slice(0, 200) || null,
+            brand_hint: String(p.brand || "").slice(0, 120) || null,
             product: String(p.product || "").slice(0, 200) || null,
             category,
             serial_hint: String(p.serialNumber || "").slice(0, 120) || null,
@@ -508,13 +518,13 @@ export function setupSoftwareExpensesRoutes(deps: SoftwareExpensesRoutesDeps): v
             `INSERT INTO software_expenses
                (user_id, vendor, product, category, amount_nok, amount_original, currency,
                 billing_cycle, is_subscription, purchase_date, renewal_date, source,
-                source_email_id, confidence, status, item_type, serial_hint)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'email',$12,$13,'forslag',$14,$15)
+                source_email_id, confidence, status, item_type, serial_hint, brand_hint)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'email',$12,$13,'forslag',$14,$15,$16)
              ON CONFLICT (user_id, source_email_id) WHERE source_email_id IS NOT NULL DO NOTHING
              RETURNING id`,
             [session.userId, p.vendor, p.product, p.category, p.amount_nok, p.amount_original,
              p.currency, p.billing_cycle, p.is_subscription, p.purchase_date, p.renewal_date,
-             p.source_email_id, p.confidence, p.item_type, p.serial_hint]);
+             p.source_email_id, p.confidence, p.item_type, p.serial_hint, p.brand_hint]);
           if (r.rows.length) created++;
         } catch (e) { console.warn("[software-expenses] insert suggestion failed", (e as any)?.message); }
       }
