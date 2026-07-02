@@ -22,6 +22,7 @@
 
 import Foundation
 import CoreLocation
+import MapKit
 
 @MainActor
 final class KartverketService {
@@ -136,6 +137,84 @@ final class KartverketService {
         } catch {
             return nil
         }
+    }
+
+    // MARK: - Kommune-grense (GeoJSON polygon)
+
+    /// Kommune-grense som MapKit-overlay(s). Én kommune kan returnere
+    /// flere `MKPolygon` (multipolygon: fastland + øyer). Sentroid regnes
+    /// på det største fragmentet.
+    ///
+    /// `@unchecked Sendable` fordi MKPolygon ikke er offisielt Sendable,
+    /// men objektet er immutable etter dekoding og leses kun fra
+    /// `@MainActor` SwiftUI-koden.
+    struct KommuneOmrade: @unchecked Sendable {
+        let kommunenummer: String
+        let polygons: [MKPolygon]
+        let center: CLLocationCoordinate2D
+    }
+
+    /// Hent kommune-grense fra Leadgrid-backendens Kartverket-proxy.
+    /// Returnerer nil ved feil (klient faller tilbake til hardkodet).
+    func fetchKommuneOmrade(
+        kommunenummer: String, using api: APIClient
+    ) async -> KommuneOmrade? {
+        // Response = GeoJSON Feature. Vi må trekke ut rå JSON-bytes fra
+        // backend og gi dem til MKGeoJSONDecoder.
+        let path = "/api/leadgrid/kartverket/kommune/\(kommunenummer)/omrade"
+        do {
+            let data = try await api._raw(path)
+            return decodeKommuneOmrade(kommunenummer: kommunenummer, data: data)
+        } catch {
+            return nil
+        }
+    }
+
+    private func decodeKommuneOmrade(
+        kommunenummer: String, data: Data
+    ) -> KommuneOmrade? {
+        let decoder = MKGeoJSONDecoder()
+        guard let objects = try? decoder.decode(data) else { return nil }
+        var polygons: [MKPolygon] = []
+        for obj in objects {
+            if let feature = obj as? MKGeoJSONFeature {
+                for geom in feature.geometry {
+                    if let poly = geom as? MKPolygon {
+                        polygons.append(poly)
+                    } else if let multi = geom as? MKMultiPolygon {
+                        polygons.append(contentsOf: multi.polygons)
+                    }
+                }
+            } else if let poly = obj as? MKPolygon {
+                polygons.append(poly)
+            } else if let multi = obj as? MKMultiPolygon {
+                polygons.append(contentsOf: multi.polygons)
+            }
+        }
+        guard !polygons.isEmpty else { return nil }
+        // Sentroid på det største polygonet (fastland > øyer)
+        let biggest = polygons.max(by: { $0.pointCount < $1.pointCount }) ?? polygons[0]
+        return KommuneOmrade(
+            kommunenummer: kommunenummer,
+            polygons: polygons,
+            center: polygonCentroid(biggest)
+        )
+    }
+
+    private func polygonCentroid(_ polygon: MKPolygon) -> CLLocationCoordinate2D {
+        let count = polygon.pointCount
+        guard count > 0 else { return polygon.coordinate }
+        let pts = UnsafeBufferPointer(start: polygon.points(), count: count)
+        var sumLat = 0.0, sumLon = 0.0
+        for i in 0..<count {
+            let c = pts[i].coordinate
+            sumLat += c.latitude
+            sumLon += c.longitude
+        }
+        return CLLocationCoordinate2D(
+            latitude: sumLat / Double(count),
+            longitude: sumLon / Double(count)
+        )
     }
 
     // MARK: - Bbox
