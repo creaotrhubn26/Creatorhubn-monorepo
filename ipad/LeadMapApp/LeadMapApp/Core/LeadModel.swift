@@ -21,19 +21,22 @@ enum LeadStatus: String, Codable, CaseIterable, Identifiable {
 
     public var id: String { rawValue }
 
+    /// Norsk visning i UI (2026-07-02: byttet fra engelsk fordi picker-menyer
+    /// i VisitLogModal viste «Interested / Meeting booked / Declined» osv.
+    /// Rå enum-verdiene ligger fortsatt i engelsk snake_case mot backend).
     var label: String {
         switch self {
-        case .unvisited: return "Unvisited"
-        case .visited: return "Visited"
-        case .return: return "Return"
-        case .notPresent: return "Not present"
-        case .declined: return "Declined"
-        case .interested: return "Interested"
-        case .meetingBooked: return "Meeting booked"
-        case .proposalSent: return "Proposal sent"
-        case .won: return "Won"
-        case .lost: return "Lost"
-        case .doNotContact: return "Do not contact"
+        case .unvisited: return "Ikke besøkt"
+        case .visited: return "Besøkt"
+        case .return: return "Kom tilbake"
+        case .notPresent: return "Ikke tilstede"
+        case .declined: return "Avslo"
+        case .interested: return "Interessert"
+        case .meetingBooked: return "Møte booket"
+        case .proposalSent: return "Tilbud sendt"
+        case .won: return "Vunnet"
+        case .lost: return "Tapt"
+        case .doNotContact: return "Ikke kontakt"
         }
     }
 }
