@@ -700,19 +700,40 @@ export function registerRoutesAdherenceRoutes(
       if (userIds.length === 0) return res.json({ members: [] });
 
       // For hver bruker: siste kjent posisjon + navn/rolle. Kun de innenfor radius.
-      const posRes = await pool.query<{
-        user_id: string;
-        latitude: number;
-        longitude: number;
-        sampled_at: string;
-        speed_mps: number | null;
-      }>(
-        `SELECT DISTINCT ON (user_id) user_id, latitude, longitude, sampled_at, speed_mps
-           FROM leadgrid_user_positions
-          WHERE user_id = ANY($1::varchar[])
-          ORDER BY user_id, sampled_at DESC`,
-        [userIds],
-      );
+      // Defensiv: hvis mig 0358 ikke er kjørt (leadgrid_user_positions mangler),
+      // returner tom liste i stedet for 500 så UI-en viser "ingen team-medlemmer".
+      const posRes = await pool
+        .query<{
+          user_id: string;
+          latitude: number;
+          longitude: number;
+          sampled_at: string;
+          speed_mps: number | null;
+        }>(
+          `SELECT DISTINCT ON (user_id) user_id, latitude, longitude, sampled_at, speed_mps
+             FROM leadgrid_user_positions
+            WHERE user_id = ANY($1::varchar[])
+            ORDER BY user_id, sampled_at DESC`,
+          [userIds],
+        )
+        .catch((e: unknown) => {
+          const msg = String((e as Error).message ?? "");
+          if (msg.includes("does not exist")) {
+            console.warn(
+              "[routes-adherence] leadgrid_user_positions mangler — kjør mig 0358",
+            );
+            return {
+              rows: [] as Array<{
+                user_id: string;
+                latitude: number;
+                longitude: number;
+                sampled_at: string;
+                speed_mps: number | null;
+              }>,
+            };
+          }
+          throw e;
+        });
 
       const usersRes = await pool.query<{
         id: string;

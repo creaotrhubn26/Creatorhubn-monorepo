@@ -61,12 +61,20 @@ final class VoiceTranscriber: NSObject, ObservableObject {
     }
 
     /// Be om permission for Speech + Mic. Kaster TranscriberError ved avslag.
+    ///
+    /// Swift 6 concurrency-fix (2026-07-02): TCC-callbacks (SFSpeechRecognizer
+    /// + AVAudioApplication) fyres på XPC-tråden. Uten `@Sendable`-annotasjon
+    /// prøver Swift-runtime å hoppe tilbake til opprinnelig isolasjon → når
+    /// den ikke matcher assert-en i `dispatch_assert_queue`, crasher appen.
+    /// Løsning: eksplisitt `@Sendable` på handleren + resume via Task så
+    /// vi ikke resumer continuation fra XPC-tråd.
     func requestPermissions() async throws {
-        // Speech recognition
+        // Speech recognition — TCC-callback på XPC-tråd
         let speechStatus = await withCheckedContinuation { (cont: CheckedContinuation<SFSpeechRecognizerAuthorizationStatus, Never>) in
-            SFSpeechRecognizer.requestAuthorization { status in
+            let handler: @Sendable (SFSpeechRecognizerAuthorizationStatus) -> Void = { status in
                 cont.resume(returning: status)
             }
+            SFSpeechRecognizer.requestAuthorization(handler)
         }
         switch speechStatus {
         case .authorized: break
@@ -76,16 +84,15 @@ final class VoiceTranscriber: NSObject, ObservableObject {
             throw TranscriberError.permissionDenied("Tale-gjenkjenning")
         }
 
-        // Mikrofon
+        // Mikrofon — TCC-callback på XPC-tråd, samme fix
         let micGranted: Bool = await withCheckedContinuation { cont in
+            let handler: @Sendable (Bool) -> Void = { granted in
+                cont.resume(returning: granted)
+            }
             if #available(iOS 17.0, *) {
-                AVAudioApplication.requestRecordPermission { granted in
-                    cont.resume(returning: granted)
-                }
+                AVAudioApplication.requestRecordPermission(completionHandler: handler)
             } else {
-                AVAudioSession.sharedInstance().requestRecordPermission { granted in
-                    cont.resume(returning: granted)
-                }
+                AVAudioSession.sharedInstance().requestRecordPermission(handler)
             }
         }
         if !micGranted {
