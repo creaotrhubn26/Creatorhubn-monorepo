@@ -64,6 +64,10 @@ struct OversiktView: View {
     @State private var analyseOpen = false
     @State private var profileOpen = false
     @State private var myProfileOpen = false
+    // Kalender-handlinger 2026-07-02: sheets startet fra dato-picker
+    @State private var showBookMeeting: Bool = false
+    @State private var bookMeetingDay: Int = Calendar.current.component(.day, from: Date())
+    @State private var showAddLead: Bool = false
 
     /// iPhone-kompakt = bottom-tabs + enkelt-kolonne (alt under hverandre).
     private var isCompact: Bool { hSize == .compact }
@@ -82,6 +86,17 @@ struct OversiktView: View {
                                email: appState.userEmail,
                                leads: effectiveLeads)
             }
+            // Kalender → Book møte: eksisterende BookMeetingSheet fra Møter-fanen
+            .sheet(isPresented: $showBookMeeting) {
+                BookMeetingSheet(dayOfMonth: bookMeetingDay)
+            }
+            // Kalender → Ny lead: eksisterende AddLeadSheet fra Kart-fanen
+            .sheet(isPresented: $showAddLead) {
+                AddLeadSheet { _ in
+                    // Sheet-ene har egen dismiss + save-flow. Toast håndteres
+                    // av bunn-refresh senere hvis vi trenger.
+                }
+            }
             // Kalender-handlinger → åpne relevant flyt. Book møte og Ny lead
             // krever hele iPad-mocking-kjeden så vi ruter dem til de allerede-
             // eksisterende popoverne (analyseOpen / nextActionsOpen) med
@@ -97,22 +112,27 @@ struct OversiktView: View {
             }
     }
 
-    /// Rutes kalender-handlingene til relevant flyt. Book/følg opp/ny lead
-    /// åpner samme popover som header-CTA-ene (til vi porterer dedikerte
-    /// sheets), «Vis dagens plan» → NextActions-popover.
+    /// Rutes kalender-handlingene til relevant sheet/popover.
+    ///   book_meeting  → BookMeetingSheet(dayOfMonth:)
+    ///   new_lead      → AddLeadSheet(onSave:)
+    ///   new_followup  → nextActionsOpen (Follow-Up-Queue popover)
+    ///   view_day      → nextActionsOpen (samme popover viser dagens plan)
     @MainActor
     private func handleCalendarAction(_ action: String, at date: Date) {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "Europe/Oslo") ?? .current
         switch action {
         case "book_meeting":
-            // Åpne analyse-popoveren (der møter/pipeline vises) som proxy —
-            // erstattes med BookMeetingSheet når den blir portert.
-            analyseOpen = true
-        case "new_followup":
-            nextActionsOpen = true
+            bookMeetingDay = cal.component(.day, from: date)
+            // Liten delay så picker-sheeten rekker å lukke rent
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                showBookMeeting = true
+            }
         case "new_lead":
-            // Åpne activities-popoveren som midlertidig proxy.
-            activitiesOpen = true
-        case "view_day":
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                showAddLead = true
+            }
+        case "new_followup", "view_day":
             nextActionsOpen = true
         default:
             break
