@@ -26,6 +26,7 @@ from __future__ import annotations
 import os, sys, re, glob, subprocess, tempfile, hashlib
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 import bridge
+import vision_bridge
 
 VIDEO_EXT = (".mov", ".mp4", ".mxf", ".m4v", ".avi", ".mkv", ".braw")
 
@@ -60,8 +61,12 @@ def _motion_series(path, fps):
     import numpy as np
     txt = tempfile.mktemp(suffix=".txt")
     vf = f"scale=240:-2,fps={fps},scdet=threshold=0,metadata=print:file={txt}"
-    subprocess.run(["ffmpeg", "-y", "-v", "quiet", "-i", path, "-vf", vf, "-an", "-f", "null", "-"],
-                   check=False)
+    # maskinvare-dekoding (VideoToolbox) for 4K-MXF; faller tilbake til programvare
+    cmd = ["ffmpeg", "-y", "-v", "quiet", "-hwaccel", "videotoolbox", "-i", path,
+           "-vf", vf, "-an", "-f", "null", "-"]
+    if subprocess.run(cmd).returncode != 0 or not os.path.exists(txt):
+        subprocess.run(["ffmpeg", "-y", "-v", "quiet", "-i", path, "-vf", vf, "-an", "-f", "null", "-"],
+                       check=False)
     if not os.path.exists(txt):
         return np.array([]), np.array([])
     times, vals = [], []
@@ -173,6 +178,12 @@ def run(params: dict) -> None:
     post = float(params.get("post_s", 2.5))
     max_c = int(params.get("max_candidates", 120))
     max_clips = int(params.get("max_clips", 0))
+    use_vision = bool(params.get("use_vision", False))
+    vision_fps = float(params.get("vision_fps", 2))
+    face_q_min = float(params.get("face_q_min", 0.4))
+    vision_ok = vision_bridge.available()
+    if use_vision and not vision_ok:
+        bridge.warn("Apple Vision-sidecar (bin/vision_cli) mangler — kjører uten Vision")
 
     root = params.get("source_dir")
     if params.get("clip_paths"):
@@ -192,8 +203,8 @@ def run(params: dict) -> None:
     clips_total = len(clips)
     if max_clips > 0:
         clips = clips[:max_clips]
-    bridge.log(f"Skanner {len(clips)}/{clips_total} klipp · profil «{prof['label']}» · "
-               f"{fps:.0f} fps · bevegelse+ambient")
+    sig = "bevegelse+ambient" + (" + Apple Vision (positur/ansikt)" if (use_vision and vision_ok) else "")
+    bridge.log(f"Skanner {len(clips)}/{clips_total} klipp · profil «{prof['label']}» · {fps:.0f} fps · {sig}")
 
     all_c = []
     for ci, path in enumerate(clips):
@@ -238,6 +249,46 @@ def run(params: dict) -> None:
                 "motion": round(mo, 3), "ambient": round(am, 3), "why": why,
             })
 
+        # --- Apple Vision-lag (opt-in): kroppspositur + ansikt ---
+        if use_vision and vision_ok:
+            vz = vision_bridge.analyze_video(path, fps=vision_fps, requests="pose,quality")
+            frames = (vz or {}).get("frames", [])
+
+            def _mk(t, typ, sc, why):
+                return {"clip_path": path, "clip_name": os.path.basename(path), "camera": cam,
+                        "t_peak": round(t, 2), "in_s": round(max(0, t - pre), 2),
+                        "out_s": round(t + post, 2), "dur_s": round(pre + post, 2),
+                        "type": typ, "score": round(min(1.0, sc), 3),
+                        "motion": 0.0, "ambient": 0.0, "why": why}
+
+            def _runs(key):
+                out, run = [], []
+                for f in frames:
+                    if f.get(key, 0) > 0:
+                        run.append(f["t"])
+                    elif run:
+                        out.append(sum(run) / len(run)); run = []
+                if run:
+                    out.append(sum(run) / len(run))
+                return out
+
+            for t in _runs("arms_raised"):
+                all_c.append(_mk(t, "triumf", 0.85, ["armer opp (triumf)"]))
+            for t in _runs("fall"):
+                all_c.append(_mk(t, "fall", 0.80, ["horisontal kropp (mulig fall)"]))
+            # emosjon: ansikts-kvalitet-topper over terskel, gruppert
+            hi = sorted((f["t"], f.get("face_quality", 0)) for f in frames if f.get("face_quality", 0) >= face_q_min)
+            grp = []
+            for t, q in hi:
+                if grp and t - grp[-1][0] < min_gap:
+                    if q > grp[-1][1]:
+                        grp[-1] = (t, q)
+                else:
+                    grp.append((t, q))
+            for t, q in grp:
+                sc = 0.55 + 0.4 * min(1.0, (q - face_q_min) / max(0.01, 1 - face_q_min))
+                all_c.append(_mk(t, "emosjon", sc, [f"sterkt ansikt (emosjon, q={q:.2f})"]))
+
     # merge pr klipp, ranger globalt, cap, lag thumbnails for topp-N
     by_clip = {}
     for c in all_c:
@@ -259,7 +310,9 @@ def run(params: dict) -> None:
     bridge.result({
         "candidates": merged,
         "summary": {"total": len(merged), "by_type": by_type,
-                    "clips_scanned": len(clips), "clips_total": clips_total},
+                    "clips_scanned": len(clips), "clips_total": clips_total,
+                    "vision_used": bool(use_vision and vision_ok),
+                    "vision_available": vision_ok},
         "profile": profile,
         "params": {"sample_fps": fps, "motion_sens": motion_sens, "ambient_sens": ambient_sens,
                    "min_gap_s": min_gap, "pre_s": pre, "post_s": post, "max_candidates": max_c},
