@@ -2503,6 +2503,62 @@
       ]
     },
     {
+      "id": "render_timeline_safe",
+      "name": "Render-vakt (hele timeline)",
+      "category": "social",
+      "scriptPath": "scripts/social/render_timeline_safe.py",
+      "description": "Render-vakt + ett-klikks full-render. Oppdager fastlåst preset/codec (Audio Only → kun lyd, APVYUV422_10 → «data» ikke video) FØR render, foreslår/retter til video-preset (TikTok 1080p / H264), og rendrer HELE timelinen i én pass fra start til slutt (SelectAllFrames). Verifiserer output med ffprobe (har video? har lyd? varighet?). Aldri re-mux — timelinen er fasit. check_only=true rapporterer bare om oppsettet gir gyldig video.",
+      "requiredInputs": [],
+      "optionalInputs": [
+        { "key": "check_only", "label": "Bare sjekk (ingen render)", "type": "boolean" },
+        { "key": "preset", "label": "Render-preset", "type": "string" },
+        { "key": "out_dir", "label": "Mappe for output", "type": "string" },
+        { "key": "name", "label": "Filnavn", "type": "string" }
+      ]
+    },
+    {
+      "id": "delivery_qc",
+      "name": "Leverings-QC (AI)",
+      "category": "social",
+      "scriptPath": "scripts/social/delivery_qc.py",
+      "description": "AI-vakt etter render: transkriberer den ferdige fila og sammenligner ord-for-ord mot timeline-underteksten (fasit). Per replikk: grønn (tale på tekst-tid), gul (driver mot teksten / delvis treff), rød (mangler i miksen / avkuttet på slutten). Fanger «replikk fullfører ikke», «subs falt ut» og «usync» FØR levering.",
+      "requiredInputs": [
+        { "key": "video_path", "label": "Ferdig fil (.mp4)", "type": "file" }
+      ],
+      "optionalInputs": [
+        { "key": "lead_tol_s", "label": "Toleranse: undertekst foran tale (sek)", "type": "number" },
+        { "key": "lag_tol_s", "label": "Toleranse: undertekst bak tale (sek)", "type": "number" },
+        { "key": "model", "label": "Whisper-modell", "type": "string" }
+      ]
+    },
+    {
+      "id": "clip_completion_check",
+      "name": "«Fullfører replikken?»-vakt",
+      "category": "social",
+      "scriptPath": "scripts/social/clip_completion_check.py",
+      "description": "Går gjennom hvert dialog-klipp på timelinen og sjekker om KILDEN har mer tale rett etter klippets ut-punkt (dvs. at en replikk er kuttet på slutten, slik Emily_06 var midt i «…låne den?»). Trekker ut kilde-lyden etter ut-punktet og transkriberer; finnes tale → flagg. Menneske avgjør.",
+      "requiredInputs": [],
+      "optionalInputs": [
+        { "key": "look_s", "label": "Se i kilden etter ut-punktet (sek)", "type": "number" },
+        { "key": "model", "label": "Whisper-modell", "type": "string" }
+      ]
+    },
+    {
+      "id": "take_ranker",
+      "name": "Take-rangering (menneske-i-loop)",
+      "category": "social",
+      "scriptPath": "scripts/social/take_ranker.py",
+      "description": "AI stabler kandidat-takes, transkriberer, skiller barn/voksen på grunntone (F0), skiller coaching/performance på kontekst, og rangerer med begrunnelse (tekst-treff, klarhet, SNR, riktig stemme) — men velger ALDRI selv. Kilde: mappe, fil-liste eller media-pool-bin. Mennesket tar siste valg.",
+      "requiredInputs": [],
+      "optionalInputs": [
+        { "key": "folder", "label": "Mappe med takes", "type": "string" },
+        { "key": "bin", "label": "Media-pool-bin", "type": "string" },
+        { "key": "expect_text", "label": "Forventet replikk", "type": "string" },
+        { "key": "expect_child", "label": "Forvent barnestemme", "type": "boolean" },
+        { "key": "model", "label": "Whisper-modell", "type": "string" }
+      ]
+    },
+    {
       "id": "extract_social_cut",
       "name": "Extract Social Cut",
       "category": "social",

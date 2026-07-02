@@ -4,6 +4,8 @@ import { executeScript, onScriptEvent, convertFileSrc } from "../api";
 import type { ScriptEvent } from "../types";
 import { SoMeLengthCheck } from "./SoMeLengthCheck";
 import { MusicDuckPanel } from "./MusicDuckPanel";
+import { RenderQCPanel } from "./RenderQCPanel";
+import { TakeRankerPanel } from "./TakeRankerPanel";
 
 /**
  * Social Vertikal (B-kamera) — veiviser som lager en 9:16-versjon av en ferdig
@@ -237,6 +239,12 @@ export function SocialVerticalPanel({ onClose }: { onClose: () => void }) {
 
       {/* Musikk-ducking / balanse: stabil blokk-basert ducking m/ justerbar dybde/overgang/nivå */}
       <MusicDuckPanel />
+
+      {/* Render-vakt + Leverings-QC + «Fullfører replikken?»: render hele timeline, AI verifiserer */}
+      <RenderQCPanel />
+
+      {/* Take-rangering: AI stabler/forklarer kandidat-takes, mennesket velger */}
+      <TakeRankerPanel />
 
       {busyLabel && (
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", marginBottom: 12,
