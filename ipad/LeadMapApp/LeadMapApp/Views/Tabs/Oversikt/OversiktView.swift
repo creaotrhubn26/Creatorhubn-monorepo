@@ -2005,13 +2005,16 @@ struct NextActionRow: View {
 
 private struct PipelineOverviewCard: View {
     let leads: [LeadModel]
+    @State private var demo = DemoModeManager.shared
 
     private struct Stage: Identifiable {
         let id = UUID()
         let name: String
         let count: Int
         let color: Color
-        let trend: String
+        /// Trend-verdier vises kun i demo-modus (mock). Uten demo har vi
+        /// ikke historisk data å regne fra → skjul piler for å ikke lyve.
+        let trend: String?
         let trendUp: Bool
     }
 
@@ -2021,12 +2024,13 @@ private struct PipelineOverviewCard: View {
         let meeting = leads.filter { $0.status == .meetingBooked }.count
         let proposal = leads.filter { $0.status == .proposalSent }.count
         let won = leads.filter { $0.status == .won }.count
+        let isDemo = demo.isActive
         return [
-            Stage(name: "Nye leads",    count: new,      color: Brand.purple, trend: "+18%", trendUp: true),
-            Stage(name: "Kontaktet",    count: contacted, color: Brand.blue,   trend: "+12%", trendUp: true),
-            Stage(name: "Møter avtalt", count: meeting,  color: Brand.green,  trend: "+8%",  trendUp: true),
-            Stage(name: "Tilbud sendt", count: proposal, color: Brand.yellow, trend: "-5%",  trendUp: false),
-            Stage(name: "Vunnet",       count: won,      color: Brand.red,    trend: "+21%", trendUp: true),
+            Stage(name: "Nye leads",    count: new,      color: Brand.purple, trend: isDemo ? "+18%" : nil, trendUp: true),
+            Stage(name: "Kontaktet",    count: contacted, color: Brand.blue,   trend: isDemo ? "+12%" : nil, trendUp: true),
+            Stage(name: "Møter avtalt", count: meeting,  color: Brand.green,  trend: isDemo ? "+8%"  : nil, trendUp: true),
+            Stage(name: "Tilbud sendt", count: proposal, color: Brand.yellow, trend: isDemo ? "-5%"  : nil, trendUp: false),
+            Stage(name: "Vunnet",       count: won,      color: Brand.red,    trend: isDemo ? "+21%" : nil, trendUp: true),
         ]
     }
 
@@ -2081,11 +2085,20 @@ private struct PipelineOverviewCard: View {
                 .foregroundStyle(.white)
                 .monospacedDigit()
                 .frame(width: 56, alignment: .trailing)
+            // Trend-pil kun hvis vi har verdi (dvs. demo-modus). Ellers
+            // beholder vi bredden med en tom placeholder så les-rader
+            // linjerer opp fortsatt.
             HStack(spacing: 2) {
-                Image(systemName: stage.trendUp ? "arrow.up" : "arrow.down")
-                    .font(.system(size: 9, weight: .bold))
-                Text(stage.trend)
-                    .font(.system(size: 10, weight: .semibold))
+                if let trend = stage.trend {
+                    Image(systemName: stage.trendUp ? "arrow.up" : "arrow.down")
+                        .font(.system(size: 9, weight: .bold))
+                    Text(trend)
+                        .font(.system(size: 10, weight: .semibold))
+                } else {
+                    Text("—")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(Brand.textTertiary)
+                }
             }
             .foregroundStyle(stage.trendUp ? Brand.green : Brand.red)
             .frame(width: 48, alignment: .trailing)
@@ -2097,12 +2110,13 @@ private struct PipelineOverviewCard: View {
 
 private struct ActivityTodayCard: View {
     let momentum: LeadgridMomentum?
-    // Mocken viser eksplisitte tall — vi bruker momentum hvis tilgjengelig
-    // (samme felt vi allerede henter), ellers de visuelle defaultene.
-    private var calls: Int { 14 }
-    private var emails: Int { 22 }
-    private var meetings: Int { 3 }
-    private var visits: Int { 7 }
+    @State private var demo = DemoModeManager.shared
+    // Mock-tall vises kun i demo-modus. Ellers 0/dashes til backend
+    // leverer ekte «aktivitet i dag»-tellere.
+    private var calls: Int { demo.isActive ? 14 : 0 }
+    private var emails: Int { demo.isActive ? 22 : 0 }
+    private var meetings: Int { demo.isActive ? 3 : 0 }
+    private var visits: Int { demo.isActive ? 7 : 0 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -2199,15 +2213,32 @@ private struct LeadsOverTimeCard: View {
             .chartYAxis(.hidden)
             .frame(height: 100)
 
+            // Ekte start-/slutt-datoer for 30-dagers-vinduet i stedet for
+            // hardkodete "1. mai / 31. mai"-labels.
             HStack {
-                Text("1. mai").font(.system(size: 10)).foregroundStyle(Brand.textTertiary)
+                Text(Self.dateLabel(daysAgo: 29))
+                    .font(.system(size: 10))
+                    .foregroundStyle(Brand.textTertiary)
                 Spacer()
-                Text("31. mai").font(.system(size: 10)).foregroundStyle(Brand.textTertiary)
+                Text(Self.dateLabel(daysAgo: 0))
+                    .font(.system(size: 10))
+                    .foregroundStyle(Brand.textTertiary)
             }
         }
         .padding(16)
         .background(Brand.card, in: RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(Brand.stroke, lineWidth: 1))
+    }
+
+    private static func dateLabel(daysAgo: Int) -> String {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "Europe/Oslo") ?? .current
+        let d = cal.date(byAdding: .day, value: -daysAgo, to: Date()) ?? Date()
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "nb_NO")
+        f.timeZone = TimeZone(identifier: "Europe/Oslo") ?? .current
+        f.dateFormat = "d. MMM"
+        return f.string(from: d)
     }
 }
 
