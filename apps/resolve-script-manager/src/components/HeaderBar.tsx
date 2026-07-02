@@ -85,8 +85,8 @@ interface Props {
   onOpenFolder: () => void;
   onRefreshProject: () => void;
   onConnect: () => void;
-  view: "pipeline" | "cull" | "audio" | "color" | "demo" | "social" | "lipsync" | "repair" | "organiser" | "revisjon";
-  onViewChange: (next: "pipeline" | "cull" | "audio" | "color" | "demo" | "social" | "lipsync" | "repair" | "organiser" | "revisjon") => void;
+  view: "pipeline" | "cull" | "audio" | "color" | "demo" | "social" | "sports" | "lipsync" | "repair" | "organiser" | "revisjon";
+  onViewChange: (next: "pipeline" | "cull" | "audio" | "color" | "demo" | "social" | "sports" | "lipsync" | "repair" | "organiser" | "revisjon") => void;
   projectTemplates: ProjectTemplateSummary[];
   activeTemplateId: string;
   onTemplateChange: (id: string) => void;
@@ -193,6 +193,7 @@ export function HeaderBar({
             <button className={view === "color" ? "active" : ""} onClick={() => onViewChange("color")}>Color</button>
             <button className={view === "demo" ? "active" : ""} onClick={() => onViewChange("demo")}>Demo Studio</button>
             <button className={view === "social" ? "active" : ""} onClick={() => onViewChange("social")}>Social 9:16</button>
+            <button className={view === "sports" ? "active" : ""} onClick={() => onViewChange("sports")}>Sports Event</button>
             <button className={view === "lipsync" ? "active" : ""} onClick={() => onViewChange("lipsync")}>Lip-sync</button>
             <button className={view === "repair" ? "active" : ""} onClick={() => onViewChange("repair")}>Reparér</button>
             <button className={view === "organiser" ? "active" : ""} onClick={() => onViewChange("organiser")}>Media</button>

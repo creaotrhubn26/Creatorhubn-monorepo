@@ -2559,6 +2559,41 @@
       ]
     },
     {
+      "id": "event_moment_scan",
+      "name": "Sports: Øyeblikks-skann",
+      "category": "sports",
+      "scriptPath": "scripts/sports/event_moment_scan.py",
+      "description": "Skann multi-cam sports-materiale for høydepunkt-kandidater uten scoreboard/data: fusjon av BEVEGELSE (ffmpeg mean-abs-frame-difference → fall/wipeout/plask/action) + AMBIENT lyd-envelope (publikum-brøl/jubel). Profil-drevet (ocr_race/ball_sport/generic). Returnerer rangert kandidat-liste med thumbnails for menneske-triage. Alle terskler er parametre.",
+      "requiredInputs": [],
+      "optionalInputs": [
+        { "key": "source_dir", "label": "Mappe med multi-cam", "type": "string" },
+        { "key": "profile", "label": "Event-profil", "type": "string" },
+        { "key": "sample_fps", "label": "Analyse-fps", "type": "number" },
+        { "key": "motion_sens", "label": "Bevegelses-følsomhet", "type": "number" },
+        { "key": "ambient_sens", "label": "Ambient-følsomhet", "type": "number" },
+        { "key": "min_gap_s", "label": "Min. avstand mellom øyeblikk (sek)", "type": "number" },
+        { "key": "pre_s", "label": "Før-rull (sek)", "type": "number" },
+        { "key": "post_s", "label": "Etter-rull (sek)", "type": "number" },
+        { "key": "max_candidates", "label": "Maks kandidater", "type": "number" },
+        { "key": "max_clips", "label": "Maks klipp (0=alle)", "type": "number" }
+      ]
+    },
+    {
+      "id": "event_highlight_build",
+      "name": "Sports: Bygg highlight-timeline",
+      "category": "sports",
+      "scriptPath": "scripts/sports/event_highlight_build.py",
+      "description": "Tar de menneske-godkjente øyeblikkene og legger dem som subklipp på en NY timeline i Resolve. Rekkefølge kronologisk (kamera/tid) eller etter score, valgfrie handles. Timelinen blir fasit — derfra finpuss + musikk + render hele timeline (render-vakt).",
+      "requiredInputs": [
+        { "key": "approved", "label": "Godkjente øyeblikk", "type": "json" }
+      ],
+      "optionalInputs": [
+        { "key": "timeline_name", "label": "Timeline-navn", "type": "string" },
+        { "key": "order", "label": "Rekkefølge (chrono/score)", "type": "string" },
+        { "key": "handles_s", "label": "Handles (sek)", "type": "number" }
+      ]
+    },
+    {
       "id": "extract_social_cut",
       "name": "Extract Social Cut",
       "category": "social",

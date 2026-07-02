@@ -41,6 +41,7 @@ import { HighlightReviewView } from "./components/HighlightReviewView";
 import { CreativeEditorView } from "./components/CreativeEditorView";
 import { DemoStudioShell } from "./components/demo-studio/DemoStudioShell";
 import { SocialVerticalPanel } from "./components/SocialVerticalPanel";
+import { SportsEventPanel } from "./components/SportsEventPanel";
 import { SyncDoctorPanel } from "./components/SyncDoctorPanel";
 import { RepairPanel } from "./components/RepairPanel";
 import { MediaToolsPanel } from "./components/MediaToolsPanel";
@@ -137,7 +138,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [pendingDialog, setPendingDialog] = useState<{ script: ScriptMeta; dryRun: boolean } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [view, setView] = useState<"pipeline" | "cull" | "audio" | "color" | "demo" | "social" | "lipsync" | "repair" | "organiser" | "revisjon">("pipeline");
+  const [view, setView] = useState<"pipeline" | "cull" | "audio" | "color" | "demo" | "social" | "sports" | "lipsync" | "repair" | "organiser" | "revisjon">("pipeline");
   const [showSetup, setShowSetup] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [runningScripts, setRunningScripts] = useState<Record<string, RunningScript>>({});
@@ -886,6 +887,12 @@ export default function App() {
       {view === "revisjon" && (
         authStatus === "ok" && entitledModules.includes("resolve")
           ? <RevisionPanel onClose={() => setView("pipeline")} />
+          : <ModuleGate module="resolve" signedIn={authStatus === "ok"} onClose={() => setView("pipeline")} onSignIn={() => setShowSignIn(true)} />
+      )}
+
+      {view === "sports" && (
+        authStatus === "ok" && entitledModules.includes("resolve")
+          ? <SportsEventPanel onClose={() => setView("pipeline")} />
           : <ModuleGate module="resolve" signedIn={authStatus === "ok"} onClose={() => setView("pipeline")} onSignIn={() => setShowSignIn(true)} />
       )}
 
