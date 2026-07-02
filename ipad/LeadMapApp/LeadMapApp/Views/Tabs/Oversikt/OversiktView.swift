@@ -22,6 +22,14 @@ import PhotosUI
 
 // MARK: - Brand-konstanter (matcher mockup + LeadPinView)
 
+// Notification-navn brukes til å propagere område-valg fra HeaderRow ned
+// til OversiktView + LeadsInAreaCard uten å hoiste state gjennom private-
+// struct-hierarkiet.
+extension Notification.Name {
+    static let oversiktAreaChanged = Notification.Name("oversiktAreaChanged")
+    static let oversiktDateChanged = Notification.Name("oversiktDateChanged")
+}
+
 private enum Brand {
     static let bg = Color(red: 0.05, green: 0.04, blue: 0.10)
     static let card = Color(red: 0.10, green: 0.09, blue: 0.16)
@@ -271,6 +279,13 @@ private struct HeaderRow: View {
                             onConfirm: { d in
                                 headerDate = d
                                 headerDatePickerOpen = false
+                                // Broadcast så kartet zoomer til leads med
+                                // aktivitet på valgt dato (møter/oppfølginger).
+                                NotificationCenter.default.post(
+                                    name: .oversiktDateChanged,
+                                    object: nil,
+                                    userInfo: ["date": d]
+                                )
                             },
                             onCancel: { headerDatePickerOpen = false }
                         )
@@ -280,6 +295,15 @@ private struct HeaderRow: View {
                             ForEach(availableAreas, id: \.self) { area in
                                 Button {
                                     headerAreaFilter = area
+                                    // Broadcast så OversiktView kan zoome mini-
+                                    // kartet + filtrere leads. Bruker Notification
+                                    // for å slippe å hoiste state gjennom struct-
+                                    // hierarkiet (HeaderRow er private).
+                                    NotificationCenter.default.post(
+                                        name: .oversiktAreaChanged,
+                                        object: nil,
+                                        userInfo: ["area": area]
+                                    )
                                 } label: {
                                     if area == headerAreaFilter {
                                         Label(area, systemImage: "checkmark")
@@ -841,6 +865,142 @@ private struct LeadsInAreaCard: View {
     }
 
     var body: some View {
+        bodyContent
+            .onReceive(NotificationCenter.default.publisher(
+                for: .oversiktAreaChanged
+            )) { notification in
+                guard let area = notification.userInfo?["area"] as? String
+                else { return }
+                handleAreaChange(area)
+            }
+            .onReceive(NotificationCenter.default.publisher(
+                for: .oversiktDateChanged
+            )) { notification in
+                guard let date = notification.userInfo?["date"] as? Date
+                else { return }
+                handleDateChange(date)
+            }
+    }
+
+    // MARK: - Header-filter reaksjoner
+
+    /// Zoome mini-kartet til valgt område. Hvis vi har leads i det området,
+    /// tar vi bounding-box for dem — ellers bruker vi hardkodete koordinater
+    /// for norske storbyer.
+    private func handleAreaChange(_ area: String) {
+        // Fall tilbake til default hvis "Alle områder"
+        if area == "Alle områder" {
+            withAnimation(.easeInOut(duration: 0.55)) {
+                let region = MKCoordinateRegion(
+                    center: CLLocationCoordinate2D(latitude: 59.913, longitude: 10.753),
+                    span: MKCoordinateSpan(latitudeDelta: 0.30, longitudeDelta: 0.40)
+                )
+                miniCamera = .region(region)
+                miniCurrentRegion = region
+            }
+            miniShowToast("Viser alle områder")
+            return
+        }
+
+        // Prøv bounding-box av leads i valgt by
+        let cityLeads = leads.filter {
+            ($0.city?.caseInsensitiveCompare(area) == .orderedSame)
+        }
+        let region: MKCoordinateRegion
+        if !cityLeads.isEmpty {
+            let coords = cityLeads.map {
+                CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)
+            }
+            let lats = coords.map(\.latitude)
+            let lons = coords.map(\.longitude)
+            region = MKCoordinateRegion(
+                center: CLLocationCoordinate2D(
+                    latitude: (lats.min()! + lats.max()!) / 2,
+                    longitude: (lons.min()! + lons.max()!) / 2
+                ),
+                span: MKCoordinateSpan(
+                    latitudeDelta: max((lats.max()! - lats.min()!) * 1.4, 0.04),
+                    longitudeDelta: max((lons.max()! - lons.min()!) * 1.4, 0.06)
+                )
+            )
+        } else if let center = LeadsInAreaCard.coordinateFor(area: area) {
+            region = MKCoordinateRegion(
+                center: center,
+                span: MKCoordinateSpan(latitudeDelta: 0.10, longitudeDelta: 0.14)
+            )
+        } else {
+            return
+        }
+        withAnimation(.easeInOut(duration: 0.55)) {
+            miniCamera = .region(region)
+            miniCurrentRegion = region
+        }
+        miniShowToast("Sentrerte på \(area)")
+    }
+
+    /// Zoome mini-kartet til leads som har møter/oppfølging på valgt dato.
+    /// Hvis ingen leads matcher, holder vi kartet der det er.
+    private func handleDateChange(_ date: Date) {
+        let cal = Calendar.current
+        let sameDay = leads.filter { lead in
+            if let mtg = lead.nextFollowUpAt,
+               cal.isDate(mtg, inSameDayAs: date) { return true }
+            if let last = lead.lastVisitAt,
+               cal.isDate(last, inSameDayAs: date) { return true }
+            return false
+        }
+        guard !sameDay.isEmpty else {
+            miniShowToast("Ingen leads-aktivitet \(Self.dateLabel(date))")
+            return
+        }
+        let coords = sameDay.map {
+            CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)
+        }
+        let lats = coords.map(\.latitude)
+        let lons = coords.map(\.longitude)
+        let region = MKCoordinateRegion(
+            center: CLLocationCoordinate2D(
+                latitude: (lats.min()! + lats.max()!) / 2,
+                longitude: (lons.min()! + lons.max()!) / 2
+            ),
+            span: MKCoordinateSpan(
+                latitudeDelta: max((lats.max()! - lats.min()!) * 1.6, 0.04),
+                longitudeDelta: max((lons.max()! - lons.min()!) * 1.6, 0.06)
+            )
+        )
+        withAnimation(.easeInOut(duration: 0.55)) {
+            miniCamera = .region(region)
+            miniCurrentRegion = region
+        }
+        miniShowToast("\(sameDay.count) leads \(Self.dateLabel(date))")
+    }
+
+    /// Hardkodete koordinater for norske storbyer + Lillestrøm (til
+    /// områder-Menu). Gjenbruk-kandidat: legg i felles enum senere.
+    static func coordinateFor(area: String) -> CLLocationCoordinate2D? {
+        switch area.lowercased() {
+        case "oslo": return CLLocationCoordinate2D(latitude: 59.9139, longitude: 10.7522)
+        case "bergen": return CLLocationCoordinate2D(latitude: 60.3913, longitude: 5.3221)
+        case "trondheim": return CLLocationCoordinate2D(latitude: 63.4305, longitude: 10.3951)
+        case "stavanger": return CLLocationCoordinate2D(latitude: 58.9700, longitude: 5.7331)
+        case "lillestrøm", "lillestrom": return CLLocationCoordinate2D(latitude: 59.9558, longitude: 11.0492)
+        case "kristiansand": return CLLocationCoordinate2D(latitude: 58.1467, longitude: 7.9956)
+        case "tromsø", "tromso": return CLLocationCoordinate2D(latitude: 69.6492, longitude: 18.9553)
+        case "drammen": return CLLocationCoordinate2D(latitude: 59.7439, longitude: 10.2045)
+        default: return nil
+        }
+    }
+
+    private static func dateLabel(_ d: Date) -> String {
+        if Calendar.current.isDateInToday(d) { return "i dag" }
+        if Calendar.current.isDateInTomorrow(d) { return "i morgen" }
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "nb_NO")
+        f.dateFormat = "d. MMM"
+        return "på \(f.string(from: d))"
+    }
+
+    private var bodyContent: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Leads i området").font(.headline).foregroundStyle(.white)
