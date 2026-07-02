@@ -28,6 +28,9 @@ import PhotosUI
 extension Notification.Name {
     static let oversiktAreaChanged = Notification.Name("oversiktAreaChanged")
     static let oversiktDateChanged = Notification.Name("oversiktDateChanged")
+    /// Bruker trykket «Les mer» i map-pin-overlay-en → naviger til Leads-
+    /// fanen og åpne full detalj-visning for denne lead-en.
+    static let oversiktRequestOpenLeadInLeadsTab = Notification.Name("oversiktRequestOpenLeadInLeadsTab")
     /// Kalender-handling ble valgt (fra LeadgridDatePickerSheet). userInfo:
     /// { "date": Date, "action": String } med action ∈
     /// ["book_meeting","new_followup","new_lead","view_day"].
@@ -976,6 +979,10 @@ private struct LeadsInAreaCard: View {
     @State private var showMiniLayers: Bool = false
     @State private var showMiniAddLead: Bool = false
     @State private var miniToast: String?
+    /// Pin-tap åpner et lead-info-kort som overlay på selve kartet
+    /// (2026-07-02). Bruker kan lese basis-info + trykke «Les mer»
+    /// for å hoppe til Leads-fanen og åpne full detalj.
+    @State private var mapSelectedLead: LeadModel?
     // Lokal måle-modus på mini-kartet (Daniel-fix 2026-07-01):
     @State private var miniMeasureMode: Bool = false
     @State private var miniMeasureA: CLLocationCoordinate2D?
@@ -1254,6 +1261,11 @@ private struct LeadsInAreaCard: View {
                                 isWarm: (50..<70).contains(score),
                                 activityKind: miniPinActivityKind(for: lead)
                             )
+                            .onTapGesture {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                    mapSelectedLead = lead
+                                }
+                            }
                         }
                     }
                     // "Meg her"-annotasjon: profil-avatar på user-location
@@ -1427,6 +1439,28 @@ private struct LeadsInAreaCard: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     .allowsHitTesting(false)
                     .transition(.opacity)
+            }
+
+            // Lead-info-overlay nederst på kartet — vises når bruker
+            // tapper en pin. Har «Les mer»-CTA som hopper til Leads-fanen.
+            if let sel = mapSelectedLead {
+                MapLeadInfoCard(lead: sel) {
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        mapSelectedLead = nil
+                    }
+                } onOpenLead: { lead in
+                    NotificationCenter.default.post(
+                        name: .oversiktRequestOpenLeadInLeadsTab,
+                        object: nil,
+                        userInfo: ["leadId": lead.id, "leadName": lead.name]
+                    )
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        mapSelectedLead = nil
+                    }
+                }
+                .padding(14)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
         .sheet(isPresented: $showMiniLayers) {
@@ -1758,6 +1792,170 @@ private struct LeadScoreFilterStrip: View {
 /// high-light, 2-3 px hvit stroke og status-farget shadow. Beholder
 /// lead-score som tekst i pinen (mer info-tett enn bygg-ikonet på
 /// hovedkartet).
+/// Info-kort som overlay på selve mini-kartet når bruker tapper en pin.
+/// Viser navn, logo/initialer, score-pin, adresse, telefon/e-post og status.
+/// «Les mer» → NotificationCenter → bytt til Leads-fanen + åpne detalj.
+private struct MapLeadInfoCard: View {
+    let lead: LeadModel
+    let onClose: () -> Void
+    let onOpenLead: (LeadModel) -> Void
+
+    private var accentColor: Color {
+        let score = lead.leadScore ?? 0
+        if score >= 90 || lead.status == .meetingBooked { return Brand.purple }
+        if score >= 70 { return Brand.red }
+        if score >= 50 { return Brand.yellow }
+        return Color(red: 0.55, green: 0.60, blue: 0.68)
+    }
+
+    private var statusLabel: String {
+        switch lead.status {
+        case .meetingBooked: return "Møte booket"
+        case .interested:    return "Interessert"
+        case .proposalSent:  return "Tilbud sendt"
+        case .won:           return "Vunnet"
+        case .lost:          return "Tapt"
+        case .visited:       return "Besøkt"
+        case .return:        return "Kom tilbake"
+        case .notPresent:    return "Ikke tilstede"
+        case .declined:      return "Avslo"
+        case .doNotContact:  return "Ikke kontakt"
+        case .unvisited:     return "Ikke besøkt"
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            headerRow
+            Divider().background(Brand.stroke)
+            details
+            actions
+        }
+        .padding(14)
+        .frame(maxWidth: 420)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Brand.card)
+                .shadow(color: .black.opacity(0.35), radius: 18, y: 6)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .strokeBorder(Brand.stroke, lineWidth: 1)
+        )
+    }
+
+    private var headerRow: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle().fill(accentColor.opacity(0.22))
+                Circle().strokeBorder(accentColor.opacity(0.55), lineWidth: 1)
+                Text(String(lead.name.prefix(2)).uppercased())
+                    .font(.system(size: 14, weight: .heavy, design: .rounded))
+                    .foregroundStyle(.white)
+            }
+            .frame(width: 42, height: 42)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(lead.name)
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                if let city = lead.city, !city.isEmpty {
+                    Text(city)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Brand.textSecondary)
+                        .lineLimit(1)
+                }
+            }
+            Spacer()
+            // Score-badge
+            HStack(spacing: 4) {
+                Image(systemName: "flame.fill")
+                    .font(.system(size: 10, weight: .bold))
+                Text("\(lead.leadScore ?? 0)")
+                    .font(.system(size: 12, weight: .heavy, design: .rounded))
+                    .monospacedDigit()
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 8).padding(.vertical, 4)
+            .background(accentColor, in: Capsule())
+            Button {
+                onClose()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 18))
+                    .foregroundStyle(Brand.textSecondary)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private var details: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "checkmark.seal.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(accentColor)
+                Text(statusLabel)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
+            if let address = lead.address, !address.isEmpty {
+                detailRow(icon: "mappin.and.ellipse", text: address)
+            }
+            if let phone = lead.phone, !phone.isEmpty {
+                detailRow(icon: "phone.fill", text: phone)
+            }
+            if let email = lead.email, !email.isEmpty {
+                detailRow(icon: "envelope.fill", text: email)
+            }
+            if let value = lead.estimatedValue, value > 0 {
+                detailRow(
+                    icon: "banknote.fill",
+                    text: "NOK \(Int(value).formatted(.number.locale(Locale(identifier: "nb_NO"))))"
+                )
+            }
+        }
+    }
+
+    private func detailRow(icon: String, text: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(Brand.textSecondary)
+                .frame(width: 14)
+            Text(text)
+                .font(.system(size: 12))
+                .foregroundStyle(Brand.textSecondary)
+                .lineLimit(1)
+        }
+    }
+
+    private var actions: some View {
+        HStack(spacing: 10) {
+            Button {
+                onOpenLead(lead)
+            } label: {
+                HStack(spacing: 6) {
+                    Text("Les mer")
+                        .font(.system(size: 12, weight: .bold))
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 11, weight: .bold))
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 14).padding(.vertical, 8)
+                .background(
+                    LinearGradient(colors: [Brand.purple, Brand.purpleLight],
+                                   startPoint: .leading, endPoint: .trailing),
+                    in: Capsule()
+                )
+                .shadow(color: Brand.purple.opacity(0.35), radius: 6, y: 2)
+            }
+            .buttonStyle(.plain)
+            Spacer()
+        }
+    }
+}
+
 private struct MiniPin: View {
     let score: Int
     let isHot: Bool
