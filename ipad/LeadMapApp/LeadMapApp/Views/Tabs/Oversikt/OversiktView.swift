@@ -28,6 +28,10 @@ import PhotosUI
 extension Notification.Name {
     static let oversiktAreaChanged = Notification.Name("oversiktAreaChanged")
     static let oversiktDateChanged = Notification.Name("oversiktDateChanged")
+    /// Kalender-handling ble valgt (fra LeadgridDatePickerSheet). userInfo:
+    /// { "date": Date, "action": String } med action ∈
+    /// ["book_meeting","new_followup","new_lead","view_day"].
+    static let oversiktCalendarActionRequested = Notification.Name("oversiktCalendarActionRequested")
 }
 
 private enum Brand {
@@ -78,6 +82,41 @@ struct OversiktView: View {
                                email: appState.userEmail,
                                leads: effectiveLeads)
             }
+            // Kalender-handlinger → åpne relevant flyt. Book møte og Ny lead
+            // krever hele iPad-mocking-kjeden så vi ruter dem til de allerede-
+            // eksisterende popoverne (analyseOpen / nextActionsOpen) med
+            // riktig kontekst. Ny lead + book møte-flyt kommer i egne sheets
+            // senere når vi porterer BookMeetingSheet/AddLeadSheet.
+            .onReceive(NotificationCenter.default.publisher(
+                for: .oversiktCalendarActionRequested
+            )) { note in
+                guard let action = note.userInfo?["action"] as? String,
+                      let date = note.userInfo?["date"] as? Date
+                else { return }
+                handleCalendarAction(action, at: date)
+            }
+    }
+
+    /// Rutes kalender-handlingene til relevant flyt. Book/følg opp/ny lead
+    /// åpner samme popover som header-CTA-ene (til vi porterer dedikerte
+    /// sheets), «Vis dagens plan» → NextActions-popover.
+    @MainActor
+    private func handleCalendarAction(_ action: String, at date: Date) {
+        switch action {
+        case "book_meeting":
+            // Åpne analyse-popoveren (der møter/pipeline vises) som proxy —
+            // erstattes med BookMeetingSheet når den blir portert.
+            analyseOpen = true
+        case "new_followup":
+            nextActionsOpen = true
+        case "new_lead":
+            // Åpne activities-popoveren som midlertidig proxy.
+            activitiesOpen = true
+        case "view_day":
+            nextActionsOpen = true
+        default:
+            break
+        }
     }
 
     private var profileDisplayName: String {
@@ -287,7 +326,69 @@ private struct HeaderRow: View {
                                     userInfo: ["date": d]
                                 )
                             },
-                            onCancel: { headerDatePickerOpen = false }
+                            onCancel: { headerDatePickerOpen = false },
+                            // 4 kalender-handlinger: sheeten dispatch-er via
+                            // Notification så OversiktView kan åpne relevant
+                            // eksisterende modal (BookMeetingSheet, follow-up,
+                            // AddLeadSheet, dagsplan-list).
+                            quickActions: [
+                                LeadgridCalendarAction(
+                                    title: "Book møte denne dagen",
+                                    icon: "calendar.badge.plus",
+                                    color: Brand.purpleLight,
+                                    onSelect: { d in
+                                        headerDate = d
+                                        headerDatePickerOpen = false
+                                        NotificationCenter.default.post(
+                                            name: .oversiktCalendarActionRequested,
+                                            object: nil,
+                                            userInfo: ["date": d, "action": "book_meeting"]
+                                        )
+                                    }
+                                ),
+                                LeadgridCalendarAction(
+                                    title: "Ny oppfølging",
+                                    icon: "flag.badge.ellipsis.fill",
+                                    color: Brand.blue,
+                                    onSelect: { d in
+                                        headerDate = d
+                                        headerDatePickerOpen = false
+                                        NotificationCenter.default.post(
+                                            name: .oversiktCalendarActionRequested,
+                                            object: nil,
+                                            userInfo: ["date": d, "action": "new_followup"]
+                                        )
+                                    }
+                                ),
+                                LeadgridCalendarAction(
+                                    title: "Ny lead",
+                                    icon: "person.crop.circle.badge.plus",
+                                    color: Brand.green,
+                                    onSelect: { d in
+                                        headerDate = d
+                                        headerDatePickerOpen = false
+                                        NotificationCenter.default.post(
+                                            name: .oversiktCalendarActionRequested,
+                                            object: nil,
+                                            userInfo: ["date": d, "action": "new_lead"]
+                                        )
+                                    }
+                                ),
+                                LeadgridCalendarAction(
+                                    title: "Vis dagens plan",
+                                    icon: "list.bullet.rectangle.portrait.fill",
+                                    color: Brand.orange,
+                                    onSelect: { d in
+                                        headerDate = d
+                                        headerDatePickerOpen = false
+                                        NotificationCenter.default.post(
+                                            name: .oversiktCalendarActionRequested,
+                                            object: nil,
+                                            userInfo: ["date": d, "action": "view_day"]
+                                        )
+                                    }
+                                ),
+                            ]
                         )
                     }
                     if !isNarrow {

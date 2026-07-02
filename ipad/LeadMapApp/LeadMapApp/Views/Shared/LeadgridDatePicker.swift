@@ -97,11 +97,25 @@ struct LeadgridDateFieldRow: View {
 
 // MARK: - Sheet: full picker
 
+/// Handling som brukeren kan starte direkte fra kalenderen (i tillegg til
+/// å bare velge en dato). F.eks. «Book møte», «Ny oppfølging», «Ny lead».
+/// Ved tap: sheeten lukkes + closure fyres med valgt dato.
+struct LeadgridCalendarAction: Identifiable {
+    let id = UUID()
+    let title: String
+    let icon: String
+    let color: Color
+    let onSelect: (Date) -> Void
+}
+
 struct LeadgridDatePickerSheet: View {
     let initialDate: Date
     let showTime: Bool
     let onConfirm: (Date) -> Void
     let onCancel: () -> Void
+    /// Optional handlinger som vises som store CTA-knapper under kalenderen.
+    /// Tomt = ingen handlinger-seksjon (bare bekreft/avbryt-knapper).
+    var quickActions: [LeadgridCalendarAction] = []
 
     @State private var displayedMonth: Date
     @State private var selectedDate: Date
@@ -120,12 +134,14 @@ struct LeadgridDatePickerSheet: View {
         initialDate: Date,
         showTime: Bool,
         onConfirm: @escaping (Date) -> Void,
-        onCancel: @escaping () -> Void
+        onCancel: @escaping () -> Void,
+        quickActions: [LeadgridCalendarAction] = []
     ) {
         self.initialDate = initialDate
         self.showTime = showTime
         self.onConfirm = onConfirm
         self.onCancel = onCancel
+        self.quickActions = quickActions
         let cal = Calendar(identifier: .gregorian)
         let comps = cal.dateComponents([.year, .month, .day, .hour, .minute], from: initialDate)
         _displayedMonth = State(initialValue: cal.date(from: DateComponents(
@@ -143,8 +159,9 @@ struct LeadgridDatePickerSheet: View {
                     monthHeader
                     weekdayHeader
                     calendarGrid
-                    quickActions
+                    dateShortcutsBar
                     if showTime { timePicker }
+                    if !quickActions.isEmpty { calendarActionButtons }
                 }
                 .padding(18)
             }
@@ -273,7 +290,7 @@ struct LeadgridDatePickerSheet: View {
         .disabled(day.date == nil)
     }
 
-    private var quickActions: some View {
+    private var dateShortcutsBar: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("HURTIGVALG")
                 .font(.system(size: 9, weight: .black, design: .rounded))
@@ -306,6 +323,52 @@ struct LeadgridDatePickerSheet: View {
                 .padding(.vertical, 6)
                 .background(LDP.cardHi, in: Capsule())
                 .overlay(Capsule().strokeBorder(LDP.stroke, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Handlinger som forkorter vanlige oppgaver — «Book møte», «Ny
+    /// oppfølging», «Ny lead» osv. Ved tap: fyrer selve action-callback-en
+    /// med den for øyeblikket valgte datoen, og lukker sheeten.
+    private var calendarActionButtons: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("HANDLING")
+                .font(.system(size: 9, weight: .black, design: .rounded))
+                .tracking(1.0)
+                .foregroundStyle(LDP.textDim)
+            VStack(spacing: 6) {
+                ForEach(quickActions) { action in
+                    calendarActionRow(action)
+                }
+            }
+        }
+    }
+
+    private func calendarActionRow(_ action: LeadgridCalendarAction) -> some View {
+        Button {
+            action.onSelect(combineTime(selectedDate))
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle().fill(action.color.opacity(0.20))
+                    Image(systemName: action.icon)
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(action.color)
+                }
+                .frame(width: 36, height: 36)
+                .overlay(Circle().strokeBorder(action.color.opacity(0.35), lineWidth: 1))
+                Text(action.title)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(LDP.textTertiary)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(LDP.cardHi, in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(LDP.stroke, lineWidth: 1))
         }
         .buttonStyle(.plain)
     }
