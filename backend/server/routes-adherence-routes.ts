@@ -974,16 +974,19 @@ export function registerRoutesAdherenceRoutes(
       const geo = await reverseGeocode(lat, lon);
       // Insert i crm_customers — samme mønster som eksisterende lead-oppretting.
       // Vi bruker minimalt sett med kolonner som er trygt å inserte fra map-flyten.
-      // Fix 2026-07-02: Postgres feilet med `inconsistent types deduced for
-      // parameter $2` fordi samme parameter ble brukt til både owner_user_id
-      // (TEXT) og assigned_user_id (VARCHAR(255)). To forskjellige kolonne-
-      // typer + samme placeholder = ingen entydig type-inferens.
-      // Fix: separate parametere + eksplisitt cast per kolonne.
+      // Fix 2026-07-02: To bug-fixes i denne INSERT-en:
+      //   (a) inconsistent-parameter-types: samme placeholder til to kolonner
+      //       med forskjellig type (owner_user_id TEXT, assigned_user_id
+      //       VARCHAR(255)) → separate parametere + eksplisitt cast.
+      //   (b) `id` UUID PRIMARY KEY har ingen DEFAULT i crm_customers-skjema
+      //       (drift fra mange migreringer), så NULL ble insert-et og krasjet
+      //       på not-null constraint. Genererer eksplisitt UUID i queryen
+      //       med `gen_random_uuid()`.
       const r = await pool.query<{ id: string }>(
         `INSERT INTO crm_customers
-           (name, owner_user_id, assigned_user_id, latitude, longitude,
+           (id, name, owner_user_id, assigned_user_id, latitude, longitude,
             address, google_place_id, lead_source, pipeline_stage, created_at, updated_at)
-         VALUES ($1, $2::text, $3::varchar, $4, $5, $6, $7, 'map_drop', 'new', NOW(), NOW())
+         VALUES (gen_random_uuid(), $1, $2::text, $3::varchar, $4, $5, $6, $7, 'map_drop', 'new', NOW(), NOW())
          RETURNING id`,
         [geo.name, session.userId, session.userId, lat, lon, geo.address, geo.place_id],
       );
