@@ -29,15 +29,15 @@ const specOf = (it: any) => it?.specifications || it?.settings?.specifications |
 const gearValue = (it: any) => specOf(it).marketValueNok || it?.currentValue || it?.current_value || 0;
 const monthlyOf = (it: any) => { const s = specOf(it); if (s.licenseType !== 'subscription' || !s.subscriptionCost) return 0; return s.billingCycle === 'yearly' ? Number(s.subscriptionCost) / 12 : Number(s.subscriptionCost); };
 const daysUntil = (iso?: string) => { if (!iso) return null; try { return Math.ceil((new Date(iso).getTime() - Date.now()) / 86400000); } catch { return null; } };
-const settingsOf = (it: any) => it?.settings || {};
-// Reklamasjonsrett (forbrukerkjøpsloven): fra settings, ellers kjøpsdato + 5 år.
+// Garanti/reklamasjon/kvittering ligger under specifications (det inventar-API-et
+// eksponerer). Reklamasjonsrett: eksplisitt dato, ellers kjøpsdato + 5 år.
 const reklamOf = (it: any) => {
-  const s = settingsOf(it); if (s.reklamasjonExpiry) return s.reklamasjonExpiry;
-  const pd = it?.purchase_date || it?.purchaseDate; if (!pd) return null;
+  const s = specOf(it); if (s.reklamasjonExpiry) return s.reklamasjonExpiry;
+  const pd = s.purchaseDate || it?.purchase_date || it?.purchaseDate; if (!pd) return null;
   try { const d = new Date(pd); if (isNaN(d.getTime())) return null; d.setFullYear(d.getFullYear() + 5); return d.toISOString().slice(0, 10); } catch { return null; }
 };
-const warrantyOf = (it: any) => it?.warranty_expiry || it?.warrantyExpiry || null;
-const receiptOf = (it: any) => settingsOf(it).receiptEmailId || null;
+const warrantyOf = (it: any) => specOf(it).warrantyExpiry || it?.warranty_expiry || it?.warrantyExpiry || null;
+const receiptOf = (it: any) => specOf(it).receiptEmailId || null;
 // Kort «N år / N mnd igjen» fra dager-til-utløp.
 const leftLabel = (iso?: string) => {
   const d = daysUntil(iso); if (d == null) return null; if (d < 0) return 'utløpt';
