@@ -1663,6 +1663,11 @@ private struct LeadsInAreaCard: View {
                 miniShowToast("A: \(lead.name)")
             }
         case .route:
+            // Samme 25-stopps-tak som free-map-tap.
+            guard measureRoute.count < Self.measureRouteMaxPoints else {
+                miniShowToast("Maks \(Self.measureRouteMaxPoints) stopp — nullstill for å starte ny rute")
+                return
+            }
             measureRoute.append(point)
             if measureRoute.count == 1 {
                 miniShowToast("Start: \(lead.name)")
@@ -1675,13 +1680,18 @@ private struct LeadsInAreaCard: View {
         case .radius:
             measureRadiusCenter = coord
             let leadsIn = leadsWithinRadius(center: coord, km: measureRadiusKm)
-            miniShowToast("Sentrum: \(lead.name) — \(leadsIn) leads i \(Int(measureRadiusKm)) km")
+            miniShowToast("Sentrum: \(lead.name) — \(leadsIn) leads i \(Self.formatRadiusKm(measureRadiusKm))")
         }
     }
 
     /// Free-map-tap håndtering for måle-modus. Sjekker først om tappet
     /// var innenfor snap-avstand av en lead-pin — i så fall snapper vi
     /// til lead-koordinatet + arver leadName. Ellers brukes rå tap-punkt.
+    ///
+    /// Fix 2026-07-02: tidligere brukte `.distance`- og `.radius`-grenene
+    /// den RÅ `coord`-en i stedet for `effective`-koordinatet fra snap —
+    /// så snap-til-pin fungerte bare i rute-modus. Nå gjelder snap alle
+    /// tre modi konsistent.
     private func handleMeasureTapOnCoord(_ coord: CLLocationCoordinate2D) {
         // Snap-til-nærmeste-pin (2026-07-02, bølge 2): finn nærmeste
         // lead innen 50m og bruk den i stedet så bruker slipper å pikse
@@ -1689,36 +1699,42 @@ private struct LeadsInAreaCard: View {
         let snapped = snapCandidateFor(coord)
         let effective = snapped?.coord ?? coord
         let leadName = snapped?.name
-        let point = MeasurePoint(coord: effective, leadName: leadName)
         switch measureKind {
         case .distance:
             if miniMeasureA == nil {
-                miniMeasureA = coord
-                miniShowToast("Punkt A satt")
+                miniMeasureA = effective
+                miniShowToast(leadName.map { "A: \($0)" } ?? "Punkt A satt")
             } else if miniMeasureB == nil {
-                miniMeasureB = coord
-                let d = MeasureMath.distanceMeters(miniMeasureA!, coord)
+                miniMeasureB = effective
+                let d = MeasureMath.distanceMeters(miniMeasureA!, effective)
                 miniShowToast("Avstand: \(measureUnit.format(d))")
             } else {
-                miniMeasureA = coord
+                miniMeasureA = effective
                 miniMeasureB = nil
-                miniShowToast("Nullstill — A satt igjen")
+                miniShowToast(leadName.map { "Nytt A: \($0)" } ?? "Nullstill — A satt igjen")
             }
         case .route:
+            // Fix 2026-07-02: tak på 25 stopp så vi ikke fyrer av 100+
+            // MKDirections-kall og tapper batteri / rate-limit.
+            guard measureRoute.count < Self.measureRouteMaxPoints else {
+                miniShowToast("Maks \(Self.measureRouteMaxPoints) stopp — nullstill for å starte ny rute")
+                return
+            }
+            let point = MeasurePoint(coord: effective, leadName: leadName)
             measureRoute.append(point)
-            let total = MeasureMath.totalDistanceMeters(measureRoute)
-            let mins = MeasureMath.estimatedDriveMinutes(total)
             if measureRoute.count == 1 {
-                let where_ = leadName ?? "punkt"
-                miniShowToast("Start: \(where_)")
+                miniShowToast(leadName.map { "Start: \($0)" } ?? "Startpunkt satt")
             } else {
+                let total = MeasureMath.totalDistanceMeters(measureRoute)
+                let mins = MeasureMath.estimatedDriveMinutes(total)
                 miniShowToast("\(measureRoute.count) stopp — \(measureUnit.format(total)) · ~\(mins) min")
                 Task { await recalcRealDriveTime() }
             }
         case .radius:
-            measureRadiusCenter = coord
-            let leadsIn = leadsWithinRadius(center: coord, km: measureRadiusKm)
-            miniShowToast("Sentrum satt — \(leadsIn) leads i \(Int(measureRadiusKm)) km")
+            measureRadiusCenter = effective
+            let leadsIn = leadsWithinRadius(center: effective, km: measureRadiusKm)
+            let name = leadName ?? "Sentrum"
+            miniShowToast("\(name) — \(leadsIn) leads i \(Self.formatRadiusKm(measureRadiusKm))")
         }
     }
 
@@ -1736,13 +1752,35 @@ private struct LeadsInAreaCard: View {
     }
 
     /// Nullstill alle måle-punkter (uansett kind). Brukes av «Nullstill»-
-    /// knappen i banneret + når vi bytter kind.
+    /// knappen i banneret + når vi bytter kind. Fix 2026-07-02:
+    /// `measureShowHull` ble ikke resetet før — kunne henge igjen som
+    /// «på» etter modus-bytte.
     private func measureResetAll() {
         miniMeasureA = nil
         miniMeasureB = nil
         measureRoute.removeAll()
         measureRadiusCenter = nil
         measureRealDrive = nil
+        measureShowHull = false
+    }
+
+    /// Tak på rute-punkter så vi ikke fyrer av 100 MKDirections-kall.
+    private static let measureRouteMaxPoints = 25
+
+    /// Format radius i km med 1 desimal når < 10 km, ellers heltall.
+    /// Fix 2026-07-02: sliderens step er 0.5, så `Int(0.5)` = 0 —
+    /// «Radius: 0 km» var en klar bug. Nå viser 0,5 km / 2,5 km / 10 km.
+    static func formatRadiusKm(_ km: Double) -> String {
+        if km >= 10 {
+            return String(format: "%d km", Int(km.rounded()))
+        }
+        // Nb_NO desimal-komma
+        let f = NumberFormatter()
+        f.locale = Locale(identifier: "nb_NO")
+        f.minimumFractionDigits = km.truncatingRemainder(dividingBy: 1) == 0 ? 0 : 1
+        f.maximumFractionDigits = 1
+        let str = f.string(from: NSNumber(value: km)) ?? String(format: "%.1f", km)
+        return "\(str) km"
     }
 
     /// Snap-kandidat: finn nærmeste lead innen `measureSnapDistanceMeters`
@@ -1750,8 +1788,13 @@ private struct LeadsInAreaCard: View {
     private func snapCandidateFor(
         _ coord: CLLocationCoordinate2D
     ) -> (coord: CLLocationCoordinate2D, name: String)? {
+        // Fix 2026-07-02: bare snap til pins som faktisk vises på kartet
+        // (samme `.prefix(10)`-filter som ForEach-en bruker). Uten dette
+        // kunne bruker tappe midt på et tomt kart-område og bli «magisk»
+        // snappet til en usynlig lead — forvirrende UX.
+        let visible = Array(pinnedLeads.prefix(10))
         var best: (Double, LeadModel)? = nil
-        for lead in pinnedLeads {
+        for lead in visible {
             let d = MeasureMath.distanceMeters(
                 coord,
                 CLLocationCoordinate2D(latitude: lead.latitude, longitude: lead.longitude)
@@ -1807,7 +1850,7 @@ private struct LeadsInAreaCard: View {
         case .radius:
             guard let c = measureRadiusCenter else { return "Ingen radius å dele." }
             let leads = leadsWithinRadius(center: c, km: measureRadiusKm)
-            return "Radius: \(Int(measureRadiusKm)) km · \(leads) leads innenfor"
+            return "Radius: \(Self.formatRadiusKm(measureRadiusKm)) · \(leads) leads innenfor"
         }
     }
 
@@ -1985,10 +2028,10 @@ private struct LeadsInAreaCard: View {
 
     private var measureRadiusSlider: some View {
         HStack(spacing: 8) {
-            Text("Radius: \(Int(measureRadiusKm)) km")
+            Text("Radius: \(Self.formatRadiusKm(measureRadiusKm))")
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(.white)
-                .frame(width: 90, alignment: .leading)
+                .frame(width: 100, alignment: .leading)
             Slider(value: $measureRadiusKm, in: 0.5...25, step: 0.5)
                 .tint(Brand.green)
         }
@@ -2109,7 +2152,7 @@ private struct LeadsInAreaCard: View {
         case .radius:
             if let c = measureRadiusCenter {
                 let leads = leadsWithinRadius(center: c, km: measureRadiusKm)
-                return "\(Int(measureRadiusKm)) km · \(leads) leads innenfor"
+                return "\(Self.formatRadiusKm(measureRadiusKm)) · \(leads) leads innenfor"
             }
             return measureKind.tip
         }
