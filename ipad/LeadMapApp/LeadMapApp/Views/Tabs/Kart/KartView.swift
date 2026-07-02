@@ -510,6 +510,7 @@ struct KartView: View {
         case travelHistory = "Reise-historikk"
         case territories = "Territorier"
         case dataOverlay = "Bedrifts-data"
+        case teamMembers = "Team på kartet"
         var icon: String {
             switch self {
             case .heatmap:        return "flame.circle.fill"
@@ -517,6 +518,7 @@ struct KartView: View {
             case .travelHistory:  return "road.lanes"
             case .territories:    return "rectangle.3.group.fill"
             case .dataOverlay:    return "chart.pie.fill"
+            case .teamMembers:    return "person.2.circle.fill"
             }
         }
         var subtitle: String {
@@ -526,6 +528,7 @@ struct KartView: View {
             case .travelHistory: return "Rød rute m/ dagens besøkte leads"
             case .territories:   return "Polygon-soner: din vs kollegas region"
             case .dataOverlay:   return "Pin-radius reflekterer omsetning (Brønnøysund)"
+            case .teamMembers:   return "Live-avatar for selgere og promotører m/ destinasjon"
             }
         }
         var color: Color {
@@ -535,6 +538,7 @@ struct KartView: View {
             case .travelHistory: return Color(red: 0.98, green: 0.55, blue: 0.10)
             case .territories:   return Color(red: 0.20, green: 0.85, blue: 0.60)
             case .dataOverlay:   return Color(red: 0.34, green: 0.60, blue: 0.98)
+            case .teamMembers:   return Color(red: 0.66, green: 0.32, blue: 0.99)
             }
         }
     }
@@ -2553,17 +2557,44 @@ struct LayersSheet: View {
             .navigationTitle("Kartlag")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                // Fix 2026-07-02: «Lukk»-tekst kuttes til «L…» på Mac Catalyst
+                // fordi cancellationAction får smal ramme. Bytter til sirkulær
+                // X-ikon (samme mønster som andre sheets i appen).
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Lukk") { dismiss() }
-                        .foregroundStyle(LBrand.purpleLight)
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 28, height: 28)
+                            .background(LBrand.cardHi, in: Circle())
+                            .overlay(Circle().strokeBorder(LBrand.stroke, lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Lukk")
+                }
+                ToolbarItem(placement: .principal) {
+                    Text("Kartlag")
+                        .font(.system(size: 15, weight: .heavy, design: .rounded))
+                        .foregroundStyle(.white)
                 }
                 ToolbarItem(placement: .primaryAction) {
                     if !activeOverlays.isEmpty {
                         Button { activeOverlays.removeAll() } label: {
-                            Text("Nullstill (\(activeOverlays.count))")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(LBrand.textSecondary)
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.counterclockwise")
+                                    .font(.system(size: 10, weight: .bold))
+                                Text("Nullstill (\(activeOverlays.count))")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .fixedSize(horizontal: true, vertical: false)
+                            }
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 10).padding(.vertical, 6)
+                            .background(LBrand.cardHi, in: Capsule())
+                            .overlay(Capsule().strokeBorder(LBrand.stroke, lineWidth: 1))
                         }
+                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -2572,6 +2603,7 @@ struct LayersSheet: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
         }
         .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
         .macCatalystSheetSize(minWidth: 820, minHeight: 640)
     }
 
