@@ -159,9 +159,10 @@ async function runLimited<T, R>(items: T[], limit: number, fn: (t: T, i: number)
 }
 
 const EXTRACT_PROMPT = (subject: string, from: string, body: string) =>
-`Du analyserer en e-post og avgjør om den er en KVITTERING/FAKTURA for programvare,
-plugin, abonnement eller digitalt kjøp (f.eks. Adobe, Splice, Native Instruments,
-Dropbox, App Store). Trekk ut strukturerte felter.
+`Du analyserer en e-post og avgjør om den er en KVITTERING/FAKTURA for et kjøp.
+Det kan være PROGRAMVARE/abonnement (Adobe, Splice, Dropbox, App Store) ELLER
+FYSISK UTSTYR/hardware (kamera, objektiv, mikrofon, lydkort, PC, drone — fra
+f.eks. Elkjøp, Komplett, Thomann, Amazon, B&H, Proshop). Trekk ut felter.
 
 Fra: ${from}
 Emne: ${subject}
@@ -169,15 +170,18 @@ Tekst (kan være forkortet):
 ${body}
 
 Svar KUN med gyldig JSON, ingen annen tekst:
-{"isReceipt": <true|false>, "vendor": "<leverandør>", "product": "<produkt/plan>",
- "category": "<en av: ${CATEGORIES.join(" | ")}>",
+{"isReceipt": <true|false>, "itemType": "<hardware|software>",
+ "vendor": "<selger/leverandør>", "product": "<produkt/modell/plan>",
+ "category": "<for software én av: ${CATEGORIES.join(" | ")}; for hardware f.eks. Kamera|Objektiv|Mikrofon|Lydkort|Monitor|Instrument|PC|Drone|Tilbehør>",
  "amount": <tall uten valutategn, el. null>, "currency": "<ISO f.eks. USD|EUR|NOK>",
  "billingCycle": "<monthly|yearly|engang|unknown>", "isSubscription": <true|false>,
+ "serialNumber": "<serienr hvis oppgitt, el. null>",
  "purchaseDate": "<YYYY-MM-DD el. null>", "renewalDate": "<YYYY-MM-DD el. null>",
  "confidence": "<low|medium|high>"}
-Regler: Hvis dette IKKE er en kvittering/faktura for et kjøp/abonnement (nyhetsbrev,
-support, reklame), sett isReceipt=false. Beløp = det som faktisk ble belastet. Ved
-usikkerhet, sett null og confidence=low.`;
+Regler: itemType=hardware for fysiske produkter (engangskjøp, isSubscription=false),
+software for digitale/abonnement. Hvis IKKE en kvittering (nyhetsbrev, support,
+varsel, feilmelding, mislykket betaling), sett isReceipt=false. Beløp = faktisk
+belastet. Ved usikkerhet null + confidence=low.`;
 
 export function setupSoftwareExpensesRoutes(deps: SoftwareExpensesRoutesDeps): void {
   const { app, pool, requireUserSession, getGoogleOAuthClient } = deps;
@@ -197,7 +201,19 @@ export function setupSoftwareExpensesRoutes(deps: SoftwareExpensesRoutesDeps): v
       )`);
     await pool.query(`CREATE INDEX IF NOT EXISTS software_expenses_user_idx ON software_expenses (user_id)`);
     await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS software_expenses_user_email_uidx ON software_expenses (user_id, source_email_id) WHERE source_email_id IS NOT NULL`);
+    await pool.query(`ALTER TABLE software_expenses ADD COLUMN IF NOT EXISTS item_type varchar(16) DEFAULT 'software'`).catch(() => {});
+    await pool.query(`ALTER TABLE software_expenses ADD COLUMN IF NOT EXISTS serial_hint varchar`).catch(() => {});
     ensured = true;
+  }
+
+  // Reklamasjonsrett (forbrukerkjøpsloven): 5 år for varige ting (utstyr/elektronikk),
+  // 2 år ellers. Returnerer ISO-dato fra kjøpsdato.
+  function reklamasjonExpiry(purchaseDate: string | null, years = 5): string | null {
+    if (!purchaseDate) return null;
+    const d = new Date(purchaseDate);
+    if (isNaN(d.getTime())) return null;
+    d.setFullYear(d.getFullYear() + years);
+    return d.toISOString().slice(0, 10);
   }
 
   function summarize(rows: any[]) {
@@ -321,6 +337,41 @@ export function setupSoftwareExpensesRoutes(deps: SoftwareExpensesRoutesDeps): v
     } catch (e) { console.error("[software-expenses] delete", e); res.status(500).json({ error: "delete_failed" }); }
   });
 
+  // ── IMPORTER hardware-forslag → utstyrs-inventar (m/ garanti + reklamasjon) ──
+  app.post("/api/software/expenses/:id/import-equipment", async (req, res) => {
+    const session = requireUserSession(req, res); if (!session) return;
+    try {
+      await ensureTable();
+      const id = parseInt(String(req.params.id), 10);
+      if (!Number.isFinite(id)) return res.status(400).json({ error: "bad_id" });
+      const { rows } = await pool.query(`SELECT * FROM software_expenses WHERE id=$1 AND user_id=$2 LIMIT 1`, [id, session.userId]);
+      const e = rows[0];
+      if (!e) return res.status(404).json({ error: "not_found" });
+
+      const purchaseDate = e.purchase_date ? new Date(e.purchase_date).toISOString().slice(0, 10) : null;
+      // Reklamasjonsrett: 5 år for varig utstyr (lovpålagt). Garanti: valgfri, fra body.
+      const reklam = reklamasjonExpiry(purchaseDate, 5);
+      const warrantyYears = Number(req.body?.warrantyYears) > 0 ? Number(req.body.warrantyYears) : null;
+      const warrantyExpiry = warrantyYears && purchaseDate ? reklamasjonExpiry(purchaseDate, warrantyYears) : null;
+      const brand = (e.vendor || e.product || "Utstyr").slice(0, 120);
+      const model = (e.product || e.vendor || "Ukjent").slice(0, 120);
+      const settings = {
+        source: "email-receipt", receiptEmailId: e.source_email_id, receiptVendor: e.vendor,
+        reklamasjonExpiry: reklam, purchasePriceNok: e.amount_nok, serialNumber: e.serial_hint || null,
+      };
+      const eq = await pool.query(
+        `INSERT INTO user_equipment
+           (user_id, user_type, brand, model, category, purchase_date, purchase_price,
+            warranty_expiry, serial_number, condition, settings)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'excellent',$10) RETURNING id`,
+        [session.userId, req.body?.profession || null, brand, model, e.category || "Utstyr",
+         purchaseDate, e.amount_nok, warrantyExpiry, e.serial_hint || null, JSON.stringify(settings)],
+      );
+      await pool.query(`UPDATE software_expenses SET status='importert', updated_at=NOW() WHERE id=$1 AND user_id=$2`, [id, session.userId]);
+      res.json({ ok: true, equipmentId: eq.rows[0]?.id, reklamasjonExpiry: reklam, warrantyExpiry });
+    } catch (e) { console.error("[software-expenses] import-equipment", e); res.status(500).json({ error: "import_failed" }); }
+  });
+
   // ── SKANN Gmail for kvitteringer ────────────────────────────────────────────
   app.post("/api/software/scan-receipts", async (req, res) => {
     const session = requireUserSession(req, res); if (!session) return;
@@ -426,15 +477,22 @@ export function setupSoftwareExpensesRoutes(deps: SoftwareExpensesRoutesDeps): v
           const amount = p.amount == null ? null : Number(p.amount);
           const currency = String(p.currency || "NOK").toUpperCase().slice(0, 8);
           const cycle = normCycle(p.billingCycle);
+          const itemType = p.itemType === "hardware" ? "hardware" : "software";
+          // Hardware: behold AI-ens kategori (kamera/objektiv/…). Software: normaliser.
+          const category = itemType === "hardware"
+            ? (String(p.category || "").slice(0, 60) || "Utstyr")
+            : normCategory(p.category);
           return {
             source_email_id: id,
+            item_type: itemType,
             vendor: String(p.vendor || "").slice(0, 200) || null,
             product: String(p.product || "").slice(0, 200) || null,
-            category: normCategory(p.category),
+            category,
+            serial_hint: String(p.serialNumber || "").slice(0, 120) || null,
             amount_original: Number.isFinite(amount as number) ? amount : null,
             amount_nok: toNok(amount as number, currency), currency,
-            billing_cycle: cycle,
-            is_subscription: p.isSubscription != null ? !!p.isSubscription : (cycle === "monthly" || cycle === "yearly"),
+            billing_cycle: itemType === "hardware" ? "engang" : cycle,
+            is_subscription: itemType === "hardware" ? false : (p.isSubscription != null ? !!p.isSubscription : (cycle === "monthly" || cycle === "yearly")),
             purchase_date: safeDate(p.purchaseDate), renewal_date: safeDate(p.renewalDate),
             confidence: ["low", "medium", "high"].includes(p.confidence) ? p.confidence : "low",
           };
@@ -450,13 +508,13 @@ export function setupSoftwareExpensesRoutes(deps: SoftwareExpensesRoutesDeps): v
             `INSERT INTO software_expenses
                (user_id, vendor, product, category, amount_nok, amount_original, currency,
                 billing_cycle, is_subscription, purchase_date, renewal_date, source,
-                source_email_id, confidence, status)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'email',$12,$13,'forslag')
+                source_email_id, confidence, status, item_type, serial_hint)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'email',$12,$13,'forslag',$14,$15)
              ON CONFLICT (user_id, source_email_id) WHERE source_email_id IS NOT NULL DO NOTHING
              RETURNING id`,
             [session.userId, p.vendor, p.product, p.category, p.amount_nok, p.amount_original,
              p.currency, p.billing_cycle, p.is_subscription, p.purchase_date, p.renewal_date,
-             p.source_email_id, p.confidence]);
+             p.source_email_id, p.confidence, p.item_type, p.serial_hint]);
           if (r.rows.length) created++;
         } catch (e) { console.warn("[software-expenses] insert suggestion failed", (e as any)?.message); }
       }

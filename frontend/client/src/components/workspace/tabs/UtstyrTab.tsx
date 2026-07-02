@@ -29,6 +29,20 @@ const specOf = (it: any) => it?.specifications || it?.settings?.specifications |
 const gearValue = (it: any) => specOf(it).marketValueNok || it?.currentValue || it?.current_value || 0;
 const monthlyOf = (it: any) => { const s = specOf(it); if (s.licenseType !== 'subscription' || !s.subscriptionCost) return 0; return s.billingCycle === 'yearly' ? Number(s.subscriptionCost) / 12 : Number(s.subscriptionCost); };
 const daysUntil = (iso?: string) => { if (!iso) return null; try { return Math.ceil((new Date(iso).getTime() - Date.now()) / 86400000); } catch { return null; } };
+const settingsOf = (it: any) => it?.settings || {};
+// Reklamasjonsrett (forbrukerkjøpsloven): fra settings, ellers kjøpsdato + 5 år.
+const reklamOf = (it: any) => {
+  const s = settingsOf(it); if (s.reklamasjonExpiry) return s.reklamasjonExpiry;
+  const pd = it?.purchase_date || it?.purchaseDate; if (!pd) return null;
+  try { const d = new Date(pd); if (isNaN(d.getTime())) return null; d.setFullYear(d.getFullYear() + 5); return d.toISOString().slice(0, 10); } catch { return null; }
+};
+const warrantyOf = (it: any) => it?.warranty_expiry || it?.warrantyExpiry || null;
+const receiptOf = (it: any) => settingsOf(it).receiptEmailId || null;
+// Kort «N år / N mnd igjen» fra dager-til-utløp.
+const leftLabel = (iso?: string) => {
+  const d = daysUntil(iso); if (d == null) return null; if (d < 0) return 'utløpt';
+  if (d >= 365) return `${Math.floor(d / 365)} år igjen`; if (d >= 60) return `${Math.round(d / 30)} mnd igjen`; return `${d} d igjen`;
+};
 
 const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: string }> = ({ profession, userId }) => {
   const music = isMusic(profession);
@@ -113,7 +127,7 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
       </Stack>
 
       {/* Programvare & abonnement — Gmail-kvittering-skann + manuell + kostnadsoversikt */}
-      <SoftwareKostnaderPanel userId={userId} />
+      <SoftwareKostnaderPanel userId={userId} onEquipmentChange={load} />
 
       {/* Utstyrs-lisenser — abonnement knyttet til registrert utstyr */}
       {(() => {
@@ -192,9 +206,12 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
                 <Box sx={{ minWidth: 0, flex: 1 }}>
                   <Typography sx={{ fontSize: 13.5, fontWeight: 700 }} noWrap>{it.name || `${it.brand} ${it.model}`}</Typography>
                   <Typography sx={{ fontSize: 11.5, color: ws.textFaint }} noWrap>{[it.brand, it.category].filter(Boolean).join(' · ')}</Typography>
-                  <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mt: 0.5 }}>
+                  <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap sx={{ mt: 0.5 }}>
                     {gearValue(it) > 0 && <WsTag label={`≈ ${fmtKr(gearValue(it))}`} tone="green" />}
                     {it.condition && <WsTag label={it.condition} tone="neutral" />}
+                    {(() => { const rk = reklamOf(it); const l = leftLabel(rk); return rk ? <WsTag label={`Reklamasjon: ${l}`} tone={l === 'utløpt' ? 'neutral' : 'amber'} /> : null; })()}
+                    {(() => { const w = warrantyOf(it); const l = leftLabel(w); return w ? <WsTag label={`Garanti: ${l}`} tone={l === 'utløpt' ? 'neutral' : 'green'} /> : null; })()}
+                    {receiptOf(it) && <WsTag label="📄 Kvittering" tone="neutral" />}
                   </Stack>
                 </Box>
               </Stack>

@@ -27,7 +27,7 @@ const line = (r: any) => {
   return { name, amt };
 };
 
-const SoftwareKostnaderPanel: React.FC<{ userId?: string }> = ({ userId }) => {
+const SoftwareKostnaderPanel: React.FC<{ userId?: string; onEquipmentChange?: () => void }> = ({ userId, onEquipmentChange }) => {
   const [data, setData] = useState<any>({ confirmed: [], suggestions: [], summary: null });
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
@@ -98,6 +98,14 @@ const SoftwareKostnaderPanel: React.FC<{ userId?: string }> = ({ userId }) => {
 
   const approve = async (id: number) => { setBusyId(id); try { await apiRequest(`/api/software/expenses/${id}`, { method: 'PATCH', body: { status: 'bekreftet' } }); load(); } catch (e: any) { window.alert(e?.message || 'Feilet'); } finally { setBusyId(null); } };
   const reject = async (id: number) => { setBusyId(id); try { await apiRequest(`/api/software/expenses/${id}`, { method: 'DELETE' }); load(); } catch (e: any) { window.alert(e?.message || 'Feilet'); } finally { setBusyId(null); } };
+  const importEquipment = async (id: number) => {
+    setBusyId(id);
+    try {
+      const r: any = await apiRequest(`/api/software/expenses/${id}/import-equipment`, { method: 'POST', body: {} });
+      setScanMsg({ tone: 'green', text: r?.reklamasjonExpiry ? `Lagt til i utstyr. Reklamasjonsrett ut ${new Date(r.reklamasjonExpiry).toLocaleDateString('nb-NO')}.` : 'Lagt til i utstyr.' });
+      load(); if (onEquipmentChange) onEquipmentChange();
+    } catch (e: any) { window.alert(e?.message || 'Kunne ikke legge til'); } finally { setBusyId(null); }
+  };
 
   const saveManual = async () => {
     if (!form.vendor.trim() && !form.product.trim()) { window.alert('Fyll inn leverandør eller produkt.'); return; }
@@ -119,6 +127,8 @@ const SoftwareKostnaderPanel: React.FC<{ userId?: string }> = ({ userId }) => {
 
   const sum = data.summary || { monthlyNok: 0, yearlyNok: 0, subscriptionCount: 0, byCategory: {} };
   const cats = Object.entries(sum.byCategory || {}).sort((a: any, b: any) => b[1] - a[1]);
+  const swSuggestions = (data.suggestions || []).filter((r: any) => r.item_type !== 'hardware');
+  const hwSuggestions = (data.suggestions || []).filter((r: any) => r.item_type === 'hardware');
   const nothing = data.confirmed.length === 0 && data.suggestions.length === 0;
 
   return (
@@ -160,18 +170,37 @@ const SoftwareKostnaderPanel: React.FC<{ userId?: string }> = ({ userId }) => {
         <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Skann e-posten din for kvitteringer fra Adobe, Splice, Native Instruments m.fl. — eller legg inn manuelt. Vi samler, kategoriserer og regner ut månedskostnaden din.</Typography>
       )}
 
-      {/* Forslag til gjennomgang */}
-      {data.suggestions.length > 0 && (
-        <Box sx={{ mb: data.confirmed.length ? 1.75 : 0 }}>
-          <Typography sx={{ fontSize: 12, fontWeight: 700, color: ws.amber, mb: 0.75 }}>📥 Funnet i e-post — til gjennomgang ({data.suggestions.length})</Typography>
+      {/* Software-forslag til gjennomgang */}
+      {swSuggestions.length > 0 && (
+        <Box sx={{ mb: (hwSuggestions.length || data.confirmed.length) ? 1.75 : 0 }}>
+          <Typography sx={{ fontSize: 12, fontWeight: 700, color: ws.amber, mb: 0.75 }}>📥 Programvare funnet i e-post — til gjennomgang ({swSuggestions.length})</Typography>
           <Stack spacing={0.6}>
-            {data.suggestions.map((r: any) => { const l = line(r); return (
+            {swSuggestions.map((r: any) => { const l = line(r); return (
               <Stack key={r.id} direction="row" alignItems="center" spacing={1} sx={{ p: 0.85, borderRadius: 1, bgcolor: ws.panelAlt, border: `1px solid ${ws.accentBorder}` }}>
                 <Box sx={{ minWidth: 0, flex: 1 }}>
                   <Typography sx={{ fontSize: 12.5, fontWeight: 700 }} noWrap>{l.name}</Typography>
                   <Typography sx={{ fontSize: 11, color: ws.textFaint }} noWrap>{r.category} · {l.amt}{r.confidence ? ` · ${r.confidence} sikkerhet` : ''}</Typography>
                 </Box>
                 <IconButton size="small" disabled={busyId === r.id} onClick={() => approve(r.id)} title="Godkjenn" sx={{ color: '#86efac', border: '1px solid #14532d' }}><Check sx={{ fontSize: 16 }} /></IconButton>
+                <IconButton size="small" disabled={busyId === r.id} onClick={() => reject(r.id)} title="Avvis" sx={{ color: ws.textDim, border: `1px solid ${ws.borderSoft}` }}><Close sx={{ fontSize: 16 }} /></IconButton>
+              </Stack>
+            ); })}
+          </Stack>
+        </Box>
+      )}
+
+      {/* Utstyr-forslag → importeres til inventaret m/ garanti + reklamasjon */}
+      {hwSuggestions.length > 0 && (
+        <Box sx={{ mb: data.confirmed.length ? 1.75 : 0 }}>
+          <Typography sx={{ fontSize: 12, fontWeight: 700, color: ws.amber, mb: 0.75 }}>🛡️ Utstyr funnet i e-post — legg til i inventar ({hwSuggestions.length})</Typography>
+          <Stack spacing={0.6}>
+            {hwSuggestions.map((r: any) => { const l = line(r); return (
+              <Stack key={r.id} direction="row" alignItems="center" spacing={1} sx={{ p: 0.85, borderRadius: 1, bgcolor: ws.panelAlt, border: `1px solid ${ws.accentBorder}` }}>
+                <Box sx={{ minWidth: 0, flex: 1 }}>
+                  <Typography sx={{ fontSize: 12.5, fontWeight: 700 }} noWrap>{l.name}</Typography>
+                  <Typography sx={{ fontSize: 11, color: ws.textFaint }} noWrap>{r.category} · {l.amt}{r.purchase_date ? ` · kjøpt ${new Date(r.purchase_date).toLocaleDateString('nb-NO')}` : ''}</Typography>
+                </Box>
+                <Button size="small" disabled={busyId === r.id} onClick={() => importEquipment(r.id)} sx={{ color: '#86efac', textTransform: 'none', fontWeight: 700, border: '1px solid #14532d' }}>Legg til i inventar</Button>
                 <IconButton size="small" disabled={busyId === r.id} onClick={() => reject(r.id)} title="Avvis" sx={{ color: ws.textDim, border: `1px solid ${ws.borderSoft}` }}><Close sx={{ fontSize: 16 }} /></IconButton>
               </Stack>
             ); })}
