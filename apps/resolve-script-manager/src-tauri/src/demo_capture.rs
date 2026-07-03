@@ -18,6 +18,7 @@ const SCAN_JS: &str = include_str!("../capture/demo_scan_inject.js");
 const H2C_JS: &str = include_str!("../capture/html2canvas.min.js");
 const SHOT_JS: &str = include_str!("../capture/demo_shot_inject.js");
 const SESSION_JS: &str = include_str!("../capture/demo_session_inject.js");
+const PII_JS: &str = include_str!("../capture/demo_pii_inject.js");
 const CAPTURE_LABEL: &str = "demo-capture";
 const SCAN_LABEL: &str = "demo-scan";
 const SHOT_LABEL: &str = "demo-shot";
@@ -63,7 +64,9 @@ pub async fn demo_scan_dom(app: AppHandle, url: String) -> Result<(), String> {
         .inner_size(1200.0, 820.0)
         // html2canvas FØR scan-scriptet → scannen kan ta viewport-screenshots
         // ved hvert scroll-bånd (brukes til presis preview-render, Fase 1b).
+        // PII-sladderen maskerer skjemafelt + e-post/telefon under skuddene.
         .initialization_script(H2C_JS)
+        .initialization_script(PII_JS)
         .initialization_script(SCAN_JS)
         .build()
         .map_err(|e| format!("kunne ikke åpne analyse-vindu: {e}"))?;
@@ -117,6 +120,7 @@ pub async fn demo_screenshot(app: AppHandle, url: String) -> Result<(), String> 
         .title("Tar skjermbilde…")
         .inner_size(1280.0, 800.0)
         .initialization_script(H2C_JS)
+        .initialization_script(PII_JS)
         .initialization_script(SHOT_JS)
         .build()
         .map_err(|e| format!("kunne ikke åpne skjermbilde-vindu: {e}"))?;
@@ -170,6 +174,7 @@ pub async fn demo_session_open(app: AppHandle, url: String, navigate: Option<boo
         .title("Demo-økt — stegene kjører i dette vinduet")
         .inner_size(1240.0, 840.0)
         .initialization_script(H2C_JS)
+        .initialization_script(PII_JS)
         .initialization_script(SESSION_JS)
         .build()
         .map_err(|e| format!("kunne ikke åpne økt-vindu: {e}"))?;
