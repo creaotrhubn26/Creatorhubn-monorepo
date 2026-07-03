@@ -237,6 +237,11 @@
     whenReady(function () {
       try {
         if (!window.html2canvas) { report('shot', { ok: false, error: 'html2canvas mangler' }); return; }
+        // PII-sladding (G23): økt-skuddet går til Claude vision — masker
+        // skjemafelt + e-post/telefon under skuddet, gjenopprett etterpå
+        // (økten lever videre og siden skal være urørt for neste steg).
+        if (window.__demoPii) window.__demoPii.mask();
+        var unmask = function () { if (window.__demoPii) window.__demoPii.restore(); };
         window.html2canvas(document.documentElement, {
           x: window.scrollX || 0,
           y: window.scrollY || 0,
@@ -247,12 +252,15 @@
           scale: 1,
           backgroundColor: '#ffffff',
         }).then(function (canvas) {
+          unmask();
           var out = downscale(canvas, 1000);
           report('shot', { ok: true, dataUrl: out.toDataURL('image/jpeg', 0.72) });
         }).catch(function (e) {
+          unmask();
           report('shot', { ok: false, error: String(e) });
         });
       } catch (e) {
+        if (window.__demoPii) window.__demoPii.restore();
         report('shot', { ok: false, error: String(e) });
       }
     }, 300);

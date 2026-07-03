@@ -30,6 +30,10 @@
   function shoot() {
     try {
       if (!window.html2canvas) { invoke('demo_shot_result', { ok: false, error: 'html2canvas mangler' }); return; }
+      // PII-sladding (G23): masker skjemafelt + e-post/telefon mens skuddet
+      // tas — bildet går til Claude vision og inn i delte guider.
+      if (window.__demoPii) window.__demoPii.mask();
+      function unmask() { if (window.__demoPii) window.__demoPii.restore(); }
       window.html2canvas(document.documentElement, {
         x: window.scrollX || 0,
         y: window.scrollY || 0,
@@ -40,13 +44,16 @@
         scale: 1,
         backgroundColor: '#ffffff',
       }).then(function (canvas) {
+        unmask();
         var out = downscale(canvas, 1000);
         var data = out.toDataURL('image/jpeg', 0.72);
         invoke('demo_shot_result', { ok: true, dataUrl: data });
       }).catch(function (e) {
+        unmask();
         invoke('demo_shot_result', { ok: false, error: String(e) });
       });
     } catch (e) {
+      if (window.__demoPii) window.__demoPii.restore();
       invoke('demo_shot_result', { ok: false, error: String(e) });
     }
   }

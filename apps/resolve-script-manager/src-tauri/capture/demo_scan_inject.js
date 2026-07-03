@@ -203,11 +203,16 @@
     return new Promise(function (resolve) {
       if (!window.html2canvas) { resolve(null); return; }
       try {
+        // PII-sladding (G23): shots blir preview-thumbnails, guide-bilder og
+        // vision-input — masker skjemafelt + e-post/telefon under skuddet.
+        if (window.__demoPii) window.__demoPii.mask();
+        function unmask() { if (window.__demoPii) window.__demoPii.restore(); }
         window.html2canvas(document.documentElement, {
           x: window.scrollX || 0, y: window.scrollY || 0,
           width: window.innerWidth, height: window.innerHeight,
           useCORS: true, logging: false, scale: 1, backgroundColor: '#ffffff'
         }).then(function (canvas) {
+          unmask();
           var maxW = 900, c = canvas;
           if (canvas.width > maxW) {
             c = document.createElement('canvas');
@@ -215,8 +220,11 @@
             var ctx = c.getContext('2d'); if (ctx) ctx.drawImage(canvas, 0, 0, c.width, c.height);
           }
           resolve(c.toDataURL('image/jpeg', 0.7));
-        }).catch(function () { resolve(null); });
-      } catch (e) { resolve(null); }
+        }).catch(function () { unmask(); resolve(null); });
+      } catch (e) {
+        if (window.__demoPii) window.__demoPii.restore();
+        resolve(null);
+      }
     });
   }
 
