@@ -9,6 +9,9 @@
 import GENERATED_TEMPLATES from './infographicTemplates.generated.json';
 // Hele Material Icons (Outlined)-katalogen (2195 navn) for ikon-velgeren.
 import ALL_ICONS from './materialIcons.generated.json';
+// Bundlede fonter (Inter + Material Icons Outlined som base64 @font-face) →
+// render OG preview fungerer OFFLINE uten Google Fonts-CDN.
+import { FONT_FACE_CSS } from './fontAssets.generated';
 
 /** Hele Material Icons-katalogen (søkbar i ikon-velgeren). */
 export const ALL_MATERIAL_ICONS: string[] = ALL_ICONS as string[];
@@ -41,9 +44,24 @@ export interface InfographicTemplate {
   html?: string;
 }
 
-/** HTML som faktisk brukes for en mal (egen html eller den delte). */
+/** Bundlet font-CSS som ett <style>. Eksponert så studio-UI-et kan injisere
+ *  samme fonter i sitt eget dokument (ikon-velgeren). */
+export const BUNDLED_FONT_STYLE = `<style>${FONT_FACE_CSS}</style>`;
+
+/** Injiser de bundlede fontene i en mal-HTML — sist i <head> så de lokale
+ *  @font-face-reglene VINNER over malens egne Google Fonts-CDN-lenker (som
+ *  ellers feiler offline). Aksent-display-fonter (Poppins o.l.) beholdes fra
+ *  CDN og degraderer grasiøst til fallback offline. */
+function injectBundledFonts(html: string): string {
+  if (html.includes('__CFG_FONTS__')) return html; // allerede injisert
+  const style = BUNDLED_FONT_STYLE.replace('<style>', '<style data-cfg-fonts="__CFG_FONTS__">');
+  return html.includes('</head>') ? html.replace('</head>', style + '</head>') : style + html;
+}
+
+/** HTML som faktisk brukes for en mal (egen html eller den delte) — alltid med
+ *  bundlede fonter så preview + render er offline-robust. */
 export function htmlForTemplate(tpl: InfographicTemplate): string {
-  return tpl.html || INFOGRAPHIC_HTML;
+  return injectBundledFonts(tpl.html || INFOGRAPHIC_HTML);
 }
 
 /** Er feltet et Material-ikon-felt? (vis ikon-velger i stedet for tekst). */
@@ -164,9 +182,9 @@ export function buildInfographicConfig(
 
 /** Den config-drevne HTML-malen (skjult for brukeren). Leser cfg fra
  *  location.hash (#<base64 json>) og eksponerer window.setProgress(p). */
+// Fontene injiseres av htmlForTemplate (bundlet, offline-robust) — ingen
+// Google Fonts-CDN-lenker her.
 export const INFOGRAPHIC_HTML = String.raw`<!doctype html><html><head><meta charset="utf-8">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet">
 <style>
  *{margin:0;padding:0;box-sizing:border-box;font-family:'Inter',sans-serif}
  html,body{background:transparent}
