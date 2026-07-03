@@ -372,16 +372,102 @@ function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-/** Rastrer en SVG-streng til en PNG data-URL via canvas (for deling/eksport). */
-export function svgToPngDataUrl(svg: string, width: number, height: number, scale = 2): Promise<string> {
+/**
+ * Fjern potensielt utrygt innhold fra en AI-generert SVG før den settes inn
+ * med dangerouslySetInnerHTML / synkes til sky: <script>, <foreignObject>
+ * (kan bære HTML/JS), inline event-handlere (on*=…) og javascript:-URI-er.
+ * Bevarer <image href> (logo) og all vanlig tegne-markup.
+ */
+export function sanitizeSvg(svg: string): string {
+  return svg
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<foreignObject[\s\S]*?<\/foreignObject>/gi, '')
+    .replace(/\son\w+\s*=\s*"[^"]*"/gi, '')
+    .replace(/\son\w+\s*=\s*'[^']*'/gi, '')
+    .replace(/(href|xlink:href)\s*=\s*("|')\s*javascript:[^"']*\2/gi, '');
+}
+
+/** Les faktisk størrelse fra viewBox (foretrukket) eller width/height, med
+ *  fornuftig fallback — så PNG-rastrering bruker riktig sideforhold. */
+export function parseSvgSize(svg: string, fallbackW = 1080, fallbackH = 1350): { width: number; height: number } {
+  const vb = svg.match(/viewBox\s*=\s*["']\s*[\d.-]+\s+[\d.-]+\s+([\d.]+)\s+([\d.]+)/i);
+  if (vb) { const w = parseFloat(vb[1]), h = parseFloat(vb[2]); if (w > 0 && h > 0) return { width: w, height: h }; }
+  const head = svg.slice(0, svg.indexOf('>') + 1);
+  const wm = head.match(/\bwidth\s*=\s*["']?([\d.]+)/i), hm = head.match(/\bheight\s*=\s*["']?([\d.]+)/i);
+  if (wm && hm) { const w = parseFloat(wm[1]), h = parseFloat(hm[1]); if (w > 0 && h > 0) return { width: w, height: h }; }
+  return { width: fallbackW, height: fallbackH };
+}
+
+/**
+ * Gjør en SVG responsiv for inline-visning: fjern faste width/height på rot-
+ * <svg> (som ellers tvinger 1080px og klipper i en liten container) og la
+ * viewBox styre skaleringen. Saniteres samtidig. Brukes i preview + thumbnail.
+ */
+export function svgForInlineDisplay(svg: string): string {
+  const clean = sanitizeSvg(svg);
+  return clean.replace(/<svg\b[^>]*>/i, (tag) => {
+    let t = tag
+      .replace(/\swidth\s*=\s*("[^"]*"|'[^']*'|[\d.]+)/i, '')
+      .replace(/\sheight\s*=\s*("[^"]*"|'[^']*'|[\d.]+)/i, '');
+    // Sett responsiv style (bevar evt. eksisterende style ved å prependere).
+    if (/\sstyle\s*=/i.test(t)) {
+      t = t.replace(/\sstyle\s*=\s*("|')/i, ' style=$1max-width:100%;height:auto;display:block;');
+    } else {
+      t = t.replace(/<svg\b/i, '<svg style="max-width:100%;height:auto;display:block"');
+    }
+    return t;
+  });
+}
+
+/**
+ * Inline eksterne <image href="http…">-referanser som data-URI-er. Nødvendig
+ * fordi en SVG lastet som <img> (rastrering) IKKE laster eksterne ressurser —
+ * uten dette forsvinner logoen stille fra nedlastet PNG. Best-effort:
+ * en logo som ikke lar seg hente (CORS/nettverk) beholdes uendret.
+ */
+async function inlineSvgImages(svg: string): Promise<string> {
+  const hrefs = new Set<string>();
+  const re = /(?:xlink:href|href)\s*=\s*("|')(https?:\/\/[^"']+)\1/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(svg))) hrefs.add(m[2]);
+  if (!hrefs.size) return svg;
+  let out = svg;
+  await Promise.all([...hrefs].map(async (url) => {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) return;
+      const blob = await res.blob();
+      const dataUrl: string = await new Promise((resolve, reject) => {
+        const fr = new FileReader();
+        fr.onload = () => resolve(String(fr.result));
+        fr.onerror = () => reject(new Error('les logo'));
+        fr.readAsDataURL(blob);
+      });
+      // Bytt ALLE forekomster av denne URL-en (escape til regex).
+      const esc = url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      out = out.replace(new RegExp(esc, 'g'), dataUrl);
+    } catch { /* best-effort — behold ekstern href */ }
+  }));
+  return out;
+}
+
+/**
+ * Rastrer en SVG-streng til en PNG data-URL via canvas (for deling/eksport).
+ * Størrelse leses fra SVG-ens viewBox når den ikke er oppgitt (unngår
+ * forvrengning), eksterne bilder inlines først (så logo overlever), og
+ * markup saniteres.
+ */
+export async function svgToPngDataUrl(svg: string, width?: number, height?: number, scale = 2): Promise<string> {
+  const size = (width && height) ? { width, height } : parseSvgSize(svg);
+  const prepared = sanitizeSvg(await inlineSvgImages(svg));
   return new Promise((resolve, reject) => {
     const img = new Image();
-    const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
+    const blob = new Blob([prepared], { type: 'image/svg+xml;charset=utf-8' });
     const urlObj = URL.createObjectURL(blob);
     img.onload = () => {
       try {
         const canvas = document.createElement('canvas');
-        canvas.width = width * scale; canvas.height = height * scale;
+        canvas.width = Math.round(size.width * scale); canvas.height = Math.round(size.height * scale);
         const ctx = canvas.getContext('2d');
         if (!ctx) { reject(new Error('Canvas-kontekst utilgjengelig')); return; }
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);

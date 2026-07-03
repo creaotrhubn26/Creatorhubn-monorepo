@@ -14,7 +14,7 @@ import { isAiConnected } from '../../services/claudeProxyService';
 import { scanDom, captureScreenshot, isCaptureAvailable } from '../../services/demoCaptureService';
 import { useDemoStudio } from './demoStudioStore';
 import { ProductBrainMap } from './ProductBrainMap';
-import { buildBrainHtml, svgToPngDataUrl } from './demoStudioExports';
+import { buildBrainHtml, svgToPngDataUrl, svgForInlineDisplay, sanitizeSvg } from './demoStudioExports';
 import { demoPrintHtml } from '../../api';
 import { addAsset } from './assetLibrary';
 import {
@@ -209,12 +209,14 @@ export function MarketingPanel({ onOpenSignIn }: { onOpenSignIn: () => void }) {
     if (!ctx.trim()) { setMsg('Kjør «Analyser produktet» eller fyll brief først — infographic bygges fra de dataene.'); return; }
     setBusy('infographic'); setMsg(`Claude designer ${INFOGRAPHIC_LABELS[infoKind].toLowerCase()}-infographic fra produktets data…`);
     try {
-      const svg = await generateInfographic({
+      const raw = await generateInfographic({
         kind: infoKind, context: ctx,
         title: project.branding?.brandName || project.name,
         brandColor: project.branding?.brandColor,
         logoUrl: project.branding?.logoUrl,
       });
+      // Saniter ved kilden → lagret, sky-synket og nedlastet SVG er alle rene.
+      const svg = sanitizeSvg(raw);
       setInfoSvg(svg);
       addAsset({ kind: 'infographic', title: `${INFOGRAPHIC_LABELS[infoKind]} — ${project.branding?.brandName || project.name}`, svg, url: project.url, note: INFOGRAPHIC_LABELS[infoKind] });
       setMsg('✓ Infographic generert + lagret i biblioteket — last ned PNG/SVG.');
@@ -227,7 +229,9 @@ export function MarketingPanel({ onOpenSignIn }: { onOpenSignIn: () => void }) {
   };
   const downloadInfoPng = async () => {
     if (!infoSvg) return;
-    try { const png = await svgToPngDataUrl(infoSvg, 1080, 1350, 2); downloadDataUrl(png, 'infographic.png'); }
+    // Størrelse leses fra SVG-ens viewBox (ikke hardkodet) → ingen forvrengning;
+    // ekstern logo inlines i rastreringen så den overlever i PNG-en.
+    try { const png = await svgToPngDataUrl(infoSvg); downloadDataUrl(png, 'infographic.png'); }
     catch (e) { setMsg('Feil: ' + (e as Error).message); }
   };
   const downloadInfoSvg = () => {
@@ -559,13 +563,22 @@ export function MarketingPanel({ onOpenSignIn }: { onOpenSignIn: () => void }) {
             {busy === 'infographic' ? 'Designer…' : '✦ Generér infographic'}
           </button>
         </div>
-        {infoSvg ? (
+        {busy === 'infographic' ? (
+          // Loading-skjelett i preview-området (kallet kan ta 10–30 s).
+          <div style={{ width: 300, maxWidth: '100%', aspectRatio: '4 / 5', borderRadius: 9, border: `1px solid ${C.line}`, background: `linear-gradient(90deg, ${C.cream} 0%, #fff 50%, ${C.cream} 100%)`, backgroundSize: '200% 100%', animation: 'mpShimmer 1.2s ease-in-out infinite', display: 'grid', placeItems: 'center', color: C.inkFaint, fontSize: 12 }}>
+            <style>{'@keyframes mpShimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}'}</style>
+            Designer infographic…
+          </div>
+        ) : infoSvg ? (
           <div>
-            <div style={{ border: `1px solid ${C.line}`, borderRadius: 9, overflow: 'hidden', maxWidth: 360, background: '#fff' }}
-              dangerouslySetInnerHTML={{ __html: infoSvg }} />
+            {/* Responsiv inline-visning: faste width/height fjernes så SVG-en
+                skalerer til containeren (før klippet den til hjørnet), + sanitert. */}
+            <div style={{ border: `1px solid ${C.line}`, borderRadius: 9, overflow: 'hidden', maxWidth: 300, background: '#fff' }}
+              dangerouslySetInnerHTML={{ __html: svgForInlineDisplay(infoSvg) }} />
             <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
               <button style={{ ...btn, fontSize: 11.5, padding: '5px 10px' }} onClick={() => void downloadInfoPng()}>Last ned PNG</button>
               <button style={{ ...btn, fontSize: 11.5, padding: '5px 10px' }} onClick={downloadInfoSvg}>Last ned SVG</button>
+              <button style={{ ...btn, fontSize: 11.5, padding: '5px 10px' }} onClick={() => void makeInfographic()} title="Generér på nytt (annet uttrykk)">↺ Ny variant</button>
             </div>
           </div>
         ) : (
