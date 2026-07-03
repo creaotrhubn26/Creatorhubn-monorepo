@@ -269,8 +269,9 @@ struct ContestWinnerDTO: Codable, Hashable, Identifiable {
 /// (mapper userId → menneske-navn).
 ///
 /// Backend aggregerer `won` + `leads` + `total_value_nok` per selger
-/// over inneværende periode + `trend` (antall plasser opp/ned vs. forrige
-/// periode). `title` kan være null (faller tilbake til "Selger" i UI).
+/// over inneværende periode + `trend` (%-endring i aktivitet siste 7
+/// dager vs forrige 7 dager, klippet til ±999). `title` kan være null
+/// (faller tilbake til "Selger" i UI).
 struct SalesTeamMemberDTO: Codable, Hashable, Identifiable {
     let userId: String
     let name: String

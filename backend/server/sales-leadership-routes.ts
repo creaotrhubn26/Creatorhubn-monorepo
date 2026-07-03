@@ -433,7 +433,9 @@ export function registerSalesLeadershipRoutes(
   //   - won           : antall vunne premier (sales_prize_awards rows)
   //   - leads         : antall crm_customers tilordnet brukeren
   //   - total_value_nok: SUM av estimated_value_nok over vunne premier
-  //   - trend         : 0 (placeholder — iPad rendrer '--' inntil videre)
+  //   - trend         : %-endring i aktivitet (crm_lead_activities per
+  //                     user_id) siste 7 dager vs forrige 7 dager, klippet
+  //                     til ±999. 0→0 = 0 %, 0→noe = +100 %.
   // Solo-modus: hvis brukeren ikke er i en enterprise-org (orgId === userId)
   // returnerer vi kun den påloggede brukeren selv, med stats fra egne leads.
   // ───────────────────────────────────────────────────────────────
@@ -487,7 +489,20 @@ export function registerSalesLeadershipRoutes(
                WHERE c.assigned_user_id = u.id
                  AND c.archived_at IS NULL
             ), 0)                                               AS leads,
-            0                                                   AS trend,
+            COALESCE((
+              SELECT LEAST(999, GREATEST(-999, CASE
+                       WHEN prev.cnt = 0 AND cur.cnt = 0 THEN 0
+                       WHEN prev.cnt = 0 THEN 100
+                       ELSE ROUND(((cur.cnt - prev.cnt)::numeric / prev.cnt) * 100)::int
+                     END))
+                FROM (SELECT COUNT(*)::int AS cnt FROM crm_lead_activities la
+                       WHERE la.user_id = u.id
+                         AND la.created_at >= NOW() - INTERVAL '7 days') cur,
+                     (SELECT COUNT(*)::int AS cnt FROM crm_lead_activities la
+                       WHERE la.user_id = u.id
+                         AND la.created_at >= NOW() - INTERVAL '14 days'
+                         AND la.created_at <  NOW() - INTERVAL '7 days') prev
+            ), 0)                                               AS trend,
             COALESCE((
               SELECT SUM(p.estimated_value_nok)::bigint
                 FROM sales_prize_awards a

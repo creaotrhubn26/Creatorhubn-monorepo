@@ -49,6 +49,11 @@ export interface MomentumScore {
     meetingsTarget: number;
     pipelineMoves: number;
     pipelineMovesTarget: number;
+    // Granulære tellere (undersett av contacts) — brukes av iPad
+    // «Aktivitet i dag»-kortet som viser Telefoner/E-poster/Besøk separat.
+    calls: number;
+    emails: number;
+    visits: number;
   };
   overdueNbas: number;
   trend: "rising" | "stable" | "falling"; // sammenlignet m/ gårsdagens score
@@ -177,12 +182,16 @@ export async function computeTodayMomentum(
   // 1. Activity-count i dag
   const activityR = await pool.query<{
     contacts: string; followups: string; meetings: string; pipeline_moves: string;
+    calls: string; emails: string; visits: string;
   }>(
     `SELECT
        COUNT(*) FILTER (WHERE activity_type IN ('visit_logged','email_sent','call_made','sms_sent'))::text AS contacts,
        COUNT(*) FILTER (WHERE activity_type IN ('note_added','status_changed') AND created_at::date = CURRENT_DATE)::text AS followups,
        COUNT(*) FILTER (WHERE activity_type IN ('meeting_scheduled','meeting_recap'))::text AS meetings,
-       COUNT(*) FILTER (WHERE activity_type = 'status_changed' AND new_value IN ('qualified','meeting','proposal','negotiation','won'))::text AS pipeline_moves
+       COUNT(*) FILTER (WHERE activity_type = 'status_changed' AND new_value IN ('qualified','meeting','proposal','negotiation','won'))::text AS pipeline_moves,
+       COUNT(*) FILTER (WHERE activity_type = 'call_made')::text AS calls,
+       COUNT(*) FILTER (WHERE activity_type = 'email_sent')::text AS emails,
+       COUNT(*) FILTER (WHERE activity_type = 'visit_logged')::text AS visits
        FROM crm_lead_activities
        WHERE customer_id IN (SELECT id FROM crm_customers WHERE organization_id = $1::uuid)
          AND created_at::date = CURRENT_DATE`,
@@ -193,6 +202,9 @@ export async function computeTodayMomentum(
   const followups = Number(a.followups);
   const meetings = Number(a.meetings);
   const pipelineMoves = Number(a.pipeline_moves);
+  const calls = Number(a.calls);
+  const emails = Number(a.emails);
+  const visits = Number(a.visits);
 
   // Activity-score: progress mot daglig target, klippes til 0-100
   const activityCompletion =
@@ -357,6 +369,7 @@ export async function computeTodayMomentum(
       followups, followupsTarget: goal.dailyFollowupsTarget,
       meetings, meetingsTarget: goal.dailyMeetingsTarget,
       pipelineMoves, pipelineMovesTarget: goal.dailyPipelineMovesTarget,
+      calls, emails, visits,
     },
     overdueNbas,
     trend,

@@ -157,6 +157,9 @@ private enum ATB {
 // MARK: - Main sheet
 
 struct AssignToTeamMemberSheet: View {
+    /// Ekte crm_customers-id når kjent — sendes videre til backend så
+    /// tildelingen kan kobles til leaden. Nil for drop-pins o.l.
+    var leadId: String? = nil
     let leadName: String
     let leadAddress: String?
     let leadScore: Int?
@@ -791,7 +794,7 @@ struct AssignToTeamMemberSheet: View {
     private func sendAssignment() {
         guard let m = selectedMember else { return }
         let a = LeadAssignment(
-            leadId: "lead-\(leadName)",
+            leadId: leadId ?? "lead-\(leadName)",
             leadName: leadName,
             leadCoordinate: leadCoordinate,
             assigneeUserId: m.userId,
