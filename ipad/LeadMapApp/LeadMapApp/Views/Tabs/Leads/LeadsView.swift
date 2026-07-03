@@ -1384,6 +1384,9 @@ struct LeadDetailSidebar: View {
     @State private var showLeadNoteEditor: Bool = false
     @State private var showLeadUploadFile: Bool = false
     @State private var showLeadArchiveConfirm: Bool = false
+    // Tilbudssending (funn #7) — krever backend-lead + APIClient.
+    @State private var showSendProposal: Bool = false
+    @Environment(AppState.self) private var appState
     @State private var actionToast: String?
 
     var body: some View {
@@ -1431,6 +1434,15 @@ struct LeadDetailSidebar: View {
         }
         .sheet(isPresented: $showLeadUploadFile) {
             UploadFileSheet(lead: lead)
+        }
+        .sheet(isPresented: $showSendProposal) {
+            SendProposalSheet(
+                leadId: lead.backendId ?? "",
+                leadName: lead.company,
+                leadEmail: lead.email,
+                api: appState.api,
+                onSent: { actionToast = "Tilbud sendt til \(lead.company)" }
+            )
         }
         .confirmationDialog(
             "Arkivere \(lead.company)?",
@@ -2003,6 +2015,13 @@ struct LeadDetailSidebar: View {
                     if let mail = lead.displayEmail {
                         Button { email(mail) } label: {
                             Label("Send e-post", systemImage: "envelope.fill")
+                        }
+                    }
+                    // Tilbudssending (funn #7) — kun for backend-leads
+                    // (mock-rader har ingen crm-id å knytte tilbudet til).
+                    if lead.backendId != nil {
+                        Button { showSendProposal = true } label: {
+                            Label("Send tilbud", systemImage: "doc.text.fill")
                         }
                     }
                     Button {} label: {

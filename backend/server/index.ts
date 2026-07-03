@@ -823,6 +823,7 @@ import { setupAudioSettingsRoutes } from "./audio-settings-routes";
 import { setupSalesRoutes } from "./sales-routes";
 import { registerSalesLeadershipRoutes } from "./sales-leadership-routes";
 import { registerLeadgridSalesTeamsRoutes } from "./leadgrid-sales-teams-routes";
+import { registerLeadgridProposalsRoutes } from "./leadgrid-proposals-routes";
 import { registerRoutesAdherenceRoutes } from "./routes-adherence-routes";
 import { registerLeadgridKartverketRoutes } from "./leadgrid-kartverket-routes";
 import { registerPondusRoutes } from "./pondus-routes";
@@ -65553,6 +65554,11 @@ registerSalesLeadershipRoutes({ app, pool, requireUserSession });
 // (team-struktur + «Send oppdrag»-tildelinger, synk for iPad
 // LeadgridSalesTeamStore/AssignToTeamMemberSheet). Forutsetter mig 0361.
 registerLeadgridSalesTeamsRoutes({ app, pool, requireUserSession });
+
+// Tilbudssending (funn #7, produktrevisjonen) — opprett+send tilbud m/
+// branded PDF-lenke, offentlig /p/:token m/ open-tracking som fyrer
+// proposal.opened-workflow-eventet. Forutsetter mig 0363.
+registerLeadgridProposalsRoutes({ app, pool, requireUserSession });
 
 // /api/leadgrid/routes/* — 10 endpoints (route adherence + MeMapPin tap-
 // actions: positions/my-route/assignments/visits/team-nearby/adherence-
