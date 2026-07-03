@@ -321,7 +321,7 @@ export const CONTENT_PRODUCER_DECK: PersonaDeck = {
       label: "The Cover",
       title: "Hele kreativ-stacken. På én plass.",
       body: "Skyt → forbedre → lever → publiser → mål — i samme arbeidsområde.",
-      screenshot: "decks/screenshots/content-producer/01-photographer-dashboard.png",
+      screenshot: "e2e-smoke-holy-crust.png",
     },
     {
       number: "02",
@@ -364,8 +364,8 @@ export const CONTENT_PRODUCER_DECK: PersonaDeck = {
         { label: "Feed Planner — IG + TikTok + Meta + LinkedIn + YouTube" },
         { label: "Marketing Plan Engine + AI-drevet content-strategi" },
       ],
-      screenshot: "decks/screenshots/content-producer/02-showcase-admin.png",
-      screenshotCaption: "Showcase Admin (live)",
+      screenshot: "story-tab-verification.png",
+      screenshotCaption: "Story Arc Studio med Claude Story Director (beta)",
     },
     {
       number: "05",
@@ -602,10 +602,12 @@ export const CONTENT_PRODUCER_SALES_DECK: PersonaDeck = {
     },
     {
       number: "06",
-      kind: "vision",
+      kind: "screenshot",
       label: "Samarbeid",
       title: "Klienten ser det samme som deg.",
-      body: "Transparens er ikke en feature — det er hele samarbeidsmodellen mellom deg som leverandør og klienten som kunde.",
+      // Real UI capture from the Holy Crust pilot (checked in at repo root).
+      screenshot: "e2e-smoke-holy-crust.png",
+      screenshotCaption: "Prosjektrom med klient-godkjenning — Holy Crust-piloten (live)",
       bullets: [
         { icon: "🤝", label: "Transparent oversikt", sub: "Leverandør og klient deler samme prosjektbilde — ingen overraskelser" },
         { icon: "✅", label: "Sporbar godkjenning", sub: "Klient-godkjenning skjer i systemet, ikke i en WhatsApp-tråd" },
@@ -630,12 +632,15 @@ export const CONTENT_PRODUCER_SALES_DECK: PersonaDeck = {
     },
     {
       number: "08",
-      kind: "vision",
+      kind: "screenshot",
       label: "AI-laget",
       title: "The Role Room Agent — bygd særlig for innholdsprodusenter.",
-      body: "Et Claude-drevet AI-lag på toppen av hele stacken. I beta nå — rulles ut til abonnenter.",
+      // Real UI capture of Story Arc Studio with Claude Story Director.
+      screenshot: "story-tab-verification.png",
+      screenshotCaption: "Story Arc Studio med Claude Story Director (beta) — ekte prosjektdata",
       bullets: [
-        { icon: "🤖", label: "AI-genererte captions og tekster", sub: "Feed Planner og Pressroom skriver utkastene for deg" },
+        { icon: "🤖", label: "Claude-drevet AI-lag på toppen av stacken", sub: "I beta nå — rulles ut til abonnenter" },
+        { icon: "✍️", label: "AI-genererte captions og tekster", sub: "Feed Planner og Pressroom skriver utkastene for deg" },
         { icon: "✨", label: "Smart retusj", sub: "Photo Enhancer med AI-assistert frequency separation og object removal" },
         { icon: "📊", label: "Content-strategi fra dine tall", sub: "Marketing Plan Engine bygger 30-dagers planer på ekte KPI-er" },
         { icon: "🎨", label: "Brand Kit-synk", sub: "Logo, farger og fonter — alle verktøy henter fra samme kilde" },
