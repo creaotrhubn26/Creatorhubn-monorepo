@@ -28,6 +28,7 @@ import { sendTransactionalEmail } from "./transactional-email-service.js";
 import { publishEvent } from "./leadgrid-workflow-engine.js";
 import { applyStageChange } from "./leadgrid-deals-service.js";
 import { LEADGRID_LOGO_BUFFER } from "./leadgrid-brand-assets.js";
+import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
 
 type SessionUser = {
   userId: string;
@@ -40,28 +41,6 @@ export interface ProposalsRoutesDeps {
   app: Express;
   pool: Pool;
   requireUserSession: (req: Request, res: Response) => SessionUser | null;
-}
-
-/** Samme org-oppslag som sales-leadership/sales-teams (modul-privat der). */
-async function resolveOrgIdForUser(
-  pool: Pool,
-  userId: string,
-): Promise<string> {
-  try {
-    const r = await pool.query<{ organization_id: string }>(
-      `SELECT organization_id
-         FROM enterprise_team_members
-        WHERE user_id = $1 AND status = 'active'
-        ORDER BY joined_at DESC NULLS LAST
-        LIMIT 1`,
-      [userId],
-    );
-    const orgId = r.rows[0]?.organization_id;
-    if (orgId) return String(orgId);
-  } catch {
-    // Fall til userId-modell (solo).
-  }
-  return userId;
 }
 
 function publicBackendBase(): string {

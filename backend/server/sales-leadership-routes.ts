@@ -55,6 +55,7 @@ import multer from "multer";
 import crypto from "node:crypto";
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { sendEmail } from "./casting-reminder-sender.js";
+import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
 
 type SessionUser = {
   userId: string;
@@ -146,31 +147,6 @@ const DEFAULT_CONTEST_TEMPLATES: ReadonlyArray<{
 // Helpers
 // ─────────────────────────────────────────────────────────────────
 
-/**
- * Returnerer organization_id for innlogget bruker. Faller til userId hvis
- * brukeren ikke er medlem av en enterprise-org (matcher solo-owner-mønster
- * i dance-team-service).
- */
-async function resolveOrgIdForUser(
-  pool: Pool,
-  userId: string,
-): Promise<string> {
-  try {
-    const r = await pool.query<{ organization_id: string }>(
-      `SELECT organization_id
-         FROM enterprise_team_members
-        WHERE user_id = $1 AND status = 'active'
-        ORDER BY joined_at DESC NULLS LAST
-        LIMIT 1`,
-      [userId],
-    );
-    const orgId = r.rows[0]?.organization_id;
-    if (orgId) return String(orgId);
-  } catch {
-    // Tabell mangler eller spørring feilet — fall til userId-modell.
-  }
-  return userId;
-}
 
 function readString(v: unknown, fallback = ""): string {
   return typeof v === "string" ? v : fallback;
