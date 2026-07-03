@@ -27,6 +27,7 @@ import PDFDocument from "pdfkit";
 import { sendTransactionalEmail } from "./transactional-email-service.js";
 import { publishEvent } from "./leadgrid-workflow-engine.js";
 import { applyStageChange } from "./leadgrid-deals-service.js";
+import { LEADGRID_LOGO_BUFFER } from "./leadgrid-brand-assets.js";
 
 type SessionUser = {
   userId: string;
@@ -125,6 +126,8 @@ function proposalEmailHtml(opts: {
   accent: string;
   url: string;
   validUntil: string | null;
+  /** Hostet logo-URL (org-egen eller Leadgrid-lockup). Null → tekst-navn. */
+  logoUrl: string | null;
 }): string {
   const esc = (s: string) =>
     s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -146,7 +149,9 @@ function proposalEmailHtml(opts: {
   <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:14px;overflow:hidden;font-family:-apple-system,'Segoe UI',Roboto,sans-serif">
     <div style="height:7px;background:${accent}"></div>
     <div style="padding:28px 32px 32px">
-      <div style="font-size:17px;font-weight:800;color:#151221">${esc(opts.orgName)}</div>
+      ${opts.logoUrl
+        ? `<img src="${opts.logoUrl}" alt="${esc(opts.orgName)}" height="52" style="display:block;height:52px;max-width:260px;object-fit:contain">`
+        : `<div style="font-size:17px;font-weight:800;color:#151221">${esc(opts.orgName)}</div>`}
       <div style="display:inline-block;background:${accent};color:#ffffff;font-size:10px;font-weight:700;letter-spacing:0.6px;border-radius:10px;padding:4px 12px;margin-top:8px">TILBUD</div>
 
       <h1 style="font-size:22px;color:#151221;margin:22px 0 4px">${esc(opts.title)}</h1>
@@ -239,6 +244,9 @@ function renderProposalPdf(
   leadName: string,
   branding: { name: string; primary_color: string; sender_name: string | null },
   logoBuffer: Buffer | null,
+  // Lockup = logoen inneholder wordmarken (Leadgrid-default) → tegnes
+  // større og org-navn-teksten droppes så navnet ikke dobles.
+  logoIsLockup = false,
 ): void {
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", `inline; filename="tilbud.pdf"`);
@@ -262,19 +270,26 @@ function renderProposalPdf(
   // Topp-accentlinje
   doc.rect(0, 0, W, 8).fill(accent);
 
-  // Header: org-navn (+ ev. logo) + TILBUD-chip venstre, meta høyre
+  // Header: org-navn (+ ev. logo) + TILBUD-chip venstre, meta høyre.
+  // Lockup (Leadgrid-default) tegnes større uten navnetekst ved siden.
   let y = 44;
+  let drewLockup = false;
   if (logoBuffer) {
     try {
-      doc.image(logoBuffer, M, y - 4, { fit: [110, 36] });
-      doc.fillColor(ink).font("Helvetica-Bold").fontSize(19).text(branding.name, M + 122, y);
+      if (logoIsLockup) {
+        doc.image(logoBuffer, M - 4, y - 12, { fit: [200, 66] });
+        drewLockup = true;
+      } else {
+        doc.image(logoBuffer, M, y - 4, { fit: [110, 36] });
+        doc.fillColor(ink).font("Helvetica-Bold").fontSize(19).text(branding.name, M + 122, y);
+      }
     } catch {
       doc.fillColor(ink).font("Helvetica-Bold").fontSize(19).text(branding.name, M, y);
     }
   } else {
     doc.fillColor(ink).font("Helvetica-Bold").fontSize(19).text(branding.name, M, y);
   }
-  const chipY = y + 28;
+  const chipY = drewLockup ? y + 60 : y + 28;
   doc.roundedRect(M, chipY, 68, 20, 10).fill(accent);
   doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(9)
     .text("TILBUD", M, chipY + 6, { width: 68, align: "center" });
@@ -296,8 +311,8 @@ function renderProposalPdf(
     my += 17;
   }
 
-  // Hero: tittel + mottaker-kort
-  y = 128;
+  // Hero: tittel + mottaker-kort (lockup-headeren er litt høyere)
+  y = drewLockup ? 152 : 128;
   doc.fillColor(ink).font("Helvetica-Bold").fontSize(24).text(proposal.title, M, y, { width: CW });
   y = doc.y + 14;
 
@@ -401,6 +416,14 @@ function renderProposalPdf(
 export function registerLeadgridProposalsRoutes(deps: ProposalsRoutesDeps): void {
   const { app, pool, requireUserSession } = deps;
 
+  // ── GET /api/leadgrid/assets/logo.png — Leadgrid-lockup for e-post ──
+  // (Gmail o.l. stripper data-URIer, så e-posten trenger en hostet URL.)
+  app.get("/api/leadgrid/assets/logo.png", (_req, res) => {
+    res.setHeader("Content-Type", "image/png");
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    res.send(LEADGRID_LOGO_BUFFER);
+  });
+
   // ── POST /api/leadgrid/leads/:id/proposals — opprett + send ─────────
   app.post("/api/leadgrid/leads/:id/proposals", async (req, res) => {
     const session = requireUserSession(req, res);
@@ -448,10 +471,12 @@ export function registerLeadgridProposalsRoutes(deps: ProposalsRoutesDeps): void
       // Org-branding (accent/navn) — best-effort, default Leadgrid-lilla.
       let orgName = "Leadgrid";
       let accent = "#7c3aed";
+      let emailLogoUrl: string | null = `${publicBackendBase()}/api/leadgrid/assets/logo.png`;
       try {
-        const b = await pool.query<{ name: string; primary_color: string }>(
+        const b = await pool.query<{ name: string; primary_color: string; logo_url: string | null }>(
           `SELECT o.name,
-                  COALESCE(eb.brand_primary_color, o.brand_color, '#7c3aed') AS primary_color
+                  COALESCE(eb.brand_primary_color, o.brand_color, '#7c3aed') AS primary_color,
+                  o.logo_url
              FROM organizations o
              LEFT JOIN leadgrid_email_branding_config eb ON eb.org_key = o.id::text
             WHERE o.id = $1::uuid`,
@@ -460,9 +485,12 @@ export function registerLeadgridProposalsRoutes(deps: ProposalsRoutesDeps): void
         if (b.rows[0]) {
           orgName = b.rows[0].name;
           accent = b.rows[0].primary_color;
+          // Org-egen logo når den finnes; ellers tekst-navn (Leadgrid-
+          // lockup-en gjelder kun default-brandingen).
+          emailLogoUrl = b.rows[0].logo_url;
         }
       } catch {
-        // org er slug/user-id — behold default.
+        // org er slug/user-id — behold Leadgrid-default.
       }
       const url = `${publicBackendBase()}/api/leadgrid/p/${token}`;
       const senderName = session.name || "Salgsteamet";
@@ -471,7 +499,7 @@ export function registerLeadgridProposalsRoutes(deps: ProposalsRoutesDeps): void
         subject: `Tilbud: ${title}`,
         html: proposalEmailHtml({
           leadName: lead.name, title, message, lines, totalNok: total,
-          senderName, orgName, accent, url, validUntil,
+          senderName, orgName, accent, url, validUntil, logoUrl: emailLogoUrl,
         }),
         text: `${title}\n\nTilbud til ${lead.name}.\n\n${message}\n\nSum eks. mva.: ${fmtNok(total)} kr\nMva. 25 %: ${fmtNok(Math.round(total * 0.25))} kr\nTotalt inkl. mva.: ${fmtNok(total + Math.round(total * 0.25))} kr\n\nSe tilbudet: ${url}\n\nVennlig hilsen\n${senderName}\n${orgName}`,
         fromLabel: orgName,
@@ -634,7 +662,13 @@ export function registerLeadgridProposalsRoutes(deps: ProposalsRoutesDeps): void
       } catch {
         // org er slug/user-id — behold default-branding.
       }
-      const logoBuffer = await fetchLogoBuffer(branding.logo_url);
+      let logoBuffer = await fetchLogoBuffer(branding.logo_url);
+      let logoIsLockup = false;
+      if (!logoBuffer && branding.name === "Leadgrid") {
+        // Default-branding (org uten rad i organizations) → Leadgrid-lockup.
+        logoBuffer = LEADGRID_LOGO_BUFFER;
+        logoIsLockup = true;
+      }
 
       return renderProposalPdf(
         res,
@@ -650,6 +684,7 @@ export function registerLeadgridProposalsRoutes(deps: ProposalsRoutesDeps): void
         String(row.lead_name ?? ""),
         branding,
         logoBuffer,
+        logoIsLockup,
       );
     } catch (err) {
       console.error("[proposals] public GET failed:", err);
