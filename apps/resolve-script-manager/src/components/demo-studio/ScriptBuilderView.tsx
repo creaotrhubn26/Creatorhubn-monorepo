@@ -64,10 +64,10 @@ function fmt(sec: number) {
 }
 
 export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = {}) {
-  const { project, selectedSceneId, selectScene, updateScene, addScene, setProjectField } = useDemoStudio();
+  const { project, selectedSceneId, selectScene, updateScene, addScene, setProjectField, saveStatus } = useDemoStudio();
   const scenes = project?.scenes ?? [];
   const selected = scenes.find((s) => s.id === selectedSceneId) ?? scenes[0];
-  const meta = project?.scriptMeta ?? { tone: 'professional' as ScriptTone, audience: 'Healthcare Professionals', language: 'English', length: 'medium' as ScriptLength };
+  const meta = project?.scriptMeta ?? { tone: 'professional' as ScriptTone, audience: 'General', language: 'Norsk', length: 'medium' as ScriptLength };
   const render = project?.render ?? defaultRenderOptions();
 
   const setMeta = (patch: Partial<typeof meta>) => setProjectField('scriptMeta', { ...meta, ...patch });
@@ -196,10 +196,7 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
         {/* Topbar */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 18px', background: C.panel, borderBottom: `1px solid ${C.line}` }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, border: `1px solid ${C.lineStrong}`, borderRadius: 9, padding: '8px 12px', minWidth: 220 }}>
-            <span style={{ color: C.inkFaint }}>🌐</span> <span style={{ fontWeight: 600 }}>{project.name}</span> <span style={{ marginLeft: 'auto', color: C.inkFaint }}>⌄</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: C.cream, border: `1px solid ${C.line}`, borderRadius: 9, padding: '8px 12px', color: C.inkFaint, minWidth: 200 }}>
-            ⌕ Search scenes… <span style={{ marginLeft: 'auto', fontSize: 11, background: '#fff', border: `1px solid ${C.line}`, borderRadius: 5, padding: '1px 5px' }}>⌘K</span>
+            <span style={{ color: C.inkFaint }}>🌐</span> <span style={{ fontWeight: 600 }}>{project.name}</span>
           </div>
           <div style={{ flex: 1 }} />
           <span style={{ fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 6, background: aiReady ? '#e6f3ec' : '#fdeee0', color: aiReady ? C.green : '#b5651d' }}>
@@ -214,7 +211,10 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
           <button style={{ ...btn, opacity: aiBusy ? 0.6 : 1 }} disabled={!!aiBusy} onClick={() => void onImprove('clarify')}>
             ✎ {aiBusy && aiBusy !== 'generate' ? 'Forbedrer…' : 'AI Improve'}
           </button>
-          <span style={{ fontSize: 12, color: C.green, fontWeight: 600, whiteSpace: 'nowrap' }} title="Endringer lagres automatisk">✓ Lagret</span>
+          <span style={{ fontSize: 12, color: saveStatus === 'error' ? '#dc2626' : saveStatus === 'saved_partial' ? '#f59e0b' : C.green, fontWeight: 600, whiteSpace: 'nowrap' }}
+            title={saveStatus === 'error' ? 'localStorage er full — siste endringer er ikke persistert' : saveStatus === 'saved_partial' ? 'Lagret uten skjermbilder (lite lagringsplass)' : 'Endringer lagres automatisk'}>
+            {saveStatus === 'error' ? '⚠ Ikke lagret' : saveStatus === 'saved_partial' ? '✓ Delvis lagret' : '✓ Lagret'}
+          </span>
         </div>
 
         {/* Body: editor + right panel */}
@@ -223,7 +223,7 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
           <div style={{ flex: 1, overflowY: 'auto', padding: '18px 22px', minWidth: 0 }}>
             {/* Scene header */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
-              <div style={hdrBack}>←</div>
+              <div style={hdrBack} title="Tilbake til Flow Builder" onClick={() => onNav?.('flow')}>←</div>
               <h2 style={{ fontSize: 21, fontWeight: 700, margin: 0 }}>Scene {selected.index + 1} — {selected.title}</h2>
               <div style={{ flex: 1 }} />
               <span style={chip}>▭ {DEVICE_LABEL[selected.device]}</span>
@@ -246,8 +246,10 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
                   {(Object.keys(SCRIPT_TONE_LABELS) as ScriptTone[]).map((t) => <option key={t} value={t}>{SCRIPT_TONE_LABELS[t]}</option>)}
                 </select>
                 <Lab>Audience</Lab>
+                {/* Adoptert målgruppe fra AI-forståelsen er fritekst — den må
+                    inn i options, ellers viser selecten blank/feil verdi. */}
                 <select style={miniSel} value={meta.audience} onChange={(e) => setMeta({ audience: e.target.value })}>
-                  {['Healthcare Professionals', 'Patients', 'Investors', 'Internal Team'].map((a) => <option key={a} value={a}>{a}</option>)}
+                  {[...new Set([meta.audience, 'General', 'Healthcare Professionals', 'Patients', 'Investors', 'Internal Team'].filter(Boolean))].map((a) => <option key={a} value={a}>{a}</option>)}
                 </select>
                 <Lab>Language</Lab>
                 <select style={miniSel} value={meta.language} onChange={(e) => setMeta({ language: e.target.value })}>
@@ -432,7 +434,7 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
               <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 6 }}>
                 <span style={{ fontWeight: 700, fontSize: 11 }}>{s.index + 1}</span>
                 <span style={{ fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.title}</span>
-                <div style={{ flex: 1 }} /><span style={{ color: C.inkFaint }}>⋮</span>
+                <div style={{ flex: 1 }} />
               </div>
               <div style={{ height: 56, borderRadius: 7, background: C.cream, marginBottom: 8 }} />
               <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11 }}>

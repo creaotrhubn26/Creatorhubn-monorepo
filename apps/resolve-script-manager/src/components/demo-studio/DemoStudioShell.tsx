@@ -1321,7 +1321,6 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                   </div>
                 ))}
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, fontWeight: 700, marginTop: 18 }}>Lagrede maler <span style={{ color: C.inkFaint }}>›</span></div>
 
               {/* ── Visning (render-toggles) ── */}
               <div style={{ fontSize: 13, fontWeight: 700, marginTop: 20, marginBottom: 4 }}>Visning</div>
@@ -1647,11 +1646,11 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
       {/* ── Bottom: stat cards ── */}
       {!storyMode && nav !== 'export' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 1, background: C.line, borderTop: `1px solid ${C.line}`, flexShrink: 0 }}>
-          <Stat h="⚇ Devices" v={[...new Set(scenes.map((s) => DEVICE_LABEL[s.device]))].join(' · ')} link="Endre →" />
+          <Stat h="⚇ Devices" v={[...new Set(scenes.map((s) => DEVICE_LABEL[s.device]))].join(' · ')} link="Endre →" onLink={() => setNav('script')} />
           <Stat h="▦ Scener" v={`${scenes.length} scener`} s={`${doneCount} ferdig`} />
           <Stat h="⏱ Varighet" v={`${fmt(totalDuration(scenes))} total`} s="Anbefalt 60–90 s" />
           <Stat h="◷ Opptak" v={recording ? `Steg ${recorderStepIndex + 1} av ${scenes.length}` : 'Ikke startet'} s={recording ? 'Venter på deg' : 'Trykk Record'} />
-          <Stat h="⤓ Format" v={`${project.format} · 1080p`} link="Eksport →" />
+          <Stat h="⤓ Format" v={`${project.format} · 1080p`} link="Eksport →" onLink={() => setNav('export')} />
           <div style={{ background: C.panel, padding: '13px 15px' }}>
             <div style={{ width: 42, height: 42, borderRadius: '50%', border: `3px solid ${C.green}`, display: 'grid', placeItems: 'center', fontSize: 13, fontWeight: 700, float: 'right' }}>{Math.round((doneCount / Math.max(scenes.length, 1)) * 100)}</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: C.inkSoft, marginBottom: 7 }}>✓ Demo-score</div>
@@ -2237,13 +2236,13 @@ function ResponsiveCheckModal({ report, onClose, onApply }: {
   );
 }
 
-function Stat({ h, v, s, link }: { h: string; v: string; s?: string; link?: string }) {
+function Stat({ h, v, s, link, onLink }: { h: string; v: string; s?: string; link?: string; onLink?: () => void }) {
   return (
     <div style={{ background: C.panel, padding: '13px 15px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: C.inkSoft, marginBottom: 7 }}>{h}</div>
       <div style={{ fontSize: 13.5, fontWeight: 700 }}>{v}</div>
       {s && <div style={{ fontSize: 11, color: C.inkFaint, marginTop: 3 }}>{s}</div>}
-      {link && <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 8 }}>{link}</div>}
+      {link && <div onClick={onLink} style={{ fontSize: 11, color: C.inkSoft, marginTop: 8, cursor: onLink ? 'pointer' : 'default' }}>{link}</div>}
     </div>
   );
 }

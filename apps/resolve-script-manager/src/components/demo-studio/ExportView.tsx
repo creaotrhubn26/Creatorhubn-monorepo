@@ -338,7 +338,9 @@ export function ExportView() {
       audio: { enabled: toggles.voiceover, noiseGate: true, polish: true, loudnessNormalize: true, loudnessTarget: -14 },
       music: { enabled: toggles.music && !!musicPath, source: musicPath, volume: 0.5, ducking: true, duckDb: -12 },
       export: {
-        format: format === '9:16' ? 'prores4444' : 'mp4',
+        // Alltid mp4 — Reels/Shorts (9:16) tar ikke prores .mov; svart pad
+        // rundt enheten er riktig leveranse for vertikale flater.
+        format: 'mp4',
         pixelRatio: resolution === '4K' ? 7 : resolution === '1440p' ? 6 : 5,
         frameRate: fps,
         // Mål-sideforhold + høyde → pipelinen cropper/padder til nøyaktig dette.
@@ -346,7 +348,7 @@ export function ExportView() {
       },
     };
     const clips = recorded.map((s) => s.recordingPath!).filter(Boolean);
-    const outName = `${project.name.replace(/[^\w-]+/g, '_')}-demo.${format === '9:16' ? 'mov' : 'mp4'}`;
+    const outName = `${project.name.replace(/[^\w-]+/g, '_')}-demo.mp4`;
     try {
       const summary = await mockupRenderVideo(config as Record<string, unknown>, clips, outName, toggles.music ? musicPath : null, voiceover);
       if (!summary.succeeded && !resultRef.current) setError('Render fullførte ikke');
@@ -440,6 +442,11 @@ export function ExportView() {
           <div style={{ marginTop: 12, fontSize: 11.5, color: C.inkFaint }}>
             Cursor, ripple og highlight brennes inn i videoen etter scenenes visnings-toggles. Device-mockup legges alltid på.
           </div>
+          {new Set(recorded.map((s) => s.device)).size > 1 && (
+            <div style={{ marginTop: 8, fontSize: 11.5, color: '#8a6516' }}>
+              ⚠ Scenene har ulike enheter — hele videoen rammes som første scenes enhet ({recorded[0]?.device}). Del opp i flere eksporter for enhets-riktige rammer.
+            </div>
+          )}
         </Section>
 
         {/* Leveranser (tekst & bilde) — utenom video-renderen */}
@@ -544,22 +551,8 @@ export function ExportView() {
         </div>
       </div>
 
-      {/* Høyre: eksport-presets (AI Export Assistant, spec §5.4) */}
-      <div style={{ width: 300, flexShrink: 0, background: C.panel, borderLeft: `1px solid ${C.line}`, padding: 18, overflowY: 'auto' }}>
-        <h3 style={{ fontSize: 14, fontWeight: 700, margin: '0 0 4px' }}>✦ Flere versjoner</h3>
-        <p style={{ fontSize: 11.5, color: C.inkFaint, margin: '0 0 14px' }}>AI kan lage tilpassede klipp etter eksport (kommer).</p>
-        {[
-          ['Full product demo', '16:9 · komplett'],
-          ['30-sek LinkedIn-cut', '1:1 · kort'],
-          ['15-sek teaser', '9:16 · vertikal'],
-          ['Tutorial-versjon', '16:9 · m/ steg'],
-        ].map(([t, s]) => (
-          <div key={t} style={{ border: `1px solid ${C.line}`, borderRadius: 10, padding: '10px 12px', marginBottom: 8, opacity: 0.7 }}>
-            <div style={{ fontSize: 12.5, fontWeight: 600 }}>{t}</div>
-            <div style={{ fontSize: 11, color: C.inkFaint }}>{s}</div>
-          </div>
-        ))}
-      </div>
+      {/* («✦ Flere versjoner»-mockup-panelet er fjernet — velg format/oppløsning
+          over og eksporter flere ganger for ulike kanaler.) */}
     </div>
   );
 }
