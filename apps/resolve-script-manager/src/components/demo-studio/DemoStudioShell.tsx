@@ -170,6 +170,9 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const [urlInput, setUrlInput] = useState('');
   const [directorBusy, setDirectorBusy] = useState(false);
   const [directorMsg, setDirectorMsg] = useState<string | null>(null);
+  // G11/G12: ærlig varsel når AI-grunnlaget er svakt — login-/consent-vegg i
+  // skannet eller nesten tom sidetekst (SPA). Vises ved siden av director-status.
+  const [ctxWarning, setCtxWarning] = useState<string | null>(null);
   // «Forstå siden først»: Claudes forståelse av produkt + målgruppe, vist som
   // en brief før noe lages — grunnlag for diskusjon/justering.
   const [understanding, setUnderstanding] = useState<SiteUnderstanding | null>(null);
@@ -748,6 +751,18 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
     const doc = project!.productDoc?.trim();
     const siteContext = doc ? `PRODUKT-DOKUMENT (one-pager — autoritativ kilde):\n${doc}\n\n--- NETTSIDE ---\n${pageText}` : pageText;
     applyScannedBranding(scan);
+    // G11/G12: si det ærlig når grunnlaget er svakt, i stedet for at AI-en
+    // stille dikter manus fra URL-en alene / beskriver cookie-banneret.
+    const wall = scan?.wall;
+    setCtxWarning(
+      wall?.kind === 'login'
+        ? 'Siden viser en innloggingsvegg — skannet ser login-siden, ikke produktet. Logg inn i demo-økt-vinduet («Kjør automatisk» åpner det) eller bruk en offentlig URL.'
+        : wall?.kind === 'consent' && !wall.dismissed
+          ? 'Siden har et samtykke-banner som ikke lot seg lukke automatisk — skann/manus kan handle om banneret i stedet for innholdet.'
+          : !doc && (pageText || '').replace(/\s+/g, ' ').trim().length < 120
+            ? 'Tynn side-kontekst: siden ga nesten ingen lesbar tekst (typisk SPA eller innlogget innhold). Manuset lages på tynt grunnlag — vurder å laste opp en one-pager (Product Brain).'
+            : null,
+    );
     const brandName = scan?.branding?.brandName;
     directorCtx.current = { url: project!.url, elements, siteContext, brandName };
     return { elements, siteContext, brandName };
@@ -1023,7 +1038,12 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                 </div>
               ) : null;
               const replyLine = cmdReply ? <div style={{ fontSize: 11.5, color: cmdReply.startsWith('Feil') ? '#c4453b' : C.inkSoft, marginBottom: 8 }}>{cmdReply}</div> : null;
-              const directorLine = directorMsg ? <div style={{ fontSize: 11, color: directorMsg.startsWith('Feil') ? '#c4453b' : C.inkSoft, marginTop: 8 }}>{directorMsg}</div> : null;
+              const directorLine = (directorMsg || ctxWarning) ? (
+                <>
+                  {directorMsg && <div style={{ fontSize: 11, color: directorMsg.startsWith('Feil') ? '#c4453b' : C.inkSoft, marginTop: 8 }}>{directorMsg}</div>}
+                  {ctxWarning && <div style={{ fontSize: 11, color: '#8a6516', background: '#fff8ec', border: '1px solid #f0d9a8', borderRadius: 7, padding: '6px 9px', marginTop: 6 }}>⚠ {ctxWarning}</div>}
+                </>
+              ) : null;
               // Delt progress/resultat for autonom ferdig demo (brukt i Beskriv + Forfin).
               const demoVidShot = demoVidScene ? pickShot(project.scanShots, (scenes[demoVidScene.index]?.startScrollPct ?? 0) / 100) : null;
               const demoVidBlock = (

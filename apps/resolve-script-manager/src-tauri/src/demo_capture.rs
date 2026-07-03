@@ -84,6 +84,24 @@ pub fn demo_scan_result(app: AppHandle, result: serde_json::Value) -> Result<(),
     app.emit("demo-capture://dom", result).map_err(|e| e.to_string())
 }
 
+/// Fremdrift fra skann-vinduet (stabilitet/scroll-steg/screenshots) → frontend
+/// holder timeout-en levende så lenge skannet faktisk jobber (G10).
+#[tauri::command]
+pub fn demo_scan_progress(app: AppHandle, progress: serde_json::Value) -> Result<(), String> {
+    app.emit("demo-capture://scan-progress", progress)
+        .map_err(|e| e.to_string())
+}
+
+/// Avbryt et pågående skann (frontend ga opp): lukk vinduet så det ikke blir
+/// stående og jobbe synlig etter timeout (G10).
+#[tauri::command]
+pub fn demo_scan_cancel(app: AppHandle) -> Result<(), String> {
+    if let Some(w) = app.get_webview_window(SCAN_LABEL) {
+        let _ = w.close();
+    }
+    Ok(())
+}
+
 /// Åpne et verify-vindu på `url` for ett-skudds verifisering av en scenes
 /// handling. Brukeren klikker elementet; selector+label sendes via
 /// demo_verify_result. `expected_label` vises i verktøylinja som hint.

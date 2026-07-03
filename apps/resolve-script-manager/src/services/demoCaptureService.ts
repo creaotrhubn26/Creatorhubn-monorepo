@@ -49,17 +49,32 @@ export function onCaptureDone(cb: (cancelled: boolean) => void): Promise<Unliste
 /**
  * Skann den ekte siden for interaktive elementer (åpner analyse-vindu som
  * lukker seg selv). Returnerer katalogen, eller null ved timeout/feil/web-dev.
+ *
+ * Timeout er INAKTIVITETS-basert (G10): skannet melder fremdrift per scroll-
+ * steg/screenshot, og klokka nullstilles på hvert livstegn — før var den faste
+ * fristen kortere enn skannet selv kunne ta på tunge sider. Ved timeout lukkes
+ * skann-vinduet (før ble det stående og jobbe synlig etter at vi ga opp).
  */
-export async function scanDom(url: string, timeoutMs = 20000): Promise<DomScanResult | null> {
+export async function scanDom(url: string, opts: { inactivityMs?: number; maxMs?: number } = {}): Promise<DomScanResult | null> {
   if (!isCaptureAvailable()) return null;
+  const inactivityMs = opts.inactivityMs ?? 20000;
+  const maxMs = opts.maxMs ?? 90000;
   let resolve!: (v: DomScanResult | null) => void;
   const done = new Promise<DomScanResult | null>((r) => { resolve = r; });
+  const onTimeout = () => { void invoke('demo_scan_cancel').catch(() => { /* */ }); resolve(null); };
   const unlisten = await listen<DomScanResult>('demo-capture://dom', (e) => resolve(e.payload));
-  const timer = setTimeout(() => resolve(null), timeoutMs);
+  let idleTimer = setTimeout(onTimeout, inactivityMs);
+  const hardTimer = setTimeout(onTimeout, maxMs);
+  const unlistenProgress = await listen('demo-capture://scan-progress', () => {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(onTimeout, inactivityMs);
+  });
   try { await invoke('demo_scan_dom', { url }); } catch { resolve(null); }
   const result = await done;
-  clearTimeout(timer);
+  clearTimeout(idleTimer);
+  clearTimeout(hardTimer);
   unlisten();
+  unlistenProgress();
   return result;
 }
 

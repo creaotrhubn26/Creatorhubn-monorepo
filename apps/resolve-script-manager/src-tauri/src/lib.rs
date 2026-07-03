@@ -928,6 +928,8 @@ pub fn run() {
             demo_capture::demo_fetch_site_context,
             demo_capture::demo_scan_dom,
             demo_capture::demo_scan_result,
+            demo_capture::demo_scan_progress,
+            demo_capture::demo_scan_cancel,
             demo_capture::demo_verify_action,
             demo_capture::demo_verify_result,
             demo_capture::demo_auto_execute,

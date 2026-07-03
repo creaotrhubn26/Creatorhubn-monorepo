@@ -1158,6 +1158,9 @@ export interface DomScanResult {
   /** Fase 1b: viewport-screenshots per scroll-bånd (presis preview-render). */
   shots?: Array<{ scrollPct: number; dataUrl: string }>;
   viewport?: { w: number; h: number };
+  /** G12: cookie-/login-vegg oppdaget under skann. Consent forsøkes lukket
+   *  automatisk (dismissed=true); login kan ikke fikses og må flagges til bruker. */
+  wall?: { kind: 'consent' | 'login'; dismissed: boolean; label?: string } | null;
   docHeight?: number;
 }
 
