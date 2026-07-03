@@ -171,6 +171,10 @@ export interface DemoScene {
    * ('assisted' er fjernet — den var aldri implementert.)
    */
   continueMode: 'manual' | 'auto';
+  /** G5: EKTE utfall av siste verifisering (vision av tilstanden ETTER at
+   *  handlingen ble utført i økten). Trumfer selector-tekst-sammenligning. */
+  verifiedOutcome?: 'ok' | 'failed';
+  verifiedAt?: string;
   /** Sti til opptaksfil for denne scenen (settes av recorder). */
   recordingPath?: string | null;
   /** Frosset skjermbilde (dataURL) for scene-kortet — fylles av en framtidig
@@ -375,15 +379,25 @@ function normalizeSelector(s: string): string {
 /**
  * Sammenlign forventet (targetSelector) mot detektert (detectedSelector):
  *   - unverified: ingen detektert handling ennå
- *   - match:      detektert == forventet (riktig element ble aktivert)
+ *   - match:      riktig element ble aktivert
  *   - warning:    detektert avviker fra forventet (eller mangler forventet)
+ *
+ * G5: et EKTE verifisert utfall (vision av tilstanden etter handlingen)
+ * trumfer selector-tekst — selector-likhet er bare en heuristikk, og samme
+ * element kan ha mange adresser. Detektert selector som treffer en av scenens
+ * lagrede multi-locators regnes også som match, ikke avvik.
  */
 export function sceneActionMatch(s: DemoScene): ActionMatch {
+  if (s.verifiedOutcome === 'ok') return 'match';
+  if (s.verifiedOutcome === 'failed') return 'warning';
   const detected = (s.detectedSelector || '').trim();
   if (!detected) return 'unverified';
   const expected = (s.targetSelector || '').trim();
   if (!expected) return 'warning';
-  return normalizeSelector(expected) === normalizeSelector(detected) ? 'match' : 'warning';
+  if (normalizeSelector(expected) === normalizeSelector(detected)) return 'match';
+  const detectedNorm = normalizeSelector(detected);
+  if ((s.targetLocators || []).some((l) => normalizeSelector(l.value) === detectedNorm)) return 'match';
+  return 'warning';
 }
 
 /** Menneske-lesbar «Expected action»-tekst for en scene. */

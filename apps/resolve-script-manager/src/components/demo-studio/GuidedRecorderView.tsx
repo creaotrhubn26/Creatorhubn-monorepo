@@ -21,6 +21,7 @@ import { DeviceConnectGuide } from './DeviceConnectGuide';
 import { type FrameVariant } from './deviceFrames';
 import { FramedDevice } from './FramedDevice';
 import { ACTION_META, SCENE_STATUS_LABELS, SCENE_STATUS_COLORS, pickShot, type DemoDevice } from './demoStudioModel';
+import { sessionAutoRunCurrent, sessionVerifyCurrent } from './demoSessionActions';
 import { fetchCurrentUser, roleLabel, userInitials, type CurrentUser } from '../../services/currentUserService';
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -64,6 +65,21 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
   // G21: native opptak (screencapture/simctl) blokkerer 2–120 s uten at
   // useSceneRecorder-state settes — egen flagg så UI-et viser «Recording».
   const [nativeBusy, setNativeBusy] = useState(false);
+  // G22: delte verifiser/auto-handlinger (demoSessionActions) — synlige her
+  // i hoved-opptaksflaten, ikke bare i shellens innebygde recorder.
+  const [sessionBusy, setSessionBusy] = useState<'auto' | 'verify' | null>(null);
+  const [sessionMsg, setSessionMsg] = useState<string | null>(null);
+  const runSessionAction = async (kind: 'auto' | 'verify') => {
+    if (sessionBusy) return;
+    setSessionBusy(kind);
+    setSessionMsg(null);
+    try {
+      const r = kind === 'auto' ? await sessionAutoRunCurrent() : await sessionVerifyCurrent();
+      setSessionMsg(r.message ?? (r.outcome === 'done' ? '✓ Utført' : r.outcome === 'cancelled' ? 'Avbrutt.' : null));
+    } finally {
+      setSessionBusy(null);
+    }
+  };
   const [me, setMe] = useState<CurrentUser | null>(null);
   useEffect(() => {
     void fetchCurrentUser().then(setMe);
@@ -514,6 +530,17 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
                 <button style={{ ...outlineBtn, flex: 1 }} onClick={async () => { retakeCurrent(); await startForCurrent(); }}>↺ Retake</button>
                 <button style={{ ...darkBtn, flex: 1, opacity: rec.state === 'saving' ? 0.6 : 1 }} disabled={rec.state === 'saving'} onClick={() => void doneAndNext()}>✓ Mark as Done</button>
               </div>
+              {/* G22: samme verifiser/auto-handlinger som shell-recorderen —
+                  validering skal være synlig i HOVED-opptaksflaten også. */}
+              <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                <button style={{ ...outlineBtn, flex: 1, opacity: sessionBusy ? 0.6 : 1 }} disabled={!!sessionBusy}
+                  title="La systemet utføre scenens handling automatisk i demo-økten"
+                  onClick={() => void runSessionAction('auto')}>▶ {sessionBusy === 'auto' ? 'Kjører…' : 'Kjør automatisk'}</button>
+                <button style={{ ...outlineBtn, flex: 1, opacity: sessionBusy ? 0.6 : 1 }} disabled={!!sessionBusy}
+                  title="Klikk elementet i økt-vinduet — handlingen utføres og utfallet vision-verifiseres"
+                  onClick={() => void runSessionAction('verify')}>◎ {sessionBusy === 'verify' ? 'Venter…' : 'Verifiser'}</button>
+              </div>
+              {sessionMsg && <div style={{ fontSize: 11.5, color: sessionMsg.startsWith('✓') ? C.green : C.inkSoft, marginBottom: 8 }}>{sessionMsg}</div>}
               <button style={{ ...darkBtn, width: '100%', opacity: recorderStepIndex >= scenes.length - 1 ? 0.5 : 1 }} disabled={recorderStepIndex >= scenes.length - 1}
                 onClick={() => void doneAndNext()}>
                 Next Step →

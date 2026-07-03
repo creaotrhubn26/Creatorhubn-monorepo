@@ -32,13 +32,14 @@ import { type FrameVariant } from './deviceFrames';
 import { isAiConnected } from '../../services/claudeProxyService';
 import { RoleRoomSignInDialog } from '../RoleRoomSignInDialog';
 import { useSceneRecorder } from './useSceneRecorder';
-import { generateDemoFlow, completeDemoFlow, fetchSiteContext, analyzeSiteContext, runResponsiveCheck, healTarget, runDirectorCritic, ocrDetectElements, verifyOutcomeVision, interpretCommand, translateForVoiceover, suggestVisualBeats, type CommandResult, type VisualBeat, type SiteUnderstanding } from './demoStudioAI';
+import { generateDemoFlow, completeDemoFlow, fetchSiteContext, analyzeSiteContext, runResponsiveCheck, runDirectorCritic, ocrDetectElements, interpretCommand, translateForVoiceover, suggestVisualBeats, type CommandResult, type VisualBeat, type SiteUnderstanding } from './demoStudioAI';
 import { executeScript, playwrightStatus, playwrightCaptureShots, extractPdfText, systemOpen, checkUrlEmbeddable } from '../../api';
 import { open as openFileDialog } from '@tauri-apps/plugin-dialog';
 import { runAutonomousDemo } from './autonomousDemo';
 import { renderIntroCard, renderOutroCard, renderBrowserFrame } from './demoBranding';
 import type { DemoFinalizeOpts } from '../../api';
-import { isCaptureAvailable, startDemoCapture, onCaptureStep, onCaptureDone, scanDom, captureScreenshot, sessionOpen, sessionExec, sessionVerify, sessionShot, type CapturedStep } from '../../services/demoCaptureService';
+import { isCaptureAvailable, startDemoCapture, onCaptureStep, onCaptureDone, scanDom, captureScreenshot, sessionOpen, sessionExec, type CapturedStep } from '../../services/demoCaptureService';
+import { sessionAutoRunCurrent, sessionVerifyCurrent } from './demoSessionActions';
 import { useDemoStudio } from './demoStudioStore';
 import {
   DEMO_TYPE_LABELS, DEMO_TYPE_FRIENDLY, DEMO_TYPE_TEMPLATES, SCENE_STATUS_LABELS, SCENE_STATUS_COLORS,
@@ -473,44 +474,11 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   // vinduet gjenbrukes på tvers av steg, så navigasjon/innlogging fra forrige
   // steg består. Multi-strategi-locators prøves før css-fallback (G19).
   const autoRunCurrent = async () => {
-    if (!isCaptureAvailable()) { window.alert('Auto-utførelse krever Tauri-appen.'); return; }
-    const st = useDemoStudio.getState();
-    const sc = st.project?.scenes[st.recorderStepIndex];
-    if (!sc || !st.project) return;
-    if (!sc.targetSelector && !(sc.targetLocators?.length)) { window.alert('Scenen mangler target-selector — bind elementet via AI Director eller capture først.'); return; }
+    // Delt logikk med GuidedRecorderView (G22) — se demoSessionActions.
     setAutoBusy(true);
     try {
-      if (!(await sessionOpen(st.project.url))) { window.alert('Kunne ikke åpne demo-økt-vinduet.'); return; }
-      const r = await sessionExec(sc.targetSelector ?? '', sc.actionType ?? 'click', undefined, sc.targetLocators);
-      if (r?.ok && r.found) {
-        updateScene(sc.id, { detectedSelector: r.selector || sc.targetSelector, status: 'done' });
-        if (st.recorderStepIndex < st.project.scenes.length - 1) nextStep();
-      } else if (r && !r.found) {
-        // Self-healing: skann siden på nytt + la AI finne riktig element →
-        // reparer og prøv igjen I SAMME ØKT (ingen omlasting av siden).
-        const scan = await scanDom(st.project.url).catch(() => null);
-        const els = scan?.elements ?? [];
-        const idx = els.length ? await healTarget({ targetLabel: sc.targetLabel, actionType: sc.actionType, elements: els }).catch(() => null) : null;
-        if (idx != null && els[idx]) {
-          const el = els[idx];
-          updateScene(sc.id, { targetSelector: el.selector, targetLocators: el.locators, targetLabel: el.label, hotspot: el.hotspot, startScrollPct: el.scrollPct != null ? Math.round(el.scrollPct * 100) : undefined });
-          const r2 = await sessionExec(el.selector, sc.actionType ?? 'click', undefined, el.locators);
-          if (r2?.ok && r2.found) {
-            updateScene(sc.id, { detectedSelector: el.selector, status: 'done' });
-            if (st.recorderStepIndex < st.project.scenes.length - 1) nextStep();
-            window.alert('Selector var brutt — AI reparerte den automatisk og handlingen lyktes.');
-          } else {
-            updateScene(sc.id, { status: 'needs_review' });
-            window.alert('AI klarte ikke å reparere target. Scene merket «Needs Review».');
-          }
-        } else {
-          updateScene(sc.id, { status: 'needs_review' });
-          window.alert('Fant ikke elementet på siden. Scene merket «Needs Review».');
-        }
-      } else if (r && !r.ok) {
-        updateScene(sc.id, { status: 'needs_review' });
-        window.alert(`Handlingen feilet på siden${r.error ? `: ${r.error}` : ''}. Scene merket «Needs Review».`);
-      }
+      const r = await sessionAutoRunCurrent();
+      if (r.message) window.alert(r.message);
     } finally {
       setAutoBusy(false);
     }
@@ -554,45 +522,14 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
     }
   };
 
-  // Verifiser den gjeldende recorder-scenens handling I ØKTEN: brukeren klikker
-  // elementet på siden slik den ER nå → detectedSelector fylles → handlingen
-  // UTFØRES faktisk → skjermbilde av tilstanden ETTERPÅ går til vision (G6:
-  // tidligere ble skjermbildet tatt av en fersk sidelast, så «utfallet» AI
-  // vurderte var alltid en urørt side).
+  // Verifiser gjeldende recorder-scene i økten. Delt logikk med
+  // GuidedRecorderView (G22) — se demoSessionActions (utfører handlingen for
+  // ekte + vision av tilstanden etterpå + persisterer verifiedOutcome, G5/G6).
   const verifyCurrentAction = async () => {
-    if (!isCaptureAvailable()) { window.alert('Verifisering krever Tauri-appen.'); return; }
-    const st = useDemoStudio.getState();
-    const sc = st.project?.scenes[st.recorderStepIndex];
-    if (!sc || !st.project) return;
     setVerifyBusy(true);
     try {
-      if (!(await sessionOpen(st.project.url))) { window.alert('Kunne ikke åpne demo-økt-vinduet.'); return; }
-      const v = await sessionVerify(sc.targetLabel);
-      if (v && !v.cancelled && v.selector) {
-        // Vision-runtime-verifisering: utfør handlingen for ekte i økten, la
-        // utfallet lande, og vis vision tilstanden ETTER handlingen.
-        let visionOk: boolean | null = null;
-        const expected = sc.validationRule || sc.targetLabel || sc.requiredAction;
-        if (expected) {
-          const ex = await sessionExec(v.selector, sc.actionType ?? 'click').catch(() => null);
-          if (ex?.ok) {
-            await sleepMs(1200);
-            const shot = await sessionShot().catch(() => null);
-            if (shot) { const o = await verifyOutcomeVision({ screenshot: shot, expected }).catch(() => null); if (o) visionOk = o.success; }
-          }
-        }
-        const match = sceneActionMatch({ ...sc, detectedSelector: v.selector });
-        const status = visionOk === false ? 'needs_review' : (match === 'match' || visionOk === true) ? 'done' : 'needs_review';
-        updateScene(sc.id, { detectedSelector: v.selector, status, bindingConfidence: 'high' });
-        // Lær av verifiseringen (A): det brukeren faktisk klikket er fasiten.
-        // Avvik fra AI-ens gjetning → lær riktig selector + avvis den gamle.
-        if (sc.targetLabel) {
-          recordLearnedTarget(st.project.url, sc.targetLabel, {
-            selector: v.selector, hotspot: sc.hotspot, source: 'manual',
-            rejectSelector: sc.targetSelector && sc.targetSelector !== v.selector ? sc.targetSelector : undefined,
-          });
-        }
-      }
+      const r = await sessionVerifyCurrent();
+      if (r.message) window.alert(r.message);
     } finally {
       setVerifyBusy(false);
     }
