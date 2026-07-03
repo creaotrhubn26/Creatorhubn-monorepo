@@ -54,8 +54,6 @@ const TOGGLES: ToggleDef[] = [
   { key: 'voiceover', label: 'Inkluder voiceover (AI-lest manus)', def: true },
   { key: 'music', label: 'Bakgrunnsmusikk', def: false },
 ];
-// Funksjoner som ennå ikke er koblet — vises som «(kommer)», ikke som aktive brytere.
-const COMING_SOON = ['Vis cursor i video', 'Overlays / callouts i video'];
 
 export function ExportView() {
   const { project, setProjectField } = useDemoStudio();
@@ -318,9 +316,8 @@ export function ExportView() {
       else if (ev.type === 'error') setError(ev.message ?? 'Ukjent feil');
     });
     const r = project.render ?? { showCursor: true, showTouchPoints: true, highlightInteractions: true, safeArea: true, autoZoom: false };
-    // Overlay-paritet: send per-scene hotspot/handling + render-flagg, så den
-    // native pipelinen kan BRENNE INN animert cursor/ripple/auto-zoom (samme som
-    // preview-en viser). Krever at mockup-polish-pro.mts implementerer burn-in.
+    // Overlay-paritet: per-scene hotspot/handling + render-flagg → pipelinen
+    // brenner inn animert cursor/ripple/highlight (samme som preview-en viser).
     const overlays = recorded.map((s) => ({
       hotspot: s.hotspot ?? null,
       actionType: s.actionType ?? 'click',
@@ -440,9 +437,8 @@ export function ExportView() {
               </span>
             </div>
           )}
-          {/* Ærlig om hva som ikke er koblet ennå */}
           <div style={{ marginTop: 12, fontSize: 11.5, color: C.inkFaint }}>
-            Kommer: {COMING_SOON.join(' · ')}. Device-mockup legges alltid på.
+            Cursor, ripple og highlight brennes inn i videoen etter scenenes visnings-toggles. Device-mockup legges alltid på.
           </div>
         </Section>
 

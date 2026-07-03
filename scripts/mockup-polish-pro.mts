@@ -45,8 +45,22 @@ function progress(label: string, pct?: number) { emit('progress', { step: ++step
 function logLine(message: string) { emit('log', { message }); }
 
 // ── Config-typer (speiler frontend mockupConfig.ts) ──
+/** Per-klipp overlay-spec (G13): brenn inn cursor/ripple/highlight — samme
+ *  visuelle språk som preview-ens SceneInteractionOverlay. hotspot er i
+ *  viewport-brøk (0–1) av den innspilte siden. */
+interface ClipOverlay {
+  hotspot?: { x: number; y: number; w: number; h: number } | null;
+  actionType?: string;
+  device?: string;
+  cursor?: boolean;
+  touch?: boolean;
+  highlight?: boolean;
+  autoZoom?: boolean;
+  startScrollPct?: number;
+}
 interface MockupConfig {
   visual: { device: string; orientation?: 'portrait' | 'landscape'; fit: string; background: string; shadow: boolean; statusBarCrop: number; fadeSeconds: number; autoZoom?: boolean };
+  overlays?: ClipOverlay[];
   audio: { enabled: boolean; noiseGate: boolean; noiseGateThreshold: number; polish: boolean; loudnessNormalize: boolean; loudnessTarget: number };
   music: { enabled: boolean; source: string | null; volume: number; ducking: boolean; duckDb: number };
   export: { format: 'mp4' | 'prores4444'; pixelRatio: number; frameRate: number; aspect?: number; targetHeight?: number };
@@ -214,6 +228,7 @@ async function main() {
     variant: renderVariant, fit: v.fit, pixelRatio: cfg.export.pixelRatio, frameRate: cfg.export.frameRate,
     background: bgForRender, padding: padForRender, shadow: v.shadow && !renderTransparent,
     statusCrop: v.statusBarCrop, autoZoom: !!v.autoZoom,
+    overlays: cfg.overlays ?? null,
   })};`);
   await page.addScriptTag({ content: code });
 
@@ -284,17 +299,152 @@ async function main() {
     rec.ondataavailable = (e) => e.data.size > 0 && chunks.push(e.data);
     const recDone = new Promise<Blob>((res) => { rec.onstop = () => res(new Blob(chunks, { type: 'video/webm' })); });
 
+    // ── Overlay burn-in (G13): cursor/ripple/highlight i eksporten — samme
+    // visuelle språk som preview-ens SceneInteractionOverlay. Vi replikerer
+    // renderRealisticFrame-geometrien (screen-rect + fitRect-cover + status-
+    // crop + zoom) for å mappe hotspot (viewport-brøk 0–1) → canvas-piksler.
+    const ACCENT = '#ef8a5d';
+    const insetPx = Math.max(1, Math.round(2 * (width / spec.frameW)));
+    const screenRect = {
+      x: spec.sx * (width / spec.frameW) + insetPx,
+      y: spec.sy * (width / spec.frameW) + insetPx,
+      w: spec.sw * (width / spec.frameW) - insetPx * 2,
+      h: spec.sh * (width / spec.frameW) - insetPx * 2,
+    };
+    // Map et punkt i video-brøk (0–1) → canvas-koordinater, med samme crop/
+    // zoom/fit som videoen tegnes med. Returnerer også px-per-video-brøk-skala.
+    function mapPoint(fx: number, fy: number, vid: HTMLVideoElement, zoom: any) {
+      const vw = vid.videoWidth || 1, vh = vid.videoHeight || 1;
+      const top = (J.statusCrop > 0 ? J.statusCrop : 0) * vh;
+      let srcX = 0, srcY = top, srcW = vw, srcH = vh - top;
+      if (zoom && zoom.scale > 1) {
+        const zw = srcW / zoom.scale, zh = srcH / zoom.scale;
+        const cx = srcX + Math.min(Math.max(zoom.cx, 0), 1) * srcW;
+        const cy = srcY + Math.min(Math.max(zoom.cy, 0), 1) * srcH;
+        srcX = Math.min(Math.max(cx - zw / 2, srcX), srcX + srcW - zw);
+        srcY = Math.min(Math.max(cy - zh / 2, srcY), srcY + srcH - zh);
+        srcW = zw; srcH = zh;
+      }
+      // fitRect 'cover'/'contain' (sentrert):
+      const s = J.fit === 'contain'
+        ? Math.min(screenRect.w / srcW, screenRect.h / srcH)
+        : Math.max(screenRect.w / srcW, screenRect.h / srcH);
+      const dw = srcW * s, dh = srcH * s;
+      const dx = screenRect.x + (screenRect.w - dw) / 2;
+      const dy = screenRect.y + (screenRect.h - dh) / 2;
+      return {
+        x: dx + (fx * vw - srcX) / srcW * dw,
+        y: dy + (fy * vh - srcY) / srcH * dh,
+        kx: vw / srcW * dw, ky: vh / srcH * dh, // px per hel video-bredde/-høyde
+      };
+    }
+    function roundRectPath(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+      const rr = Math.max(0, Math.min(r, w / 2, h / 2));
+      c.beginPath();
+      c.moveTo(x + rr, y);
+      c.arcTo(x + w, y, x + w, y + h, rr);
+      c.arcTo(x + w, y + h, x, y + h, rr);
+      c.arcTo(x, y + h, x, y, rr);
+      c.arcTo(x, y, x + w, y, rr);
+      c.closePath();
+    }
+    function drawClipOverlays(ov: any, vid: HTMLVideoElement, zoom: any) {
+      if (!ov || !ov.hotspot) return;
+      const hs = ov.hotspot;
+      const t = vid.currentTime || 0;
+      const isTouch = ov.device && ov.device !== 'macbook';
+      const at = ov.actionType || 'click';
+      const isClickish = at === 'click' || at === 'hover';
+      const ctr = mapPoint(hs.x + hs.w / 2, hs.y + hs.h / 2, vid, zoom);
+      const tl = mapPoint(hs.x, hs.y, vid, zoom);
+      const br = mapPoint(hs.x + hs.w, hs.y + hs.h, vid, zoom);
+      const uiK = screenRect.w / 560; // preview-px → canvas-px (preview ~560px bred)
+      ctx.save();
+      // Klipp til skjerm-flaten så overlays aldri lekker ut på rammen.
+      roundRectPath(ctx, screenRect.x, screenRect.y, screenRect.w, screenRect.h, Math.max(0, spec.screenRadius * (width / spec.frameW) - insetPx));
+      ctx.clip();
+      // 1) Spotlight-highlight: dimm alt unntatt hotspot + pulserende aksent-ramme.
+      if (ov.highlight) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(screenRect.x, screenRect.y, screenRect.w, screenRect.h);
+        roundRectPath(ctx, tl.x, tl.y, br.x - tl.x, br.y - tl.y, 8 * uiK);
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(0,0,0,0.30)';
+        (ctx as any).fill('evenodd');
+        ctx.restore();
+        const pulse = (Math.sin((t / 1.8) * Math.PI * 2) + 1) / 2; // 0–1, 1.8s syklus
+        roundRectPath(ctx, tl.x, tl.y, br.x - tl.x, br.y - tl.y, 8 * uiK);
+        ctx.lineWidth = 2 * uiK;
+        ctx.strokeStyle = ACCENT;
+        ctx.stroke();
+        roundRectPath(ctx, tl.x - 3.5 * uiK * pulse, tl.y - 3.5 * uiK * pulse, (br.x - tl.x) + 7 * uiK * pulse, (br.y - tl.y) + 7 * uiK * pulse, (8 + 3.5 * pulse) * uiK);
+        ctx.lineWidth = 2 * uiK;
+        ctx.strokeStyle = `rgba(239,138,93,${(0.55 * (1 - pulse)).toFixed(3)})`;
+        ctx.stroke();
+      }
+      // 2) Ripple-ring på klikk/tap (1.4s loop, ekspanderer + fader).
+      if ((ov.cursor || ov.touch) && (isClickish || isTouch)) {
+        const rt = (t % 1.4) / 1.4;
+        const radius = 20 * uiK * (0.4 + 1.8 * rt);
+        ctx.beginPath();
+        ctx.arc(ctr.x, ctr.y, radius, 0, Math.PI * 2);
+        ctx.lineWidth = 2.5 * uiK;
+        ctx.strokeStyle = `rgba(239,138,93,${(0.55 * (1 - rt)).toFixed(3)})`;
+        ctx.stroke();
+      }
+      // 3) Tap-ring (mobil/tablet).
+      if (ov.touch && isTouch) {
+        ctx.beginPath();
+        ctx.arc(ctr.x, ctr.y, 18 * uiK, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(239,138,93,0.30)';
+        ctx.fill();
+        ctx.lineWidth = 2 * uiK;
+        ctx.strokeStyle = ACCENT;
+        ctx.stroke();
+      }
+      // 4) Syntetisk muspeker (desktop) — glir inn mot hotspot første 600 ms.
+      if (ov.cursor && !isTouch) {
+        const p = Math.min(1, t / 0.6);
+        const ease = 1 - Math.pow(1 - p, 3);
+        const ox = 26 * uiK * (1 - ease), oy = 30 * uiK * (1 - ease);
+        const cs = 1.1 * uiK * (1.25 - 0.25 * ease); // 22px-path skalert, glir fra 1.25→1
+        ctx.save();
+        ctx.globalAlpha = ease;
+        ctx.translate(ctr.x + ox - 2 * uiK, ctr.y + oy - 2 * uiK);
+        ctx.scale(cs, cs);
+        ctx.beginPath();
+        ctx.moveTo(2, 2); ctx.lineTo(2, 16); ctx.lineTo(6, 12); ctx.lineTo(9, 18);
+        ctx.lineTo(11.5, 17); ctx.lineTo(8.5, 11); ctx.lineTo(14, 11); ctx.closePath();
+        ctx.shadowColor = 'rgba(0,0,0,0.45)';
+        ctx.shadowBlur = 2;
+        ctx.shadowOffsetY = 1;
+        ctx.fillStyle = '#fff';
+        ctx.fill();
+        ctx.shadowColor = 'transparent';
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = '#1d1b19';
+        ctx.lineJoin = 'round';
+        ctx.stroke();
+        ctx.restore();
+      }
+      ctx.restore();
+    }
+
     let current = vids[0], curIdx = 0, raf = 0;
     const draw = () => {
+      const zoomNow = (J.autoZoom && zoomTracks[curIdx]) ? MV.zoomAt(zoomTracks[curIdx], current.currentTime) : undefined;
       const opts: any = {
         fit: J.fit,
         sourceInset: J.statusCrop > 0 ? { top: J.statusCrop } : undefined,
+        zoom: zoomNow,
       };
-      if (J.autoZoom && zoomTracks[curIdx]) {
-        opts.zoom = MV.zoomAt(zoomTracks[curIdx], current.currentTime);
-      }
       // Ekte fotorealistisk ramme + video i skjerm-hullet.
       MV.renderRealisticFrame(ctx, current, frameImg, J.variant, width, height, opts);
+      // Burn-in av scene-overlays (cursor/ripple/highlight) oppå videoen.
+      if (J.overlays && J.overlays[curIdx]) {
+        try { drawClipOverlays(J.overlays[curIdx], current, zoomNow); } catch (e) { /* overlay må aldri velte renderen */ }
+      }
       raf = requestAnimationFrame(draw);
     };
     const playClip = (vid: HTMLVideoElement, idx: number) => new Promise<void>((resolve) => {
