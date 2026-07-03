@@ -69,6 +69,7 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
   // i hoved-opptaksflaten, ikke bare i shellens innebygde recorder.
   const [sessionBusy, setSessionBusy] = useState<'auto' | 'verify' | null>(null);
   const [sessionMsg, setSessionMsg] = useState<string | null>(null);
+  const [panelTab, setPanelTab] = useState<'Guide' | 'Script' | 'Notes'>('Guide');
   const runSessionAction = async (kind: 'auto' | 'verify') => {
     if (sessionBusy) return;
     setSessionBusy(kind);
@@ -445,10 +446,12 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
 
           {/* Guide-panel (høyre) */}
           <div style={{ width: 360, flexShrink: 0, background: C.panel, borderLeft: `1px solid ${C.line}`, display: 'flex', flexDirection: 'column' }}>
-            {/* Tabs */}
+            {/* Tabs — funksjonelle: Guide = gjennomgang, Script = redigér
+                narration, Notes = interne notater (før var de døde pynt). */}
             <div style={{ display: 'flex', gap: 18, padding: '14px 18px 0', borderBottom: `1px solid ${C.line}` }}>
-              {['Guide', 'Script', 'Notes'].map((t, i) => (
-                <div key={t} style={{ fontSize: 13, paddingBottom: 11, color: i === 0 ? C.ink : C.inkFaint, fontWeight: i === 0 ? 600 : 400, borderBottom: i === 0 ? `2px solid ${C.ink}` : '2px solid transparent', cursor: 'pointer' }}>{t}</div>
+              {(['Guide', 'Script', 'Notes'] as const).map((t) => (
+                <div key={t} onClick={() => setPanelTab(t)}
+                  style={{ fontSize: 13, paddingBottom: 11, color: panelTab === t ? C.ink : C.inkFaint, fontWeight: panelTab === t ? 600 : 400, borderBottom: panelTab === t ? `2px solid ${C.ink}` : '2px solid transparent', cursor: 'pointer' }}>{t}</div>
               ))}
             </div>
 
@@ -466,10 +469,28 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
                 {scenes.map((s, i) => <div key={s.id} style={{ flex: 1, height: 4, borderRadius: 2, background: i < recorderStepIndex ? C.green : i === recorderStepIndex ? C.accent : '#e8e1d6' }} />)}
               </div>
 
+              {panelTab === 'Script' && (
+                <>
+                  <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Narration (redigerbar)</div>
+                  <textarea value={cur?.narration ?? ''} placeholder="Skriv det som skal leses opp for denne scenen…"
+                    onChange={(e) => cur && updateScene(cur.id, { narration: e.target.value })}
+                    style={{ width: '100%', minHeight: 180, border: `1px solid ${C.lineStrong}`, borderRadius: 9, padding: 10, font: 'inherit', fontSize: 13.5, lineHeight: 1.5, resize: 'vertical', marginBottom: 16 }} />
+                </>
+              )}
+              {panelTab === 'Notes' && (
+                <>
+                  <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Interne notater</div>
+                  <textarea value={cur?.notes ?? ''} placeholder="Timing-hint, pauser, ting å huske under opptak…"
+                    onChange={(e) => cur && updateScene(cur.id, { notes: e.target.value })}
+                    style={{ width: '100%', minHeight: 180, border: `1px solid ${C.lineStrong}`, borderRadius: 9, padding: 10, font: 'inherit', fontSize: 13.5, lineHeight: 1.5, resize: 'vertical', marginBottom: 16 }} />
+                </>
+              )}
+              {panelTab === 'Guide' && (
+                <>
               {/* Narration */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
                 <span style={{ fontSize: 13, fontWeight: 700 }}>Narration</span>
-                <div style={{ flex: 1 }} /><span style={{ color: C.inkFaint, cursor: 'pointer' }}>✎</span>
+                <div style={{ flex: 1 }} /><span style={{ color: C.inkFaint, cursor: 'pointer' }} title="Redigér narration" onClick={() => setPanelTab('Script')}>✎</span>
               </div>
               <div style={{ fontSize: 14, lineHeight: 1.5, color: C.ink, marginBottom: 22 }}>
                 {cur?.narration || <em style={{ color: C.inkFaint }}>(ingen narration — generér i Script Builder)</em>}
@@ -509,6 +530,8 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
                     <div style={{ fontSize: 11.5, color: '#a07a2a' }}>{autoMode ? 'Trykk Record — systemet kjører gjennom scenene automatisk.' : 'Demoen venter her til du markerer steget som ferdig.'}</div>
                   </div>
                 </div>
+              )}
+                </>
               )}
               {rec.error === REC_UNAVAILABLE ? (
                 <div style={{ fontSize: 11.5, color: C.inkSoft, marginBottom: 10, padding: 10, border: `1px solid ${C.line}`, borderRadius: 8, background: C.cream }}>

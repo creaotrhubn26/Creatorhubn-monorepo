@@ -15,15 +15,11 @@ use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
 const CAPTURE_JS: &str = include_str!("../capture/demo_capture_inject.js");
 const SCAN_JS: &str = include_str!("../capture/demo_scan_inject.js");
-const VERIFY_JS: &str = include_str!("../capture/demo_verify_inject.js");
-const AUTO_JS: &str = include_str!("../capture/demo_auto_inject.js");
 const H2C_JS: &str = include_str!("../capture/html2canvas.min.js");
 const SHOT_JS: &str = include_str!("../capture/demo_shot_inject.js");
 const SESSION_JS: &str = include_str!("../capture/demo_session_inject.js");
 const CAPTURE_LABEL: &str = "demo-capture";
 const SCAN_LABEL: &str = "demo-scan";
-const VERIFY_LABEL: &str = "demo-verify";
-const AUTO_LABEL: &str = "demo-auto";
 const SHOT_LABEL: &str = "demo-shot";
 const SESSION_LABEL: &str = "demo-session";
 
@@ -102,81 +98,9 @@ pub fn demo_scan_cancel(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// Åpne et verify-vindu på `url` for ett-skudds verifisering av en scenes
-/// handling. Brukeren klikker elementet; selector+label sendes via
-/// demo_verify_result. `expected_label` vises i verktøylinja som hint.
-#[tauri::command]
-pub async fn demo_verify_action(app: AppHandle, url: String, expected_label: Option<String>) -> Result<(), String> {
-    if let Some(existing) = app.get_webview_window(VERIFY_LABEL) {
-        let _ = existing.close();
-    }
-    let parsed: tauri::Url = url.parse().map_err(|e| format!("ugyldig URL «{url}»: {e}"))?;
-    if parsed.scheme() != "http" && parsed.scheme() != "https" {
-        return Err("URL må være http(s)".to_string());
-    }
-    // Sett forventet label som JS-global (trygt escapet via serde_json).
-    let label_json = serde_json::to_string(&expected_label.unwrap_or_default()).unwrap_or_else(|_| "\"\"".to_string());
-    let setter = format!("window.__demoExpectedLabel={label_json};");
-    WebviewWindowBuilder::new(&app, VERIFY_LABEL, WebviewUrl::External(parsed))
-        .title("Verifiser handling")
-        .inner_size(1200.0, 820.0)
-        .initialization_script(&setter)
-        .initialization_script(VERIFY_JS)
-        .build()
-        .map_err(|e| format!("kunne ikke åpne verify-vindu: {e}"))?;
-    Ok(())
-}
-
-/// Mottar verify-resultatet (selector+label, eller cancelled), videresender til
-/// hovedvinduet og lukker verify-vinduet.
-#[tauri::command]
-pub fn demo_verify_result(app: AppHandle, result: serde_json::Value) -> Result<(), String> {
-    if let Some(w) = app.get_webview_window(VERIFY_LABEL) {
-        let _ = w.close();
-    }
-    app.emit("demo-capture://verify", result).map_err(|e| e.to_string())
-}
-
-/// Auto-utfør en scenes handling (continueMode:'auto'): åpner siden og lar
-/// auto-scriptet finne `selector` og utføre `action_type` (click/scroll/hover/
-/// type/highlight). Rapporterer via demo_auto_result.
-#[tauri::command]
-pub async fn demo_auto_execute(
-    app: AppHandle,
-    url: String,
-    selector: String,
-    action_type: String,
-    text: Option<String>,
-) -> Result<(), String> {
-    if let Some(existing) = app.get_webview_window(AUTO_LABEL) {
-        let _ = existing.close();
-    }
-    let parsed: tauri::Url = url.parse().map_err(|e| format!("ugyldig URL «{url}»: {e}"))?;
-    if parsed.scheme() != "http" && parsed.scheme() != "https" {
-        return Err("URL må være http(s)".to_string());
-    }
-    let cfg = serde_json::json!({ "selector": selector, "actionType": action_type, "text": text });
-    let cfg_json = serde_json::to_string(&cfg).unwrap_or_else(|_| "{}".to_string());
-    let setter = format!("window.__demoAuto={cfg_json};");
-    WebviewWindowBuilder::new(&app, AUTO_LABEL, WebviewUrl::External(parsed))
-        .title("Auto-utfører handling")
-        .inner_size(1200.0, 820.0)
-        .initialization_script(&setter)
-        .initialization_script(AUTO_JS)
-        .build()
-        .map_err(|e| format!("kunne ikke åpne auto-vindu: {e}"))?;
-    Ok(())
-}
-
-/// Mottar auto-utførelse-resultatet, videresender til hovedvinduet og lukker
-/// auto-vinduet.
-#[tauri::command]
-pub fn demo_auto_result(app: AppHandle, result: serde_json::Value) -> Result<(), String> {
-    if let Some(w) = app.get_webview_window(AUTO_LABEL) {
-        let _ = w.close();
-    }
-    app.emit("demo-capture://auto", result).map_err(|e| e.to_string())
-}
+// (Legacy ett-skudds verify-/auto-vinduer er fjernet — den vedvarende
+// demo-økten (demo_session_*) dekker begge med side-tilstand intakt, ekte
+// utfalls-rapportering og multi-locator-oppslag.)
 
 /// Ta et skjermbilde av siden (html2canvas i et eget vindu). Resultatet (JPEG
 /// data-URL) sendes via demo_shot_result. Brukes til scene-thumbnails + vision.

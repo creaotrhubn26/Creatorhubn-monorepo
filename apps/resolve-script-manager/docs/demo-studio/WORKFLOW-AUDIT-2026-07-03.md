@@ -47,7 +47,7 @@
 
 - [x] **G5 · Validering = streng-sammenligning, aldri utfall** — *FIKSET 2026-07-03: nye scene-felter `verifiedOutcome`/`verifiedAt` persisterer vision-utfallet fra verify-flyten (handlingen utføres for ekte, tilstanden ETTERPÅ vurderes); `sceneActionMatch` lar ekte utfall trumfe selector-tekst, og detektert selector som treffer en av scenens multi-locators regnes som match (samme element, annen adresse). Fritekst `validationRule` evalueres som vision-`expected` i verify-flyten.* · validering · `demoStudioModel.ts` (sceneActionMatch), `demoSessionActions.ts` (sessionVerifyCurrent)
 - [x] **G6 · Vision-verifisering ser feil tilstand** — *FIKSET 2026-07-03 via G4: `verifyCurrentAction` utfører nå handlingen for ekte i økt-vinduet og tar `sessionShot` av tilstanden ETTERPÅ før vision-vurdering.* · validering · `DemoStudioShell.tsx` (verifyCurrentAction)
-- [ ] **G7 · Auto-inject rapporterer alltid suksess** · opptak · `demo_auto_inject.js:62-65,68` — handling som kaster gir likevel `ok:true, found:true` etter 900 ms; fast 1200 ms SPA-vent. Fiks: fang exception + effekt-sjekk. **Est: S/M**
+- [x] **G7 · Auto-inject rapporterer alltid suksess** — *LUKKET 2026-07-03: legacy ett-skudds auto/verify-vinduene er SLETTET (demo_auto_inject.js, demo_verify_inject.js, demo_auto_execute/demo_verify_action m/ result-kommandoer, service-fns, capability-oppføringer) — økten (demo_session) rapporterer ekte utfall og er eneste bane.* · opptak · `demo_capture.rs`, `demoCaptureService.ts`
 - [x] **G8 · `continueMode='assisted'` + per-scene-modus er blindvei** — *FIKSET 2026-07-03: 'assisted' fjernet fra begge typene (aldri implementert), den døde per-scene-dropdownen i ScriptBuilder fjernet (feltet beholdt for lagrings-kompat), og shellens hardkodede «continueMode: manual»-tekst erstattet med en levende manual/auto-select bundet til prosjektet.* · opptak · `demoStudioModel.ts`, `ScriptBuilderView.tsx`, `DemoStudioShell.tsx`
 - [x] **G9 · Claude-kall uten timeout/retry** — *DELVIS FIKSET 2026-07-03: `sendRaw` har nå 90 s timeout (konfigurerbar `timeoutMs`) m/ tydelig feilmelding + ett auto-retry på nettverksglipp/429/5xx; bruker-abort respekteres. GJENSTÅR: auto-retry på parse-feil i `demoStudioAI.ts:51-74` og hardkodet modell.* · generering · `claudeProxyService.ts:149-157`
 - [x] **G10 · Skann-timing: fast 1200 ms vent + 20 s frontend-timeout** — *FIKSET 2026-07-03: MutationObserver-basert stabilitets-vent (DOM rolig i 500 ms, min 400 ms, maks 5 s) i stedet for fast 1200 ms; skannet melder fremdrift per scroll-steg/screenshot via ny `demo_scan_progress`; frontendens timeout er inaktivitets-basert (20 s uten livstegn, hard 90 s) og lukker skann-vinduet via ny `demo_scan_cancel` ved timeout.* · analyse · `demo_scan_inject.js` (waitForStable/progress), `demo_capture.rs`, `demoCaptureService.ts` (scanDom)
@@ -68,23 +68,23 @@
 ### P2 — polish
 
 **Dekorative blindveier:**
-- [ ] «Lagrede maler ›» statisk tekst (`DemoStudioShell.tsx:1264`)
-- [ ] Stat-kortenes «Endre →» / «Eksport →» uten onClick (`DemoStudioShell.tsx:1569-1573, 2102-2111`)
-- [ ] Søk «⌘K», prosjekt-dropdown, tilbake-pil, «⋮» i ScriptBuilder (`ScriptBuilderView.tsx:193-198,221,438`)
-- [ ] Guide/Script/Notes-faner hardkodet aktiv `i === 0`, ingen onClick (`GuidedRecorderView.tsx:416-418`)
-- [ ] «✦ Flere versjoner» / AI Export Assistant — fire døde «(kommer)»-kort (`ExportView.tsx:515-530`)
-- [ ] `CaptureChooser.tsx` foreldreløs utenfor `?test=demo`-harness — slett eller koble
+- [x] «Lagrede maler ›» statisk tekst — fjernet. *(FIKSET 2026-07-03, P2-bolken)*
+- [x] Stat-kortenes «Endre →» / «Eksport →» — koblet til nav (script/export). *(FIKSET 2026-07-03, P2-bolken)*
+- [x] Søk «⌘K»/prosjekt-dropdown/tilbake-pil/«⋮» i ScriptBuilder — falskt søk + ⌄ + ⋮ fjernet; tilbake-pil koblet til Flow Builder. Også: hardkodet «✓ Lagret» i SB-topbaren viser nå ekte saveStatus. *(FIKSET 2026-07-03, P2-bolken)*
+- [x] Guide/Script/Notes-faner — nå funksjonelle: Script = redigerbar narration, Notes = interne notater; ✎ hopper til Script-fanen. *(FIKSET 2026-07-03, P2-bolken)*
+- [x] «✦ Flere versjoner»-mockup-kortene — fjernet. *(FIKSET 2026-07-03, P2-bolken)*
+- [x] `CaptureChooser.tsx` — slettet (foreldreløs; DemoTestHarness er ekte e2e-infrastruktur og beholdt). *(FIKSET 2026-07-03, P2-bolken)*
 
 **Funksjonelle P2:**
-- [ ] Audience-select viser ikke adoptert fritekst-verdi (`ScriptBuilderView.tsx:244-246` vs `DemoStudioShell.tsx:671`); default «Healthcare Professionals» er mockup-rest (`:70`)
-- [ ] Variant-feil svelges stille (`demoStudioAI.ts:1349-1351`)
+- [x] Audience-select — adoptert fritekst-verdi inngår nå i options; «Healthcare Professionals»-mockup-default → General/Norsk. *(FIKSET 2026-07-03, P2-bolken)*
+- [x] Variant-feil — logges nå med console.warn (variant-navn + årsak) i stedet for helt stille. *(FIKSET 2026-07-03, P2-bolken)*
 - [ ] SRT times fra `scene.duration`, ikke faktiske klipp → drift mot montert video (`demoStudioExports.ts:355-369`)
-- [ ] Hele videoen rammes som `scenes[0].device` — multi-device får feil ramme (`ExportView.tsx:299,162-164`)
-- [ ] 9:16 → prores4444 `.mov` er rart leveranseformat for Reels/Shorts (`ExportView.tsx:308`)
+- [x] Hele videoen rammes som `scenes[0].device` — ærlig varsel i Export-UI ved blandede enheter («del opp i flere eksporter»). Per-klipp-ramme forblir udekket i pipelinen. *(FIKSET 2026-07-03, P2-bolken)*
+- [x] 9:16 → prores `.mov` — eksport er nå alltid mp4 (svart pad), riktig leveranse for Reels/Shorts. *(FIKSET 2026-07-03, P2-bolken)*
 - [ ] «PDF» = print-dialog, ikke fil (`demo_export.rs:33-49`)
-- [ ] Embeddable-sjekk er fail-open, sjekker ikke meta-CSP (`demo_recording.rs:122-159`)
-- [ ] Duration-stale: neste scenes native opptak bruker forrige scenes varighet (`GuidedRecorderView.tsx:131,242`)
-- [ ] Verify når bare forsiden — klikk preventDefault-es (`demo_verify_inject.js:76-77`)
+- [x] Embeddable-sjekk — sjekker nå også meta http-equiv CSP i body (første 20k tegn), delt frame-ancestors-logikk. *(FIKSET 2026-07-03, P2-bolken)*
+- [x] Duration-stale — fikset i G21-bolken (varighet leses ferskt fra storen for scenen som tas opp).
+- [x] Verify når bare forsiden — løst av økt-vinduet (G4): verify skjer på siden slik den ER, hvor som helst i flyten.
 - [ ] Learned-targets GET er uautentisert — alle kan lese alle delte selectors per host (`post-agent-anthropic-routes.ts:1265`) — bevisst «kollektiv læring»? Bør besluttes
 - [ ] `loadExisting` feiler stille ved korrupt JSON (`demoStudioModel.ts:1261-1268`); undo/redo kun i minne (`demoStudioStore.ts:78-79`)
 - [ ] Ingen UA-emulering i web-device-rammer (`FramedDevice.tsx:19-21,92-97`)

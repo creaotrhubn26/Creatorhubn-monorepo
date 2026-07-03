@@ -1346,8 +1346,10 @@ Svar med KUN ett JSON-objekt: { "scenes": [ { "index": 0, "narration": "...", "o
         };
       });
       out.push({ label: v.label, channel: v.channel, format: preset?.format, scenes });
-    } catch {
-      // hopp over en variant som feiler — de andre leveres fortsatt
+    } catch (e) {
+      // Hopp over en variant som feiler — de andre leveres fortsatt, men si
+      // det i konsollen så en manglende variant ikke er helt stille.
+      console.warn(`[demo-studio] variant «${v.label}» feilet og ble hoppet over:`, (e as Error)?.message ?? e);
     }
   }
   return out;

@@ -108,24 +108,6 @@ export interface AutoResult {
   url?: string;
 }
 
-/**
- * Auto-utfør en handling på siden (continueMode:'auto'): systemet finner
- * `selector` og utfører `actionType`. Returnerer resultatet (ok/found) eller
- * null ved timeout/web-dev.
- */
-export async function autoExecute(url: string, selector: string, actionType: string, text?: string, timeoutMs = 30000): Promise<AutoResult | null> {
-  if (!isCaptureAvailable()) return null;
-  let resolve!: (v: AutoResult | null) => void;
-  const done = new Promise<AutoResult | null>((r) => { resolve = r; });
-  const unlisten = await listen<AutoResult>('demo-capture://auto', (e) => resolve(e.payload));
-  const timer = setTimeout(() => resolve(null), timeoutMs);
-  try { await invoke('demo_auto_execute', { url, selector, actionType, text: text ?? null }); } catch { resolve(null); }
-  const result = await done;
-  clearTimeout(timer);
-  unlisten();
-  return result;
-}
-
 /** Resultat av ett-skudds handlings-verifisering. */
 export interface VerifyResult {
   cancelled: boolean;
@@ -133,27 +115,9 @@ export interface VerifyResult {
   label?: string;
 }
 
-/**
- * Verifiser en scenes handling: åpner siden, brukeren klikker elementet, vi får
- * selectoren tilbake (eller null ved timeout/avbrutt/web-dev). expectedLabel
- * vises som hint i verify-vinduet.
- */
-export async function verifyAction(url: string, expectedLabel?: string, timeoutMs = 90000): Promise<VerifyResult | null> {
-  if (!isCaptureAvailable()) return null;
-  let resolve!: (v: VerifyResult | null) => void;
-  const done = new Promise<VerifyResult | null>((r) => { resolve = r; });
-  const unlisten = await listen<VerifyResult>('demo-capture://verify', (e) => resolve(e.payload));
-  const timer = setTimeout(() => resolve(null), timeoutMs);
-  try { await invoke('demo_verify_action', { url, expectedLabel: expectedLabel ?? null }); } catch { resolve(null); }
-  const result = await done;
-  clearTimeout(timer);
-  unlisten();
-  return result;
-}
-
 // ── Vedvarende demo-økt (G4): ETT vindu gjennom hele kjøringen ──
-// Engangs-vinduene over åpner base-URL på nytt per kall → side-tilstand tapes
-// og innloggede produkter er umulige. Økten under beholder vinduet mellom
+// (Legacy ett-skudds autoExecute/verifyAction er fjernet — de åpnet base-URL
+// på nytt per kall så side-tilstand tapes.) Økten beholder vinduet mellom
 // stegene: navigasjon består, brukeren kan logge inn, og skjermbilder viser
 // tilstanden ETTER handlingene (ikke en fersk sidelast).
 
