@@ -35,6 +35,7 @@
 
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
+import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
 
 // Speil den globale SessionUser-typen i backend/server/index.ts. Denne
 // modulen bruker kun feltene som eksisterer i alle callsteder. isPlatformAdmin
@@ -62,28 +63,6 @@ const VALID_KINDS = new Set(["telephone", "video", "email", "meeting", "field"])
 // Helpers
 // ─────────────────────────────────────────────────────────────────
 
-/**
- * Returnerer organization_id for innlogget bruker. Faller til userId hvis
- * brukeren ikke er medlem av en enterprise-org (samme mønster som
- * sales-leadership-routes.ts).
- */
-async function resolveOrgIdForUser(pool: Pool, userId: string): Promise<string> {
-  try {
-    const r = await pool.query<{ organization_id: string }>(
-      `SELECT organization_id
-         FROM enterprise_team_members
-        WHERE user_id = $1 AND status = 'active'
-        ORDER BY joined_at DESC NULLS LAST
-        LIMIT 1`,
-      [userId],
-    );
-    const orgId = r.rows[0]?.organization_id;
-    if (orgId) return String(orgId);
-  } catch {
-    // Tabell mangler eller spørring feilet — fall til userId-modell.
-  }
-  return userId;
-}
 
 function readString(v: unknown, fallback = ""): string {
   return typeof v === "string" ? v : fallback;

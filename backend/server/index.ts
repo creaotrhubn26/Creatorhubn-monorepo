@@ -824,6 +824,7 @@ import { setupSalesRoutes } from "./sales-routes";
 import { registerSalesLeadershipRoutes } from "./sales-leadership-routes";
 import { registerLeadgridSalesTeamsRoutes } from "./leadgrid-sales-teams-routes";
 import { registerLeadgridProposalsRoutes } from "./leadgrid-proposals-routes";
+import { registerLeadgridOrgOverrideRoutes } from "./leadgrid-org-override-routes";
 import { registerRoutesAdherenceRoutes } from "./routes-adherence-routes";
 import { registerLeadgridKartverketRoutes } from "./leadgrid-kartverket-routes";
 import { registerPondusRoutes, registerPondusUsageRoutes } from "./pondus-routes";
@@ -65559,6 +65560,11 @@ registerLeadgridSalesTeamsRoutes({ app, pool, requireUserSession });
 // branded PDF-lenke, offentlig /p/:token m/ open-tracking som fyrer
 // proposal.opened-workflow-eventet. Forutsetter mig 0363.
 registerLeadgridProposalsRoutes({ app, pool, requireUserSession });
+
+// Org-modus-velger (mig 0365) — super_admin kan bytte mellom solo-modus
+// og valgfri org; alle Leadgrid-org-oppslag (leadgrid-org-resolver.ts)
+// respekterer valget.
+registerLeadgridOrgOverrideRoutes({ app, pool, requireUserSession });
 
 // /api/leadgrid/routes/* — 10 endpoints (route adherence + MeMapPin tap-
 // actions: positions/my-route/assignments/visits/team-nearby/adherence-

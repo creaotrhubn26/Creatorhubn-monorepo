@@ -26,6 +26,7 @@
 
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
+import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
 
 type SessionUser = {
   userId: string;
@@ -40,27 +41,6 @@ export interface SalesTeamsRoutesDeps {
   requireUserSession: (req: Request, res: Response) => SessionUser | null;
 }
 
-/** Samme org-oppslag som sales-leadership-routes.ts (modul-privat der). */
-async function resolveOrgIdForUser(
-  pool: Pool,
-  userId: string,
-): Promise<string> {
-  try {
-    const r = await pool.query<{ organization_id: string }>(
-      `SELECT organization_id
-         FROM enterprise_team_members
-        WHERE user_id = $1 AND status = 'active'
-        ORDER BY joined_at DESC NULLS LAST
-        LIMIT 1`,
-      [userId],
-    );
-    const orgId = r.rows[0]?.organization_id;
-    if (orgId) return String(orgId);
-  } catch {
-    // Tabell mangler eller spørring feilet — fall til userId-modell.
-  }
-  return userId;
-}
 
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
 const ROLES = new Set(["seller", "promoter", "manager"]);
