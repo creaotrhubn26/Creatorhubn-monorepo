@@ -8,7 +8,7 @@
  * touches production classification directly.
  *
  * Cron tick: POST /api/internal/agent-learning/aggregate-tick
- *   (x-cron-secret = APPROVAL_CRON_SECRET). Run once per day (off-peak).
+ *   (x-cron-secret = AGENT_LEARNING_CRON_SECRET). Run once per day (off-peak).
  * Optional in-process loop: AGENT_LEARNING_AGGREGATE_INTERVAL_MINUTES.
  */
 
@@ -25,9 +25,10 @@ export function setupRoleRoomAgentLearningCron(deps: RoleRoomAgentLearningCronDe
   const { app, pool } = deps;
 
   app.post("/api/internal/agent-learning/aggregate-tick", async (req, res) => {
-    // Reuse the existing internal-cron secret so ops has one secret to manage.
+    // Dedicated secret (GitHub Actions cron header ↔ Render env), per the
+    // established x-cron-secret pattern.
     const provided = req.headers["x-cron-secret"];
-    const secret = process.env.APPROVAL_CRON_SECRET;
+    const secret = process.env.AGENT_LEARNING_CRON_SECRET;
     if (!secret || provided !== secret) {
       return res.status(401).json({ error: "unauthorized" });
     }

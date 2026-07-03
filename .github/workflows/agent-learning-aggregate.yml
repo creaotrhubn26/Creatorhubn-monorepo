@@ -1,0 +1,71 @@
+name: Daglig agent-learning-aggregering
+
+# Trigger The Role Room Agent lærings-aggregering på prod-backend hver natt.
+# Endepunktet kjører runLearningAggregation: leser produsent-feltfeedback →
+# foreslår NACE→businessModel-overrides + confidence-kalibrering (status=proposed)
+# i role_room_agent_learned_overrides. Et menneske godkjenner før runtime bruker
+# dem (human-in-the-loop).
+#
+# Tick-endepunktet er token-gated via AGENT_LEARNING_CRON_SECRET
+# (GitHub secret + Render env, single-key PUT). Best-effort og idempotent —
+# UPSERT rører aldri en godkjent/avvist beslutning.
+
+on:
+  schedule:
+    # 04:17 UTC (~06:17 CET) — spredt fra ads-sweep (05:00) og andre cron.
+    - cron: '17 4 * * *'
+  # Manuell trigger fra GitHub UI for testing / catch-up
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-learning-aggregate-prod
+  cancel-in-progress: false
+
+jobs:
+  trigger-aggregate-tick:
+    name: POST /api/internal/agent-learning/aggregate-tick
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Send tick til backend
+        env:
+          AGENT_LEARNING_CRON_SECRET: ${{ secrets.AGENT_LEARNING_CRON_SECRET }}
+          BACKEND_URL: https://creatorhub-backend-rtbl.onrender.com
+        run: |
+          if [ -z "$AGENT_LEARNING_CRON_SECRET" ]; then
+            echo "::error::AGENT_LEARNING_CRON_SECRET secret er ikke satt i GitHub. Sett den lik Render-env-variabelen."
+            exit 1
+          fi
+
+          echo "Triggered av $GITHUB_EVENT_NAME ($GITHUB_RUN_ID)"
+          echo "Sender POST til /api/internal/agent-learning/aggregate-tick"
+
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -H "x-cron-secret: $AGENT_LEARNING_CRON_SECRET" \
+            -d '{}' \
+            --max-time 300 \
+            "$BACKEND_URL/api/internal/agent-learning/aggregate-tick")
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+
+          echo "HTTP $HTTP_CODE"
+          echo "Body: $BODY"
+
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            if [ "$HTTP_CODE" = "401" ]; then
+              echo "::error::Ugyldig AGENT_LEARNING_CRON_SECRET — GitHub-secret matcher ikke Render-env."
+            elif [ "$HTTP_CODE" = "404" ]; then
+              echo "::error::Endepunktet finnes ikke ennå — er PR #1188 merget og deployet?"
+            else
+              echo "::error::Aggregate-tick feilet (HTTP $HTTP_CODE)"
+            fi
+            exit 1
+          fi
+
+          echo "::notice::Daglig agent-learning-aggregering ferdig"
