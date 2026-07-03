@@ -29,7 +29,9 @@ enum LBrand {
 // MARK: - Models
 
 struct LeadbookTemplate: Identifiable, Hashable {
-    let id = UUID()
+    /// Mock-rader får tilfeldig UUID; backend-rader (Pondus) får malens
+    /// uuid slik at seleksjon overlever re-fetch.
+    var id = UUID()
     let name: String
     let channel: Channel
     let step: Int            // current
@@ -37,6 +39,8 @@ struct LeadbookTemplate: Identifiable, Hashable {
     let used: Int            // brukt
     let conversion: Double   // 0-1
     let status: Status
+    /// pondus_templates.id (lowercase uuid-streng). Nil for mock-rader.
+    var backendId: String? = nil
 
     enum Channel: String, CaseIterable, Hashable {
         case field = "Felt"
@@ -140,9 +144,10 @@ enum LeadbookData {
         LeadbookTemplate(name: "Ikke til stede / return",      channel: .field, step: 1, stepTotal: 4, used: 19, conversion: 0.18, status: .underReview),
     ]
 
-    /// Demo-mode-gated computed getter
-    static var templates: [LeadbookTemplate] {
-        DemoModeManager.isActiveNonisolated ? _templates : []
+    /// Demo PÅ → mock; ellers EKTE Pondus-maler m/ usage-tall fra
+    /// LeadbookLiveStore (backenden fantes hele tiden — mig 0355/0364).
+    @MainActor static var templates: [LeadbookTemplate] {
+        DemoModeManager.isActiveNonisolated ? _templates : LeadbookLiveStore.shared.templates
     }
 
     /// Krasj-safe fallback for `@State`-init.
@@ -209,7 +214,12 @@ enum LeadbookData {
         ],
     ]
 
-    static let objections: [Objection] = [
+    /// Demo PÅ → mock; ellers innvendinger fra publiserte Pondus-maler.
+    @MainActor static var objections: [Objection] {
+        DemoModeManager.isActiveNonisolated ? _objections : LeadbookLiveStore.shared.objections
+    }
+
+    private static let _objections: [Objection] = [
         Objection(title: "\"Vi har allerede leverandør\"",
                   response: "Det forstår jeg godt. Mange av våre kunder hadde det også – helt til de så resultatene vi leverer på X, Y og Z.",
                   icon: "shield.fill",
@@ -322,6 +332,11 @@ struct LeadbookView: View {
         .preferredColorScheme(.dark)
         .task {
             await pondusStore.load(api: appState.api)
+            // Uke 2-oppfølger: live-store for fanens mal-liste/KPI-er
+            // (Pondus-maler + usage-stats). Idempotent attach.
+            if let api = appState.api {
+                LeadbookLiveStore.shared.attach(api: api)
+            }
             // Ved cold-start konsumer deep-link satt av App Intent (som kjørte
             // før view-en var ready). Vi må gjøre det ETTER load() slik at
             // matching kan skje mot live templates.
@@ -442,6 +457,7 @@ struct LeadbookView: View {
             .overlay(RoundedRectangle(cornerRadius: 11).stroke(LBrand.stroke, lineWidth: 1))
         }
         .buttonStyle(.plain)
+        .macCatalystHover()
     }
 
     // Bibliotek-knapp m/ tellebrikke
@@ -467,6 +483,7 @@ struct LeadbookView: View {
             .overlay(RoundedRectangle(cornerRadius: 11).stroke(LBrand.stroke, lineWidth: 1))
         }
         .buttonStyle(.plain)
+        .macCatalystHover()
     }
 
     private func performanceButton(isCompact: Bool) -> some View {
@@ -487,6 +504,7 @@ struct LeadbookView: View {
             .overlay(RoundedRectangle(cornerRadius: 11).stroke(LBrand.stroke, lineWidth: 1))
         }
         .buttonStyle(.plain)
+        .macCatalystHover()
     }
 
     private func versionsButton(isCompact: Bool) -> some View {
@@ -513,6 +531,7 @@ struct LeadbookView: View {
             .overlay(RoundedRectangle(cornerRadius: 11).stroke(LBrand.stroke, lineWidth: 1))
         }
         .buttonStyle(.plain)
+        .macCatalystHover()
     }
 
     private var transcriptionButton: some View {
@@ -569,6 +588,7 @@ struct LeadbookView: View {
             }
         }
         .buttonStyle(.plain)
+        .macCatalystHover()
     }
 
     private func profileAvatar(isCompact: Bool) -> some View {
@@ -737,16 +757,21 @@ struct LeadbookView: View {
     }
 
     private func kpiCard(kpi: LeadbookKPI) -> some View {
-        Button { selectedKPI = kpi } label: {
+        // Demo PÅ → mockup-tall m/ trend. Demo AV → ekte tall fra
+        // usage-stats (trend skjules — ingen historikk-serie enda).
+        let isDemo = DemoModeManager.isActiveNonisolated
+        return Button { selectedKPI = kpi } label: {
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 7) {
                     Text(kpi.title).font(.system(size: 12, weight: .semibold)).foregroundStyle(LBrand.textSecondary)
-                    Text(kpi.value)
+                    Text(isDemo ? kpi.value : kpi.liveValue)
                         .font(.system(size: 26, weight: .bold, design: .rounded)).foregroundStyle(.white)
                         .monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
                     HStack(spacing: 6) {
-                        Text("vs. forrige periode").font(.system(size: 10)).foregroundStyle(LBrand.textTertiary)
-                        Text(kpi.trend).font(.system(size: 11, weight: .bold)).foregroundStyle(LBrand.green).monospacedDigit()
+                        Text(isDemo ? "vs. forrige periode" : "live fra teamet").font(.system(size: 10)).foregroundStyle(LBrand.textTertiary)
+                        if isDemo {
+                            Text(kpi.trend).font(.system(size: 11, weight: .bold)).foregroundStyle(LBrand.green).monospacedDigit()
+                        }
                     }
                 }
                 Spacer(minLength: 0)
@@ -786,6 +811,18 @@ enum LeadbookKPI: String, CaseIterable, Identifiable {
         case .usedToday:       return "142"
         case .meetingRate:     return "28,6 %"
         case .teamAdoption:    return "76 %"
+        }
+    }
+
+    /// EKTE verdi fra LeadbookLiveStore (usage-stats, mig 0364) — brukes
+    /// når demo er AV så KPI-kortene ikke viser mockup-tallene over.
+    @MainActor var liveValue: String {
+        let store = LeadbookLiveStore.shared
+        switch self {
+        case .activeTemplates: return store.kpiActiveTemplates
+        case .usedToday:       return store.kpiUsedToday
+        case .meetingRate:     return store.kpiMeetingRate
+        case .teamAdoption:    return store.kpiTeamAdoption
         }
     }
 
