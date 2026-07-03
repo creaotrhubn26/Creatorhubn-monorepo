@@ -5,8 +5,13 @@
 // mellom dem. Team-fargen dominerer visuelt på kartet (avatar-ring)
 // slik at man raskt ser hvilket team hver person hører til.
 //
-// Lagring: `UserDefaults` som JSON for nå. Byttes til backend
-// (`GET/POST /leadgrid/sales-teams`) i backend-pakke.
+// Lagring: backend er fasit (`GET/PUT/DELETE /api/leadgrid/sales-teams`,
+// mig 0361) med `UserDefaults` som offline-cache. Sync-strategi:
+//   • attach(api:) fra første view med APIClient → syncFromBackend()
+//   • backend har team   → adopter som sannhet (overskriver cache)
+//   • backend er tom     → push lokale team opp (første enhet vinner)
+//   • backend utilgjengelig → behold cache (offline-modus)
+//   • upsert/delete      → optimistisk lokalt + push (fire-and-forget)
 
 import SwiftUI
 
@@ -79,6 +84,11 @@ final class LeadgridSalesTeamStore {
     /// Alle team, sortert alfabetisk etter navn.
     private(set) var teams: [LeadgridSalesTeam] = []
 
+    /// APIClient injisert lazily (samme mønster som RouteTracker). Weak
+    /// siden APIClient eies av AppState.
+    private weak var api: APIClient?
+    private var didInitialSync = false
+
     private init() {
         load()
         if teams.isEmpty {
@@ -110,6 +120,40 @@ final class LeadgridSalesTeamStore {
         }
     }
 
+    // MARK: - Backend-sync
+
+    /// Kalles av første view som har APIClient tilgjengelig (idempotent).
+    /// Trigger initial sync mot backend første gang.
+    func attach(api: APIClient) {
+        self.api = api
+        guard !didInitialSync else { return }
+        didInitialSync = true
+        Task { await syncFromBackend() }
+    }
+
+    /// Hent team fra backend. Backend er fasit når den svarer; tom backend
+    /// får lokale team pushet opp (seed/offline-arbeid overlever).
+    func syncFromBackend() async {
+        guard let api else { return }
+        do {
+            let remote = try await api.fetchSalesTeams()
+            if remote.isEmpty {
+                // Første enhet i org-en — push lokale team (inkl. seed) opp
+                // så alle enheter deler samme utgangspunkt.
+                for team in teams {
+                    try? await api.upsertSalesTeam(team)
+                }
+            } else {
+                teams = remote.sorted { $0.name.lowercased() < $1.name.lowercased() }
+                save()
+            }
+        } catch {
+            // Offline eller backend nede — behold cache. Neste attach/sync
+            // prøver igjen.
+            print("[SalesTeamStore] syncFromBackend feilet: \(error)")
+        }
+    }
+
     func upsert(_ team: LeadgridSalesTeam) {
         if let idx = teams.firstIndex(where: { $0.id == team.id }) {
             teams[idx] = team
@@ -118,11 +162,19 @@ final class LeadgridSalesTeamStore {
         }
         teams.sort { $0.name.lowercased() < $1.name.lowercased() }
         save()
+        // Fire-and-forget push — backend upserter på (org, id) så rekkefølge
+        // er ufarlig; feil fanges av neste syncFromBackend().
+        if let api {
+            Task { try? await api.upsertSalesTeam(team) }
+        }
     }
 
     func delete(id: String) {
         teams.removeAll { $0.id == id }
         save()
+        if let api {
+            Task { try? await api.deleteSalesTeam(id: id) }
+        }
     }
 
     /// Finn team for en gitt bruker-ID. Returnerer første treff (én bruker

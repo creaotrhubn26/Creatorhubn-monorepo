@@ -1006,3 +1006,130 @@ export async function markItemSkipped(
   await recomputeBatchCountersByBatchId(pool, row.batch_id);
   return { ok: true };
 }
+
+// =====================================================================
+// Resume/reaper — gjenoppta batcher som døde ved prosess-restart
+// =====================================================================
+// processUrlResearchBatch kjøres fire-and-forget i prosessen. Ved deploy/
+// restart dør in-flight batcher: items blir stående i 'running' og
+// batch-status i 'pending'/'running' for alltid (observert i prod
+// 2026-07-03: 5 batcher + 49 items fastlåst siden 2026-06-28). Sweeper-en
+// kjører ved boot (+45s) og deretter hver time:
+//   1. items i 'running' eldre enn 15 min       → 'pending' (retry beholdes)
+//   2. transiente 'failed' (isTransientError,
+//      retry_count < MAX_RETRY_ATTEMPTS)        → 'pending'
+//   3. batcher (<14 dager) med pending-items    → processUrlResearchBatch
+//      på nytt, serielt (intern concurrency per batch gjelder fortsatt)
+
+const RESUME_STUCK_RUNNING_MINUTES = 15;
+const RESUME_MAX_BATCHES_PER_SWEEP = 10;
+const RESUME_INTERVAL_MS = 60 * 60 * 1000; // 1 time
+
+let resumeHandle: NodeJS.Timeout | null = null;
+let resumeSweepRunning = false;
+
+export async function resumeStuckUrlResearchBatches(
+  pool: Pool,
+): Promise<{ resetRunning: number; resetFailed: number; resumedBatches: number }> {
+  // 1. Fastlåste 'running'-items → 'pending'. processUrlResearchBatch
+  //    plukker kun 'pending', så uten denne blir de aldri rørt igjen.
+  const resetRunning = await pool.query(
+    `UPDATE leadgrid_url_research_items
+        SET status = 'pending'
+      WHERE status = 'running'
+        AND COALESCE(last_attempted_at, started_at, created_at)
+            < NOW() - INTERVAL '${RESUME_STUCK_RUNNING_MINUTES} minutes'`,
+  );
+
+  // 2. Transiente 'failed' med retry-budsjett igjen → 'pending'.
+  //    Feilmelding-matching (isTransientError) gjøres i JS siden lista er
+  //    substring-basert.
+  const failedCandidates = await pool.query<{ id: string; error_message: string | null }>(
+    `SELECT id::text, error_message
+       FROM leadgrid_url_research_items
+      WHERE status = 'failed'
+        AND retry_count < $1
+        AND created_at > NOW() - INTERVAL '14 days'`,
+    [MAX_RETRY_ATTEMPTS],
+  );
+  const transientIds = failedCandidates.rows
+    .filter((r) => isTransientError(r.error_message))
+    .map((r) => r.id);
+  if (transientIds.length > 0) {
+    await pool.query(
+      `UPDATE leadgrid_url_research_items
+          SET status = 'pending', error_message = NULL
+        WHERE id = ANY($1::uuid[])`,
+      [transientIds],
+    );
+  }
+
+  // 3. Kjør batcher med pending-items på nytt. 'partial'-batcher er
+  //    finalisert men kan ha fått items tilbake i 'pending' i steg 2 —
+  //    processUrlResearchBatch håndterer dem (status-UPDATE-en er no-op,
+  //    resten kjører og finalizeBatch setter riktig slutt-status).
+  const batches = await pool.query<{ id: string }>(
+    `SELECT b.id::text
+       FROM leadgrid_url_research_batches b
+      WHERE b.status IN ('pending', 'running', 'partial')
+        AND b.created_at > NOW() - INTERVAL '14 days'
+        AND EXISTS (
+              SELECT 1 FROM leadgrid_url_research_items i
+               WHERE i.batch_id = b.id AND i.status = 'pending'
+            )
+      ORDER BY b.created_at ASC
+      LIMIT ${RESUME_MAX_BATCHES_PER_SWEEP}`,
+  );
+  for (const row of batches.rows) {
+    try {
+      await processUrlResearchBatch(pool, row.id);
+    } catch (err) {
+      console.warn(
+        `[url-research-resume] batch ${row.id} feilet:`,
+        (err as Error).message,
+      );
+    }
+  }
+
+  return {
+    resetRunning: resetRunning.rowCount ?? 0,
+    resetFailed: transientIds.length,
+    resumedBatches: batches.rows.length,
+  };
+}
+
+/** Registrer sweep ved boot (+45s) + hver time. Idempotent. */
+export function registerUrlResearchResumeCron(pool: Pool): void {
+  if (resumeHandle) return;
+  const sweep = async (): Promise<void> => {
+    if (resumeSweepRunning) return; // overlap-vern — batcher kan ta > 1 time
+    resumeSweepRunning = true;
+    try {
+      const r = await resumeStuckUrlResearchBatches(pool);
+      if (r.resetRunning > 0 || r.resetFailed > 0 || r.resumedBatches > 0) {
+        console.log(
+          `[url-research-resume] reset_running=${r.resetRunning} reset_failed=${r.resetFailed} resumed_batches=${r.resumedBatches}`,
+        );
+      }
+    } catch (err) {
+      console.warn("[url-research-resume] sweep feilet:", err);
+    } finally {
+      resumeSweepRunning = false;
+    }
+  };
+  resumeHandle = setInterval(() => {
+    void sweep();
+  }, RESUME_INTERVAL_MS);
+  setTimeout(() => {
+    void sweep();
+  }, 45_000);
+  console.log("[url-research-resume] sweeper registered (boot +45s, deretter hver time)");
+}
+
+/** Internt for tester — stopp sweeper. */
+export function _stopUrlResearchResumeCron(): void {
+  if (resumeHandle) {
+    clearInterval(resumeHandle);
+    resumeHandle = null;
+  }
+}

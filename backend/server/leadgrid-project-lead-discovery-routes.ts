@@ -68,6 +68,8 @@ import {
   readBatchProgress,
 } from "./leadgrid-url-batch-processor.js";
 import { autoAssignIndustryFromDiscoveryQuery } from "./leadgrid-industry-classify.js";
+import Anthropic from "@anthropic-ai/sdk";
+import { withAIQuota } from "./leadgrid-ai-queue.js";
 
 // =====================================================================
 // Types
@@ -272,24 +274,54 @@ interface ICPRule {
 
 const ICP_RULES: ICPRule[] = [
   // Helse — leger, tannleger, helsesentre
-  { pattern: /\b(leger|lege(r)?|helsepersonell|allmennlege)\b/i, placesQuery: "legekontor" },
-  { pattern: /\b(tannlege(r)?|tannklinikk(er)?|tannhelse)\b/i, placesQuery: "tannklinikk" },
-  { pattern: /\b(fysioterapeut(er)?|kiropraktor(er)?)\b/i, placesQuery: "fysioterapi" },
-  { pattern: /\b(psykolog(er)?|terapeut(er)?|mental.helse)\b/i, placesQuery: "psykolog" },
+  { pattern: /(?<![\p{L}])(leger|lege(r)?|helsepersonell|allmennlege)(?![\p{L}])/iu, placesQuery: "legekontor" },
+  { pattern: /(?<![\p{L}])(tannlege(r)?|tannklinikk(er)?|tannhelse)(?![\p{L}])/iu, placesQuery: "tannklinikk" },
+  { pattern: /(?<![\p{L}])(fysioterapeut(er)?|kiropraktor(er)?)(?![\p{L}])/iu, placesQuery: "fysioterapi" },
+  { pattern: /(?<![\p{L}])(psykolog(er)?|terapeut(er)?|mental.helse)(?![\p{L}])/iu, placesQuery: "psykolog" },
   // Finans / regnskap / advokat
-  { pattern: /\b(regnskapsbyr(å|aer)|regnskap|bokf(ø|oe)ring)\b/i, placesQuery: "regnskapsbyrå" },
-  { pattern: /\b(advokat(er)?|jurist(er)?|advokatkontor)\b/i, placesQuery: "advokatkontor" },
+  { pattern: /(?<![\p{L}])(regnskapsbyr(å|aer)|regnskap|bokf(ø|oe)ring)(?![\p{L}])/iu, placesQuery: "regnskapsbyrå" },
+  { pattern: /(?<![\p{L}])(advokat(er)?|jurist(er)?|advokatkontor)(?![\p{L}])/iu, placesQuery: "advokatkontor" },
   // Eiendom / bygg
-  { pattern: /\b(eiendomsmegler(e)?|meglerhus)\b/i, placesQuery: "eiendomsmegler" },
-  { pattern: /\b(arkitekt(er)?|byggmester)\b/i, placesQuery: "arkitekt" },
+  { pattern: /(?<![\p{L}])(eiendomsmegler(e)?|meglerhus)(?![\p{L}])/iu, placesQuery: "eiendomsmegler" },
+  { pattern: /(?<![\p{L}])(arkitekt(er)?|byggmester)(?![\p{L}])/iu, placesQuery: "arkitekt" },
   // Kreative / kultur
-  { pattern: /\b(fotograf(er)?|videoproduksjon|filmskaper)\b/i, placesQuery: "fotograf" },
-  { pattern: /\b(byråer|reklamebyr(å|aer)|markedsf(ø|oer)ringsbyr)\b/i, placesQuery: "reklamebyrå" },
+  { pattern: /(?<![\p{L}])(fotograf(er)?|videoproduksjon|filmskaper)(?![\p{L}])/iu, placesQuery: "fotograf" },
+  { pattern: /(?<![\p{L}])(byråer|reklamebyr(å|aer)|markedsf(ø|oer)ringsbyr)(?![\p{L}])/iu, placesQuery: "reklamebyrå" },
   // Mat / utelivet
-  { pattern: /\b(restaurant(er)?|spisesteder|matsted)\b/i, placesQuery: "restaurant" },
-  { pattern: /\b(kaf(e|é|eer)|coffee.shop)\b/i, placesQuery: "kafé" },
-  { pattern: /\b(frisør(er)?|salong(er)?)\b/i, placesQuery: "frisør" },
-  { pattern: /\b(butikk(er)?|nettbutikk|retail)\b/i, placesQuery: "butikk" },
+  { pattern: /(?<![\p{L}])(restaurant(er)?|spisesteder|matsted)(?![\p{L}])/iu, placesQuery: "restaurant" },
+  { pattern: /(?<![\p{L}])(kaf(e|é)(er)?|coffee.shop)(?![\p{L}])/iu, placesQuery: "kafé" },
+  { pattern: /(?<![\p{L}])(frisør(er)?|salong(er)?)(?![\p{L}])/iu, placesQuery: "frisør" },
+  { pattern: /(?<![\p{L}])(butikk(er)?|nettbutikk|retail)(?![\p{L}])/iu, placesQuery: "butikk" },
+  // Utvidelse (uke 2, produktrevisjonen 2026-07-03): felt-salg-vertikaler —
+  // inkludert Leadgrids EGEN ICP (solenergi/alarm/bemanning/telecom) som
+  // manglet helt i lista over.
+  { pattern: /(?<![\p{L}])(solenergi|solcell(er|epanel)?|solkraft)(?![\p{L}])/iu, placesQuery: "solcelleinstallatør" },
+  { pattern: /(?<![\p{L}])(alarm(selskap|system)?|boligalarm|innbruddsalarm|vaktselskap|sikkerhetsselskap)(?![\p{L}])/iu, placesQuery: "alarmselskap" },
+  { pattern: /(?<![\p{L}])(bemanning(sbyrå)?|rekruttering(sbyrå)?|vikarbyrå|headhunt)(?![\p{L}])/iu, placesQuery: "bemanningsbyrå" },
+  { pattern: /(?<![\p{L}])(telekom|teleselskap|mobilabonnement|bredbånd|fiber(leverandør)?)(?![\p{L}])/iu, placesQuery: "teleselskap" },
+  // Håndverk / bygg-fag
+  { pattern: /(?<![\p{L}])(elektriker(e)?|elektroinstallat(ø|oe)r|elinstallasjon)(?![\p{L}])/iu, placesQuery: "elektriker" },
+  { pattern: /(?<![\p{L}])(rørlegger(e)?|vvs)(?![\p{L}])/iu, placesQuery: "rørlegger" },
+  { pattern: /(?<![\p{L}])(taktekk(er|ing)|takarbeid|blikkenslager)(?![\p{L}])/iu, placesQuery: "taktekker" },
+  { pattern: /(?<![\p{L}])(maler(firma|mester)?|malingsarbeid)(?![\p{L}])/iu, placesQuery: "malerfirma" },
+  { pattern: /(?<![\p{L}])(snekker(e)?|tømrer(e)?)(?![\p{L}])/iu, placesQuery: "snekker" },
+  // Bil / transport / logistikk
+  { pattern: /(?<![\p{L}])(bilverksted|bilservice|mekaniker(e)?)(?![\p{L}])/iu, placesQuery: "bilverksted" },
+  { pattern: /(?<![\p{L}])(transport(selskap|firma)?|logistikk|spedisjon|budbil)(?![\p{L}])/iu, placesQuery: "transportselskap" },
+  // Helse / velvære (utvidelse)
+  { pattern: /(?<![\p{L}])(veterinær(er)?|dyreklinikk(er)?|dyrlege(r)?)(?![\p{L}])/iu, placesQuery: "veterinær" },
+  { pattern: /(?<![\p{L}])(optiker(e)?|synsundersøkelse)(?![\p{L}])/iu, placesQuery: "optiker" },
+  { pattern: /(?<![\p{L}])(apotek(er)?)(?![\p{L}])/iu, placesQuery: "apotek" },
+  { pattern: /(?<![\p{L}])(hudpleie|kosmetolog(er)?|skjønnhetsklinikk)(?![\p{L}])/iu, placesQuery: "hudpleieklinikk" },
+  { pattern: /(?<![\p{L}])(treningssenter|gym|treningsstudio)(?![\p{L}])/iu, placesQuery: "treningssenter" },
+  // Tjenester / institusjoner
+  { pattern: /(?<![\p{L}])(renhold(sbyrå)?|vaskehjelp|rengjøring)(?![\p{L}])/iu, placesQuery: "renholdsbyrå" },
+  { pattern: /(?<![\p{L}])(catering|kantine(drift)?)(?![\p{L}])/iu, placesQuery: "catering" },
+  { pattern: /(?<![\p{L}])(dagligvare(butikk(er)?)?|matbutikk(er)?|kolonial)(?![\p{L}])/iu, placesQuery: "dagligvarebutikk" },
+  { pattern: /(?<![\p{L}])(idrettslag|fotballklubb(er)?|sportsklubb(er)?|idrettsforening)(?![\p{L}])/iu, placesQuery: "idrettslag" },
+  { pattern: /(?<![\p{L}])(barnehage(r)?)(?![\p{L}])/iu, placesQuery: "barnehage" },
+  { pattern: /(?<![\p{L}])(hotell(er)?|overnatting(ssted)?)(?![\p{L}])/iu, placesQuery: "hotell" },
+  { pattern: /(?<![\p{L}])(forsikring(sselskap)?)(?![\p{L}])/iu, placesQuery: "forsikringsselskap" },
 ];
 
 const GENERIC_INDUSTRY_CATEGORIES = new Set([
@@ -328,6 +360,79 @@ function deriveSearchableICP(ctx: ProjectContext): string | null {
 }
 
 // =====================================================================
+// Claude-fallback for ICP (uke 2, produktrevisjonen 2026-07-03)
+// =====================================================================
+// Regex-lista over dekker de vanligste vertikalene, men bransjer utenfor
+// lista ga tidligere NULL treff («discovery-fragility»). Når regex bommer
+// og prosjektet HAR brand-scan-tekst, ber vi Claude (haiku) utlede ÉN
+// Places-søkbar term. Resultatet caches i minnet per kilde-tekst så
+// gjentatte discovery-kall ikke koster nye AI-kall.
+
+let cachedAnthropicClient: Anthropic | null = null;
+function getAnthropicClient(): Anthropic | null {
+  if (cachedAnthropicClient) return cachedAnthropicClient;
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return null;
+  cachedAnthropicClient = new Anthropic({ apiKey });
+  return cachedAnthropicClient;
+}
+
+const icpClaudeCache = new Map<string, string | null>();
+const ICP_CLAUDE_CACHE_MAX = 500;
+
+async function deriveICPWithClaude(
+  sourceText: string,
+  quotaKey: string,
+): Promise<string | null> {
+  const client = getAnthropicClient();
+  if (!client) return null;
+  const cacheKey = crypto.createHash("sha256").update(sourceText).digest("hex");
+  if (icpClaudeCache.has(cacheKey)) return icpClaudeCache.get(cacheKey) ?? null;
+
+  let result: string | null = null;
+  try {
+    const model =
+      process.env.ROLE_ROOM_AGENT_HAIKU_MODEL || "claude-haiku-4-5-20251001";
+    const resp = await withAIQuota("claude", quotaKey, async () =>
+      client.messages.create({
+        model,
+        max_tokens: 24,
+        system:
+          "Du får en beskrivelse av hvem en bedrift selger til (målgruppe/ICP). " +
+          "Svar med ÉN kort norsk søketerm (1-3 ord) som kan brukes i Google " +
+          "Places for å finne slike bedrifter, f.eks. «legekontor», " +
+          "«solcelleinstallatør», «bilverksted». Svar KUN med termen. " +
+          "Hvis teksten ikke beskriver en søkbar bedriftstype: svar «UKJENT».",
+        messages: [{ role: "user", content: sourceText.slice(0, 1500) }],
+      }),
+    );
+    const raw = resp.content
+      .filter((b): b is { type: "text"; text: string } => b.type === "text")
+      .map((b) => b.text)
+      .join(" ")
+      .trim()
+      .replace(/^["«]|["»]$/g, "")
+      .split("\n")[0]
+      .trim();
+    if (
+      raw &&
+      raw.length >= 3 &&
+      raw.length <= 40 &&
+      !/ukjent/i.test(raw) &&
+      /^[\p{L}\p{N} \-æøåÆØÅ]+$/u.test(raw)
+    ) {
+      result = raw.toLowerCase();
+    }
+  } catch (err) {
+    console.warn("[discover-leads] Claude ICP-fallback feilet:", (err as Error).message);
+  }
+
+  if (icpClaudeCache.size >= ICP_CLAUDE_CACHE_MAX) icpClaudeCache.clear();
+  icpClaudeCache.set(cacheKey, result);
+  return result;
+}
+
+// =====================================================================
 // Bygg Places-query fra prosjekt-context + override
 // =====================================================================
 
@@ -337,15 +442,17 @@ interface ResolvedDiscoveryQuery {
   city: string;
 }
 
-function buildDiscoveryQuery(
+async function buildDiscoveryQuery(
   ctx: ProjectContext,
   body: DiscoverBody,
-): ResolvedDiscoveryQuery | null {
-  // Prioritet (Daniel-fiks 2026-06-28):
+  quotaKey = "leadgrid-icp",
+): Promise<ResolvedDiscoveryQuery | null> {
+  // Prioritet (Daniel-fiks 2026-06-28 + Claude-fallback uke 2):
   // 1. Eksplisitt override fra request body
   // 2. Utledet søkbar ICP fra brand-scan-data (targetAudience etc.)
   // 3. industryHint hvis det ikke er en generisk kategori
   //    (`b2b_saas`/`saas`/`ecommerce` etc. — disse er ikke søkbare i Places)
+  // 4. Claude (haiku) utleder term fra brand-scan-teksten når regex bommer
   const bodyIndustry = body.industry_query?.trim();
   const derivedICP = deriveSearchableICP(ctx);
   const fallbackIndustry =
@@ -354,7 +461,20 @@ function buildDiscoveryQuery(
       ? ctx.industryHint
       : null;
 
-  const industry = bodyIndustry || derivedICP || fallbackIndustry || "";
+  let industry = bodyIndustry || derivedICP || fallbackIndustry || "";
+  if (!industry) {
+    const sourceText = [
+      ctx.targetAudienceHint,
+      ctx.brandDescriptionHint,
+      ctx.positioningSummary,
+    ]
+      .filter((v): v is string => typeof v === "string" && v.length > 0)
+      .join(" ");
+    if (sourceText.length > 0) {
+      industry = (await deriveICPWithClaude(sourceText, quotaKey)) ?? "";
+    }
+  }
+
   const city = (body.city && body.city.trim()) || ctx.cityHint || "";
   if (!industry) {
     return null;
@@ -451,8 +571,9 @@ export function registerLeadgridProjectLeadDiscoveryRoutes(deps: Deps): void {
           }
         }
 
-        // 2. Bygg discovery-query. Krever bransje (enten override eller hint).
-        const resolved = buildDiscoveryQuery(ctx, body);
+        // 2. Bygg discovery-query. Krever bransje (enten override eller hint);
+        //    Claude-fallback utleder term fra brand-scan-tekst når regex bommer.
+        const resolved = await buildDiscoveryQuery(ctx, body, session.userId);
         if (!resolved) {
           return res.status(400).json({
             error: "industry_required",

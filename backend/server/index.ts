@@ -558,6 +558,7 @@ import { registerLeadgridImportRoutes } from "./leadgrid-import-routes.js";
 import { registerLeadgridUrlResearchRoutes } from "./leadgrid-url-research-routes.js";
 import { registerLeadgridProjectLeadDiscoveryRoutes } from "./leadgrid-project-lead-discovery-routes.js";
 import { registerLeadgridContinuousDiscoveryCron } from "./leadgrid-continuous-discovery.js";
+import { registerUrlResearchResumeCron } from "./leadgrid-url-batch-processor.js";
 import { registerLeadgridDiscoveryConfigRoutes } from "./leadgrid-discovery-config-routes.js";
 import { registerLeadgridIndustriesRoutes } from "./leadgrid-industries-routes.js";
 import { registerLeadgridDealsRoutes } from "./leadgrid-deals-routes.js";
@@ -821,6 +822,8 @@ import { setupDeliveriesRoutes } from "./deliveries-routes";
 import { setupAudioSettingsRoutes } from "./audio-settings-routes";
 import { setupSalesRoutes } from "./sales-routes";
 import { registerSalesLeadershipRoutes } from "./sales-leadership-routes";
+import { registerLeadgridSalesTeamsRoutes } from "./leadgrid-sales-teams-routes";
+import { registerLeadgridProposalsRoutes } from "./leadgrid-proposals-routes";
 import { registerRoutesAdherenceRoutes } from "./routes-adherence-routes";
 import { registerLeadgridKartverketRoutes } from "./leadgrid-kartverket-routes";
 import { registerPondusRoutes } from "./pondus-routes";
@@ -24711,6 +24714,11 @@ registerLeadgridProjectLeadDiscoveryRoutes({ app, pool, activeSessions });
 // for auto_discover_enabled prosjekter.
 registerLeadgridDiscoveryConfigRoutes({ app, pool, activeSessions });
 registerLeadgridContinuousDiscoveryCron(pool);
+// Resume-sweeper for URL-research: batcher som dør ved deploy/restart
+// (items fastlåst i 'running', batch i 'pending'/'running') gjenopptas
+// ved boot (+45s) og hver time. Fikser prod-funnet 2026-07-03 der 5
+// batcher/49 items sto fast siden 2026-06-28.
+registerUrlResearchResumeCron(pool);
 // Industries-katalog + member-spesialiseringer (mig 329).
 // 3-lags bransje-system: industries (global+custom) + crm_customers.industry_id
 // + organization_member_industries (sales-rep × bransje × expertise).
@@ -65541,6 +65549,16 @@ setupSalesRoutes({
 // /api/leadgrid/sales-leadership/* — 18 endpoints (provisjons-modeller,
 // konkurranse-maler, premie-katalog, fulfillment). Forutsetter mig 0354.
 registerSalesLeadershipRoutes({ app, pool, requireUserSession });
+
+// /api/leadgrid/sales-teams + /api/leadgrid/lead-assignments — 6 endpoints
+// (team-struktur + «Send oppdrag»-tildelinger, synk for iPad
+// LeadgridSalesTeamStore/AssignToTeamMemberSheet). Forutsetter mig 0361.
+registerLeadgridSalesTeamsRoutes({ app, pool, requireUserSession });
+
+// Tilbudssending (funn #7, produktrevisjonen) — opprett+send tilbud m/
+// branded PDF-lenke, offentlig /p/:token m/ open-tracking som fyrer
+// proposal.opened-workflow-eventet. Forutsetter mig 0363.
+registerLeadgridProposalsRoutes({ app, pool, requireUserSession });
 
 // /api/leadgrid/routes/* — 10 endpoints (route adherence + MeMapPin tap-
 // actions: positions/my-route/assignments/visits/team-nearby/adherence-

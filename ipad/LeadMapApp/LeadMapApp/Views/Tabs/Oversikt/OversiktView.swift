@@ -310,6 +310,8 @@ struct OversiktView: View {
             await MainActor.run { self.lastUpdated = Date() }
             return
         }
+        // Team-store sync (idempotent) — backend er fasit for team-oppsettet.
+        LeadgridSalesTeamStore.shared.attach(api: api)
         async let momTask: LeadgridMomentum? = try? api.fetchMomentumToday()
         async let fcTask: LeadgridForecast? = try? api.fetchPipelineForecast()
         let (mom, fc) = await (momTask, fcTask)
@@ -1813,6 +1815,7 @@ private struct LeadsInAreaCard: View {
         // «Tildel…» i info-kortet.
         .sheet(item: $assignToTeamLead) { lead in
             AssignToTeamMemberSheet(
+                leadId: lead.id,
                 leadName: lead.name,
                 leadAddress: lead.address ?? lead.city,
                 leadScore: lead.leadScore,
@@ -2371,9 +2374,24 @@ private struct LeadsInAreaCard: View {
         }
     }
 
-    /// Fullfør team-tildeling — vis suksess-toast + haptic. Backend-call
-    /// legges til her når `POST /leadgrid/lead-assignments` er live.
+    /// Fullfør team-tildeling — vis suksess-toast + haptic, og persister
+    /// til backend (`POST /api/leadgrid/lead-assignments`, mig 0361) så
+    /// mottakeren får in-app varsel og tildelingen synkes på tvers av
+    /// enheter. Fire-and-forget — toast vises uansett (optimistisk UX).
     private func completeTeamAssignment(_ assignment: LeadAssignment) {
+        if let api = appState.api {
+            let payload = LeadAssignmentPayload(
+                leadId: assignment.leadId.hasPrefix("lead-") ? nil : assignment.leadId,
+                leadName: assignment.leadName,
+                leadLat: assignment.leadCoordinate.latitude,
+                leadLng: assignment.leadCoordinate.longitude,
+                assigneeUserId: assignment.assigneeUserId,
+                assigneeRole: assignment.assigneeRole.rawValue,
+                priority: assignment.priority.rawValue,
+                message: assignment.message
+            )
+            Task { try? await api.createLeadAssignment(payload) }
+        }
         lastCompletedAssignment = assignment
         withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
             assignmentSuccessToastVisible = true
@@ -3642,12 +3660,12 @@ private struct PipelineOverviewCard: View {
 private struct ActivityTodayCard: View {
     let momentum: LeadgridMomentum?
     @State private var demo = DemoModeManager.shared
-    // Mock-tall vises kun i demo-modus. Ellers 0/dashes til backend
-    // leverer ekte «aktivitet i dag»-tellere.
-    private var calls: Int { demo.isActive ? 14 : 0 }
-    private var emails: Int { demo.isActive ? 22 : 0 }
-    private var meetings: Int { demo.isActive ? 3 : 0 }
-    private var visits: Int { demo.isActive ? 7 : 0 }
+    // Demo-modus viser mock-tall; ellers ekte tellere fra
+    // /api/leadgrid/momentum/today (todayActivity.calls/emails/visits).
+    private var calls: Int { demo.isActive ? 14 : (momentum?.todayActivity.calls ?? 0) }
+    private var emails: Int { demo.isActive ? 22 : (momentum?.todayActivity.emails ?? 0) }
+    private var meetings: Int { demo.isActive ? 3 : (momentum?.todayActivity.meetings ?? 0) }
+    private var visits: Int { demo.isActive ? 7 : (momentum?.todayActivity.visits ?? 0) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -5308,15 +5326,15 @@ struct PopoverSectionHeader: View {
 }
 
 /// Kompakt versjon av ActivityTodayCard (uten card-bakgrunn) for bruk
-/// inni popover-en. Tallene er demo-mock — gates når demo AV så aktivitet
-/// ikke lyver om hva teamet har gjort i dag.
+/// inni popover-en. Demo-modus viser mock-tall; ellers ekte tellere fra
+/// /api/leadgrid/momentum/today (todayActivity.calls/emails/visits).
 private struct ActivityTodayCompact: View {
     let momentum: LeadgridMomentum?
     private var isDemo: Bool { DemoModeManager.isActiveNonisolated }
-    private var calls: Int    { isDemo ? 14 : 0 }
-    private var emails: Int   { isDemo ? 22 : 0 }
-    private var meetings: Int { isDemo ? 3  : 0 }
-    private var visits: Int   { isDemo ? 7  : 0 }
+    private var calls: Int    { isDemo ? 14 : (momentum?.todayActivity.calls ?? 0) }
+    private var emails: Int   { isDemo ? 22 : (momentum?.todayActivity.emails ?? 0) }
+    private var meetings: Int { isDemo ? 3  : (momentum?.todayActivity.meetings ?? 0) }
+    private var visits: Int   { isDemo ? 7  : (momentum?.todayActivity.visits ?? 0) }
 
     var body: some View {
         VStack(spacing: 10) {

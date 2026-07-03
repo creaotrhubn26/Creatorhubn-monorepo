@@ -33,6 +33,10 @@ import { UPDATE_LEAD_FIELDS_WHITELIST } from "./leadgrid-workflow-types.js";
 import { applyStageChange } from "./leadgrid-deals-service.js";
 import { isLeadgridStage } from "./leadgrid-deal-defaults.js";
 import { emitWebhook } from "./webhook-emitter.js";
+import {
+  sendTransactionalEmail,
+  isTransactionalEmailConfigured,
+} from "./transactional-email-service.js";
 
 // ─── Webhook-rate-limit (60 POST/min per destination) ────────────────
 // In-memory sliding-window per destination_id. OK å reset ved process-restart
@@ -55,8 +59,77 @@ function checkWebhookRate(destinationId: string): boolean {
   return true;
 }
 
+// ─── Workflow-e-post (send_email → Resend/SMTP) ──────────────────────
+// Per-org dagstak — in-memory backstop mot runaway-workflows (samme
+// filosofi som webhook-rate-limiten: beskyttelse mot loops, ikke hard
+// kvote; resetter ved prosess-restart).
+const WORKFLOW_EMAIL_DAILY_CAP = 200;
+const workflowEmailCounts = new Map<string, { day: string; count: number }>();
+
+function checkWorkflowEmailCap(orgId: string): boolean {
+  const today = new Date().toISOString().slice(0, 10);
+  const entry = workflowEmailCounts.get(orgId);
+  if (!entry || entry.day !== today) {
+    workflowEmailCounts.set(orgId, { day: today, count: 1 });
+    return true;
+  }
+  if (entry.count >= WORKFLOW_EMAIL_DAILY_CAP) return false;
+  entry.count += 1;
+  return true;
+}
+
+/**
+ * Innebygde e-post-maler for template_id-ene som de forhåndsbygde
+ * workflow-templatene refererer (leadgrid-workflow-templates.ts).
+ * Org-egne maler i leadgrid_outreach_templates (template_key +
+ * channel='email' + is_active) har forrang. Placeholders er
+ * {{lead.x}}/{{event.x}} og substitueres av renderTemplate().
+ */
+const BUILTIN_EMAIL_TEMPLATES: Record<string, { subject: string; body: string }> = {
+  welcome_lead: {
+    subject: "Takk for interessen — vi tar kontakt",
+    body: "Hei {{lead.name}}!\n\nTakk for at dere viste interesse. Vi tar kontakt i løpet av kort tid for å finne en tid som passer.\n\nSvar gjerne på denne e-posten om dere har spørsmål allerede nå.\n\nVennlig hilsen\nSalgsteamet",
+  },
+  followup_7d: {
+    subject: "Oppfølging fra forrige uke",
+    body: "Hei {{lead.name}}!\n\nDet er en uke siden sist, så vi ville høre om dere har hatt tid til å tenke videre på det vi snakket om.\n\nSi gjerne ifra om det passer med en kort prat denne uken — vi tilpasser oss.\n\nVennlig hilsen\nSalgsteamet",
+  },
+  reengagement_30d: {
+    subject: "Fortsatt aktuelt for {{lead.name}}?",
+    body: "Hei!\n\nDet er en stund siden vi var i kontakt med {{lead.name}}, og vi ville høre om behovet fortsatt er aktuelt.\n\nMye kan ha endret seg på en måned — om timingen passer bedre nå, tar vi gjerne en uforpliktende prat.\n\nVennlig hilsen\nSalgsteamet",
+  },
+  rebook_after_noshow: {
+    subject: "Skal vi finne et nytt tidspunkt?",
+    body: "Hei {{lead.name}}!\n\nVi fikk dessverre ikke gjennomført møtet som planlagt — det skjer, helt i orden.\n\nSvar gjerne med et par tidspunkter som passer, så booker vi et nytt møte.\n\nVennlig hilsen\nSalgsteamet",
+  },
+};
+
+/**
+ * Eldre outreach-maler (leadgrid_outreach_templates) bruker
+ * {{FIRST_NAME}}/{{COMPANY}}-dialekten — normaliser til {{lead.x}} så
+ * renderTemplate() kan substituere. Ukjente legacy-placeholders fjernes
+ * (tom streng) i renderTemplate uansett.
+ */
+function normalizeLegacyPlaceholders(s: string): string {
+  return s
+    .replace(/\{\{\s*FIRST_NAME\s*\}\}/g, "{{lead.name}}")
+    .replace(/\{\{\s*COMPANY\s*\}\}/g, "{{lead.name}}")
+    .replace(/\{\{\s*CITY\s*\}\}/g, "{{lead.city}}")
+    .replace(/\{\{\s*INDUSTRY\s*\}\}/g, "");
+}
+
+/** Plain-tekst → enkel HTML (escaped + nl2br) for e-post-body. */
+function emailBodyToHtml(text: string): string {
+  const esc = text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  return `<div style="font-family:-apple-system,'Segoe UI',Roboto,sans-serif;font-size:15px;line-height:1.6;color:#111">${esc.replace(/\n/g, "<br>")}</div>`;
+}
+
 /** Internt for tester — clearer rate-limit-state */
 export function _resetWebhookRateLimit(): void {
+  workflowEmailCounts.clear();
   webhookTimestamps.clear();
 }
 
@@ -625,14 +698,85 @@ async function runAction(
       }
     }
 
-    case "send_email":
+    case "send_email": {
+      // Ekte sending via transactional-email-service (Resend → Gmail-SMTP-
+      // fallback, logger til transactional_email_log). Mal-oppslag:
+      //   1. leadgrid_outreach_templates (org-egen, template_key + email)
+      //   2. BUILTIN_EMAIL_TEMPLATES (de forhåndsbygde workflow-templatene)
+      // Guardrails: krever lead-e-post, konfigurert provider og at
+      // per-org-dagstaket (WORKFLOW_EMAIL_DAILY_CAP) ikke er nådd.
+      if (!lead) return { status: "skipped", message: "no_lead" };
+      const to = (lead.email ?? "").trim();
+      if (!to || !to.includes("@")) {
+        return { status: "skipped", message: "no_email" };
+      }
+      if (!isTransactionalEmailConfigured()) {
+        // Ingen provider i miljøet (lokal dev) — behold deferred-semantikk
+        // så execution-historikken viser hva som VILLE blitt sendt.
+        return { status: "deferred", message: "email_not_configured", data: { action } };
+      }
+      if (!checkWorkflowEmailCap(event.organizationId)) {
+        return { status: "skipped", message: "org_daily_email_cap" };
+      }
+      let subjectTpl: string | null = null;
+      let bodyTpl: string | null = null;
+      try {
+        const t = await pool.query<{ subject: string | null; body: string }>(
+          `SELECT subject, body FROM leadgrid_outreach_templates
+            WHERE template_key = $1 AND channel = 'email' AND is_active
+            LIMIT 1`,
+          [action.template_id],
+        );
+        if (t.rows[0]) {
+          subjectTpl = t.rows[0].subject;
+          bodyTpl = normalizeLegacyPlaceholders(t.rows[0].body);
+        }
+      } catch {
+        // Tabell mangler i miljøet — fall til builtin.
+      }
+      if (!bodyTpl) {
+        const builtin = BUILTIN_EMAIL_TEMPLATES[action.template_id];
+        if (builtin) {
+          subjectTpl = subjectTpl ?? builtin.subject;
+          bodyTpl = builtin.body;
+        }
+      }
+      if (!bodyTpl) {
+        return { status: "skipped", message: `unknown_template:${action.template_id}` };
+      }
+      const subject = renderTemplate(action.subject ?? subjectTpl ?? "Oppfølging", event, lead);
+      const body = renderTemplate(bodyTpl, event, lead);
+      const result = await sendTransactionalEmail({
+        to,
+        subject,
+        html: emailBodyToHtml(body),
+        text: body,
+        fromLabel: "Leadgrid",
+        kind: "leadgrid_workflow",
+        sentByUserId: event.actorUserId ?? null,
+        pool,
+      });
+      if (result.sent) {
+        return {
+          status: "ok",
+          message: `email_sent:${result.provider ?? "unknown"}`,
+          data: { to, template_id: action.template_id, message_id: result.messageId },
+        };
+      }
+      return {
+        status: "error",
+        message: `email_failed:${result.reason ?? "unknown"}`.slice(0, 200),
+      };
+    }
+
     case "send_sms":
     case "send_whatsapp":
     case "notify_channel":
     case "ai_pitch_generate": {
       // Disse er marked som "scheduled" — produksjons-implementasjon ville
-      // pushe inn i en dedicated queue (mailer/sms/wa/claude-jobs).
-      // For nå logger vi som "deferred" så execution-historikken er nyttig.
+      // pushe inn i en dedicated queue (sms/wa/claude-jobs). send_email er
+      // wiret til Resend over; disse logger fortsatt "deferred" så
+      // execution-historikken er nyttig.
       return {
         status: "deferred",
         message: `${action.type}_queued`,

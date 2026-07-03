@@ -37,6 +37,11 @@ struct LeadgridMomentum: Codable, Hashable {
         let meetingsTarget: Int
         let pipelineMoves: Int
         let pipelineMovesTarget: Int
+        // Granulære tellere (undersett av contacts) — Telefoner/E-poster/Besøk
+        // i «Aktivitet i dag». Optional så decode ikke feiler mot eldre backend.
+        let calls: Int?
+        let emails: Int?
+        let visits: Int?
     }
 
     struct NextBestAction: Codable, Hashable, Identifiable {
