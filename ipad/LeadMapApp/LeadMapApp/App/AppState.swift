@@ -100,6 +100,11 @@ final class AppState {
 
     // Cached data (refreshes ved pull-down + periodisk)
     var leads: [LeadModel] = []
+    /// Eksplisitt load-state for leads (uke 2) — samme mønster som
+    /// projectsLoadState: skiller «laster fortsatt» fra «ekte tom liste»
+    /// så Leads-fanen kan vise skeleton i stedet for å blinke tom-tilstand
+    /// ved app-start.
+    var leadsLoadState: ProjectsLoadState = .idle
     /// Lead-id-er som er kommet inn via real-time WebSocket-event
     /// (typisk `lead.created` fra batch-research). Pin-viewen sjekker
     /// dette settet og pulserer i 3 sek før vi tar id-en ut igjen.
@@ -157,8 +162,13 @@ final class AppState {
         do {
             let fresh = try await api.fetchLeads(projectId: activeProjectId)
             self.leads = fresh
+            self.leadsLoadState = .loaded
         } catch {
             print("[AppState] refreshLeads failed: \(error)")
+            if case .loaded = leadsLoadState {} else {
+                let retryable = (error as? APIError)?.isRetryable ?? true
+                leadsLoadState = .failed(error.localizedDescription, isRetryable: retryable)
+            }
         }
     }
     var competitors: [CompetitorModel] = []
@@ -702,6 +712,7 @@ final class AppState {
         } else {
             projectsLoadState = .loading
         }
+        if case .loaded = leadsLoadState {} else { leadsLoadState = .loading }
         let proj = activeProjectId
         async let leadsTask = api.fetchLeads(projectId: proj)
         async let competitorsTask = api.fetchCompetitors(projectId: proj)
@@ -795,6 +806,7 @@ final class AppState {
             }
 
             self.leads = newLeads
+            self.leadsLoadState = .loaded
             self.competitors = newComps
             if let m = newMetricsOpt { self.metrics = m }
             self.calendar = newCal
@@ -895,6 +907,9 @@ final class AppState {
             self.leads = cached.value
             self.lastSyncAt = Date().addingTimeInterval(-cached.age)
             self.isUsingStaleCache = true
+            // Cache regnes som «loaded» — Leads-fanen skal vise dataene,
+            // ikke skeleton, mens nett-refresh pågår i bakgrunnen.
+            self.leadsLoadState = .loaded
         }
         if let cached: (value: [CompetitorModel], age: TimeInterval) = await OfflineCache.shared.load([CompetitorModel].self, named: "competitors") {
             self.competitors = cached.value

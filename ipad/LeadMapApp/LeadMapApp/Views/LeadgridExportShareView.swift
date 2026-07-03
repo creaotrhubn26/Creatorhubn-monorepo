@@ -34,7 +34,7 @@ struct LeadgridExportShareView: View {
                         Text("Alle").tag("all")
                         Text("Aktive (ekskl. arkivert)").tag("active")
                         Text("I pipeline").tag("in_pipeline")
-                        Text("Kun vunnet 🎉").tag("won")
+                        Text("Kun vunnet").tag("won")
                         Text("Kun tapt").tag("lost")
                     }
                 }

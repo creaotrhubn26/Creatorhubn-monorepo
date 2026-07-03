@@ -54,6 +54,10 @@ export type RunDiscoveryResult =
 interface DiscoveryConfigRow {
   project_id: string;
   industry_query: string | null;
+  // Mig 0362: rotasjonsliste — når ikke-tom roteres queries round-robin
+  // (rotation_index) per kjøring; industry_query er da bare fallback.
+  industry_queries: string[] | null;
+  rotation_index: number | null;
   city_filter: string[] | null;
   geography_lat: string | null;
   geography_lng: string | null;
@@ -74,8 +78,32 @@ export async function runDiscoveryForProject(
   // 1. Hent config (eller bygg en in-memory fra opts hvis ikke i DB)
   const cfg = await loadDiscoveryConfig(pool, opts.projectId);
 
-  const industryQuery =
-    opts.industryQueryOverride ?? cfg?.industry_query ?? null;
+  // Mig 0362: rotasjonsliste vinner over enkelt-query (override vinner
+  // over begge). Round-robin: plukk queries[rotation_index % len] og bump
+  // indeksen FØR kjøringen så en feilet run ikke låser rotasjonen fast
+  // på samme query.
+  let industryQuery = opts.industryQueryOverride ?? null;
+  const rotationList = (cfg?.industry_queries ?? []).filter(
+    (q): q is string => typeof q === "string" && q.trim().length > 0,
+  );
+  if (!industryQuery && rotationList.length > 0) {
+    const idx = Math.abs(cfg?.rotation_index ?? 0) % rotationList.length;
+    industryQuery = rotationList[idx];
+    void pool
+      .query(
+        `UPDATE leadgrid_project_discovery_config
+            SET rotation_index = $2, updated_at = NOW()
+          WHERE project_id = $1`,
+        [opts.projectId, idx + 1],
+      )
+      .catch((err) =>
+        console.warn(
+          "[continuous-discovery] rotation_index-bump feilet:",
+          (err as Error).message,
+        ),
+      );
+  }
+  if (!industryQuery) industryQuery = cfg?.industry_query ?? null;
   const cityList = cfg?.city_filter ?? null;
   const city = opts.cityOverride ?? cityList?.[0] ?? null;
   const count = opts.count ?? cfg?.count_per_run ?? 10;
@@ -268,6 +296,8 @@ async function loadDiscoveryConfig(
     const r = await pool.query<DiscoveryConfigRow>(
       `SELECT project_id,
               industry_query,
+              industry_queries,
+              rotation_index,
               city_filter,
               geography_lat::text,
               geography_lng::text,

@@ -13,6 +13,7 @@
  *   PUT    /contest-templates/:type
  *   GET    /prize-catalog
  *   GET    /team-members
+ *   GET    /commission-earnings?period=month|quarter|year
  *   POST   /prize-catalog
  *   PATCH  /prize-catalog/:id
  *   DELETE /prize-catalog/:id
@@ -558,6 +559,113 @@ export function registerSalesLeadershipRoutes(
       } catch {
         return res.json({ members: [], current_user_id: session.userId });
       }
+    }
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // COMMISSION EARNINGS (uke 2 fra produktrevisjonen 2026-07-03)
+  // Provisjons-config har til nå bare vært LAGRET (sales_commission_configs)
+  // uten å bli brukt til faktisk beregning. Dette endepunktet regner
+  // opptjent provisjon per selger fra VUNNE deals i perioden:
+  //   - Grunnlag: crm_deal_stage_history to_stage='won' i perioden,
+  //     beløp = amount_after (fallback crm_customers.deal_amount).
+  //   - Attribusjon: COALESCE(assigned_user_id, changed_by) — én selger
+  //     per deal, ingen dobbelt-telling.
+  //   - Sats: config.base_percentage.rate (default 0.10). Accelerators/
+  //     spiffs/splits er definert i config-skjemaet men ikke beregnet
+  //     enda — models_applied forteller klienten hva som faktisk gjelder.
+  // GET /commission-earnings?period=month|quarter|year (default month)
+  // ───────────────────────────────────────────────────────────────
+  app.get("/api/leadgrid/sales-leadership/commission-earnings", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    const orgId = await resolveOrgIdForUser(pool, session.userId);
+    const periodParam = String(req.query.period ?? "month");
+    const period = ["month", "quarter", "year"].includes(periodParam) ? periodParam : "month";
+
+    try {
+      // 1. Sats fra org-config (eller default 10 %)
+      let rate = 0.10;
+      let preset = DEFAULT_COMMISSION_CONFIG.preset;
+      let isDefaultConfig = true;
+      try {
+        const cfg = await pool.query<{ preset: string; config: Record<string, unknown> }>(
+          `SELECT preset, config FROM sales_commission_configs
+            WHERE organization_id = $1::uuid LIMIT 1`,
+          [orgId],
+        );
+        const row = cfg.rows[0];
+        if (row) {
+          preset = row.preset;
+          isDefaultConfig = false;
+          const base = (row.config as { base_percentage?: { rate?: unknown } })?.base_percentage;
+          const r = Number(base?.rate);
+          if (Number.isFinite(r) && r > 0 && r <= 1) rate = r;
+        }
+      } catch {
+        // orgId kan være slug/user-id (ikke uuid) — behold default-sats.
+      }
+
+      // 2. Team-medlemmer (samme oppslag som /team-members)
+      let userIds: string[] = [];
+      if (orgId !== session.userId) {
+        const teamRes = await pool.query<{ user_id: string }>(
+          `SELECT DISTINCT user_id FROM enterprise_team_members
+            WHERE organization_id = $1 AND status = 'active' AND user_id IS NOT NULL`,
+          [orgId],
+        ).catch(() => ({ rows: [] as Array<{ user_id: string }> }));
+        userIds = teamRes.rows.map((r) => String(r.user_id));
+      }
+      if (!userIds.includes(session.userId)) userIds.push(session.userId);
+
+      // 3. Vunne deals i perioden per selger
+      const r = await pool.query(
+        `SELECT
+            u.id AS user_id,
+            COALESCE(
+              NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''),
+              u.email
+            ) AS name,
+            COALESCE(w.won_deals, 0)  AS won_deals,
+            COALESCE(w.revenue, 0)    AS revenue_nok
+           FROM users u
+           LEFT JOIN LATERAL (
+             SELECT COUNT(*)::int AS won_deals,
+                    SUM(COALESCE(h.amount_after, c.deal_amount, 0))::numeric AS revenue
+               FROM crm_deal_stage_history h
+               JOIN crm_customers c ON c.id = h.customer_id
+              WHERE h.to_stage = 'won'
+                AND h.changed_at >= date_trunc('${period}', NOW())
+                AND COALESCE(c.assigned_user_id, h.changed_by) = u.id
+           ) w ON TRUE
+          WHERE u.id = ANY($1::varchar[])
+          ORDER BY revenue_nok DESC, name ASC`,
+        [userIds],
+      );
+
+      const members = r.rows.map((row) => {
+        const revenue = Number(row.revenue_nok ?? 0);
+        return {
+          user_id: String(row.user_id),
+          name: String(row.name ?? ""),
+          won_deals: Number(row.won_deals ?? 0),
+          revenue_nok: revenue,
+          commission_rate: rate,
+          commission_nok: Math.round(revenue * rate),
+        };
+      });
+
+      return res.json({
+        period,
+        preset,
+        is_default_config: isDefaultConfig,
+        models_applied: ["base_percentage"],
+        members,
+        current_user_id: session.userId,
+      });
+    } catch (err) {
+      console.error("[sales-leadership] commission-earnings failed:", err);
+      return res.status(500).json({ error: "commission_earnings_failed", detail: String((err as Error).message) });
     }
   });
 
