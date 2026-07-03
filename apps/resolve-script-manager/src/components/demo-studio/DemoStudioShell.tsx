@@ -40,6 +40,7 @@ import { renderIntroCard, renderOutroCard, renderBrowserFrame } from './demoBran
 import type { DemoFinalizeOpts } from '../../api';
 import { isCaptureAvailable, startDemoCapture, onCaptureStep, onCaptureDone, scanDom, captureScreenshot, sessionOpen, sessionExec, type CapturedStep } from '../../services/demoCaptureService';
 import { sessionAutoRunCurrent, sessionVerifyCurrent } from './demoSessionActions';
+import { listCloudProjects, pullCloudProject, deleteCloudProject, type CloudProjectMeta } from '../../services/cloudProjectsService';
 import { useDemoStudio } from './demoStudioStore';
 import {
   DEMO_TYPE_LABELS, DEMO_TYPE_FRIENDLY, DEMO_TYPE_TEMPLATES, SCENE_STATUS_LABELS, SCENE_STATUS_COLORS,
@@ -2013,13 +2014,30 @@ function SceneThumb({ scene, url, height = 80 }: { scene: DemoScene; url: string
 
 /** Create Demo — start/oversikt: gjeldende demo + tidligere demoer + skjema for ny. */
 function CreateDemoView({ onCreated }: { onCreated?: () => void }) {
-  const { project, createProject, openProject } = useDemoStudio();
+  const { project, createProject, openProject, importProject } = useDemoStudio();
   const [urlInput, setUrlInput] = useState('');
   const [demoType, setDemoType] = useState<DemoType>('product_demo');
   // G15: alle lagrede prosjekter er nå tilgjengelige — før fantes bare
   // `last`-pekeren, så «Lag ny video» gjorde forrige demo utilgjengelig.
   const [, bumpList] = useState(0);
   const stored = listStoredProjects().filter((m) => m.id !== project?.id);
+  // G16: sky-prosjekter — prosjekter fra andre maskiner (eller slettet lokalt)
+  // kan hentes ned. Lokale poster viser ☁ når de også finnes i skyen.
+  const [cloud, setCloud] = useState<CloudProjectMeta[]>([]);
+  const [cloudBusy, setCloudBusy] = useState<string | null>(null);
+  useEffect(() => { void listCloudProjects().then(setCloud).catch(() => {}); }, []);
+  const localIds = new Set(stored.map((m) => m.id));
+  if (project) localIds.add(project.id);
+  const cloudIds = new Set(cloud.map((m) => m.id));
+  const cloudOnly = cloud.filter((m) => !localIds.has(m.id));
+  const openFromCloud = async (id: string) => {
+    setCloudBusy(id);
+    try {
+      const p = await pullCloudProject(id);
+      if (p) { importProject(p); onCreated?.(); }
+      else window.alert('Klarte ikke å hente prosjektet fra skyen.');
+    } finally { setCloudBusy(null); }
+  };
   const normalizedUrl = normalizeUrl(urlInput);
   const valid = /^https?:\/\/\S+\.\S+/i.test(normalizedUrl);
   const start = () => {
@@ -2037,20 +2055,38 @@ function CreateDemoView({ onCreated }: { onCreated?: () => void }) {
             <div style={{ fontSize: 12.5, color: C.inkSoft, marginTop: 4 }}>{project.url} · {DEMO_TYPE_LABELS[project.demoType]} · {project.scenes.length} scener · {fmt(totalDuration(project.scenes))}</div>
           </div>
         )}
-        {stored.length > 0 && (
+        {(stored.length > 0 || cloudOnly.length > 0) && (
           <div style={{ border: `1px solid ${C.line}`, borderRadius: 12, padding: 18, background: '#fff', marginBottom: 26 }}>
             <div style={{ fontSize: 11, color: C.inkFaint, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>Tidligere demoer</div>
             {stored.map((m) => (
               <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderTop: `1px solid ${C.line}` }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.name}</div>
+                  <div style={{ fontSize: 13.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {m.name}{cloudIds.has(m.id) && <span title="Synket til skyen" style={{ marginLeft: 6, fontSize: 11, color: C.inkFaint }}>☁</span>}
+                  </div>
                   <div style={{ fontSize: 11.5, color: C.inkSoft, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {m.url}{m.sceneCount ? ` · ${m.sceneCount} scener` : ''}{m.updatedAt ? ` · ${new Date(m.updatedAt).toLocaleDateString('nb-NO')}` : ''}
                   </div>
                 </div>
                 <button style={{ ...outlineBtn, padding: '6px 12px', fontSize: 12 }} onClick={() => { if (openProject(m.id)) onCreated?.(); }}>Åpne</button>
-                <button style={{ ...outlineBtn, padding: '6px 10px', fontSize: 12, color: '#c4453b', borderColor: '#e6c5c2' }} title="Slett denne demoen permanent"
+                <button style={{ ...outlineBtn, padding: '6px 10px', fontSize: 12, color: '#c4453b', borderColor: '#e6c5c2' }} title="Slett denne demoen permanent (lokalt)"
                   onClick={() => { if (window.confirm(`Slette «${m.name}» permanent?`)) { deleteStoredProject(m.id); bumpList((n) => n + 1); } }}>✕</button>
+              </div>
+            ))}
+            {cloudOnly.map((m) => (
+              <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderTop: `1px solid ${C.line}` }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {m.name}<span title="Finnes kun i skyen — hentes ned ved åpning" style={{ marginLeft: 6, fontSize: 11, color: C.accent }}>☁ sky</span>
+                  </div>
+                  <div style={{ fontSize: 11.5, color: C.inkSoft, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {m.url}{m.sceneCount ? ` · ${m.sceneCount} scener` : ''}{m.updatedAt ? ` · ${new Date(m.updatedAt).toLocaleDateString('nb-NO')}` : ''}
+                  </div>
+                </div>
+                <button style={{ ...outlineBtn, padding: '6px 12px', fontSize: 12, opacity: cloudBusy === m.id ? 0.6 : 1 }} disabled={!!cloudBusy}
+                  onClick={() => void openFromCloud(m.id)}>{cloudBusy === m.id ? 'Henter…' : 'Åpne'}</button>
+                <button style={{ ...outlineBtn, padding: '6px 10px', fontSize: 12, color: '#c4453b', borderColor: '#e6c5c2' }} title="Slett sky-kopien"
+                  onClick={() => { if (window.confirm(`Slette sky-kopien av «${m.name}»?`)) { void deleteCloudProject(m.id).then(() => listCloudProjects().then(setCloud)); } }}>✕</button>
               </div>
             ))}
           </div>
