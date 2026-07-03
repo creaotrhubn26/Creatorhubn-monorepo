@@ -240,8 +240,9 @@ async function main() {
     const spec = MV.DEVICE_FRAMES[J.variant];
     const frameImg = await MV.loadFrameImage(J.variant);
     const scale = (J.pixelRatio || 5) / 2.5; // ~ samme størrelsesorden som før
-    const width = Math.round(spec.frameW * scale);
-    const height = Math.round(spec.frameH * scale);
+    // Partall kreves av libx264/prores — odde canvas (f.eks. pixelRatio 3 → 1903px) veltet hele eksporten.
+    const width = Math.round(spec.frameW * scale) & ~1;
+    const height = Math.round(spec.frameH * scale) & ~1;
 
     const canvas = document.createElement('canvas');
     canvas.width = width; canvas.height = height;
@@ -338,15 +339,20 @@ async function main() {
         kx: vw / srcW * dw, ky: vh / srcH * dh, // px per hel video-bredde/-høyde
       };
     }
-    function roundRectPath(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+    // traceRoundRect legger TIL en subpath uten beginPath — nødvendig for
+    // even-odd-dimmingen der skjerm-rekt + hotspot-rekt må ligge i SAMME path.
+    function traceRoundRect(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
       const rr = Math.max(0, Math.min(r, w / 2, h / 2));
-      c.beginPath();
       c.moveTo(x + rr, y);
       c.arcTo(x + w, y, x + w, y + h, rr);
       c.arcTo(x + w, y + h, x, y + h, rr);
       c.arcTo(x, y + h, x, y, rr);
       c.arcTo(x, y, x + w, y, rr);
       c.closePath();
+    }
+    function roundRectPath(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+      c.beginPath();
+      traceRoundRect(c, x, y, w, h, r);
     }
     function drawClipOverlays(ov: any, vid: HTMLVideoElement, zoom: any) {
       if (!ov || !ov.hotspot) return;
@@ -368,8 +374,7 @@ async function main() {
         ctx.save();
         ctx.beginPath();
         ctx.rect(screenRect.x, screenRect.y, screenRect.w, screenRect.h);
-        roundRectPath(ctx, tl.x, tl.y, br.x - tl.x, br.y - tl.y, 8 * uiK);
-        ctx.closePath();
+        traceRoundRect(ctx, tl.x, tl.y, br.x - tl.x, br.y - tl.y, 8 * uiK);
         ctx.fillStyle = 'rgba(0,0,0,0.30)';
         (ctx as any).fill('evenodd');
         ctx.restore();
