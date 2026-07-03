@@ -61,6 +61,9 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
   const [showConnectGuide, setShowConnectGuide] = useState(false);
   const [embedBlocked, setEmbedBlocked] = useState<string | null>(null);
   const [nativeError, setNativeError] = useState<string | null>(null);
+  // G21: native opptak (screencapture/simctl) blokkerer 2–120 s uten at
+  // useSceneRecorder-state settes — egen flagg så UI-et viser «Recording».
+  const [nativeBusy, setNativeBusy] = useState(false);
   const [me, setMe] = useState<CurrentUser | null>(null);
   useEffect(() => {
     void fetchCurrentUser().then(setMe);
@@ -103,7 +106,7 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
 
   const scenes = project.scenes;
   const cur = scenes[recorderStepIndex] ?? scenes[0];
-  const recording = rec.state === 'recording';
+  const recording = rec.state === 'recording' || nativeBusy;
   const actionMeta = ACTION_META[cur?.actionType ?? 'click'];
   const autoMode = (project.continueMode ?? 'manual') === 'auto';
   const captureKind = project.captureKind ?? 'web';
@@ -126,9 +129,14 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
     else setDeviceForAll(val as DemoDevice, 'portrait');
   };
 
-  /** Ta opp gjeldende scene fra valgt native capture-kilde (Rust → ffmpeg/simctl). */
+  /** Ta opp gjeldende scene fra valgt native capture-kilde (Rust → ffmpeg/simctl).
+   *  Blokkerer til scenens varighet er nådd — nativeBusy holder UI-et ærlig imens. */
   const recordNativeScene = async (sceneId: string): Promise<string | null> => {
-    const dur = Math.min(Math.max(cur?.duration ?? 8, 2), 120);
+    // Les varigheten FERSKT for scenen som faktisk tas opp — `cur` er fra
+    // klikk-renderen og peker på forrige scene når vi auto-starter neste.
+    const scene = useDemoStudio.getState().project?.scenes.find((s) => s.id === sceneId);
+    const dur = Math.min(Math.max(scene?.duration ?? 8, 2), 120);
+    setNativeBusy(true);
     try {
       if (captureKind === 'ios_simulator') {
         return await recordSimulator(project.id, sceneId, project.captureSourceId ?? '', dur);
@@ -144,6 +152,8 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
       // Rust gir meningsfulle feil («ffmpeg ikke funnet», «er enheten kablet + trusted?»).
       setNativeError(String((e as Error)?.message ?? e));
       return null;
+    } finally {
+      setNativeBusy(false);
     }
   };
 

@@ -166,12 +166,11 @@ export interface DemoScene {
   duration: number;
   status: SceneStatus;
   /**
-   * Progresjons-modus per scene:
-   *   - 'manual':   opptaket venter på brukerens bekreftelse (default, spec-krav)
-   *   - 'assisted': bruker utfører, systemet verifiserer handlingen (detected)
-   *   - 'auto':     systemet utfører required action automatisk og går videre
+   * Progresjons-modus. KUN prosjekt-nivået konsumeres av recorder/auto-kjøring;
+   * dette scene-feltet beholdes for lagrings-kompatibilitet men leses ikke.
+   * ('assisted' er fjernet — den var aldri implementert.)
    */
-  continueMode: 'manual' | 'assisted' | 'auto';
+  continueMode: 'manual' | 'auto';
   /** Sti til opptaksfil for denne scenen (settes av recorder). */
   recordingPath?: string | null;
   /** Frosset skjermbilde (dataURL) for scene-kortet — fylles av en framtidig
@@ -302,8 +301,9 @@ export interface DemoProject {
   /** Fase 1b: viewport-screenshots fra scan, per scroll-bånd. Brukes til presis
    *  preview-render (riktig del av siden + hotspot oppå, perfekt align). */
   scanShots?: Array<{ scrollPct: number; dataUrl: string }>;
-  /** Global progresjons-modus (kan overstyres per scene). Default 'manual'. */
-  continueMode?: 'manual' | 'assisted' | 'auto';
+  /** Global progresjons-modus: 'manual' venter på bruker, 'auto' utfører
+   *  required action automatisk. Default 'manual'. */
+  continueMode?: 'manual' | 'auto';
   /**
    * Hva som tas opp: 'web' (iframe/getDisplayMedia, default), eller en native
    * capture-kilde. For App Store-apper: 'ios_device' (kablet enhet).

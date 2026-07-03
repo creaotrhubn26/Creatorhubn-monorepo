@@ -33,7 +33,7 @@ import { isAiConnected } from '../../services/claudeProxyService';
 import { RoleRoomSignInDialog } from '../RoleRoomSignInDialog';
 import { useSceneRecorder } from './useSceneRecorder';
 import { generateDemoFlow, completeDemoFlow, fetchSiteContext, analyzeSiteContext, runResponsiveCheck, healTarget, runDirectorCritic, ocrDetectElements, verifyOutcomeVision, interpretCommand, translateForVoiceover, suggestVisualBeats, type CommandResult, type VisualBeat, type SiteUnderstanding } from './demoStudioAI';
-import { executeScript, playwrightStatus, playwrightCaptureShots, extractPdfText, systemOpen } from '../../api';
+import { executeScript, playwrightStatus, playwrightCaptureShots, extractPdfText, systemOpen, checkUrlEmbeddable } from '../../api';
 import { open as openFileDialog } from '@tauri-apps/plugin-dialog';
 import { runAutonomousDemo } from './autonomousDemo';
 import { renderIntroCard, renderOutroCard, renderBrowserFrame } from './demoBranding';
@@ -296,13 +296,27 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   // Nullstill URL-avledet state når man bytter prosjekt, så forrige prosjekts
   // forståelse/QA/«generert»-flagg ikke lekker inn i en ny video.
   const prevProjectId = useRef<string | undefined>(project?.id);
+  const hostOf = (u: string) => { try { return new URL(normalizeUrl(u)).host; } catch { return ''; } };
+  const committedHost = useRef<string>(hostOf(project?.url ?? ''));
   useEffect(() => {
     if (project?.id === prevProjectId.current) return;
     prevProjectId.current = project?.id;
+    committedHost.current = hostOf(project?.url ?? '');
     setUnderstanding(null);
     setGenerated(false);
     setDemoVidResult(null); setDemoVidQa(null); setDemoVidScriptQa(null); setDemoVidScene(null); setDemoVidMsg(null);
   }, [project?.id]);
+  // G18: bytter man nettsted i URL-feltet skal forrige nettsteds scanShots/
+  // forståelse ikke bli hengende igjen (preview viste feil side til neste skann).
+  // Kalles ved COMMIT (blur), ikke per tastetrykk — halvskrevne hosts teller ikke.
+  const handleUrlCommitted = (u: string) => {
+    const h = hostOf(u);
+    if (!h || h === committedHost.current) return;
+    committedHost.current = h;
+    setUnderstanding(null);
+    setGenerated(false);
+    if (useDemoStudio.getState().project?.scanShots?.length) setProjectField('scanShots', undefined);
+  };
   const [respBusy, setRespBusy] = useState(false);
   const [respReport, setRespReport] = useState<ResponsiveReport | null>(null);
   const [critique, setCritique] = useState<DirectorCritique | null>(null);
@@ -419,6 +433,30 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const [visualBeats, setVisualBeats] = useState<VisualBeat[] | null>(null);
   const [visualBusy, setVisualBusy] = useState(false);
   const [showPreflight, setShowPreflight] = useState(false);
+  // G17: X-Frame-Options/CSP-blokkerte sider gir blank iframe-preview — vis
+  // ærlig forklaring + «hent skjermbilder»-utvei i stedet for stille blank boks.
+  const [embedBlocked, setEmbedBlocked] = useState<string | null>(null);
+  const [shotFetchBusy, setShotFetchBusy] = useState(false);
+  const embedCheckUrl = project?.url;
+  useEffect(() => {
+    if (!embedCheckUrl || !isCaptureAvailable()) { setEmbedBlocked(null); return; }
+    let cancelled = false;
+    checkUrlEmbeddable(embedCheckUrl).then((r) => { if (!cancelled) setEmbedBlocked(r.embeddable ? null : r.reason); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [embedCheckUrl]);
+  const fetchShotsNow = async () => {
+    if (!project || shotFetchBusy) return;
+    setShotFetchBusy(true);
+    try {
+      const r = await playwrightCaptureShots(project.url).catch(() => null);
+      if (r?.shots?.length) { setProjectField('scanShots', r.shots); return; }
+      const scan = await scanDom(project.url).catch(() => null);
+      if (scan?.shots?.length) setProjectField('scanShots', scan.shots);
+      else window.alert('Klarte ikke å hente skjermbilder — sett opp Playwright (Export → Sett opp Playwright) eller kjør «Analyser side».');
+    } finally {
+      setShotFetchBusy(false);
+    }
+  };
   const zoomBy = (delta: number) => setPreviewZoom((z) => Math.min(3, Math.max(0.5, Math.round((z + delta) * 100) / 100)));
   const [capturing, setCapturing] = useState(false);
   const [captureCount, setCaptureCount] = useState(0);
@@ -907,7 +945,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
           <span style={{ color: C.inkFaint }}>🌐</span>
           <input style={{ flex: 1, border: 0, background: 'transparent', outline: 'none', fontSize: 13, color: C.ink }}
             value={project.url} onChange={(e) => setProjectField('url', e.target.value)}
-            onBlur={(e) => setProjectField('url', normalizeUrl(e.target.value))} placeholder="https://example.com" />
+            onBlur={(e) => { const nu = normalizeUrl(e.target.value); setProjectField('url', nu); handleUrlCommitted(nu); }} placeholder="https://example.com" />
         </div>
         <div style={{ flex: 1 }} />
         {saveStatus === 'error' ? (
@@ -1380,6 +1418,17 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                 </div>
               </div>
 
+              {/* G17: frame-blokkert side uten skjermbilder → forklar hvorfor
+                  rammen under er blank, med utvei — i stedet for stille feil. */}
+              {embedBlocked && !(project.scanShots && project.scanShots.length) && (
+                <div style={{ margin: '10px 18px 0', padding: '10px 14px', borderRadius: 10, background: '#fff8ec', border: '1px solid #f0d9a8', fontSize: 12.5, color: '#8a6516', display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span>⚠</span>
+                  <span style={{ flex: 1 }}>Denne siden blokkerer innebygd forhåndsvisning ({embedBlocked}) — rammen under er derfor blank. Hent ekte skjermbilder i stedet.</span>
+                  <button style={{ ...btn, whiteSpace: 'nowrap', opacity: shotFetchBusy ? 0.6 : 1 }} disabled={shotFetchBusy}
+                    onClick={() => void fetchShotsNow()}>{shotFetchBusy ? 'Henter…' : 'Hent forhåndsvisning'}</button>
+                </div>
+              )}
+
               {/* Scene: enheten på et "bord" — varm spotlight + overflate + kontaktskygge,
                   så det føles som å sitte ved et bord med enheten foran seg. */}
               <div style={{
@@ -1621,7 +1670,12 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                   )}
 
                   <div style={fldLabel}>Progresjon</div>
-                  <div style={{ ...sel, background: C.cream }}>continueMode: manual — venter på deg</div>
+                  <select style={sel} value={project.continueMode ?? 'manual'}
+                    onChange={(e) => setProjectField('continueMode', e.target.value as 'manual' | 'auto')}
+                    title="Gjelder hele demoen: manual venter på deg per steg; auto utfører handlingene automatisk">
+                    <option value="manual">Manuell — venter på deg per steg</option>
+                    <option value="auto">Auto — utfører handlingene selv</option>
+                  </select>
 
                   <button style={{ ...outlineBtn, width: '100%', marginTop: 14, color: '#c4453b', borderColor: '#e6c5c2' }}
                     disabled={scenes.length <= 1} onClick={() => removeScene(selected.id)}>Slett scene</button>

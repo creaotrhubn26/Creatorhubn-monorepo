@@ -328,14 +328,6 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
                 <textarea style={{ ...ta, minHeight: 48, flex: 1 }} value={selected.notes ?? ''} placeholder="Pause for ~2 seconds after highlighting the alerts…"
                   onChange={(e) => updateScene(selected.id, { notes: e.target.value })} />
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <div><Lab>Continue mode</Lab>
-                    <select style={{ ...miniSel, minWidth: 100, display: 'block', marginTop: 4 }} value={selected.continueMode ?? 'manual'}
-                      onChange={(e) => updateScene(selected.id, { continueMode: e.target.value as 'manual' | 'assisted' | 'auto' })}>
-                      <option value="manual">Manual</option>
-                      <option value="assisted">Assisted</option>
-                      <option value="auto">Auto</option>
-                    </select>
-                  </div>
                   <div><Lab>Pause</Lab>
                     <select style={{ ...miniSel, minWidth: 100, display: 'block', marginTop: 4 }} value={selected.pauseSec ?? 2}
                       onChange={(e) => updateScene(selected.id, { pauseSec: Number(e.target.value) })}>
