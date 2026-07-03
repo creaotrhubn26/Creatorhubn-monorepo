@@ -1262,18 +1262,55 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
         [req.params.projectId],
       ).catch(() => ({ rows: [] }));
       const linkedTrackId = linked.rows[0]?.easeverse_track_id || null;
+      // Per-track review-statistikk via siste ikke-arkiverte review-rom (LATERAL):
+      // antall versjoner, siste versjon (label/status) og åpne kommentarer.
       const t = await pool.query(
-        `SELECT id, title, artist, status, bpm, musical_key, duration_seconds, updated_at,
-                EXISTS(SELECT 1 FROM audio_review_projects ar WHERE ar.easeverse_track_id = easeverse_tracks.id::text) AS has_review
-           FROM easeverse_tracks WHERE user_id = $1 ORDER BY updated_at DESC NULLS LAST LIMIT 50`,
+        `SELECT t.id, t.title, t.artist, t.status, t.bpm, t.musical_key, t.duration_seconds, t.updated_at,
+                EXISTS(SELECT 1 FROM audio_review_projects ar0 WHERE ar0.easeverse_track_id = t.id::text) AS has_review,
+                (SELECT count(*)::int FROM audio_review_versions v WHERE v.project_id = ar.id) AS version_count,
+                lv.version_label AS latest_version_label, lv.status AS latest_version_status,
+                (SELECT count(*)::int FROM audio_review_comments c
+                   JOIN audio_review_versions v2 ON v2.id = c.version_id
+                  WHERE v2.project_id = ar.id AND (c.status IS NULL OR c.status NOT IN ('resolved','rejected'))) AS open_comment_count
+           FROM easeverse_tracks t
+           LEFT JOIN LATERAL (SELECT a.id FROM audio_review_projects a
+                               WHERE a.easeverse_track_id = t.id::text AND a.status <> 'archived'
+                               ORDER BY a.created_at DESC LIMIT 1) ar ON true
+           LEFT JOIN LATERAL (SELECT v.version_label, v.status FROM audio_review_versions v
+                               WHERE v.project_id = ar.id ORDER BY v.version_number DESC LIMIT 1) lv ON true
+          WHERE t.user_id = $1 ORDER BY t.updated_at DESC NULLS LAST LIMIT 50`,
         [uid],
       ).catch(() => ({ rows: [] }));
       res.json({
         connected: t.rows.length > 0,
         linkedTrackId,
-        tracks: t.rows.map((r: any) => ({ id: r.id, title: r.title, artist: r.artist, status: r.status, bpm: r.bpm, key: r.musical_key, durationSeconds: r.duration_seconds, hasReview: !!r.has_review, linked: r.id === linkedTrackId })),
+        tracks: t.rows.map((r: any) => ({
+          id: r.id, title: r.title, artist: r.artist, status: r.status, bpm: r.bpm, key: r.musical_key,
+          durationSeconds: r.duration_seconds, hasReview: !!r.has_review, linked: r.id === linkedTrackId,
+          versionCount: r.version_count || 0, latestVersionLabel: r.latest_version_label || null,
+          latestVersionStatus: r.latest_version_status || null, openCommentCount: r.open_comment_count || 0,
+        })),
       });
     } catch (e) { console.error("GET easeverse-tracks", e); res.json({ connected: false, tracks: [] }); }
+  });
+
+  // Manuell status-fremrykk på en EaseVerse-låt fra Låter-fanen (opptak→miks→
+  // master→ferdig). Kun eieren av låten; godkjenningsflyten i Sound Room synker
+  // samme felt automatisk (se audio-showcase-routes approve).
+  app.patch("/api/projects/:projectId/easeverse-tracks/:trackId/status", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const status = String(req.body?.status || "");
+      if (!["recording", "mixing", "mastering", "completed"].includes(status)) {
+        return res.status(400).json({ error: "invalid_status" });
+      }
+      const r = await pool.query(
+        `UPDATE easeverse_tracks SET status = $2, updated_at = NOW() WHERE id = $1::uuid AND user_id = $3 RETURNING id, status`,
+        [req.params.trackId, status, uid],
+      ).catch(() => ({ rows: [] }));
+      if (!r.rows.length) return res.status(404).json({ error: "track_not_found" });
+      res.json({ ok: true, id: r.rows[0].id, status: r.rows[0].status });
+    } catch (e) { console.error("PATCH easeverse-track status", e); res.status(500).json({ error: "failed" }); }
   });
 
   // Koble en EaseVerse-track til prosjektets Sound Room: finn/opprett review-rom
@@ -1453,6 +1490,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
   // Prosjekt-scopet: sesjonene koblet til prosjektets lydrom (project_audio_rooms →
   // protools_companion_sessions.audio_review_project_id). Read-only oversikt for
   // «Sesjoner»-fanen; selve sesjonene settes opp via companion-appen (se Sound Room).
+  // ?include=details legger på markers (låt-seksjoner) + siste 5 bounces per sesjon.
   app.get("/api/projects/:projectId/recording-sessions", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
     try {
@@ -1469,7 +1507,29 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
           ORDER BY s.last_activity DESC LIMIT 50`,
         [arId],
       ).catch(() => ({ rows: [] }));
-      res.json({ sessions: r.rows, audioRoomId: arId });
+      let sessions = r.rows;
+      if (String(req.query.include || "") === "details" && sessions.length) {
+        const ids = sessions.map((s: any) => s.id);
+        const [markers, bounces] = await Promise.all([
+          pool.query(
+            `SELECT session_id, name, start_seconds, end_seconds, color FROM protools_companion_markers
+              WHERE session_id = ANY($1::uuid[]) ORDER BY session_id, order_index, start_seconds`,
+            [ids],
+          ).catch(() => ({ rows: [] })),
+          pool.query(
+            `SELECT id, session_id, file_name, duration_seconds, review_version_id, created_at
+               FROM (SELECT *, row_number() OVER (PARTITION BY session_id ORDER BY created_at DESC) AS rn
+                       FROM protools_companion_bounces WHERE session_id = ANY($1::uuid[])) x
+              WHERE rn <= 5 ORDER BY session_id, created_at DESC`,
+            [ids],
+          ).catch(() => ({ rows: [] })),
+        ]);
+        const mBy: Record<string, any[]> = {}; const bBy: Record<string, any[]> = {};
+        for (const m of markers.rows) (mBy[m.session_id] ||= []).push({ name: m.name, startSeconds: m.start_seconds, endSeconds: m.end_seconds, color: m.color });
+        for (const b of bounces.rows) (bBy[b.session_id] ||= []).push({ id: b.id, fileName: b.file_name, durationSeconds: b.duration_seconds, reviewVersionId: b.review_version_id, createdAt: b.created_at });
+        sessions = sessions.map((s: any) => ({ ...s, markers: mBy[s.id] || [], bounces: bBy[s.id] || [] }));
+      }
+      res.json({ sessions, audioRoomId: arId });
     } catch (e) { console.error("GET recording-sessions", e); res.status(500).json({ error: "failed" }); }
   });
 

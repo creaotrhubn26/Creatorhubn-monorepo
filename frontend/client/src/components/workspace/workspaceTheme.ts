@@ -68,6 +68,18 @@ export type WorkspaceTab =
   | 'team'
   | 'chat';
 
+/**
+ * Workspace-kategori — hvilken «flate-familie» en profesjon får i workspacet.
+ * Profesjoner mappes til kategori i PROFESSION_CATEGORY (én linje per
+ * profesjon); nav-items tagges med `categories`. Ny profesjonsgruppe senere =
+ * ny kategori her + map-linjer + taggede nav-items — ingen refaktorering.
+ *   'visual'  = foto/video (Shotlist, Produksjonskart, Photo/Video Room)
+ *   'music'   = musikk (Låter, Sesjoner, Sound Room)
+ *   'service' = booking-/tjenestebaserte (frisør, hundefrisør, yoga …) — faner kommer
+ *   'vendor'  = leverandører — faner kommer
+ */
+export type WorkspaceCategory = 'visual' | 'music' | 'service' | 'vendor';
+
 export interface WsNavItem {
   key: WorkspaceTab | string;
   label: string;
@@ -77,26 +89,24 @@ export interface WsNavItem {
   online?: boolean;
   route?: boolean; // true = egen tab i workspacet
   /**
-   * Profesjons-synlighet (deklarativt). Mangler feltet → universell (alle).
-   *   'visual' = foto/video-flater (Shotlist, Produksjonskart, Photo/Video Room)
-   *   'music'  = musikk-flater (Låter, Sesjoner, Sound Room)
-   * Se navForProfession().
+   * Kategori-synlighet (deklarativt). Mangler feltet → universell (alle).
+   * Se navForProfession() / workspaceCategoryFor().
    */
-  professions?: Array<'visual' | 'music'>;
+  categories?: WorkspaceCategory[];
   /** Kun synlig for mentorer/instruktører (uavhengig av profesjon). */
   mentorOnly?: boolean;
 }
 
 // Venstre-nav — eksakt rekkefølge fra Daniels design. Items er tagget med
-// profesjon; navForProfession() filtrerer. Musikk- og visuell-varianter er
-// interleavet så rekkefølgen blir riktig for begge etter filtrering.
+// workspace-kategori; navForProfession() filtrerer. Musikk- og visuell-varianter
+// er interleavet så rekkefølgen blir riktig for begge etter filtrering.
 export const WS_NAV: WsNavItem[] = [
   { key: 'oversikt', label: 'Oversikt', icon: 'Dashboard', group: 'hoved', route: true },
   { key: 'prosjektplan', label: 'Prosjektplan', icon: 'AccountTree', group: 'hoved', route: true },
-  { key: 'produksjonskart', label: 'Produksjonskart', icon: 'Map', group: 'hoved', route: true, professions: ['visual'] },
-  { key: 'sesjoner', label: 'Sesjoner', icon: 'Album', group: 'hoved', route: true, professions: ['music'] },
-  { key: 'shotlist', label: 'Shotlist', icon: 'PhotoCameraBack', group: 'hoved', route: true, professions: ['visual'] },
-  { key: 'laater', label: 'Låter', icon: 'LibraryMusic', group: 'hoved', route: true, professions: ['music'] },
+  { key: 'produksjonskart', label: 'Produksjonskart', icon: 'Map', group: 'hoved', route: true, categories: ['visual'] },
+  { key: 'sesjoner', label: 'Sesjoner', icon: 'Album', group: 'hoved', route: true, categories: ['music'] },
+  { key: 'shotlist', label: 'Shotlist', icon: 'PhotoCameraBack', group: 'hoved', route: true, categories: ['visual'] },
+  { key: 'laater', label: 'Låter', icon: 'LibraryMusic', group: 'hoved', route: true, categories: ['music'] },
   { key: 'moodboard', label: 'Moodboard', icon: 'GridView', group: 'hoved', route: true },
   { key: 'media', label: 'Media', icon: 'PermMedia', group: 'hoved', route: true },
   { key: 'utstyr', label: 'Utstyr', icon: 'Inventory2', group: 'hoved', route: true },
@@ -109,9 +119,9 @@ export const WS_NAV: WsNavItem[] = [
   // Community — for alle; mentorer får admin/styring inne i hub-en (MentorDashboard)
   { key: 'community', label: 'Community', icon: 'Forum', group: 'hoved', route: true },
   // Smart Rom — profesjons-spesifikke
-  { key: 'photo-room', label: 'Photo Room', icon: 'PhotoCamera', group: 'rom', online: true, route: true, professions: ['visual'] },
-  { key: 'video-room', label: 'Video Room', icon: 'Videocam', group: 'rom', online: true, route: true, professions: ['visual'] },
-  { key: 'sound-room', label: 'Sound Room', icon: 'GraphicEq', group: 'rom', online: true, route: true, professions: ['music'] },
+  { key: 'photo-room', label: 'Photo Room', icon: 'PhotoCamera', group: 'rom', online: true, route: true, categories: ['visual'] },
+  { key: 'video-room', label: 'Video Room', icon: 'Videocam', group: 'rom', online: true, route: true, categories: ['visual'] },
+  { key: 'sound-room', label: 'Sound Room', icon: 'GraphicEq', group: 'rom', online: true, route: true, categories: ['music'] },
   // Edit Room skjult inntil videre — planlegges senere (redigerer-/leveranse-cockpit).
   // { key: 'edit-room', label: 'Edit Room', icon: 'Movie', group: 'rom', online: true },
   // Kundeportal
@@ -120,28 +130,49 @@ export const WS_NAV: WsNavItem[] = [
   { key: 'avtaler', label: 'Avtaler', icon: 'EventNote', group: 'klient' },
 ];
 
-// Profesjoner som regnes som musikk (Sound Room / Låter / Sesjoner i stedet for
-// Shotlist / Produksjonskart / Photo+Video Room). Alt annet = visuell (foto/video).
-const MUSIC_PROFESSIONS = ['music_producer', 'music-producer', 'musician', 'music'];
+// Normaliser profesjonsverdi: lowercase uten skilletegn, så én map-entry dekker
+// 'music_producer' / 'music-producer' / 'musicproducer' (alle er live verdier —
+// DEFAULT_PROFESSION_TYPES bruker 'musicproducer', registeret 'music_producer').
+const normProf = (s?: string | null) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+// Profesjon → workspace-kategori. Nøkler er normalisert (normProf). Ukjente
+// profesjoner faller tilbake til 'visual' (dagens oppførsel). Ny profesjon =
+// én linje her; ny kategori = utvid WorkspaceCategory + tagg nav-items.
+const PROFESSION_CATEGORY: Record<string, WorkspaceCategory> = {
+  photographer: 'visual',
+  videographer: 'visual',
+  musicproducer: 'music',
+  musician: 'music',
+  music: 'music',
+  // Vendor er ordre-/lager-/leveranse-orientert (jf. UniversalDashboard: Produkter/
+  // Bestillinger/Lager) — får de universelle fanene (Forespørsler, Avtaler,
+  // Leveranser, Utstyr, Oppgaver, Chat …) men ingen foto/video/musikk-rom.
+  vendor: 'vendor',
+  // Fremtidig (eksempler): hairdresser: 'service', petgroomer: 'service', …
+};
+
+export function workspaceCategoryFor(profession?: string | null): WorkspaceCategory {
+  return PROFESSION_CATEGORY[normProf(profession)] ?? 'visual';
+}
 
 export function isMusicProfession(profession?: string | null): boolean {
-  return MUSIC_PROFESSIONS.includes(String(profession || '').toLowerCase());
+  return workspaceCategoryFor(profession) === 'music';
 }
 
 /**
- * Filtrer WS_NAV til profesjonen: universelle items vises alltid; 'visual'-items
- * for foto/video; 'music'-items for musikkprodusenter. Rekkefølgen i WS_NAV
- * bevares (musikk- og visuell-varianter er interleavet på riktig plass).
+ * Filtrer WS_NAV til profesjonens kategori: universelle items vises alltid;
+ * taggede items kun for sin kategori. Rekkefølgen i WS_NAV bevares (musikk- og
+ * visuell-varianter er interleavet på riktig plass).
  */
 export function navForProfession(
   profession?: string | null,
   opts?: { isMentor?: boolean },
 ): WsNavItem[] {
-  const music = isMusicProfession(profession);
+  const cat = workspaceCategoryFor(profession);
   const isMentor = !!opts?.isMentor;
   return WS_NAV.filter((n) => {
     if (n.mentorOnly && !isMentor) return false; // mentor-gated (uavhengig av profesjon)
-    if (!n.professions) return true;
-    return music ? n.professions.includes('music') : n.professions.includes('visual');
+    if (!n.categories) return true;
+    return n.categories.includes(cat);
   });
 }

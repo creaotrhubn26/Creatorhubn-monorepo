@@ -114,6 +114,7 @@ const TeamWorkspacePage: React.FC = () => {
           id: p.id, name: p.title || 'Uten tittel', type: p.projectType || undefined,
           status: p.status === 'active' ? 'Pågående' : (p.status || undefined),
           date, location: p.location || undefined, coverUrl: p.coverUrl || null, members: [],
+          updatedAt: p.updatedAt || p.updated_at || null,
         });
       })
       .catch(() => setRealProject(null));
@@ -141,7 +142,9 @@ const TeamWorkspacePage: React.FC = () => {
   const project = { ...(realProject || { ...SAMPLE_PROJECT, id: projectId }), members };
   const wsUser = {
     name: user?.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : (user?.name || user?.email || 'Bruker'),
-    role: isMusicProfession(user?.profession) ? 'Musikkprodusent' : (user?.profession === 'videographer' ? 'Videograf' : 'Fotograf'),
+    role: isMusicProfession(user?.profession) ? 'Musikkprodusent'
+      : user?.profession === 'vendor' ? 'Leverandør'
+      : user?.profession === 'videographer' ? 'Videograf' : 'Fotograf',
     email: user?.email || null,
     avatarUrl: user?.avatarUrl || null,
   };
@@ -191,7 +194,7 @@ const TeamWorkspacePage: React.FC = () => {
   const navItem = WS_NAV.find((n) => n.key === tab);
 
   const TABS: Record<string, React.ReactNode> = {
-    oversikt: <OversiktTab projectId={projectId} />,
+    oversikt: <OversiktTab projectId={projectId} profession={user?.profession} />,
     prosjektplan: <ProsjektplanTab projectId={projectId} />,
     produksjonskart: <ProduksjonskartTab projectId={projectId} />,
     shotlist: <ShotlistTab projectId={projectId} />,
@@ -207,7 +210,7 @@ const TeamWorkspacePage: React.FC = () => {
     avtaler: <AvtalerTab projectId={projectId} />,
     foresporsler: <ForesporslerTab projectId={projectId} profession={user?.profession} userId={user?.id} userName={user?.firstName || (user as any)?.name || user?.email} />,
     kundevisning: <KundevisningTab projectId={projectId} />,
-    team: <TeamTab projectId={projectId} profession={user?.profession} userId={user?.id} projectName={(project as any)?.title || (project as any)?.name} />,
+    team: <TeamTab projectId={projectId} profession={user?.profession} userId={user?.id} projectName={(project as any)?.title || (project as any)?.name} lastUpdated={(realProject as any)?.updatedAt || null} />,
     'sound-room': <SoundRoomTab projectId={projectId} />,
     'video-room': <VideoRoomTab projectId={projectId} />,
     'photo-room': <PhotoRoomTab projectId={projectId} />,
