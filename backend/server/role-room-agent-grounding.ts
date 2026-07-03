@@ -14,12 +14,23 @@
 // the caller appends to its existing fallbacksUsed telemetry bag.
 // =============================================================================
 
+import { classifyByNace } from "./role-room-agent-nace-profile.js";
+import {
+  resolveNaceBusinessModelOverride,
+  type NaceBusinessModelOverride,
+} from "./role-room-agent-learned-overrides.js";
+
 /** Reason codes appended to fallbacksUsed so the existing telemetry logs
  *  exactly which hard facts the grounding pass removed or downgraded. */
 export type RoleRoomAgentGroundingReason =
   | "grounding_stripped_ungrounded_orgnr"
   | "grounding_downgraded_unverified_competitor"
-  | "grounding_stripped_ungrounded_contact";
+  | "grounding_stripped_ungrounded_contact"
+  | "grounding_overrode_company_name_from_brreg"
+  | "grounding_corrected_business_model_from_nace"
+  | "grounding_applied_learned_business_model"
+  | "grounding_stripped_ungrounded_location"
+  | "grounding_overrode_location_from_verified_source";
 
 interface GroundableCompetitor {
   name?: string | null;
@@ -57,6 +68,17 @@ export interface RoleRoomAgentGroundablePayload {
 
 interface GroundingBrregCompany {
   organizationNumber?: string | null;
+  /** Juridisk navn fra Enhetsregisteret. Brukes til å låse
+   *  companyProfile.companyName når treffet er verifisert på org-nummer. */
+  name?: string | null;
+  lookupStatus?: string | null;
+  /** "organization_number" | "company_name" | null — bare org-nr-treff
+   *  regnes som juridisk fasit for navn/adresse-låsing. */
+  matchedBy?: string | null;
+  /** Brregs naeringskode1 → driver B2B/B2C-korreksjon via NACE-tabellen. */
+  industryCode?: { code?: string | null } | null;
+  /** Formattert forretningsadresse fra Brreg (kilde til lokasjons-grounding). */
+  businessAddress?: string | null;
 }
 
 interface GroundingWebsitePageSnippet {
@@ -87,6 +109,10 @@ export interface RoleRoomAgentGroundingSources {
     reviewSummary?: string | null;
   } | null;
   competitorAnalysis?: GroundableCompetitorAnalysis | null;
+  /** GODKJENTE lærte NACE→businessModel-overrides (Lag 2a). Lastes av den
+   *  async bootstrappen fra role_room_agent_learned_overrides (status=approved)
+   *  og tar presedens over den statiske NACE-tabellen når et prefiks matcher. */
+  learnedNaceBusinessModelOverrides?: readonly NaceBusinessModelOverride[] | null;
 }
 
 // ----------------------------------------------------------------------------
@@ -135,6 +161,39 @@ function looksLikePhone(value: string): boolean {
   if (!/^[+(]?\d[\d\s().+\-]{4,}$/.test(trimmed)) return false;
   const digits = trimmed.replace(/\D/g, "");
   return digits.length >= 6 && digits.length <= 15;
+}
+
+/** First 4-digit Norwegian postal code found in an address string, or null. */
+function extractPostalCode(value: unknown): string | null {
+  if (!hasText(value)) return null;
+  const match = value.match(/\b(\d{4})\b/);
+  return match ? match[1] : null;
+}
+
+/** Lowercase alphabetic locality tokens (len ≥ 4) — city/municipality words.
+ *  Used as a coarse "same place" check when postal codes are absent. */
+function localityTokens(value: unknown): Set<string> {
+  const out = new Set<string>();
+  if (!hasText(value)) return out;
+  for (const token of value.toLowerCase().split(/[^a-zæøå]+/)) {
+    if (token.length >= 4) out.add(token);
+  }
+  return out;
+}
+
+/** Conservative "these two addresses point at the same locality" test. When
+ *  both carry a postal code they must match exactly; otherwise they must share
+ *  at least one city/municipality-length token. Empty/one-sided → false. */
+function addressesAgree(a: unknown, b: unknown): boolean {
+  if (!hasText(a) || !hasText(b)) return false;
+  const postalA = extractPostalCode(a);
+  const postalB = extractPostalCode(b);
+  if (postalA && postalB) return postalA === postalB;
+  const tokensA = localityTokens(a);
+  for (const token of localityTokens(b)) {
+    if (tokensA.has(token)) return true;
+  }
+  return false;
 }
 
 /** Collect every checkable text fragment from the website insights and the
@@ -255,6 +314,82 @@ export function groundBootstrapPayload<P extends RoleRoomAgentGroundablePayload>
         profileClone.organizationNumber = null;
         profileChanged = true;
         strippedReasons.push("grounding_stripped_ungrounded_orgnr");
+      }
+    }
+
+    // --- 1b. legal company name ----------------------------------------------
+    // When Brreg matched on org-number (juridisk fasit), the legal name wins
+    // over any synthesized name so the profile can't drift from the register.
+    // Name-only Brreg matches are NOT treated as ground truth here (they may
+    // be the wrong entity), so they never override.
+    const brreg = safeSources.brregCompany;
+    if (
+      brreg?.lookupStatus === "verified" &&
+      brreg.matchedBy === "organization_number" &&
+      hasText(brreg.name)
+    ) {
+      const legalName = brreg.name.trim();
+      if (normalizeName(profileClone.companyName) !== normalizeName(legalName)) {
+        profileClone.companyName = legalName;
+        profileChanged = true;
+        strippedReasons.push("grounding_overrode_company_name_from_brreg");
+      }
+    }
+
+    // --- 1c. business model from NACE ----------------------------------------
+    // B2B/B2C is the single most impactful classification for marketing setup.
+    // When Brreg's NACE code maps to a confident model, it overrides a
+    // synthesized businessModel that disagrees. Only the model string is
+    // touched — industry/subIndustry prose is left to the synthesis.
+    if (brreg?.lookupStatus === "verified") {
+      const naceCode = brreg.industryCode?.code;
+      // Approved learned override (Lag 2a) takes precedence over the static
+      // NACE table — this is how producer corrections feed back into the model.
+      const learnedModel = resolveNaceBusinessModelOverride(
+        naceCode,
+        safeSources.learnedNaceBusinessModelOverrides,
+      );
+      const targetModel = learnedModel ?? classifyByNace(naceCode)?.businessModel ?? null;
+      if (
+        targetModel &&
+        hasText(profileClone.businessModel) &&
+        normalizeName(profileClone.businessModel) !== normalizeName(targetModel)
+      ) {
+        profileClone.businessModel = targetModel;
+        profileChanged = true;
+        strippedReasons.push(
+          learnedModel
+            ? "grounding_applied_learned_business_model"
+            : "grounding_corrected_business_model_from_nace",
+        );
+      }
+    }
+
+    // --- 1d. probable location address ---------------------------------------
+    // probableLocationAddress must be confirmed by Brreg OR Google Places —
+    // never free-standing LLM text. If a verified source disagrees with the
+    // claimed address, replace it with the source; if no source exists at all,
+    // strip the unconfirmed claim.
+    if (hasText(profileClone.probableLocationAddress)) {
+      const claimedAddr = profileClone.probableLocationAddress;
+      const brregAddr = brreg?.businessAddress ?? null;
+      const placesAddr = safeSources.businessSignals?.formattedAddress ?? null;
+      const confirmedBy =
+        (hasText(brregAddr) && addressesAgree(claimedAddr, brregAddr)) ||
+        (hasText(placesAddr) && addressesAgree(claimedAddr, placesAddr));
+
+      if (!confirmedBy) {
+        if (hasText(brregAddr) || hasText(placesAddr)) {
+          // A verified address exists but the claim disagrees → use the source.
+          profileClone.probableLocationAddress = hasText(brregAddr) ? brregAddr : placesAddr;
+          profileChanged = true;
+          strippedReasons.push("grounding_overrode_location_from_verified_source");
+        } else {
+          // Nothing to confirm against → drop the ungrounded claim.
+          profileClone.probableLocationAddress = null;
+          profileChanged = true;
+          strippedReasons.push("grounding_stripped_ungrounded_location");
+        }
       }
     }
 
