@@ -2,8 +2,9 @@
 /**
  * TeamTab — design #8 (Team), dark CreatorHub.
  * Medlemskort (rolle/ansvar/tilgang/sist aktiv) + Rolleoversikt + Teamets
- * framdrift + Nøkkelinformasjon + Godkjenninger + Team-notater. Mapper til
- * project_team_members-backend (wires i delings-fasen).
+ * framdrift + Nøkkelinformasjon + Godkjenninger. Ekte prosjekter er wiret mot
+ * project_team_members / team-sync / contract / quotes / deliverables /
+ * split-sheet; /workspace/sample viser demo-data.
  */
 import React, { useState, useEffect } from 'react';
 import { Box, Stack, Typography, Avatar, Button, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem, Alert, CircularProgress } from '@mui/material';
@@ -39,7 +40,7 @@ const ROLES = [['Fotograf', 2, ws.roleFoto], ['Videograf', 2, ws.roleVideo], ['E
 const PROGRESS = [['Brief gjennomgått', 7, 8, ws.green], ['Shotlist bekreftet', 6, 8, ws.accent], ['Produksjonskart klart', 8, 8, ws.green], ['Utstyrssjekk', 5, 8, ws.amber], ['Leveranseplan bekreftet', 7, 8, ws.blue]];
 const TASKS = [['Oppdater shotlist', 'Thomas', 'Gjort', 'green'], ['Bekreft drone tillatelse', 'Daniel', 'Venter', 'amber'], ['Fargeprofil godkjenning', 'Julie', 'Pågår', 'blue'], ['Utstyrssjekk', 'Nora', 'Gjort', 'green'], ['Backup lydplan', 'Marcus', 'Pågår', 'blue']];
 
-const TeamTab: React.FC<{ projectId: string; profession?: string; userId?: string; projectName?: string }> = ({ projectId, profession, userId, projectName }) => {
+const TeamTab: React.FC<{ projectId: string; profession?: string; userId?: string; projectName?: string; lastUpdated?: string | null }> = ({ projectId, profession, userId, projectName, lastUpdated }) => {
   const [, navigate] = useLocation();
   const totalRoles = ROLES.reduce((s, r) => s + r[1], 0);
   const [real, setReal] = useState<any[] | null>(null);
@@ -47,11 +48,21 @@ const TeamTab: React.FC<{ projectId: string; profession?: string; userId?: strin
   const [inviteOpen, setInviteOpen] = useState(false);
   const [boardTasks, setBoardTasks] = useState<any[] | null>(null);
   const [milestones, setMilestones] = useState<any[] | null>(null);
+  const [teamSync, setTeamSync] = useState<any | null>(null);
+  const [contract, setContract] = useState<any | null>(null);
+  const [quotes, setQuotes] = useState<any[]>([]);
+  const [deliverables, setDeliverables] = useState<any[]>([]);
+  const [splitShares, setSplitShares] = useState<{ shares: any[]; total: number } | null>(null);
   const isRealP = projectId && projectId !== 'sample';
   useEffect(() => {
     if (!isRealP) return;
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/board-tasks`).then((r: any) => setBoardTasks(Array.isArray(r?.tasks) ? r.tasks : [])).catch(() => {});
     apiRequest(`/api/photographer/projects/${encodeURIComponent(projectId)}/milestones`).then((r: any) => setMilestones(Array.isArray(r?.milestones) ? r.milestones : [])).catch(() => {});
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/team-sync`).then((r: any) => setTeamSync(r || null)).catch(() => {});
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/contract`).then((r: any) => setContract(r || null)).catch(() => {});
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/quotes`).then((r: any) => setQuotes(Array.isArray(r?.quotes) ? r.quotes : [])).catch(() => {});
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/deliverables`).then((r: any) => setDeliverables(Array.isArray(r?.deliverables) ? r.deliverables : [])).catch(() => {});
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/split-sheet`).then((r: any) => setSplitShares(r && Array.isArray(r.shares) ? r : null)).catch(() => {});
   }, [projectId, isRealP]);
 
   const load = async () => {
@@ -92,6 +103,64 @@ const TeamTab: React.FC<{ projectId: string; profession?: string; userId?: strin
   displayMembers.forEach((m: any) => { const k = m.role || 'Medlem'; roleCounts[k] = (roleCounts[k] || 0) + 1; });
   const teamRoles = isRealP ? Object.entries(roleCounts).map(([n, v]) => [n, v, ROLE_COLORS[n] || ws.roleAnnet]) : ROLES;
   const teamTotalRoles = isRealP ? displayMembers.length : totalRoles;
+
+  // Teamets framdrift — ekte readiness fra team-sync (verdi «n/d»); demo kun på sample.
+  const parseFrac = (v: any) => { const m = /^(\d+)\s*\/\s*(\d+)$/.exec(String(v || '')); return m && Number(m[2]) > 0 ? [Number(m[1]), Number(m[2])] : null; };
+  const progressRows = isRealP
+    ? (Array.isArray(teamSync?.readiness) ? teamSync.readiness : []).map((x: any) => {
+        const [n, d] = parseFrac(x.value) || [x.done ? 1 : 0, 1];
+        return [x.label, n, d, x.done ? ws.green : ws.amber];
+      })
+    : PROGRESS;
+
+  // Godkjenninger & dokumenter — ekte kontrakt/tilbud/leveranser/split-sheet; demo kun på sample.
+  const fmtDate = (d: any) => { if (!d) return '–'; const t = new Date(d); return Number.isFinite(t.getTime()) ? t.toLocaleDateString('nb-NO', { day: 'numeric', month: 'short', year: 'numeric' }) : '–'; };
+  const deliveredCount = deliverables.filter((d: any) => d.status === 'delivered' || d.status === 'done').length;
+  const splitTotal = splitShares ? Math.round(splitShares.total) : 0;
+  const approvalRows = isRealP
+    ? [
+        ...(contract?.hasContract ? [[
+          'Kontrakt',
+          <WsTag label={contract.isSigned ? 'Signert' : 'Venter på signering'} tone={contract.isSigned ? 'green' : 'amber'} />,
+          contract.signerName || contract.clientName || '–',
+          fmtDate(contract.signedAt),
+        ]] : []),
+        ...quotes.slice(0, 3).map((q: any) => [
+          q.title || `Tilbud ${q.quoteNumber || ''}`.trim(),
+          <WsTag
+            label={q.status === 'accepted' ? 'Akseptert' : q.status === 'declined' ? 'Avslått' : q.status === 'sent' ? 'Sendt' : 'Utkast'}
+            tone={q.status === 'accepted' ? 'green' : q.status === 'declined' ? 'red' : q.status === 'sent' ? 'amber' : 'neutral'}
+          />,
+          q.clientName || '–',
+          fmtDate(q.createdAt),
+        ]),
+        ...(deliverables.length ? [[
+          'Leveranseplan',
+          <WsTag label={deliveredCount === deliverables.length ? 'Levert' : `${deliveredCount} av ${deliverables.length} levert`} tone={deliveredCount === deliverables.length ? 'green' : 'amber'} />,
+          '–',
+          '–',
+        ]] : []),
+        ...(splitShares && splitShares.shares.length ? [[
+          'Split sheet',
+          <WsTag label={splitTotal === 100 ? 'Komplett (100 %)' : `Ufullstendig (${splitTotal} %)`} tone={splitTotal === 100 ? 'green' : 'amber'} />,
+          `${splitShares.shares.length} deltakere`,
+          '–',
+        ]] : []),
+      ]
+    : [
+        ['Kontrakt', <WsTag label="Godkjent" tone="green" />, 'Sara & Amir', '28. aug 2024'],
+        ['Shotlist', <WsTag label="Godkjent" tone="green" />, 'Thomas Qazi', '01. sep 2024'],
+        ['Produksjonskart', <WsTag label="Godkjent" tone="green" />, 'Daniel Hansen', '05. sep 2024'],
+        ['Leveranseplan', <WsTag label="Venter på godkjenning" tone="amber" />, 'Julie Nordvik', '–'],
+        ['Location tillatelse (Drone)', <WsTag label="Venter på godkjenning" tone="amber" />, 'Daniel Hansen', '–'],
+      ];
+
+  // Nøkkelinformasjon — «Sist oppdatert» fra prosjektet (skjules uten data på ekte prosjekter).
+  const keyInfo = [
+    ['Tidssone', 'CET (Oslo)'], ['Språk', 'Norsk'], ['Arbeidstider', '08:00 – 22:00'],
+    ['Kommunikasjon', 'Chat + Notater'], ['Fildeling', 'Synkronisert'],
+    ...(isRealP ? (lastUpdated ? [['Sist oppdatert', fmtDate(lastUpdated)]] : []) : [['Sist oppdatert', 'I dag, 10:24']]),
+  ];
 
   return (
     <Stack direction="row" spacing={2.5} sx={{ alignItems: 'flex-start' }}>
@@ -157,7 +226,10 @@ const TeamTab: React.FC<{ projectId: string; profession?: string; userId?: strin
           <WsCard>
             <Typography sx={{ fontSize: 14, fontWeight: 700, mb: 1.5 }}>Teamets framdrift</Typography>
             <Stack spacing={1.1}>
-              {PROGRESS.map(([t, n, d, c]) => (
+              {progressRows.length === 0 && (
+                <Typography sx={{ fontSize: 12, color: ws.textFaint }}>Ingen framdriftsdata ennå — legg til oppgaver og sjekkpunkter.</Typography>
+              )}
+              {progressRows.map(([t, n, d, c]) => (
                 <Box key={t}>
                   <Stack direction="row" justifyContent="space-between"><Typography sx={{ fontSize: 12, color: ws.textDim }}>{t}</Typography><Typography sx={{ fontSize: 11.5, color: ws.textFaint }}>{n}/{d} · {Math.round(n / d * 100)}%</Typography></Stack>
                   <WsBar value={n / d * 100} color={c} height={5} />
@@ -168,25 +240,21 @@ const TeamTab: React.FC<{ projectId: string; profession?: string; userId?: strin
           <WsCard>
             <Typography sx={{ fontSize: 14, fontWeight: 700, mb: 1.5 }}>Nøkkelinformasjon</Typography>
             <Stack spacing={1}>
-              {[['Tidssone', 'CET (Oslo)'], ['Språk', 'Norsk'], ['Arbeidstider', '08:00 – 22:00'], ['Kommunikasjon', 'Chat + Notater'], ['Fildeling', 'Synkronisert'], ['Sist oppdatert', 'I dag, 10:24']].map(([k, v]) => <Stack key={k} direction="row" justifyContent="space-between"><Typography sx={{ fontSize: 12.5, color: ws.textDim }}>{k}</Typography><Typography sx={{ fontSize: 12.5, fontWeight: 600 }}>{v}</Typography></Stack>)}
+              {keyInfo.map(([k, v]) => <Stack key={k} direction="row" justifyContent="space-between"><Typography sx={{ fontSize: 12.5, color: ws.textDim }}>{k}</Typography><Typography sx={{ fontSize: 12.5, fontWeight: 600 }}>{v}</Typography></Stack>)}
             </Stack>
           </WsCard>
         </Box>
 
-        {/* Godkjenninger */}
-        <WsCard sx={{ mb: 2 }}>
-          <WsSectionTitle title="Godkjenninger & dokumenter" />
-          <WsTable
-            columns={['Dokument', 'Status', 'Ansvarlig', 'Oppdatert']}
-            rows={[
-              ['Kontrakt', <WsTag label="Godkjent" tone="green" />, 'Sara & Amir', '28. aug 2024'],
-              ['Shotlist', <WsTag label="Godkjent" tone="green" />, 'Thomas Qazi', '01. sep 2024'],
-              ['Produksjonskart', <WsTag label="Godkjent" tone="green" />, 'Daniel Hansen', '05. sep 2024'],
-              ['Leveranseplan', <WsTag label="Venter på godkjenning" tone="amber" />, 'Julie Nordvik', '–'],
-              ['Location tillatelse (Drone)', <WsTag label="Venter på godkjenning" tone="amber" />, 'Daniel Hansen', '–'],
-            ]}
-          />
-        </WsCard>
+        {/* Godkjenninger — skjules på ekte prosjekter uten dokumenter */}
+        {approvalRows.length > 0 && (
+          <WsCard sx={{ mb: 2 }}>
+            <WsSectionTitle title="Godkjenninger & dokumenter" />
+            <WsTable
+              columns={['Dokument', 'Status', 'Ansvarlig', 'Oppdatert']}
+              rows={approvalRows}
+            />
+          </WsCard>
+        )}
 
         <WorkspaceSplitSheet projectId={projectId} profession={profession} userId={userId} projectName={projectName} />
       </Box>
@@ -263,77 +331,6 @@ const InviteMemberDialog: React.FC<{ open: boolean; onClose: () => void; project
         <Button variant="contained" onClick={submit} disabled={busy || !email.trim()} startIcon={busy ? <CircularProgress size={14} color="inherit" /> : null}>{busy ? 'Sender…' : 'Send invitasjon'}</Button>
       </DialogActions>
     </Dialog>
-  );
-};
-
-const SplitSheetCard: React.FC<{ projectId: string; members: any[]; isReal: boolean }> = ({ projectId, members, isReal }) => {
-  const [shares, setShares] = useState<any[]>([]);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-
-  useEffect(() => {
-    if (!isReal) {
-      // demo: seed jevn fordeling fra medlemmer
-      const n = members.length || 1;
-      const even = Math.floor(100 / n);
-      setShares(members.map((m, i) => ({ name: m.name, role: m.role, percent: i === 0 ? 100 - even * (n - 1) : even })));
-      return;
-    }
-    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/split-sheet`)
-      .then((r: any) => {
-        if (Array.isArray(r?.shares) && r.shares.length > 0) setShares(r.shares.map((s: any) => ({ name: s.name, role: s.role, email: s.email, percent: s.percent })));
-        else setShares(members.map((m) => ({ name: m.name, role: m.role, percent: 0 })));
-      })
-      .catch(() => setShares(members.map((m) => ({ name: m.name, role: m.role, percent: 0 }))));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, isReal]);
-
-  const total = shares.reduce((s, x) => s + (Number(x.percent) || 0), 0);
-  const valid = Math.round(total) === 100;
-
-  const setPct = (i: number, v: string) => {
-    const pct = Math.max(0, Math.min(100, Number(v) || 0));
-    setShares((p) => p.map((x, idx) => (idx === i ? { ...x, percent: pct } : x)));
-    setSaved(false);
-  };
-  const split = () => { const n = shares.length || 1; const even = Math.floor(100 / n); setShares((p) => p.map((x, i) => ({ ...x, percent: i === 0 ? 100 - even * (n - 1) : even }))); setSaved(false); };
-  const save = async () => {
-    if (!isReal) { window.alert('Lagres når prosjektet er ekte (ikke demo).'); return; }
-    if (!valid) { window.alert(`Fordelingen må summere til 100 % (nå: ${total}%).`); return; }
-    setSaving(true);
-    try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/split-sheet`, { method: 'PUT', body: { shares } }); setSaved(true); }
-    catch (e: any) { window.alert(e?.message || 'Kunne ikke lagre'); } finally { setSaving(false); }
-  };
-
-  return (
-    <WsCard>
-      <WsSectionTitle title="Split sheet — honorar-fordeling" action={<Button size="small" onClick={split} sx={{ color: ws.accent, textTransform: 'none' }}>Del likt</Button>} />
-      <Typography sx={{ fontSize: 12, color: ws.textDim, mb: 1.5 }}>Hvor stor andel av prosjekt-honoraret hvert teammedlem får. Må summere til 100 %.</Typography>
-      <Stack spacing={1}>
-        {shares.map((s, i) => (
-          <Stack key={i} direction="row" spacing={1.5} alignItems="center">
-            <Box sx={{ flex: 1, minWidth: 0 }}>
-              <Typography noWrap sx={{ fontSize: 13, fontWeight: 600 }}>{s.name}</Typography>
-              {s.role && <Typography noWrap sx={{ fontSize: 11, color: ws.textFaint }}>{s.role}</Typography>}
-            </Box>
-            <Box sx={{ flex: 1.5 }}><WsBar value={Number(s.percent) || 0} /></Box>
-            <TextField type="number" size="small" value={s.percent} onChange={(e) => setPct(i, e.target.value)}
-              InputProps={{ endAdornment: <Typography sx={{ fontSize: 12, color: ws.textDim }}>%</Typography> }}
-              sx={{ width: 88, '& .MuiOutlinedInput-root': { bgcolor: ws.panelInput, fontSize: 13 } }} />
-          </Stack>
-        ))}
-      </Stack>
-      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 1.5, pt: 1.5, borderTop: `1px solid ${ws.border}` }}>
-        <Stack direction="row" spacing={1} alignItems="center">
-          <Typography sx={{ fontSize: 13, fontWeight: 700 }}>Sum:</Typography>
-          <WsTag label={`${total} %`} tone={valid ? 'green' : 'red'} />
-        </Stack>
-        <Button variant="contained" size="small" onClick={save} disabled={saving || !valid}
-          sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>
-          {saving ? 'Lagrer…' : saved ? 'Lagret ✓' : 'Lagre fordeling'}
-        </Button>
-      </Stack>
-    </WsCard>
   );
 };
 

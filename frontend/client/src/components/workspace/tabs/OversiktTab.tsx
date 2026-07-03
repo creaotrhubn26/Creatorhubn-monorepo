@@ -2,7 +2,8 @@
 /**
  * OversiktTab — workspace-forsiden (design #1), dark CreatorHub.
  * Dagens tidslinje + Samkjøringsboard + Team Sync / Sjekkliste / Referanser
- * + Team Chat (høyre). Bruker prøvedata nå; wires mot ekte backend i wire-fasen.
+ * + Team Chat (høyre). Ekte prosjekter viser ekte data (milestones, timeline,
+ * board-tasks, checklist, team-sync, capture/DIT); /workspace/sample viser demo.
  */
 import React, { useState, useEffect } from 'react';
 import { Box, Stack, Typography, Avatar, IconButton, Button, Chip } from '@mui/material';
@@ -16,7 +17,7 @@ import CheckCircle from '@mui/icons-material/CheckCircle';
 import RadioButtonUnchecked from '@mui/icons-material/RadioButtonUnchecked';
 import Warning from '@mui/icons-material/Warning';
 import Add from '@mui/icons-material/Add';
-import { ws } from '../workspaceTheme';
+import { ws, workspaceCategoryFor } from '../workspaceTheme';
 import { WsCard, WsSectionTitle, WsRing, WsBar, WsImageGrid } from '../ui';
 import WorkspaceChatPanel from '../WorkspaceChatPanel';
 import { useProjectImages } from '../useProjectImages';
@@ -111,7 +112,7 @@ function addMinutes(hhmm: string, mins: number): string {
   return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 }
 
-const OversiktTab: React.FC<{ projectId: string }> = ({ projectId }) => {
+const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ projectId, profession }) => {
   const [, navigate] = useLocation();
   const go = (key: string) => navigate(`/workspace/${projectId}/${key}`);
   const [progress, setProgress] = useState<{ pct: number; done: number; total: number } | null>(null);
@@ -161,10 +162,11 @@ const OversiktTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     if (!isReal) return;
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/team-sync`).then((r: any) => setTeamSync(r || null)).catch(() => {});
   }, [projectId, isReal, tasks, checks]);
-  const syncPct = teamSync ? teamSync.pct : 82;
+  // Ekte prosjekter: kun ekte team-sync (0 %/tom-tilstand til data finnes); demo-tall kun på sample.
+  const syncPct = isReal ? (teamSync?.pct ?? 0) : 82;
   const syncItems = (teamSync && Array.isArray(teamSync.readiness) && teamSync.readiness.length)
     ? teamSync.readiness.map((x: any) => ({ t: `${x.label} (${x.value})`, ok: x.done }))
-    : SYNC_ITEMS.map((s) => ({ t: s, ok: true }));
+    : isReal ? [] : SYNC_ITEMS.map((s) => ({ t: s, ok: true }));
 
   // Capture & backup — live-status fra iPad CaptureApp + One Desk (poll 20s).
   const [capture, setCapture] = useState<any | null>(null);
@@ -217,23 +219,47 @@ const OversiktTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     catch (e: any) { window.alert(e?.message || 'Kunne ikke legge til'); }
   };
 
-  // Bygg de 4 rolle-kolonnene fra ekte tasks, ellers sample.
-  const COLS = [
-    { role: 'Fotograf (Daniel)', icon: '📷', crew: 'fotograf' },
-    { role: 'Videograf (Emma)', icon: '🎥', crew: 'videograf' },
-    { role: 'Begge', icon: '👥', crew: 'begge' },
-    { role: 'Editor (Lukas)', icon: '🎬', crew: 'editor' },
-  ];
+  // Bygg de 4 rolle-kolonnene fra ekte tasks, ellers sample. Kolonnenavn følger
+  // workspace-kategorien; crew-nøklene er stabile (fotograf/videograf/begge/editor)
+  // så eksisterende board-tasks fortsatt mapper riktig.
+  const isMusic = workspaceCategoryFor(profession) === 'music';
+  const COLS = isMusic
+    ? [
+        { role: 'Produsent', icon: '🎹', crew: 'fotograf' },
+        { role: 'Vokal', icon: '🎤', crew: 'videograf' },
+        { role: 'Musikere', icon: '🎸', crew: 'begge' },
+        { role: 'Miks', icon: '🎚️', crew: 'editor' },
+      ]
+    : [
+        { role: 'Fotograf', icon: '📷', crew: 'fotograf' },
+        { role: 'Videograf', icon: '🎥', crew: 'videograf' },
+        { role: 'Begge', icon: '👥', crew: 'begge' },
+        { role: 'Editor', icon: '🎬', crew: 'editor' },
+      ];
   const realBoard = tasks && tasks.length > 0
     ? COLS.map((c) => ({ ...c, tasks: tasks.filter((t) => (t.crewRole || 'begge') === c.crew).map((t) => ({ id: t.id, t: t.title, time: t.timeLabel || '', done: t.status === 'done', real: true })) }))
     : null;
   const boardCols = isReal ? (realBoard || COLS.map((c) => ({ role: c.role || c.label || c.crew, icon: c.icon || '👥', crew: c.crew, tasks: [] }))) : BOARD.map((c, i) => ({ role: c.role, icon: c.icon, crew: COLS[i]?.crew || 'begge', tasks: c.tasks }));
 
-  const fremdriftPct = progress ? progress.pct : 68;
-  const fremdriftText = progress ? `${progress.done} av ${progress.total} oppgaver fullført` : '14 av 21 oppgaver fullført';
+  // Ekte prosjekter: ekte fremdrift (0 til milestones finnes); demo-tall kun på sample.
+  const fremdriftPct = progress ? progress.pct : isReal ? 0 : 68;
+  const fremdriftText = progress
+    ? `${progress.done} av ${progress.total} oppgaver fullført`
+    : isReal ? 'Ingen milepæler ennå' : '14 av 21 oppgaver fullført';
   const phaseItems = isReal
     ? (events || []).map((e: any) => ({ icon: eventIcon(e.title), label: e.title || 'Hendelse', time: e.time ? `${e.time}${e.durationMinutes ? ' – ' + addMinutes(e.time, e.durationMinutes) : ''}` : '', active: e.status === 'in_progress' || e.status === 'current' }))
     : PHASES;
+
+  // Now-markør: ekte klokke mot 08:00–22:00-linjalen (oppdateres hvert minutt,
+  // skjules utenfor vinduet). Sample beholder demo-tidspunktet 12:15.
+  const [nowMin, setNowMin] = useState(() => { const d = new Date(); return d.getHours() * 60 + d.getMinutes(); });
+  useEffect(() => {
+    const t = setInterval(() => { const d = new Date(); setNowMin(d.getHours() * 60 + d.getMinutes()); }, 60000);
+    return () => clearInterval(t);
+  }, []);
+  const nowPct = isReal ? ((nowMin - 8 * 60) / (14 * 60)) * 100 : 30.4;
+  const nowLabel = isReal ? `${String(Math.floor(nowMin / 60)).padStart(2, '0')}:${String(nowMin % 60).padStart(2, '0')}` : '12:15';
+  const nowVisible = nowPct >= 0 && nowPct <= 100;
 
   return (
     <Stack direction="row" spacing={2.5} sx={{ alignItems: 'stretch' }}>
@@ -344,11 +370,12 @@ const OversiktTab: React.FC<{ projectId: string }> = ({ projectId }) => {
               {RULER.map((t) => <Typography key={t} sx={{ fontSize: 11, color: ws.textFaint }}>{t}</Typography>)}
             </Stack>
             <Box sx={{ position: 'relative', height: 1, bgcolor: ws.border, mt: 0.5 }}>
-              {/* now-marker ~12:15 → ((12.25-8)/14)*100 ≈ 30.4% */}
-              <Box sx={{ position: 'absolute', left: '30.4%', top: -18, transform: 'translateX(-50%)' }}>
-                <Chip size="small" label="12:15" sx={{ height: 18, bgcolor: ws.accent, color: ws.accentContrast, fontWeight: 800, fontSize: 11 }} />
-                <Box sx={{ width: 1, height: 60, bgcolor: ws.accent, mx: 'auto', mt: 0.5, opacity: 0.6 }} />
-              </Box>
+              {nowVisible && (
+                <Box sx={{ position: 'absolute', left: `${nowPct}%`, top: -18, transform: 'translateX(-50%)' }}>
+                  <Chip size="small" label={nowLabel} sx={{ height: 18, bgcolor: ws.accent, color: ws.accentContrast, fontWeight: 800, fontSize: 11 }} />
+                  <Box sx={{ width: 1, height: 60, bgcolor: ws.accent, mx: 'auto', mt: 0.5, opacity: 0.6 }} />
+                </Box>
+              )}
             </Box>
           </Box>
           {/* Faser */}
@@ -414,6 +441,9 @@ const OversiktTab: React.FC<{ projectId: string }> = ({ projectId }) => {
             <Stack direction="row" spacing={2} alignItems="center">
               <WsRing value={syncPct} size={104} label={`${syncPct}%`} sub="Klar" color={syncPct >= 80 ? ws.green : ws.amber} />
               <Stack spacing={0.75} sx={{ flex: 1 }}>
+                {syncItems.length === 0 && (
+                  <Typography sx={{ fontSize: 12, color: ws.textFaint }}>Ingen samkjøringsdata ennå — legg til oppgaver og sjekkpunkter.</Typography>
+                )}
                 {syncItems.map((s, i) => (
                   <Stack key={i} direction="row" spacing={0.75} alignItems="center">
                     {s.ok ? <CheckCircle sx={{ fontSize: 16, color: ws.green }} /> : <RadioButtonUnchecked sx={{ fontSize: 16, color: ws.textFaint }} />}
