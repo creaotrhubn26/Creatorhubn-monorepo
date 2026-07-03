@@ -8,7 +8,11 @@
  * marked with a comment so reviewers know to validate.
  */
 
-export type PersonaId = "production-team" | "content-producer" | "dance-studio";
+export type PersonaId =
+  | "production-team"
+  | "content-producer"
+  | "content-producer-sales"
+  | "dance-studio";
 
 export interface DeckSlide {
   number: string; // "01", "02", …
@@ -33,6 +37,11 @@ export interface DeckSlide {
   metrics?: Array<{ value: string; label: string }>;
   screenshot?: string; // path relative to project root
   screenshotCaption?: string;
+  /**
+   * Fallback visual when no screenshot exists: renders the stages as a
+   * styled vertical pipeline panel instead of an empty image box.
+   */
+  visualPipeline?: string[];
   competitionRows?: Array<{ name: string; cells: Array<"yes" | "no" | "partial"> }>;
   competitionColumns?: string[];
   marketDonut?: { center: string; label: string; segments: Array<{ name: string; pct: number }> };
@@ -327,7 +336,7 @@ export const CONTENT_PRODUCER_DECK: PersonaDeck = {
         { icon: "✕", label: "QuickBooks eller Fiken for fakturering" },
         { icon: "✕", label: "5+ måneds-abonnementer + 5+ innlogginger + 0 datasynk" },
       ],
-      body: "Det fragmenterte verktøy-stakken stjeler tid fra det kreative arbeidet.",
+      body: "Den fragmenterte verktøystacken stjeler tid fra det kreative arbeidet.",
     },
     {
       number: "03",
@@ -441,7 +450,7 @@ export const CONTENT_PRODUCER_DECK: PersonaDeck = {
       label: "Business Model",
       title: "Forutsigbar. Skalerbar. Bygget for kreatører.",
       bullets: [
-        { icon: "💳", label: "SaaS-abonnement", sub: "Frilanser 599 / Studio 1 799 / Agency 4 999 NOK/mnd" },
+        { icon: "💳", label: "SaaS-abonnement", sub: "Innholdsprodusent-løsning: 495 kr/sete/mnd, min. 1 sete" },
         { icon: "📈", label: "Bruks-basert overage", sub: "Stripe Meters: Claude-tokens, render, lagring, ads-management" },
         { icon: "🛒", label: "Klient-faktura-share", sub: "Stripe Connect — 5% margin på klientens betaling" },
       ],
@@ -460,7 +469,7 @@ export const CONTENT_PRODUCER_DECK: PersonaDeck = {
       bullets: [
         { label: "Holy Crust (Oslo bakeri) — pilot-kunde med ekte content-pipeline" },
         { label: "Photo Enhancer Slice 1–8 ferdig + testet på bryllups-data" },
-        { label: "Capture App valider på Canon R5 + R6 mkII + R7" },
+        { label: "Capture App validert på Canon R5 + R6 mkII + R7" },
       ],
     },
     {
@@ -496,6 +505,192 @@ export const CONTENT_PRODUCER_DECK: PersonaDeck = {
         { label: "AI-features (auto-cull, smart-retusj, caption-generation)" },
         { label: "Norden-utvidelse (Sverige + Danmark + Finland)" },
         { label: "Markedsføring + community-building" },
+      ],
+    },
+  ],
+};
+
+/**
+ * Customer-facing sales pitch for the content-producer vertical.
+ *
+ * Unlike CONTENT_PRODUCER_DECK (investor angle, "we're raising X"),
+ * this deck pitches The Role Room TO an innholdsprodusent as a
+ * customer. Copy is sourced from THE-ROLE-ROOM-PRODUKTDOKUMENTASJON.md
+ * §2.4 (tre jobber), §5.2 (495 kr/sete, min. 1), the six landing-page
+ * pillars, and VERIFIED_FACTS above.
+ */
+export const CONTENT_PRODUCER_SALES_DECK: PersonaDeck = {
+  persona: "content-producer-sales",
+  audience: "Innholdsprodusenter (frilans/individuell) — kundepitch",
+  brandTagline: "Hele kreativ-stacken på én plass",
+  ask: "495 kr/sete/mnd — min. 1 sete. Alt utenom Agenten er live.",
+  slides: [
+    {
+      number: "01",
+      kind: "cover",
+      label: "The Cover",
+      title: "Hele kreativ-stacken. På én plass.",
+      body: "For deg som leverer innhold og digital markedsføring til flere klienter — skyt, forbedre, lever, publiser og mål i samme arbeidsområde.",
+      visualPipeline: ["Skyt", "Forbedre", "Lever", "Publiser", "Mål"],
+    },
+    {
+      number: "02",
+      kind: "problem",
+      label: "Problemet",
+      title: "Du driver et lite byrå. Verktøyene dine vet det ikke.",
+      bullets: [
+        { icon: "✕", label: "Lightroom for redigering, Pic-Time for galleri, Later for publisering" },
+        { icon: "✕", label: "Canva for plakater, Mailchimp for nyhetsbrev, Fiken for faktura" },
+        { icon: "✕", label: "Klient-avklaringer spredt over e-post, WhatsApp og DM" },
+        { icon: "✕", label: "Ingen av verktøyene snakker sammen — null datasynk" },
+        { icon: "✕", label: "5+ månedsabonnementer og 5+ innlogginger" },
+      ],
+      body: "Den fragmenterte stacken stjeler timer hver uke fra det kreative arbeidet — og klienten ser aldri helheten.",
+    },
+    {
+      number: "03",
+      kind: "solution",
+      label: "Løsningen",
+      title: "Tre jobber. Ett system.",
+      body: "The Role Room er bygget rundt de tre jobbene en innholdsprodusent faktisk gjør.",
+      bullets: [
+        {
+          icon: "→",
+          label: "Digital markedsføring",
+          sub: "Marketing-plan, carousel-generator, feed-strategi og annonsering — i ett grensesnitt",
+        },
+        {
+          icon: "→",
+          label: "Innholdsplanlegging",
+          sub: "Feed Planner på tvers av Instagram, TikTok, Meta, LinkedIn og YouTube",
+        },
+        {
+          icon: "→",
+          label: "Samarbeid med klient",
+          sub: "Leverandør og kunde deler samme transparente oversikt — alle i loop",
+        },
+      ],
+    },
+    {
+      number: "04",
+      kind: "screenshot",
+      label: "Flyten",
+      title: "Fra opptak til publisert — uten å bytte verktøy.",
+      bullets: [
+        { label: "iPad Capture App — skyt RAW rett inn i prosjektet, med voice-memo" },
+        { label: "Photo Enhancer — frequency separation-retusj og object removal" },
+        { label: "Klientgalleri med passordbeskyttelse og Stripe-checkout" },
+        { label: "Pressroom — 12 plakatformater og menytemplates" },
+        { label: "Feed Planner for 5 sosiale plattformer" },
+        { label: "Marketing Plan Engine med AI-drevet content-strategi" },
+      ],
+      visualPipeline: ["Skyt", "Forbedre", "Lever", "Publiser", "Mål"],
+    },
+    {
+      number: "05",
+      kind: "feature-grid",
+      label: "Verktøyene",
+      title: "Hver del finpusset for innhold.",
+      bullets: [
+        { icon: "📸", label: "iPad Capture", sub: "Skyt direkte til galleri, voice-memos, multi-fotograf-presence" },
+        { icon: "✨", label: "Photo Enhancer", sub: "Frequency separation-retusj + object removal" },
+        { icon: "🖼️", label: "Klientgalleri", sub: "Passord-gate, screenshot-beskyttelse, watermark, Stripe-checkout" },
+        { icon: "🎨", label: "Pressroom", sub: "12 plakatformater + menytemplates + Claude-genererte tekster" },
+        { icon: "📱", label: "Feed Planner", sub: "Instagram, TikTok, Meta, LinkedIn og YouTube + AI-genererte captions" },
+        { icon: "📊", label: "Marketing Plan", sub: "30-dagers planlegging, read-through-analyse, KPI-sporing" },
+      ],
+    },
+    {
+      number: "06",
+      kind: "vision",
+      label: "Samarbeid",
+      title: "Klienten ser det samme som deg.",
+      body: "Transparens er ikke en feature — det er hele samarbeidsmodellen mellom deg som leverandør og klienten som kunde.",
+      bullets: [
+        { icon: "🤝", label: "Transparent oversikt", sub: "Leverandør og klient deler samme prosjektbilde — ingen overraskelser" },
+        { icon: "✅", label: "Sporbar godkjenning", sub: "Klient-godkjenning skjer i systemet, ikke i en WhatsApp-tråd" },
+        { icon: "👥", label: "Flere løpende klienter", sub: "Hver klient får sitt eget rom — du beholder oversikten på tvers" },
+        { icon: "💬", label: "Samlet dialog", sub: "All klient-kommunikasjon på prosjektet, med full historikk" },
+      ],
+    },
+    {
+      number: "07",
+      kind: "competition",
+      label: "Sammenligningen",
+      title: "Punktverktøy taper mot integrert stack.",
+      body: "Full stack til prisen av to enkeltstående verktøy.",
+      competitionColumns: ["Plattform", "Rediger", "Lever", "Publiser", "Fakturer"],
+      competitionRows: [
+        { name: "Lightroom + Pic-Time + Hootsuite", cells: ["yes", "yes", "yes", "no"] },
+        { name: "Canva + Mailchimp", cells: ["partial", "no", "yes", "no"] },
+        { name: "Adobe Creative Cloud", cells: ["yes", "no", "no", "no"] },
+        { name: "Notion / Airtable", cells: ["no", "no", "no", "no"] },
+        { name: "The Role Room", cells: ["yes", "yes", "yes", "yes"] },
+      ],
+    },
+    {
+      number: "08",
+      kind: "vision",
+      label: "AI-laget",
+      title: "The Role Room Agent — bygd særlig for innholdsprodusenter.",
+      body: "Et Claude-drevet AI-lag på toppen av hele stacken. I beta nå — rulles ut til abonnenter.",
+      bullets: [
+        { icon: "🤖", label: "AI-genererte captions og tekster", sub: "Feed Planner og Pressroom skriver utkastene for deg" },
+        { icon: "✨", label: "Smart retusj", sub: "Photo Enhancer med AI-assistert frequency separation og object removal" },
+        { icon: "📊", label: "Content-strategi fra dine tall", sub: "Marketing Plan Engine bygger 30-dagers planer på ekte KPI-er" },
+        { icon: "🎨", label: "Brand Kit-synk", sub: "Logo, farger og fonter — alle verktøy henter fra samme kilde" },
+      ],
+    },
+    {
+      number: "09",
+      kind: "solution",
+      label: "Trygghet",
+      title: "Norsk- og EU-native fra dag én.",
+      bullets: [
+        { icon: "🇪🇺", label: "EU-datalagring", sub: "All data lagres i EU (Frankfurt + eu-west) — aldri utenfor" },
+        { icon: "🧾", label: "Norsk økonomi-flyt", sub: "MVA-håndtering, EHF-faktura og Brønnøysund-oppslag innebygd" },
+        { icon: "🔐", label: "GDPR-konform", sub: "Klienthåndtering og gallerier bygget for europeisk personvern" },
+        { icon: "🏦", label: "BankID på vei", sub: "Norsk identitet og signering som neste steg" },
+      ],
+    },
+    {
+      number: "10",
+      kind: "business-model",
+      label: "Prisen",
+      title: "Én pris. Hele stacken.",
+      bullets: [
+        { icon: "💳", label: "495 kr per sete per måned", sub: "Innholdsprodusent-løsningen — minimum 1 sete. Alt utenom Agenten er live." },
+        { icon: "📈", label: "Betal for det du bruker", sub: "SMS 2 kr/stk, WhatsApp per melding, ads-management ved behov" },
+        { icon: "🛒", label: "Klientbetaling gjennom plattformen", sub: "Stripe-checkout i klientgalleriet — plattformen tar 5 % ved klientbetaling" },
+      ],
+    },
+    {
+      number: "11",
+      kind: "traction",
+      label: "Bygget i åpenhet",
+      title: "Ikke en lovnad — en plattform i drift.",
+      metrics: [
+        { value: "6", label: "Sosiale plattformer koblet" },
+        { value: "15+", label: "Integrasjoner (Stripe, Twilio, Claude, Meta, …)" },
+        { value: "190", label: "Database-migrasjoner shipped" },
+        { value: "441", label: "Commits siste 30 dager" },
+      ],
+      bullets: [
+        { label: "Holy Crust (Oslo) — pilotkunde med ekte content-pipeline" },
+        { label: "Photo Enhancer testet på ekte bryllupsdata" },
+        { label: "Capture App validert på Canon R5 + R6 mkII + R7" },
+      ],
+    },
+    {
+      number: "12",
+      kind: "cta",
+      label: "Kom i gang",
+      title: "Klar til å samle stacken?",
+      body: "theroleroom.com",
+      bullets: [
+        { label: "Start med én klient — skaler når du er klar" },
+        { label: "495 kr/sete/mnd, minimum 1 sete" },
+        { label: "support@theroleroom.com · @theroleroom på Instagram" },
       ],
     },
   ],
@@ -707,5 +902,6 @@ export const DANCE_STUDIO_DECK: PersonaDeck = {
 export const ALL_DECKS: PersonaDeck[] = [
   PRODUCTION_TEAM_DECK,
   CONTENT_PRODUCER_DECK,
+  CONTENT_PRODUCER_SALES_DECK,
   DANCE_STUDIO_DECK,
 ];

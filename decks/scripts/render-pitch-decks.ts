@@ -302,6 +302,56 @@ h2 { font-size: 44px; line-height: 1.15; font-weight: 700; letter-spacing: -0.8p
 .ask-amount { font-size: 120px; font-weight: 800; color: var(--accent-bright); letter-spacing: -3px; line-height: 1; }
 .ask-bullets { margin-top: 32px; max-width: 700px; }
 
+/* PIPELINE FALLBACK VISUAL (used when no screenshot exists) */
+.pipeline-panel {
+  height: 100%;
+  border-radius: 18px;
+  border: 1px solid var(--border);
+  background:
+    radial-gradient(ellipse at top right, rgba(168, 85, 247, 0.18), transparent 65%),
+    var(--bg-card);
+  box-shadow: 0 30px 80px rgba(168, 85, 247, 0.25);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 48px 64px;
+}
+.pipeline-stage { display: flex; align-items: center; gap: 22px; }
+.pipeline-stage .dot {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), var(--accent-bright));
+  color: #fff;
+  font-weight: 800;
+  font-size: 19px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 22px rgba(168, 85, 247, 0.45);
+  flex-shrink: 0;
+}
+.pipeline-stage .stage-name { font-size: 28px; font-weight: 700; letter-spacing: -0.4px; color: var(--text); }
+.pipeline-connector {
+  width: 2px;
+  height: 34px;
+  margin-left: 23px;
+  background: linear-gradient(180deg, var(--accent), rgba(168, 85, 247, 0.15));
+}
+.brand-panel-logo {
+  width: 120px;
+  height: 120px;
+  border-radius: 28px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-bright));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 800;
+  font-size: 64px;
+  box-shadow: 0 0 48px rgba(168, 85, 247, 0.5);
+}
+
 /* TWO-COLUMN BODY */
 .two-col {
   display: grid;
@@ -373,6 +423,29 @@ function renderBullets(bullets?: DeckSlide["bullets"], iconClass = ""): string {
     </ul>`;
 }
 
+function renderVisualFallback(slide: DeckSlide): string {
+  if (slide.visualPipeline?.length) {
+    return `
+      <div class="pipeline-panel">
+        ${slide.visualPipeline
+          .map(
+            (stage, i) => `
+          ${i > 0 ? '<div class="pipeline-connector"></div>' : ""}
+          <div class="pipeline-stage">
+            <div class="dot">${i + 1}</div>
+            <div class="stage-name">${escapeHtml(stage)}</div>
+          </div>`,
+          )
+          .join("")}
+      </div>`;
+  }
+  return `
+    <div class="pipeline-panel" style="align-items:center;gap:24px;">
+      <div class="brand-panel-logo">R</div>
+      <div class="brand-mark" style="margin-bottom:0;"><div class="name">The Role Room</div></div>
+    </div>`;
+}
+
 function renderHeader(slide: DeckSlide): string {
   return `
     <div class="header-row">
@@ -408,11 +481,13 @@ async function renderSlide(slide: DeckSlide, persona: PersonaDeck): Promise<stri
                 <div class="section-line"></div>
                 <p class="body-text" style="margin-top:32px;">${escapeHtml(slide.body ?? "")}</p>
               </div>
-              <div class="url">therole.room</div>
+              <div class="url">theroleroom.com</div>
             </div>
-            <div class="right">
-              ${screenshotData ? `<img src="${screenshotData}" alt="" />` : ""}
-            </div>
+            ${
+              screenshotData
+                ? `<div class="right"><img src="${screenshotData}" alt="" /></div>`
+                : renderVisualFallback(slide)
+            }
           </div>
         </section>`;
     }
@@ -426,14 +501,18 @@ async function renderSlide(slide: DeckSlide, persona: PersonaDeck): Promise<stri
             <div class="copy">
               ${renderBullets(slide.bullets)}
             </div>
-            <div class="visual">
-              ${screenshotData ? `<img src="${screenshotData}" alt="" />` : ""}
-              ${
-                slide.screenshotCaption
-                  ? `<div class="caption">${escapeHtml(slide.screenshotCaption)}</div>`
-                  : ""
-              }
-            </div>
+            ${
+              screenshotData
+                ? `<div class="visual">
+                    <img src="${screenshotData}" alt="" />
+                    ${
+                      slide.screenshotCaption
+                        ? `<div class="caption">${escapeHtml(slide.screenshotCaption)}</div>`
+                        : ""
+                    }
+                  </div>`
+                : renderVisualFallback(slide)
+            }
           </div>
         </section>`;
     }
@@ -617,7 +696,12 @@ async function buildHtml(persona: PersonaDeck): Promise<string> {
 async function main(): Promise<void> {
   await mkdir(OUT_DIR, { recursive: true });
 
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({
+    headless: true,
+    // Sandboxed/CI environments can point at a preinstalled Chromium
+    // instead of downloading a matching browser revision.
+    executablePath: process.env.PW_CHROMIUM_PATH || undefined,
+  });
   for (const persona of ALL_DECKS) {
     console.log(`\nBuilding ${persona.persona} deck (${persona.slides.length} slides)`);
     const html = await buildHtml(persona);
@@ -644,7 +728,7 @@ async function main(): Promise<void> {
   }
   await browser.close();
 
-  console.log("\nDone. 3 decks rendered in", OUT_DIR);
+  console.log(`\nDone. ${ALL_DECKS.length} decks rendered in`, OUT_DIR);
 }
 
 main().catch((err) => {
