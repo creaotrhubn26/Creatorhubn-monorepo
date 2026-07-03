@@ -1,0 +1,71 @@
+name: Daglig material auto-approve-sweep
+
+# Trigger material auto-approve-tick på prod-backend hver morgen.
+# Endepunktet kjører runMaterialAutoApproveSweep: material klienten ikke har
+# svart på innen frist (MedInnova-avtalen §5.2) flippes 'awaiting_client' →
+# 'approved'. Rydder også begge idempotency-stores.
+#
+# Tick-endepunktet er token-gated via APPROVAL_CRON_SECRET (GitHub secret +
+# Render env, single-key PUT).
+#
+# Bakgrunn: sweepen kjørte IKKE i prod — verken GH-workflow, APPROVAL_CRON_SECRET
+# eller APPROVAL_SWEEP_INTERVAL_MINUTES var satt, så overdue material ble aldri
+# auto-godkjent. Denne workflowen (+ secret) aktiverer den.
+
+on:
+  schedule:
+    # 06:23 UTC (~08:23 CET) — spredt fra ads-sweep (05:00) og agent-learning (04:17).
+    - cron: '23 6 * * *'
+  # Manuell trigger fra GitHub UI for testing / catch-up etter outages
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: approval-auto-approve-prod
+  cancel-in-progress: false
+
+jobs:
+  trigger-approve-tick:
+    name: POST /api/internal/approval/auto-approve-tick
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Send tick til backend
+        env:
+          APPROVAL_CRON_SECRET: ${{ secrets.APPROVAL_CRON_SECRET }}
+          BACKEND_URL: https://creatorhub-backend-rtbl.onrender.com
+        run: |
+          if [ -z "$APPROVAL_CRON_SECRET" ]; then
+            echo "::error::APPROVAL_CRON_SECRET secret er ikke satt i GitHub. Sett den lik Render-env-variabelen."
+            exit 1
+          fi
+
+          echo "Triggered av $GITHUB_EVENT_NAME ($GITHUB_RUN_ID)"
+          echo "Sender POST til /api/internal/approval/auto-approve-tick"
+
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -H "x-cron-secret: $APPROVAL_CRON_SECRET" \
+            -d '{}' \
+            --max-time 300 \
+            "$BACKEND_URL/api/internal/approval/auto-approve-tick")
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+
+          echo "HTTP $HTTP_CODE"
+          echo "Body: $BODY"
+
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            if [ "$HTTP_CODE" = "401" ]; then
+              echo "::error::Ugyldig APPROVAL_CRON_SECRET — GitHub-secret matcher ikke Render-env (eller backend ikke redeployet etter env-endring)."
+            else
+              echo "::error::Auto-approve-tick feilet (HTTP $HTTP_CODE)"
+            fi
+            exit 1
+          fi
+
+          echo "::notice::Daglig material auto-approve-sweep ferdig"
