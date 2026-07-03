@@ -13,6 +13,7 @@ import {
   isIconField, MATERIAL_ICONS, ALL_MATERIAL_ICONS,
   type InfographicTemplate,
 } from './infographicStudio';
+import { FONT_FACE_CSS } from './fontAssets.generated';
 import { ROLE_ROOM_LOGO, CREATORHUB_LOGO } from './kitLogos.generated';
 
 const D = {
@@ -425,14 +426,14 @@ export function InfographicStudioView(
     playAllRef.current = requestAnimationFrame(tick);
   };
   useEffect(() => () => stopPlayAll(), []);
-  // Material Icons-font for ikon-velgeren i studio-UI-et.
+  // Bundlede fonter for ikon-velgeren i studio-UI-et — offline-robust (før:
+  // Google Fonts-CDN-lenke som brøt ikonene offline).
   useEffect(() => {
-    const id = 'material-icons-cdn';
+    const id = 'infographic-bundled-fonts';
     if (!document.getElementById(id)) {
-      const l = document.createElement('link');
-      l.id = id; l.rel = 'stylesheet';
-      l.href = 'https://fonts.googleapis.com/icon?family=Material+Icons+Outlined';
-      document.head.appendChild(l);
+      const s = document.createElement('style');
+      s.id = id; s.textContent = FONT_FACE_CSS;
+      document.head.appendChild(s);
     }
   }, []);
 
