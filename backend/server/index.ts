@@ -436,6 +436,7 @@ import { setupNextRoleReferralRoutes } from "./nextrole-referrals";
 import { setupNextRoleDripRoutes } from "./nextrole-drip";
 import { setupRoleRoomAdsCron } from "./role-room-ads-cron";
 import { setupRoleRoomApprovalCron } from "./role-room-approval-cron";
+import { setupRoleRoomAgentLearningCron } from "./role-room-agent-learning-cron";
 import { setupNextRoleSalaryRoutes } from "./nextrole-salary";
 import { setupNextRoleMilestonesRoutes } from "./nextrole-milestones";
 import { setupNextRoleVideoPresentationRoutes } from "./nextrole-video-presentations";
@@ -16956,6 +16957,7 @@ setupNextRoleReferralRoutes({
 setupNextRoleDripRoutes({ app, pool });
 setupRoleRoomAdsCron({ app, pool });
 setupRoleRoomApprovalCron({ app, pool });
+setupRoleRoomAgentLearningCron({ app, pool });
 setupNextRoleSalaryRoutes({ app, pool });
 setupNextRoleMilestonesRoutes({ app, pool, getActiveSessionFromRequest });
 setupNextRoleVideoPresentationRoutes({ app, pool, getActiveSessionFromRequest });

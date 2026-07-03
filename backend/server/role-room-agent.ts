@@ -12,6 +12,23 @@ import {
 } from "./role-room-agent-bootstrap-orchestrator.js";
 import { makeStructuredLogger } from "./role-room-agent-llm-util.js";
 import {
+  BOOTSTRAP_CONSTRAINTS,
+  BOOTSTRAP_OUTPUT_SCHEMA_HINTS,
+  BOOTSTRAP_SYSTEM_PROMPT,
+} from "./role-room-agent-bootstrap-constraints.js";
+import { classifyByNace } from "./role-room-agent-nace-profile.js";
+import {
+  buildSearchQueries,
+  scoreBrregNameCandidate,
+  scoreGooglePlaceCandidate,
+} from "./role-room-agent-match-scoring.js";
+import {
+  buildMarketingSetup,
+  deriveGeoScope,
+  type MarketingSetup,
+} from "./role-room-agent-marketing-setup.js";
+import type { NaceBusinessModelOverride } from "./role-room-agent-learned-overrides.js";
+import {
   groundBootstrapPayload,
   type RoleRoomAgentGroundingSources,
 } from "./role-room-agent-grounding.js";
@@ -975,21 +992,20 @@ export async function fetchBrregCompany(input: RoleRoomAgentProducerBootstrapInp
     }
 
     const normalizedQuery = companyName.toLowerCase();
-    const selected = [...units].sort((left, right) => {
-      const leftName = hasText(left.navn) ? normalizeWhitespace(left.navn).toLowerCase() : "";
-      const rightName = hasText(right.navn) ? normalizeWhitespace(right.navn).toLowerCase() : "";
-      const score = (name: string, unit: Record<string, unknown>) => {
-        let value = 0;
-        if (name === normalizedQuery) value += 100;
-        if (name.includes(normalizedQuery) || normalizedQuery.includes(name)) value += 45;
-        if (unit.slettedato) value -= 30;
-        if (unit.konkurs === true || unit.underAvvikling === true || unit.underTvangsavviklingEllerTvangsopplosning === true) value -= 25;
-        return value;
-      };
-      return score(rightName, right) - score(leftName, left);
-    })[0];
+    const websiteHost = normalizeHost(normalizeWebsiteUrl(input.websiteUrl));
+    const best = units
+      .map((unit) => ({ unit, score: scoreBrregNameCandidate(unit, normalizedQuery, websiteHost) }))
+      .sort((left, right) => right.score - left.score)[0];
 
-    return mapBrregUnit(selected, "verified", companyName, "company_name");
+    // A plain name search can surface unrelated enterprises that merely share a
+    // token. Only accept a hit that actually overlaps the query name OR matches
+    // the customer's website host; otherwise report not_found rather than a
+    // misleading "verified" match the synthesis would treat as legal fact.
+    if (!best || best.score <= 0) {
+      return buildBrregUnavailable("not_found", companyName, "Fant ingen sikre navnetreff i Enhetsregisteret.");
+    }
+
+    return mapBrregUnit(best.unit, "verified", companyName, "company_name");
   } catch (error) {
     return buildBrregUnavailable(
       "unavailable",
@@ -1129,68 +1145,15 @@ function buildAgreementSuggestions(
   return suggestions.slice(0, 6);
 }
 
-function buildSearchQueries(
-  input: RoleRoomAgentProducerBootstrapInput,
-  websiteInsights: RoleRoomAgentWebsiteInsights,
-): string[] {
-  const websiteUrl = normalizeWebsiteUrl(input.websiteUrl) || websiteInsights.finalUrl || null;
-  const websiteHost = normalizeHost(websiteUrl);
-  const hostLabel = websiteHost ? websiteHost.replace(/\.[a-z.]+$/i, "").replace(/[-_]/g, " ") : "";
-  const companyName = hasText(input.companyName)
-    ? normalizeWhitespace(input.companyName)
-    : hasText(websiteInsights.siteName)
-      ? normalizeWhitespace(websiteInsights.siteName)
-      : hasText(websiteInsights.pageTitle)
-        ? normalizeWhitespace(websiteInsights.pageTitle)
-        : "";
-
-  return Array.from(
-    new Set(
-      [
-        companyName,
-        companyName && hostLabel ? `${companyName} ${hostLabel}` : "",
-        hostLabel,
-      ]
-        .map((entry) => normalizeWhitespace(entry))
-        .filter((entry) => entry.length > 0),
-    ),
-  ).slice(0, 3);
-}
-
-function scoreGooglePlaceCandidate(
-  candidate: Record<string, unknown>,
-  companyName: string,
-  websiteHost: string | null,
-): number {
-  const displayNameRecord =
-    candidate.displayName && typeof candidate.displayName === "object" && !Array.isArray(candidate.displayName)
-      ? (candidate.displayName as Record<string, unknown>)
-      : {};
-  const displayName = hasText(displayNameRecord.text) ? normalizeWhitespace(displayNameRecord.text).toLowerCase() : "";
-  const normalizedCompany = normalizeWhitespace(companyName).toLowerCase();
-  const websiteUri = hasText(candidate.websiteUri) ? candidate.websiteUri : null;
-  const candidateHost = normalizeHost(websiteUri);
-  let score = 0;
-
-  if (websiteHost && candidateHost === websiteHost) {
-    score += 120;
-  }
-  if (displayName && normalizedCompany && displayName === normalizedCompany) {
-    score += 60;
-  } else if (displayName && normalizedCompany && (displayName.includes(normalizedCompany) || normalizedCompany.includes(displayName))) {
-    score += 35;
-  }
-
-  const rating = asNumber(candidate.rating);
-  const userRatingCount = asNumber(candidate.userRatingCount);
-  if (rating) {
-    score += Math.round(rating * 2);
-  }
-  if (userRatingCount) {
-    score += Math.min(Math.round(userRatingCount / 25), 20);
-  }
-
-  return score;
+/** Best available locality token (poststed → kommune) from a VERIFIED Brreg
+ *  company, used to pin a Google Places text search to the right town so a
+ *  same-name business in another city isn't matched. Empty when Brreg is
+ *  unverified/absent. */
+function brregLocalityHint(brregCompany: RoleRoomAgentBrregCompany | null | undefined): string {
+  if (!brregCompany || brregCompany.lookupStatus !== "verified") return "";
+  const fromAddress = extractMarketLocation(brregCompany.businessAddress);
+  if (fromAddress) return fromAddress;
+  return hasText(brregCompany.municipality) ? normalizeWhitespace(brregCompany.municipality) : "";
 }
 
 function readGooglePlaceTextRecord(value: unknown): string | null {
@@ -2414,6 +2377,20 @@ function detectBusinessClassification(
   businessSignals?: RoleRoomAgentBusinessSignals | null,
   brregCompany?: RoleRoomAgentBrregCompany | null,
 ): RoleRoomAgentBusinessClassification {
+  // NACE-koden fra Brreg er den mest pålitelige, strukturerte kilden til
+  // bransje og forretningsmodell (B2B/B2C). Bruk den FØRST når den finnes og
+  // er i den konservative NACE→profil-tabellen; ellers fall tilbake til
+  // nettside-/signal-heuristikken under. Dette fikser at ekte B2C-virksomheter
+  // (frisør, tannlege, kafé, butikk) uten tydelige nøkkelord tidligere ble
+  // klassifisert som generisk B2B.
+  const naceProfile =
+    brregCompany?.lookupStatus === "verified"
+      ? classifyByNace(brregCompany.industryCode?.code)
+      : null;
+  if (naceProfile) {
+    return naceProfile;
+  }
+
   const corpus = normalizeWhitespace(
     [
       input.companyName,
@@ -2705,6 +2682,7 @@ export async function fetchWebsiteInsights(
 export async function fetchGooglePlacesBusinessSignals(
   input: RoleRoomAgentProducerBootstrapInput,
   websiteInsights: RoleRoomAgentWebsiteInsights,
+  brregCompany: RoleRoomAgentBrregCompany | null = null,
 ): Promise<RoleRoomAgentBusinessSignals | null> {
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
   const companyName = hasText(input.companyName)
@@ -2720,7 +2698,10 @@ export async function fetchGooglePlacesBusinessSignals(
 
   const websiteUrl = normalizeWebsiteUrl(input.websiteUrl) || websiteInsights.finalUrl || null;
   const websiteHost = normalizeHost(websiteUrl);
-  const searchQueries = buildSearchQueries(input, websiteInsights);
+  // Verified Brreg town pins both the search query and the candidate scoring so
+  // a same-name business in another municipality isn't matched.
+  const localityHint = brregLocalityHint(brregCompany);
+  const searchQueries = buildSearchQueries(input, websiteInsights, localityHint);
   const fieldMask =
     "places.id,places.displayName,places.formattedAddress,places.location,places.websiteUri,places.rating,places.userRatingCount,places.primaryType,places.primaryTypeDisplayName,places.googleMapsUri";
 
@@ -2774,8 +2755,8 @@ export async function fetchGooglePlacesBusinessSignals(
   const bestCandidate = [...candidates]
     .sort((left, right) => {
       return (
-        scoreGooglePlaceCandidate(right, companyName, websiteHost) -
-        scoreGooglePlaceCandidate(left, companyName, websiteHost)
+        scoreGooglePlaceCandidate(right, companyName, websiteHost, localityHint) -
+        scoreGooglePlaceCandidate(left, companyName, websiteHost, localityHint)
       );
     })[0];
 
@@ -5129,6 +5110,7 @@ async function requestOpenAiBootstrap(
   competitorAnalysis: RoleRoomAgentCompetitorAnalysis,
   localPresencePlan: RoleRoomAgentLocalPresencePlan,
   retrievalMeta: RoleRoomAgentRetrievalMeta | null,
+  marketingSetup: MarketingSetup | null = null,
 ): Promise<unknown | null> {
   const runtimeConfig = getRoleRoomAgentRuntimeConfig();
   if (!runtimeConfig.providerConfigured) {
@@ -5143,8 +5125,7 @@ async function requestOpenAiBootstrap(
     messages: [
       {
         role: "system",
-        content:
-          "Du er The Role Room Agent for The Role Room. Lag norske JSON-utkast for innholdsproduksjon. Returner kun gyldig JSON med feltene companyProfile, intakeDraft, planningDraft, storyLogicDraft og nextRecommendedSteps. Svar kun med JSON. Vær konkret, kommersiell og nyttig for en innholdsprodusent som bygger brief, story logikk og produksjonsgrunnlag for en kunde. Bruk Brreg-data som juridisk kilde når den finnes, og ikke finn på organisasjonsnummer eller selskapsstatus.",
+        content: BOOTSTRAP_SYSTEM_PROMPT,
       },
       {
         role: "user",
@@ -5153,62 +5134,9 @@ async function requestOpenAiBootstrap(
           requirements: {
             language: "nb-NO",
             audience: "content_producer",
-            constraints: [
-              "Vær konkret og bruk forretningsspråk som passer norsk produksjonsarbeid.",
-              "Ikke finn på kontaktinfo som ikke finnes.",
-              "Hvis informasjon mangler, marker det forsiktig i forslagene uten å være vag.",
-              "Story logic skal passe innholdsproduksjon og kunde-brief, ikke filmmanus for kinofilm.",
-              "Klassifiser alltid hvilken bransje innholdet lages for, underbransje, om kunden er B2B eller B2C, hvilken innholdskategori som passer, og hvilket produksjonsgrep som anbefales.",
-              "Unngå generiske B2B-målgrupper dersom nettstedet tydelig viser en B2C-virksomhet som restaurant, retail eller lokal tjeneste.",
-              "For restaurant og matkonsepter skal story logic handle om meny, fristelse, bestilling, lokasjon og konvertering, ikke generell bedriftsprofil.",
-              "Legg inn en contentStoryLogic-del som er lett for klienten å fylle ut og godkjenne i et innholdsproduksjonsprosjekt.",
-              "Hvis businessSignals finnes, bruk reviews, rating, lokasjon og tjenestesignalene aktivt i brief, bevispunkter, CTA og story logic.",
-              "Hvis brregCompany.lookupStatus er verified, bruk juridisk navn, organisasjonsnummer, bransjekode, adresse, MVA-status og alder i kundeprofilen.",
-              "Hvis agreementSuggestions finnes, bruk dem som avtalerisiko og praktiske anbefalinger, men formuler det som produksjonsråd, ikke juridisk rådgivning.",
-              "Hvis socialProfileCandidates finnes, bruk kun kontoer med verified eller likely som kanalinnsikt, og marker kontoer som må bekreftes av produsent eller kunde før publisering.",
-              "Hvis competitorAnalysis finnes, bruk kun konkurrenter med verified eller likely som markedsføringsinnsikt. Ikke påstå at en kandidat er konkurrent uten manuell bekreftelse fra kunden.",
-              "Bruk konkurrentanalysen til posisjonering, content gaps, CTA og kanalprioritering, men ikke finn på annonsetall, markedsandeler eller private konkurrentdata.",
-              "Hvis localPresencePlan finnes, bruk den til lokale eventforslag basert på bransje, adresse, nærliggende partnere og radius. Ikke påstå at partnere er kontaktet eller bekreftet.",
-              "For restaurant/servering skal lokale forslag prioritere skole/klassekasse, idrettslag, arbeidsplasser, hotell, kulturarena og nabolag når slike finnes.",
-              "Returner en `fieldMetadata`-rotnøkkel med per-felt provenance: { 'companyProfile.industry': { confidence: 0-100, rationale: 'kort norsk forklaring', sourceChain: ['brreg'|'website'|'google_places'|'fallback_rules'|'user_input'|'claude_synthesis'|'openai_synthesis'|'logo_palette'] }, ... }. Inkluder kun felt der du har en konkret begrunnelse — utelat felt du gjettet fritt på. Ikke finn på sourceChain-verdier; bruk kun listen over.",
-            ],
+            constraints: BOOTSTRAP_CONSTRAINTS,
           },
-          outputSchemaHints: {
-            companyProfile: [
-              "companyName",
-              "websiteUrl",
-              "organizationNumber",
-              "summary",
-              "offerings",
-              "targetAudience",
-              "toneAndBrandSignals",
-              "industry",
-              "subIndustry",
-              "businessModel",
-              "contentCategory",
-              "productionApproach",
-              "probableLocationAddress",
-              "logoUrl",
-            ],
-            planningDraft: {
-              contentLogic: [
-                "objective",
-                "audience",
-                "hook",
-                "coreMessage",
-                "industry",
-                "subIndustry",
-                "businessModel",
-                "contentCategory",
-                "productionApproach",
-                "proofPoints",
-                "callToAction",
-                "distributionPlan",
-                "successSignals",
-              ],
-            },
-            storyLogicDraft: ["classification", "contentStoryLogic", "storyLogicType", "coreNarrative", "logicFlow", "messageHierarchy"],
-          },
+          outputSchemaHints: BOOTSTRAP_OUTPUT_SCHEMA_HINTS,
           input,
           websiteInsights,
           businessSignals,
@@ -5218,6 +5146,7 @@ async function requestOpenAiBootstrap(
           socialProfileCandidates: websiteInsights.socialProfileCandidates ?? [],
           competitorAnalysis,
           localPresencePlan,
+          marketingSetup,
           retrievalMeta,
         }),
       },
@@ -5574,7 +5503,13 @@ async function withTiming<T>(
 
 export async function generateRoleRoomAgentProducerBootstrap(
   input: RoleRoomAgentProducerBootstrapInput,
-  options?: { onProgress?: RoleRoomAgentProgressSink },
+  options?: {
+    onProgress?: RoleRoomAgentProgressSink;
+    /** APPROVED learned NACE→businessModel overrides (Lag 2a), loaded by the
+     *  route from role_room_agent_learned_overrides. Fed into the grounding
+     *  pass so producer-corrected classifications take effect at runtime. */
+    learnedNaceBusinessModelOverrides?: readonly NaceBusinessModelOverride[] | null;
+  },
 ): Promise<RoleRoomAgentNormalizedPayload> {
   // Bootstrap instrumentation: stable researchId, total wall time, and
   // per-source latency are stamped onto the final payload so the UI can
@@ -5693,6 +5628,7 @@ export async function generateRoleRoomAgentProducerBootstrap(
         websiteInsights: orchWebsiteInsights,
         businessSignals: orch.businessSignals,
         competitorAnalysis: orchFallback.competitorAnalysis,
+        learnedNaceBusinessModelOverrides: options?.learnedNaceBusinessModelOverrides ?? null,
       });
     }
     // Orchestrator returned nothing usable — fall through to deterministic.
@@ -5725,7 +5661,7 @@ export async function generateRoleRoomAgentProducerBootstrap(
     { emptyFallbackLabel: "website_unavailable", isEmpty: (v) => !v.finalUrl },
   );
   const businessSignals = await time("googlePlacesBusiness",
-      () => fetchGooglePlacesBusinessSignals(enrichedInput, websiteInsights),
+      () => fetchGooglePlacesBusinessSignals(enrichedInput, websiteInsights, initialBrregCompany),
     { emptyFallbackLabel: "google_places_no_business_match", isEmpty: (v) => !v },
   );
   const placesCompetitorAnalysis = await time("googlePlacesCompetitors",
@@ -5766,6 +5702,19 @@ export async function generateRoleRoomAgentProducerBootstrap(
       () => extractBrandColorsFromLogo(websiteInsights.probableLogoUrl),
     { emptyFallbackLabel: "logo_palette_extraction_failed_no_colors", isEmpty: (v) => v.length === 0 },
   );
+  // Deterministic marketing-setup (F9): channels / content pillars / CTA /
+  // ad-tech derived from the verified business model (NACE → B2B/B2C) and geo
+  // scope. Fed into synthesis as an anchor the LLM enriches (never invents), so
+  // a local B2C café can't be handed a LinkedIn thought-leadership plan.
+  const bootstrapClassification = detectBusinessClassification(enrichedInput, websiteInsights, businessSignals, initialBrregCompany);
+  const hasVerifiedLocalPresence = Boolean(
+    businessSignals?.location ||
+      (initialBrregCompany?.lookupStatus === "verified" && hasText(initialBrregCompany.businessAddress)),
+  );
+  const marketingSetup = buildMarketingSetup(
+    bootstrapClassification,
+    deriveGeoScope(bootstrapClassification, hasVerifiedLocalPresence),
+  );
   const fallback = buildFallbackBootstrap(
     {
       ...enrichedInput,
@@ -5790,6 +5739,7 @@ export async function generateRoleRoomAgentProducerBootstrap(
     websiteInsights,
     businessSignals,
     competitorAnalysis,
+    learnedNaceBusinessModelOverrides: options?.learnedNaceBusinessModelOverrides ?? null,
   };
   // Model dispatcher. `ROLE_ROOM_BOOTSTRAP_MODEL=claude` routes synthesis
   // through Anthropic; anything else (default) keeps the existing OpenAI
@@ -5808,6 +5758,7 @@ export async function generateRoleRoomAgentProducerBootstrap(
           competitorAnalysis,
           localPresencePlan,
           fallback.retrievalMeta ?? null,
+          marketingSetup,
         ),
         { emptyFallbackLabel: "claude_synthesis_returned_null", isEmpty: (v) => !v },
       )
@@ -5822,6 +5773,7 @@ export async function generateRoleRoomAgentProducerBootstrap(
           competitorAnalysis,
           localPresencePlan,
           fallback.retrievalMeta ?? null,
+          marketingSetup,
         ),
         { emptyFallbackLabel: "openai_synthesis_returned_null", isEmpty: (v) => !v },
       );
@@ -5842,6 +5794,7 @@ export async function generateRoleRoomAgentProducerBootstrap(
           competitorAnalysis,
           localPresencePlan,
           fallback.retrievalMeta ?? null,
+          marketingSetup,
         ),
       );
       if (openAiFallback) {

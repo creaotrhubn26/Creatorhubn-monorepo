@@ -1348,6 +1348,34 @@ export const roleRoomAgentService = {
     return normalizedResult;
   },
 
+  /**
+   * Capture the producer's accept/edit feedback per field (Lag 0 of the
+   * learning loop). Best-effort and fire-and-forget — a failure here must
+   * never block the apply flow. Only non-personal classification fields are
+   * sent (backend enforces the same allowlist).
+   */
+  async captureFieldFeedback(input: {
+    projectId: string;
+    researchId: string;
+    edits: unknown[];
+  }): Promise<void> {
+    if (!input.projectId || !input.researchId || !Array.isArray(input.edits) || input.edits.length === 0) {
+      return;
+    }
+    try {
+      await fetch('/api/role-room/agent/field-feedback', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...readRoleRoomAgentHeaders(),
+        },
+        body: JSON.stringify(input),
+      });
+    } catch {
+      // best-effort: never surface to the producer or block the apply.
+    }
+  },
+
   async getSnapshot(projectId: string): Promise<RoleRoomAgentProducerBootstrapResult | null> {
     return settingsService.getSetting<RoleRoomAgentProducerBootstrapResult>(AGENT_SNAPSHOT_NAMESPACE, {
       projectId,

@@ -63,6 +63,7 @@ import roleRoomAgentService, {
   type RoleRoomAgentAccess,
   type RoleRoomAgentProducerBootstrapResult,
 } from '../../services/roleRoomAgentService';
+import { buildClassificationFeedbackEdits } from '../../utils/roleRoomAgentFeedbackEdits';
 import RoleRoomAgentChatPanel from '../ai/RoleRoomAgentChatPanel';
 import RoleRoomFeedPlannerPanel from './RoleRoomFeedPlannerPanel';
 import MarketingPlanPanel from './MarketingPlanPanel';
@@ -388,6 +389,13 @@ export default function RoleRoomAgentDialog({
   };
 
   const result = initialResult ?? null;
+  // Learning loop (Lag 0): let the producer correct the single most impactful
+  // classification — businessModel — before applying. The accept/edit signal is
+  // captured on apply and feeds the NACE→businessModel learning aggregation.
+  const [businessModelChoice, setBusinessModelChoice] = useState<string | null>(null);
+  useEffect(() => {
+    setBusinessModelChoice(result?.companyProfile?.businessModel ?? null);
+  }, [result]);
   // Ordered flow through the tabs for the guided Forrige/Neste navigation.
   // Kept deliberately SHORT (bestemor-vennlig / minst mulig kognitiv belastning):
   // only the core lead-gen journey is a forced step —
@@ -543,6 +551,15 @@ export default function RoleRoomAgentDialog({
     try {
       await onApply(result);
       setAppliedResultRef(result);
+      // Learning loop (Lag 0): record the accept/edit signal per classification
+      // field. Fire-and-forget — never blocks or fails the apply.
+      if (result.researchId) {
+        void roleRoomAgentService.captureFieldFeedback({
+          projectId,
+          researchId: result.researchId,
+          edits: buildClassificationFeedbackEdits(result, businessModelChoice),
+        });
+      }
     } catch {
       // parent owns error UX; leave banner visible so user knows it didn't save.
     }
@@ -1411,6 +1428,32 @@ export default function RoleRoomAgentDialog({
                       `Underbransje: ${result.companyProfile.subIndustry}`,
                       `Modell: ${result.companyProfile.businessModel}`,
                     ])}
+                    {result.companyProfile.businessModel ? (
+                      <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap sx={{ mt: 0.25 }}>
+                        <Typography sx={{ color: 'rgba(148,163,184,0.9)', fontSize: '0.72rem' }}>
+                          Rett modell hvis feil:
+                        </Typography>
+                        {['B2C', 'B2B', 'B2B/B2C'].map((model) => {
+                          const selected = businessModelChoice === model;
+                          return (
+                            <Chip
+                              key={model}
+                              label={model}
+                              size="small"
+                              onClick={() => setBusinessModelChoice(model)}
+                              variant={selected ? 'filled' : 'outlined'}
+                              sx={{
+                                cursor: 'pointer',
+                                height: 22,
+                                bgcolor: selected ? 'rgba(59,130,246,0.24)' : 'transparent',
+                                color: selected ? '#bfdbfe' : 'rgba(203,213,225,0.85)',
+                                borderColor: 'rgba(148,163,184,0.3)',
+                              }}
+                            />
+                          );
+                        })}
+                      </Stack>
+                    ) : null}
                     <Divider sx={{ borderColor: 'rgba(148,163,184,0.12)' }} />
                     <Typography sx={{ color: '#cbd5e1', fontWeight: 700, fontSize: '0.84rem', textTransform: 'uppercase', letterSpacing: '0.12em' }}>
                       Tilbud og målgruppe
