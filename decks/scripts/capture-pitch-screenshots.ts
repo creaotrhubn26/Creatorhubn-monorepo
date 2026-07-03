@@ -175,7 +175,12 @@ async function captureShot(page: Page, baseUrl: string, persona: string, shot: S
 
 async function main(): Promise<void> {
   console.log(`Capturing pitch screenshots from ${BASE_URL} → ${OUT_DIR}`);
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({
+    headless: true,
+    // Sandboxed/CI environments can point at a preinstalled Chromium
+    // instead of downloading a matching browser revision.
+    executablePath: process.env.PW_CHROMIUM_PATH || undefined,
+  });
 
   const results: Record<string, string[]> = {};
   for (const capture of CAPTURES) {

@@ -549,10 +549,11 @@ export const CONTENT_PRODUCER_SALES_DECK: PersonaDeck = {
     },
     {
       number: "03",
-      kind: "solution",
+      kind: "screenshot",
       label: "Løsningen",
       title: "Tre jobber. Ett system.",
-      body: "The Role Room er bygget rundt de tre jobbene en innholdsprodusent faktisk gjør.",
+      screenshot: "decks/assets/rr-marketing-plan.png",
+      screenshotCaption: "Markedsplan-dashboard — 30-dagers plan, pillars og klientgodkjenning (live)",
       bullets: [
         {
           icon: "→",
@@ -584,6 +585,8 @@ export const CONTENT_PRODUCER_SALES_DECK: PersonaDeck = {
         { label: "Feed Planner for 5 sosiale plattformer" },
         { label: "Marketing Plan Engine med AI-drevet content-strategi" },
       ],
+      screenshot: "decks/assets/rr-prosjektrom-innholdsprodusent.png",
+      screenshotCaption: "Prosjektrommet i innholdsprodusent-modus — Creative Sync Workspace (live)",
       visualPipeline: ["Skyt", "Forbedre", "Lever", "Publiser", "Mål"],
     },
     {
@@ -605,9 +608,8 @@ export const CONTENT_PRODUCER_SALES_DECK: PersonaDeck = {
       kind: "screenshot",
       label: "Samarbeid",
       title: "Klienten ser det samme som deg.",
-      // Real UI capture from the Holy Crust pilot (checked in at repo root).
-      screenshot: "e2e-smoke-holy-crust.png",
-      screenshotCaption: "Prosjektrom med klient-godkjenning — Holy Crust-piloten (live)",
+      screenshot: "decks/assets/rr-klientgodkjenning.png",
+      screenshotCaption: "Klientgodkjenning i prosjektrommet — venter på klient (live)",
       bullets: [
         { icon: "🤝", label: "Transparent oversikt", sub: "Leverandør og klient deler samme prosjektbilde — ingen overraskelser" },
         { icon: "✅", label: "Sporbar godkjenning", sub: "Klient-godkjenning skjer i systemet, ikke i en WhatsApp-tråd" },

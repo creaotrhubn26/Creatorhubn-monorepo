@@ -141,7 +141,7 @@ h2 { font-size: 44px; line-height: 1.15; font-weight: 700; letter-spacing: -0.8p
   border: 1px solid var(--border);
   background: var(--bg-card);
 }
-.cover .right img { width: 100%; height: 100%; object-fit: cover; }
+.cover .right img { width: 100%; height: 100%; object-fit: cover; object-position: top left; }
 .cover .url { color: var(--accent-bright); font-size: 14px; }
 
 /* SCREENSHOT SLIDE — split layout */
@@ -164,7 +164,7 @@ h2 { font-size: 44px; line-height: 1.15; font-weight: 700; letter-spacing: -0.8p
   align-items: center;
   justify-content: center;
 }
-.split-layout .visual img { width: 100%; height: 100%; object-fit: cover; }
+.split-layout .visual img { width: 100%; height: 100%; object-fit: cover; object-position: top left; }
 .split-layout .visual .caption {
   position: absolute;
   bottom: 14px;
