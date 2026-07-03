@@ -85,6 +85,12 @@ export interface AutoResult {
   ok: boolean;
   found: boolean;
   selector?: string;
+  /** Hvilken locator-strategi som traff (session-exec). */
+  strategy?: string;
+  /** Feilmelding når handlingen kastet (session-exec rapporterer ekte utfall). */
+  error?: string;
+  /** Sidens URL da handlingen ble utført (session-exec). */
+  url?: string;
 }
 
 /**
@@ -128,4 +134,93 @@ export async function verifyAction(url: string, expectedLabel?: string, timeoutM
   clearTimeout(timer);
   unlisten();
   return result;
+}
+
+// ── Vedvarende demo-økt (G4): ETT vindu gjennom hele kjøringen ──
+// Engangs-vinduene over åpner base-URL på nytt per kall → side-tilstand tapes
+// og innloggede produkter er umulige. Økten under beholder vinduet mellom
+// stegene: navigasjon består, brukeren kan logge inn, og skjermbilder viser
+// tilstanden ETTER handlingene (ikke en fersk sidelast).
+
+/**
+ * Åpne (eller gjenbruk) økt-vinduet. Ved nyopprettelse ventes det på at første
+ * side har lastet (session-nav-eventet), så påfølgende exec ikke treffer en
+ * halvlastet side. Returnerer false ved feil/web-dev.
+ */
+export async function sessionOpen(url: string, opts: { navigate?: boolean; timeoutMs?: number } = {}): Promise<boolean> {
+  if (!isCaptureAvailable()) return false;
+  let resolve!: (v: boolean) => void;
+  const loaded = new Promise<boolean>((r) => { resolve = r; });
+  const unlisten = await listen('demo-capture://session-nav', () => resolve(true));
+  const timer = setTimeout(() => resolve(true), opts.timeoutMs ?? 20000); // fail-open: fortsett selv om nav-eventet uteble
+  try {
+    const state = await invoke<string>('demo_session_open', { url, navigate: opts.navigate ?? false });
+    if (state === 'reused') resolve(true); // ingen ny last å vente på
+  } catch {
+    resolve(false);
+  }
+  const ok = await loaded;
+  clearTimeout(timer);
+  unlisten();
+  return ok;
+}
+
+/**
+ * Utfør en handling i økt-vinduet — på siden slik den ER nå. Prøver scenens
+ * multi-strategi-locators i prioritert rekkefølge før css-fallback, og
+ * rapporterer EKTE utfall (exception → ok:false + error).
+ */
+export async function sessionExec(
+  selector: string,
+  actionType: string,
+  text?: string,
+  locators?: TargetLocator[],
+  timeoutMs = 30000,
+): Promise<AutoResult | null> {
+  if (!isCaptureAvailable()) return null;
+  let resolve!: (v: AutoResult | null) => void;
+  const done = new Promise<AutoResult | null>((r) => { resolve = r; });
+  const unlisten = await listen<AutoResult>('demo-capture://auto', (e) => resolve(e.payload));
+  const timer = setTimeout(() => resolve(null), timeoutMs);
+  try {
+    await invoke('demo_session_exec', { selector, actionType, text: text ?? null, locators: locators ?? null, settleMs: null });
+  } catch { resolve(null); }
+  const result = await done;
+  clearTimeout(timer);
+  unlisten();
+  return result;
+}
+
+/** Verifiser i økt-vinduet: brukeren klikker elementet på NÅVÆRENDE side. */
+export async function sessionVerify(expectedLabel?: string, timeoutMs = 90000): Promise<VerifyResult | null> {
+  if (!isCaptureAvailable()) return null;
+  let resolve!: (v: VerifyResult | null) => void;
+  const done = new Promise<VerifyResult | null>((r) => { resolve = r; });
+  const unlisten = await listen<VerifyResult>('demo-capture://verify', (e) => resolve(e.payload));
+  const timer = setTimeout(() => resolve(null), timeoutMs);
+  try { await invoke('demo_session_verify', { expectedLabel: expectedLabel ?? null }); } catch { resolve(null); }
+  const result = await done;
+  clearTimeout(timer);
+  unlisten();
+  return result;
+}
+
+/** Skjermbilde av øktens nåværende tilstand (etter handlinger — G6). */
+export async function sessionShot(timeoutMs = 30000): Promise<string | null> {
+  if (!isCaptureAvailable()) return null;
+  let resolve!: (v: string | null) => void;
+  const done = new Promise<string | null>((r) => { resolve = r; });
+  const unlisten = await listen<{ ok: boolean; dataUrl?: string }>('demo-capture://shot', (e) => resolve(e.payload?.ok ? (e.payload.dataUrl ?? null) : null));
+  const timer = setTimeout(() => resolve(null), timeoutMs);
+  try { await invoke('demo_session_shot'); } catch { resolve(null); }
+  const result = await done;
+  clearTimeout(timer);
+  unlisten();
+  return result;
+}
+
+/** Lukk økt-vinduet (best-effort). */
+export async function sessionClose(): Promise<void> {
+  if (!isCaptureAvailable()) return;
+  try { await invoke('demo_session_close'); } catch { /* allerede lukket */ }
 }

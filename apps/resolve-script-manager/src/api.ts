@@ -100,12 +100,16 @@ export async function mockupRenderVideo(
   clips: string[],
   outputPath: string,
   musicPath?: string | null,
+  /** Narration-lyd (TTS-filer) per klipp, index-alignet med clips —
+   *  null for klipp uten voiceover. Mikses inn på klippets start-offset. */
+  voiceover?: Array<string | null> | null,
 ): Promise<RunSummary> {
   return invoke<RunSummary>("mockup_render_video", {
     config,
     clips,
     outputPath,
     musicPath: musicPath ?? null,
+    voiceover: voiceover ?? null,
   });
 }
 

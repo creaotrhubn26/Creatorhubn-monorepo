@@ -212,21 +212,29 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
   const runAuto = async () => {
     autoAbort.current = false;
     setAutoRunning(true);
-    for (let i = recorderStepIndex; i < scenes.length; i++) {
+    // Les start-indeks og scener FERSKT fra storen: beginRecording kaller
+    // startRecorder() rett før oss, så render-closurens recorderStepIndex
+    // kan peke på feil scene.
+    const st = useDemoStudio.getState();
+    const proj = st.project;
+    const sceneList = proj?.scenes ?? [];
+    if (!proj) { setAutoRunning(false); return; }
+    for (let i = st.recorderStepIndex; i < sceneList.length; i++) {
       if (autoAbort.current) break;
       goToStep(i);
-      const scene = scenes[i];
+      const scene = sceneList[i];
       await sleep(400);
       await performAction(scene);
       // Vent scenens varighet (cap for å unngå evig venting).
       await sleep(Math.min(Math.max((scene.duration || 6) * 1000, 1500), 20000));
       if (autoAbort.current) break;
-      if (rec.state === 'recording') {
-        const path = await rec.stopAndSave(project.id, scene.id);
-        if (path) updateScene(scene.id, { recordingPath: path });
-      }
+      // Ubetinget stopp+lagre: rec.state her er en stale render-verdi (alltid
+      // klikk-øyeblikkets 'idle') — stopAndSave sjekker selv den ekte
+      // MediaRecorder-tilstanden og er no-op hvis ingenting tas opp.
+      const path = await rec.stopAndSave(proj.id, scene.id);
+      if (path) updateScene(scene.id, { recordingPath: path });
       markCurrentDone();
-      if (i < scenes.length - 1) { nextStep(); await startForCurrent(); }
+      if (i < sceneList.length - 1) { nextStep(); await startForCurrent(); }
     }
     setAutoRunning(false);
   };
@@ -244,10 +252,10 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
       }
       return;
     }
-    if (rec.state === 'recording') {
-      const path = await rec.stopAndSave(project.id, sc.id);
-      if (path) updateScene(sc.id, { recordingPath: path });
-    }
+    // Ubetinget stopp+lagre — stopAndSave er no-op hvis ingenting tas opp,
+    // og render-verdien rec.state kan være stale (se runAuto).
+    const path = await rec.stopAndSave(project.id, sc.id);
+    if (path) updateScene(sc.id, { recordingPath: path });
     markCurrentDone();
     if (recorderStepIndex < scenes.length - 1) { nextStep(); await startForCurrent(); }
   };

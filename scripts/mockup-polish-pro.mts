@@ -7,7 +7,10 @@
  *   A) Config-fil (det Tauri-broen bruker):
  *        tsx scripts/mockup-polish-pro.mts --config <fil.json>
  *      hvor fil.json = { clips: string[], output: string, config: MockupConfig,
- *                        music?: string }
+ *                        music?: string,
+ *                        voiceover?: (string|null)[] }  // narration-lyd per klipp
+ *                        // (index-alignet med clips; mikses inn på klippets
+ *                        // start-offset i den monterte tidslinjen)
  *   B) Direkte CLI (rask testing):
  *        tsx scripts/mockup-polish-pro.mts <klipp1> <klipp2> [--out f] [--bg-color hex]
  *          [--music fil] [--duck -12] [--auto-zoom] [--no-gate] [--no-loudness] ...
@@ -48,7 +51,7 @@ interface MockupConfig {
   music: { enabled: boolean; source: string | null; volume: number; ducking: boolean; duckDb: number };
   export: { format: 'mp4' | 'prores4444'; pixelRatio: number; frameRate: number; aspect?: number; targetHeight?: number };
 }
-interface JobSpec { clips: string[]; output: string; config: MockupConfig; music?: string }
+interface JobSpec { clips: string[]; output: string; config: MockupConfig; music?: string; voiceover?: Array<string | null> }
 
 const BG_PRESETS: Record<string, { from?: string; to?: string; solid?: boolean; transparent?: boolean }> = {
   transparent: { transparent: true },
@@ -318,22 +321,28 @@ async function main() {
   if (!result || result.size === 0) { emit('error', { message: 'tom blob' }); logs.forEach((l) => process.stderr.write(l + '\n')); process.exit(1); }
   logLine(`render: ${(result.size / 1e6).toFixed(1)}MB ${result.width}x${result.height} ${result.totalDur.toFixed(1)}s`);
 
-  // ── 3) Lyd: konkatener → (gate) → (musikk+ducking) → (two-pass loudness) ──
+  // ── 3) Lyd: konkatener → (gate) → (voiceover) → (musikk+ducking) → (two-pass loudness) ──
   // Audio-guard: klipp uten lydspor (skjermdeling uten lyd, native video-only)
   // erstattes med stillhet av samme lengde — ellers feiler concat=…:a=1.
-  const clipAudio = await Promise.all(job.clips.map(async (c) => ({ has: await hasAudioStream(c), dur: 0 })));
-  const anyAudio = clipAudio.some((a) => a.has);
-  for (let i = 0; i < job.clips.length; i++) if (!clipAudio[i].has) clipAudio[i].dur = await clipDuration(job.clips[i]);
-  // Hopp over hele lyd-grenen hvis ingen klipp har lyd OG ingen musikk skal på.
+  const clipDurs = await Promise.all(job.clips.map((c) => clipDuration(c)));
+  const clipHasAudio = await Promise.all(job.clips.map((c) => hasAudioStream(c)));
+  const anyAudio = clipHasAudio.some(Boolean);
+  // Voiceover: narration-fil per klipp, mikses inn på klippets start-offset i
+  // den monterte tidslinjen (klippene spilles rygg-mot-rygg i renderen, så
+  // offset = summen av foregående klipps varighet).
+  const voEntries = (job.voiceover ?? [])
+    .map((p, i) => (p ? { path: p, clipIndex: i, offsetMs: Math.round(clipDurs.slice(0, i).reduce((s, d) => s + d, 0) * 1000) } : null))
+    .filter((v): v is { path: string; clipIndex: number; offsetMs: number } => !!v);
+  // Hopp over hele lyd-grenen hvis ingen klipp har lyd OG hverken musikk eller voiceover skal på.
   const musicWanted = cfg.music.enabled && !!(job.music || cfg.music.source);
-  const buildAudio = cfg.audio.enabled && (anyAudio || musicWanted);
+  const buildAudio = cfg.audio.enabled && (anyAudio || musicWanted || voEntries.length > 0);
   if (buildAudio) {
     progress('bygger lydspor…', 55);
     const n = job.clips.length;
     // Ekte lyd → '-i clip'; lydløst klipp → trimmet anullsrc-stillhet.
-    const inputs = job.clips.flatMap((c, i) => clipAudio[i].has
+    const inputs = job.clips.flatMap((c, i) => clipHasAudio[i]
       ? ['-i', c]
-      : ['-t', clipAudio[i].dur.toFixed(3), '-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000']);
+      : ['-t', clipDurs[i].toFixed(3), '-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000']);
     const norm = job.clips.map((_, i) => `[${i}:a]aresample=48000,aformat=channel_layouts=stereo[a${i}]`).join(';');
     const concatIn = job.clips.map((_, i) => `[a${i}]`).join('');
     const gateChain = cfg.audio.noiseGate
@@ -342,6 +351,30 @@ async function main() {
     await ffmpeg(['-y', ...inputs, '-filter_complex',
       `${norm};${concatIn}concat=n=${n}:v=0:a=1${cfg.audio.noiseGate ? '[c]' : '[out]'}${gateChain}`,
       '-map', '[out]', '-c:a', 'aac', '-b:a', '192k', gatedRaw]);
+
+    // Voiceover: legges på FØR musikk-ducking (så musikken dukker under
+    // stemmen) og FØR loudnorm (så hele miksen normaliseres samlet).
+    if (voEntries.length) {
+      progress(`legger på voiceover (${voEntries.length} scene${voEntries.length === 1 ? '' : 'r'})…`, 60);
+      const totalSec = clipDurs.reduce((s, d) => s + d, 0);
+      for (const v of voEntries) {
+        const voDur = await clipDuration(v.path);
+        if (v.offsetMs / 1000 + voDur > v.offsetMs / 1000 + clipDurs[v.clipIndex] + 0.3) {
+          logLine(`advarsel: voiceover for klipp ${v.clipIndex + 1} (${voDur.toFixed(1)}s) er lengre enn klippet (${clipDurs[v.clipIndex].toFixed(1)}s) — overlapper neste scene${v.offsetMs / 1000 + voDur > totalSec ? ' og kuttes ved video-slutt' : ''}`);
+        }
+      }
+      const voMixed = join(workDir, '_pp_vo.m4a');
+      const voInputs = ['-i', gatedRaw, ...voEntries.flatMap((v) => ['-i', v.path])];
+      const voChains = voEntries.map((v, i) =>
+        `[${i + 1}:a]aresample=48000,aformat=channel_layouts=stereo,adelay=${v.offsetMs}|${v.offsetMs}[vo${i}]`).join(';');
+      const voMixIn = `[0:a]${voEntries.map((_, i) => `[vo${i}]`).join('')}`;
+      await ffmpeg(['-y', ...voInputs, '-filter_complex',
+        `${voChains};${voMixIn}amix=inputs=${voEntries.length + 1}:duration=first:dropout_transition=0:normalize=0[out]`,
+        '-map', '[out]', '-c:a', 'aac', '-b:a', '192k', voMixed]);
+      await rm(gatedRaw, { force: true });
+      await ffmpeg(['-y', '-i', voMixed, '-c', 'copy', gatedRaw]);
+      await rm(voMixed, { force: true });
+    }
 
     // Musikk + ducking
     const musicFile = cfg.music.enabled ? (job.music || cfg.music.source || '') : '';

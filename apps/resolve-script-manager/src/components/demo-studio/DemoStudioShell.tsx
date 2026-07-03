@@ -38,7 +38,7 @@ import { open as openFileDialog } from '@tauri-apps/plugin-dialog';
 import { runAutonomousDemo } from './autonomousDemo';
 import { renderIntroCard, renderOutroCard, renderBrowserFrame } from './demoBranding';
 import type { DemoFinalizeOpts } from '../../api';
-import { isCaptureAvailable, startDemoCapture, onCaptureStep, onCaptureDone, scanDom, verifyAction, autoExecute, captureScreenshot, type CapturedStep } from '../../services/demoCaptureService';
+import { isCaptureAvailable, startDemoCapture, onCaptureStep, onCaptureDone, scanDom, captureScreenshot, sessionOpen, sessionExec, sessionVerify, sessionShot, type CapturedStep } from '../../services/demoCaptureService';
 import { useDemoStudio } from './demoStudioStore';
 import {
   DEMO_TYPE_LABELS, DEMO_TYPE_FRIENDLY, DEMO_TYPE_TEMPLATES, SCENE_STATUS_LABELS, SCENE_STATUS_COLORS,
@@ -104,6 +104,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
     loadExisting,
     undo, redo, canUndo, canRedo,
     selectedSceneIds, toggleSceneSelected, clearSceneSelection, removeSelectedScenes,
+    saveStatus, lastSavedAt,
   } = useDemoStudio();
 
   // Gjenopprett lagret prosjekt ved oppstart (ellers virket alt arbeid borte).
@@ -425,29 +426,34 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const [autoBusy, setAutoBusy] = useState(false);
   const captureBuf = useRef<CapturedStep[]>([]);
 
-  // Auto-utfør gjeldende scenes handling (continueMode:'auto'): systemet finner
-  // target-elementet og utfører handlingen, fyller detectedSelector og avanserer.
+  const sleepMs = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+  // Auto-utfør gjeldende scenes handling i den VEDVARENDE demo-økten (G4):
+  // vinduet gjenbrukes på tvers av steg, så navigasjon/innlogging fra forrige
+  // steg består. Multi-strategi-locators prøves før css-fallback (G19).
   const autoRunCurrent = async () => {
     if (!isCaptureAvailable()) { window.alert('Auto-utførelse krever Tauri-appen.'); return; }
     const st = useDemoStudio.getState();
     const sc = st.project?.scenes[st.recorderStepIndex];
     if (!sc || !st.project) return;
-    if (!sc.targetSelector) { window.alert('Scenen mangler target-selector — bind elementet via AI Director eller capture først.'); return; }
+    if (!sc.targetSelector && !(sc.targetLocators?.length)) { window.alert('Scenen mangler target-selector — bind elementet via AI Director eller capture først.'); return; }
     setAutoBusy(true);
     try {
-      const r = await autoExecute(st.project.url, sc.targetSelector, sc.actionType ?? 'click');
+      if (!(await sessionOpen(st.project.url))) { window.alert('Kunne ikke åpne demo-økt-vinduet.'); return; }
+      const r = await sessionExec(sc.targetSelector ?? '', sc.actionType ?? 'click', undefined, sc.targetLocators);
       if (r?.ok && r.found) {
-        updateScene(sc.id, { detectedSelector: sc.targetSelector, status: 'done' });
+        updateScene(sc.id, { detectedSelector: r.selector || sc.targetSelector, status: 'done' });
         if (st.recorderStepIndex < st.project.scenes.length - 1) nextStep();
       } else if (r && !r.found) {
-        // Self-healing: skann siden på nytt + la AI finne riktig element → reparer + prøv igjen.
+        // Self-healing: skann siden på nytt + la AI finne riktig element →
+        // reparer og prøv igjen I SAMME ØKT (ingen omlasting av siden).
         const scan = await scanDom(st.project.url).catch(() => null);
         const els = scan?.elements ?? [];
         const idx = els.length ? await healTarget({ targetLabel: sc.targetLabel, actionType: sc.actionType, elements: els }).catch(() => null) : null;
         if (idx != null && els[idx]) {
           const el = els[idx];
           updateScene(sc.id, { targetSelector: el.selector, targetLocators: el.locators, targetLabel: el.label, hotspot: el.hotspot, startScrollPct: el.scrollPct != null ? Math.round(el.scrollPct * 100) : undefined });
-          const r2 = await autoExecute(st.project.url, el.selector, sc.actionType ?? 'click');
+          const r2 = await sessionExec(el.selector, sc.actionType ?? 'click', undefined, el.locators);
           if (r2?.ok && r2.found) {
             updateScene(sc.id, { detectedSelector: el.selector, status: 'done' });
             if (st.recorderStepIndex < st.project.scenes.length - 1) nextStep();
@@ -460,14 +466,58 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
           updateScene(sc.id, { status: 'needs_review' });
           window.alert('Fant ikke elementet på siden. Scene merket «Needs Review».');
         }
+      } else if (r && !r.ok) {
+        updateScene(sc.id, { status: 'needs_review' });
+        window.alert(`Handlingen feilet på siden${r.error ? `: ${r.error}` : ''}. Scene merket «Needs Review».`);
       }
     } finally {
       setAutoBusy(false);
     }
   };
 
-  // Verifiser den gjeldende recorder-scenens handling: brukeren klikker
-  // elementet → detectedSelector fylles → ekte Expected↔Detected-validering.
+  // Kjør ALLE gjenstående scener sekvensielt i ÉN økt — flerstegs-flyter
+  // (naviger → klikk → utfyll) fungerer fordi vinduet består mellom stegene.
+  // Stopper ved første scene som ikke kan utføres.
+  const autoRunAll = async () => {
+    if (!isCaptureAvailable()) { window.alert('Auto-kjøring krever Tauri-appen.'); return; }
+    const st0 = useDemoStudio.getState();
+    if (!st0.project) return;
+    setAutoBusy(true);
+    try {
+      if (!(await sessionOpen(st0.project.url))) { window.alert('Kunne ikke åpne demo-økt-vinduet.'); return; }
+      const total = st0.project.scenes.length;
+      for (let i = st0.recorderStepIndex; i < total; i++) {
+        const scene = useDemoStudio.getState().project?.scenes[i];
+        if (!scene) break;
+        goToStep(i);
+        const at = scene.actionType ?? 'click';
+        if (!scene.targetSelector && !(scene.targetLocators?.length)) {
+          // Ubundet scene: scroll kan kjøres uten target; annet hoppes over.
+          if (at === 'scroll') { await sessionExec('', 'scroll'); updateScene(scene.id, { status: 'done' }); }
+          await sleepMs(800);
+          continue;
+        }
+        const r = await sessionExec(scene.targetSelector ?? '', at, undefined, scene.targetLocators);
+        if (r?.ok && r.found) {
+          updateScene(scene.id, { detectedSelector: r.selector || scene.targetSelector, status: 'done' });
+        } else {
+          updateScene(scene.id, { status: 'needs_review' });
+          window.alert(`Scene ${i + 1}${scene.targetLabel ? ` («${scene.targetLabel}»)` : ''}: ${r && !r.found ? 'fant ikke elementet på gjeldende side' : r?.error ? `handlingen feilet: ${r.error}` : 'ingen respons fra økt-vinduet'} — auto-kjøring stoppet. Logg inn / naviger i økt-vinduet og prøv igjen herfra.`);
+          break;
+        }
+        // La en eventuell navigasjon/animasjon lande før neste steg.
+        await sleepMs(1400);
+      }
+    } finally {
+      setAutoBusy(false);
+    }
+  };
+
+  // Verifiser den gjeldende recorder-scenens handling I ØKTEN: brukeren klikker
+  // elementet på siden slik den ER nå → detectedSelector fylles → handlingen
+  // UTFØRES faktisk → skjermbilde av tilstanden ETTERPÅ går til vision (G6:
+  // tidligere ble skjermbildet tatt av en fersk sidelast, så «utfallet» AI
+  // vurderte var alltid en urørt side).
   const verifyCurrentAction = async () => {
     if (!isCaptureAvailable()) { window.alert('Verifisering krever Tauri-appen.'); return; }
     const st = useDemoStudio.getState();
@@ -475,15 +525,20 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
     if (!sc || !st.project) return;
     setVerifyBusy(true);
     try {
-      const v = await verifyAction(st.project.url, sc.targetLabel);
+      if (!(await sessionOpen(st.project.url))) { window.alert('Kunne ikke åpne demo-økt-vinduet.'); return; }
+      const v = await sessionVerify(sc.targetLabel);
       if (v && !v.cancelled && v.selector) {
-        // Vision-runtime-verifisering: ta skjermbilde ETTER handlingen og sjekk
-        // at forventet utfall faktisk skjedde — ikke bare selector-match.
+        // Vision-runtime-verifisering: utfør handlingen for ekte i økten, la
+        // utfallet lande, og vis vision tilstanden ETTER handlingen.
         let visionOk: boolean | null = null;
         const expected = sc.validationRule || sc.targetLabel || sc.requiredAction;
-        if (expected && isCaptureAvailable()) {
-          const shot = await captureScreenshot(st.project.url).catch(() => null);
-          if (shot) { const o = await verifyOutcomeVision({ screenshot: shot, expected }).catch(() => null); if (o) visionOk = o.success; }
+        if (expected) {
+          const ex = await sessionExec(v.selector, sc.actionType ?? 'click').catch(() => null);
+          if (ex?.ok) {
+            await sleepMs(1200);
+            const shot = await sessionShot().catch(() => null);
+            if (shot) { const o = await verifyOutcomeVision({ screenshot: shot, expected }).catch(() => null); if (o) visionOk = o.success; }
+          }
         }
         const match = sceneActionMatch({ ...sc, detectedSelector: v.selector });
         const status = visionOk === false ? 'needs_review' : (match === 'match' || visionOk === true) ? 'done' : 'needs_review';
@@ -839,8 +894,13 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
         <div style={iconBtn} onClick={onClose} title="Tilbake til hjem">☰</div>
         <div>
           <input style={{ ...titleField }} value={project.name} onChange={(e) => setProjectField('name', e.target.value)} />
-          <div style={{ fontSize: 11, color: C.inkFaint, display: 'flex', alignItems: 'center', gap: 5, marginTop: 1 }}>
-            <span style={{ width: 7, height: 7, borderRadius: '50%', background: C.green }} /> Draft · Autosaved just now
+          <div style={{ fontSize: 11, color: saveStatus === 'error' ? '#dc2626' : C.inkFaint, display: 'flex', alignItems: 'center', gap: 5, marginTop: 1 }}>
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: saveStatus === 'saved' ? C.green : saveStatus === 'saved_partial' ? '#f59e0b' : '#dc2626' }} />
+            {saveStatus === 'saved' && (lastSavedAt
+              ? `Draft · Autolagret ${new Date(lastSavedAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}`
+              : 'Draft')}
+            {saveStatus === 'saved_partial' && 'Draft · Lagret uten skjermbilder (lite lagringsplass)'}
+            {saveStatus === 'error' && 'Draft · IKKE lagret — lagringsplass full'}
           </div>
         </div>
         <div style={{ flex: 1, maxWidth: 420, display: 'flex', alignItems: 'center', gap: 8, background: C.cream, border: `1px solid ${C.line}`, borderRadius: 9, padding: '7px 12px' }}>
@@ -850,7 +910,11 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
             onBlur={(e) => setProjectField('url', normalizeUrl(e.target.value))} placeholder="https://example.com" />
         </div>
         <div style={{ flex: 1 }} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: C.inkSoft }}><span style={{ color: C.green }}>✓</span> Lagret</div>
+        {saveStatus === 'error' ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#dc2626', fontWeight: 600 }} title="localStorage er full — siste endringer er ikke persistert. Eksporter eller slett gamle demoer.">⚠ Ikke lagret</div>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: C.inkSoft }}><span style={{ color: saveStatus === 'saved_partial' ? '#f59e0b' : C.green }}>✓</span> {saveStatus === 'saved_partial' ? 'Delvis lagret' : 'Lagret'}</div>
+        )}
         <button style={recording ? { ...btn, background: '#ef4444', color: '#fff', borderColor: '#ef4444' } : btn}
           onClick={async () => {
             if (recording) return;
@@ -1463,6 +1527,11 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                     onClick={() => void autoRunCurrent()}
                     title="La systemet utføre handlingen automatisk på target-elementet (continueMode: auto)">
                     ▶ {autoBusy ? 'Kjører…' : 'Kjør automatisk'}
+                  </button>
+                  <button style={{ ...outlineBtn, width: '100%', marginBottom: 8, opacity: autoBusy ? 0.6 : 1 }} disabled={autoBusy}
+                    onClick={() => void autoRunAll()}
+                    title="Kjør alle gjenstående scener sekvensielt i ÉN vedvarende økt — navigasjon og innlogging består mellom stegene">
+                    ⏩ {autoBusy ? 'Kjører…' : 'Kjør alle automatisk'}
                   </button>
                   <button style={{ ...outlineBtn, width: '100%', marginBottom: 8, opacity: verifyBusy ? 0.6 : 1 }} disabled={verifyBusy}
                     onClick={() => void verifyCurrentAction()}

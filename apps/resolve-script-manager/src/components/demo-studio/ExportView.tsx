@@ -12,7 +12,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { mockupRenderVideo, onScriptEvent, cancelScript, demoWriteText, demoWriteBinary, demoPrintHtml, executeScript, playwrightStatus, setupPlaywright, runPlaywrightDemo } from '../../api';
+import { mockupRenderVideo, onScriptEvent, cancelScript, demoWriteText, demoWriteBinary, demoPrintHtml, executeScript, playwrightStatus, setupPlaywright, runPlaywrightDemo, synthesizeTts, ttsFromAudio } from '../../api';
 import type { UnlistenFn } from '@tauri-apps/api/event';
 import { openPath } from '@tauri-apps/plugin-opener';
 import { open as openFileDialog, save as saveFileDialog } from '@tauri-apps/plugin-dialog';
@@ -22,6 +22,7 @@ import { buildSrt, buildScriptHtml, renderThumbnail, buildInteractiveGuideHtml, 
 import { addAsset } from './assetLibrary';
 import { publishGuide, getGuideStats } from '../../services/publishService';
 import { scanDom, isCaptureAvailable } from '../../services/demoCaptureService';
+import { ttsProxy } from '../../services/claudeProxyService';
 import { translateForVoiceover } from './demoStudioAI';
 
 const C = {
@@ -50,7 +51,7 @@ const TARGET_H: Record<typeof RESOLUTIONS[number], number> = { '1080p': 1080, '1
 interface ToggleDef { key: string; label: string; def: boolean; }
 // Kun toggles som FAKTISK gjør noe i pipelinen.
 const TOGGLES: ToggleDef[] = [
-  { key: 'voiceover', label: 'Inkluder voiceover', def: true },
+  { key: 'voiceover', label: 'Inkluder voiceover (AI-lest manus)', def: true },
   { key: 'music', label: 'Bakgrunnsmusikk', def: false },
 ];
 // Funksjoner som ennå ikke er koblet — vises som «(kommer)», ikke som aktive brytere.
@@ -270,9 +271,44 @@ export function ExportView() {
   const readiness = exportReadiness(scenes);
   const canExport = recorded.length > 0 && readiness.ready;
 
+  /**
+   * Syntetiser voiceover per innspilt scene (samme stemme-prioritet som
+   * autonom-banen: server-ElevenLabs via ttsProxy → macOS `say`). Returnerer
+   * array index-alignet med klippene (null = ingen narration / TTS feilet).
+   * Best-effort: en feilet scene stopper ikke eksporten.
+   */
+  const synthesizeVoiceover = async (recordedScenes: typeof scenes): Promise<{ paths: Array<string | null>; failed: number }> => {
+    const paths: Array<string | null> = [];
+    let failed = 0;
+    const total = recordedScenes.filter((s) => s.narration?.trim()).length;
+    let done = 0;
+    for (const s of recordedScenes) {
+      const text = s.narration?.trim();
+      if (!text) { paths.push(null); continue; }
+      done++;
+      setStatusLabel(`Lager voiceover ${done}/${total}…`);
+      let a: { path: string } | null = null;
+      const mp3 = await ttsProxy(text).catch(() => null);
+      if (mp3) a = await ttsFromAudio(project!.id, s.id, mp3).catch(() => null);
+      if (!a) a = await synthesizeTts(project!.id, s.id, text).catch(() => null);
+      if (!a) failed++;
+      paths.push(a?.path ?? null);
+    }
+    return { paths, failed };
+  };
+
   const startExport = async () => {
     setError(null); setResultPath(null); resultRef.current = null; runIdRef.current = null;
     setPct(0); setStatusLabel('Starter…'); setBusy(true);
+
+    // Voiceover FØR render: TTS per scene → filene sendes til pipelinen som
+    // mikser dem inn på scenens tidspunkt (før musikk-ducking + loudnorm).
+    let voiceover: Array<string | null> | null = null;
+    if (toggles.voiceover && recorded.some((s) => s.narration?.trim())) {
+      const vo = await synthesizeVoiceover(recorded);
+      if (vo.paths.some(Boolean)) voiceover = vo.paths;
+      if (vo.failed > 0) setFileMsg(`⚠ ${vo.failed} voiceover-spor kunne ikke lages — eksporterer ${vo.paths.some(Boolean) ? 'med de som lyktes' : 'uten voiceover'}.`);
+    }
     // Lytt på fremdrift fra pipelinen. percent er 0–100; result-eventet legger
     // outputPath TOP-LEVEL (ikke i .value).
     unlistenRef.current = await onScriptEvent((ev) => {
@@ -315,7 +351,7 @@ export function ExportView() {
     const clips = recorded.map((s) => s.recordingPath!).filter(Boolean);
     const outName = `${project.name.replace(/[^\w-]+/g, '_')}-demo.${format === '9:16' ? 'mov' : 'mp4'}`;
     try {
-      const summary = await mockupRenderVideo(config as Record<string, unknown>, clips, outName, toggles.music ? musicPath : null);
+      const summary = await mockupRenderVideo(config as Record<string, unknown>, clips, outName, toggles.music ? musicPath : null, voiceover);
       if (!summary.succeeded && !resultRef.current) setError('Render fullførte ikke');
       else { setPct(100); setStatusLabel('Ferdig'); }
     } catch (e) {

@@ -1248,13 +1248,36 @@ export function makeProject(url: string, demoType: DemoType = 'product_demo'): D
 // ── localStorage-persistens (per project-nøkkel) ──
 const LS_PREFIX = 'trrpa.demoStudio.';
 
-export function saveProject(p: DemoProject): void {
+/**
+ * Utfall av en lagring: 'saved' = alt persistert, 'saved_partial' = kvoten var
+ * full så prosjektet ble lagret UTEN base64-skjermbildene (manus/scener/
+ * opptaks-stier overlever; bildene re-lagres ved neste vellykkede fulle save),
+ * 'error' = ingenting ble persistert.
+ */
+export type SaveResult = 'saved' | 'saved_partial' | 'error';
+
+export function saveProject(p: DemoProject): SaveResult {
+  const stamped = { ...p, updatedAt: new Date().toISOString() };
   try {
-    localStorage.setItem(LS_PREFIX + p.id, JSON.stringify({ ...p, updatedAt: new Date().toISOString() }));
+    localStorage.setItem(LS_PREFIX + p.id, JSON.stringify(stamped));
     // Hold en peker til sist åpnede prosjekt.
     localStorage.setItem(LS_PREFIX + 'last', p.id);
+    return 'saved';
   } catch {
-    /* localStorage kan være full/blokkert — ikke-kritisk */
+    // Kvoten er typisk sprengt av base64-bildene (scanShots + scene-thumbs kan
+    // alene passere ~5 MB). Prøv igjen uten dem så selve arbeidet ikke går tapt.
+    try {
+      const slim = {
+        ...stamped,
+        scanShots: undefined,
+        scenes: stamped.scenes.map((s) => ({ ...s, thumbnailDataUrl: undefined })),
+      };
+      localStorage.setItem(LS_PREFIX + p.id, JSON.stringify(slim));
+      localStorage.setItem(LS_PREFIX + 'last', p.id);
+      return 'saved_partial';
+    } catch {
+      return 'error';
+    }
   }
 }
 

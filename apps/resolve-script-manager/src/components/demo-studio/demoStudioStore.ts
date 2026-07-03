@@ -18,6 +18,7 @@ import {
   type SceneStatus,
   type DemoRenderOptions,
   type ResponsiveFix,
+  type SaveResult,
   makeProject,
   makeScene,
   saveProject,
@@ -34,6 +35,10 @@ interface DemoStudioState {
   selectedSceneId: string | null;
   /** Indeks i guided recorder (hvilket steg vi er på). */
   recorderStepIndex: number;
+  /** Utfall av siste autolagring — UI skal vise dette ærlig, ikke anta suksess. */
+  saveStatus: SaveResult;
+  /** Når siste (helt eller delvis) vellykkede lagring skjedde (epoch ms). */
+  lastSavedAt: number | null;
 
   // ── Prosjekt ──
   createProject: (url: string, demoType?: DemoType) => void;
@@ -91,12 +96,6 @@ function reindex(scenes: DemoScene[]): DemoScene[] {
   return scenes.map((s, i) => ({ ...s, index: i }));
 }
 
-/** Persistér + returner oppdatert prosjekt (med ny updatedAt). */
-function persist(project: DemoProject): DemoProject {
-  saveProject(project);
-  return project;
-}
-
 const HISTORY_CAP = 60;
 /** Koalescering: raske påfølgende edits med samme nøkkel blir ÉN undo-handling. */
 let _lastSnap: { t: number; key: string } | null = null;
@@ -119,18 +118,27 @@ export const useDemoStudio = create<DemoStudioState>((set, get) => {
     set({ _undo: [..._undo, project].slice(-HISTORY_CAP), _redo: [] });
   };
 
+  /** Persistér + returner oppdatert prosjekt. Oppdaterer saveStatus så UI-et
+   *  viser det EKTE lagrings-utfallet (full localStorage skal ikke vise «Lagret»). */
+  const persist = (project: DemoProject): DemoProject => {
+    const result = saveProject(project);
+    set({ saveStatus: result, lastSavedAt: result === 'error' ? get().lastSavedAt : Date.now() });
+    return project;
+  };
+
   return {
   project: null,
   selectedSceneId: null,
   recorderStepIndex: 0,
+  saveStatus: 'saved' as SaveResult,
+  lastSavedAt: null,
   _undo: [],
   _redo: [],
   selectedSceneIds: [],
 
   createProject: (url, demoType = 'product_demo') => {
     const project = makeProject(url, demoType);
-    saveProject(project);
-    set({ project, selectedSceneId: project.scenes[0]?.id ?? null, recorderStepIndex: 0 });
+    set({ project: persist(project), selectedSceneId: project.scenes[0]?.id ?? null, recorderStepIndex: 0 });
   },
 
   loadExisting: () => {

@@ -19,11 +19,13 @@ const VERIFY_JS: &str = include_str!("../capture/demo_verify_inject.js");
 const AUTO_JS: &str = include_str!("../capture/demo_auto_inject.js");
 const H2C_JS: &str = include_str!("../capture/html2canvas.min.js");
 const SHOT_JS: &str = include_str!("../capture/demo_shot_inject.js");
+const SESSION_JS: &str = include_str!("../capture/demo_session_inject.js");
 const CAPTURE_LABEL: &str = "demo-capture";
 const SCAN_LABEL: &str = "demo-scan";
 const VERIFY_LABEL: &str = "demo-verify";
 const AUTO_LABEL: &str = "demo-auto";
 const SHOT_LABEL: &str = "demo-shot";
+const SESSION_LABEL: &str = "demo-session";
 
 /// Åpne capture-vinduet på `url`. Lukker et eventuelt eksisterende capture-vindu
 /// først, så vi aldri har to gående.
@@ -186,6 +188,118 @@ pub fn demo_shot_result(app: AppHandle, result: serde_json::Value) -> Result<(),
         let _ = w.close();
     }
     app.emit("demo-capture://shot", result).map_err(|e| e.to_string())
+}
+
+// ── Vedvarende demo-økt (G4): ETT vindu gjennom hele auto-kjøringen ──
+//
+// I motsetning til verify/auto/shot-vinduene over (nytt vindu på base-URL per
+// kall → all side-tilstand tapes, innloggede produkter umulige) lever økt-
+// vinduet på tvers av steg: navigasjon fra steg 1 består når steg 2 kjører,
+// og brukeren kan logge inn i vinduet før/underveis. Kommandoene under kaller
+// funksjoner definert av demo_session_inject.js via eval(); resultatene kommer
+// tilbake gjennom demo_session_report — som IKKE lukker vinduet.
+
+fn session_window(app: &AppHandle) -> Result<tauri::WebviewWindow, String> {
+    app.get_webview_window(SESSION_LABEL)
+        .ok_or_else(|| "Demo-økten er ikke åpen — kall demo_session_open først".to_string())
+}
+
+/// Åpne (eller gjenbruk) det vedvarende økt-vinduet. Returnerer "created" hvis
+/// et nytt vindu ble laget (frontend bør da vente på nav-eventet), "reused"
+/// hvis et eksisterende vindu ble gjenbrukt uten navigasjon, eller "navigated"
+/// hvis `navigate=true` tvang eksisterende vindu til `url`.
+#[tauri::command]
+pub async fn demo_session_open(app: AppHandle, url: String, navigate: Option<bool>) -> Result<String, String> {
+    let parsed: tauri::Url = url.parse().map_err(|e| format!("ugyldig URL «{url}»: {e}"))?;
+    if parsed.scheme() != "http" && parsed.scheme() != "https" {
+        return Err("URL må være http(s)".to_string());
+    }
+    if let Some(w) = app.get_webview_window(SESSION_LABEL) {
+        let _ = w.set_focus();
+        if navigate.unwrap_or(false) {
+            let url_json = serde_json::to_string(&url).unwrap_or_else(|_| "\"\"".to_string());
+            w.eval(&format!("window.location.href = {url_json};"))
+                .map_err(|e| format!("kunne ikke navigere økt-vinduet: {e}"))?;
+            return Ok("navigated".to_string());
+        }
+        return Ok("reused".to_string());
+    }
+    WebviewWindowBuilder::new(&app, SESSION_LABEL, WebviewUrl::External(parsed))
+        .title("Demo-økt — stegene kjører i dette vinduet")
+        .inner_size(1240.0, 840.0)
+        .initialization_script(H2C_JS)
+        .initialization_script(SESSION_JS)
+        .build()
+        .map_err(|e| format!("kunne ikke åpne økt-vindu: {e}"))?;
+    Ok("created".to_string())
+}
+
+/// Utfør en handling i økt-vinduet (på siden slik den ER nå — ikke en fersk
+/// last). `locators` er scenens multi-strategi-locators (id/testid/aria/text/
+/// css); scriptet prøver dem i prioritert rekkefølge før `selector`-fallback.
+#[tauri::command]
+pub async fn demo_session_exec(
+    app: AppHandle,
+    selector: String,
+    action_type: String,
+    text: Option<String>,
+    locators: Option<serde_json::Value>,
+    settle_ms: Option<u32>,
+) -> Result<(), String> {
+    let w = session_window(&app)?;
+    let cfg = serde_json::json!({
+        "selector": selector,
+        "actionType": action_type,
+        "text": text,
+        "locators": locators,
+        "settleMs": settle_ms,
+    });
+    let cfg_json = serde_json::to_string(&cfg).unwrap_or_else(|_| "{}".to_string());
+    w.eval(&format!("window.__demoSessionRun && window.__demoSessionRun({cfg_json});"))
+        .map_err(|e| format!("kunne ikke kjøre steg i økt-vinduet: {e}"))
+}
+
+/// Arm ett-skudds verifisering i økt-vinduet: brukeren klikker elementet,
+/// selector+label kommer via demo_session_report(kind="verify").
+#[tauri::command]
+pub async fn demo_session_verify(app: AppHandle, expected_label: Option<String>) -> Result<(), String> {
+    let w = session_window(&app)?;
+    let label_json = serde_json::to_string(&expected_label.unwrap_or_default()).unwrap_or_else(|_| "\"\"".to_string());
+    w.eval(&format!("window.__demoSessionVerify && window.__demoSessionVerify({label_json});"))
+        .map_err(|e| format!("kunne ikke arme verify i økt-vinduet: {e}"))
+}
+
+/// Ta skjermbilde av øktens NÅVÆRENDE tilstand (etter handlinger — i motsetning
+/// til demo_screenshot som laster siden på nytt og dermed viser urørt tilstand).
+#[tauri::command]
+pub async fn demo_session_shot(app: AppHandle) -> Result<(), String> {
+    let w = session_window(&app)?;
+    w.eval("window.__demoSessionShot && window.__demoSessionShot();")
+        .map_err(|e| format!("kunne ikke ta økt-skjermbilde: {e}"))
+}
+
+/// Lukk økt-vinduet (om det finnes).
+#[tauri::command]
+pub async fn demo_session_close(app: AppHandle) -> Result<(), String> {
+    if let Some(w) = app.get_webview_window(SESSION_LABEL) {
+        let _ = w.close();
+    }
+    Ok(())
+}
+
+/// Mottar resultater fra økt-vinduet og videresender til hovedvinduet UTEN å
+/// lukke økten. Gjenbruker de eksisterende event-navnene for auto/verify/shot
+/// så frontend-lytterne er felles med engangs-vinduene.
+#[tauri::command]
+pub fn demo_session_report(app: AppHandle, kind: String, result: serde_json::Value) -> Result<(), String> {
+    let event = match kind.as_str() {
+        "auto" => "demo-capture://auto",
+        "verify" => "demo-capture://verify",
+        "shot" => "demo-capture://shot",
+        "nav" => "demo-capture://session-nav",
+        other => return Err(format!("ukjent session-report-kind «{other}»")),
+    };
+    app.emit(event, result).map_err(|e| e.to_string())
 }
 
 /// Hent EKTE side-kontekst via reqwest (ingen CORS). Trekker ut tittel +
