@@ -826,7 +826,7 @@ import { registerLeadgridSalesTeamsRoutes } from "./leadgrid-sales-teams-routes"
 import { registerLeadgridProposalsRoutes } from "./leadgrid-proposals-routes";
 import { registerRoutesAdherenceRoutes } from "./routes-adherence-routes";
 import { registerLeadgridKartverketRoutes } from "./leadgrid-kartverket-routes";
-import { registerPondusRoutes } from "./pondus-routes";
+import { registerPondusRoutes, registerPondusUsageRoutes } from "./pondus-routes";
 import { setupExternalDataRoutes } from "./external-data-routes";
 import { setupInspirationsRoutes } from "./inspirations-routes";
 import { setupCmsRoutes } from "./cms-routes";
@@ -65575,6 +65575,9 @@ registerLeadgridKartverketRoutes({ app, requireUserSession });
 // SuperAdmin publiserer maler, alle innloggede leser publiserte).
 // Forutsetter mig 0355.
 registerPondusRoutes({ app, pool, requireUserSession });
+// Pondus usage-tracking (mig 0364) — «Bruk mal»-logging + aggregerte
+// stats som gir Leadbook-KPI-ene ekte tall.
+registerPondusUsageRoutes({ app, pool, requireUserSession });
 
 // /api/external-data/* — 7 unike endpoints (2 SSB-indikatorer +
 // 5 Kartverket-proxies). Selvstendig modul. 2 SSB-dups slettet i samme
