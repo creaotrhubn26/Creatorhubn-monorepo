@@ -105,6 +105,8 @@ final class AppState {
     /// så Leads-fanen kan vise skeleton i stedet for å blinke tom-tilstand
     /// ved app-start.
     var leadsLoadState: ProjectsLoadState = .idle
+    /// Load-state for kalender (Møter-fanen) — samme mønster.
+    var calendarLoadState: ProjectsLoadState = .idle
     /// Lead-id-er som er kommet inn via real-time WebSocket-event
     /// (typisk `lead.created` fra batch-research). Pin-viewen sjekker
     /// dette settet og pulserer i 3 sek før vi tar id-en ut igjen.
@@ -713,6 +715,7 @@ final class AppState {
             projectsLoadState = .loading
         }
         if case .loaded = leadsLoadState {} else { leadsLoadState = .loading }
+        if case .loaded = calendarLoadState {} else { calendarLoadState = .loading }
         let proj = activeProjectId
         async let leadsTask = api.fetchLeads(projectId: proj)
         async let competitorsTask = api.fetchCompetitors(projectId: proj)
@@ -807,6 +810,7 @@ final class AppState {
 
             self.leads = newLeads
             self.leadsLoadState = .loaded
+            self.calendarLoadState = .loaded
             self.competitors = newComps
             if let m = newMetricsOpt { self.metrics = m }
             self.calendar = newCal
@@ -919,6 +923,7 @@ final class AppState {
         }
         if let cached: (value: [CalendarEvent], age: TimeInterval) = await OfflineCache.shared.load([CalendarEvent].self, named: "calendar") {
             self.calendar = cached.value
+            self.calendarLoadState = .loaded
         }
         if let cached: (value: RemindersResponse, age: TimeInterval) = await OfflineCache.shared.load(RemindersResponse.self, named: "reminders") {
             self.reminders = cached.value
