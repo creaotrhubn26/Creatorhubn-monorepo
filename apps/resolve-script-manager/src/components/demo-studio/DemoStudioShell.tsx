@@ -48,7 +48,7 @@ import {
   totalDuration, hasRecordedWork, defaultRenderOptions, captureStepsToScenes,
   sceneActionMatch, expectedActionText, validateScene, learnCtas, CTA_LABELS,
   recordLearnedTarget, learnedTargetCount, listLearnedTargetsForHost, removeLearnedTarget, syncLearnedTargetsFromBackend,
-  clearLearnedTargets, detectLearnedDrift, pickShot, type LearnedTarget,
+  clearLearnedTargets, detectLearnedDrift, pickShot, listStoredProjects, deleteStoredProject, type LearnedTarget,
   type DemoScene, type DemoDevice, type DemoType, type DemoActionType, type DemoRenderOptions, type ResponsiveReport, type ResponsiveFix, type DirectorCritique, type DomScanResult,
 } from './demoStudioModel';
 import { demoScenesToPicks, demoChapters } from './demoStudioStoryAdapter';
@@ -2054,15 +2054,19 @@ function SceneThumb({ scene, url, height = 80 }: { scene: DemoScene; url: string
   );
 }
 
-/** Create Demo — start/oversikt: gjeldende demo + skjema for å starte en ny. */
+/** Create Demo — start/oversikt: gjeldende demo + tidligere demoer + skjema for ny. */
 function CreateDemoView({ onCreated }: { onCreated?: () => void }) {
-  const { project, createProject } = useDemoStudio();
+  const { project, createProject, openProject } = useDemoStudio();
   const [urlInput, setUrlInput] = useState('');
   const [demoType, setDemoType] = useState<DemoType>('product_demo');
+  // G15: alle lagrede prosjekter er nå tilgjengelige — før fantes bare
+  // `last`-pekeren, så «Lag ny video» gjorde forrige demo utilgjengelig.
+  const [, bumpList] = useState(0);
+  const stored = listStoredProjects().filter((m) => m.id !== project?.id);
   const normalizedUrl = normalizeUrl(urlInput);
   const valid = /^https?:\/\/\S+\.\S+/i.test(normalizedUrl);
   const start = () => {
-    if (project && !window.confirm('Erstatte gjeldende demo med en ny? (Du kan eksportere først.)')) return;
+    if (project && !window.confirm('Starte en ny demo? Den nåværende blir liggende under «Tidligere demoer».')) return;
     createProject(normalizedUrl, demoType);
     onCreated?.(); // gå rett til Flow Builder for å redigere den nye demoen
   };
@@ -2074,6 +2078,24 @@ function CreateDemoView({ onCreated }: { onCreated?: () => void }) {
             <div style={{ fontSize: 11, color: C.inkFaint, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Nåværende demo</div>
             <div style={{ fontSize: 18, fontWeight: 700 }}>{project.name}</div>
             <div style={{ fontSize: 12.5, color: C.inkSoft, marginTop: 4 }}>{project.url} · {DEMO_TYPE_LABELS[project.demoType]} · {project.scenes.length} scener · {fmt(totalDuration(project.scenes))}</div>
+          </div>
+        )}
+        {stored.length > 0 && (
+          <div style={{ border: `1px solid ${C.line}`, borderRadius: 12, padding: 18, background: '#fff', marginBottom: 26 }}>
+            <div style={{ fontSize: 11, color: C.inkFaint, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>Tidligere demoer</div>
+            {stored.map((m) => (
+              <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderTop: `1px solid ${C.line}` }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.name}</div>
+                  <div style={{ fontSize: 11.5, color: C.inkSoft, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {m.url}{m.sceneCount ? ` · ${m.sceneCount} scener` : ''}{m.updatedAt ? ` · ${new Date(m.updatedAt).toLocaleDateString('nb-NO')}` : ''}
+                  </div>
+                </div>
+                <button style={{ ...outlineBtn, padding: '6px 12px', fontSize: 12 }} onClick={() => { if (openProject(m.id)) onCreated?.(); }}>Åpne</button>
+                <button style={{ ...outlineBtn, padding: '6px 10px', fontSize: 12, color: '#c4453b', borderColor: '#e6c5c2' }} title="Slett denne demoen permanent"
+                  onClick={() => { if (window.confirm(`Slette «${m.name}» permanent?`)) { deleteStoredProject(m.id); bumpList((n) => n + 1); } }}>✕</button>
+              </div>
+            ))}
           </div>
         )}
         <h2 style={{ fontSize: 22, fontWeight: 700, margin: '0 0 4px' }}>{project ? 'Start en ny video' : 'Hva vil du lage?'}</h2>

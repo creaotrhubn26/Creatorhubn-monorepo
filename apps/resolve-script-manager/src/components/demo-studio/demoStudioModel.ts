@@ -1299,6 +1299,51 @@ export function loadLastProject(): DemoProject | null {
   }
 }
 
+/** Kompakt oversikt over et lagret prosjekt (til «Tidligere demoer»-lista). */
+export interface StoredProjectMeta {
+  id: string;
+  name: string;
+  url: string;
+  updatedAt: string;
+  sceneCount: number;
+}
+
+/**
+ * List alle lagrede prosjekter (nyeste først). Før fantes bare `last`-pekeren —
+ * «Lag ny video» gjorde forrige prosjekt utilgjengelig for alltid (G15).
+ */
+export function listStoredProjects(): StoredProjectMeta[] {
+  const out: StoredProjectMeta[] = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k || !k.startsWith(LS_PREFIX)) continue;
+      // Kun prosjekt-poster (id fra makeId('demo')) — ikke 'last'/quickCmds osv.
+      if (!k.slice(LS_PREFIX.length).startsWith('demo')) continue;
+      try {
+        const p = JSON.parse(localStorage.getItem(k) || '') as DemoProject;
+        if (p && p.id && Array.isArray(p.scenes)) {
+          out.push({ id: p.id, name: p.name || 'Untitled Demo', url: p.url || '', updatedAt: p.updatedAt || '', sceneCount: p.scenes.length });
+        }
+      } catch { /* korrupt post — hopp over, ikke velt lista */ }
+    }
+  } catch { /* localStorage utilgjengelig */ }
+  return out.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+/** Slett et lagret prosjekt (og last-pekeren hvis den pekte hit). */
+export function deleteStoredProject(id: string): void {
+  try {
+    localStorage.removeItem(LS_PREFIX + id);
+    if (localStorage.getItem(LS_PREFIX + 'last') === id) localStorage.removeItem(LS_PREFIX + 'last');
+  } catch { /* */ }
+}
+
+/** Pek `last` på et prosjekt uten å røre innholdet (åpning ≠ redigering). */
+export function setLastProjectPointer(id: string): void {
+  try { localStorage.setItem(LS_PREFIX + 'last', id); } catch { /* */ }
+}
+
 export function totalDuration(scenes: DemoScene[]): number {
   return scenes.reduce((s, sc) => s + (sc.duration || 0), 0);
 }

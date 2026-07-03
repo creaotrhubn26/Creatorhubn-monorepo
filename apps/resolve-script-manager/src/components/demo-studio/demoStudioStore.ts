@@ -23,6 +23,8 @@ import {
   makeScene,
   saveProject,
   loadLastProject,
+  loadProject,
+  setLastProjectPointer,
   viewportForDevice,
   flowForDemoType,
   defaultRenderOptions,
@@ -43,6 +45,8 @@ interface DemoStudioState {
   // ── Prosjekt ──
   createProject: (url: string, demoType?: DemoType) => void;
   loadExisting: () => boolean;
+  /** Åpne et tidligere lagret prosjekt (fra «Tidligere demoer»-lista). */
+  openProject: (id: string) => boolean;
   setProjectField: <K extends keyof DemoProject>(key: K, value: DemoProject[K]) => void;
   /**
    * Sett demo-type. reseed=true erstatter scene-flow + tone/lengde/format med
@@ -148,6 +152,23 @@ export const useDemoStudio = create<DemoStudioState>((set, get) => {
       return true;
     }
     return false;
+  },
+
+  openProject: (id) => {
+    const project = loadProject(id);
+    if (!project) return false;
+    // Åpning skal ikke bumpe updatedAt (åpning ≠ redigering) — pek bare `last`.
+    setLastProjectPointer(project.id);
+    set({
+      project,
+      selectedSceneId: project.scenes[0]?.id ?? null,
+      recorderStepIndex: 0,
+      selectedSceneIds: [],
+      _undo: [],
+      _redo: [],
+      saveStatus: 'saved',
+    });
+    return true;
   },
 
   setProjectField: (key, value) => {
