@@ -101,4 +101,96 @@ export function registerRoleRoomDemoAssetsRoutes(app: Express, deps: Deps): void
       res.status(500).json({ error: "slett_feil", detail: (e as Error).message });
     }
   });
+
+  // ── Sky-prosjekter (G16): selve DemoProject-et (scener/manus/hotspots) i
+  // skyen, ikke bare artefakter — prosjektet overlever maskinen og kan åpnes
+  // fra en annen enhet. Upsert-semantikk (prosjekter redigeres over tid),
+  // eier-scopet via komposit PK (id, created_by) så ingen kan skygge andres id.
+  let projReady = false;
+  void pool
+    .query(
+      `CREATE TABLE IF NOT EXISTS demo_studio_projects (
+         id          TEXT NOT NULL,
+         created_by  TEXT NOT NULL,
+         name        TEXT NOT NULL,
+         url         TEXT,
+         scene_count INTEGER NOT NULL DEFAULT 0,
+         payload     JSONB NOT NULL,
+         updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+         PRIMARY KEY (id, created_by)
+       )`,
+    )
+    .then(() => { projReady = true; })
+    .catch((e: Error) => console.warn("[demo-projects] tabell-feil:", e.message));
+
+  const MAX_PROJECT = 1_500_000; // ~1,5 MB — klienten stripper base64-bilder før push
+
+  app.get("/api/role-room/demo-projects", async (req: Request, res: Response) => {
+    const uid = getUserId(req, activeSessions);
+    if (!uid) { res.status(401).json({ error: "krever_innlogging" }); return; }
+    if (!projReady) { res.json({ projects: [] }); return; }
+    try {
+      const { rows } = await pool.query(
+        `SELECT id, name, url, scene_count, updated_at
+           FROM demo_studio_projects
+          WHERE created_by = $1
+          ORDER BY updated_at DESC LIMIT 100`,
+        [uid],
+      );
+      res.json({ projects: rows.map((r) => ({ id: r.id, name: r.name, url: r.url ?? "", sceneCount: r.scene_count, updatedAt: r.updated_at })) });
+    } catch (e) {
+      res.status(500).json({ error: "list_feil", detail: (e as Error).message });
+    }
+  });
+
+  app.get("/api/role-room/demo-projects/:id", async (req: Request, res: Response) => {
+    const uid = getUserId(req, activeSessions);
+    if (!uid) { res.status(401).json({ error: "krever_innlogging" }); return; }
+    if (!projReady) { res.status(503).json({ error: "ikke_klar" }); return; }
+    try {
+      const { rows } = await pool.query(
+        `SELECT payload FROM demo_studio_projects WHERE id = $1 AND created_by = $2`,
+        [String(req.params.id), uid],
+      );
+      if (!rows.length) { res.status(404).json({ error: "finnes_ikke" }); return; }
+      res.json({ project: rows[0].payload });
+    } catch (e) {
+      res.status(500).json({ error: "hent_feil", detail: (e as Error).message });
+    }
+  });
+
+  app.put("/api/role-room/demo-projects/:id", express.json({ limit: "3mb" }), async (req: Request, res: Response) => {
+    const uid = getUserId(req, activeSessions);
+    if (!uid) { res.status(401).json({ error: "krever_innlogging" }); return; }
+    if (!projReady) { res.status(503).json({ error: "ikke_klar" }); return; }
+    const project = req.body?.project;
+    const id = String(req.params.id);
+    if (!project || typeof project !== "object" || project.id !== id) { res.status(400).json({ error: "ugyldig_prosjekt" }); return; }
+    const raw = JSON.stringify(project);
+    if (raw.length > MAX_PROJECT) { res.status(413).json({ error: "for_stor" }); return; }
+    try {
+      await pool.query(
+        `INSERT INTO demo_studio_projects (id, created_by, name, url, scene_count, payload, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, now())
+         ON CONFLICT (id, created_by)
+         DO UPDATE SET name = $3, url = $4, scene_count = $5, payload = $6, updated_at = now()`,
+        [id, uid, String(project.name ?? "Untitled Demo").slice(0, 200), String(project.url ?? "").slice(0, 500) || null,
+          Array.isArray(project.scenes) ? project.scenes.length : 0, raw],
+      );
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(500).json({ error: "lagre_feil", detail: (e as Error).message });
+    }
+  });
+
+  app.delete("/api/role-room/demo-projects/:id", async (req: Request, res: Response) => {
+    const uid = getUserId(req, activeSessions);
+    if (!uid) { res.status(401).json({ error: "krever_innlogging" }); return; }
+    try {
+      await pool.query(`DELETE FROM demo_studio_projects WHERE id = $1 AND created_by = $2`, [String(req.params.id), uid]);
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(500).json({ error: "slett_feil", detail: (e as Error).message });
+    }
+  });
 }

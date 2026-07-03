@@ -8,7 +8,7 @@
  */
 
 import {
-  ACTION_META, DEMO_TYPE_LABELS, DEVICE_LABELS, totalDuration,
+  ACTION_META, DEMO_TYPE_LABELS, DEVICE_LABELS, totalDuration, pickShot,
   BRAIN_KIND_LABELS, VERIFICATION_META, FRAMEWORKS, MARKETING_OBJECTIVES,
   type DemoProject, type DemoScene, type ProductBrain, type BrainNodeKind,
   type TargetLocator,
@@ -503,8 +503,11 @@ ${gaps}
  * ved siden av video — «Interactive Content» i flyten. Embedder scenene som
  * JSON + inline CSS/JS, så fila kan deles og åpnes i hvilken som helst nettleser.
  *
- * Hvert steg viser sidens skjermbilde (thumbnailDataUrl) hvis det finnes, ellers
- * en live <iframe> av URL-en. Hotspot + bobletekst plasseres i viewport-prosent.
+ * Hvert steg viser sidens skjermbilde: scenens thumbnailDataUrl hvis den finnes,
+ * ellers scan-shotet for scenens scroll-posisjon (G14: forankrer hotspots til et
+ * statisk bilde ved RIKTIG scroll — de driver ikke, og frame-blokkerte sider gir
+ * ikke svart boks). Live <iframe> er kun siste utvei, ærlig merket i guiden.
+ * Hotspot + bobletekst plasseres i viewport-prosent.
  */
 export function buildInteractiveGuideHtml(project: DemoProject): string {
   const steps = project.scenes.map((s) => ({
@@ -515,7 +518,7 @@ export function buildInteractiveGuideHtml(project: DemoProject): string {
     action: s.targetLabel ? `${ACTION_META[s.actionType ?? 'click'].verb} ${s.targetLabel}` : (s.requiredAction || ''),
     overlay: s.overlayText || '',
     hotspot: s.hotspot || null,
-    thumb: s.thumbnailDataUrl || null,
+    thumb: s.thumbnailDataUrl || pickShot(project.scanShots, (s.startScrollPct ?? 0) / 100) || null,
     startScrollPct: s.startScrollPct ?? 0,
   }));
   const b = project.branding || {};
@@ -538,6 +541,7 @@ export function buildInteractiveGuideHtml(project: DemoProject): string {
   .stage { display:flex; align-items:center; justify-content:center; padding:24px; min-height:60vh; }
   .screen { position:relative; background:#000; border-radius:14px; overflow:hidden; box-shadow:0 18px 50px rgba(0,0,0,.22); }
   .screen iframe, .screen img { position:absolute; inset:0; width:100%; height:100%; border:0; object-fit:cover; object-position:top; }
+  .livenote { position:absolute; left:0; right:0; bottom:0; background:rgba(29,27,25,.85); color:#fff; font-size:11px; padding:5px 10px; text-align:center; }
   .hot { position:absolute; border:2px solid var(--accent); border-radius:10px; box-shadow:0 0 0 9999px rgba(0,0,0,.30); cursor:pointer; animation:pulse 1.6s infinite; }
   @keyframes pulse { 0%,100%{ box-shadow:0 0 0 9999px rgba(0,0,0,.30), 0 0 0 0 rgba(239,138,93,.5);} 50%{ box-shadow:0 0 0 9999px rgba(0,0,0,.30), 0 0 0 10px rgba(239,138,93,0);} }
   .tip { position:absolute; max-width:260px; background:#fff; color:var(--ink); border-radius:10px; padding:11px 13px; box-shadow:0 8px 24px rgba(0,0,0,.25); font-size:13px; z-index:5; }
@@ -574,9 +578,12 @@ export function buildInteractiveGuideHtml(project: DemoProject): string {
     var s = steps[i]; if(!s){ return; }
     var d = dims(s.device);
     screen.style.width = d.w + 'px'; screen.style.height = d.h + 'px';
+    // Statisk bilde forankrer hotspots (viewport-%) eksakt; live iframe er
+    // siste utvei og merkes ærlig (mange sider blokkerer innbygging → blank).
     var media = s.thumb
-      ? '<img src="' + s.thumb + '" alt="">'
-      : '<iframe src="' + s.url + '" scrolling="no" referrerpolicy="no-referrer"></iframe>';
+      ? '<img src="' + s.thumb + '" alt="" id="stepImg">'
+      : '<iframe src="' + s.url + '" scrolling="no" referrerpolicy="no-referrer"></iframe>'
+        + '<div class="livenote">Live forhåndsvisning — kan være blokkert av nettstedet</div>';
     var hot = '', tip = '';
     if (s.hotspot){
       var h = s.hotspot;
@@ -585,6 +592,14 @@ export function buildInteractiveGuideHtml(project: DemoProject): string {
       tip = '<div class="tip" style="left:'+tx+'%;top:'+ty+'%">' + (s.action ? '<b>'+escapeHtml(s.action)+'</b>' : '') + escapeHtml(s.narration || s.overlay || '') + '</div>';
     }
     screen.innerHTML = media + hot + tip;
+    var img = document.getElementById('stepImg');
+    if (img) img.onload = function(){
+      // Desktop: match skjerm-høyden til bildets forhold så hotspot-prosentene
+      // treffer eksakt (object-fit:cover ville ellers beskåret og forskjøvet).
+      if ((s.device || 'macbook') === 'macbook' && img.naturalWidth > 0) {
+        screen.style.height = Math.round(d.w * img.naturalHeight / img.naturalWidth) + 'px';
+      }
+    };
     var hotEl = document.getElementById('hot'); if (hotEl) hotEl.onclick = next;
     document.getElementById('stepLabel').textContent = 'Steg ' + (i+1) + ' av ' + steps.length + ' — ' + (s.title || '');
     document.getElementById('cap').textContent = s.narration || s.overlay || '';

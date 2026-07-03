@@ -24,7 +24,7 @@ import { SceneInteractionOverlay } from './SceneInteractionOverlay';
 import {
   SCENE_STATUS_LABELS, SCENE_STATUS_COLORS, SCRIPT_TONE_LABELS, SCRIPT_LENGTH_LABELS,
   ACTION_MATCH_LABELS, ACTION_MATCH_COLORS,
-  sceneActionMatch, expectedActionText, defaultRenderOptions, readabilityScore,
+  sceneActionMatch, expectedActionText, defaultRenderOptions, readabilityScore, pickShot,
   type DemoDevice, type DemoActionType, type ScriptTone, type ScriptLength, type DemoScene, type DemoRenderOptions,
 } from './demoStudioModel';
 
@@ -91,12 +91,18 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
     return () => window.removeEventListener('trrpa:auth-changed', onAuth);
   }, [aiReady]);
 
+  // G20: bilde for SCENEN, ikke alltid forsidens topp — scan-shotet for
+  // scenens scroll-posisjon når det finnes (captureScreenshot laster siden på
+  // nytt og viser alltid toppen, så scene 5 på 60 % scroll fikk feil bilde).
+  const sceneShot = (): string | null =>
+    pickShot(project?.scanShots, (selected?.startScrollPct ?? 0) / 100);
+
   const onGenerate = async () => {
     if (!project || !selected) return;
     if (!aiReady) { setShowSignIn(true); return; }
     setAiError(null); setAiBusy('generate');
     try {
-      const g = await generateSceneScript({ url: project.url, demoType: project.demoType, scene: selected, meta, screenshot: selected.thumbnailDataUrl });
+      const g = await generateSceneScript({ url: project.url, demoType: project.demoType, scene: selected, meta, screenshot: selected.thumbnailDataUrl || sceneShot() || undefined });
       updateScene(selected.id, {
         narration: g.narration, visualInstruction: g.visualInstruction,
         requiredAction: g.requiredAction, overlayText: g.overlayText, status: 'in_progress',
@@ -106,12 +112,11 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
 
   const onShot = async () => {
     if (!project || !selected) return;
-    if (!isCaptureAvailable()) { setAiError('Skjermbilde krever Tauri-appen.'); return; }
     setAiError(null); setAiBusy('shot');
     try {
-      const d = await captureScreenshot(project.url);
+      const d = sceneShot() || (isCaptureAvailable() ? await captureScreenshot(project.url) : null);
       if (d) updateScene(selected.id, { thumbnailDataUrl: d });
-      else setAiError('Klarte ikke ta skjermbilde');
+      else setAiError(isCaptureAvailable() ? 'Klarte ikke ta skjermbilde' : 'Skjermbilde krever Tauri-appen (eller kjør «Analyser side» først).');
     } finally { setAiBusy(null); }
   };
 
@@ -120,7 +125,7 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
     if (!aiReady) { setShowSignIn(true); return; }
     setAiError(null); setAiBusy('annotate');
     try {
-      let shot = selected.thumbnailDataUrl;
+      let shot = selected.thumbnailDataUrl || sceneShot();
       if (!shot && isCaptureAvailable()) { const d = await captureScreenshot(project.url); if (d) { updateScene(selected.id, { thumbnailDataUrl: d }); shot = d; } }
       if (!shot) { setAiError('Ta skjermbilde først (vision trenger et bilde)'); return; }
       const a = await annotateFrame({ url: project.url, scene: selected, screenshot: shot });
@@ -328,14 +333,6 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
                 <textarea style={{ ...ta, minHeight: 48, flex: 1 }} value={selected.notes ?? ''} placeholder="Pause for ~2 seconds after highlighting the alerts…"
                   onChange={(e) => updateScene(selected.id, { notes: e.target.value })} />
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <div><Lab>Continue mode</Lab>
-                    <select style={{ ...miniSel, minWidth: 100, display: 'block', marginTop: 4 }} value={selected.continueMode ?? 'manual'}
-                      onChange={(e) => updateScene(selected.id, { continueMode: e.target.value as 'manual' | 'assisted' | 'auto' })}>
-                      <option value="manual">Manual</option>
-                      <option value="assisted">Assisted</option>
-                      <option value="auto">Auto</option>
-                    </select>
-                  </div>
                   <div><Lab>Pause</Lab>
                     <select style={{ ...miniSel, minWidth: 100, display: 'block', marginTop: 4 }} value={selected.pauseSec ?? 2}
                       onChange={(e) => updateScene(selected.id, { pauseSec: Number(e.target.value) })}>
