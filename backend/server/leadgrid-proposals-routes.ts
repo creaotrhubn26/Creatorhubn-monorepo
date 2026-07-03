@@ -109,34 +109,126 @@ function mapProposalRow(row: Record<string, unknown>): Record<string, unknown> {
   };
 }
 
-/** Branded e-post-HTML med «Se tilbudet»-knapp. Ingen emoji (designregel). */
+/**
+ * Branded e-post-HTML (redesign 2026-07-03) — samme visuelle språk som
+ * PDF-en: accent-topplinje, chip, linje-tabell m/ mva-oppstilling og
+ * stor CTA. Ingen emoji (designregel). Inline-styles for e-post-klienter.
+ */
 function proposalEmailHtml(opts: {
   leadName: string;
   title: string;
   message: string;
+  lines: ProposalLine[];
   totalNok: number;
   senderName: string;
+  orgName: string;
+  accent: string;
   url: string;
+  validUntil: string | null;
 }): string {
   const esc = (s: string) =>
     s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const accent = /^#[0-9a-fA-F]{6}$/.test(opts.accent) ? opts.accent : "#7c3aed";
+  const zebra = tint(accent, 0.94);
+  const vat = Math.round(opts.totalNok * 0.25);
   const msgHtml = esc(opts.message).replace(/\n/g, "<br>");
-  return `<div style="font-family:-apple-system,'Segoe UI',Roboto,sans-serif;max-width:560px;margin:0 auto;color:#111">
-  <h2 style="font-size:20px;margin:24px 0 4px">${esc(opts.title)}</h2>
-  <p style="color:#555;margin:0 0 16px">Tilbud til ${esc(opts.leadName)}</p>
-  ${msgHtml ? `<p style="font-size:15px;line-height:1.6">${msgHtml}</p>` : ""}
-  <p style="font-size:15px;margin:18px 0 6px">Totalsum: <strong>${fmtNok(opts.totalNok)} kr</strong> eks. mva.</p>
-  <p style="margin:26px 0">
-    <a href="${opts.url}" style="background:#7c3aed;color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:600;display:inline-block">Se tilbudet (PDF)</a>
-  </p>
-  <p style="font-size:13px;color:#777">Vennlig hilsen<br>${esc(opts.senderName)}</p>
+
+  const lineRows = opts.lines
+    .map(
+      (l, i) => `<tr style="background:${i % 2 === 0 ? zebra : "#ffffff"}">
+      <td style="padding:11px 14px;font-size:14px;color:#151221">${esc(l.description)}</td>
+      <td style="padding:11px 14px;font-size:14px;color:#151221;font-weight:600;text-align:right;white-space:nowrap">${fmtNok(l.amount_nok)} kr</td>
+    </tr>`,
+    )
+    .join("");
+
+  return `<div style="background:#f4f3f8;padding:28px 12px">
+  <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:14px;overflow:hidden;font-family:-apple-system,'Segoe UI',Roboto,sans-serif">
+    <div style="height:7px;background:${accent}"></div>
+    <div style="padding:28px 32px 32px">
+      <div style="font-size:17px;font-weight:800;color:#151221">${esc(opts.orgName)}</div>
+      <div style="display:inline-block;background:${accent};color:#ffffff;font-size:10px;font-weight:700;letter-spacing:0.6px;border-radius:10px;padding:4px 12px;margin-top:8px">TILBUD</div>
+
+      <h1 style="font-size:22px;color:#151221;margin:22px 0 4px">${esc(opts.title)}</h1>
+      <p style="color:#6b6580;font-size:13px;margin:0 0 18px">Utarbeidet for ${esc(opts.leadName)}</p>
+
+      ${msgHtml ? `<p style="font-size:14px;line-height:1.65;color:#3c374d;margin:0 0 22px">${msgHtml}</p>` : ""}
+
+      <table style="width:100%;border-collapse:collapse;border-top:2px solid ${accent}">
+        ${lineRows}
+      </table>
+
+      <table style="width:100%;border-collapse:collapse;margin-top:14px">
+        <tr>
+          <td style="font-size:13px;color:#6b6580;padding:3px 14px">Sum eks. mva.</td>
+          <td style="font-size:13px;color:#151221;text-align:right;padding:3px 14px">${fmtNok(opts.totalNok)} kr</td>
+        </tr>
+        <tr>
+          <td style="font-size:13px;color:#6b6580;padding:3px 14px">Mva. 25 %</td>
+          <td style="font-size:13px;color:#151221;text-align:right;padding:3px 14px">${fmtNok(vat)} kr</td>
+        </tr>
+      </table>
+      <div style="background:${accent};border-radius:10px;padding:12px 16px;margin-top:10px">
+        <table style="width:100%;border-collapse:collapse">
+          <tr>
+            <td style="color:#ffffff;font-size:11px;letter-spacing:0.5px">TOTALT INKL. MVA.</td>
+            <td style="color:#ffffff;font-size:18px;font-weight:800;text-align:right">${fmtNok(opts.totalNok + vat)} kr</td>
+          </tr>
+        </table>
+      </div>
+
+      <div style="text-align:center;margin:28px 0 6px">
+        <a href="${opts.url}" style="background:${accent};color:#ffffff;text-decoration:none;padding:14px 34px;border-radius:10px;font-weight:700;font-size:15px;display:inline-block">Se hele tilbudet (PDF)</a>
+      </div>
+      ${opts.validUntil ? `<p style="text-align:center;color:#a29cb5;font-size:12px;margin:10px 0 0">Tilbudet er gyldig til ${esc(new Date(opts.validUntil).toLocaleDateString("nb-NO", { day: "numeric", month: "long", year: "numeric" }))}</p>` : ""}
+
+      <hr style="border:none;border-top:1px solid #e2e0ea;margin:26px 0 16px">
+      <p style="font-size:13px;color:#6b6580;margin:0">Vennlig hilsen<br><strong style="color:#151221">${esc(opts.senderName)}</strong><br>${esc(opts.orgName)}</p>
+    </div>
+  </div>
+  <p style="text-align:center;color:#a29cb5;font-size:11px;margin:16px 0 0">Generert med Leadgrid</p>
 </div>`;
 }
 
-/** Branded tilbuds-PDF — samme PDFKit-stil som lead-eksporten. */
+function hexToRgb(hex: string): [number, number, number] {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex);
+  if (!m) return [124, 58, 237];
+  const v = parseInt(m[1], 16);
+  return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+}
+
+/** Lys tint av accent-fargen — for zebra-rader og bakgrunns-kort. */
+function tint(hex: string, factor: number): string {
+  const [r, g, b] = hexToRgb(hex);
+  const mix = (c: number) => Math.round(c + (255 - c) * factor);
+  return `#${[mix(r), mix(g), mix(b)].map((c) => c.toString(16).padStart(2, "0")).join("")}`;
+}
+
+/** Hent org-logo (best-effort, 3s timeout) for PDF-headeren. */
+async function fetchLogoBuffer(logoUrl: string | null): Promise<Buffer | null> {
+  if (!logoUrl || !/^https?:\/\//.test(logoUrl)) return null;
+  try {
+    const resp = await fetch(logoUrl, { signal: AbortSignal.timeout(3000) });
+    if (!resp.ok) return null;
+    const type = resp.headers.get("content-type") ?? "";
+    if (!/image\/(png|jpe?g)/.test(type)) return null;
+    const buf = Buffer.from(await resp.arrayBuffer());
+    return buf.length > 0 && buf.length < 2_000_000 ? buf : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Branded tilbuds-PDF (redesign 2026-07-03 — «tilbudene må ha mye bedre
+ * design»): accent-topplinje + chip, meta-blokk, hero-tittel,
+ * mottaker-kort, zebra-tabell, full mva-oppstilling m/ totalboks,
+ * gyldighets-notis og footer. Accent følger org-brandingen.
+ */
 function renderProposalPdf(
   res: Response,
   proposal: {
+    number: string;
     title: string;
     message: string;
     lines: ProposalLine[];
@@ -146,60 +238,163 @@ function renderProposalPdf(
   },
   leadName: string,
   branding: { name: string; primary_color: string; sender_name: string | null },
+  logoBuffer: Buffer | null,
 ): void {
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", `inline; filename="tilbud.pdf"`);
-  const doc = new PDFDocument({ size: "A4", margin: 50 });
+  const doc = new PDFDocument({ size: "A4", margin: 0 });
   doc.pipe(res);
 
   const accent = /^#[0-9a-fA-F]{6}$/.test(branding.primary_color)
     ? branding.primary_color
     : "#7c3aed";
+  const ink = "#151221";
+  const dim = "#6b6580";
+  const faint = "#a29cb5";
+  const zebra = tint(accent, 0.94);
+  const accentSoft = tint(accent, 0.88);
+  const W = doc.page.width;
+  const M = 56;
+  const CW = W - M * 2;
+  const longDate = (d: Date) =>
+    d.toLocaleDateString("nb-NO", { day: "numeric", month: "long", year: "numeric" });
 
-  // Header
-  doc.rect(0, 0, doc.page.width, 90).fill(accent);
-  doc.fillColor("#ffffff").fontSize(20).text(branding.name, 50, 30);
-  doc.fontSize(10).text("TILBUD", 50, 58);
+  // Topp-accentlinje
+  doc.rect(0, 0, W, 8).fill(accent);
 
-  // Tittel + mottaker
-  doc.fillColor("#111111").fontSize(18).text(proposal.title, 50, 120);
-  doc.fontSize(11).fillColor("#555555")
-    .text(`Til: ${leadName}`, 50, 148)
-    .text(`Dato: ${proposal.created_at.toLocaleDateString("nb-NO")}`, 50, 163);
-  if (proposal.valid_until) {
-    doc.text(`Gyldig til: ${new Date(proposal.valid_until).toLocaleDateString("nb-NO")}`, 50, 178);
+  // Header: org-navn (+ ev. logo) + TILBUD-chip venstre, meta høyre
+  let y = 44;
+  if (logoBuffer) {
+    try {
+      doc.image(logoBuffer, M, y - 4, { fit: [110, 36] });
+      doc.fillColor(ink).font("Helvetica-Bold").fontSize(19).text(branding.name, M + 122, y);
+    } catch {
+      doc.fillColor(ink).font("Helvetica-Bold").fontSize(19).text(branding.name, M, y);
+    }
+  } else {
+    doc.fillColor(ink).font("Helvetica-Bold").fontSize(19).text(branding.name, M, y);
   }
+  const chipY = y + 28;
+  doc.roundedRect(M, chipY, 68, 20, 10).fill(accent);
+  doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(9)
+    .text("TILBUD", M, chipY + 6, { width: 68, align: "center" });
+
+  const metaX = W - M - 190;
+  const meta: Array<[string, string]> = [
+    ["Tilbudsnr.", proposal.number],
+    ["Dato", longDate(proposal.created_at)],
+  ];
+  if (proposal.valid_until) {
+    meta.push(["Gyldig til", longDate(new Date(proposal.valid_until))]);
+  }
+  let my = y + 2;
+  for (const [label, value] of meta) {
+    doc.fillColor(faint).font("Helvetica").fontSize(8.5)
+      .text(label.toUpperCase(), metaX, my, { width: 80, characterSpacing: 0.4 });
+    doc.fillColor(ink).font("Helvetica-Bold").fontSize(9.5)
+      .text(value, metaX + 84, my - 1, { width: 106, align: "right" });
+    my += 17;
+  }
+
+  // Hero: tittel + mottaker-kort
+  y = 128;
+  doc.fillColor(ink).font("Helvetica-Bold").fontSize(24).text(proposal.title, M, y, { width: CW });
+  y = doc.y + 14;
+
+  doc.roundedRect(M, y, CW, 44, 8).fill(zebra);
+  doc.fillColor(faint).font("Helvetica").fontSize(8.5)
+    .text("UTARBEIDET FOR", M + 16, y + 9, { characterSpacing: 0.5 });
+  doc.fillColor(ink).font("Helvetica-Bold").fontSize(13).text(leadName, M + 16, y + 21);
+  if (branding.sender_name) {
+    doc.fillColor(faint).font("Helvetica").fontSize(8.5)
+      .text("KONTAKTPERSON", M + CW / 2, y + 9, { characterSpacing: 0.5 });
+    doc.fillColor(ink).font("Helvetica").fontSize(11)
+      .text(branding.sender_name, M + CW / 2, y + 22);
+  }
+  y += 62;
 
   // Melding
-  let y = 205;
   if (proposal.message) {
-    doc.fontSize(11).fillColor("#111111").text(proposal.message, 50, y, { width: 495 });
-    y = doc.y + 20;
+    doc.fillColor(dim).font("Helvetica").fontSize(10.5)
+      .text(proposal.message, M, y, { width: CW, lineGap: 3.5 });
+    y = doc.y + 24;
   }
 
-  // Linjer
-  doc.fontSize(10).fillColor("#888888").text("BESKRIVELSE", 50, y).text("BELØP", 430, y, { width: 115, align: "right" });
-  y += 16;
-  doc.moveTo(50, y).lineTo(545, y).strokeColor("#dddddd").stroke();
-  y += 8;
-  for (const line of proposal.lines) {
-    doc.fontSize(11).fillColor("#111111")
-      .text(line.description, 50, y, { width: 360 })
-      .text(`${fmtNok(line.amount_nok)} kr`, 430, y, { width: 115, align: "right" });
-    y = Math.max(doc.y, y + 14) + 6;
-    if (y > 720) { doc.addPage(); y = 60; }
+  // Tabell
+  const colNum = M;
+  const colDesc = M + 34;
+  const colAmt = W - M - 120;
+  doc.fillColor(faint).font("Helvetica-Bold").fontSize(8.5);
+  doc.text("#", colNum, y, { width: 26 });
+  doc.text("BESKRIVELSE", colDesc, y, { characterSpacing: 0.5 });
+  doc.text("BELØP EKS. MVA.", colAmt, y, { width: 120, align: "right", characterSpacing: 0.5 });
+  y += 15;
+  doc.moveTo(M, y).lineTo(W - M, y).lineWidth(1.2).strokeColor(accent).stroke();
+  y += 2;
+
+  proposal.lines.forEach((line, i) => {
+    const rowH = Math.max(
+      30,
+      doc.heightOfString(line.description, { width: colAmt - colDesc - 16, lineGap: 2 }) + 16,
+    );
+    if (y + rowH > 700) {
+      doc.addPage();
+      doc.rect(0, 0, W, 8).fill(accent);
+      y = 44;
+    }
+    if (i % 2 === 0) doc.rect(M, y, CW, rowH).fill(zebra);
+    doc.fillColor(faint).font("Helvetica").fontSize(9.5)
+      .text(String(i + 1).padStart(2, "0"), colNum + 6, y + 9);
+    doc.fillColor(ink).font("Helvetica").fontSize(10.5)
+      .text(line.description, colDesc, y + 8, { width: colAmt - colDesc - 16, lineGap: 2 });
+    doc.fillColor(ink).font("Helvetica-Bold").fontSize(10.5)
+      .text(`${fmtNok(line.amount_nok)} kr`, colAmt, y + 8, { width: 120, align: "right" });
+    y += rowH;
+  });
+  doc.moveTo(M, y).lineTo(W - M, y).lineWidth(0.7).strokeColor("#e2e0ea").stroke();
+  y += 14;
+
+  // Sum-oppstilling m/ mva
+  const sumW = 250;
+  const sumX = W - M - sumW;
+  const subtotal = proposal.total_amount_nok;
+  const vat = Math.round(subtotal * 0.25);
+  const totalIncl = subtotal + vat;
+
+  doc.fillColor(dim).font("Helvetica").fontSize(10).text("Sum eks. mva.", sumX, y, { width: sumW - 110 });
+  doc.fillColor(ink).font("Helvetica").fontSize(10)
+    .text(`${fmtNok(subtotal)} kr`, sumX + sumW - 110, y, { width: 110, align: "right" });
+  y += 18;
+  doc.fillColor(dim).font("Helvetica").fontSize(10).text("Mva. 25 %", sumX, y, { width: sumW - 110 });
+  doc.fillColor(ink).font("Helvetica").fontSize(10)
+    .text(`${fmtNok(vat)} kr`, sumX + sumW - 110, y, { width: 110, align: "right" });
+  y += 22;
+  doc.roundedRect(sumX, y, sumW, 38, 8).fill(accent);
+  doc.fillColor("#ffffff").font("Helvetica").fontSize(9)
+    .text("TOTALT INKL. MVA.", sumX + 14, y + 8, { characterSpacing: 0.5 });
+  doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(15)
+    .text(`${fmtNok(totalIncl)} kr`, sumX, y + 15, { width: sumW - 14, align: "right" });
+  y += 56;
+
+  // Gyldighets-notis
+  if (proposal.valid_until) {
+    doc.roundedRect(M, y, CW, 30, 6).fill(accentSoft);
+    doc.fillColor(ink).font("Helvetica").fontSize(9.5)
+      .text(
+        `Tilbudet er gyldig til ${longDate(new Date(proposal.valid_until))}. Priser er oppgitt eks. mva. der annet ikke er nevnt.`,
+        M + 14, y + 10, { width: CW - 28 },
+      );
   }
-  y += 6;
-  doc.moveTo(50, y).lineTo(545, y).strokeColor("#dddddd").stroke();
-  y += 10;
-  doc.fontSize(13).fillColor(accent)
-    .text("Totalsum eks. mva.", 50, y)
-    .text(`${fmtNok(proposal.total_amount_nok)} kr`, 400, y, { width: 145, align: "right" });
 
   // Footer
-  doc.fontSize(8).fillColor("#aaaaaa")
-    .text(`Generert via Leadgrid · ${branding.sender_name ?? branding.name}`,
-          50, 780, { align: "center", width: 495 });
+  const fy = doc.page.height - 64;
+  doc.moveTo(M, fy).lineTo(W - M, fy).lineWidth(0.7).strokeColor("#e2e0ea").stroke();
+  doc.fillColor(faint).font("Helvetica").fontSize(8)
+    .text(branding.sender_name ? `${branding.name} · ${branding.sender_name}` : branding.name,
+          M, fy + 10, { width: CW / 2 });
+  doc.fillColor(faint).font("Helvetica").fontSize(8)
+    .text("Generert med Leadgrid", M + CW / 2, fy + 10, { width: CW / 2, align: "right" });
+
   doc.end();
 }
 
@@ -250,14 +445,36 @@ export function registerLeadgridProposalsRoutes(deps: ProposalsRoutesDeps): void
       );
 
       // E-post m/ offentlig lenke (Resend → SMTP-fallback, logges).
+      // Org-branding (accent/navn) — best-effort, default Leadgrid-lilla.
+      let orgName = "Leadgrid";
+      let accent = "#7c3aed";
+      try {
+        const b = await pool.query<{ name: string; primary_color: string }>(
+          `SELECT o.name,
+                  COALESCE(eb.brand_primary_color, o.brand_color, '#7c3aed') AS primary_color
+             FROM organizations o
+             LEFT JOIN leadgrid_email_branding_config eb ON eb.org_key = o.id::text
+            WHERE o.id = $1::uuid`,
+          [orgId],
+        );
+        if (b.rows[0]) {
+          orgName = b.rows[0].name;
+          accent = b.rows[0].primary_color;
+        }
+      } catch {
+        // org er slug/user-id — behold default.
+      }
       const url = `${publicBackendBase()}/api/leadgrid/p/${token}`;
       const senderName = session.name || "Salgsteamet";
       const emailResult = await sendTransactionalEmail({
         to: toEmail,
         subject: `Tilbud: ${title}`,
-        html: proposalEmailHtml({ leadName: lead.name, title, message, totalNok: total, senderName, url }),
-        text: `${title}\n\nTilbud til ${lead.name}.\n\n${message}\n\nTotalsum: ${fmtNok(total)} kr eks. mva.\n\nSe tilbudet: ${url}\n\nVennlig hilsen\n${senderName}`,
-        fromLabel: "Leadgrid",
+        html: proposalEmailHtml({
+          leadName: lead.name, title, message, lines, totalNok: total,
+          senderName, orgName, accent, url, validUntil,
+        }),
+        text: `${title}\n\nTilbud til ${lead.name}.\n\n${message}\n\nSum eks. mva.: ${fmtNok(total)} kr\nMva. 25 %: ${fmtNok(Math.round(total * 0.25))} kr\nTotalt inkl. mva.: ${fmtNok(total + Math.round(total * 0.25))} kr\n\nSe tilbudet: ${url}\n\nVennlig hilsen\n${senderName}\n${orgName}`,
+        fromLabel: orgName,
         kind: "leadgrid_proposal",
         sentByUserId: session.userId,
         pool,
@@ -394,12 +611,20 @@ export function registerLeadgridProposalsRoutes(deps: ProposalsRoutesDeps): void
       }
 
       // Branding: prøv organizations-oppslag (uuid), fall til Leadgrid.
-      let branding = { name: "Leadgrid", primary_color: "#7c3aed", sender_name: null as string | null };
+      let branding = {
+        name: "Leadgrid",
+        primary_color: "#7c3aed",
+        sender_name: null as string | null,
+        logo_url: null as string | null,
+      };
       try {
-        const b = await pool.query<{ name: string; primary_color: string; sender_name: string | null }>(
+        const b = await pool.query<{
+          name: string; primary_color: string; sender_name: string | null; logo_url: string | null;
+        }>(
           `SELECT o.name,
                   COALESCE(eb.brand_primary_color, o.brand_color, '#7c3aed') AS primary_color,
-                  eb.sender_full_name AS sender_name
+                  eb.sender_full_name AS sender_name,
+                  o.logo_url
              FROM organizations o
              LEFT JOIN leadgrid_email_branding_config eb ON eb.org_key = o.id::text
             WHERE o.id = $1::uuid`,
@@ -409,10 +634,12 @@ export function registerLeadgridProposalsRoutes(deps: ProposalsRoutesDeps): void
       } catch {
         // org er slug/user-id — behold default-branding.
       }
+      const logoBuffer = await fetchLogoBuffer(branding.logo_url);
 
       return renderProposalPdf(
         res,
         {
+          number: `T-${String(row.id).slice(0, 8).toUpperCase()}`,
           title: String(row.title ?? ""),
           message: String(row.message ?? ""),
           lines: parseLines(row.lines),
@@ -422,6 +649,7 @@ export function registerLeadgridProposalsRoutes(deps: ProposalsRoutesDeps): void
         },
         String(row.lead_name ?? ""),
         branding,
+        logoBuffer,
       );
     } catch (err) {
       console.error("[proposals] public GET failed:", err);
