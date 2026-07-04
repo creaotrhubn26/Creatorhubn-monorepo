@@ -57,6 +57,7 @@ import { generateExecutiveSummary } from "./role-room-research-summary.js";
 import {
   captureFieldFeedback,
   loadApprovedNaceBusinessModelOverrides,
+  loadApprovedNaceChannelPriorityOverrides,
   listOverrideProposals,
   reviewOverrideProposal,
 } from "./role-room-agent-learning.js";
@@ -161,10 +162,14 @@ export function setupRoleRoomAgentCoreRoutes(
     }
 
     try {
-      // Lag 2a: load APPROVED learned NACE→businessModel overrides so
-      // producer-corrected classifications take effect. Best-effort — returns
-      // [] if the table is absent or DB hiccups, so the bootstrap never blocks.
-      const learnedNaceBusinessModelOverrides = await loadApprovedNaceBusinessModelOverrides(pool);
+      // Lag 2a: load APPROVED learned overrides so producer-corrected
+      // classifications (businessModel) and measured channel performance take
+      // effect. Best-effort — both return [] if the table is absent or DB
+      // hiccups, so the bootstrap never blocks.
+      const [learnedNaceBusinessModelOverrides, learnedChannelPriorityOverrides] = await Promise.all([
+        loadApprovedNaceBusinessModelOverrides(pool),
+        loadApprovedNaceChannelPriorityOverrides(pool),
+      ]);
       const result = await generateRoleRoomAgentProducerBootstrap(
         {
           projectId,
@@ -174,7 +179,7 @@ export function setupRoleRoomAgentCoreRoutes(
           companyName: readString(body.companyName) ?? undefined,
           extraContext: readString(body.extraContext) ?? undefined,
         },
-        { learnedNaceBusinessModelOverrides },
+        { learnedNaceBusinessModelOverrides, learnedChannelPriorityOverrides },
       );
 
       // Item #42 — generate executive summary in parallel with version

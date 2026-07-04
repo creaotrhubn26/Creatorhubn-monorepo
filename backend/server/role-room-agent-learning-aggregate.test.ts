@@ -102,3 +102,59 @@ describe('computeFieldAcceptanceRates', () => {
     expect(stats[1].acceptanceRate).toBe(100);
   });
 });
+
+import {
+  aggregateNaceChannelPriority,
+  decodeChannelPriority,
+  encodeChannelPriority,
+  type NaceChannelScore,
+} from './role-room-agent-learning-aggregate.js';
+
+function score(over: Partial<NaceChannelScore>): NaceChannelScore {
+  return { naceCode: '56.101', platform: 'instagram', score: 100, ...over };
+}
+
+describe('encode/decodeChannelPriority', () => {
+  it('round-trips an ordered platform list', () => {
+    expect(encodeChannelPriority(['tiktok', 'instagram', 'facebook'])).toBe('tiktok,instagram,facebook');
+    expect(decodeChannelPriority('tiktok, instagram , facebook')).toEqual(['tiktok', 'instagram', 'facebook']);
+    expect(decodeChannelPriority(null)).toEqual([]);
+    expect(decodeChannelPriority('')).toEqual([]);
+  });
+});
+
+describe('aggregateNaceChannelPriority', () => {
+  it('ranks platforms by measured score and proposes an ordering', () => {
+    const rows: NaceChannelScore[] = [
+      ...Array.from({ length: 4 }, () => score({ platform: 'tiktok', score: 300 })),
+      ...Array.from({ length: 4 }, () => score({ platform: 'instagram', score: 100 })),
+    ];
+    const [p] = aggregateNaceChannelPriority(rows);
+    expect(p.overrideType).toBe('nace_channel_priority');
+    expect(p.overrideKey).toBe('56.101');
+    expect(decodeChannelPriority(p.proposedValue)).toEqual(['tiktok', 'instagram']);
+    expect(p.sampleCount).toBe(8);
+    expect(p.agreementPct).toBe(75); // 1200 / 1600
+  });
+
+  it('suppresses below the sample threshold', () => {
+    const rows = [
+      score({ platform: 'tiktok' }),
+      score({ platform: 'instagram' }),
+    ];
+    expect(aggregateNaceChannelPriority(rows, { minSamples: 6, minPlatforms: 2 })).toHaveLength(0);
+  });
+
+  it('suppresses when only one platform has signal', () => {
+    const rows = Array.from({ length: 8 }, () => score({ platform: 'instagram' }));
+    expect(aggregateNaceChannelPriority(rows)).toHaveLength(0);
+  });
+
+  it('ignores rows without NACE/platform or with negative score', () => {
+    const rows: NaceChannelScore[] = [
+      ...Array.from({ length: 8 }, () => score({ naceCode: '', platform: 'tiktok' })),
+      ...Array.from({ length: 8 }, () => score({ platform: 'instagram', score: -5 })),
+    ];
+    expect(aggregateNaceChannelPriority(rows)).toHaveLength(0);
+  });
+});

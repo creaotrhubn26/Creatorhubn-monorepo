@@ -33,3 +33,25 @@ describe('resolveNaceBusinessModelOverride', () => {
     expect(resolveNaceBusinessModelOverride('70.100', bad)).toBeNull();
   });
 });
+
+import { resolveNaceChannelPriorityOverride } from './role-room-agent-learned-overrides.js';
+
+const channelOverrides = [
+  { nacePrefix: '56', channels: ['tiktok', 'instagram'] },
+  { nacePrefix: '56.30', channels: ['instagram', 'facebook'] },
+];
+
+describe('resolveNaceChannelPriorityOverride', () => {
+  it('returns the channel order for the most specific matching prefix', () => {
+    expect(resolveNaceChannelPriorityOverride('56.101', channelOverrides)).toEqual(['tiktok', 'instagram']);
+    expect(resolveNaceChannelPriorityOverride('56.301', channelOverrides)).toEqual(['instagram', 'facebook']);
+  });
+  it('returns null when nothing matches or input is empty', () => {
+    expect(resolveNaceChannelPriorityOverride('47.11', channelOverrides)).toBeNull();
+    expect(resolveNaceChannelPriorityOverride(null, channelOverrides)).toBeNull();
+    expect(resolveNaceChannelPriorityOverride('56.101', [])).toBeNull();
+  });
+  it('ignores entries with empty channels', () => {
+    expect(resolveNaceChannelPriorityOverride('56.101', [{ nacePrefix: '56', channels: [] }])).toBeNull();
+  });
+});

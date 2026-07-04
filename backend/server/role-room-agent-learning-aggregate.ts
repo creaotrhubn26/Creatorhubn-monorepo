@@ -30,7 +30,7 @@ export interface FieldFeedbackRow {
   confidence: number | null;
 }
 
-export type OverrideType = "nace_business_model" | "confidence_calibration";
+export type OverrideType = "nace_business_model" | "confidence_calibration" | "nace_channel_priority";
 
 export interface OverrideProposal {
   overrideType: OverrideType;
@@ -203,4 +203,88 @@ export function computeFieldAcceptanceRates(rows: FieldFeedbackRow[]): FieldAcce
       acceptanceRate: Math.round((agg.accepted / agg.total) * 100),
     }))
     .sort((a, b) => a.acceptanceRate - b.acceptanceRate || b.sampleCount - a.sampleCount);
+}
+
+// ---------------------------------------------------------------------------
+// #2 — measured-outcome learning: channel priority per NACE from real KPIs.
+// This is the strongest signal — producers' businessModel edits are opinions;
+// platform performance is measured. Feeds `nace_channel_priority` overrides
+// that reorder buildMarketingSetup's channels for the whole industry.
+// ---------------------------------------------------------------------------
+
+export interface NaceChannelScore {
+  naceCode: string;
+  /** Platform key, e.g. 'instagram' | 'tiktok' | 'linkedin' | 'facebook'. */
+  platform: string;
+  /** Normalized performance score for this platform in ONE project's plan
+   *  period (higher = better). Caller decides the metric (e.g. engagement per
+   *  post). Negative scores are ignored. */
+  score: number;
+}
+
+export interface ChannelPriorityOptions {
+  /** Minimum distinct score rows for a NACE before proposing (anti-noise). */
+  minSamples?: number;
+  /** Minimum platforms with signal before an ordering is meaningful. */
+  minPlatforms?: number;
+}
+
+const CHANNEL_PRIORITY_DEFAULTS = { minSamples: 6, minPlatforms: 2 };
+
+/** Encode an ordered platform list as an override proposed_value (CSV). */
+export function encodeChannelPriority(platforms: string[]): string {
+  return platforms.map((p) => p.trim()).filter(Boolean).join(",");
+}
+
+/** Decode an override proposed_value back into an ordered platform list. */
+export function decodeChannelPriority(value: string | null | undefined): string[] {
+  if (typeof value !== "string") return [];
+  return value.split(",").map((p) => p.trim()).filter(Boolean);
+}
+
+/**
+ * Rank best-performing platforms per NACE from measured KPI scores across
+ * projects, and propose a channel-priority ordering. Proposed only when enough
+ * projects AND platforms have signal, so a single viral post can't flip an
+ * industry's ordering.
+ */
+export function aggregateNaceChannelPriority(
+  scores: NaceChannelScore[],
+  options: ChannelPriorityOptions = {},
+): OverrideProposal[] {
+  const minSamples = options.minSamples ?? CHANNEL_PRIORITY_DEFAULTS.minSamples;
+  const minPlatforms = options.minPlatforms ?? CHANNEL_PRIORITY_DEFAULTS.minPlatforms;
+
+  const byNace = new Map<string, { total: Map<string, number>; count: number }>();
+  for (const row of scores) {
+    if (!hasText(row.naceCode) || !hasText(row.platform)) continue;
+    if (typeof row.score !== "number" || !Number.isFinite(row.score) || row.score < 0) continue;
+    const key = row.naceCode.trim();
+    const agg = byNace.get(key) ?? { total: new Map<string, number>(), count: 0 };
+    const platform = row.platform.trim().toLowerCase();
+    agg.total.set(platform, (agg.total.get(platform) ?? 0) + row.score);
+    agg.count += 1;
+    byNace.set(key, agg);
+  }
+
+  const proposals: OverrideProposal[] = [];
+  for (const [naceCode, agg] of byNace) {
+    if (agg.count < minSamples) continue;
+    if (agg.total.size < minPlatforms) continue;
+    const ranked = [...agg.total.entries()].sort((a, b) => b[1] - a[1]);
+    const sum = ranked.reduce((t, [, v]) => t + v, 0);
+    if (sum <= 0) continue;
+    const topShare = Math.round((ranked[0][1] / sum) * 100);
+    proposals.push({
+      overrideType: "nace_channel_priority",
+      overrideKey: naceCode,
+      proposedValue: encodeChannelPriority(ranked.map(([p]) => p)),
+      sampleCount: agg.count,
+      agreementPct: topShare,
+      rationale: `Målt ytelse over ${agg.count} datapunkter for NACE ${naceCode}: kanal-rangering ${ranked.map(([p]) => p).join(" > ")} (topp ${ranked[0][0]} = ${topShare}% av total score).`,
+    });
+  }
+  return proposals.sort(
+    (a, b) => b.sampleCount - a.sampleCount || a.overrideKey.localeCompare(b.overrideKey),
+  );
 }

@@ -27,7 +27,11 @@ import {
   deriveGeoScope,
   type MarketingSetup,
 } from "./role-room-agent-marketing-setup.js";
-import type { NaceBusinessModelOverride } from "./role-room-agent-learned-overrides.js";
+import {
+  resolveNaceChannelPriorityOverride,
+  type NaceBusinessModelOverride,
+  type NaceChannelPriorityOverride,
+} from "./role-room-agent-learned-overrides.js";
 import {
   groundBootstrapPayload,
   type RoleRoomAgentGroundingSources,
@@ -595,6 +599,11 @@ export type RoleRoomAgentNormalizedPayload = {
   socialProfileCandidates: RoleRoomAgentSocialProfileCandidate[];
   competitorAnalysis: RoleRoomAgentCompetitorAnalysis;
   localPresencePlan: RoleRoomAgentLocalPresencePlan;
+  /** Deterministic marketing-setup (F9): channels / content pillars / CTA /
+   *  ad-tech derived from the verified NACE business model + geo scope.
+   *  Persisted so downstream (marketing-plan generation, cockpit) can ground
+   *  on it instead of re-inventing channels. Null only on legacy cached runs. */
+  marketingSetup?: MarketingSetup | null;
   merchSuppliers?: RoleRoomAgentMerchSuppliers | null;
   retrievalMeta?: RoleRoomAgentRetrievalMeta;
   companyProfile: {
@@ -4757,6 +4766,10 @@ function buildFallbackBootstrap(
    *  but the feed planner will fall back to off-brand fallback colors in
    *  that case — pass a real palette wherever possible. */
   brandColors?: RoleRoomAgentBrandColor[],
+  /** Approved learned channel-priority overrides (#2). When one matches the
+   *  company's NACE, it reorders the marketing-setup channels by measured
+   *  cross-customer performance. */
+  learnedChannelPriorityOverrides?: readonly NaceChannelPriorityOverride[] | null,
 ): RoleRoomAgentNormalizedPayload {
   const websiteUrl = normalizeWebsiteUrl(input.websiteUrl)
     || websiteInsights.finalUrl
@@ -4766,6 +4779,22 @@ function buildFallbackBootstrap(
     ? normalizeWhitespace(input.companyName)
     : brregCompany?.name || websiteInsights.siteName || websiteInsights.pageTitle || "Kunden";
   const classification = detectBusinessClassification(input, websiteInsights, businessSignals, brregCompany);
+  // Deterministic marketing-setup (F9): channels / content pillars / CTA /
+  // ad-tech from the verified business model (NACE → B2B/B2C) + geo scope.
+  // Computed here so it's part of the persisted payload and downstream
+  // marketing-plan generation grounds on it. hasVerifiedLocalPresence gates
+  // local vs national scope.
+  const fallbackMarketingSetup = buildMarketingSetup(
+    classification,
+    deriveGeoScope(
+      classification,
+      Boolean(
+        businessSignals?.location ||
+          (brregCompany?.lookupStatus === "verified" && hasText(brregCompany.businessAddress)),
+      ),
+    ),
+    resolveNaceChannelPriorityOverride(brregCompany?.industryCode?.code, learnedChannelPriorityOverrides),
+  );
   const socialProfileCandidates = websiteInsights.socialProfileCandidates ?? [];
   const verifiedSocialProfiles = socialProfileCandidates.filter((candidate) => candidate.status === "verified" || candidate.status === "likely");
   const summary = toSentenceCase(
@@ -4822,6 +4851,7 @@ function buildFallbackBootstrap(
     socialProfileCandidates,
     competitorAnalysis,
     localPresencePlan,
+    marketingSetup: fallbackMarketingSetup,
     merchSuppliers: merchSuppliers ?? null,
     companyProfile: {
       companyName,
@@ -5268,6 +5298,7 @@ function normalizeBootstrapPayload(
     socialProfileCandidates: fallback.socialProfileCandidates,
     competitorAnalysis: fallback.competitorAnalysis,
     localPresencePlan: fallback.localPresencePlan,
+    marketingSetup: fallback.marketingSetup,
     merchSuppliers: fallback.merchSuppliers,
     retrievalMeta: fallback.retrievalMeta,
     companyProfile: {
@@ -5509,6 +5540,9 @@ export async function generateRoleRoomAgentProducerBootstrap(
      *  route from role_room_agent_learned_overrides. Fed into the grounding
      *  pass so producer-corrected classifications take effect at runtime. */
     learnedNaceBusinessModelOverrides?: readonly NaceBusinessModelOverride[] | null;
+    /** APPROVED learned channel-priority overrides (#2) — reorder the
+     *  marketing-setup channels by measured cross-customer KPI performance. */
+    learnedChannelPriorityOverrides?: readonly NaceChannelPriorityOverride[] | null;
   },
 ): Promise<RoleRoomAgentNormalizedPayload> {
   // Bootstrap instrumentation: stable researchId, total wall time, and
@@ -5614,6 +5648,7 @@ export async function generateRoleRoomAgentProducerBootstrap(
         { nearbyOpportunities: [], recommendedEventConcepts: [], hasDataCoverage: false } as unknown as RoleRoomAgentLocalPresencePlan,
         null,
         orchBrandColors,
+        options?.learnedChannelPriorityOverrides ?? null,
       );
       return finalize(normalizeBootstrapPayload(
         orch.synthesis,
@@ -5702,19 +5737,6 @@ export async function generateRoleRoomAgentProducerBootstrap(
       () => extractBrandColorsFromLogo(websiteInsights.probableLogoUrl),
     { emptyFallbackLabel: "logo_palette_extraction_failed_no_colors", isEmpty: (v) => v.length === 0 },
   );
-  // Deterministic marketing-setup (F9): channels / content pillars / CTA /
-  // ad-tech derived from the verified business model (NACE → B2B/B2C) and geo
-  // scope. Fed into synthesis as an anchor the LLM enriches (never invents), so
-  // a local B2C café can't be handed a LinkedIn thought-leadership plan.
-  const bootstrapClassification = detectBusinessClassification(enrichedInput, websiteInsights, businessSignals, initialBrregCompany);
-  const hasVerifiedLocalPresence = Boolean(
-    businessSignals?.location ||
-      (initialBrregCompany?.lookupStatus === "verified" && hasText(initialBrregCompany.businessAddress)),
-  );
-  const marketingSetup = buildMarketingSetup(
-    bootstrapClassification,
-    deriveGeoScope(bootstrapClassification, hasVerifiedLocalPresence),
-  );
   const fallback = buildFallbackBootstrap(
     {
       ...enrichedInput,
@@ -5729,6 +5751,7 @@ export async function generateRoleRoomAgentProducerBootstrap(
     localPresencePlan,
     merchSuppliers,
     brandColors,
+    options?.learnedChannelPriorityOverrides ?? null,
   );
   // Shared grounding sources for the deterministic synthesis paths (Claude /
   // OpenAI / OpenAI-retry / fallback). finalize() runs groundBootstrapPayload
@@ -5758,7 +5781,7 @@ export async function generateRoleRoomAgentProducerBootstrap(
           competitorAnalysis,
           localPresencePlan,
           fallback.retrievalMeta ?? null,
-          marketingSetup,
+          fallback.marketingSetup,
         ),
         { emptyFallbackLabel: "claude_synthesis_returned_null", isEmpty: (v) => !v },
       )
@@ -5773,7 +5796,7 @@ export async function generateRoleRoomAgentProducerBootstrap(
           competitorAnalysis,
           localPresencePlan,
           fallback.retrievalMeta ?? null,
-          marketingSetup,
+          fallback.marketingSetup,
         ),
         { emptyFallbackLabel: "openai_synthesis_returned_null", isEmpty: (v) => !v },
       );
@@ -5794,7 +5817,7 @@ export async function generateRoleRoomAgentProducerBootstrap(
           competitorAnalysis,
           localPresencePlan,
           fallback.retrievalMeta ?? null,
-          marketingSetup,
+          fallback.marketingSetup,
         ),
       );
       if (openAiFallback) {

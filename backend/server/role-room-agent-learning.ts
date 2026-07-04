@@ -18,12 +18,18 @@
 import type { Pool } from "pg";
 import {
   aggregateNaceBusinessModel,
+  aggregateNaceChannelPriority,
   computeConfidenceCalibration,
+  decodeChannelPriority,
   type AggregateOptions,
   type FieldFeedbackRow,
+  type NaceChannelScore,
   type OverrideProposal,
 } from "./role-room-agent-learning-aggregate.js";
-import type { NaceBusinessModelOverride } from "./role-room-agent-learned-overrides.js";
+import type {
+  NaceBusinessModelOverride,
+  NaceChannelPriorityOverride,
+} from "./role-room-agent-learned-overrides.js";
 
 const log = (event: string, extra: Record<string, unknown> = {}): void => {
   try {
@@ -122,6 +128,70 @@ export async function loadApprovedNaceBusinessModelOverrides(
   }
 }
 
+/** Load approved NACE→channel-priority overrides (#2). Returns [] on any error
+ *  so the bootstrap simply keeps the deterministic channel order. */
+export async function loadApprovedNaceChannelPriorityOverrides(
+  pool: Pool,
+): Promise<NaceChannelPriorityOverride[]> {
+  try {
+    const result = await pool.query<{ override_key: string; proposed_value: string }>(
+      `SELECT override_key, proposed_value
+         FROM role_room_agent_learned_overrides
+        WHERE override_type = 'nace_channel_priority' AND status = 'approved'`,
+    );
+    return result.rows
+      .map((r) => ({ nacePrefix: r.override_key, channels: decodeChannelPriority(r.proposed_value) }))
+      .filter((o) => typeof o.nacePrefix === "string" && o.channels.length > 0);
+  } catch (err) {
+    log("load_channel_overrides_failed", { error: err instanceof Error ? err.message : String(err) });
+    return [];
+  }
+}
+
+/**
+ * Harvest measured per-(NACE, platform) performance for #2. Joins KPI snapshots
+ * → marketing plan → project → the project's latest Brreg NACE code. One row per
+ * (NACE, platform, project) so the aggregation counts distinct data points. Uses
+ * a single comparable exposure metric ('reach' by default) to avoid mixing
+ * scales across platforms. Best-effort → [] on any error.
+ */
+export async function harvestNaceChannelScores(
+  pool: Pool,
+  options: { sinceDays?: number; metric?: string } = {},
+): Promise<NaceChannelScore[]> {
+  const sinceDays = options.sinceDays ?? 90;
+  const metric = options.metric ?? "reach";
+  try {
+    const result = await pool.query<{ nace_code: string | null; platform: string | null; score: string | number | null }>(
+      `SELECT rv.nace_code AS nace_code, s.platform AS platform, SUM(s.value) AS score
+         FROM role_room_kpi_snapshots s
+         JOIN role_room_marketing_plans p ON p.id = s.plan_id
+         JOIN LATERAL (
+           SELECT (rrv.serialized_result->'brregCompany'->'industryCode'->>'code') AS nace_code
+             FROM role_room_research_versions rrv
+            WHERE rrv.project_id = p.project_id
+            ORDER BY rrv.generated_at DESC
+            LIMIT 1
+         ) rv ON TRUE
+        WHERE rv.nace_code IS NOT NULL
+          AND s.metric = $1
+          AND s.captured_at > now() - ($2 || ' days')::interval
+        GROUP BY rv.nace_code, s.platform, p.project_id`,
+      [metric, String(sinceDays)],
+    );
+    return result.rows
+      .map((r) => ({
+        naceCode: typeof r.nace_code === "string" ? r.nace_code : "",
+        platform: typeof r.platform === "string" ? r.platform : "",
+        score: Number(r.score) || 0,
+      }))
+      .filter((r) => r.naceCode && r.platform);
+  } catch (err) {
+    log("harvest_channel_scores_failed", { error: err instanceof Error ? err.message : String(err) });
+    return [];
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Lag 1 — nightly aggregation job. Reads feedback, runs the pure aggregation,
 // UPSERTs PROPOSED overrides (human approves before runtime uses them).
@@ -175,9 +245,15 @@ export async function runLearningAggregation(
     return { feedbackRows: 0, proposalsUpserted: 0 };
   }
 
+  // #2 — measured-outcome learning: harvest per-(NACE, platform) KPI scores
+  // and propose channel-priority overrides. Best-effort; [] until enough
+  // plans have KPI data across a NACE.
+  const channelScores = await harvestNaceChannelScores(pool, { sinceDays: options.sinceDays ?? 180 });
+
   const proposals: OverrideProposal[] = [
     ...aggregateNaceBusinessModel(rows, options),
     ...computeConfidenceCalibration(rows, options),
+    ...aggregateNaceChannelPriority(channelScores, options),
   ];
 
   let upserted = 0;

@@ -47,3 +47,37 @@ export function resolveNaceBusinessModelOverride(
   }
   return best ? best.businessModel : null;
 }
+
+export interface NaceChannelPriorityOverride {
+  /** NACE-prefiks (SN2007). */
+  nacePrefix: string;
+  /** Godkjent kanal-rangering (plattform-nøkler i prioritert rekkefølge),
+   *  lært fra målt KPI-ytelse på tvers av kunder i bransjen. */
+  channels: string[];
+}
+
+/**
+ * Slå opp godkjent kanal-prioritets-override (Lag 2a, #2) for en NACE-kode.
+ * Mest spesifikke prefiks vinner (samme semantikk som resolveNaceBusinessModelOverride).
+ * Returnerer den lærte kanal-rekkefølgen eller null.
+ */
+export function resolveNaceChannelPriorityOverride(
+  code: string | null | undefined,
+  overrides: readonly NaceChannelPriorityOverride[] | null | undefined,
+): string[] | null {
+  if (!hasText(code) || !overrides || overrides.length === 0) return null;
+  const normalized = code.replace(/[^\d.]/g, "");
+  if (normalized.length < 2) return null;
+
+  let best: NaceChannelPriorityOverride | null = null;
+  for (const entry of overrides) {
+    if (!hasText(entry.nacePrefix) || !Array.isArray(entry.channels) || entry.channels.length === 0) continue;
+    if (
+      normalized.startsWith(entry.nacePrefix) &&
+      (best === null || entry.nacePrefix.length > best.nacePrefix.length)
+    ) {
+      best = entry;
+    }
+  }
+  return best ? best.channels : null;
+}

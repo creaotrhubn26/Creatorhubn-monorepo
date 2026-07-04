@@ -52,6 +52,20 @@ export interface MarketingPlanBootstrapInput {
     projectGoal?: string | null;
     targetAudience?: string | null;
   } | null;
+  /** Deterministic marketing-setup (F9) from the producer bootstrap — the
+   *  verified NACE business model + geo decides recommended channels /
+   *  content pillars / CTA / ad-tech. The plan MUST ground on this instead of
+   *  the LLM re-inventing channels (a local B2C café must not get a B2B plan).
+   *  Structural subset; the agent module owns the full type. */
+  marketingSetup?: {
+    businessModel?: string | null;
+    geoScope?: string | null;
+    channels?: Array<{ name?: string | null; priority?: string | null }> | null;
+    contentPillars?: string[] | null;
+    primaryCta?: string | null;
+    secondaryCtas?: string[] | null;
+    adTech?: string[] | null;
+  } | null;
 }
 
 export interface MarketingPlanReadiness {
@@ -211,6 +225,14 @@ function buildSystemPrompt(): string {
     '  competitor category, a common-practice approach) — it\'s not a differentiator',
     '  if everyone could say it.',
     '- Channel cadence: 5-7/week for IG-primary, scale down for less intensive.',
+    '- If a "## Deterministic marketing foundations" section is present, it is',
+    '  derived deterministically from the VERIFIED business model (B2B/B2C) + geo.',
+    '  channelStrategy.primary + secondary MUST be chosen from its recommended',
+    '  channels; pillars must build on (refine, not contradict) its content pillars;',
+    '  callToAction + positioning align with its primary CTA. Do NOT swap a',
+    '  B2C-local setup for a B2B one (no LinkedIn thought-leadership for a local',
+    '  café; no bordbestilling lead-form for a B2B consultancy). You may refine',
+    '  wording, cadence and KPI targets — never the channel/model foundation.',
     '- Language matches the bootstrap — if the company is Norwegian, output',
     '  everything in Norwegian (bokmål). English if the bootstrap is in English.',
     '',
@@ -242,6 +264,28 @@ function buildUserMessage(
   }
   if (profile.toneAndBrandSignals?.length) {
     sections.push(`Tone & brand signals:\n${profile.toneAndBrandSignals.map((t) => `  - ${t}`).join('\n')}`);
+  }
+
+  const setup = bootstrap.marketingSetup;
+  if (setup && (setup.channels?.length || setup.contentPillars?.length || setup.primaryCta)) {
+    sections.push(`\n## Deterministic marketing foundations (MUST respect — derived from the verified business model + geo)`);
+    if (setup.businessModel || setup.geoScope) {
+      sections.push(`Business model: ${setup.businessModel ?? 'unknown'} · Geo scope: ${setup.geoScope ?? 'unknown'}`);
+    }
+    if (setup.channels?.length) {
+      const channelLines = setup.channels
+        .map((c) => (c?.name ? `  - ${c.name}${c.priority ? ` (${c.priority})` : ''}` : ''))
+        .filter(Boolean);
+      if (channelLines.length) sections.push(`Recommended channels (priority order):\n${channelLines.join('\n')}`);
+    }
+    if (setup.contentPillars?.length) {
+      sections.push(`Recommended content pillars:\n${setup.contentPillars.map((p) => `  - ${p}`).join('\n')}`);
+    }
+    if (setup.primaryCta) sections.push(`Primary CTA: ${setup.primaryCta}`);
+    if (setup.secondaryCtas?.length) sections.push(`Secondary CTAs: ${setup.secondaryCtas.join(', ')}`);
+    if (setup.adTech?.length) {
+      sections.push(`Ad-tech foundations:\n${setup.adTech.map((a) => `  - ${a}`).join('\n')}`);
+    }
   }
 
   sections.push(`\n## Content story logic`);
