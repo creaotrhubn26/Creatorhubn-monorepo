@@ -519,12 +519,14 @@ pub async fn export_infographic(
     frame: Option<String>,
     easing: Option<String>,
     entrance: Option<String>,
+    metadata: Option<String>,
 ) -> Result<String, String> {
     let fps = fps.unwrap_or(30.0).clamp(12.0, 60.0);
     let scale = scale.unwrap_or(2.0);
     let frame = frame.unwrap_or_else(|| "native".into());
     let easing = easing.unwrap_or_else(|| "outcubic".into());
     let entrance = entrance.unwrap_or_else(|| "none".into());
+    let metadata = metadata.unwrap_or_default();
     let is_still = format == "png";
     let frames = if is_still { 1 } else { ((duration_sec.max(1.0)) * fps).round().clamp(8.0, 600.0) as i64 };
     let (work, safe) = ig_capture_frames(&app, &html, &name, frames, scale, &frame, &easing, "export_infographic").await?;
@@ -575,6 +577,17 @@ pub async fn export_infographic(
             (out.clone(), a)
         }
     };
+    // «Include Metadata»: bygg tittel + verktøy inn i container-en (ffmpeg
+    // -metadata). Settes inn foran utfil-stien (siste arg). Gjelder mp4/mov/gif/
+    // apng — png (stillbilde) returnerte allerede tidligere.
+    let mut args = args;
+    if !metadata.is_empty() {
+        if let Some(out) = args.pop() {
+            args.push("-metadata".into()); args.push(format!("title={metadata}"));
+            args.push("-metadata".into()); args.push("comment=Laget med Post Agent Infographic Studio".into());
+            args.push(out);
+        }
+    }
     let status = Command::new(&ffmpeg).args(&args).status().await
         .map_err(|e| format!("ffmpeg-start feilet: {e}"))?;
     if !status.success() {
