@@ -291,6 +291,7 @@ struct TeamView: View {
             let isVeryCompact = geo.size.width < 1050    // mindre enheter
 
             HStack(alignment: .top, spacing: 14) {
+                if !isCompact { LeadgridHeaderMark().padding(.top, 4) }
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Team")
                         .font(.system(size: 28, weight: .bold))
