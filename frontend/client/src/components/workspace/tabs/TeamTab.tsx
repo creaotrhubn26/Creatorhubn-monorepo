@@ -18,6 +18,7 @@ import { ws } from '../workspaceTheme';
 import { WsCard, WsSectionTitle, WsBar, WsTag, WsTable } from '../ui';
 import WorkspaceSplitSheet from '../WorkspaceSplitSheet';
 import { useWsLocale, makeT, wsDateLocale, type WsDict } from '../wsLocale';
+import { CREW_ROLE_CATALOG, crewRoleDef } from '@shared/crew-roles';
 
 // Lokal no/en-ordbok for fanen (samme mønster som OppdragTab). Dynamiske
 // strenger (roller/status lagret i state) er selv-nøklet på norsk, slik at
@@ -101,16 +102,11 @@ const T: WsDict = {
   sendInvite: { no: 'Send invitasjon', en: 'Send invitation' },
 };
 
-const CREW_ROLES = [
-  { value: 'fotograf', label: 'Fotograf', tone: 'accent' },
-  { value: 'videograf', label: 'Videograf', tone: 'green' },
-  { value: 'editor', label: 'Editor', tone: 'blue' },
-  { value: 'lyd', label: 'Lydtekniker', tone: 'amber' },
-  { value: 'begge', label: 'Foto + Video', tone: 'accent' },
-  { value: 'assistent', label: 'Assistent', tone: 'neutral' },
-];
-const crewTone = (c: string) => CREW_ROLES.find((r) => r.value === c)?.tone || 'neutral';
-const crewLabel = (c: string) => CREW_ROLES.find((r) => r.value === c)?.label || c || 'Medlem';
+// Crew-roller kommer fra den delte katalogen (crew-roles.ts) — invite-dialogen
+// tilbyr HELE katalogen så blandede team (foto + musikkprodusent på samme
+// event) kan inviteres med riktig rolle. Ukjente nøkler får generisk visning.
+const crewTone = (c: string) => crewRoleDef(c).tone;
+const crewLabel = (c: string) => crewRoleDef(c).label;
 
 const MEMBERS = [
   { name: 'Thomas Qazi', role: 'Fotograf', tone: 'accent', star: true, online: true, ansvar: ['Hovedfotograf', 'Shotlist foto', 'Redigering bilder'], aktiv: 'Nå' },
@@ -159,7 +155,7 @@ const TeamTab: React.FC<{ projectId: string; profession?: string; userId?: strin
       // Inkluder eier øverst hvis vi har den
       const owner = r?.owner ? [{ name: r.owner.name, role: 'Eier', tone: 'accent', online: true, ansvar: ['Prosjekteier'], aktiv: 'Nå', star: true }] : [];
       const mapped = list.filter((m: any) => m.status !== 'revoked').map((m: any) => ({
-        name: m.name || m.email, role: crewLabel(m.crewRole), tone: crewTone(m.crewRole),
+        name: m.name || m.email, role: crewLabel(m.crewRole), roleKey: m.crewRole || null, tone: crewTone(m.crewRole),
         online: m.status === 'active', ansvar: [m.role === 'viewer' ? 'Lesetilgang' : 'Redigeringstilgang', m.email],
         aktiv: m.status === 'active' ? 'Aktiv' : 'Venter på aksept',
       }));
@@ -271,7 +267,7 @@ const TeamTab: React.FC<{ projectId: string; profession?: string; userId?: strin
                 </Box>
                 <Box sx={{ flex: 1, minWidth: 0 }}>
                   <Typography noWrap sx={{ fontSize: 14, fontWeight: 700 }}>{m.name}{m.star ? ' ⭐' : ''}</Typography>
-                  <Box sx={{ mt: 0.25 }}><WsTag label={t(m.role)} tone={m.tone} /></Box>
+                  <Box sx={{ mt: 0.25 }}><WsTag label={m.roleKey ? (locale === 'en' ? crewRoleDef(m.roleKey).labelEn : crewRoleDef(m.roleKey).label) : t(m.role)} tone={m.tone} /></Box>
                 </Box>
               </Stack>
               <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: ws.textFaint, mb: 0.5 }}>{t('respHeading')}</Typography>
@@ -407,7 +403,7 @@ const InviteMemberDialog: React.FC<{ open: boolean; onClose: () => void; project
           <TextField label={t('nameLabel')} value={name} onChange={(e) => setName(e.target.value)} fullWidth size="small" />
           <TextField label={t('emailLabel')} type="email" value={email} onChange={(e) => setEmail(e.target.value)} fullWidth size="small" required />
           <TextField select label={t('teamRoleLabel')} value={crewRole} onChange={(e) => setCrewRole(e.target.value)} fullWidth size="small">
-            {CREW_ROLES.map((r) => <MenuItem key={r.value} value={r.value}>{t(r.label)}</MenuItem>)}
+            {CREW_ROLE_CATALOG.map((r) => <MenuItem key={r.key} value={r.key}>{r.icon} {locale === 'en' ? r.labelEn : r.label}</MenuItem>)}
           </TextField>
           <TextField select label={t('accessLabel')} value={role} onChange={(e) => setRole(e.target.value)} fullWidth size="small">
             <MenuItem value="member">{t('canEdit')}</MenuItem>

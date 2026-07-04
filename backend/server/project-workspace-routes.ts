@@ -22,6 +22,8 @@ import type express from "express";
 import crypto from "crypto";
 import multer from "multer";
 import { canAccessProject } from "./project-team-routes";
+import { resolveCrewRoles } from "../../frontend/shared/crew-roles.ts";
+import { CANONICAL_PROFESSIONS, normalizeProfession as normalizeCanonProfession, isWorkspaceCategory as isWsCategory } from "../../frontend/shared/profession-types.ts";
 import { signAssetReadUrl } from "./capture-upload-service";
 import { archiveToRoleRoomB2, presignRoleRoomB2Download, getFromRoleRoomB2, slugifyForKey } from "./b2-archive-helper";
 import { Vibrant } from "node-vibrant/node";
@@ -156,6 +158,34 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       res.json({ tasks: r.rows.map((t: any) => ({ id: t.id, crewRole: t.crew_role, title: t.title, timeLabel: t.time_label, status: t.status, orderIndex: t.order_index })) });
     } catch (e) { console.error("GET board-tasks", e); res.status(500).json({ error: "failed" }); }
   });
+  // ─────────── Crew-roller som DATA (blandede team) ───────────
+  // Et prosjekts rollekolonner = eier-kategoriens default-sett ∪ roller
+  // teamet/boardet faktisk bruker (project_team_members + project_board_tasks).
+  // Kategorien hentes fra profession_types.workspace_category (admin-styrt),
+  // med kanonisk kode-baseline som fallback. Ukjente nøkler beholdes med
+  // generisk visning — et blandet team (foto + musikk) mister aldri kolonner.
+  app.get("/api/projects/:projectId/crew-roles", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const pid = req.params.projectId;
+      const [owner, members, tasks] = await Promise.all([
+        pool.query(`SELECT u.profession FROM projects p JOIN users u ON u.id = p.user_id WHERE p.id = $1 LIMIT 1`, [pid]).catch(() => ({ rows: [] as any[] })),
+        pool.query(`SELECT DISTINCT crew_role FROM project_team_members WHERE project_id = $1 AND status <> 'revoked' AND crew_role IS NOT NULL`, [pid]).catch(() => ({ rows: [] as any[] })),
+        pool.query(`SELECT DISTINCT crew_role FROM project_board_tasks WHERE project_id = $1 AND crew_role IS NOT NULL`, [pid]).catch(() => ({ rows: [] as any[] })),
+      ]);
+      const profession = normalizeCanonProfession(owner.rows[0]?.profession);
+      // Kategori: DB (profession_types.workspace_category) vinner, baseline som fallback.
+      let category = CANONICAL_PROFESSIONS.find((c) => c.name === profession)?.workspaceCategory || "visual";
+      try {
+        const c = await pool.query(`SELECT workspace_category FROM profession_types WHERE name = $1 LIMIT 1`, [profession]);
+        if (isWsCategory(c.rows[0]?.workspace_category)) category = c.rows[0].workspace_category;
+      } catch { /* kolonnen kom i mig 0369 — baseline holder */ }
+      const used = [...members.rows, ...tasks.rows].map((r: any) => r.crew_role);
+      const { roles, fallbackKey } = resolveCrewRoles(category as any, used);
+      res.json({ category, fallbackKey, roles });
+    } catch (e) { console.error("GET crew-roles", e); res.status(500).json({ error: "failed" }); }
+  });
+
   app.post("/api/projects/:projectId/board-tasks", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
     try {
@@ -1271,13 +1301,25 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
                 lv.version_label AS latest_version_label, lv.status AS latest_version_status,
                 (SELECT count(*)::int FROM audio_review_comments c
                    JOIN audio_review_versions v2 ON v2.id = c.version_id
-                  WHERE v2.project_id = ar.id AND (c.status IS NULL OR c.status NOT IN ('resolved','rejected'))) AS open_comment_count
+                  WHERE v2.project_id = ar.id AND (c.status IS NULL OR c.status NOT IN ('resolved','rejected'))) AS open_comment_count,
+                ssx.status AS split_status, ssx.signed AS split_signed, ssx.total AS split_total
            FROM easeverse_tracks t
-           LEFT JOIN LATERAL (SELECT a.id FROM audio_review_projects a
+           LEFT JOIN LATERAL (SELECT a.id, a.owner_user_id FROM audio_review_projects a
                                WHERE a.easeverse_track_id = t.id::text AND a.status <> 'archived'
                                ORDER BY a.created_at DESC LIMIT 1) ar ON true
            LEFT JOIN LATERAL (SELECT v.version_label, v.status FROM audio_review_versions v
                                WHERE v.project_id = ar.id ORDER BY v.version_number DESC LIMIT 1) lv ON true
+           -- Split-sheet per låt: audio-showcase-systemet kobler via
+           -- metadata->>'sourceReviewId' (ikke FK) — se audio-showcase-routes.
+           LEFT JOIN LATERAL (SELECT ss.status,
+                                (SELECT count(*) FILTER (WHERE c2.signed_at IS NOT NULL)::int
+                                   FROM split_sheet_contributors c2 WHERE c2.split_sheet_id = ss.id) AS signed,
+                                (SELECT count(*)::int FROM split_sheet_contributors c2
+                                  WHERE c2.split_sheet_id = ss.id) AS total
+                                FROM split_sheets ss
+                               WHERE ss.metadata->>'sourceReviewId' = ar.id::text
+                                 AND ss.user_id = ar.owner_user_id AND ss.status <> 'archived'
+                               ORDER BY ss.created_at DESC LIMIT 1) ssx ON true
           WHERE t.user_id = $1 ORDER BY t.updated_at DESC NULLS LAST LIMIT 50`,
         [uid],
       ).catch(() => ({ rows: [] }));
@@ -1289,6 +1331,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
           durationSeconds: r.duration_seconds, hasReview: !!r.has_review, linked: r.id === linkedTrackId,
           versionCount: r.version_count || 0, latestVersionLabel: r.latest_version_label || null,
           latestVersionStatus: r.latest_version_status || null, openCommentCount: r.open_comment_count || 0,
+          splitSheet: r.split_status ? { status: r.split_status, signed: r.split_signed || 0, total: r.split_total || 0 } : null,
         })),
       });
     } catch (e) { console.error("GET easeverse-tracks", e); res.json({ connected: false, tracks: [] }); }

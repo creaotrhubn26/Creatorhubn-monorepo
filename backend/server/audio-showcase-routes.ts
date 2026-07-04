@@ -1513,38 +1513,76 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     }
   });
 
-  // ── DAW-markører fra EaseVerse → seksjoner på en versjon (Fase 2) ─────────
+  // ── DAW-markører → seksjoner på en versjon (Fase 2) ───────────────────────
+  // To kilder: EaseVerse-remote (som før) OG Pro Tools Companion-markørene i
+  // vår egen DB (protools_companion_markers via sesjonens audio_review_project_id).
+  // Companion brukes som fallback når EaseVerse mangler kobling/er nede/har
+  // tomme markører — «Markører blir låt-seksjoner» virker dermed også for
+  // sesjoner som kun lever i companion-appen.
   app.post("/api/audio-versions/:id/pull-sections", async (req, res) => {
     const s = requireUserSession(req, res); if (!s) return;
     const versionId = str(req.params.id, 64);
     try {
       const own = await pool.query(
-        `SELECT v.id, v.duration, p.external_track_id, p.easeverse_track_id
+        `SELECT v.id, v.duration, p.id AS review_id, p.external_track_id, p.easeverse_track_id
            FROM audio_review_versions v JOIN audio_review_projects p ON p.id = v.project_id
           WHERE v.id = $1::uuid AND p.owner_user_id = $2 LIMIT 1`, [versionId, s.userId]);
       if (own.rowCount === 0) return res.status(404).json({ error: "not_found" });
       const extId = own.rows[0].external_track_id || own.rows[0].easeverse_track_id;
-      if (!extId) return res.status(409).json({ error: "no_linked_track" });
-      const remote = await evGetProtools(extId);
-      if (!remote.configured) return res.status(503).json({ error: "easeverse_not_configured" });
-      if (!remote.reachable) return res.status(502).json({ error: "easeverse_unreachable" });
-      const markers: any[] = Array.isArray(remote.item?.markers) ? remote.item.markers : [];
-      if (!markers.length) return res.json({ applied: "no_markers", sections: [] });
-      const sorted = [...markers].filter((m) => Number.isFinite(Number(m?.positionMs))).sort((a, b) => a.positionMs - b.positionMs);
-      const dur = Number(own.rows[0].duration) || (sorted.length ? sorted[sorted.length - 1].positionMs / 1000 + 30 : 0);
+
+      // Normalisert markørliste: { name, startSec, color }
+      let source: "easeverse" | "companion" | null = null;
+      let normalized: Array<{ name: string; startSec: number; color: string | null }> = [];
+
+      if (extId) {
+        const remote = await evGetProtools(extId).catch(() => ({ configured: false, reachable: false } as any));
+        const markers: any[] = remote?.configured && remote?.reachable && Array.isArray(remote.item?.markers) ? remote.item.markers : [];
+        if (markers.length) {
+          source = "easeverse";
+          normalized = markers
+            .filter((m) => Number.isFinite(Number(m?.positionMs)))
+            .map((m) => ({ name: str(m.label, 80) || "", startSec: Number(m.positionMs) / 1000, color: PT_SECTION_COLOR[String(m.sectionType || "").toLowerCase()] || null }));
+        }
+      }
+      if (!normalized.length) {
+        // Companion-fallback: markørene fra siste aktive companion-sesjon
+        // koblet til dette lydrommet.
+        const sess = await pool.query(
+          `SELECT id FROM protools_companion_sessions WHERE audio_review_project_id = $1::uuid ORDER BY last_activity DESC NULLS LAST LIMIT 1`,
+          [own.rows[0].review_id],
+        ).catch(() => ({ rows: [] as any[] }));
+        if (sess.rows[0]?.id) {
+          const cm = await pool.query(
+            `SELECT name, start_seconds, color FROM protools_companion_markers WHERE session_id = $1::uuid ORDER BY order_index, start_seconds`,
+            [sess.rows[0].id],
+          ).catch(() => ({ rows: [] as any[] }));
+          if (cm.rows.length) {
+            source = "companion";
+            normalized = cm.rows
+              .filter((m: any) => Number.isFinite(Number(m.start_seconds)))
+              .map((m: any) => ({ name: str(m.name, 80) || "", startSec: Number(m.start_seconds), color: m.color || null }));
+          }
+        }
+      }
+
+      if (!normalized.length) {
+        if (!extId) return res.status(409).json({ error: "no_linked_track" });
+        return res.json({ applied: "no_markers", sections: [] });
+      }
+
+      const sorted = normalized.sort((a, b) => a.startSec - b.startSec);
+      const dur = Number(own.rows[0].duration) || (sorted.length ? sorted[sorted.length - 1].startSec + 30 : 0);
       await pool.query(`DELETE FROM audio_review_sections WHERE version_id = $1::uuid`, [versionId]);
       let i = 0;
       for (const m of sorted) {
-        const startSec = Number(m.positionMs) / 1000;
-        const endSec = i < sorted.length - 1 ? Number(sorted[i + 1].positionMs) / 1000 : dur;
-        const type = String(m.sectionType || "").toLowerCase();
+        const endSec = i < sorted.length - 1 ? sorted[i + 1].startSec : dur;
         await pool.query(
           `INSERT INTO audio_review_sections (version_id, name, start_time_seconds, end_time_seconds, color, order_index)
            VALUES ($1::uuid,$2,$3,$4,$5,$6)`,
-          [versionId, str(m.label, 80) || `Del ${i + 1}`, startSec, endSec, PT_SECTION_COLOR[type] || null, i]); i++;
+          [versionId, m.name || `Del ${i + 1}`, m.startSec, endSec, m.color, i]); i++;
       }
       const out = await pool.query(`SELECT * FROM audio_review_sections WHERE version_id = $1::uuid ORDER BY order_index ASC`, [versionId]);
-      return res.json({ applied: "pulled", count: out.rowCount, sections: out.rows });
+      return res.json({ applied: "pulled", source, count: out.rowCount, sections: out.rows });
     } catch (e) {
       if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
       console.error("[audio-showcase] pull-sections failed:", e);

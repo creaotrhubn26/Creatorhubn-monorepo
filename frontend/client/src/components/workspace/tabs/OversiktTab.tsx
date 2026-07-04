@@ -24,6 +24,7 @@ import WorkspaceChatPanel from '../WorkspaceChatPanel';
 import { useProjectImages } from '../useProjectImages';
 import { useCaptureRealtime } from '../useCaptureRealtime';
 import { useWsLocale, makeT, wsDateLocale, type WsDict } from '../wsLocale';
+import { CATEGORY_DEFAULT_CREW, crewRoleDef } from '@shared/crew-roles';
 
 // Lokal no/en-ordbok for fanen (samme mønster som OppdragTab). Demo-konstantene
 // (PHASES/BOARD/SYNC_ITEMS/CHECKLIST) er sample-data og forblir norske.
@@ -50,22 +51,6 @@ const T: WsDict = {
   newCheckPrompt: { no: 'Nytt sjekkpunkt:', en: 'New checklist item:' },
   newTaskPrompt: { no: 'Ny oppgave:', en: 'New task:' },
   addFailed: { no: 'Kunne ikke legge til', en: 'Could not add' },
-  // rolle-kolonner (COLS)
-  roleProducer: { no: 'Produsent', en: 'Producer' },
-  roleVocals: { no: 'Vokal', en: 'Vocals' },
-  roleMusicians: { no: 'Musikere', en: 'Musicians' },
-  roleMix: { no: 'Miks', en: 'Mix' },
-  roleOrders: { no: 'Bestilling', en: 'Orders' },
-  rolePrepVendor: { no: 'Klargjøring', en: 'Preparation' },
-  roleDelivery: { no: 'Levering', en: 'Delivery' },
-  roleFollowUp: { no: 'Oppfølging', en: 'Follow-up' },
-  roleBooking: { no: 'Booking', en: 'Booking' },
-  rolePrepService: { no: 'Forberedelse', en: 'Preparation' },
-  roleExecution: { no: 'Gjennomføring', en: 'Execution' },
-  rolePhotographer: { no: 'Fotograf', en: 'Photographer' },
-  roleVideographer: { no: 'Videograf', en: 'Videographer' },
-  roleBoth: { no: 'Begge', en: 'Both' },
-  roleEditor: { no: 'Editor', en: 'Editor' },
   // fremdrift
   progressLabel: { no: 'Fremdrift', en: 'Progress' },
   ofWord: { no: 'av', en: 'of' },
@@ -102,6 +87,15 @@ const T: WsDict = {
   seeAll: { no: 'Se alle', en: 'View all' },
   // referanser
   refsTitle: { no: 'Referanser & shots', en: 'References & shots' },
+  refsTitleMusic: { no: 'Referanser', en: 'References' },
+  // Studio-kort (musikk-kategorien — erstatter Capture & backup)
+  studioTitle: { no: 'Studio', en: 'Studio' },
+  latestBounces: { no: 'Siste bounces', en: 'Latest bounces' },
+  noBounces: { no: 'Ingen bounces ennå — de dukker opp her når Pro Tools Companion eksporterer.', en: 'No bounces yet — they appear here when Pro Tools Companion exports.' },
+  markersWord: { no: 'markører', en: 'markers' },
+  bouncesWord: { no: 'bounces', en: 'bounces' },
+  toVersion: { no: '→ versjon', en: '→ version' },
+  openSoundRoomBtn: { no: 'Åpne Sound Room', en: 'Open Sound Room' },
   addReference: { no: 'Legg til referanse', en: 'Add reference' },
   // aktivitet
   captureActivity: { no: 'Capture-aktivitet', en: 'Capture activity' },
@@ -306,39 +300,41 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
     catch (e: any) { window.alert(e?.message || t('addFailed')); }
   };
 
-  // Bygg de 4 rolle-kolonnene fra ekte tasks, ellers sample. Kolonnenavn følger
-  // workspace-kategorien; crew-nøklene er stabile (fotograf/videograf/begge/editor)
-  // så eksisterende board-tasks fortsatt mapper riktig.
+  // Rolle-kolonnene er DATA: GET /crew-roles gir eier-kategoriens default-sett
+  // ∪ roller teamet/boardet faktisk bruker — blandede team (foto + musikk på
+  // samme event) får dermed egne kolonner. Kategori-defaults fra den delte
+  // katalogen som fallback før svaret/på sample.
   const wsCategory = useWorkspaceCategory(profession);
-  const COLS = wsCategory === 'music'
-    ? [
-        { role: t('roleProducer'), icon: '🎹', crew: 'fotograf' },
-        { role: t('roleVocals'), icon: '🎤', crew: 'videograf' },
-        { role: t('roleMusicians'), icon: '🎸', crew: 'begge' },
-        { role: t('roleMix'), icon: '🎚️', crew: 'editor' },
-      ]
-    : wsCategory === 'vendor'
-    ? [
-        { role: t('roleOrders'), icon: '🧾', crew: 'fotograf' },
-        { role: t('rolePrepVendor'), icon: '📦', crew: 'videograf' },
-        { role: t('roleDelivery'), icon: '🚚', crew: 'begge' },
-        { role: t('roleFollowUp'), icon: '📞', crew: 'editor' },
-      ]
-    : wsCategory === 'service'
-    ? [
-        { role: t('roleBooking'), icon: '📅', crew: 'fotograf' },
-        { role: t('rolePrepService'), icon: '🧴', crew: 'videograf' },
-        { role: t('roleExecution'), icon: '✂️', crew: 'begge' },
-        { role: t('roleFollowUp'), icon: '💬', crew: 'editor' },
-      ]
-    : [
-        { role: t('rolePhotographer'), icon: '📷', crew: 'fotograf' },
-        { role: t('roleVideographer'), icon: '🎥', crew: 'videograf' },
-        { role: t('roleBoth'), icon: '👥', crew: 'begge' },
-        { role: t('roleEditor'), icon: '🎬', crew: 'editor' },
-      ];
+  const [crewData, setCrewData] = useState<{ roles: any[]; fallbackKey: string } | null>(null);
+  useEffect(() => {
+    if (!isReal) { setCrewData(null); return; }
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/crew-roles`)
+      .then((r: any) => { if (Array.isArray(r?.roles) && r.roles.length) setCrewData({ roles: r.roles, fallbackKey: r.fallbackKey || 'begge' }); })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, isReal]);
+  // Studio-kort for musikk: siste sesjoner m/ playhead + bounces (erstatter
+  // det foto-spesifikke Capture & backup-kortet).
+  const [studioSessions, setStudioSessions] = useState<any[] | null>(null);
+  useEffect(() => {
+    if (!isReal || wsCategory !== 'music') { setStudioSessions(null); return; }
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/recording-sessions?include=details`)
+      .then((r: any) => setStudioSessions(Array.isArray(r?.sessions) ? r.sessions : []))
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, isReal, wsCategory]);
+  const latestBounces = (studioSessions || [])
+    .flatMap((s: any) => (Array.isArray(s.bounces) ? s.bounces.map((b: any) => ({ ...b, sessionName: s.name })) : []))
+    .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 4);
+  const liveStudio = (studioSessions || []).find((s: any) => s.playhead?.timecode) || (studioSessions || [])[0] || null;
+
+  const catDefaults = CATEGORY_DEFAULT_CREW[wsCategory] || CATEGORY_DEFAULT_CREW.visual;
+  const roleDefs = crewData ? crewData.roles : catDefaults.keys.map(crewRoleDef);
+  const crewFallbackKey = crewData?.fallbackKey || catDefaults.fallbackKey;
+  const COLS = roleDefs.map((r: any) => ({ role: locale === 'en' ? (r.labelEn || r.label) : r.label, icon: r.icon || '👤', crew: r.key }));
   const realBoard = tasks && tasks.length > 0
-    ? COLS.map((c) => ({ ...c, tasks: tasks.filter((t) => (t.crewRole || 'begge') === c.crew).map((t) => ({ id: t.id, t: t.title, time: t.timeLabel || '', done: t.status === 'done', real: true })) }))
+    ? COLS.map((c) => ({ ...c, tasks: tasks.filter((t) => (t.crewRole || crewFallbackKey) === c.crew).map((t) => ({ id: t.id, t: t.title, time: t.timeLabel || '', done: t.status === 'done', real: true })) }))
     : null;
   const boardCols = isReal ? (realBoard || COLS.map((c) => ({ role: c.role || c.label || c.crew, icon: c.icon || '👥', crew: c.crew, tasks: [] }))) : BOARD.map((c, i) => ({ role: c.role, icon: c.icon, crew: COLS[i]?.crew || 'begge', tasks: c.tasks }));
 
@@ -375,7 +371,56 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
         </Stack>
 
         {/* Capture & backup — live fra iPad CaptureApp + One Desk */}
-        {cap?.hasSession && (
+        {wsCategory === 'music' && isReal && studioSessions && studioSessions.length > 0 && (
+          <WsCard sx={{ mb: 2 }}>
+            <Stack direction="row" alignItems="center" spacing={2} flexWrap="wrap" gap={1.5}>
+              <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 180 }}>
+                <Typography sx={{ fontSize: 17 }}>🎚️</Typography>
+                <Box>
+                  <Stack direction="row" spacing={0.75} alignItems="center">
+                    <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>{t('studioTitle')}</Typography>
+                    {liveStudio?.playhead?.timecode && (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: ws.green }} />
+                        <Typography sx={{ fontSize: 10.5, color: ws.green, fontWeight: 700 }}>▶ {liveStudio.playhead.timecode}</Typography>
+                      </Box>
+                    )}
+                  </Stack>
+                  <Typography sx={{ fontSize: 11, color: ws.textFaint }} noWrap>{liveStudio?.name || 'Pro Tools'}</Typography>
+                </Box>
+              </Stack>
+              <Box sx={{ textAlign: 'center', px: 1 }}>
+                <Typography sx={{ fontSize: 18, fontWeight: 800 }}>{(studioSessions || []).reduce((s: number, x: any) => s + (Number(x.marker_count) || 0), 0)}</Typography>
+                <Typography sx={{ fontSize: 10.5, color: ws.textDim }}>{t('markersWord')}</Typography>
+              </Box>
+              <Box sx={{ textAlign: 'center', px: 1 }}>
+                <Typography sx={{ fontSize: 18, fontWeight: 800 }}>{(studioSessions || []).reduce((s: number, x: any) => s + (Number(x.bounce_count) || 0), 0)}</Typography>
+                <Typography sx={{ fontSize: 10.5, color: ws.textDim }}>{t('bouncesWord')}</Typography>
+              </Box>
+              <Box sx={{ flex: 1 }} />
+              <Button size="small" variant="outlined" onClick={() => go('sound-room')} sx={{ color: ws.accent, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 600 }}>{t('openSoundRoomBtn')}</Button>
+            </Stack>
+            <Box sx={{ mt: 1.5, pt: 1.5, borderTop: `1px solid ${ws.borderSoft}` }}>
+              <Typography sx={{ fontSize: 10.5, fontWeight: 700, color: ws.textFaint, mb: 0.5 }}>{t('latestBounces').toUpperCase()}</Typography>
+              {latestBounces.length === 0 ? (
+                <Typography sx={{ fontSize: 12, color: ws.textFaint }}>{t('noBounces')}</Typography>
+              ) : (
+                <Stack spacing={0.5}>
+                  {latestBounces.map((b: any) => (
+                    <Stack key={b.id} direction="row" spacing={1} alignItems="center" sx={{ px: 1, py: 0.55, borderRadius: 1, bgcolor: ws.panelInput }}>
+                      <Typography sx={{ fontSize: 12 }}>🎧</Typography>
+                      <Typography sx={{ fontSize: 12, color: ws.text, flex: 1, minWidth: 0 }} noWrap>{b.fileName || 'Bounce'}</Typography>
+                      {b.sessionName && <Typography sx={{ fontSize: 10.5, color: ws.textFaint }} noWrap>{b.sessionName}</Typography>}
+                      {b.reviewVersionId && <Typography sx={{ fontSize: 10.5, color: ws.green, fontWeight: 700 }}>{t('toVersion')}</Typography>}
+                      <Typography sx={{ fontSize: 10.5, color: ws.textFaint }}>{timeAgo(b.createdAt, t)}</Typography>
+                    </Stack>
+                  ))}
+                </Stack>
+              )}
+            </Box>
+          </WsCard>
+        )}
+        {wsCategory !== 'music' && cap?.hasSession && (
           <WsCard sx={{ mb: 2 }}>
             <Stack direction="row" alignItems="center" spacing={2} flexWrap="wrap" gap={1.5}>
               <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 180 }}>
@@ -570,7 +615,7 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
           </WsCard>
 
           <WsCard>
-            <WsSectionTitle title={t('refsTitle')} action={<Button size="small" onClick={() => go('shotlist')} sx={{ color: ws.accent, textTransform: 'none' }}>{t('seeAll')}</Button>} />
+            <WsSectionTitle title={wsCategory === 'music' ? t('refsTitleMusic') : t('refsTitle')} action={<Button size="small" onClick={() => go(wsCategory === 'music' ? 'moodboard' : 'shotlist')} sx={{ color: ws.accent, textTransform: 'none' }}>{t('seeAll')}</Button>} />
             <WsImageGrid columns={3} addLabel={t('addReference')} images={refs.images} onUpload={refs.onUpload} />
           </WsCard>
         </Box>
