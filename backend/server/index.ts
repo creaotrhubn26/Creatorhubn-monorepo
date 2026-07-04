@@ -1032,6 +1032,7 @@ import {
 } from "../../frontend/client/src/data/audio-storage-device-database.ts";
 import { WORLD_CAMERA_DATABASE } from "../../frontend/shared/camera-database.ts";
 import { CAMERA_RELEASE_REGISTRY_2020_2026 } from "../../frontend/shared/camera-release-registry.ts";
+import { normalizeProfession as normalizeCanonicalProfession } from "../../frontend/shared/profession-types.ts";
 import { DEFAULT_PROFESSION_CONFIGS } from "../../frontend/client/src/types/ProfessionConfig.ts";
 import {
   ACADEMY_PRESENTATION_GRAMMAR_BUDGETS,
@@ -42764,7 +42765,9 @@ const normalizeAdminProfession = (
   profession: unknown,
   roleId?: string | null,
 ): string | null => {
-  const directProfession = toAdminString(profession)?.toLowerCase() || null;
+  // Kanoniser via delt normalizeProfession (frontend/shared/profession-types):
+  // 'MusicProducer'/'musicproducer' → 'music_producer', 'Fotograf' → 'photographer' osv.
+  const directProfession = normalizeCanonicalProfession(toAdminString(profession)) || null;
   if (directProfession) return directProfession;
   if (roleId === "vendor") return "vendor";
   if (roleId === "enterprise_admin") return "enterprise";
