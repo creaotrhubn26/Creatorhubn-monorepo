@@ -401,7 +401,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
              project_id, notes,
              created_at, updated_at
            ) VALUES (
-             gen_random_uuid()::text, $1, $2, $3, $4, $5,
+             gen_random_uuid(), $1, $2, $3, $4, $5,
              'unvisited', 'business_card_scan',
              $6, $6, NOW(), $6, $7, $8,
              NOW(), NOW()
@@ -504,7 +504,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
              project_id,
              created_at, updated_at
            ) VALUES (
-             gen_random_uuid()::text, $1, $2, $3, $4,
+             gen_random_uuid(), $1, $2, $3, $4,
              $5, $6, $7,
              $8::uuid, $9, $10,
              'unvisited', $11,
