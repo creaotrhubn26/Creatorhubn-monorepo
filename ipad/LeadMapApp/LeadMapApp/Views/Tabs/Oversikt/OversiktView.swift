@@ -31,10 +31,6 @@ extension Notification.Name {
     /// Bruker trykket «Les mer» i map-pin-overlay-en → naviger til Leads-
     /// fanen og åpne full detalj-visning for denne lead-en.
     static let oversiktRequestOpenLeadInLeadsTab = Notification.Name("oversiktRequestOpenLeadInLeadsTab")
-    /// Kalender-handling ble valgt (fra LeadgridDatePickerSheet). userInfo:
-    /// { "date": Date, "action": String } med action ∈
-    /// ["book_meeting","new_followup","new_lead","view_day"].
-    static let oversiktCalendarActionRequested = Notification.Name("oversiktCalendarActionRequested")
     /// Ny oppfølging ble lagret (fra NewFollowUpSheet). userInfo:
     /// { "leadName": String, "date": Date }.
     static let oversiktFollowUpCreated = Notification.Name("oversiktFollowUpCreated")
@@ -65,23 +61,8 @@ struct OversiktView: View {
     @State private var forecast: LeadgridForecast?
     @State private var loading = false
     @State private var lastUpdated: Date?
-    @State private var activitiesOpen = false
-    @State private var nextActionsOpen = false
-    @State private var analyseOpen = false
-    @State private var profileOpen = false
-    @State private var myProfileOpen = false
-    // Kalender-handlinger 2026-07-02: sheets startet fra dato-picker.
-    // Bruker sheet(item:) med enum for å garantere at bare én sheet
-    // vises om gangen — SwiftUI/Mac Catalyst krasjet med UIView-
-    // constraint-exception når to sheets ble presentert samtidig.
-    @State private var activeCalendarSheet: CalendarSheetKind?
-    @State private var bookMeetingDay: Int = Calendar.current.component(.day, from: Date())
-    @State private var followUpDate: Date = Date()
-
-    enum CalendarSheetKind: String, Identifiable {
-        case bookMeeting, addLead, newFollowUp
-        var id: String { rawValue }
-    }
+    // Header-state + kalender-quick-actions eies nå av LeadgridTabHeader
+    // (Views/Tabs/Shared/LeadgridTabHeader.swift) — delt av alle faner.
 
     /// iPhone-kompakt = bottom-tabs + enkelt-kolonne (alt under hverandre).
     private var isCompact: Bool { hSize == .compact }
@@ -95,11 +76,6 @@ struct OversiktView: View {
 
     var body: some View {
         contentBody
-            .sheet(isPresented: $myProfileOpen) {
-                MyProfileSheet(name: profileDisplayName,
-                               email: appState.userEmail,
-                               leads: effectiveLeads)
-            }
             // Lytter på «Les mer»-request fra map-lead-overlay → bytt
             // til Leads-fanen. Selve detalj-sheet-en åpnes av
             // Leads-fanen når den observerer samme Notification.
@@ -108,95 +84,6 @@ struct OversiktView: View {
             )) { _ in
                 appState.selectedSidebarItem = .leads
             }
-            // Kalender-handlinger → én sheet-slot (BookMeeting eller AddLead).
-            // sheet(item:) hindrer at to sheets stakkes → unngår NSLayout-
-            // exception som krasjet Mac Catalyst.
-            .sheet(item: $activeCalendarSheet) { kind in
-                switch kind {
-                case .bookMeeting:
-                    BookMeetingSheet(dayOfMonth: bookMeetingDay)
-                case .addLead:
-                    AddLeadSheet { _ in
-                        // Sheet håndterer egen dismiss + save.
-                    }
-                case .newFollowUp:
-                    NewFollowUpSheet(
-                        initialDate: followUpDate,
-                        leads: effectiveLeads,
-                        onSave: { payload in
-                            // Toast — backend-PATCH kommer når endepunktet
-                            // /leadgrid/leads/:id/follow-up bygges.
-                            NotificationCenter.default.post(
-                                name: .oversiktFollowUpCreated,
-                                object: nil,
-                                userInfo: [
-                                    "leadName": payload.leadName,
-                                    "date": payload.date,
-                                ]
-                            )
-                        }
-                    )
-                }
-            }
-            // Kalender-handlinger → åpne relevant flyt. Book møte og Ny lead
-            // krever hele iPad-mocking-kjeden så vi ruter dem til de allerede-
-            // eksisterende popoverne (analyseOpen / nextActionsOpen) med
-            // riktig kontekst. Ny lead + book møte-flyt kommer i egne sheets
-            // senere når vi porterer BookMeetingSheet/AddLeadSheet.
-            .onReceive(NotificationCenter.default.publisher(
-                for: .oversiktCalendarActionRequested
-            )) { note in
-                guard let action = note.userInfo?["action"] as? String,
-                      let date = note.userInfo?["date"] as? Date
-                else { return }
-                handleCalendarAction(action, at: date)
-            }
-    }
-
-    /// Rutes kalender-handlingene til relevant sheet/popover.
-    ///   book_meeting  → BookMeetingSheet(dayOfMonth:)
-    ///   new_lead      → AddLeadSheet(onSave:)
-    ///   new_followup  → nextActionsOpen (Follow-Up-Queue popover)
-    ///   view_day      → nextActionsOpen (samme popover viser dagens plan)
-    @MainActor
-    private func handleCalendarAction(_ action: String, at date: Date) {
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone(identifier: "Europe/Oslo") ?? .current
-        switch action {
-        case "book_meeting":
-            bookMeetingDay = cal.component(.day, from: date)
-            // Vent lenger på Mac Catalyst så dato-picker rekker å lukke helt
-            // FØR nye sheet monteres — ellers krasjer UIView-hierarkiet med
-            // NSInternalInconsistencyException.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.65) {
-                activeCalendarSheet = .bookMeeting
-            }
-        case "new_lead":
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.65) {
-                activeCalendarSheet = .addLead
-            }
-        case "new_followup":
-            followUpDate = date
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.65) {
-                activeCalendarSheet = .newFollowUp
-            }
-        case "view_day":
-            nextActionsOpen = true
-        default:
-            break
-        }
-    }
-
-    private var profileDisplayName: String {
-        let email = appState.userEmail ?? "bruker@leadgrid"
-        let local = email.split(separator: "@").first.map(String.init) ?? "Bruker"
-        let cleaned = local
-            .replacingOccurrences(of: ".", with: " ")
-            .replacingOccurrences(of: "_", with: " ")
-            .replacingOccurrences(of: "-", with: " ")
-        return cleaned.split(separator: " ")
-            .map { $0.prefix(1).uppercased() + $0.dropFirst() }
-            .joined(separator: " ")
     }
 
     private var contentBody: some View {
@@ -215,15 +102,11 @@ struct OversiktView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    HeaderRow(lastUpdated: lastUpdated,
-                              activitiesOpen: $activitiesOpen,
-                              nextActionsOpen: $nextActionsOpen,
-                              analyseOpen: $analyseOpen,
-                              profileOpen: $profileOpen,
-                              myProfileOpen: $myProfileOpen,
-                              upcomingFollowups: upcomingFollowupsCount,
-                              momentum: momentum,
-                              leads: effectiveLeads)
+                    LeadgridTabHeader(
+                        subtitle: "Få full kontroll over dine leads, aktiviteter og resultater.",
+                        leads: effectiveLeads,
+                        momentum: momentum,
+                        lastUpdated: lastUpdated)
                     KPICardRow(leads: effectiveLeads, momentum: momentum, forecast: forecast,
                                compact: isCompact || isPortrait)
                     if isCompact {
@@ -296,15 +179,6 @@ struct OversiktView: View {
 
     // MARK: - Data
 
-    private var upcomingFollowupsCount: Int {
-        let cal = Calendar.current
-        let threeDays = cal.date(byAdding: .day, value: 3, to: Date()) ?? Date()
-        return effectiveLeads.filter { lead in
-            guard let next = lead.nextFollowUpAt else { return false }
-            return next <= threeDays
-        }.count
-    }
-
     private func initialLoad() async {
         if momentum == nil && forecast == nil { await refresh() }
     }
@@ -334,557 +208,6 @@ struct OversiktView: View {
             self.forecast = fc
             self.lastUpdated = Date()
         }
-    }
-}
-
-// MARK: - HeaderRow
-
-private struct HeaderRow: View {
-    let lastUpdated: Date?
-    @Binding var activitiesOpen: Bool
-    @Binding var nextActionsOpen: Bool
-    @Binding var analyseOpen: Bool
-    @Binding var profileOpen: Bool
-    @Binding var myProfileOpen: Bool
-    let upcomingFollowups: Int
-    let momentum: LeadgridMomentum?
-    let leads: [LeadModel]
-    @Environment(AppState.self) private var state
-    // Header-filtre (2026-07-02): gjør «dato»- og «områder»-pillene
-    // funksjonelle. Tidligere var pickerButton bare visuell.
-    @State private var headerDate: Date = Date()
-    @State private var headerDatePickerOpen: Bool = false
-    @State private var headerAreaFilter: String = "Alle områder"
-
-    private var topActions: [LeadModel] {
-        Array(leads
-            .filter { $0.nextFollowUpAt != nil || $0.status == .meetingBooked || ($0.leadScore ?? 0) >= 70 }
-            .sorted { ($0.leadScore ?? 0) > ($1.leadScore ?? 0) }
-            .prefix(8))
-    }
-
-    var body: some View {
-        // Matcher Kart-fanens unifiedHeader (Pakke 10.1 header-harmoni
-        // 2026-07-01): 28pt title, 13pt subtitle, spacing 14/8, tightere
-        // date-label på isNarrow. Popovers har fortsatt Oversikt-spesifikt
-        // innhold, men ramme + presentation stil er i tråd med Kart.
-        GeometryReader { geo in
-            let isNarrow = geo.size.width < 1100
-            HStack(alignment: .top, spacing: 14) {
-                if !isNarrow { LeadgridHeaderMark().padding(.top, 4) }
-                // Fanetittelen er fjernet — tab-baren/sidebaren viser hvor du er.
-                if !isNarrow {
-                    Text("Få full kontroll over dine leads, aktiviteter og resultater.")
-                        .font(.system(size: 13))
-                        .foregroundStyle(Brand.textSecondary)
-                        .lineLimit(1)
-                        .padding(.top, 12)
-                }
-                // iPhone (QA-runde 2, Daniels design-gjennomgang): dato-
-                // pillen venstrejusteres — kontekst til venstre, handlinger
-                // til høyre — og fyller tomrommet etter at fanetittelen
-                // forsvant. iPad/Mac beholder alt høyrejustert.
-                if DeviceIdiom.isPhone {
-                    dateButton(isNarrow: true)
-                }
-                Spacer()
-                HStack(spacing: 8) {
-                    // Fix 2026-07-02: pickerButton var bare et visuelt kort.
-                    // Nå er dato-pillen en Button som åpner LeadgridDatePicker,
-                    // og områder-pillen er en Menu med kommuner-filter.
-                    if !DeviceIdiom.isPhone {
-                        dateButton(isNarrow: isNarrow)
-                    }
-                    if !isNarrow {
-                        Menu {
-                            ForEach(availableAreas, id: \.self) { area in
-                                Button {
-                                    headerAreaFilter = area
-                                    // Broadcast så OversiktView kan zoome mini-
-                                    // kartet + filtrere leads. Bruker Notification
-                                    // for å slippe å hoiste state gjennom struct-
-                                    // hierarkiet (HeaderRow er private).
-                                    NotificationCenter.default.post(
-                                        name: .oversiktAreaChanged,
-                                        object: nil,
-                                        userInfo: ["area": area]
-                                    )
-                                } label: {
-                                    if area == headerAreaFilter {
-                                        Label(area, systemImage: "checkmark")
-                                    } else {
-                                        Text(area)
-                                    }
-                                }
-                            }
-                        } label: {
-                            pickerButton(icon: "location.fill", text: headerAreaFilter)
-                        }
-                        .menuStyle(.borderlessButton)
-                        .fixedSize()
-                        .macCatalystHover()
-                    }
-                    // iPhone: de tre sekundære knappene (analyse/handlinger/
-                    // aktivitet) kollapses til én ellipsis-meny så header-
-                    // raden får plass på compact width. iPad/Mac beholder
-                    // enkeltknappene med badge + popover-anker som før.
-                    if DeviceIdiom.isPhone {
-                        phoneOverflowMenu
-                    } else {
-                        analyseButton
-                        nextActionsButton
-                        activitiesButton
-                    }
-                    Button { profileOpen.toggle() } label: {
-                        if !isNarrow { userBadge } else { userAvatarOnly }
-                    }
-                    .buttonStyle(.plain)
-                    .macCatalystHover()
-                    .popover(isPresented: $profileOpen, arrowEdge: .top) {
-                        ProfilePopover(
-                            name: displayName,
-                            email: state.userEmail,
-                            onOpenMyProfile: {
-                                profileOpen = false
-                                // Liten delay så popover lukker rent før sheet åpner
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                                    myProfileOpen = true
-                                }
-                            }
-                        )
-                        // Fast ramme på iPad/Mac, detent-sheet på iPhone —
-                        // fast width clipper på compact-skjermer.
-                        .adaptivePopoverFrame(width: 320, height: 480)
-                        .presentationCompactAdaptation(DeviceIdiom.isPhone ? .sheet : .popover)
-                    }
-                }
-            }
-        }
-        .frame(height: 60)
-    }
-
-    private var analyseButton: some View {
-        Button {
-            analyseOpen.toggle()
-        } label: {
-            ZStack {
-                RoundedRectangle(cornerRadius: 12).fill(Brand.card)
-                RoundedRectangle(cornerRadius: 12).stroke(Brand.stroke, lineWidth: 1)
-                Image(systemName: "chart.line.uptrend.xyaxis")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Brand.purpleLight)
-            }
-            .frame(width: 44, height: 44)
-        }
-        .buttonStyle(.plain)
-        .macCatalystHover()
-        .popover(isPresented: $analyseOpen, arrowEdge: .top) {
-            analysePopoverContent
-        }
-    }
-
-    // Popover-innhold delt mellom iPad-knappene og iPhone-overflow-menyen.
-    // adaptivePopoverFrame gir fast ramme på iPad/Mac og medium/large-
-    // detents på iPhone, der popoveren adapteres til sheet (innholdet har
-    // egne ScrollViews, så ingenting mistes i medium-detent).
-    private var analysePopoverContent: some View {
-        AnalysePopover(leads: leads)
-            .adaptivePopoverFrame(width: 460, height: 640)
-            .presentationCompactAdaptation(DeviceIdiom.isPhone ? .sheet : .popover)
-    }
-
-    private var nextActionsPopoverContent: some View {
-        NextActionsPopover(leads: topActions, totalCount: leads.count)
-            .adaptivePopoverFrame(width: 420, height: 560)
-            .presentationCompactAdaptation(DeviceIdiom.isPhone ? .sheet : .popover)
-    }
-
-    private var activitiesPopoverContent: some View {
-        RecentActivitiesPopover(leads: leads,
-                                upcomingFollowups: upcomingFollowups,
-                                momentum: momentum)
-            .adaptivePopoverFrame(width: 420, height: 600)
-            .presentationCompactAdaptation(DeviceIdiom.isPhone ? .sheet : .popover)
-    }
-
-    /// Dato-pillen m/ LeadgridDatePicker-sheet. Utflyttet fra header-raden
-    /// (QA-runde 2) så den kan venstrejusteres på iPhone og beholdes i
-    /// kontroll-gruppa på iPad/Mac.
-    private func dateButton(isNarrow: Bool) -> some View {
-        Button {
-            headerDatePickerOpen = true
-        } label: {
-            pickerButton(icon: "calendar",
-                         text: isNarrow ? headerDateShort() : headerDateFull())
-        }
-        .buttonStyle(.plain)
-        .macCatalystHover()
-        .sheet(isPresented: $headerDatePickerOpen) {
-            LeadgridDatePickerSheet(
-                initialDate: headerDate,
-                showTime: false,
-                onConfirm: { d in
-                    headerDate = d
-                    headerDatePickerOpen = false
-                    // Broadcast så kartet zoomer til leads med
-                    // aktivitet på valgt dato (møter/oppfølginger).
-                    NotificationCenter.default.post(
-                        name: .oversiktDateChanged,
-                        object: nil,
-                        userInfo: ["date": d]
-                    )
-                },
-                onCancel: { headerDatePickerOpen = false },
-                // 4 kalender-handlinger: sheeten dispatch-er via
-                // Notification så OversiktView kan åpne relevant
-                // eksisterende modal (BookMeetingSheet, follow-up,
-                // AddLeadSheet, dagsplan-list).
-                quickActions: [
-                    LeadgridCalendarAction(
-                        title: "Book møte denne dagen",
-                        icon: "calendar.badge.plus",
-                        color: Brand.purpleLight,
-                        onSelect: { d in
-                            headerDate = d
-                            headerDatePickerOpen = false
-                            NotificationCenter.default.post(
-                                name: .oversiktCalendarActionRequested,
-                                object: nil,
-                                userInfo: ["date": d, "action": "book_meeting"]
-                            )
-                        }
-                    ),
-                    LeadgridCalendarAction(
-                        title: "Ny oppfølging",
-                        icon: "flag.badge.ellipsis.fill",
-                        color: Brand.blue,
-                        onSelect: { d in
-                            headerDate = d
-                            headerDatePickerOpen = false
-                            NotificationCenter.default.post(
-                                name: .oversiktCalendarActionRequested,
-                                object: nil,
-                                userInfo: ["date": d, "action": "new_followup"]
-                            )
-                        }
-                    ),
-                    LeadgridCalendarAction(
-                        title: "Ny lead",
-                        icon: "person.crop.circle.badge.plus",
-                        color: Brand.green,
-                        onSelect: { d in
-                            headerDate = d
-                            headerDatePickerOpen = false
-                            NotificationCenter.default.post(
-                                name: .oversiktCalendarActionRequested,
-                                object: nil,
-                                userInfo: ["date": d, "action": "new_lead"]
-                            )
-                        }
-                    ),
-                    LeadgridCalendarAction(
-                        title: "Vis dagens plan",
-                        icon: "list.bullet.rectangle.portrait.fill",
-                        color: Brand.orange,
-                        onSelect: { d in
-                            headerDate = d
-                            headerDatePickerOpen = false
-                            NotificationCenter.default.post(
-                                name: .oversiktCalendarActionRequested,
-                                object: nil,
-                                userInfo: ["date": d, "action": "view_day"]
-                            )
-                        }
-                    ),
-                ],
-                dayIndicators: HeaderRow.buildDayIndicators(from: leads)
-            )
-        }
-    }
-
-    /// iPhone-erstatning for de tre sekundære header-knappene. Popover-ene
-    /// forankres i usynlige bakgrunns-anchors (én per presentasjon — flere
-    /// presentation-modifiers på samme view er upålitelig) og vises som
-    /// sheets via adaptivePopoverFrame.
-    private var phoneOverflowMenu: some View {
-        Menu {
-            Button {
-                analyseOpen = true
-            } label: {
-                Label("Analyse", systemImage: "chart.line.uptrend.xyaxis")
-            }
-            Button {
-                nextActionsOpen = true
-            } label: {
-                Label("Neste handlinger", systemImage: "checklist")
-            }
-            Button {
-                activitiesOpen = true
-            } label: {
-                Label("Aktivitet", systemImage: "bell.fill")
-            }
-        } label: {
-            ZStack(alignment: .topTrailing) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 12).fill(Brand.card)
-                    RoundedRectangle(cornerRadius: 12).stroke(Brand.stroke, lineWidth: 1)
-                    Image(systemName: "ellipsis.circle")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(Brand.purpleLight)
-                }
-                .frame(width: 44, height: 44)
-                // Samme badge-signal som nextActionsButton gir på iPad.
-                if topActions.count > 0 {
-                    Text("\(min(topActions.count, 99))")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 5).padding(.vertical, 2)
-                        .background(Brand.purple, in: Capsule())
-                        .overlay(Capsule().stroke(Brand.bg, lineWidth: 1.5))
-                        .offset(x: 6, y: -6)
-                }
-            }
-        }
-        .menuStyle(.borderlessButton)
-        .background(
-            Color.clear
-                .popover(isPresented: $analyseOpen, arrowEdge: .top) {
-                    analysePopoverContent
-                }
-        )
-        .background(
-            Color.clear
-                .popover(isPresented: $nextActionsOpen, arrowEdge: .top) {
-                    nextActionsPopoverContent
-                }
-        )
-        .background(
-            Color.clear
-                .popover(isPresented: $activitiesOpen, arrowEdge: .top) {
-                    activitiesPopoverContent
-                }
-        )
-    }
-
-    private var nextActionsButton: some View {
-        Button {
-            nextActionsOpen.toggle()
-        } label: {
-            ZStack(alignment: .topTrailing) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 12).fill(Brand.card)
-                    RoundedRectangle(cornerRadius: 12).stroke(Brand.stroke, lineWidth: 1)
-                    Image(systemName: "checklist")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(Brand.purpleLight)
-                }
-                .frame(width: 44, height: 44)
-                // Liten badge med antall hot/varme leads som venter
-                if topActions.count > 0 {
-                    Text("\(min(topActions.count, 99))")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 5).padding(.vertical, 2)
-                        .background(Brand.purple, in: Capsule())
-                        .overlay(Capsule().stroke(Brand.bg, lineWidth: 1.5))
-                        .offset(x: 6, y: -6)
-                }
-            }
-        }
-        .buttonStyle(.plain)
-        .macCatalystHover()
-        .popover(isPresented: $nextActionsOpen, arrowEdge: .top) {
-            nextActionsPopoverContent
-        }
-    }
-
-    private var activitiesButton: some View {
-        Button {
-            activitiesOpen.toggle()
-        } label: {
-            ZStack(alignment: .topTrailing) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 12).fill(Brand.card)
-                    RoundedRectangle(cornerRadius: 12).stroke(Brand.stroke, lineWidth: 1)
-                    Image(systemName: "bell.fill")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Brand.purpleLight)
-                }
-                .frame(width: 44, height: 44)
-                // Liten badge med antall nye aktiviteter (preview viser 4)
-                Circle()
-                    .fill(Brand.red)
-                    .frame(width: 8, height: 8)
-                    .offset(x: -8, y: 8)
-            }
-        }
-        .buttonStyle(.plain)
-        .macCatalystHover()
-        .popover(isPresented: $activitiesOpen, arrowEdge: .top) {
-            activitiesPopoverContent
-        }
-    }
-
-    private func pickerButton(icon: String, text: String) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: icon)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(Brand.purpleLight)
-            Text(text)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.white)
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
-            Image(systemName: "chevron.down")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(Brand.textSecondary)
-        }
-        .padding(.horizontal, 12).padding(.vertical, 10)
-        .background(Brand.card, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Brand.stroke, lineWidth: 1))
-    }
-
-    private var userBadge: some View {
-        HStack(spacing: 10) {
-            ZStack {
-                Circle().fill(Brand.purple.opacity(0.25))
-                Text(initials)
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(Brand.purpleLight)
-            }
-            .frame(width: 32, height: 32)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(displayName)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                Text("Salgssjef")
-                    .font(.system(size: 11))
-                    .foregroundStyle(Brand.textSecondary)
-                    .lineLimit(1)
-            }
-            .fixedSize(horizontal: true, vertical: false)
-            Image(systemName: "chevron.down")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(Brand.textSecondary)
-        }
-        .padding(.horizontal, 12).padding(.vertical, 8)
-        .background(Brand.card, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Brand.stroke, lineWidth: 1))
-    }
-
-    private var displayName: String {
-        let email = state.userEmail ?? "bruker@leadgrid"
-        let local = email.split(separator: "@").first.map(String.init) ?? "Bruker"
-        // Bytte vanlige separator-tegn (., _, -) til space + capitalize hvert ord.
-        let cleaned = local
-            .replacingOccurrences(of: ".", with: " ")
-            .replacingOccurrences(of: "_", with: " ")
-            .replacingOccurrences(of: "-", with: " ")
-        return cleaned.split(separator: " ")
-            .map { $0.prefix(1).uppercased() + $0.dropFirst() }
-            .joined(separator: " ")
-    }
-
-    private var initials: String {
-        let parts = displayName.split(separator: " ")
-        return parts.prefix(2).map { String($0.prefix(1)) }.joined().uppercased()
-    }
-
-    private static var todayLabel: String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "nb_NO")
-        f.dateFormat = "d. MMM yyyy"
-        return f.string(from: Date())
-    }
-
-    private static var todayShortLabel: String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "nb_NO")
-        f.dateFormat = "d. MMM"
-        return f.string(from: Date())
-    }
-
-    /// Formatter valgt header-dato — «I dag» hvis dagens dato, ellers
-    /// «5. juli 2026»/«5. jul» avhengig av bredde.
-    private func headerDateFull() -> String {
-        if Calendar.current.isDateInToday(headerDate) {
-            return "I dag"
-        }
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "nb_NO")
-        f.dateFormat = "d. MMM yyyy"
-        return f.string(from: headerDate)
-    }
-    private func headerDateShort() -> String {
-        if Calendar.current.isDateInToday(headerDate) {
-            return "I dag"
-        }
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "nb_NO")
-        f.dateFormat = "d. MMM"
-        return f.string(from: headerDate)
-    }
-
-    /// Bygg dato → aktivitets-indikator-map fra leads. Møter = leads med
-    /// status = .meetingBooked og `nextFollowUpAt` på den dagen (møte-
-    /// dato). Oppfølginger = alle andre leads med `nextFollowUpAt`.
-    /// Nøkkelen er start-of-day i Europe/Oslo — samme som kalender-cellen
-    /// sammenligner mot.
-    static func buildDayIndicators(
-        from leads: [LeadModel]
-    ) -> [Date: LeadgridDayIndicator] {
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone(identifier: "Europe/Oslo") ?? .current
-        var meetings: [Date: Int] = [:]
-        var followUps: [Date: Int] = [:]
-        for lead in leads {
-            guard let d = lead.nextFollowUpAt else { continue }
-            let day = cal.startOfDay(for: d)
-            if lead.status == .meetingBooked {
-                meetings[day, default: 0] += 1
-            } else {
-                followUps[day, default: 0] += 1
-            }
-        }
-        var result: [Date: LeadgridDayIndicator] = [:]
-        for day in Set(meetings.keys).union(followUps.keys) {
-            result[day] = LeadgridDayIndicator(
-                meetings: meetings[day] ?? 0,
-                followUps: followUps[day] ?? 0
-            )
-        }
-        return result
-    }
-
-    /// Områder som kan filtreres på i header. Bygges dynamisk fra
-    /// eksisterende leads sine `city`-felter + faste hurtigvalg.
-    private var availableAreas: [String] {
-        var seen = Set<String>()
-        var out: [String] = ["Alle områder"]
-        for lead in leads {
-            if let city = lead.city, !city.isEmpty, seen.insert(city).inserted {
-                out.append(city)
-            }
-        }
-        // Fallback-lokasjoner hvis vi ikke har leads enda
-        if out.count == 1 {
-            out.append(contentsOf: ["Oslo", "Bergen", "Trondheim", "Stavanger", "Lillestrøm"])
-        }
-        return out
-    }
-
-    /// Brukerinfo-versjon for trange headere (portrait iPad) — viser bare
-    /// initialene som lilla rund avatar.
-    private var userAvatarOnly: some View {
-        ZStack {
-            Circle().fill(Brand.purple.opacity(0.25))
-            Text(initials)
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(Brand.purpleLight)
-            Circle().stroke(Brand.stroke, lineWidth: 1)
-        }
-        .frame(width: 44, height: 44)
     }
 }
 
@@ -5558,7 +4881,19 @@ struct MyProfileSheet: View {
 struct ProfilePopover: View {
     let name: String
     let email: String?
+    /// Rolle-linje under navnet — ekte verdi fra AppState (Leadgrid-admin
+    /// vs Salgssjef), ikke hardkodet mock.
+    var role: String = "Salgssjef"
     var onOpenMyProfile: () -> Void = {}
+    /// SuperAdmin-konsoll — kun satt for Leadgrid-ansatte på faner som
+    /// eier root-switchen (Leadbook).
+    var onOpenSuperAdmin: (() -> Void)? = nil
+
+    /// Ekte app-versjon fra bundelen (før: hardkodet «v1.3.1»).
+    private var appVersion: String {
+        let v = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+        return v.map { "v\($0)" } ?? "—"
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -5574,11 +4909,16 @@ struct ProfilePopover: View {
                         }
                         .buttonStyle(.plain)
                         row(icon: "building.2.fill", color: Brand.blue,
-                            label: "Bytt organisasjon",
-                            trailing: "Creatorhub AS")
+                            label: "Bytt organisasjon")
                         row(icon: "folder.fill", color: Brand.green,
-                            label: "Bytt prosjekt",
-                            trailing: "Alle (5)")
+                            label: "Bytt prosjekt")
+                        if let onOpenSuperAdmin {
+                            Button(action: onOpenSuperAdmin) {
+                                row(icon: "crown.fill", color: Brand.yellow,
+                                    label: "SuperAdmin-konsoll")
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
                     section(title: "Apper") {
                         row(icon: "gearshape.fill", color: Brand.textSecondary, label: "Innstillinger")
@@ -5590,7 +4930,7 @@ struct ProfilePopover: View {
                         row(icon: "questionmark.circle.fill", color: Brand.blue, label: "Hjelp & støtte")
                         row(icon: "lightbulb.fill", color: Brand.yellow, label: "Forstå pinsene")
                         row(icon: "info.circle.fill", color: Brand.textSecondary,
-                            label: "Om Leadgrid", trailing: "v1.3.1")
+                            label: "Om Leadgrid", trailing: appVersion)
                     }
                 }
                 .padding(.horizontal, 16)
@@ -5642,7 +4982,7 @@ struct ProfilePopover: View {
                         .foregroundStyle(Brand.textSecondary)
                         .lineLimit(1)
                 }
-                Text("Salgssjef · Creatorhub AS")
+                Text(role)
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(Brand.purpleLight)
             }
@@ -5820,6 +5160,19 @@ struct RecentActivitiesPopover: View {
     let leads: [LeadModel]
     let upcomingFollowups: Int
     let momentum: LeadgridMomentum?
+    /// Når data sist ble hentet — driver den EKTE «Oppdatert …»-teksten i
+    /// footeren (før: hardkodet «Oppdaterte data for 2 min siden»).
+    var lastUpdated: Date? = nil
+
+    private var lastUpdatedLabel: String? {
+        guard let lastUpdated else { return nil }
+        let seconds = Date().timeIntervalSince(lastUpdated)
+        if seconds < 60 { return "Oppdatert nettopp" }
+        let f = RelativeDateTimeFormatter()
+        f.locale = Locale(identifier: "nb_NO")
+        f.unitsStyle = .short
+        return "Oppdatert \(f.localizedString(for: lastUpdated, relativeTo: Date()))"
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -5855,18 +5208,20 @@ struct RecentActivitiesPopover: View {
                 .padding(.bottom, 18)
             }
 
-            Divider().background(Brand.stroke)
+            if let label = lastUpdatedLabel {
+                Divider().background(Brand.stroke)
 
-            HStack {
-                Spacer()
-                Text("Oppdaterte data for 2 min siden")
-                    .font(.system(size: 10))
-                    .foregroundStyle(Brand.textTertiary)
-                Image(systemName: "arrow.clockwise")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(Brand.textTertiary)
+                HStack {
+                    Spacer()
+                    Text(label)
+                        .font(.system(size: 10))
+                        .foregroundStyle(Brand.textTertiary)
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Brand.textTertiary)
+                }
+                .padding(.horizontal, 16).padding(.vertical, 10)
             }
-            .padding(.horizontal, 16).padding(.vertical, 10)
         }
         .background(Brand.card)
     }
@@ -5976,9 +5331,11 @@ private struct RecentActivitiesCard: View {
     }
 
     private var events: [Event] {
-        // Demo AV OG ingen ekte leads → tom aktivitet, så popover ikke
-        // fabrikkerer «Lead åpnet tilbudet»-hendelser fra tomme data.
-        guard DemoModeManager.isActiveNonisolated || !leads.isEmpty else {
+        // KUN demo-modus viser eksempel-hendelser. I ekte modus har vi
+        // ingen aktivitets-feed fra backend enda → ærlig tom-tilstand i
+        // stedet for fabrikkerte «Lead åpnet tilbudet»-rader bygget av
+        // ekte lead-navn (Daniel 2026-07-04: hele headeren = ekte data).
+        guard DemoModeManager.isActiveNonisolated else {
             return []
         }
         let f = DateFormatter()
@@ -6091,35 +5448,6 @@ private struct RecentActivitiesCard: View {
         .overlay(
             embedded ? nil : RoundedRectangle(cornerRadius: 16).stroke(Brand.stroke, lineWidth: 1)
         )
-    }
-}
-
-// MARK: - TipsBanner
-
-private struct TipsBanner: View {
-    let upcoming: Int
-    var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "sparkles")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(Brand.purpleLight)
-            Text("Tips:")
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(.white)
-            Text("Du har \(upcoming) oppfølginger som forfaller i løpet av de neste 3 dagene.")
-                .font(.system(size: 13))
-                .foregroundStyle(Brand.textSecondary)
-            Spacer()
-            Text("Oppdaterte data for 2 min siden")
-                .font(.system(size: 11))
-                .foregroundStyle(Brand.textTertiary)
-            Image(systemName: "arrow.clockwise")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Brand.textTertiary)
-        }
-        .padding(.horizontal, 16).padding(.vertical, 12)
-        .background(Brand.card, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Brand.stroke, lineWidth: 1))
     }
 }
 

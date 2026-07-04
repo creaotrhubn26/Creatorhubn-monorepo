@@ -325,10 +325,7 @@ struct LeadsView: View {
     // iPhone (compact): detalj-sidebaren presenteres som sheet i stedet
     // for side-stilt kolonne.
     @State private var phoneDetailOpen: Bool = false
-    // Pakke 10.1 — rike header-popovere (samme som Oversikt)
-    @State private var analyseOpen: Bool = false
-    @State private var nextActionsOpen: Bool = false
-    @State private var notificationsOpen: Bool = false
+    // Header: delt LeadgridTabHeader eier all popover/sheet-state selv.
     @Environment(AppState.self) private var appState
     // Pakke 10.1: 4 sheets bor NÅ på LeadDetailSidebar (der menyene er).
     // Kun det ubrukte state-blokket er fjernet — LeadsView har ikke lenger
@@ -500,143 +497,20 @@ struct LeadsView: View {
         }
     }
 
-    // MARK: Header — samme som Oversikt/Kart (dato/område/popovers/avatar)
+    // MARK: Header — delt LeadgridTabHeader (fasit: Oversikt-fanen)
+
+    /// Demo-aware datakilde for header-badges/popovers (samme gating som
+    /// sourceLeads).
+    private var headerLeads: [LeadModel] {
+        DemoModeManager.isActiveNonisolated
+            ? DemoModeManager.shared.mockLeads
+            : appState.leads
+    }
 
     private var header: some View {
-        GeometryReader { geo in
-            let isNarrow = geo.size.width < 1100
-            HStack(alignment: .top, spacing: 14) {
-                if !isNarrow { LeadgridHeaderMark().padding(.top, 4) }
-                // Fanetittelen er fjernet — tab-baren/sidebaren viser hvor
-                // du er, og på iPhone trengs plassen til knapperaden.
-                if !isNarrow {
-                    Text("Få full oversikt over alle dine leads og deres status.")
-                        .font(.system(size: 13))
-                        .foregroundStyle(LdBrand.textSecondary)
-                        .lineLimit(1)
-                        .padding(.top, 12)
-                }
-                Spacer(minLength: 10)
-                if DeviceIdiom.isPhone {
-                    // iPhone: dato-pill + 3 ikonknapper + avatar får ikke
-                    // plass ved siden av tittelen på compact width —
-                    // knapperaden scroller horisontalt i stedet for å
-                    // presse tittelen. Trailing-anker = avatar synlig først
-                    // (matcher høyrejustert design på iPad/Mac).
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        headerActions(isNarrow: isNarrow)
-                            // Luft over knappene så varsel-badgene
-                            // (offset y: -6) ikke klippes av scrolleren.
-                            .padding(.top, 6)
-                    }
-                    .defaultScrollAnchor(.trailing)
-                } else {
-                    headerActions(isNarrow: isNarrow)
-                }
-            }
-        }
-        .frame(height: 64)
-    }
-
-    /// Header-knappene (dato/område/analyse/neste-handlinger/varsler/avatar)
-    /// — trukket ut slik at iPhone kan legge dem i en horisontal scroller
-    /// mens iPad/Mac beholder dem inline.
-    private func headerActions(isNarrow: Bool) -> some View {
-        HStack(spacing: 8) {
-            topPicker(icon: "calendar", text: isNarrow ? "Tir 14" : "Tir. 14. mai")
-            if !isNarrow {
-                topPicker(icon: "location.fill", text: "Alle områder")
-            }
-            // 380pt fast ramme klipper på iPhone (~390pt skjerm) —
-            // adaptiv ramme + sheet-adaptasjon på compact width.
-            topIconButton(icon: "chart.line.uptrend.xyaxis", badge: nil, isOpen: $analyseOpen)
-                .popover(isPresented: $analyseOpen, arrowEdge: .top) {
-                    AnalysePopover(leads: appState.leads)
-                        .adaptivePopoverFrame(width: 380, height: 520)
-                        .presentationCompactAdaptation(DeviceIdiom.isPhone ? .sheet : .popover)
-                }
-            topIconButton(icon: "checklist", badge: 8, isOpen: $nextActionsOpen)
-                .popover(isPresented: $nextActionsOpen, arrowEdge: .top) {
-                    NextActionsPopover(leads: appState.leads, totalCount: appState.leads.count)
-                        .adaptivePopoverFrame(width: 380, height: 520)
-                        .presentationCompactAdaptation(DeviceIdiom.isPhone ? .sheet : .popover)
-                }
-            topIconButton(icon: "bell.fill", badge: 3, isOpen: $notificationsOpen)
-                .popover(isPresented: $notificationsOpen, arrowEdge: .top) {
-                    RecentActivitiesPopover(leads: appState.leads, upcomingFollowups: 0, momentum: nil)
-                        .adaptivePopoverFrame(width: 380, height: 520)
-                        .presentationCompactAdaptation(DeviceIdiom.isPhone ? .sheet : .popover)
-                }
-            profileAvatar(isNarrow: isNarrow)
-        }
-    }
-
-    private func topPicker(icon: String, text: String) -> some View {
-        Button {} label: {
-            HStack(spacing: 6) {
-                Image(systemName: icon)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(LdBrand.purpleLight)
-                Text(text)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white)
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(LdBrand.textTertiary)
-            }
-            .padding(.horizontal, 12).padding(.vertical, 11)
-            .background(LdBrand.card, in: RoundedRectangle(cornerRadius: 11))
-            .overlay(RoundedRectangle(cornerRadius: 11).stroke(LdBrand.stroke, lineWidth: 1))
-        }
-        .buttonStyle(.plain)
-        .macCatalystHover()
-    }
-
-    private func topIconButton(icon: String, badge: Int?, isOpen: Binding<Bool>? = nil) -> some View {
-        Button { isOpen?.wrappedValue.toggle() } label: {
-            ZStack(alignment: .topTrailing) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 11).fill(LdBrand.card)
-                    RoundedRectangle(cornerRadius: 11).stroke(LdBrand.stroke, lineWidth: 1)
-                    Image(systemName: icon)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(LdBrand.purpleLight)
-                }
-                .frame(width: 42, height: 42)
-                if let b = badge, b > 0 {
-                    Text("\(min(b, 99))")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 5).padding(.vertical, 2)
-                        .background(LdBrand.purple, in: Capsule())
-                        .overlay(Capsule().stroke(LdBrand.bg, lineWidth: 1.5))
-                        .offset(x: 6, y: -6)
-                }
-            }
-        }
-        .buttonStyle(.plain)
-        .macCatalystHover()
-    }
-
-    // Løftet Leadbook-avatar-menu til alle faner (SharedProfileAvatar).
-    @State private var showMinProfilAvatar: Bool = false
-    @State private var showEcosystemAvatar: Bool = false
-    @State private var showTeamAccessAvatar: Bool = false
-    @State private var showSuperAdminAvatar: Bool = false
-
-    private func profileAvatar(isNarrow: Bool) -> some View {
-        SharedProfileAvatar(
-            tint: LdBrand.purpleLight,
-            background: LdBrand.card,
-            borderColor: LdBrand.stroke,
-            secondaryText: LdBrand.textSecondary,
-            tertiaryText: LdBrand.textTertiary,
-            isCompact: isNarrow,
-            showMinProfil: $showMinProfilAvatar,
-            showEcosystem: $showEcosystemAvatar,
-            showTeamAccess: $showTeamAccessAvatar,
-            showSuperAdmin: $showSuperAdminAvatar
-        )
+        LeadgridTabHeader(
+            subtitle: "Få full oversikt over alle dine leads og deres status.",
+            leads: headerLeads)
     }
 
     // toolbarButton-helper fjernet — knappene er flyttet til søk-raden.
