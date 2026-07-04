@@ -194,8 +194,8 @@ struct LogActivitySheet: View {
 
     private var typeSelector: some View {
         sectionCard(title: "Hva ble gjort?", icon: "bolt.fill") {
-            let cols = [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8),
-                        GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)]
+            // iPhone: 4 kolonner blir for trangt på compact width — 2 der.
+            let cols = MacCatalystGrid.adaptive(phone: 2, iPad: 4, mac: 4, spacing: 8)
             LazyVGrid(columns: cols, spacing: 8) {
                 ForEach(ActivityType.allCases, id: \.self) { t in
                     typeChip(t)

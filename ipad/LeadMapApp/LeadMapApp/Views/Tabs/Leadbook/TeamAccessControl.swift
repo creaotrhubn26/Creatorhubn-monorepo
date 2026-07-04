@@ -509,7 +509,7 @@ struct TeamAccessControlView: View {
                     Text("TILGANG (UTDRAG)")
                         .font(.system(size: 9, weight: .black))
                         .foregroundStyle(LBrand.textTertiary).tracking(0.6)
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 4), spacing: 6) {
+                    LazyVGrid(columns: MacCatalystGrid.adaptive(phone: 2, iPad: 4, mac: 4, spacing: 6), spacing: 6) {
                         ForEach(Array(LeadgridFeature.allCases.prefix(12))) { f in
                             featurePreviewChip(f, level: RoleDefaults.access(role, f))
                         }
@@ -957,7 +957,7 @@ struct EditMemberOverrideSheet: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("ROLLE").font(.system(size: 10, weight: .black))
                 .foregroundStyle(LBrand.textTertiary).tracking(0.8)
-            LazyVGrid(columns: MacCatalystGrid.adaptive(iPad: 2, mac: 3, spacing: 8), spacing: 8) {
+            LazyVGrid(columns: MacCatalystGrid.adaptive(phone: 1, iPad: 2, mac: 3, spacing: 8), spacing: 8) {
                 ForEach(LeadgridRole.allCases) { r in
                     Button { draft.role = r } label: {
                         HStack(spacing: 9) {

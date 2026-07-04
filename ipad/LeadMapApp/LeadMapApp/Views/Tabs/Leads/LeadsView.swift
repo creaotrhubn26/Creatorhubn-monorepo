@@ -309,6 +309,9 @@ struct LeadsView: View {
     @State private var addLeadOpen: Bool = false
     @State private var kpiDrillDown: KPIKind?
     @State private var followUpOpen: Bool = false
+    // iPhone (compact): detalj-sidebaren presenteres som sheet i stedet
+    // for side-stilt kolonne.
+    @State private var phoneDetailOpen: Bool = false
     // Pakke 10.1 — rike header-popovere (samme som Oversikt)
     @State private var analyseOpen: Bool = false
     @State private var nextActionsOpen: Bool = false
@@ -420,6 +423,12 @@ struct LeadsView: View {
         .sheet(isPresented: $uploadOpen) {
             UploadFileSheet(lead: selectedLead)
         }
+        // iPhone (compact): samme LeadDetailSidebar som iPad viser til
+        // høyre, presentert som sheet. Egen wrapper med lokal sheet-state
+        // slik at underliggende ark kan legges oppå dette sheetet.
+        .sheet(isPresented: $phoneDetailOpen) {
+            PhoneLeadDetailSheet(lead: selectedLead, tab: $detailTab)
+        }
         // Pakke 10.1: shared lead-action-modaler eier av LeadDetailSidebar.
         // Mac Catalyst Cmd+K/Cmd+F fokuserer søkefeltet.
         .onReceive(NotificationCenter.default.publisher(for: .leadgridFocusSearch)) { _ in
@@ -453,15 +462,19 @@ struct LeadsView: View {
             .frame(maxWidth: .infinity)
 
             // Detail sidebar høyre — tom-tilstand når ingen leads finnes.
-            if sourceLeads.isEmpty {
-                LeadDetailEmptyState(onAddLead: { addLeadOpen = true })
-                    .frame(width: 340)
-            } else {
-                LeadDetailSidebar(lead: selectedLead, tab: $detailTab,
-                                  onLogActivity: { logActivityOpen = true },
-                                  onOpenFollowUp: { followUpOpen = true },
-                                  onUploadFile: { uploadOpen = true })
-                    .frame(width: 340)
+            // iPhone (compact): 340pt side-stilt kolonne får ikke plass —
+            // detaljene vises i stedet som sheet når en rad velges.
+            if !DeviceIdiom.isPhone {
+                if sourceLeads.isEmpty {
+                    LeadDetailEmptyState(onAddLead: { addLeadOpen = true })
+                        .frame(width: 340)
+                } else {
+                    LeadDetailSidebar(lead: selectedLead, tab: $detailTab,
+                                      onLogActivity: { logActivityOpen = true },
+                                      onOpenFollowUp: { followUpOpen = true },
+                                      onUploadFile: { uploadOpen = true })
+                        .frame(width: 340)
+                }
             }
         }
     }
@@ -490,23 +503,25 @@ struct LeadsView: View {
                     if !isNarrow {
                         topPicker(icon: "location.fill", text: "Alle områder")
                     }
+                    // 380pt fast ramme klipper på iPhone (~390pt skjerm) —
+                    // adaptiv ramme + sheet-adaptasjon på compact width.
                     topIconButton(icon: "chart.line.uptrend.xyaxis", badge: nil, isOpen: $analyseOpen)
                         .popover(isPresented: $analyseOpen, arrowEdge: .top) {
                             AnalysePopover(leads: appState.leads)
-                                .frame(width: 380, height: 520)
-                                .presentationCompactAdaptation(.popover)
+                                .adaptivePopoverFrame(width: 380, height: 520)
+                                .presentationCompactAdaptation(DeviceIdiom.isPhone ? .sheet : .popover)
                         }
                     topIconButton(icon: "checklist", badge: 8, isOpen: $nextActionsOpen)
                         .popover(isPresented: $nextActionsOpen, arrowEdge: .top) {
                             NextActionsPopover(leads: appState.leads, totalCount: appState.leads.count)
-                                .frame(width: 380, height: 520)
-                                .presentationCompactAdaptation(.popover)
+                                .adaptivePopoverFrame(width: 380, height: 520)
+                                .presentationCompactAdaptation(DeviceIdiom.isPhone ? .sheet : .popover)
                         }
                     topIconButton(icon: "bell.fill", badge: 3, isOpen: $notificationsOpen)
                         .popover(isPresented: $notificationsOpen, arrowEdge: .top) {
                             RecentActivitiesPopover(leads: appState.leads, upcomingFollowups: 0, momentum: nil)
-                                .frame(width: 380, height: 520)
-                                .presentationCompactAdaptation(.popover)
+                                .adaptivePopoverFrame(width: 380, height: 520)
+                                .presentationCompactAdaptation(DeviceIdiom.isPhone ? .sheet : .popover)
                         }
                     profileAvatar(isNarrow: isNarrow)
                 }
@@ -600,12 +615,25 @@ struct LeadsView: View {
             return f.string(from: NSNumber(value: n)) ?? "\(n)"
         }
         func realValue(_ n: Int) -> String { real.isEmpty ? "—" : fmt(n) }
-        return HStack(spacing: 12) {
+        let cards = Group {
             kpiCard(.totalLeads,     icon: "person.3.fill",      iconColor: LdBrand.purple,      title: "Totalt leads", value: isDemo ? "1 248" : realValue(real.count), trend: isDemo ? "+18 %" : nil)
             kpiCard(.newLeads,       icon: "sparkles",           iconColor: LdBrand.green,       title: "Nye leads",    value: isDemo ? "842"   : realValue(real.filter { $0.createdAt >= weekAgo }.count), trend: isDemo ? "+16 %" : nil)
             kpiCard(.contacted,      icon: "phone.fill",         iconColor: LdBrand.blue,        title: "Kontaktet",    value: isDemo ? "542"   : realValue(real.filter { $0.status != .unvisited }.count), trend: isDemo ? "+11 %" : nil)
             kpiCard(.meetingsBooked, icon: "calendar",           iconColor: LdBrand.purpleLight, title: "Møter avtalt", value: isDemo ? "236"   : realValue(real.filter { $0.status == .meetingBooked }.count), trend: isDemo ? "+12 %" : nil)
             kpiCard(.won,            icon: "trophy.fill",        iconColor: LdBrand.yellow,      title: "Vunnet",       value: isDemo ? "68"    : realValue(real.filter { $0.status == .won }.count), trend: isDemo ? "+24 %" : nil)
+        }
+        // iPhone: 5 kort side-ved-side blir uleselig på compact width —
+        // 2-kolonne grid der. iPad/Mac beholder én rad.
+        return Group {
+            if DeviceIdiom.isPhone {
+                LazyVGrid(columns: MacCatalystGrid.adaptive(phone: 2, iPad: 5, mac: 5), spacing: 12) {
+                    cards
+                }
+            } else {
+                HStack(spacing: 12) {
+                    cards
+                }
+            }
         }
     }
 
@@ -655,117 +683,146 @@ struct LeadsView: View {
     // MARK: Søk + filtre
 
     private var searchAndFilters: some View {
-        HStack(spacing: 8) {
-            HStack(spacing: 7) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 12))
-                    .foregroundStyle(LdBrand.textSecondary)
-                TextField("", text: $search,
-                          prompt: Text("Søk etter navn, selskap, bransje…")
-                    .foregroundColor(LdBrand.textTertiary))
-                    .textFieldStyle(.plain)
-                    .foregroundStyle(.white)
-                    .font(.system(size: 12))
-                    .focused($searchFieldFocused)
+        // iPhone: søkefelt + 5 chips + 4 knapper får ikke plass i én rad
+        // på compact width — søkefeltet får egen linje og resten legges
+        // i en horisontal scroller. iPad/Mac beholder én rad som før.
+        Group {
+            if DeviceIdiom.isPhone {
+                VStack(spacing: 8) {
+                    searchField
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            filterChipsRow
+                            actionButtonsRow
+                        }
+                    }
+                }
+            } else {
+                HStack(spacing: 8) {
+                    searchField
+                        .frame(maxWidth: .infinity)
+                    filterChipsRow
+                    actionButtonsRow
+                }
             }
-            .padding(.horizontal, 10).padding(.vertical, 9)
+        }
+    }
+
+    private var searchField: some View {
+        HStack(spacing: 7) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 12))
+                .foregroundStyle(LdBrand.textSecondary)
+            TextField("", text: $search,
+                      prompt: Text("Søk etter navn, selskap, bransje…")
+                .foregroundColor(LdBrand.textTertiary))
+                .textFieldStyle(.plain)
+                .foregroundStyle(.white)
+                .font(.system(size: 12))
+                .focused($searchFieldFocused)
+        }
+        .padding(.horizontal, 10).padding(.vertical, 9)
+        .background(LdBrand.card, in: RoundedRectangle(cornerRadius: 9))
+        .overlay(RoundedRectangle(cornerRadius: 9).stroke(LdBrand.stroke, lineWidth: 1))
+    }
+
+    @ViewBuilder
+    private var filterChipsRow: some View {
+        filterChip(label: areaFilter == .all ? "Alle områder" : areaFilter.rawValue,
+                   active: areaFilter != .all, badge: nil, isOpen: $areaOpen)
+            .popover(isPresented: $areaOpen, arrowEdge: .top) {
+                LeadsAreaPopover(selected: $areaFilter)
+                    .presentationCompactAdaptation(.popover)
+            }
+        filterChip(label: statusFilter.isEmpty ? "Alle status" : "\(statusFilter.count) status",
+                   active: !statusFilter.isEmpty, badge: statusFilter.count, isOpen: $statusOpen)
+            .popover(isPresented: $statusOpen, arrowEdge: .top) {
+                LeadsStatusPopover(selected: $statusFilter)
+                    .presentationCompactAdaptation(.popover)
+            }
+        filterChip(label: scorePreset == .all ? "Alle lead score" : scorePreset.rawValue,
+                   active: scorePreset != .all, badge: nil, isOpen: $scoreOpen)
+            .popover(isPresented: $scoreOpen, arrowEdge: .top) {
+                LeadsScorePopover(range: $scoreRange, preset: $scorePreset)
+                    .presentationCompactAdaptation(.popover)
+            }
+        filterChip(label: "Flere filtre", active: false, badge: nil,
+                   isOpen: $moreFiltersOpen, icon: "slider.horizontal.3")
+        filterChip(label: savedView.isEmpty ? "Lagret visning" : savedView,
+                   active: !savedView.isEmpty, badge: nil, isOpen: $savedViewsOpen)
+            .popover(isPresented: $savedViewsOpen, arrowEdge: .top) {
+                SavedViewsPopover(selected: $savedView)
+                    .presentationCompactAdaptation(.popover)
+            }
+    }
+
+    @ViewBuilder
+    private var actionButtonsRow: some View {
+        Button { importOpen = true } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "arrow.down.circle")
+                    .font(.system(size: 11, weight: .semibold))
+                Text("Importer")
+                    .font(.system(size: 12, weight: .semibold))
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 10).padding(.vertical, 8)
             .background(LdBrand.card, in: RoundedRectangle(cornerRadius: 9))
             .overlay(RoundedRectangle(cornerRadius: 9).stroke(LdBrand.stroke, lineWidth: 1))
-            .frame(maxWidth: .infinity)
-
-            filterChip(label: areaFilter == .all ? "Alle områder" : areaFilter.rawValue,
-                       active: areaFilter != .all, badge: nil, isOpen: $areaOpen)
-                .popover(isPresented: $areaOpen, arrowEdge: .top) {
-                    LeadsAreaPopover(selected: $areaFilter)
-                        .presentationCompactAdaptation(.popover)
-                }
-            filterChip(label: statusFilter.isEmpty ? "Alle status" : "\(statusFilter.count) status",
-                       active: !statusFilter.isEmpty, badge: statusFilter.count, isOpen: $statusOpen)
-                .popover(isPresented: $statusOpen, arrowEdge: .top) {
-                    LeadsStatusPopover(selected: $statusFilter)
-                        .presentationCompactAdaptation(.popover)
-                }
-            filterChip(label: scorePreset == .all ? "Alle lead score" : scorePreset.rawValue,
-                       active: scorePreset != .all, badge: nil, isOpen: $scoreOpen)
-                .popover(isPresented: $scoreOpen, arrowEdge: .top) {
-                    LeadsScorePopover(range: $scoreRange, preset: $scorePreset)
-                        .presentationCompactAdaptation(.popover)
-                }
-            filterChip(label: "Flere filtre", active: false, badge: nil,
-                       isOpen: $moreFiltersOpen, icon: "slider.horizontal.3")
-            filterChip(label: savedView.isEmpty ? "Lagret visning" : savedView,
-                       active: !savedView.isEmpty, badge: nil, isOpen: $savedViewsOpen)
-                .popover(isPresented: $savedViewsOpen, arrowEdge: .top) {
-                    SavedViewsPopover(selected: $savedView)
-                        .presentationCompactAdaptation(.popover)
-                }
-
-            Button { importOpen = true } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "arrow.down.circle")
-                        .font(.system(size: 11, weight: .semibold))
-                    Text("Importer")
-                        .font(.system(size: 12, weight: .semibold))
-                }
-                .foregroundStyle(.white)
-                .padding(.horizontal, 10).padding(.vertical, 8)
-                .background(LdBrand.card, in: RoundedRectangle(cornerRadius: 9))
-                .overlay(RoundedRectangle(cornerRadius: 9).stroke(LdBrand.stroke, lineWidth: 1))
-            }
-            .buttonStyle(.plain)
-
-            // Visittkort-skanner (2026-07-04): OCR → lead → lead.created-
-            // workflow. Kjeden fantes (BusinessCardScannerView) men var
-            // frakoblet etter tab-porten.
-            Button { cardScannerOpen = true } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "person.text.rectangle")
-                        .font(.system(size: 11, weight: .semibold))
-                    Text("Skann kort")
-                        .font(.system(size: 12, weight: .semibold))
-                }
-                .foregroundStyle(.white)
-                .padding(.horizontal, 10).padding(.vertical, 8)
-                .background(LdBrand.card, in: RoundedRectangle(cornerRadius: 9))
-                .overlay(RoundedRectangle(cornerRadius: 9).stroke(LdBrand.stroke, lineWidth: 1))
-            }
-            .buttonStyle(.plain)
-
-            // Eksport (uke 2): samme flyt som i Hub-en (CSV → share sheet),
-            // nå tilgjengelig der man faktisk jobber med lead-lista.
-            Button { exportOpen = true } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: 11, weight: .semibold))
-                    Text("Eksporter")
-                        .font(.system(size: 12, weight: .semibold))
-                }
-                .foregroundStyle(.white)
-                .padding(.horizontal, 10).padding(.vertical, 8)
-                .background(LdBrand.card, in: RoundedRectangle(cornerRadius: 9))
-                .overlay(RoundedRectangle(cornerRadius: 9).stroke(LdBrand.stroke, lineWidth: 1))
-            }
-            .buttonStyle(.plain)
-
-            Button { addLeadOpen = true } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "plus")
-                        .font(.system(size: 11, weight: .bold))
-                    Text("Nytt lead")
-                        .font(.system(size: 12, weight: .semibold))
-                }
-                .foregroundStyle(.white)
-                .padding(.horizontal, 12).padding(.vertical, 8)
-                .background(
-                    LinearGradient(
-                        colors: [LdBrand.purple, LdBrand.purpleLight],
-                        startPoint: .leading, endPoint: .trailing
-                    ),
-                    in: RoundedRectangle(cornerRadius: 9)
-                )
-            }
-            .buttonStyle(.plain)
         }
+        .buttonStyle(.plain)
+
+        // Visittkort-skanner (2026-07-04): OCR → lead → lead.created-
+        // workflow. Kjeden fantes (BusinessCardScannerView) men var
+        // frakoblet etter tab-porten.
+        Button { cardScannerOpen = true } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "person.text.rectangle")
+                    .font(.system(size: 11, weight: .semibold))
+                Text("Skann kort")
+                    .font(.system(size: 12, weight: .semibold))
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 10).padding(.vertical, 8)
+            .background(LdBrand.card, in: RoundedRectangle(cornerRadius: 9))
+            .overlay(RoundedRectangle(cornerRadius: 9).stroke(LdBrand.stroke, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+
+        // Eksport (uke 2): samme flyt som i Hub-en (CSV → share sheet),
+        // nå tilgjengelig der man faktisk jobber med lead-lista.
+        Button { exportOpen = true } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.system(size: 11, weight: .semibold))
+                Text("Eksporter")
+                    .font(.system(size: 12, weight: .semibold))
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 10).padding(.vertical, 8)
+            .background(LdBrand.card, in: RoundedRectangle(cornerRadius: 9))
+            .overlay(RoundedRectangle(cornerRadius: 9).stroke(LdBrand.stroke, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+
+        Button { addLeadOpen = true } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "plus")
+                    .font(.system(size: 11, weight: .bold))
+                Text("Nytt lead")
+                    .font(.system(size: 12, weight: .semibold))
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            .background(
+                LinearGradient(
+                    colors: [LdBrand.purple, LdBrand.purpleLight],
+                    startPoint: .leading, endPoint: .trailing
+                ),
+                in: RoundedRectangle(cornerRadius: 9)
+            )
+        }
+        .buttonStyle(.plain)
     }
 
     private func filterChip(label: String, active: Bool, badge: Int?,
@@ -818,7 +875,9 @@ struct LeadsView: View {
 
     private var leadsTable: some View {
         VStack(spacing: 0) {
-            tableHeader
+            // iPhone: kolonne-headeren hører til den brede tabell-layouten
+            // — kompakt-radene har ikke kolonner å overskrive.
+            if !DeviceIdiom.isPhone { tableHeader }
             if sourceLeads.isEmpty {
                 // Uke 2: skill «laster»/«feilet»/«ekte tom» via
                 // appState.leadsLoadState (samme mønster som prosjekt-kortet)
@@ -837,7 +896,12 @@ struct LeadsView: View {
                         lead: lead,
                         isSelected: selectedLeadID == lead.id,
                         isChecked: selectedRowIDs.contains(lead.id),
-                        onTap: { selectedLeadID = lead.id },
+                        onTap: {
+                            selectedLeadID = lead.id
+                            // iPhone: ingen side-stilt sidebar — åpne
+                            // detaljene som sheet.
+                            if DeviceIdiom.isPhone { phoneDetailOpen = true }
+                        },
                         onCheck: {
                             if selectedRowIDs.contains(lead.id) {
                                 selectedRowIDs.remove(lead.id)
@@ -1117,6 +1181,63 @@ struct LeadTableRow: View {
     let onCheck: () -> Void
 
     var body: some View {
+        // iPhone (compact width): kolonnene får ikke plass side-ved-side —
+        // render en enklere, stablet rad i stedet for full tabellrad.
+        if DeviceIdiom.isPhone {
+            compactBody
+        } else {
+            fullBody
+        }
+    }
+
+    /// Kompakt rad for iPhone — logo + selskap/kontakt til venstre,
+    /// verdi + status stablet til høyre. Gjenbruker feltene fra full-raden.
+    private var compactBody: some View {
+        Button(action: onTap) {
+            HStack(spacing: 10) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(lead.companyColor.opacity(0.20))
+                    Image(systemName: "building.2.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(lead.companyColor)
+                }
+                .frame(width: 36, height: 36)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(lead.company)
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                    Text(lead.contactName.isEmpty ? lead.category : lead.contactName)
+                        .font(.system(size: 10))
+                        .foregroundStyle(LdBrand.textSecondary)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 8)
+
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text("NOK \(formatThousands(lead.valueNok))")
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .monospacedDigit()
+                    statusBadge(lead.status)
+                }
+            }
+            .padding(.horizontal, 12).padding(.vertical, 10)
+            .background(
+                isSelected ? LdBrand.purple.opacity(0.12) : Color.clear
+            )
+            .overlay(
+                Rectangle().fill(LdBrand.stroke).frame(height: 1),
+                alignment: .bottom
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var fullBody: some View {
         Button(action: onTap) {
             HStack(spacing: 0) {
                 // Checkbox
@@ -1391,6 +1512,40 @@ struct LeadDetailEmptyState: View {
             Rectangle().fill(LdBrand.stroke).frame(width: 1),
             alignment: .leading
         )
+    }
+}
+
+// MARK: - PhoneLeadDetailSheet (iPhone)
+
+/// iPhone (compact): detalj-panelet vises som sheet i stedet for
+/// side-stilt 340pt-kolonne. Egen lokal state for Loggfør/Oppfølging/
+/// Last opp slik at de kan presenteres oppå dette sheetet uten å
+/// kollidere med LeadsView sine body-nivå-sheets (som er blokkert så
+/// lenge dette sheetet er åpent).
+struct PhoneLeadDetailSheet: View {
+    let lead: LeadRow
+    @Binding var tab: LeadsView.DetailTab
+    @State private var logActivityOpen: Bool = false
+    @State private var followUpOpen: Bool = false
+    @State private var uploadOpen: Bool = false
+
+    var body: some View {
+        LeadDetailSidebar(lead: lead, tab: $tab,
+                          onLogActivity: { logActivityOpen = true },
+                          onOpenFollowUp: { followUpOpen = true },
+                          onUploadFile: { uploadOpen = true })
+            .background(LdBrand.bg.ignoresSafeArea())
+            .preferredColorScheme(.dark)
+            .presentationDetents([.large])
+            .sheet(isPresented: $logActivityOpen) {
+                LogActivitySheet(lead: lead)
+            }
+            .sheet(isPresented: $followUpOpen) {
+                FollowUpDetailSheet(lead: lead)
+            }
+            .sheet(isPresented: $uploadOpen) {
+                UploadFileSheet(lead: lead)
+            }
     }
 }
 

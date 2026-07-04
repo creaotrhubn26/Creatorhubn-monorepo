@@ -407,7 +407,43 @@ struct LeadbookView: View {
 
     // MARK: Header
 
+    @ViewBuilder
     private var header: some View {
+        if DeviceIdiom.isPhone {
+            phoneHeader
+        } else {
+            regularHeader
+        }
+    }
+
+    /// iPhone: den brede enkelt-raden fra iPad/Mac får ikke plass på compact
+    /// width — tittel + varsler/avatar øverst, kontrollene i en horisontalt
+    /// scrollbar rad under. Gjenbruker de samme knapp-viewene.
+    private var phoneHeader: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 10) {
+                Text("Leadbook")
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundStyle(.white)
+                Spacer(minLength: 8)
+                notificationsBell
+                profileAvatar(isCompact: true)
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    topPicker(icon: "calendar", text: "Tir 20")
+                    libraryButton                            // Bibliotek
+                    performanceButton(isCompact: true)       // Ytelse
+                    versionsButton(isCompact: true)          // Versjoner
+                    cardScannerButton                        // + Lead m/ visittkort
+                    transcriptionButton                      // Live transkripsjon
+                    newButton(isCompact: true)
+                }
+            }
+        }
+    }
+
+    private var regularHeader: some View {
         GeometryReader { geo in
             let isCompact = geo.size.width < 1300
             HStack(alignment: .top, spacing: 14) {
@@ -431,12 +467,7 @@ struct LeadbookView: View {
                     versionsButton(isCompact: isCompact)              // Versjoner
                     cardScannerButton                                 // + Lead m/ visittkort
                     transcriptionButton                              // Live transkripsjon
-                    topIconButton(icon: "bell.fill", badge: 3, isOpen: $notificationsOpen)
-                        .popover(isPresented: $notificationsOpen, arrowEdge: .top) {
-                            RecentActivitiesPopover(leads: appState.leads, upcomingFollowups: 0, momentum: nil)
-                                .frame(width: 380, height: 520)
-                                .presentationCompactAdaptation(.popover)
-                        }
+                    notificationsBell
                     profileAvatar(isCompact: isCompact)
                     newButton(isCompact: isCompact)
                 }
@@ -444,6 +475,18 @@ struct LeadbookView: View {
             }
         }
         .frame(height: 64)
+    }
+
+    /// Bjelle + varsel-popover — delt mellom phone- og regular-header.
+    /// På iPhone adapteres popoveren til detent-sheet (fast 380pt-ramme
+    /// klipper på compact width).
+    private var notificationsBell: some View {
+        topIconButton(icon: "bell.fill", badge: 3, isOpen: $notificationsOpen)
+            .popover(isPresented: $notificationsOpen, arrowEdge: .top) {
+                RecentActivitiesPopover(leads: appState.leads, upcomingFollowups: 0, momentum: nil)
+                    .adaptivePopoverFrame(width: 380, height: 520)
+                    .presentationCompactAdaptation(DeviceIdiom.isPhone ? .sheet : .popover)
+            }
     }
 
     private func topPicker(icon: String, text: String) -> some View {

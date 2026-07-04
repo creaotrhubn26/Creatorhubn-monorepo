@@ -782,7 +782,13 @@ struct KartView: View {
                 .padding(.bottom, 12)
 
             ScrollView {
-                HStack(alignment: .top, spacing: 14) {
+                // iPhone: side-kolonnen (300pt) får ikke plass ved siden av
+                // kartet på compact width — stable kolonnene vertikalt i
+                // stedet, med leads-i-området under detail-panelet.
+                let columns = DeviceIdiom.isPhone
+                    ? AnyLayout(VStackLayout(spacing: 14))
+                    : AnyLayout(HStackLayout(alignment: .top, spacing: 14))
+                columns {
                     VStack(spacing: 12) {
                         mapCard
                             .frame(minHeight: 380, maxHeight: 460)
@@ -799,7 +805,7 @@ struct KartView: View {
                         leadsInAreaCard
                         Spacer(minLength: 0)
                     }
-                    .frame(width: 300)
+                    .kartColumnWidth(300)
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 16)
@@ -849,14 +855,14 @@ struct KartView: View {
                                   badge: nil, isOpen: $analyseOpen)
                         .popover(isPresented: $analyseOpen, arrowEdge: .top) {
                             AnalysePopover(leads: appState.leads)
-                                .frame(width: 380, height: 520)
-                                .presentationCompactAdaptation(.popover)
+                                .adaptivePopoverFrame(width: 380, height: 520)
+                                .kartPopoverAdaptation()
                         }
                     topIconButton(icon: "checklist", badge: 8, isOpen: $nextActionsOpen)
                         .popover(isPresented: $nextActionsOpen, arrowEdge: .top) {
                             NextActionsPopover(leads: appState.leads, totalCount: appState.leads.count)
-                                .frame(width: 380, height: 520)
-                                .presentationCompactAdaptation(.popover)
+                                .adaptivePopoverFrame(width: 380, height: 520)
+                                .kartPopoverAdaptation()
                         }
                     topIconButton(icon: "bell.fill", badge: 3, isOpen: $notificationsOpen)
                         .popover(isPresented: $notificationsOpen, arrowEdge: .top) {
@@ -865,8 +871,8 @@ struct KartView: View {
                                 upcomingFollowups: 0,
                                 momentum: nil
                             )
-                            .frame(width: 380, height: 520)
-                            .presentationCompactAdaptation(.popover)
+                            .adaptivePopoverFrame(width: 380, height: 520)
+                            .kartPopoverAdaptation()
                         }
                     profileAvatar(isNarrow: isNarrow)
                         .popover(isPresented: $profileOpen, arrowEdge: .top) {
@@ -875,8 +881,8 @@ struct KartView: View {
                                 email: appState.userEmail,
                                 onOpenMyProfile: { profileOpen = false }
                             )
-                            .frame(width: 320, height: 480)
-                            .presentationCompactAdaptation(.popover)
+                            .adaptivePopoverFrame(width: 320, height: 480)
+                            .kartPopoverAdaptation()
                         }
                 }
             }
@@ -1854,7 +1860,12 @@ struct KartView: View {
     // MARK: Detail-panel — FIX #6/7: tabs uten kollaps + spacing
 
     private var detailPanel: some View {
-        HStack(alignment: .top, spacing: 0) {
+        // iPhone: venstre kolonne (fast 310pt) + høyre kolonne får ikke plass
+        // side-ved-side på compact width — stable dem vertikalt i stedet.
+        let stack = DeviceIdiom.isPhone
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 0))
+            : AnyLayout(HStackLayout(alignment: .top, spacing: 0))
+        return stack {
             // Venstre kolonne (fast bredde): lead-info + actions
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 11) {
@@ -1976,7 +1987,7 @@ struct KartView: View {
                 }
 
                 // Metadata-grid 2x2 (mer kompakt) — 4-kolonne på Mac
-                LazyVGrid(columns: MacCatalystGrid.adaptive(iPad: 2, mac: 4, spacing: 12),
+                LazyVGrid(columns: MacCatalystGrid.adaptive(phone: 2, iPad: 2, mac: 4, spacing: 12),
                           alignment: .leading, spacing: 8) {
                     metaItem(label: "Bransje",  value: "Elektro")
                     metaItem(label: "Ansatt",   value: "25-50")
@@ -1984,12 +1995,18 @@ struct KartView: View {
                     metaItem(label: "Sist aktivitet", value: selectedLead.lastActivity ?? "—")
                 }
             }
-            .frame(width: 310)
+            .kartColumnWidth(310)
 
-            // Vertikal divider
-            Rectangle().fill(KrBrand.stroke)
-                .frame(width: 1)
-                .padding(.horizontal, 14)
+            // Divider — vertikal ved side-ved-side, horisontal ved stabling
+            if DeviceIdiom.isPhone {
+                Rectangle().fill(KrBrand.stroke)
+                    .frame(height: 1)
+                    .padding(.vertical, 14)
+            } else {
+                Rectangle().fill(KrBrand.stroke)
+                    .frame(width: 1)
+                    .padding(.horizontal, 14)
+            }
 
             // Høyre kolonne: tabs + innhold — FIX #6: kompakt tab-rad
             VStack(alignment: .leading, spacing: 10) {
@@ -2411,7 +2428,7 @@ struct MapStyleSheet: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                LazyVGrid(columns: MacCatalystGrid.adaptive(iPad: 2, mac: 4, spacing: 12), spacing: 12) {
+                LazyVGrid(columns: MacCatalystGrid.adaptive(phone: 2, iPad: 2, mac: 4, spacing: 12), spacing: 12) {
                     ForEach(KartView.MapStyleChoice.allCases, id: \.self) { style in
                         styleCard(style)
                     }
@@ -2619,7 +2636,7 @@ struct LayersSheet: View {
                     .foregroundStyle(.white)
                 Spacer()
             }
-            LazyVGrid(columns: MacCatalystGrid.adaptive(iPad: 2, mac: 4, spacing: 10), spacing: 10) {
+            LazyVGrid(columns: MacCatalystGrid.adaptive(phone: 2, iPad: 2, mac: 4, spacing: 10), spacing: 10) {
                 ForEach(KartView.MapStyleChoice.allCases, id: \.self) { style in
                     styleCard(style)
                 }
@@ -2723,5 +2740,31 @@ struct LayersSheet: View {
             )
         }
         .buttonStyle(.plain)
+    }
+}
+
+// MARK: - iPhone-tilpasning (compact width)
+
+private extension View {
+    /// Fast kolonnebredde på iPad/Mac; full bredde på iPhone der
+    /// to-kolonne-layoutene stables vertikalt i stedet.
+    @ViewBuilder
+    func kartColumnWidth(_ width: CGFloat) -> some View {
+        if DeviceIdiom.isPhone {
+            self.frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            self.frame(width: width)
+        }
+    }
+
+    /// På iPhone lar vi popoveren adapteres til sheet (detents settes av
+    /// `adaptivePopoverFrame`); på iPad/Mac beholdes popover-formen.
+    @ViewBuilder
+    func kartPopoverAdaptation() -> some View {
+        if DeviceIdiom.isPhone {
+            self
+        } else {
+            self.presentationCompactAdaptation(.popover)
+        }
     }
 }

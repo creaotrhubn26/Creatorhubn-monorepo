@@ -996,10 +996,21 @@ struct MalTestSheet: View {
         NavigationStack {
             ZStack {
                 LBrand.bg.ignoresSafeArea()
-                HStack(spacing: 0) {
-                    callSimulator
-                    Divider().overlay(LBrand.stroke)
-                    sidebarSteps.frame(width: 320)
+                if DeviceIdiom.isPhone {
+                    // iPhone: steg-panelet som kompakt topp-seksjon (egen
+                    // intern scroll), samtalen under — 320pt-sidebaren får
+                    // ikke plass ved siden av simulatoren på compact width.
+                    VStack(spacing: 0) {
+                        sidebarSteps.frame(height: 280)
+                        Divider().overlay(LBrand.stroke)
+                        callSimulator
+                    }
+                } else {
+                    HStack(spacing: 0) {
+                        callSimulator
+                        Divider().overlay(LBrand.stroke)
+                        sidebarSteps.frame(width: 320)
+                    }
                 }
             }
             .navigationTitle("Test-modus")

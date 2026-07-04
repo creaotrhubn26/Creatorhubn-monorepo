@@ -112,7 +112,7 @@ struct PondusTabView: View {
             // Cheat-note glir inn over høyre del — åpnes via «Cheat note»-CTA i Pondus-headeren.
             if showCheatNote {
                 CommunicationCheatNote(onClose: { withAnimation { showCheatNote = false } })
-                    .frame(width: 460)
+                    .adaptiveControlWidth(460)   // iPhone: maxWidth i stedet for fast 460pt
                     .transition(.move(edge: .trailing))
             }
         }

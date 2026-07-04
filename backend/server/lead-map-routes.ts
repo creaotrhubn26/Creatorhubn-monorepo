@@ -480,11 +480,12 @@ export function setupLeadMapRoutes(deps: Deps): void {
       if (typeof body.latitude !== 'number' || typeof body.longitude !== 'number') {
         return res.status(400).json({ error: "mangler_koordinat" });
       }
-      // Defensiv whitelist for lead_temperature — backend cap'es av VARCHAR(10).
-      const validTemps = new Set(['hot', 'warm', 'lukewarm', 'cold', 'ready', 'cool']);
+      // Whitelist speiler crm_customers_lead_temperature_check — alt utenfor
+      // constrainten (lukewarm/cool fra eldre klienter) mappes til 'warm'.
+      const validTemps = new Set(['hot', 'warm', 'cold', 'ready']);
       const temperature = body.lead_temperature && validTemps.has(body.lead_temperature)
         ? body.lead_temperature
-        : 'lukewarm';
+        : 'warm';
       const validConfidences = new Set(['exact', 'geocoded', 'approximate', 'unknown']);
       const locationConfidence = body.location_confidence && validConfidences.has(body.location_confidence)
         ? body.location_confidence

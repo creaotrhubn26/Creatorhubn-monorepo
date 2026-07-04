@@ -527,9 +527,9 @@ struct SuperAdminDashboard: View {
     }
 
     private var orgGrid: some View {
-        // Adaptiv: 2-kolonne på iPad, 3-kolonne på Mac Catalyst — bruker
-        // vindusbredden bedre for org-oversikten.
-        LazyVGrid(columns: MacCatalystGrid.adaptive(iPad: 2, mac: 3, spacing: 10), spacing: 10) {
+        // Adaptiv: 1-kolonne på iPhone, 2-kolonne på iPad, 3-kolonne på
+        // Mac Catalyst — bruker vindusbredden bedre for org-oversikten.
+        LazyVGrid(columns: MacCatalystGrid.adaptive(phone: 1, iPad: 2, mac: 3, spacing: 10), spacing: 10) {
             ForEach(filtered) { org in orgCard(org) }
         }
     }

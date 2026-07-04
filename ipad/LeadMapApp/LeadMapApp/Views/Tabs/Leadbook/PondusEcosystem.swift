@@ -393,7 +393,7 @@ struct PondusEcosystemSheet: View {
                 connectLabel: "3 av 7 koblet til",
                 ctaTitle: "Administrer alle"
             )
-            LazyVGrid(columns: MacCatalystGrid.adaptive(iPad: 2, mac: 3, spacing: 10), spacing: 10) {
+            LazyVGrid(columns: MacCatalystGrid.adaptive(phone: 1, iPad: 2, mac: 3, spacing: 10), spacing: 10) {
                 ForEach(integrations, id: \.name) { intg in integrationCard(intg) }
             }
         }

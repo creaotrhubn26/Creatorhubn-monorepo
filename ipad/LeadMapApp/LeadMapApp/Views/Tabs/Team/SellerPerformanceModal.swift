@@ -206,8 +206,9 @@ struct SellerPerformanceModal: View {
     // MARK: Stats grid
 
     private var statsGrid: some View {
-        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()),
-                            GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+        // iPhone: 2×2 i stedet for 4 kolonner — «Vunnet verdi»-tallene
+        // trenger bredde på compact width.
+        LazyVGrid(columns: MacCatalystGrid.adaptive(phone: 2, iPad: 4, mac: 4, spacing: 12), spacing: 12) {
             statTile(title: "Leads",        value: "\(member.leads)",                    trend: member.leadsTrend,    color: TBrand.purple,      icon: "person.3.fill")
             statTile(title: "Møter",        value: "\(member.meetings)",                 trend: member.meetingsTrend, color: TBrand.blue,        icon: "calendar")
             statTile(title: "Vunnet verdi", value: "NOK \(formatNok(member.valueNok))",  trend: member.valueTrend,    color: TBrand.green,       icon: "trophy.fill")

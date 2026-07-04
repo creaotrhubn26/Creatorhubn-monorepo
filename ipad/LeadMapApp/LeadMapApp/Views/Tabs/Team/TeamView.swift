@@ -319,15 +319,16 @@ struct TeamView: View {
                     activityLiveButton                              // ← live-aktivitet
                     topIconButton(icon: "checklist", badge: 8) { nextActionsOpen.toggle() }
                         .popover(isPresented: $nextActionsOpen, arrowEdge: .top) {
+                            // iPhone: detent-sheet i stedet for 380pt-popover som klipper.
                             NextActionsPopover(leads: appState.leads, totalCount: appState.leads.count)
-                                .frame(width: 380, height: 520)
-                                .presentationCompactAdaptation(.popover)
+                                .adaptivePopoverFrame(width: 380, height: 520)
+                                .presentationCompactAdaptation(DeviceIdiom.isPhone ? .sheet : .popover)
                         }
                     topIconButton(icon: "bell.fill", badge: 3) { notificationsOpen.toggle() }
                         .popover(isPresented: $notificationsOpen, arrowEdge: .top) {
                             RecentActivitiesPopover(leads: appState.leads, upcomingFollowups: 0, momentum: nil)
-                                .frame(width: 380, height: 520)
-                                .presentationCompactAdaptation(.popover)
+                                .adaptivePopoverFrame(width: 380, height: 520)
+                                .presentationCompactAdaptation(DeviceIdiom.isPhone ? .sheet : .popover)
                         }
                     profileAvatar(isCompact: isCompact)
                     inviteButton(isCompact: isCompact)

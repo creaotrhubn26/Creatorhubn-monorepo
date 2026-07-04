@@ -413,6 +413,9 @@ struct MeetingsView: View {
     @State private var analyseOpen: Bool = false
     @State private var nextActionsOpen: Bool = false
     @State private var notificationsOpen: Bool = false
+    // iPhone (compact): detalj-panelet vises som sheet i stedet for
+    // side-stilt 340pt-kolonne — åpnes når et møte velges.
+    @State private var phoneDetailOpen: Bool = false
     @Environment(AppState.self) private var appState
 
     // MARK: Datakilde (uke 2-binding) — demo → mocks, ellers ekte kalender
@@ -480,6 +483,21 @@ struct MeetingsView: View {
         )) { wrap in
             BookMeetingSheet(dayOfMonth: wrap.day)
         }
+        // iPhone (compact): samme MeetingDetailSidebar som iPad viser til
+        // høyre, presentert som sheet (sidebar-en eier sine egne under-ark).
+        .sheet(isPresented: $phoneDetailOpen) {
+            MeetingDetailSidebar(meeting: selectedMeeting, calMode: $calMode)
+                .background(MtBrand.bg.ignoresSafeArea())
+                .preferredColorScheme(.dark)
+                .presentationDetents([.large])
+        }
+    }
+
+    /// Felles valg-handling — oppdaterer utvalget og åpner detalj-sheeten
+    /// på iPhone (der høyre-panelet ikke vises side-stilt).
+    private func selectMeeting(_ m: Meeting) {
+        selectedID = m.id
+        if DeviceIdiom.isPhone { phoneDetailOpen = true }
     }
 
     private var content: some View {
@@ -502,12 +520,17 @@ struct MeetingsView: View {
             }
             .frame(maxWidth: .infinity)
 
-            if sourceAgenda.isEmpty {
-                MeetingDetailEmptyState()
-                    .frame(width: 340)
-            } else {
-                MeetingDetailSidebar(meeting: selectedMeeting, calMode: $calMode)
-                    .frame(width: 340)
+            // Detail sidebar høyre — iPhone (compact): 340pt side-stilt
+            // kolonne får ikke plass — detaljene vises i stedet som sheet
+            // når et møte velges.
+            if !DeviceIdiom.isPhone {
+                if sourceAgenda.isEmpty {
+                    MeetingDetailEmptyState()
+                        .frame(width: 340)
+                } else {
+                    MeetingDetailSidebar(meeting: selectedMeeting, calMode: $calMode)
+                        .frame(width: 340)
+                }
             }
         }
     }
@@ -536,23 +559,25 @@ struct MeetingsView: View {
                     if !isNarrow {
                         topPicker(icon: "line.3.horizontal.decrease", text: "Filter")
                     }
+                    // 380pt fast ramme klipper på iPhone (~390pt skjerm) —
+                    // adaptiv ramme + sheet-adaptasjon på compact width.
                     topIconButton(icon: "chart.line.uptrend.xyaxis", badge: nil, isOpen: $analyseOpen)
                         .popover(isPresented: $analyseOpen, arrowEdge: .top) {
                             AnalysePopover(leads: appState.leads)
-                                .frame(width: 380, height: 520)
-                                .presentationCompactAdaptation(.popover)
+                                .adaptivePopoverFrame(width: 380, height: 520)
+                                .presentationCompactAdaptation(DeviceIdiom.isPhone ? .sheet : .popover)
                         }
                     topIconButton(icon: "checklist", badge: 8, isOpen: $nextActionsOpen)
                         .popover(isPresented: $nextActionsOpen, arrowEdge: .top) {
                             NextActionsPopover(leads: appState.leads, totalCount: appState.leads.count)
-                                .frame(width: 380, height: 520)
-                                .presentationCompactAdaptation(.popover)
+                                .adaptivePopoverFrame(width: 380, height: 520)
+                                .presentationCompactAdaptation(DeviceIdiom.isPhone ? .sheet : .popover)
                         }
                     topIconButton(icon: "bell.fill", badge: 3, isOpen: $notificationsOpen)
                         .popover(isPresented: $notificationsOpen, arrowEdge: .top) {
                             RecentActivitiesPopover(leads: appState.leads, upcomingFollowups: 0, momentum: nil)
-                                .frame(width: 380, height: 520)
-                                .presentationCompactAdaptation(.popover)
+                                .adaptivePopoverFrame(width: 380, height: 520)
+                                .presentationCompactAdaptation(DeviceIdiom.isPhone ? .sheet : .popover)
                         }
                     profileAvatar(isNarrow: isNarrow)
                 }
@@ -729,7 +754,7 @@ struct MeetingsView: View {
                 }
             case .day:
                 DayCalendarView(meetings: sourceAgenda) { m in
-                    selectedID = m.id
+                    selectMeeting(m)
                 }
                 .padding(.horizontal, 12).padding(.bottom, 12)
             case .week:
@@ -737,7 +762,7 @@ struct MeetingsView: View {
                     meetings: sourceAgenda,
                     upcoming: sourceUpcoming
                 ) { m in
-                    selectedID = m.id
+                    selectMeeting(m)
                 } onTapUpcoming: { u in
                     upcomingDetail = u
                 }
@@ -793,9 +818,78 @@ struct MeetingsView: View {
         }
     }
 
+    // iPhone (compact width): kolonnene (tid 60pt / kontakt 130pt /
+    // status 92pt) får ikke plass side-ved-side — render en stablet
+    // rad i stedet for full tabellrad.
+    @ViewBuilder
     private func agendaRow(_ m: Meeting) -> some View {
+        if DeviceIdiom.isPhone {
+            agendaRowCompact(m)
+        } else {
+            agendaRowFull(m)
+        }
+    }
+
+    /// Kompakt rad for iPhone — tittel + tid øverst, kontakt + status
+    /// under. Gjenbruker ikon og statusBadge fra full-raden.
+    private func agendaRowCompact(_ m: Meeting) -> some View {
         let isSelected = m.id == selectedID
-        return Button { selectedID = m.id } label: {
+        return Button { selectMeeting(m) } label: {
+            HStack(alignment: .top, spacing: 10) {
+                // Bedrift-ikon
+                ZStack {
+                    Circle().fill(m.iconColor.opacity(0.22))
+                    Image(systemName: m.icon)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(m.iconColor)
+                }
+                .frame(width: 36, height: 36)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    // Tittel + tid
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(m.company)
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                        Spacer(minLength: 6)
+                        Text("\(m.startTime)–\(m.endTime)")
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .foregroundStyle(MtBrand.textSecondary)
+                            .monospacedDigit()
+                    }
+                    // Metadata: kontakt + sted + status
+                    HStack(spacing: 6) {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(m.contactName)
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .lineLimit(1)
+                            Text(m.location)
+                                .font(.system(size: 10))
+                                .foregroundStyle(MtBrand.textSecondary)
+                                .lineLimit(1)
+                        }
+                        Spacer(minLength: 6)
+                        statusBadge(m.status)
+                    }
+                }
+            }
+            .padding(.horizontal, 16).padding(.vertical, 12)
+            .background(isSelected ? MtBrand.purple.opacity(0.12) : Color.clear)
+            .overlay(
+                isSelected
+                    ? Rectangle().fill(MtBrand.purpleLight).frame(width: 3).padding(.vertical, 4)
+                    : nil,
+                alignment: .leading
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func agendaRowFull(_ m: Meeting) -> some View {
+        let isSelected = m.id == selectedID
+        return Button { selectMeeting(m) } label: {
             HStack(spacing: 0) {
                 // Tid-kolonne
                 VStack(alignment: .leading, spacing: 1) {
@@ -966,11 +1060,22 @@ struct MeetingsView: View {
                 }
             }
             if hasUpcoming {
-                HStack(spacing: 10) {
-                    ForEach(sourceUpcoming.prefix(3)) { u in
-                        upcomingMini(u)
+                // iPhone (compact): 4 kort side-ved-side blir uleselig smale
+                // — bruk 2-kolonne-grid i stedet.
+                if DeviceIdiom.isPhone {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 2), spacing: 10) {
+                        ForEach(sourceUpcoming.prefix(3)) { u in
+                            upcomingMini(u)
+                        }
+                        seeAllCard
                     }
-                    seeAllCard
+                } else {
+                    HStack(spacing: 10) {
+                        ForEach(sourceUpcoming.prefix(3)) { u in
+                            upcomingMini(u)
+                        }
+                        seeAllCard
+                    }
                 }
             } else {
                 VStack(spacing: 8) {

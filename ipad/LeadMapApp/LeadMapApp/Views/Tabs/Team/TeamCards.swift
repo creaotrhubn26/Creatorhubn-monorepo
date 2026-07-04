@@ -1339,11 +1339,20 @@ struct TeamPipelineCard: View {
                 }
             }
 
-            HStack(alignment: .top, spacing: 20) {
-                funnel
-                    .frame(maxWidth: .infinity)
-                conversionTable
-                    .frame(width: 260)
+            // iPhone: funnel + konverteringstabell stables vertikalt — fast
+            // 260pt-tabell ved siden av funnelen klipper på compact width.
+            if DeviceIdiom.isPhone {
+                VStack(alignment: .leading, spacing: 16) {
+                    funnel
+                    conversionTable
+                }
+            } else {
+                HStack(alignment: .top, spacing: 20) {
+                    funnel
+                        .frame(maxWidth: .infinity)
+                    conversionTable
+                        .frame(width: 260)
+                }
             }
         }
         .padding(14)
@@ -1563,7 +1572,8 @@ struct InviteMemberSheet: View {
             Text("Rolle")
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(TBrand.textSecondary)
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+            // Korte rolle-navn — 2 kolonner fungerer også på iPhone.
+            LazyVGrid(columns: MacCatalystGrid.adaptive(phone: 2, iPad: 2, mac: 2, spacing: 8), spacing: 8) {
                 ForEach(Role.allCases, id: \.self) { r in
                     Button { role = r } label: {
                         HStack(spacing: 8) {
