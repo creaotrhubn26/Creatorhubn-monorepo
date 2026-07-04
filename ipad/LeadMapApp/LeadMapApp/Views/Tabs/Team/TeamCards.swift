@@ -634,24 +634,23 @@ struct TeamAreasCard: View {
                 Text("Teamets områder")
                     .font(.system(size: 15, weight: .bold))
                     .foregroundStyle(.white)
-                // Kartverket-attribusjonen gjelder kun demo-modusens
-                // kommunegrense-polygoner — i ekte modus tegnes sirkelsoner
-                // fra egne team-data, og badgen var bare støy (Daniel,
-                // QA-runde 2).
-                if DemoModeManager.isActiveNonisolated {
-                    if loadingRealBoundaries {
-                        ProgressView()
-                            .scaleEffect(0.65)
-                            .tint(TBrand.purpleLight)
-                            .accessibilityLabel("Laster kommunegrenser fra Kartverket")
-                    } else {
-                        Text("Kartverket")
-                            .font(.system(size: 9, weight: .black, design: .rounded))
-                            .tracking(0.8)
-                            .foregroundStyle(TBrand.purpleLight)
-                            .padding(.horizontal, 6).padding(.vertical, 2)
-                            .background(TBrand.cardHi.opacity(0.6), in: Capsule())
-                    }
+                // Kartverket-badgen vises når kartet faktisk tegner ekte
+                // kommunegrenser fra Kartverket — i demo-modus (demo-teamene
+                // bruker ekte grenser) OG i ekte modus når minst ett team
+                // har en tildelt kommune (mig 0369). Sirkelsoner alene gir
+                // ingen badge — den skal aldri love mer enn kartet viser.
+                if loadingRealBoundaries {
+                    ProgressView()
+                        .scaleEffect(0.65)
+                        .tint(TBrand.purpleLight)
+                        .accessibilityLabel("Laster kommunegrenser fra Kartverket")
+                } else if showsKartverketBadge {
+                    Text("Kartverket")
+                        .font(.system(size: 9, weight: .black, design: .rounded))
+                        .tracking(0.8)
+                        .foregroundStyle(TBrand.purpleLight)
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(TBrand.cardHi.opacity(0.6), in: Capsule())
                 }
                 Spacer()
                 Button { showAssign = true } label: {
@@ -697,17 +696,35 @@ struct TeamAreasCard: View {
         .sheet(isPresented: $showAssign) {
             AssignAreaSheet()
         }
-        .task {
-            // Ved første visning: last ekte kommunegrenser fra Kartverket.
-            // Fallback = hardkodete 4-sider polygoner (allerede satt i @State).
+        .task(id: kommuneTaskKey) {
+            // Last ekte kommunegrenser fra Kartverket. Demo: demo-teamenes
+            // kommuner. Ekte: kommunene team-storens team er tildelt
+            // (mig 0369). Re-kjøres når tildelingene endres (task-id).
             guard let api = appState.api else {
                 loadingRealBoundaries = false
                 return
             }
-            let real = await GeoJSONLoader.loadRealKommuneTerritories(using: api)
-            await MainActor.run {
+            loadingRealBoundaries = true
+            if DemoModeManager.isActiveNonisolated {
+                let real = await GeoJSONLoader.loadRealKommuneTerritories(using: api)
                 withAnimation(.easeInOut(duration: 0.4)) {
                     territories = real
+                    loadingRealBoundaries = false
+                }
+            } else {
+                let numbers = Set(
+                    LeadgridSalesTeamStore.shared.teams.compactMap(\.areaKommunenummer)
+                )
+                var loaded: [String: KartverketService.KommuneOmrade] = [:]
+                for nr in numbers {
+                    if let omr = await KartverketService.shared.fetchKommuneOmrade(
+                        kommunenummer: nr, using: api
+                    ) {
+                        loaded[nr] = omr
+                    }
+                }
+                withAnimation(.easeInOut(duration: 0.4)) {
+                    kommuneOmrader = loaded
                     loadingRealBoundaries = false
                 }
             }
@@ -717,6 +734,26 @@ struct TeamAreasCard: View {
     @State private var territories: [GeoJSONTerritory] = GeoJSONLoader.loadTerritories()
     @State private var selectedMember: TeamMember?
     @State private var showAssign: Bool = false
+    /// Ekte kommunegrenser for team-storens tildelte kommuner, keyet på
+    /// kommunenummer. Fylles av `.task(id:)` i ekte modus.
+    @State private var kommuneOmrader: [String: KartverketService.KommuneOmrade] = [:]
+
+    /// Task-nøkkel: re-fetch grenser når modus eller kommune-tildelinger
+    /// endres.
+    private var kommuneTaskKey: String {
+        let demo = DemoModeManager.isActiveNonisolated
+        let nrs = LeadgridSalesTeamStore.shared.teams
+            .compactMap(\.areaKommunenummer).sorted().joined(separator: ",")
+        return "\(demo)|\(nrs)"
+    }
+
+    /// Badge vises kun når kartet faktisk tegner Kartverket-grenser.
+    private var showsKartverketBadge: Bool {
+        if DemoModeManager.isActiveNonisolated {
+            return !TeamData.members.isEmpty
+        }
+        return !kommuneOmrader.isEmpty
+    }
 
     /// QA-runde 2 (Daniel): den gamle gaten («skjul hvis ingen medlemmer»)
     /// lot mock-polygonene (Kari/Ola/Martine/Henrik) lekke i ekte modus så
@@ -727,8 +764,24 @@ struct TeamAreasCard: View {
         if DemoModeManager.isActiveNonisolated {
             return TeamData.members.isEmpty ? [] : territories
         }
-        return LeadgridSalesTeamStore.shared.teams.compactMap { team in
-            guard let lat = team.areaCenterLat, let lng = team.areaCenterLng else { return nil }
+        return LeadgridSalesTeamStore.shared.teams.flatMap { team -> [GeoJSONTerritory] in
+            let color = UIColor(Color(teamHex: team.colorHex) ?? .purple)
+            // Kommune-tildeling (mig 0369) vinner over sirkelsonen: tegn
+            // den ekte kommunegrensen fra Kartverket (én territory per
+            // polygon-fragment — fastland + øyer).
+            if let nr = team.areaKommunenummer, let omr = kommuneOmrader[nr] {
+                let navn = team.areaKommuneNavn ?? "Kommune \(nr)"
+                return omr.polygons.map { poly in
+                    GeoJSONTerritory(
+                        memberName: team.name,
+                        areaName: "\(navn) kommune",
+                        color: color,
+                        polygon: poly,
+                        center: GeoJSONLoader.polygonCentroid(poly)
+                    )
+                }
+            }
+            guard let lat = team.areaCenterLat, let lng = team.areaCenterLng else { return [] }
             let radiusKm = team.areaRadiusKm ?? 3.0
             // Sirkelpolygon: 36 punkter rundt senteret. 1 breddegrad ≈ 111 km;
             // lengdegrad korrigeres med cos(lat).
@@ -741,13 +794,13 @@ struct TeamAreasCard: View {
                     longitude: lng + lngDelta * cos(a)
                 )
             }
-            return GeoJSONTerritory(
+            return [GeoJSONTerritory(
                 memberName: team.name,
                 areaName: "\(Int(radiusKm.rounded())) km sone",
-                color: UIColor(Color(teamHex: team.colorHex) ?? .purple),
+                color: color,
                 polygon: MKPolygon(coordinates: coords, count: coords.count),
                 center: CLLocationCoordinate2D(latitude: lat, longitude: lng)
-            )
+            )]
         }
     }
 
