@@ -31,6 +31,7 @@ struct LogActivitySheet: View {
     @State private var durationMinutes: Int = 15
     @State private var outcome: Outcome = .spoke
     @State private var note: String = ""
+    @State private var showTranscription = false
     @State private var scheduleFollowUp: Bool = true
     @State private var movePipelineStage: Bool = true
     @State private var followUpDate: Date = Calendar.current.date(byAdding: .day, value: 3, to: Date()) ?? Date()
@@ -346,23 +347,39 @@ struct LogActivitySheet: View {
 
     private var noteCard: some View {
         sectionCard(title: "Notat (valgfritt)", icon: "note.text") {
-            ZStack(alignment: .topLeading) {
-                TextEditor(text: $note)
-                    .scrollContentBackground(.hidden)
-                    .foregroundStyle(.white)
-                    .font(.system(size: 13))
-                    .frame(minHeight: 90)
-                    .padding(10)
-                    .background(LaBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
-                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(LaBrand.stroke, lineWidth: 1))
-                if note.isEmpty {
-                    Text(notePlaceholder)
+            VStack(alignment: .leading, spacing: 8) {
+                ZStack(alignment: .topLeading) {
+                    TextEditor(text: $note)
+                        .scrollContentBackground(.hidden)
+                        .foregroundStyle(.white)
                         .font(.system(size: 13))
-                        .foregroundStyle(LaBrand.textTertiary)
-                        .padding(.horizontal, 14).padding(.vertical, 16)
-                        .allowsHitTesting(false)
+                        .frame(minHeight: 90)
+                        .padding(10)
+                        .background(LaBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(LaBrand.stroke, lineWidth: 1))
+                    if note.isEmpty {
+                        Text(notePlaceholder)
+                            .font(.system(size: 13))
+                            .foregroundStyle(LaBrand.textTertiary)
+                            .padding(.horizontal, 14).padding(.vertical, 16)
+                            .allowsHitTesting(false)
+                    }
                 }
+                // Live-transkripsjon (2026-07-04): on-device nb-NO tale→
+                // tekst rett inn i notatet — transkriber møtet/besøket i
+                // stedet for å skrive.
+                Button { showTranscription = true } label: {
+                    Label("Transkriber møtet", systemImage: "waveform.badge.mic")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(LaBrand.purpleLight)
+                }
+                .buttonStyle(.plain)
             }
+        }
+        .sheet(isPresented: $showTranscription) {
+            LiveTranscriptionSheet(onUse: { transcript in
+                note = note.isEmpty ? transcript : note + "\n\n" + transcript
+            })
         }
     }
 
