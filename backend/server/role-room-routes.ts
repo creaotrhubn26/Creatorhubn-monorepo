@@ -137,6 +137,13 @@ import {
   normalizeUrl,
 } from './role-room-website-analyzer.js';
 import { generateWeekPlan } from './role-room-content-strategist.js';
+import { getBestTimesForProject } from './role-room-best-time.js';
+import { applyDataDrivenPostTimes } from './role-room-best-time-to-post.js';
+import {
+  sendClientUpdate,
+  listClientUpdates,
+  resolvePlanContext,
+} from './role-room-client-update-service.js';
 import {
   generateCarouselDraft,
 } from './role-room-carousel-generator.js';
@@ -146,6 +153,31 @@ import {
   makeReplicateClient,
 } from './role-room-carousel-ai-image.js';
 import { findGalleryMatches } from './role-room-carousel-gallery-match.js';
+
+/**
+ * Best-effort: replace a week plan's LLM-guessed optimalPostTime values with
+ * data-derived times from the project's own history. No-op without a projectId
+ * or usable history; never throws (a marketing plan must still generate).
+ */
+async function applyBestTimeOverride(
+  pool: Pool,
+  plan: { concepts: Array<{ primaryPlatform: string; optimalPostTime: string }>; generationNotes: string[] },
+  projectId: unknown,
+): Promise<void> {
+  if (typeof projectId !== 'string' || !projectId) return;
+  try {
+    const bestTimes = await getBestTimesForProject(pool, projectId);
+    const { concepts, dataBackedCount } = applyDataDrivenPostTimes(plan.concepts, bestTimes);
+    plan.concepts = concepts;
+    if (dataBackedCount > 0) {
+      plan.generationNotes.push(
+        `Postetidspunkt for ${dataBackedCount} av ${plan.concepts.length} innlegg er datadrevet — basert på prosjektets historiske engasjement.`,
+      );
+    }
+  } catch (err) {
+    console.warn('[best-time] optimalPostTime override skipped', err);
+  }
+}
 import {
   publishCarouselPost,
   ValidationFailedError,
@@ -24211,6 +24243,82 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     },
   );
 
+  // Data-driven "best time to post" — aggregates a project's own historical
+  // engagement (social_metrics) into ranked weekday×hour slots per platform.
+  // Feeds the marketing-plan UI card and the agent; falls back to an empty list
+  // when there's no usable history (the UI then shows the LLM best-practice tip).
+  router.get(
+    '/best-time-to-post',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const projectId = typeof req.query.projectId === 'string' ? req.query.projectId : '';
+        if (!projectId) return res.status(400).json({ error: 'projectId_required' });
+        if (!(await canAccessProjectAds(pool, projectId, readProjectAccessUser(req)))) {
+          return res.status(403).json({ error: 'forbidden_project' });
+        }
+        const platform = typeof req.query.platform === 'string' ? req.query.platform : undefined;
+        const windowDays = /^\d+$/.test(String(req.query.windowDays ?? ''))
+          ? Number(req.query.windowDays)
+          : undefined;
+        const results = await getBestTimesForProject(pool, projectId, { windowDays });
+        const bestTimes = platform ? results.filter((r) => r.platform === platform) : results;
+        res.json({ bestTimes });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to compute best time to post', detail: String(error) });
+      }
+    },
+  );
+
+  // Proactive client update — producer sends a data-driven "here's what we
+  // published and how it's doing" summary (incl. the best-time insight) to the
+  // client via email + portal timeline. Closes the proactive-communication gap.
+  router.post(
+    '/marketing-plan/:planId/client-update',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const planId = req.params.planId;
+        const accessUser = readProjectAccessUser(req);
+        const ctx = await resolvePlanContext(pool, planId);
+        if (!ctx) return res.status(404).json({ error: 'plan_not_found' });
+        if (!(await canAccessProjectAds(pool, ctx.projectId, accessUser))) {
+          return res.status(403).json({ error: 'forbidden_project' });
+        }
+        const producerNote =
+          typeof req.body?.producerNote === 'string' ? req.body.producerNote : null;
+        const result = await sendClientUpdate(pool, {
+          planId,
+          sentBy: accessUser?.userId ?? null,
+          producerNote,
+        });
+        res.json(result);
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to send client update', detail: String(error) });
+      }
+    },
+  );
+
+  // Producer-facing list of previously sent client updates (timeline).
+  router.get(
+    '/marketing-plan/:planId/client-updates',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const planId = req.params.planId;
+        const ctx = await resolvePlanContext(pool, planId);
+        if (!ctx) return res.status(404).json({ error: 'plan_not_found' });
+        if (!(await canAccessProjectAds(pool, ctx.projectId, readProjectAccessUser(req)))) {
+          return res.status(403).json({ error: 'forbidden_project' });
+        }
+        const updates = await listClientUpdates(pool, ctx.projectId);
+        res.json({ updates });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to list client updates', detail: String(error) });
+      }
+    },
+  );
+
   router.put(
     '/ads/budget',
     apiKeyAuth(pool, activeSessions),
@@ -24583,7 +24691,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     async (req: Request, res: Response) => {
       try {
         const userId = getUserId(req);
-        const { analysisId, weekStarting } = req.body ?? {};
+        const { analysisId, weekStarting, projectId: bestTimeProjectId } = req.body ?? {};
         if (!analysisId || !weekStarting) {
           return res.status(400).json({
             error: 'invalid_input',
@@ -24602,6 +24710,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         }
         const brand = row.rows[0].brand_profile as unknown as Parameters<typeof generateWeekPlan>[0];
         const plan = await generateWeekPlan(brand, weekStarting);
+        await applyBestTimeOverride(pool, plan, bestTimeProjectId);
         res.json({ plan });
       } catch (error) {
         res.status(500).json({
@@ -24619,7 +24728,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     async (req: Request, res: Response) => {
       try {
         const userId = getUserId(req);
-        const { url, weekStarting, skipClaude } = req.body ?? {};
+        const { url, weekStarting, skipClaude, projectId: bestTimeProjectId } = req.body ?? {};
         if (!url || !weekStarting) {
           return res.status(400).json({
             error: 'invalid_input',
@@ -24659,6 +24768,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
 
         // 2) Strategist
         const plan = await generateWeekPlan(brandProfile, weekStarting);
+        await applyBestTimeOverride(pool, plan, bestTimeProjectId);
 
         // 3) Generator (DB transaction inside)
         const fallbackColor = brandProfile.colors?.primary ?? '#0a0617';
