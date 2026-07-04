@@ -16,6 +16,7 @@ import {
 } from './infographicStudio';
 import { aiPickTemplate, aiInfographicFromSite, logoToDataUrl, recordAiFeedback, recordTemplateUsage, aiFeedbackCount } from './infographicAI';
 import { syncCollective, modelSteps, modelWeights, fetchInsight, type CollectiveInsight } from './infographicLearning';
+import { SOCIAL_TEMPLATE_IDS } from './infographicSocialTemplates';
 import { scanDom, isCaptureAvailable } from '../../services/demoCaptureService';
 import { analyzeProductEvidence, gatherSiteContext } from './demoStudioAI';
 import { isAiConnected } from '../../services/claudeProxyService';
@@ -178,8 +179,10 @@ const BRAND_KITS = [
   { id: 'kit-ch', name: 'Creatorhub', accent: '#ffba6c', tagline: 'Dashboard · Showcase', ids: CH_KIT_IDS, logo: CREATORHUB_LOGO },
 ] as const;
 
+// Sosial-optimaliserte maler (vertikal/kvadrat) — egen kategori.
+const SOCIAL_IDS = new Set<string>(SOCIAL_TEMPLATE_IDS);
 const CATEGORY_IDS: Record<string, Set<string>> = {
-  charts: CHART_IDS, marketing: MARKETING_IDS, filmtv: FILMTV_IDS,
+  social: SOCIAL_IDS, charts: CHART_IDS, marketing: MARKETING_IDS, filmtv: FILMTV_IDS,
   callouts: CALLOUT_IDS, ui: UI_IDS, uxlayout: UX_LAYOUT_IDS,
 };
 // Brand-kits matcher på id-PREFIKS (rr-/ch-) så alle branded maler auto-inkluderes.
@@ -193,13 +196,14 @@ const inCategory = (sec: string, id: string): boolean => {
   return CATEGORY_IDS[sec] ? CATEGORY_IDS[sec].has(id) : true;
 };
 const CATEGORY_LABEL: Record<string, string> = {
-  templates: 'Templates', charts: 'Charts', marketing: 'Marketing', filmtv: 'Film & TV',
+  templates: 'Templates', social: 'Social', charts: 'Charts', marketing: 'Marketing', filmtv: 'Film & TV',
   callouts: 'Callouts', ui: 'UI-elementer', uxlayout: 'Layout & UX', 'kit-rr': 'The Role Room', 'kit-ch': 'Creatorhub', custom: 'Mine maler',
 };
 
 // Kategori-ikon for en mal (erstatter malens tekst-glyf i galleri + scene-stripe).
 function tplIcon(id: string, size = 16): React.ReactElement {
   const st: React.CSSProperties = { fontSize: size };
+  if (SOCIAL_IDS.has(id)) return <PhoneIphoneIcon style={st} />;
   if (CHART_IDS.has(id)) return <BarChartIcon style={st} />;
   if (MARKETING_IDS.has(id)) return <CampaignIcon style={st} />;
   if (FILMTV_IDS.has(id)) return <MovieIcon style={st} />;
@@ -646,7 +650,7 @@ export function InfographicStudioView(
   };
   const [suggested, setSuggested] = useState('');
   const [rightTab, setRightTab] = useState<'Design' | 'Animate' | 'Data'>('Data');
-  const [leftSec, setLeftSec] = useState<'templates' | 'charts' | 'marketing' | 'filmtv' | 'callouts' | 'ui' | 'uxlayout' | 'kit-rr' | 'kit-ch' | 'custom' | 'library' | 'insight' | 'brand' | 'data' | 'export'>('templates');
+  const [leftSec, setLeftSec] = useState<'templates' | 'social' | 'charts' | 'marketing' | 'filmtv' | 'callouts' | 'ui' | 'uxlayout' | 'kit-rr' | 'kit-ch' | 'custom' | 'library' | 'insight' | 'brand' | 'data' | 'export'>('templates');
   const [tplQuery, setTplQuery] = useState('');
   const [dataText, setDataText] = useState(initial.current?.dataText || '');
   // Live datakilde: URL (JSON/CSV) hentet via Rust (ingen CORS) → dataText.
@@ -1154,6 +1158,7 @@ export function InfographicStudioView(
         <div style={{ width: 178, borderRight: `1px solid ${D.line}`, background: D.panel, paddingTop: 8, display: 'flex', flexDirection: 'column' }}>
           <div style={railItem(leftSec === 'data')} onClick={() => setLeftSec('data')}><DatasetIcon style={{ fontSize: 17 }} /> Data Sources{dataKeys.length ? <span style={{ marginLeft: 'auto', fontSize: 10, color: D.teal }}>{dataKeys.length}</span> : null}</div>
           <div style={railItem(leftSec === 'templates')} onClick={() => setLeftSec('templates')}><GridViewIcon style={{ fontSize: 17 }} /> Templates <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{INFOGRAPHIC_TEMPLATES.length}</span></div>
+          <div style={railItem(leftSec === 'social')} onClick={() => setLeftSec('social')}><PhoneIphoneIcon style={{ fontSize: 17 }} /> Social <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{INFOGRAPHIC_TEMPLATES.filter((t) => SOCIAL_IDS.has(t.id)).length}</span></div>
           <div style={railItem(leftSec === 'charts')} onClick={() => setLeftSec('charts')}><BarChartIcon style={{ fontSize: 17 }} /> Charts <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{INFOGRAPHIC_TEMPLATES.filter((t) => CHART_IDS.has(t.id)).length}</span></div>
           <div style={railItem(leftSec === 'marketing')} onClick={() => setLeftSec('marketing')}><CampaignIcon style={{ fontSize: 17 }} /> Marketing <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{INFOGRAPHIC_TEMPLATES.filter((t) => MARKETING_IDS.has(t.id)).length}</span></div>
           <div style={railItem(leftSec === 'filmtv')} onClick={() => setLeftSec('filmtv')}><MovieIcon style={{ fontSize: 17 }} /> Film &amp; TV <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{INFOGRAPHIC_TEMPLATES.filter((t) => FILMTV_IDS.has(t.id)).length}</span></div>
