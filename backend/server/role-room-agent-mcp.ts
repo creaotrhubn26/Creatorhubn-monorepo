@@ -15,7 +15,9 @@ export interface AgentMcpServerDef {
   type: "url";
   url: string;
   name: string;
-  authorization_token: string;
+  /** OAuth bearer for the MCP server. Optional — some self-hosted servers (e.g.
+   *  a Cloud Run Google Ads MCP) authenticate via env/IAM instead. */
+  authorization_token?: string;
 }
 
 export interface AgentMcpToolConfig {
