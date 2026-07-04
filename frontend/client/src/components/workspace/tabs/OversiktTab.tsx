@@ -222,13 +222,20 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
   // Bygg de 4 rolle-kolonnene fra ekte tasks, ellers sample. Kolonnenavn følger
   // workspace-kategorien; crew-nøklene er stabile (fotograf/videograf/begge/editor)
   // så eksisterende board-tasks fortsatt mapper riktig.
-  const isMusic = workspaceCategoryFor(profession) === 'music';
-  const COLS = isMusic
+  const wsCategory = workspaceCategoryFor(profession);
+  const COLS = wsCategory === 'music'
     ? [
         { role: 'Produsent', icon: '🎹', crew: 'fotograf' },
         { role: 'Vokal', icon: '🎤', crew: 'videograf' },
         { role: 'Musikere', icon: '🎸', crew: 'begge' },
         { role: 'Miks', icon: '🎚️', crew: 'editor' },
+      ]
+    : wsCategory === 'vendor'
+    ? [
+        { role: 'Bestilling', icon: '🧾', crew: 'fotograf' },
+        { role: 'Klargjøring', icon: '📦', crew: 'videograf' },
+        { role: 'Levering', icon: '🚚', crew: 'begge' },
+        { role: 'Oppfølging', icon: '📞', crew: 'editor' },
       ]
     : [
         { role: 'Fotograf', icon: '📷', crew: 'fotograf' },

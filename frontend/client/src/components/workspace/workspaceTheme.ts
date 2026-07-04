@@ -93,6 +93,12 @@ export interface WsNavItem {
    * Se navForProfession() / workspaceCategoryFor().
    */
   categories?: WorkspaceCategory[];
+  /**
+   * Kategori-spesifikk label-overstyring for universelle items — samme fane,
+   * riktig språk for flaten (vendor: Utstyr→«Lager», Moodboard→«Inspirasjon»).
+   * navForProfession() resolver til `label`.
+   */
+  labelByCategory?: Partial<Record<WorkspaceCategory, string>>;
   /** Kun synlig for mentorer/instruktører (uavhengig av profesjon). */
   mentorOnly?: boolean;
 }
@@ -102,14 +108,15 @@ export interface WsNavItem {
 // er interleavet så rekkefølgen blir riktig for begge etter filtrering.
 export const WS_NAV: WsNavItem[] = [
   { key: 'oversikt', label: 'Oversikt', icon: 'Dashboard', group: 'hoved', route: true },
-  { key: 'prosjektplan', label: 'Prosjektplan', icon: 'AccountTree', group: 'hoved', route: true },
+  { key: 'prosjektplan', label: 'Prosjektplan', icon: 'AccountTree', group: 'hoved', route: true, labelByCategory: { vendor: 'Ordreplan' } },
   { key: 'produksjonskart', label: 'Produksjonskart', icon: 'Map', group: 'hoved', route: true, categories: ['visual'] },
   { key: 'sesjoner', label: 'Sesjoner', icon: 'Album', group: 'hoved', route: true, categories: ['music'] },
+  { key: 'oppdrag', label: 'Oppdrag', icon: 'WorkOutline', group: 'hoved', route: true, categories: ['vendor'] },
   { key: 'shotlist', label: 'Shotlist', icon: 'PhotoCameraBack', group: 'hoved', route: true, categories: ['visual'] },
   { key: 'laater', label: 'Låter', icon: 'LibraryMusic', group: 'hoved', route: true, categories: ['music'] },
-  { key: 'moodboard', label: 'Moodboard', icon: 'GridView', group: 'hoved', route: true },
+  { key: 'moodboard', label: 'Moodboard', icon: 'GridView', group: 'hoved', route: true, labelByCategory: { vendor: 'Inspirasjon' } },
   { key: 'media', label: 'Media', icon: 'PermMedia', group: 'hoved', route: true },
-  { key: 'utstyr', label: 'Utstyr', icon: 'Inventory2', group: 'hoved', route: true },
+  { key: 'utstyr', label: 'Utstyr', icon: 'Inventory2', group: 'hoved', route: true, labelByCategory: { vendor: 'Lager' } },
   { key: 'leveranser', label: 'Leveranser', icon: 'LocalShipping', group: 'hoved', route: true },
   { key: 'oppgaver', label: 'Oppgaver', icon: 'CheckCircleOutline', group: 'hoved', badge: 12, route: true },
   { key: 'team', label: 'Team', icon: 'Group', group: 'hoved', route: true },
@@ -174,5 +181,8 @@ export function navForProfession(
     if (n.mentorOnly && !isMentor) return false; // mentor-gated (uavhengig av profesjon)
     if (!n.categories) return true;
     return n.categories.includes(cat);
+  }).map((n) => {
+    const label = n.labelByCategory?.[cat];
+    return label ? { ...n, label } : n;
   });
 }

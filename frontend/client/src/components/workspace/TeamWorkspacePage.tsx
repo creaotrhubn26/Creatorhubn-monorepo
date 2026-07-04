@@ -29,6 +29,7 @@ import VideoRoomTab from './tabs/VideoRoomTab';
 import PhotoRoomTab from './tabs/PhotoRoomTab';
 import LaaterTab from './tabs/LaaterTab';
 import SesjonerTab from './tabs/SesjonerTab';
+import OppdragTab from './tabs/OppdragTab';
 import ForesporslerTab from './tabs/ForesporslerTab';
 import UtstyrTab from './tabs/UtstyrTab';
 import AcademyInstructorAdminStudio from '../academy/AcademyInstructorAdminStudio';
@@ -191,7 +192,9 @@ const TeamWorkspacePage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, nav]);
 
-  const navItem = WS_NAV.find((n) => n.key === tab);
+  // Slå opp i den kategori-resolvede nav-en (riktig label for f.eks. vendor);
+  // WS_NAV som fallback for keys utenfor profesjonens nav.
+  const navItem = nav.find((n) => n.key === tab) || WS_NAV.find((n) => n.key === tab);
 
   const TABS: Record<string, React.ReactNode> = {
     oversikt: <OversiktTab projectId={projectId} profession={user?.profession} />,
@@ -200,6 +203,7 @@ const TeamWorkspacePage: React.FC = () => {
     shotlist: <ShotlistTab projectId={projectId} />,
     laater: <LaaterTab projectId={projectId} />,
     sesjoner: <SesjonerTab projectId={projectId} />,
+    oppdrag: <OppdragTab projectId={projectId} />,
     academy: <AcademyProvider><AcademyInstructorAdminStudio /></AcademyProvider>,
     community: <CommunityHub userId={user?.id} userEmail={user?.email} profession={user?.profession || 'photographer'} />,
     moodboard: <MoodboardTab projectId={projectId} />,
