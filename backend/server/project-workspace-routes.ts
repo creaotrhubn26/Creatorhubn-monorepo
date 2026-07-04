@@ -1301,13 +1301,25 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
                 lv.version_label AS latest_version_label, lv.status AS latest_version_status,
                 (SELECT count(*)::int FROM audio_review_comments c
                    JOIN audio_review_versions v2 ON v2.id = c.version_id
-                  WHERE v2.project_id = ar.id AND (c.status IS NULL OR c.status NOT IN ('resolved','rejected'))) AS open_comment_count
+                  WHERE v2.project_id = ar.id AND (c.status IS NULL OR c.status NOT IN ('resolved','rejected'))) AS open_comment_count,
+                ssx.status AS split_status, ssx.signed AS split_signed, ssx.total AS split_total
            FROM easeverse_tracks t
-           LEFT JOIN LATERAL (SELECT a.id FROM audio_review_projects a
+           LEFT JOIN LATERAL (SELECT a.id, a.owner_user_id FROM audio_review_projects a
                                WHERE a.easeverse_track_id = t.id::text AND a.status <> 'archived'
                                ORDER BY a.created_at DESC LIMIT 1) ar ON true
            LEFT JOIN LATERAL (SELECT v.version_label, v.status FROM audio_review_versions v
                                WHERE v.project_id = ar.id ORDER BY v.version_number DESC LIMIT 1) lv ON true
+           -- Split-sheet per låt: audio-showcase-systemet kobler via
+           -- metadata->>'sourceReviewId' (ikke FK) — se audio-showcase-routes.
+           LEFT JOIN LATERAL (SELECT ss.status,
+                                (SELECT count(*) FILTER (WHERE c2.signed_at IS NOT NULL)::int
+                                   FROM split_sheet_contributors c2 WHERE c2.split_sheet_id = ss.id) AS signed,
+                                (SELECT count(*)::int FROM split_sheet_contributors c2
+                                  WHERE c2.split_sheet_id = ss.id) AS total
+                                FROM split_sheets ss
+                               WHERE ss.metadata->>'sourceReviewId' = ar.id::text
+                                 AND ss.user_id = ar.owner_user_id AND ss.status <> 'archived'
+                               ORDER BY ss.created_at DESC LIMIT 1) ssx ON true
           WHERE t.user_id = $1 ORDER BY t.updated_at DESC NULLS LAST LIMIT 50`,
         [uid],
       ).catch(() => ({ rows: [] }));
@@ -1319,6 +1331,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
           durationSeconds: r.duration_seconds, hasReview: !!r.has_review, linked: r.id === linkedTrackId,
           versionCount: r.version_count || 0, latestVersionLabel: r.latest_version_label || null,
           latestVersionStatus: r.latest_version_status || null, openCommentCount: r.open_comment_count || 0,
+          splitSheet: r.split_status ? { status: r.split_status, signed: r.split_signed || 0, total: r.split_total || 0 } : null,
         })),
       });
     } catch (e) { console.error("GET easeverse-tracks", e); res.json({ connected: false, tracks: [] }); }

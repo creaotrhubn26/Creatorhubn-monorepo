@@ -26,6 +26,13 @@ const STATUS_ORDER = ['recording', 'mixing', 'mastering', 'completed'];
 const VERSION_STATUS: Record<string, [string, string]> = {
   under_review: ['Til review', 'amber'], approved: ['Godkjent', 'green'], superseded: ['Erstattet', 'neutral'],
 };
+// Split-sheet-status per låt (audio-showcase-systemet: draft → signering → komplett).
+const splitTag = (ss: any): { label: string; tone: string } | null => {
+  if (!ss) return null;
+  if (ss.status === 'completed') return { label: 'Split sheet ✓', tone: 'green' };
+  if (ss.status === 'pending_signatures') return { label: `Signering ${ss.signed}/${ss.total}`, tone: 'amber' };
+  return { label: 'Split sheet utkast', tone: 'neutral' };
+};
 
 const fmtDur = (s: any) => {
   const n = Number(s); if (!Number.isFinite(n) || n <= 0) return '';
@@ -134,6 +141,7 @@ const LaaterTab: React.FC<{ projectId: string }> = ({ projectId }) => {
                         <WsTag label={st[0]} tone={st[1] as any} />
                         {t.linked && <WsTag label="I Sound Room" tone="green" />}
                         {t.versionCount > 0 && <WsTag label={`${t.versionCount} versjon${t.versionCount > 1 ? 'er' : ''}`} tone="blue" />}
+                        {splitTag(t.splitSheet) && <WsTag label={splitTag(t.splitSheet).label} tone={splitTag(t.splitSheet).tone as any} />}
                         {t.openCommentCount > 0 && (
                           <Stack direction="row" spacing={0.35} alignItems="center" sx={{ color: ws.amber }}>
                             <ChatBubbleOutline sx={{ fontSize: 13 }} />
@@ -203,6 +211,12 @@ const LaaterTab: React.FC<{ projectId: string }> = ({ projectId }) => {
                   <Stack direction="row" justifyContent="space-between" alignItems="center">
                     <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Åpne kommentarer</Typography>
                     <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: selected.openCommentCount > 0 ? ws.amber : ws.text }}>{selected.openCommentCount}</Typography>
+                  </Stack>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center">
+                    <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Split sheet</Typography>
+                    {splitTag(selected.splitSheet)
+                      ? <WsTag label={splitTag(selected.splitSheet).label} tone={splitTag(selected.splitSheet).tone as any} />
+                      : <Typography sx={{ fontSize: 12.5, color: ws.textFaint }}>Ikke opprettet</Typography>}
                   </Stack>
                 </Stack>
               </Box>
