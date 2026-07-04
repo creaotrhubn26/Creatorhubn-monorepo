@@ -27,6 +27,35 @@ import ProjectCreationWithMemoryCards from '../../project/ProjectCreationWithMem
 import ContactFormDesigner from '../ContactFormDesigner';
 import { ws } from '../workspaceTheme';
 import { WsCard, WsTag } from '../ui';
+import { useWsLocale, makeT, wsDateLocale, type WsDict } from '../wsLocale';
+
+// Lokal no/en-ordbok for fanen (samme mønster som OppdragTab). NB: selve
+// e-postinnholdet og chat-seeden går til norske kunder og forblir norsk.
+const T: WsDict = {
+  title: { no: 'Forespørsler', en: 'Inquiries' },
+  subtitle: { no: 'Innkommende henvendelser fra potensielle kunder. Svar på e-post, eller opprett prosjekt med ett klikk — veiviseren fylles ut automatisk.', en: 'Incoming inquiries from potential clients. Reply by e-mail, or create a project in one click — the wizard is filled in automatically.' },
+  newCount: { no: 'nye', en: 'new' },
+  contactForm: { no: 'Kontaktskjema', en: 'Contact form' },
+  emptyTitle: { no: 'Ingen nye henvendelser', en: 'No new inquiries' },
+  emptySub: { no: 'Når en potensiell kunde sender en forespørsel via kontaktskjemaet ditt, dukker den opp her klar til å bli et prosjekt — samme henvendelser som «Kundeforespørsler» på dashbordet.', en: 'When a potential client sends a request via your contact form, it appears here ready to become a project — the same inquiries as "Customer inquiries" on the dashboard.' },
+  replySingular: { no: 'svar', en: 'reply' },
+  replyPlural: { no: 'svar', en: 'replies' },
+  createProject: { no: 'Opprett prosjekt', en: 'Create project' },
+  reply: { no: 'Svar', en: 'Reply' },
+  replyDlgTitle: { no: 'Svar på henvendelse', en: 'Reply to inquiry' },
+  replyTo: { no: 'Til', en: 'To' },
+  replyPlaceholder: { no: 'Skriv svaret ditt …', en: 'Write your reply …' },
+  sendFailed: { no: 'Kunne ikke sende e-post. Sjekk at Gmail er koblet til i Innstillinger.', en: 'Could not send the e-mail. Check that Gmail is connected in Settings.' },
+  cancel: { no: 'Avbryt', en: 'Cancel' },
+  sending: { no: 'Sender …', en: 'Sending …' },
+  sendEmail: { no: 'Send e-post', en: 'Send e-mail' },
+  replySentTo: { no: 'Svar sendt til', en: 'Reply sent to' },
+  projectCreatedToast: { no: 'Prosjekt opprettet — henvendelsen og dialogen er lagt i prosjekt-chatten', en: 'Project created — the inquiry and dialogue have been added to the project chat' },
+  newProjectDlgTitle: { no: 'Nytt prosjekt fra henvendelse', en: 'New project from inquiry' },
+  prefilledFrom: { no: 'Forhåndsutfylt fra', en: 'Pre-filled from' },
+  theClient: { no: 'kunden', en: 'the client' },
+  ok: { no: 'OK', en: 'OK' },
+};
 
 // Evendi event_type / project_type → veiviserens projectType (kjente verdier).
 const KNOWN_TYPES = new Set(['wedding', 'portrait', 'commercial', 'corporate', 'event', 'engagement', 'newborn', 'family', 'album']);
@@ -35,14 +64,18 @@ const toProjectType = (t?: string) => {
   return KNOWN_TYPES.has(v) ? v : undefined;
 };
 
-const fmtDate = (iso?: string | null) => {
+const fmtDate = (iso?: string | null, dloc = 'nb-NO') => {
   if (!iso) return '';
-  try { return new Date(iso).toLocaleDateString('nb-NO', { day: '2-digit', month: 'short', year: 'numeric' }); }
+  try { return new Date(iso).toLocaleDateString(dloc, { day: '2-digit', month: 'short', year: 'numeric' }); }
   catch { return ''; }
 };
 const fmtAmount = (n?: number) => (n && n > 0 ? `${Math.round(n).toLocaleString('nb-NO')} kr` : '');
 
 const ForesporslerTab: React.FC<{ projectId: string; profession?: string; userId?: string; userName?: string }> = ({ profession, userId, userName }) => {
+  // Utenlandske partner-vendors får engelsk UI — locale fra WsLocaleProvider.
+  const locale = useWsLocale();
+  const t = makeT(T, locale);
+  const dloc = wsDateLocale(locale);
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [designer, setDesigner] = useState(false);          // kontaktskjema-bygger
@@ -69,10 +102,10 @@ const ForesporslerTab: React.FC<{ projectId: string; profession?: string; userId
     try {
       await apiRequest('/api/emails/send', { method: 'POST', body: { to: replyTo.clientEmail, subject: `Re: ${replyTo.title}`, message: replyText.trim() } });
       setReplies((prev) => ({ ...prev, [replyTo.id]: [...(prev[replyTo.id] || []), replyText.trim()] }));
-      setToast(`Svar sendt til ${replyTo.clientName}`);
+      setToast(`${t('replySentTo')} ${replyTo.clientName}`);
       setReplyTo(null); setReplyText('');
     } catch (e: any) {
-      setSendErr(e?.message || e?.error || 'Kunne ikke sende e-post. Sjekk at Gmail er koblet til i Innstillinger.');
+      setSendErr(e?.message || e?.error || t('sendFailed'));
     } finally { setSending(false); }
   };
 
@@ -95,7 +128,7 @@ const ForesporslerTab: React.FC<{ projectId: string; profession?: string; userId
     }
     setItems((prev) => prev.filter((x) => x.id !== lead.id));
     setActive(null);
-    setToast('Prosjekt opprettet — henvendelsen og dialogen er lagt i prosjekt-chatten');
+    setToast(t('projectCreatedToast'));
   };
 
   if (designer) return <ContactFormDesigner onBack={() => setDesigner(false)} />;
@@ -106,13 +139,13 @@ const ForesporslerTab: React.FC<{ projectId: string; profession?: string; userId
     <Box sx={{ maxWidth: 880, mx: 'auto' }}>
       <Stack direction="row" justifyContent="space-between" alignItems="flex-end" sx={{ mb: 2 }}>
         <Box>
-          <Typography sx={{ fontSize: 20, fontWeight: 800 }}>Forespørsler</Typography>
-          <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Innkommende henvendelser fra potensielle kunder. Svar på e-post, eller opprett prosjekt med ett klikk — veiviseren fylles ut automatisk.</Typography>
+          <Typography sx={{ fontSize: 20, fontWeight: 800 }}>{t('title')}</Typography>
+          <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>{t('subtitle')}</Typography>
         </Box>
         <Stack direction="row" spacing={1} alignItems="center">
-          {items.length > 0 && <WsTag label={`${items.length} nye`} tone="amber" />}
+          {items.length > 0 && <WsTag label={`${items.length} ${t('newCount')}`} tone="amber" />}
           <Button size="small" variant="outlined" startIcon={<DesignServices sx={{ fontSize: 17 }} />} onClick={() => setDesigner(true)}
-            sx={{ color: ws.accent, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 600, whiteSpace: 'nowrap' }}>Kontaktskjema</Button>
+            sx={{ color: ws.accent, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 600, whiteSpace: 'nowrap' }}>{t('contactForm')}</Button>
         </Stack>
       </Stack>
 
@@ -120,8 +153,8 @@ const ForesporslerTab: React.FC<{ projectId: string; profession?: string; userId
         {items.length === 0 ? (
           <Stack alignItems="center" sx={{ py: 5 }} spacing={1}>
             <MoveToInbox sx={{ fontSize: 36, color: ws.textFaint }} />
-            <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>Ingen nye henvendelser</Typography>
-            <Typography sx={{ fontSize: 12.5, color: ws.textDim, textAlign: 'center', maxWidth: 440 }}>Når en potensiell kunde sender en forespørsel via kontaktskjemaet ditt, dukker den opp her klar til å bli et prosjekt — samme henvendelser som «Kundeforespørsler» på dashbordet.</Typography>
+            <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>{t('emptyTitle')}</Typography>
+            <Typography sx={{ fontSize: 12.5, color: ws.textDim, textAlign: 'center', maxWidth: 440 }}>{t('emptySub')}</Typography>
           </Stack>
         ) : (
           <Stack spacing={1}>
@@ -135,11 +168,11 @@ const ForesporslerTab: React.FC<{ projectId: string; profession?: string; userId
                     <Typography sx={{ fontSize: 13.5, fontWeight: 700 }} noWrap>{it.clientName || it.title}</Typography>
                     {it.eventType && <WsTag label={it.eventType} tone="blue" />}
                     {fmtAmount(it.amount) && <WsTag label={fmtAmount(it.amount)} tone="green" />}
-                    {(replies[it.id]?.length > 0) && <WsTag label={`${replies[it.id].length} svar`} tone="green" />}
+                    {(replies[it.id]?.length > 0) && <WsTag label={`${replies[it.id].length} ${replies[it.id].length === 1 ? t('replySingular') : t('replyPlural')}`} tone="green" />}
                   </Stack>
                   {it.note && <Typography sx={{ fontSize: 12.5, color: ws.textDim, mt: 0.4 }}>«{it.note}»</Typography>}
                   <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap sx={{ mt: 0.5 }}>
-                    {it.eventDate && <Detail icon={EventOutlined} text={fmtDate(it.eventDate)} />}
+                    {it.eventDate && <Detail icon={EventOutlined} text={fmtDate(it.eventDate, dloc)} />}
                     {it.venueName && <Detail icon={PlaceOutlined} text={it.venueName} />}
                     {it.clientEmail && <Detail icon={EmailOutlined} text={it.clientEmail} />}
                     {it.clientPhone && <Detail icon={PhoneOutlined} text={it.clientPhone} />}
@@ -148,11 +181,11 @@ const ForesporslerTab: React.FC<{ projectId: string; profession?: string; userId
                 <Stack spacing={0.75} sx={{ flexShrink: 0 }}>
                   <Button size="small" variant="contained" startIcon={<AddCircleOutline />} onClick={() => setActive(it)}
                     sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, whiteSpace: 'nowrap', '&:hover': { bgcolor: ws.accentHover } }}>
-                    Opprett prosjekt
+                    {t('createProject')}
                   </Button>
                   <Button size="small" variant="outlined" startIcon={<ReplyOutlined />} disabled={!it.clientEmail} onClick={() => { setReplyTo(it); setReplyText(''); setSendErr(''); }}
                     sx={{ color: ws.accent, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                    Svar
+                    {t('reply')}
                   </Button>
                 </Stack>
               </Stack>
@@ -166,8 +199,8 @@ const ForesporslerTab: React.FC<{ projectId: string; profession?: string; userId
         PaperProps={{ sx: { bgcolor: ws.panelSolid, backgroundImage: 'none', border: `1px solid ${ws.border}`, borderRadius: `${ws.radius}px` } }}>
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 2.5, pt: 2, pb: 0.5 }}>
           <Box>
-            <Typography sx={{ fontSize: 16, fontWeight: 800 }}>Svar på henvendelse</Typography>
-            {replyTo && <Typography sx={{ fontSize: 12, color: ws.textDim }}>Til {replyTo.clientName} · {replyTo.clientEmail}</Typography>}
+            <Typography sx={{ fontSize: 16, fontWeight: 800 }}>{t('replyDlgTitle')}</Typography>
+            {replyTo && <Typography sx={{ fontSize: 12, color: ws.textDim }}>{t('replyTo')} {replyTo.clientName} · {replyTo.clientEmail}</Typography>}
           </Box>
           <IconButton onClick={() => setReplyTo(null)} sx={{ color: ws.textDim }}><Close /></IconButton>
         </Stack>
@@ -175,14 +208,14 @@ const ForesporslerTab: React.FC<{ projectId: string; profession?: string; userId
           {replyTo?.note && <Box sx={{ p: 1.25, mb: 1.5, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.panelAlt, border: `1px solid ${ws.borderSoft}` }}>
             <Typography sx={{ fontSize: 12, color: ws.textDim }}>«{replyTo.note}»</Typography>
           </Box>}
-          <TextField autoFocus fullWidth multiline minRows={5} placeholder="Skriv svaret ditt …" value={replyText} onChange={(e) => setReplyText(e.target.value)} />
+          <TextField autoFocus fullWidth multiline minRows={5} placeholder={t('replyPlaceholder')} value={replyText} onChange={(e) => setReplyText(e.target.value)} />
           {sendErr && <Alert severity="error" sx={{ mt: 1.5 }}>{sendErr}</Alert>}
         </DialogContent>
         <DialogActions sx={{ px: 2.5, pb: 2 }}>
-          <Button onClick={() => setReplyTo(null)} sx={{ color: ws.textDim, textTransform: 'none' }}>Avbryt</Button>
+          <Button onClick={() => setReplyTo(null)} sx={{ color: ws.textDim, textTransform: 'none' }}>{t('cancel')}</Button>
           <Button onClick={sendReply} disabled={!replyText.trim() || sending} variant="contained"
             sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>
-            {sending ? 'Sender …' : 'Send e-post'}
+            {sending ? t('sending') : t('sendEmail')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -192,8 +225,8 @@ const ForesporslerTab: React.FC<{ projectId: string; profession?: string; userId
         PaperProps={{ sx: { bgcolor: ws.panelSolid, backgroundImage: 'none', border: `1px solid ${ws.border}`, borderRadius: `${ws.radius}px` } }}>
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 2.5, pt: 2, pb: 1 }}>
           <Box>
-            <Typography sx={{ fontSize: 16, fontWeight: 800 }}>Nytt prosjekt fra henvendelse</Typography>
-            {active && <Typography sx={{ fontSize: 12, color: ws.textDim }}>Forhåndsutfylt fra {active.clientName || 'kunden'}</Typography>}
+            <Typography sx={{ fontSize: 16, fontWeight: 800 }}>{t('newProjectDlgTitle')}</Typography>
+            {active && <Typography sx={{ fontSize: 12, color: ws.textDim }}>{t('prefilledFrom')} {active.clientName || t('theClient')}</Typography>}
           </Box>
           <IconButton onClick={() => setActive(null)} sx={{ color: ws.textDim }}><Close /></IconButton>
         </Stack>
@@ -223,7 +256,7 @@ const ForesporslerTab: React.FC<{ projectId: string; profession?: string; userId
         <Box sx={{ px: 3, py: 2.5, maxWidth: 380 }}>
           <Typography sx={{ fontSize: 13.5, fontWeight: 700, color: ws.text }}>{toast}</Typography>
           <Stack direction="row" justifyContent="flex-end" sx={{ mt: 1.5 }}>
-            <Button size="small" onClick={() => setToast('')} sx={{ color: ws.accent, textTransform: 'none', fontWeight: 700 }}>OK</Button>
+            <Button size="small" onClick={() => setToast('')} sx={{ color: ws.accent, textTransform: 'none', fontWeight: 700 }}>{t('ok')}</Button>
           </Stack>
         </Box>
       </Dialog>

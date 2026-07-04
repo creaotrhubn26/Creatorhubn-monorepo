@@ -21,6 +21,39 @@ import CheckCircleOutline from '@mui/icons-material/CheckCircleOutline';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
 import { WsCard, WsSectionTitle, WsTag, WsImg } from '../ui';
+import { useWsLocale, makeT, type WsDict } from '../wsLocale';
+
+// Lokal no/en-ordbok for fanen (samme mønster som OppdragTab).
+const T: WsDict = {
+  title: { no: 'Kundevisning', en: 'Client view' },
+  subtitle: { no: 'Slik ser klienten prosjektet — showcasen/klient-galleriet. Del lenken eller forhåndsvis selv.', en: 'This is how the client sees the project — the showcase/client gallery. Share the link or preview it yourself.' },
+  infoBefore: { no: '«Kundevisning» er den samme ', en: '"Client view" is the same ' },
+  infoBold: { no: 'showcasen', en: 'showcase' },
+  infoAfter: { no: ' klienten får tilsendt — ikke en egen kopi. Alt du publiserer til galleriet vises her.', en: ' the client receives — not a separate copy. Everything you publish to the gallery appears here.' },
+  activity: { no: 'Klient-aktivitet', en: 'Client activity' },
+  activitySub: { no: 'Sanntid fra showcasen — også nedlastinger', en: 'Real-time from the showcase — including downloads' },
+  tagDownload: { no: 'Nedlasting', en: 'Download' },
+  tagChange: { no: 'Endring', en: 'Change' },
+  promptReply: { no: 'Svar til klienten:', en: 'Reply to the client:' },
+  replyFailed: { no: 'Kunne ikke svare', en: 'Could not send the reply' },
+  feedback: { no: 'Klient-tilbakemeldinger', en: 'Client feedback' },
+  selected: { no: 'valgt', en: 'selected' },
+  submitted: { no: ' (innsendt)', en: ' (submitted)' },
+  replyLabel: { no: 'Svar:', en: 'Reply:' },
+  reply: { no: 'Svar', en: 'Reply' },
+  weddingTimeline: { no: 'Bryllups-tidslinje (kundevisning)', en: 'Wedding timeline (client view)' },
+  weddingTimelineSub: { no: 'Klienten ser og kan justere dagens program (first look, vielse, taler …) i sin egen visning.', en: 'The client can see and adjust the day’s schedule (first look, ceremony, speeches …) in their own view.' },
+  copyLink: { no: 'Kopier lenke', en: 'Copy link' },
+  openTimeline: { no: 'Åpne tidslinje', en: 'Open timeline' },
+  emptyTitle: { no: 'Ingen kundevisning publisert ennå', en: 'No client view published yet' },
+  emptySub: { no: 'Opprett et klient-galleri (showcase) for prosjektet — så blir det kundens visning her, og du kan dele lenken.', en: 'Create a client gallery (showcase) for the project — it becomes the client’s view here, and you can share the link.' },
+  delivered: { no: 'Levert', en: 'Delivered' },
+  active: { no: 'Aktiv', en: 'Active' },
+  openClientView: { no: 'Åpne kundevisning', en: 'Open client view' },
+  minAgo: { no: 'min siden', en: 'min ago' },
+  hoursAgo: { no: 't siden', en: 'h ago' },
+  daysAgo: { no: 'd siden', en: 'd ago' },
+};
 
 const ACT_META: Record<string, [any, string]> = {
   download: [CloudDownloadOutlined, 'green'],
@@ -28,12 +61,12 @@ const ACT_META: Record<string, [any, string]> = {
   change: [EditOutlined, 'amber'],
   selection: [CheckCircleOutline, 'blue'],
 };
-const actTimeAgo = (iso?: string) => {
+const actTimeAgo = (iso: string | undefined, t: (k: string) => string) => {
   if (!iso) return '';
   const s = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
-  if (s < 3600) return `${Math.floor(s / 60)} min siden`;
-  if (s < 86400) return `${Math.floor(s / 3600)} t siden`;
-  return `${Math.floor(s / 86400)} d siden`;
+  if (s < 3600) return `${Math.floor(s / 60)} ${t('minAgo')}`;
+  if (s < 86400) return `${Math.floor(s / 3600)} ${t('hoursAgo')}`;
+  return `${Math.floor(s / 86400)} ${t('daysAgo')}`;
 };
 
 const SAMPLE = [
@@ -41,6 +74,9 @@ const SAMPLE = [
 ];
 
 const KundevisningTab: React.FC<{ projectId: string }> = ({ projectId }) => {
+  // Utenlandske partner-vendors får engelsk UI — locale fra WsLocaleProvider.
+  const locale = useWsLocale();
+  const t = makeT(T, locale);
   const isReal = projectId && projectId !== 'sample';
   const [galleries, setGalleries] = useState<any[]>([]);
   const [timelineToken, setTimelineToken] = useState<string | null>(null);
@@ -66,9 +102,9 @@ const KundevisningTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   }, [projectId, isReal]);
 
   const respondToReview = async (commentId: string) => {
-    const response = window.prompt('Svar til klienten:'); if (!response) return;
+    const response = window.prompt(t('promptReply')); if (!response) return;
     try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/client-reviews/${commentId}/respond`, { method: 'POST', body: { response: response.trim() } }); loadReviews(); }
-    catch (e: any) { window.alert(e?.message || 'Kunne ikke svare'); }
+    catch (e: any) { window.alert(e?.message || t('replyFailed')); }
   };
   const reviewIcon = (type: string) => type === 'heart' || type === 'love' || type === 'favorite' ? '❤️' : type === 'change' || type === 'change-request' || type === 'revision' ? '✏️' : type === 'approval' || type === 'approve' ? '✅' : '💬';
 
@@ -89,8 +125,8 @@ const KundevisningTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     <Box sx={{ maxWidth: 1000 }}>
       <Stack direction="row" justifyContent="space-between" alignItems="flex-end" sx={{ mb: 2 }}>
         <Box>
-          <Typography sx={{ fontSize: 20, fontWeight: 800 }}>Kundevisning</Typography>
-          <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Slik ser klienten prosjektet — showcasen/klient-galleriet. Del lenken eller forhåndsvis selv.</Typography>
+          <Typography sx={{ fontSize: 20, fontWeight: 800 }}>{t('title')}</Typography>
+          <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>{t('subtitle')}</Typography>
         </Box>
       </Stack>
 
@@ -98,7 +134,7 @@ const KundevisningTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         <Stack direction="row" spacing={1.5} alignItems="center">
           <Visibility sx={{ color: ws.accent }} />
           <Typography sx={{ fontSize: 13, color: ws.text }}>
-            «Kundevisning» er den samme <b>showcasen</b> klienten får tilsendt — ikke en egen kopi. Alt du publiserer til galleriet vises her.
+            {t('infoBefore')}<b>{t('infoBold')}</b>{t('infoAfter')}
           </Typography>
         </Stack>
       </WsCard>
@@ -108,9 +144,9 @@ const KundevisningTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         <WsCard sx={{ mb: 2 }}>
           <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.25 }}>
             <CloudDownloadOutlined sx={{ fontSize: 18, color: ws.green }} />
-            <Typography sx={{ fontSize: 14, fontWeight: 700 }}>Klient-aktivitet</Typography>
+            <Typography sx={{ fontSize: 14, fontWeight: 700 }}>{t('activity')}</Typography>
             <Box sx={{ flex: 1 }} />
-            <Typography sx={{ fontSize: 11.5, color: ws.textDim }}>Sanntid fra showcasen — også nedlastinger</Typography>
+            <Typography sx={{ fontSize: 11.5, color: ws.textDim }}>{t('activitySub')}</Typography>
           </Stack>
           <Stack spacing={0.75}>
             {activity.slice(0, 12).map((a: any) => {
@@ -123,12 +159,12 @@ const KundevisningTab: React.FC<{ projectId: string }> = ({ projectId }) => {
                   <Box sx={{ minWidth: 0, flex: 1 }}>
                     <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap>
                       <Typography sx={{ fontSize: 12.5, fontWeight: 700 }}>{a.title}</Typography>
-                      {a.type === 'download' && <WsTag label="Nedlasting" tone="green" />}
-                      {a.type === 'change' && <WsTag label="Endring" tone="amber" />}
+                      {a.type === 'download' && <WsTag label={t('tagDownload')} tone="green" />}
+                      {a.type === 'change' && <WsTag label={t('tagChange')} tone="amber" />}
                     </Stack>
                     <Typography noWrap sx={{ fontSize: 11.5, color: ws.textDim }}>{a.who}{a.note ? ` · «${a.note}»` : ''}</Typography>
                   </Box>
-                  <Typography sx={{ fontSize: 10.5, color: ws.textFaint, flexShrink: 0 }}>{actTimeAgo(a.at)}</Typography>
+                  <Typography sx={{ fontSize: 10.5, color: ws.textFaint, flexShrink: 0 }}>{actTimeAgo(a.at, t)}</Typography>
                 </Stack>
               );
             })}
@@ -149,13 +185,13 @@ const KundevisningTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           <WsCard sx={{ mb: 2 }}>
             <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.25 }}>
               <Typography sx={{ fontSize: 14 }}>💬</Typography>
-              <Typography sx={{ fontSize: 14, fontWeight: 700 }}>Klient-tilbakemeldinger</Typography>
+              <Typography sx={{ fontSize: 14, fontWeight: 700 }}>{t('feedback')}</Typography>
               <Box sx={{ flex: 1 }} />
               <Stack direction="row" spacing={1}>
                 {(c.heart || c.love || c.favorite) ? <Typography sx={{ fontSize: 12, color: ws.textDim }}>❤️ {(c.heart || 0) + (c.love || 0) + (c.favorite || 0)}</Typography> : null}
                 {(c.comment) ? <Typography sx={{ fontSize: 12, color: ws.textDim }}>💬 {c.comment}</Typography> : null}
                 {(c.change || c['change-request'] || c.revision) ? <Typography sx={{ fontSize: 12, color: ws.amber }}>✏️ {(c.change || 0) + (c['change-request'] || 0) + (c.revision || 0)}</Typography> : null}
-                {(sel.selected) ? <Typography sx={{ fontSize: 12, color: ws.green }}>✓ {sel.selected} valgt{sel.submitted ? ' (innsendt)' : ''}</Typography> : null}
+                {(sel.selected) ? <Typography sx={{ fontSize: 12, color: ws.green }}>✓ {sel.selected} {t('selected')}{sel.submitted ? t('submitted') : ''}</Typography> : null}
               </Stack>
             </Stack>
             <Stack spacing={1}>
@@ -171,8 +207,8 @@ const KundevisningTab: React.FC<{ projectId: string }> = ({ projectId }) => {
                     </Stack>
                     {cm.comment && <Typography sx={{ fontSize: 12.5, color: ws.text, mt: 0.25 }}>«{cm.comment}»</Typography>}
                     {cm.photographerResponse
-                      ? <Box sx={{ mt: 0.75, pl: 1, borderLeft: `2px solid ${ws.accentBorder}` }}><Typography sx={{ fontSize: 11.5, color: ws.textDim }}><b>Svar:</b> {cm.photographerResponse}</Typography></Box>
-                      : isReal && <Button size="small" onClick={() => respondToReview(cm.id)} sx={{ mt: 0.5, color: ws.accent, textTransform: 'none', fontSize: 11.5, p: 0, minWidth: 0 }}>Svar</Button>}
+                      ? <Box sx={{ mt: 0.75, pl: 1, borderLeft: `2px solid ${ws.accentBorder}` }}><Typography sx={{ fontSize: 11.5, color: ws.textDim }}><b>{t('replyLabel')}</b> {cm.photographerResponse}</Typography></Box>
+                      : isReal && <Button size="small" onClick={() => respondToReview(cm.id)} sx={{ mt: 0.5, color: ws.accent, textTransform: 'none', fontSize: 11.5, p: 0, minWidth: 0 }}>{t('reply')}</Button>}
                   </Box>
                 </Stack>
               ))}
@@ -189,13 +225,13 @@ const KundevisningTab: React.FC<{ projectId: string }> = ({ projectId }) => {
               <AccessTime sx={{ color: ws.accent }} />
             </Box>
             <Box sx={{ flex: 1, minWidth: 0 }}>
-              <Typography sx={{ fontSize: 15, fontWeight: 700 }}>Bryllups-tidslinje (kundevisning)</Typography>
-              <Typography sx={{ fontSize: 12, color: ws.textDim }}>Klienten ser og kan justere dagens program (first look, vielse, taler …) i sin egen visning.</Typography>
+              <Typography sx={{ fontSize: 15, fontWeight: 700 }}>{t('weddingTimeline')}</Typography>
+              <Typography sx={{ fontSize: 12, color: ws.textDim }}>{t('weddingTimelineSub')}</Typography>
             </Box>
             <Stack direction="row" spacing={1}>
-              <Button size="small" startIcon={<ContentCopy sx={{ fontSize: 15 }} />} onClick={() => { try { navigator.clipboard?.writeText(`${window.location.origin}${timelinePath}`); } catch { /* */ } }} sx={{ color: ws.textDim, textTransform: 'none', border: `1px solid ${ws.border}` }}>Kopier lenke</Button>
+              <Button size="small" startIcon={<ContentCopy sx={{ fontSize: 15 }} />} onClick={() => { try { navigator.clipboard?.writeText(`${window.location.origin}${timelinePath}`); } catch { /* */ } }} sx={{ color: ws.textDim, textTransform: 'none', border: `1px solid ${ws.border}` }}>{t('copyLink')}</Button>
               <Button size="small" variant="contained" startIcon={<OpenInNew sx={{ fontSize: 15 }} />} onClick={() => window.open(`${window.location.origin}${timelinePath}`, '_blank')}
-                sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Åpne tidslinje</Button>
+                sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>{t('openTimeline')}</Button>
             </Stack>
           </Stack>
         </WsCard>
@@ -205,9 +241,9 @@ const KundevisningTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         <WsCard>
           <Stack alignItems="center" sx={{ py: 5, color: ws.textDim }}>
             <Collections sx={{ fontSize: 36, mb: 1.5 }} />
-            <Typography sx={{ fontSize: 15, fontWeight: 700, color: ws.text }}>Ingen kundevisning publisert ennå</Typography>
+            <Typography sx={{ fontSize: 15, fontWeight: 700, color: ws.text }}>{t('emptyTitle')}</Typography>
             <Typography sx={{ fontSize: 12.5, mt: 0.5, textAlign: 'center', maxWidth: 360 }}>
-              Opprett et klient-galleri (showcase) for prosjektet — så blir det kundens visning her, og du kan dele lenken.
+              {t('emptySub')}
             </Typography>
           </Stack>
         </WsCard>
@@ -220,16 +256,16 @@ const KundevisningTab: React.FC<{ projectId: string }> = ({ projectId }) => {
                 <Box sx={{ flex: 1, minWidth: 0 }}>
                   <Stack direction="row" spacing={1} alignItems="center">
                     <Typography sx={{ fontSize: 15, fontWeight: 700 }}>{g.title}</Typography>
-                    <WsTag label={g.status === 'completed' ? 'Levert' : 'Aktiv'} tone={g.status === 'completed' ? 'green' : 'blue'} />
+                    <WsTag label={g.status === 'completed' ? t('delivered') : t('active')} tone={g.status === 'completed' ? 'green' : 'blue'} />
                   </Stack>
                   <Typography sx={{ fontSize: 12, color: ws.textDim }}>{g.clientName || g.clientEmail || ''}</Typography>
                   {g.sharePath && <Typography noWrap sx={{ fontSize: 11, color: ws.textFaint, mt: 0.25 }}>{window.location.origin}{g.sharePath}</Typography>}
                 </Box>
                 {g.sharePath && (
                   <Stack direction="row" spacing={1}>
-                    <Button size="small" startIcon={<ContentCopy sx={{ fontSize: 15 }} />} onClick={() => copyLink(g.sharePath)} sx={{ color: ws.textDim, textTransform: 'none', border: `1px solid ${ws.border}` }}>Kopier lenke</Button>
+                    <Button size="small" startIcon={<ContentCopy sx={{ fontSize: 15 }} />} onClick={() => copyLink(g.sharePath)} sx={{ color: ws.textDim, textTransform: 'none', border: `1px solid ${ws.border}` }}>{t('copyLink')}</Button>
                     <Button size="small" variant="contained" startIcon={<OpenInNew sx={{ fontSize: 15 }} />} onClick={() => openClientView(g.sharePath)}
-                      sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Åpne kundevisning</Button>
+                      sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>{t('openClientView')}</Button>
                   </Stack>
                 )}
               </Stack>
