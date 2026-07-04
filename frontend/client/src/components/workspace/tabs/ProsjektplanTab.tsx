@@ -15,6 +15,64 @@ import UploadFile from '@mui/icons-material/UploadFile';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
 import { WsCard, WsSectionTitle, WsBar, WsPills, WsTag, WsTable } from '../ui';
+import { useWsLocale, makeT, wsDateLocale, type WsDict } from '../wsLocale';
+
+// Lokal no/en-ordbok for fanen (samme mønster som OppdragTab).
+const T: WsDict = {
+  title: { no: 'Prosjektplan', en: 'Project plan' },
+  subtitle: { no: 'Planlegg, organiser og hold oversikt over hele produksjonen.', en: 'Plan, organise and keep track of the entire production.' },
+  filter: { no: 'Filter', en: 'Filter' },
+  filterAll: { no: 'Alle milepæler', en: 'All milestones' },
+  filterUpcoming: { no: 'Kun kommende', en: 'Upcoming only' },
+  showMilestones: { no: 'Vis milepæler', en: 'Show milestones' },
+  viewTimeline: { no: 'Tidslinje', en: 'Timeline' },
+  viewList: { no: 'Liste', en: 'List' },
+  viewCalendar: { no: 'Kalender', en: 'Calendar' },
+  viewPhase: { no: 'Fasevisning', en: 'Phase view' },
+  monthLabel: { no: 'Oktober 2024', en: 'October 2024' },
+  today: { no: 'I DAG', en: 'TODAY' },
+  phaseOverview: { no: 'Faseoversikt', en: 'Phase overview' },
+  colPhase: { no: 'Fase', en: 'Phase' },
+  colStatus: { no: 'Status', en: 'Status' },
+  colProgress: { no: 'Fremdrift', en: 'Progress' },
+  colTasks: { no: 'Oppgaver', en: 'Tasks' },
+  colDeadline: { no: 'Frist', en: 'Deadline' },
+  stDone: { no: 'Ferdig', en: 'Done' },
+  stActive: { no: 'I gang', en: 'In progress' },
+  stUpcoming: { no: 'Kommende', en: 'Upcoming' },
+  of: { no: 'av', en: 'of' },
+  milestonesWord: { no: 'milepæler', en: 'milestones' },
+  projectInfo: { no: 'Prosjektinformasjon', en: 'Project information' },
+  edit: { no: 'Rediger', en: 'Edit' },
+  infoClient: { no: 'Klient', en: 'Client' },
+  infoType: { no: 'Prosjekttype', en: 'Project type' },
+  infoDate: { no: 'Dato', en: 'Date' },
+  infoLocation: { no: 'Lokasjon', en: 'Location' },
+  infoStatus: { no: 'Status', en: 'Status' },
+  milestones: { no: 'Milepæler', en: 'Milestones' },
+  addShort: { no: 'Legg til', en: 'Add' },
+  resources: { no: 'Ressursallokering', en: 'Resource allocation' },
+  totalLabel: { no: 'Totalt', en: 'Total' },
+  quickActions: { no: 'Hurtighandlinger', en: 'Quick actions' },
+  newTask: { no: 'Ny oppgave', en: 'New task' },
+  newMilestone: { no: 'Ny milepæl', en: 'New milestone' },
+  importPlan: { no: 'Importer plan', en: 'Import plan' },
+  promptMsTitle: { no: 'Tittel på milepæl:', en: 'Milestone title:' },
+  promptMsDate: { no: 'Dato (ÅÅÅÅ-MM-DD), valgfritt:', en: 'Date (YYYY-MM-DD), optional:' },
+  addMsFailed: { no: 'Kunne ikke legge til milepæl', en: 'Could not add the milestone' },
+  importedOne: { no: 'milepæl importert.', en: 'milestone imported.' },
+  importedMany: { no: 'milepæler importert.', en: 'milestones imported.' },
+  importFailed: { no: 'Kunne ikke importere planen', en: 'Could not import the plan' },
+};
+
+const ROLE_I18N: Record<string, [{ no: string; en: string }, string]> = {
+  fotograf: [{ no: 'Foto', en: 'Photo' }, ws.roleFoto],
+  videograf: [{ no: 'Video', en: 'Video' }, ws.roleVideo],
+  lyd: [{ no: 'Lyd', en: 'Sound' }, ws.roleLyd],
+  editor: [{ no: 'Editor', en: 'Editor' }, ws.blue],
+  begge: [{ no: 'Foto+Video', en: 'Photo+Video' }, ws.roleFoto],
+  assistent: [{ no: 'Assistent', en: 'Assistant' }, ws.roleAnnet],
+};
 
 const PHASE_COLORS = [ws.accent, ws.blue, ws.green, ws.amber, ws.roleAnnet];
 const STATUS_LABEL: Record<string, [string, string]> = { in_progress: ['I gang', 'accent'], pågår: ['I gang', 'accent'], completed: ['Ferdig', 'green'], done: ['Ferdig', 'green'], pending: ['Kommende', 'neutral'], planned: ['Kommende', 'neutral'] };
@@ -57,6 +115,10 @@ const MILESTONES = [
 const RESOURCES = [['Foto', 6, ws.roleFoto], ['Video', 6, ws.roleVideo], ['Lyd', 2, ws.roleLyd], ['Drone', 2, ws.roleDrone], ['Annet', 2, ws.roleAnnet]];
 
 const ProsjektplanTab: React.FC<{ projectId: string }> = ({ projectId }) => {
+  // Utenlandske partner-vendors får engelsk UI — locale fra WsLocaleProvider.
+  const locale = useWsLocale();
+  const t = makeT(T, locale);
+  const dloc = wsDateLocale(locale);
   const [view, setView] = useState('tidslinje');
   const colW = 100 / WEEKS.length;
   const isReal = projectId && projectId !== 'sample';
@@ -73,12 +135,12 @@ const ProsjektplanTab: React.FC<{ projectId: string }> = ({ projectId }) => {
 
   const addMilestone = async () => {
     if (!isReal) return;
-    const title = window.prompt('Tittel på milepæl:'); if (!title?.trim()) return;
-    const date = window.prompt('Dato (ÅÅÅÅ-MM-DD), valgfritt:') || '';
+    const title = window.prompt(t('promptMsTitle')); if (!title?.trim()) return;
+    const date = window.prompt(t('promptMsDate')) || '';
     try {
       await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/milestones`, { method: 'POST', body: { title: title.trim(), dueDate: date.trim() || null, category: 'Milepæler' } });
       loadMs();
-    } catch (e: any) { window.alert(e?.message || 'Kunne ikke legge til milepæl'); }
+    } catch (e: any) { window.alert(e?.message || t('addMsFailed')); }
   };
 
   const importPlan = async (file: File) => {
@@ -93,8 +155,8 @@ const ProsjektplanTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         n++;
       }
       loadMs();
-      window.alert(`${n} milepæl${n === 1 ? '' : 'er'} importert.`);
-    } catch (e: any) { window.alert(e?.message || 'Kunne ikke importere planen'); }
+      window.alert(`${n} ${n === 1 ? t('importedOne') : t('importedMany')}`);
+    } catch (e: any) { window.alert(e?.message || t('importFailed')); }
   };
 
   useEffect(() => {
@@ -106,19 +168,18 @@ const ProsjektplanTab: React.FC<{ projectId: string }> = ({ projectId }) => {
 
   // Prosjektinformasjon — ekte prosjekt viser ekte detaljer (manglende = «—»), mock kun på /sample.
   const infoRows = isReal ? [
-    ['Klient', detail?.clientName || '—'], ['Prosjekttype', detail?.projectType || '—'],
-    ['Dato', detail?.eventDate ? new Date(detail.eventDate).toLocaleDateString('nb-NO', { day: 'numeric', month: 'long', year: 'numeric' }) : '—'],
-    ['Lokasjon', detail?.location || '—'], ['Status', detail?.status || '—'],
+    [t('infoClient'), detail?.clientName || '—'], [t('infoType'), detail?.projectType || '—'],
+    [t('infoDate'), detail?.eventDate ? new Date(detail.eventDate).toLocaleDateString(dloc, { day: 'numeric', month: 'long', year: 'numeric' }) : '—'],
+    [t('infoLocation'), detail?.location || '—'], [t('infoStatus'), detail?.status || '—'],
   ] : INFO;
   // Milepæler
   const msList = isReal
-    ? ms.slice(0, 8).map((m: any, i: number) => [m.title, (m.dueDate || m.scheduledDate) ? new Date(m.dueDate || m.scheduledDate).toLocaleDateString('nb-NO', { day: 'numeric', month: 'short', year: 'numeric' }) : '—', PHASE_COLORS[i % PHASE_COLORS.length]])
+    ? ms.slice(0, 8).map((m: any, i: number) => [m.title, (m.dueDate || m.scheduledDate) ? new Date(m.dueDate || m.scheduledDate).toLocaleDateString(dloc, { day: 'numeric', month: 'short', year: 'numeric' }) : '—', PHASE_COLORS[i % PHASE_COLORS.length]])
     : MILESTONES;
   // Ressursallokering fra crew-roller
   const roleCount: Record<string, number> = {};
   members.forEach((m: any) => { const k = m.crewRole || 'annet'; roleCount[k] = (roleCount[k] || 0) + 1; });
-  const ROLE_LABEL: Record<string, [string, string]> = { fotograf: ['Foto', ws.roleFoto], videograf: ['Video', ws.roleVideo], lyd: ['Lyd', ws.roleLyd], editor: ['Editor', ws.blue], begge: ['Foto+Video', ws.roleFoto], assistent: ['Assistent', ws.roleAnnet] };
-  const resources = isReal ? Object.entries(roleCount).map(([k, v]) => [ROLE_LABEL[k]?.[0] || k, v, ROLE_LABEL[k]?.[1] || ws.roleAnnet]) : RESOURCES;
+  const resources = isReal ? Object.entries(roleCount).map(([k, v]) => [ROLE_I18N[k]?.[0]?.[locale] || k, v, ROLE_I18N[k]?.[1] || ws.roleAnnet]) : RESOURCES;
   const total = resources.reduce((s, r) => s + r[1], 0);
   // Faser fra milestones gruppert på kategori; Gantt-bars posisjonert på dato.
   const dates = ms.map((m: any) => new Date(m.dueDate || m.scheduledDate || m.createdAt)).filter((d) => !isNaN(d.getTime()));
@@ -127,7 +188,7 @@ const ProsjektplanTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const span = Math.max(1, maxT - minT);
   const cats = [...new Set(ms.map((m: any) => m.category || 'Milepæler'))];
   const realPhases = (isReal && ms.length) ? cats.map((cat, ci) => ({
-    name: cat, dot: PHASE_COLORS[ci % PHASE_COLORS.length], count: `${ms.filter((m: any) => (m.category || 'Milepæler') === cat).length} milepæler`,
+    name: cat, dot: PHASE_COLORS[ci % PHASE_COLORS.length], count: `${ms.filter((m: any) => (m.category || 'Milepæler') === cat).length} ${t('milestonesWord')}`,
     bars: ms.filter((m: any) => (m.category || 'Milepæler') === cat).map((m: any) => {
       const d = new Date(m.dueDate || m.scheduledDate || m.createdAt).getTime();
       const start = ((d - minT) / span) * (WEEKS.length - 1);
@@ -141,9 +202,9 @@ const ProsjektplanTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     const doneN = items.filter((m: any) => m.status === 'completed' || m.status === 'done').length;
     const avg = items.length ? Math.round(items.reduce((s: number, m: any) => s + (Number(m.progress) || 0), 0) / items.length) : 0;
     const dts = items.map((m: any) => new Date(m.dueDate || m.scheduledDate)).filter((d) => !isNaN(d.getTime()));
-    const frist = dts.length ? new Date(Math.max(...dts.map((d) => d.getTime()))).toLocaleDateString('nb-NO', { day: 'numeric', month: 'short' }) : '—';
-    const st = doneN === items.length ? ['Ferdig', 'green'] : avg > 0 ? ['I gang', 'accent'] : ['Kommende', 'neutral'];
-    return { name: cat, st, avg, count: `${doneN} av ${items.length}`, frist };
+    const frist = dts.length ? new Date(Math.max(...dts.map((d) => d.getTime()))).toLocaleDateString(dloc, { day: 'numeric', month: 'short' }) : '—';
+    const st = doneN === items.length ? [t('stDone'), 'green'] : avg > 0 ? [t('stActive'), 'accent'] : [t('stUpcoming'), 'neutral'];
+    return { name: cat, st, avg, count: `${doneN} ${t('of')} ${items.length}`, frist };
   }) : null;
 
   return (
@@ -151,31 +212,31 @@ const ProsjektplanTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
           <Box>
-            <Typography sx={{ fontSize: 20, fontWeight: 800 }}>Prosjektplan</Typography>
-            <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Planlegg, organiser og hold oversikt over hele produksjonen.</Typography>
+            <Typography sx={{ fontSize: 20, fontWeight: 800 }}>{t('title')}</Typography>
+            <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>{t('subtitle')}</Typography>
           </Box>
           <Stack direction="row" spacing={1} alignItems="center">
-            <Button size="small" startIcon={<FilterList sx={{ fontSize: 16 }} />} onClick={(e) => setFilterMenu(e.currentTarget)} sx={{ color: ws.textDim, textTransform: 'none' }}>Filter</Button>
+            <Button size="small" startIcon={<FilterList sx={{ fontSize: 16 }} />} onClick={(e) => setFilterMenu(e.currentTarget)} sx={{ color: ws.textDim, textTransform: 'none' }}>{t('filter')}</Button>
             <Menu anchorEl={filterMenu} open={!!filterMenu} onClose={() => setFilterMenu(null)} PaperProps={{ sx: { bgcolor: ws.panel, color: ws.text, border: `1px solid ${ws.border}` } }}>
-              <MenuItem onClick={() => { setOnlyUpcoming(false); setFilterMenu(null); }}>Alle milepæler</MenuItem>
-              <MenuItem onClick={() => { setOnlyUpcoming(true); setFilterMenu(null); }}>Kun kommende</MenuItem>
+              <MenuItem onClick={() => { setOnlyUpcoming(false); setFilterMenu(null); }}>{t('filterAll')}</MenuItem>
+              <MenuItem onClick={() => { setOnlyUpcoming(true); setFilterMenu(null); }}>{t('filterUpcoming')}</MenuItem>
             </Menu>
-            <Stack direction="row" alignItems="center"><Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Vis milepæler</Typography><Switch size="small" defaultChecked /></Stack>
+            <Stack direction="row" alignItems="center"><Typography sx={{ fontSize: 12.5, color: ws.textDim }}>{t('showMilestones')}</Typography><Switch size="small" defaultChecked /></Stack>
           </Stack>
         </Stack>
 
         <WsCard sx={{ mb: 2 }}>
           <Stack direction="row" justifyContent="space-between" sx={{ mb: 1.5 }}>
-            <WsPills items={[{ key: 'tidslinje', label: 'Tidslinje' }, { key: 'liste', label: 'Liste' }, { key: 'kalender', label: 'Kalender' }, { key: 'fase', label: 'Fasevisning' }]} value={view} onChange={setView} />
-            <Typography sx={{ fontSize: 12, color: ws.textFaint }}>Oktober 2024</Typography>
+            <WsPills items={[{ key: 'tidslinje', label: t('viewTimeline') }, { key: 'liste', label: t('viewList') }, { key: 'kalender', label: t('viewCalendar') }, { key: 'fase', label: t('viewPhase') }]} value={view} onChange={setView} />
+            <Typography sx={{ fontSize: 12, color: ws.textFaint }}>{t('monthLabel')}</Typography>
           </Stack>
 
           {/* Uke-header */}
           <Box sx={{ display: 'flex', pl: '180px', borderBottom: `1px solid ${ws.border}`, pb: 0.5, mb: 1 }}>
             {WEEKS.map((w, i) => (
               <Box key={w} sx={{ flex: 1, textAlign: 'center', position: 'relative' }}>
-                <Typography sx={{ fontSize: 10.5, color: i === 4 ? ws.accent : ws.textFaint, fontWeight: i === 4 ? 800 : 500 }}>{w}</Typography>
-                {i === 4 && <Box sx={{ position: 'absolute', top: 18, left: '50%', width: 1, height: 220, bgcolor: ws.accentBorder }}><WsTag label="I DAG" tone="accent" /></Box>}
+                <Typography sx={{ fontSize: 10.5, color: i === 4 ? ws.accent : ws.textFaint, fontWeight: i === 4 ? 800 : 500 }}>{locale === 'en' ? w.replace('UKE', 'WEEK') : w}</Typography>
+                {i === 4 && <Box sx={{ position: 'absolute', top: 18, left: '50%', width: 1, height: 220, bgcolor: ws.accentBorder }}><WsTag label={t('today')} tone="accent" /></Box>}
               </Box>
             ))}
           </Box>
@@ -206,9 +267,9 @@ const ProsjektplanTab: React.FC<{ projectId: string }> = ({ projectId }) => {
 
         {/* Faseoversikt */}
         <WsCard>
-          <Typography sx={{ fontSize: 15, fontWeight: 700, mb: 1.5 }}>Faseoversikt</Typography>
+          <Typography sx={{ fontSize: 15, fontWeight: 700, mb: 1.5 }}>{t('phaseOverview')}</Typography>
           <WsTable
-            columns={['Fase', 'Status', 'Fremdrift', '', 'Oppgaver', 'Frist']}
+            columns={[t('colPhase'), t('colStatus'), t('colProgress'), '', t('colTasks'), t('colDeadline')]}
             rows={(faseRows || [
               { name: '1. Forproduksjon', st: ['I gang', 'accent'], avg: 83, count: '5 av 6', frist: '1. sep' },
               { name: '2. Produksjon', st: ['Kommende', 'neutral'], avg: 0, count: '0 av 5', frist: '14. sep' },
@@ -224,27 +285,27 @@ const ProsjektplanTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       {/* Høyre sidebar */}
       <Box sx={{ width: 300, flexShrink: 0 }}>
         <WsCard sx={{ mb: 2 }}>
-          <WsSectionTitle title="Prosjektinformasjon" action={<Button size="small" onClick={() => navigate(`/workspace/${projectId}/avtaler`)} sx={{ color: ws.accent, textTransform: 'none' }}>Rediger</Button>} />
+          <WsSectionTitle title={t('projectInfo')} action={<Button size="small" onClick={() => navigate(`/workspace/${projectId}/avtaler`)} sx={{ color: ws.accent, textTransform: 'none' }}>{t('edit')}</Button>} />
           <Stack spacing={1}>
             {infoRows.map(([k, v]) => <Stack key={k} direction="row" justifyContent="space-between"><Typography sx={{ fontSize: 12.5, color: ws.textDim }}>{k}</Typography><Typography sx={{ fontSize: 12.5, fontWeight: 600 }}>{v}</Typography></Stack>)}
           </Stack>
         </WsCard>
 
         <WsCard sx={{ mb: 2 }}>
-          <WsSectionTitle title="Milepæler" action={<Button size="small" startIcon={<Add sx={{ fontSize: 14 }} />} onClick={addMilestone} disabled={!isReal} sx={{ color: ws.accent, textTransform: 'none' }}>Legg til</Button>} />
+          <WsSectionTitle title={t('milestones')} action={<Button size="small" startIcon={<Add sx={{ fontSize: 14 }} />} onClick={addMilestone} disabled={!isReal} sx={{ color: ws.accent, textTransform: 'none' }}>{t('addShort')}</Button>} />
           <Stack spacing={1.25}>
             {msList.map(([t, d, c]) => <Stack key={t} direction="row" spacing={1} alignItems="center"><Flag sx={{ fontSize: 15, color: c }} /><Typography sx={{ fontSize: 12.5, flex: 1 }}>{t}</Typography><Typography sx={{ fontSize: 11.5, color: ws.textFaint }}>{d}</Typography></Stack>)}
           </Stack>
         </WsCard>
 
         <WsCard sx={{ mb: 2 }}>
-          <Typography sx={{ fontSize: 14, fontWeight: 700, mb: 1.5 }}>Ressursallokering</Typography>
+          <Typography sx={{ fontSize: 14, fontWeight: 700, mb: 1.5 }}>{t('resources')}</Typography>
           <Stack direction="row" spacing={2} alignItems="center">
             <Box sx={{ position: 'relative', width: 96, height: 96 }}>
               <svg width={96} height={96} viewBox="0 0 96 96">
                 {(() => { let a = -90; const r = 40, cx = 48, cy = 48, C = 2 * Math.PI * r; return resources.map(([n, v, c], i) => { const frac = v / (total || 1); const dash = C * frac; const el = <circle key={i} cx={cx} cy={cy} r={r} fill="none" stroke={c} strokeWidth={12} strokeDasharray={`${dash} ${C - dash}`} strokeDashoffset={-C * ((a + 90) / 360)} transform={`rotate(-90 ${cx} ${cy})`} />; a += frac * 360; return el; }); })()}
               </svg>
-              <Box sx={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}><Typography sx={{ fontSize: 20, fontWeight: 800 }}>{total}</Typography><Typography sx={{ fontSize: 10, color: ws.textDim }}>Totalt</Typography></Box>
+              <Box sx={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}><Typography sx={{ fontSize: 20, fontWeight: 800 }}>{total}</Typography><Typography sx={{ fontSize: 10, color: ws.textDim }}>{t('totalLabel')}</Typography></Box>
             </Box>
             <Stack spacing={0.5} sx={{ flex: 1 }}>
               {resources.map(([n, v, c]) => <Stack key={n} direction="row" spacing={1} alignItems="center"><Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: c }} /><Typography sx={{ fontSize: 12, flex: 1 }}>{n}</Typography><Typography sx={{ fontSize: 12, fontWeight: 700 }}>{v}</Typography></Stack>)}
@@ -253,11 +314,11 @@ const ProsjektplanTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         </WsCard>
 
         <WsCard>
-          <Typography sx={{ fontSize: 14, fontWeight: 700, mb: 1 }}>Hurtighandlinger</Typography>
+          <Typography sx={{ fontSize: 14, fontWeight: 700, mb: 1 }}>{t('quickActions')}</Typography>
           <Stack spacing={1}>
-            <Button fullWidth size="small" startIcon={<Add sx={{ fontSize: 15 }} />} onClick={() => navigate(`/workspace/${projectId}/oppgaver`)} sx={{ justifyContent: 'flex-start', color: ws.text, border: `1px solid ${ws.border}`, textTransform: 'none' }}>Ny oppgave</Button>
-            <Button fullWidth size="small" startIcon={<Flag sx={{ fontSize: 15 }} />} onClick={addMilestone} disabled={!isReal} sx={{ justifyContent: 'flex-start', color: ws.text, border: `1px solid ${ws.border}`, textTransform: 'none' }}>Ny milepæl</Button>
-            <Button fullWidth size="small" startIcon={<UploadFile sx={{ fontSize: 15 }} />} onClick={() => fileInput.current?.click()} disabled={!isReal} sx={{ justifyContent: 'flex-start', color: ws.text, border: `1px solid ${ws.border}`, textTransform: 'none' }}>Importer plan</Button>
+            <Button fullWidth size="small" startIcon={<Add sx={{ fontSize: 15 }} />} onClick={() => navigate(`/workspace/${projectId}/oppgaver`)} sx={{ justifyContent: 'flex-start', color: ws.text, border: `1px solid ${ws.border}`, textTransform: 'none' }}>{t('newTask')}</Button>
+            <Button fullWidth size="small" startIcon={<Flag sx={{ fontSize: 15 }} />} onClick={addMilestone} disabled={!isReal} sx={{ justifyContent: 'flex-start', color: ws.text, border: `1px solid ${ws.border}`, textTransform: 'none' }}>{t('newMilestone')}</Button>
+            <Button fullWidth size="small" startIcon={<UploadFile sx={{ fontSize: 15 }} />} onClick={() => fileInput.current?.click()} disabled={!isReal} sx={{ justifyContent: 'flex-start', color: ws.text, border: `1px solid ${ws.border}`, textTransform: 'none' }}>{t('importPlan')}</Button>
             <input ref={fileInput} type="file" accept=".csv,.txt" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) importPlan(f); e.target.value = ''; }} />
           </Stack>
         </WsCard>

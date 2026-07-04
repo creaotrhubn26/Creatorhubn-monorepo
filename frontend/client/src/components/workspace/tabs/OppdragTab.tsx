@@ -22,7 +22,7 @@ import Send from '@mui/icons-material/Send';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
 import { WsCard, WsTag, WsStat, WsPills } from '../ui';
-import { localeForVendor } from '../../universal/editing-marketplace/editingMarketplaceStrings';
+import { useWsLocale } from '../wsLocale';
 
 // Lokal no/en-ordbok for fanen (samme mønster som editingMarketplaceStrings).
 const T: Record<string, { no: string; en: string }> = {
@@ -109,8 +109,9 @@ const OppdragTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [filter, setFilter] = useState('alle');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [msgJob, setMsgJob] = useState<any | null>(null);
-  // Utenlandske partner-vendors (is_foreign/land≠NO) får engelsk UI.
-  const [locale, setLocale] = useState<'no' | 'en'>('no');
+  // Utenlandske partner-vendors (is_foreign/land≠NO) får engelsk UI —
+  // locale kommer fra WsLocaleProvider i TeamWorkspacePage (vendor/me).
+  const locale = useWsLocale();
   const t = (k: string) => T[k]?.[locale] || T[k]?.no || k;
   const statusLabel = (s: string) => STATUS_I18N[s]?.[locale] || STATUS_I18N[s]?.no || s || '—';
 
@@ -120,13 +121,7 @@ const OppdragTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       .catch(() => setJobs([]))
       .finally(() => setLoading(false));
   };
-  useEffect(() => {
-    load();
-    apiRequest('/api/editing/vendor/me')
-      .then((me: any) => setLocale(localeForVendor({ isForeign: me?.isForeign, country: me?.country })))
-      .catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
   const list = jobs || [];
   const count = (s: string) => list.filter((j) => j.status === s).length;

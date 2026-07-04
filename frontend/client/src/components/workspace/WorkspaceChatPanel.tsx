@@ -24,11 +24,26 @@ import PriorityHigh from '@mui/icons-material/PriorityHigh';
 import { apiRequest } from '@/lib/queryClient';
 import { useAuth } from '@/hooks/useAuth';
 import { ws } from './workspaceTheme';
+import { useWsLocale, makeT, wsDateLocale, type WsDict } from './wsLocale';
+
+// Lokal no/en-ordbok for panelet (samme mønster som OppdragTab).
+const T: WsDict = {
+  channelProduction: { no: '# Produksjon', en: '# Production' },
+  emptyChat: { no: 'Ingen meldinger ennå. Skriv den første for å samkjøre teamet 👋', en: 'No messages yet. Write the first one to get the team in sync 👋' },
+  sendFailed: { no: 'Kunne ikke sende', en: 'Could not send' },
+  composerPlaceholder: { no: 'Skriv melding til teamet…', en: 'Write a message to the team…' },
+  chipUpdate: { no: 'Oppdatering', en: 'Update' },
+  chipQuestion: { no: 'Spørsmål', en: 'Question' },
+  chipImportant: { no: 'Viktig', en: 'Important' },
+};
 
 const initials = (s) => String(s || '?').trim().split(/\s+/).filter(Boolean).slice(0, 2).map((x) => x[0]).join('').toUpperCase();
 
 const WorkspaceChatPanel: React.FC<{ projectId: string }> = ({ projectId }) => {
   const { user } = useAuth();
+  // Utenlandske partner-vendors får engelsk UI — locale fra WsLocaleProvider.
+  const locale = useWsLocale();
+  const t = makeT(T, locale);
   const channelId = `project-${projectId}`;
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -66,7 +81,7 @@ const WorkspaceChatPanel: React.FC<{ projectId: string }> = ({ projectId }) => {
       setText('');
       await load(false);
       scrollDown();
-    } catch (e) { window.alert(e?.message || 'Kunne ikke sende'); } finally { setSending(false); }
+    } catch (e) { window.alert(e?.message || t('sendFailed')); } finally { setSending(false); }
   };
 
   return (
@@ -89,7 +104,7 @@ const WorkspaceChatPanel: React.FC<{ projectId: string }> = ({ projectId }) => {
 
       {/* Kanal-velger */}
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 1.75, py: 1 }}>
-        <Chip size="small" label="# Produksjon" sx={{ bgcolor: 'rgba(255,255,255,0.05)', color: ws.text, fontWeight: 600 }} />
+        <Chip size="small" label={t('channelProduction')} sx={{ bgcolor: 'rgba(255,255,255,0.05)', color: ws.text, fontWeight: 600 }} />
         <IconButton size="small" sx={{ color: ws.textDim }}><PushPin sx={{ fontSize: 16 }} /></IconButton>
       </Stack>
 
@@ -99,7 +114,7 @@ const WorkspaceChatPanel: React.FC<{ projectId: string }> = ({ projectId }) => {
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress size={20} /></Box>
         ) : messages.length === 0 ? (
           <Typography sx={{ fontSize: 13, color: ws.textDim, textAlign: 'center', py: 4 }}>
-            Ingen meldinger ennå. Skriv den første for å samkjøre teamet 👋
+            {t('emptyChat')}
           </Typography>
         ) : messages.map((m) => {
           const mine = String(m.senderId || '') === String(myId);
@@ -112,7 +127,7 @@ const WorkspaceChatPanel: React.FC<{ projectId: string }> = ({ projectId }) => {
                 <Stack direction="row" spacing={1} alignItems="baseline">
                   <Typography sx={{ fontSize: 12.5, fontWeight: 700 }}>{m.senderName || m.senderId}</Typography>
                   <Typography sx={{ fontSize: 10.5, color: ws.textFaint }}>
-                    {m.timestamp ? new Date(m.timestamp).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' }) : ''}
+                    {m.timestamp ? new Date(m.timestamp).toLocaleTimeString(wsDateLocale(locale), { hour: '2-digit', minute: '2-digit' }) : ''}
                   </Typography>
                 </Stack>
                 <Box sx={{ mt: 0.25, px: 1.25, py: 0.75, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.05)', display: 'inline-block' }}>
@@ -129,7 +144,7 @@ const WorkspaceChatPanel: React.FC<{ projectId: string }> = ({ projectId }) => {
       <Box sx={{ px: 1.5, py: 1.25, borderTop: `1px solid ${ws.border}` }}>
         <Stack direction="row" spacing={1} alignItems="flex-end">
           <TextField
-            fullWidth size="small" multiline maxRows={4} placeholder="Skriv melding til teamet…"
+            fullWidth size="small" multiline maxRows={4} placeholder={t('composerPlaceholder')}
             value={text} onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
             sx={{ '& .MuiOutlinedInput-root': { bgcolor: ws.panelInput, fontSize: 13 } }}
@@ -146,9 +161,9 @@ const WorkspaceChatPanel: React.FC<{ projectId: string }> = ({ projectId }) => {
             <IconButton size="small" sx={{ color: ws.textDim }}><EmojiEmotions sx={{ fontSize: 17 }} /></IconButton>
           </Stack>
           <Stack direction="row" spacing={0.5}>
-            <Chip size="small" icon={<TipsAndUpdates sx={{ fontSize: 14 }} />} label="Oppdatering" variant="outlined" sx={{ color: ws.textDim, borderColor: ws.border }} />
-            <Chip size="small" icon={<HelpOutline sx={{ fontSize: 14 }} />} label="Spørsmål" variant="outlined" sx={{ color: ws.textDim, borderColor: ws.border }} />
-            <Chip size="small" icon={<PriorityHigh sx={{ fontSize: 14 }} />} label="Viktig" variant="outlined" sx={{ color: ws.red, borderColor: ws.redSoft }} />
+            <Chip size="small" icon={<TipsAndUpdates sx={{ fontSize: 14 }} />} label={t('chipUpdate')} variant="outlined" sx={{ color: ws.textDim, borderColor: ws.border }} />
+            <Chip size="small" icon={<HelpOutline sx={{ fontSize: 14 }} />} label={t('chipQuestion')} variant="outlined" sx={{ color: ws.textDim, borderColor: ws.border }} />
+            <Chip size="small" icon={<PriorityHigh sx={{ fontSize: 14 }} />} label={t('chipImportant')} variant="outlined" sx={{ color: ws.red, borderColor: ws.redSoft }} />
           </Stack>
         </Stack>
       </Box>
