@@ -1170,8 +1170,8 @@ export interface DomScanResult {
   elements: ScannedElement[];
   /** JS-rendret synlig tekst (rikere AI-kontekst enn anonym reqwest). */
   pageText?: string;
-  /** Auto-uthentet merkevare fra siden (navn/logo/farger). */
-  branding?: DemoBranding & { palette?: string[] };
+  /** Auto-uthentet merkevare fra siden (navn/logo/farger/fonter). */
+  branding?: DemoBranding & { palette?: string[]; fonts?: string[] };
   /** Fase 1b: viewport-screenshots per scroll-bånd (presis preview-render). */
   shots?: Array<{ scrollPct: number; dataUrl: string }>;
   viewport?: { w: number; h: number };

@@ -52,6 +52,40 @@ export function trainOnline(f: Features, label: number, lr = 0.08, l2 = 0.001): 
 /** Hvor mange treningssteg modellen har sett (UI-indikator). */
 export function modelSteps(): number { return loadModel().n; }
 
+/** Navngitte features + gjeldende vs. start-vekt — for «Innsikt»-flaten så
+ *  brukeren SER at modellen har lært (vektene har flyttet seg fra start). */
+export function modelWeights(): { label: string; weight: number; base: number }[] {
+  const m = loadModel();
+  const labels = ['Tekst-match', 'Din aksept', 'Din bruk', 'Kollektiv aksept'];
+  return labels.map((label, i) => ({ label, weight: m.w[i], base: DEFAULT_MODEL.w[i] }));
+}
+
+/** Topp-maler etter lokal kollektiv-vekt (leaderboard i «Innsikt»). */
+export function collectiveLeaderboard(n = 8): { tplId: string; net: number }[] {
+  return Object.entries(loadCollective())
+    .map(([tplId, net]) => ({ tplId, net }))
+    .sort((a, b) => Math.abs(b.net) - Math.abs(a.net))
+    .slice(0, n);
+}
+
+export interface CollectiveInsight {
+  total: number; contributors: number; templates: number; liked: number; disliked: number;
+  top: { tplId: string; net: number; n: number }[]; now: string;
+}
+/** Hent aggregert bevis fra backend på at modellen lærer i drift (på tvers av
+ *  ALLE brukere). Null når ikke innlogget / offline. */
+export async function fetchInsight(): Promise<CollectiveInsight | null> {
+  const b = bearer();
+  if (!b) return null;
+  try {
+    const res = await fetch(`${baseUrl()}/api/role-room/infographic-signals/insight`, {
+      headers: { Authorization: `Bearer ${b}` },
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as CollectiveInsight;
+  } catch { return null; }
+}
+
 // ── Kollektiv aksept (aggregert fra alle brukere, hentet inkrementelt) ──
 const COLLECTIVE_KEY = 'trrpa.infographicStudio.collective';
 const PUSH_QUEUE_KEY = 'trrpa.infographicStudio.pushQueue';

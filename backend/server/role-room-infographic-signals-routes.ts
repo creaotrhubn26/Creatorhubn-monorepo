@@ -101,4 +101,40 @@ export function registerRoleRoomInfographicSignalsRoutes(app: Express, deps: Dep
       res.status(500).json({ error: "hent_feil", detail: (e as Error).message });
     }
   });
+
+  // Innsikt: aggregert bevis på at modellen faktisk lærer i drift — totaler +
+  // topp-maler på tvers av ALLE brukere (anonymt). Driver «Innsikt»-flaten i
+  // studioet så læringen er synlig, ikke en black box.
+  app.get("/api/role-room/infographic-signals/insight", async (req: Request, res: Response) => {
+    const uid = getUserId(req, activeSessions);
+    if (!uid) { res.status(401).json({ error: "krever_innlogging" }); return; }
+    const now = new Date().toISOString();
+    if (!ready) { res.json({ total: 0, contributors: 0, templates: 0, liked: 0, disliked: 0, top: [], now }); return; }
+    try {
+      const { rows: t } = await pool.query(
+        `SELECT COUNT(*)::int AS total,
+                COUNT(DISTINCT created_by)::int AS contributors,
+                COUNT(DISTINCT tpl_id)::int AS templates,
+                SUM(CASE WHEN liked THEN 1 ELSE 0 END)::int AS liked,
+                SUM(CASE WHEN NOT liked THEN 1 ELSE 0 END)::int AS disliked
+           FROM infographic_ai_signals`,
+      );
+      const { rows: top } = await pool.query(
+        `SELECT tpl_id,
+                SUM(CASE WHEN liked THEN weight ELSE -weight END)::float AS net,
+                COUNT(*)::int AS n
+           FROM infographic_ai_signals
+          GROUP BY tpl_id
+          ORDER BY n DESC LIMIT 12`,
+      );
+      const s = t[0] || {};
+      res.json({
+        total: s.total || 0, contributors: s.contributors || 0, templates: s.templates || 0,
+        liked: s.liked || 0, disliked: s.disliked || 0,
+        top: top.map((r) => ({ tplId: r.tpl_id, net: r.net, n: r.n })), now,
+      });
+    } catch (e) {
+      res.status(500).json({ error: "innsikt_feil", detail: (e as Error).message });
+    }
+  });
 }
