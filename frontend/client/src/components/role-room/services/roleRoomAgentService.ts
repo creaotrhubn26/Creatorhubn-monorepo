@@ -398,6 +398,20 @@ export interface RoleRoomAgentProducerBootstrapResult {
   socialProfileCandidates: RoleRoomAgentSocialProfileCandidate[];
   competitorAnalysis: RoleRoomAgentCompetitorAnalysis;
   localPresencePlan: RoleRoomAgentLocalPresencePlan;
+  /** Deterministic marketing-setup (F9): recommended channels / content
+   *  pillars / CTA / ad-tech from the verified NACE business model + geo.
+   *  Forwarded to marketing-plan generation as grounding. */
+  marketingSetup?: {
+    businessModel?: string | null;
+    geoScope?: 'local' | 'national' | string | null;
+    channels?: Array<{ name: string; priority: string; reason?: string }> | null;
+    contentPillars?: string[] | null;
+    primaryCta?: string | null;
+    secondaryCtas?: string[] | null;
+    adTech?: string[] | null;
+    kpis?: string[] | null;
+    rationale?: string | null;
+  } | null;
   merchSuppliers?: RoleRoomAgentMerchSuppliers | null;
   retrievalMeta?: {
     cohereRerankUsed: boolean;

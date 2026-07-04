@@ -88,3 +88,26 @@ describe('buildMarketingSetup — robusthet', () => {
     expect(buildMarketingSetup({ businessModel: 'b2b/b2c' }, 'local').businessModel).toBe('B2B/B2C');
   });
 });
+
+describe('buildMarketingSetup — channel-priority override (#2)', () => {
+  it('reorders channels so measured winners come first', () => {
+    const base = buildMarketingSetup({ businessModel: 'B2C' }, 'local');
+    const overridden = buildMarketingSetup({ businessModel: 'B2C' }, 'local', ['tiktok', 'instagram']);
+    expect(base.channels[0].name).toBe('Instagram');
+    expect(overridden.channels[0].name).toBe('TikTok');
+    expect(overridden.channels[1].name).toBe('Instagram');
+    // same set of channels, just reordered
+    expect(new Set(overridden.channels.map((c) => c.name))).toEqual(new Set(base.channels.map((c) => c.name)));
+  });
+
+  it('fuzzy-matches a platform token to a descriptive channel name', () => {
+    const overridden = buildMarketingSetup({ businessModel: 'B2C' }, 'local', ['google']);
+    expect(overridden.channels[0].name).toMatch(/Google Business Profile/);
+  });
+
+  it('leaves order unchanged when no override is given', () => {
+    const a = buildMarketingSetup({ businessModel: 'B2C' }, 'local');
+    const b = buildMarketingSetup({ businessModel: 'B2C' }, 'local', null);
+    expect(a.channels.map((c) => c.name)).toEqual(b.channels.map((c) => c.name));
+  });
+});

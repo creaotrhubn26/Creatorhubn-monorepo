@@ -72,11 +72,60 @@ export function deriveGeoScope(
 }
 
 /**
+ * Reorder channels so that measured-performance winners (a learned
+ * `nace_channel_priority` override, #2) come first. Each override token is
+ * matched fuzzily against channel names (token ⊂ name, or name's first word ⊂
+ * token — so "google" matches "Google Business Profile / Maps"). Unmatched
+ * channels keep their original relative order at the end. Priority LABELS are
+ * left untouched; only the ordering the plan grounds on changes.
+ */
+function reorderChannelsByPriority(
+  channels: MarketingChannel[],
+  priority: readonly string[],
+): MarketingChannel[] {
+  const norm = (s: string): string => s.toLowerCase().trim();
+  const used = new Set<number>();
+  const ordered: MarketingChannel[] = [];
+  for (const rawToken of priority) {
+    const token = norm(rawToken);
+    if (!token) continue;
+    for (let i = 0; i < channels.length; i++) {
+      if (used.has(i)) continue;
+      const name = norm(channels[i].name);
+      const firstWord = name.split(/[\s/]+/)[0] ?? "";
+      if (name.includes(token) || (firstWord.length >= 3 && token.includes(firstWord))) {
+        ordered.push(channels[i]);
+        used.add(i);
+      }
+    }
+  }
+  for (let i = 0; i < channels.length; i++) {
+    if (!used.has(i)) ordered.push(channels[i]);
+  }
+  return ordered;
+}
+
+/**
  * Bygg et deterministisk marketing-oppsett forankret i forretningsmodell +
  * geo-scope. Returnerer kanaler (prioritert), content-pilarer, CTA og ad-tech.
  * LLM-en skal bruke dette som grunnlag og berike — ikke erstatte.
+ *
+ * `channelPriorityOverride` (valgfri) er en godkjent, lært kanal-rangering fra
+ * målt KPI-ytelse (#2) som reordner kanalene — slik lukkes resultat-loopen.
  */
 export function buildMarketingSetup(
+  classification: MarketingClassificationInput,
+  geoScope: MarketingGeoScope,
+  channelPriorityOverride?: readonly string[] | null,
+): MarketingSetup {
+  const setup = buildBaseMarketingSetup(classification, geoScope);
+  if (channelPriorityOverride && channelPriorityOverride.length > 0) {
+    setup.channels = reorderChannelsByPriority(setup.channels, channelPriorityOverride);
+  }
+  return setup;
+}
+
+function buildBaseMarketingSetup(
   classification: MarketingClassificationInput,
   geoScope: MarketingGeoScope,
 ): MarketingSetup {
