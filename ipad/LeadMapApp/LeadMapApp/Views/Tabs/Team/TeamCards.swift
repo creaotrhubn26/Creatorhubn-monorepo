@@ -634,19 +634,24 @@ struct TeamAreasCard: View {
                 Text("Teamets områder")
                     .font(.system(size: 15, weight: .bold))
                     .foregroundStyle(.white)
-                if loadingRealBoundaries {
-                    ProgressView()
-                        .scaleEffect(0.65)
-                        .tint(TBrand.purpleLight)
-                        .accessibilityLabel("Laster kommunegrenser fra Kartverket")
-                } else {
-                    // Liten 🇳🇴-badge når grensene er ekte fra Kartverket
-                    Text("🇳🇴 Kartverket")
-                        .font(.system(size: 9, weight: .black, design: .rounded))
-                        .tracking(0.8)
-                        .foregroundStyle(TBrand.purpleLight)
-                        .padding(.horizontal, 6).padding(.vertical, 2)
-                        .background(TBrand.cardHi.opacity(0.6), in: Capsule())
+                // Kartverket-attribusjonen gjelder kun demo-modusens
+                // kommunegrense-polygoner — i ekte modus tegnes sirkelsoner
+                // fra egne team-data, og badgen var bare støy (Daniel,
+                // QA-runde 2).
+                if DemoModeManager.isActiveNonisolated {
+                    if loadingRealBoundaries {
+                        ProgressView()
+                            .scaleEffect(0.65)
+                            .tint(TBrand.purpleLight)
+                            .accessibilityLabel("Laster kommunegrenser fra Kartverket")
+                    } else {
+                        Text("Kartverket")
+                            .font(.system(size: 9, weight: .black, design: .rounded))
+                            .tracking(0.8)
+                            .foregroundStyle(TBrand.purpleLight)
+                            .padding(.horizontal, 6).padding(.vertical, 2)
+                            .background(TBrand.cardHi.opacity(0.6), in: Capsule())
+                    }
                 }
                 Spacer()
                 Button { showAssign = true } label: {
