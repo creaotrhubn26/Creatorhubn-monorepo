@@ -14,7 +14,8 @@ import {
   addCustomTemplate, removeCustomTemplate, isCustomTemplate, customTemplateIds,
   type InfographicTemplate,
 } from './infographicStudio';
-import { aiPickTemplate, recordAiFeedback, recordTemplateUsage, aiFeedbackCount } from './infographicAI';
+import { aiPickTemplate, aiInfographicFromSite, logoToDataUrl, recordAiFeedback, recordTemplateUsage, aiFeedbackCount } from './infographicAI';
+import { scanDom, isCaptureAvailable } from '../../services/demoCaptureService';
 import { isAiConnected } from '../../services/claudeProxyService';
 import { FONT_FACE_CSS } from './fontAssets.generated';
 import { ROLE_ROOM_LOGO, CREATORHUB_LOGO } from './kitLogos.generated';
@@ -670,6 +671,36 @@ export function InfographicStudioView(
     } finally { setAiBusy(false); }
   };
 
+  // «Fra nettside»: scan siden → hent LOGO + merkefarge fra branding, la AI
+  // velge mal + fylle med EKTE data fra siden (firmanavn, tall, tagline).
+  const runFromSite = async () => {
+    if (aiBusy) return;
+    if (!isCaptureAvailable()) { setMsg('«Fra nettside» krever Tauri-appen (skann av siden).'); return; }
+    if (!isAiConnected()) { setMsg('AI ikke koblet til (mangler Role Room-token i Innstillinger).'); return; }
+    const url = project?.url?.trim();
+    if (!url) { setMsg('Prosjektet mangler en URL — åpne en demo med nettadresse først.'); return; }
+    setAiBusy(true); setMsg(`Skanner ${url} …`);
+    try {
+      const scan = await scanDom(url).catch(() => null);
+      const brand = scan?.branding;
+      // LOGO fra siden (embed som data-URL når mulig) — så f.eks. en lower-third
+      // faktisk får merkelogoen. + merkefarge som aksent.
+      if (brand?.logoUrl) { setMsg('Henter logo …'); const dl = await logoToDataUrl(brand.logoUrl).catch(() => brand.logoUrl!); setLogo(dl); }
+      if (brand?.brandColor && /^#[0-9a-fA-F]{3,8}$/.test(brand.brandColor)) setAccent(brand.brandColor);
+      const siteText = scan?.pageText || '';
+      if (!siteText.trim()) { setMsg('Fant lite lesbar tekst på siden (SPA/innlogget?). Prøv en beskrivelse i stedet.'); return; }
+      setMsg('AI lager infographic fra siden …');
+      const labels = (scan?.elements || []).map((e) => e.label).filter(Boolean).slice(0, 25);
+      const r = await aiInfographicFromSite({ siteText, brandName: brand?.brandName, elementLabels: labels, templates: INFOGRAPHIC_TEMPLATES });
+      updateScene({ tplId: r.tplId, values: r.values, bindings: {} });
+      setAiLastPick({ desc: `nettside: ${brand?.brandName || url}`, tplId: r.tplId });
+      const picked = INFOGRAPHIC_TEMPLATES.find((t) => t.id === r.tplId);
+      setMsg(`✓ «${picked?.name || r.tplId}» fylt fra ${brand?.brandName || url}${brand?.logoUrl ? ' (m/ logo + merkefarge)' : ''}${r.reason ? ` — ${r.reason}` : ''}`);
+    } catch (e) {
+      setMsg('Feil ved «Fra nettside»: ' + (e instanceof Error ? e.message : String(e)));
+    } finally { setAiBusy(false); }
+  };
+
   // Importer egen HTML-mal → «Mine maler».
   const doImportTemplate = () => {
     if (!importHtml.trim()) { setMsg('Lim inn eller last opp HTML-mal først.'); return; }
@@ -765,6 +796,14 @@ export function InfographicStudioView(
                 <button style={{ ...topBtn, width: '100%', justifyContent: 'center', fontSize: 11.5, opacity: aiBusy || !aiDesc.trim() ? 0.6 : 1 }} disabled={aiBusy || !aiDesc.trim()} onClick={() => void runAiPick()}>
                   {aiBusy ? 'AI velger …' : 'Velg mal + fyll inn'}
                 </button>
+                {/* «Fra nettside»: scan project.url → logo + merkefarge + ekte data. */}
+                {project?.url && (
+                  <button style={{ ...topBtn, width: '100%', justifyContent: 'center', fontSize: 11.5, marginTop: 6, opacity: aiBusy ? 0.6 : 1 }} disabled={aiBusy}
+                    title={`Skanner ${project.url} — henter logo, merkefarge og ekte tall, og fyller en mal`}
+                    onClick={() => void runFromSite()}>
+                    🌐 Fra nettside {(() => { try { return `(${new URL(project.url).host})`; } catch { return ''; } })()}
+                  </button>
+                )}
                 {/* Lærings-loop: 👍/👎 på siste anbefaling → few-shot + re-rangering. */}
                 {aiLastPick && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>

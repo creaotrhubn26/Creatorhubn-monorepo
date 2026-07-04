@@ -110,6 +110,76 @@ function extractJson(raw: string): unknown {
 }
 
 /**
+ * Hent en nettsides logo (ekstern URL) som data-URL så den EMBEDDES i malen
+ * (overlever eksport + offline). Best-effort — faller tilbake til den eksterne
+ * URL-en (som fungerer online i preview + Playwright-render) ved CORS/feil.
+ */
+export async function logoToDataUrl(logoUrl: string): Promise<string> {
+  if (!logoUrl || logoUrl.startsWith('data:')) return logoUrl;
+  try {
+    const res = await fetch(logoUrl);
+    if (!res.ok) return logoUrl;
+    const blob = await res.blob();
+    if (blob.size === 0 || blob.size > 2_000_000) return logoUrl; // urimelig stor → behold URL
+    return await new Promise((resolve) => {
+      const fr = new FileReader();
+      fr.onload = () => resolve(typeof fr.result === 'string' ? fr.result : logoUrl);
+      fr.onerror = () => resolve(logoUrl);
+      fr.readAsDataURL(blob);
+    });
+  } catch { return logoUrl; }
+}
+
+/**
+ * «Fra nettside»: velg beste mal og fyll den med EKTE data hentet fra siden
+ * (firmanavn, nøkkeltall, tagline). Logo + merkefarge håndteres av kalleren
+ * (fra skannets branding). Bruker sidens tekst som grunnlag for både kandidat-
+ * filtrering og utfylling.
+ */
+export async function aiInfographicFromSite(params: {
+  siteText: string;
+  brandName?: string;
+  elementLabels?: string[];
+  templates: InfographicTemplate[];
+}): Promise<AiPickResult> {
+  const { siteText, brandName, elementLabels = [], templates } = params;
+  // Kandidat-scoring: bruk merkenavn + de mest markante ordene fra siden.
+  const scoringDesc = `${brandName || ''} ${elementLabels.slice(0, 20).join(' ')} ${siteText.slice(0, 400)}`;
+  const cands = candidateTemplates(scoringDesc, templates);
+  const catalog = cands.map((t) => ({
+    id: t.id, name: t.name, desc: t.desc,
+    fields: t.fields.map((f) => ({ key: f.key, label: f.label, ...(f.placeholder ? { eks: f.placeholder } : {}) })),
+  }));
+  const user = `Lag en infographic-overlay til en video BASERT PÅ denne nettsiden.
+${brandName ? `Merkenavn: ${brandName}\n` : ''}Knappe-/lenke-tekster: ${elementLabels.slice(0, 25).join(' · ') || '(ingen)'}
+Synlig sidetekst (utdrag):
+${siteText.slice(0, 2000)}
+
+Velg den BESTE malen fra katalogen og fyll feltene med EKTE data fra siden:
+firmanavn, faktiske tall/statistikk, tagline/verdiløfte, tjenester. Ikke dikt
+opp tall som ikke står på siden — la heller feltet stå tomt eller bruk en
+kvalitativ etikett. Bruk KUN felt-nøkler som finnes i den valgte malen.
+
+KATALOG:
+${JSON.stringify(catalog)}
+
+Svar med KUN dette JSON-objektet:
+{"templateId": "<id>", "values": {"<feltnøkkel>": "<verdi>", ...}, "reason": "<kort>"}`;
+
+  const raw = await claudeProxyService.send({
+    systemPrompt: 'Du lager infographic-overlays fra nettsider. Du velger beste mal og fyller den med EKTE data fra siden (aldri oppdiktede tall). Du svarer ALLTID med kun ett JSON-objekt.',
+    messages: [{ role: 'user', content: user }],
+    maxTokens: 1000,
+  });
+  const parsed = extractJson(raw) as { templateId?: string; values?: Record<string, string>; reason?: string };
+  const tpl = templates.find((t) => t.id === parsed.templateId) || cands[0];
+  const validKeys = new Set(tpl.fields.map((f) => f.key));
+  const values: Record<string, string> = {};
+  for (const [k, v] of Object.entries(parsed.values || {})) if (validKeys.has(k)) values[k] = String(v);
+  return { tplId: tpl.id, values, reason: String(parsed.reason || '') };
+}
+
+/**
  * AI velger beste mal + fyller felter fra en beskrivelse. Forhåndsfiltrerer
  * kandidater klient-side, sender kompakt katalog til Claude, validerer svaret.
  */
