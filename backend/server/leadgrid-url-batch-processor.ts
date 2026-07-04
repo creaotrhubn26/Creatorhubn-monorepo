@@ -1147,10 +1147,13 @@ export function registerUrlResearchResumeCron(pool: Pool): void {
   resumeHandle = setInterval(() => {
     void sweep();
   }, RESUME_INTERVAL_MS);
+  // Boot-delay 5 min (var 45s): første sweep ved deploy 2026-07-03 kjørte
+  // midt i boot-trengselen og 79 items feilet transient med
+  // orchestrator_unavailable. La resten av oppstarten lande først.
   setTimeout(() => {
     void sweep();
-  }, 45_000);
-  console.log("[url-research-resume] sweeper registered (boot +45s, deretter hver time)");
+  }, 5 * 60_000);
+  console.log("[url-research-resume] sweeper registered (boot +5 min, deretter hver time)");
 }
 
 /** Internt for tester — stopp sweeper. */

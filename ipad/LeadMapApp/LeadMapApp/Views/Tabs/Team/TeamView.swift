@@ -117,10 +117,10 @@ enum TeamData {
         DemoModeManager.isActiveNonisolated ? _members : TeamLiveStore.shared.members
     }
 
-    /// Demo-mode-gated aktiviteter. Ved demo AV → tom → «Ingen aktivitet
-    /// enda» (ingen aktivitets-feed-endepunkt i backend enda).
-    static var activities: [ActivityEvent] {
-        DemoModeManager.isActiveNonisolated ? _activities : []
+    /// Demo PÅ → mock; ellers EKTE feed fra /api/leadgrid/activity-feed
+    /// (2026-07-04 — crm_lead_activities fylles nå av tilbud/besøk).
+    @MainActor static var activities: [ActivityEvent] {
+        DemoModeManager.isActiveNonisolated ? _activities : TeamLiveStore.shared.activities
     }
 
     /// Demo PÅ → mock-trakt; ellers beregnet fra ekte lead-statuser.

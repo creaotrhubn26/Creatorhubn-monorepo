@@ -85,6 +85,17 @@ final class LeadbookLiveStore {
         }
     }
 
+    /// Utfalls-registrering (2026-07-04): oppgraderer den ferske
+    /// 'used'-raden i backend (meeting_booked/won/… erstatter, dobler
+    /// ikke nevneren) → ekte møte-rater per mal.
+    func logOutcome(_ template: LeadbookTemplate, outcome: String) {
+        guard let api, let backendId = template.backendId else { return }
+        Task {
+            try? await api.pondusLogUsage(templateId: backendId, outcome: outcome)
+            await refresh()
+        }
+    }
+
     // MARK: - KPI-verdier (LeadbookKPI.liveValue)
 
     var kpiActiveTemplates: String { "\(templates.count)" }

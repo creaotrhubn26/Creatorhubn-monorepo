@@ -760,6 +760,36 @@ export function registerPondusUsageRoutes(deps: PondusRoutesDeps): void {
       ? body.outcome : "used";
     try {
       const orgId = await resolveOrgIdForUser(pool, session.userId);
+      // Utfalls-registrering (outcome != 'used') OPPGRADERER siste
+      // 'used'-rad for samme mal+bruker innen 1 time i stedet for å
+      // inserte ny — ellers dobles nevneren og møte-raten halveres
+      // (én bruk m/ møte ville telt 2 rader / 1 møte = 50 %).
+      if (outcome !== "used") {
+        const upd = await pool.query(
+          `UPDATE pondus_template_usage
+              SET outcome = $1, lead_id = COALESCE($2::uuid, lead_id)
+            WHERE id = (
+              SELECT id FROM pondus_template_usage
+               WHERE template_id = $3::uuid AND user_id = $4
+                 AND outcome = 'used'
+                 AND used_at > NOW() - INTERVAL '1 hour'
+               ORDER BY used_at DESC LIMIT 1
+            )
+            RETURNING id, used_at`,
+          [outcome, leadId, templateId, session.userId],
+        );
+        if (upd.rows[0]) {
+          return res.status(200).json({
+            usage: {
+              id: String(upd.rows[0].id),
+              template_id: templateId,
+              outcome,
+              used_at: upd.rows[0].used_at,
+            },
+          });
+        }
+        // Ingen fersk 'used'-rad å oppgradere — fall gjennom til insert.
+      }
       const r = await pool.query(
         `INSERT INTO pondus_template_usage
            (template_id, organization_id, user_id, lead_id, outcome)

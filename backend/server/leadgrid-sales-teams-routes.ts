@@ -81,6 +81,53 @@ export function registerLeadgridSalesTeamsRoutes(deps: SalesTeamsRoutesDeps): vo
   const { app, pool, requireUserSession } = deps;
 
   // ───────────────────────────────────────────────────────────────
+  // AKTIVITETSFEED (2026-07-04) — Team-fanens «Siste aktivitet»
+  // crm_lead_activities fylles nå av tilbud/besøk/status-endringer;
+  // feeden viser org-ens siste hendelser m/ bruker- og lead-navn.
+  // ───────────────────────────────────────────────────────────────
+  app.get("/api/leadgrid/activity-feed", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    const orgId = await resolveOrgIdForUser(pool, session.userId);
+    const limit = Math.max(1, Math.min(100, Number(req.query.limit) || 25));
+    try {
+      const r = await pool.query(
+        `SELECT a.id::text,
+                a.activity_type,
+                COALESCE(a.description, '') AS description,
+                a.new_value,
+                a.created_at,
+                COALESCE(
+                  NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''),
+                  u.email, 'System'
+                ) AS user_name,
+                c.name AS lead_name
+           FROM crm_lead_activities a
+           JOIN crm_customers c ON c.id = a.customer_id
+           LEFT JOIN users u ON u.id = a.user_id
+          WHERE c.organization_id::text = $1
+          ORDER BY a.created_at DESC
+          LIMIT $2`,
+        [orgId, limit],
+      );
+      return res.json({
+        activities: r.rows.map((row) => ({
+          id: String(row.id),
+          activity_type: String(row.activity_type),
+          description: String(row.description ?? ""),
+          new_value: row.new_value ?? null,
+          user_name: String(row.user_name ?? "System"),
+          lead_name: String(row.lead_name ?? ""),
+          created_at: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+        })),
+      });
+    } catch (err) {
+      console.error("[activity-feed] GET failed:", err);
+      return res.status(500).json({ error: "activity_feed_failed", detail: String((err as Error).message) });
+    }
+  });
+
+  // ───────────────────────────────────────────────────────────────
   // SALES TEAMS
   // ───────────────────────────────────────────────────────────────
 
