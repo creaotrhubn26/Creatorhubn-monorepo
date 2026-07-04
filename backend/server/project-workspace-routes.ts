@@ -22,6 +22,8 @@ import type express from "express";
 import crypto from "crypto";
 import multer from "multer";
 import { canAccessProject } from "./project-team-routes";
+import { resolveCrewRoles } from "../../frontend/shared/crew-roles.ts";
+import { CANONICAL_PROFESSIONS, normalizeProfession as normalizeCanonProfession, isWorkspaceCategory as isWsCategory } from "../../frontend/shared/profession-types.ts";
 import { signAssetReadUrl } from "./capture-upload-service";
 import { archiveToRoleRoomB2, presignRoleRoomB2Download, getFromRoleRoomB2, slugifyForKey } from "./b2-archive-helper";
 import { Vibrant } from "node-vibrant/node";
@@ -156,6 +158,34 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       res.json({ tasks: r.rows.map((t: any) => ({ id: t.id, crewRole: t.crew_role, title: t.title, timeLabel: t.time_label, status: t.status, orderIndex: t.order_index })) });
     } catch (e) { console.error("GET board-tasks", e); res.status(500).json({ error: "failed" }); }
   });
+  // ─────────── Crew-roller som DATA (blandede team) ───────────
+  // Et prosjekts rollekolonner = eier-kategoriens default-sett ∪ roller
+  // teamet/boardet faktisk bruker (project_team_members + project_board_tasks).
+  // Kategorien hentes fra profession_types.workspace_category (admin-styrt),
+  // med kanonisk kode-baseline som fallback. Ukjente nøkler beholdes med
+  // generisk visning — et blandet team (foto + musikk) mister aldri kolonner.
+  app.get("/api/projects/:projectId/crew-roles", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const pid = req.params.projectId;
+      const [owner, members, tasks] = await Promise.all([
+        pool.query(`SELECT u.profession FROM projects p JOIN users u ON u.id = p.user_id WHERE p.id = $1 LIMIT 1`, [pid]).catch(() => ({ rows: [] as any[] })),
+        pool.query(`SELECT DISTINCT crew_role FROM project_team_members WHERE project_id = $1 AND status <> 'revoked' AND crew_role IS NOT NULL`, [pid]).catch(() => ({ rows: [] as any[] })),
+        pool.query(`SELECT DISTINCT crew_role FROM project_board_tasks WHERE project_id = $1 AND crew_role IS NOT NULL`, [pid]).catch(() => ({ rows: [] as any[] })),
+      ]);
+      const profession = normalizeCanonProfession(owner.rows[0]?.profession);
+      // Kategori: DB (profession_types.workspace_category) vinner, baseline som fallback.
+      let category = CANONICAL_PROFESSIONS.find((c) => c.name === profession)?.workspaceCategory || "visual";
+      try {
+        const c = await pool.query(`SELECT workspace_category FROM profession_types WHERE name = $1 LIMIT 1`, [profession]);
+        if (isWsCategory(c.rows[0]?.workspace_category)) category = c.rows[0].workspace_category;
+      } catch { /* kolonnen kom i mig 0369 — baseline holder */ }
+      const used = [...members.rows, ...tasks.rows].map((r: any) => r.crew_role);
+      const { roles, fallbackKey } = resolveCrewRoles(category as any, used);
+      res.json({ category, fallbackKey, roles });
+    } catch (e) { console.error("GET crew-roles", e); res.status(500).json({ error: "failed" }); }
+  });
+
   app.post("/api/projects/:projectId/board-tasks", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
     try {

@@ -24,6 +24,7 @@ import WorkspaceChatPanel from '../WorkspaceChatPanel';
 import { useProjectImages } from '../useProjectImages';
 import { useCaptureRealtime } from '../useCaptureRealtime';
 import { useWsLocale, makeT, wsDateLocale, type WsDict } from '../wsLocale';
+import { CATEGORY_DEFAULT_CREW, crewRoleDef } from '@shared/crew-roles';
 
 // Lokal no/en-ordbok for fanen (samme mønster som OppdragTab). Demo-konstantene
 // (PHASES/BOARD/SYNC_ITEMS/CHECKLIST) er sample-data og forblir norske.
@@ -50,22 +51,6 @@ const T: WsDict = {
   newCheckPrompt: { no: 'Nytt sjekkpunkt:', en: 'New checklist item:' },
   newTaskPrompt: { no: 'Ny oppgave:', en: 'New task:' },
   addFailed: { no: 'Kunne ikke legge til', en: 'Could not add' },
-  // rolle-kolonner (COLS)
-  roleProducer: { no: 'Produsent', en: 'Producer' },
-  roleVocals: { no: 'Vokal', en: 'Vocals' },
-  roleMusicians: { no: 'Musikere', en: 'Musicians' },
-  roleMix: { no: 'Miks', en: 'Mix' },
-  roleOrders: { no: 'Bestilling', en: 'Orders' },
-  rolePrepVendor: { no: 'Klargjøring', en: 'Preparation' },
-  roleDelivery: { no: 'Levering', en: 'Delivery' },
-  roleFollowUp: { no: 'Oppfølging', en: 'Follow-up' },
-  roleBooking: { no: 'Booking', en: 'Booking' },
-  rolePrepService: { no: 'Forberedelse', en: 'Preparation' },
-  roleExecution: { no: 'Gjennomføring', en: 'Execution' },
-  rolePhotographer: { no: 'Fotograf', en: 'Photographer' },
-  roleVideographer: { no: 'Videograf', en: 'Videographer' },
-  roleBoth: { no: 'Begge', en: 'Both' },
-  roleEditor: { no: 'Editor', en: 'Editor' },
   // fremdrift
   progressLabel: { no: 'Fremdrift', en: 'Progress' },
   ofWord: { no: 'av', en: 'of' },
@@ -306,39 +291,25 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
     catch (e: any) { window.alert(e?.message || t('addFailed')); }
   };
 
-  // Bygg de 4 rolle-kolonnene fra ekte tasks, ellers sample. Kolonnenavn følger
-  // workspace-kategorien; crew-nøklene er stabile (fotograf/videograf/begge/editor)
-  // så eksisterende board-tasks fortsatt mapper riktig.
+  // Rolle-kolonnene er DATA: GET /crew-roles gir eier-kategoriens default-sett
+  // ∪ roller teamet/boardet faktisk bruker — blandede team (foto + musikk på
+  // samme event) får dermed egne kolonner. Kategori-defaults fra den delte
+  // katalogen som fallback før svaret/på sample.
   const wsCategory = useWorkspaceCategory(profession);
-  const COLS = wsCategory === 'music'
-    ? [
-        { role: t('roleProducer'), icon: '🎹', crew: 'fotograf' },
-        { role: t('roleVocals'), icon: '🎤', crew: 'videograf' },
-        { role: t('roleMusicians'), icon: '🎸', crew: 'begge' },
-        { role: t('roleMix'), icon: '🎚️', crew: 'editor' },
-      ]
-    : wsCategory === 'vendor'
-    ? [
-        { role: t('roleOrders'), icon: '🧾', crew: 'fotograf' },
-        { role: t('rolePrepVendor'), icon: '📦', crew: 'videograf' },
-        { role: t('roleDelivery'), icon: '🚚', crew: 'begge' },
-        { role: t('roleFollowUp'), icon: '📞', crew: 'editor' },
-      ]
-    : wsCategory === 'service'
-    ? [
-        { role: t('roleBooking'), icon: '📅', crew: 'fotograf' },
-        { role: t('rolePrepService'), icon: '🧴', crew: 'videograf' },
-        { role: t('roleExecution'), icon: '✂️', crew: 'begge' },
-        { role: t('roleFollowUp'), icon: '💬', crew: 'editor' },
-      ]
-    : [
-        { role: t('rolePhotographer'), icon: '📷', crew: 'fotograf' },
-        { role: t('roleVideographer'), icon: '🎥', crew: 'videograf' },
-        { role: t('roleBoth'), icon: '👥', crew: 'begge' },
-        { role: t('roleEditor'), icon: '🎬', crew: 'editor' },
-      ];
+  const [crewData, setCrewData] = useState<{ roles: any[]; fallbackKey: string } | null>(null);
+  useEffect(() => {
+    if (!isReal) { setCrewData(null); return; }
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/crew-roles`)
+      .then((r: any) => { if (Array.isArray(r?.roles) && r.roles.length) setCrewData({ roles: r.roles, fallbackKey: r.fallbackKey || 'begge' }); })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, isReal]);
+  const catDefaults = CATEGORY_DEFAULT_CREW[wsCategory] || CATEGORY_DEFAULT_CREW.visual;
+  const roleDefs = crewData ? crewData.roles : catDefaults.keys.map(crewRoleDef);
+  const crewFallbackKey = crewData?.fallbackKey || catDefaults.fallbackKey;
+  const COLS = roleDefs.map((r: any) => ({ role: locale === 'en' ? (r.labelEn || r.label) : r.label, icon: r.icon || '👤', crew: r.key }));
   const realBoard = tasks && tasks.length > 0
-    ? COLS.map((c) => ({ ...c, tasks: tasks.filter((t) => (t.crewRole || 'begge') === c.crew).map((t) => ({ id: t.id, t: t.title, time: t.timeLabel || '', done: t.status === 'done', real: true })) }))
+    ? COLS.map((c) => ({ ...c, tasks: tasks.filter((t) => (t.crewRole || crewFallbackKey) === c.crew).map((t) => ({ id: t.id, t: t.title, time: t.timeLabel || '', done: t.status === 'done', real: true })) }))
     : null;
   const boardCols = isReal ? (realBoard || COLS.map((c) => ({ role: c.role || c.label || c.crew, icon: c.icon || '👥', crew: c.crew, tasks: [] }))) : BOARD.map((c, i) => ({ role: c.role, icon: c.icon, crew: COLS[i]?.crew || 'begge', tasks: c.tasks }));
 

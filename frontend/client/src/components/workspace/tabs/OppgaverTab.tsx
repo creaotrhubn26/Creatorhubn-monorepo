@@ -14,6 +14,7 @@ import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
 import { WsCard, WsStat, WsTag } from '../ui';
 import { useWsLocale, makeT, type WsDict } from '../wsLocale';
+import { crewRoleDef } from '@shared/crew-roles';
 
 // Lokal no/en-ordbok for fanen (samme mønster som OppdragTab).
 const T: WsDict = {
@@ -36,16 +37,11 @@ const COLUMNS = [
   { key: 'in_progress', label: { no: 'Pågår', en: 'In progress' }, tone: 'amber' },
   { key: 'done', label: { no: 'Ferdig', en: 'Done' }, tone: 'green' },
 ];
-const CREW = [
-  { value: 'fotograf', label: { no: '📷 Fotograf', en: '📷 Photographer' }, tone: 'accent' },
-  { value: 'videograf', label: { no: '🎥 Videograf', en: '🎥 Videographer' }, tone: 'green' },
-  { value: 'begge', label: { no: '👥 Begge', en: '👥 Both' }, tone: 'blue' },
-  { value: 'editor', label: { no: '🎬 Editor', en: '🎬 Editor' }, tone: 'neutral' },
-  { value: 'lyd', label: { no: '🎧 Lyd', en: '🎧 Sound' }, tone: 'amber' },
-];
+// Crew-roller fra den delte katalogen (crew-roles.ts) — dekker alle
+// kategorienes roller + ukjente nøkler med generisk visning (blandede team).
 const crewTag = (c: string, locale: 'no' | 'en') => {
-  const f = CREW.find((x) => x.value === c);
-  return f ? { label: f.label[locale] || f.label.no, tone: f.tone } : { label: c || (locale === 'en' ? 'Both' : 'Begge'), tone: 'neutral' };
+  const d = crewRoleDef(c || 'begge');
+  return { label: `${d.icon} ${locale === 'en' ? d.labelEn : d.label}`, tone: d.tone };
 };
 
 const SAMPLE = [
