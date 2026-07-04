@@ -71,7 +71,10 @@ fileprivate struct KartGlowHalo: View {
 // MARK: - Mockup-data
 
 struct MapLeadMock: Identifiable, Hashable {
-    let id = UUID()
+    /// Stabil id: ekte leads bruker LeadModel.id (adapteren), mock-leads
+    /// får UUID. `let id = UUID()` ga ny identitet per adapt-kall →
+    /// ForEach-churn + selection som aldri matchet.
+    var id: String = UUID().uuidString
     let name: String
     let address: String
     let kmAway: Double
@@ -337,6 +340,7 @@ enum KartPreviewData {
         }()
         let last: String? = lm.nextAction ?? (lm.lastVisitAt.map { _ in "Sist besøkt" })
         return MapLeadMock(
+            id: lm.id,  // stabil identitet på tvers av re-adapt
             name: lm.name,
             address: addr,
             kmAway: 0,  // TODO: beregn fra user-location i egen pass
@@ -460,6 +464,30 @@ struct KartView: View {
     @State private var selectedStatuses: Set<MapLeadMock.PinStatus> = []
     // Pakke 10.1: AppState for å hente prod-leads til rike popovere.
     @Environment(AppState.self) private var appState
+
+    /// Kart-fanens leads: demo → mock (KartPreviewData), ekte →
+    /// appState.leads adaptert til pin-modellen. QA-runde 3 (desktop,
+    /// 2026-07-05): mock-gatingen tømte kartet i ekte modus fordi den
+    /// ekte grenen aldri ble koblet — 22 leads i API, 0 pins på kartet.
+    private var kartLeads: [MapLeadMock] {
+        if DemoModeManager.isActiveNonisolated {
+            return KartPreviewData.leads
+        }
+        return appState.leads
+            .filter { $0.latitude != 0 || $0.longitude != 0 }
+            .map(KartPreviewData.adapt)
+    }
+
+    /// Ekte modus: detail-panelet viser først noe når brukeren faktisk
+    /// har valgt en pin/rad (selectedLead init-es med mock-placeholder
+    /// som ellers ville lekke). Demo beholder pre-valgt lead.
+    @State private var hasSelectedLead: Bool = false
+    /// Auto-senter kun én gang per fane-liv.
+    @State private var didAutoCenter: Bool = false
+    private var showDetailPanel: Bool {
+        guard !kartLeads.isEmpty else { return false }
+        return DemoModeManager.isActiveNonisolated || hasSelectedLead
+    }
 
     // Header: delt LeadgridTabHeader eier all popover/sheet-state selv.
 
@@ -610,10 +638,25 @@ struct KartView: View {
             }
         }
         .preferredColorScheme(.dark)
-        .task {
-            // Auto-zoom på valgt lead ved app-start så pin er sentrert.
-            // Daniel-feedback 2026-06-29: tap på lead-rad → zoom inn.
-            selectAndZoom(selectedLead)
+        .task(id: kartLeads.first?.id) {
+            // Auto-senter ved oppstart. Demo: zoom på pre-valgt mock-lead
+            // (Daniel-feedback 2026-06-29). Ekte: senter over egne leads
+            // når de lander fra API (task-id re-trigger), UTEN å velge —
+            // detail-panelet skal ikke late som brukeren har valgt noe.
+            guard !didAutoCenter else { return }
+            if DemoModeManager.isActiveNonisolated {
+                didAutoCenter = true
+                selectAndZoom(selectedLead)
+                hasSelectedLead = false  // demo-panelet vises uansett; ikke lås ekte modus
+            } else if let first = kartLeads.first {
+                didAutoCenter = true
+                withAnimation(.easeInOut(duration: 0.55)) {
+                    camera = .region(MKCoordinateRegion(
+                        center: CLLocationCoordinate2D(latitude: first.lat, longitude: first.lon),
+                        span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.13)
+                    ))
+                }
+            }
         }
         // Mac Catalyst Cmd+N → åpne AddLeadSheet. NotificationCenter-broadcast
         // fra GlobalKeyboardShortcuts. No-op på iOS/iPadOS.
@@ -806,10 +849,10 @@ struct KartView: View {
                         mapCard
                             .frame(minHeight: 380, maxHeight: 460)
                         legendCard
-                        if KartPreviewData.leads.isEmpty {
-                            emptyDetailPanel
-                        } else {
+                        if showDetailPanel {
                             detailPanel
+                        } else {
+                            emptyDetailPanel
                         }
                     }
                     .frame(maxWidth: .infinity)
@@ -1021,7 +1064,7 @@ struct KartView: View {
                         ClusterPin(count: c.count, color: c.color)
                     }
                 }
-                ForEach(KartPreviewData.leads) { lead in
+                ForEach(kartLeads) { lead in
                     Annotation("", coordinate: CLLocationCoordinate2D(latitude: lead.lat, longitude: lead.lon)) {
                         Button {
                             if measureMode {
@@ -1476,14 +1519,14 @@ struct KartView: View {
 
     private var leadsInAreaCard: some View {
         // Skiller «tom pga demo AV / ingen data» fra «tom pga aktivt filter».
-        let hasAnyLeads = !KartPreviewData.leads.isEmpty
+        let hasAnyLeads = !kartLeads.isEmpty
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("Leads i området")
                     .font(.system(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 if hasAnyLeads {
-                    Text("(\(KartPreviewData.leads.count))")
+                    Text("(\(kartLeads.count))")
                         .font(.system(size: 12))
                         .foregroundStyle(KrBrand.textSecondary)
                 }
@@ -1604,7 +1647,7 @@ struct KartView: View {
     /// Filtrerte leads basert på søk + status + bransje. Sidebar +
     /// kart-pins respekterer disse.
     private var filteredLeads: [MapLeadMock] {
-        KartPreviewData.leads.filter { lead in
+        kartLeads.filter { lead in
             let s = search.trimmingCharacters(in: .whitespaces).lowercased()
             let matchesSearch = s.isEmpty
                 || lead.name.lowercased().contains(s)
@@ -1619,6 +1662,7 @@ struct KartView: View {
     /// animation. Spans ~0.012° gir ca. gate-nivå zoom.
     private func selectAndZoom(_ lead: MapLeadMock) {
         selectedLead = lead
+        hasSelectedLead = true
         withAnimation(.easeInOut(duration: 0.55)) {
             camera = .region(MKCoordinateRegion(
                 center: CLLocationCoordinate2D(latitude: lead.lat, longitude: lead.lon),

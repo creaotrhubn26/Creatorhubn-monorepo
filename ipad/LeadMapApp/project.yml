@@ -272,6 +272,12 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
         GENERATE_INFOPLIST_FILE: YES
         SWIFT_VERSION: "6"
+        # Mac Catalyst QA-sveip (qa-sweep-mac.sh): uten eksplisitt
+        # deployment target arver test-target-et SDK-ens versjon og
+        # nekter aa kjoere paa en Mac som ligger en OS-patch bak.
+        IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+        SUPPORTS_MACCATALYST: YES
+        MACOSX_DEPLOYMENT_TARGET: "26.0"
 
 # Eksplisitt scheme så UI-test-target-et er koblet til test-action.
 # archive-config beholdt for TestFlight-CI (fastlane bruker samme scheme).
