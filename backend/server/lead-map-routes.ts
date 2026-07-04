@@ -403,7 +403,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
            ) VALUES (
              gen_random_uuid(), $1, $2, $3, $4, $5,
              'unvisited', 'business_card_scan',
-             $6, $6, NOW(), $6, $7, $8,
+             $6::text, $6::text, NOW(), $6::text, $7, $8,
              NOW(), NOW()
            ) RETURNING id::text`,
           [
@@ -508,7 +508,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
              $5, $6, $7,
              $8::uuid, $9, $10,
              'unvisited', $11,
-             $12, $12, NOW(), $12,
+             $12::text, $12::text, NOW(), $12::text,
              $13,
              NOW(), NOW()
            ) RETURNING id::text`,
