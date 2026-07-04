@@ -233,6 +233,9 @@ export interface DemoBranding {
   brandColor?: string;
   /** Logo (URL eller data:image) vist i guide-headeren. */
   logoUrl?: string;
+  /** Flere logo-kandidater fra skann (header-logo, ikoner, og:image) — lar
+   *  brukeren velge når siden har flere. */
+  logoCandidates?: string[];
   /** White-label: skjul «Powered by»-vannmerke (typisk betalt tier). */
   hidePoweredBy?: boolean;
 }
