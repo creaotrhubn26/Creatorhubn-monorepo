@@ -308,6 +308,8 @@ const htmlPath = process.argv[2], outDir = process.argv[3];
 const N = parseInt(process.argv[4]||'48'), useChrome = process.argv[5]==='1';
 const scale = parseFloat(process.argv[6]||'2') || 2;
 const frame = process.argv[7]||'native';
+const easing = process.argv[8]||'outcubic';
+function ease(p){var x=Math.max(0,Math.min(1,p));switch(easing){case 'linear':return x;case 'out':return 1-(1-x)*(1-x);case 'inout':return x<0.5?2*x*x:1-Math.pow(-2*x+2,2)/2;default:return 1-Math.pow(1-x,3);}}
 let fit=false, FW=0, FH=0, vpW=1760, vpH=560, dsf=scale;
 const fm = /^(\d+)x(\d+)$/.exec(frame);
 if(fm){ FW=parseInt(fm[1],10); FH=parseInt(fm[2],10); fit=true; vpW=FW; vpH=FH; dsf=1; }
@@ -328,7 +330,7 @@ if(fit){
   }, {FW,FH});
 }
 for (let i=0;i<N;i++){
-  const prog = N>1 ? i/(N-1) : 1;
+  const prog = ease(N>1 ? i/(N-1) : 1);
   await p.evaluate((v)=>window.setProgress && window.setProgress(v), prog);
   if(fit) await p.screenshot({ path: `${outDir}/f${String(i).padStart(3,'0')}.png`, omitBackground:true, clip:{x:0,y:0,width:FW,height:FH} });
   else await el.screenshot({ path: `${outDir}/f${String(i).padStart(3,'0')}.png`, omitBackground:true });
@@ -353,6 +355,7 @@ async fn ig_capture_frames(
     frames: i64,
     scale: f64,
     frame: &str,
+    easing: &str,
     label: &str,
 ) -> Result<(std::path::PathBuf, String), String> {
     let dir = runtime_dir(app);
@@ -379,6 +382,7 @@ async fn ig_capture_frames(
         .arg(use_chrome)
         .arg(format!("{}", scale.clamp(1.0, 6.0)))
         .arg(if frame.is_empty() { "native" } else { frame })
+        .arg(if easing.is_empty() { "outcubic" } else { easing })
         .current_dir(&dir);
     let code = stream_child(app, cmd, &run_id, label).await?;
     if code != 0 {
@@ -401,10 +405,30 @@ fn ig_fade_vf(exit_sec: f64, duration_sec: f64, alpha: bool) -> Option<String> {
     })
 }
 
+/// Sekunder inngangs-fade tar (speiler ENTRANCE_DUR i frontenden).
+const IG_ENTRANCE_DUR: f64 = 0.5;
+
+/// Fade-INN de første sekundene når scenen har en inngang (ikke 'none').
+fn ig_fade_in_vf(entrance: &str, alpha: bool) -> Option<String> {
+    if entrance.is_empty() || entrance == "none" { return None; }
+    let d = IG_ENTRANCE_DUR;
+    Some(if alpha { format!("fade=t=in:st=0:d={d:.3}:alpha=1") } else { format!("fade=t=in:st=0:d={d:.3}") })
+}
+
+/// Kombiner fade-inn + fade-ut til én -vf-streng (komma-separert).
+fn ig_combine_vf(fin: Option<String>, fout: Option<String>) -> Option<String> {
+    match (fin, fout) {
+        (Some(a), Some(b)) => Some(format!("{a},{b}")),
+        (Some(a), None) => Some(a),
+        (None, b) => b,
+    }
+}
+
 /// Deterministisk innholds-hash for render-caching (ikke krypto — kun cache-
 /// nøkkel). Samme HTML + parametre → samme .mov, så uendrede scener slipper
 /// å re-rendres ved gjentatt «Send to Resolve».
-fn ig_cache_key(html: &str, fps: f64, scale: f64, exit_sec: f64, duration_sec: f64, frame: &str) -> String {
+#[allow(clippy::too_many_arguments)]
+fn ig_cache_key(html: &str, fps: f64, scale: f64, exit_sec: f64, duration_sec: f64, frame: &str, easing: &str, entrance: &str) -> String {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
     html.hash(&mut h);
@@ -414,6 +438,8 @@ fn ig_cache_key(html: &str, fps: f64, scale: f64, exit_sec: f64, duration_sec: f
     exit_sec.to_bits().hash(&mut h);
     duration_sec.to_bits().hash(&mut h);
     frame.hash(&mut h);
+    easing.hash(&mut h);
+    entrance.hash(&mut h);
     format!("{:016x}", h.finish())
 }
 
@@ -428,6 +454,7 @@ fn ig_out_dir(app: &AppHandle) -> std::path::PathBuf {
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn render_infographic(
     app: AppHandle,
     html: String,
@@ -437,29 +464,33 @@ pub async fn render_infographic(
     scale: Option<f64>,
     exit_sec: Option<f64>,
     frame: Option<String>,
+    easing: Option<String>,
+    entrance: Option<String>,
 ) -> Result<String, String> {
     let fps = fps.unwrap_or(30.0).clamp(12.0, 60.0);
     let scale = scale.unwrap_or(2.0);
     let exit = exit_sec.unwrap_or(0.0);
     let frame = frame.unwrap_or_else(|| "native".into());
+    let easing = easing.unwrap_or_else(|| "outcubic".into());
+    let entrance = entrance.unwrap_or_else(|| "none".into());
 
     // Render-caching: identisk innhold+parametre → gjenbruk ferdig .mov.
     let cache_dir = ig_out_dir(&app).join(".cache");
     let _ = std::fs::create_dir_all(&cache_dir);
-    let cached = cache_dir.join(format!("{}.mov", ig_cache_key(&html, fps, scale, exit, duration_sec, &frame)));
+    let cached = cache_dir.join(format!("{}.mov", ig_cache_key(&html, fps, scale, exit, duration_sec, &frame, &easing, &entrance)));
     if cached.exists() {
         return Ok(cached.to_string_lossy().to_string());
     }
 
     let frames = ((duration_sec.max(1.0)) * fps).round().clamp(8.0, 600.0) as i64;
-    let (work, _safe) = ig_capture_frames(&app, &html, &name, frames, scale, &frame, "render_infographic").await?;
+    let (work, _safe) = ig_capture_frames(&app, &html, &name, frames, scale, &frame, &easing, "render_infographic").await?;
 
     // ProRes 4444 m/alfa → cache-mappe (gjenbrukbar).
     let ffmpeg = find_bin("ffmpeg");
     let out_file = cached;
     let mut args: Vec<String> = vec!["-y".into(), "-framerate".into(), format!("{fps}"),
         "-i".into(), format!("{}/f%03d.png", work.to_string_lossy())];
-    if let Some(vf) = ig_fade_vf(exit_sec.unwrap_or(0.0), duration_sec, true) { args.push("-vf".into()); args.push(vf); }
+    if let Some(vf) = ig_combine_vf(ig_fade_in_vf(&entrance, true), ig_fade_vf(exit_sec.unwrap_or(0.0), duration_sec, true)) { args.push("-vf".into()); args.push(vf); }
     args.extend(["-c:v".into(), "prores_ks".into(), "-profile:v".into(), "4444".into(),
         "-pix_fmt".into(), "yuva444p10le".into(), out_file.to_string_lossy().to_string()]);
     let status = Command::new(&ffmpeg).args(&args).status().await
@@ -475,6 +506,7 @@ pub async fn render_infographic(
 /// | "apng" (animert PNG, alfa) | "png" (stillbilde ved full progresjon, alfa).
 /// Verifiserte ffmpeg-oppskrifter. Returnerer utfil-sti.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn export_infographic(
     app: AppHandle,
     html: String,
@@ -485,21 +517,25 @@ pub async fn export_infographic(
     scale: Option<f64>,
     exit_sec: Option<f64>,
     frame: Option<String>,
+    easing: Option<String>,
+    entrance: Option<String>,
 ) -> Result<String, String> {
     let fps = fps.unwrap_or(30.0).clamp(12.0, 60.0);
     let scale = scale.unwrap_or(2.0);
     let frame = frame.unwrap_or_else(|| "native".into());
+    let easing = easing.unwrap_or_else(|| "outcubic".into());
+    let entrance = entrance.unwrap_or_else(|| "none".into());
     let is_still = format == "png";
     let frames = if is_still { 1 } else { ((duration_sec.max(1.0)) * fps).round().clamp(8.0, 600.0) as i64 };
-    let (work, safe) = ig_capture_frames(&app, &html, &name, frames, scale, &frame, "export_infographic").await?;
+    let (work, safe) = ig_capture_frames(&app, &html, &name, frames, scale, &frame, &easing, "export_infographic").await?;
     let ffmpeg = find_bin("ffmpeg");
     let out_dir = ig_out_dir(&app);
     let frames_glob = format!("{}/f%03d.png", work.to_string_lossy());
     let fr = format!("{fps}");
     let ex = exit_sec.unwrap_or(0.0);
-    // Alfa-fade for alfa-formater, svart-fade for mp4.
-    let fade_alpha = ig_fade_vf(ex, duration_sec, true);
-    let fade_black = ig_fade_vf(ex, duration_sec, false);
+    // Inngangs-fade-inn + exit-fade-ut, kombinert. Alfa for alfa-formater, svart for mp4.
+    let fade_alpha = ig_combine_vf(ig_fade_in_vf(&entrance, true), ig_fade_vf(ex, duration_sec, true));
+    let fade_black = ig_combine_vf(ig_fade_in_vf(&entrance, false), ig_fade_vf(ex, duration_sec, false));
 
     let (out_file, args): (std::path::PathBuf, Vec<String>) = match format.as_str() {
         "png" => {

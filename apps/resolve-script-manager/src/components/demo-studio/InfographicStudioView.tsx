@@ -69,6 +69,12 @@ import SendIcon from '@mui/icons-material/Send';
 import PlaceIcon from '@mui/icons-material/Place';
 import GroupsIcon from '@mui/icons-material/Groups';
 import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
+import SkipPreviousIcon from '@mui/icons-material/SkipPrevious';
+import SkipNextIcon from '@mui/icons-material/SkipNext';
+import FastRewindIcon from '@mui/icons-material/FastRewind';
+import FastForwardIcon from '@mui/icons-material/FastForward';
+import ZoomInIcon from '@mui/icons-material/ZoomIn';
+import ZoomOutIcon from '@mui/icons-material/ZoomOut';
 
 const D = {
   bg: '#0e1320', panel: '#141b2b', panel2: '#1b2436', line: '#27314a',
@@ -213,6 +219,8 @@ function tplIcon(id: string, size = 16): React.ReactElement {
   return <GridViewIcon style={st} />;
 }
 
+type EntranceKind = 'none' | 'fade' | 'fadeup' | 'scale' | 'slideL' | 'slideR';
+type EasingKind = 'linear' | 'out' | 'inout' | 'outcubic';
 interface Scene {
   id: string; tplId: string; values: Record<string, string>; atSec: number;
   bindings?: Record<string, string>; posX?: number; posY?: number;
@@ -220,7 +228,39 @@ interface Scene {
   durSec?: number; accent?: string; logo?: string;
   /** Exit: sekunder fade-ut på slutten (0/udefinert = hardt kutt). */
   exitSec?: number;
+  /** Valgfritt scene-navn (vises i tidslinje/strip; faller tilbake til malnavn). */
+  name?: string;
+  /** Inngangs-animasjon (ytre wrapper-effekt på hele overlay-en). */
+  entrance?: EntranceKind;
+  /** Easing-kurve som remapper progresjonen (preview + render). */
+  easing?: EasingKind;
 }
+
+// Easing-kurver (remapper 0..1). Speiles i render (MJS) via samme navn.
+const EASINGS: Record<EasingKind, (p: number) => number> = {
+  linear: (p) => p,
+  out: (p) => 1 - (1 - p) * (1 - p),
+  inout: (p) => (p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2),
+  outcubic: (p) => 1 - Math.pow(1 - p, 3),
+};
+const EASING_LABEL: Record<EasingKind, string> = { linear: 'Lineær', out: 'Ease Out', inout: 'Ease In-Out', outcubic: 'Ease Out Cubic' };
+const easeVal = (k: EasingKind | undefined, p: number): number => (EASINGS[k || 'outcubic'] || EASINGS.outcubic)(Math.max(0, Math.min(1, p)));
+
+// Inngangs-preset: CSS-transform + opacity ut fra «inne-faktor» ef (0=før, 1=inne).
+const ENTRANCE_LABEL: Record<EntranceKind, string> = { none: 'Ingen', fade: 'Fade', fadeup: 'Fade opp', scale: 'Skalér inn', slideL: 'Skyv fra venstre', slideR: 'Skyv fra høyre' };
+const ENTRANCE_ORDER: EntranceKind[] = ['none', 'fade', 'fadeup', 'scale', 'slideL', 'slideR'];
+function entranceStyle(kind: EntranceKind | undefined, ef: number): { transform: string; opacity: number } {
+  const e = Math.max(0, Math.min(1, ef));
+  switch (kind) {
+    case 'fade': return { transform: 'none', opacity: e };
+    case 'fadeup': return { transform: `translateY(${((1 - e) * 40).toFixed(1)}px)`, opacity: e };
+    case 'scale': return { transform: `scale(${(0.86 + 0.14 * e).toFixed(4)})`, opacity: e };
+    case 'slideL': return { transform: `translateX(${((1 - e) * -60).toFixed(1)}px)`, opacity: e };
+    case 'slideR': return { transform: `translateX(${((1 - e) * 60).toFixed(1)}px)`, opacity: e };
+    default: return { transform: 'none', opacity: 1 };
+  }
+}
+const ENTRANCE_DUR = 0.5; // sekunder inngangen tar
 let _sid = 1;
 const newScene = (tplId: string, atSec: number): Scene => ({ id: `s${_sid++}`, tplId, values: {}, atSec, bindings: {} });
 
@@ -888,8 +928,27 @@ export function InfographicStudioView(
 
   // Simuler exit-fade i preview ved å sette #wrap-opacity (rendret klipp bruker
   // ffmpeg alfa-fade — dette speiler det visuelt).
-  const setPreviewOpacity = (o: number) => {
-    try { const w = iframeRef.current?.contentDocument?.getElementById('wrap') as HTMLElement | null; if (w) w.style.opacity = String(o); } catch { /* */ }
+  // Inngangs-bevegelse (body-transform) × opacity (#wrap = inngang × exit). Body
+  // bærer inngangs-transformen så den komponerer med #wrap sin fit-scale.
+  const setPreviewMotion = (sc: Scene, elapsedSec: number, exitOpacity: number) => {
+    try {
+      const doc = iframeRef.current?.contentDocument; if (!doc) return;
+      const ef = easeVal('out', ENTRANCE_DUR > 0 ? elapsedSec / ENTRANCE_DUR : 1);
+      const en = entranceStyle(sc.entrance, ef);
+      if (doc.body) { doc.body.style.transform = en.transform; doc.body.style.transformOrigin = 'center center'; }
+      const w = doc.getElementById('wrap') as HTMLElement | null;
+      if (w) w.style.opacity = String(Math.max(0, Math.min(1, en.opacity * exitOpacity)));
+    } catch { /* */ }
+  };
+  // Sett ett scrub-bilde: eased progresjon + inngang/exit ved lokal p.
+  const applyScrubFrame = (sc: Scene, p: number) => {
+    const t = INFOGRAPHIC_TEMPLATES.find((x) => x.id === sc.tplId) || INFOGRAPHIC_TEMPLATES[0];
+    const durS = effDur(sc, t);
+    setPreviewProgress(easeVal(sc.easing, p));
+    const exitS = Math.max(0, Math.min(sc.exitSec ?? 0, durS));
+    const exitStartP = durS > 0 ? (durS - exitS) / durS : 1;
+    const exitOpacity = exitS > 0 && p >= exitStartP ? Math.max(0, 1 - (p - exitStartP) / ((exitS / durS) || 1)) : 1;
+    setPreviewMotion(sc, p * durS, exitOpacity);
   };
   const play = (durSecOverride?: number) => {
     const win = previewWin();
@@ -898,12 +957,12 @@ export function InfographicStudioView(
     const dur = Math.max(1, durS) * 1000, t0 = performance.now();
     const exitMs = Math.max(0, Math.min(scene.exitSec ?? 0, durS)) * 1000;
     const exitStart = dur - exitMs;
-    setPreviewOpacity(1);
     const tick = (now: number) => {
-      const el = now - t0;
-      const p = Math.min(1, el / dur);
-      try { win.setProgress!(p); } catch { /* */ }
-      if (exitMs > 0) setPreviewOpacity(el >= exitStart ? Math.max(0, 1 - (el - exitStart) / exitMs) : 1);
+      const elMs = now - t0;
+      const p = Math.min(1, elMs / dur);
+      try { win.setProgress!(easeVal(scene.easing, p)); } catch { /* */ }
+      const exitOpacity = exitMs > 0 && elMs >= exitStart ? Math.max(0, 1 - (elMs - exitStart) / exitMs) : 1;
+      setPreviewMotion(scene, elMs / 1000, exitOpacity);
       if (p < 1) rafRef.current = requestAnimationFrame(tick);
     };
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
@@ -947,10 +1006,10 @@ export function InfographicStudioView(
   };
   const scrubTo = (t: number) => {
     setScrubT(t); const { index, p } = sceneAtTime(t);
-    if (index !== sel) setSel(index); else setPreviewProgress(p);
+    if (index !== sel) setSel(index); else applyScrubFrame(scenes[index], p);
   };
-  // Når scrub bytter scene, vent på ny iframe-load og sett progresjonen.
-  useEffect(() => { if (playingAll || scrubT > 0) { const { p } = sceneAtTime(scrubT); const h = setTimeout(() => setPreviewProgress(p), 60); return () => clearTimeout(h); }
+  // Når scrub bytter scene, vent på ny iframe-load og sett progresjonen (m/ easing+inngang).
+  useEffect(() => { if (playingAll || scrubT > 0) { const { p } = sceneAtTime(scrubT); const h = setTimeout(() => applyScrubFrame(scene, p), 60); return () => clearTimeout(h); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sel]);
   const stopPlayAll = () => { if (playAllRef.current) cancelAnimationFrame(playAllRef.current); playAllRef.current = null; setPlayingAll(false); };
@@ -966,6 +1025,28 @@ export function InfographicStudioView(
     playAllRef.current = requestAnimationFrame(tick);
   };
   useEffect(() => () => stopPlayAll(), []);
+  // ── Rik multi-scene-tidslinje: zoom (px/s), transport, dra-flytt/-endre ──
+  const [tlZoom, setTlZoom] = useState(90);
+  const fmtTC = (s: number) => { const m = Math.floor(Math.max(0, s) / 60); const sec = Math.max(0, s) - m * 60; return `${m}:${sec.toFixed(1).padStart(4, '0')}`; };
+  const jumpScene = (dir: 1 | -1) => {
+    const order = scenes.map((s, i) => ({ t: s.atSec, i })).sort((a, b) => a.t - b.t);
+    const target = dir > 0 ? order.find((o) => o.t > scrubT + 0.05) : [...order].reverse().find((o) => o.t < scrubT - 0.05);
+    if (target) { setSel(target.i); scrubTo(target.t); } else scrubTo(dir > 0 ? totalDur : 0);
+  };
+  // Dra en scene-klipp: body = flytt atSec, høyre kant = endre varighet.
+  const onClipDrag = (e: React.PointerEvent, i: number, mode: 'move' | 'resize') => {
+    e.stopPropagation(); e.preventDefault();
+    const sc = scenes[i]; const t = INFOGRAPHIC_TEMPLATES.find((x) => x.id === sc.tplId) || INFOGRAPHIC_TEMPLATES[0];
+    const startX = e.clientX, atSec0 = sc.atSec, dur0 = effDur(sc, t), z = tlZoom;
+    setSel(i);
+    const move = (ev: PointerEvent) => {
+      const dx = (ev.clientX - startX) / z;
+      if (mode === 'move') { const at = Math.max(0, Math.round((atSec0 + dx) * 10) / 10); setScenes((ss) => ss.map((s, idx) => (idx === i ? { ...s, atSec: at } : s))); }
+      else { const dur = Math.max(1, Math.round((dur0 + dx) * 10) / 10); setScenes((ss) => ss.map((s, idx) => (idx === i ? { ...s, durSec: dur } : s))); }
+    };
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+  };
   // Bundlede fonter for ikon-velgeren i studio-UI-et — offline-robust (før:
   // Google Fonts-CDN-lenke som brøt ikonene offline).
   useEffect(() => {
@@ -1012,7 +1093,7 @@ export function InfographicStudioView(
         const html = `<script>window.__CFG__=${JSON.stringify(cfg)}</script>` + htmlForTemplate(t);
         setRenderProgress({ done: i, total: scenes.length });
         setMsg(`Rendrer scene ${i + 1}/${scenes.length} (${t.name}) …`);
-        const out = await invoke<string>('render_infographic', { html, durationSec: dur, name: `${t.id}-${sc.id}-${Date.now()}`, fps, scale, exitSec: sc.exitSec ?? 0, frame: frameArg() });
+        const out = await invoke<string>('render_infographic', { html, durationSec: dur, name: `${t.id}-${sc.id}-${Date.now()}`, fps, scale, exitSec: sc.exitSec ?? 0, frame: frameArg(), easing: sc.easing ?? 'outcubic', entrance: sc.entrance ?? 'none' });
         overlays.push({ path: out, atSec: sc.atSec, durationSec: dur, track: overlayTrack, posX: sc.posX ?? 50, posY: sc.posY ?? 50 });
         recordTemplateUsage(t.id); // implisitt: brukt mal = smak-signal (uten klikk)
       }
@@ -1049,7 +1130,7 @@ export function InfographicStudioView(
       if (st && !st.playwrightInstalled) { setNeedsPlaywright(true); setMsg('Playwright-runtime mangler — sett det opp for å eksportere.'); return; }
       const cfg = buildInfographicConfig(tpl, fieldVals(scene, tpl), { accent: sceneAccent(scene), ink: '#1f2d4a', logo: sceneLogo(scene) || undefined });
       const html = `<script>window.__CFG__=${JSON.stringify(cfg)}</script>` + htmlForTemplate(tpl);
-      const out = await invoke<string>('export_infographic', { html, durationSec: effDur(scene, tpl), name: `${tpl.id}-${scene.id}-${Date.now()}`, format: exportFmt, fps, scale, exitSec: scene.exitSec ?? 0, frame: frameArg() });
+      const out = await invoke<string>('export_infographic', { html, durationSec: effDur(scene, tpl), name: `${tpl.id}-${scene.id}-${Date.now()}`, format: exportFmt, fps, scale, exitSec: scene.exitSec ?? 0, frame: frameArg(), easing: scene.easing ?? 'outcubic', entrance: scene.entrance ?? 'none' });
       setMsg(`Eksportert: ${out}`);
       recordTemplateUsage(tpl.id);
       if (aiLastPick && aiLastPick.tplId === tpl.id) { recordAiFeedback(aiLastPick.desc, aiLastPick.tplId, true, 0.5); setAiLastPick(null); }
@@ -1611,33 +1692,62 @@ export function InfographicStudioView(
             </div>
             )}
           </div>
-          {/* Tidslinje-scrubber: scenene plassert i tid (atSec + varighet), med
-              playhead. Klikk/dra scrubber for å inspisere sekvensen; overlappende
-              scener markeres rødt. */}
-          <div style={{ borderTop: `1px solid ${D.line}`, background: D.panel, padding: '8px 16px 2px' }}>
+          {/* Rik multi-scene-tidslinje: transport + timecode + zoom + dra scener
+              som klipp (body = flytt, høyre kant = endre varighet). */}
+          <div style={{ borderTop: `1px solid ${D.line}`, background: D.panel, padding: '8px 16px 6px' }}>
             {(() => {
-              // Oppdag overlapp for varsel.
               const spans = scenes.map((sc) => { const t = INFOGRAPHIC_TEMPLATES.find((x) => x.id === sc.tplId) || INFOGRAPHIC_TEMPLATES[0]; return { a: sc.atSec, b: sc.atSec + effDur(sc, t) }; });
               const overlap = spans.some((s, i) => spans.some((o, j) => j !== i && s.a < o.b && o.a < s.b));
-              const onScrub = (e: React.MouseEvent<HTMLDivElement>) => {
-                const r = e.currentTarget.getBoundingClientRect();
-                scrubTo(Math.max(0, Math.min(totalDur, ((e.clientX - r.left) / r.width) * totalDur)));
-              };
+              const px = tlZoom;
+              const innerW = Math.max(320, totalDur * px + 60);
+              const rowH = 24;
+              const tickStep = px < 55 ? 2 : 1;
+              const ticks: number[] = []; for (let s = 0; s <= Math.ceil(totalDur); s += tickStep) ticks.push(s);
               return (<>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                  <span style={{ fontSize: 10.5, color: D.faint }}>Tidslinje · {totalDur.toFixed(1)}s</span>
-                  {overlap && <span style={{ fontSize: 10.5, color: '#f0a882', display: 'inline-flex', alignItems: 'center', gap: 4 }}><WarningAmberIcon style={{ fontSize: 12 }} /> scener overlapper i tid</span>}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 6 }}>
+                  <button style={{ ...topBtn, padding: '3px 6px' }} onClick={() => scrubTo(0)} title="Til start"><SkipPreviousIcon style={{ fontSize: 16 }} /></button>
+                  <button style={{ ...topBtn, padding: '3px 6px' }} onClick={() => jumpScene(-1)} title="Forrige scene"><FastRewindIcon style={{ fontSize: 16 }} /></button>
+                  <button style={{ ...topBtn, padding: '3px 9px' }} onClick={() => (playingAll ? stopPlayAll() : playAll())} title="Spill / pause">{playingAll ? <PauseIcon style={{ fontSize: 16 }} /> : <PlayArrowIcon style={{ fontSize: 16 }} />}</button>
+                  <button style={{ ...topBtn, padding: '3px 6px' }} onClick={() => jumpScene(1)} title="Neste scene"><FastForwardIcon style={{ fontSize: 16 }} /></button>
+                  <button style={{ ...topBtn, padding: '3px 6px' }} onClick={() => scrubTo(totalDur)} title="Til slutt"><SkipNextIcon style={{ fontSize: 16 }} /></button>
+                  <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 12, color: D.ink, marginLeft: 8, fontWeight: 600 }}>{fmtTC(scrubT)} <span style={{ color: D.faint, fontWeight: 400 }}>/ {fmtTC(totalDur)}</span></span>
+                  {overlap && <span style={{ fontSize: 10.5, color: '#f0a882', display: 'inline-flex', alignItems: 'center', gap: 3, marginLeft: 8 }}><WarningAmberIcon style={{ fontSize: 12 }} /> overlapp</span>}
                   <div style={{ flex: 1 }} />
-                  <span style={{ fontSize: 10.5, color: D.faint }}>{scrubT.toFixed(1)}s</span>
+                  <ZoomOutIcon style={{ fontSize: 15, color: D.faint }} />
+                  <input type="range" min={30} max={260} value={tlZoom} onChange={(e) => setTlZoom(parseInt(e.target.value, 10))} style={{ width: 90 }} title="Zoom tidslinje" />
+                  <ZoomInIcon style={{ fontSize: 15, color: D.faint }} />
                 </div>
-                <div onMouseDown={onScrub} style={{ position: 'relative', height: 26, borderRadius: 6, background: D.bg, border: `1px solid ${D.line}`, cursor: 'pointer', overflow: 'hidden' }}>
-                  {scenes.map((sc, i) => {
-                    const t = INFOGRAPHIC_TEMPLATES.find((x) => x.id === sc.tplId) || INFOGRAPHIC_TEMPLATES[0];
-                    const left = (sc.atSec / totalDur) * 100, w = Math.max(2, (effDur(sc, t) / totalDur) * 100);
-                    return <div key={sc.id} onClick={(e) => { e.stopPropagation(); setSel(i); }} title={`Scene ${i + 1}: ${t.name} (${sc.atSec}–${(sc.atSec + effDur(sc, t)).toFixed(1)}s)`}
-                      style={{ position: 'absolute', left: `${left}%`, width: `${w}%`, top: 3, bottom: 3, borderRadius: 4, background: i === sel ? D.accent : D.panel2, border: `1px solid ${i === sel ? D.accent : D.line}`, display: 'flex', alignItems: 'center', paddingLeft: 5, overflow: 'hidden', fontSize: 9.5, color: i === sel ? '#fff' : D.soft, whiteSpace: 'nowrap' }}>{i + 1}</div>;
-                  })}
-                  <div style={{ position: 'absolute', left: `${(scrubT / totalDur) * 100}%`, top: 0, bottom: 0, width: 2, background: D.teal, pointerEvents: 'none' }} />
+                <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 148 }}>
+                  <div style={{ position: 'relative', width: innerW }}>
+                    {/* Linjal — klikk for å scrubbe. */}
+                    <div onMouseDown={(e) => { const r = e.currentTarget.getBoundingClientRect(); scrubTo(Math.max(0, Math.min(totalDur, (e.clientX - r.left) / px))); }}
+                      style={{ position: 'relative', height: 16, borderBottom: `1px solid ${D.line}`, cursor: 'pointer' }}>
+                      {ticks.map((s) => (
+                        <div key={s} style={{ position: 'absolute', left: s * px, top: 0, bottom: 0, borderLeft: `1px solid ${D.line}`, paddingLeft: 3, fontSize: 8.5, color: D.faint }}>{s}s</div>
+                      ))}
+                    </div>
+                    {/* Én rad per scene som dragbart klipp. */}
+                    <div style={{ position: 'relative', paddingTop: 4 }}>
+                      {scenes.map((sc, i) => {
+                        const t = INFOGRAPHIC_TEMPLATES.find((x) => x.id === sc.tplId) || INFOGRAPHIC_TEMPLATES[0];
+                        const left = sc.atSec * px, w = Math.max(16, effDur(sc, t) * px);
+                        const active = i === sel;
+                        return (
+                          <div key={sc.id} style={{ position: 'relative', height: rowH, marginBottom: 3 }}>
+                            <div onPointerDown={(e) => onClipDrag(e, i, 'move')} onClick={() => setSel(i)}
+                              title={`${sc.name || t.name} · ${sc.atSec.toFixed(1)}–${(sc.atSec + effDur(sc, t)).toFixed(1)}s`}
+                              style={{ position: 'absolute', left, width: w, top: 0, height: rowH, borderRadius: 5, background: active ? D.accent : D.panel2, border: `1px solid ${active ? D.accent : D.line}`, display: 'flex', alignItems: 'center', gap: 5, padding: '0 8px', overflow: 'hidden', cursor: 'grab', color: active ? '#fff' : D.soft, fontSize: 10.5, whiteSpace: 'nowrap', userSelect: 'none', touchAction: 'none' }}>
+                              <span style={{ display: 'inline-flex', flex: 'none' }}>{tplIcon(sc.tplId, 12)}</span>
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{sc.name || t.name}</span>
+                              <div onPointerDown={(e) => onClipDrag(e, i, 'resize')} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 7, cursor: 'ew-resize', background: 'rgba(255,255,255,0.14)' }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {/* Playhead. */}
+                    <div style={{ position: 'absolute', left: scrubT * px, top: 0, bottom: 0, width: 2, background: D.teal, pointerEvents: 'none', zIndex: 5 }} />
+                  </div>
                 </div>
               </>);
             })()}
@@ -1663,6 +1773,7 @@ export function InfographicStudioView(
                 })}
                 <div onClick={addScene} style={{ width: 56, flex: 'none', borderRadius: 9, border: `1px dashed ${D.line}`, display: 'grid', placeItems: 'center', color: D.faint, cursor: 'pointer' }} title="Ny scene"><AddIcon style={{ fontSize: 22 }} /></div>
               </div>
+              <input value={scene.name ?? ''} onChange={(e) => updateScene({ name: e.target.value })} placeholder={tpl.name} title="Scene-navn (vises i tidslinjen)" style={{ ...inp, width: 130, flex: 'none' }} />
               <label style={{ fontSize: 12, color: D.soft, display: 'flex', alignItems: 'center', gap: 7, flex: 'none' }}>Dukker opp ved
                 <input style={{ ...inp, width: 64 }} type="number" min="0" step="0.5" value={scene.atSec} onChange={(e) => updateScene({ atSec: parseFloat(e.target.value) || 0 })} /> s</label>
               {CALLOUT_IDS.has(scene.tplId) && (
@@ -1756,6 +1867,33 @@ export function InfographicStudioView(
                 <input style={{ ...inp, width: 64 }} type="number" min={1} step={0.5} value={effDur(scene, tpl)} onChange={(e) => updateScene({ durSec: Math.max(1, parseFloat(e.target.value) || tpl.durationSec) })} /><span style={{ fontSize: 12, color: D.soft }}>s</span>
               </div>
               {scene.durSec != null && <button style={{ ...topBtn, padding: '4px 10px', fontSize: 11.5, marginBottom: 12 }} onClick={() => updateScene({ durSec: undefined })}>Tilbakestill til mal ({tpl.durationSec}s)</button>}
+              {/* Inngang: ytre wrapper-effekt på hele overlay-en (preview + render). */}
+              <div style={{ fontSize: 11, fontWeight: 700, color: D.soft, textTransform: 'uppercase', margin: '4px 0 8px' }}>Inngang</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 6 }}>
+                {ENTRANCE_ORDER.map((en) => {
+                  const active = (scene.entrance || 'none') === en;
+                  return (
+                    <button key={en} onClick={() => { updateScene({ entrance: en }); window.setTimeout(() => play(), 30); }}
+                      style={{ ...topBtn, justifyContent: 'center', fontSize: 11, padding: '6px 0', background: active ? D.accent : D.panel2, border: `1px solid ${active ? D.accent : D.line}` }}>
+                      {ENTRANCE_LABEL[en]}
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{ fontSize: 9.5, color: D.faint, lineHeight: 1.4, marginBottom: 14 }}>Bevegelsen vises i preview og render (skyv/skalér via ffmpeg-komposisjon; alltid mykt fade-inn).</div>
+              {/* Easing: remapper progresjonen (både preview og render). */}
+              <div style={{ fontSize: 11, fontWeight: 700, color: D.soft, textTransform: 'uppercase', margin: '4px 0 8px' }}>Easing <span style={{ color: D.faint, fontWeight: 500 }}>· kurve</span></div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 14 }}>
+                {(['linear', 'out', 'inout', 'outcubic'] as EasingKind[]).map((ek) => {
+                  const active = (scene.easing || 'outcubic') === ek;
+                  return (
+                    <button key={ek} onClick={() => { updateScene({ easing: ek }); window.setTimeout(() => play(), 30); }}
+                      style={{ ...topBtn, justifyContent: 'center', fontSize: 11, padding: '6px 0', background: active ? D.accent : D.panel2, border: `1px solid ${active ? D.accent : D.line}` }}>
+                      {EASING_LABEL[ek]}
+                    </button>
+                  );
+                })}
+              </div>
               {/* Exit: fade ut på slutten (ekte alfa-fade i render + speilet i preview). */}
               <div style={{ fontSize: 11, fontWeight: 700, color: D.soft, textTransform: 'uppercase', margin: '4px 0 8px' }}>Utgang</div>
               <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
