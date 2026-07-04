@@ -32,8 +32,8 @@ enum TBrand {
     static let green = Color(red: 0.20, green: 0.85, blue: 0.60)
     static let blue = Color(red: 0.34, green: 0.60, blue: 0.98)
     static let pink = Color(red: 0.98, green: 0.35, blue: 0.65)
-    static let textSecondary = Color.white.opacity(0.55)
-    static let textTertiary = Color.white.opacity(0.35)
+    static let textSecondary = Color.white.opacity(0.62)
+    static let textTertiary = Color.white.opacity(0.45)
 }
 
 // MARK: - Models
@@ -504,6 +504,9 @@ struct TeamView: View {
         let isDemo = DemoModeManager.isActiveNonisolated
         let hasData = !TeamData.members.isEmpty
         let value = isDemo ? k.bigValue : k.liveValue
+        // «—» fra liveValue = KPI-en kan ikke beregnes ærlig enda
+        // (f.eks. momentum m/ 1 medlem, score uten scorede leads).
+        let noData = !hasData || value == "—"
         return Button { selectedKPI = k } label: {
             VStack(alignment: .leading, spacing: 7) {
                 Text(k.rawValue)
@@ -525,7 +528,7 @@ struct TeamView: View {
                     }
                 }
                 HStack {
-                    Text(hasData ? (isDemo ? "vs. forrige periode" : "live fra teamet") : "Ingen data")
+                    Text(noData ? "Ingen data enda" : (isDemo ? "vs. forrige periode" : "live fra teamet"))
                         .font(.system(size: 10))
                         .foregroundStyle(TBrand.textTertiary)
                     Spacer()

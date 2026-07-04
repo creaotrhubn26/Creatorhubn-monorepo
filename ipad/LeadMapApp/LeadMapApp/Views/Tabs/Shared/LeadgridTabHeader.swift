@@ -36,8 +36,8 @@ private enum Brand {
     static let orange = Color(red: 0.98, green: 0.55, blue: 0.10)
     static let green = Color(red: 0.20, green: 0.85, blue: 0.60)
     static let blue = Color(red: 0.34, green: 0.60, blue: 0.98)
-    static let textSecondary = Color.white.opacity(0.55)
-    static let textTertiary = Color.white.opacity(0.35)
+    static let textSecondary = Color.white.opacity(0.62)
+    static let textTertiary = Color.white.opacity(0.45)
 }
 
 // MARK: - LeadgridTabHeader
@@ -470,6 +470,7 @@ struct LeadgridTabHeader<Extra: View>: View {
             iconTile(systemName: "chart.line.uptrend.xyaxis", size: 14)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Analyse")
         .macCatalystHover()
         .popover(isPresented: $analyseOpen, arrowEdge: .top) {
             analysePopoverContent
@@ -489,6 +490,9 @@ struct LeadgridTabHeader<Extra: View>: View {
             }
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(upcomingFollowups > 0
+            ? "Neste handlinger, \(upcomingFollowups) forfaller snart"
+            : "Neste handlinger")
         .macCatalystHover()
         .popover(isPresented: $nextActionsOpen, arrowEdge: .top) {
             nextActionsPopoverContent
@@ -502,6 +506,7 @@ struct LeadgridTabHeader<Extra: View>: View {
             iconTile(systemName: "clock.arrow.circlepath", size: 14)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Siste aktivitet")
         .macCatalystHover()
         .popover(isPresented: $activitiesOpen, arrowEdge: .top) {
             activitiesPopoverContent
@@ -522,6 +527,9 @@ struct LeadgridTabHeader<Extra: View>: View {
             }
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(unreadCount > 0
+            ? "Varsler, \(unreadCount) uleste"
+            : "Varsler")
         .macCatalystHover()
         .popover(isPresented: $notificationsOpen, arrowEdge: .top) {
             notificationsPopoverContent
@@ -565,6 +573,7 @@ struct LeadgridTabHeader<Extra: View>: View {
             }
         }
         .menuStyle(.borderlessButton)
+        .accessibilityLabel("Flere verktøy")
         .background(
             Color.clear
                 .popover(isPresented: $analyseOpen, arrowEdge: .top) {

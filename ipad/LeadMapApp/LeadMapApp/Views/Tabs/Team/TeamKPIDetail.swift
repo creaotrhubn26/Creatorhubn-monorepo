@@ -51,10 +51,13 @@ enum TeamKPI: String, Identifiable, CaseIterable {
         case .wonValue:
             return "NOK \(fmt(members.reduce(0) { $0 + $1.valueNok }))"
         case .avgLeadScore:
-            return "\(store.avgLeadScore)"
+            // 0 = ingen leads har score enda — vis «—», ikke et falskt tall.
+            return store.avgLeadScore > 0 ? "\(store.avgLeadScore)" : "—"
         case .momentum:
-            return members.isEmpty
-                ? "0 %"
+            // Momentum er RELATIV produktivitet (vs. beste selger) — med
+            // under 2 medlemmer er den per definisjon 100 % og lyver.
+            return members.count < 2
+                ? "—"
                 : "\(members.reduce(0) { $0 + $1.momentum } / members.count) %"
         case .sales:
             return fmt(store.salesCount)
