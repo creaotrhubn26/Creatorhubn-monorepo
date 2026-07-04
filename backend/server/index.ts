@@ -1931,6 +1931,13 @@ const KNOWN_ORIGINS = new Set([
   'http://localhost:3000',
   'http://127.0.0.1:5001',
   'http://127.0.0.1:5173',
+  // Post Agent desktop-app (Tauri v2 webview-origin): macOS = tauri://localhost,
+  // Windows/Linux = http(s)://tauri.localhost. Sign-in-dialogen bruker webview-
+  // fetch (CORS-subjekt) mot /api/post-agent/pairing/*, så disse MÅ stå her —
+  // ellers «TypeError: Load failed» ved innlogging i det signerte bygget.
+  'tauri://localhost',
+  'http://tauri.localhost',
+  'https://tauri.localhost',
 ]);
 app.use(cors({
   origin: (origin, callback) => {
