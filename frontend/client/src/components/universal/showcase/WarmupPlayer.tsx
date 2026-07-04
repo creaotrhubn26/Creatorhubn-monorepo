@@ -37,6 +37,30 @@ const WarmupPlayer: React.FC<{ token: string; musicalKey?: string }> = ({ token,
   React.useEffect(() => { if (token) load(); }, [token, load]);
 
   const step = active?.steps?.[stepIdx];
+
+  // Pustemønster fra steget (satt av produsenten i byggeren). Animasjonen og
+  // fase-teksten («Pust inn / Hold / Pust ut») synkes til inhale/hold/exhale/
+  // holdAfter i sekunder; uten mønster faller vi tilbake til rolig 8s-puls.
+  const br = React.useMemo(() => {
+    const b = step?.breathing;
+    if (!b || !(Number(b.inhale) > 0) || !(Number(b.exhale) > 0)) return null;
+    return { inhale: Number(b.inhale), hold: Math.max(0, Number(b.hold) || 0), exhale: Number(b.exhale), holdAfter: Math.max(0, Number(b.holdAfter) || 0) };
+  }, [step]);
+  const brTotal = br ? br.inhale + br.hold + br.exhale + br.holdAfter : 0;
+  const brAnim = React.useMemo(() => {
+    if (!br || brTotal <= 0) return null;
+    const pct = (s: number) => `${((s / brTotal) * 100).toFixed(2)}%`;
+    const name = `wbr${String(brTotal).replace('.', '_')}i${String(br.inhale).replace('.', '_')}h${String(br.hold).replace('.', '_')}e${String(br.exhale).replace('.', '_')}`;
+    const frames: Record<string, any> = { '0%': { transform: 'scale(0.7)' }, [pct(br.inhale)]: { transform: 'scale(1.05)' } };
+    if (br.hold > 0) frames[pct(br.inhale + br.hold)] = { transform: 'scale(1.05)' };
+    frames[pct(br.inhale + br.hold + br.exhale)] = { transform: 'scale(0.7)' };
+    frames['100%'] = { transform: 'scale(0.7)' };
+    return { name, frames, duration: brTotal };
+  }, [br, brTotal]);
+  const elapsed = Math.max(0, (step?.durationSec || 60) - remaining);
+  const inCycle = brTotal > 0 ? elapsed % brTotal : 0;
+  const brPhase = !br ? '' : inCycle < br.inhale ? 'Pust inn' : inCycle < br.inhale + br.hold ? 'Hold' : inCycle < br.inhale + br.hold + br.exhale ? 'Pust ut' : 'Hold';
+
   // Nedtelling
   React.useEffect(() => {
     if (!playing || !step) return;
@@ -98,11 +122,16 @@ const WarmupPlayer: React.FC<{ token: string; musicalKey?: string }> = ({ token,
               <Box sx={{ position: 'relative', width: 160, height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Box sx={{
                   width: 130, height: 130, borderRadius: '50%', border: `3px solid ${ACCENT}`,
-                  bgcolor: 'rgba(255,107,53,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  animation: playing && /breath|mindful/i.test(step.type) ? 'wbreathe 8s ease-in-out infinite' : 'none',
+                  bgcolor: 'rgba(255,107,53,0.12)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                  animation: brAnim
+                    ? `${brAnim.name} ${brAnim.duration}s ease-in-out infinite`
+                    : /breath|mindful/i.test(step.type) ? 'wbreathe 8s ease-in-out infinite' : 'none',
+                  animationPlayState: playing ? 'running' : 'paused',
+                  ...(brAnim ? { [`@keyframes ${brAnim.name}`]: brAnim.frames } : {}),
                   '@keyframes wbreathe': { '0%,100%': { transform: 'scale(0.7)' }, '50%': { transform: 'scale(1.05)' } },
                 }}>
                   <Typography sx={{ fontSize: '1.6rem', fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{Math.floor(remaining / 60)}:{String(remaining % 60).padStart(2, '0')}</Typography>
+                  {brAnim && <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color: ACCENT, letterSpacing: 0.4 }}>{playing ? brPhase : 'Pause'}</Typography>}
                 </Box>
               </Box>
               {step.instruction && <Typography sx={{ fontSize: '0.82rem', color: MUTED, lineHeight: 1.5 }}>{step.instruction}</Typography>}
