@@ -14,7 +14,7 @@ import {
   addCustomTemplate, removeCustomTemplate, isCustomTemplate, customTemplateIds,
   type InfographicTemplate,
 } from './infographicStudio';
-import { aiPickTemplate, recordAiFeedback, aiFeedbackCount } from './infographicAI';
+import { aiPickTemplate, recordAiFeedback, recordTemplateUsage, aiFeedbackCount } from './infographicAI';
 import { isAiConnected } from '../../services/claudeProxyService';
 import { FONT_FACE_CSS } from './fontAssets.generated';
 import { ROLE_ROOM_LOGO, CREATORHUB_LOGO } from './kitLogos.generated';
@@ -428,7 +428,15 @@ export function InfographicStudioView(
     if (dataKey) b[k] = dataKey; else delete b[k];
     updateScene({ bindings: b });
   };
-  const pickTemplate = (id: string) => updateScene({ tplId: id });
+  const pickTemplate = (id: string) => {
+    // Implisitt læring: byttet brukeren MANUELT bort fra en fersk AI-anbefaling
+    // (på samme scene, før bruk)? Da var anbefalingen feil → svakt negativt signal.
+    if (aiLastPick && aiLastPick.tplId === scene.tplId && id !== aiLastPick.tplId) {
+      recordAiFeedback(aiLastPick.desc, aiLastPick.tplId, false, 0.5);
+      setAiLastPick(null);
+    }
+    updateScene({ tplId: id });
+  };
   const addScene = () => {
     const last = scenes[scenes.length - 1];
     const lastTpl = INFOGRAPHIC_TEMPLATES.find((t) => t.id === last.tplId) || INFOGRAPHIC_TEMPLATES[0];
@@ -597,6 +605,7 @@ export function InfographicStudioView(
         setMsg(`Rendrer scene ${i + 1}/${scenes.length} (${t.name}) …`);
         const out = await invoke<string>('render_infographic', { html, durationSec: dur, name: `${t.id}-${sc.id}-${Date.now()}`, fps, scale, exitSec: sc.exitSec ?? 0 });
         overlays.push({ path: out, atSec: sc.atSec, durationSec: dur, track: overlayTrack, posX: sc.posX ?? 50, posY: sc.posY ?? 50 });
+        recordTemplateUsage(t.id); // implisitt: brukt mal = smak-signal (uten klikk)
       }
       setRenderProgress({ done: scenes.length, total: scenes.length });
       setMsg('Sender alle scener til Resolve …');
@@ -605,7 +614,13 @@ export function InfographicStudioView(
       if (!summary.succeeded || errEvt) {
         setMsg('Rendret, men kunne ikke legges i Resolve: ' + ((errEvt?.value as { message?: string } | undefined)?.message || 'er Resolve åpen med en timeline?'));
         if (overlays[0]?.path) void systemOpen(String(overlays[0].path)).catch(() => {});
-      } else { setMsg(`✓ ${scenes.length} scene(r) sendt til Resolve, plassert på overlay-spor til riktig tid.`); }
+      } else {
+        setMsg(`✓ ${scenes.length} scene(r) sendt til Resolve, plassert på overlay-spor til riktig tid.`);
+        // Implisitt aksept: ble en AI-anbefalt mal faktisk sendt? Da traff den.
+        if (aiLastPick && scenes.some((s) => s.tplId === aiLastPick.tplId)) {
+          recordAiFeedback(aiLastPick.desc, aiLastPick.tplId, true, 0.5); setAiLastPick(null);
+        }
+      }
     } catch (e) {
       const m = e instanceof Error ? e.message : String(e);
       if (/playwright|chromium|node/i.test(m)) { setNeedsPlaywright(true); setMsg('Feil: ' + m + ' — krever Playwright-runtime.'); }
@@ -627,6 +642,8 @@ export function InfographicStudioView(
       const html = `<script>window.__CFG__=${JSON.stringify(cfg)}</script>` + htmlForTemplate(tpl);
       const out = await invoke<string>('export_infographic', { html, durationSec: effDur(scene, tpl), name: `${tpl.id}-${scene.id}-${Date.now()}`, format: exportFmt, fps, scale, exitSec: scene.exitSec ?? 0 });
       setMsg(`✓ Eksportert: ${out}`);
+      recordTemplateUsage(tpl.id);
+      if (aiLastPick && aiLastPick.tplId === tpl.id) { recordAiFeedback(aiLastPick.desc, aiLastPick.tplId, true, 0.5); setAiLastPick(null); }
       void systemOpen(out).catch(() => {});
     } catch (e) {
       const m = e instanceof Error ? e.message : String(e);
@@ -758,7 +775,7 @@ export function InfographicStudioView(
                       onClick={() => { recordAiFeedback(aiLastPick.desc, aiLastPick.tplId, false); setAiLastPick(null); setMsg('✓ Lærte: unngå denne malen for slike beskrivelser.'); }}>👎</button>
                   </div>
                 )}
-                {aiFeedbackCount() > 0 && <div style={{ fontSize: 9.5, color: D.faint, marginTop: 6 }}>Lærer av {aiFeedbackCount()} tilbakemelding{aiFeedbackCount() === 1 ? '' : 'er'}.</div>}
+                {aiFeedbackCount() > 0 && <div style={{ fontSize: 9.5, color: D.faint, marginTop: 6 }}>Lærer av {aiFeedbackCount()} signal{aiFeedbackCount() === 1 ? '' : 'er'} (tomler + hva du faktisk bruker).</div>}
               </div>
             )}
             {/* «Mine maler»: import av egen HTML-mal. */}

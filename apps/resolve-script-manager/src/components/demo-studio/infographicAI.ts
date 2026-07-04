@@ -18,33 +18,54 @@ export interface AiPickResult {
 // aksept. Dette er samme mønster som demo-studioets lærte-targets, og er den
 // riktige «ML»-en for en LLM-drevet klient (ingen modelltrening).
 const LEARN_KEY = 'trrpa.infographicStudio.aiFeedback';
-interface AiFeedback { desc: string; tplId: string; liked: boolean; ts: number }
+const USAGE_KEY = 'trrpa.infographicStudio.templateUsage';
+// `weight`: eksplisitt 👍/👎 = 1, IMPLISITTE atferds-signaler (brukte/byttet
+// bort) = 0.5 — svakere, men de kommer helt uten klikk og løser kaldstart.
+interface AiFeedback { desc: string; tplId: string; liked: boolean; weight: number; ts: number }
 
 function loadFeedback(): AiFeedback[] {
   try { const raw = localStorage.getItem(LEARN_KEY); return raw ? (JSON.parse(raw) as AiFeedback[]) : []; }
   catch { return []; }
 }
 function saveFeedback(list: AiFeedback[]): void {
-  try { localStorage.setItem(LEARN_KEY, JSON.stringify(list.slice(-300))); } catch { /* */ }
+  try { localStorage.setItem(LEARN_KEY, JSON.stringify(list.slice(-400))); } catch { /* */ }
 }
 
-/** Registrer at brukeren likte/mislikte en AI-anbefaling for en beskrivelse.
- *  Kalles fra 👍/👎 i UI. `ts` sendes inn (Date.now er utenfor rene moduler ok her). */
-export function recordAiFeedback(desc: string, tplId: string, liked: boolean): void {
+/** Registrer aksept/avvisning av en AI-anbefaling. `weight` < 1 for implisitte
+ *  signaler. Kalles fra 👍/👎 (eksplisitt) OG fra atferd (brukt/byttet — implisitt). */
+export function recordAiFeedback(desc: string, tplId: string, liked: boolean, weight = 1): void {
+  if (!tplId) return;
   const list = loadFeedback();
-  list.push({ desc: desc.trim().slice(0, 200), tplId, liked, ts: Date.now() });
+  list.push({ desc: desc.trim().slice(0, 200), tplId, liked, weight, ts: Date.now() });
   saveFeedback(list);
 }
 
-/** Netto aksept-score per mal (likt − mislikt) — for re-rangering. */
+// ── Bruks-historikk (warm start): systemet lærer av det du FAKTISK bruker, ikke
+//    bare av tomler. Bygges av recordTemplateUsage ved hver render/eksport. ──
+function loadUsage(): Record<string, number> {
+  try { const raw = localStorage.getItem(USAGE_KEY); return raw ? (JSON.parse(raw) as Record<string, number>) : {}; }
+  catch { return {}; }
+}
+/** Tell at en mal ble brukt (rendret/sendt/eksportert) — en sterk implisitt
+ *  smak-indikator som finnes helt uten AI-input eller tomler. */
+export function recordTemplateUsage(tplId: string): void {
+  if (!tplId) return;
+  const u = loadUsage(); u[tplId] = (u[tplId] || 0) + 1;
+  try { localStorage.setItem(USAGE_KEY, JSON.stringify(u)); } catch { /* */ }
+}
+
+/** Netto aksept-score per mal (vektet likt − mislikt). */
 function acceptanceScores(): Record<string, number> {
   const out: Record<string, number> = {};
-  for (const f of loadFeedback()) out[f.tplId] = (out[f.tplId] || 0) + (f.liked ? 1 : -1);
+  for (const f of loadFeedback()) out[f.tplId] = (out[f.tplId] || 0) + (f.liked ? f.weight : -f.weight);
   return out;
 }
 
-/** Antall lærte eksempler (for UI-indikator). */
-export function aiFeedbackCount(): number { return loadFeedback().length; }
+/** Antall lærte signaler (eksplisitte + implisitte + brukshistorikk) for UI. */
+export function aiFeedbackCount(): number {
+  const usage = Object.values(loadUsage()).reduce((a, b) => a + b, 0);
+  return loadFeedback().length + usage;
+}
 
 /** Enkel token-scoring: hvor godt matcher beskrivelsen malens navn/desc/id.
  *  Brukes til å forhåndsfiltrere 512 maler → ~40 kandidater før Claude-kallet
@@ -62,7 +83,13 @@ function scoreTemplate(desc: string, t: InfographicTemplate): number {
  *  før løftes (læring: historisk aksept → høyere rangering). */
 export function candidateTemplates(desc: string, templates: InfographicTemplate[], n = 40): InfographicTemplate[] {
   const accept = acceptanceScores();
-  const scored = templates.map((t) => ({ t, s: scoreTemplate(desc, t) + Math.max(0, accept[t.id] || 0) * 0.5 }));
+  const usage = loadUsage();
+  // Score = tekst-match + aksept-boost + log-skalert bruks-prior (maler du
+  // faktisk bruker løftes, uten at tunge favoritter drukner alt).
+  const scored = templates.map((t) => ({
+    t,
+    s: scoreTemplate(desc, t) + Math.max(0, accept[t.id] || 0) * 0.5 + Math.min(2, Math.log2(1 + (usage[t.id] || 0))),
+  }));
   const hits = scored.filter((x) => x.s > 0).sort((a, b) => b.s - a.s).map((x) => x.t);
   if (hits.length >= n) return hits.slice(0, n);
   // Fyll opp med et jevnt tverrsnitt av resten så Claude har bredde å velge fra.
