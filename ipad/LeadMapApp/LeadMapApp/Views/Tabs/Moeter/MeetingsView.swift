@@ -414,10 +414,7 @@ struct MeetingsView: View {
     @State private var calMode: CalendarMode = .agenda
     @State private var showStatsModal = false
     @State private var bookDayOfMonth: Int?
-    // Pakke 10.1 — rike header-popovere
-    @State private var analyseOpen: Bool = false
-    @State private var nextActionsOpen: Bool = false
-    @State private var notificationsOpen: Bool = false
+    // Header: delt LeadgridTabHeader eier all popover/sheet-state selv.
     // iPhone (compact): detalj-panelet vises som sheet i stedet for
     // side-stilt 340pt-kolonne — åpnes når et møte velges.
     @State private var phoneDetailOpen: Bool = false
@@ -540,121 +537,19 @@ struct MeetingsView: View {
         }
     }
 
-    // MARK: Header
+    // MARK: Header — delt LeadgridTabHeader (fasit: Oversikt-fanen)
+
+    /// Demo-aware datakilde for header-badges/popovers.
+    private var headerLeads: [LeadModel] {
+        DemoModeManager.isActiveNonisolated
+            ? DemoModeManager.shared.mockLeads
+            : appState.leads
+    }
 
     private var header: some View {
-        GeometryReader { geo in
-            let isNarrow = geo.size.width < 1100
-            HStack(alignment: .top, spacing: 14) {
-                if !isNarrow { LeadgridHeaderMark().padding(.top, 4) }
-                // Fanetittelen er fjernet — tab-baren/sidebaren viser
-                // allerede hvor du er, og plassen trengs til kontrollene.
-                if !isNarrow {
-                    Text("Planlegg, forbered og følg opp møter")
-                        .font(.system(size: 13))
-                        .foregroundStyle(MtBrand.textSecondary)
-                        .lineLimit(1)
-                        .padding(.top, 12)
-                }
-                Spacer()
-                HStack(spacing: 8) {
-                    topPicker(icon: "calendar", text: isNarrow ? "Tir 20" : "Tir. 20. mai 2025")
-                    if !isNarrow {
-                        topPicker(icon: "line.3.horizontal.decrease", text: "Filter")
-                    }
-                    // 380pt fast ramme klipper på iPhone (~390pt skjerm) —
-                    // adaptiv ramme + sheet-adaptasjon på compact width.
-                    topIconButton(icon: "chart.line.uptrend.xyaxis", badge: nil, isOpen: $analyseOpen)
-                        .popover(isPresented: $analyseOpen, arrowEdge: .top) {
-                            AnalysePopover(leads: appState.leads)
-                                .adaptivePopoverFrame(width: 380, height: 520)
-                                .presentationCompactAdaptation(DeviceIdiom.isPhone ? .sheet : .popover)
-                        }
-                    topIconButton(icon: "checklist", badge: 8, isOpen: $nextActionsOpen)
-                        .popover(isPresented: $nextActionsOpen, arrowEdge: .top) {
-                            NextActionsPopover(leads: appState.leads, totalCount: appState.leads.count)
-                                .adaptivePopoverFrame(width: 380, height: 520)
-                                .presentationCompactAdaptation(DeviceIdiom.isPhone ? .sheet : .popover)
-                        }
-                    topIconButton(icon: "bell.fill", badge: 3, isOpen: $notificationsOpen)
-                        .popover(isPresented: $notificationsOpen, arrowEdge: .top) {
-                            RecentActivitiesPopover(leads: appState.leads, upcomingFollowups: 0, momentum: nil)
-                                .adaptivePopoverFrame(width: 380, height: 520)
-                                .presentationCompactAdaptation(DeviceIdiom.isPhone ? .sheet : .popover)
-                        }
-                    profileAvatar(isNarrow: isNarrow)
-                }
-            }
-        }
-        .frame(height: 64)
-    }
-
-    private func topPicker(icon: String, text: String) -> some View {
-        Button {} label: {
-            HStack(spacing: 6) {
-                Image(systemName: icon)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(MtBrand.purpleLight)
-                Text(text)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white)
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(MtBrand.textTertiary)
-            }
-            .padding(.horizontal, 12).padding(.vertical, 11)
-            .background(MtBrand.card, in: RoundedRectangle(cornerRadius: 11))
-            .overlay(RoundedRectangle(cornerRadius: 11).stroke(MtBrand.stroke, lineWidth: 1))
-        }
-        .buttonStyle(.plain)
-        .macCatalystHover()
-    }
-
-    private func topIconButton(icon: String, badge: Int?, isOpen: Binding<Bool>? = nil) -> some View {
-        Button { isOpen?.wrappedValue.toggle() } label: {
-            ZStack(alignment: .topTrailing) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 11).fill(MtBrand.card)
-                    RoundedRectangle(cornerRadius: 11).stroke(MtBrand.stroke, lineWidth: 1)
-                    Image(systemName: icon)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(MtBrand.purpleLight)
-                }
-                .frame(width: 42, height: 42)
-                if let b = badge, b > 0 {
-                    Text("\(min(b, 99))")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 5).padding(.vertical, 2)
-                        .background(MtBrand.purple, in: Capsule())
-                        .overlay(Capsule().stroke(MtBrand.bg, lineWidth: 1.5))
-                        .offset(x: 6, y: -6)
-                }
-            }
-        }
-        .buttonStyle(.plain)
-        .macCatalystHover()
-    }
-
-    // Løftet Leadbook-avatar-menu til alle faner (SharedProfileAvatar).
-    @State private var showMinProfilAvatar: Bool = false
-    @State private var showEcosystemAvatar: Bool = false
-    @State private var showTeamAccessAvatar: Bool = false
-    @State private var showSuperAdminAvatar: Bool = false
-
-    private func profileAvatar(isNarrow: Bool) -> some View {
-        SharedProfileAvatar(
-            tint: MtBrand.purpleLight,
-            background: MtBrand.card,
-            borderColor: MtBrand.stroke,
-            secondaryText: MtBrand.textSecondary,
-            tertiaryText: MtBrand.textTertiary,
-            isCompact: isNarrow,
-            showMinProfil: $showMinProfilAvatar,
-            showEcosystem: $showEcosystemAvatar,
-            showTeamAccess: $showTeamAccessAvatar,
-            showSuperAdmin: $showSuperAdminAvatar
-        )
+        LeadgridTabHeader(
+            subtitle: "Planlegg, forbered og følg opp møter",
+            leads: headerLeads)
     }
 
     // MARK: KPI

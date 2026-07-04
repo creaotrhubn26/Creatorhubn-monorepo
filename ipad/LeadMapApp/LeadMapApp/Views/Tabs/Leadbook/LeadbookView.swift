@@ -281,8 +281,7 @@ struct LeadbookView: View {
     @State private var showCardScanner = false
     @State private var showSuperAdmin = false
     @State private var showLiveTranscription = false
-    // Pakke 10.1 — rike notifikasjons-popover
-    @State private var notificationsOpen = false
+    // Header: delt LeadgridTabHeader eier varsel-/popover-state selv.
     // Pondus (Leadgrid-produkt) — backend-backed mal-store. Byttet fra
     // lokal @State til `appState.pondusStore` (delt singleton) 2026-07-01
     // slik at App Intents / Watch / Vision-target kan lese samme instans.
@@ -415,103 +414,41 @@ struct LeadbookView: View {
         }
     }
 
-    // MARK: Header
+    // MARK: Header — delt LeadgridTabHeader (fasit: Oversikt-fanen)
+    //
+    // Fane-verktøyene (Bibliotek/Ytelse/Versjoner/skanner/transkripsjon/
+    // + Ny) ligger i en egen horisontalt scrollbar kontrollrad rett under
+    // headeren — Leadbook har for mange knapper til extraControls-slotten.
 
-    @ViewBuilder
-    private var header: some View {
-        if DeviceIdiom.isPhone {
-            phoneHeader
-        } else {
-            regularHeader
-        }
+    /// Demo-aware datakilde for header-badges/popovers.
+    private var headerLeads: [LeadModel] {
+        DemoModeManager.isActiveNonisolated
+            ? DemoModeManager.shared.mockLeads
+            : appState.leads
     }
 
-    /// iPhone: den brede enkelt-raden fra iPad/Mac får ikke plass på compact
-    /// width — tittel + varsler/avatar øverst, kontrollene i en horisontalt
-    /// scrollbar rad under. Gjenbruker de samme knapp-viewene.
-    private var phoneHeader: some View {
+    private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
-            // Fanetittelen er fjernet — tab-baren viser allerede hvor du er.
-            HStack(alignment: .center, spacing: 10) {
-                Spacer(minLength: 8)
-                notificationsBell
-                profileAvatar(isCompact: true)
-            }
-            // Full-bleed scroller: negativ padding opphever ytre 20pt-marg og
-            // margen legges i stedet inn i innholdet — uten dette klippes
+            LeadgridTabHeader(
+                subtitle: "Standardiser salgsprosessen med maler, scripts og oppfølging.",
+                leads: headerLeads,
+                onSuperAdmin: { showSuperAdmin = true })
+            // Full-bleed scroller: negativ padding opphever ytre 20pt-marg
+            // og margen legges i stedet inn i innholdet — uten dette klippes
             // siste knapp halvveis ved høyre kant på maks scroll.
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    topPicker(icon: "calendar", text: "Tir 20")
                     libraryButton                            // Bibliotek
-                    performanceButton(isCompact: true)       // Ytelse
-                    versionsButton(isCompact: true)          // Versjoner
+                    performanceButton(isCompact: false)      // Ytelse
+                    versionsButton(isCompact: false)         // Versjoner
                     cardScannerButton                        // + Lead m/ visittkort
                     transcriptionButton                      // Live transkripsjon
-                    newButton(isCompact: true)
+                    newButton(isCompact: false)
                 }
                 .padding(.horizontal, 20)
             }
             .padding(.horizontal, -20)
         }
-    }
-
-    private var regularHeader: some View {
-        GeometryReader { geo in
-            let isCompact = geo.size.width < 1300
-            HStack(alignment: .top, spacing: 14) {
-                if !isCompact { LeadgridHeaderMark().padding(.top, 4) }
-                // Fanetittelen er fjernet — sidebaren viser allerede hvor du er.
-                if !isCompact {
-                    Text("Standardiser salgsprosessen med maler, scripts og oppfølging.")
-                        .font(.system(size: 13))
-                        .foregroundStyle(LBrand.textSecondary)
-                        .lineLimit(1)
-                        .padding(.top, 12)
-                }
-                Spacer(minLength: 8)
-                HStack(spacing: 8) {
-                    topPicker(icon: "calendar", text: isCompact ? "Tir 20" : "Tir. 20. mai 2025")
-                    libraryButton                                    // Bibliotek
-                    performanceButton(isCompact: isCompact)          // Ytelse
-                    versionsButton(isCompact: isCompact)              // Versjoner
-                    cardScannerButton                                 // + Lead m/ visittkort
-                    transcriptionButton                              // Live transkripsjon
-                    notificationsBell
-                    profileAvatar(isCompact: isCompact)
-                    newButton(isCompact: isCompact)
-                }
-                .fixedSize()
-            }
-        }
-        .frame(height: 64)
-    }
-
-    /// Bjelle + varsel-popover — delt mellom phone- og regular-header.
-    /// På iPhone adapteres popoveren til detent-sheet (fast 380pt-ramme
-    /// klipper på compact width).
-    private var notificationsBell: some View {
-        topIconButton(icon: "bell.fill", badge: 3, isOpen: $notificationsOpen)
-            .popover(isPresented: $notificationsOpen, arrowEdge: .top) {
-                RecentActivitiesPopover(leads: appState.leads, upcomingFollowups: 0, momentum: nil)
-                    .adaptivePopoverFrame(width: 380, height: 520)
-                    .presentationCompactAdaptation(DeviceIdiom.isPhone ? .sheet : .popover)
-            }
-    }
-
-    private func topPicker(icon: String, text: String) -> some View {
-        Button {} label: {
-            HStack(spacing: 6) {
-                Image(systemName: icon).font(.system(size: 11, weight: .semibold)).foregroundStyle(LBrand.purpleLight)
-                Text(text).font(.system(size: 12, weight: .semibold)).foregroundStyle(.white).lineLimit(1).fixedSize()
-                Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold)).foregroundStyle(LBrand.textTertiary)
-            }
-            .padding(.horizontal, 12).padding(.vertical, 11)
-            .background(LBrand.card, in: RoundedRectangle(cornerRadius: 11))
-            .overlay(RoundedRectangle(cornerRadius: 11).stroke(LBrand.stroke, lineWidth: 1))
-        }
-        .buttonStyle(.plain)
-        .macCatalystHover()
     }
 
     // Bibliotek-knapp m/ tellebrikke
@@ -622,48 +559,16 @@ struct LeadbookView: View {
         .buttonStyle(.plain)
     }
 
-    private func topIconButton(icon: String, badge: Int?, isOpen: Binding<Bool>? = nil) -> some View {
-        Button { isOpen?.wrappedValue.toggle() } label: {
-            ZStack(alignment: .topTrailing) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 11).fill(LBrand.card)
-                    RoundedRectangle(cornerRadius: 11).stroke(LBrand.stroke, lineWidth: 1)
-                    Image(systemName: icon).font(.system(size: 14, weight: .semibold)).foregroundStyle(LBrand.purpleLight)
-                }
-                .frame(width: 42, height: 42)
-                if let b = badge, b > 0 {
-                    Text("\(min(b, 99))")
-                        .font(.system(size: 9, weight: .bold)).foregroundStyle(.white)
-                        .padding(.horizontal, 5).padding(.vertical, 2)
-                        .background(LBrand.purple, in: Capsule())
-                        .overlay(Capsule().stroke(LBrand.bg, lineWidth: 1.5))
-                        .offset(x: 6, y: -6)
-                }
-            }
-        }
-        .buttonStyle(.plain)
-        .macCatalystHover()
-    }
-
-    private func profileAvatar(isCompact: Bool) -> some View {
-        SharedProfileAvatar(
-            tint: LBrand.purpleLight,
-            background: LBrand.card,
-            borderColor: LBrand.stroke,
-            secondaryText: LBrand.textSecondary,
-            tertiaryText: LBrand.textTertiary,
-            isCompact: isCompact,
-            showMinProfil: $showMinProfil,
-            showEcosystem: $showEcosystem,
-            showTeamAccess: $showTeamAccess,
-            showSuperAdmin: $showSuperAdmin
-        )
-    }
-
     private func newButton(isCompact: Bool) -> some View {
         Menu {
             Button { showNewTemplate = true } label: { Label("Ny mal", systemImage: "doc.badge.plus") }
             Button {} label: { Label("Ny innvending", systemImage: "shield.fill") }
+            Divider()
+            // Innganger som tidligere lå i fanens egen avatar-meny
+            // (SharedProfileAvatar) — bevart her etter at headeren ble
+            // unifisert med Oversikt (delt LeadgridTabHeader).
+            Button { showMinProfil = true } label: { Label("Min Pondus-profil", systemImage: "person.circle") }
+            Button { showEcosystem = true } label: { Label("Pondus overalt", systemImage: "applewatch") }
             Divider()
             Button {} label: { Label("Tilpass Leadbook", systemImage: "slider.horizontal.3") }
         } label: {

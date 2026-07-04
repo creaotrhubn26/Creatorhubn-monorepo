@@ -461,18 +461,7 @@ struct KartView: View {
     // Pakke 10.1: AppState for å hente prod-leads til rike popovere.
     @Environment(AppState.self) private var appState
 
-    // Header-popovers (samme stil som Oversikt)
-    @State private var datePickerOpen: Bool = false
-    @State private var areaPickerOpen: Bool = false  // forskjellig fra filter-bar
-    @State private var analyseOpen: Bool = false
-    @State private var nextActionsOpen: Bool = false
-    @State private var notificationsOpen: Bool = false
-    @State private var profileOpen: Bool = false
-    // Løftet Leadbook-avatar-menu til alle faner (SharedProfileAvatar).
-    @State private var showMinProfil: Bool = false
-    @State private var showEcosystem: Bool = false
-    @State private var showTeamAccess: Bool = false
-    @State private var showSuperAdmin: Bool = false
+    // Header: delt LeadgridTabHeader eier all popover/sheet-state selv.
 
     // Routes + lead-detail extras
     @State private var routePlannerOpen: Bool = false
@@ -799,7 +788,7 @@ struct KartView: View {
         // Header + søk er FAST øverst. Resten scrolles internt slik at
         // detailPanel (kan bli lang i Notater-tab) ikke dytter ut header.
         VStack(spacing: 0) {
-            unifiedHeader
+            kartHeader
                 .padding(.horizontal, 20).padding(.top, 14)
             searchAndFilters
                 .padding(.horizontal, 20).padding(.top, 12)
@@ -837,236 +826,20 @@ struct KartView: View {
         }
     }
 
-    // MARK: Unified header — matcher OversiktView sin TopBar
+    // MARK: Header — delt LeadgridTabHeader (fasit: Oversikt-fanen)
 
-    private var unifiedHeader: some View {
-        GeometryReader { geo in
-            let isNarrow = geo.size.width < 1100
-            HStack(alignment: .top, spacing: 14) {
-                if !isNarrow { LeadgridHeaderMark().padding(.top, 4) }
-                // Fanetittelen er fjernet — tab-baren/sidebaren viser hvor du er.
-                if !isNarrow {
-                    Text("Se dine leads, kunder og aktiviteter på kartet.")
-                        .font(.system(size: 13))
-                        .foregroundStyle(KrBrand.textSecondary)
-                        .lineLimit(1)
-                        .padding(.top, 12)
-                }
-                Spacer()
-                HStack(spacing: 8) {
-                    topPicker(icon: "calendar",
-                              text: isNarrow ? "Tir 14" : "Tir. 14. mai",
-                              isOpen: $datePickerOpen)
-                        .popover(isPresented: $datePickerOpen, arrowEdge: .top) {
-                            datePickerPopover.presentationCompactAdaptation(.popover)
-                        }
-                    if !isNarrow {
-                        topPicker(icon: "location.fill",
-                                  text: "Alle områder",
-                                  isOpen: $areaPickerOpen)
-                            .popover(isPresented: $areaPickerOpen, arrowEdge: .top) {
-                                AreaFilterPopover(selected: $selectedArea, radiusKm: $selectedRadiusKm)
-                                    .presentationCompactAdaptation(.popover)
-                            }
-                    }
-                    // Pakke 10.1 (Daniel-feedback 2026-07-01): bytt fra
-                    // simplePopover til Oversikt-fanens rike popovere for
-                    // konsistent look på tvers av faner.
-                    topIconButton(icon: "chart.line.uptrend.xyaxis",
-                                  badge: nil, isOpen: $analyseOpen)
-                        .popover(isPresented: $analyseOpen, arrowEdge: .top) {
-                            AnalysePopover(leads: appState.leads)
-                                .adaptivePopoverFrame(width: 380, height: 520)
-                                .kartPopoverAdaptation()
-                        }
-                    topIconButton(icon: "checklist", badge: 8, isOpen: $nextActionsOpen)
-                        .popover(isPresented: $nextActionsOpen, arrowEdge: .top) {
-                            NextActionsPopover(leads: appState.leads, totalCount: appState.leads.count)
-                                .adaptivePopoverFrame(width: 380, height: 520)
-                                .kartPopoverAdaptation()
-                        }
-                    topIconButton(icon: "bell.fill", badge: 3, isOpen: $notificationsOpen)
-                        .popover(isPresented: $notificationsOpen, arrowEdge: .top) {
-                            RecentActivitiesPopover(
-                                leads: appState.leads,
-                                upcomingFollowups: 0,
-                                momentum: nil
-                            )
-                            .adaptivePopoverFrame(width: 380, height: 520)
-                            .kartPopoverAdaptation()
-                        }
-                    profileAvatar(isNarrow: isNarrow)
-                        .popover(isPresented: $profileOpen, arrowEdge: .top) {
-                            ProfilePopover(
-                                name: "Lars Kristensen",
-                                email: appState.userEmail,
-                                onOpenMyProfile: { profileOpen = false }
-                            )
-                            .adaptivePopoverFrame(width: 320, height: 480)
-                            .kartPopoverAdaptation()
-                        }
-                }
-            }
-        }
-        .frame(height: 64)
+    /// Demo-aware datakilde for header-badges/popovers (samme gating som
+    /// resten av fanen).
+    private var headerLeads: [LeadModel] {
+        DemoModeManager.isActiveNonisolated
+            ? DemoModeManager.shared.mockLeads
+            : appState.leads
     }
 
-    /// Forenklet popover-stub — ekte popovers ligger i prod (OversiktView).
-    private func simplePopover(title: String, subtitle: String, rows: [String]) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(.white)
-                Text(subtitle)
-                    .font(.system(size: 10))
-                    .foregroundStyle(KrBrand.textSecondary)
-            }
-            .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 8)
-            Divider().overlay(KrBrand.stroke)
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
-                    HStack(spacing: 8) {
-                        Circle().fill(KrBrand.purpleLight).frame(width: 4, height: 4)
-                        Text(row)
-                            .font(.system(size: 12))
-                            .foregroundStyle(.white)
-                        Spacer()
-                    }
-                    .padding(.horizontal, 16).padding(.vertical, 9)
-                    .background(KrBrand.card)
-                }
-            }
-        }
-        .frame(width: 280)
-        .background(KrBrand.card)
-        .preferredColorScheme(.dark)
-    }
-
-    private func topPicker(icon: String, text: String, isOpen: Binding<Bool>) -> some View {
-        Button { isOpen.wrappedValue.toggle() } label: {
-            HStack(spacing: 6) {
-                Image(systemName: icon)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(KrBrand.purpleLight)
-                Text(text)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white)
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(KrBrand.textTertiary)
-            }
-            .padding(.horizontal, 12).padding(.vertical, 11)
-            .background(KrBrand.card, in: RoundedRectangle(cornerRadius: 11))
-            .overlay(RoundedRectangle(cornerRadius: 11).stroke(KrBrand.stroke, lineWidth: 1))
-        }
-        .buttonStyle(.plain)
-        .macCatalystHover()
-    }
-
-    private var datePickerPopover: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Velg periode")
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(.white)
-            VStack(spacing: 6) {
-                ForEach(["I dag", "Denne uken", "Denne måneden", "Q2 2026", "I år", "Egendefinert"], id: \.self) { p in
-                    Button { datePickerOpen = false; showToast("Periode satt: \(p)") } label: {
-                        HStack {
-                            Text(p)
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(.white)
-                            Spacer()
-                            if p == "I dag" {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundStyle(KrBrand.purpleLight)
-                            }
-                        }
-                        .padding(.horizontal, 10).padding(.vertical, 8)
-                        .background(KrBrand.cardHi, in: RoundedRectangle(cornerRadius: 8))
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-        .padding(16)
-        .frame(width: 260)
-        .background(KrBrand.card)
-        .preferredColorScheme(.dark)
-    }
-
-    private func topIconButton(icon: String, badge: Int?, isOpen: Binding<Bool>) -> some View {
-        Button { isOpen.wrappedValue.toggle() } label: {
-            ZStack(alignment: .topTrailing) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 11).fill(KrBrand.card)
-                    RoundedRectangle(cornerRadius: 11).stroke(KrBrand.stroke, lineWidth: 1)
-                    Image(systemName: icon)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(KrBrand.purpleLight)
-                }
-                .frame(width: 42, height: 42)
-                if let b = badge, b > 0 {
-                    Text("\(min(b, 99))")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 5).padding(.vertical, 2)
-                        .background(KrBrand.purple, in: Capsule())
-                        .overlay(Capsule().stroke(KrBrand.bg, lineWidth: 1.5))
-                        .offset(x: 6, y: -6)
-                }
-            }
-        }
-        .buttonStyle(.plain)
-        .macCatalystHover()
-    }
-
-    private func profileAvatar(isNarrow: Bool) -> some View {
-        SharedProfileAvatar(
-            tint: KrBrand.purpleLight,
-            background: KrBrand.card,
-            borderColor: KrBrand.stroke,
-            secondaryText: KrBrand.textSecondary,
-            tertiaryText: KrBrand.textTertiary,
-            isCompact: isNarrow,
-            showMinProfil: $showMinProfil,
-            showEcosystem: $showEcosystem,
-            showTeamAccess: $showTeamAccess,
-            showSuperAdmin: $showSuperAdmin
-        )
-    }
-
-    // Ubrukt legacy — bytter over til SharedProfileAvatar. Behold for
-    // referanse inntil deprecation-pass er ferdig.
-    private func legacyProfileAvatar(isNarrow: Bool) -> some View {
-        Button { profileOpen.toggle() } label: {
-            HStack(spacing: 8) {
-                ZStack {
-                    Circle().fill(KrBrand.purple.opacity(0.3))
-                    Text(appState.initials)
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(KrBrand.purpleLight)
-                }
-                .frame(width: 34, height: 34)
-                if !isNarrow {
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text(appState.displayName)
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(.white)
-                        Text("Salgssjef")
-                            .font(.system(size: 10))
-                            .foregroundStyle(KrBrand.textSecondary)
-                    }
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(KrBrand.textTertiary)
-                }
-            }
-            .padding(.horizontal, 8).padding(.vertical, 5)
-            .background(KrBrand.card, in: RoundedRectangle(cornerRadius: 11))
-            .overlay(RoundedRectangle(cornerRadius: 11).stroke(KrBrand.stroke, lineWidth: 1))
-        }
-        .buttonStyle(.plain)
+    private var kartHeader: some View {
+        LeadgridTabHeader(
+            subtitle: "Se dine leads, kunder og aktiviteter på kartet.",
+            leads: headerLeads)
     }
 
     // MARK: Søk + filtre

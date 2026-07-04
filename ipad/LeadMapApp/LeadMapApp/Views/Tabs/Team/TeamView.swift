@@ -227,9 +227,7 @@ struct TeamView: View {
     @State private var selectedKPI: TeamKPI?
     @State private var showNewKPI = false
     @State private var showStatsModal = false
-    // Pakke 10.1 — rike header-popovere (chart wired til pipeline, kun checklist + bell)
-    @State private var nextActionsOpen = false
-    @State private var notificationsOpen = false
+    // Header: delt LeadgridTabHeader eier all popover/sheet-state selv.
     // Team-tilganger flyttet fra global profil-menu → Team-fanen (2026-07-01).
     @State private var showTeamAccess = false
     // Rute-status dashboard (salgssjef+, 2026-07-02).
@@ -284,80 +282,29 @@ struct TeamView: View {
         }
     }
 
-    // MARK: Header — alignet m/ Leads/Møter (6 høyre-elementer + Inviter-CTA)
+    // MARK: Header — delt LeadgridTabHeader (fasit: Oversikt-fanen)
+    //
+    // Fane-spesifikt (extraControls): live-aktivitet + «+ Ny»-menyen.
+    // «Hele teamet» og pipeline-knappen er flyttet inn i «+ Ny»-menyen
+    // (Team-medlemmer / Team-pipeline) så ingen innganger går tapt.
 
-    private var header: some View {
-        GeometryReader { geo in
-            let isCompact = geo.size.width < 1300        // iPad Pro 11" landscape = 1194pt
-            let isVeryCompact = geo.size.width < 1050    // mindre enheter
-
-            HStack(alignment: .top, spacing: 14) {
-                if !isCompact { LeadgridHeaderMark().padding(.top, 4) }
-                // Fanetittelen er fjernet — tab-baren/sidebaren viser hvor du er.
-                if !isCompact {
-                    Text("Få oversikt over teamets aktivitet, resultater og områder.")
-                        .font(.system(size: 13))
-                        .foregroundStyle(TBrand.textSecondary)
-                        .lineLimit(1)
-                        .padding(.top, 12)
-                }
-                Spacer(minLength: 8)
-                HStack(spacing: 7) {
-                    topPicker(icon: "calendar", text: isCompact ? "Tir 20" : "Tir. 20. mai 2025") {}
-                    if !isCompact {
-                        topPicker(icon: "person.3.fill", text: "Hele teamet") {
-                            showMembers = true
-                        }
-                    }
-                    if !isVeryCompact {
-                        topIconButton(icon: "chart.line.uptrend.xyaxis", badge: nil) {
-                            showPipeline = true
-                        }
-                    }
-                    activityLiveButton                              // ← live-aktivitet
-                    topIconButton(icon: "checklist", badge: 8) { nextActionsOpen.toggle() }
-                        .popover(isPresented: $nextActionsOpen, arrowEdge: .top) {
-                            // iPhone: detent-sheet i stedet for 380pt-popover som klipper.
-                            NextActionsPopover(leads: appState.leads, totalCount: appState.leads.count)
-                                .adaptivePopoverFrame(width: 380, height: 520)
-                                .presentationCompactAdaptation(DeviceIdiom.isPhone ? .sheet : .popover)
-                        }
-                    topIconButton(icon: "bell.fill", badge: 3) { notificationsOpen.toggle() }
-                        .popover(isPresented: $notificationsOpen, arrowEdge: .top) {
-                            RecentActivitiesPopover(leads: appState.leads, upcomingFollowups: 0, momentum: nil)
-                                .adaptivePopoverFrame(width: 380, height: 520)
-                                .presentationCompactAdaptation(DeviceIdiom.isPhone ? .sheet : .popover)
-                        }
-                    profileAvatar(isCompact: isCompact)
-                    inviteButton(isCompact: isCompact)
-                }
-                .fixedSize()                              // hindrer komprimering
-            }
-        }
-        .frame(height: 64)
+    /// Demo-aware datakilde for header-badges/popovers.
+    private var headerLeads: [LeadModel] {
+        DemoModeManager.isActiveNonisolated
+            ? DemoModeManager.shared.mockLeads
+            : appState.leads
     }
 
-    private func topPicker(icon: String, text: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                Image(systemName: icon)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(TBrand.purpleLight)
-                Text(text)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                    .fixedSize()
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(TBrand.textTertiary)
+    private var header: some View {
+        LeadgridTabHeader(
+            subtitle: "Få oversikt over teamets aktivitet, resultater og områder.",
+            leads: headerLeads
+        ) {
+            HStack(spacing: 8) {
+                activityLiveButton                        // live-aktivitet
+                inviteButton(isCompact: DeviceIdiom.isPhone)
             }
-            .padding(.horizontal, 12).padding(.vertical, 11)
-            .background(TBrand.card, in: RoundedRectangle(cornerRadius: 11))
-            .overlay(RoundedRectangle(cornerRadius: 11).stroke(TBrand.stroke, lineWidth: 1))
         }
-        .buttonStyle(.plain)
-        .macCatalystHover()
     }
 
     // Live-aktivitet-knapp m/ pulserende grønn prikk + count-badge
@@ -385,53 +332,6 @@ struct TeamView: View {
         .macCatalystHover()
     }
 
-    private func topIconButton(icon: String, badge: Int?, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            ZStack(alignment: .topTrailing) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 11).fill(TBrand.card)
-                    RoundedRectangle(cornerRadius: 11).stroke(TBrand.stroke, lineWidth: 1)
-                    Image(systemName: icon)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(TBrand.purpleLight)
-                }
-                .frame(width: 42, height: 42)
-                if let b = badge, b > 0 {
-                    Text("\(min(b, 99))")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 5).padding(.vertical, 2)
-                        .background(TBrand.purple, in: Capsule())
-                        .overlay(Capsule().stroke(TBrand.bg, lineWidth: 1.5))
-                        .offset(x: 6, y: -6)
-                }
-            }
-        }
-        .buttonStyle(.plain)
-        .macCatalystHover()
-    }
-
-    // Løftet Leadbook-avatar-menu til alle faner (SharedProfileAvatar).
-    @State private var showMinProfilAvatar: Bool = false
-    @State private var showEcosystemAvatar: Bool = false
-    @State private var showTeamAccessAvatar: Bool = false
-    @State private var showSuperAdminAvatar: Bool = false
-
-    private func profileAvatar(isCompact: Bool) -> some View {
-        SharedProfileAvatar(
-            tint: TBrand.purpleLight,
-            background: TBrand.card,
-            borderColor: TBrand.stroke,
-            secondaryText: TBrand.textSecondary,
-            tertiaryText: TBrand.textTertiary,
-            isCompact: isCompact,
-            showMinProfil: $showMinProfilAvatar,
-            showEcosystem: $showEcosystemAvatar,
-            showTeamAccess: $showTeamAccessAvatar,
-            showSuperAdmin: $showSuperAdminAvatar
-        )
-    }
-
     private func inviteButton(isCompact: Bool) -> some View {
         Menu {
             Button {
@@ -443,6 +343,20 @@ struct TeamView: View {
                 showNewKPI = true
             } label: {
                 Label("Ny KPI", systemImage: "chart.bar.fill")
+            }
+            Divider()
+            // Innganger som tidligere lå som egne header-knapper («Hele
+            // teamet»-pill + pipeline-ikon) — bevart her etter at headeren
+            // ble unifisert med Oversikt (delt LeadgridTabHeader).
+            Button {
+                showMembers = true
+            } label: {
+                Label("Team-medlemmer", systemImage: "person.3.fill")
+            }
+            Button {
+                showPipeline = true
+            } label: {
+                Label("Team-pipeline", systemImage: "chart.line.uptrend.xyaxis")
             }
             Divider()
             // Team-tilganger (RBAC) — flyttet fra global profil-menu 2026-07-01.
