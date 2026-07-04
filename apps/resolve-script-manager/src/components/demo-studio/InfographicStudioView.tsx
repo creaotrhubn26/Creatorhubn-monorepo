@@ -21,7 +21,7 @@ import { analyzeProductEvidence, gatherSiteContext } from './demoStudioAI';
 import { isAiConnected } from '../../services/claudeProxyService';
 import { FONT_FACE_CSS } from './fontAssets.generated';
 import { ROLE_ROOM_LOGO, CREATORHUB_LOGO } from './kitLogos.generated';
-import { listInfographics, saveInfographic, deleteInfographic, type SavedInfographic } from './infographicLibrary';
+import { listInfographics, saveInfographic, deleteInfographic, canShareToTeam, shareToTeam, fetchTeamLibrary, unshareFromTeam, type SavedInfographic, type TeamInfographic } from './infographicLibrary';
 // MUI-ikoner (erstatter emoji/glyfer i UI-et) — path-import tre-shaker best.
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import DashboardCustomizeIcon from '@mui/icons-material/DashboardCustomize';
@@ -66,6 +66,7 @@ import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import SendIcon from '@mui/icons-material/Send';
 import PlaceIcon from '@mui/icons-material/Place';
+import GroupsIcon from '@mui/icons-material/Groups';
 
 const D = {
   bg: '#0e1320', panel: '#141b2b', panel2: '#1b2436', line: '#27314a',
@@ -735,6 +736,21 @@ export function InfographicStudioView(
     setLeftSec('templates');
     setMsg(`Åpnet «${s.name}» — bygg videre og send til Resolve.`);
   };
+  // Team-delt bibliotek (backend): del egne + bla i det hele teamet har delt.
+  const [teamList, setTeamList] = useState<TeamInfographic[]>([]);
+  const [teamBusy, setTeamBusy] = useState(false);
+  const loadTeamLibrary = async () => {
+    if (!canShareToTeam()) return;
+    setTeamBusy(true);
+    try { setTeamList(await fetchTeamLibrary()); } finally { setTeamBusy(false); }
+  };
+  const shareEntry = async (s: SavedInfographic) => {
+    if (!canShareToTeam()) { setMsg('Deling krever innlogging (Role Room-token i Innstillinger).'); return; }
+    setMsg(`Deler «${s.name}» med teamet …`);
+    const ok = await shareToTeam(s);
+    setMsg(ok ? `Delte «${s.name}» — nå synlig for hele teamet.` : 'Feil ved deling — prøv igjen.');
+    if (ok) void loadTeamLibrary();
+  };
   const cancelRef = useRef(false);
   const [msg, setMsg] = useState<string | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -850,6 +866,8 @@ export function InfographicStudioView(
   useEffect(() => { void syncCollective(); }, []);
   // Auto-hent kollektiv innsikt første gang «Innsikt»-fanen åpnes.
   useEffect(() => { if (leftSec === 'insight' && !insight && !insightBusy) void loadInsight(); }, [leftSec]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Auto-hent team-biblioteket når «Mine infographics» åpnes.
+  useEffect(() => { if (leftSec === 'library') void loadTeamLibrary(); }, [leftSec]); // eslint-disable-line react-hooks/exhaustive-deps
   // Re-fit ved endring av canvas-størrelse.
   useEffect(() => {
     const el = canvasRef.current; if (!el || typeof ResizeObserver === 'undefined') return;
@@ -1335,11 +1353,38 @@ export function InfographicStudioView(
                       <div style={{ fontSize: 9.5, color: D.faint, marginBottom: 6 }}>{s.scenes.length} scene(r){s.fromProject ? ` · ${s.fromProject}` : ''}</div>
                       <div style={{ display: 'flex', gap: 6 }}>
                         <button style={{ ...topBtn, flex: 1, justifyContent: 'center', fontSize: 11 }} onClick={() => loadSnapshot(s)}><FolderOpenIcon style={{ fontSize: 14 }} /> Åpne</button>
+                        <button style={{ ...topBtn, padding: '4px 9px', fontSize: 11 }} title="Del med teamet — synlig for alle innloggede" onClick={() => void shareEntry(s)}><GroupsIcon style={{ fontSize: 15 }} /></button>
                         <button style={{ ...topBtn, padding: '4px 9px', fontSize: 11, color: '#f08a82' }} title="Slett fra biblioteket" onClick={() => { deleteInfographic(s.id); setLibTick((n) => n + 1); }}><DeleteOutlineIcon style={{ fontSize: 15 }} /></button>
                       </div>
                     </div>
                   );
                 })}
+            {/* Team-bibliotek: delt av alle innloggede (backend). */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '16px 0 8px' }}>
+              <GroupsIcon style={{ fontSize: 15, color: D.teal }} />
+              <span style={{ fontSize: 11, fontWeight: 700, color: D.soft, textTransform: 'uppercase', letterSpacing: 0.5 }}>Team-bibliotek</span>
+              <div style={{ flex: 1 }} />
+              <button style={{ ...topBtn, padding: '3px 8px', fontSize: 10.5, opacity: teamBusy ? 0.6 : 1 }} disabled={teamBusy} onClick={() => void loadTeamLibrary()} title="Oppdater"><RefreshIcon style={{ fontSize: 13 }} /></button>
+            </div>
+            {!canShareToTeam()
+              ? <div style={{ fontSize: 10.5, color: D.faint, lineHeight: 1.5 }}>Logg inn (Role Room-token i Innstillinger) for å dele og se teamets bibliotek.</div>
+              : teamList.length === 0
+                ? <div style={{ fontSize: 10.5, color: D.faint, lineHeight: 1.5 }}>{teamBusy ? 'Henter …' : 'Ingen delte ennå. Trykk gruppe-ikonet på en av dine for å dele med teamet.'}</div>
+                : teamList.map((s) => {
+                    const t = INFOGRAPHIC_TEMPLATES.find((x) => x.id === s.previewTplId) || INFOGRAPHIC_TEMPLATES[0];
+                    const firstVals = s.scenes?.[0]?.values || {};
+                    return (
+                      <div key={s.id} style={{ marginBottom: 10, padding: 8, borderRadius: 9, border: `1px solid ${D.line}`, background: D.bg }}>
+                        <TemplateThumb tpl={t} accent={s.accent || accent} values={firstVals} />
+                        <div style={{ fontSize: 11.5, fontWeight: 600, color: D.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</div>
+                        <div style={{ fontSize: 9.5, color: D.faint, marginBottom: 6 }}>{s.authorName ? `delt av ${s.authorName}` : 'delt'}{s.mine ? ' · deg' : ''} · {s.scenes?.length || 0} scene(r)</div>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <button style={{ ...topBtn, flex: 1, justifyContent: 'center', fontSize: 11 }} onClick={() => loadSnapshot(s)}><FolderOpenIcon style={{ fontSize: 14 }} /> Åpne</button>
+                          {s.mine && <button style={{ ...topBtn, padding: '4px 9px', fontSize: 11, color: '#f08a82' }} title="Avdel fra teamet" onClick={async () => { await unshareFromTeam(s.id); void loadTeamLibrary(); }}><DeleteOutlineIcon style={{ fontSize: 15 }} /></button>}
+                        </div>
+                      </div>
+                    );
+                  })}
           </>)}
           {leftSec === 'insight' && (<>
             <div style={{ fontSize: 11, fontWeight: 700, color: D.soft, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>Innsikt <span style={{ color: D.faint, fontWeight: 500 }}>· lærer modellen?</span></div>
