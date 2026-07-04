@@ -14,7 +14,9 @@ import {
   addCustomTemplate, removeCustomTemplate, isCustomTemplate, customTemplateIds,
   type InfographicTemplate,
 } from './infographicStudio';
-import { aiPickTemplate, recordAiFeedback, recordTemplateUsage, aiFeedbackCount } from './infographicAI';
+import { aiPickTemplate, aiInfographicFromSite, logoToDataUrl, recordAiFeedback, recordTemplateUsage, aiFeedbackCount } from './infographicAI';
+import { scanDom, isCaptureAvailable } from '../../services/demoCaptureService';
+import { analyzeProductEvidence, gatherSiteContext } from './demoStudioAI';
 import { isAiConnected } from '../../services/claudeProxyService';
 import { FONT_FACE_CSS } from './fontAssets.generated';
 import { ROLE_ROOM_LOGO, CREATORHUB_LOGO } from './kitLogos.generated';
@@ -316,6 +318,59 @@ async function dominantColor(dataUrl: string): Promise<string> {
   });
 }
 
+/** Analyser en logo (data-URL): dimensjoner, sideforhold og «luft» (andel
+ *  transparent/near-hvit ramme rundt innholdet). Brukes til å foreslå
+ *  lower-third-vennlig beskjæring. Null ved feil/tainted canvas. */
+async function analyzeLogo(dataUrl: string): Promise<{ w: number; h: number; aspect: number; padRatio: number; box: { x: number; y: number; w: number; h: number } } | null> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const w = img.naturalWidth, h = img.naturalHeight;
+        if (!w || !h) { resolve(null); return; }
+        const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+        const ctx = cv.getContext('2d'); if (!ctx) { resolve(null); return; }
+        ctx.drawImage(img, 0, 0);
+        const d = ctx.getImageData(0, 0, w, h).data;
+        let minX = w, minY = h, maxX = -1, maxY = -1;
+        for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+          const i = (y * w + x) * 4, a = d[i + 3];
+          const nearWhite = d[i] > 244 && d[i + 1] > 244 && d[i + 2] > 244;
+          if (a > 24 && !nearWhite) { if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y; }
+        }
+        if (maxX < 0) { resolve(null); return; } // tomt
+        const bw = maxX - minX + 1, bh = maxY - minY + 1;
+        const padRatio = 1 - (bw * bh) / (w * h);
+        resolve({ w, h, aspect: bw / Math.max(1, bh), padRatio, box: { x: minX, y: minY, w: bw, h: bh } });
+      } catch { resolve(null); }
+    };
+    img.onerror = () => resolve(null);
+    img.src = dataUrl;
+  });
+}
+
+/** Beskjær transparent/hvit luft rundt logoen (+ liten margin) → data-URL.
+ *  Gjør en «for stor» logo lower-third-vennlig (tett, ingen tomrom). */
+async function trimLogoWhitespace(dataUrl: string): Promise<string> {
+  const a = await analyzeLogo(dataUrl);
+  if (!a) return dataUrl;
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const m = Math.round(Math.max(a.box.w, a.box.h) * 0.06); // 6 % pust
+        const cw = a.box.w + m * 2, ch = a.box.h + m * 2;
+        const cv = document.createElement('canvas'); cv.width = cw; cv.height = ch;
+        const ctx = cv.getContext('2d'); if (!ctx) { resolve(dataUrl); return; }
+        ctx.drawImage(img, a.box.x, a.box.y, a.box.w, a.box.h, m, m, a.box.w, a.box.h);
+        resolve(cv.toDataURL('image/png'));
+      } catch { resolve(dataUrl); }
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
 /** Lett live-thumbnail av en mal i galleriet: lazy iframe (kun når synlig),
  *  rå HTML u/ font-injeksjon, skalert til å passe + frosset ved p=1. */
 function TemplateThumb({ tpl, accent }: { tpl: InfographicTemplate; accent: string }) {
@@ -399,6 +454,26 @@ export function InfographicStudioView(
   const [aiBusy, setAiBusy] = useState(false);
   // Siste AI-anbefaling → 👍/👎 mater lærings-loopen (few-shot + re-rangering).
   const [aiLastPick, setAiLastPick] = useState<{ desc: string; tplId: string } | null>(null);
+  // Logo fra nettside: flere kandidater → velg; «for stor» → foreslå trimming.
+  const [logoChoices, setLogoChoices] = useState<string[]>([]);
+  const [logoHint, setLogoHint] = useState<string | null>(null);
+
+  /** Sett en logo (embed som data-URL) + sjekk om den er lower-third-vennlig →
+   *  foreslå trimming ved mye tomrom / ekstremt sideforhold. */
+  const applyLogo = async (url: string) => {
+    setLogoChoices([]);
+    const dl = await logoToDataUrl(url).catch(() => url);
+    setLogo(dl);
+    const a = await analyzeLogo(dl).catch(() => null);
+    if (a && (a.padRatio > 0.32 || a.aspect > 4 || a.aspect < 0.45)) {
+      setLogoHint(a.aspect > 4 ? 'Logoen er veldig bred for en lower-third' : a.aspect < 0.45 ? 'Logoen er veldig høy/smal' : 'Logoen har mye tomrom rundt seg');
+    } else setLogoHint(null);
+  };
+  const trimLogo = async () => {
+    if (!logo) return;
+    const dl = await trimLogoWhitespace(logo).catch(() => logo);
+    setLogo(dl); setLogoHint(null); setMsg('✓ Logo beskåret — se preview.');
+  };
   const [importName, setImportName] = useState('');
   const [importHtml, setImportHtml] = useState('');
   const [customTick, setCustomTick] = useState(0); // tving re-render etter mal-import/-slett
@@ -670,6 +745,44 @@ export function InfographicStudioView(
     } finally { setAiBusy(false); }
   };
 
+  // «Fra nettside»: scan siden → hent LOGO + merkefarge fra branding, la AI
+  // velge mal + fylle med EKTE data fra siden (firmanavn, tall, tagline).
+  const runFromSite = async () => {
+    if (aiBusy) return;
+    if (!isCaptureAvailable()) { setMsg('«Fra nettside» krever Tauri-appen (skann av siden).'); return; }
+    if (!isAiConnected()) { setMsg('AI ikke koblet til (mangler Role Room-token i Innstillinger).'); return; }
+    const url = project?.url?.trim();
+    if (!url) { setMsg('Prosjektet mangler en URL — åpne en demo med nettadresse først.'); return; }
+    setAiBusy(true); setMsg(`Skanner ${url} …`);
+    try {
+      const scan = await scanDom(url).catch(() => null);
+      const brand = scan?.branding;
+      // LOGO fra siden: flere kandidater → la brukeren velge; ellers bruk den ene
+      // (embed + sjekk lower-third-vennlighet via applyLogo). + merkefarge = aksent.
+      if (brand?.logoCandidates && brand.logoCandidates.length > 1) setLogoChoices(brand.logoCandidates);
+      else if (brand?.logoUrl) { setMsg('Henter logo …'); await applyLogo(brand.logoUrl); }
+      if (brand?.brandColor && /^#[0-9a-fA-F]{3,8}$/.test(brand.brandColor)) setAccent(brand.brandColor);
+      const pageText = scan?.pageText || '';
+      if (!pageText.trim()) { setMsg('Fant lite lesbar tekst på siden (SPA/innlogget?). Prøv en beskrivelse i stedet.'); return; }
+      // Forstå hva bedriften LEVERER: multi-side-kontekst (/tjenester, /priser …)
+      // + strukturert bevis-inventar (funksjoner, tall, tagline).
+      setMsg('Forstår produkter/tjenester …');
+      const gathered = await gatherSiteContext(url, { mainText: pageText, maxPages: 4 }).catch(() => null);
+      const ctx = gathered?.context || pageText;
+      const evidence = await analyzeProductEvidence({ url, siteContext: ctx, elements: scan?.elements || [] }).catch(() => null);
+      setMsg('AI lager infographic fra tjenestene …');
+      const labels = (scan?.elements || []).map((e) => e.label).filter(Boolean).slice(0, 25);
+      const r = await aiInfographicFromSite({ siteText: ctx, brandName: brand?.brandName, elementLabels: labels, evidence: evidence ?? undefined, templates: INFOGRAPHIC_TEMPLATES });
+      updateScene({ tplId: r.tplId, values: r.values, bindings: {} });
+      setAiLastPick({ desc: `nettside: ${brand?.brandName || url}`, tplId: r.tplId });
+      const picked = INFOGRAPHIC_TEMPLATES.find((t) => t.id === r.tplId);
+      const nFeat = evidence?.features?.length || 0;
+      setMsg(`✓ «${picked?.name || r.tplId}» fylt fra ${brand?.brandName || url}${nFeat ? ` (${nFeat} tjenester forstått)` : ''}${brand?.logoUrl ? ' + logo/merkefarge' : ''}${r.reason ? ` — ${r.reason}` : ''}`);
+    } catch (e) {
+      setMsg('Feil ved «Fra nettside»: ' + (e instanceof Error ? e.message : String(e)));
+    } finally { setAiBusy(false); }
+  };
+
   // Importer egen HTML-mal → «Mine maler».
   const doImportTemplate = () => {
     if (!importHtml.trim()) { setMsg('Lim inn eller last opp HTML-mal først.'); return; }
@@ -765,6 +878,38 @@ export function InfographicStudioView(
                 <button style={{ ...topBtn, width: '100%', justifyContent: 'center', fontSize: 11.5, opacity: aiBusy || !aiDesc.trim() ? 0.6 : 1 }} disabled={aiBusy || !aiDesc.trim()} onClick={() => void runAiPick()}>
                   {aiBusy ? 'AI velger …' : 'Velg mal + fyll inn'}
                 </button>
+                {/* «Fra nettside»: scan project.url → logo + merkefarge + ekte data. */}
+                {project?.url && (
+                  <button style={{ ...topBtn, width: '100%', justifyContent: 'center', fontSize: 11.5, marginTop: 6, opacity: aiBusy ? 0.6 : 1 }} disabled={aiBusy}
+                    title={`Skanner ${project.url} — henter logo, merkefarge og ekte tall, og fyller en mal`}
+                    onClick={() => void runFromSite()}>
+                    🌐 Fra nettside {(() => { try { return `(${new URL(project.url).host})`; } catch { return ''; } })()}
+                  </button>
+                )}
+                {/* Flere logoer funnet → velg hvilken. */}
+                {logoChoices.length > 1 && (
+                  <div style={{ marginTop: 8, padding: 8, borderRadius: 8, background: D.panel2, border: `1px solid ${D.line}` }}>
+                    <div style={{ fontSize: 10.5, color: D.soft, marginBottom: 6 }}>Fant {logoChoices.length} logoer — velg én:</div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {logoChoices.map((u) => (
+                        <button key={u} onClick={() => void applyLogo(u)} title={u}
+                          style={{ width: 54, height: 40, borderRadius: 6, border: `1px solid ${D.line}`, background: '#fff', display: 'grid', placeItems: 'center', overflow: 'hidden', cursor: 'pointer', padding: 3 }}>
+                          <img src={u} alt="" style={{ maxWidth: '100%', maxHeight: '100%' }} />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {/* Logo «for stor» / mye luft → foreslå lower-third-vennlig trimming. */}
+                {logoHint && (
+                  <div style={{ marginTop: 8, padding: 8, borderRadius: 8, background: '#2a2417', border: '1px solid #4a3f22' }}>
+                    <div style={{ fontSize: 10.5, color: '#f0d9a8', marginBottom: 6 }}>⚠ {logoHint}. Beskjære for lower-third?</div>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button style={{ ...topBtn, flex: 1, justifyContent: 'center', fontSize: 11, background: D.accent, border: 'none' }} onClick={() => void trimLogo()}>Gjør lower-third-vennlig</button>
+                      <button style={{ ...topBtn, padding: '4px 9px', fontSize: 11 }} onClick={() => setLogoHint(null)}>Behold</button>
+                    </div>
+                  </div>
+                )}
                 {/* Lærings-loop: 👍/👎 på siste anbefaling → few-shot + re-rangering. */}
                 {aiLastPick && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>

@@ -98,20 +98,26 @@
   function toHex(rgb) { function h(n) { return ('0' + Math.round(n).toString(16)).slice(-2); } return '#' + h(rgb.r) + h(rgb.g) + h(rgb.b); }
   function extractBranding() {
     var brandName = metaContent('meta[property="og:site_name"]') || metaContent('meta[name="application-name"]') || (document.title || '').split(/[|–—\-]/)[0].trim();
-    var logoUrl = '';
+    // Samle FLERE logo-kandidater (header-logo, apple-touch-icon, og:image,
+    // favicon, [class*=logo]-bilder) → studioet kan la brukeren velge.
+    var cands = [], candSeen = {};
+    function addCand(href) { if (!href) return; try { var u = new URL(href, location.href).href; if (!candSeen[u]) { candSeen[u] = 1; cands.push(u); } } catch (e) { /* */ } }
+    var logoImgs = document.querySelectorAll('header img, [class*="logo" i] img, img[alt*="logo" i], img[class*="logo" i], a[href="/"] img, [id*="logo" i] img');
+    for (var li = 0; li < logoImgs.length && cands.length < 8; li++) { if (logoImgs[li].src) addCand(logoImgs[li].src); }
     var icons = ['link[rel="apple-touch-icon"]', 'link[rel="apple-touch-icon-precomposed"]', 'meta[property="og:image"]', 'link[rel="icon"]', 'link[rel="shortcut icon"]'];
     for (var i = 0; i < icons.length; i++) {
       var el = document.querySelector(icons[i]);
-      if (el) { var href = el.getAttribute('href') || el.getAttribute('content'); if (href) { try { logoUrl = new URL(href, location.href).href; break; } catch (e) { /* */ } } }
+      if (el) { addCand(el.getAttribute('href') || el.getAttribute('content')); }
     }
-    if (!logoUrl) { var img = document.querySelector('header img, [class*="logo" i] img, img[alt*="logo" i], img[class*="logo" i]'); if (img && img.src) logoUrl = img.src; }
+    var logoUrl = cands[0] || '';
+    var logoCandidates = cands.slice(0, 6);
     var palette = [], seen = {};
     function add(c) { var rgb = parseColor(c); if (rgb && vivid(rgb)) { var hex = toHex(rgb); if (!seen[hex]) { seen[hex] = 1; palette.push(hex); } } }
     var theme = metaContent('meta[name="theme-color"]');
     if (theme && /^#?[0-9a-fA-F]{3,8}$/.test(theme)) { var th = theme[0] === '#' ? theme : '#' + theme; seen[th] = 1; palette.push(th); }
     var nodes = deepQueryAll('button,a[class*="btn" i],[class*="button" i],[class*="cta" i],header');
     for (var j = 0; j < nodes.length && palette.length < 8; j++) { try { var cs = getComputedStyle(nodes[j]); add(cs.backgroundColor); add(cs.color); } catch (e) { /* */ } }
-    return { brandName: brandName || '', logoUrl: logoUrl || '', brandColor: palette[0] || '', palette: palette.slice(0, 6) };
+    return { brandName: brandName || '', logoUrl: logoUrl || '', logoCandidates: logoCandidates, brandColor: palette[0] || '', palette: palette.slice(0, 6) };
   }
 
   // Bredt utvalg av interaktive/innholds-elementer (inkl. klikkbare div-er,
