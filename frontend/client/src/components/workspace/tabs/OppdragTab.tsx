@@ -6,6 +6,9 @@
  * IKKE de gamle /api/vendor-orders/*-flatene — de har ingen backend.
  * Bruker-scopet (som Utstyr/Forespørsler): innboksen er leverandørens, ikke
  * prosjektets — levering med filopplasting skjer i dashbordets oppdragsflate.
+ * TOSPRÅKLIG: utenlandske partner-vendors (CreatorHub Partner, is_foreign fra
+ * /api/editing/vendor/me) får engelsk — samme localeForVendor-mekanisme som
+ * EditingVendorWorkspace.
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import { Box, Stack, Typography, Button, CircularProgress, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Badge } from '@mui/material';
@@ -19,22 +22,73 @@ import Send from '@mui/icons-material/Send';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
 import { WsCard, WsTag, WsStat, WsPills } from '../ui';
+import { localeForVendor } from '../../universal/editing-marketplace/editingMarketplaceStrings';
 
-const STATUS: Record<string, [string, string]> = {
-  requested: ['Ny forespørsel', 'amber'],
-  in_progress: ['Pågår', 'blue'],
-  delivered: ['Levert', 'green'],
-  approved: ['Godkjent', 'green'],
-  delivered_to_client: ['Hos klient', 'green'],
-  declined: ['Avslått', 'red'],
-  draft: ['Utkast', 'neutral'],
+// Lokal no/en-ordbok for fanen (samme mønster som editingMarketplaceStrings).
+const T: Record<string, { no: string; en: string }> = {
+  title: { no: 'Oppdrag', en: 'Jobs' },
+  subtitle: {
+    no: 'Redigerings- og produksjonsoppdrag du har mottatt fra kunder. Aksepter, avslå og hold dialogen her — levering med filopplasting skjer i oppdragsflaten i dashbordet.',
+    en: 'Editing and production jobs you have received from clients. Accept, decline and keep the dialogue here — file delivery happens in the job workspace on your dashboard.',
+  },
+  fullWorkspace: { no: 'Full oppdragsflate', en: 'Full job workspace' },
+  statNew: { no: 'Nye forespørsler', en: 'New requests' },
+  statNewSub: { no: 'venter på svar', en: 'awaiting reply' },
+  statActive: { no: 'Pågår', en: 'In progress' },
+  statActiveSub: { no: 'aksepterte', en: 'accepted' },
+  statDelivered: { no: 'Levert', en: 'Delivered' },
+  statDeliveredSub: { no: 'ferdigstilte', en: 'completed' },
+  statFee: { no: 'Aktivt honorar', en: 'Active fees' },
+  statFeeSub: { no: 'aksepterte + leverte', en: 'accepted + delivered' },
+  filterAll: { no: 'Alle', en: 'All' },
+  filterNew: { no: 'Nye', en: 'New' },
+  filterActive: { no: 'Pågår', en: 'Active' },
+  filterDelivered: { no: 'Levert', en: 'Delivered' },
+  emptyNone: { no: 'Ingen oppdrag ennå', en: 'No jobs yet' },
+  emptyFilter: { no: 'Ingen oppdrag i dette filteret', en: 'No jobs match this filter' },
+  emptyHint: {
+    no: 'Når en kunde sender deg et oppdrag fra sitt prosjekt, dukker det opp her. Sørg for at priskatalogen din er publisert i oppdragsflaten, så kundene finner deg.',
+    en: 'When a client sends you a job from their project it appears here. Make sure your price catalog is published in the job workspace so clients can find you.',
+  },
+  revisions: { no: 'revisjoner', en: 'revisions' },
+  paidOut: { no: 'Utbetalt', en: 'Paid out' },
+  received: { no: 'mottatt', en: 'received' },
+  dialog: { no: 'Dialog', en: 'Chat' },
+  accept: { no: 'Aksepter', en: 'Accept' },
+  decline: { no: 'Avslå', en: 'Decline' },
+  deliver: { no: 'Lever filer →', en: 'Deliver files →' },
+  complianceMsg: {
+    no: 'Compliance-kravene (NDA m.m.) må fullføres før du kan akseptere — åpne oppdragsflaten i dashbordet.',
+    en: 'Compliance requirements (NDA etc.) must be completed before you can accept — open the job workspace on your dashboard.',
+  },
+  acceptFailed: { no: 'Kunne ikke akseptere oppdraget.', en: 'Could not accept the job.' },
+  declineReason: { no: 'Vil du oppgi en grunn? (valgfritt)', en: 'Add a reason? (optional)' },
+  declineConfirm: { no: 'Avslå oppdraget?', en: 'Decline the job?' },
+  declineFailed: { no: 'Kunne ikke avslå.', en: 'Could not decline.' },
+  job: { no: 'Oppdrag', en: 'Job' },
+  msgTitle: { no: 'Dialog', en: 'Chat' },
+  msgEmpty: { no: 'Ingen meldinger ennå.', en: 'No messages yet.' },
+  msgYou: { no: 'Deg', en: 'You' },
+  msgClient: { no: 'Kunde', en: 'Client' },
+  msgPlaceholder: { no: 'Skriv en melding …', en: 'Write a message …' },
+  msgClosed: { no: 'Dialogen er stengt for denne statusen', en: 'Chat is closed for this status' },
+  msgSend: { no: 'Send', en: 'Send' },
+  msgFailed: { no: 'Kunne ikke sende.', en: 'Could not send.' },
 };
-const FILTERS = [
-  { key: 'alle', label: 'Alle' },
-  { key: 'requested', label: 'Nye' },
-  { key: 'in_progress', label: 'Pågår' },
-  { key: 'delivered', label: 'Levert' },
-];
+const STATUS_I18N: Record<string, { no: string; en: string }> = {
+  requested: { no: 'Ny forespørsel', en: 'New request' },
+  in_progress: { no: 'Pågår', en: 'In progress' },
+  delivered: { no: 'Levert', en: 'Delivered' },
+  approved: { no: 'Godkjent', en: 'Approved' },
+  delivered_to_client: { no: 'Hos klient', en: 'With client' },
+  declined: { no: 'Avslått', en: 'Declined' },
+  draft: { no: 'Utkast', en: 'Draft' },
+};
+
+const STATUS_TONE: Record<string, string> = {
+  requested: 'amber', in_progress: 'blue', delivered: 'green',
+  approved: 'green', delivered_to_client: 'green', declined: 'red', draft: 'neutral',
+};
 
 const fmtNok = (cents: any, currency?: string) => {
   const n = Number(cents);
@@ -55,6 +109,10 @@ const OppdragTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [filter, setFilter] = useState('alle');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [msgJob, setMsgJob] = useState<any | null>(null);
+  // Utenlandske partner-vendors (is_foreign/land≠NO) får engelsk UI.
+  const [locale, setLocale] = useState<'no' | 'en'>('no');
+  const t = (k: string) => T[k]?.[locale] || T[k]?.no || k;
+  const statusLabel = (s: string) => STATUS_I18N[s]?.[locale] || STATUS_I18N[s]?.no || s || '—';
 
   const load = () => {
     apiRequest('/api/editing/vendor/jobs')
@@ -62,7 +120,13 @@ const OppdragTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       .catch(() => setJobs([]))
       .finally(() => setLoading(false));
   };
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+  useEffect(() => {
+    load();
+    apiRequest('/api/editing/vendor/me')
+      .then((me: any) => setLocale(localeForVendor({ isForeign: me?.isForeign, country: me?.country })))
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const list = jobs || [];
   const count = (s: string) => list.filter((j) => j.status === s).length;
@@ -82,20 +146,18 @@ const OppdragTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       load();
     } catch (e: any) {
       const msg = String(e?.message || '');
-      window.alert(msg.includes('compliance')
-        ? 'Compliance-kravene (NDA m.m.) må fullføres før du kan akseptere — åpne oppdragsflaten i dashbordet.'
-        : msg || 'Kunne ikke akseptere oppdraget.');
+      window.alert(msg.includes('compliance') ? t('complianceMsg') : msg || t('acceptFailed'));
     } finally { setBusyId(null); }
   };
   const decline = async (job: any) => {
     if (busyId) return;
-    const reason = window.prompt('Vil du oppgi en grunn? (valgfritt)') ?? null;
-    if (reason === null && !window.confirm('Avslå oppdraget?')) return;
+    const reason = window.prompt(t('declineReason')) ?? null;
+    if (reason === null && !window.confirm(t('declineConfirm'))) return;
     setBusyId(job.id);
     try {
       await apiRequest(`/api/editing/jobs/${encodeURIComponent(job.id)}/decline`, { method: 'POST', body: { reason: reason || undefined } });
       load();
-    } catch (e: any) { window.alert(e?.message || 'Kunne ikke avslå.'); }
+    } catch (e: any) { window.alert(e?.message || t('declineFailed')); }
     finally { setBusyId(null); }
   };
 
@@ -105,37 +167,42 @@ const OppdragTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     <Box sx={{ maxWidth: 1080, mx: 'auto' }}>
       <Stack direction="row" justifyContent="space-between" alignItems="flex-end" sx={{ mb: 2 }}>
         <Box>
-          <Typography sx={{ fontSize: 20, fontWeight: 800 }}>Oppdrag</Typography>
-          <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Redigerings- og produksjonsoppdrag du har mottatt fra kunder. Aksepter, avslå og hold dialogen her — levering med filopplasting skjer i oppdragsflaten i dashbordet.</Typography>
+          <Typography sx={{ fontSize: 20, fontWeight: 800 }}>{t('title')}</Typography>
+          <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>{t('subtitle')}</Typography>
         </Box>
-        <Button variant="outlined" onClick={() => navigate('/dashboard')} sx={{ color: ws.accent, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 700 }}>Full oppdragsflate</Button>
+        <Button variant="outlined" onClick={() => navigate('/dashboard')} sx={{ color: ws.accent, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 700 }}>{t('fullWorkspace')}</Button>
       </Stack>
 
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: 'repeat(4, 1fr)' }, gap: 1.5, mb: 2 }}>
-        <WsStat icon={<WorkOutline sx={{ fontSize: 20 }} />} label="Nye forespørsler" value={count('requested')} sub="venter på svar" tone={ws.amberSoft} />
-        <WsStat icon={<CheckCircle sx={{ fontSize: 20 }} />} label="Pågår" value={count('in_progress')} sub="aksepterte" tone={ws.blueSoft} />
-        <WsStat icon={<LocalShipping sx={{ fontSize: 20 }} />} label="Levert" value={count('delivered') + count('approved') + count('delivered_to_client')} sub="ferdigstilte" tone={ws.greenSoft} />
-        <WsStat icon={<Payments sx={{ fontSize: 20 }} />} label="Aktivt honorar" value={fmtNok(activeSum) || '—'} sub="aksepterte + leverte" tone={ws.accentSoft} />
+        <WsStat icon={<WorkOutline sx={{ fontSize: 20 }} />} label={t('statNew')} value={count('requested')} sub={t('statNewSub')} tone={ws.amberSoft} />
+        <WsStat icon={<CheckCircle sx={{ fontSize: 20 }} />} label={t('statActive')} value={count('in_progress')} sub={t('statActiveSub')} tone={ws.blueSoft} />
+        <WsStat icon={<LocalShipping sx={{ fontSize: 20 }} />} label={t('statDelivered')} value={count('delivered') + count('approved') + count('delivered_to_client')} sub={t('statDeliveredSub')} tone={ws.greenSoft} />
+        <WsStat icon={<Payments sx={{ fontSize: 20 }} />} label={t('statFee')} value={fmtNok(activeSum) || '—'} sub={t('statFeeSub')} tone={ws.accentSoft} />
       </Box>
 
       <WsPills sx={{ mb: 1.5 }} value={filter} onChange={setFilter}
-        items={FILTERS.map((f) => ({ key: f.key, label: f.key === 'alle' ? `${f.label} (${list.filter((j) => j.status !== 'draft').length})` : `${f.label} (${count(f.key)})` }))} />
+        items={[
+          { key: 'alle', label: `${t('filterAll')} (${list.filter((j) => j.status !== 'draft').length})` },
+          { key: 'requested', label: `${t('filterNew')} (${count('requested')})` },
+          { key: 'in_progress', label: `${t('filterActive')} (${count('in_progress')})` },
+          { key: 'delivered', label: `${t('filterDelivered')} (${count('delivered')})` },
+        ]} />
 
       <WsCard>
         {filtered.length === 0 ? (
           <Stack alignItems="center" sx={{ py: 5 }} spacing={1}>
             <WorkOutline sx={{ fontSize: 36, color: ws.textFaint }} />
-            <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>{list.length === 0 ? 'Ingen oppdrag ennå' : 'Ingen oppdrag i dette filteret'}</Typography>
+            <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>{list.length === 0 ? t('emptyNone') : t('emptyFilter')}</Typography>
             {list.length === 0 && (
               <Typography sx={{ fontSize: 12.5, color: ws.textDim, textAlign: 'center', maxWidth: 460 }}>
-                Når en kunde sender deg et oppdrag fra sitt prosjekt, dukker det opp her. Sørg for at priskatalogen din er publisert i oppdragsflaten, så kundene finner deg.
+                {t('emptyHint')}
               </Typography>
             )}
           </Stack>
         ) : (
           <Stack spacing={1}>
             {filtered.map((j: any) => {
-              const st = STATUS[j.status] || [j.status || '—', 'neutral'];
+              const tone = STATUS_TONE[j.status] || 'neutral';
               const services = Array.isArray(j.requested_services) ? j.requested_services : [];
               const amount = fmtNok(j.amount_cents, j.currency);
               return (
@@ -146,33 +213,33 @@ const OppdragTab: React.FC<{ projectId: string }> = ({ projectId }) => {
                     </Box>
                     <Box sx={{ minWidth: 0, flex: 1 }}>
                       <Stack direction="row" spacing={0.75} alignItems="center" sx={{ flexWrap: 'wrap', gap: 0.5 }}>
-                        <Typography sx={{ fontSize: 14, fontWeight: 700 }} noWrap>{j.project_title || 'Oppdrag'}</Typography>
-                        <WsTag label={st[0]} tone={st[1] as any} />
-                        {j.revisions_used > 0 && <WsTag label={`${j.revisions_used}/${j.max_revisions || '∞'} revisjoner`} tone="neutral" />}
-                        {j.payout_status === 'paid' && <WsTag label="Utbetalt" tone="green" />}
+                        <Typography sx={{ fontSize: 14, fontWeight: 700 }} noWrap>{j.project_title || t('job')}</Typography>
+                        <WsTag label={statusLabel(j.status)} tone={tone as any} />
+                        {j.revisions_used > 0 && <WsTag label={`${j.revisions_used}/${j.max_revisions || '∞'} ${t('revisions')}`} tone="neutral" />}
+                        {j.payout_status === 'paid' && <WsTag label={t('paidOut')} tone="green" />}
                       </Stack>
                       <Typography sx={{ fontSize: 11.5, color: ws.textFaint, mt: 0.25 }}>
                         {services.slice(0, 4).join(' · ')}{services.length > 4 ? ' · …' : ''}
-                        {amount ? ` · ${amount}` : ''} · mottatt {fmtDate(j.requested_at || j.created_at)}
+                        {amount ? ` · ${amount}` : ''} · {t('received')} {fmtDate(j.requested_at || j.created_at)}
                       </Typography>
                       {j.brief && <Typography sx={{ fontSize: 12, color: ws.textDim, mt: 0.5, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{j.brief}</Typography>}
                     </Box>
                     <Stack direction="row" spacing={1} alignItems="center" sx={{ flexShrink: 0 }}>
                       <Badge badgeContent={j.unread_messages || 0} color="warning" sx={{ '& .MuiBadge-badge': { fontSize: 9.5, minWidth: 16, height: 16 } }}>
                         <Button size="small" variant="outlined" startIcon={<ChatBubbleOutline sx={{ fontSize: 14 }} />} onClick={() => setMsgJob(j)}
-                          sx={{ color: ws.textDim, borderColor: ws.border, textTransform: 'none', fontWeight: 600 }}>Dialog</Button>
+                          sx={{ color: ws.textDim, borderColor: ws.border, textTransform: 'none', fontWeight: 600 }}>{t('dialog')}</Button>
                       </Badge>
                       {j.status === 'requested' && (
                         <>
                           <Button size="small" variant="contained" disabled={busyId === j.id} onClick={() => accept(j)}
-                            sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Aksepter</Button>
+                            sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>{t('accept')}</Button>
                           <Button size="small" variant="outlined" disabled={busyId === j.id} onClick={() => decline(j)}
-                            sx={{ color: ws.red, borderColor: 'rgba(248,113,113,0.4)', textTransform: 'none', fontWeight: 600 }}>Avslå</Button>
+                            sx={{ color: ws.red, borderColor: 'rgba(248,113,113,0.4)', textTransform: 'none', fontWeight: 600 }}>{t('decline')}</Button>
                         </>
                       )}
                       {j.status === 'in_progress' && (
                         <Button size="small" variant="outlined" onClick={() => navigate('/dashboard')}
-                          sx={{ color: ws.accent, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 600 }}>Lever filer →</Button>
+                          sx={{ color: ws.accent, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 600 }}>{t('deliver')}</Button>
                       )}
                     </Stack>
                   </Stack>
@@ -183,12 +250,13 @@ const OppdragTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         )}
       </WsCard>
 
-      <JobMessagesDialog job={msgJob} onClose={() => { setMsgJob(null); load(); }} />
+      <JobMessagesDialog job={msgJob} locale={locale} onClose={() => { setMsgJob(null); load(); }} />
     </Box>
   );
 };
 
-const JobMessagesDialog: React.FC<{ job: any | null; onClose: () => void }> = ({ job, onClose }) => {
+const JobMessagesDialog: React.FC<{ job: any | null; locale: 'no' | 'en'; onClose: () => void }> = ({ job, locale, onClose }) => {
+  const t = (k: string) => T[k]?.[locale] || T[k]?.no || k;
   const [messages, setMessages] = useState<any[]>([]);
   const [canMessage, setCanMessage] = useState(false);
   const [body, setBody] = useState('');
@@ -210,28 +278,28 @@ const JobMessagesDialog: React.FC<{ job: any | null; onClose: () => void }> = ({
       const r: any = await apiRequest(`/api/editing/jobs/${encodeURIComponent(job.id)}/messages`, { method: 'POST', body: { body: text } });
       if (r?.message) setMessages((p) => [...p, r.message]);
       setBody('');
-    } catch (e: any) { window.alert(e?.message || 'Kunne ikke sende.'); }
+    } catch (e: any) { window.alert(e?.message || t('msgFailed')); }
     finally { setBusy(false); }
   };
 
   return (
     <Dialog open={!!job} onClose={onClose} fullWidth maxWidth="sm">
-      <DialogTitle>Dialog — {job?.project_title || 'Oppdrag'}</DialogTitle>
+      <DialogTitle>{t('msgTitle')} — {job?.project_title || t('job')}</DialogTitle>
       <DialogContent dividers>
         <Stack spacing={1} sx={{ minHeight: 180, maxHeight: 380, overflowY: 'auto' }}>
-          {messages.length === 0 && <Typography variant="body2" color="text.secondary">Ingen meldinger ennå.</Typography>}
+          {messages.length === 0 && <Typography variant="body2" color="text.secondary">{t('msgEmpty')}</Typography>}
           {messages.map((m: any) => (
             <Box key={m.id} sx={{ alignSelf: m.sender_role === 'vendor' ? 'flex-end' : 'flex-start', maxWidth: '82%', px: 1.5, py: 0.9, borderRadius: 2, bgcolor: m.sender_role === 'vendor' ? 'rgba(255,140,0,0.14)' : 'rgba(255,255,255,0.06)' }}>
               <Typography sx={{ fontSize: 13 }}>{m.body}</Typography>
-              <Typography sx={{ fontSize: 10, opacity: 0.6, mt: 0.25 }}>{m.sender_role === 'vendor' ? 'Deg' : 'Kunde'} · {new Date(m.created_at).toLocaleString('nb-NO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</Typography>
+              <Typography sx={{ fontSize: 10, opacity: 0.6, mt: 0.25 }}>{m.sender_role === 'vendor' ? t('msgYou') : t('msgClient')} · {new Date(m.created_at).toLocaleString(locale === 'en' ? 'en-GB' : 'nb-NO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</Typography>
             </Box>
           ))}
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 2, pb: 2 }}>
-        <TextField fullWidth size="small" placeholder={canMessage ? 'Skriv en melding …' : 'Dialogen er stengt for denne statusen'} value={body} disabled={!canMessage || busy}
+        <TextField fullWidth size="small" placeholder={canMessage ? t('msgPlaceholder') : t('msgClosed')} value={body} disabled={!canMessage || busy}
           onChange={(e) => setBody(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }} />
-        <Button variant="contained" onClick={send} disabled={!canMessage || busy || !body.trim()} startIcon={<Send sx={{ fontSize: 15 }} />}>Send</Button>
+        <Button variant="contained" onClick={send} disabled={!canMessage || busy || !body.trim()} startIcon={<Send sx={{ fontSize: 15 }} />}>{t('msgSend')}</Button>
       </DialogActions>
     </Dialog>
   );
