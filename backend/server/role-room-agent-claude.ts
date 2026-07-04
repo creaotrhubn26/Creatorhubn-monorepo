@@ -88,6 +88,10 @@ export interface RunClaudeAgentResult {
    *  executed via the Anthropic MCP connector — surfaced for observability, not
    *  for client-side execution. */
   mcpToolCalls?: Array<{ name: string; serverName: string; isError: boolean }>;
+  /** True when an MCP connector was attached but the beta Messages call failed
+   *  and we fell back to the stable path (no ad tools). Surfaced so the caller /
+   *  canary can tell "MCP silently degraded" apart from "no MCP configured". */
+  mcpDegraded?: boolean;
   usage: {
     inputTokens: number;
     outputTokens: number;
@@ -170,16 +174,37 @@ export async function runClaudeAgent(input: RunClaudeAgentInput): Promise<RunCla
   // with the MCP server + toolset. Claude discovers and calls the (read-only)
   // TikTok tools server-side. Otherwise use the stable path unchanged.
   let response: any;
+  let mcpDegraded = false;
   if (input.mcpConfig) {
-    response = await client.beta.messages.create({
-      model,
-      max_tokens: maxTokens,
-      system,
-      messages,
-      tools: [...(input.tools ?? []), ...input.mcpConfig.tools],
-      mcp_servers: input.mcpConfig.mcp_servers,
-      betas: input.mcpConfig.betas,
-    });
+    try {
+      response = await client.beta.messages.create({
+        model,
+        max_tokens: maxTokens,
+        system,
+        messages,
+        tools: [...(input.tools ?? []), ...input.mcpConfig.tools],
+        mcp_servers: input.mcpConfig.mcp_servers,
+        betas: input.mcpConfig.betas,
+      });
+    } catch (mcpErr) {
+      // The MCP connector is best-effort. If the beta Messages API or an MCP
+      // server rejects the call (SDK too old for the beta, bad/expired OAuth
+      // token, server down), fall back to the stable path so the agent still
+      // answers — just without the platform ad tools. An ads-connector hiccup
+      // must never break the chat itself.
+      mcpDegraded = true;
+      console.warn(
+        '[role-room-agent] MCP beta path failed; falling back to stable Messages API:',
+        mcpErr instanceof Error ? mcpErr.message : String(mcpErr),
+      );
+      response = await client.messages.create({
+        model,
+        max_tokens: maxTokens,
+        system,
+        messages,
+        tools: input.tools,
+      });
+    }
   } else {
     response = await client.messages.create({
       model,
@@ -237,6 +262,7 @@ export async function runClaudeAgent(input: RunClaudeAgentInput): Promise<RunCla
     text,
     toolUses,
     mcpToolCalls: mcpToolCalls.length ? mcpToolCalls : undefined,
+    mcpDegraded: mcpDegraded || undefined,
     model,
     latencyMs,
     usage: {
