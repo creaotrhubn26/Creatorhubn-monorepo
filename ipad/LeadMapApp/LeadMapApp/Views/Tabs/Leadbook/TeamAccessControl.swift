@@ -251,7 +251,28 @@ struct LBTeamMember: Identifiable, Hashable {
 }
 
 enum TeamAccessData {
-    static let members: [LBTeamMember] = [
+    /// Demo → mock-team; ellers ekte medlemmer fra TeamLiveStore
+    /// (`/sales-leadership/team-members`) med default-rolle Selger og ingen
+    /// overrides (RBAC-backend mangler enda). Tom liste → tom-tilstand.
+    @MainActor
+    static var members: [LBTeamMember] {
+        if DemoModeManager.isActiveNonisolated { return _members }
+        return TeamLiveStore.shared.memberDTOs.map { dto in
+            let initials = dto.name.split(separator: " ")
+                .prefix(2).compactMap { $0.first }.map(String.init).joined()
+            return LBTeamMember(
+                name: dto.name,
+                initials: initials.isEmpty ? "?" : initials,
+                avatarColor: LBrand.purple,
+                email: dto.email ?? "",
+                title: dto.title ?? "Selger",
+                role: .selger,
+                overrides: [:],
+                active: true
+            )
+        }
+    }
+    private static let _members: [LBTeamMember] = [
         LBTeamMember(name: "Lars Kristensen", initials: "LK", avatarColor: LBrand.purple,
                    email: "lars@leadgrid.no", title: "Salgssjef", role: .salgssjef, overrides: [:], active: true),
         LBTeamMember(name: "Marit Hansen", initials: "MH", avatarColor: LBrand.green,
@@ -278,7 +299,8 @@ enum TeamAccessData {
 
 struct TeamAccessControlView: View {
     @Environment(\.dismiss) private var dismiss
-    @State private var members: [LBTeamMember] = TeamAccessData.members
+    // Fylles i .task (TeamAccessData.members er @MainActor pga TeamLiveStore).
+    @State private var members: [LBTeamMember] = []
     @State private var mode: Mode = .roller
     @State private var search: String = ""
     @State private var roleFilter: LeadgridRole?
@@ -321,6 +343,9 @@ struct TeamAccessControlView: View {
                         }
                     }
                 }
+            }
+            .task {
+                if members.isEmpty { members = TeamAccessData.members }
             }
             .navigationTitle("Tilganger")
             .navigationBarTitleDisplayMode(.inline)
@@ -691,6 +716,11 @@ struct TeamAccessControlView: View {
     private var auditView: some View {
         ScrollView {
             VStack(spacing: 8) {
+                if auditEntries.isEmpty {
+                    Text("Ingen revisjonshendelser enda")
+                        .font(.system(size: 13)).foregroundStyle(LBrand.textSecondary)
+                        .frame(maxWidth: .infinity).padding(.vertical, 40)
+                }
                 ForEach(auditEntries) { entry in auditRow(entry) }
             }
             .padding(16)
@@ -698,7 +728,11 @@ struct TeamAccessControlView: View {
     }
 
     private struct AuditEntry: Identifiable { let id = UUID(); let icon: String; let tint: Color; let title: String; let actor: String; let timeAgo: String }
-    private var auditEntries: [AuditEntry] {[
+    /// Mock-audit — KUN i demo-modus (audit-backend mangler enda).
+    private var auditEntries: [AuditEntry] {
+        DemoModeManager.isActiveNonisolated ? mockAuditEntries : []
+    }
+    private var mockAuditEntries: [AuditEntry] {[
         .init(icon: "person.badge.plus", tint: LBrand.green, title: "Inviterte Sofie Vik som Spectator", actor: "Lars Kristensen", timeAgo: "2 t siden"),
         .init(icon: "pencil", tint: LBrand.purpleLight, title: "Endret Maria Lindholms tilgang på Leadbook · Maler fra «Lese» → «Redigere»", actor: "Lars Kristensen", timeAgo: "i går 14:22"),
         .init(icon: "lock.shield.fill", tint: LBrand.orange, title: "Reduserte rolle «Teamleder»-tilgang på Fakturering fra «Lese» → «Ingen»", actor: "Lars Kristensen", timeAgo: "i går 09:14"),
@@ -1215,7 +1249,11 @@ struct FeatureCatalogView: View {
     @State private var expandedSource: Bool = false
     @State private var toast: String?
 
-    static let sampleDiscovered: [DiscoveredFeature] = [
+    /// Mock-oppdagede funksjoner — KUN i demo-modus (manifest-scan mangler).
+    static var sampleDiscovered: [DiscoveredFeature] {
+        DemoModeManager.isActiveNonisolated ? _sampleDiscovered : []
+    }
+    private static let _sampleDiscovered: [DiscoveredFeature] = [
         DiscoveredFeature(
             key: "leadbook.pondus.akademi",
             name: "Pondus Akademi",
@@ -1342,8 +1380,9 @@ struct FeatureCatalogView: View {
                     .foregroundStyle(LBrand.purpleLight).tracking(0.8)
                 Spacer()
                 Button {
+                    let approvedCount = newFeatures.count
                     newFeatures.removeAll()
-                    flashToast("\(Self.sampleDiscovered.count) funksjoner aktivert med foreslåtte tilganger")
+                    flashToast("\(approvedCount) funksjoner aktivert med foreslåtte tilganger")
                 } label: {
                     HStack(spacing: 5) {
                         Image(systemName: "checkmark.circle.fill").font(.system(size: 11, weight: .bold))

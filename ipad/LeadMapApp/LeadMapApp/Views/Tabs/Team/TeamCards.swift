@@ -713,11 +713,37 @@ struct TeamAreasCard: View {
     @State private var selectedMember: TeamMember?
     @State private var showAssign: Bool = false
 
-    /// Demo-mode-gated territories. Skjuler polygonene (Kari/Ola/Martine/
-    /// Henrik) når TeamData.members er tom, så kartet ikke lyver om
-    /// tildelte områder.
+    /// QA-runde 2 (Daniel): den gamle gaten («skjul hvis ingen medlemmer»)
+    /// lot mock-polygonene (Kari/Ola/Martine/Henrik) lekke i ekte modus så
+    /// snart backend hadde medlemmer. Nå: demo → mock-GeoJSON; ellers tegnes
+    /// EKTE team fra leadgrid_sales_teams (senter + radius → sirkelpolygon
+    /// med teamets navn og farge). Ingen team = tomt kart, ingen løgn.
     private var effectiveTerritories: [GeoJSONTerritory] {
-        TeamData.members.isEmpty ? [] : territories
+        if DemoModeManager.isActiveNonisolated {
+            return TeamData.members.isEmpty ? [] : territories
+        }
+        return LeadgridSalesTeamStore.shared.teams.compactMap { team in
+            guard let lat = team.areaCenterLat, let lng = team.areaCenterLng else { return nil }
+            let radiusKm = team.areaRadiusKm ?? 3.0
+            // Sirkelpolygon: 36 punkter rundt senteret. 1 breddegrad ≈ 111 km;
+            // lengdegrad korrigeres med cos(lat).
+            let latDelta = radiusKm / 111.0
+            let lngDelta = radiusKm / (111.0 * cos(lat * .pi / 180))
+            let coords: [CLLocationCoordinate2D] = (0..<36).map { i in
+                let a = Double(i) / 36.0 * 2 * .pi
+                return CLLocationCoordinate2D(
+                    latitude: lat + latDelta * sin(a),
+                    longitude: lng + lngDelta * cos(a)
+                )
+            }
+            return GeoJSONTerritory(
+                memberName: team.name,
+                areaName: "\(Int(radiusKm.rounded())) km sone",
+                color: UIColor(Color(teamHex: team.colorHex) ?? .purple),
+                polygon: MKPolygon(coordinates: coords, count: coords.count),
+                center: CLLocationCoordinate2D(latitude: lat, longitude: lng)
+            )
+        }
     }
 
     private var mapView: some View {

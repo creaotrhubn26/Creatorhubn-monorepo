@@ -36,16 +36,17 @@ struct SalgssjefCockpitStrip: View {
     @State private var mileageOpen = false
     @State private var routesOpen = false
 
-    // Mock-badge-tall. Bindes til prod-API senere:
+    // Badge-tall avledet av (demo-gatede) datasettene — 0 når demo er AV,
+    // til prod-API bindes:
     //  approvals   → GET /sales-leadership/approvals/pending?type=deal,discount
     //  forecast    → GET /leadgrid/forecasting/pipeline
     //  coaching    → GET /sales-leadership/coaching/upcoming
     //  mileage     → GET /sales-leadership/expenses/pending?type=mileage
     //  routes      → GET /sales-leadership/team-routes/today
-    private let approvalsCount = 3
-    private let coachingCount = 2
-    private let mileageCount = 5
-    private let routesCount = 7  // 7 selgere har planlagte ruter i dag
+    private var approvalsCount: Int { ApprovalMockData.items.count }
+    private var coachingCount: Int { CoachingMockData.upcoming.count }
+    private var mileageCount: Int { MileageMockData.pending.count }
+    private var routesCount: Int { TeamRoutesMockData.routes.count }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -176,6 +177,28 @@ struct SalgssjefCockpitStrip: View {
     }
 }
 
+// MARK: - Delt tom-tilstand for cockpit-sheets (ikke-demo uten backend-data)
+
+/// Ærlig tom-tilstand: demo AV og ingen ekte datakilde enda — hele sheet-
+/// innholdet (inkl. mock-KPI-er) skjules så ingenting lyver.
+fileprivate func cockpitEmptyState(icon: String, title: String, subtitle: String) -> some View {
+    VStack(spacing: 10) {
+        Image(systemName: icon)
+            .font(.system(size: 34, weight: .semibold))
+            .foregroundStyle(SlBrand.textTertiary)
+        Text(title)
+            .font(.system(size: 15, weight: .bold))
+            .foregroundStyle(SlBrand.textPrimary)
+        Text(subtitle)
+            .font(.system(size: 12))
+            .foregroundStyle(SlBrand.textSecondary)
+            .multilineTextAlignment(.center)
+    }
+    .frame(maxWidth: .infinity)
+    .padding(.vertical, 80)
+    .padding(.horizontal, 32)
+}
+
 // MARK: - 1. ApprovalsQueueSheet — deals + rabatter til godkjenning
 
 struct ApprovalsQueueSheet: View {
@@ -206,6 +229,13 @@ struct ApprovalsQueueSheet: View {
             ZStack {
                 SlBrand.bg.ignoresSafeArea()
                 ScrollView {
+                    if ApprovalMockData.items.isEmpty {
+                        cockpitEmptyState(
+                            icon: "checkmark.seal",
+                            title: "Ingen ventende godkjenninger",
+                            subtitle: "Deals og rabatter som venter godkjenning dukker opp her."
+                        )
+                    } else {
                     VStack(alignment: .leading, spacing: 14) {
                         // KPI-strip
                         HStack(spacing: 12) {
@@ -242,6 +272,7 @@ struct ApprovalsQueueSheet: View {
                         Color.clear.frame(height: 20)
                     }
                     .padding(20)
+                    }
                 }
             }
             .navigationTitle("Godkjenningskø")
@@ -347,7 +378,11 @@ struct ApprovalItem: Identifiable {
 }
 
 enum ApprovalMockData {
-    static let items: [ApprovalItem] = [
+    /// Mock — KUN i demo-modus.
+    static var items: [ApprovalItem] {
+        DemoModeManager.isActiveNonisolated ? _items : []
+    }
+    private static let _items: [ApprovalItem] = [
         ApprovalItem(id: "a1", kind: .discount, title: "18 % rabatt over grense (12 %)",
                      sellerName: "Sara Lindberg", customerName: "Nordic Elektro AS",
                      amountText: "287 000 kr", ageDays: 1,
@@ -383,6 +418,13 @@ struct TeamForecastSheet: View {
             ZStack {
                 SlBrand.bg.ignoresSafeArea()
                 ScrollView {
+                    if TeamForecastMockData.rows.isEmpty {
+                        cockpitEmptyState(
+                            icon: "chart.line.uptrend.xyaxis",
+                            title: "Ingen forecast-data enda",
+                            subtitle: "Team-forecast vises her når pipeline-data er koblet til."
+                        )
+                    } else {
                     VStack(alignment: .leading, spacing: 14) {
                         HStack {
                             Text("Team-forecast")
@@ -436,6 +478,7 @@ struct TeamForecastSheet: View {
                         .overlay(RoundedRectangle(cornerRadius: 12).stroke(SlBrand.purple.opacity(0.4), lineWidth: 1))
                     }
                     .padding(20)
+                    }
                 }
             }
             .navigationTitle("Team-forecast")
@@ -526,7 +569,11 @@ struct ForecastRow: Identifiable {
 }
 
 enum TeamForecastMockData {
-    static let rows: [ForecastRow] = [
+    /// Mock — KUN i demo-modus.
+    static var rows: [ForecastRow] {
+        DemoModeManager.isActiveNonisolated ? _rows : []
+    }
+    private static let _rows: [ForecastRow] = [
         ForecastRow(name: "Anniken Sørli",  initials: "AS", color: SlBrand.purpleLight, predictedText: "3,2 mill.", goalText: "3,0 mill.", trend: 7,   trendText: "+7 %",   attainment: 1.06),
         ForecastRow(name: "Mikkel Berg",    initials: "MB", color: SlBrand.green,       predictedText: "2,8 mill.", goalText: "2,5 mill.", trend: 12,  trendText: "+12 %",  attainment: 1.12),
         ForecastRow(name: "Lars Kristensen",initials: "LK", color: SlBrand.blue,        predictedText: "2,1 mill.", goalText: "2,0 mill.", trend: 5,   trendText: "+5 %",   attainment: 1.05),
@@ -546,6 +593,13 @@ struct CoachingPlanSheet: View {
             ZStack {
                 SlBrand.bg.ignoresSafeArea()
                 ScrollView {
+                    if CoachingMockData.upcoming.isEmpty && CoachingMockData.all.isEmpty {
+                        cockpitEmptyState(
+                            icon: "person.badge.clock",
+                            title: "Ingen coaching-planer enda",
+                            subtitle: "1-til-1-planer og coaching-kandidater vises her."
+                        )
+                    } else {
                     VStack(alignment: .leading, spacing: 14) {
                         // Hero
                         HStack(spacing: 12) {
@@ -589,6 +643,7 @@ struct CoachingPlanSheet: View {
                         .overlay(RoundedRectangle(cornerRadius: 12).stroke(SlBrand.stroke, lineWidth: 1))
                     }
                     .padding(20)
+                    }
                 }
             }
             .navigationTitle("Coaching")
@@ -673,7 +728,14 @@ struct CoachingRow: Identifiable {
 }
 
 enum CoachingMockData {
-    static let upcoming: [CoachingRow] = [
+    /// Mock — KUN i demo-modus.
+    static var upcoming: [CoachingRow] {
+        DemoModeManager.isActiveNonisolated ? _upcoming : []
+    }
+    static var all: [CoachingRow] {
+        DemoModeManager.isActiveNonisolated ? _all : []
+    }
+    private static let _upcoming: [CoachingRow] = [
         CoachingRow(name: "Sara Lindberg", initials: "SL", color: SlBrand.orange,
                     headline: "Under mål Q3 · Fokus: prisinnvending",
                     pondusText: "62", goalText: "−18 %", trendUp: false,
@@ -683,7 +745,7 @@ enum CoachingMockData {
                     pondusText: "89", goalText: "+15 %", trendUp: true,
                     lastMeetingText: "2 uker", isScheduled: true)
     ]
-    static let all: [CoachingRow] = [
+    private static let _all: [CoachingRow] = [
         CoachingRow(name: "Anniken Sørli",  initials: "AS", color: SlBrand.purpleLight,
                     headline: "Topp-selger · Delta som mentor?",
                     pondusText: "91", goalText: "+7 %",  trendUp: true,  lastMeetingText: "1 mnd", isScheduled: false),
@@ -712,6 +774,13 @@ struct MileageApprovalsSheet: View {
             ZStack {
                 SlBrand.bg.ignoresSafeArea()
                 ScrollView {
+                    if MileageMockData.pending.isEmpty && MileageMockData.recent.isEmpty {
+                        cockpitEmptyState(
+                            icon: "car",
+                            title: "Ingen kjøregodtgjørelser enda",
+                            subtitle: "Utgifter som venter godkjenning dukker opp her."
+                        )
+                    } else {
                     VStack(alignment: .leading, spacing: 14) {
                         // KPI
                         HStack(spacing: 12) {
@@ -765,6 +834,7 @@ struct MileageApprovalsSheet: View {
                         .overlay(RoundedRectangle(cornerRadius: 12).stroke(SlBrand.stroke, lineWidth: 1))
                     }
                     .padding(20)
+                    }
                 }
             }
             .navigationTitle("Kjøregodtgjørelse")
@@ -854,14 +924,21 @@ struct MileageEntry: Identifiable {
 }
 
 enum MileageMockData {
-    static let pending: [MileageEntry] = [
+    /// Mock — KUN i demo-modus.
+    static var pending: [MileageEntry] {
+        DemoModeManager.isActiveNonisolated ? _pending : []
+    }
+    static var recent: [MileageEntry] {
+        DemoModeManager.isActiveNonisolated ? _recent : []
+    }
+    private static let _pending: [MileageEntry] = [
         MileageEntry(sellerName: "Sara Lindberg",   initials: "SL", color: SlBrand.blue,        dateText: "I dag", routeText: "Oslo → Sandvika → Lysaker", km: 42, amountText: "210 kr", isPaid: false),
         MileageEntry(sellerName: "Mikkel Berg",     initials: "MB", color: SlBrand.green,       dateText: "I går", routeText: "Oslo → Lillestrøm → Skedsmo", km: 68, amountText: "340 kr", isPaid: false),
         MileageEntry(sellerName: "Anniken Sørli",   initials: "AS", color: SlBrand.purpleLight, dateText: "27. juni", routeText: "Oslo → Drammen (5 kunder)", km: 110, amountText: "550 kr", isPaid: false),
         MileageEntry(sellerName: "Tobias Strand",   initials: "TS", color: SlBrand.orange,      dateText: "26. juni", routeText: "Bergen → Askøy → Nesttun", km: 95, amountText: "475 kr", isPaid: false),
         MileageEntry(sellerName: "Karoline Nesse",  initials: "KN", color: SlBrand.yellow,      dateText: "25. juni", routeText: "Stavanger → Sandnes → Klepp", km: 105, amountText: "525 kr", isPaid: false)
     ]
-    static let recent: [MileageEntry] = [
+    private static let _recent: [MileageEntry] = [
         MileageEntry(sellerName: "Marte Johansen",  initials: "MJ", color: SlBrand.red,         dateText: "24. juni", routeText: "Oslo → Fornebu", km: 26, amountText: "130 kr", isPaid: true),
         MileageEntry(sellerName: "Henrik Aase",     initials: "HA", color: SlBrand.red,         dateText: "23. juni", routeText: "Oslo → Grorud → Bekkestua", km: 48, amountText: "240 kr", isPaid: true),
         MileageEntry(sellerName: "Jonas Halvorsen", initials: "JH", color: SlBrand.purple,      dateText: "22. juni", routeText: "Tromsø → Karlsøy", km: 82, amountText: "410 kr", isPaid: true)
@@ -921,6 +998,13 @@ struct TeamRoutesTodaySheet: View {
             ZStack {
                 SlBrand.bg.ignoresSafeArea()
                 ScrollView {
+                    if TeamRoutesMockData.routes.isEmpty {
+                        cockpitEmptyState(
+                            icon: "point.topleft.down.to.point.bottomright.curvepath",
+                            title: "Ingen team-ruter i dag",
+                            subtitle: "Selgernes planlagte og aktive ruter vises her."
+                        )
+                    } else {
                     VStack(alignment: .leading, spacing: 14) {
                         // KPI-strip: hvem er ute, hvem er ikke
                         HStack(spacing: 12) {
@@ -988,6 +1072,7 @@ struct TeamRoutesTodaySheet: View {
                         Color.clear.frame(height: 20)
                     }
                     .padding(20)
+                    }
                 }
             }
             .navigationTitle("Team-ruter i dag")
@@ -1196,7 +1281,11 @@ struct TeamRouteDestination {
 }
 
 enum TeamRoutesMockData {
-    static let routes: [TeamRoute] = [
+    /// Mock — KUN i demo-modus.
+    static var routes: [TeamRoute] {
+        DemoModeManager.isActiveNonisolated ? _routes : []
+    }
+    private static let _routes: [TeamRoute] = [
         // Aktive nå — hver har en destination så «Naviger dit» virker
         TeamRoute(name: "Sara Lindberg", initials: "SL", color: SlBrand.orange, state: .active,
                   currentText: "På vei til Nordic Elektro AS · 6 min igjen",

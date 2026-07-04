@@ -227,7 +227,12 @@ struct TerritoryPolygon: Identifiable {
 }
 
 enum OverlayData {
-    static let aiLeads: [AILeadSuggestion] = [
+    /// Mock AI-forslag — KUN i demo-modus. Ellers tegnes ingenting selv om
+    /// overlayet er slått på (ærlig tomt kart i stedet for falske pins).
+    static var aiLeads: [AILeadSuggestion] {
+        DemoModeManager.isActiveNonisolated ? _aiLeads : []
+    }
+    private static let _aiLeads: [AILeadSuggestion] = [
         AILeadSuggestion(name: "Tech Norge AS", lat: 59.913, lon: 10.745,
                          reason: "Lignende kunde vant for 14 dager siden", score: 88),
         AILeadSuggestion(name: "Helsenor AS", lat: 59.921, lon: 10.770,
@@ -236,15 +241,22 @@ enum OverlayData {
                          reason: "Konkurrent har gått fra dem", score: 92),
     ]
 
-    // Mockede besøk i dag (sorterte etter tid)
-    static let travelHistory: [CLLocationCoordinate2D] = [
+    // Mockede besøk i dag (sorterte etter tid) — KUN i demo-modus.
+    static var travelHistory: [CLLocationCoordinate2D] {
+        DemoModeManager.isActiveNonisolated ? _travelHistory : []
+    }
+    private static let _travelHistory: [CLLocationCoordinate2D] = [
         CLLocationCoordinate2D(latitude: 59.9139, longitude: 10.7522),  // start: Storgata
         CLLocationCoordinate2D(latitude: 59.9252, longitude: 10.7641),  // Sofienberg
         CLLocationCoordinate2D(latitude: 59.9123, longitude: 10.7741),  // Tøyen
         CLLocationCoordinate2D(latitude: 59.9094, longitude: 10.7560),  // Bjørvika
     ]
 
-    static let territories: [TerritoryPolygon] = [
+    /// Mock-territorier — KUN i demo-modus.
+    static var territories: [TerritoryPolygon] {
+        DemoModeManager.isActiveNonisolated ? _territories : []
+    }
+    private static let _territories: [TerritoryPolygon] = [
         // Min territory: Sentrum + Frogner (lilla)
         TerritoryPolygon(
             name: "Mitt", owner: "Lars",
@@ -352,7 +364,11 @@ enum KartPreviewData {
         DemoModeManager.isActiveNonisolated ? _clusters : []
     }
 
-    static let activities: [ActivityItemMock] = [
+    /// Mock-aktiviteter — KUN i demo-modus. Ellers tom liste + ærlig tom-tilstand i viewet.
+    static var activities: [ActivityItemMock] {
+        DemoModeManager.isActiveNonisolated ? _activities : []
+    }
+    private static let _activities: [ActivityItemMock] = [
         ActivityItemMock(icon: "calendar",          label: "Møte",           timestamp: "i dag 10:00"),
         ActivityItemMock(icon: "envelope.open",     label: "E-post åpnet",   timestamp: "i går 14:22"),
         ActivityItemMock(icon: "doc.text",          label: "Tilbud sendt",   timestamp: "20. mai 09:15"),
@@ -360,7 +376,11 @@ enum KartPreviewData {
         ActivityItemMock(icon: "person.badge.plus", label: "Lead opprettet", timestamp: "18. mai 16:45"),
     ]
 
-    static let notes: [NoteItemMock] = [
+    /// Mock-notater — KUN i demo-modus.
+    static var notes: [NoteItemMock] {
+        DemoModeManager.isActiveNonisolated ? _notes : []
+    }
+    private static let _notes: [NoteItemMock] = [
         NoteItemMock(
             author: "Lars Kristensen",
             authorInitials: "LK",
@@ -387,7 +407,11 @@ enum KartPreviewData {
         ),
     ]
 
-    static let files: [FileItemMock] = [
+    /// Mock-filer — KUN i demo-modus.
+    static var files: [FileItemMock] {
+        DemoModeManager.isActiveNonisolated ? _files : []
+    }
+    private static let _files: [FileItemMock] = [
         FileItemMock(name: "Tilbud_NordicElektro_v3.pdf",   kind: .pdf,         size: "1.2 MB", uploadedAt: "i går 14:18"),
         FileItemMock(name: "Befaringsbilder_StorgataAS.zip", kind: .image,      size: "8.4 MB", uploadedAt: "20. mai"),
         FileItemMock(name: "Kontorbygg_arealskisse.pdf",     kind: .pdf,        size: "640 KB", uploadedAt: "19. mai"),
@@ -1276,7 +1300,7 @@ struct KartView: View {
                 }
 
                 // OVERLAY: Reise-historikk — rød rute m/ tall-merker
-                if activeOverlays.contains(.travelHistory) {
+                if activeOverlays.contains(.travelHistory), !OverlayData.travelHistory.isEmpty {
                     MapPolyline(coordinates: OverlayData.travelHistory)
                         .stroke(KrBrand.orange,
                                 style: StrokeStyle(lineWidth: 4, lineCap: .round))
@@ -1846,24 +1870,32 @@ struct KartView: View {
                 }
                 .buttonStyle(.plain)
             }
-            VStack(spacing: 6) {
-                ForEach(KartPreviewData.activities) { a in
-                    HStack(spacing: 9) {
-                        ZStack {
-                            Circle().fill(KrBrand.purple.opacity(0.18))
-                            Image(systemName: a.icon)
-                                .font(.system(size: 10, weight: .semibold))
-                                .foregroundStyle(KrBrand.purpleLight)
+            if KartPreviewData.activities.isEmpty {
+                Text("Ingen aktiviteter registrert enda")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(KrBrand.textSecondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+            } else {
+                VStack(spacing: 6) {
+                    ForEach(KartPreviewData.activities) { a in
+                        HStack(spacing: 9) {
+                            ZStack {
+                                Circle().fill(KrBrand.purple.opacity(0.18))
+                                Image(systemName: a.icon)
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundStyle(KrBrand.purpleLight)
+                            }
+                            .frame(width: 26, height: 26)
+                            Text(a.label)
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.white)
+                            Spacer()
+                            Text(a.timestamp)
+                                .font(.system(size: 10))
+                                .foregroundStyle(KrBrand.textSecondary)
+                                .lineLimit(1)
                         }
-                        .frame(width: 26, height: 26)
-                        Text(a.label)
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(.white)
-                        Spacer()
-                        Text(a.timestamp)
-                            .font(.system(size: 10))
-                            .foregroundStyle(KrBrand.textSecondary)
-                            .lineLimit(1)
                     }
                 }
             }
@@ -2186,6 +2218,9 @@ struct KartView: View {
 
     private var tabAktiviteter: some View {
         VStack(spacing: 6) {
+            if KartPreviewData.activities.isEmpty {
+                detailTabEmptyState("Ingen aktiviteter registrert enda")
+            }
             ForEach(KartPreviewData.activities) { a in
                 HStack(spacing: 9) {
                     ZStack {
@@ -2234,10 +2269,23 @@ struct KartView: View {
             }
             .buttonStyle(.plain)
 
+            if KartPreviewData.notes.isEmpty {
+                detailTabEmptyState("Ingen notater enda")
+            }
             ForEach(KartPreviewData.notes) { n in
                 noteRow(n)
             }
         }
+    }
+
+    /// Ærlig tom-tilstand for detalj-tabs (ikke-demo uten ekte data).
+    private func detailTabEmptyState(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(KrBrand.textSecondary)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(KrBrand.cardHi, in: RoundedRectangle(cornerRadius: 9))
     }
 
     private func noteRow(_ n: NoteItemMock) -> some View {
@@ -2301,6 +2349,9 @@ struct KartView: View {
                 .buttonStyle(.plain)
             }
 
+            if KartPreviewData.files.isEmpty {
+                detailTabEmptyState("Ingen filer lastet opp enda")
+            }
             ForEach(KartPreviewData.files) { f in
                 fileRow(f)
             }

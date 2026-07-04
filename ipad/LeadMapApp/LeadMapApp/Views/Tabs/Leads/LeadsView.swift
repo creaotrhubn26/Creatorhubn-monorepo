@@ -233,7 +233,11 @@ struct LeadFileItem: Identifiable, Hashable {
 }
 
 enum LeadsData {
-    static let activities: [LeadActivityItem] = [
+    /// Mock-aktiviteter — KUN i demo-modus. Ellers tom liste + ærlig tom-tilstand i viewet.
+    static var activities: [LeadActivityItem] {
+        DemoModeManager.isActiveNonisolated ? _activities : []
+    }
+    private static let _activities: [LeadActivityItem] = [
         LeadActivityItem(icon: "phone.fill",        title: "Telefonsamtale m/ Jonas",   subtitle: "Lars K. · 15 min · Snakket om tilbudet", timestamp: "i dag 10:14",  color: Color(red: 0.20, green: 0.85, blue: 0.60)),
         LeadActivityItem(icon: "envelope.open.fill", title: "E-post åpnet",              subtitle: "Tilbud — del 2 sett 3 ganger",            timestamp: "i går 14:22",  color: Color(red: 0.34, green: 0.60, blue: 0.98)),
         LeadActivityItem(icon: "doc.text.fill",      title: "Tilbud sendt",               subtitle: "v3 — 350 000 NOK · Lars K.",              timestamp: "20. mai 09:15", color: Color(red: 0.66, green: 0.32, blue: 0.99)),
@@ -241,7 +245,11 @@ enum LeadsData {
         LeadActivityItem(icon: "person.badge.plus",  title: "Lead opprettet",              subtitle: "Manuell · Brønnøysund-beriking auto",     timestamp: "18. apr.",      color: Color(red: 0.98, green: 0.75, blue: 0.14)),
     ]
 
-    static let notes: [LeadNoteItem] = [
+    /// Mock-notater — KUN i demo-modus.
+    static var notes: [LeadNoteItem] {
+        DemoModeManager.isActiveNonisolated ? _notes : []
+    }
+    private static let _notes: [LeadNoteItem] = [
         LeadNoteItem(
             author: "Lars Kristensen", initials: "LK",
             authorColor: Color(red: 0.75, green: 0.45, blue: 1.0),
@@ -262,7 +270,11 @@ enum LeadsData {
         ),
     ]
 
-    static let files: [LeadFileItem] = [
+    /// Mock-filer — KUN i demo-modus.
+    static var files: [LeadFileItem] {
+        DemoModeManager.isActiveNonisolated ? _files : []
+    }
+    private static let _files: [LeadFileItem] = [
         LeadFileItem(name: "Tilbud_NordicElektro_v3.pdf",     kind: .pdf,         size: "1.2 MB", uploadedAt: "i går 14:18"),
         LeadFileItem(name: "Befaringsbilder_StorgataAS.zip",  kind: .image,       size: "8.4 MB", uploadedAt: "20. mai"),
         LeadFileItem(name: "Kontorbygg_arealskisse.pdf",      kind: .pdf,         size: "640 KB", uploadedAt: "19. mai"),
@@ -1475,11 +1487,16 @@ struct LeadTableRow: View {
                             Label("Endre status", systemImage: "tag.fill")
                         }
                         Menu {
-                            Button {} label: { Label("Kari Nordmann", systemImage: "person.crop.circle") }
-                            Button {} label: { Label("Mikkel Berg", systemImage: "person.crop.circle") }
-                            Button {} label: { Label("Anniken Sørli", systemImage: "person.crop.circle") }
+                            // Mock-navn KUN i demo — ellers ekte team fra
+                            // TeamLiveStore (tom liste → bare «Meg selv»).
+                            let sellerNames = DemoModeManager.isActiveNonisolated
+                                ? ["Kari Nordmann", "Mikkel Berg", "Anniken Sørli"]
+                                : TeamLiveStore.shared.members.map(\.name)
+                            ForEach(sellerNames, id: \.self) { n in
+                                Button {} label: { Label(n, systemImage: "person.crop.circle") }
+                            }
                             Divider()
-                            Button {} label: { Label("Selv (Lars)", systemImage: "person.crop.circle.fill") }
+                            Button {} label: { Label("Meg selv", systemImage: "person.crop.circle.fill") }
                         } label: {
                             Label("Tilordne selger", systemImage: "person.2.fill")
                         }
@@ -2239,12 +2256,31 @@ struct LeadDetailSidebar: View {
                 }
                 .buttonStyle(.plain)
             }
-            VStack(spacing: 6) {
-                ForEach(LeadsData.activities) { a in
-                    activityRow(a)
+            if LeadsData.activities.isEmpty {
+                detailEmptyState(icon: "clock.arrow.circlepath", text: "Ingen aktiviteter registrert enda")
+            } else {
+                VStack(spacing: 6) {
+                    ForEach(LeadsData.activities) { a in
+                        activityRow(a)
+                    }
                 }
             }
         }
+    }
+
+    /// Ærlig tom-tilstand for detalj-tabs når det ikke finnes ekte data (ikke-demo).
+    private func detailEmptyState(icon: String, text: String) -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(LdBrand.textTertiary)
+            Text(text)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(LdBrand.textSecondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 24)
+        .background(LdBrand.cardHi, in: RoundedRectangle(cornerRadius: 9))
     }
 
     private func activityRow(_ a: LeadActivityItem) -> some View {
@@ -2303,8 +2339,12 @@ struct LeadDetailSidebar: View {
                 .overlay(RoundedRectangle(cornerRadius: 9).stroke(LdBrand.stroke, lineWidth: 1))
             }
             .buttonStyle(.plain)
-            ForEach(LeadsData.notes) { n in
-                noteRow(n)
+            if LeadsData.notes.isEmpty {
+                detailEmptyState(icon: "note.text", text: "Ingen notater enda")
+            } else {
+                ForEach(LeadsData.notes) { n in
+                    noteRow(n)
+                }
             }
         }
     }
@@ -2368,8 +2408,12 @@ struct LeadDetailSidebar: View {
                 }
                 .buttonStyle(.plain)
             }
-            ForEach(LeadsData.files) { f in
-                fileRow(f)
+            if LeadsData.files.isEmpty {
+                detailEmptyState(icon: "tray", text: "Ingen filer lastet opp enda")
+            } else {
+                ForEach(LeadsData.files) { f in
+                    fileRow(f)
+                }
             }
         }
     }

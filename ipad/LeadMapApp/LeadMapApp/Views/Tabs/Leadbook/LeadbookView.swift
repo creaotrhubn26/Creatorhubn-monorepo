@@ -234,7 +234,11 @@ enum LeadbookData {
                   iconColor: LBrand.blue),
     ]
 
-    static let perf: [PerformanceRow] = [
+    /// Mock ytelses-tall — KUN i demo-modus (ingen per-mal-analytics enda).
+    static var perf: [PerformanceRow] {
+        DemoModeManager.isActiveNonisolated ? _perf : []
+    }
+    private static let _perf: [PerformanceRow] = [
         PerformanceRow(name: "Møtebooking – telefon",     responseRate: 0.52, conversion: 0.41),
         PerformanceRow(name: "Første kontakt – feltbesøk", responseRate: 0.48, conversion: 0.32),
         PerformanceRow(name: "Oppfølging etter interesse", responseRate: 0.46, conversion: 0.26),
@@ -242,7 +246,11 @@ enum LeadbookData {
         PerformanceRow(name: "Ikke til stede / return",    responseRate: 0.29, conversion: 0.18),
     ]
 
-    static let versions: [VersionEntry] = [
+    /// Mock versjonshistorikk — KUN i demo-modus (versjons-backend mangler).
+    static var versions: [VersionEntry] {
+        DemoModeManager.isActiveNonisolated ? _versions : []
+    }
+    private static let _versions: [VersionEntry] = [
         VersionEntry(version: "v2.1", date: "Oppdatert i dag av Kari Nordmann", author: "Kari Nordmann",
                      summary: "Justert åpningsreplikk og spørsmål • Steg 1-2", status: .current),
         VersionEntry(version: "v2.0", date: "19. mai 2025 av Kari Nordmann", author: "Kari Nordmann",

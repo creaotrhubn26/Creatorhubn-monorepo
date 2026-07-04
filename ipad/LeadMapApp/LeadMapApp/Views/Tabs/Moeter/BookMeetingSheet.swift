@@ -45,7 +45,9 @@ struct LeadCandidate: Identifiable, Hashable {
     let hasOpenMeeting: Bool
 
     var initials: String {
-        let parts = contactName.split(separator: " ")
+        // Ekte leads kan mangle kontaktperson — fall tilbake til firmanavn.
+        let source = contactName.isEmpty ? company : contactName
+        let parts = source.split(separator: " ")
         return parts.prefix(2).compactMap { $0.first }.map { String($0) }.joined()
     }
 
@@ -60,7 +62,48 @@ struct LeadCandidate: Identifiable, Hashable {
 }
 
 enum LeadCatalog {
-    static let all: [LeadCandidate] = [
+    /// Mock-kandidater — KUN i demo-modus. Ellers bygger BookMeetingSheet
+    /// listen fra ekte `appState.leads` (se `candidates`-computed der).
+    static var all: [LeadCandidate] {
+        DemoModeManager.isActiveNonisolated ? _all : []
+    }
+
+    /// LeadModel → LeadCandidate-adapter for ekte leads (ikke-demo).
+    static func candidate(from lm: LeadModel) -> LeadCandidate {
+        let score = lm.leadScore ?? lm.aiOpportunityScore ?? 0
+        let type: String = {
+            switch (lm.leadTemperature ?? "").lowercased() {
+            case "hot":  return "Hot"
+            case "warm": return "Warm"
+            case "cold": return "Cold"
+            default:
+                switch score {
+                case 80...:   return "Hot"
+                case 55..<80: return "Warm"
+                default:      return "Cold"
+                }
+            }
+        }()
+        let days: Int? = lm.lastVisitAt.map {
+            max(0, Int(Date().timeIntervalSince($0) / 86_400))
+        }
+        return LeadCandidate(
+            company: lm.name,
+            contactName: lm.assignedUserName ?? "",
+            contactRole: lm.category ?? "",
+            location: lm.city ?? lm.address ?? "",
+            icon: "building.2.fill",
+            iconColor: BBrand.purpleLight,
+            leadScore: score,
+            leadType: type,
+            valueNok: Int(lm.estimatedValue ?? 0),
+            pipelineStage: lm.pipelineStage ?? lm.status.label,
+            lastContactDays: days,
+            hasOpenMeeting: lm.status == .meetingBooked
+        )
+    }
+
+    private static let _all: [LeadCandidate] = [
         // Hot
         LeadCandidate(company: "Romerike Elektro AS",    contactName: "Tom Wiig",        contactRole: "Daglig leder",      location: "Lørenskog",     icon: "building.2.fill",            iconColor: BBrand.green,       leadScore: 92, leadType: "Hot",   valueNok: 650_000, pipelineStage: "Demo",        lastContactDays: 1, hasOpenMeeting: true),
         LeadCandidate(company: "Scan Safe AS",            contactName: "Henrik Vold",     contactRole: "Sikkerhetssjef",    location: "Drammen",       icon: "shield.fill",                iconColor: BBrand.orange,      leadScore: 91, leadType: "Hot",   valueNok: 950_000, pipelineStage: "Forhandling", lastContactDays: 2, hasOpenMeeting: true),
@@ -84,6 +127,7 @@ enum LeadCatalog {
 struct BookMeetingSheet: View {
     let dayOfMonth: Int           // 1-31
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
 
     @State private var selectedLead: LeadCandidate?
     @State private var search: String = ""
@@ -140,8 +184,15 @@ struct BookMeetingSheet: View {
     private let minutes = [0, 15, 30, 45]
     private let durations = [30, 45, 60, 90]
 
+    /// Demo → mock-katalog; ellers ekte leads fra appState (tom liste gir
+    /// eksisterende `emptyState` i lead-pickeren).
+    private var candidates: [LeadCandidate] {
+        if DemoModeManager.isActiveNonisolated { return LeadCatalog.all }
+        return appState.leads.map(LeadCatalog.candidate(from:))
+    }
+
     private var filteredLeads: [LeadCandidate] {
-        var items = LeadCatalog.all
+        var items = candidates
         if !search.isEmpty {
             let q = search.lowercased()
             items = items.filter {
@@ -232,7 +283,7 @@ struct BookMeetingSheet: View {
                     Text("Velg lead")
                         .font(.system(size: 13, weight: .bold))
                         .foregroundStyle(.white)
-                    Text("\(filteredLeads.count) av \(LeadCatalog.all.count)")
+                    Text("\(filteredLeads.count) av \(candidates.count)")
                         .font(.system(size: 10, weight: .bold, design: .rounded))
                         .foregroundStyle(BBrand.textSecondary)
                         .monospacedDigit()

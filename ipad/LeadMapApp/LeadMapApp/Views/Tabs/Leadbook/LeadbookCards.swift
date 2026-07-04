@@ -1317,6 +1317,13 @@ struct PerformanceModal: View {
                                 Button { selected = p } label: { perfRow(p) }
                                     .buttonStyle(.plain)
                             }
+                            if rows.isEmpty {
+                                Text("Ingen ytelses-data enda")
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(LBrand.textSecondary)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 40)
+                            }
                         }
                         if let best, let worst {
                             insightsCard(best: best, worst: worst)
@@ -1678,7 +1685,8 @@ struct VersionsModal: View {
             summaryTile("VENTER GODKJENNING", "\(pendingCount)", LBrand.orange, "clock.fill")
             summaryTile("GODKJENT", "\(approvedCount)", LBrand.green, "checkmark.seal.fill")
             summaryTile("TOTALT VERSJONER", "\(LeadbookData.versions.count)", LBrand.purpleLight, "doc.on.doc.fill")
-            summaryTile("SISTE ENDRING", "20.05", LBrand.blue, "calendar")
+            // Mock-dato KUN i demo — ellers ærlig strek (ingen versjons-backend).
+            summaryTile("SISTE ENDRING", LeadbookData.versions.isEmpty ? "—" : "20.05", LBrand.blue, "calendar")
         }
     }
 
