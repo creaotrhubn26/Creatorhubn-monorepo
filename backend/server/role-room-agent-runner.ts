@@ -32,6 +32,8 @@ import {
   type RunClaudeAgentResult,
 } from './role-room-agent-claude.js';
 import { buildTikTokMcpConfig } from './role-room-tiktok-mcp.js';
+import { buildMetaMcpConfig } from './role-room-meta-mcp.js';
+import { mergeAgentMcpConfigs } from './role-room-agent-mcp.js';
 import { resolveAdsAccessToken } from './role-room-ads-oauth.js';
 import {
   ROLE_ROOM_AGENT_SYSTEM_PROMPT,
@@ -377,15 +379,30 @@ export async function invokeRoleRoomAgent(
   // Best-effort: a null block simply omits it.
   const workspaceBlock = await buildWorkspaceContextBlock(pool, { userId, projectId });
 
-  // Spor B: attach the TikTok Ads MCP connector when enabled AND the producer
-  // has a connected TikTok ads account. Read-only by default (reporting/get
-  // tools) — writes are opt-in behind a future confirmation UX. Flag-gated so
+  // Spor B: attach ad-platform MCP connectors when enabled AND the producer has
+  // a connected account. Read-only by default (reporting/get tools) — writes are
+  // opt-in behind a future confirmation UX. Each platform is flag-gated so
   // production is unaffected until explicitly turned on.
-  let mcpConfig = null;
+  let tiktokMcp = null;
   if (process.env.ROLE_ROOM_TIKTOK_MCP_ENABLED === 'true') {
     const tiktokToken = await resolveAdsAccessToken(pool, 'tiktok', userId).catch(() => null);
-    mcpConfig = buildTikTokMcpConfig({ authorizationToken: tiktokToken });
+    tiktokMcp = buildTikTokMcpConfig({ authorizationToken: tiktokToken });
   }
+  let metaMcp = null;
+  if (process.env.ROLE_ROOM_META_MCP_ENABLED === 'true') {
+    // Meta MCP uses the project's Meta Business token (the existing IG/Meta
+    // connection), not the ads-oauth table.
+    const metaToken = await pool
+      .query<{ access_token: string | null }>(
+        `SELECT access_token FROM role_room_instagram_connections
+          WHERE project_id = $1 ORDER BY connected_at DESC LIMIT 1`,
+        [projectId],
+      )
+      .then((r) => (typeof r.rows[0]?.access_token === 'string' ? r.rows[0].access_token : null))
+      .catch(() => null);
+    metaMcp = buildMetaMcpConfig({ authorizationToken: metaToken });
+  }
+  const mcpConfig = mergeAgentMcpConfigs([tiktokMcp, metaMcp]);
 
   try {
     const raw = await runClaudeAgent({
