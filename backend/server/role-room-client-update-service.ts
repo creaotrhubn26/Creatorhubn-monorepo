@@ -14,6 +14,7 @@
 import type { Pool } from 'pg';
 import { sendTransactionalEmail } from './transactional-email-service.js';
 import { getBestTimesForProject } from './role-room-best-time.js';
+import { scoreEngagement } from './role-room-best-time-to-post.js';
 import {
   buildClientUpdateDigest,
   platformLabel,
@@ -87,8 +88,14 @@ export async function assembleClientUpdate(
   const periodDays = options.periodDays ?? 7;
   const now = options.now ?? new Date();
 
-  const published = await pool.query<{ hook: string; platform: string | null; published_at: string }>(
-    `SELECT hook, primary_platform AS platform, published_at
+  const published = await pool.query<{
+    id: string;
+    hook: string;
+    platform: string | null;
+    published_at: string;
+    feed_plan_post_id: string | null;
+  }>(
+    `SELECT id, hook, primary_platform AS platform, published_at, feed_plan_post_id
        FROM role_room_marketing_plan_posts
       WHERE plan_id = $1
         AND status = 'published'
@@ -105,11 +112,62 @@ export async function assembleClientUpdate(
     [planId],
   );
 
-  const publishedPosts: DigestPost[] = published.rows.map((r) => ({
-    platform: r.platform ?? 'instagram',
-    hook: r.hook,
-    publishedAt: new Date(r.published_at),
-  }));
+  // Per-post engagement — chain the plan post to its social_metrics via the
+  // publish event's feedPlanPostId → external_post_id → engagement snapshots.
+  // feedPlanPostId is a unique id, so the join is safe without extra scoping.
+  const engagementByPostId = new Map<string, Record<string, number>>();
+  const feedPlanIds = published.rows
+    .map((r) => r.feed_plan_post_id)
+    .filter((v): v is string => typeof v === 'string' && v.length > 0);
+  if (feedPlanIds.length > 0) {
+    try {
+      const engRows = await pool.query<{
+        post_id: string;
+        metric_name: string;
+        metric_value: string;
+      }>(
+        `WITH pub AS (
+           SELECT DISTINCT raw->>'feedPlanPostId' AS fpp, external_post_id
+             FROM social_metrics
+            WHERE metric_name = 'publish_count'
+              AND external_post_id IS NOT NULL
+              AND raw->>'feedPlanPostId' = ANY($1::text[])
+         ),
+         eng AS (
+           SELECT external_post_id, metric_name, MAX(metric_value) AS metric_value
+             FROM social_metrics
+            WHERE scope IN ('post','reel','video','story')
+              AND external_post_id IS NOT NULL
+              AND metric_value IS NOT NULL
+            GROUP BY external_post_id, metric_name
+         )
+         SELECT pp.id AS post_id, eng.metric_name, eng.metric_value
+           FROM role_room_marketing_plan_posts pp
+           JOIN pub ON pub.fpp = pp.feed_plan_post_id
+           JOIN eng ON eng.external_post_id = pub.external_post_id
+          WHERE pp.plan_id = $2`,
+        [feedPlanIds, planId],
+      );
+      for (const row of engRows.rows) {
+        const bag = engagementByPostId.get(row.post_id) ?? {};
+        const val = Number(row.metric_value);
+        if (Number.isFinite(val)) bag[row.metric_name] = val;
+        engagementByPostId.set(row.post_id, bag);
+      }
+    } catch (err) {
+      console.warn('[client-update] per-post engagement lookup failed', err);
+    }
+  }
+
+  const publishedPosts: DigestPost[] = published.rows.map((r) => {
+    const bag = engagementByPostId.get(r.id);
+    return {
+      platform: r.platform ?? 'instagram',
+      hook: r.hook,
+      publishedAt: new Date(r.published_at),
+      engagement: bag ? scoreEngagement(bag) : undefined,
+    };
+  });
 
   const bestTimes = await getBestTimesForProject(pool, ctx.projectId).catch(() => []);
 
