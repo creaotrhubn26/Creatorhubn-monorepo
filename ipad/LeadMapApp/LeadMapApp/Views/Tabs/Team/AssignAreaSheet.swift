@@ -15,14 +15,23 @@ struct AssignAreaSheet: View {
     let preselectedMember: TeamMember?         // hvis åpnet fra SellerPerformanceModal
     @Environment(\.dismiss) private var dismiss
 
+    @Environment(AppState.self) private var appState
+
     @State private var mode: Mode = .catalog
-    @State private var selectedCatalogKommune: KommuneEntry?
+    @State private var selectedKommune: KartverketService.KommuneInfo?
+    @State private var selectedTeam: LeadgridSalesTeam?
     @State private var selectedExistingTerritory: GeoJSONTerritory?
     @State private var drawnPoints: [CLLocationCoordinate2D] = []
     @State private var pencilOnly: Bool = false              // filter ut finger-touch i tegne-modus
     @State private var selectedMember: TeamMember?
     @State private var notifyMember: Bool = true
     @State private var handoffNote: String = ""
+
+    // Ekte kommune-katalog fra Kartverket (via backend-proxy, 2026-07-05).
+    // Gjelder BEGGE moduser — katalogen er offentlige data, ikke org-data.
+    @State private var kommuneListe: [KartverketService.KommuneInfo] = []
+    @State private var kommuneSearch: String = ""
+    @State private var loadingKommuner: Bool = true
 
     init(preselectedMember: TeamMember? = nil) {
         self.preselectedMember = preselectedMember
@@ -42,41 +51,28 @@ struct AssignAreaSheet: View {
         }
     }
 
-    struct KommuneEntry: Identifiable, Hashable {
-        let id = UUID()
-        let name: String
-        let region: String
-        let population: Int
-        let leadsCount: Int
-        let assigned: String?     // navn til nåværende eier, nil hvis ledig
+    /// Kommuner filtrert på søk. Uten søk vises hele katalogen (~357);
+    /// LazyVStack holder det billig.
+    private var filtrerteKommuner: [KartverketService.KommuneInfo] {
+        let q = kommuneSearch.trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { return kommuneListe }
+        return kommuneListe.filter {
+            $0.navn.localizedCaseInsensitiveContains(q) || $0.nummer.hasPrefix(q)
+        }
     }
 
-    /// Mock-katalog — KUN i demo-modus. Ekte kommune-katalog kommer fra
-    /// Kartverket-integrasjonen (se KartverketService) i en senere pass.
-    private var kommuner: [KommuneEntry] {
-        DemoModeManager.isActiveNonisolated ? Self.mockKommuner : []
+    /// Team som allerede eier en gitt kommune (fra team-storen).
+    private func eier(av kommune: KartverketService.KommuneInfo) -> LeadgridSalesTeam? {
+        LeadgridSalesTeamStore.shared.teams.first {
+            $0.areaKommunenummer == kommune.nummer
+        }
     }
-    private static let mockKommuner: [KommuneEntry] = [
-        KommuneEntry(name: "Oslo Vest",       region: "Oslo",       population: 220_000, leadsCount: 245, assigned: "Kari Nordmann"),
-        KommuneEntry(name: "Oslo Sentrum",    region: "Oslo",       population: 180_000, leadsCount: 198, assigned: "Ola Magnussen"),
-        KommuneEntry(name: "Lørenskog",        region: "Viken",      population:  43_000, leadsCount: 176, assigned: "Martine Jensen"),
-        KommuneEntry(name: "Asker / Bærum",   region: "Viken",      population: 215_000, leadsCount: 165, assigned: "Henrik Solberg"),
-        KommuneEntry(name: "Sarpsborg",        region: "Viken",      population:  56_000, leadsCount: 132, assigned: "Sofie Dahl"),
-        KommuneEntry(name: "Drammen",          region: "Viken",      population: 102_000, leadsCount:   0, assigned: nil),
-        KommuneEntry(name: "Lillestrøm",       region: "Viken",      population:  90_000, leadsCount:   0, assigned: nil),
-        KommuneEntry(name: "Fredrikstad",      region: "Viken",      population:  82_000, leadsCount:   0, assigned: nil),
-        KommuneEntry(name: "Tønsberg",         region: "Vestfold",   population:  56_000, leadsCount:   0, assigned: nil),
-        KommuneEntry(name: "Stavanger",        region: "Rogaland",   population: 144_000, leadsCount:   0, assigned: nil),
-        KommuneEntry(name: "Bergen",           region: "Vestland",   population: 290_000, leadsCount:   0, assigned: nil),
-        KommuneEntry(name: "Trondheim",        region: "Trøndelag",  population: 213_000, leadsCount:   0, assigned: nil),
-    ]
 
     private var canConfirm: Bool {
-        guard selectedMember != nil else { return false }
         switch mode {
-        case .catalog:  return selectedCatalogKommune != nil
-        case .existing: return selectedExistingTerritory != nil
-        case .draw:     return drawnPoints.count >= 3
+        case .catalog:  return selectedKommune != nil && selectedTeam != nil
+        case .existing: return selectedMember != nil && selectedExistingTerritory != nil
+        case .draw:     return selectedMember != nil && drawnPoints.count >= 3
         }
     }
 
@@ -92,8 +88,12 @@ struct AssignAreaSheet: View {
                         case .draw:     drawSection
                         }
                     }
-                    memberPicker
-                    if selectedMember != nil { notifyCard; handoffCard }
+                    if mode == .catalog {
+                        teamPicker
+                    } else {
+                        memberPicker
+                        if selectedMember != nil { notifyCard; handoffCard }
+                    }
                     Color.clear.frame(height: 100)
                 }
                 .padding(20)
@@ -110,6 +110,14 @@ struct AssignAreaSheet: View {
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .safeAreaInset(edge: .bottom, spacing: 0) { confirmBar }
+            .task {
+                guard let api = appState.api else {
+                    loadingKommuner = false
+                    return
+                }
+                kommuneListe = await KartverketService.shared.fetchKommuneListe(using: api)
+                loadingKommuner = false
+            }
         }
     }
 
@@ -147,71 +155,95 @@ struct AssignAreaSheet: View {
 
     private var catalogSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            sectionTitle("Velg kommune", subtitle: "Områder lastet fra Kartverket-katalog")
-            if kommuner.isEmpty {
-                Text("Kommune-katalogen er ikke koblet til enda — bruk «Tegn eget område» i mellomtiden")
+            sectionTitle("Velg kommune",
+                         subtitle: "Offisiell katalog fra Kartverket — teamet får den ekte kommunegrensen på kartet")
+            // Søkefelt — 357 kommuner uten søk er uhåndterlig
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(TBrand.textSecondary)
+                TextField("Søk kommune eller kommunenummer", text: $kommuneSearch)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.white)
+                    .autocorrectionDisabled()
+                if !kommuneSearch.isEmpty {
+                    Button {
+                        kommuneSearch = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 13))
+                            .foregroundStyle(TBrand.textTertiary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 12).padding(.vertical, 10)
+            .background(TBrand.card, in: RoundedRectangle(cornerRadius: 11))
+            .overlay(RoundedRectangle(cornerRadius: 11).stroke(TBrand.stroke, lineWidth: 1))
+
+            if loadingKommuner {
+                HStack(spacing: 8) {
+                    ProgressView().tint(TBrand.purpleLight)
+                    Text("Laster kommune-katalogen fra Kartverket …")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(TBrand.textSecondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 20)
+            } else if kommuneListe.isEmpty {
+                Text("Fikk ikke lastet kommune-katalogen — sjekk nettverket og prøv igjen")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.55))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 20)
+            } else if filtrerteKommuner.isEmpty {
+                Text("Ingen kommuner matcher «\(kommuneSearch)»")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.55))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 20)
             }
-            VStack(spacing: 6) {
-                ForEach(kommuner) { k in kommuneRow(k) }
+            LazyVStack(spacing: 6) {
+                ForEach(filtrerteKommuner) { k in kommuneRow(k) }
             }
         }
     }
 
-    private func kommuneRow(_ k: KommuneEntry) -> some View {
-        let isSelected = selectedCatalogKommune?.id == k.id
-        let isOccupied = k.assigned != nil
+    private func kommuneRow(_ k: KartverketService.KommuneInfo) -> some View {
+        let isSelected = selectedKommune?.nummer == k.nummer
+        let eierTeam = eier(av: k)
         return Button {
-            withAnimation(.easeInOut(duration: 0.15)) { selectedCatalogKommune = k }
+            withAnimation(.easeInOut(duration: 0.15)) { selectedKommune = k }
         } label: {
             HStack(spacing: 11) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 9)
-                        .fill((isOccupied ? TBrand.orange : TBrand.green).opacity(0.22))
+                        .fill((eierTeam != nil ? TBrand.orange : TBrand.green).opacity(0.22))
                     Image(systemName: "mappin.and.ellipse")
                         .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(isOccupied ? TBrand.orange : TBrand.green)
+                        .foregroundStyle(eierTeam != nil ? TBrand.orange : TBrand.green)
                 }
                 .frame(width: 36, height: 36)
                 VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 5) {
-                        Text(k.name)
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(.white)
-                        Text(k.region)
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundStyle(TBrand.textSecondary)
-                            .padding(.horizontal, 5).padding(.vertical, 1)
-                            .background(TBrand.cardHi, in: Capsule())
-                    }
-                    HStack(spacing: 5) {
-                        Text("\(formatThousands(k.population)) innbyggere")
-                            .font(.system(size: 10))
-                            .foregroundStyle(TBrand.textSecondary)
-                            .monospacedDigit()
-                        if k.leadsCount > 0 {
-                            Text("·")
-                                .foregroundStyle(TBrand.textTertiary)
-                            Text("\(k.leadsCount) leads")
-                                .font(.system(size: 10, weight: .semibold))
-                                .foregroundStyle(TBrand.blue)
-                                .monospacedDigit()
-                        }
-                    }
+                    Text(k.navn)
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(.white)
+                    Text("Kommunenr. \(k.nummer)")
+                        .font(.system(size: 10))
+                        .foregroundStyle(TBrand.textSecondary)
+                        .monospacedDigit()
                 }
                 Spacer()
-                if let assigned = k.assigned {
+                if let eierTeam {
                     VStack(alignment: .trailing, spacing: 1) {
                         Text("EIER")
                             .font(.system(size: 8, weight: .black))
                             .foregroundStyle(TBrand.textTertiary)
                             .tracking(0.5)
-                        Text(assigned.split(separator: " ").first.map(String.init) ?? assigned)
+                        Text(eierTeam.name)
                             .font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(TBrand.orange)
+                            .foregroundStyle(eierTeam.color)
+                            .lineLimit(1)
                     }
                 } else {
                     Text("LEDIG")
@@ -394,6 +426,78 @@ struct AssignAreaSheet: View {
         }
     }
 
+    // MARK: Team-picker (kommune-modus)
+
+    /// Kommune tildeles et TEAM (LeadgridSalesTeamStore) — det er teamene
+    /// som tegnes på Team-kartet, og tildelingen lagres på teamet
+    /// (area_kommunenummer, mig 0369).
+    private var teamPicker: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionTitle("Tildel til team", subtitle: "Teamet får kommunen som sitt område på kartet")
+            if LeadgridSalesTeamStore.shared.teams.isEmpty {
+                Text("Ingen team enda — opprett et team fra Team-fanen først")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.55))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+            }
+            LazyVGrid(columns: MacCatalystGrid.adaptive(phone: 1, iPad: 2, mac: 2, spacing: 8), spacing: 8) {
+                ForEach(LeadgridSalesTeamStore.shared.teams) { team in teamCard(team) }
+            }
+        }
+    }
+
+    private func teamCard(_ team: LeadgridSalesTeam) -> some View {
+        let isSelected = selectedTeam?.id == team.id
+        return Button {
+            withAnimation(.easeInOut(duration: 0.15)) { selectedTeam = team }
+        } label: {
+            HStack(spacing: 10) {
+                ZStack {
+                    Circle().fill(team.color.opacity(0.85))
+                    Text(team.initials)
+                        .font(.system(size: 11, weight: .black))
+                        .foregroundStyle(.white)
+                }
+                .frame(width: 34, height: 34)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(team.name)
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                    Text(teamOmradeTekst(team))
+                        .font(.system(size: 10))
+                        .foregroundStyle(TBrand.textSecondary)
+                        .lineLimit(1)
+                }
+                Spacer()
+                if isSelected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(team.color)
+                }
+            }
+            .padding(10)
+            .background(
+                isSelected ? team.color.opacity(0.12) : TBrand.card,
+                in: RoundedRectangle(cornerRadius: 11)
+            )
+            .overlay(RoundedRectangle(cornerRadius: 11)
+                .stroke(isSelected ? team.color.opacity(0.55) : TBrand.stroke, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func teamOmradeTekst(_ team: LeadgridSalesTeam) -> String {
+        if let navn = team.areaKommuneNavn {
+            return "Har \(navn) i dag"
+        }
+        if let r = team.areaRadiusKm {
+            return "Har \(Int(r.rounded())) km sone i dag"
+        }
+        return "Ingen område enda"
+    }
+
     // MARK: Member-picker
 
     private var memberPicker: some View {
@@ -539,7 +643,7 @@ struct AssignAreaSheet: View {
     // MARK: Confirm-bar
 
     private var confirmBar: some View {
-        Button { dismiss() } label: {
+        Button { confirm() } label: {
             HStack(spacing: 7) {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 14, weight: .bold))
@@ -565,11 +669,15 @@ struct AssignAreaSheet: View {
     }
 
     private var confirmLabel: String {
+        if mode == .catalog {
+            guard let team = selectedTeam else { return "Velg team først" }
+            if let k = selectedKommune { return "Tildel \(k.navn) til \(team.name)" }
+            return "Velg kommune"
+        }
         guard let m = selectedMember else { return "Velg medlem først" }
         let first = m.name.split(separator: " ").first.map(String.init) ?? m.name
         switch mode {
         case .catalog:
-            if let k = selectedCatalogKommune { return "Tildel \(k.name) til \(first)" }
             return "Velg kommune"
         case .existing:
             if let t = selectedExistingTerritory { return "Overfør \(t.areaName) til \(first)" }
@@ -578,6 +686,19 @@ struct AssignAreaSheet: View {
             if drawnPoints.count >= 3 { return "Tildel nytt område til \(first)" }
             return "Tegn minst 3 punkter"
         }
+    }
+
+    /// Bekreft tildelingen. Kommune-modus persisterer på teamet (lokal
+    /// store + backend-push via upsert); de andre modiene er fortsatt
+    /// visuelle konsepter uten backend-modell.
+    private func confirm() {
+        if mode == .catalog, let k = selectedKommune, var team = selectedTeam {
+            team.areaKommunenummer = k.nummer
+            team.areaKommuneNavn = k.navn
+            LeadgridSalesTeamStore.shared.upsert(team)
+            TeamStubActions.toast("\(k.navn) tildelt \(team.name)")
+        }
+        dismiss()
     }
 
     private func sectionTitle(_ title: String, subtitle: String) -> some View {
@@ -591,10 +712,6 @@ struct AssignAreaSheet: View {
         }
     }
 
-    private func formatThousands(_ n: Int) -> String {
-        let f = NumberFormatter(); f.numberStyle = .decimal; f.groupingSeparator = " "
-        return f.string(from: NSNumber(value: n)) ?? "\(n)"
-    }
 }
 
 // MARK: - DrawableMapView (tap = legg til polygon-hjørne)

@@ -57,6 +57,8 @@ function mapTeamRow(row: Record<string, unknown>): Record<string, unknown> {
     area_center_lat: row.area_center_lat !== null && row.area_center_lat !== undefined ? Number(row.area_center_lat) : null,
     area_center_lng: row.area_center_lng !== null && row.area_center_lng !== undefined ? Number(row.area_center_lng) : null,
     area_radius_km: row.area_radius_km !== null && row.area_radius_km !== undefined ? Number(row.area_radius_km) : null,
+    area_kommunenummer: row.area_kommunenummer ?? null,
+    area_kommune_navn: row.area_kommune_navn ?? null,
   };
 }
 
@@ -166,6 +168,13 @@ export function registerLeadgridSalesTeamsRoutes(deps: SalesTeamsRoutesDeps): vo
     const lat = typeof body.area_center_lat === "number" ? body.area_center_lat : null;
     const lng = typeof body.area_center_lng === "number" ? body.area_center_lng : null;
     const radius = typeof body.area_radius_km === "number" ? body.area_radius_km : null;
+    // Kommune-basert område (Kartverket, mig 0369). 4-sifret kommunenr.
+    const kommunenr = typeof body.area_kommunenummer === "string" && /^\d{4}$/.test(body.area_kommunenummer)
+      ? body.area_kommunenummer
+      : null;
+    const kommuneNavn = typeof body.area_kommune_navn === "string" && body.area_kommune_navn.trim()
+      ? body.area_kommune_navn.trim().slice(0, 120)
+      : null;
 
     if (!id || id.length > 120) return res.status(400).json({ error: "ugyldig_id" });
     if (!name || name.length > 120) return res.status(400).json({ error: "ugyldig_navn" });
@@ -182,8 +191,8 @@ export function registerLeadgridSalesTeamsRoutes(deps: SalesTeamsRoutesDeps): vo
         `INSERT INTO leadgrid_sales_teams
            (organization_id, id, name, color_hex, leader_user_id,
             member_user_ids, area_center_lat, area_center_lng, area_radius_km,
-            created_by)
-         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10)
+            area_kommunenummer, area_kommune_navn, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12)
          ON CONFLICT (organization_id, id) DO UPDATE SET
            name = EXCLUDED.name,
            color_hex = EXCLUDED.color_hex,
@@ -192,9 +201,11 @@ export function registerLeadgridSalesTeamsRoutes(deps: SalesTeamsRoutesDeps): vo
            area_center_lat = EXCLUDED.area_center_lat,
            area_center_lng = EXCLUDED.area_center_lng,
            area_radius_km = EXCLUDED.area_radius_km,
+           area_kommunenummer = EXCLUDED.area_kommunenummer,
+           area_kommune_navn = EXCLUDED.area_kommune_navn,
            updated_at = NOW()
          RETURNING *`,
-        [orgId, id, name, colorHex, safeLeaderId, JSON.stringify(memberIds), lat, lng, radius, session.userId],
+        [orgId, id, name, colorHex, safeLeaderId, JSON.stringify(memberIds), lat, lng, radius, kommunenr, kommuneNavn, session.userId],
       );
       return res.json({ team: mapTeamRow(r.rows[0]) });
     } catch (err) {
