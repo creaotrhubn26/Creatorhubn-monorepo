@@ -65,3 +65,29 @@ extension APIClient {
         try await _post("/api/leadgrid/lead-assignments", body: payload)
     }
 }
+
+// MARK: - Aktivitetsfeed (2026-07-04)
+
+/// Én hendelse i org-ens aktivitetsfeed (crm_lead_activities m/ joins).
+struct ActivityFeedItemDTO: Decodable, Identifiable, Hashable {
+    let id: String
+    let activityType: String
+    let description: String
+    let newValue: String?
+    let userName: String
+    let leadName: String
+    let createdAt: String?
+}
+
+struct ActivityFeedResponse: Decodable {
+    let activities: [ActivityFeedItemDTO]
+}
+
+extension APIClient {
+    /// Org-ens siste aktiviteter (tilbud/besøk/status-endringer) —
+    /// Team-fanens «Siste aktivitet»-kort.
+    func fetchActivityFeed(limit: Int = 25) async throws -> [ActivityFeedItemDTO] {
+        let resp: ActivityFeedResponse = try await _get("/api/leadgrid/activity-feed?limit=\(limit)")
+        return resp.activities
+    }
+}

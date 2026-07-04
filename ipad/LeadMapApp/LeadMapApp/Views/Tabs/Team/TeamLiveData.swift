@@ -27,6 +27,9 @@ final class TeamLiveStore {
     private(set) var members: [TeamMember] = []
     private(set) var pipeline: [PipelineStage] = []
     private(set) var conversions: [ConversionRow] = []
+    /// Org-ens siste aktiviteter (2026-07-04) — tilbud/besøk/status fra
+    /// /api/leadgrid/activity-feed.
+    private(set) var activities: [ActivityEvent] = []
     /// Gj.snitt lead-score + antall vunnet — brukes av KPI-kortene.
     private(set) var avgLeadScore: Int = 0
     private(set) var salesCount: Int = 0
@@ -55,6 +58,10 @@ final class TeamLiveStore {
         guard let api else { return }
         if case .loaded = loadState {} else { loadState = .loading }
         recomputeFromLeads(appState.leads)
+        // Aktivitetsfeed — uavhengig av team-members (feiler stille).
+        if let feed = try? await api.fetchActivityFeed() {
+            activities = feed.map(Self.mapActivity)
+        }
         do {
             let resp = try await api.fetchSalesTeamMembers()
             let maxLeads = max(1, resp.members.map(\.leads).max() ?? 1)
@@ -138,6 +145,49 @@ final class TeamLiveStore {
         let scores = leads.compactMap { $0.leadScore ?? $0.aiOpportunityScore }
         avgLeadScore = scores.isEmpty ? 0 : scores.reduce(0, +) / scores.count
         salesCount = vunnet
+    }
+
+    // MARK: - Aktivitets-mapping
+
+    /// Feed-DTO → Team-fanens ActivityEvent-rad (norsk relativ-tid +
+    /// høydepunkt-farge for vunnet/tapt/tilbud).
+    private static func mapActivity(_ dto: ActivityFeedItemDTO) -> ActivityEvent {
+        let highlight: (String?, Color)
+        switch dto.activityType {
+        case "proposal_sent":  highlight = ("Tilbud", TBrand.purple)
+        case "meeting_scheduled": highlight = ("Møte", TBrand.green)
+        case "visit_logged":   highlight = ("Besøk", TBrand.blue)
+        case "status_changed" where (dto.newValue ?? "") == "won":
+            highlight = ("Vunnet", TBrand.green)
+        case "status_changed" where (dto.newValue ?? "") == "lost":
+            highlight = ("Tapt", TBrand.red)
+        default:               highlight = (nil, .clear)
+        }
+        let action = dto.description.isEmpty
+            ? "\(dto.activityType) — \(dto.leadName)"
+            : dto.description
+        return ActivityEvent(
+            memberName: dto.userName,
+            memberInitials: Self.initials(for: dto.userName),
+            memberColor: Self.stableColor(for: dto.userName),
+            action: action,
+            highlight: highlight.0,
+            highlightColor: highlight.1,
+            timeAgo: Self.relativeTime(dto.createdAt)
+        )
+    }
+
+    private static func relativeTime(_ iso: String?) -> String {
+        guard let iso else { return "" }
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        guard let date = fractional.date(from: iso) ?? ISO8601DateFormatter().date(from: iso) else {
+            return ""
+        }
+        let rel = RelativeDateTimeFormatter()
+        rel.locale = Locale(identifier: "nb_NO")
+        rel.unitsStyle = .short
+        return rel.localizedString(for: date, relativeTo: Date())
     }
 
     // MARK: - Helpers

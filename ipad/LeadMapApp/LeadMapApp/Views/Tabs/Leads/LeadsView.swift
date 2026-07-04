@@ -1387,6 +1387,8 @@ struct LeadDetailSidebar: View {
     @State private var showLeadArchiveConfirm: Bool = false
     // Tilbudssending (funn #7) — krever backend-lead + APIClient.
     @State private var showSendProposal: Bool = false
+    // Tilbudshistorikk (2026-07-04) — hentes per lead i detaljer-fanen.
+    @State private var proposals: [ProposalDTO] = []
     @Environment(AppState.self) private var appState
     @State private var actionToast: String?
 
@@ -1442,7 +1444,10 @@ struct LeadDetailSidebar: View {
                 leadName: lead.company,
                 leadEmail: lead.email,
                 api: appState.api,
-                onSent: { actionToast = "Tilbud sendt til \(lead.company)" }
+                onSent: {
+                    actionToast = "Tilbud sendt til \(lead.company)"
+                    Task { await loadProposals() }
+                }
             )
         }
         .confirmationDialog(
@@ -1586,8 +1591,99 @@ struct LeadDetailSidebar: View {
             companySection
             pipelineSection
             nextFollowUpSection
+            proposalsSection
             metaSection
         }
+    }
+
+    // MARK: Tilbud (2026-07-04) — historikk fra /leads/:id/proposals
+
+    private var proposalsSection: some View {
+        Group {
+            if lead.backendId != nil && !proposals.isEmpty {
+                VStack(alignment: .leading, spacing: 9) {
+                    sectionTitle("Tilbud")
+                    ForEach(proposals) { p in
+                        proposalRow(p)
+                    }
+                }
+            }
+        }
+        .task(id: lead.backendId) {
+            await loadProposals()
+        }
+    }
+
+    private func proposalRow(_ p: ProposalDTO) -> some View {
+        let (label, color): (String, Color) = {
+            switch p.status {
+            case "opened":   return ("Åpnet", LdBrand.blue)
+            case "accepted": return ("Akseptert", LdBrand.green)
+            case "rejected": return ("Avslått", LdBrand.red)
+            case "expired":  return ("Utløpt", LdBrand.textTertiary)
+            default:         return ("Sendt", LdBrand.orange)
+            }
+        }()
+        return HStack(spacing: 9) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8).fill(color.opacity(0.20))
+                Image(systemName: "doc.text.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(color)
+            }
+            .frame(width: 30, height: 30)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(p.title)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                Text("NOK \(formatThousands(Int(p.totalAmountNok))) eks. mva.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(LdBrand.textSecondary)
+            }
+            Spacer()
+            // Utfall settes via meny når tilbudet er åpnet/sendt.
+            if p.status == "sent" || p.status == "opened" {
+                Menu {
+                    Button { Task { await setProposalStatus(p, "accepted") } } label: {
+                        Label("Marker som akseptert", systemImage: "checkmark.seal.fill")
+                    }
+                    Button(role: .destructive) { Task { await setProposalStatus(p, "rejected") } } label: {
+                        Label("Marker som avslått", systemImage: "xmark.seal")
+                    }
+                } label: {
+                    statusChip(label, color)
+                }
+                .buttonStyle(.plain)
+            } else {
+                statusChip(label, color)
+            }
+        }
+        .padding(9)
+        .background(LdBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func statusChip(_ label: String, _ color: Color) -> some View {
+        Text(label)
+            .font(.system(size: 10, weight: .bold))
+            .foregroundStyle(color)
+            .padding(.horizontal, 8).padding(.vertical, 4)
+            .background(color.opacity(0.16), in: Capsule())
+    }
+
+    private func loadProposals() async {
+        guard let backendId = lead.backendId, let api = appState.api else {
+            proposals = []
+            return
+        }
+        proposals = (try? await api.fetchProposals(leadId: backendId)) ?? []
+    }
+
+    private func setProposalStatus(_ p: ProposalDTO, _ status: String) async {
+        guard let api = appState.api else { return }
+        try? await api.updateProposalStatus(id: p.id, status: status)
+        actionToast = status == "accepted" ? "Tilbud markert som akseptert" : "Tilbud markert som avslått"
+        await loadProposals()
     }
 
     private var kontaktSection: some View {

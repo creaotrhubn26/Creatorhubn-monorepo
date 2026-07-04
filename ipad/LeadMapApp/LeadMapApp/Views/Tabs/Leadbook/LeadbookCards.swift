@@ -868,6 +868,7 @@ struct SelectedLeadbookCard: View {
     let template: LeadbookTemplate
     @Binding var currentStep: Int
     @State private var showUseMal = false
+    @State private var showOutcomePrompt = false
     @State private var showNewTemplate = false
     @State private var showNewObjection = false
     @State private var showImportTemplate = false
@@ -987,7 +988,24 @@ struct SelectedLeadbookCard: View {
         .background(LBrand.card, in: RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(LBrand.stroke, lineWidth: 1))
         .sheet(isPresented: $showUseMal) {
-            UseLeadbookSheet(template: template, currentStep: currentStep)
+            UseLeadbookSheet(template: template, currentStep: currentStep, onStarted: {
+                // Prompten vises etter at sheeten er lukket.
+                showOutcomePrompt = true
+            })
+        }
+        // Utfalls-prompt (2026-07-04): oppgraderer 'used'-raden i backend
+        // → ekte møte-rate per mal i Leadbook-KPI-ene.
+        .confirmationDialog(
+            "Hva ble utfallet av «\(template.name)»?",
+            isPresented: $showOutcomePrompt,
+            titleVisibility: .visible
+        ) {
+            Button("Møte booket") { LeadbookLiveStore.shared.logOutcome(template, outcome: "meeting_booked") }
+            Button("Tilbud sendt") { LeadbookLiveStore.shared.logOutcome(template, outcome: "proposal_sent") }
+            Button("Vunnet") { LeadbookLiveStore.shared.logOutcome(template, outcome: "won") }
+            Button("Ikke svar") { LeadbookLiveStore.shared.logOutcome(template, outcome: "no_answer") }
+            Button("Tapt", role: .destructive) { LeadbookLiveStore.shared.logOutcome(template, outcome: "lost") }
+            Button("Registrer senere", role: .cancel) {}
         }
         .sheet(isPresented: $showNewTemplate) { NewTemplateSheet() }
         .sheet(isPresented: $showNewObjection) { NewObjectionSheet() }
@@ -2193,6 +2211,9 @@ struct NewTemplateSheet: View {
 struct UseLeadbookSheet: View {
     let template: LeadbookTemplate
     let currentStep: Int
+    /// Kalles når mal-bruken faktisk STARTES (ikke ved Avbryt) —
+    /// eieren viser «Hva ble utfallet?»-prompten etterpå (2026-07-04).
+    var onStarted: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
 
     @State private var leadName: String = ""
@@ -2328,6 +2349,7 @@ struct UseLeadbookSheet: View {
             // Logg mal-bruken (mig 0364) — gir ekte KPI-tall i fanen.
             if !leadName.isEmpty {
                 LeadbookLiveStore.shared.logUsage(template)
+                onStarted?()
             }
             dismiss()
         } label: {
