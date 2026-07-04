@@ -2,8 +2,8 @@
 //
 // Wrapper SalesLeadershipSheet (portet fra over-preview) som en top-level
 // fane i stedet for et modal sheet. Full-suite for provisjon, konkurranser,
-// premie-katalog og fulfillment. Genererer mock-sellers når `sellers`-input
-// ikke kommer fra prod-API (backend-binding pending, se `APIClient+SalesLeadership`).
+// premie-katalog og fulfillment. Mock-sellers KUN i demo-modus — ellers
+// ekte leaderboard fra TeamLiveStore (`/sales-leadership/team-members`).
 //
 // TODO Pakke 10.x — role-gate:
 //   - Sjekk `appState.userRole == "sales_manager"` FØR fanen mountes
@@ -29,6 +29,39 @@ struct SalgsledelseView: View {
             .joined(separator: " ")
     }
 
+    /// Selgerlisten bak sub-tabs. Mock KUN i demo-modus — ellers ekte
+    /// leaderboard fra TeamLiveStore (team-members-endepunktet), rangert
+    /// etter total verdi. Tom liste = ærlig tom-tilstand (sheeten er
+    /// empty-safe: bruker kun prefix/count/ForEach).
+    private var sellers: [TopSellersSheet.Seller] {
+        if DemoModeManager.isActiveNonisolated {
+            return SalgsledelseSellersFactory.mockSellers(currentUser: currentUserName)
+        }
+        let store = TeamLiveStore.shared
+        // Gjenbruk fargen TeamMember-mappingen alt har regnet ut (team-farge
+        // eller stabil hash-farge) så avatarer matcher Team-fanen.
+        let colorByName = Dictionary(
+            store.members.map { ($0.name, $0.color) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        return store.memberDTOs
+            .sorted { $0.totalValueNok > $1.totalValueNok }
+            .enumerated()
+            .map { idx, dto in
+                TopSellersSheet.Seller(
+                    rank: idx + 1,
+                    name: dto.name,
+                    title: dto.title ?? "Selger",
+                    avatarColor: colorByName[dto.name] ?? .purple,
+                    won: dto.won,
+                    leads: dto.leads,
+                    trend: 0,  // rank-endring har ingen historikk-kilde enda
+                    totalValue: Double(dto.totalValueNok),
+                    topDeals: [], regions: [], industries: []
+                )
+            }
+    }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -43,10 +76,18 @@ struct SalgsledelseView: View {
                 // Premie-katalog/Tildel premier) portet fra preview.
                 // embedded: true → skjuler X-lukkeknappen (arv fra sheet-modus).
                 SalesLeadershipSheet(
-                    sellers: SalgsledelseSellersFactory.mockSellers(currentUser: currentUserName),
+                    sellers: sellers,
                     currentUserName: currentUserName,
                     embedded: true
                 )
+            }
+        }
+        // Ekte team-data når demo er AV — attach er idempotent (samme
+        // mønster som TeamView) og fyller memberDTOs → sellers re-evalueres.
+        .task {
+            guard !DemoModeManager.isActiveNonisolated else { return }
+            if let api = appState.api {
+                TeamLiveStore.shared.attach(api: api, appState: appState)
             }
         }
     }

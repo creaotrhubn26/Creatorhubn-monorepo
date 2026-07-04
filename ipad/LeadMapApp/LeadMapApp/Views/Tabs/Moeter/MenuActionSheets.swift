@@ -651,7 +651,18 @@ struct AssignSellerSheet: View {
         let online: Bool
     }
 
-    private let sellers: [Seller] = [
+    /// Demo → mock; ellers ekte team-medlemmer fra TeamLiveStore
+    /// (`/sales-leadership/team-members`). winRate/online har ingen
+    /// datakilde enda → 0/false.
+    private var sellers: [Seller] {
+        if DemoModeManager.isActiveNonisolated { return Self.mockSellers }
+        return TeamLiveStore.shared.members.map { m in
+            Seller(name: m.name, role: "Selger", initials: m.initials,
+                   color: m.color, load: m.meetings, winRate: 0, online: false)
+        }
+    }
+
+    private static let mockSellers: [Seller] = [
         Seller(name: "Lars Kristensen", role: "Salgssjef",         initials: "LK", color: MABrand.purple,      load: 12, winRate: 64, online: true),
         Seller(name: "Anna Berg",       role: "Senior selger",     initials: "AB", color: MABrand.green,       load: 8,  winRate: 71, online: true),
         Seller(name: "Erik Nilsen",     role: "Account Executive", initials: "EN", color: MABrand.blue,        load: 15, winRate: 58, online: false),
@@ -670,6 +681,13 @@ struct AssignSellerSheet: View {
                 VStack(spacing: 14) {
                     contextHeader
                     searchBar
+                    if filtered.isEmpty {
+                        Text(search.isEmpty ? "Ingen selgere i teamet enda" : "Ingen selgere matcher søket")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(MABrand.textSecondary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 30)
+                    }
                     VStack(spacing: 7) {
                         ForEach(filtered) { s in
                             sellerRow(s)

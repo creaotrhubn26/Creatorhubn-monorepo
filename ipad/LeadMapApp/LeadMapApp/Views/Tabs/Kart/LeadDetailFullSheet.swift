@@ -501,9 +501,22 @@ struct LeadDetailFullSheet: View {
 
     // MARK: Aktiviteter
 
+    /// Ærlig tom-tilstand (ikke-demo uten ekte data) — mock vises KUN i demo-modus.
+    private func sectionEmptyState(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(LdBrand.textSecondary)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 18)
+            .background(LdBrand.cardHi, in: RoundedRectangle(cornerRadius: 9))
+    }
+
     private var activitiesSection: some View {
         sectionCard(title: "Komplett aktivitetshistorikk", icon: "clock.fill") {
             VStack(spacing: 8) {
+                if KartPreviewData.activities.isEmpty {
+                    sectionEmptyState("Ingen aktiviteter registrert enda")
+                }
                 ForEach(KartPreviewData.activities) { a in
                     HStack(spacing: 10) {
                         ZStack {
@@ -538,6 +551,9 @@ struct LeadDetailFullSheet: View {
     private var notesSection: some View {
         sectionCard(title: "Notater (\(KartPreviewData.notes.count))", icon: "note.text") {
             VStack(spacing: 8) {
+                if KartPreviewData.notes.isEmpty {
+                    sectionEmptyState("Ingen notater enda")
+                }
                 ForEach(KartPreviewData.notes) { n in
                     VStack(alignment: .leading, spacing: 6) {
                         HStack(spacing: 8) {
@@ -585,6 +601,9 @@ struct LeadDetailFullSheet: View {
     private var filesSection: some View {
         sectionCard(title: "Vedlegg (\(KartPreviewData.files.count))", icon: "folder.fill") {
             let cols = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
+            if KartPreviewData.files.isEmpty {
+                sectionEmptyState("Ingen filer lastet opp enda")
+            }
             LazyVGrid(columns: cols, spacing: 10) {
                 ForEach(KartPreviewData.files) { f in
                     VStack(alignment: .leading, spacing: 8) {
@@ -624,9 +643,14 @@ struct LeadDetailFullSheet: View {
     private var teamSection: some View {
         sectionCard(title: "Tildelte teammedlemmer", icon: "person.3.fill") {
             VStack(spacing: 8) {
+                // Mock-team KUN i demo-modus — ellers ærlig tom-tilstand.
+                if !DemoModeManager.isActiveNonisolated {
+                    sectionEmptyState("Ingen teammedlemmer tildelt enda")
+                } else {
                 teamRow(name: "Lars Kristensen",  role: "Account Owner",   initials: "LK", color: LdBrand.purpleLight, primary: true)
                 teamRow(name: "Mikkel Berg",       role: "Senior selger",   initials: "MB", color: LdBrand.green, primary: false)
                 teamRow(name: "Anniken Sørli",     role: "Salgsdirektør",   initials: "AS", color: LdBrand.purple, primary: false)
+                }
             }
         }
     }

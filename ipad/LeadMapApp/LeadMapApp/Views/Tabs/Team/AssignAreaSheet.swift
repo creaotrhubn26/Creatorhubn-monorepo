@@ -51,7 +51,12 @@ struct AssignAreaSheet: View {
         let assigned: String?     // navn til nåværende eier, nil hvis ledig
     }
 
-    private let kommuner: [KommuneEntry] = [
+    /// Mock-katalog — KUN i demo-modus. Ekte kommune-katalog kommer fra
+    /// Kartverket-integrasjonen (se KartverketService) i en senere pass.
+    private var kommuner: [KommuneEntry] {
+        DemoModeManager.isActiveNonisolated ? Self.mockKommuner : []
+    }
+    private static let mockKommuner: [KommuneEntry] = [
         KommuneEntry(name: "Oslo Vest",       region: "Oslo",       population: 220_000, leadsCount: 245, assigned: "Kari Nordmann"),
         KommuneEntry(name: "Oslo Sentrum",    region: "Oslo",       population: 180_000, leadsCount: 198, assigned: "Ola Magnussen"),
         KommuneEntry(name: "Lørenskog",        region: "Viken",      population:  43_000, leadsCount: 176, assigned: "Martine Jensen"),
@@ -143,6 +148,13 @@ struct AssignAreaSheet: View {
     private var catalogSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             sectionTitle("Velg kommune", subtitle: "Områder lastet fra Kartverket-katalog")
+            if kommuner.isEmpty {
+                Text("Kommune-katalogen er ikke koblet til enda — bruk «Tegn eget område» i mellomtiden")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.55))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 20)
+            }
             VStack(spacing: 6) {
                 ForEach(kommuner) { k in kommuneRow(k) }
             }

@@ -25,19 +25,38 @@ struct LeadbookInnsiktView: View {
     var body: some View {
         VStack(spacing: 14) {
             insiktHeader
-            maritHeroCard
-            kpiRow
-            HStack(alignment: .top, spacing: 14) {
-                trendChartCard.frame(maxWidth: .infinity)
-                temaClusterCard.frame(maxWidth: .infinity)
+            // HELE analyse-dashboardet er mock (cast-basert) — KUN i demo.
+            // Ekte innsikt krever samtale-/pondus-data fra backend.
+            if DemoModeManager.isActiveNonisolated {
+                maritHeroCard
+                kpiRow
+                HStack(alignment: .top, spacing: 14) {
+                    trendChartCard.frame(maxWidth: .infinity)
+                    temaClusterCard.frame(maxWidth: .infinity)
+                }
+                HStack(alignment: .top, spacing: 14) {
+                    worksCard.frame(maxWidth: .infinity)
+                    doesNotWorkCard.frame(maxWidth: .infinity)
+                }
+                leaderboardCard
+                timeDistributionCard
+                topBottomCasesRow
+            } else {
+                VStack(spacing: 10) {
+                    Image(systemName: "chart.bar.doc.horizontal")
+                        .font(.system(size: 32, weight: .semibold))
+                        .foregroundStyle(LBrand.textTertiary)
+                    Text("Ingen innsikt enda")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(.white)
+                    Text("AI-innsikten fylles når teamet har registrert samtaler og Pondus-data.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(LBrand.textSecondary)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 70)
             }
-            HStack(alignment: .top, spacing: 14) {
-                worksCard.frame(maxWidth: .infinity)
-                doesNotWorkCard.frame(maxWidth: .infinity)
-            }
-            leaderboardCard
-            timeDistributionCard
-            topBottomCasesRow
             Color.clear.frame(height: 20)
         }
         .overlay(alignment: .top) {
@@ -82,6 +101,9 @@ struct LeadbookInnsiktView: View {
                     .lineLimit(2)
             }
             Spacer(minLength: 12)
+            // Rapport-CTAene og perioden hører til mock-dashboardet — skjules
+            // i ikke-demo (Full rapport-sheeten er ren mock).
+            if DemoModeManager.isActiveNonisolated {
             HStack(spacing: 8) {
                 Menu {
                     ForEach(Period.allCases) { p in
@@ -126,6 +148,7 @@ struct LeadbookInnsiktView: View {
                     )
                     .shadow(color: LBrand.purple.opacity(0.45), radius: 6, y: 2)
                 }.buttonStyle(.plain)
+            }
             }
         }
     }

@@ -194,7 +194,25 @@ struct PrepInteraction: Identifiable, Hashable {
 // MARK: - Mock data
 
 enum PrepData {
-    static let checklist: [PrepChecklistItem] = [
+    /// Alle PrepData-settene er mock — KUN i demo-modus. Ellers tomme
+    /// lister + ærlige tom-tilstander i kortene (ingen prep-backend enda).
+    static var checklist: [PrepChecklistItem] {
+        DemoModeManager.isActiveNonisolated ? _checklist : []
+    }
+    static var stakeholders: [PrepStakeholder] {
+        DemoModeManager.isActiveNonisolated ? _stakeholders : []
+    }
+    static var talkingPoints: [TalkingPoint] {
+        DemoModeManager.isActiveNonisolated ? _talkingPoints : []
+    }
+    static var questions: [PrepQuestion] {
+        DemoModeManager.isActiveNonisolated ? _questions : []
+    }
+    static var interactions: [PrepInteraction] {
+        DemoModeManager.isActiveNonisolated ? _interactions : []
+    }
+
+    private static let _checklist: [PrepChecklistItem] = [
         PrepChecklistItem(title: "Tilbud-PDF ferdig",             category: .material,  completed: true,  detail: "v3 — sendt 15. mai",     timeEstimateMin: 0,  priority: .high,   assignedTo: nil,  aiRecommended: false),
         PrepChecklistItem(title: "Demo-konto klargjort",          category: .demo,      completed: true,  detail: "Sandbox m/ deres logo", timeEstimateMin: 0,  priority: .high,   assignedTo: nil,  aiRecommended: false),
         PrepChecklistItem(title: "Agenda sendt",                  category: .contact,   completed: true,  detail: "Bekreftet av Jonas",     timeEstimateMin: 0,  priority: .medium, assignedTo: nil,  aiRecommended: false),
@@ -204,14 +222,14 @@ enum PrepData {
         PrepChecklistItem(title: "Visittkort",                    category: .material,  completed: false, detail: nil,                       timeEstimateMin: 2,  priority: .low,    assignedTo: nil,  aiRecommended: false),
     ]
 
-    static let stakeholders: [PrepStakeholder] = [
+    private static let _stakeholders: [PrepStakeholder] = [
         PrepStakeholder(name: "Jonas Eide",      role: "Daglig leder",      initials: "JE", color: PBrand.purple,      influence: .decisionMaker, confidence: 85, lastContactDays: 1,  attending: true),
         PrepStakeholder(name: "Linda Berg",      role: "IT-sjef",           initials: "LB", color: PBrand.green,       influence: .champion,      confidence: 92, lastContactDays: 3,  attending: true),
         PrepStakeholder(name: "Morten Solberg",  role: "Innkjøps-direktør", initials: "MS", color: PBrand.blue,        influence: .influencer,    confidence: 60, lastContactDays: 8,  attending: true),
         PrepStakeholder(name: "Kari Nilsen",     role: "CFO",               initials: "KN", color: PBrand.orange,      influence: .blocker,       confidence: 25, lastContactDays: 21, attending: false),
     ]
 
-    static let talkingPoints: [TalkingPoint] = [
+    private static let _talkingPoints: [TalkingPoint] = [
         TalkingPoint(category: .valueProp,      title: "30 % raskere fakturering",    detail: "Vis konkret tall basert på deres volum (~2 100 fakturaer/mnd)."),
         TalkingPoint(category: .painPoint,      title: "Manuell ordrebehandling",     detail: "Jonas nevnte i sist samtale: 3 ansatte bruker 60 % på dette."),
         TalkingPoint(category: .socialProof,    title: "Romerike Elektro: 12× ROI",   detail: "Lignende størrelse, samme bransje — referanse OK å nevne."),
@@ -219,7 +237,7 @@ enum PrepData {
         TalkingPoint(category: .close,          title: "Pilot 4 uker, gratis onboarding", detail: "Reduserer risiko, åpner for rask beslutning før Q3."),
     ]
 
-    static let questions: [PrepQuestion] = [
+    private static let _questions: [PrepQuestion] = [
         PrepQuestion(framework: "BANT",   pillar: "Budget",    text: "Hvilket budsjett har dere allokert for digitalisering i 2026?"),
         PrepQuestion(framework: "BANT",   pillar: "Authority", text: "Hvem signerer på dette utenom deg?"),
         PrepQuestion(framework: "BANT",   pillar: "Need",      text: "Hvilke 2-3 ting MÅ være på plass for at dette skal være vellykket?"),
@@ -228,7 +246,7 @@ enum PrepData {
         PrepQuestion(framework: "MEDDIC", pillar: "Pain",      text: "Kan du sette en kostnad på det dagens situasjon koster pr. måned?"),
     ]
 
-    static let interactions: [PrepInteraction] = [
+    private static let _interactions: [PrepInteraction] = [
         PrepInteraction(kind: .email,    title: "Tilbud v3 sendt",          detail: "Justert pris -8 % + utvidet support", timestamp: "15. mai 14:18", by: "Lars Kristensen"),
         PrepInteraction(kind: .meeting,  title: "Discovery-møte (Teams)",   detail: "45 min, Jonas + Linda, definert behov", timestamp: "12. mai 09:00", by: "Lars Kristensen"),
         PrepInteraction(kind: .call,     title: "Oppfølging — telefon",     detail: "Avklart at Morten må involveres",       timestamp: "8. mai 11:30",  by: "Lars Kristensen"),
@@ -236,6 +254,18 @@ enum PrepData {
         PrepInteraction(kind: .email,    title: "Første kontakt",           detail: "Reply på LinkedIn outreach",            timestamp: "2. mai 09:14",  by: "Jonas Eide"),
         PrepInteraction(kind: .note,     title: "AI-research notat",        detail: "Bedriften vokser 23 % YoY, søker ERP",  timestamp: "1. mai 10:00",  by: "AI-assistent"),
     ]
+}
+
+// MARK: - Delt tom-tilstand (ikke-demo uten ekte prep-data)
+
+/// Ærlig tom-tilstand for prep-kortene når demo er AV og det ikke finnes
+/// ekte data (prep-backend mangler enda).
+fileprivate func prepEmptyState(_ text: String) -> some View {
+    Text(text)
+        .font(.system(size: 11, weight: .semibold))
+        .foregroundStyle(PBrand.textSecondary)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
 }
 
 // MARK: - 1. PrepCoreCard (Mål / Behov / Neste steg / Notater + Rediger + AI)
@@ -285,8 +315,16 @@ struct PrepCoreCard: View {
                 }
                 .buttonStyle(.plain)
             }
-            VStack(alignment: .leading, spacing: 11) {
-                ForEach(items) { p in prepRow(p) }
+            if items.isEmpty {
+                Text("Ingen forberedelser registrert enda")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(PBrand.textSecondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+            } else {
+                VStack(alignment: .leading, spacing: 11) {
+                    ForEach(items) { p in prepRow(p) }
+                }
             }
         }
         .padding(14)
@@ -466,6 +504,9 @@ struct PrepChecklistCard: View {
                 completedBanner
             }
             // 3. Items gruppert på kategori
+            if items.isEmpty {
+                prepEmptyState("Ingen sjekkliste-punkter enda")
+            }
             VStack(spacing: 7) {
                 ForEach(PrepCategory.allCases, id: \.self) { cat in
                     let inCat = items.indices.filter { items[$0].category == cat }
@@ -960,6 +1001,9 @@ struct PrepStakeholdersCard: View {
                         summaryBadge(label: "\(champions) champion", color: PBrand.pink, icon: "heart.fill")
                     }
                 }
+            }
+            if stakeholders.isEmpty {
+                prepEmptyState("Ingen beslutningstakere registrert enda")
             }
             VStack(spacing: 7) {
                 ForEach(stakeholders) { s in
@@ -1839,12 +1883,18 @@ struct PrepInsightsCard: View {
                 Spacer()
             }
             if tab == .talking {
+                if PrepData.talkingPoints.isEmpty {
+                    prepEmptyState("Ingen talepunkter enda")
+                }
                 VStack(spacing: 7) {
                     ForEach(PrepData.talkingPoints) { tp in
                         talkingPointRow(tp)
                     }
                 }
             } else {
+                if PrepData.questions.isEmpty {
+                    prepEmptyState("Ingen spørsmål enda")
+                }
                 VStack(spacing: 7) {
                     ForEach(PrepData.questions) { q in
                         questionRow(q)
@@ -1945,6 +1995,9 @@ struct PrepHistoryCard: View {
                         .foregroundStyle(PBrand.purpleLight)
                 }
                 .buttonStyle(.plain)
+            }
+            if interactions.isEmpty {
+                prepEmptyState("Ingen tidligere interaksjoner enda")
             }
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(interactions.indices, id: \.self) { i in

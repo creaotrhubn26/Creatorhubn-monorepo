@@ -323,6 +323,9 @@ struct OversiktView: View {
         }
         // Team-store sync (idempotent) — backend er fasit for team-oppsettet.
         LeadgridSalesTeamStore.shared.attach(api: api)
+        // Team-medlemmer (idempotent) — trengs for ekte «Tildel til
+        // teammedlem»-liste og TopSellers-leaderboard når demo er AV.
+        TeamLiveStore.shared.attach(api: api, appState: appState)
         async let momTask: LeadgridMomentum? = try? api.fetchMomentumToday()
         async let fcTask: LeadgridForecast? = try? api.fetchPipelineForecast()
         let (mom, fc) = await (momTask, fcTask)
@@ -1241,9 +1244,11 @@ private struct LeadsInAreaCard: View {
     @State private var assignmentSuccessToastVisible: Bool = false
 
     // Team-på-kartet (2026-07-02): toggle via `.teamMembers` i lag-picker.
-    // Mock data hentes fra TeamOnMapMock; erstattes med live-data fra
+    // Mock KUN i demo-modus; erstattes med live-data fra
     // `GET /leadgrid/team-live-locations` (kommer i backend-pakke).
-    @State private var teamOnMap: [TeamMemberOnMap] = TeamOnMapMock.members()
+    // Demo AV → tomt lag (ærlig — ingen falske selgere på kartet).
+    @State private var teamOnMap: [TeamMemberOnMap] =
+        DemoModeManager.isActiveNonisolated ? TeamOnMapMock.members() : []
     @State private var selectedTeamMember: TeamMemberOnMap?
 
     // MeMapPin tap-actions (2026-07-02)
@@ -2150,7 +2155,7 @@ private struct LeadsInAreaCard: View {
                     latitude: lead.latitude,
                     longitude: lead.longitude
                 ),
-                members: mockAssignableMembers(for: lead),
+                members: assignableMembers(for: lead),
                 onAssign: { assignment in
                     completeTeamAssignment(assignment)
                 },
@@ -2793,9 +2798,32 @@ private struct LeadsInAreaCard: View {
         .frame(maxWidth: 420)
     }
 
-    /// Mock team-medlem-liste for demo-modus. Byttes ut med live-data fra
-    /// `GET /leadgrid/sales-leadership/team-members` + `NearbyTeamMemberDTO`
-    /// for avstand fra lead-koord.
+    /// Demo → mock-liste; ellers ekte team-medlemmer fra TeamLiveStore
+    /// (`/sales-leadership/team-members`). Avstand fra lead-koord har vi
+    /// ingen live-posisjonskilde for i denne konteksten enda → nil (UI-et
+    /// skjuler avstands-raden). Tom liste → sheetens egen empty-state.
+    private func assignableMembers(for lead: LeadModel) -> [AssignableTeamMember] {
+        guard !DemoModeManager.isActiveNonisolated else {
+            return mockAssignableMembers(for: lead)
+        }
+        return TeamLiveStore.shared.memberDTOs.map { dto in
+            let initials = dto.name.split(separator: " ")
+                .prefix(2).compactMap { $0.first }.map(String.init).joined()
+            return AssignableTeamMember(
+                userId: dto.userId,
+                name: dto.name,
+                email: dto.email,
+                title: dto.title,
+                role: .seller,
+                distanceKm: nil,
+                weeklyWon: dto.won,
+                isAvailable: nil,
+                avatarInitials: initials.isEmpty ? "?" : initials
+            )
+        }
+    }
+
+    /// Mock team-medlem-liste — KUN demo-modus.
     private func mockAssignableMembers(for lead: LeadModel) -> [AssignableTeamMember] {
         let leadLoc = CLLocation(latitude: lead.latitude, longitude: lead.longitude)
         func dist(_ lat: Double, _ lon: Double) -> Double {
@@ -4517,7 +4545,24 @@ struct TopSellersSheet: View {
         let color: Color
     }
 
+    /// Demo → mock-leaderboard; ellers ekte selgere fra TeamLiveStore
+    /// (`/sales-leadership/team-members`), rangert etter total verdi.
+    /// topDeals/regions/industries har ingen backend-kilde enda → tomme.
     private var sellers: [Seller] {
+        if DemoModeManager.isActiveNonisolated { return mockSellers }
+        return TeamLiveStore.shared.memberDTOs
+            .sorted { $0.totalValueNok > $1.totalValueNok }
+            .enumerated()
+            .map { idx, dto in
+                Seller(rank: idx + 1, name: dto.name, title: dto.title ?? "Selger",
+                       avatarColor: Brand.purpleLight,
+                       won: dto.won, leads: dto.leads, trend: 0,
+                       totalValue: Double(dto.totalValueNok),
+                       topDeals: [], regions: [], industries: [])
+            }
+    }
+
+    private var mockSellers: [Seller] {
         [
             makeSeller(rank: 1, name: "Anniken Sørli", title: "Salgsdirektør",
                        color: Brand.purple, won: 312, leads: 1820, trend: 0,
@@ -4654,9 +4699,27 @@ struct TopSellersSheet: View {
             ScrollView {
                 VStack(spacing: 20) {
                     periodPicker
-                    podiumSection
-                    listHeader
-                    sellerList
+                    // Podium krever minst 3 selgere (indekserer [0...2]);
+                    // ekte team kan være mindre — da vises kun listen.
+                    if sellers.count >= 3 { podiumSection }
+                    if sellers.isEmpty {
+                        VStack(spacing: 8) {
+                            Image(systemName: "person.3")
+                                .font(.system(size: 28, weight: .semibold))
+                                .foregroundStyle(Brand.textTertiary)
+                            Text("Ingen selger-data enda")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundStyle(.white)
+                            Text("Leaderboardet fylles når teamet har aktivitet.")
+                                .font(.system(size: 11))
+                                .foregroundStyle(Brand.textSecondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 60)
+                    } else {
+                        listHeader
+                        sellerList
+                    }
                     Spacer(minLength: 16)
                 }
                 .padding(.horizontal, 24)
@@ -6436,14 +6499,15 @@ struct SalesLeadershipSheet: View {
 
     // Org-spesifikke premier som salgssjefen har lagt til. Persisteres i
     // prod (per-org-rad i `org_prize_catalog`); her er det @State.
-    // Mock-eksemplene bruker ikoner siden vi ikke har EKTE produktbilder.
-    // Når salgssjefen laster opp via PhotosPicker eller setter URL → vises
-    // det ekte bildet (siden det er aktivt valgt og matcher produktet).
-    @State private var orgCatalog: [PrizeProduct] = [
+    // Mock-eksemplene (KUN demo-modus) bruker ikoner siden vi ikke har EKTE
+    // produktbilder. Når salgssjefen laster opp via PhotosPicker eller
+    // setter URL → vises det ekte bildet. Demo AV → tom (ærlig) liste;
+    // salgssjefen kan fortsatt legge til egne via «+».
+    @State private var orgCatalog: [PrizeProduct] = DemoModeManager.isActiveNonisolated ? [
         PrizeProduct(name: "Drone DJI Mavic 3",           icon: "airplane",                              priceNok: 18_500, category: .tech,       vendor: "Komplett (org)"),
         PrizeProduct(name: "Org-helgetur til Lofoten",    icon: "mountain.2.fill",                       priceNok: 14_000, category: .travel,     vendor: "Egen avtale"),
         PrizeProduct(name: "Personlig PT-pakke 10 timer", icon: "figure.strengthtraining.traditional",   priceNok: 6_500,  category: .experience, vendor: "Sats (avtale)"),
-    ]
+    ] : []
     @State private var newProductOpen: Bool = false
 
     private enum Brand {

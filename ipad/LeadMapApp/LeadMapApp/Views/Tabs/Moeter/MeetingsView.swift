@@ -290,7 +290,11 @@ enum MeetingsData {
         ),
     ]
 
-    static let prep: [PrepItem] = [
+    /// Mock-forberedelser — KUN i demo-modus (ingen prep-backend enda).
+    static var prep: [PrepItem] {
+        DemoModeManager.isActiveNonisolated ? _prep : []
+    }
+    private static let _prep: [PrepItem] = [
         PrepItem(category: "Mål",        icon: "target",                  color: MtBrand.green,        bullets: ["Presentere løsningen og skape interesse", "Avklare behov og neste steg"]),
         PrepItem(category: "Behov",      icon: "magnifyingglass.circle.fill", color: MtBrand.blue,     bullets: ["Effektivisere energistyring i bygg", "Redusere driftskostnader"]),
         PrepItem(category: "Neste steg", icon: "arrow.right.circle.fill", color: MtBrand.purpleLight,  bullets: ["Tilbud og løsningsforslag", "Oppfølgingsmøte om 2 uker"]),
@@ -1281,9 +1285,17 @@ struct MeetingsView: View {
                 }
                 .buttonStyle(.plain)
             }
-            VStack(alignment: .leading, spacing: 11) {
-                ForEach(MeetingsData.prep) { p in
-                    prepRow(p)
+            if MeetingsData.prep.isEmpty {
+                Text("Ingen forberedelser registrert enda")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(MtBrand.textSecondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+            } else {
+                VStack(alignment: .leading, spacing: 11) {
+                    ForEach(MeetingsData.prep) { p in
+                        prepRow(p)
+                    }
                 }
             }
         }
