@@ -507,7 +507,28 @@ export function setupLeadMapRoutes(deps: Deps): void {
             body.project_id ?? null,
           ],
         );
-        return res.json({ ok: true, id: r.rows[0].id });
+        // Workflow-event (2026-07-04): manuelt opprettede leads skal også
+        // fyre lead.created (welcome-workflows). Org via felles resolver,
+        // dynamic import unngår import-sykel. Fire-and-forget.
+        const newLeadId = r.rows[0].id;
+        void (async () => {
+          try {
+            const { resolveOrgIdForUser } = await import("./leadgrid-org-resolver.js");
+            const { publishEvent } = await import("./leadgrid-workflow-engine.js");
+            const orgId = await resolveOrgIdForUser(pool, session.userId);
+            await publishEvent({
+              pool,
+              organizationId: orgId,
+              type: "lead.created",
+              leadId: newLeadId,
+              actorUserId: session.userId,
+              data: { source: leadSource, occurred_at: new Date().toISOString() },
+            });
+          } catch (err) {
+            console.warn("[lead-map] lead.created-event feilet:", (err as Error).message);
+          }
+        })();
+        return res.json({ ok: true, id: newLeadId });
       } catch (err) {
         return res.status(500).json({ error: "create_failed", detail: String(err) });
       }
