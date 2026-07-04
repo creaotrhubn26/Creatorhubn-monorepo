@@ -2,6 +2,11 @@
 //
 // Delt mellom hovedapp og Widget Extension (LeadMapWidget). Definerer
 // ActivityKit-attributtene for 'Pågående besøk'-Live Activity.
+//
+// Mac Catalyst støtter ikke ActivityKit — hele fila gates ut på
+// Catalyst-varianten.
+
+#if !targetEnvironment(macCatalyst)
 
 import ActivityKit
 import Foundation
@@ -20,3 +25,5 @@ struct ActiveVisitAttributes: ActivityAttributes {
     var startedAt: Date
     var leadId: String
 }
+
+#endif  // !macCatalyst

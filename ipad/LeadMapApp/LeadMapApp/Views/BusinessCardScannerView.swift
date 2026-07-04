@@ -5,8 +5,84 @@
 // navn. Brukeren bekrefter feltene før vi POSTer som lead.
 //
 // Krav: iOS 16+, iPad Pro 2018+ med Neural Engine.
+// Mac Catalyst støtter IKKE DataScannerViewController — vi eksponerer
+// en stubb-variant som gir en «Ikke tilgjengelig på Mac»-melding i
+// samme signatur, slik at call-sitene ikke må gates individuelt.
+// `ExtractedBusinessCard`-modellen holdes alltid tilgjengelig så
+// APIClient.createLeadFromCard fungerer på alle plattformer.
 
 import SwiftUI
+import Foundation
+
+// MARK: - Modell (tilgjengelig på alle plattformer)
+
+struct ExtractedBusinessCard: Sendable {
+    var name: String = ""
+    var title: String = ""
+    var company: String = ""
+    var email: String = ""
+    var phone: String = ""
+    var website: String = ""
+    var raw: String = ""
+
+    /// Parser tekst-blokken som DataScanner ga oss ved hjelp av
+    /// NSDataDetector + heuristikker.
+    static func parse(_ text: String) -> ExtractedBusinessCard {
+        var card = ExtractedBusinessCard()
+        card.raw = text
+
+        if let emailDetector = try? NSDataDetector(
+            types: NSTextCheckingResult.CheckingType.link.rawValue,
+        ) {
+            let matches = emailDetector.matches(
+                in: text,
+                range: NSRange(text.startIndex..., in: text),
+            )
+            for m in matches {
+                guard let url = m.url else { continue }
+                if url.scheme == "mailto" {
+                    card.email = url.absoluteString.replacingOccurrences(of: "mailto:", with: "")
+                } else if card.website.isEmpty {
+                    card.website = url.absoluteString
+                }
+            }
+        }
+
+        if let phoneDetector = try? NSDataDetector(
+            types: NSTextCheckingResult.CheckingType.phoneNumber.rawValue,
+        ) {
+            let matches = phoneDetector.matches(
+                in: text,
+                range: NSRange(text.startIndex..., in: text),
+            )
+            if let m = matches.first {
+                card.phone = m.phoneNumber ?? ""
+            }
+        }
+
+        let lines = text.split(separator: "\n").map { String($0).trimmingCharacters(in: .whitespaces) }
+        for line in lines {
+            if card.name.isEmpty {
+                let words = line.split(separator: " ").map { String($0) }
+                if words.count >= 2 && words.count <= 4
+                   && !line.contains(where: \.isNumber)
+                   && !line.contains("@") {
+                    card.name = line
+                    continue
+                }
+            }
+            if card.title.isEmpty && line != card.name
+               && !line.contains("@") && !line.contains(where: \.isNumber) {
+                card.title = line
+            }
+        }
+
+        return card
+    }
+}
+
+#if !targetEnvironment(macCatalyst)
+
 import VisionKit
 import Vision
 
@@ -226,73 +302,29 @@ struct DataScannerRepresentable: UIViewControllerRepresentable {
     }
 }
 
-// MARK: - Card-modellen
+#else  // macCatalyst — DataScanner ikke tilgjengelig; vis fallback-melding.
 
-struct ExtractedBusinessCard: Sendable {
-    var name: String = ""
-    var title: String = ""
-    var company: String = ""
-    var email: String = ""
-    var phone: String = ""
-    var website: String = ""
-    var raw: String = ""
+import SwiftUI
 
-    /// Parser tekst-blokken som DataScanner ga oss ved hjelp av
-    /// NSDataDetector + heuristikker.
-    static func parse(_ text: String) -> ExtractedBusinessCard {
-        var card = ExtractedBusinessCard()
-        card.raw = text
+@available(iOS 16.0, *)
+struct BusinessCardScannerView: View {
+    @Environment(\.dismiss) private var dismiss
 
-        // E-post via NSDataDetector
-        if let emailDetector = try? NSDataDetector(
-            types: NSTextCheckingResult.CheckingType.link.rawValue,
-        ) {
-            let matches = emailDetector.matches(
-                in: text,
-                range: NSRange(text.startIndex..., in: text),
+    var body: some View {
+        NavigationStack {
+            ContentUnavailableView(
+                "Ikke tilgjengelig på Mac",
+                systemImage: "camera.fill",
+                description: Text("Visittkort-skanning krever iPhone eller iPad-kamera. Åpne appen på en mobil enhet.")
             )
-            for m in matches {
-                guard let url = m.url else { continue }
-                if url.scheme == "mailto" {
-                    card.email = url.absoluteString.replacingOccurrences(of: "mailto:", with: "")
-                } else if card.website.isEmpty {
-                    card.website = url.absoluteString
+            .navigationTitle("Skann visittkort")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Lukk") { dismiss() }
                 }
             }
         }
-
-        // Telefon via NSDataDetector
-        if let phoneDetector = try? NSDataDetector(
-            types: NSTextCheckingResult.CheckingType.phoneNumber.rawValue,
-        ) {
-            let matches = phoneDetector.matches(
-                in: text,
-                range: NSRange(text.startIndex..., in: text),
-            )
-            if let m = matches.first {
-                card.phone = m.phoneNumber ?? ""
-            }
-        }
-
-        // Navn-heuristikk: første linje med 2-4 ord, ingen siffer
-        let lines = text.split(separator: "\n").map { String($0).trimmingCharacters(in: .whitespaces) }
-        for line in lines {
-            if card.name.isEmpty {
-                let words = line.split(separator: " ").map { String($0) }
-                if words.count >= 2 && words.count <= 4
-                   && !line.contains(where: \.isNumber)
-                   && !line.contains("@") {
-                    card.name = line
-                    continue
-                }
-            }
-            if card.title.isEmpty && line != card.name
-               && !line.contains("@") && !line.contains(where: \.isNumber) {
-                // Tittel: andre kandidat-linje
-                card.title = line
-            }
-        }
-
-        return card
     }
 }
+
+#endif  // targetEnvironment

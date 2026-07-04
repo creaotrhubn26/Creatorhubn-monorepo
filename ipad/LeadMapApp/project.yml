@@ -16,8 +16,8 @@ settings:
     DEVELOPMENT_TEAM: "9TAUZCPK95"
     ENABLE_USER_SCRIPT_SANDBOXING: YES
     VERSIONING_SYSTEM: apple-generic
-    CURRENT_PROJECT_VERSION: "20260647"
-    MARKETING_VERSION: "1.3.1"
+    CURRENT_PROJECT_VERSION: "20260704"
+    MARKETING_VERSION: "1.4.0"
 
 targets:
   LeadMapApp:
@@ -98,6 +98,11 @@ targets:
         # App Store-bygging overskrives automatisk til 'production'
         # av Apple ved arkiv-eksport — det skjer transparently.
         aps-environment: development
+        # Mac Catalyst sandbox: CoreLocation-tilgang. Uten denne
+        # entitlementen returnerer CLLocationManager.currentCoordinate
+        # nil på Mac (iPad er ikke sandbox-ed så det trengs ikke der).
+        # NSLocationWhenInUseUsageDescription står allerede i Info.plist.
+        com.apple.security.personal-information.location: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.creatorhubn.LeadMapApp

@@ -81,11 +81,8 @@ struct LeadgridHubView: View {
                 // Intelligence Engine (PR #855) — NBA + pipeline + score-breakdown.
                 Section("Intelligence") {
                     if let api = appState.api {
-                        NavigationLink {
-                            LeadgridFollowUpQueueView(api: api)
-                        } label: {
-                            Label("Følg-opp-kø", systemImage: "bolt.fill")
-                        }
+                        // Følg-opp-kø: portet inn i ny `LeadsView` i Pakke 10 (2026-07-01).
+                        // Bruk hovedfane «Leads» — denne snarveien er fjernet.
                         NavigationLink {
                             LeadgridPipelineKanbanView(api: api)
                         } label: {
@@ -99,17 +96,9 @@ struct LeadgridHubView: View {
                     }
                 }
 
-                // Salgsledelse-suite — provisjons-konfig, konkurranser,
-                // premie-katalog og fulfillment-flyt. Isolert flate som
-                // backend-kobles mot sales-leadership-routes.ts (mig 0354).
-                Section("Salgsledelse") {
-                    NavigationLink {
-                        SalesLeadershipDashboardView()
-                    } label: {
-                        Label("Provisjon, konkurranser, premier",
-                              systemImage: "rosette")
-                    }
-                }
+                // Salgsledelse: portet inn i ny `OversiktView`'s
+                // SalesLeadershipSheet (Pakke 10) — bruk hovedfanen «Oversikt»
+                // og åpne sheet fra header-CTA.
 
                 // Analytics Dashboard (PR #858 backend) — 7 KPI-endepunkter
                 // som SwiftUI Charts (5 seksjoner).
