@@ -264,6 +264,31 @@ pub async fn demo_fetch_site_context(url: String) -> Result<String, String> {
     Ok(extract_site_context(&html))
 }
 
+/// Hent en live datakilde (JSON/CSV/tekst) via reqwest — ingen CORS-begrensning,
+/// slik at Infographic Studio kan binde felt til ekte, oppdaterbare tall fra et
+/// API eller en publisert Google Sheet. Returnerer rå tekst (maks ~512 KB).
+#[tauri::command]
+pub async fn fetch_live_data(url: String) -> Result<String, String> {
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return Err("URL må starte med http:// eller https://".into());
+    }
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(12))
+        .user_agent("PostAgent-Infographic/1.0")
+        .build()
+        .map_err(|e| e.to_string())?;
+    let res = client.get(&url).send().await.map_err(|e| format!("kunne ikke hente datakilden: {e}"))?;
+    if !res.status().is_success() {
+        return Err(format!("datakilden svarte {}", res.status().as_u16()));
+    }
+    let text = res.text().await.map_err(|e| format!("kunne ikke lese datakilden: {e}"))?;
+    if text.len() > 512 * 1024 {
+        Ok(text.chars().take(512 * 1024).collect())
+    } else {
+        Ok(text)
+    }
+}
+
 fn extract_site_context(html: &str) -> String {
     use regex::Regex;
     let title = Regex::new(r"(?is)<title[^>]*>([^<]+)</title>")
