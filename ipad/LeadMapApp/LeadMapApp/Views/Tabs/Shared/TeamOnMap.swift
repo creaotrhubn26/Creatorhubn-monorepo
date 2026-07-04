@@ -111,6 +111,10 @@ struct TeamMapPin: View {
         teamColor ?? member.role.color
     }
 
+    /// Kompakt på iPhone (2026-07-04): mini-kartet i Oversikt er lite —
+    /// full 36pt-avatar overlappet cluster-nåler. ~60% skala på phone.
+    private var isCompact: Bool { DeviceIdiom.isPhone }
+
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
             // Ring + avatar
@@ -118,19 +122,19 @@ struct TeamMapPin: View {
                 // Team-farget aura når medlem er «aktiv»
                 if member.activity == .driving {
                     Circle()
-                        .stroke(ringColor.opacity(0.5), lineWidth: 3)
-                        .frame(width: 46, height: 46)
+                        .stroke(ringColor.opacity(0.5), lineWidth: isCompact ? 2 : 3)
+                        .frame(width: isCompact ? 29 : 46, height: isCompact ? 29 : 46)
                         .scaleEffect(1.0 + pulsePhase * 0.15)
                         .opacity(1.0 - pulsePhase)
                 }
                 Circle().fill(ringColor.opacity(0.28))
-                Circle().strokeBorder(ringColor, lineWidth: 2.5)
+                Circle().strokeBorder(ringColor, lineWidth: isCompact ? 1.5 : 2.5)
                 Text(member.avatarInitials)
-                    .font(.system(size: 13, weight: .heavy, design: .rounded))
+                    .font(.system(size: isCompact ? 8 : 13, weight: .heavy, design: .rounded))
                     .foregroundStyle(.white)
             }
-            .frame(width: 36, height: 36)
-            .shadow(color: .black.opacity(0.35), radius: 5, y: 2)
+            .frame(width: isCompact ? 22 : 36, height: isCompact ? 22 : 36)
+            .shadow(color: .black.opacity(0.35), radius: isCompact ? 3 : 5, y: isCompact ? 1 : 2)
             // Status-dot nederst-høyre
             statusDot
         }
@@ -148,17 +152,17 @@ struct TeamMapPin: View {
     private var statusDot: some View {
         ZStack {
             Circle().fill(TeamOnMapBrand.card)
-                .frame(width: 14, height: 14)
+                .frame(width: isCompact ? 9 : 14, height: isCompact ? 9 : 14)
             Circle().fill(member.activity.color)
-                .frame(width: 10, height: 10)
-            if member.activity == .driving {
+                .frame(width: isCompact ? 6.5 : 10, height: isCompact ? 6.5 : 10)
+            if member.activity == .driving, !isCompact {
                 // Ikon i pulserer-dot — tydelig visuell markør
                 Image(systemName: "car.fill")
                     .font(.system(size: 5, weight: .heavy))
                     .foregroundStyle(.white)
             }
         }
-        .offset(x: 3, y: 3)
+        .offset(x: isCompact ? 2 : 3, y: isCompact ? 2 : 3)
     }
 }
 

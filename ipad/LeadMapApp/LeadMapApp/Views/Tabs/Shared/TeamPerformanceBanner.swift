@@ -122,6 +122,44 @@ struct TeamPerformanceBanner: View {
     @State private var shakeOffset: CGFloat = 0
 
     var body: some View {
+        if DeviceIdiom.isPhone {
+            compactBody
+        } else {
+            fullBody
+        }
+    }
+
+    /// Kompakt phone-variant (2026-07-04): mini-kartet på iPhone er for
+    /// lite til full banner-stack — badges/trofeer/glow overlappet
+    /// cluster-nålene til uleselighet. Viser KUN team-navn i en liten
+    /// pill i team-farge + en status-dot i prestasjons-fargen. Ingen
+    /// pulse/shake/glow. iPad/Mac beholder full variant under.
+    private var compactBody: some View {
+        HStack(spacing: 5) {
+            Circle()
+                .fill(performance.level.accentColor)
+                .frame(width: 6, height: 6)
+            Text(team.name)
+                .font(.system(size: 11, weight: .heavy, design: .rounded))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 8).padding(.vertical, 3)
+        .background(
+            LinearGradient(
+                colors: [team.color.opacity(0.95), team.color.opacity(0.75)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ),
+            in: Capsule()
+        )
+        .overlay(Capsule().strokeBorder(Color.white.opacity(0.20), lineWidth: 0.5))
+        .saturation(performance.level.saturation)
+        .shadow(color: .black.opacity(0.35), radius: 3, y: 1)
+    }
+
+    /// Full variant — iPad/Mac (uendret oppførsel).
+    private var fullBody: some View {
         VStack(spacing: 6) {
             // Prestasjons-badge (SF Symbol + label)
             HStack(spacing: 5) {

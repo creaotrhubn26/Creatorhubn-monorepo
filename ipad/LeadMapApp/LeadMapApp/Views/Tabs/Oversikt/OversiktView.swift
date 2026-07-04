@@ -1481,6 +1481,16 @@ private struct LeadsInAreaCard: View {
         .padding(16)
         .background(Brand.card, in: RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(Brand.stroke, lineWidth: 1))
+        // iPhone: lead-info som bottom-sheet — overlay-varianten kolliderte
+        // med FAB-kolonnen og klippet «Tildel»/«Les mer»-CTA-ene.
+        .sheet(item: phoneLeadSheetBinding) { sel in
+            leadInfoCard(for: sel)
+                .padding(16)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .background(Brand.bg.ignoresSafeArea())
+                .presentationDetents([.height(380), .medium])
+                .presentationDragIndicator(.visible)
+        }
     }
 
     /// Kart-fargen følger tidspunktet på dagen — natt blir mørkt, dag
@@ -1502,6 +1512,54 @@ private struct LeadsInAreaCard: View {
         case 17..<20: return Color(red: 0.95, green: 0.55, blue: 0.30)  // skumring
         default:       return Color(red: 0.20, green: 0.25, blue: 0.55)  // natt
         }
+    }
+
+    /// Konfigurert lead-info-kort — delt mellom iPad-overlay (flytende på
+    /// kartet) og iPhone-sheet (bottom-sheet, unngår FAB-kollisjon).
+    private func leadInfoCard(for sel: LeadModel) -> some View {
+        MapLeadInfoCard(
+            lead: sel,
+            onClose: {
+                withAnimation(.snappy(duration: 0.18)) {
+                    mapSelectedLead = nil
+                }
+                mapSelectedLeadOpenTime = nil
+            },
+            onOpenLead: { lead in
+                NotificationCenter.default.post(
+                    name: .oversiktRequestOpenLeadInLeadsTab,
+                    object: nil,
+                    userInfo: ["leadId": lead.id, "leadName": lead.name]
+                )
+                withAnimation(.snappy(duration: 0.18)) {
+                    mapSelectedLead = nil
+                }
+                mapSelectedLeadOpenTime = nil
+            },
+            onAssignAsDestination: { lead in
+                assignAsMyDestination(lead)
+                withAnimation(.snappy(duration: 0.18)) {
+                    mapSelectedLead = nil
+                }
+                mapSelectedLeadOpenTime = nil
+            },
+            onAssignToTeamMember: { lead in
+                // Lukk info-kortet + åpne team-picker-sheet med lead.
+                withAnimation(.snappy(duration: 0.18)) {
+                    mapSelectedLead = nil
+                }
+                mapSelectedLeadOpenTime = nil
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                    assignToTeamLead = lead
+                }
+            },
+            canAssignToOthers: true  // TODO: bind til role — salgssjef/teamleder only
+        )
+    }
+
+    /// iPhone: pin-tap → bottom-sheet i stedet for kart-overlay.
+    private var phoneLeadSheetBinding: Binding<LeadModel?> {
+        DeviceIdiom.isPhone ? $mapSelectedLead : .constant(nil)
     }
 
     // ── Cluster-logikk for mini-kartet (QA-runde 2) ──────────────────
@@ -1873,14 +1931,18 @@ private struct LeadsInAreaCard: View {
                     }
                     measureBottomToolbar
                 }
-                .padding(10)
+                .padding(DeviceIdiom.isPhone ? 8 : 10)
                 .background(Brand.card.opacity(0.92), in: RoundedRectangle(cornerRadius: 12))
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
                         .stroke(Brand.green.opacity(0.5), lineWidth: 1)
                 )
-                .padding(14)
-                .frame(maxWidth: 380)
+                .padding([.leading, .top, .bottom], 14)
+                // iPhone: 74pt trailing-marg garanterer at HUD-en ALDRI
+                // overlapper FAB-kolonnen langs høyre kant (52pt strip +
+                // 14pt padding, zIndex 100). iPad/Mac beholder 14pt.
+                .padding(.trailing, DeviceIdiom.isPhone ? 74 : 14)
+                .frame(maxWidth: DeviceIdiom.isPhone ? .infinity : 380)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .allowsHitTesting(true)
             }
@@ -1962,45 +2024,11 @@ private struct LeadsInAreaCard: View {
 
             // Lead-info-overlay nederst på kartet — vises når bruker
             // tapper en pin. Har «Les mer»-CTA som hopper til Leads-fanen.
-            if let sel = mapSelectedLead {
-                MapLeadInfoCard(
-                    lead: sel,
-                    onClose: {
-                        withAnimation(.snappy(duration: 0.18)) {
-                            mapSelectedLead = nil
-                        }
-                        mapSelectedLeadOpenTime = nil
-                    },
-                    onOpenLead: { lead in
-                        NotificationCenter.default.post(
-                            name: .oversiktRequestOpenLeadInLeadsTab,
-                            object: nil,
-                            userInfo: ["leadId": lead.id, "leadName": lead.name]
-                        )
-                        withAnimation(.snappy(duration: 0.18)) {
-                            mapSelectedLead = nil
-                        }
-                        mapSelectedLeadOpenTime = nil
-                    },
-                    onAssignAsDestination: { lead in
-                        assignAsMyDestination(lead)
-                        withAnimation(.snappy(duration: 0.18)) {
-                            mapSelectedLead = nil
-                        }
-                        mapSelectedLeadOpenTime = nil
-                    },
-                    onAssignToTeamMember: { lead in
-                        // Lukk info-kortet + åpne team-picker-sheet med lead.
-                        withAnimation(.snappy(duration: 0.18)) {
-                            mapSelectedLead = nil
-                        }
-                        mapSelectedLeadOpenTime = nil
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                            assignToTeamLead = lead
-                        }
-                    },
-                    canAssignToOthers: true  // TODO: bind til role — salgssjef/teamleder only
-                )
+            // iPhone (QA-runde 2): overlay-kortet kolliderte med FAB-
+            // kolonnen og klippet CTA-ene — vises som bottom-sheet i stedet
+            // (se .sheet på bodyContent).
+            if let sel = mapSelectedLead, !DeviceIdiom.isPhone {
+                leadInfoCard(for: sel)
                 .padding(14)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                 // Asymmetric transition (2026-07-02): fortsatt slide-opp
@@ -2900,18 +2928,27 @@ private struct LeadsInAreaCard: View {
     /// samt visualisering-lag (linjer / sirkel) rendret INNE i Map { … }.
 
     private var measureBannerHeader: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: DeviceIdiom.isPhone ? 6 : 8) {
             Image(systemName: "ruler.fill")
                 .font(.system(size: 12, weight: .bold))
                 .foregroundStyle(Brand.green)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("MÅLE-VERKTØY")
-                    .font(.system(size: 9, weight: .black))
-                    .foregroundStyle(Brand.green).tracking(0.6)
+            if DeviceIdiom.isPhone {
+                // Kompakt phone-variant: kun måle-teksten — overskriften
+                // sløyfes (ikonet + avstanden er nok signal).
                 Text(miniMeasureBannerText)
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.white)
                     .lineLimit(2)
+            } else {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("MÅLE-VERKTØY")
+                        .font(.system(size: 9, weight: .black))
+                        .foregroundStyle(Brand.green).tracking(0.6)
+                    Text(miniMeasureBannerText)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                }
             }
             Spacer()
             Menu {
@@ -2929,15 +2966,25 @@ private struct LeadsInAreaCard: View {
                     }
                 }
             } label: {
-                HStack(spacing: 3) {
-                    Text(measureUnit.label)
-                        .font(.system(size: 10, weight: .semibold))
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 8, weight: .bold))
+                if DeviceIdiom.isPhone {
+                    // Enhets-velgeren bak et kompakt ellipsis-ikon på phone
+                    // (metrisk er default i Norge — sjelden brukt).
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 7).padding(.vertical, 6)
+                        .background(Brand.cardHi, in: Capsule())
+                } else {
+                    HStack(spacing: 3) {
+                        Text(measureUnit.label)
+                            .font(.system(size: 10, weight: .semibold))
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 8, weight: .bold))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(Brand.cardHi, in: Capsule())
                 }
-                .foregroundStyle(.white)
-                .padding(.horizontal, 8).padding(.vertical, 4)
-                .background(Brand.cardHi, in: Capsule())
             }
             Button {
                 miniMeasureMode = false
@@ -2959,14 +3006,15 @@ private struct LeadsInAreaCard: View {
                     // Bytt kind = nullstill så vi ikke blander punkter
                     measureResetAll()
                 } label: {
-                    HStack(spacing: 5) {
+                    HStack(spacing: DeviceIdiom.isPhone ? 4 : 5) {
                         Image(systemName: kind.icon)
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.system(size: DeviceIdiom.isPhone ? 9 : 10, weight: .bold))
                         Text(kind.label)
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.system(size: DeviceIdiom.isPhone ? 9 : 10, weight: .semibold))
                     }
                     .foregroundStyle(isActive ? .white : Brand.textSecondary)
-                    .padding(.horizontal, 8).padding(.vertical, 5)
+                    .padding(.horizontal, DeviceIdiom.isPhone ? 7 : 8)
+                    .padding(.vertical, DeviceIdiom.isPhone ? 4 : 5)
                     .background(
                         isActive ? Brand.green.opacity(0.55) : Color.white.opacity(0.06),
                         in: Capsule()
