@@ -2372,6 +2372,58 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     catch (e) { if (isMissingTable(e)) return res.json({ ok: true }); return res.status(500).json({ error: "warmup_delete_failed" }); }
   });
 
+  // Rutine-maler: produsentens egne maler på tvers av prosjekter.
+  app.get("/api/audio-showcase/warmup-templates", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    try {
+      const r = await pool.query(`SELECT id, title, target, steps, note, created_at FROM audio_warmup_templates WHERE owner_user_id=$1 ORDER BY created_at DESC LIMIT 50`, [s.userId]);
+      return res.json({ templates: r.rows });
+    } catch (e) { if (isMissingTable(e)) return res.json({ templates: [] }); return res.status(500).json({ error: "templates_get_failed" }); }
+  });
+  app.post("/api/audio-showcase/warmup-templates", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    const title = str(req.body?.title, 120); const target = str(req.body?.target, 60) || "all";
+    const steps = Array.isArray(req.body?.steps) ? req.body.steps.slice(0, 30) : [];
+    if (!title || steps.length === 0) return res.status(400).json({ error: "title_and_steps_required" });
+    try {
+      const r = await pool.query(`INSERT INTO audio_warmup_templates (owner_user_id, title, target, steps, note) VALUES ($1,$2,$3,$4::jsonb,$5) RETURNING id, title, target, steps, note, created_at`,
+        [s.userId, title, target, JSON.stringify(steps), str(req.body?.note, 600) || null]);
+      return res.status(201).json({ template: r.rows[0] });
+    } catch (e) { if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" }); return res.status(500).json({ error: "template_create_failed" }); }
+  });
+  app.delete("/api/audio-showcase/warmup-templates/:tid", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    try { await pool.query(`DELETE FROM audio_warmup_templates WHERE id=$1::uuid AND owner_user_id=$2`, [str(req.params.tid, 64), s.userId]); return res.json({ ok: true }); }
+    catch (e) { if (isMissingTable(e)) return res.json({ ok: true }); return res.status(500).json({ error: "template_delete_failed" }); }
+  });
+
+  // «Mine lyder»: produsentens lydbibliotek (opplastet mindfulness-musikk / voice-over).
+  app.get("/api/audio-showcase/my-sounds", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    try {
+      const r = await pool.query(`SELECT id, title, url, kind, duration_sec, created_at FROM audio_user_sounds WHERE owner_user_id=$1 ORDER BY created_at DESC LIMIT 100`, [s.userId]);
+      return res.json({ sounds: r.rows });
+    } catch (e) { if (isMissingTable(e)) return res.json({ sounds: [] }); return res.status(500).json({ error: "sounds_get_failed" }); }
+  });
+  app.post("/api/audio-showcase/my-sounds", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    const title = str(req.body?.title, 160); const url = str(req.body?.url, 800);
+    const kind = str(req.body?.kind, 20) === "voice" ? "voice" : "music";
+    const durationSec = Number(req.body?.durationSec);
+    if (!title || !url) return res.status(400).json({ error: "title_and_url_required" });
+    try {
+      const r = await pool.query(`INSERT INTO audio_user_sounds (owner_user_id, title, url, kind, duration_sec) VALUES ($1,$2,$3,$4,$5) RETURNING id, title, url, kind, duration_sec, created_at`,
+        [s.userId, title, url, kind, Number.isFinite(durationSec) && durationSec > 0 ? Math.round(durationSec) : null]);
+      return res.status(201).json({ sound: r.rows[0] });
+    } catch (e) { if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" }); return res.status(500).json({ error: "sound_create_failed" }); }
+  });
+  // Sletter kun bibliotek-raden — B2-objektet består (kan være i bruk i eksisterende rutiner).
+  app.delete("/api/audio-showcase/my-sounds/:sid", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    try { await pool.query(`DELETE FROM audio_user_sounds WHERE id=$1::uuid AND owner_user_id=$2`, [str(req.params.sid, 64), s.userId]); return res.json({ ok: true }); }
+    catch (e) { if (isMissingTable(e)) return res.json({ ok: true }); return res.status(500).json({ error: "sound_delete_failed" }); }
+  });
+
   // Hvilke rutiner gjelder for et medlem (etter rolle).
   const warmupMatches = (target: string, role: string): boolean => {
     if (target === "all") return true;
