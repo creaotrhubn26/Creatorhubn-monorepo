@@ -493,27 +493,35 @@ function placementAdviceFor(id: string, aspect: number): string {
 
 // Plattform-UI-soner: der TikTok/Instagram/YouTube legger EGNE elementer oppå
 // videoen (fraksjoner av rammen). Brukes til å tegne sonene + advare når
-// infographic-en havner under dem.
+// infographic-en havner under dem. Koordinatene følger publiserte «safe area»-
+// spesifikasjoner for 1080×1920 (TikTok/Reels/Stories) og 1920×1080 (YouTube):
+// TikTok ~topp 130px, bunn ~483px, høyre ~120px. Estimater — lett å finjustere.
 interface UiZone { x: number; y: number; w: number; h: number; label: string }
 interface SocialPlatform { id: string; name: string; sub: string; aspect: number; fmt: 'native' | '9:16' | '4:5' | '1:1' | '16:9'; zones: UiZone[] }
 const PLATFORMS: SocialPlatform[] = [
   { id: 'tiktok', name: 'TikTok', sub: '9:16', aspect: 9 / 16, fmt: '9:16', zones: [
-    { x: 0.84, y: 0.30, w: 0.16, h: 0.52, label: 'Handlinger' },
-    { x: 0, y: 0.80, w: 0.84, h: 0.20, label: 'Caption · musikk' },
-    { x: 0.30, y: 0, w: 0.40, h: 0.07, label: 'Faner' },
+    // Handlingsrad (like/kommentar/del/lyd) ~høyre 120px, y ~925–1720 av 1920.
+    { x: 0.89, y: 0.48, w: 0.11, h: 0.42, label: 'Handlinger' },
+    // Caption/brukernavn/musikk-ticker — nedre ~25 % (≈483px), venstre for raden.
+    { x: 0, y: 0.75, w: 0.88, h: 0.25, label: 'Caption · musikk' },
+    // For You/Følger-faner øverst (~topp 130px = 7 %).
+    { x: 0.28, y: 0.01, w: 0.44, h: 0.055, label: 'Faner' },
   ] },
   { id: 'reels', name: 'IG Reels', sub: '9:16', aspect: 9 / 16, fmt: '9:16', zones: [
-    { x: 0.85, y: 0.34, w: 0.15, h: 0.46, label: 'Handlinger' },
-    { x: 0, y: 0.82, w: 0.85, h: 0.18, label: 'Caption' },
+    { x: 0.88, y: 0.50, w: 0.12, h: 0.38, label: 'Handlinger' },
+    // Caption + lyd-ticker + fremdrift nederst ~20 %.
+    { x: 0, y: 0.80, w: 0.82, h: 0.20, label: 'Caption · lyd' },
   ] },
   { id: 'stories', name: 'IG Stories', sub: '9:16', aspect: 9 / 16, fmt: '9:16', zones: [
-    { x: 0, y: 0, w: 1, h: 0.09, label: 'Profil · linjer' },
-    { x: 0, y: 0.90, w: 1, h: 0.10, label: 'Send melding' },
+    // Progress-linjer + profil øverst ~250px (13 %); «send melding» nederst ~14 %.
+    { x: 0, y: 0, w: 1, h: 0.13, label: 'Profil · linjer' },
+    { x: 0, y: 0.86, w: 1, h: 0.14, label: 'Send melding' },
   ] },
   { id: 'feed45', name: 'IG Feed', sub: '4:5 portrett', aspect: 4 / 5, fmt: '4:5', zones: [] },
   { id: 'feed11', name: 'IG Feed', sub: '1:1 kvadrat', aspect: 1, fmt: '1:1', zones: [] },
   { id: 'youtube', name: 'YouTube', sub: '16:9', aspect: 16 / 9, fmt: '16:9', zones: [
-    { x: 0, y: 0.86, w: 1, h: 0.14, label: 'Kontroller' },
+    // Kontroller/fremdrift nederst ~10 % (vises ved hover/pause).
+    { x: 0, y: 0.90, w: 1, h: 0.10, label: 'Kontroller' },
   ] },
 ];
 
