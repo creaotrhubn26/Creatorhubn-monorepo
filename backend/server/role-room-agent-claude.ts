@@ -29,7 +29,7 @@
 // Slice 9X.71 — cost-tracking via samme system som CreatorHub-resten.
 // Lazy import for å unngå circular import-problemer ved boot.
 import { logAIUsage } from './ai-usage-tracker.js';
-import type { TikTokMcpConfig } from './role-room-tiktok-mcp.js';
+import type { AgentMcpConfig } from './role-room-agent-mcp.js';
 
 type ClaudeMessageParam = {
   role: 'user' | 'assistant';
@@ -78,7 +78,7 @@ export interface RunClaudeAgentInput {
    * so Claude can call TikTok ad tools (read-only allowlist by default). Built
    * by buildTikTokMcpConfig from the user's TikTok token; omitted when null.
    */
-  mcpConfig?: TikTokMcpConfig | null;
+  mcpConfig?: AgentMcpConfig | null;
 }
 
 export interface RunClaudeAgentResult {
