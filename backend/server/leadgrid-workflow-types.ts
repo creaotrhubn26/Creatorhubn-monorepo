@@ -814,7 +814,9 @@ export function validateWorkflowPayload(payload: {
 export interface ActionResult {
   index: number;
   type: WorkflowActionType;
-  status: "ok" | "skipped" | "error" | "deferred";
+  // "scheduled" (mig 0366): wait-action persisterte resume-jobb —
+  // resterende actions kjøres av wait-polleren når resume_at passeres.
+  status: "ok" | "skipped" | "error" | "deferred" | "scheduled";
   message?: string;
   durationMs?: number;
   data?: Record<string, unknown>;
