@@ -42,7 +42,7 @@ export async function notifyClientsOfNewPreview(args: SendArgs): Promise<{
       `SELECT session_token AS "sessionToken",
               client_email   AS "clientEmail",
               client_name    AS "clientName"
-         FROM client_portal_sessions
+         FROM role_room_client_portal_sessions
         WHERE project_id = $1
           AND status = 'active'
           AND expires_at > now()`,

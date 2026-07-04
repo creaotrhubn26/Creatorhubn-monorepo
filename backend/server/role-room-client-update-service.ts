@@ -257,18 +257,26 @@ export async function sendClientUpdate(
     now: args.now,
   });
 
-  const { rows: sessions } = await pool.query<{
-    sessionToken: string;
-    clientEmail: string;
-    clientName: string | null;
-  }>(
-    `SELECT session_token AS "sessionToken",
-            client_email   AS "clientEmail",
-            client_name    AS "clientName"
-       FROM client_portal_sessions
-      WHERE project_id = $1 AND status = 'active' AND expires_at > now()`,
-    [ctx.projectId],
-  );
+  let sessions: Array<{ sessionToken: string; clientEmail: string; clientName: string | null }> = [];
+  try {
+    const res = await pool.query<{
+      sessionToken: string;
+      clientEmail: string;
+      clientName: string | null;
+    }>(
+      `SELECT session_token AS "sessionToken",
+              client_email   AS "clientEmail",
+              client_name    AS "clientName"
+         FROM role_room_client_portal_sessions
+        WHERE project_id = $1 AND status = 'active' AND expires_at > now()`,
+      [ctx.projectId],
+    );
+    sessions = res.rows;
+  } catch (err) {
+    // Recipient lookup must never 500 the update — we still persist it so the
+    // client sees it in the portal timeline even if email can't be sent.
+    console.warn('[client-update] session lookup failed', err);
+  }
 
   const base = getClientPortalBaseUrl();
   let sent = 0;
