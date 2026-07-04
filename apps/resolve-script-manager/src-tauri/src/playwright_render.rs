@@ -367,6 +367,20 @@ async fn ig_capture_frames(
     Ok((work, safe))
 }
 
+/// Bygg en exit-fade-filterstreng (fade ut de siste `exit_sec` sekundene).
+/// `alpha` = true for formater med alfa (fader gjennomsiktig), false for mp4
+/// (fader til svart). Returnerer None hvis ingen fade er ønsket.
+fn ig_fade_vf(exit_sec: f64, duration_sec: f64, alpha: bool) -> Option<String> {
+    if exit_sec <= 0.0 { return None; }
+    let d = exit_sec.min(duration_sec).max(0.05);
+    let st = (duration_sec - d).max(0.0);
+    Some(if alpha {
+        format!("fade=t=out:st={st:.3}:d={d:.3}:alpha=1")
+    } else {
+        format!("fade=t=out:st={st:.3}:d={d:.3}")
+    })
+}
+
 fn ig_out_dir(app: &AppHandle) -> std::path::PathBuf {
     let d = app
         .path()
@@ -385,6 +399,7 @@ pub async fn render_infographic(
     name: String,
     fps: Option<f64>,
     scale: Option<f64>,
+    exit_sec: Option<f64>,
 ) -> Result<String, String> {
     let fps = fps.unwrap_or(30.0).clamp(12.0, 60.0);
     let scale = scale.unwrap_or(2.0);
@@ -394,17 +409,12 @@ pub async fn render_infographic(
     // ProRes 4444 m/alfa → ~/Movies/Post Agent Infographics/
     let ffmpeg = find_bin("ffmpeg");
     let out_file = ig_out_dir(&app).join(format!("{safe}.mov"));
-    let status = Command::new(&ffmpeg)
-        .args([
-            "-y",
-            "-framerate", &format!("{fps}"),
-            "-i", &format!("{}/f%03d.png", work.to_string_lossy()),
-            "-c:v", "prores_ks", "-profile:v", "4444",
-            "-pix_fmt", "yuva444p10le",
-            &out_file.to_string_lossy(),
-        ])
-        .status()
-        .await
+    let mut args: Vec<String> = vec!["-y".into(), "-framerate".into(), format!("{fps}"),
+        "-i".into(), format!("{}/f%03d.png", work.to_string_lossy())];
+    if let Some(vf) = ig_fade_vf(exit_sec.unwrap_or(0.0), duration_sec, true) { args.push("-vf".into()); args.push(vf); }
+    args.extend(["-c:v".into(), "prores_ks".into(), "-profile:v".into(), "4444".into(),
+        "-pix_fmt".into(), "yuva444p10le".into(), out_file.to_string_lossy().to_string()]);
+    let status = Command::new(&ffmpeg).args(&args).status().await
         .map_err(|e| format!("ffmpeg-start feilet: {e}"))?;
     if !status.success() {
         return Err("ffmpeg klarte ikke å lage ProRes-fil".into());
@@ -425,6 +435,7 @@ pub async fn export_infographic(
     format: String,
     fps: Option<f64>,
     scale: Option<f64>,
+    exit_sec: Option<f64>,
 ) -> Result<String, String> {
     let fps = fps.unwrap_or(30.0).clamp(12.0, 60.0);
     let scale = scale.unwrap_or(2.0);
@@ -435,6 +446,10 @@ pub async fn export_infographic(
     let out_dir = ig_out_dir(&app);
     let frames_glob = format!("{}/f%03d.png", work.to_string_lossy());
     let fr = format!("{fps}");
+    let ex = exit_sec.unwrap_or(0.0);
+    // Alfa-fade for alfa-formater, svart-fade for mp4.
+    let fade_alpha = ig_fade_vf(ex, duration_sec, true);
+    let fade_black = ig_fade_vf(ex, duration_sec, false);
 
     let (out_file, args): (std::path::PathBuf, Vec<String>) = match format.as_str() {
         "png" => {
@@ -445,27 +460,33 @@ pub async fn export_infographic(
         }
         "mp4" => {
             let out = out_dir.join(format!("{safe}.mp4"));
+            let vf = match &fade_black { Some(f) => format!("{f},format=yuv420p"), None => "format=yuv420p".into() };
             (out.clone(), vec!["-y".into(), "-framerate".into(), fr.clone(), "-i".into(), frames_glob.clone(),
-                "-vf".into(), "format=yuv420p".into(), "-c:v".into(), "libx264".into(), "-crf".into(), "18".into(),
+                "-vf".into(), vf, "-c:v".into(), "libx264".into(), "-crf".into(), "18".into(),
                 "-movflags".into(), "+faststart".into(), out.to_string_lossy().to_string()])
         }
         "gif" => {
             let out = out_dir.join(format!("{safe}.gif"));
+            let pre = match &fade_alpha { Some(f) => format!("{f},"), None => "".into() };
             (out.clone(), vec!["-y".into(), "-framerate".into(), fr.clone(), "-i".into(), frames_glob.clone(),
-                "-vf".into(), "split[s0][s1];[s0]palettegen=reserve_transparent=1[p];[s1][p]paletteuse=alpha_threshold=128".into(),
+                "-vf".into(), format!("{pre}split[s0][s1];[s0]palettegen=reserve_transparent=1[p];[s1][p]paletteuse=alpha_threshold=128"),
                 out.to_string_lossy().to_string()])
         }
         "apng" => {
             let out = out_dir.join(format!("{safe}.apng.png"));
-            (out.clone(), vec!["-y".into(), "-framerate".into(), fr.clone(), "-i".into(), frames_glob.clone(),
-                "-f".into(), "apng".into(), "-plays".into(), "0".into(), out.to_string_lossy().to_string()])
+            let mut a = vec!["-y".into(), "-framerate".into(), fr.clone(), "-i".into(), frames_glob.clone()];
+            if let Some(f) = &fade_alpha { a.push("-vf".into()); a.push(f.clone()); }
+            a.extend(["-f".into(), "apng".into(), "-plays".into(), "0".into(), out.to_string_lossy().to_string()]);
+            (out.clone(), a)
         }
         _ => {
             // prores (default) — .mov m/alfa
             let out = out_dir.join(format!("{safe}.mov"));
-            (out.clone(), vec!["-y".into(), "-framerate".into(), fr.clone(), "-i".into(), frames_glob.clone(),
-                "-c:v".into(), "prores_ks".into(), "-profile:v".into(), "4444".into(), "-pix_fmt".into(), "yuva444p10le".into(),
-                out.to_string_lossy().to_string()])
+            let mut a = vec!["-y".into(), "-framerate".into(), fr.clone(), "-i".into(), frames_glob.clone()];
+            if let Some(f) = &fade_alpha { a.push("-vf".into()); a.push(f.clone()); }
+            a.extend(["-c:v".into(), "prores_ks".into(), "-profile:v".into(), "4444".into(), "-pix_fmt".into(), "yuva444p10le".into(),
+                out.to_string_lossy().to_string()]);
+            (out.clone(), a)
         }
     };
     let status = Command::new(&ffmpeg).args(&args).status().await
