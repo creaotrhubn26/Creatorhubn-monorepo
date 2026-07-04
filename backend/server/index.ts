@@ -827,6 +827,7 @@ import { setupSalesRoutes } from "./sales-routes";
 import { registerSalesLeadershipRoutes } from "./sales-leadership-routes";
 import { registerLeadgridSalesTeamsRoutes } from "./leadgrid-sales-teams-routes";
 import { registerLeadgridProposalsRoutes } from "./leadgrid-proposals-routes";
+import { registerLeadgridAcademyRoutes } from "./leadgrid-academy-routes";
 import { registerLeadgridOrgOverrideRoutes } from "./leadgrid-org-override-routes";
 import { registerWorkflowResumeCron } from "./leadgrid-workflow-engine";
 import { registerRoutesAdherenceRoutes } from "./routes-adherence-routes";
@@ -65567,6 +65568,11 @@ registerLeadgridSalesTeamsRoutes({ app, pool, requireUserSession });
 // branded PDF-lenke, offentlig /p/:token m/ open-tracking som fyrer
 // proposal.opened-workflow-eventet. Forutsetter mig 0363.
 registerLeadgridProposalsRoutes({ app, pool, requireUserSession });
+
+// Leadgrid Academy fase 1 (mig 0368) — org-scopet opplæring: offisielle
+// Leadgrid-kurs (Pondus-Akademiet seedet) + org-egne kurs, med progresjon
+// per bruker og presignert R2-video. iPad PondusAcademy binder mot dette.
+registerLeadgridAcademyRoutes({ app, pool, requireUserSession });
 
 // Org-modus-velger (mig 0365) — super_admin kan bytte mellom solo-modus
 // og valgfri org; alle Leadgrid-org-oppslag (leadgrid-org-resolver.ts)
