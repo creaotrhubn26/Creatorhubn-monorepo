@@ -1289,11 +1289,16 @@ private struct LeadsInAreaCard: View {
         }
     }
 
+    /// Status-filter fra «Alle status»-chipen (QA-runde 2: chipen var en
+    /// ren visning uten handling). nil = alle statuser.
+    @State private var mapStatusFilter: LeadStatus?
+
     /// Pakke 10.1: filter mini-kart + KPI-strippen basert på tier.
     private var pinnedLeads: [LeadModel] {
         leads
             .filter { $0.latitude != 0 || $0.longitude != 0 }
             .filter { activeTier.matches($0) }
+            .filter { mapStatusFilter == nil || $0.status == mapStatusFilter }
     }
 
     private var region: MKCoordinateRegion {
@@ -1467,7 +1472,38 @@ private struct LeadsInAreaCard: View {
                         .foregroundStyle(Brand.purpleLight)
                 }
                 Spacer()
-                FilterChip(label: "Alle status", icon: "line.3.horizontal.decrease.circle")
+                // QA-runde 2 (Daniel): chipen var død — nå ekte statusfilter
+                // som snevrer pins + cluster-telling på mini-kartet.
+                Menu {
+                    Button {
+                        mapStatusFilter = nil
+                    } label: {
+                        if mapStatusFilter == nil {
+                            Label("Alle status", systemImage: "checkmark")
+                        } else {
+                            Text("Alle status")
+                        }
+                    }
+                    Divider()
+                    ForEach(LeadStatus.allCases) { status in
+                        Button {
+                            mapStatusFilter = status
+                        } label: {
+                            if mapStatusFilter == status {
+                                Label(status.label, systemImage: "checkmark")
+                            } else {
+                                Text(status.label)
+                            }
+                        }
+                    }
+                } label: {
+                    FilterChip(
+                        label: mapStatusFilter?.label ?? "Alle status",
+                        icon: "line.3.horizontal.decrease.circle"
+                    )
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
             }
             // Lead score fordeling — filter-strip (Daniel 2026-06-28 + 07-01):
             // brukeren ser samme fargene som pinene under, tapper for å
