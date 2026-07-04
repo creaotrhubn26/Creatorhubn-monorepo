@@ -60,6 +60,12 @@ import TextFieldsIcon from '@mui/icons-material/TextFields';
 import QueryStatsIcon from '@mui/icons-material/QueryStats';
 import AspectRatioIcon from '@mui/icons-material/AspectRatio';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import ViewColumnIcon from '@mui/icons-material/ViewColumn';
+import PhoneIphoneIcon from '@mui/icons-material/PhoneIphone';
+import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder';
+import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
+import SendIcon from '@mui/icons-material/Send';
+import PlaceIcon from '@mui/icons-material/Place';
 
 const D = {
   bg: '#0e1320', panel: '#141b2b', panel2: '#1b2436', line: '#27314a',
@@ -459,6 +465,145 @@ function TemplateThumb({ tpl, accent, values }: { tpl: InfographicTemplate; acce
   );
 }
 
+// Enhets-mockup ut fra forhold: portrett = telefon, kvadrat/4:5 = feed-innlegg,
+// bredt = nettleser/desktop.
+type DeviceKind = 'phone' | 'post' | 'browser';
+function deviceForAspect(aspect: number): DeviceKind {
+  if (aspect < 0.9) return 'phone';
+  if (aspect > 1.1) return 'browser';
+  return 'post';
+}
+
+// Plasserings-anbefaling ut fra mal-kategori + format (trygge soner der plattform-
+// UI/caption ligger). Kort, handlingsrettet.
+function placementAdviceFor(id: string, aspect: number): string {
+  const tall = aspect < 0.9;
+  if (FILMTV_IDS.has(id)) return tall ? 'Lower-third: nedre tredjedel, men over plattform-UI (~15 % fra bunn).' : 'Lower-third: nedre venstre, klar av nedre tredjedel.';
+  if (CALLOUT_IDS.has(id)) return 'Callout: pek mot elementet; hold pil + boks i midtre 80 %.';
+  if (CHART_IDS.has(id)) return tall ? 'Graf: sentrer vertikalt; unngå øvre 10 % og nedre 20 %.' : 'Graf: sentrer — god plass i bredformat.';
+  if (MARKETING_IDS.has(id)) return tall ? 'Hook øvre-midtre, CTA i nedre trygge sone.' : 'Sentrer; hold tekst i midtre 80 %.';
+  return tall ? 'Hold i midtre 80 % — unngå topp/bunn (status + caption/UI).' : 'Sentrer i trygg sone (midtre 90 %).';
+}
+
+// Plattform-UI-soner: der TikTok/Instagram/YouTube legger EGNE elementer oppå
+// videoen (fraksjoner av rammen). Brukes til å tegne sonene + advare når
+// infographic-en havner under dem.
+interface UiZone { x: number; y: number; w: number; h: number; label: string }
+interface SocialPlatform { id: string; name: string; sub: string; aspect: number; fmt: 'native' | '9:16' | '4:5' | '1:1' | '16:9'; zones: UiZone[] }
+const PLATFORMS: SocialPlatform[] = [
+  { id: 'tiktok', name: 'TikTok', sub: '9:16', aspect: 9 / 16, fmt: '9:16', zones: [
+    { x: 0.84, y: 0.30, w: 0.16, h: 0.52, label: 'Handlinger' },
+    { x: 0, y: 0.80, w: 0.84, h: 0.20, label: 'Caption · musikk' },
+    { x: 0.30, y: 0, w: 0.40, h: 0.07, label: 'Faner' },
+  ] },
+  { id: 'reels', name: 'IG Reels', sub: '9:16', aspect: 9 / 16, fmt: '9:16', zones: [
+    { x: 0.85, y: 0.34, w: 0.15, h: 0.46, label: 'Handlinger' },
+    { x: 0, y: 0.82, w: 0.85, h: 0.18, label: 'Caption' },
+  ] },
+  { id: 'stories', name: 'IG Stories', sub: '9:16', aspect: 9 / 16, fmt: '9:16', zones: [
+    { x: 0, y: 0, w: 1, h: 0.09, label: 'Profil · linjer' },
+    { x: 0, y: 0.90, w: 1, h: 0.10, label: 'Send melding' },
+  ] },
+  { id: 'feed45', name: 'IG Feed', sub: '4:5 portrett', aspect: 4 / 5, fmt: '4:5', zones: [] },
+  { id: 'feed11', name: 'IG Feed', sub: '1:1 kvadrat', aspect: 1, fmt: '1:1', zones: [] },
+  { id: 'youtube', name: 'YouTube', sub: '16:9', aspect: 16 / 9, fmt: '16:9', zones: [
+    { x: 0, y: 0.86, w: 1, h: 0.14, label: 'Kontroller' },
+  ] },
+];
+
+// Side-ved-side format-forhåndsvisning: samme innhold komponert inn i ett
+// sosialt forhold, frosset ved sluttbildet (p=1) — akkurat slik render-en
+// legger #wrap inn i lerretet. Tegner plattformens UI-soner, oppdager kollisjon
+// (advarer når innholdet havner under UI), enhets-mockup + anbefaling. Klikkbar.
+function FormatPreview(
+  { srcDoc, aspect, label, sub, bg, active, mockup, advice, zones, onClick }:
+  { srcDoc: string; aspect: number; label: string; sub: string; bg: string; active: boolean; mockup: boolean; advice: string; zones: UiZone[]; onClick: () => void },
+) {
+  const ref = useRef<HTMLIFrameElement>(null);
+  const [warn, setWarn] = useState<string[]>([]);
+  const fit = () => {
+    try {
+      const ifr = ref.current, doc = ifr?.contentDocument;
+      const w = doc?.getElementById('wrap') as HTMLElement | null;
+      if (!ifr || !doc || !w) return;
+      if (doc.body) doc.body.style.cssText = 'margin:0;background:transparent;overflow:hidden;height:100%;display:grid;place-items:center';
+      w.style.transformOrigin = 'center center'; w.style.transform = 'none';
+      const bw = w.scrollWidth || 1, bh = w.scrollHeight || 1;
+      const cw = ifr.clientWidth || 1, ch = ifr.clientHeight || 1;
+      const k = Math.min((cw * 0.92) / bw, (ch * 0.92) / bh);
+      w.style.transform = `scale(${k.toFixed(4)})`;
+      (ifr.contentWindow as unknown as { setProgress?: (p: number) => void })?.setProgress?.(1);
+      // Kollisjon: innholdet er sentrert+skalert → box i fraksjoner av rammen.
+      // Overlapper det en UI-sone vesentlig → advar (nøyaktig det render-en lager).
+      const cbw = (bw * k) / cw, cbh = (bh * k) / ch;
+      const cb = { x: (1 - cbw) / 2, y: (1 - cbh) / 2, w: cbw, h: cbh };
+      const area = cb.w * cb.h || 1;
+      const hit = zones.filter((z) => {
+        const ix = Math.max(0, Math.min(cb.x + cb.w, z.x + z.w) - Math.max(cb.x, z.x));
+        const iy = Math.max(0, Math.min(cb.y + cb.h, z.y + z.h) - Math.max(cb.y, z.y));
+        return (ix * iy) / area > 0.05;
+      }).map((z) => z.label);
+      setWarn(hit);
+    } catch { /* */ }
+  };
+  const device = deviceForAspect(aspect);
+  // Skjerm = selve infographic-forholdet (bakgrunn + iframe + plattform-soner).
+  const screen = (
+    <div style={{ position: 'relative', overflow: 'hidden', display: 'grid', placeItems: 'center', height: '100%', aspectRatio: String(aspect), background: bg ? '#000' : 'linear-gradient(135deg,#10182a,#0b1120)', borderRadius: mockup && device === 'phone' ? 26 : 6 }}>
+      {bg && <img src={bg} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', zIndex: 0 }} />}
+      <iframe ref={ref} title={label} srcDoc={srcDoc} onLoad={() => window.setTimeout(fit, 140)} style={{ position: 'relative', zIndex: 1, width: '100%', height: '100%', border: 0, background: 'transparent', pointerEvents: 'none' }} />
+      {/* Plattformens UI-soner (der TikTok/IG/YT legger egne elementer). Rød tint
+          + label; sterkere når infographic-en faktisk kolliderer. */}
+      {zones.map((z, i) => {
+        const collides = warn.includes(z.label);
+        return (
+          <div key={i} style={{ position: 'absolute', left: `${z.x * 100}%`, top: `${z.y * 100}%`, width: `${z.w * 100}%`, height: `${z.h * 100}%`, zIndex: 2, background: collides ? 'rgba(240,104,95,.30)' : 'rgba(240,104,95,.12)', border: `1px ${collides ? 'solid' : 'dashed'} rgba(240,104,95,${collides ? 0.9 : 0.5})`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <span style={{ fontSize: 8, color: 'rgba(255,220,215,.9)', fontWeight: 600, textAlign: 'center', lineHeight: 1 }}>{z.label}</span>
+          </div>
+        );
+      })}
+      {/* Enhets-chrome oppå skjermen. */}
+      {mockup && device === 'phone' && <>
+        <div style={{ position: 'absolute', top: 7, left: '50%', transform: 'translateX(-50%)', width: '34%', height: 12, borderRadius: 8, background: '#05070c', zIndex: 4 }} />
+        <div style={{ position: 'absolute', bottom: 6, left: '50%', transform: 'translateX(-50%)', width: '30%', height: 4, borderRadius: 3, background: 'rgba(255,255,255,.6)', zIndex: 4 }} />
+      </>}
+    </div>
+  );
+  const framed =
+    mockup && device === 'phone'
+      ? <div style={{ height: '100%', padding: 5, borderRadius: 30, background: '#0b0e14', border: `2px solid ${active ? '#3b82f6' : '#2a3350'}`, boxShadow: '0 10px 30px rgba(0,0,0,.5)' }}>{screen}</div>
+      : mockup && device === 'browser'
+        ? <div style={{ height: '100%', display: 'flex', flexDirection: 'column', borderRadius: 8, overflow: 'hidden', border: `2px solid ${active ? '#3b82f6' : '#2a3350'}`, background: '#0b0e14' }}>
+            <div style={{ height: 16, display: 'flex', alignItems: 'center', gap: 4, padding: '0 7px', background: '#141b2b', flex: 'none' }}>
+              {['#f0685f', '#f6bd3b', '#4fc76b'].map((c) => <span key={c} style={{ width: 6, height: 6, borderRadius: 3, background: c }} />)}
+            </div>
+            <div style={{ flex: 1, minHeight: 0, display: 'grid', placeItems: 'center' }}>{screen}</div>
+          </div>
+        : mockup /* post */
+          ? <div style={{ height: '100%', display: 'flex', flexDirection: 'column', borderRadius: 8, overflow: 'hidden', border: `2px solid ${active ? '#3b82f6' : '#2a3350'}`, background: '#141b2b' }}>
+              <div style={{ height: 20, display: 'flex', alignItems: 'center', gap: 5, padding: '0 7px', flex: 'none' }}>
+                <span style={{ width: 12, height: 12, borderRadius: 6, background: 'linear-gradient(135deg,#f0685f,#a855f7)' }} />
+                <span style={{ width: 44, height: 5, borderRadius: 3, background: '#2a3350' }} />
+              </div>
+              <div style={{ flex: 1, minHeight: 0, display: 'grid', placeItems: 'center' }}>{screen}</div>
+              <div style={{ height: 16, display: 'flex', alignItems: 'center', gap: 6, padding: '0 7px', flex: 'none', color: '#8a98b5' }}>
+                <FavoriteBorderIcon style={{ fontSize: 11 }} /><ChatBubbleOutlineIcon style={{ fontSize: 11 }} /><SendIcon style={{ fontSize: 11 }} />
+              </div>
+            </div>
+          : <div style={{ height: '100%', borderRadius: 8, overflow: 'hidden', border: `2px solid ${active ? '#3b82f6' : '#27314a'}` }}>{screen}</div>;
+  return (
+    <div onClick={onClick} title={`Velg ${label}`} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, height: '100%', cursor: 'pointer', flex: 'none', maxWidth: 260 }}>
+      <div style={{ flex: 1, minHeight: 0 }}>{framed}</div>
+      <div style={{ textAlign: 'center', maxWidth: 190 }}>
+        <div style={{ fontSize: 11.5, fontWeight: 700, color: active ? '#e8eefc' : '#8a98b5' }}>{label} <span style={{ fontWeight: 500, color: '#5d6b88' }}>· {sub}</span></div>
+        {warn.length > 0
+          ? <div style={{ fontSize: 9.5, color: '#f0a89f', lineHeight: 1.35, marginTop: 2, display: 'flex', alignItems: 'center', gap: 3, justifyContent: 'center' }}><WarningAmberIcon style={{ fontSize: 11 }} /> Dekkes av {warn.join(' + ')} — flytt innhold</div>
+          : <div style={{ fontSize: 9.5, color: '#7c8bad', lineHeight: 1.35, marginTop: 2 }}>{advice}</div>}
+      </div>
+    </div>
+  );
+}
+
 export function InfographicStudioView(
   { onNav, standalone = false, onOpenDemoStudio }:
   { onNav: (id: string) => void; standalone?: boolean; onOpenDemoStudio?: () => void },
@@ -483,11 +628,11 @@ export function InfographicStudioView(
   // multiplikator fra oppløsnings-valget (1080p→×1, 1440p→×1.5, 4K→×2).
   const frameArg = (): string => {
     if (fmt === 'native') return 'native';
-    const base = fmt === '9:16' ? [1080, 1920] : fmt === '1:1' ? [1080, 1080] : [1920, 1080];
+    const base = fmt === '9:16' ? [1080, 1920] : fmt === '4:5' ? [1080, 1350] : fmt === '1:1' ? [1080, 1080] : [1920, 1080];
     const mult = scale >= 4 ? 2 : scale >= 3 ? 1.5 : 1;
     return `${Math.round(base[0] * mult)}x${Math.round(base[1] * mult)}`;
   };
-  const fmtAspect = (): number => (fmt === '9:16' ? 9 / 16 : fmt === '16:9' ? 16 / 9 : 1);
+  const fmtAspect = (): number => (fmt === '9:16' ? 9 / 16 : fmt === '4:5' ? 4 / 5 : fmt === '16:9' ? 16 / 9 : 1);
   // «Innsikt»: hent aggregert bevis fra backend på at modellen lærer i drift.
   const loadInsight = async () => {
     setInsightBusy(true);
@@ -519,7 +664,11 @@ export function InfographicStudioView(
   // Sosialt format-preset: styrer lerret-forholdet på rendret/eksportert overlay.
   // 'native' = malens naturlige størrelse (bakoverkompatibelt). Ellers komponeres
   // innholdet inn i 9:16 / 1:1 / 16:9 og PNG-en får eksakt de dimensjonene.
-  const [fmt, setFmt] = useState<'native' | '9:16' | '1:1' | '16:9'>('native');
+  const [fmt, setFmt] = useState<'native' | '9:16' | '4:5' | '1:1' | '16:9'>('native');
+  // «Alle formater»: side-ved-side-forhåndsvisning av alle sosiale forhold.
+  const [multiPreview, setMultiPreview] = useState(false);
+  // Enhets-mockup (iPhone/feed/nettleser) i side-ved-side-visningen.
+  const [mockup, setMockup] = useState(true);
   // «Innsikt»: aggregert bevis fra backend på at modellen lærer i drift.
   const [insight, setInsight] = useState<CollectiveInsight | null>(null);
   const [insightBusy, setInsightBusy] = useState(false);
@@ -1249,10 +1398,10 @@ export function InfographicStudioView(
             <div style={{ fontSize: 11, fontWeight: 700, color: D.soft, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>Format &amp; kvalitet</div>
             <div style={{ fontSize: 10.5, color: D.faint, marginBottom: 6 }}>Sosialt format</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 12 }}>
-              {(['native', '9:16', '1:1', '16:9'] as const).map((f) => (
+              {(['native', '9:16', '4:5', '1:1', '16:9'] as const).map((f) => (
                 <button key={f} onClick={() => setFmt(f)} title={f === 'native' ? 'Malens naturlige størrelse (transparent overlay)' : `Komponer inn i ${f}`}
                   style={{ ...topBtn, justifyContent: 'center', fontSize: 11.5, padding: '7px 0', background: fmt === f ? D.accent : D.panel2, border: `1px solid ${fmt === f ? D.accent : D.line}` }}>
-                  {f === 'native' ? 'Naturlig' : f === '9:16' ? '9:16 story' : f === '1:1' ? '1:1 feed' : '16:9 wide'}
+                  {f === 'native' ? 'Naturlig' : f === '9:16' ? '9:16 story' : f === '4:5' ? '4:5 feed' : f === '1:1' ? '1:1 kvadrat' : '16:9 wide'}
                 </button>
               ))}
             </div>
@@ -1297,13 +1446,23 @@ export function InfographicStudioView(
               {/* Sosialt format-preset — ett klikk til 9:16 / 1:1 / 16:9. */}
               <div style={{ display: 'flex', gap: 3, marginLeft: 10, background: D.panel2, borderRadius: 8, padding: 2, border: `1px solid ${D.line}`, alignItems: 'center' }}>
                 <AspectRatioIcon style={{ fontSize: 15, color: D.faint, margin: '0 2px 0 4px' }} />
-                {(['native', '9:16', '1:1', '16:9'] as const).map((f) => (
+                {(['native', '9:16', '4:5', '1:1', '16:9'] as const).map((f) => (
                   <button key={f} onClick={() => setFmt(f)} title={f === 'native' ? 'Malens naturlige størrelse (transparent overlay)' : `Komponer inn i ${f} for sosiale medier`}
                     style={{ padding: '3px 9px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 700, background: fmt === f ? D.accent : 'transparent', color: fmt === f ? '#fff' : D.soft }}>
                     {f === 'native' ? 'Naturlig' : f}
                   </button>
                 ))}
               </div>
+              <button onClick={() => setMultiPreview((v) => !v)} title="Se samme infographic i alle sosiale formater side ved side"
+                style={{ ...topBtn, padding: '4px 10px', fontSize: 11, marginLeft: 8, background: multiPreview ? D.accent : D.panel2, border: `1px solid ${multiPreview ? D.accent : D.line}`, color: multiPreview ? '#fff' : D.ink }}>
+                <ViewColumnIcon style={{ fontSize: 14 }} /> Alle formater
+              </button>
+              {multiPreview && (
+                <button onClick={() => setMockup((v) => !v)} title="Vis i enhets-mockup (iPhone / feed-innlegg / nettleser)"
+                  style={{ ...topBtn, padding: '4px 10px', fontSize: 11, marginLeft: 6, background: mockup ? D.accent : D.panel2, border: `1px solid ${mockup ? D.accent : D.line}`, color: mockup ? '#fff' : D.ink }}>
+                  <PhoneIphoneIcon style={{ fontSize: 14 }} /> Mockup
+                </button>
+              )}
               <div style={{ flex: 1 }} />
               {/* Composite: legg en still fra videoen bak overlay-en. */}
               <label style={{ ...topBtn, padding: '4px 10px', fontSize: 11 }} title="Legg et stillbilde fra videoen bak overlay-en for å se hvordan den lander">
@@ -1312,6 +1471,25 @@ export function InfographicStudioView(
               </label>
               {bgImage && <button style={{ ...topBtn, padding: '4px 9px', fontSize: 11 }} onClick={() => setBgImage('')}><CloseIcon style={{ fontSize: 14 }} /></button>}
             </div>
+            {/* Plasserings-anbefaling for valgt sosialt format (enkelt-visning). */}
+            {!multiPreview && fmt !== 'native' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, fontSize: 11, color: D.soft, background: D.panel2, border: `1px solid ${D.line}`, borderRadius: 8, padding: '5px 10px' }}>
+                <PlaceIcon style={{ fontSize: 14, color: D.teal }} /> <b style={{ color: D.ink }}>{fmt}:</b> {placementAdviceFor(tpl.id, fmtAspect())}
+              </div>
+            )}
+            {multiPreview ? (
+              // Side-ved-side: alle sosiale formater av samme infographic (frosset
+              // ved sluttbildet). Klikk et kort → velg det formatet for render/eksport.
+              <div style={{ position: 'relative', flex: 1, borderRadius: 12, overflow: 'hidden', border: `1px solid ${D.line}`, background: '#0b1120', padding: 16 }}>
+                <div style={{ display: 'flex', gap: 18, height: '100%', justifyContent: 'center', alignItems: 'center', overflowX: 'auto' }}>
+                  {PLATFORMS.map((pf) => (
+                    <FormatPreview key={pf.id} srcDoc={srcDoc} aspect={pf.aspect} label={pf.name} sub={pf.sub} bg={bgImage}
+                      active={fmt === pf.fmt} mockup={mockup} advice={placementAdviceFor(tpl.id, pf.aspect)} zones={pf.zones}
+                      onClick={() => { setFmt(pf.fmt); setMultiPreview(false); }} />
+                  ))}
+                </div>
+              </div>
+            ) : (
             <div ref={canvasRef} style={{ position: 'relative', flex: 1, borderRadius: 12, overflow: 'hidden', border: `1px solid ${D.line}`, background: '#0b1120', display: 'grid', placeItems: 'center', padding: fmt === 'native' ? 0 : 14 }}>
               {/* Ramme: naturlig = fyll boksen; ellers vis eksakt sosialt forhold. */}
               <div style={{ position: 'relative', overflow: 'hidden', display: 'grid', placeItems: 'center', background: bgImage ? '#000' : 'linear-gradient(135deg,#10182a,#0b1120)', ...(fmt === 'native' ? { width: '100%', height: '100%' } : { height: '100%', maxWidth: '100%', aspectRatio: String(fmtAspect()), borderRadius: 8, boxShadow: `0 0 0 1px ${D.line}` }) }}>
@@ -1319,6 +1497,7 @@ export function InfographicStudioView(
                 <iframe ref={iframeRef} title="preview" srcDoc={srcDoc} onLoad={onIframeLoad} style={{ position: 'relative', zIndex: 1, width: '100%', height: '100%', minHeight: fmt === 'native' ? 280 : 0, border: 0, background: 'transparent' }} />
               </div>
             </div>
+            )}
           </div>
           {/* Tidslinje-scrubber: scenene plassert i tid (atSec + varighet), med
               playhead. Klikk/dra scrubber for å inspisere sekvensen; overlappende
