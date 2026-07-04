@@ -17,7 +17,8 @@ import CheckCircle from '@mui/icons-material/CheckCircle';
 import RadioButtonUnchecked from '@mui/icons-material/RadioButtonUnchecked';
 import Warning from '@mui/icons-material/Warning';
 import Add from '@mui/icons-material/Add';
-import { ws, workspaceCategoryFor } from '../workspaceTheme';
+import { ws } from '../workspaceTheme';
+import { useWorkspaceCategory } from '../useWorkspaceCategory';
 import { WsCard, WsSectionTitle, WsRing, WsBar, WsImageGrid } from '../ui';
 import WorkspaceChatPanel from '../WorkspaceChatPanel';
 import { useProjectImages } from '../useProjectImages';
@@ -222,7 +223,7 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
   // Bygg de 4 rolle-kolonnene fra ekte tasks, ellers sample. Kolonnenavn følger
   // workspace-kategorien; crew-nøklene er stabile (fotograf/videograf/begge/editor)
   // så eksisterende board-tasks fortsatt mapper riktig.
-  const wsCategory = workspaceCategoryFor(profession);
+  const wsCategory = useWorkspaceCategory(profession);
   const COLS = wsCategory === 'music'
     ? [
         { role: 'Produsent', icon: '🎹', crew: 'fotograf' },
