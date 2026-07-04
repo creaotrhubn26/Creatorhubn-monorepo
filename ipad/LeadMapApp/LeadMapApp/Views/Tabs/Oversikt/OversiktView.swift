@@ -207,7 +207,11 @@ struct OversiktView: View {
             // kartet ~1000+px, mens iPad landscape holder ~640px minimum.
             // Konstantene: header (~60) + KPI (~120) + spacing (~68) + padding
             // (~42) = ~290pt. Vi bruker 320 som konservativ margin.
-            let dynamicMapHeight = max(Self.mapHeight, geo.size.height - 320)
+            // iPhone: 640pt minimum tvinger unødig scrolling (portrett-
+            // vindu er ~844, landskap ~390) — bruk lavere gulv så kartet
+            // følger tilgjengelig høyde i stedet.
+            let minMapHeight: CGFloat = DeviceIdiom.isPhone ? 420 : Self.mapHeight
+            let dynamicMapHeight = max(minMapHeight, geo.size.height - 320)
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
@@ -492,9 +496,17 @@ private struct HeaderRow: View {
                         .fixedSize()
                         .macCatalystHover()
                     }
-                    analyseButton
-                    nextActionsButton
-                    activitiesButton
+                    // iPhone: de tre sekundære knappene (analyse/handlinger/
+                    // aktivitet) kollapses til én ellipsis-meny så header-
+                    // raden får plass på compact width. iPad/Mac beholder
+                    // enkeltknappene med badge + popover-anker som før.
+                    if DeviceIdiom.isPhone {
+                        phoneOverflowMenu
+                    } else {
+                        analyseButton
+                        nextActionsButton
+                        activitiesButton
+                    }
                     Button { profileOpen.toggle() } label: {
                         if !isNarrow { userBadge } else { userAvatarOnly }
                     }
@@ -512,8 +524,10 @@ private struct HeaderRow: View {
                                 }
                             }
                         )
-                        .frame(width: 320, height: 480)
-                        .presentationCompactAdaptation(.popover)
+                        // Fast ramme på iPad/Mac, detent-sheet på iPhone —
+                        // fast width clipper på compact-skjermer.
+                        .adaptivePopoverFrame(width: 320, height: 480)
+                        .presentationCompactAdaptation(DeviceIdiom.isPhone ? .sheet : .popover)
                     }
                 }
             }
@@ -537,10 +551,96 @@ private struct HeaderRow: View {
         .buttonStyle(.plain)
         .macCatalystHover()
         .popover(isPresented: $analyseOpen, arrowEdge: .top) {
-            AnalysePopover(leads: leads)
-                .frame(width: 460, height: 640)
-                .presentationCompactAdaptation(.popover)
+            analysePopoverContent
         }
+    }
+
+    // Popover-innhold delt mellom iPad-knappene og iPhone-overflow-menyen.
+    // adaptivePopoverFrame gir fast ramme på iPad/Mac og medium/large-
+    // detents på iPhone, der popoveren adapteres til sheet (innholdet har
+    // egne ScrollViews, så ingenting mistes i medium-detent).
+    private var analysePopoverContent: some View {
+        AnalysePopover(leads: leads)
+            .adaptivePopoverFrame(width: 460, height: 640)
+            .presentationCompactAdaptation(DeviceIdiom.isPhone ? .sheet : .popover)
+    }
+
+    private var nextActionsPopoverContent: some View {
+        NextActionsPopover(leads: topActions, totalCount: leads.count)
+            .adaptivePopoverFrame(width: 420, height: 560)
+            .presentationCompactAdaptation(DeviceIdiom.isPhone ? .sheet : .popover)
+    }
+
+    private var activitiesPopoverContent: some View {
+        RecentActivitiesPopover(leads: leads,
+                                upcomingFollowups: upcomingFollowups,
+                                momentum: momentum)
+            .adaptivePopoverFrame(width: 420, height: 600)
+            .presentationCompactAdaptation(DeviceIdiom.isPhone ? .sheet : .popover)
+    }
+
+    /// iPhone-erstatning for de tre sekundære header-knappene. Popover-ene
+    /// forankres i usynlige bakgrunns-anchors (én per presentasjon — flere
+    /// presentation-modifiers på samme view er upålitelig) og vises som
+    /// sheets via adaptivePopoverFrame.
+    private var phoneOverflowMenu: some View {
+        Menu {
+            Button {
+                analyseOpen = true
+            } label: {
+                Label("Analyse", systemImage: "chart.line.uptrend.xyaxis")
+            }
+            Button {
+                nextActionsOpen = true
+            } label: {
+                Label("Neste handlinger", systemImage: "checklist")
+            }
+            Button {
+                activitiesOpen = true
+            } label: {
+                Label("Aktivitet", systemImage: "bell.fill")
+            }
+        } label: {
+            ZStack(alignment: .topTrailing) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12).fill(Brand.card)
+                    RoundedRectangle(cornerRadius: 12).stroke(Brand.stroke, lineWidth: 1)
+                    Image(systemName: "ellipsis.circle")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Brand.purpleLight)
+                }
+                .frame(width: 44, height: 44)
+                // Samme badge-signal som nextActionsButton gir på iPad.
+                if topActions.count > 0 {
+                    Text("\(min(topActions.count, 99))")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 5).padding(.vertical, 2)
+                        .background(Brand.purple, in: Capsule())
+                        .overlay(Capsule().stroke(Brand.bg, lineWidth: 1.5))
+                        .offset(x: 6, y: -6)
+                }
+            }
+        }
+        .menuStyle(.borderlessButton)
+        .background(
+            Color.clear
+                .popover(isPresented: $analyseOpen, arrowEdge: .top) {
+                    analysePopoverContent
+                }
+        )
+        .background(
+            Color.clear
+                .popover(isPresented: $nextActionsOpen, arrowEdge: .top) {
+                    nextActionsPopoverContent
+                }
+        )
+        .background(
+            Color.clear
+                .popover(isPresented: $activitiesOpen, arrowEdge: .top) {
+                    activitiesPopoverContent
+                }
+        )
     }
 
     private var nextActionsButton: some View {
@@ -571,9 +671,7 @@ private struct HeaderRow: View {
         .buttonStyle(.plain)
         .macCatalystHover()
         .popover(isPresented: $nextActionsOpen, arrowEdge: .top) {
-            NextActionsPopover(leads: topActions, totalCount: leads.count)
-                .frame(width: 420, height: 560)
-                .presentationCompactAdaptation(.popover)
+            nextActionsPopoverContent
         }
     }
 
@@ -600,11 +698,7 @@ private struct HeaderRow: View {
         .buttonStyle(.plain)
         .macCatalystHover()
         .popover(isPresented: $activitiesOpen, arrowEdge: .top) {
-            RecentActivitiesPopover(leads: leads,
-                                    upcomingFollowups: upcomingFollowups,
-                                    momentum: momentum)
-                .frame(width: 420, height: 600)
-                .presentationCompactAdaptation(.popover)
+            activitiesPopoverContent
         }
     }
 
@@ -782,19 +876,36 @@ private struct KPICardRow: View {
     @ViewBuilder
     var body: some View {
         if compact {
-            // Portrait/iPhone: 5 KPI fordelt på 2 like rader så hvert
-            // kort får mest mulig plass. Total + Hot på rad 1, og
-            // Oppfølginger + Forventet + Vunnet på rad 2 (de tre med
-            // tydeligere tall/badges fungerer fint i smalere format).
-            VStack(spacing: 14) {
-                HStack(spacing: 14) {
-                    totalLeadsCard.frame(maxWidth: .infinity)
-                    hotLeadsCard.frame(maxWidth: .infinity)
-                }
-                HStack(spacing: 14) {
-                    followupsCard.frame(maxWidth: .infinity)
-                    expectedValueCard.frame(maxWidth: .infinity)
+            if DeviceIdiom.isPhone {
+                // iPhone: maks 2 kort per rad — tre kort på én rad blir
+                // ~110pt på 390pt-skjermer og under lesbarhets-grensen
+                // (~150pt). Vunnet får full bredde nederst.
+                VStack(spacing: 14) {
+                    HStack(spacing: 14) {
+                        totalLeadsCard.frame(maxWidth: .infinity)
+                        hotLeadsCard.frame(maxWidth: .infinity)
+                    }
+                    HStack(spacing: 14) {
+                        followupsCard.frame(maxWidth: .infinity)
+                        expectedValueCard.frame(maxWidth: .infinity)
+                    }
                     wonCard.frame(maxWidth: .infinity)
+                }
+            } else {
+                // Portrait iPad: 5 KPI fordelt på 2 like rader så hvert
+                // kort får mest mulig plass. Total + Hot på rad 1, og
+                // Oppfølginger + Forventet + Vunnet på rad 2 (de tre med
+                // tydeligere tall/badges fungerer fint i smalere format).
+                VStack(spacing: 14) {
+                    HStack(spacing: 14) {
+                        totalLeadsCard.frame(maxWidth: .infinity)
+                        hotLeadsCard.frame(maxWidth: .infinity)
+                    }
+                    HStack(spacing: 14) {
+                        followupsCard.frame(maxWidth: .infinity)
+                        expectedValueCard.frame(maxWidth: .infinity)
+                        wonCard.frame(maxWidth: .infinity)
+                    }
                 }
             }
         } else {

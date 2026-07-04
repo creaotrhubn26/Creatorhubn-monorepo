@@ -275,7 +275,9 @@ struct CreateCustomKPISheet: View {
             Text("Datakilde")
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(TBrand.textSecondary)
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 7) {
+            // iPhone: 1 kolonne — lange kilde-navn («Stripe / fakturering»)
+            // trunkeres på halv sheet-bredde.
+            LazyVGrid(columns: MacCatalystGrid.adaptive(phone: 1, iPad: 2, mac: 2, spacing: 7), spacing: 7) {
                 ForEach(DataSource.allCases, id: \.self) { src in
                     let isSelected = dataSource == src
                     Button {

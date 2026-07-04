@@ -866,7 +866,8 @@ struct CreateKPIAlertSheet: View {
             Text("Kanaler")
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(TBrand.textSecondary)
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 7) {
+            // Korte kanal-navn — 2 kolonner fungerer også på iPhone.
+            LazyVGrid(columns: MacCatalystGrid.adaptive(phone: 2, iPad: 2, mac: 2, spacing: 7), spacing: 7) {
                 ForEach(Channel.allCases, id: \.self) { c in
                     let isOn = channels.contains(c)
                     Button {
@@ -1200,7 +1201,8 @@ struct ShareKPIReportSheet: View {
             Text("Format")
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(TBrand.textSecondary)
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 7) {
+            // Korte format-navn — 2 kolonner fungerer også på iPhone.
+            LazyVGrid(columns: MacCatalystGrid.adaptive(phone: 2, iPad: 2, mac: 2, spacing: 7), spacing: 7) {
                 ForEach(Format.allCases, id: \.self) { f in
                     let isSelected = format == f
                     Button {

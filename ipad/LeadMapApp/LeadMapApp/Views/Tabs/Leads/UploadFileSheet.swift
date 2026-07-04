@@ -238,9 +238,8 @@ struct UploadFileSheet: View {
     }
 
     private var sourceGrid: some View {
-        let cols = [GridItem(.flexible(), spacing: 10),
-                    GridItem(.flexible(), spacing: 10),
-                    GridItem(.flexible(), spacing: 10)]
+        // iPhone: 3 kolonner blir for trangt på compact width — 2 der.
+        let cols = MacCatalystGrid.adaptive(phone: 2, iPad: 3, mac: 3, spacing: 10)
         return VStack(alignment: .leading, spacing: 14) {
             sectionLabel("Fra iPad", icon: "ipad")
             LazyVGrid(columns: cols, spacing: 10) {

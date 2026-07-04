@@ -387,7 +387,9 @@ struct AssignAreaSheet: View {
     private var memberPicker: some View {
         VStack(alignment: .leading, spacing: 10) {
             sectionTitle("Tildel til", subtitle: "Velg ansvarlig team-medlem")
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+            // iPhone: 1 kolonne — kortene har navn + område + checkmark og
+            // trunkeres hardt på halv sheet-bredde.
+            LazyVGrid(columns: MacCatalystGrid.adaptive(phone: 1, iPad: 2, mac: 2, spacing: 8), spacing: 8) {
                 ForEach(TeamData.members) { m in memberCard(m) }
                 newMemberCard
             }

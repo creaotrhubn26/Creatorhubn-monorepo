@@ -316,11 +316,23 @@ struct PondusAkademiSheet: View {
         NavigationStack {
             ZStack {
                 LBrand.bg.ignoresSafeArea()
-                HStack(spacing: 0) {
-                    playerColumn
-                    Divider().overlay(LBrand.stroke)
-                    sidebarColumn
-                        .frame(width: 360)
+                if DeviceIdiom.isPhone {
+                    // iPhone: spiller øverst, kapittel-listen som kompakt
+                    // bunn-seksjon (egen intern scroll) — 360pt-sidebaren
+                    // får ikke plass ved siden av spilleren.
+                    VStack(spacing: 0) {
+                        playerColumn
+                        Divider().overlay(LBrand.stroke)
+                        sidebarColumn
+                            .frame(height: 320)
+                    }
+                } else {
+                    HStack(spacing: 0) {
+                        playerColumn
+                        Divider().overlay(LBrand.stroke)
+                        sidebarColumn
+                            .frame(width: 360)
+                    }
                 }
             }
             .navigationTitle("Lær Leadgrid Pondus")

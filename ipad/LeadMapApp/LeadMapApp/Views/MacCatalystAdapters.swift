@@ -22,6 +22,9 @@
 // Alle modifiers er no-op på iOS/iPadOS/visionOS/watchOS.
 
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 extension View {
     /// Legg til en toolbar-linje ved Mac-Catalyst. No-op på iOS/iPadOS.
@@ -138,10 +141,12 @@ extension View {
 ///     LazyVGrid(columns: MacCatalystGrid.adaptive(iPad: 2, mac: 3), spacing: 12) {...}
 enum MacCatalystGrid {
     /// - Parameters:
-    ///   - iPad: antall kolonner på iPad/iPhone.
+    ///   - phone: antall kolonner på iPhone (default 1 — kort skal kunne leses).
+    ///   - iPad: antall kolonner på iPad.
     ///   - mac: antall kolonner på Mac Catalyst.
     ///   - spacing: horisontal spacing mellom kolonner.
     static func adaptive(
+        phone: Int = 1,
         iPad: Int,
         mac: Int,
         spacing: CGFloat = 12
@@ -149,8 +154,51 @@ enum MacCatalystGrid {
         #if targetEnvironment(macCatalyst)
         return Array(repeating: GridItem(.flexible(), spacing: spacing), count: mac)
         #else
-        return Array(repeating: GridItem(.flexible(), spacing: spacing), count: iPad)
+        let count = DeviceIdiom.isPhone ? phone : iPad
+        return Array(repeating: GridItem(.flexible(), spacing: spacing), count: count)
         #endif
+    }
+}
+
+/// True på iPhone — brukes til layout-valg der `horizontalSizeClass` ikke
+/// er tilgjengelig eller misvisende (innhold i popovers har alltid compact
+/// horisontal size class, også på iPad).
+enum DeviceIdiom {
+    static var isPhone: Bool {
+        #if os(iOS) && !targetEnvironment(macCatalyst)
+        return UIDevice.current.userInterfaceIdiom == .phone
+        #else
+        return false
+        #endif
+    }
+}
+
+extension View {
+    /// Størrelse på popover-innhold. På iPad/Mac settes den faste rammen som
+    /// før; på iPhone (der popovers adapteres til sheets) droppes rammen slik
+    /// at sheeten fyller skjermbredden, og medium/large-detents legges på.
+    /// Fast `frame(width:)` på iPhone gir clipping når bredden overstiger
+    /// skjermen (~390pt) — derfor må denne brukes i stedet for `.frame` i
+    /// alle `.popover {}`-blokker.
+    @ViewBuilder
+    func adaptivePopoverFrame(width: CGFloat, height: CGFloat) -> some View {
+        if DeviceIdiom.isPhone {
+            self.presentationDetents([.medium, .large])
+        } else {
+            self.frame(width: width, height: height)
+        }
+    }
+
+    /// Fast bredde på iPad/Mac, fleksibel (maxWidth) på iPhone. For
+    /// header-kontroller (dato-pickere o.l.) som ellers presser søsken ut
+    /// av skjermen på compact width.
+    @ViewBuilder
+    func adaptiveControlWidth(_ width: CGFloat) -> some View {
+        if DeviceIdiom.isPhone {
+            self.frame(maxWidth: width)
+        } else {
+            self.frame(width: width)
+        }
     }
 }
 

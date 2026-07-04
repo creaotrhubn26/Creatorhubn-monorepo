@@ -882,10 +882,22 @@ struct LeadbookExampleDetailSheet: View {
                 LBrand.bg.ignoresSafeArea()
                 VStack(spacing: 0) {
                     ZStack {
-                        HStack(spacing: 0) {
-                            leftColumn
-                            Divider().overlay(LBrand.stroke)
-                            rightColumn.frame(width: 360)
+                        if DeviceIdiom.isPhone {
+                            // iPhone: høyrekolonnen (360pt) får ikke plass ved
+                            // siden av spilleren — stack alt i én felles scroll.
+                            ScrollView {
+                                VStack(spacing: 0) {
+                                    leftColumnContent
+                                    Divider().overlay(LBrand.stroke)
+                                    rightColumnContent
+                                }
+                            }
+                        } else {
+                            HStack(spacing: 0) {
+                                leftColumn
+                                Divider().overlay(LBrand.stroke)
+                                rightColumn.frame(width: 360)
+                            }
                         }
                         // Pencil-overlay over hele scenen
                         if pencilMode {
@@ -995,16 +1007,20 @@ struct LeadbookExampleDetailSheet: View {
     // MARK: Left — player + transcript
 
     private var leftColumn: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                playerCanvas
-                playerControls
-                meta
-                transcriptCard
-                Color.clear.frame(height: 20)
-            }
-            .padding(20)
+        ScrollView { leftColumnContent }
+    }
+
+    /// Innholdet uten egen ScrollView — gjenbrukes i stacked iPhone-layout
+    /// der begge kolonnene deler én felles scroll.
+    private var leftColumnContent: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            playerCanvas
+            playerControls
+            meta
+            transcriptCard
+            Color.clear.frame(height: 20)
         }
+        .padding(20)
     }
 
     private var playerCanvas: some View {
@@ -1267,33 +1283,36 @@ struct LeadbookExampleDetailSheet: View {
     // MARK: Right — Pondus + learnings + alts
 
     private var rightColumn: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                pondusBreakdown
-                learningsCard
-                alternativesCard
-                Button {
-                    saveToast = "«\(example.title)» lagret som mal"
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { saveToast = nil }
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "doc.badge.plus")
-                        Text("Lagre som mal")
-                    }
-                    .font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
-                    .frame(maxWidth: .infinity).padding(.vertical, 12)
-                    .background(
-                        LinearGradient(colors: [LBrand.purple, LBrand.purpleLight],
-                                       startPoint: .leading, endPoint: .trailing),
-                        in: RoundedRectangle(cornerRadius: 11)
-                    )
-                    .shadow(color: LBrand.purple.opacity(0.45), radius: 8, y: 3)
+        ScrollView { rightColumnContent }
+    }
+
+    /// Innholdet uten egen ScrollView — gjenbrukes i stacked iPhone-layout.
+    private var rightColumnContent: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            pondusBreakdown
+            learningsCard
+            alternativesCard
+            Button {
+                saveToast = "«\(example.title)» lagret som mal"
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { saveToast = nil }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "doc.badge.plus")
+                    Text("Lagre som mal")
                 }
-                .buttonStyle(.plain)
-                Color.clear.frame(height: 16)
+                .font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
+                .frame(maxWidth: .infinity).padding(.vertical, 12)
+                .background(
+                    LinearGradient(colors: [LBrand.purple, LBrand.purpleLight],
+                                   startPoint: .leading, endPoint: .trailing),
+                    in: RoundedRectangle(cornerRadius: 11)
+                )
+                .shadow(color: LBrand.purple.opacity(0.45), radius: 8, y: 3)
             }
-            .padding(16)
+            .buttonStyle(.plain)
+            Color.clear.frame(height: 16)
         }
+        .padding(16)
     }
 
     private var pondusBreakdown: some View {
