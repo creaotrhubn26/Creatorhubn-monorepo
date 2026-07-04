@@ -38,8 +38,10 @@ import { AcademyProvider } from '@/contexts/AcademyContext';
 import CommunityHub from '../community/CommunityHub';
 import WorkspaceChatPanel from './WorkspaceChatPanel';
 import { usePresence } from './usePresence';
-import { ws, WS_NAV, navForProfession, isMusicProfession } from './workspaceTheme';
+import { ws, WS_NAV, navForProfession, localizeNav, workspaceCategoryFor, isMusicProfession } from './workspaceTheme';
 import { useWorkspaceCategoryMap } from './useWorkspaceCategory';
+import { WsLocaleProvider, type WsLocale } from './wsLocale';
+import { localeForVendor } from '../universal/editing-marketplace/editingMarketplaceStrings';
 
 // Prøveprosjekt (Sara & Amir) — byttes med ekte prosjekt-fetch i wire-fasen.
 const SAMPLE_PROJECT = {
@@ -184,9 +186,22 @@ const TeamWorkspacePage: React.FC = () => {
   // Profesjons-filtrert nav — kategorien er admin-styrt (profession_types.
   // workspace_category via useWorkspaceCategoryMap), med kode-map som fallback.
   const categoryOverrides = useWorkspaceCategoryMap();
+
+  // Workspace-språk: utenlandske partner-vendors (is_foreign fra vendor/me,
+  // samme deteksjon som partner-portalen) får engelsk i nav, shell og faner.
+  // Kun vendor-kategorien sjekkes — alle andre er alltid norske.
+  const [wsLocale, setWsLocale] = useState<WsLocale>('no');
+  const isVendorCategory = workspaceCategoryFor(user?.profession, categoryOverrides) === 'vendor';
+  useEffect(() => {
+    if (!isVendorCategory) { setWsLocale('no'); return; }
+    apiRequest('/api/editing/vendor/me')
+      .then((me: any) => setWsLocale(localeForVendor({ isForeign: me?.isForeign, country: me?.country })))
+      .catch(() => setWsLocale('no'));
+  }, [isVendorCategory]);
+
   const nav = useMemo(
-    () => navForProfession(user?.profession, { isMentor, categoryOverrides }),
-    [user?.profession, isMentor, categoryOverrides],
+    () => localizeNav(navForProfession(user?.profession, { isMentor, categoryOverrides }), wsLocale),
+    [user?.profession, isMentor, categoryOverrides, wsLocale],
   );
   // Hvis aktiv fane ikke finnes i profesjonens nav (f.eks. delt lenke til
   // 'shotlist' for en musikkprodusent), fall tilbake til Oversikt.
@@ -234,6 +249,7 @@ const TeamWorkspacePage: React.FC = () => {
   const content = TABS[tab] || <ComingTab label={navItem?.label || tab} />;
 
   return (
+    <WsLocaleProvider value={wsLocale}>
     <WorkspaceShell
       project={project}
       user={wsUser}
@@ -268,6 +284,7 @@ const TeamWorkspacePage: React.FC = () => {
         </DialogContent>
       </Dialog>
     </WorkspaceShell>
+    </WsLocaleProvider>
   );
 };
 

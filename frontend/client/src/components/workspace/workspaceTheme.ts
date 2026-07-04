@@ -102,6 +102,12 @@ export interface WsNavItem {
    * navForProfession() resolver til `label`.
    */
   labelByCategory?: Partial<Record<WorkspaceCategory, string>>;
+  /**
+   * Engelsk label for utenlandske partner-vendors (wsLocale='en'). EN skjer i
+   * praksis kun for vendor-kategorien, så én engelsk label per item holder.
+   * Resolves av localizeNav().
+   */
+  labelEn?: string;
   /** Kun synlig for mentorer/instruktører (uavhengig av profesjon). */
   mentorOnly?: boolean;
 }
@@ -110,25 +116,25 @@ export interface WsNavItem {
 // workspace-kategori; navForProfession() filtrerer. Musikk- og visuell-varianter
 // er interleavet så rekkefølgen blir riktig for begge etter filtrering.
 export const WS_NAV: WsNavItem[] = [
-  { key: 'oversikt', label: 'Oversikt', icon: 'Dashboard', group: 'hoved', route: true },
-  { key: 'prosjektplan', label: 'Prosjektplan', icon: 'AccountTree', group: 'hoved', route: true, labelByCategory: { vendor: 'Ordreplan' } },
+  { key: 'oversikt', label: 'Oversikt', labelEn: 'Overview', icon: 'Dashboard', group: 'hoved', route: true },
+  { key: 'prosjektplan', label: 'Prosjektplan', labelEn: 'Order plan', icon: 'AccountTree', group: 'hoved', route: true, labelByCategory: { vendor: 'Ordreplan' } },
   { key: 'produksjonskart', label: 'Produksjonskart', icon: 'Map', group: 'hoved', route: true, categories: ['visual'] },
   { key: 'sesjoner', label: 'Sesjoner', icon: 'Album', group: 'hoved', route: true, categories: ['music'] },
-  { key: 'oppdrag', label: 'Oppdrag', icon: 'WorkOutline', group: 'hoved', route: true, categories: ['vendor'] },
+  { key: 'oppdrag', label: 'Oppdrag', labelEn: 'Jobs', icon: 'WorkOutline', group: 'hoved', route: true, categories: ['vendor'] },
   { key: 'bookinger', label: 'Bookinger', icon: 'EventAvailable', group: 'hoved', route: true, categories: ['service'] },
   { key: 'shotlist', label: 'Shotlist', icon: 'PhotoCameraBack', group: 'hoved', route: true, categories: ['visual'] },
   { key: 'laater', label: 'Låter', icon: 'LibraryMusic', group: 'hoved', route: true, categories: ['music'] },
-  { key: 'moodboard', label: 'Moodboard', icon: 'GridView', group: 'hoved', route: true, labelByCategory: { vendor: 'Inspirasjon', service: 'Inspirasjon' } },
-  { key: 'media', label: 'Media', icon: 'PermMedia', group: 'hoved', route: true },
-  { key: 'utstyr', label: 'Utstyr', icon: 'Inventory2', group: 'hoved', route: true, labelByCategory: { vendor: 'Lager' } },
-  { key: 'leveranser', label: 'Leveranser', icon: 'LocalShipping', group: 'hoved', route: true },
-  { key: 'oppgaver', label: 'Oppgaver', icon: 'CheckCircleOutline', group: 'hoved', badge: 12, route: true },
-  { key: 'team', label: 'Team', icon: 'Group', group: 'hoved', route: true },
-  { key: 'chat', label: 'Chat', icon: 'ChatBubbleOutline', group: 'hoved', route: true },
+  { key: 'moodboard', label: 'Moodboard', labelEn: 'Inspiration', icon: 'GridView', group: 'hoved', route: true, labelByCategory: { vendor: 'Inspirasjon', service: 'Inspirasjon' } },
+  { key: 'media', label: 'Media', labelEn: 'Media', icon: 'PermMedia', group: 'hoved', route: true },
+  { key: 'utstyr', label: 'Utstyr', labelEn: 'Inventory', icon: 'Inventory2', group: 'hoved', route: true, labelByCategory: { vendor: 'Lager' } },
+  { key: 'leveranser', label: 'Leveranser', labelEn: 'Deliverables', icon: 'LocalShipping', group: 'hoved', route: true },
+  { key: 'oppgaver', label: 'Oppgaver', labelEn: 'Tasks', icon: 'CheckCircleOutline', group: 'hoved', badge: 12, route: true },
+  { key: 'team', label: 'Team', labelEn: 'Team', icon: 'Group', group: 'hoved', route: true },
+  { key: 'chat', label: 'Chat', labelEn: 'Chat', icon: 'ChatBubbleOutline', group: 'hoved', route: true },
   // Academy-administrasjon — kun mentorer/instruktører (uavhengig av profesjon)
   { key: 'academy', label: 'Academy', icon: 'School', group: 'hoved', route: true, mentorOnly: true },
   // Community — for alle; mentorer får admin/styring inne i hub-en (MentorDashboard)
-  { key: 'community', label: 'Community', icon: 'Forum', group: 'hoved', route: true },
+  { key: 'community', label: 'Community', labelEn: 'Community', icon: 'Forum', group: 'hoved', route: true },
   // Smart Rom — profesjons-spesifikke
   { key: 'photo-room', label: 'Photo Room', icon: 'PhotoCamera', group: 'rom', online: true, route: true, categories: ['visual'] },
   { key: 'video-room', label: 'Video Room', icon: 'Videocam', group: 'rom', online: true, route: true, categories: ['visual'] },
@@ -136,9 +142,9 @@ export const WS_NAV: WsNavItem[] = [
   // Edit Room skjult inntil videre — planlegges senere (redigerer-/leveranse-cockpit).
   // { key: 'edit-room', label: 'Edit Room', icon: 'Movie', group: 'rom', online: true },
   // Kundeportal
-  { key: 'foresporsler', label: 'Forespørsler', icon: 'MoveToInbox', group: 'klient', route: true },
-  { key: 'kundevisning', label: 'Kundevisning', icon: 'Visibility', group: 'klient' },
-  { key: 'avtaler', label: 'Avtaler', icon: 'EventNote', group: 'klient' },
+  { key: 'foresporsler', label: 'Forespørsler', labelEn: 'Inquiries', icon: 'MoveToInbox', group: 'klient', route: true },
+  { key: 'kundevisning', label: 'Kundevisning', labelEn: 'Client view', icon: 'Visibility', group: 'klient' },
+  { key: 'avtaler', label: 'Avtaler', labelEn: 'Agreements', icon: 'EventNote', group: 'klient' },
 ];
 
 /**
@@ -196,6 +202,15 @@ export function navForCategory(
     const label = n.labelByCategory?.[cat];
     return label ? { ...n, label } : n;
   });
+}
+
+/**
+ * Bytt til engelske labels for utenlandske partner-vendors (wsLocale='en').
+ * Items uten labelEn beholder sin (norske) label.
+ */
+export function localizeNav(items: WsNavItem[], locale: 'no' | 'en'): WsNavItem[] {
+  if (locale !== 'en') return items;
+  return items.map((n) => (n.labelEn ? { ...n, label: n.labelEn } : n));
 }
 
 /**
