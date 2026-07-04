@@ -436,6 +436,7 @@ import { setupNextRoleReferralRoutes } from "./nextrole-referrals";
 import { setupNextRoleDripRoutes } from "./nextrole-drip";
 import { setupRoleRoomAdsCron } from "./role-room-ads-cron";
 import { setupRoleRoomApprovalCron } from "./role-room-approval-cron";
+import { setupRoleRoomAgentLearningCron } from "./role-room-agent-learning-cron";
 import { setupNextRoleSalaryRoutes } from "./nextrole-salary";
 import { setupNextRoleMilestonesRoutes } from "./nextrole-milestones";
 import { setupNextRoleVideoPresentationRoutes } from "./nextrole-video-presentations";
@@ -825,6 +826,7 @@ import { registerSalesLeadershipRoutes } from "./sales-leadership-routes";
 import { registerLeadgridSalesTeamsRoutes } from "./leadgrid-sales-teams-routes";
 import { registerLeadgridProposalsRoutes } from "./leadgrid-proposals-routes";
 import { registerLeadgridOrgOverrideRoutes } from "./leadgrid-org-override-routes";
+import { registerWorkflowResumeCron } from "./leadgrid-workflow-engine";
 import { registerRoutesAdherenceRoutes } from "./routes-adherence-routes";
 import { registerLeadgridKartverketRoutes } from "./leadgrid-kartverket-routes";
 import { registerPondusRoutes, registerPondusUsageRoutes } from "./pondus-routes";
@@ -16957,6 +16959,7 @@ setupNextRoleReferralRoutes({
 setupNextRoleDripRoutes({ app, pool });
 setupRoleRoomAdsCron({ app, pool });
 setupRoleRoomApprovalCron({ app, pool });
+setupRoleRoomAgentLearningCron({ app, pool });
 setupNextRoleSalaryRoutes({ app, pool });
 setupNextRoleMilestonesRoutes({ app, pool, getActiveSessionFromRequest });
 setupNextRoleVideoPresentationRoutes({ app, pool, getActiveSessionFromRequest });
@@ -65565,6 +65568,10 @@ registerLeadgridProposalsRoutes({ app, pool, requireUserSession });
 // og valgfri org; alle Leadgrid-org-oppslag (leadgrid-org-resolver.ts)
 // respekterer valget.
 registerLeadgridOrgOverrideRoutes({ app, pool, requireUserSession });
+
+// Workflow wait-scheduler (mig 0366) — gjenopptar workflows med
+// wait-actions når resume_at passeres (låser opp auto_followup_7_days).
+registerWorkflowResumeCron(pool);
 
 // /api/leadgrid/routes/* — 10 endpoints (route adherence + MeMapPin tap-
 // actions: positions/my-route/assignments/visits/team-nearby/adherence-
