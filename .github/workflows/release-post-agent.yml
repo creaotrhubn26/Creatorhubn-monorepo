@@ -230,7 +230,10 @@ jobs:
           # Updater-dialogen i appen viser dette feltet (update.body), så det MÅ være ekte.
           PREV_TAG=$(git tag -l 'post-agent-v*' --sort=-v:refname | grep -v "v${{ steps.ver.outputs.version }}\$" | head -1 || true)
           if [ -n "$PREV_TAG" ]; then RANGE="$PREV_TAG..HEAD"; else RANGE="HEAD~12..HEAD"; fi
-          NOTES=$(git log --no-merges --pretty=format:'%s' "$RANGE" 2>/dev/null \
+          # Sti-filter til selve appen → «hva er nytt» blir en REN Post Agent-logg,
+          # ikke urelaterte monorepo-commits (releases tagges utenfor main, så
+          # spennet er stort). Uten dette druknet Infographic Studio i i18n/Leadgrid-støy.
+          NOTES=$(git log --no-merges --pretty=format:'%s' "$RANGE" -- apps/resolve-script-manager 2>/dev/null \
             | grep -vE '^chore\(post-agent\): bump|^chore: trigger|^Merge ' \
             | sed -E 's/^(feat|fix|chore|refactor|docs|style|perf|test)(\([^)]*\))?: //' \
             | sed 's/^/• /' | head -15 || true)
