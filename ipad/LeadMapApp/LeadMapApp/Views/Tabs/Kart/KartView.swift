@@ -1047,24 +1047,52 @@ struct KartView: View {
 
     // MARK: Søk + filtre
 
+    @ViewBuilder
     private var searchAndFilters: some View {
-        HStack(spacing: 8) {
-            HStack(spacing: 7) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 12))
-                    .foregroundStyle(KrBrand.textSecondary)
-                TextField("", text: $search, prompt: Text("Søk etter sted, lead eller selskap…")
-                    .foregroundColor(KrBrand.textTertiary))
-                    .textFieldStyle(.plain)
-                    .foregroundStyle(.white)
-                    .font(.system(size: 12))
-                    .focused($searchFieldFocused)
+        // iPhone (QA-runde 2, Daniels funn): én-rads layouten delte 390pt
+        // på søkefelt + 6 chips → hver chip ble en vertikal bokstav-søyle.
+        // Samme mønster som Leads-fanen: søkefelt på egen rad, chips og
+        // knapper i horisontal scroller med naturlig bredde.
+        if DeviceIdiom.isPhone {
+            VStack(spacing: 8) {
+                kartSearchField
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        kartFilterAndActionChips
+                    }
+                    .fixedSize(horizontal: true, vertical: false)
+                    .padding(.horizontal, 20)
+                }
+                .padding(.horizontal, -20)
             }
-            .padding(.horizontal, 10).padding(.vertical, 8)
-            .background(KrBrand.card, in: RoundedRectangle(cornerRadius: 9))
-            .overlay(RoundedRectangle(cornerRadius: 9).stroke(KrBrand.stroke, lineWidth: 1))
-            .frame(maxWidth: .infinity)
+        } else {
+            HStack(spacing: 8) {
+                kartSearchField
+                kartFilterAndActionChips
+            }
+        }
+    }
 
+    private var kartSearchField: some View {
+        HStack(spacing: 7) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 12))
+                .foregroundStyle(KrBrand.textSecondary)
+            TextField("", text: $search, prompt: Text("Søk etter sted, lead eller selskap…")
+                .foregroundColor(KrBrand.textTertiary))
+                .textFieldStyle(.plain)
+                .foregroundStyle(.white)
+                .font(.system(size: 12))
+                .focused($searchFieldFocused)
+        }
+        .padding(.horizontal, 10).padding(.vertical, 8)
+        .background(KrBrand.card, in: RoundedRectangle(cornerRadius: 9))
+        .overlay(RoundedRectangle(cornerRadius: 9).stroke(KrBrand.stroke, lineWidth: 1))
+        .frame(maxWidth: .infinity)
+    }
+
+    @ViewBuilder
+    private var kartFilterAndActionChips: some View {
             filterChip(label: areaButtonLabel, badge: nil, active: selectedArea != .all,
                        isOpen: $areaFilterOpen)
                 .popover(isPresented: $areaFilterOpen, arrowEdge: .top) {
@@ -1122,7 +1150,6 @@ struct KartView: View {
                 )
             }
             .buttonStyle(.plain)
-        }
     }
 
     private var areaButtonLabel: String {
@@ -1591,28 +1618,61 @@ struct KartView: View {
 
     // MARK: Legend — FIX #2: separat card UNDER kartet
 
+    @ViewBuilder
     private var legendCard: some View {
-        HStack(spacing: 14) {
-            ForEach(MapLeadMock.PinStatus.allCases, id: \.self) { st in
-                HStack(spacing: 6) {
-                    ZStack {
-                        Circle().fill(st.color.opacity(0.22))
-                        Image(systemName: st.icon)
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(st.color)
-                    }
-                    .frame(width: 22, height: 22)
-                    Text(st.label)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.white)
+        // iPhone (QA-runde 2): seks legend-elementer delte 390pt → labels
+        // ble vertikale bokstav-søyler. Horisontal scroller m/ naturlig
+        // bredde på phone; iPad/Mac beholder full-bredde-fordelingen.
+        if DeviceIdiom.isPhone {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 14) {
+                    legendItems
                 }
-                if st != .followup { Spacer(minLength: 4) }
+                .fixedSize(horizontal: true, vertical: false)
+                .padding(.horizontal, 14).padding(.vertical, 10)
             }
+            .background(KrBrand.card, in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(KrBrand.stroke, lineWidth: 1))
+        } else {
+            HStack(spacing: 14) {
+                legendItemsWithSpacers
+            }
+            .padding(.horizontal, 14).padding(.vertical, 10)
+            .frame(maxWidth: .infinity)
+            .background(KrBrand.card, in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(KrBrand.stroke, lineWidth: 1))
         }
-        .padding(.horizontal, 14).padding(.vertical, 10)
-        .frame(maxWidth: .infinity)
-        .background(KrBrand.card, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(KrBrand.stroke, lineWidth: 1))
+    }
+
+    @ViewBuilder
+    private var legendItems: some View {
+        ForEach(MapLeadMock.PinStatus.allCases, id: \.self) { st in
+            legendItem(st)
+        }
+    }
+
+    @ViewBuilder
+    private var legendItemsWithSpacers: some View {
+        ForEach(MapLeadMock.PinStatus.allCases, id: \.self) { st in
+            legendItem(st)
+            if st != .followup { Spacer(minLength: 4) }
+        }
+    }
+
+    private func legendItem(_ st: MapLeadMock.PinStatus) -> some View {
+        HStack(spacing: 6) {
+            ZStack {
+                Circle().fill(st.color.opacity(0.22))
+                Image(systemName: st.icon)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(st.color)
+            }
+            .frame(width: 22, height: 22)
+            Text(st.label)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+        }
     }
 
     // MARK: Leads i området-card
