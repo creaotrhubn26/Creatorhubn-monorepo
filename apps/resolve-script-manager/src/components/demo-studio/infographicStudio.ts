@@ -147,6 +147,63 @@ export const INFOGRAPHIC_TEMPLATES: InfographicTemplate[] = [
   ...(GENERATED_TEMPLATES as unknown as InfographicTemplate[]),
 ];
 
+// ── Egne maler (in-app import): brukeren limer inn / laster opp en HTML-mal
+//    med window.__CFG__ + setProgress. Lagres i localStorage og flettes inn i
+//    INFOGRAPHIC_TEMPLATES ved oppstart, så de dukker opp i galleriet. ──
+const CUSTOM_KEY = 'trrpa.infographicStudio.customTemplates';
+export function isCustomTemplate(id: string): boolean { return id.startsWith('custom-'); }
+
+/** Utled felt-nøkler fra en mal-HTML: alle CFG.<key>/__CFG__.<key>-referanser
+ *  utenom reserverte (accent/ink/logo/layout). Gir Data-panelet felter å fylle. */
+function deriveFieldsFromHtml(html: string): InfographicField[] {
+  const reserved = new Set(['accent', 'ink', 'logo', 'layout']);
+  const keys = new Set<string>();
+  const re = /(?:__CFG__|CFG)\.([a-zA-Z_]\w*)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html))) { if (!reserved.has(m[1])) keys.add(m[1]); }
+  return [...keys].map((k) => ({ key: k, label: k, type: 'text' as const, placeholder: '' }));
+}
+
+function loadCustomTemplates(): InfographicTemplate[] {
+  try { const raw = localStorage.getItem(CUSTOM_KEY); return raw ? (JSON.parse(raw) as InfographicTemplate[]) : []; }
+  catch { return []; }
+}
+function saveCustomTemplates(list: InfographicTemplate[]): void {
+  try { localStorage.setItem(CUSTOM_KEY, JSON.stringify(list)); } catch { /* full — ikke-kritisk */ }
+}
+
+let _customSeq = 0;
+/** Legg til en egen mal fra rå HTML. Returnerer den nye malen (også pushet inn
+ *  i INFOGRAPHIC_TEMPLATES så den er umiddelbart tilgjengelig). */
+export function addCustomTemplate(name: string, html: string): InfographicTemplate {
+  const id = `custom-${Date.now().toString(36)}-${_customSeq++}`;
+  const fields = deriveFieldsFromHtml(html);
+  const defaults: Record<string, string> = {};
+  fields.forEach((f) => { defaults[f.key] = ''; });
+  const tpl: InfographicTemplate = {
+    id, name: name.trim() || 'Egen mal', desc: 'Importert HTML-mal.', style: 'light',
+    glyph: '★', durationSec: 5, fields, defaults, html,
+  };
+  INFOGRAPHIC_TEMPLATES.push(tpl);
+  const list = loadCustomTemplates(); list.push(tpl); saveCustomTemplates(list);
+  return tpl;
+}
+
+/** Slett en egen mal (fra registeret + localStorage). */
+export function removeCustomTemplate(id: string): void {
+  const i = INFOGRAPHIC_TEMPLATES.findIndex((t) => t.id === id);
+  if (i >= 0) INFOGRAPHIC_TEMPLATES.splice(i, 1);
+  saveCustomTemplates(loadCustomTemplates().filter((t) => t.id !== id));
+}
+
+/** Id-ene til de egne malene (for «Mine maler»-kategorien). */
+export function customTemplateIds(): string[] {
+  return INFOGRAPHIC_TEMPLATES.filter((t) => isCustomTemplate(t.id)).map((t) => t.id);
+}
+
+// Flett inn lagrede egne maler ved modul-last (én gang).
+try { for (const t of loadCustomTemplates()) if (!INFOGRAPHIC_TEMPLATES.some((x) => x.id === t.id)) INFOGRAPHIC_TEMPLATES.push(t); } catch { /* */ }
+
 export interface InfographicBrand {
   accent: string;   // hex
   ink: string;      // hex (tekst)
