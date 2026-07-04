@@ -3024,11 +3024,15 @@ private struct LeadsInAreaCard: View {
         // 3) .contentShape(Rectangle()) sikrer hele frame er klikkbart
         // Sammen med .zIndex(100) på FAB-VStack (settes lenger opp) gir
         // dette stabil oppførsel på både iPad og Mac.
-        Button(action: action) {
+        // iPhone (QA-runde 2): 44pt-knappene dominerte det lille innfelte
+        // kartet — 36×36 m/ 13pt ikon der; iPad/Mac beholder 44 (HIG).
+        let side: CGFloat = DeviceIdiom.isPhone ? 36 : 44
+        let iconSize: CGFloat = DeviceIdiom.isPhone ? 13 : 16
+        return Button(action: action) {
             Image(systemName: icon)
-                .font(.system(size: 16, weight: .semibold))
+                .font(.system(size: iconSize, weight: .semibold))
                 .foregroundStyle(.white)
-                .frame(width: 44, height: 44)
+                .frame(width: side, height: side)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
