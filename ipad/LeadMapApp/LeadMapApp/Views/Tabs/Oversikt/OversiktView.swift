@@ -229,6 +229,13 @@ struct OversiktView: View {
                     if isCompact {
                         LeadsInAreaCard(leads: effectiveLeads)
                             .frame(height: dynamicMapHeight)
+                        // iPhone (QA-runde 2, Daniels design-gjennomgang):
+                        // plassen under kartet sto død — vis det en selger
+                        // faktisk trenger på farten: neste møte + forfalte
+                        // oppfølginger.
+                        if DeviceIdiom.isPhone {
+                            NextActionCard(leads: effectiveLeads)
+                        }
                     } else if isPortrait {
                         LeadsInAreaCard(leads: effectiveLeads)
                             .frame(height: max(720, geo.size.height - 320))
@@ -370,99 +377,20 @@ private struct HeaderRow: View {
                         .lineLimit(1)
                         .padding(.top, 12)
                 }
+                // iPhone (QA-runde 2, Daniels design-gjennomgang): dato-
+                // pillen venstrejusteres — kontekst til venstre, handlinger
+                // til høyre — og fyller tomrommet etter at fanetittelen
+                // forsvant. iPad/Mac beholder alt høyrejustert.
+                if DeviceIdiom.isPhone {
+                    dateButton(isNarrow: true)
+                }
                 Spacer()
                 HStack(spacing: 8) {
                     // Fix 2026-07-02: pickerButton var bare et visuelt kort.
                     // Nå er dato-pillen en Button som åpner LeadgridDatePicker,
                     // og områder-pillen er en Menu med kommuner-filter.
-                    Button {
-                        headerDatePickerOpen = true
-                    } label: {
-                        pickerButton(icon: "calendar",
-                                     text: isNarrow ? headerDateShort() : headerDateFull())
-                    }
-                    .buttonStyle(.plain)
-                    .macCatalystHover()
-                    .sheet(isPresented: $headerDatePickerOpen) {
-                        LeadgridDatePickerSheet(
-                            initialDate: headerDate,
-                            showTime: false,
-                            onConfirm: { d in
-                                headerDate = d
-                                headerDatePickerOpen = false
-                                // Broadcast så kartet zoomer til leads med
-                                // aktivitet på valgt dato (møter/oppfølginger).
-                                NotificationCenter.default.post(
-                                    name: .oversiktDateChanged,
-                                    object: nil,
-                                    userInfo: ["date": d]
-                                )
-                            },
-                            onCancel: { headerDatePickerOpen = false },
-                            // 4 kalender-handlinger: sheeten dispatch-er via
-                            // Notification så OversiktView kan åpne relevant
-                            // eksisterende modal (BookMeetingSheet, follow-up,
-                            // AddLeadSheet, dagsplan-list).
-                            quickActions: [
-                                LeadgridCalendarAction(
-                                    title: "Book møte denne dagen",
-                                    icon: "calendar.badge.plus",
-                                    color: Brand.purpleLight,
-                                    onSelect: { d in
-                                        headerDate = d
-                                        headerDatePickerOpen = false
-                                        NotificationCenter.default.post(
-                                            name: .oversiktCalendarActionRequested,
-                                            object: nil,
-                                            userInfo: ["date": d, "action": "book_meeting"]
-                                        )
-                                    }
-                                ),
-                                LeadgridCalendarAction(
-                                    title: "Ny oppfølging",
-                                    icon: "flag.badge.ellipsis.fill",
-                                    color: Brand.blue,
-                                    onSelect: { d in
-                                        headerDate = d
-                                        headerDatePickerOpen = false
-                                        NotificationCenter.default.post(
-                                            name: .oversiktCalendarActionRequested,
-                                            object: nil,
-                                            userInfo: ["date": d, "action": "new_followup"]
-                                        )
-                                    }
-                                ),
-                                LeadgridCalendarAction(
-                                    title: "Ny lead",
-                                    icon: "person.crop.circle.badge.plus",
-                                    color: Brand.green,
-                                    onSelect: { d in
-                                        headerDate = d
-                                        headerDatePickerOpen = false
-                                        NotificationCenter.default.post(
-                                            name: .oversiktCalendarActionRequested,
-                                            object: nil,
-                                            userInfo: ["date": d, "action": "new_lead"]
-                                        )
-                                    }
-                                ),
-                                LeadgridCalendarAction(
-                                    title: "Vis dagens plan",
-                                    icon: "list.bullet.rectangle.portrait.fill",
-                                    color: Brand.orange,
-                                    onSelect: { d in
-                                        headerDate = d
-                                        headerDatePickerOpen = false
-                                        NotificationCenter.default.post(
-                                            name: .oversiktCalendarActionRequested,
-                                            object: nil,
-                                            userInfo: ["date": d, "action": "view_day"]
-                                        )
-                                    }
-                                ),
-                            ],
-                            dayIndicators: HeaderRow.buildDayIndicators(from: leads)
-                        )
+                    if !DeviceIdiom.isPhone {
+                        dateButton(isNarrow: isNarrow)
                     }
                     if !isNarrow {
                         Menu {
@@ -574,6 +502,101 @@ private struct HeaderRow: View {
                                 momentum: momentum)
             .adaptivePopoverFrame(width: 420, height: 600)
             .presentationCompactAdaptation(DeviceIdiom.isPhone ? .sheet : .popover)
+    }
+
+    /// Dato-pillen m/ LeadgridDatePicker-sheet. Utflyttet fra header-raden
+    /// (QA-runde 2) så den kan venstrejusteres på iPhone og beholdes i
+    /// kontroll-gruppa på iPad/Mac.
+    private func dateButton(isNarrow: Bool) -> some View {
+        Button {
+            headerDatePickerOpen = true
+        } label: {
+            pickerButton(icon: "calendar",
+                         text: isNarrow ? headerDateShort() : headerDateFull())
+        }
+        .buttonStyle(.plain)
+        .macCatalystHover()
+        .sheet(isPresented: $headerDatePickerOpen) {
+            LeadgridDatePickerSheet(
+                initialDate: headerDate,
+                showTime: false,
+                onConfirm: { d in
+                    headerDate = d
+                    headerDatePickerOpen = false
+                    // Broadcast så kartet zoomer til leads med
+                    // aktivitet på valgt dato (møter/oppfølginger).
+                    NotificationCenter.default.post(
+                        name: .oversiktDateChanged,
+                        object: nil,
+                        userInfo: ["date": d]
+                    )
+                },
+                onCancel: { headerDatePickerOpen = false },
+                // 4 kalender-handlinger: sheeten dispatch-er via
+                // Notification så OversiktView kan åpne relevant
+                // eksisterende modal (BookMeetingSheet, follow-up,
+                // AddLeadSheet, dagsplan-list).
+                quickActions: [
+                    LeadgridCalendarAction(
+                        title: "Book møte denne dagen",
+                        icon: "calendar.badge.plus",
+                        color: Brand.purpleLight,
+                        onSelect: { d in
+                            headerDate = d
+                            headerDatePickerOpen = false
+                            NotificationCenter.default.post(
+                                name: .oversiktCalendarActionRequested,
+                                object: nil,
+                                userInfo: ["date": d, "action": "book_meeting"]
+                            )
+                        }
+                    ),
+                    LeadgridCalendarAction(
+                        title: "Ny oppfølging",
+                        icon: "flag.badge.ellipsis.fill",
+                        color: Brand.blue,
+                        onSelect: { d in
+                            headerDate = d
+                            headerDatePickerOpen = false
+                            NotificationCenter.default.post(
+                                name: .oversiktCalendarActionRequested,
+                                object: nil,
+                                userInfo: ["date": d, "action": "new_followup"]
+                            )
+                        }
+                    ),
+                    LeadgridCalendarAction(
+                        title: "Ny lead",
+                        icon: "person.crop.circle.badge.plus",
+                        color: Brand.green,
+                        onSelect: { d in
+                            headerDate = d
+                            headerDatePickerOpen = false
+                            NotificationCenter.default.post(
+                                name: .oversiktCalendarActionRequested,
+                                object: nil,
+                                userInfo: ["date": d, "action": "new_lead"]
+                            )
+                        }
+                    ),
+                    LeadgridCalendarAction(
+                        title: "Vis dagens plan",
+                        icon: "list.bullet.rectangle.portrait.fill",
+                        color: Brand.orange,
+                        onSelect: { d in
+                            headerDate = d
+                            headerDatePickerOpen = false
+                            NotificationCenter.default.post(
+                                name: .oversiktCalendarActionRequested,
+                                object: nil,
+                                userInfo: ["date": d, "action": "view_day"]
+                            )
+                        }
+                    ),
+                ],
+                dayIndicators: HeaderRow.buildDayIndicators(from: leads)
+            )
+        }
     }
 
     /// iPhone-erstatning for de tre sekundære header-knappene. Popover-ene
@@ -1436,9 +1459,13 @@ private struct LeadsInAreaCard: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Leads i området").font(.headline).foregroundStyle(.white)
-                Text("\(pinnedLeads.count) leads")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Brand.purpleLight)
+                // iPhone: tallet står allerede i statistikk-knappen og
+                // temperatur-chipsene — tre steder er to for mange.
+                if !DeviceIdiom.isPhone {
+                    Text("\(pinnedLeads.count) leads")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Brand.purpleLight)
+                }
                 Spacer()
                 FilterChip(label: "Alle status", icon: "line.3.horizontal.decrease.circle")
             }
@@ -1477,6 +1504,50 @@ private struct LeadsInAreaCard: View {
         }
     }
 
+    // ── Cluster-logikk for mini-kartet (QA-runde 2) ──────────────────
+    // Grupperer leads som ligger nærmere hverandre enn ~1/7 av synlig
+    // span — gir «8»-sirkler i stedet for ti overlappende nåler, og
+    // enkelt-nåler når man zoomer inn. Ren geometri, ingen ny state.
+
+    private struct MiniCluster: Identifiable {
+        let id: String
+        let coordinate: CLLocationCoordinate2D
+        let leads: [LeadModel]
+    }
+
+    private var miniClusters: [MiniCluster] {
+        let latT = max(miniCurrentRegion.span.latitudeDelta, 0.0005) / 7
+        let lonT = max(miniCurrentRegion.span.longitudeDelta, 0.0005) / 7
+        var groups: [(lat: Double, lon: Double, leads: [LeadModel])] = []
+        for lead in pinnedLeads.prefix(60) {
+            if let idx = groups.firstIndex(where: {
+                abs($0.lat - lead.latitude) < latT && abs($0.lon - lead.longitude) < lonT
+            }) {
+                groups[idx].leads.append(lead)
+                let n = Double(groups[idx].leads.count)
+                groups[idx].lat += (lead.latitude - groups[idx].lat) / n
+                groups[idx].lon += (lead.longitude - groups[idx].lon) / n
+            } else {
+                groups.append((lead.latitude, lead.longitude, [lead]))
+            }
+        }
+        return groups.map { g in
+            MiniCluster(
+                id: g.leads.map(\.id).joined(separator: "|"),
+                coordinate: CLLocationCoordinate2D(latitude: g.lat, longitude: g.lon),
+                leads: g.leads
+            )
+        }
+    }
+
+    private var miniSingleLeads: [LeadModel] {
+        miniClusters.filter { $0.leads.count == 1 }.compactMap(\.leads.first)
+    }
+
+    private var miniMultiClusters: [MiniCluster] {
+        miniClusters.filter { $0.leads.count > 1 }
+    }
+
     @ViewBuilder
     private var mapThumbnail: some View {
         ZStack(alignment: .bottomTrailing) {
@@ -1485,7 +1556,28 @@ private struct LeadsInAreaCard: View {
             // når measure-mode er ON; ellers pan/zoom fungerer normalt.
             MapReader { proxy in
                 Map(position: $miniCamera, interactionModes: [.pan, .zoom]) {
-                    ForEach(Array(pinnedLeads.prefix(10).enumerated()), id: \.offset) { _, lead in
+                    // Cluster-nåler (QA-runde 2, Daniels funn): overlappende
+                    // pins med «0»-score ga null informasjon — leads som
+                    // ligger tett vises nå som én sirkel med ANTALL, og tap
+                    // zoomer inn til klyngen. Re-clustres per zoom-nivå via
+                    // miniCurrentRegion.
+                    ForEach(miniMultiClusters) { cluster in
+                        Annotation("", coordinate: cluster.coordinate, anchor: .center) {
+                            OvClusterPin(count: cluster.leads.count)
+                                .onTapGesture {
+                                    let span = MKCoordinateSpan(
+                                        latitudeDelta: max(miniCurrentRegion.span.latitudeDelta / 4, 0.004),
+                                        longitudeDelta: max(miniCurrentRegion.span.longitudeDelta / 4, 0.004)
+                                    )
+                                    let region = MKCoordinateRegion(center: cluster.coordinate, span: span)
+                                    withAnimation(.easeInOut(duration: 0.4)) {
+                                        miniCamera = .region(region)
+                                    }
+                                    miniCurrentRegion = region
+                                }
+                        }
+                    }
+                    ForEach(miniSingleLeads, id: \.id) { lead in
                         let score = lead.leadScore ?? 0
                         Annotation(lead.name,
                                    coordinate: CLLocationCoordinate2D(latitude: lead.latitude,
@@ -3125,9 +3217,19 @@ private struct LeadScoreFilterStrip: View {
     }
 
     var body: some View {
-        HStack(spacing: 8) {
-            ForEach(0..<tiers.count, id: \.self) { idx in
-                tierChip(tiers[idx])
+        // QA-runde 2 (Daniel): chips med 0 sier ingenting og stjeler en hel
+        // rad — vis kun tiers med innhold (+ den aktive så toggle-tilbake
+        // alltid er mulig). Alt-null → skjul hele stripen.
+        let visible = tiers.filter { $0.count > 0 || activeTier == $0.key }
+        if !visible.isEmpty {
+            HStack(spacing: 8) {
+                ForEach(0..<visible.count, id: \.self) { idx in
+                    tierChip(visible[idx])
+                        // 1-2 chips skal ikke strekkes over hele raden —
+                        // naturlig bredde + venstrejustering ser riktig ut.
+                        .fixedSize(horizontal: visible.count <= 2, vertical: false)
+                }
+                if visible.count <= 2 { Spacer(minLength: 0) }
             }
         }
     }
@@ -3486,6 +3588,127 @@ private struct BounceKeyframe {
     var scaleY: CGFloat = 1.0
 }
 
+/// «Neste handling»-kort under mini-kartet på iPhone (QA-runde 2):
+/// neste kommende møte + forfalte oppfølginger — det en selger trenger
+/// på farten. Tom-tilstand med hint når ingenting er planlagt.
+private struct NextActionCard: View {
+    @Environment(AppState.self) private var appState
+    let leads: [LeadModel]
+
+    private var nextMeeting: CalendarEvent? {
+        appState.calendar
+            .filter { ($0.datetime ?? .distantPast) >= Date() }
+            .sorted { ($0.datetime ?? .distantFuture) < ($1.datetime ?? .distantFuture) }
+            .first
+    }
+
+    private var overdueFollowups: [LeadModel] {
+        leads.filter { ($0.nextFollowUpAt ?? .distantFuture) < Date() }
+    }
+
+    private static let timeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "nb_NO")
+        f.dateFormat = "EEE d. MMM HH:mm"
+        return f
+    }()
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Neste handling")
+                .font(.headline)
+                .foregroundStyle(.white)
+
+            if nextMeeting == nil && overdueFollowups.isEmpty {
+                HStack(spacing: 10) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(Brand.green)
+                    Text("Ingenting planlagt — book et møte eller legg til en oppfølging fra en lead.")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Brand.textSecondary)
+                }
+            } else {
+                if let meeting = nextMeeting {
+                    actionRow(
+                        icon: "calendar",
+                        color: Brand.purpleLight,
+                        title: meeting.leadName,
+                        subtitle: meeting.datetime.map { Self.timeFormatter.string(from: $0) } ?? "Tid ikke satt"
+                    )
+                }
+                if !overdueFollowups.isEmpty {
+                    actionRow(
+                        icon: "bell.badge.fill",
+                        color: Brand.orange,
+                        title: overdueFollowups.count == 1
+                            ? "1 forfalt oppfølging"
+                            : "\(overdueFollowups.count) forfalte oppfølginger",
+                        subtitle: overdueFollowups.first.map { "Eldst: \($0.name)" } ?? ""
+                    )
+                }
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Brand.card, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Brand.stroke, lineWidth: 1))
+    }
+
+    private func actionRow(icon: String, color: Color, title: String, subtitle: String) -> some View {
+        HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 9).fill(color.opacity(0.2))
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(color)
+            }
+            .frame(width: 36, height: 36)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                if !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Brand.textSecondary)
+                        .lineLimit(1)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+    }
+}
+
+/// Cluster-sirkel for mini-kartet — viser ANTALL leads i klyngen
+/// (QA-runde 2: erstatter overlappende nåler med «0»-badge).
+private struct OvClusterPin: View {
+    let count: Int
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(RadialGradient(
+                    colors: [Brand.purple.opacity(0.45), Brand.purple.opacity(0)],
+                    center: .center, startRadius: 12, endRadius: 26
+                ))
+                .frame(width: 52, height: 52)
+                .blur(radius: 3)
+            Circle()
+                .fill(Brand.purple.opacity(0.95))
+                .overlay(Circle().stroke(Color.white.opacity(0.85), lineWidth: 2))
+                .frame(width: 34, height: 34)
+                .shadow(color: Brand.purple.opacity(0.55), radius: 6, x: 0, y: 2)
+            Text("\(count)")
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
+                .monospacedDigit()
+        }
+        .contentShape(Circle())
+    }
+}
+
 private struct MiniPin: View {
     let score: Int
     let isHot: Bool
@@ -3531,11 +3754,20 @@ private struct MiniPin: View {
                     ))
                 OvDropPin()
                     .stroke(Color.white.opacity(0.92), lineWidth: 2)
-                Text("\(score)")
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
-                    .monospacedDigit()
-                    .offset(y: -6)
+                // Score 0 = ingen informasjon — vis bygnings-ikon i stedet
+                // for et misvisende «0» (QA-runde 2, Daniels funn).
+                if score > 0 {
+                    Text("\(score)")
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .monospacedDigit()
+                        .offset(y: -6)
+                } else {
+                    Image(systemName: "building.2.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .offset(y: -6)
+                }
             }
             .frame(width: 38, height: 48)
             .shadow(color: shadowColor, radius: 6, x: 0, y: 2)
