@@ -421,14 +421,15 @@ struct LeadbookView: View {
     /// scrollbar rad under. Gjenbruker de samme knapp-viewene.
     private var phoneHeader: some View {
         VStack(alignment: .leading, spacing: 10) {
+            // Fanetittelen er fjernet — tab-baren viser allerede hvor du er.
             HStack(alignment: .center, spacing: 10) {
-                Text("Leadbook")
-                    .font(.system(size: 28, weight: .bold))
-                    .foregroundStyle(.white)
                 Spacer(minLength: 8)
                 notificationsBell
                 profileAvatar(isCompact: true)
             }
+            // Full-bleed scroller: negativ padding opphever ytre 20pt-marg og
+            // margen legges i stedet inn i innholdet — uten dette klippes
+            // siste knapp halvveis ved høyre kant på maks scroll.
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     topPicker(icon: "calendar", text: "Tir 20")
@@ -439,7 +440,9 @@ struct LeadbookView: View {
                     transcriptionButton                      // Live transkripsjon
                     newButton(isCompact: true)
                 }
+                .padding(.horizontal, 20)
             }
+            .padding(.horizontal, -20)
         }
     }
 
@@ -448,16 +451,13 @@ struct LeadbookView: View {
             let isCompact = geo.size.width < 1300
             HStack(alignment: .top, spacing: 14) {
                 if !isCompact { LeadgridHeaderMark().padding(.top, 4) }
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Leadbook")                         // ← omdøpt fra Playbook
-                        .font(.system(size: 28, weight: .bold))
-                        .foregroundStyle(.white)
-                    if !isCompact {
-                        Text("Standardiser salgsprosessen med maler, scripts og oppfølging.")
-                            .font(.system(size: 13))
-                            .foregroundStyle(LBrand.textSecondary)
-                            .lineLimit(1)
-                    }
+                // Fanetittelen er fjernet — sidebaren viser allerede hvor du er.
+                if !isCompact {
+                    Text("Standardiser salgsprosessen med maler, scripts og oppfølging.")
+                        .font(.system(size: 13))
+                        .foregroundStyle(LBrand.textSecondary)
+                        .lineLimit(1)
+                        .padding(.top, 12)
                 }
                 Spacer(minLength: 8)
                 HStack(spacing: 8) {
@@ -675,7 +675,10 @@ struct LeadbookView: View {
 
     // MARK: Sub-tabs
 
-    private var subTabBar: some View {
+    /// Fane-knappene delt mellom iPhone (scrollbar rad) og iPad/Mac (fast rad).
+    /// `.lineLimit(1)` + `.fixedSize()` hindrer at ordene brytes midt i
+    /// («Overs ikt», «Pond us») når compact width presser bredden.
+    private var subTabButtons: some View {
         HStack(spacing: 4) {
             ForEach(LeadbookSubTab.allCases) { tab in
                 Button { withAnimation(.easeInOut(duration: 0.18)) { subTab = tab } } label: {
@@ -683,6 +686,8 @@ struct LeadbookView: View {
                         Text(tab.label)
                             .font(.system(size: 13, weight: subTab == tab ? .bold : .semibold))
                             .foregroundStyle(subTab == tab ? .white : LBrand.textSecondary)
+                            .lineLimit(1)
+                            .fixedSize()
                             .padding(.horizontal, 14).padding(.vertical, 9)
                         Rectangle()
                             .fill(subTab == tab ? LBrand.purpleLight : .clear)
@@ -691,12 +696,36 @@ struct LeadbookView: View {
                 }
                 .buttonStyle(.plain)
             }
-            Spacer()
         }
-        .background(
-            Rectangle().fill(LBrand.stroke).frame(height: 1),
-            alignment: .bottom
-        )
+    }
+
+    @ViewBuilder
+    private var subTabBar: some View {
+        if DeviceIdiom.isPhone {
+            // iPhone: fem faner får ikke plass side om side på compact width —
+            // horisontal scroller i stedet. Full-bleed (negativ padding
+            // opphever ytre 20pt-marg) med marg lagt inn i innholdet, slik at
+            // siste fane kan scrolles helt inn.
+            ScrollView(.horizontal, showsIndicators: false) {
+                subTabButtons
+                    .padding(.horizontal, 20)
+            }
+            .padding(.horizontal, -20)
+            .background(
+                Rectangle().fill(LBrand.stroke).frame(height: 1),
+                alignment: .bottom
+            )
+        } else {
+            // iPad/Mac: behold dagens faste rad — her er det alltid plass.
+            HStack(spacing: 4) {
+                subTabButtons
+                Spacer()
+            }
+            .background(
+                Rectangle().fill(LBrand.stroke).frame(height: 1),
+                alignment: .bottom
+            )
+        }
     }
 
     // MARK: Content per sub-tab

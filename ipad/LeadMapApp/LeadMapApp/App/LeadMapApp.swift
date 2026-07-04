@@ -394,35 +394,139 @@ struct SessionExpiredSheet: View {
 /// preview-portene under `Views/Tabs/<Fane>/`.
 struct MainTabView: View {
     @Environment(AppState.self) private var state
+    @State private var selection: Int = {
+        #if DEBUG
+        // QA-hook: `SIMCTL_CHILD_QA_TAB=<0-7> simctl launch …` åpner appen
+        // rett på en gitt fane — brukes til automatiserte skjermbilde-sveip
+        // på simulator. På iPhone mapper 5/6/7 til Mer-fanens under-sider
+        // (Team/Leadbook/Salgsledelse, håndtert av PhoneMerTab).
+        // Ingen effekt i release-bygg.
+        if let raw = ProcessInfo.processInfo.environment["QA_TAB"], let idx = Int(raw) {
+            if DeviceIdiom.isPhone {
+                return min(max(idx, 0), 7) >= 4 ? 4 : min(max(idx, 0), 3)
+            }
+            return min(max(idx, 0), 6)
+        }
+        #endif
+        return 0
+    }()
 
     var body: some View {
         VStack(spacing: 0) {
             MockDataBanner()
-            TabView {
+            TabView(selection: $selection) {
                 OversiktView()
                     .tabItem { Label("Oversikt", systemImage: "rectangle.3.group.fill") }
+                    .tag(0)
 
                 KartView()
                     .tabItem { Label("Kart", systemImage: "map.fill") }
+                    .tag(1)
 
                 LeadsView()
                     .tabItem { Label("Leads", systemImage: "person.crop.rectangle.stack.fill") }
                     .badge(state.leadgridUnreadCount > 0 ? state.leadgridUnreadCount : 0)
+                    .tag(2)
 
                 MeetingsView()
                     .tabItem { Label("Møter", systemImage: "calendar") }
+                    .tag(3)
 
-                TeamView()
-                    .tabItem { Label("Team", systemImage: "person.3.fill") }
+                if DeviceIdiom.isPhone {
+                    // iPhone har bare plass til 4 faner + én til — flere enn
+                    // det gir UIKits «More»-controller (grå liste + fremmed
+                    // back-knapp oppå våre egne headere). Egen Mer-fane gir
+                    // samme innhold med Leadgrid-design.
+                    PhoneMerTab()
+                        .tabItem { Label("Mer", systemImage: "square.grid.2x2.fill") }
+                        .tag(4)
+                } else {
+                    TeamView()
+                        .tabItem { Label("Team", systemImage: "person.3.fill") }
+                        .tag(4)
 
-                LeadbookView()
-                    .tabItem { Label("Leadbook", systemImage: "book.pages.fill") }
+                    LeadbookView()
+                        .tabItem { Label("Leadbook", systemImage: "book.pages.fill") }
+                        .tag(5)
 
-                // Salgsledelse-suite (Pakke 10.1) — provisjon, konkurranser,
-                // premie-katalog, fulfillment. Bør role-gates til salgssjefer.
-                SalgsledelseView()
-                    .tabItem { Label("Salgsledelse", systemImage: "rosette") }
+                    // Salgsledelse-suite (Pakke 10.1) — provisjon, konkurranser,
+                    // premie-katalog, fulfillment. Bør role-gates til salgssjefer.
+                    SalgsledelseView()
+                        .tabItem { Label("Salgsledelse", systemImage: "rosette") }
+                        .tag(6)
+                }
             }
+        }
+    }
+}
+
+/// Mer-fanen på iPhone — inngangen til hovedområdene som ikke får plass i
+/// tab-baren (Team/Leadbook/Salgsledelse). Under-sidene pushes med skjult
+/// system-navbar (de har egne fulle headere); tilbake = swipe eller
+/// tab-tap.
+struct PhoneMerTab: View {
+    @Environment(AppState.self) private var state
+
+    private enum Destination: Int, Hashable {
+        case team = 5, leadbook = 6, salgsledelse = 7
+    }
+
+    @State private var path: [Destination] = {
+        #if DEBUG
+        // QA-hook (se MainTabView): QA_TAB 5/6/7 → auto-push under-siden.
+        if let raw = ProcessInfo.processInfo.environment["QA_TAB"],
+           let idx = Int(raw), let dest = Destination(rawValue: idx) {
+            return [dest]
+        }
+        #endif
+        return []
+    }()
+
+    var body: some View {
+        NavigationStack(path: $path) {
+            List {
+                Section("Hovedområder") {
+                    merRow(.team, icon: "person.3.fill", color: .blue,
+                           title: "Team", subtitle: "Områder, pipeline og aktivitet")
+                    merRow(.leadbook, icon: "book.pages.fill", color: .purple,
+                           title: "Leadbook", subtitle: "Maler, Pondus og innsikt")
+                    merRow(.salgsledelse, icon: "rosette", color: .orange,
+                           title: "Salgsledelse", subtitle: "Provisjon, konkurranser og premier")
+                }
+            }
+            .navigationTitle("Mer")
+            .navigationDestination(for: Destination.self) { dest in
+                Group {
+                    switch dest {
+                    case .team: TeamView()
+                    case .leadbook: LeadbookView()
+                    case .salgsledelse: SalgsledelseView()
+                    }
+                }
+                .toolbar(.hidden, for: .navigationBar)
+            }
+        }
+    }
+
+    private func merRow(_ dest: Destination, icon: String, color: Color,
+                        title: String, subtitle: String) -> some View {
+        NavigationLink(value: dest) {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8).fill(color.opacity(0.2))
+                    Image(systemName: icon)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(color)
+                }
+                .frame(width: 36, height: 36)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.system(size: 15, weight: .semibold))
+                    Text(subtitle)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.vertical, 2)
         }
     }
 }

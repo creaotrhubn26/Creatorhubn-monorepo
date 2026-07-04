@@ -111,6 +111,11 @@ struct SalgssjefCockpitStrip: View {
         .padding(.horizontal, 20)
         .padding(.top, 14)
         .padding(.bottom, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        // Tema-bakgrunn: uten denne rendret stripen med helsvart system-
+        // bakgrunn over hele bredden — skal matche resten av fanen (samme
+        // mørke lilla/navy som SalesLeadershipSheet sin Brand.bg).
+        .background(SlBrand.bg.ignoresSafeArea())
         .sheet(isPresented: $approvalsOpen) { ApprovalsQueueSheet() }
         .sheet(isPresented: $forecastOpen) { TeamForecastSheet() }
         .sheet(isPresented: $coachingOpen) { CoachingPlanSheet() }

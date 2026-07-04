@@ -41,9 +41,11 @@ struct SalgsledelseView: View {
 
                 // Full Salgsledelse-suite (4 sub-tabs: Provisjon/Konkurranser/
                 // Premie-katalog/Tildel premier) portet fra preview.
+                // embedded: true → skjuler X-lukkeknappen (arv fra sheet-modus).
                 SalesLeadershipSheet(
                     sellers: SalgsledelseSellersFactory.mockSellers(currentUser: currentUserName),
-                    currentUserName: currentUserName
+                    currentUserName: currentUserName,
+                    embedded: true
                 )
             }
         }

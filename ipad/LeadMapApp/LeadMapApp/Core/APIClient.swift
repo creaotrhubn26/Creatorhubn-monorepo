@@ -1488,7 +1488,18 @@ actor APIClient {
     // MARK: - Internal
 
     private func makeRequest(_ path: String, method: String = "GET") -> URLRequest {
-        var req = URLRequest(url: baseURL.appendingPathComponent(path))
+        // Samme fix som `_request` (2026-07-02): `appendingPathComponent`
+        // percent-koder `?`/`&` i path → "/leads?projectId=…" ble
+        // "/leads%3FprojectId=…" → Express 404. QA 2026-07-04: dette slo ut
+        // HELE refreshAll (leads/competitors/metrics/calendar/reminders) så
+        // snart et prosjekt var valgt — appen viste «Ingen leads enda» tross
+        // 121 leads i API-et. Bygg URL via string-konkat så query overlever.
+        let baseString = baseURL.absoluteString.hasSuffix("/")
+            ? String(baseURL.absoluteString.dropLast())
+            : baseURL.absoluteString
+        let normalizedPath = path.hasPrefix("/") ? path : "/\(path)"
+        let url = URL(string: baseString + normalizedPath) ?? baseURL.appendingPathComponent(path)
+        var req = URLRequest(url: url)
         req.httpMethod = method
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -1644,7 +1655,13 @@ actor APIClient {
     /// Raw execute for OfflineActionQueue. Returnerer Data ved 2xx, throws ellers.
     func executeRaw(method: String, path: String, body: Data?) async throws -> Data {
         do {
-            var req = URLRequest(url: baseURL.appendingPathComponent(path))
+            // String-konkat i stedet for appendingPathComponent — se makeRequest.
+            let baseString = baseURL.absoluteString.hasSuffix("/")
+                ? String(baseURL.absoluteString.dropLast())
+                : baseURL.absoluteString
+            let normalizedPath = path.hasPrefix("/") ? path : "/\(path)"
+            let url = URL(string: baseString + normalizedPath) ?? baseURL.appendingPathComponent(path)
+            var req = URLRequest(url: url)
             req.httpMethod = method
             req.timeoutInterval = 30
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")

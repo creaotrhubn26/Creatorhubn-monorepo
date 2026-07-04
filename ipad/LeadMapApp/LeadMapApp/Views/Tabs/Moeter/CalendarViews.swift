@@ -44,6 +44,11 @@ private enum CBrand {
 struct CalendarModePicker: View {
     @Binding var mode: CalendarMode
 
+    // iPhone: kompakt variant — kun ikoner. Med tekst-labels blir pickeren
+    // bredere enn tilgjengelig plass i agenda-headeren, teksten klippes til
+    // enkeltbokstaver og den valgte pillen overlapper nabo-segmentene.
+    private var compact: Bool { DeviceIdiom.isPhone }
+
     var body: some View {
         HStack(spacing: 4) {
             ForEach(CalendarMode.allCases, id: \.self) { m in
@@ -52,23 +57,29 @@ struct CalendarModePicker: View {
                 } label: {
                     HStack(spacing: 5) {
                         Image(systemName: m.icon)
-                            .font(.system(size: 10, weight: .bold))
-                        Text(m.rawValue)
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.system(size: compact ? 13 : 10, weight: .bold))
+                        if !compact {
+                            Text(m.rawValue)
+                                .font(.system(size: 11, weight: .bold))
+                        }
                     }
                     .foregroundStyle(mode == m ? .white : CBrand.textSecondary)
-                    .padding(.horizontal, 10).padding(.vertical, 6)
+                    .padding(.horizontal, compact ? 9 : 10).padding(.vertical, 6)
                     .background(
                         mode == m ? AnyShapeStyle(CBrand.purple) : AnyShapeStyle(Color.clear),
                         in: Capsule()
                     )
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(Text(m.rawValue))
             }
         }
         .padding(3)
         .background(CBrand.cardHi, in: Capsule())
         .overlay(Capsule().stroke(CBrand.stroke, lineWidth: 1))
+        // Intrinsisk bredde på iPhone — hindrer at headeren komprimerer
+        // pickeren slik at segmentene legger seg oppå hverandre.
+        .fixedSize(horizontal: compact, vertical: false)
     }
 }
 

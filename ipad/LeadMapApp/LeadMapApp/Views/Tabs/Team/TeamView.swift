@@ -292,16 +292,13 @@ struct TeamView: View {
 
             HStack(alignment: .top, spacing: 14) {
                 if !isCompact { LeadgridHeaderMark().padding(.top, 4) }
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Team")
-                        .font(.system(size: 28, weight: .bold))
-                        .foregroundStyle(.white)
-                    if !isCompact {
-                        Text("Få oversikt over teamets aktivitet, resultater og områder.")
-                            .font(.system(size: 13))
-                            .foregroundStyle(TBrand.textSecondary)
-                            .lineLimit(1)
-                    }
+                // Fanetittelen er fjernet — tab-baren/sidebaren viser hvor du er.
+                if !isCompact {
+                    Text("Få oversikt over teamets aktivitet, resultater og områder.")
+                        .font(.system(size: 13))
+                        .foregroundStyle(TBrand.textSecondary)
+                        .lineLimit(1)
+                        .padding(.top, 12)
                 }
                 Spacer(minLength: 8)
                 HStack(spacing: 7) {
