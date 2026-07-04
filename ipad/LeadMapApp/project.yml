@@ -16,7 +16,7 @@ settings:
     DEVELOPMENT_TEAM: "9TAUZCPK95"
     ENABLE_USER_SCRIPT_SANDBOXING: YES
     VERSIONING_SYSTEM: apple-generic
-    CURRENT_PROJECT_VERSION: "20260706"
+    CURRENT_PROJECT_VERSION: "20260707"
     MARKETING_VERSION: "1.4.0"
 
 targets:
@@ -256,3 +256,39 @@ targets:
         # AppIcon droppes for Vision-target — visionOS krever egen
         # AppIcon.solidimagestack som ikke er generert enda. Standard-ikon
         # brukes til bygg går grønt lokalt.
+
+  # QA-harness (2026-07-04): innlogget UI-test-sveip over alle faner +
+  # sheets med snapshot-galleri og tilgjengelighets-audit. Kjøres via
+  # scripts/qa-sweep.sh — token injiseres med TEST_RUNNER_QA_BEARER_TOKEN.
+  LeadMapAppUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: LeadMapAppUITests
+    dependencies:
+      - target: LeadMapApp
+    settings:
+      base:
+        TARGETED_DEVICE_FAMILY: "1,2"
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "6"
+
+# Eksplisitt scheme så UI-test-target-et er koblet til test-action.
+# archive-config beholdt for TestFlight-CI (fastlane bruker samme scheme).
+schemes:
+  LeadMapApp:
+    build:
+      targets:
+        LeadMapApp: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - LeadMapAppUITests
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
