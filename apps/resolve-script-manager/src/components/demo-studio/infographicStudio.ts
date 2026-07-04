@@ -7,6 +7,7 @@
 // Workflow-genererte + render-verifiserte maler (cover, donut, linjegraf,
 // KPI-hero, verdenskart, A/B-test). Selvstendige config-drevne HTML-maler.
 import GENERATED_TEMPLATES from './infographicTemplates.generated.json';
+import { SOCIAL_TEMPLATES } from './infographicSocialTemplates';
 // Hele Material Icons (Outlined)-katalogen (2195 navn) for ikon-velgeren.
 import ALL_ICONS from './materialIcons.generated.json';
 // Bundlede fonter (Inter + Material Icons Outlined som base64 @font-face) →
@@ -144,6 +145,7 @@ export const INFOGRAPHIC_TEMPLATES: InfographicTemplate[] = [
     ],
     defaults: { title: 'PreVisit AI', k1: 'Utfylte skjema', kv1: '82%', k2: 'Gj.sn. svartid', kv2: '2:14', k3: 'Pasientforberedelse', kv3: '91%' },
   },
+  ...SOCIAL_TEMPLATES,
   ...(GENERATED_TEMPLATES as unknown as InfographicTemplate[]),
 ];
 
