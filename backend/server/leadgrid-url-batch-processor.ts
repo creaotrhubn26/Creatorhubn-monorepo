@@ -685,6 +685,33 @@ async function processItem(
         } catch {
           /* aldri blokker batchen på broadcast-feil */
         }
+        // Workflow-event (2026-07-04): `lead.created` fantes som trigger
+        // men INGEN publiserte det — welcome-workflows fyrte aldri.
+        // Dynamic import unngår statisk import-sykel (engine →
+        // continuous-discovery → denne fila). Fire-and-forget.
+        if (orgId) {
+          void import("./leadgrid-workflow-engine.js")
+            .then(({ publishEvent }) =>
+              publishEvent({
+                pool,
+                organizationId: orgId,
+                type: "lead.created",
+                leadId: item.draft_lead_id,
+                actorUserId: userId,
+                data: {
+                  source: "lead_discovery",
+                  batch_id: batchId,
+                  occurred_at: new Date().toISOString(),
+                },
+              }),
+            )
+            .catch((err) =>
+              console.warn(
+                "[batch] lead.created-event feilet:",
+                (err as Error).message,
+              ),
+            );
+        }
       }
       return; // success — bryt retry-loop
     } catch (err) {
