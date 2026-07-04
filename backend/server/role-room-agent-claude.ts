@@ -29,6 +29,7 @@
 // Slice 9X.71 — cost-tracking via samme system som CreatorHub-resten.
 // Lazy import for å unngå circular import-problemer ved boot.
 import { logAIUsage } from './ai-usage-tracker.js';
+import type { TikTokMcpConfig } from './role-room-tiktok-mcp.js';
 
 type ClaudeMessageParam = {
   role: 'user' | 'assistant';
@@ -71,11 +72,22 @@ export interface RunClaudeAgentInput {
   userId?: string | null;
   /** HTTP-route hvis kallet kommer fra en route-handler */
   route?: string;
+  /**
+   * Optional TikTok Ads MCP connector (Spor B). When present, the call routes
+   * through the Anthropic beta Messages API with the TikTok MCP server attached,
+   * so Claude can call TikTok ad tools (read-only allowlist by default). Built
+   * by buildTikTokMcpConfig from the user's TikTok token; omitted when null.
+   */
+  mcpConfig?: TikTokMcpConfig | null;
 }
 
 export interface RunClaudeAgentResult {
   text: string;
   toolUses: Array<{ name: string; input: Record<string, unknown>; id: string }>;
+  /** MCP tools Claude called server-side (e.g. TikTok reporting). These already
+   *  executed via the Anthropic MCP connector — surfaced for observability, not
+   *  for client-side execution. */
+  mcpToolCalls?: Array<{ name: string; serverName: string; isError: boolean }>;
   usage: {
     inputTokens: number;
     outputTokens: number;
@@ -154,13 +166,29 @@ export async function runClaudeAgent(input: RunClaudeAgentInput): Promise<RunCla
   }
 
   const start = Date.now();
-  const response = await client.messages.create({
-    model,
-    max_tokens: maxTokens,
-    system,
-    messages,
-    tools: input.tools,
-  });
+  // When a TikTok MCP connector is attached, route through the beta Messages API
+  // with the MCP server + toolset. Claude discovers and calls the (read-only)
+  // TikTok tools server-side. Otherwise use the stable path unchanged.
+  let response: any;
+  if (input.mcpConfig) {
+    response = await client.beta.messages.create({
+      model,
+      max_tokens: maxTokens,
+      system,
+      messages,
+      tools: [...(input.tools ?? []), ...input.mcpConfig.tools],
+      mcp_servers: input.mcpConfig.mcp_servers,
+      betas: input.mcpConfig.betas,
+    });
+  } else {
+    response = await client.messages.create({
+      model,
+      max_tokens: maxTokens,
+      system,
+      messages,
+      tools: input.tools,
+    });
+  }
   const latencyMs = Date.now() - start;
 
   // Slice 9X.71 — cost-tracking (fire-and-forget)
@@ -175,6 +203,7 @@ export async function runClaudeAgent(input: RunClaudeAgentInput): Promise<RunCla
   // Concatenate text blocks; collect any tool_use blocks so the caller can
   // show a confirmation dialog before actually invoking the tool.
   const toolUses: RunClaudeAgentResult['toolUses'] = [];
+  const mcpToolCalls: NonNullable<RunClaudeAgentResult['mcpToolCalls']> = [];
   let text = '';
   for (const block of response.content ?? []) {
     if (block.type === 'text' && typeof block.text === 'string') {
@@ -185,12 +214,29 @@ export async function runClaudeAgent(input: RunClaudeAgentInput): Promise<RunCla
         name: block.name,
         input: block.input as Record<string, unknown>,
       });
+    } else if (block.type === 'mcp_tool_use') {
+      // Executed server-side by the Anthropic MCP connector — record for
+      // observability (no client confirmation/execution needed).
+      mcpToolCalls.push({
+        name: String(block.name ?? ''),
+        serverName: String(block.server_name ?? ''),
+        isError: false,
+      });
+    } else if (block.type === 'mcp_tool_result') {
+      if (block.is_error) {
+        const last = mcpToolCalls[mcpToolCalls.length - 1];
+        if (last) last.isError = true;
+      }
+      for (const inner of block.content ?? []) {
+        if (inner?.type === 'text' && typeof inner.text === 'string') text += inner.text;
+      }
     }
   }
 
   return {
     text,
     toolUses,
+    mcpToolCalls: mcpToolCalls.length ? mcpToolCalls : undefined,
     model,
     latencyMs,
     usage: {

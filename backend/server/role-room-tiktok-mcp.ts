@@ -35,11 +35,53 @@ export interface TikTokMcpServerDef {
   authorization_token: string;
 }
 
+export interface TikTokMcpToolConfig {
+  enabled?: boolean;
+  defer_loading?: boolean;
+}
+
 export interface TikTokMcpToolset {
   type: "mcp_toolset";
   mcp_server_name: string;
-  default_config?: { defer_loading?: boolean };
+  default_config?: TikTokMcpToolConfig;
+  configs?: Record<string, TikTokMcpToolConfig>;
 }
+
+/** Curated READ-ONLY tool allowlist. The MCP connector AUTO-EXECUTES enabled
+ *  tools server-side (no client confirmation like regular tool_use), so the
+ *  safe default enables only reporting/get/list tools — never create/update/
+ *  delete/status. Write tools are opt-in via mode:'full' behind a confirmation
+ *  UX (future work). */
+export const TIKTOK_MCP_READ_ONLY_TOOLS: readonly string[] = [
+  // Reporting / performance
+  "report_integrated_get",
+  "report_video_performance_get",
+  "creative_report_get",
+  "gmv_max_report_get",
+  // Entity reads
+  "campaign_get",
+  "adgroup_get",
+  "ad_get",
+  "advertiser_info_get",
+  "advertiser_balance_get",
+  // Audiences (read)
+  "audience_insight_info_get",
+  "audience_insight_overlap_get",
+  "dmp_custom_audience_list_get",
+  "dmp_saved_audience_list_get",
+  // Catalog / BC (read)
+  "catalog_get",
+  "catalog_overview_get",
+  "bc_get",
+  "bc_account_cost_get",
+  // Recommendations / leads (read)
+  "spark_ad_recommend_get",
+  "tool_bid_recommend",
+  "lead_get",
+  "lead_field_get",
+];
+
+export type TikTokMcpMode = "read_only" | "full";
 
 export interface TikTokMcpConfig {
   mcp_servers: TikTokMcpServerDef[];
@@ -55,6 +97,9 @@ export interface TikTokMcpConfig {
  */
 export function buildTikTokMcpConfig(options: {
   authorizationToken: string | null | undefined;
+  /** 'read_only' (default) enables only the reporting/get allowlist; 'full'
+   *  enables all tools (writes included) — use only behind confirmation UX. */
+  mode?: TikTokMcpMode;
   disclosure?: TikTokMcpDisclosure;
   /** Defer tool schemas (used with the Tool search tool) — recommended for the
    *  ~400-tool library so context isn't blown at connect. Default true. */
@@ -64,6 +109,25 @@ export function buildTikTokMcpConfig(options: {
   if (!token) return null;
   const disclosure = options.disclosure ?? "progressive";
   const deferLoading = options.deferLoading ?? true;
+  const mode = options.mode ?? "read_only";
+
+  const toolset: TikTokMcpToolset =
+    mode === "read_only"
+      ? {
+          type: "mcp_toolset",
+          mcp_server_name: TIKTOK_MCP_SERVER_NAME,
+          // Disable everything by default, then explicitly enable read tools.
+          default_config: { enabled: false, defer_loading: deferLoading },
+          configs: Object.fromEntries(
+            TIKTOK_MCP_READ_ONLY_TOOLS.map((name) => [name, { enabled: true }]),
+          ),
+        }
+      : {
+          type: "mcp_toolset",
+          mcp_server_name: TIKTOK_MCP_SERVER_NAME,
+          default_config: { enabled: true, defer_loading: deferLoading },
+        };
+
   return {
     mcp_servers: [
       {
@@ -73,13 +137,7 @@ export function buildTikTokMcpConfig(options: {
         authorization_token: token,
       },
     ],
-    tools: [
-      {
-        type: "mcp_toolset",
-        mcp_server_name: TIKTOK_MCP_SERVER_NAME,
-        default_config: { defer_loading: deferLoading },
-      },
-    ],
+    tools: [toolset],
     betas: [TIKTOK_MCP_BETA],
   };
 }
