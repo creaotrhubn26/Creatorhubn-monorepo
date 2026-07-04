@@ -264,6 +264,7 @@ struct LeadbookView: View {
     @State private var showPerformance = false
     @State private var showVersions = false
     @State private var selectedKPI: LeadbookKPI?
+    @State private var showStatsModal = false
     @State private var subTab: LeadbookSubTab = .pondus
     @State private var selectedPondusTemplate: PondusTemplate = PondusData.templates[0]
     @State private var showTeamAccess = false
@@ -806,11 +807,15 @@ struct LeadbookView: View {
     // MARK: KPI-rad
 
     private var kpiRow: some View {
-        // iPhone-compact (portrait): 2×2-grid slik at KPI-kortene ikke
-        // klemmes til uleselige. iPad/Mac-regular beholder eksisterende
-        // 1×4 HStack. LazyVGrid re-flyter automatisk ved rotasjon.
+        // iPhone: fire KPI-kort tok for mye plass — nå én kompakt
+        // statistikk-knapp der kortene ligger i modal med full bredde
+        // (samme mønster som Oversikt-fanen). iPad-compact beholder
+        // 2×2-grid, iPad/Mac-regular beholder 1×4 HStack.
         Group {
-            if isCompactLayout {
+            if DeviceIdiom.isPhone {
+                statsButton
+                    .sheet(isPresented: $showStatsModal) { statsModal }
+            } else if isCompactLayout {
                 LazyVGrid(
                     columns: [GridItem(.flexible(), spacing: 10),
                               GridItem(.flexible(), spacing: 10)],
@@ -828,6 +833,71 @@ struct LeadbookView: View {
                 }
             }
         }
+    }
+
+    // ── iPhone: kompakt statistikk-knapp + modal ─────────────────────
+
+    private var statsButton: some View {
+        let isDemo = DemoModeManager.isActiveNonisolated
+        let activeTemplates = isDemo ? LeadbookKPI.activeTemplates.value : LeadbookKPI.activeTemplates.liveValue
+        return Button {
+            showStatsModal = true
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(LBrand.purple.opacity(0.22))
+                    Image(systemName: "chart.bar.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(LBrand.purple)
+                }
+                .frame(width: 40, height: 40)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Statistikk")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(.white)
+                    Text("\(activeTemplates) aktive maler")
+                        .font(.system(size: 12))
+                        .foregroundStyle(LBrand.textSecondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(LBrand.textSecondary)
+            }
+            .padding(14)
+            .background(LBrand.card, in: RoundedRectangle(cornerRadius: 14))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14).stroke(LBrand.stroke, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var statsModal: some View {
+        ScrollView {
+            VStack(spacing: 14) {
+                Text("Statistikk")
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 18)
+
+                ForEach(LeadbookKPI.allCases) { kpi in
+                    kpiCard(kpi: kpi)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .padding(.horizontal, 18)
+            .padding(.bottom, 24)
+        }
+        .background(LBrand.bg.ignoresSafeArea())
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        // Kortene er drill-down-knapper — sheet må ligge PÅ modalen for at
+        // LeadbookKPIDetailSheet skal kunne presenteres oppå statistikk-modalen.
+        .sheet(item: $selectedKPI) { kpi in LeadbookKPIDetailSheet(kpi: kpi) }
     }
 
     private func kpiCard(kpi: LeadbookKPI) -> some View {

@@ -308,6 +308,7 @@ struct LeadsView: View {
     @State private var logActivityOpen: Bool = false
     @State private var addLeadOpen: Bool = false
     @State private var kpiDrillDown: KPIKind?
+    @State private var showStatsModal = false
     @State private var followUpOpen: Bool = false
     // iPhone (compact): detalj-sidebaren presenteres som sheet i stedet
     // for side-stilt kolonne.
@@ -631,6 +632,22 @@ struct LeadsView: View {
     // MARK: KPI-rad
 
     private var kpiRow: some View {
+        // iPhone: fem KPI-kort tok hele skjermen — nå én kompakt
+        // statistikk-knapp der kortene ligger i modal med full bredde
+        // (samme mønster som Oversikt-fanen). iPad/Mac beholder én rad.
+        Group {
+            if DeviceIdiom.isPhone {
+                statsButton
+                    .sheet(isPresented: $showStatsModal) { statsModal }
+            } else {
+                HStack(spacing: 12) {
+                    kpiCards
+                }
+            }
+        }
+    }
+
+    private var kpiCards: some View {
         // Demo PÅ → mock-tall m/ trend-piler. Demo AV → EKTE tellinger fra
         // appState.leads (trend skjules — vi har ikke historikk-serie her,
         // og en gjettet pil ville lyve om vekst). Tomt → "—".
@@ -643,25 +660,86 @@ struct LeadsView: View {
             return f.string(from: NSNumber(value: n)) ?? "\(n)"
         }
         func realValue(_ n: Int) -> String { real.isEmpty ? "—" : fmt(n) }
-        let cards = Group {
+        return Group {
             kpiCard(.totalLeads,     icon: "person.3.fill",      iconColor: LdBrand.purple,      title: "Totalt leads", value: isDemo ? "1 248" : realValue(real.count), trend: isDemo ? "+18 %" : nil)
             kpiCard(.newLeads,       icon: "sparkles",           iconColor: LdBrand.green,       title: "Nye leads",    value: isDemo ? "842"   : realValue(real.filter { $0.createdAt >= weekAgo }.count), trend: isDemo ? "+16 %" : nil)
             kpiCard(.contacted,      icon: "phone.fill",         iconColor: LdBrand.blue,        title: "Kontaktet",    value: isDemo ? "542"   : realValue(real.filter { $0.status != .unvisited }.count), trend: isDemo ? "+11 %" : nil)
             kpiCard(.meetingsBooked, icon: "calendar",           iconColor: LdBrand.purpleLight, title: "Møter avtalt", value: isDemo ? "236"   : realValue(real.filter { $0.status == .meetingBooked }.count), trend: isDemo ? "+12 %" : nil)
             kpiCard(.won,            icon: "trophy.fill",        iconColor: LdBrand.yellow,      title: "Vunnet",       value: isDemo ? "68"    : realValue(real.filter { $0.status == .won }.count), trend: isDemo ? "+24 %" : nil)
         }
-        // iPhone: 5 kort side-ved-side blir uleselig på compact width —
-        // 2-kolonne grid der. iPad/Mac beholder én rad.
-        return Group {
-            if DeviceIdiom.isPhone {
-                LazyVGrid(columns: MacCatalystGrid.adaptive(phone: 2, iPad: 5, mac: 5), spacing: 12) {
-                    cards
+    }
+
+    // ── iPhone: kompakt statistikk-knapp + modal ─────────────────────
+
+    private var statsButton: some View {
+        let isDemo = DemoModeManager.isActiveNonisolated
+        let real = appState.leads
+        let weekAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
+        let leadsText = isDemo ? "1 248 leads" : "\(real.count) leads"
+        let newCount = isDemo ? 842 : real.filter { $0.createdAt >= weekAgo }.count
+        return Button {
+            showStatsModal = true
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(LdBrand.purple.opacity(0.22))
+                    Image(systemName: "chart.bar.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(LdBrand.purple)
                 }
-            } else {
-                HStack(spacing: 12) {
-                    cards
+                .frame(width: 40, height: 40)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Statistikk")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(.white)
+                    HStack(spacing: 6) {
+                        Text(leadsText)
+                            .font(.system(size: 12))
+                            .foregroundStyle(LdBrand.textSecondary)
+                        if newCount > 0 {
+                            Text("+\(newCount) nye")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(LdBrand.green)
+                        }
+                    }
                 }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(LdBrand.textSecondary)
             }
+            .padding(14)
+            .background(LdBrand.card, in: RoundedRectangle(cornerRadius: 14))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14).stroke(LdBrand.stroke, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var statsModal: some View {
+        ScrollView {
+            VStack(spacing: 14) {
+                Text("Statistikk")
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 18)
+
+                kpiCards
+            }
+            .padding(.horizontal, 18)
+            .padding(.bottom, 24)
+        }
+        .background(LdBrand.bg.ignoresSafeArea())
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        // Kortene er drill-down-knapper — sheet må ligge PÅ modalen for at
+        // KPIDetailSheet skal kunne presenteres oppå statistikk-modalen.
+        .sheet(item: $kpiDrillDown) { kind in
+            KPIDetailSheet(kind: kind)
         }
     }
 
