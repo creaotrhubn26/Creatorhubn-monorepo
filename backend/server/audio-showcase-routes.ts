@@ -2763,6 +2763,49 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     } catch { return res.status(500).send("error"); }
   });
 
+  // Manuell påminnelse fra produsenten (workspace/Sesjoner + showcase):
+  // egen melding («husk å øv til …»), valgfritt kun til de som ikke har
+  // varmet opp. E-post + valgfri SMS, med medlemmets delte lenke (oppvarming
+  // & innsjekk). Owner-gatet.
+  app.post("/api/audio-showcases/:id/remind", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    const id = str(req.params.id, 64);
+    const message = str(req.body?.message, 600);
+    if (!message) return res.status(400).json({ error: "message_required" });
+    try {
+      const p = await pool.query(`SELECT title FROM audio_review_projects WHERE id=$1::uuid AND owner_user_id=$2 LIMIT 1`, [id, s.userId]);
+      if (p.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      const m = await pool.query(`SELECT name, role, email, phone, invite_token, is_owner FROM audio_review_members WHERE project_id=$1::uuid`, [id]).catch(() => ({ rows: [] as any[] }));
+      let recipients = m.rows.filter((x: any) => !x.is_owner);
+      // Målgruppe: 'all' | 'vocalist' | 'instrument' | fritekst-rolle — samme
+      // rolle-matching som oppvarmingsrutinene (warmupMatches).
+      const target = str(req.body?.target, 60) || "all";
+      if (target !== "all") recipients = recipients.filter((x: any) => warmupMatches(target, x.role));
+      if (req.body?.onlyNotWarmed === true) {
+        const warm = await pool.query(`SELECT DISTINCT c.member_name FROM audio_warmup_completions c JOIN audio_warmup_routines r ON r.id=c.routine_id WHERE r.project_id=$1::uuid`, [id]).catch(() => ({ rows: [] as any[] }));
+        const done = new Set(warm.rows.map((w: any) => w.member_name));
+        recipients = recipients.filter((x: any) => !done.has(x.name));
+      }
+      let emailsSent = 0; let smsSent = 0;
+      for (const a of recipients) {
+        const link = a.invite_token ? `${APP_URL}/audio-review/shared/${a.invite_token}` : null;
+        const text = `${message}${link ? `\n\nÅpne rommet ditt (oppvarming & innsjekk): ${link}` : ""}`;
+        const html = `<div style="font-family:system-ui,Arial,sans-serif;max-width:520px;margin:0 auto;color:#1a1a1a">
+          <p style="white-space:pre-wrap;margin:0 0 12px">${icsEsc(message)}</p>
+          ${link ? `<a href="${link}" style="display:inline-block;background:#FF6B35;color:#150d05;font-weight:700;text-decoration:none;padding:10px 20px;border-radius:999px">Åpne rommet ditt</a>` : ""}</div>`;
+        if (sendEmail && a.email) {
+          await sendEmail({ to: a.email, subject: `Påminnelse: ${p.rows[0].title}`, html, text, kind: "audio_manual_reminder" }).then(() => { emailsSent++; }).catch(() => {});
+        }
+        if (a.phone && await sendSms(a.phone, text)) smsSent++;
+      }
+      return res.json({ ok: true, recipients: recipients.length, emails: emailsSent, sms: smsSent });
+    } catch (e) {
+      if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
+      console.error("[audio-showcase] remind failed:", e);
+      return res.status(500).json({ error: "remind_failed" });
+    }
+  });
+
   // CRON: send 24t- og 1t-påminnelser for kommende økter (e-post + valgfri SMS).
   app.post("/api/audio-showcase/sessions/run-reminders", async (req, res) => {
     const presented = String(req.headers["x-cron-trigger-token"] || "").trim();

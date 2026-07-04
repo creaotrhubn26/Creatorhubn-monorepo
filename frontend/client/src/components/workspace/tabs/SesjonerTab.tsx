@@ -53,6 +53,7 @@ const SesjonerTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [moods, setMoods] = useState<any[]>([]);
   const [bandSize, setBandSize] = useState(0);
   const [warmupOpen, setWarmupOpen] = useState(false);
+  const [remindOpen, setRemindOpen] = useState(false);
   const loadWellbeing = (arId: string) => {
     apiRequest(`/api/audio-showcases/${encodeURIComponent(arId)}/warmups`)
       .then((r: any) => setWarmups(Array.isArray(r?.routines) ? r.routines : []))
@@ -207,7 +208,12 @@ const SesjonerTab: React.FC<{ projectId: string }> = ({ projectId }) => {
             <WsSectionTitle
               icon={<SelfImprovement sx={{ fontSize: 18, color: ws.textDim }} />}
               title="Oppvarming & fokus"
-              action={<Button size="small" startIcon={<Add sx={{ fontSize: 15 }} />} onClick={() => setWarmupOpen(true)} sx={{ color: ws.accent, textTransform: 'none', fontWeight: 700 }}>Ny rutine</Button>}
+              action={
+                <Stack direction="row" spacing={0.5}>
+                  <Button size="small" onClick={() => setRemindOpen(true)} sx={{ color: ws.textDim, textTransform: 'none', fontWeight: 600 }}>Påminn bandet</Button>
+                  <Button size="small" startIcon={<Add sx={{ fontSize: 15 }} />} onClick={() => setWarmupOpen(true)} sx={{ color: ws.accent, textTransform: 'none', fontWeight: 700 }}>Ny rutine</Button>
+                </Stack>
+              }
             />
             {warmups.length === 0 ? (
               <Stack alignItems="center" sx={{ py: 2.5 }} spacing={0.75}>
@@ -299,18 +305,78 @@ const SesjonerTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         )}
       </WsCard>
 
-      <PlanSessionDialog open={planOpen} onClose={() => setPlanOpen(false)} projectId={projectId} onCreated={() => { setPlanOpen(false); loadMeetings(); }} />
+      <PlanSessionDialog open={planOpen} onClose={() => setPlanOpen(false)} projectId={projectId} audioRoomId={audioRoomId} onCreated={() => { setPlanOpen(false); loadMeetings(); }} />
       {audioRoomId && <WarmupDialog open={warmupOpen} projectId={audioRoomId} onClose={() => { setWarmupOpen(false); loadWellbeing(audioRoomId); }} />}
+      {audioRoomId && <RemindBandDialog open={remindOpen} onClose={() => setRemindOpen(false)} audioRoomId={audioRoomId} nextSession={nextSession} />}
     </Box>
   );
 };
 
-const PlanSessionDialog: React.FC<{ open: boolean; onClose: () => void; projectId: string; onCreated: () => void }> = ({ open, onClose, projectId, onCreated }) => {
+/**
+ * «Påminn bandet» — manuell påminnelse fra produsenten (POST
+ * /api/audio-showcases/:id/remind): egen melding, valgfritt kun til de som
+ * ikke har varmet opp. E-post + SMS der telefon finnes; hvert medlem får
+ * sin delte lenke (oppvarming & innsjekk). De automatiske 24t-/1t-
+ * påminnelsene for økter i økt-kalenderen går i tillegg, via cron.
+ */
+const RemindBandDialog: React.FC<{ open: boolean; onClose: () => void; audioRoomId: string; nextSession: any | null }> = ({ open, onClose, audioRoomId, nextSession }) => {
+  const defaultMsg = nextSession?.scheduledAt
+    ? `Husk oppvarming og øving før «${nextSession.title || 'Studio-økt'}» ${fmtDateTime(nextSession.scheduledAt)} 🎶`
+    : 'Husk oppvarming og øving før neste økt 🎶';
+  const [message, setMessage] = useState(defaultMsg);
+  const [target, setTarget] = useState('all');
+  const [onlyNotWarmed, setOnlyNotWarmed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { if (open) { setMessage(defaultMsg); setError(null); } /* eslint-disable-next-line */ }, [open]);
+
+  const send = async () => {
+    if (!message.trim()) { setError('Skriv en melding'); return; }
+    setBusy(true); setError(null);
+    try {
+      const r: any = await apiRequest(`/api/audio-showcases/${encodeURIComponent(audioRoomId)}/remind`, {
+        method: 'POST', body: { message: message.trim(), target, onlyNotWarmed },
+      });
+      window.alert(`Påminnelse sendt til ${r?.recipients ?? 0} medlem(mer) — ${r?.emails ?? 0} e-post${r?.sms ? `, ${r.sms} SMS` : ''}.`);
+      onClose();
+    } catch (e: any) { setError(e?.message || 'Kunne ikke sende påminnelsen'); } finally { setBusy(false); }
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="xs">
+      <DialogTitle>Påminn bandet</DialogTitle>
+      <DialogContent dividers>
+        <Stack spacing={2} sx={{ pt: 0.5 }}>
+          <TextField label="Melding" value={message} onChange={(e) => setMessage(e.target.value)} fullWidth size="small" multiline minRows={3} />
+          <TextField select label="Målgruppe" value={target} onChange={(e) => setTarget(e.target.value)} fullWidth size="small"
+            helperText="Vokalist/instrument matches på medlemmets rolle i bandet">
+            <MenuItem value="all">Hele bandet</MenuItem>
+            <MenuItem value="vocalist">Kun vokalist(er)</MenuItem>
+            <MenuItem value="instrument">Kun instrumentalister</MenuItem>
+          </TextField>
+          <FormControlLabel control={<Checkbox checked={onlyNotWarmed} onChange={(e) => setOnlyNotWarmed(e.target.checked)} size="small" />} label="Kun til de som ikke har varmet opp ennå" />
+          <Typography variant="caption" color="text.secondary">Sendes på e-post (og SMS der telefonnummer finnes) med hvert medlems lenke til oppvarming og innsjekk. Økter i økt-kalenderen får i tillegg automatiske påminnelser 24 timer og 1 time før.</Typography>
+          {error && <Alert severity="error">{error}</Alert>}
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose} disabled={busy}>Avbryt</Button>
+        <Button variant="contained" onClick={send} disabled={busy || !message.trim()} startIcon={busy ? <CircularProgress size={14} color="inherit" /> : null}>{busy ? 'Sender…' : 'Send påminnelse'}</Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
+const PlanSessionDialog: React.FC<{ open: boolean; onClose: () => void; projectId: string; audioRoomId?: string | null; onCreated: () => void }> = ({ open, onClose, projectId, audioRoomId, onCreated }) => {
   const [title, setTitle] = useState('');
   const [when, setWhen] = useState('');
   const [duration, setDuration] = useState(120);
   const [location, setLocation] = useState('');
   const [withMeet, setWithMeet] = useState(false);
+  // Innkalling via økt-kalenderen: bandet får e-post m/ RSVP + .ics, og de
+  // automatiske 24t-/1t-påminnelsene («Husk oppvarming før økta») fra cronen.
+  const [inviteBand, setInviteBand] = useState(true);
+  const [inviteTarget, setInviteTarget] = useState('all');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -318,16 +384,31 @@ const PlanSessionDialog: React.FC<{ open: boolean; onClose: () => void; projectI
     if (!when) { setError('Velg dato og tid'); return; }
     setBusy(true); setError(null);
     try {
+      const startIso = new Date(when).toISOString();
       await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/meetings`, {
         method: 'POST',
         body: {
           title: title.trim() || 'Studio-økt',
-          scheduledAt: new Date(when).toISOString(),
+          scheduledAt: startIso,
           durationMinutes: duration,
           location: location.trim() || null,
           generateMeet: withMeet,
         },
       });
+      // Speil økten inn i økt-kalenderen → innkalling + automatiske påminnelser.
+      if (inviteBand && audioRoomId) {
+        await apiRequest(`/api/audio-showcases/${encodeURIComponent(audioRoomId)}/sessions`, {
+          method: 'POST',
+          body: {
+            title: title.trim() || 'Studio-økt',
+            startAt: startIso,
+            endAt: new Date(new Date(when).getTime() + duration * 60000).toISOString(),
+            location: location.trim() || null,
+            kind: 'opptak',
+            target: inviteTarget,
+          },
+        }).catch(() => { /* meetings-avtalen står — innkallingen er best-effort */ });
+      }
       setTitle(''); setWhen(''); setLocation(''); setWithMeet(false);
       onCreated();
     } catch (e: any) { setError(e?.message || 'Kunne ikke opprette økten'); } finally { setBusy(false); }
@@ -345,6 +426,19 @@ const PlanSessionDialog: React.FC<{ open: boolean; onClose: () => void; projectI
           </TextField>
           <TextField label="Studio / sted" placeholder="F.eks. Studio A, Oslo" value={location} onChange={(e) => setLocation(e.target.value)} fullWidth size="small" />
           <FormControlLabel control={<Checkbox checked={withMeet} onChange={(e) => setWithMeet(e.target.checked)} size="small" />} label="Lag Google Meet-lenke (for eksterne bidragsytere)" />
+          {audioRoomId && (
+            <>
+              <FormControlLabel control={<Checkbox checked={inviteBand} onChange={(e) => setInviteBand(e.target.checked)} size="small" />}
+                label="Send innkalling (RSVP + automatiske påminnelser 24 t og 1 t før)" />
+              {inviteBand && (
+                <TextField select label="Innkalling til" value={inviteTarget} onChange={(e) => setInviteTarget(e.target.value)} fullWidth size="small">
+                  <MenuItem value="all">Hele bandet</MenuItem>
+                  <MenuItem value="vocalist">Kun vokalist(er)</MenuItem>
+                  <MenuItem value="instrument">Kun instrumentalister</MenuItem>
+                </TextField>
+              )}
+            </>
+          )}
           {error && <Alert severity="error">{error}</Alert>}
         </Stack>
       </DialogContent>
