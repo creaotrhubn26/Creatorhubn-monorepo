@@ -448,14 +448,23 @@ export function registerLeadgridProposalsRoutes(deps: ProposalsRoutesDeps): void
 
       // E-post m/ offentlig lenke (Resend → SMTP-fallback, logges).
       // Org-branding (accent/navn) — best-effort, default Leadgrid-lilla.
+      // Kunde-org-branding: leadgrid_email_branding_config er fasit
+      // (settes via web EmailBrandingTab) — brand_name/-logo/-farge/
+      // reply-to. organizations-raden er fallback; Leadgrid-lockup kun
+      // for default-branding (org uten rad).
       let orgName = "Leadgrid";
       let accent = "#7c3aed";
       let emailLogoUrl: string | null = `${publicBackendBase()}/api/leadgrid/assets/logo.png`;
+      let replyTo: string | null = null;
       try {
-        const b = await pool.query<{ name: string; primary_color: string; logo_url: string | null }>(
-          `SELECT o.name,
+        const b = await pool.query<{
+          name: string; primary_color: string; logo_url: string | null; reply_to: string | null;
+        }>(
+          `SELECT CASE WHEN eb.brand_name IS NOT NULL AND eb.brand_name <> 'Leadgrid'
+                       THEN eb.brand_name ELSE o.name END          AS name,
                   COALESCE(eb.brand_primary_color, o.brand_color, '#7c3aed') AS primary_color,
-                  o.logo_url
+                  COALESCE(eb.brand_logo_url, o.logo_url)          AS logo_url,
+                  eb.reply_to_email                                AS reply_to
              FROM organizations o
              LEFT JOIN leadgrid_email_branding_config eb ON eb.org_key = o.id::text
             WHERE o.id = $1::uuid`,
@@ -464,9 +473,8 @@ export function registerLeadgridProposalsRoutes(deps: ProposalsRoutesDeps): void
         if (b.rows[0]) {
           orgName = b.rows[0].name;
           accent = b.rows[0].primary_color;
-          // Org-egen logo når den finnes; ellers tekst-navn (Leadgrid-
-          // lockup-en gjelder kun default-brandingen).
           emailLogoUrl = b.rows[0].logo_url;
+          replyTo = b.rows[0].reply_to;
         }
       } catch {
         // org er slug/user-id — behold Leadgrid-default.
@@ -482,6 +490,7 @@ export function registerLeadgridProposalsRoutes(deps: ProposalsRoutesDeps): void
         }),
         text: `${title}\n\nTilbud til ${lead.name}.\n\n${message}\n\nSum eks. mva.: ${fmtNok(total)} kr\nMva. 25 %: ${fmtNok(Math.round(total * 0.25))} kr\nTotalt inkl. mva.: ${fmtNok(total + Math.round(total * 0.25))} kr\n\nSe tilbudet: ${url}\n\nVennlig hilsen\n${senderName}\n${orgName}`,
         fromLabel: orgName,
+        replyTo,
         kind: "leadgrid_proposal",
         sentByUserId: session.userId,
         pool,
@@ -628,10 +637,11 @@ export function registerLeadgridProposalsRoutes(deps: ProposalsRoutesDeps): void
         const b = await pool.query<{
           name: string; primary_color: string; sender_name: string | null; logo_url: string | null;
         }>(
-          `SELECT o.name,
+          `SELECT CASE WHEN eb.brand_name IS NOT NULL AND eb.brand_name <> 'Leadgrid'
+                       THEN eb.brand_name ELSE o.name END          AS name,
                   COALESCE(eb.brand_primary_color, o.brand_color, '#7c3aed') AS primary_color,
-                  eb.sender_full_name AS sender_name,
-                  o.logo_url
+                  eb.sender_full_name                              AS sender_name,
+                  COALESCE(eb.brand_logo_url, o.logo_url)          AS logo_url
              FROM organizations o
              LEFT JOIN leadgrid_email_branding_config eb ON eb.org_key = o.id::text
             WHERE o.id = $1::uuid`,

@@ -36,6 +36,10 @@ struct LeadMapApp: App {
                 // Var tidligere gated til !macCatalyst, men da fikk topp-
                 // menyen mørk bakgrunn + mørk system-tekst = usynlig text.
                 .preferredColorScheme(.dark)
+                // Mac Catalyst: minste vindusstørrelse 1024×768.
+                // Under dette blir Leadgrid-layouten trang (KPI-rad + kart
+                // + sidebar). No-op på iPhone/iPad hvor systemet styrer.
+                .macCatalystMinFrame()
                 .onAppear {
                     NotificationAppDelegate.appStateRef = appState
                     // Flush eventuell buffret Pondus-deep-link fra en Intent
@@ -250,7 +254,91 @@ struct RootView: View {
                 appState.handleLeadCreatedEvent(userInfo: info)
             }
         }
+        // Mac Catalyst: Cmd+1..7 bytter hovedfane. Hidden buttons registrerer
+        // shortcut med systemet uten å ta plass i layout. No-op på iOS/iPadOS
+        // (macCatalystKeyboardShortcuts gater seg selv).
+        .background { GlobalKeyboardShortcuts() }
     }
+}
+
+/// Hidden button-strip som registrerer keyboard shortcuts på Mac Catalyst.
+/// Cmd+1..7 = bytt sidebar-item (Oversikt/Kart/Leads/Møter/Team/Leadbook/Salgsledelse).
+/// Cmd+, = Innstillinger (postes som NSNotification for at aktuell fane kan reagere).
+///
+/// Alle buttons har frame(0) og opacity(0) — usynlig men reachable av
+/// UIKit accelerator-systemet på Mac. iOS/iPadOS ignorerer `.keyboardShortcut`
+/// mens en HW-tastatur ikke er parret, så dette er trygt globalt.
+struct GlobalKeyboardShortcuts: View {
+    @Environment(AppState.self) private var appState
+
+    var body: some View {
+        #if targetEnvironment(macCatalyst)
+        ZStack {
+            ForEach(SidebarItem.allCases.indices, id: \.self) { idx in
+                let item = SidebarItem.allCases[idx]
+                let key = KeyEquivalent(Character("\(idx + 1)"))
+                Button {
+                    appState.selectedSidebarItem = item
+                } label: { EmptyView() }
+                    .keyboardShortcut(key, modifiers: .command)
+                    .frame(width: 0, height: 0)
+                    .opacity(0)
+                    .accessibilityHidden(true)
+            }
+            // Cmd+, = Innstillinger (broadcast — fane-hostene kan lytte).
+            Button {
+                NotificationCenter.default.post(name: .leadgridOpenSettings, object: nil)
+            } label: { EmptyView() }
+                .keyboardShortcut(",", modifiers: .command)
+                .frame(width: 0, height: 0)
+                .opacity(0)
+                .accessibilityHidden(true)
+            // Cmd+N = nytt lead. Bytter til Kart-fanen først, så sender
+            // broadcast som KartView plukker opp for å åpne AddLeadSheet.
+            Button {
+                appState.selectedSidebarItem = .kart
+                NotificationCenter.default.post(name: .leadgridNewLead, object: nil)
+            } label: { EmptyView() }
+                .keyboardShortcut("n", modifiers: .command)
+                .frame(width: 0, height: 0)
+                .opacity(0)
+                .accessibilityHidden(true)
+            // Cmd+K = søk (bytter til Leads + fokuserer søkefelt).
+            Button {
+                appState.selectedSidebarItem = .leads
+                NotificationCenter.default.post(name: .leadgridFocusSearch, object: nil)
+            } label: { EmptyView() }
+                .keyboardShortcut("k", modifiers: .command)
+                .frame(width: 0, height: 0)
+                .opacity(0)
+                .accessibilityHidden(true)
+            // Cmd+F = søk i aktuell tabell (broadcast — hver fane som har
+            // søkefelt lytter og focus-flagger sitt tekstfelt).
+            Button {
+                NotificationCenter.default.post(name: .leadgridFocusSearch, object: nil)
+            } label: { EmptyView() }
+                .keyboardShortcut("f", modifiers: .command)
+                .frame(width: 0, height: 0)
+                .opacity(0)
+                .accessibilityHidden(true)
+        }
+        .frame(width: 0, height: 0)
+        #else
+        EmptyView()
+        #endif
+    }
+}
+
+extension Notification.Name {
+    /// Broadcast når brukeren trykker Cmd+, på Mac Catalyst.
+    static let leadgridOpenSettings =
+        Notification.Name("LeadMapApp.leadgridOpenSettings")
+    /// Broadcast når brukeren trykker Cmd+N på Mac Catalyst (Kart-fanen håndterer).
+    static let leadgridNewLead =
+        Notification.Name("LeadMapApp.leadgridNewLead")
+    /// Broadcast når brukeren trykker Cmd+K eller Cmd+F (Leads/Kart søk).
+    static let leadgridFocusSearch =
+        Notification.Name("LeadMapApp.leadgridFocusSearch")
 }
 
 /// Session-expiry-modal — vises når en API-call returnerte 401.
@@ -571,7 +659,10 @@ struct MainSidebarView: View {
     var body: some View {
         NavigationSplitView(columnVisibility: $visibility) {
             sidebarList
-                .navigationTitle("Leadgrid")
+                // Brand-lockup øverst i sidemenyen erstatter tekst-tittelen
+                // (wordmarken ligger i logoen — «Leadgrid»-tekst ville doblet).
+                .navigationTitle("")
+                .navigationBarTitleDisplayMode(.inline)
         } detail: {
             NavigationStack {
                 detailFor(state.selectedSidebarItem)
@@ -586,6 +677,18 @@ struct MainSidebarView: View {
         // iOS støtter ikke List(selection:content:) på den helt frie formen,
         // så vi bruker eksplisitt ForEach + .tag() i hver Section.
         List {
+            // Leadgrid-lockup som brand-header i sidemenyen (2026-07-04).
+            Section {
+                Image("LeadgridLockup")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: 170)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 4)
+                    .accessibilityLabel("Leadgrid")
+            }
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
             Section("Hovedfaner") {
                 ForEach(SidebarItem.allCases) { item in
                     sidebarRow(
@@ -635,6 +738,7 @@ struct MainSidebarView: View {
                               : Color.primary)
         }
         .buttonStyle(.plain)
+        .macCatalystHover()
     }
 
     @ViewBuilder

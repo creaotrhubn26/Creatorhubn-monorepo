@@ -465,6 +465,7 @@ struct LeadsView: View {
         GeometryReader { geo in
             let isNarrow = geo.size.width < 1100
             HStack(alignment: .top, spacing: 14) {
+                if !isNarrow { LeadgridHeaderMark().padding(.top, 4) }
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Leads")
                         .font(.system(size: 28, weight: .bold))

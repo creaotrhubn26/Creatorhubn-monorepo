@@ -411,6 +411,7 @@ struct LeadbookView: View {
         GeometryReader { geo in
             let isCompact = geo.size.width < 1300
             HStack(alignment: .top, spacing: 14) {
+                if !isCompact { LeadgridHeaderMark().padding(.top, 4) }
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Leadbook")                         // ← omdøpt fra Playbook
                         .font(.system(size: 28, weight: .bold))
