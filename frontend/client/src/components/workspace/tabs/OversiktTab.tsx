@@ -238,6 +238,13 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
         { role: 'Levering', icon: '🚚', crew: 'begge' },
         { role: 'Oppfølging', icon: '📞', crew: 'editor' },
       ]
+    : wsCategory === 'service'
+    ? [
+        { role: 'Booking', icon: '📅', crew: 'fotograf' },
+        { role: 'Forberedelse', icon: '🧴', crew: 'videograf' },
+        { role: 'Gjennomføring', icon: '✂️', crew: 'begge' },
+        { role: 'Oppfølging', icon: '💬', crew: 'editor' },
+      ]
     : [
         { role: 'Fotograf', icon: '📷', crew: 'fotograf' },
         { role: 'Videograf', icon: '🎥', crew: 'videograf' },
