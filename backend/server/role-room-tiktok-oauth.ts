@@ -29,6 +29,10 @@ const TIKTOK_USER_INFO_URL = 'https://open.tiktokapis.com/v2/user/info/';
 export const ROLE_ROOM_TIKTOK_SCOPES = [
   'user.info.basic',
   'video.upload',
+  // video.list: Display API video metrics (view/like/comment/share) for
+  // organic KPI (scorecard/#2). Eksisterende tokens mangler den → KPI-
+  // connectoren degraderer grasiøst til tom til brukeren re-kobler.
+  'video.list',
   // 'video.publish', // Slå på når Content Posting API er godkjent
 ] as const;
 
