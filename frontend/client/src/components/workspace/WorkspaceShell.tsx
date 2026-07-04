@@ -48,13 +48,14 @@ import Settings from '@mui/icons-material/Settings';
 import HexagonOutlined from '@mui/icons-material/HexagonOutlined';
 import Add from '@mui/icons-material/Add';
 import WorkOutline from '@mui/icons-material/WorkOutline';
+import EventAvailable from '@mui/icons-material/EventAvailable';
 import { ws, workspaceDarkTheme, WS_NAV, type WsNavItem } from './workspaceTheme';
 
 const ICONS: Record<string, React.ElementType> = {
   Dashboard, AccountTree, Map, PhotoCameraBack, GridView, PermMedia, LocalShipping,
   CheckCircleOutline, Group, ChatBubbleOutline, PhotoCamera, Videocam, Movie, GraphicEq,
   Visibility, EventNote, Album, LibraryMusic, School, MoveToInbox, Forum, Inventory2,
-  WorkOutline,
+  WorkOutline, EventAvailable,
 };
 
 const GROUP_LABEL: Record<string, string> = {

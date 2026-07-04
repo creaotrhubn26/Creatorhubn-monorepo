@@ -30,6 +30,7 @@ import PhotoRoomTab from './tabs/PhotoRoomTab';
 import LaaterTab from './tabs/LaaterTab';
 import SesjonerTab from './tabs/SesjonerTab';
 import OppdragTab from './tabs/OppdragTab';
+import BookingerTab from './tabs/BookingerTab';
 import ForesporslerTab from './tabs/ForesporslerTab';
 import UtstyrTab from './tabs/UtstyrTab';
 import AcademyInstructorAdminStudio from '../academy/AcademyInstructorAdminStudio';
@@ -209,6 +210,7 @@ const TeamWorkspacePage: React.FC = () => {
     laater: <LaaterTab projectId={projectId} />,
     sesjoner: <SesjonerTab projectId={projectId} />,
     oppdrag: <OppdragTab projectId={projectId} />,
+    bookinger: <BookingerTab projectId={projectId} />,
     academy: <AcademyProvider><AcademyInstructorAdminStudio /></AcademyProvider>,
     community: <CommunityHub userId={user?.id} userEmail={user?.email} profession={user?.profession || 'photographer'} />,
     moodboard: <MoodboardTab projectId={projectId} />,
