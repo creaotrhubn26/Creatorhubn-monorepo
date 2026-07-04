@@ -331,6 +331,7 @@ struct LeadsView: View {
     @State private var savedViewsOpen: Bool = false
     @State private var importOpen: Bool = false
     @State private var exportOpen: Bool = false
+    @State private var cardScannerOpen: Bool = false
 
     // Mac Catalyst: Cmd+K/Cmd+F fokuserer søkefelt via `.leadgridFocusSearch`
     // NotificationCenter-broadcast.
@@ -409,6 +410,12 @@ struct LeadsView: View {
             if let api = appState.api {
                 LeadgridExportShareView(api: api)
             }
+        }
+        .sheet(isPresented: $cardScannerOpen) {
+            // Visittkort → OCR → lead (backend fyrer lead.created →
+            // welcome/intro-workflow). Refresh lista når sheeten lukkes.
+            BusinessCardScannerView()
+                .onDisappear { Task { await appState.refreshLeads() } }
         }
         .sheet(isPresented: $uploadOpen) {
             UploadFileSheet(lead: selectedLead)
@@ -698,6 +705,23 @@ struct LeadsView: View {
                     Image(systemName: "arrow.down.circle")
                         .font(.system(size: 11, weight: .semibold))
                     Text("Importer")
+                        .font(.system(size: 12, weight: .semibold))
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 10).padding(.vertical, 8)
+                .background(LdBrand.card, in: RoundedRectangle(cornerRadius: 9))
+                .overlay(RoundedRectangle(cornerRadius: 9).stroke(LdBrand.stroke, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+
+            // Visittkort-skanner (2026-07-04): OCR → lead → lead.created-
+            // workflow. Kjeden fantes (BusinessCardScannerView) men var
+            // frakoblet etter tab-porten.
+            Button { cardScannerOpen = true } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "person.text.rectangle")
+                        .font(.system(size: 11, weight: .semibold))
+                    Text("Skann kort")
                         .font(.system(size: 12, weight: .semibold))
                 }
                 .foregroundStyle(.white)

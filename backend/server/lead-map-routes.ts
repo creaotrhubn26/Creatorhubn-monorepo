@@ -419,7 +419,28 @@ export function setupLeadMapRoutes(deps: Deps): void {
         );
         // Hvis title satt, lagre som notat (vi har ikke felt for kontakt-tittel
         // separat — på crm_customers er notes-feltet tilstrekkelig)
-        return res.json({ ok: true, id: r.rows[0].id });
+        // Workflow-event (2026-07-04): visittkort-skannede leads skal
+        // også fyre lead.created (welcome/intro-workflows) — samme
+        // mønster som pin-drop-ruten. Fire-and-forget.
+        const cardLeadId = r.rows[0].id;
+        void (async () => {
+          try {
+            const { resolveOrgIdForUser } = await import("./leadgrid-org-resolver.js");
+            const { publishEvent } = await import("./leadgrid-workflow-engine.js");
+            const orgId = await resolveOrgIdForUser(pool, session.userId);
+            await publishEvent({
+              pool,
+              organizationId: orgId,
+              type: "lead.created",
+              leadId: cardLeadId,
+              actorUserId: session.userId,
+              data: { source: "business_card_scan", occurred_at: new Date().toISOString() },
+            });
+          } catch (err) {
+            console.warn("[lead-map] from-card lead.created feilet:", (err as Error).message);
+          }
+        })();
+        return res.json({ ok: true, id: cardLeadId });
       } catch (err) {
         return res.status(500).json({ error: "create_failed", detail: String(err) });
       }

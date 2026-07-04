@@ -204,6 +204,10 @@ final class LiveTranscriptionEngine: ObservableObject {
 // MARK: - LiveTranscriptionSheet
 
 struct LiveTranscriptionSheet: View {
+    /// Når satt (2026-07-04): «Bruk i notat»-knapp leverer transkriptet
+    /// til kalleren (f.eks. LogActivitySheet sitt notatfelt) i stedet
+    /// for kun å lagre i Eksempler.
+    var onUse: ((String) -> Void)? = nil
     @StateObject private var engine = LiveTranscriptionEngine()
     @Environment(\.dismiss) private var dismiss
     @State private var showSavedToast = false
@@ -249,7 +253,20 @@ struct LiveTranscriptionSheet: View {
                         dismiss()
                     }.tint(LBrand.textSecondary)
                 }
-                if !engine.transcript.isEmpty && !engine.isRecording {
+                if !engine.transcript.isEmpty && !engine.isRecording, let onUse {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button {
+                            onUse(engine.transcript)
+                            engine.reset()
+                            dismiss()
+                        } label: {
+                            Label("Bruk i notat", systemImage: "arrow.down.doc.fill")
+                                .font(.system(size: 13, weight: .bold))
+                        }
+                        .tint(LBrand.green)
+                    }
+                }
+                if !engine.transcript.isEmpty && !engine.isRecording && onUse == nil {
                     ToolbarItem(placement: .confirmationAction) {
                         Button {
                             savedTitle = autoTitle()
