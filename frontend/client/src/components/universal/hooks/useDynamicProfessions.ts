@@ -97,24 +97,35 @@ export function useDynamicProfessions() {
 });
 
   useEffect(() => {
-    if (professionTypesData && Array.isArray(professionTypesData)) {
+    // Endepunktet returnerer { professions: [...] } (kanonisk baseline + DB);
+    // godta også rå array for bakoverkompatibilitet. Feltene normaliseres
+    // (isActive/enabled, displayName/name) så en shape-drift aldri gir tom liste.
+    const rows = Array.isArray(professionTypesData)
+      ? professionTypesData
+      : Array.isArray((professionTypesData as any)?.professions)
+        ? (professionTypesData as any).professions
+        : null;
+    if (rows) {
       const configs: Record<string, DynamicProfessionConfig> = {};
-      
-      professionTypesData.forEach((profession: any) => {
-        if (profession.isActive) {
-          configs[profession.name] = {
-            name: profession.name,
-            displayName: profession.displayName,
-            iconColor: profession.iconColor || '#ff8c00',
-            isActive: profession.isActive,
+
+      rows.forEach((profession: any) => {
+        const name = profession.name || profession.id;
+        const isActive = profession.isActive ?? profession.enabled ?? false;
+        if (name && isActive) {
+          configs[name] = {
+            name,
+            displayName: profession.displayName || profession.name || name,
+            iconColor: profession.iconColor || DEFAULT_PROFESSIONS[name]?.iconColor || '#ff8c00',
+            isActive: true,
             sortOrder: profession.sortOrder || 0,
-            icon: getProfessionIcon(profession.name),
-            components: getDefaultComponentsForProfession(profession.name)
+            icon: getProfessionIcon(name),
+            components: getDefaultComponentsForProfession(name)
         };
       }
     });
-      
-      setProfessionConfigs(configs);
+
+      // Tom respons skal aldri nulle ut dashbordene — behold defaults.
+      setProfessionConfigs(Object.keys(configs).length > 0 ? configs : DEFAULT_PROFESSIONS);
   } else if (error) {
       // If API fails, ensure we still have default professions
       setProfessionConfigs(DEFAULT_PROFESSIONS);

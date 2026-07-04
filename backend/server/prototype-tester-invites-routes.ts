@@ -20,6 +20,7 @@
 import type express from "express";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
+import { normalizeProfession } from "../../frontend/shared/profession-types.ts";
 
 export interface PrototypeTesterInvitesDeps {
   app: express.Application;
@@ -187,17 +188,10 @@ const ALLOWED_MEMBER_PROFESSIONS = new Set([
   "vendor",
 ]);
 function normalizeMemberProfession(raw: unknown): string | null {
-  const v = typeof raw === "string" ? raw.trim().toLowerCase() : "";
-  if (!v) return null;
-  // Norske synonymer → kanoniske keys.
-  const alias: Record<string, string> = {
-    fotograf: "photographer",
-    videograf: "videographer",
-    musikkprodusent: "music_producer",
-    leverandør: "vendor",
-    leverandor: "vendor",
-  };
-  const mapped = alias[v] || v;
+  // Delt kanonisering (norske synonymer + skilletegns-varianter som
+  // 'musicproducer' → 'music_producer') + lokal whitelist for team-medlemmer.
+  const mapped = normalizeProfession(raw);
+  if (!mapped) return null;
   return ALLOWED_MEMBER_PROFESSIONS.has(mapped) ? mapped : null;
 }
 
