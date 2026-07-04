@@ -408,6 +408,7 @@ struct MeetingsView: View {
     @State private var upcomingDetail: UpcomingMeetingMini?
     @State private var showAllUpcoming: Bool = false
     @State private var calMode: CalendarMode = .agenda
+    @State private var showStatsModal = false
     @State private var bookDayOfMonth: Int?
     // Pakke 10.1 — rike header-popovere
     @State private var analyseOpen: Bool = false
@@ -655,6 +656,22 @@ struct MeetingsView: View {
     // MARK: KPI
 
     private var kpiRow: some View {
+        // iPhone: fire KPI-kort tok for mye plass — nå én kompakt
+        // statistikk-knapp der kortene ligger i modal med full bredde
+        // (samme mønster som Oversikt-fanen). iPad/Mac: uendret rad.
+        Group {
+            if DeviceIdiom.isPhone {
+                statsButton
+                    .sheet(isPresented: $showStatsModal) { statsModal }
+            } else {
+                HStack(spacing: 12) {
+                    kpiCards
+                }
+            }
+        }
+    }
+
+    private var kpiCards: some View {
         // Demo PÅ → mockup-tall. Demo AV → EKTE tellinger fra kalenderen
         // ("—" når tomt, ingen fiktiv trend-tekst).
         let cal = Calendar.current
@@ -676,28 +693,71 @@ struct MeetingsView: View {
         }
         let remaining = sourceAgenda.filter { $0.startTime > MeetingMapping.timeString(now) }.count
 
-        // De fire kortene deles mellom layoutene under.
-        @ViewBuilder
-        func kpiCards() -> some View {
+        return Group {
             kpiCard(title: "Møter i dag",  value: isDemo ? "5"       : (todayCount > 0 ? "\(todayCount)" : "—"), subtitle: isDemo ? "2 igjen" : (todayCount > 0 ? "\(remaining) igjen" : "Ingen møter i dag"), icon: "calendar", color: MtBrand.purpleLight)
             kpiCard(title: "Denne uken",   value: isDemo ? "12"      : (weekCount > 0 ? "\(weekCount)" : "—"), subtitle: isDemo ? "3 bekreftet" : (weekCount > 0 ? "booket" : "Ingen data"), icon: "chart.line.uptrend.xyaxis", color: MtBrand.purpleLight)
             kpiCard(title: "Kommende",     value: isDemo ? "18"      : (next7 > 0 ? "\(next7)" : "—"), subtitle: "neste 7 dager", icon: "clock.fill", color: MtBrand.purpleLight)
             kpiCard(title: "Booket verdi", value: isDemo ? "2,4M kr" : (bookedValue > 0 ? fmtValue(bookedValue) : "—"), subtitle: isDemo ? "↑ 18% fra forrige uke" : "agenda + kommende", icon: "externaldrive.fill", color: MtBrand.purpleLight, trendPositive: isDemo)
         }
+    }
 
-        // iPhone: fire kort i én HStack blir ~85pt smale søyler der teksten
-        // wrapper per ord — bruk 2x2-grid i stedet. iPad/Mac: uendret rad.
-        return Group {
-            if DeviceIdiom.isPhone {
-                LazyVGrid(columns: MacCatalystGrid.adaptive(phone: 2, iPad: 4, mac: 4), spacing: 12) {
-                    kpiCards()
+    // ── iPhone: kompakt statistikk-knapp + modal ─────────────────────
+
+    private var statsButton: some View {
+        let todayCount = sourceAgenda.count
+        let subtitle = isDemo ? "5 møter i dag" : "\(todayCount) møter i dag"
+        return Button {
+            showStatsModal = true
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(MtBrand.purpleLight.opacity(0.22))
+                    Image(systemName: "chart.bar.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(MtBrand.purpleLight)
                 }
-            } else {
-                HStack(spacing: 12) {
-                    kpiCards()
+                .frame(width: 40, height: 40)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Statistikk")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(.white)
+                    Text(subtitle)
+                        .font(.system(size: 12))
+                        .foregroundStyle(MtBrand.textSecondary)
                 }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(MtBrand.textSecondary)
             }
+            .padding(14)
+            .background(MtBrand.card, in: RoundedRectangle(cornerRadius: 14))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14).stroke(MtBrand.stroke, lineWidth: 1)
+            )
         }
+        .buttonStyle(.plain)
+    }
+
+    private var statsModal: some View {
+        ScrollView {
+            VStack(spacing: 14) {
+                Text("Statistikk")
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 18)
+
+                kpiCards
+            }
+            .padding(.horizontal, 18)
+            .padding(.bottom, 24)
+        }
+        .background(MtBrand.bg.ignoresSafeArea())
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
     }
 
     private func kpiCard(title: String, value: String, subtitle: String, icon: String, color: Color, trendPositive: Bool = false) -> some View {

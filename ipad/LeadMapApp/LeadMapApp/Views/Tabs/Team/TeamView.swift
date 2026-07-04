@@ -226,6 +226,7 @@ struct TeamView: View {
     @State private var showPipeline = false
     @State private var selectedKPI: TeamKPI?
     @State private var showNewKPI = false
+    @State private var showStatsModal = false
     // Pakke 10.1 — rike header-popovere (chart wired til pipeline, kun checklist + bell)
     @State private var nextActionsOpen = false
     @State private var notificationsOpen = false
@@ -493,13 +494,93 @@ struct TeamView: View {
     // MARK: KPI row
 
     private var kpiRow: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 12) {
-                ForEach(TeamKPI.allCases) { k in
-                    kpiCard(k, trend: k.trend.replacingOccurrences(of: "+", with: "↑ "))
-                        .frame(width: 220)
+        // iPhone: horisontal KPI-scroller tok for mye plass — nå én kompakt
+        // statistikk-knapp der kortene ligger i modal med full bredde
+        // (samme mønster som Oversikt-fanen). iPad/Mac: uendret scroller.
+        Group {
+            if DeviceIdiom.isPhone {
+                statsButton
+                    .sheet(isPresented: $showStatsModal) { statsModal }
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        ForEach(TeamKPI.allCases) { k in
+                            kpiCard(k, trend: k.trend.replacingOccurrences(of: "+", with: "↑ "))
+                                .frame(width: 220)
+                        }
+                    }
                 }
             }
+        }
+    }
+
+    // ── iPhone: kompakt statistikk-knapp + modal ─────────────────────
+
+    private var statsButton: some View {
+        let isDemo = DemoModeManager.isActiveNonisolated
+        let hasData = !TeamData.members.isEmpty
+        let leadsValue = isDemo ? TeamKPI.totalLeads.bigValue : TeamKPI.totalLeads.liveValue
+        let meetingsValue = isDemo ? TeamKPI.meetings.bigValue : TeamKPI.meetings.liveValue
+        let subtitle = hasData ? "\(leadsValue) leads · \(meetingsValue) møter" : "Ingen data"
+        return Button {
+            showStatsModal = true
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(TBrand.purple.opacity(0.22))
+                    Image(systemName: "chart.bar.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(TBrand.purple)
+                }
+                .frame(width: 40, height: 40)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Statistikk")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(.white)
+                    Text(subtitle)
+                        .font(.system(size: 12))
+                        .foregroundStyle(TBrand.textSecondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(TBrand.textSecondary)
+            }
+            .padding(14)
+            .background(TBrand.card, in: RoundedRectangle(cornerRadius: 14))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14).stroke(TBrand.stroke, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var statsModal: some View {
+        ScrollView {
+            VStack(spacing: 14) {
+                Text("Statistikk")
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 18)
+
+                ForEach(TeamKPI.allCases) { k in
+                    kpiCard(k, trend: k.trend.replacingOccurrences(of: "+", with: "↑ "))
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .padding(.horizontal, 18)
+            .padding(.bottom, 24)
+        }
+        .background(TBrand.bg.ignoresSafeArea())
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        // Kortene er drill-down-knapper — sheet må ligge PÅ modalen for at
+        // TeamKPIDetailSheet skal kunne presenteres oppå statistikk-modalen.
+        .sheet(item: $selectedKPI) { k in
+            TeamKPIDetailSheet(kpi: k)
         }
     }
 
