@@ -9,7 +9,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { executeScript, systemOpen, playwrightStatus, setupPlaywright } from '../../api';
 import { useDemoStudio } from './demoStudioStore';
 import {
-  INFOGRAPHIC_TEMPLATES, htmlForTemplate, buildInfographicConfig,
+  INFOGRAPHIC_TEMPLATES, htmlForTemplate, rawTemplateHtml, buildInfographicConfig,
   isIconField, MATERIAL_ICONS, ALL_MATERIAL_ICONS,
   type InfographicTemplate,
 } from './infographicStudio';
@@ -146,6 +146,8 @@ interface Scene {
   bindings?: Record<string, string>; posX?: number; posY?: number;
   /** Per-scene overstyringer (faller tilbake til prosjekt-default når tomme). */
   durSec?: number; accent?: string; logo?: string;
+  /** Exit: sekunder fade-ut på slutten (0/udefinert = hardt kutt). */
+  exitSec?: number;
 }
 let _sid = 1;
 const newScene = (tplId: string, atSec: number): Scene => ({ id: `s${_sid++}`, tplId, values: {}, atSec, bindings: {} });
@@ -308,6 +310,42 @@ async function dominantColor(dataUrl: string): Promise<string> {
   });
 }
 
+/** Lett live-thumbnail av en mal i galleriet: lazy iframe (kun når synlig),
+ *  rå HTML u/ font-injeksjon, skalert til å passe + frosset ved p=1. */
+function TemplateThumb({ tpl, accent }: { tpl: InfographicTemplate; accent: string }) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const frameRef = useRef<HTMLIFrameElement>(null);
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') { setVisible(true); return; }
+    const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { setVisible(true); io.disconnect(); } }, { rootMargin: '200px' });
+    io.observe(el); return () => io.disconnect();
+  }, []);
+  const src = useMemo(() => {
+    const cfg = buildInfographicConfig(tpl, {}, { accent, ink: '#1f2d4a' });
+    return `<script>window.__CFG__=${JSON.stringify(cfg)}</script>` + rawTemplateHtml(tpl);
+  }, [tpl, accent]);
+  const fit = () => {
+    try {
+      const box = boxRef.current, ifr = frameRef.current, doc = ifr?.contentDocument;
+      const wrap = doc?.getElementById('wrap') as HTMLElement | null;
+      if (!box || !doc || !wrap) return;
+      if (doc.body) doc.body.style.cssText = 'margin:0;height:100%;display:grid;place-items:center;overflow:hidden;background:transparent';
+      wrap.style.transform = 'none';
+      const k = Math.min((box.clientWidth - 8) / (wrap.scrollWidth || 1), (box.clientHeight - 8) / (wrap.scrollHeight || 1), 1);
+      wrap.style.transformOrigin = 'center center';
+      wrap.style.transform = `scale(${k.toFixed(4)})`;
+      (ifr!.contentWindow as unknown as { setProgress?: (p: number) => void })?.setProgress?.(1);
+    } catch { /* */ }
+  };
+  return (
+    <div ref={boxRef} style={{ width: '100%', height: 52, borderRadius: 8, overflow: 'hidden', background: 'linear-gradient(135deg,#10182a,#0b1120)', marginBottom: 8 }}>
+      {visible && <iframe ref={frameRef} title="" srcDoc={src} onLoad={() => window.setTimeout(fit, 120)} style={{ width: '100%', height: '100%', border: 0, background: 'transparent', pointerEvents: 'none' }} />}
+    </div>
+  );
+}
+
 export function InfographicStudioView(
   { onNav, standalone = false, onOpenDemoStudio }:
   { onNav: (id: string) => void; standalone?: boolean; onOpenDemoStudio?: () => void },
@@ -347,6 +385,9 @@ export function InfographicStudioView(
   const [exportFmt, setExportFmt] = useState<'prores' | 'mp4' | 'gif' | 'apng' | 'png'>('mp4');
   const [exportBusy, setExportBusy] = useState(false);
   const [overlayTrack, setOverlayTrack] = useState(2);
+  // Composite-preview: still fra videoen bak den transparente overlay-en, så du
+  // ser hvordan den lander over ekte film (kontrast/lesbarhet). Kun preview.
+  const [bgImage, setBgImage] = useState('');
   const cancelRef = useRef(false);
   const [msg, setMsg] = useState<string | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -424,13 +465,24 @@ export function InfographicStudioView(
     } catch { /* cross-doc kan feile — best-effort */ }
   };
 
+  // Simuler exit-fade i preview ved å sette #wrap-opacity (rendret klipp bruker
+  // ffmpeg alfa-fade — dette speiler det visuelt).
+  const setPreviewOpacity = (o: number) => {
+    try { const w = iframeRef.current?.contentDocument?.getElementById('wrap') as HTMLElement | null; if (w) w.style.opacity = String(o); } catch { /* */ }
+  };
   const play = (durSecOverride?: number) => {
     const win = previewWin();
     if (!win || typeof win.setProgress !== 'function') return;
-    const dur = Math.max(1, durSecOverride ?? effDur(scene, tpl)) * 1000, t0 = performance.now();
+    const durS = durSecOverride ?? effDur(scene, tpl);
+    const dur = Math.max(1, durS) * 1000, t0 = performance.now();
+    const exitMs = Math.max(0, Math.min(scene.exitSec ?? 0, durS)) * 1000;
+    const exitStart = dur - exitMs;
+    setPreviewOpacity(1);
     const tick = (now: number) => {
-      const p = Math.min(1, (now - t0) / dur);
+      const el = now - t0;
+      const p = Math.min(1, el / dur);
       try { win.setProgress!(p); } catch { /* */ }
+      if (exitMs > 0) setPreviewOpacity(el >= exitStart ? Math.max(0, 1 - (el - exitStart) / exitMs) : 1);
       if (p < 1) rafRef.current = requestAnimationFrame(tick);
     };
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
@@ -528,7 +580,7 @@ export function InfographicStudioView(
         const html = `<script>window.__CFG__=${JSON.stringify(cfg)}</script>` + htmlForTemplate(t);
         setRenderProgress({ done: i, total: scenes.length });
         setMsg(`Rendrer scene ${i + 1}/${scenes.length} (${t.name}) …`);
-        const out = await invoke<string>('render_infographic', { html, durationSec: dur, name: `${t.id}-${sc.id}-${Date.now()}`, fps, scale });
+        const out = await invoke<string>('render_infographic', { html, durationSec: dur, name: `${t.id}-${sc.id}-${Date.now()}`, fps, scale, exitSec: sc.exitSec ?? 0 });
         overlays.push({ path: out, atSec: sc.atSec, durationSec: dur, track: overlayTrack, posX: sc.posX ?? 50, posY: sc.posY ?? 50 });
       }
       setRenderProgress({ done: scenes.length, total: scenes.length });
@@ -558,7 +610,7 @@ export function InfographicStudioView(
       if (st && !st.playwrightInstalled) { setNeedsPlaywright(true); setMsg('Playwright-runtime mangler — sett det opp for å eksportere.'); return; }
       const cfg = buildInfographicConfig(tpl, fieldVals(scene, tpl), { accent: sceneAccent(scene), ink: '#1f2d4a', logo: sceneLogo(scene) || undefined });
       const html = `<script>window.__CFG__=${JSON.stringify(cfg)}</script>` + htmlForTemplate(tpl);
-      const out = await invoke<string>('export_infographic', { html, durationSec: effDur(scene, tpl), name: `${tpl.id}-${scene.id}-${Date.now()}`, format: exportFmt, fps, scale });
+      const out = await invoke<string>('export_infographic', { html, durationSec: effDur(scene, tpl), name: `${tpl.id}-${scene.id}-${Date.now()}`, format: exportFmt, fps, scale, exitSec: scene.exitSec ?? 0 });
       setMsg(`✓ Eksportert: ${out}`);
       void systemOpen(out).catch(() => {});
     } catch (e) {
@@ -659,8 +711,9 @@ export function InfographicStudioView(
                     const selT = t.id === scene.tplId;
                     return (
                       <button key={t.id} onClick={() => pickTemplate(t.id)} style={{ textAlign: 'left', padding: 11, borderRadius: 10, cursor: 'pointer', border: `1.5px solid ${selT ? D.accent : D.line}`, background: selT ? D.panel2 : D.bg, color: D.ink, position: 'relative' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-                          <div style={{ width: 34, height: 34, borderRadius: 8, background: D.panel2, display: 'grid', placeItems: 'center', fontSize: 18, color: t.style === 'hud' ? D.teal : D.accent }}>{t.glyph}</div>
+                        <TemplateThumb tpl={t} accent={accent} />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontSize: 15, color: t.style === 'hud' ? D.teal : D.accent }}>{t.glyph}</span>
                           <div style={{ fontWeight: 700, fontSize: 12.5 }}>{t.name}</div>
                         </div>
                         <div style={{ fontSize: 11, color: D.soft, marginTop: 5, lineHeight: 1.35 }}>{t.desc}</div>
@@ -766,9 +819,19 @@ export function InfographicStudioView(
         {/* Center */}
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
           <div style={{ flex: 1, minHeight: 0, padding: 18, display: 'flex', flexDirection: 'column' }}>
-            <div style={{ fontSize: 11, color: D.faint, marginBottom: 8 }}>Canvas · scene {sel + 1} av {scenes.length} ({tpl.name}) · transparent overlay{playingAll ? ` · spiller sekvens ${scrubT.toFixed(1)}s / ${totalDur.toFixed(1)}s` : ''}</div>
-            <div ref={canvasRef} style={{ flex: 1, borderRadius: 12, overflow: 'hidden', border: `1px solid ${D.line}`, background: 'linear-gradient(135deg,#10182a,#0b1120)', display: 'grid', placeItems: 'center' }}>
-              <iframe ref={iframeRef} title="preview" srcDoc={srcDoc} onLoad={onIframeLoad} style={{ width: '100%', height: '100%', minHeight: 280, border: 0, background: 'transparent' }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <span style={{ fontSize: 11, color: D.faint }}>Canvas · scene {sel + 1} av {scenes.length} ({tpl.name}) · transparent overlay{playingAll ? ` · spiller sekvens ${scrubT.toFixed(1)}s / ${totalDur.toFixed(1)}s` : ''}</span>
+              <div style={{ flex: 1 }} />
+              {/* Composite: legg en still fra videoen bak overlay-en. */}
+              <label style={{ ...topBtn, padding: '4px 10px', fontSize: 11 }} title="Legg et stillbilde fra videoen bak overlay-en for å se hvordan den lander">
+                🎬 {bgImage ? 'Bytt bakgrunn' : 'Bakgrunn'}
+                <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = () => setBgImage(typeof r.result === 'string' ? r.result : ''); r.readAsDataURL(f); }} />
+              </label>
+              {bgImage && <button style={{ ...topBtn, padding: '4px 9px', fontSize: 11 }} onClick={() => setBgImage('')}>✕</button>}
+            </div>
+            <div ref={canvasRef} style={{ position: 'relative', flex: 1, borderRadius: 12, overflow: 'hidden', border: `1px solid ${D.line}`, background: bgImage ? '#000' : 'linear-gradient(135deg,#10182a,#0b1120)', display: 'grid', placeItems: 'center' }}>
+              {bgImage && <img src={bgImage} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', zIndex: 0 }} />}
+              <iframe ref={iframeRef} title="preview" srcDoc={srcDoc} onLoad={onIframeLoad} style={{ position: 'relative', zIndex: 1, width: '100%', height: '100%', minHeight: 280, border: 0, background: 'transparent' }} />
             </div>
           </div>
           {/* Tidslinje-scrubber: scenene plassert i tid (atSec + varighet), med
@@ -915,6 +978,18 @@ export function InfographicStudioView(
                 <input style={{ ...inp, width: 64 }} type="number" min={1} step={0.5} value={effDur(scene, tpl)} onChange={(e) => updateScene({ durSec: Math.max(1, parseFloat(e.target.value) || tpl.durationSec) })} /><span style={{ fontSize: 12, color: D.soft }}>s</span>
               </div>
               {scene.durSec != null && <button style={{ ...topBtn, padding: '4px 10px', fontSize: 11.5, marginBottom: 12 }} onClick={() => updateScene({ durSec: undefined })}>Tilbakestill til mal ({tpl.durationSec}s)</button>}
+              {/* Exit: fade ut på slutten (ekte alfa-fade i render + speilet i preview). */}
+              <div style={{ fontSize: 11, fontWeight: 700, color: D.soft, textTransform: 'uppercase', margin: '4px 0 8px' }}>Utgang</div>
+              <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+                <button onClick={() => updateScene({ exitSec: 0 })} style={{ ...topBtn, flex: 1, justifyContent: 'center', fontSize: 11.5, padding: '6px 0', background: (scene.exitSec ?? 0) === 0 ? D.accent : D.panel2, border: `1px solid ${(scene.exitSec ?? 0) === 0 ? D.accent : D.line}` }}>Hardt kutt</button>
+                <button onClick={() => updateScene({ exitSec: scene.exitSec && scene.exitSec > 0 ? scene.exitSec : 0.5 })} style={{ ...topBtn, flex: 1, justifyContent: 'center', fontSize: 11.5, padding: '6px 0', background: (scene.exitSec ?? 0) > 0 ? D.accent : D.panel2, border: `1px solid ${(scene.exitSec ?? 0) > 0 ? D.accent : D.line}` }}>Fade ut</button>
+              </div>
+              {(scene.exitSec ?? 0) > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                  <input type="range" min={0.2} max={2} step={0.1} value={scene.exitSec ?? 0.5} onChange={(e) => updateScene({ exitSec: parseFloat(e.target.value) })} style={{ flex: 1 }} />
+                  <span style={{ fontSize: 12, color: D.soft, minWidth: 34 }}>{(scene.exitSec ?? 0.5).toFixed(1)}s</span>
+                </div>
+              )}
               <div style={{ display: 'flex', gap: 8, margin: '10px 0 12px' }}>
                 <button style={{ ...topBtn, flex: 1, justifyContent: 'center' }} onClick={() => play()}>▶ Spill scene</button>
                 <button style={{ ...topBtn, flex: 1, justifyContent: 'center' }} onClick={() => (playingAll ? stopPlayAll() : playAll())}>{playingAll ? '⏸ Stopp' : '⏵ Spill alt'}</button>

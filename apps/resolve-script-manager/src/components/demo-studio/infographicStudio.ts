@@ -64,6 +64,13 @@ export function htmlForTemplate(tpl: InfographicTemplate): string {
   return injectBundledFonts(tpl.html || INFOGRAPHIC_HTML);
 }
 
+/** Rå mal-HTML UTEN font-injeksjon — for lette thumbnail-forhåndsvisninger
+ *  (system-font-fallback holder i en liten thumbnail; unngår ~1 MB font-CSS
+ *  per gallerikort). */
+export function rawTemplateHtml(tpl: InfographicTemplate): string {
+  return tpl.html || INFOGRAPHIC_HTML;
+}
+
 /** Er feltet et Material-ikon-felt? (vis ikon-velger i stedet for tekst). */
 export function isIconField(key: string): boolean {
   return /(^|_)icon(\d*)$/i.test(key) || key.toLowerCase().endsWith('icon');
