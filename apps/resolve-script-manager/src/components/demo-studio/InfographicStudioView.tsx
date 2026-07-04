@@ -67,6 +67,7 @@ import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import SendIcon from '@mui/icons-material/Send';
 import PlaceIcon from '@mui/icons-material/Place';
 import GroupsIcon from '@mui/icons-material/Groups';
+import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
 
 const D = {
   bg: '#0e1320', panel: '#141b2b', panel2: '#1b2436', line: '#27314a',
@@ -222,7 +223,7 @@ const newScene = (tplId: string, atSec: number): Scene => ({ id: `s${_sid++}`, t
 // ── Persistering: hele studio-tilstanden overlever reload (før: alt i useState
 //    → tapt ved refresh). Nøklet pr. prosjekt så flere demoer holdes adskilt. ──
 const LS_PREFIX = 'trrpa.infographicStudio.';
-interface StudioState { scenes: Scene[]; sel: number; accent: string; logo: string; dataText: string; palette: string[] }
+interface StudioState { scenes: Scene[]; sel: number; accent: string; logo: string; dataText: string; palette: string[]; liveUrl?: string }
 function loadStudio(key: string): StudioState | null {
   try { const raw = localStorage.getItem(LS_PREFIX + key); return raw ? (JSON.parse(raw) as StudioState) : null; } catch { return null; }
 }
@@ -648,6 +649,10 @@ export function InfographicStudioView(
   const [leftSec, setLeftSec] = useState<'templates' | 'charts' | 'marketing' | 'filmtv' | 'callouts' | 'ui' | 'uxlayout' | 'kit-rr' | 'kit-ch' | 'custom' | 'library' | 'insight' | 'brand' | 'data' | 'export'>('templates');
   const [tplQuery, setTplQuery] = useState('');
   const [dataText, setDataText] = useState(initial.current?.dataText || '');
+  // Live datakilde: URL (JSON/CSV) hentet via Rust (ingen CORS) → dataText.
+  const [liveUrl, setLiveUrl] = useState(initial.current?.liveUrl || '');
+  const [liveBusy, setLiveBusy] = useState(false);
+  const [liveAt, setLiveAt] = useState<string | null>(null);
   const dataMap = useMemo(() => parseDataSource(dataText), [dataText]);
   const dataKeys = useMemo(() => Object.keys(dataMap), [dataMap]);
   const [palette, setPalette] = useState<string[]>(initial.current?.palette?.length ? initial.current.palette : ['#2dd4bf', '#3b82f6', '#ffffff', '#1f2d4a', '#f59e0b', '#a855f7']);
@@ -759,9 +764,29 @@ export function InfographicStudioView(
 
   // Autolagre (debounced) — hele tilstanden overlever reload.
   useEffect(() => {
-    const h = setTimeout(() => saveStudio(storeKey, { scenes, sel, accent, logo, dataText, palette }), 400);
+    const h = setTimeout(() => saveStudio(storeKey, { scenes, sel, accent, logo, dataText, palette, liveUrl }), 400);
     return () => clearTimeout(h);
-  }, [scenes, sel, accent, logo, dataText, palette, storeKey]);
+  }, [scenes, sel, accent, logo, dataText, palette, liveUrl, storeKey]);
+  // Hent live datakilde (JSON/CSV) via Rust → fyll dataText. Ingen CORS.
+  const fetchLiveData = async () => {
+    const url = liveUrl.trim();
+    if (!/^https?:\/\//i.test(url)) { setMsg('Skriv en gyldig http(s)-URL til datakilden.'); return; }
+    setLiveBusy(true); setMsg(`Henter data fra ${(() => { try { return new URL(url).host; } catch { return url; } })()} …`);
+    try {
+      const text = await invoke<string>('fetch_live_data', { url });
+      const trimmed = (text || '').trim();
+      // Prøv å pretty-printe JSON; ellers behold rå (CSV håndteres av parserne).
+      let out = trimmed;
+      try { const j = JSON.parse(trimmed); out = JSON.stringify(j, null, 2); } catch { /* CSV/tekst */ }
+      setDataText(out);
+      const keys = Object.keys(parseDataSource(out));
+      const rows = parseDataRows(out).rows.length;
+      setLiveAt(new Date().toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' }));
+      setMsg(keys.length ? `Hentet ${keys.length} felt fra datakilden — bind dem til feltene.` : rows >= 2 ? `Hentet ${rows} rader — «Lag scener» eller bind kolonner.` : 'Hentet data — sjekk formatet (JSON-objekt eller CSV med header).');
+    } catch (e) {
+      setMsg('Feil ved henting: ' + (e instanceof Error ? e.message : String(e)));
+    } finally { setLiveBusy(false); }
+  };
 
   // Total timeline-lengde (for scrubber/«spill alt»).
   const totalDur = useMemo(() => scenes.reduce((mx, sc) => {
@@ -1304,7 +1329,19 @@ export function InfographicStudioView(
           </>)}
           {leftSec === 'data' && (<>
             <div style={{ fontSize: 11, fontWeight: 700, color: D.soft, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>Data Sources</div>
-            <div style={{ fontSize: 11, color: D.faint, lineHeight: 1.45, marginBottom: 8 }}>Lim inn JSON-objekt eller CSV (header-rad + verdi-rad). Bind så felter til kolonnene i Data-fanen — tallene fylles automatisk.</div>
+            {/* Live datakilde: hent JSON/CSV fra en URL (API eller publisert Google Sheet). */}
+            <div style={{ marginBottom: 12, padding: 10, borderRadius: 9, border: `1px solid ${D.line}`, background: D.bg }}>
+              <div style={{ fontSize: 10.5, color: D.teal, fontWeight: 700, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 5 }}><CloudDownloadIcon style={{ fontSize: 13 }} /> Live datakilde</div>
+              <div style={{ fontSize: 10, color: D.faint, lineHeight: 1.4, marginBottom: 6 }}>URL til JSON-API eller publisert Google Sheet (CSV). Hentes uten CORS.</div>
+              <input value={liveUrl} onChange={(e) => setLiveUrl(e.target.value)} placeholder="https://… (JSON eller CSV)" style={{ ...inp, marginBottom: 6 }} />
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <button style={{ ...topBtn, flex: 1, justifyContent: 'center', fontSize: 11.5, background: D.accent, border: 'none', opacity: liveBusy || !liveUrl.trim() ? 0.6 : 1 }} disabled={liveBusy || !liveUrl.trim()} onClick={() => void fetchLiveData()}>
+                  <CloudDownloadIcon style={{ fontSize: 14 }} /> {liveBusy ? 'Henter …' : liveAt ? 'Oppdater' : 'Hent'}
+                </button>
+                {liveAt && <span style={{ fontSize: 9.5, color: D.faint }}>sist {liveAt}</span>}
+              </div>
+            </div>
+            <div style={{ fontSize: 11, color: D.faint, lineHeight: 1.45, marginBottom: 8 }}>… eller lim inn JSON-objekt eller CSV (header-rad + verdi-rad). Bind så felter til kolonnene i Data-fanen — tallene fylles automatisk.</div>
             <textarea value={dataText} onChange={(e) => setDataText(e.target.value)}
               placeholder={'{"total_twh":"24.8T","renewable":"18.6%"}\n\neller CSV:\ntotal_twh,renewable\n24.8T,18.6%'}
               style={{ width: '100%', height: 150, fontSize: 11.5, fontFamily: 'ui-monospace,monospace', padding: 9, borderRadius: 8, border: `1px solid ${D.line}`, background: D.bg, color: D.ink, colorScheme: 'dark', resize: 'vertical' }} />

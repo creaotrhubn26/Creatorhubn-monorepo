@@ -928,6 +928,7 @@ pub fn run() {
             demo_capture::demo_capture_step,
             demo_capture::demo_capture_done,
             demo_capture::demo_fetch_site_context,
+            demo_capture::fetch_live_data,
             demo_capture::demo_scan_dom,
             demo_capture::demo_scan_result,
             demo_capture::demo_scan_progress,
