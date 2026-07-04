@@ -21,6 +21,41 @@ import { analyzeProductEvidence, gatherSiteContext } from './demoStudioAI';
 import { isAiConnected } from '../../services/claudeProxyService';
 import { FONT_FACE_CSS } from './fontAssets.generated';
 import { ROLE_ROOM_LOGO, CREATORHUB_LOGO } from './kitLogos.generated';
+import { listInfographics, saveInfographic, deleteInfographic, type SavedInfographic } from './infographicLibrary';
+// MUI-ikoner (erstatter emoji/glyfer i UI-et) — path-import tre-shaker best.
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import DashboardCustomizeIcon from '@mui/icons-material/DashboardCustomize';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import SlideshowIcon from '@mui/icons-material/Slideshow';
+import PauseIcon from '@mui/icons-material/Pause';
+import AddIcon from '@mui/icons-material/Add';
+import CloseIcon from '@mui/icons-material/Close';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import DatasetIcon from '@mui/icons-material/Dataset';
+import GridViewIcon from '@mui/icons-material/GridView';
+import BarChartIcon from '@mui/icons-material/BarChart';
+import CampaignIcon from '@mui/icons-material/Campaign';
+import MovieIcon from '@mui/icons-material/Movie';
+import CenterFocusStrongIcon from '@mui/icons-material/CenterFocusStrong';
+import WidgetsIcon from '@mui/icons-material/Widgets';
+import ViewQuiltIcon from '@mui/icons-material/ViewQuilt';
+import StarBorderIcon from '@mui/icons-material/StarBorder';
+import EmojiSymbolsIcon from '@mui/icons-material/EmojiSymbols';
+import PaletteIcon from '@mui/icons-material/Palette';
+import FileDownloadIcon from '@mui/icons-material/FileDownload';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
+import LanguageIcon from '@mui/icons-material/Language';
+import ThumbUpAltIcon from '@mui/icons-material/ThumbUpAlt';
+import ThumbDownAltIcon from '@mui/icons-material/ThumbDownAlt';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import ImageOutlinedIcon from '@mui/icons-material/ImageOutlined';
+import CollectionsBookmarkIcon from '@mui/icons-material/CollectionsBookmark';
+import SaveIcon from '@mui/icons-material/Save';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import FolderOpenIcon from '@mui/icons-material/FolderOpen';
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 
 const D = {
   bg: '#0e1320', panel: '#141b2b', panel2: '#1b2436', line: '#27314a',
@@ -149,6 +184,18 @@ const CATEGORY_LABEL: Record<string, string> = {
   templates: 'Templates', charts: 'Charts', marketing: 'Marketing', filmtv: 'Film & TV',
   callouts: 'Callouts', ui: 'UI-elementer', uxlayout: 'Layout & UX', 'kit-rr': 'The Role Room', 'kit-ch': 'Creatorhub', custom: 'Mine maler',
 };
+
+// Kategori-ikon for en mal (erstatter malens tekst-glyf i galleri + scene-stripe).
+function tplIcon(id: string, size = 16): React.ReactElement {
+  const st: React.CSSProperties = { fontSize: size };
+  if (CHART_IDS.has(id)) return <BarChartIcon style={st} />;
+  if (MARKETING_IDS.has(id)) return <CampaignIcon style={st} />;
+  if (FILMTV_IDS.has(id)) return <MovieIcon style={st} />;
+  if (CALLOUT_IDS.has(id)) return <CenterFocusStrongIcon style={st} />;
+  if (UI_IDS.has(id)) return <WidgetsIcon style={st} />;
+  if (UX_LAYOUT_IDS.has(id)) return <ViewQuiltIcon style={st} />;
+  return <GridViewIcon style={st} />;
+}
 
 interface Scene {
   id: string; tplId: string; values: Record<string, string>; atSec: number;
@@ -374,7 +421,7 @@ async function trimLogoWhitespace(dataUrl: string): Promise<string> {
 
 /** Lett live-thumbnail av en mal i galleriet: lazy iframe (kun når synlig),
  *  rå HTML u/ font-injeksjon, skalert til å passe + frosset ved p=1. */
-function TemplateThumb({ tpl, accent }: { tpl: InfographicTemplate; accent: string }) {
+function TemplateThumb({ tpl, accent, values }: { tpl: InfographicTemplate; accent: string; values?: Record<string, string> }) {
   const boxRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLIFrameElement>(null);
   const [visible, setVisible] = useState(false);
@@ -385,9 +432,9 @@ function TemplateThumb({ tpl, accent }: { tpl: InfographicTemplate; accent: stri
     io.observe(el); return () => io.disconnect();
   }, []);
   const src = useMemo(() => {
-    const cfg = buildInfographicConfig(tpl, {}, { accent, ink: '#1f2d4a' });
+    const cfg = buildInfographicConfig(tpl, values || {}, { accent, ink: '#1f2d4a' });
     return `<script>window.__CFG__=${JSON.stringify(cfg)}</script>` + rawTemplateHtml(tpl);
-  }, [tpl, accent]);
+  }, [tpl, accent, values]);
   const fit = () => {
     try {
       const box = boxRef.current, ifr = frameRef.current, doc = ifr?.contentDocument;
@@ -430,7 +477,7 @@ export function InfographicStudioView(
   const effDur = (sc: Scene, t: InfographicTemplate) => (sc.durSec != null && sc.durSec > 0 ? sc.durSec : t.durationSec);
   const [suggested, setSuggested] = useState('');
   const [rightTab, setRightTab] = useState<'Design' | 'Animate' | 'Data'>('Data');
-  const [leftSec, setLeftSec] = useState<'templates' | 'charts' | 'marketing' | 'filmtv' | 'callouts' | 'ui' | 'uxlayout' | 'kit-rr' | 'kit-ch' | 'custom' | 'brand' | 'data' | 'export'>('templates');
+  const [leftSec, setLeftSec] = useState<'templates' | 'charts' | 'marketing' | 'filmtv' | 'callouts' | 'ui' | 'uxlayout' | 'kit-rr' | 'kit-ch' | 'custom' | 'library' | 'brand' | 'data' | 'export'>('templates');
   const [tplQuery, setTplQuery] = useState('');
   const [dataText, setDataText] = useState(initial.current?.dataText || '');
   const dataMap = useMemo(() => parseDataSource(dataText), [dataText]);
@@ -453,7 +500,7 @@ export function InfographicStudioView(
   // Bølge 4: AI-mal-valg + egne maler.
   const [aiDesc, setAiDesc] = useState('');
   const [aiBusy, setAiBusy] = useState(false);
-  // Siste AI-anbefaling → 👍/👎 mater lærings-loopen (few-shot + re-rangering).
+  // Siste AI-anbefaling → tommel opp/ned mater lærings-loopen (few-shot + re-rangering).
   const [aiLastPick, setAiLastPick] = useState<{ desc: string; tplId: string } | null>(null);
   // Logo fra nettside: flere kandidater → velg; «for stor» → foreslå trimming.
   const [logoChoices, setLogoChoices] = useState<string[]>([]);
@@ -473,12 +520,41 @@ export function InfographicStudioView(
   const trimLogo = async () => {
     if (!logo) return;
     const dl = await trimLogoWhitespace(logo).catch(() => logo);
-    setLogo(dl); setLogoHint(null); setMsg('✓ Logo beskåret — se preview.');
+    setLogo(dl); setLogoHint(null); setMsg('Logo beskåret — se preview.');
   };
   const [importName, setImportName] = useState('');
   const [importHtml, setImportHtml] = useState('');
   const [customTick, setCustomTick] = useState(0); // tving re-render etter mal-import/-slett
   void customTick;
+  // «Mine infographics»: globalt bibliotek av ferdige infographics → start fra en
+  // tidligere i stedet for blank mal (åpne, dupliser, bygg videre).
+  const [libTick, setLibTick] = useState(0);
+  const [libName, setLibName] = useState('');
+  const savedList = useMemo<SavedInfographic[]>(() => listInfographics(), [libTick, leftSec]);
+  /** Lagre gjeldende studio-tilstand som gjenbrukbar infographic i biblioteket. */
+  const saveCurrentToLibrary = () => {
+    const name = libName.trim() || `${project?.name || 'Infographic'} · ${scenes.length} scene(r)`;
+    saveInfographic({
+      name, fromProject: project?.name,
+      scenes: scenes.map((s) => ({ ...s })), accent, logo, dataText, palette,
+      previewTplId: scenes[sel]?.tplId || scenes[0]?.tplId || INFOGRAPHIC_TEMPLATES[0].id,
+    });
+    setLibName(''); setLibTick((n) => n + 1);
+    setMsg(`Lagret «${name}» i biblioteket — gjenbruk den i ethvert prosjekt.`);
+  };
+  /** Åpne et lagret snapshot inn i studioet (erstatter gjeldende scener). Scene-
+   *  id-er regenereres så de ikke kolliderer med nye scener. */
+  const loadSnapshot = (s: SavedInfographic) => {
+    const fresh = s.scenes.map((sc) => ({ ...sc, id: `s${_sid++}` })) as Scene[];
+    setScenes(fresh.length ? fresh : [newScene(INFOGRAPHIC_TEMPLATES[0].id, 0)]);
+    setSel(0);
+    setAccent(s.accent || accent);
+    setLogo(s.logo || '');
+    setDataText(s.dataText || '');
+    if (s.palette?.length) setPalette(s.palette);
+    setLeftSec('templates');
+    setMsg(`Åpnet «${s.name}» — bygg videre og send til Resolve.`);
+  };
   const cancelRef = useRef(false);
   const [msg, setMsg] = useState<string | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -659,7 +735,7 @@ export function InfographicStudioView(
 
   const doSetupPlaywright = async () => {
     setNeedsPlaywright(false); setMsg('Setter opp Playwright (engangs — kan ta et par minutter) …');
-    try { await setupPlaywright(); setMsg('✓ Playwright satt opp — trykk «Send to Resolve» igjen.'); }
+    try { await setupPlaywright(); setMsg('Playwright satt opp — trykk «Send to Resolve» igjen.'); }
     catch (e) { setMsg('Feil ved oppsett: ' + (e instanceof Error ? e.message : String(e))); }
   };
 
@@ -694,7 +770,7 @@ export function InfographicStudioView(
         setMsg('Rendret, men kunne ikke legges i Resolve: ' + ((errEvt?.value as { message?: string } | undefined)?.message || 'er Resolve åpen med en timeline?'));
         if (overlays[0]?.path) void systemOpen(String(overlays[0].path)).catch(() => {});
       } else {
-        setMsg(`✓ ${scenes.length} scene(r) sendt til Resolve, plassert på overlay-spor til riktig tid.`);
+        setMsg(`${scenes.length} scene(r) sendt til Resolve, plassert på overlay-spor til riktig tid.`);
         // Implisitt aksept: ble en AI-anbefalt mal faktisk sendt? Da traff den.
         if (aiLastPick && scenes.some((s) => s.tplId === aiLastPick.tplId)) {
           recordAiFeedback(aiLastPick.desc, aiLastPick.tplId, true, 0.5); setAiLastPick(null);
@@ -720,7 +796,7 @@ export function InfographicStudioView(
       const cfg = buildInfographicConfig(tpl, fieldVals(scene, tpl), { accent: sceneAccent(scene), ink: '#1f2d4a', logo: sceneLogo(scene) || undefined });
       const html = `<script>window.__CFG__=${JSON.stringify(cfg)}</script>` + htmlForTemplate(tpl);
       const out = await invoke<string>('export_infographic', { html, durationSec: effDur(scene, tpl), name: `${tpl.id}-${scene.id}-${Date.now()}`, format: exportFmt, fps, scale, exitSec: scene.exitSec ?? 0 });
-      setMsg(`✓ Eksportert: ${out}`);
+      setMsg(`Eksportert: ${out}`);
       recordTemplateUsage(tpl.id);
       if (aiLastPick && aiLastPick.tplId === tpl.id) { recordAiFeedback(aiLastPick.desc, aiLastPick.tplId, true, 0.5); setAiLastPick(null); }
       void systemOpen(out).catch(() => {});
@@ -743,7 +819,7 @@ export function InfographicStudioView(
       updateScene({ tplId: r.tplId, values: r.values, bindings: {} });
       setAiLastPick({ desc: aiDesc.trim(), tplId: r.tplId });
       const picked = INFOGRAPHIC_TEMPLATES.find((t) => t.id === r.tplId);
-      setMsg(`✓ Valgte «${picked?.name || r.tplId}»${r.reason ? ` — ${r.reason}` : ''}`);
+      setMsg(`Valgte «${picked?.name || r.tplId}»${r.reason ? ` — ${r.reason}` : ''}`);
     } catch (e) {
       setMsg('Feil ved AI-valg: ' + (e instanceof Error ? e.message : String(e)));
     } finally { setAiBusy(false); }
@@ -781,7 +857,7 @@ export function InfographicStudioView(
       setAiLastPick({ desc: `nettside: ${brand?.brandName || url}`, tplId: r.tplId });
       const picked = INFOGRAPHIC_TEMPLATES.find((t) => t.id === r.tplId);
       const nFeat = evidence?.features?.length || 0;
-      setMsg(`✓ «${picked?.name || r.tplId}» fylt fra ${brand?.brandName || url}${nFeat ? ` (${nFeat} tjenester forstått)` : ''}${brand?.logoUrl ? ' + logo/merkefarge' : ''}${r.reason ? ` — ${r.reason}` : ''}`);
+      setMsg(`«${picked?.name || r.tplId}» fylt fra ${brand?.brandName || url}${nFeat ? ` (${nFeat} tjenester forstått)` : ''}${brand?.logoUrl ? ' + logo/merkefarge' : ''}${r.reason ? ` — ${r.reason}` : ''}`);
     } catch (e) {
       setMsg('Feil ved «Fra nettside»: ' + (e instanceof Error ? e.message : String(e)));
     } finally { setAiBusy(false); }
@@ -794,7 +870,7 @@ export function InfographicStudioView(
     const t = addCustomTemplate(importName || 'Egen mal', importHtml);
     setImportName(''); setImportHtml(''); setCustomTick((n) => n + 1);
     updateScene({ tplId: t.id, values: {}, bindings: {} });
-    setMsg(`✓ Importert «${t.name}» (${t.fields.length} felt funnet) — valgt på scene ${sel + 1}.`);
+    setMsg(`Importert «${t.name}» (${t.fields.length} felt funnet) — valgt på scene ${sel + 1}.`);
   };
 
   const batchFromRows = () => {
@@ -811,7 +887,7 @@ export function InfographicStudioView(
       return { id: `s${_sid++}`, tplId: tpl.id, values, atSec: at, bindings };
     });
     setScenes(built); setSel(0);
-    setMsg(`✓ Laget ${built.length} scener — én per datarad (${tpl.name}).`);
+    setMsg(`Laget ${built.length} scener — én per datarad (${tpl.name}).`);
   };
 
   const railItem = (active: boolean): React.CSSProperties => ({ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', cursor: 'pointer', color: active ? D.ink : D.soft, background: active ? D.panel2 : 'transparent', borderLeft: `3px solid ${active ? D.accent : 'transparent'}`, fontSize: 13 });
@@ -822,39 +898,40 @@ export function InfographicStudioView(
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: D.bg, color: D.ink, fontFamily: 'Inter, system-ui, sans-serif' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', borderBottom: `1px solid ${D.line}`, background: D.panel }}>
-        <button style={{ ...topBtn, border: 'none', background: 'transparent', color: D.soft }} title={standalone ? 'Tilbake til Home' : 'Tilbake til Flow Builder'} onClick={() => onNav('flow')}>←</button>
-        <div style={{ fontSize: 15, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8 }}><span style={{ color: D.accent }}>▥</span> Infographic Studio</div>
+        <button style={{ ...topBtn, border: 'none', background: 'transparent', color: D.soft }} title={standalone ? 'Tilbake til Home' : 'Tilbake til Flow Builder'} onClick={() => onNav('flow')}><ArrowBackIcon style={{ fontSize: 18 }} /></button>
+        <div style={{ fontSize: 15, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8 }}><DashboardCustomizeIcon style={{ fontSize: 18, color: D.accent }} /> Infographic Studio</div>
         {standalone && <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 0.4, textTransform: 'uppercase', color: D.teal, border: `1px solid ${D.line}`, borderRadius: 999, padding: '2px 8px' }}>Egen løsning</span>}
         <div style={{ flex: 1 }} />
         <div style={{ fontSize: 12, color: D.soft }}>{project?.name || (standalone ? 'Frittstående' : 'Uten navn')} · {scenes.length} scene(r)</div>
         {standalone && onOpenDemoStudio && (
-          <button style={topBtn} title="Åpne Product Demo Studio — Infographic Studio er også en add-on der" onClick={onOpenDemoStudio}>⧉ Product Demo</button>
+          <button style={topBtn} title="Åpne Product Demo Studio — Infographic Studio er også en add-on der" onClick={onOpenDemoStudio}><OpenInNewIcon style={{ fontSize: 15 }} /> Product Demo</button>
         )}
-        <button style={topBtn} onClick={() => play()} title="Spill den valgte scenen">▶ Preview</button>
-        <button style={topBtn} onClick={() => (playingAll ? stopPlayAll() : playAll())} title="Spill HELE sekvensen (alle scener i tid)">{playingAll ? '⏸ Stopp' : '⏵ Spill alt'}</button>
-        <button style={topBtn} onClick={addScene}>＋ New Scene</button>
+        <button style={topBtn} onClick={() => play()} title="Spill den valgte scenen"><PlayArrowIcon style={{ fontSize: 16 }} /> Preview</button>
+        <button style={topBtn} onClick={() => (playingAll ? stopPlayAll() : playAll())} title="Spill HELE sekvensen (alle scener i tid)">{playingAll ? <><PauseIcon style={{ fontSize: 16 }} /> Stopp</> : <><SlideshowIcon style={{ fontSize: 16 }} /> Spill alt</>}</button>
+        <button style={topBtn} onClick={addScene}><AddIcon style={{ fontSize: 16 }} /> New Scene</button>
         {busy ? (
           <button style={{ ...topBtn, background: '#7a2530', border: 'none' }} onClick={() => { cancelRef.current = true; }} title="Avbryt etter gjeldende scene">
-            ✕ Avbryt{renderProgress ? ` (${renderProgress.done}/${renderProgress.total})` : ''}
+            <CloseIcon style={{ fontSize: 15 }} /> Avbryt{renderProgress ? ` (${renderProgress.done}/${renderProgress.total})` : ''}
           </button>
         ) : (
-          <button style={{ ...topBtn, background: D.accent, border: 'none' }} onClick={() => void sendToResolve()}>✦ Send to Resolve</button>
+          <button style={{ ...topBtn, background: D.accent, border: 'none' }} onClick={() => void sendToResolve()}><AutoAwesomeIcon style={{ fontSize: 16 }} /> Send to Resolve</button>
         )}
       </div>
 
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
         {/* Rail */}
         <div style={{ width: 178, borderRight: `1px solid ${D.line}`, background: D.panel, paddingTop: 8, display: 'flex', flexDirection: 'column' }}>
-          <div style={railItem(leftSec === 'data')} onClick={() => setLeftSec('data')}>⛁ Data Sources{dataKeys.length ? <span style={{ marginLeft: 'auto', fontSize: 10, color: D.teal }}>{dataKeys.length}</span> : null}</div>
-          <div style={railItem(leftSec === 'templates')} onClick={() => setLeftSec('templates')}>▦ Templates <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{INFOGRAPHIC_TEMPLATES.length}</span></div>
-          <div style={railItem(leftSec === 'charts')} onClick={() => setLeftSec('charts')}>▤ Charts <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{INFOGRAPHIC_TEMPLATES.filter((t) => CHART_IDS.has(t.id)).length}</span></div>
-          <div style={railItem(leftSec === 'marketing')} onClick={() => setLeftSec('marketing')}>✷ Marketing <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{INFOGRAPHIC_TEMPLATES.filter((t) => MARKETING_IDS.has(t.id)).length}</span></div>
-          <div style={railItem(leftSec === 'filmtv')} onClick={() => setLeftSec('filmtv')}>▶ Film &amp; TV <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{INFOGRAPHIC_TEMPLATES.filter((t) => FILMTV_IDS.has(t.id)).length}</span></div>
-          <div style={railItem(leftSec === 'callouts')} onClick={() => setLeftSec('callouts')}>⌖ Callouts <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{INFOGRAPHIC_TEMPLATES.filter((t) => CALLOUT_IDS.has(t.id)).length}</span></div>
-          <div style={railItem(leftSec === 'ui')} onClick={() => setLeftSec('ui')}>▭ UI <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{INFOGRAPHIC_TEMPLATES.filter((t) => UI_IDS.has(t.id)).length}</span></div>
-          <div style={railItem(leftSec === 'uxlayout')} onClick={() => setLeftSec('uxlayout')}>▥ Layout &amp; UX <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{INFOGRAPHIC_TEMPLATES.filter((t) => UX_LAYOUT_IDS.has(t.id)).length}</span></div>
-          <div style={railItem(leftSec === 'custom')} onClick={() => setLeftSec('custom')}>★ Mine maler <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{customTemplateIds().length}</span></div>
-          <div style={railItem(false)} title="Velg ikoner i Data-fanen per felt">◷ Icons <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{ALL_MATERIAL_ICONS.length}</span></div>
+          <div style={railItem(leftSec === 'data')} onClick={() => setLeftSec('data')}><DatasetIcon style={{ fontSize: 17 }} /> Data Sources{dataKeys.length ? <span style={{ marginLeft: 'auto', fontSize: 10, color: D.teal }}>{dataKeys.length}</span> : null}</div>
+          <div style={railItem(leftSec === 'templates')} onClick={() => setLeftSec('templates')}><GridViewIcon style={{ fontSize: 17 }} /> Templates <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{INFOGRAPHIC_TEMPLATES.length}</span></div>
+          <div style={railItem(leftSec === 'charts')} onClick={() => setLeftSec('charts')}><BarChartIcon style={{ fontSize: 17 }} /> Charts <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{INFOGRAPHIC_TEMPLATES.filter((t) => CHART_IDS.has(t.id)).length}</span></div>
+          <div style={railItem(leftSec === 'marketing')} onClick={() => setLeftSec('marketing')}><CampaignIcon style={{ fontSize: 17 }} /> Marketing <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{INFOGRAPHIC_TEMPLATES.filter((t) => MARKETING_IDS.has(t.id)).length}</span></div>
+          <div style={railItem(leftSec === 'filmtv')} onClick={() => setLeftSec('filmtv')}><MovieIcon style={{ fontSize: 17 }} /> Film &amp; TV <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{INFOGRAPHIC_TEMPLATES.filter((t) => FILMTV_IDS.has(t.id)).length}</span></div>
+          <div style={railItem(leftSec === 'callouts')} onClick={() => setLeftSec('callouts')}><CenterFocusStrongIcon style={{ fontSize: 17 }} /> Callouts <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{INFOGRAPHIC_TEMPLATES.filter((t) => CALLOUT_IDS.has(t.id)).length}</span></div>
+          <div style={railItem(leftSec === 'ui')} onClick={() => setLeftSec('ui')}><WidgetsIcon style={{ fontSize: 17 }} /> UI <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{INFOGRAPHIC_TEMPLATES.filter((t) => UI_IDS.has(t.id)).length}</span></div>
+          <div style={railItem(leftSec === 'uxlayout')} onClick={() => setLeftSec('uxlayout')}><ViewQuiltIcon style={{ fontSize: 17 }} /> Layout &amp; UX <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{INFOGRAPHIC_TEMPLATES.filter((t) => UX_LAYOUT_IDS.has(t.id)).length}</span></div>
+          <div style={railItem(leftSec === 'custom')} onClick={() => setLeftSec('custom')}><StarBorderIcon style={{ fontSize: 17 }} /> Mine maler <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{customTemplateIds().length}</span></div>
+          <div style={railItem(leftSec === 'library')} onClick={() => setLeftSec('library')}><CollectionsBookmarkIcon style={{ fontSize: 17 }} /> Mine infographics <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{savedList.length}</span></div>
+          <div style={railItem(false)} title="Velg ikoner i Data-fanen per felt"><EmojiSymbolsIcon style={{ fontSize: 17 }} /> Icons <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{ALL_MATERIAL_ICONS.length}</span></div>
           <div style={{ fontSize: 9.5, fontWeight: 700, color: D.faint, textTransform: 'uppercase', letterSpacing: 0.6, padding: '12px 14px 4px' }}>Brand Kits</div>
           {BRAND_KITS.map((k) => (
             <div key={k.id} style={railItem(leftSec === k.id)} onClick={() => { setLeftSec(k.id); setAccent(k.accent); setLogo(k.logo); }} title={`${k.name} — ${k.tagline}`}>
@@ -862,8 +939,8 @@ export function InfographicStudioView(
               <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{INFOGRAPHIC_TEMPLATES.filter((t) => inCategory(k.id, t.id)).length}</span>
             </div>
           ))}
-          <div style={railItem(leftSec === 'brand')} onClick={() => setLeftSec('brand')}>◆ Brand Kit</div>
-          <div style={railItem(leftSec === 'export')} onClick={() => setLeftSec('export')}>⤓ Export</div>
+          <div style={railItem(leftSec === 'brand')} onClick={() => setLeftSec('brand')}><PaletteIcon style={{ fontSize: 17 }} /> Brand Kit</div>
+          <div style={railItem(leftSec === 'export')} onClick={() => setLeftSec('export')}><FileDownloadIcon style={{ fontSize: 17 }} /> Export</div>
           <div style={{ flex: 1 }} />
           {logo && <img src={logo} alt="" style={{ maxWidth: 120, maxHeight: 40, margin: '0 auto 14px', opacity: 0.9 }} />}
         </div>
@@ -875,7 +952,7 @@ export function InfographicStudioView(
             {/* AI-mal-valg: beskriv → Claude velger beste mal + fyller feltene. */}
             {leftSec !== 'custom' && (
               <div style={{ marginBottom: 12, padding: 10, borderRadius: 9, border: `1px solid ${D.line}`, background: D.bg }}>
-                <div style={{ fontSize: 10.5, color: D.teal, fontWeight: 700, marginBottom: 6 }}>✦ AI: beskriv det du vil ha</div>
+                <div style={{ fontSize: 10.5, color: D.teal, fontWeight: 700, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 5 }}><AutoAwesomeIcon style={{ fontSize: 13 }} /> AI: beskriv det du vil ha</div>
                 <textarea value={aiDesc} onChange={(e) => setAiDesc(e.target.value)}
                   placeholder="f.eks. «tre KPI-er for Q2: 124 pasienter, 76% digital innsjekk, −18% ventetid»"
                   style={{ width: '100%', height: 48, fontSize: 11.5, padding: 8, borderRadius: 7, border: `1px solid ${D.line}`, background: D.panel2, color: D.ink, colorScheme: 'dark', resize: 'vertical', marginBottom: 6 }} />
@@ -887,7 +964,7 @@ export function InfographicStudioView(
                   <button style={{ ...topBtn, width: '100%', justifyContent: 'center', fontSize: 11.5, marginTop: 6, opacity: aiBusy ? 0.6 : 1 }} disabled={aiBusy}
                     title={`Skanner ${project.url} — henter logo, merkefarge og ekte tall, og fyller en mal`}
                     onClick={() => void runFromSite()}>
-                    🌐 Fra nettside {(() => { try { return `(${new URL(project.url).host})`; } catch { return ''; } })()}
+                    <LanguageIcon style={{ fontSize: 14 }} /> Fra nettside {(() => { try { return `(${new URL(project.url).host})`; } catch { return ''; } })()}
                   </button>
                 )}
                 {/* Flere logoer funnet → velg hvilken. */}
@@ -907,21 +984,21 @@ export function InfographicStudioView(
                 {/* Logo «for stor» / mye luft → foreslå lower-third-vennlig trimming. */}
                 {logoHint && (
                   <div style={{ marginTop: 8, padding: 8, borderRadius: 8, background: '#2a2417', border: '1px solid #4a3f22' }}>
-                    <div style={{ fontSize: 10.5, color: '#f0d9a8', marginBottom: 6 }}>⚠ {logoHint}. Beskjære for lower-third?</div>
+                    <div style={{ fontSize: 10.5, color: '#f0d9a8', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 5 }}><WarningAmberIcon style={{ fontSize: 13 }} /> {logoHint}. Beskjære for lower-third?</div>
                     <div style={{ display: 'flex', gap: 6 }}>
                       <button style={{ ...topBtn, flex: 1, justifyContent: 'center', fontSize: 11, background: D.accent, border: 'none' }} onClick={() => void trimLogo()}>Gjør lower-third-vennlig</button>
                       <button style={{ ...topBtn, padding: '4px 9px', fontSize: 11 }} onClick={() => setLogoHint(null)}>Behold</button>
                     </div>
                   </div>
                 )}
-                {/* Lærings-loop: 👍/👎 på siste anbefaling → few-shot + re-rangering. */}
+                {/* Lærings-loop: tommel opp/ned på siste anbefaling → few-shot + re-rangering. */}
                 {aiLastPick && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
                     <span style={{ fontSize: 10.5, color: D.faint, flex: 1 }}>Traff den? AI lærer av svaret.</span>
                     <button style={{ ...topBtn, padding: '3px 9px', fontSize: 12, color: D.teal }} title="God match — lær dette"
-                      onClick={() => { recordAiFeedback(aiLastPick.desc, aiLastPick.tplId, true); setAiLastPick(null); setMsg('✓ Lærte: denne malen passer for slike beskrivelser.'); }}>👍</button>
+                      onClick={() => { recordAiFeedback(aiLastPick.desc, aiLastPick.tplId, true); setAiLastPick(null); setMsg('Lærte: denne malen passer for slike beskrivelser.'); }}><ThumbUpAltIcon style={{ fontSize: 15 }} /></button>
                     <button style={{ ...topBtn, padding: '3px 9px', fontSize: 12, color: '#f08a82' }} title="Dårlig match — unngå"
-                      onClick={() => { recordAiFeedback(aiLastPick.desc, aiLastPick.tplId, false); setAiLastPick(null); setMsg('✓ Lærte: unngå denne malen for slike beskrivelser.'); }}>👎</button>
+                      onClick={() => { recordAiFeedback(aiLastPick.desc, aiLastPick.tplId, false); setAiLastPick(null); setMsg('Lærte: unngå denne malen for slike beskrivelser.'); }}><ThumbDownAltIcon style={{ fontSize: 15 }} /></button>
                   </div>
                 )}
                 {(aiFeedbackCount() > 0 || modelSteps() > 0) && <div style={{ fontSize: 9.5, color: D.faint, marginTop: 6 }}>Modellen har lært av {aiFeedbackCount()} signal{aiFeedbackCount() === 1 ? '' : 'er'} ({modelSteps()} treningssteg) — tomler, det du bruker, og alle brukere.</div>}
@@ -958,13 +1035,13 @@ export function InfographicStudioView(
                       <button key={t.id} onClick={() => pickTemplate(t.id)} style={{ textAlign: 'left', padding: 11, borderRadius: 10, cursor: 'pointer', border: `1.5px solid ${selT ? D.accent : D.line}`, background: selT ? D.panel2 : D.bg, color: D.ink, position: 'relative' }}>
                         <TemplateThumb tpl={t} accent={accent} />
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <span style={{ fontSize: 15, color: t.style === 'hud' ? D.teal : D.accent }}>{t.glyph}</span>
+                          <span style={{ display: 'inline-flex', color: t.style === 'hud' ? D.teal : D.accent }}>{tplIcon(t.id, 15)}</span>
                           <div style={{ fontWeight: 700, fontSize: 12.5 }}>{t.name}</div>
                         </div>
                         <div style={{ fontSize: 11, color: D.soft, marginTop: 5, lineHeight: 1.35 }}>{t.desc}</div>
                         {isCustomTemplate(t.id) && (
                           <span role="button" title="Slett egen mal" onClick={(e) => { e.stopPropagation(); if (window.confirm(`Slette «${t.name}»?`)) { removeCustomTemplate(t.id); if (scene.tplId === t.id) updateScene({ tplId: INFOGRAPHIC_TEMPLATES[0].id }); setCustomTick((n) => n + 1); } }}
-                            style={{ position: 'absolute', top: 8, right: 9, fontSize: 12, color: D.faint, cursor: 'pointer', lineHeight: 1 }}>×</span>
+                            style={{ position: 'absolute', top: 8, right: 9, color: D.faint, cursor: 'pointer', lineHeight: 1, display: 'inline-flex' }}><CloseIcon style={{ fontSize: 13 }} /></span>
                         )}
                       </button>
                     );
@@ -1026,9 +1103,35 @@ export function InfographicStudioView(
             {(() => { const rc = parseDataRows(dataText).rows.length; return rc >= 2 ? (
               <button style={{ ...topBtn, width: '100%', justifyContent: 'center', marginTop: 12 }} onClick={batchFromRows}
                 title="Lag én scene av gjeldende mal per datarad — kolonnene bindes til feltene i rekkefølge">
-                ⧉ Lag {rc} scener — én per rad
+                <ContentCopyIcon style={{ fontSize: 15 }} /> Lag {rc} scener — én per rad
               </button>
             ) : null; })()}
+          </>)}
+          {leftSec === 'library' && (<>
+            <div style={{ fontSize: 11, fontWeight: 700, color: D.soft, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>Mine infographics <span style={{ color: D.faint, fontWeight: 500 }}>· gjenbruk på tvers av prosjekter</span></div>
+            {/* Lagre gjeldende studio-tilstand som gjenbrukbar infographic. */}
+            <div style={{ marginBottom: 12, padding: 10, borderRadius: 9, border: `1px solid ${D.line}`, background: D.bg }}>
+              <div style={{ fontSize: 10.5, color: D.soft, fontWeight: 700, marginBottom: 6 }}>Lagre denne ({scenes.length} scene(r))</div>
+              <input value={libName} onChange={(e) => setLibName(e.target.value)} placeholder={`${project?.name || 'Infographic'} …`} style={{ ...inp, marginBottom: 6 }} />
+              <button style={{ ...topBtn, width: '100%', justifyContent: 'center', fontSize: 11.5, background: D.accent, border: 'none' }} onClick={saveCurrentToLibrary}><SaveIcon style={{ fontSize: 15 }} /> Lagre i biblioteket</button>
+            </div>
+            {savedList.length === 0
+              ? <div style={{ fontSize: 11, color: D.faint, lineHeight: 1.5, padding: '8px 2px' }}>Ingen lagrede ennå. Lag en infographic og lagre den her — så kan du åpne og bygge videre på den i ethvert prosjekt.</div>
+              : savedList.map((s) => {
+                  const t = INFOGRAPHIC_TEMPLATES.find((x) => x.id === s.previewTplId) || INFOGRAPHIC_TEMPLATES[0];
+                  const firstVals = s.scenes[0]?.values || {};
+                  return (
+                    <div key={s.id} style={{ marginBottom: 10, padding: 8, borderRadius: 9, border: `1px solid ${D.line}`, background: D.bg }}>
+                      <TemplateThumb tpl={t} accent={s.accent || accent} values={firstVals} />
+                      <div style={{ fontSize: 11.5, fontWeight: 600, color: D.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</div>
+                      <div style={{ fontSize: 9.5, color: D.faint, marginBottom: 6 }}>{s.scenes.length} scene(r){s.fromProject ? ` · ${s.fromProject}` : ''}</div>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button style={{ ...topBtn, flex: 1, justifyContent: 'center', fontSize: 11 }} onClick={() => loadSnapshot(s)}><FolderOpenIcon style={{ fontSize: 14 }} /> Åpne</button>
+                        <button style={{ ...topBtn, padding: '4px 9px', fontSize: 11, color: '#f08a82' }} title="Slett fra biblioteket" onClick={() => { deleteInfographic(s.id); setLibTick((n) => n + 1); }}><DeleteOutlineIcon style={{ fontSize: 15 }} /></button>
+                      </div>
+                    </div>
+                  );
+                })}
           </>)}
           {leftSec === 'export' && (<>
             <div style={{ fontSize: 11, fontWeight: 700, color: D.soft, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>Kvalitet</div>
@@ -1052,7 +1155,7 @@ export function InfographicStudioView(
               ))}
             </div>
             <button style={{ ...topBtn, width: '100%', justifyContent: 'center', background: D.accent, border: 'none', opacity: exportBusy ? 0.6 : 1, marginBottom: 18 }} disabled={exportBusy} onClick={() => void exportFile()}>
-              ⤓ {exportBusy ? 'Eksporterer …' : 'Eksporter fil'}
+              <FileDownloadIcon style={{ fontSize: 15 }} /> {exportBusy ? 'Eksporterer …' : 'Eksporter fil'}
             </button>
             <div style={{ fontSize: 11, fontWeight: 700, color: D.soft, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>Resolve-overlay</div>
             <div style={{ fontSize: 10.5, color: D.faint, marginBottom: 6 }}>Overlay-spor</div>
@@ -1073,10 +1176,10 @@ export function InfographicStudioView(
               <div style={{ flex: 1 }} />
               {/* Composite: legg en still fra videoen bak overlay-en. */}
               <label style={{ ...topBtn, padding: '4px 10px', fontSize: 11 }} title="Legg et stillbilde fra videoen bak overlay-en for å se hvordan den lander">
-                🎬 {bgImage ? 'Bytt bakgrunn' : 'Bakgrunn'}
+                <ImageOutlinedIcon style={{ fontSize: 14 }} /> {bgImage ? 'Bytt bakgrunn' : 'Bakgrunn'}
                 <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = () => setBgImage(typeof r.result === 'string' ? r.result : ''); r.readAsDataURL(f); }} />
               </label>
-              {bgImage && <button style={{ ...topBtn, padding: '4px 9px', fontSize: 11 }} onClick={() => setBgImage('')}>✕</button>}
+              {bgImage && <button style={{ ...topBtn, padding: '4px 9px', fontSize: 11 }} onClick={() => setBgImage('')}><CloseIcon style={{ fontSize: 14 }} /></button>}
             </div>
             <div ref={canvasRef} style={{ position: 'relative', flex: 1, borderRadius: 12, overflow: 'hidden', border: `1px solid ${D.line}`, background: bgImage ? '#000' : 'linear-gradient(135deg,#10182a,#0b1120)', display: 'grid', placeItems: 'center' }}>
               {bgImage && <img src={bgImage} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', zIndex: 0 }} />}
@@ -1098,7 +1201,7 @@ export function InfographicStudioView(
               return (<>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                   <span style={{ fontSize: 10.5, color: D.faint }}>Tidslinje · {totalDur.toFixed(1)}s</span>
-                  {overlap && <span style={{ fontSize: 10.5, color: '#f0a882' }}>⚠ scener overlapper i tid</span>}
+                  {overlap && <span style={{ fontSize: 10.5, color: '#f0a882', display: 'inline-flex', alignItems: 'center', gap: 4 }}><WarningAmberIcon style={{ fontSize: 12 }} /> scener overlapper i tid</span>}
                   <div style={{ flex: 1 }} />
                   <span style={{ fontSize: 10.5, color: D.faint }}>{scrubT.toFixed(1)}s</span>
                 </div>
@@ -1117,7 +1220,7 @@ export function InfographicStudioView(
           {/* Scene-stripe (multi-scene) */}
           <div style={{ borderTop: `1px solid ${D.line}`, background: D.panel, padding: '10px 16px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <button style={topBtn} onClick={() => play()} title="Spill valgt scene">▶</button>
+              <button style={topBtn} onClick={() => play()} title="Spill valgt scene"><PlayArrowIcon style={{ fontSize: 16 }} /></button>
               <div style={{ display: 'flex', gap: 8, overflowX: 'auto', flex: 1, paddingBottom: 2 }}>
                 {scenes.map((sc, i) => {
                   const t = INFOGRAPHIC_TEMPLATES.find((x) => x.id === sc.tplId) || INFOGRAPHIC_TEMPLATES[0];
@@ -1126,19 +1229,19 @@ export function InfographicStudioView(
                     <div key={sc.id} onClick={() => setSel(i)} style={{ width: 104, flex: 'none', borderRadius: 9, border: `2px solid ${active ? D.accent : D.line}`, background: active ? D.panel2 : D.bg, cursor: 'pointer', padding: '8px 9px', position: 'relative' }}>
                       <div style={{ fontSize: 10, color: D.faint }}>Scene {i + 1} · {sc.atSec}s</div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 }}>
-                        <span style={{ fontSize: 15, color: t.style === 'hud' ? D.teal : D.accent }}>{t.glyph}</span>
+                        <span style={{ display: 'inline-flex', color: t.style === 'hud' ? D.teal : D.accent }}>{tplIcon(t.id, 15)}</span>
                         <span style={{ fontSize: 11, fontWeight: 600, color: D.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
                       </div>
-                      {scenes.length > 1 && <button onClick={(e) => { e.stopPropagation(); deleteScene(i); }} style={{ position: 'absolute', top: 4, right: 5, border: 'none', background: 'transparent', color: D.faint, cursor: 'pointer', fontSize: 13, lineHeight: 1 }}>×</button>}
+                      {scenes.length > 1 && <button onClick={(e) => { e.stopPropagation(); deleteScene(i); }} style={{ position: 'absolute', top: 4, right: 5, border: 'none', background: 'transparent', color: D.faint, cursor: 'pointer', lineHeight: 1, padding: 0 }}><CloseIcon style={{ fontSize: 13 }} /></button>}
                     </div>
                   );
                 })}
-                <div onClick={addScene} style={{ width: 56, flex: 'none', borderRadius: 9, border: `1px dashed ${D.line}`, display: 'grid', placeItems: 'center', fontSize: 20, color: D.faint, cursor: 'pointer' }} title="Ny scene">＋</div>
+                <div onClick={addScene} style={{ width: 56, flex: 'none', borderRadius: 9, border: `1px dashed ${D.line}`, display: 'grid', placeItems: 'center', color: D.faint, cursor: 'pointer' }} title="Ny scene"><AddIcon style={{ fontSize: 22 }} /></div>
               </div>
               <label style={{ fontSize: 12, color: D.soft, display: 'flex', alignItems: 'center', gap: 7, flex: 'none' }}>Dukker opp ved
                 <input style={{ ...inp, width: 64 }} type="number" min="0" step="0.5" value={scene.atSec} onChange={(e) => updateScene({ atSec: parseFloat(e.target.value) || 0 })} /> s</label>
               {CALLOUT_IDS.has(scene.tplId) && (
-                <label style={{ fontSize: 12, color: D.soft, display: 'flex', alignItems: 'center', gap: 6, flex: 'none' }} title="Hvor i bildet callouten peker (% av ramme; 50/50 = sentrert)">⌖ Plassering
+                <label style={{ fontSize: 12, color: D.soft, display: 'flex', alignItems: 'center', gap: 6, flex: 'none' }} title="Hvor i bildet callouten peker (% av ramme; 50/50 = sentrert)"><CenterFocusStrongIcon style={{ fontSize: 14 }} /> Plassering
                   <input style={{ ...inp, width: 54 }} type="number" min="0" max="100" step="1" value={scene.posX ?? 50} onChange={(e) => updateScene({ posX: Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) })} />X
                   <input style={{ ...inp, width: 54 }} type="number" min="0" max="100" step="1" value={scene.posY ?? 50} onChange={(e) => updateScene({ posY: Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) })} />Y%</label>
               )}
@@ -1151,7 +1254,8 @@ export function InfographicStudioView(
                   <div style={{ height: '100%', width: `${Math.round((renderProgress.done / Math.max(1, renderProgress.total)) * 100)}%`, background: D.accent, transition: 'width .3s' }} />
                 </div>
               )}
-              {msg && <div style={{ fontSize: 12, color: msg.startsWith('Feil') ? '#f08a82' : D.soft, display: 'flex', alignItems: 'center', gap: 10 }}>
+              {msg && <div style={{ fontSize: 12, color: msg.startsWith('Feil') ? '#f08a82' : D.soft, display: 'flex', alignItems: 'center', gap: 8 }}>
+                {msg.startsWith('Feil') ? <ErrorOutlineIcon style={{ fontSize: 15 }} /> : <CheckCircleOutlineIcon style={{ fontSize: 15, color: D.teal }} />}
                 <span style={{ flex: 1 }}>{msg}</span>
                 {needsPlaywright && <button style={{ ...topBtn, padding: '4px 11px', fontSize: 11.5 }} onClick={() => void doSetupPlaywright()}>Sett opp Playwright</button>}
               </div>}
@@ -1178,13 +1282,13 @@ export function InfographicStudioView(
                           <select value={bound || ''} onChange={(e) => setBinding(f.key, e.target.value)}
                             title="Bind til datakilde"
                             style={{ fontSize: 10, padding: '1px 4px', borderRadius: 5, border: `1px solid ${bound ? D.teal : D.line}`, background: D.bg, color: bound ? D.teal : D.faint, colorScheme: 'dark' }}>
-                            <option value="">⛁ bind…</option>
+                            <option value="">bind…</option>
                             {dataKeys.map((k) => <option key={k} value={k}>{k}</option>)}
                           </select>
                         )}
                       </div>
                       {bound
-                        ? <input style={{ ...inp, borderColor: D.teal, color: D.teal }} readOnly value={`⛁ ${dataMap[bound] ?? ''}`} title={`Bundet til ${bound}`} />
+                        ? <input style={{ ...inp, borderColor: D.teal, color: D.teal }} readOnly value={dataMap[bound] ?? ''} title={`Bundet til ${bound}`} />
                         : isIconField(f.key)
                           ? <IconField value={scene.values[f.key] ?? tpl.defaults[f.key] ?? ''} onChange={(v) => setValue(f.key, v)} />
                           : <input style={inp} placeholder={f.placeholder} value={scene.values[f.key] ?? tpl.defaults[f.key] ?? ''} onChange={(e) => setValue(f.key, e.target.value)} />}
@@ -1201,7 +1305,7 @@ export function InfographicStudioView(
                 {palette.map((c, i) => (
                   <button key={i} onClick={() => setAccent(c)} title={c} style={{ width: 30, height: 30, borderRadius: 8, background: c, border: `2px solid ${accent.toLowerCase() === c.toLowerCase() ? D.ink : D.line}`, cursor: 'pointer' }} />
                 ))}
-                <label style={{ width: 30, height: 30, borderRadius: 8, border: `1px dashed ${D.line}`, display: 'grid', placeItems: 'center', color: D.soft, cursor: 'pointer' }}>＋
+                <label style={{ width: 30, height: 30, borderRadius: 8, border: `1px dashed ${D.line}`, display: 'grid', placeItems: 'center', color: D.soft, cursor: 'pointer' }}><AddIcon style={{ fontSize: 16 }} />
                   <input type="color" style={{ display: 'none' }} onChange={(e) => { setPalette((p) => [...p, e.target.value]); setAccent(e.target.value); }} />
                 </label>
               </div>
@@ -1240,8 +1344,8 @@ export function InfographicStudioView(
                 </div>
               )}
               <div style={{ display: 'flex', gap: 8, margin: '10px 0 12px' }}>
-                <button style={{ ...topBtn, flex: 1, justifyContent: 'center' }} onClick={() => play()}>▶ Spill scene</button>
-                <button style={{ ...topBtn, flex: 1, justifyContent: 'center' }} onClick={() => (playingAll ? stopPlayAll() : playAll())}>{playingAll ? '⏸ Stopp' : '⏵ Spill alt'}</button>
+                <button style={{ ...topBtn, flex: 1, justifyContent: 'center' }} onClick={() => play()}><PlayArrowIcon style={{ fontSize: 16 }} /> Spill scene</button>
+                <button style={{ ...topBtn, flex: 1, justifyContent: 'center' }} onClick={() => (playingAll ? stopPlayAll() : playAll())}>{playingAll ? <><PauseIcon style={{ fontSize: 16 }} /> Stopp</> : <><SlideshowIcon style={{ fontSize: 16 }} /> Spill alt</>}</button>
               </div>
               <div style={{ fontSize: 10.5, color: D.faint, lineHeight: 1.45 }}>Bevegelsen (count-up, søyle-vekst, stagger, fade/slide) er designet inn i hver mal og kjøres deterministisk av <code style={{ color: D.soft }}>setProgress</code> — derfor ser den alltid proff ut. Varighet styrer hvor lenge den spilles av.</div>
             </>)}
