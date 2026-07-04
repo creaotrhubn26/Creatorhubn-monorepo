@@ -2763,6 +2763,93 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     } catch { return res.status(500).send("error"); }
   });
 
+  // Felles leverings-logikk for band-påminnelser (brukes av send-nå OG
+  // cron-leverte planlagte): målgruppe via warmupMatches, valgfritt kun
+  // ikke-oppvarmede, e-post + SMS m/ medlemmets delte lenke.
+  const deliverBandReminder = async (projectId: string, opts: { message: string; target?: string; onlyNotWarmed?: boolean }): Promise<{ recipients: number; emails: number; sms: number }> => {
+    const p = await pool.query(`SELECT title FROM audio_review_projects WHERE id=$1::uuid LIMIT 1`, [projectId]);
+    const projectTitle = p.rows[0]?.title || "Studioprosjektet";
+    const m = await pool.query(`SELECT name, role, email, phone, invite_token, is_owner FROM audio_review_members WHERE project_id=$1::uuid`, [projectId]).catch(() => ({ rows: [] as any[] }));
+    let recipients = m.rows.filter((x: any) => !x.is_owner);
+    const target = str(opts.target, 60) || "all";
+    if (target !== "all") recipients = recipients.filter((x: any) => warmupMatches(target, x.role));
+    if (opts.onlyNotWarmed === true) {
+      const warm = await pool.query(`SELECT DISTINCT c.member_name FROM audio_warmup_completions c JOIN audio_warmup_routines r ON r.id=c.routine_id WHERE r.project_id=$1::uuid`, [projectId]).catch(() => ({ rows: [] as any[] }));
+      const done = new Set(warm.rows.map((w: any) => w.member_name));
+      recipients = recipients.filter((x: any) => !done.has(x.name));
+    }
+    let emailsSent = 0; let smsSent = 0;
+    for (const a of recipients) {
+      const link = a.invite_token ? `${APP_URL}/audio-review/shared/${a.invite_token}` : null;
+      const text = `${opts.message}${link ? `\n\nÅpne rommet ditt (oppvarming & innsjekk): ${link}` : ""}`;
+      const html = `<div style="font-family:system-ui,Arial,sans-serif;max-width:520px;margin:0 auto;color:#1a1a1a">
+        <p style="white-space:pre-wrap;margin:0 0 12px">${icsEsc(opts.message)}</p>
+        ${link ? `<a href="${link}" style="display:inline-block;background:#FF6B35;color:#150d05;font-weight:700;text-decoration:none;padding:10px 20px;border-radius:999px">Åpne rommet ditt</a>` : ""}</div>`;
+      if (sendEmail && a.email) {
+        await sendEmail({ to: a.email, subject: `Påminnelse: ${projectTitle}`, html, text, kind: "audio_manual_reminder" }).then(() => { emailsSent++; }).catch(() => {});
+      }
+      if (a.phone && await sendSms(a.phone, text)) smsSent++;
+    }
+    return { recipients: recipients.length, emails: emailsSent, sms: smsSent };
+  };
+
+  // Manuell påminnelse fra produsenten (workspace/Sesjoner + showcase):
+  // egen melding («husk å øv til …»), valgfri målgruppe og valgfritt KUN de
+  // som ikke har varmet opp. `sendAt` (ISO, frem i tid) → planlegges og
+  // leveres av cronen (hver halvtime); uten sendAt sendes den umiddelbart.
+  app.post("/api/audio-showcases/:id/remind", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    const id = str(req.params.id, 64);
+    const message = str(req.body?.message, 600);
+    if (!message) return res.status(400).json({ error: "message_required" });
+    try {
+      const p = await pool.query(`SELECT 1 FROM audio_review_projects WHERE id=$1::uuid AND owner_user_id=$2 LIMIT 1`, [id, s.userId]);
+      if (p.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      const target = str(req.body?.target, 60) || "all";
+      const onlyNotWarmed = req.body?.onlyNotWarmed === true;
+      const sendAtRaw = str(req.body?.sendAt, 40);
+      if (sendAtRaw) {
+        const sendAt = new Date(sendAtRaw);
+        if (!Number.isFinite(sendAt.getTime())) return res.status(400).json({ error: "invalid_send_at" });
+        if (sendAt.getTime() <= Date.now()) return res.status(400).json({ error: "send_at_in_past" });
+        const ins = await pool.query(
+          `INSERT INTO audio_scheduled_reminders (project_id, owner_user_id, message, target, only_not_warmed, send_at)
+           VALUES ($1::uuid,$2,$3,$4,$5,$6) RETURNING id, send_at`,
+          [id, s.userId, message, target, onlyNotWarmed, sendAt.toISOString()]);
+        return res.status(201).json({ ok: true, scheduled: true, reminderId: ins.rows[0].id, sendAt: ins.rows[0].send_at });
+      }
+      const result = await deliverBandReminder(id, { message, target, onlyNotWarmed });
+      return res.json({ ok: true, scheduled: false, ...result });
+    } catch (e) {
+      if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
+      console.error("[audio-showcase] remind failed:", e);
+      return res.status(500).json({ error: "remind_failed" });
+    }
+  });
+
+  // Planlagte påminnelser for rommet (kommende + siste sendte). Owner-gatet.
+  app.get("/api/audio-showcases/:id/reminders", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    try {
+      const own = await pool.query(`SELECT 1 FROM audio_review_projects WHERE id=$1::uuid AND owner_user_id=$2 LIMIT 1`, [str(req.params.id, 64), s.userId]);
+      if (own.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      const r = await pool.query(
+        `SELECT id, message, target, only_not_warmed, send_at, sent_at, emails_sent, sms_sent
+           FROM audio_scheduled_reminders WHERE project_id=$1::uuid
+          ORDER BY (sent_at IS NOT NULL), send_at ASC LIMIT 30`, [str(req.params.id, 64)]);
+      return res.json({ reminders: r.rows });
+    } catch (e) { if (isMissingTable(e)) return res.json({ reminders: [] }); return res.status(500).json({ error: "reminders_list_failed" }); }
+  });
+
+  // Avbryt en planlagt (usendt) påminnelse.
+  app.delete("/api/audio-reminders/:rid", async (req, res) => {
+    const s = requireUserSession(req, res); if (!s) return;
+    try {
+      await pool.query(`DELETE FROM audio_scheduled_reminders WHERE id=$1::uuid AND owner_user_id=$2 AND sent_at IS NULL`, [str(req.params.rid, 64), s.userId]);
+      return res.json({ ok: true });
+    } catch (e) { if (isMissingTable(e)) return res.json({ ok: true }); return res.status(500).json({ error: "reminder_cancel_failed" }); }
+  });
+
   // CRON: send 24t- og 1t-påminnelser for kommende økter (e-post + valgfri SMS).
   app.post("/api/audio-showcase/sessions/run-reminders", async (req, res) => {
     const presented = String(req.headers["x-cron-trigger-token"] || "").trim();
@@ -2789,7 +2876,18 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
           await pool.query(`UPDATE audio_sessions SET ${w.col}=true WHERE id=$1::uuid`, [sess.id]);
         }
       }
-      return res.json({ ok: true, sessions, emails, sms });
+      // Forfalte produsent-planlagte påminnelser (audio_scheduled_reminders).
+      let scheduled = 0;
+      try {
+        const due = await pool.query(`SELECT * FROM audio_scheduled_reminders WHERE sent_at IS NULL AND send_at <= NOW() ORDER BY send_at ASC LIMIT 50`);
+        for (const rem of due.rows) {
+          const result = await deliverBandReminder(rem.project_id, { message: rem.message, target: rem.target, onlyNotWarmed: rem.only_not_warmed }).catch(() => null);
+          await pool.query(`UPDATE audio_scheduled_reminders SET sent_at=NOW(), emails_sent=$2, sms_sent=$3 WHERE id=$1::uuid`,
+            [rem.id, result?.emails ?? 0, result?.sms ?? 0]);
+          if (result) { scheduled++; emails += result.emails; sms += result.sms; }
+        }
+      } catch (se) { if (!isMissingTable(se)) console.error("[sessions] scheduled reminders failed:", se); }
+      return res.json({ ok: true, sessions, emails, sms, scheduled });
     } catch (e) { if (isMissingTable(e)) return res.json({ ok: true, sessions: 0 }); console.error("[sessions] reminders failed:", e); return res.status(500).json({ error: "reminders_failed" }); }
   });
 

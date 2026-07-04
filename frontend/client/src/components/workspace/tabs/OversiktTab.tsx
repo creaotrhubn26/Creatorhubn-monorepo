@@ -96,6 +96,8 @@ const T: WsDict = {
   bouncesWord: { no: 'bounces', en: 'bounces' },
   toVersion: { no: '→ versjon', en: '→ version' },
   openSoundRoomBtn: { no: 'Åpne Sound Room', en: 'Open Sound Room' },
+  readyForRecording: { no: 'klar til opptak', en: 'ready to record' },
+  moodCheckins: { no: 'form-innsjekk', en: 'mood check-ins' },
   addReference: { no: 'Legg til referanse', en: 'Add reference' },
   // aktivitet
   captureActivity: { no: 'Capture-aktivitet', en: 'Capture activity' },
@@ -316,10 +318,26 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
   // Studio-kort for musikk: siste sesjoner m/ playhead + bounces (erstatter
   // det foto-spesifikke Capture & backup-kortet).
   const [studioSessions, setStudioSessions] = useState<any[] | null>(null);
+  // Readiness (EaseVerse oppvarming + Bandets form) — eier-gatet; feil → skjult.
+  const [studioReadiness, setStudioReadiness] = useState<{ warmed: number; band: number; moods: number } | null>(null);
   useEffect(() => {
-    if (!isReal || wsCategory !== 'music') { setStudioSessions(null); return; }
+    if (!isReal || wsCategory !== 'music') { setStudioSessions(null); setStudioReadiness(null); return; }
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/recording-sessions?include=details`)
-      .then((r: any) => setStudioSessions(Array.isArray(r?.sessions) ? r.sessions : []))
+      .then(async (r: any) => {
+        setStudioSessions(Array.isArray(r?.sessions) ? r.sessions : []);
+        if (!r?.audioRoomId) return;
+        try {
+          const [w, m, mem] = await Promise.all([
+            apiRequest(`/api/audio-showcases/${encodeURIComponent(r.audioRoomId)}/warmups`).catch(() => null),
+            apiRequest(`/api/audio-showcases/${encodeURIComponent(r.audioRoomId)}/mood`).catch(() => null),
+            apiRequest(`/api/projects/${encodeURIComponent(projectId)}/audio-room/members`).catch(() => null),
+          ]);
+          const routines = Array.isArray(w?.routines) ? w.routines : null;
+          if (!routines) return; // ikke eier → skjul
+          const warmed = new Set(routines.flatMap((x: any) => (x.completions || []).map((c: any) => c.name))).size;
+          setStudioReadiness({ warmed, band: Array.isArray(mem?.members) ? mem.members.length : 0, moods: Array.isArray(m?.moods) ? m.moods.length : 0 });
+        } catch { /* stille */ }
+      })
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, isReal, wsCategory]);
@@ -397,6 +415,14 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
                 <Typography sx={{ fontSize: 18, fontWeight: 800 }}>{(studioSessions || []).reduce((s: number, x: any) => s + (Number(x.bounce_count) || 0), 0)}</Typography>
                 <Typography sx={{ fontSize: 10.5, color: ws.textDim }}>{t('bouncesWord')}</Typography>
               </Box>
+              {studioReadiness && (studioReadiness.warmed > 0 || studioReadiness.moods > 0) && (
+                <Stack direction="row" spacing={0.75} alignItems="center" sx={{ px: 1 }}>
+                  <Typography sx={{ fontSize: 13 }}>🧘</Typography>
+                  <Typography sx={{ fontSize: 11.5, color: ws.textDim }}>
+                    {studioReadiness.warmed}{studioReadiness.band ? `/${studioReadiness.band}` : ''} {t('readyForRecording')}{studioReadiness.moods > 0 ? ` · ${studioReadiness.moods} ${t('moodCheckins')}` : ''}
+                  </Typography>
+                </Stack>
+              )}
               <Box sx={{ flex: 1 }} />
               <Button size="small" variant="outlined" onClick={() => go('sound-room')} sx={{ color: ws.accent, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 600 }}>{t('openSoundRoomBtn')}</Button>
             </Stack>
