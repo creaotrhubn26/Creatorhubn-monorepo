@@ -9,7 +9,8 @@ import SwiftUI
 // MARK: - Models
 
 struct PondusChapter: Identifiable, Hashable {
-    let id = UUID()
+    // Stabil id fra backend (AcademyLiveStore) — mock-kapitler får tilfeldig.
+    var id = UUID()
     let number: Int
     let section: Section
     let title: String
@@ -20,6 +21,9 @@ struct PondusChapter: Identifiable, Hashable {
     let posterTint: Color
     let learningObjectives: [String]
     let transcriptSnippet: String
+    /// True når kapittelet har ekte video (R2) — spilleren henter da
+    /// presignert URL i stedet for å simulere avspilling.
+    var hasVideo: Bool = false
 
     enum Section: String, CaseIterable, Identifiable, Hashable {
         case grunnleggende = "Grunnleggende"
@@ -47,7 +51,14 @@ struct PondusChapter: Identifiable, Hashable {
 }
 
 enum PondusAcademyData {
-    static let chapters: [PondusChapter] = [
+    /// Kapitlene views leser — live fra AcademyLiveStore (mig 0368) når
+    /// lastet, ellers den innebygde mocken. Demo-modus gir alltid mock.
+    @MainActor
+    static var chapters: [PondusChapter] {
+        AcademyLiveStore.shared.chapters ?? mockChapters
+    }
+
+    static let mockChapters: [PondusChapter] = [
         // Grunnleggende
         PondusChapter(number: 1, section: .grunnleggende,
                       title: "Velkommen til Pondus",

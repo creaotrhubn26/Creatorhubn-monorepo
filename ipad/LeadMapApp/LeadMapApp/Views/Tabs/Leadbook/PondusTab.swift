@@ -12,6 +12,7 @@ import SwiftUI
 // MARK: - PondusTabView (hoved)
 
 struct PondusTabView: View {
+    @Environment(AppState.self) private var appState
     @Binding var selected: PondusTemplate
     @State private var editorMode: EditorMode = .rediger
     @State private var period: String = "Siste 30 dager"
@@ -138,6 +139,20 @@ struct PondusTabView: View {
             )
         }
         .fullScreenCover(isPresented: $showTeamUsage) { PondusTeamUsageModal() }
+        // Leadgrid Academy (mig 0368): last kurs + progresjon fra backend og
+        // flett serverens sett-status inn i lokal state. Mock er fallback.
+        .task {
+            AcademyLiveStore.shared.attach(api: appState.api)
+            await AcademyLiveStore.shared.load()
+            academyWatched.formUnion(AcademyLiveStore.shared.serverWatched)
+        }
+        // Persister nye «sett»-kapitler (spilleren auto-markerer ved fullført
+        // avspilling — eneste kilde til nye ids i settet).
+        .onChange(of: academyWatched) { old, new in
+            for id in new.subtracting(old) {
+                AcademyLiveStore.shared.logWatched(id)
+            }
+        }
     }
 
     // MARK: Header
