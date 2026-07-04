@@ -251,8 +251,16 @@ function renderProposalPdf(
 
   // Header: org-navn (+ ev. logo) + TILBUD-chip venstre, meta høyre.
   // Lockup (Leadgrid-default) tegnes større uten navnetekst ved siden.
+  // Navnet klippes med ellipsis FØR meta-blokken (metaX) så lange
+  // brand-navn ikke kolliderer med «Tilbudsnr./Dato»-kolonnen.
   let y = 44;
   let drewLockup = false;
+  const metaX = W - M - 190;
+  const nameOpts = (x: number) => ({
+    width: metaX - x - 14,
+    lineBreak: false as const,
+    ellipsis: true as const,
+  });
   if (logoBuffer) {
     try {
       if (logoIsLockup) {
@@ -260,20 +268,22 @@ function renderProposalPdf(
         drewLockup = true;
       } else {
         doc.image(logoBuffer, M, y - 4, { fit: [110, 36] });
-        doc.fillColor(ink).font("Helvetica-Bold").fontSize(19).text(branding.name, M + 122, y);
+        doc.fillColor(ink).font("Helvetica-Bold").fontSize(19)
+          .text(branding.name, M + 122, y, nameOpts(M + 122));
       }
     } catch {
-      doc.fillColor(ink).font("Helvetica-Bold").fontSize(19).text(branding.name, M, y);
+      doc.fillColor(ink).font("Helvetica-Bold").fontSize(19)
+        .text(branding.name, M, y, nameOpts(M));
     }
   } else {
-    doc.fillColor(ink).font("Helvetica-Bold").fontSize(19).text(branding.name, M, y);
+    doc.fillColor(ink).font("Helvetica-Bold").fontSize(19)
+      .text(branding.name, M, y, nameOpts(M));
   }
   const chipY = drewLockup ? y + 60 : y + 28;
   doc.roundedRect(M, chipY, 68, 20, 10).fill(accent);
   doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(9)
     .text("TILBUD", M, chipY + 6, { width: 68, align: "center" });
 
-  const metaX = W - M - 190;
   const meta: Array<[string, string]> = [
     ["Tilbudsnr.", proposal.number],
     ["Dato", longDate(proposal.created_at)],
