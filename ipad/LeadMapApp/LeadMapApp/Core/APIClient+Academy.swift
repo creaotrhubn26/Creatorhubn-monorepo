@@ -90,4 +90,104 @@ extension APIClient {
         )
         return URL(string: resp.url)
     }
+
+    // MARK: - Fase 2: org-egne kurs (admin-gated i backend)
+
+    func academyCreateCourse(
+        title: String,
+        description: String?,
+        posterIcon: String = "graduationcap.fill",
+        posterTint: String = "purpleLight"
+    ) async throws -> String {
+        struct Body: Codable {
+            let title: String
+            let description: String?
+            let posterIcon: String
+            let posterTint: String
+        }
+        struct Resp: Codable { let id: String }
+        let resp: Resp = try await _post(
+            "/api/leadgrid/academy/courses",
+            body: Body(title: title, description: description,
+                       posterIcon: posterIcon, posterTint: posterTint)
+        )
+        return resp.id
+    }
+
+    func academyDeleteCourse(courseId: String) async throws {
+        try await _delete("/api/leadgrid/academy/courses/\(courseId)")
+    }
+
+    func academyCreateChapter(
+        courseId: String,
+        title: String,
+        summary: String?,
+        section: String = "praksis",
+        durationSeconds: Int = 0
+    ) async throws -> String {
+        struct Body: Codable {
+            let title: String
+            let summary: String?
+            let section: String
+            let durationSeconds: Int
+        }
+        struct Resp: Codable { let id: String }
+        let resp: Resp = try await _post(
+            "/api/leadgrid/academy/courses/\(courseId)/chapters",
+            body: Body(title: title, summary: summary,
+                       section: section, durationSeconds: durationSeconds)
+        )
+        return resp.id
+    }
+
+    func academyDeleteChapter(chapterId: String) async throws {
+        try await _delete("/api/leadgrid/academy/chapters/\(chapterId)")
+    }
+
+    /// Presignert PUT for video-opplasting. Returnerer (url, key) — last opp
+    /// rå video-data med PUT + Content-Type, deretter `academyAttachVideo`.
+    func academyVideoUploadURL(
+        chapterId: String,
+        contentType: String = "video/mp4"
+    ) async throws -> (url: URL, key: String) {
+        struct Body: Codable { let contentType: String }
+        struct Resp: Codable { let url: String; let key: String }
+        let resp: Resp = try await _post(
+            "/api/leadgrid/academy/chapters/\(chapterId)/video-upload-url",
+            body: Body(contentType: contentType)
+        )
+        guard let url = URL(string: resp.url) else {
+            throw APIError.invalidResponse
+        }
+        return (url, resp.key)
+    }
+
+    func academyAttachVideo(
+        chapterId: String,
+        key: String,
+        durationSeconds: Int?
+    ) async throws {
+        struct Body: Codable { let key: String; let durationSeconds: Int? }
+        let _: AcademyOkResponse = try await _post(
+            "/api/leadgrid/academy/chapters/\(chapterId)/video-attach",
+            body: Body(key: key, durationSeconds: durationSeconds)
+        )
+    }
+
+    /// Laster opp video-data direkte til presignert R2-URL (utenfor
+    /// API-baseURL — egen URLSession-request med PUT).
+    nonisolated func academyUploadVideoData(
+        _ data: Data,
+        to url: URL,
+        contentType: String
+    ) async throws {
+        var req = URLRequest(url: url)
+        req.httpMethod = "PUT"
+        req.setValue(contentType, forHTTPHeaderField: "Content-Type")
+        req.timeoutInterval = 300
+        let (_, resp) = try await URLSession.shared.upload(for: req, from: data)
+        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw APIError.invalidResponse
+        }
+    }
 }

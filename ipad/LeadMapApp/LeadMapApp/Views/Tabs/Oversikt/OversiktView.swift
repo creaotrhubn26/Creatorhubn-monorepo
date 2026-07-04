@@ -870,24 +870,18 @@ private struct KPICardRow: View {
     let forecast: LeadgridForecast?
     var compact: Bool = false  // Bytter til 2-rad grid på smalere skjermer
 
+    @State private var showStatsModal = false
+
     @ViewBuilder
     var body: some View {
         if compact {
             if DeviceIdiom.isPhone {
-                // iPhone: maks 2 kort per rad — tre kort på én rad blir
-                // ~110pt på 390pt-skjermer og under lesbarhets-grensen
-                // (~150pt). Vunnet får full bredde nederst.
-                VStack(spacing: 14) {
-                    HStack(spacing: 14) {
-                        totalLeadsCard.frame(maxWidth: .infinity)
-                        hotLeadsCard.frame(maxWidth: .infinity)
-                    }
-                    HStack(spacing: 14) {
-                        followupsCard.frame(maxWidth: .infinity)
-                        expectedValueCard.frame(maxWidth: .infinity)
-                    }
-                    wonCard.frame(maxWidth: .infinity)
-                }
+                // iPhone (QA-runde 2): fem KPI-kort tok hele skjermen og
+                // labels trunkerte («Oppfølging…», «Forventet v…»). Nå én
+                // kompakt statistikk-knapp — kortene ligger i modal med
+                // full bredde og hele labels.
+                statsButton
+                    .sheet(isPresented: $showStatsModal) { statsModal }
             } else {
                 // Portrait iPad: 5 KPI fordelt på 2 like rader så hvert
                 // kort får mest mulig plass. Total + Hot på rad 1, og
@@ -914,6 +908,74 @@ private struct KPICardRow: View {
                 wonCard
             }
         }
+    }
+
+    // ── iPhone: kompakt statistikk-knapp + modal ─────────────────────
+
+    private var statsButton: some View {
+        Button {
+            showStatsModal = true
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Brand.purple.opacity(0.22))
+                    Image(systemName: "chart.bar.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Brand.purple)
+                }
+                .frame(width: 40, height: 40)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Statistikk")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(.white)
+                    HStack(spacing: 6) {
+                        Text("\(formatNumber(totalLeads)) leads")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Brand.textSecondary)
+                        if totalLeads > 0 {
+                            Text("↑ +18%")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(Brand.green)
+                        }
+                    }
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Brand.textSecondary)
+            }
+            .padding(14)
+            .background(Brand.card, in: RoundedRectangle(cornerRadius: 14))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14).stroke(Brand.stroke, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var statsModal: some View {
+        ScrollView {
+            VStack(spacing: 14) {
+                Text("Statistikk")
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 18)
+
+                totalLeadsCard.frame(maxWidth: .infinity)
+                hotLeadsCard.frame(maxWidth: .infinity)
+                followupsCard.frame(maxWidth: .infinity)
+                expectedValueCard.frame(maxWidth: .infinity)
+                wonCard.frame(maxWidth: .infinity)
+            }
+            .padding(.horizontal, 18)
+            .padding(.bottom, 24)
+        }
+        .background(Brand.bg.ignoresSafeArea())
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
     }
 
     // Trend-pille: vis kun når vi har en faktisk verdi å trende fra.

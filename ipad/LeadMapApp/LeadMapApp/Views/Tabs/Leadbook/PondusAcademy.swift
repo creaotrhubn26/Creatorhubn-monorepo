@@ -5,6 +5,7 @@
 // avspilling med en timer — auto-markerer kapittel som sett etter full lengde.
 
 import SwiftUI
+import AVKit
 
 // MARK: - Models
 
@@ -297,6 +298,9 @@ struct PondusAcademyBanner: View {
 struct PondusAkademiSheet: View {
     @Binding var watched: Set<UUID>
     @State var current: PondusChapter
+    /// Kapitlene sheeten opererer på — Pondus-kurset fra PondusTab, vilkårlig
+    /// kurs fra Akademi-fanen. Alle interne lister/navigasjon bruker denne.
+    let chapters: [PondusChapter]
     @Environment(\.dismiss) private var dismiss
 
     @State private var isPlaying = false
@@ -305,9 +309,13 @@ struct PondusAkademiSheet: View {
     @State private var sectionFilter: PondusChapter.Section?
     @State private var showTranscript = true
     @State private var search: String = ""
+    // Ekte video (R2, presignert URL) — kun for kapitler med hasVideo.
+    @State private var videoPlayer: AVPlayer?
+    @State private var videoLoading = false
+    @State private var videoLoadFailed = false
 
     private var filteredChapters: [PondusChapter] {
-        var list = PondusAcademyData.chapters
+        var list = chapters
         if let f = sectionFilter { list = list.filter { $0.section == f } }
         if !search.isEmpty {
             let q = search.lowercased()
@@ -317,10 +325,10 @@ struct PondusAkademiSheet: View {
     }
 
     private var watchedDurationSeconds: Int {
-        PondusAcademyData.chapters.filter { watched.contains($0.id) }.map(\.duration).reduce(0, +)
+        chapters.filter { watched.contains($0.id) }.map(\.duration).reduce(0, +)
     }
     private var totalDurationSeconds: Int {
-        PondusAcademyData.chapters.map(\.duration).reduce(0, +)
+        chapters.map(\.duration).reduce(0, +)
     }
 
     var body: some View {
@@ -354,7 +362,7 @@ struct PondusAkademiSheet: View {
                 }
                 ToolbarItem(placement: .principal) {
                     VStack(spacing: 0) {
-                        Text("\(watched.count) av \(PondusAcademyData.chapters.count) kapitler")
+                        Text("\(watched.count) av \(chapters.count) kapitler")
                             .font(.system(size: 11, weight: .bold))
                             .foregroundStyle(.white)
                         Text("\(formatMinutes(watchedDurationSeconds)) av \(formatMinutes(totalDurationSeconds))")
@@ -393,8 +401,14 @@ struct PondusAkademiSheet: View {
     private var playerColumn: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                playerCanvas
-                playerControls
+                if current.hasVideo {
+                    // Ekte video: AVKit-spiller m/ native kontroller —
+                    // den simulerte scrubben/transporten skjules.
+                    videoCanvas
+                } else {
+                    playerCanvas
+                    playerControls
+                }
                 chapterMeta
                 if showTranscript { transcriptCard }
                 relatedRow
@@ -402,6 +416,82 @@ struct PondusAkademiSheet: View {
             }
             .padding(20)
         }
+        // Hent presignert URL når kapittelet (m/ video) endres. task(id:)
+        // kansellerer forrige last ved kapittelbytte.
+        .task(id: current.id) {
+            teardownVideo()
+            guard current.hasVideo else { return }
+            await loadVideo()
+        }
+        .onDisappear { teardownVideo() }
+        // Fullført avspilling → marker sett (parent persisterer via onChange).
+        .onReceive(NotificationCenter.default.publisher(for: .AVPlayerItemDidPlayToEndTime)) { note in
+            guard current.hasVideo,
+                  let item = note.object as? AVPlayerItem,
+                  item === videoPlayer?.currentItem else { return }
+            watched.insert(current.id)
+        }
+    }
+
+    private var videoCanvas: some View {
+        ZStack {
+            if let player = videoPlayer {
+                VideoPlayer(player: player)
+            } else {
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(LinearGradient(
+                        colors: [current.posterTint.opacity(0.40), .black, current.posterTint.opacity(0.20)],
+                        startPoint: .topLeading, endPoint: .bottomTrailing))
+                if videoLoading {
+                    VStack(spacing: 10) {
+                        ProgressView().tint(.white)
+                        Text("Laster video…")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.8))
+                    }
+                } else if videoLoadFailed {
+                    VStack(spacing: 10) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 26))
+                            .foregroundStyle(LBrand.yellow)
+                        Text("Kunne ikke laste videoen")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(.white)
+                        Button {
+                            Task { await loadVideo() }
+                        } label: {
+                            Text("Prøv igjen")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 14).padding(.vertical, 8)
+                                .background(LBrand.purple, in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+        .aspectRatio(16/9, contentMode: .fit)
+        .frame(maxWidth: .infinity)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    private func loadVideo() async {
+        videoLoadFailed = false
+        videoLoading = true
+        defer { videoLoading = false }
+        guard let url = await AcademyLiveStore.shared.videoURL(for: current.id) else {
+            videoLoadFailed = true
+            return
+        }
+        guard !Task.isCancelled else { return }
+        videoPlayer = AVPlayer(playerItem: AVPlayerItem(url: url))
+    }
+
+    private func teardownVideo() {
+        videoPlayer?.pause()
+        videoPlayer = nil
+        videoLoadFailed = false
     }
 
     // Map instruktør → PondusCast
@@ -721,7 +811,7 @@ struct PondusAkademiSheet: View {
     }
 
     private var nextSuggestions: [PondusChapter] {
-        let all = PondusAcademyData.chapters
+        let all = chapters
         guard let idx = all.firstIndex(of: current) else { return Array(all.prefix(3)) }
         return Array(all[(idx + 1)..<min(idx + 4, all.count)])
     }
@@ -924,17 +1014,17 @@ struct PondusAkademiSheet: View {
         playbackSeconds = max(0, min(current.duration, playbackSeconds + delta))
     }
     private func jumpPrev() {
-        let all = PondusAcademyData.chapters
+        let all = chapters
         guard let idx = all.firstIndex(of: current), idx > 0 else { return }
         current = all[idx - 1]
     }
     private func jumpNext() {
-        let all = PondusAcademyData.chapters
+        let all = chapters
         guard let idx = all.firstIndex(of: current), idx < all.count - 1 else { return }
         current = all[idx + 1]
     }
     private func nextUnwatched() -> PondusChapter? {
-        let all = PondusAcademyData.chapters
+        let all = chapters
         guard let idx = all.firstIndex(of: current) else { return nil }
         for i in (idx + 1)..<all.count where !watched.contains(all[i].id) { return all[i] }
         return nil
