@@ -38,6 +38,7 @@ import CommunityHub from '../community/CommunityHub';
 import WorkspaceChatPanel from './WorkspaceChatPanel';
 import { usePresence } from './usePresence';
 import { ws, WS_NAV, navForProfession, isMusicProfession } from './workspaceTheme';
+import { useWorkspaceCategoryMap } from './useWorkspaceCategory';
 
 // Prøveprosjekt (Sara & Amir) — byttes med ekte prosjekt-fetch i wire-fasen.
 const SAMPLE_PROJECT = {
@@ -179,9 +180,13 @@ const TeamWorkspacePage: React.FC = () => {
       .catch(() => setBandUnseen(0));
   }, [projectId, tab]);
 
-  // Profesjons-filtrert nav — musikkprodusent får Låter/Sesjoner/Sound Room
-  // i stedet for Shotlist/Produksjonskart/Photo+Video Room.
-  const nav = useMemo(() => navForProfession(user?.profession, { isMentor }), [user?.profession, isMentor]);
+  // Profesjons-filtrert nav — kategorien er admin-styrt (profession_types.
+  // workspace_category via useWorkspaceCategoryMap), med kode-map som fallback.
+  const categoryOverrides = useWorkspaceCategoryMap();
+  const nav = useMemo(
+    () => navForProfession(user?.profession, { isMentor, categoryOverrides }),
+    [user?.profession, isMentor, categoryOverrides],
+  );
   // Hvis aktiv fane ikke finnes i profesjonens nav (f.eks. delt lenke til
   // 'shotlist' for en musikkprodusent), fall tilbake til Oversikt.
   useEffect(() => {

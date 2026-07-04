@@ -5,6 +5,7 @@ import {
   CANONICAL_PROFESSIONS,
   normalizeProfession,
   getProfessionIconColor,
+  isWorkspaceCategory,
 } from "../../frontend/shared/profession-types.ts";
 
 export interface AdminMiscRoutesDeps {
@@ -50,6 +51,9 @@ export function setupAdminMiscRoutes(deps: AdminMiscRoutesDeps): void {
   const CANONICAL_CATEGORY: Record<string, string> = Object.fromEntries(
     CANONICAL_PROFESSIONS.map((p) => [p.name, p.category]),
   );
+  const CANONICAL_WS_CATEGORY: Record<string, string> = Object.fromEntries(
+    CANONICAL_PROFESSIONS.map((p) => [p.name, p.workspaceCategory]),
+  );
   const professionRowToDto = (r: any) => ({
     id: r.name,
     uuid: r.id || null,
@@ -58,6 +62,8 @@ export function setupAdminMiscRoutes(deps: AdminMiscRoutesDeps): void {
     description: r.description || null,
     iconColor: r.icon_color || getProfessionIconColor(r.name),
     category: CANONICAL_CATEGORY[r.name] || null,
+    // Admin-styrt flate-familie i Team Workspace; DB vinner, baseline som fallback.
+    workspaceCategory: (isWorkspaceCategory(r.workspace_category) ? r.workspace_category : CANONICAL_WS_CATEGORY[r.name]) || null,
     isActive: !!r.is_active,
     enabled: !!r.is_active, // bakoverkompatibelt felt-navn
     sortOrder: r.sort_order ?? 0,
@@ -70,6 +76,7 @@ export function setupAdminMiscRoutes(deps: AdminMiscRoutesDeps): void {
     description: null,
     iconColor: p.iconColor,
     category: p.category,
+    workspaceCategory: p.workspaceCategory,
     isActive: p.isActive,
     enabled: p.isActive,
     sortOrder: p.sortOrder,
@@ -79,9 +86,11 @@ export function setupAdminMiscRoutes(deps: AdminMiscRoutesDeps): void {
       CANONICAL_PROFESSIONS.map((p) => [p.name, canonicalToDto(p)]),
     );
     try {
-      const result = await pool.query(
-        "SELECT id, name, display_name, description, icon_color, is_active, sort_order FROM profession_types ORDER BY sort_order",
-      );
+      // workspace_category kom i mig 0369 — fall tilbake til SELECT uten den
+      // i vinduet der backend er deployet men migrasjonen ikke har kjørt.
+      const result = await pool
+        .query("SELECT id, name, display_name, description, icon_color, is_active, sort_order, workspace_category FROM profession_types ORDER BY sort_order")
+        .catch(() => pool.query("SELECT id, name, display_name, description, icon_color, is_active, sort_order FROM profession_types ORDER BY sort_order"));
       for (const r of result.rows) {
         const name = normalizeProfession(r.name);
         merged.set(name, professionRowToDto({ ...r, name }));
@@ -113,24 +122,26 @@ export function setupAdminMiscRoutes(deps: AdminMiscRoutesDeps): void {
   });
 
   // Upsert-kjerne for mutasjonene: profession_types har UNIQUE(name).
-  const upsertProfession = async (name: string, fields: { displayName?: string; description?: string | null; iconColor?: string; sortOrder?: number; isActive?: boolean }) => {
+  const upsertProfession = async (name: string, fields: { displayName?: string; description?: string | null; iconColor?: string; sortOrder?: number; isActive?: boolean; workspaceCategory?: string | null }) => {
     const canonicalDefaults = CANONICAL_PROFESSIONS.find((p) => p.name === name);
     const displayName = fields.displayName || canonicalDefaults?.displayName || name;
     const iconColor = fields.iconColor || canonicalDefaults?.iconColor || "#ff8c00";
     const sortOrder = fields.sortOrder ?? canonicalDefaults?.sortOrder ?? 99;
     const isActive = fields.isActive ?? true;
+    const wsCategory = isWorkspaceCategory(fields.workspaceCategory) ? fields.workspaceCategory : null;
     const r = await pool.query(
-      `INSERT INTO profession_types (name, display_name, description, icon_color, is_active, sort_order)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO profession_types (name, display_name, description, icon_color, is_active, sort_order, workspace_category)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        ON CONFLICT (name) DO UPDATE SET
          display_name = COALESCE($2, profession_types.display_name),
          description = COALESCE($3, profession_types.description),
          icon_color = COALESCE($4, profession_types.icon_color),
          is_active = $5,
          sort_order = $6,
+         workspace_category = COALESCE($7, profession_types.workspace_category),
          updated_at = NOW()
-       RETURNING id, name, display_name, description, icon_color, is_active, sort_order`,
-      [name, displayName, fields.description ?? null, iconColor, isActive, sortOrder],
+       RETURNING id, name, display_name, description, icon_color, is_active, sort_order, workspace_category`,
+      [name, displayName, fields.description ?? null, iconColor, isActive, sortOrder, wsCategory],
     );
     return professionRowToDto(r.rows[0]);
   };
@@ -154,6 +165,7 @@ export function setupAdminMiscRoutes(deps: AdminMiscRoutesDeps): void {
         iconColor: typeof req.body?.iconColor === "string" ? req.body.iconColor.trim() : undefined,
         sortOrder: Number.isFinite(Number(req.body?.sortOrder)) ? Number(req.body.sortOrder) : undefined,
         isActive: req.body?.isActive !== false,
+        workspaceCategory: req.body?.workspaceCategory ?? null,
       });
       res.status(201).json(dto);
     } catch (e) { console.error("POST profession-types", e); res.status(500).json({ error: "failed" }); }
@@ -172,6 +184,7 @@ export function setupAdminMiscRoutes(deps: AdminMiscRoutesDeps): void {
         iconColor: typeof req.body?.iconColor === "string" ? req.body.iconColor.trim() : current?.iconColor,
         sortOrder: Number.isFinite(Number(req.body?.sortOrder)) ? Number(req.body.sortOrder) : current?.sortOrder,
         isActive: typeof req.body?.isActive === "boolean" ? req.body.isActive : current?.isActive ?? true,
+        workspaceCategory: req.body?.workspaceCategory ?? null, // null → COALESCE beholder DB-verdien
       });
       res.json(dto);
     } catch (e) { console.error("PUT/PATCH profession-types", e); res.status(500).json({ error: "failed" }); }

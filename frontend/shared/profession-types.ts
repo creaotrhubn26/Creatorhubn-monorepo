@@ -16,6 +16,19 @@
  *    er robuste mot alias-varianter uavhengig av denne fila.
  */
 
+/**
+ * Workspace-kategori — hvilken «flate-familie» profesjonen får i Team
+ * Workspace. DB-tabellen profession_types.workspace_category kan overstyre
+ * per profesjon (admin-styrt); disse verdiene er kode-baselinen.
+ */
+export type WorkspaceCategory = 'visual' | 'music' | 'service' | 'vendor';
+
+export const WORKSPACE_CATEGORIES: WorkspaceCategory[] = ['visual', 'music', 'service', 'vendor'];
+
+export function isWorkspaceCategory(v: unknown): v is WorkspaceCategory {
+  return typeof v === 'string' && (WORKSPACE_CATEGORIES as string[]).includes(v);
+}
+
 export interface CanonicalProfession {
   /** Kanonisk id (lowercase, underscore) — verdien som skal stå i users.profession. */
   name: string;
@@ -29,6 +42,7 @@ export interface CanonicalProfession {
     | 'lifestyle'
     | 'business'
     | 'entertainment';
+  workspaceCategory: WorkspaceCategory;
   isActive: boolean;
   sortOrder: number;
 }
@@ -39,12 +53,13 @@ export interface CanonicalProfession {
  * av gating og admin-fallbacks). Farger fra registry/branding.
  */
 export const CANONICAL_PROFESSIONS: CanonicalProfession[] = [
-  { name: 'photographer', displayName: 'Fotograf', iconColor: '#ff8c00', category: 'creative', isActive: true, sortOrder: 0 },
-  { name: 'videographer', displayName: 'Videograf', iconColor: '#e74c3c', category: 'creative', isActive: true, sortOrder: 1 },
-  { name: 'music_producer', displayName: 'Musikkprodusent', iconColor: '#9b59b6', category: 'creative', isActive: true, sortOrder: 2 },
-  { name: 'pet_groomer', displayName: 'Dyrepleier', iconColor: '#27ae60', category: 'service', isActive: true, sortOrder: 3 },
-  { name: 'vendor', displayName: 'Leverandør', iconColor: '#3498db', category: 'business', isActive: true, sortOrder: 4 },
-  { name: 'enterprise', displayName: 'Enterprise Team', iconColor: '#6c3483', category: 'business', isActive: true, sortOrder: 5 },
+  { name: 'photographer', displayName: 'Fotograf', iconColor: '#ff8c00', category: 'creative', workspaceCategory: 'visual', isActive: true, sortOrder: 0 },
+  { name: 'videographer', displayName: 'Videograf', iconColor: '#e74c3c', category: 'creative', workspaceCategory: 'visual', isActive: true, sortOrder: 1 },
+  { name: 'music_producer', displayName: 'Musikkprodusent', iconColor: '#9b59b6', category: 'creative', workspaceCategory: 'music', isActive: true, sortOrder: 2 },
+  { name: 'pet_groomer', displayName: 'Dyrepleier', iconColor: '#27ae60', category: 'service', workspaceCategory: 'service', isActive: true, sortOrder: 3 },
+  { name: 'vendor', displayName: 'Leverandør', iconColor: '#3498db', category: 'business', workspaceCategory: 'vendor', isActive: true, sortOrder: 4 },
+  // Enterprise = team-/bedriftskonto med foto+video-suiter → visual-flatene.
+  { name: 'enterprise', displayName: 'Enterprise Team', iconColor: '#6c3483', category: 'business', workspaceCategory: 'visual', isActive: true, sortOrder: 5 },
 ];
 
 /**

@@ -70,15 +70,18 @@ export type WorkspaceTab =
 
 /**
  * Workspace-kategori — hvilken «flate-familie» en profesjon får i workspacet.
- * Profesjoner mappes til kategori i PROFESSION_CATEGORY (én linje per
- * profesjon); nav-items tagges med `categories`. Ny profesjonsgruppe senere =
- * ny kategori her + map-linjer + taggede nav-items — ingen refaktorering.
+ * Kategorien er ADMIN-STYRT: profession_types.workspace_category i DB (settes
+ * i ProfessionTypeManager) vinner via overrides-parametret; PROFESSION_CATEGORY
+ * under er kode-fallback for offline/første render. Nav-items tagges med
+ * `categories`. Ny profesjon = admin-klikk; ny kategori = utvid typen + tagg items.
  *   'visual'  = foto/video (Shotlist, Produksjonskart, Photo/Video Room)
  *   'music'   = musikk (Låter, Sesjoner, Sound Room)
  *   'service' = booking-/tjenestebaserte (frisør, hundefrisør, yoga …) — faner kommer
- *   'vendor'  = leverandører — faner kommer
+ *   'vendor'  = leverandører (Oppdrag, Lager, Ordreplan, Inspirasjon)
+ * Typen eies av frontend/shared/profession-types.ts (delt med backend).
  */
-export type WorkspaceCategory = 'visual' | 'music' | 'service' | 'vendor';
+export type { WorkspaceCategory } from '@shared/profession-types';
+import { type WorkspaceCategory } from '@shared/profession-types';
 
 export interface WsNavItem {
   key: WorkspaceTab | string;
@@ -137,29 +140,37 @@ export const WS_NAV: WsNavItem[] = [
   { key: 'avtaler', label: 'Avtaler', icon: 'EventNote', group: 'klient' },
 ];
 
-// Normaliser profesjonsverdi: lowercase uten skilletegn, så én map-entry dekker
-// 'music_producer' / 'music-producer' / 'musicproducer' (alle er live verdier —
-// DEFAULT_PROFESSION_TYPES bruker 'musicproducer', registeret 'music_producer').
-const normProf = (s?: string | null) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+/**
+ * Normaliser profesjonsverdi til sammenlignings-nøkkel: lowercase uten
+ * skilletegn, så én map-entry dekker 'music_producer' / 'music-producer' /
+ * 'musicproducer'. Eksportert så useWorkspaceCategory kan bygge overrides-map
+ * med samme nøkler.
+ */
+export const wsProfessionKey = (s?: string | null) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+const normProf = wsProfessionKey;
 
-// Profesjon → workspace-kategori. Nøkler er normalisert (normProf). Ukjente
-// profesjoner faller tilbake til 'visual' (dagens oppførsel). Ny profesjon =
-// én linje her; ny kategori = utvid WorkspaceCategory + tagg nav-items.
+// Kode-fallback profesjon → workspace-kategori (offline/første render — den
+// admin-styrte kilden er profession_types.workspace_category via overrides).
+// Nøkler er normalisert (wsProfessionKey). Ukjente profesjoner → 'visual'.
 const PROFESSION_CATEGORY: Record<string, WorkspaceCategory> = {
   photographer: 'visual',
   videographer: 'visual',
+  enterprise: 'visual',
   musicproducer: 'music',
   musician: 'music',
   music: 'music',
   // Vendor er ordre-/lager-/leveranse-orientert (jf. UniversalDashboard: Produkter/
-  // Bestillinger/Lager) — får de universelle fanene (Forespørsler, Avtaler,
-  // Leveranser, Utstyr, Oppgaver, Chat …) men ingen foto/video/musikk-rom.
+  // Bestillinger/Lager) — universelle faner + Oppdrag, ingen foto/video/musikk-rom.
   vendor: 'vendor',
-  // Fremtidig (eksempler): hairdresser: 'service', petgroomer: 'service', …
+  petgroomer: 'service',
 };
 
-export function workspaceCategoryFor(profession?: string | null): WorkspaceCategory {
-  return PROFESSION_CATEGORY[normProf(profession)] ?? 'visual';
+export function workspaceCategoryFor(
+  profession?: string | null,
+  overrides?: Record<string, WorkspaceCategory>,
+): WorkspaceCategory {
+  const key = normProf(profession);
+  return overrides?.[key] ?? PROFESSION_CATEGORY[key] ?? 'visual';
 }
 
 export function isMusicProfession(profession?: string | null): boolean {
@@ -167,15 +178,14 @@ export function isMusicProfession(profession?: string | null): boolean {
 }
 
 /**
- * Filtrer WS_NAV til profesjonens kategori: universelle items vises alltid;
- * taggede items kun for sin kategori. Rekkefølgen i WS_NAV bevares (musikk- og
- * visuell-varianter er interleavet på riktig plass).
+ * Filtrer WS_NAV til en kategori: universelle items vises alltid; taggede
+ * items kun for sin kategori. Rekkefølgen i WS_NAV bevares (variantene er
+ * interleavet på riktig plass), og labelByCategory resolves.
  */
-export function navForProfession(
-  profession?: string | null,
+export function navForCategory(
+  cat: WorkspaceCategory,
   opts?: { isMentor?: boolean },
 ): WsNavItem[] {
-  const cat = workspaceCategoryFor(profession);
   const isMentor = !!opts?.isMentor;
   return WS_NAV.filter((n) => {
     if (n.mentorOnly && !isMentor) return false; // mentor-gated (uavhengig av profesjon)
@@ -185,4 +195,15 @@ export function navForProfession(
     const label = n.labelByCategory?.[cat];
     return label ? { ...n, label } : n;
   });
+}
+
+/**
+ * Som navForCategory, men fra profesjonsverdi. `categoryOverrides` er det
+ * admin-styrte mapet fra useWorkspaceCategoryMap() (DB vinner over koden).
+ */
+export function navForProfession(
+  profession?: string | null,
+  opts?: { isMentor?: boolean; categoryOverrides?: Record<string, WorkspaceCategory> },
+): WsNavItem[] {
+  return navForCategory(workspaceCategoryFor(profession, opts?.categoryOverrides), opts);
 }
