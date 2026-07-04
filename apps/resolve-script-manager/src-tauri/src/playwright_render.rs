@@ -300,20 +300,38 @@ pub async fn playwright_capture_shots(app: AppHandle, url: String) -> Result<Val
 // ── Infographic Studio: render HTML-mal → transparent PNG-sekvens → ProRes 4444
 //    (alfa). Den genererte .mov-en legges på Resolve-timelinen av place_overlay.
 // scale (arg6) = deviceScaleFactor → oppløsning (2≈1080p, 4≈4K for brede maler).
+// arg7 (frame) = 'WxH' → komponer #wrap inn i et fast sosialt lerret (eksakte
+// utpiksler, deviceScaleFactor 1) | 'native' → malens naturlige størrelse × scale.
 const IG_CAPTURE_MJS: &str = r#"
 import { chromium } from 'playwright';
 const htmlPath = process.argv[2], outDir = process.argv[3];
 const N = parseInt(process.argv[4]||'48'), useChrome = process.argv[5]==='1';
 const scale = parseFloat(process.argv[6]||'2') || 2;
+const frame = process.argv[7]||'native';
+let fit=false, FW=0, FH=0, vpW=1760, vpH=560, dsf=scale;
+const fm = /^(\d+)x(\d+)$/.exec(frame);
+if(fm){ FW=parseInt(fm[1],10); FH=parseInt(fm[2],10); fit=true; vpW=FW; vpH=FH; dsf=1; }
 const b = await chromium.launch(useChrome ? { headless:true, channel:'chrome' } : { headless:true });
-const p = await b.newPage({ viewport:{ width:1760, height:560 }, deviceScaleFactor:scale });
+const p = await b.newPage({ viewport:{ width:vpW, height:vpH }, deviceScaleFactor:dsf });
 await p.goto('file://'+htmlPath, { waitUntil:'networkidle', timeout:30000 }).catch(()=>{});
 await p.waitForTimeout(1200);
 let el = await p.$('#wrap'); if(!el) el = await p.$('body');
+if(fit){
+  await p.evaluate((d)=>{
+    const w=document.querySelector('#wrap')||document.body;
+    document.documentElement.style.background='transparent';
+    document.body.style.cssText='margin:0;background:transparent;overflow:hidden;width:'+d.FW+'px;height:'+d.FH+'px;display:grid;place-items:center';
+    w.style.transformOrigin='center center'; w.style.transform='none';
+    const bw=Math.max(1,w.scrollWidth||w.offsetWidth||1), bh=Math.max(1,w.scrollHeight||w.offsetHeight||1);
+    const k=Math.min((d.FW*0.92)/bw,(d.FH*0.92)/bh);
+    w.style.transform='scale('+k.toFixed(4)+')';
+  }, {FW,FH});
+}
 for (let i=0;i<N;i++){
   const prog = N>1 ? i/(N-1) : 1;
   await p.evaluate((v)=>window.setProgress && window.setProgress(v), prog);
-  await el.screenshot({ path: `${outDir}/f${String(i).padStart(3,'0')}.png`, omitBackground:true });
+  if(fit) await p.screenshot({ path: `${outDir}/f${String(i).padStart(3,'0')}.png`, omitBackground:true, clip:{x:0,y:0,width:FW,height:FH} });
+  else await el.screenshot({ path: `${outDir}/f${String(i).padStart(3,'0')}.png`, omitBackground:true });
 }
 console.log('IG_DONE '+N);
 await b.close();
@@ -334,6 +352,7 @@ async fn ig_capture_frames(
     name: &str,
     frames: i64,
     scale: f64,
+    frame: &str,
     label: &str,
 ) -> Result<(std::path::PathBuf, String), String> {
     let dir = runtime_dir(app);
@@ -359,6 +378,7 @@ async fn ig_capture_frames(
         .arg(frames.to_string())
         .arg(use_chrome)
         .arg(format!("{}", scale.clamp(1.0, 6.0)))
+        .arg(if frame.is_empty() { "native" } else { frame })
         .current_dir(&dir);
     let code = stream_child(app, cmd, &run_id, label).await?;
     if code != 0 {
@@ -384,7 +404,7 @@ fn ig_fade_vf(exit_sec: f64, duration_sec: f64, alpha: bool) -> Option<String> {
 /// Deterministisk innholds-hash for render-caching (ikke krypto — kun cache-
 /// nøkkel). Samme HTML + parametre → samme .mov, så uendrede scener slipper
 /// å re-rendres ved gjentatt «Send to Resolve».
-fn ig_cache_key(html: &str, fps: f64, scale: f64, exit_sec: f64, duration_sec: f64) -> String {
+fn ig_cache_key(html: &str, fps: f64, scale: f64, exit_sec: f64, duration_sec: f64, frame: &str) -> String {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
     html.hash(&mut h);
@@ -393,6 +413,7 @@ fn ig_cache_key(html: &str, fps: f64, scale: f64, exit_sec: f64, duration_sec: f
     scale.to_bits().hash(&mut h);
     exit_sec.to_bits().hash(&mut h);
     duration_sec.to_bits().hash(&mut h);
+    frame.hash(&mut h);
     format!("{:016x}", h.finish())
 }
 
@@ -415,21 +436,23 @@ pub async fn render_infographic(
     fps: Option<f64>,
     scale: Option<f64>,
     exit_sec: Option<f64>,
+    frame: Option<String>,
 ) -> Result<String, String> {
     let fps = fps.unwrap_or(30.0).clamp(12.0, 60.0);
     let scale = scale.unwrap_or(2.0);
     let exit = exit_sec.unwrap_or(0.0);
+    let frame = frame.unwrap_or_else(|| "native".into());
 
     // Render-caching: identisk innhold+parametre → gjenbruk ferdig .mov.
     let cache_dir = ig_out_dir(&app).join(".cache");
     let _ = std::fs::create_dir_all(&cache_dir);
-    let cached = cache_dir.join(format!("{}.mov", ig_cache_key(&html, fps, scale, exit, duration_sec)));
+    let cached = cache_dir.join(format!("{}.mov", ig_cache_key(&html, fps, scale, exit, duration_sec, &frame)));
     if cached.exists() {
         return Ok(cached.to_string_lossy().to_string());
     }
 
     let frames = ((duration_sec.max(1.0)) * fps).round().clamp(8.0, 600.0) as i64;
-    let (work, _safe) = ig_capture_frames(&app, &html, &name, frames, scale, "render_infographic").await?;
+    let (work, _safe) = ig_capture_frames(&app, &html, &name, frames, scale, &frame, "render_infographic").await?;
 
     // ProRes 4444 m/alfa → cache-mappe (gjenbrukbar).
     let ffmpeg = find_bin("ffmpeg");
@@ -461,12 +484,14 @@ pub async fn export_infographic(
     fps: Option<f64>,
     scale: Option<f64>,
     exit_sec: Option<f64>,
+    frame: Option<String>,
 ) -> Result<String, String> {
     let fps = fps.unwrap_or(30.0).clamp(12.0, 60.0);
     let scale = scale.unwrap_or(2.0);
+    let frame = frame.unwrap_or_else(|| "native".into());
     let is_still = format == "png";
     let frames = if is_still { 1 } else { ((duration_sec.max(1.0)) * fps).round().clamp(8.0, 600.0) as i64 };
-    let (work, safe) = ig_capture_frames(&app, &html, &name, frames, scale, "export_infographic").await?;
+    let (work, safe) = ig_capture_frames(&app, &html, &name, frames, scale, &frame, "export_infographic").await?;
     let ffmpeg = find_bin("ffmpeg");
     let out_dir = ig_out_dir(&app);
     let frames_glob = format!("{}/f%03d.png", work.to_string_lossy());
