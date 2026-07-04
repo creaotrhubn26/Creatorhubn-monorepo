@@ -11,8 +11,11 @@ import { useDemoStudio } from './demoStudioStore';
 import {
   INFOGRAPHIC_TEMPLATES, htmlForTemplate, rawTemplateHtml, buildInfographicConfig,
   isIconField, MATERIAL_ICONS, ALL_MATERIAL_ICONS,
+  addCustomTemplate, removeCustomTemplate, isCustomTemplate, customTemplateIds,
   type InfographicTemplate,
 } from './infographicStudio';
+import { aiPickTemplate, recordAiFeedback, recordTemplateUsage, aiFeedbackCount } from './infographicAI';
+import { isAiConnected } from '../../services/claudeProxyService';
 import { FONT_FACE_CSS } from './fontAssets.generated';
 import { ROLE_ROOM_LOGO, CREATORHUB_LOGO } from './kitLogos.generated';
 
@@ -132,13 +135,16 @@ const CATEGORY_IDS: Record<string, Set<string>> = {
 // Brand-kits matcher på id-PREFIKS (rr-/ch-) så alle branded maler auto-inkluderes.
 const kitPrefix = (sec: string): string | null => (sec === 'kit-rr' ? 'rr-' : sec === 'kit-ch' ? 'ch-' : null);
 const inCategory = (sec: string, id: string): boolean => {
+  if (sec === 'custom') return isCustomTemplate(id);
   const pre = kitPrefix(sec);
   if (pre) return id.startsWith(pre);
+  // Hovedkategorien «Templates» viser innebygde maler (ikke egne — de har egen fane).
+  if (sec === 'templates') return !isCustomTemplate(id);
   return CATEGORY_IDS[sec] ? CATEGORY_IDS[sec].has(id) : true;
 };
 const CATEGORY_LABEL: Record<string, string> = {
   templates: 'Templates', charts: 'Charts', marketing: 'Marketing', filmtv: 'Film & TV',
-  callouts: 'Callouts', ui: 'UI-elementer', uxlayout: 'Layout & UX', 'kit-rr': 'The Role Room', 'kit-ch': 'Creatorhub',
+  callouts: 'Callouts', ui: 'UI-elementer', uxlayout: 'Layout & UX', 'kit-rr': 'The Role Room', 'kit-ch': 'Creatorhub', custom: 'Mine maler',
 };
 
 interface Scene {
@@ -368,7 +374,7 @@ export function InfographicStudioView(
   const effDur = (sc: Scene, t: InfographicTemplate) => (sc.durSec != null && sc.durSec > 0 ? sc.durSec : t.durationSec);
   const [suggested, setSuggested] = useState('');
   const [rightTab, setRightTab] = useState<'Design' | 'Animate' | 'Data'>('Data');
-  const [leftSec, setLeftSec] = useState<'templates' | 'charts' | 'marketing' | 'filmtv' | 'callouts' | 'ui' | 'uxlayout' | 'kit-rr' | 'kit-ch' | 'brand' | 'data' | 'export'>('templates');
+  const [leftSec, setLeftSec] = useState<'templates' | 'charts' | 'marketing' | 'filmtv' | 'callouts' | 'ui' | 'uxlayout' | 'kit-rr' | 'kit-ch' | 'custom' | 'brand' | 'data' | 'export'>('templates');
   const [tplQuery, setTplQuery] = useState('');
   const [dataText, setDataText] = useState(initial.current?.dataText || '');
   const dataMap = useMemo(() => parseDataSource(dataText), [dataText]);
@@ -388,6 +394,15 @@ export function InfographicStudioView(
   // Composite-preview: still fra videoen bak den transparente overlay-en, så du
   // ser hvordan den lander over ekte film (kontrast/lesbarhet). Kun preview.
   const [bgImage, setBgImage] = useState('');
+  // Bølge 4: AI-mal-valg + egne maler.
+  const [aiDesc, setAiDesc] = useState('');
+  const [aiBusy, setAiBusy] = useState(false);
+  // Siste AI-anbefaling → 👍/👎 mater lærings-loopen (few-shot + re-rangering).
+  const [aiLastPick, setAiLastPick] = useState<{ desc: string; tplId: string } | null>(null);
+  const [importName, setImportName] = useState('');
+  const [importHtml, setImportHtml] = useState('');
+  const [customTick, setCustomTick] = useState(0); // tving re-render etter mal-import/-slett
+  void customTick;
   const cancelRef = useRef(false);
   const [msg, setMsg] = useState<string | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -413,7 +428,15 @@ export function InfographicStudioView(
     if (dataKey) b[k] = dataKey; else delete b[k];
     updateScene({ bindings: b });
   };
-  const pickTemplate = (id: string) => updateScene({ tplId: id });
+  const pickTemplate = (id: string) => {
+    // Implisitt læring: byttet brukeren MANUELT bort fra en fersk AI-anbefaling
+    // (på samme scene, før bruk)? Da var anbefalingen feil → svakt negativt signal.
+    if (aiLastPick && aiLastPick.tplId === scene.tplId && id !== aiLastPick.tplId) {
+      recordAiFeedback(aiLastPick.desc, aiLastPick.tplId, false, 0.5);
+      setAiLastPick(null);
+    }
+    updateScene({ tplId: id });
+  };
   const addScene = () => {
     const last = scenes[scenes.length - 1];
     const lastTpl = INFOGRAPHIC_TEMPLATES.find((t) => t.id === last.tplId) || INFOGRAPHIC_TEMPLATES[0];
@@ -582,6 +605,7 @@ export function InfographicStudioView(
         setMsg(`Rendrer scene ${i + 1}/${scenes.length} (${t.name}) …`);
         const out = await invoke<string>('render_infographic', { html, durationSec: dur, name: `${t.id}-${sc.id}-${Date.now()}`, fps, scale, exitSec: sc.exitSec ?? 0 });
         overlays.push({ path: out, atSec: sc.atSec, durationSec: dur, track: overlayTrack, posX: sc.posX ?? 50, posY: sc.posY ?? 50 });
+        recordTemplateUsage(t.id); // implisitt: brukt mal = smak-signal (uten klikk)
       }
       setRenderProgress({ done: scenes.length, total: scenes.length });
       setMsg('Sender alle scener til Resolve …');
@@ -590,7 +614,13 @@ export function InfographicStudioView(
       if (!summary.succeeded || errEvt) {
         setMsg('Rendret, men kunne ikke legges i Resolve: ' + ((errEvt?.value as { message?: string } | undefined)?.message || 'er Resolve åpen med en timeline?'));
         if (overlays[0]?.path) void systemOpen(String(overlays[0].path)).catch(() => {});
-      } else { setMsg(`✓ ${scenes.length} scene(r) sendt til Resolve, plassert på overlay-spor til riktig tid.`); }
+      } else {
+        setMsg(`✓ ${scenes.length} scene(r) sendt til Resolve, plassert på overlay-spor til riktig tid.`);
+        // Implisitt aksept: ble en AI-anbefalt mal faktisk sendt? Da traff den.
+        if (aiLastPick && scenes.some((s) => s.tplId === aiLastPick.tplId)) {
+          recordAiFeedback(aiLastPick.desc, aiLastPick.tplId, true, 0.5); setAiLastPick(null);
+        }
+      }
     } catch (e) {
       const m = e instanceof Error ? e.message : String(e);
       if (/playwright|chromium|node/i.test(m)) { setNeedsPlaywright(true); setMsg('Feil: ' + m + ' — krever Playwright-runtime.'); }
@@ -612,6 +642,8 @@ export function InfographicStudioView(
       const html = `<script>window.__CFG__=${JSON.stringify(cfg)}</script>` + htmlForTemplate(tpl);
       const out = await invoke<string>('export_infographic', { html, durationSec: effDur(scene, tpl), name: `${tpl.id}-${scene.id}-${Date.now()}`, format: exportFmt, fps, scale, exitSec: scene.exitSec ?? 0 });
       setMsg(`✓ Eksportert: ${out}`);
+      recordTemplateUsage(tpl.id);
+      if (aiLastPick && aiLastPick.tplId === tpl.id) { recordAiFeedback(aiLastPick.desc, aiLastPick.tplId, true, 0.5); setAiLastPick(null); }
       void systemOpen(out).catch(() => {});
     } catch (e) {
       const m = e instanceof Error ? e.message : String(e);
@@ -622,6 +654,32 @@ export function InfographicStudioView(
 
   // «Én scene per rad»: multi-rad-data → generér N scener av gjeldende mal, med
   // hver kolonne bundet til malens felt i rekkefølge (spar manuelt arbeid).
+  // AI-mal-valg: beskriv → Claude velger beste mal + fyller feltene på gjeldende scene.
+  const runAiPick = async () => {
+    if (aiBusy || !aiDesc.trim()) return;
+    if (!isAiConnected()) { setMsg('AI ikke koblet til (mangler Role Room-token i Innstillinger).'); return; }
+    setAiBusy(true); setMsg('AI velger mal og fyller inn …');
+    try {
+      const r = await aiPickTemplate({ description: aiDesc.trim(), templates: INFOGRAPHIC_TEMPLATES });
+      updateScene({ tplId: r.tplId, values: r.values, bindings: {} });
+      setAiLastPick({ desc: aiDesc.trim(), tplId: r.tplId });
+      const picked = INFOGRAPHIC_TEMPLATES.find((t) => t.id === r.tplId);
+      setMsg(`✓ Valgte «${picked?.name || r.tplId}»${r.reason ? ` — ${r.reason}` : ''}`);
+    } catch (e) {
+      setMsg('Feil ved AI-valg: ' + (e instanceof Error ? e.message : String(e)));
+    } finally { setAiBusy(false); }
+  };
+
+  // Importer egen HTML-mal → «Mine maler».
+  const doImportTemplate = () => {
+    if (!importHtml.trim()) { setMsg('Lim inn eller last opp HTML-mal først.'); return; }
+    if (!/setProgress/.test(importHtml)) { setMsg('Malen bør definere window.setProgress(p) for animasjon — importerer likevel.'); }
+    const t = addCustomTemplate(importName || 'Egen mal', importHtml);
+    setImportName(''); setImportHtml(''); setCustomTick((n) => n + 1);
+    updateScene({ tplId: t.id, values: {}, bindings: {} });
+    setMsg(`✓ Importert «${t.name}» (${t.fields.length} felt funnet) — valgt på scene ${sel + 1}.`);
+  };
+
   const batchFromRows = () => {
     const { headers, rows } = parseDataRows(dataText);
     if (rows.length < 2) { setMsg('Trenger minst 2 datarader (JSON-array eller CSV med flere verdi-rader).'); return; }
@@ -678,6 +736,7 @@ export function InfographicStudioView(
           <div style={railItem(leftSec === 'callouts')} onClick={() => setLeftSec('callouts')}>⌖ Callouts <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{INFOGRAPHIC_TEMPLATES.filter((t) => CALLOUT_IDS.has(t.id)).length}</span></div>
           <div style={railItem(leftSec === 'ui')} onClick={() => setLeftSec('ui')}>▭ UI <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{INFOGRAPHIC_TEMPLATES.filter((t) => UI_IDS.has(t.id)).length}</span></div>
           <div style={railItem(leftSec === 'uxlayout')} onClick={() => setLeftSec('uxlayout')}>▥ Layout &amp; UX <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{INFOGRAPHIC_TEMPLATES.filter((t) => UX_LAYOUT_IDS.has(t.id)).length}</span></div>
+          <div style={railItem(leftSec === 'custom')} onClick={() => setLeftSec('custom')}>★ Mine maler <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{customTemplateIds().length}</span></div>
           <div style={railItem(false)} title="Velg ikoner i Data-fanen per felt">◷ Icons <span style={{ marginLeft: 'auto', fontSize: 10, color: D.faint }}>{ALL_MATERIAL_ICONS.length}</span></div>
           <div style={{ fontSize: 9.5, fontWeight: 700, color: D.faint, textTransform: 'uppercase', letterSpacing: 0.6, padding: '12px 14px 4px' }}>Brand Kits</div>
           {BRAND_KITS.map((k) => (
@@ -694,8 +753,45 @@ export function InfographicStudioView(
 
         {/* Sekundær-panel */}
         <div style={{ width: 280, borderRight: `1px solid ${D.line}`, overflowY: 'auto', padding: 14, background: D.panel }}>
-          {(leftSec === 'templates' || leftSec in CATEGORY_IDS || leftSec === 'kit-rr' || leftSec === 'kit-ch') && (<>
+          {(leftSec === 'templates' || leftSec in CATEGORY_IDS || leftSec === 'kit-rr' || leftSec === 'kit-ch' || leftSec === 'custom') && (<>
             <div style={{ fontSize: 11, fontWeight: 700, color: D.soft, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>{CATEGORY_LABEL[leftSec] || 'Templates'} <span style={{ color: D.faint, fontWeight: 500 }}>· endrer scene {sel + 1}</span></div>
+            {/* AI-mal-valg: beskriv → Claude velger beste mal + fyller feltene. */}
+            {leftSec !== 'custom' && (
+              <div style={{ marginBottom: 12, padding: 10, borderRadius: 9, border: `1px solid ${D.line}`, background: D.bg }}>
+                <div style={{ fontSize: 10.5, color: D.teal, fontWeight: 700, marginBottom: 6 }}>✦ AI: beskriv det du vil ha</div>
+                <textarea value={aiDesc} onChange={(e) => setAiDesc(e.target.value)}
+                  placeholder="f.eks. «tre KPI-er for Q2: 124 pasienter, 76% digital innsjekk, −18% ventetid»"
+                  style={{ width: '100%', height: 48, fontSize: 11.5, padding: 8, borderRadius: 7, border: `1px solid ${D.line}`, background: D.panel2, color: D.ink, colorScheme: 'dark', resize: 'vertical', marginBottom: 6 }} />
+                <button style={{ ...topBtn, width: '100%', justifyContent: 'center', fontSize: 11.5, opacity: aiBusy || !aiDesc.trim() ? 0.6 : 1 }} disabled={aiBusy || !aiDesc.trim()} onClick={() => void runAiPick()}>
+                  {aiBusy ? 'AI velger …' : 'Velg mal + fyll inn'}
+                </button>
+                {/* Lærings-loop: 👍/👎 på siste anbefaling → few-shot + re-rangering. */}
+                {aiLastPick && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                    <span style={{ fontSize: 10.5, color: D.faint, flex: 1 }}>Traff den? AI lærer av svaret.</span>
+                    <button style={{ ...topBtn, padding: '3px 9px', fontSize: 12, color: D.teal }} title="God match — lær dette"
+                      onClick={() => { recordAiFeedback(aiLastPick.desc, aiLastPick.tplId, true); setAiLastPick(null); setMsg('✓ Lærte: denne malen passer for slike beskrivelser.'); }}>👍</button>
+                    <button style={{ ...topBtn, padding: '3px 9px', fontSize: 12, color: '#f08a82' }} title="Dårlig match — unngå"
+                      onClick={() => { recordAiFeedback(aiLastPick.desc, aiLastPick.tplId, false); setAiLastPick(null); setMsg('✓ Lærte: unngå denne malen for slike beskrivelser.'); }}>👎</button>
+                  </div>
+                )}
+                {aiFeedbackCount() > 0 && <div style={{ fontSize: 9.5, color: D.faint, marginTop: 6 }}>Lærer av {aiFeedbackCount()} signal{aiFeedbackCount() === 1 ? '' : 'er'} (tomler + hva du faktisk bruker).</div>}
+              </div>
+            )}
+            {/* «Mine maler»: import av egen HTML-mal. */}
+            {leftSec === 'custom' && (
+              <div style={{ marginBottom: 12, padding: 10, borderRadius: 9, border: `1px solid ${D.line}`, background: D.bg }}>
+                <div style={{ fontSize: 10.5, color: D.soft, fontWeight: 700, marginBottom: 6 }}>Importer HTML-mal</div>
+                <div style={{ fontSize: 10, color: D.faint, lineHeight: 1.4, marginBottom: 6 }}>Malen skal lese <code>window.__CFG__</code> (felter utledes fra CFG.-referanser) og definere <code>window.setProgress(p)</code> for animasjon.</div>
+                <input value={importName} onChange={(e) => setImportName(e.target.value)} placeholder="Navn på mal" style={{ ...inp, marginBottom: 6 }} />
+                <textarea value={importHtml} onChange={(e) => setImportHtml(e.target.value)} placeholder="Lim inn HTML …"
+                  style={{ width: '100%', height: 90, fontSize: 10.5, fontFamily: 'ui-monospace,monospace', padding: 8, borderRadius: 7, border: `1px solid ${D.line}`, background: D.panel2, color: D.ink, colorScheme: 'dark', resize: 'vertical', marginBottom: 6 }} />
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <label style={{ ...topBtn, flex: 1, justifyContent: 'center', fontSize: 11 }}>Last opp .html<input type="file" accept=".html,text/html" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (!f) return; if (!importName) setImportName(f.name.replace(/\.html?$/i, '')); const r = new FileReader(); r.onload = () => setImportHtml(typeof r.result === 'string' ? r.result : ''); r.readAsText(f); }} /></label>
+                  <button style={{ ...topBtn, flex: 1, justifyContent: 'center', fontSize: 11, background: D.accent, border: 'none' }} onClick={doImportTemplate}>+ Legg til</button>
+                </div>
+              </div>
+            )}
             {/* Mal-søk — 512 maler; søk går på tvers av ALLE kategorier når query er satt. */}
             <input value={tplQuery} onChange={(e) => setTplQuery(e.target.value)} placeholder="🔍 Søk maler …"
               style={{ ...inp, marginBottom: 10 }} />
@@ -717,6 +813,10 @@ export function InfographicStudioView(
                           <div style={{ fontWeight: 700, fontSize: 12.5 }}>{t.name}</div>
                         </div>
                         <div style={{ fontSize: 11, color: D.soft, marginTop: 5, lineHeight: 1.35 }}>{t.desc}</div>
+                        {isCustomTemplate(t.id) && (
+                          <span role="button" title="Slett egen mal" onClick={(e) => { e.stopPropagation(); if (window.confirm(`Slette «${t.name}»?`)) { removeCustomTemplate(t.id); if (scene.tplId === t.id) updateScene({ tplId: INFOGRAPHIC_TEMPLATES[0].id }); setCustomTick((n) => n + 1); } }}
+                            style={{ position: 'absolute', top: 8, right: 9, fontSize: 12, color: D.faint, cursor: 'pointer', lineHeight: 1 }}>×</span>
+                        )}
                       </button>
                     );
                   })}

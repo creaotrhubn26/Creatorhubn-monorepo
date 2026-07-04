@@ -381,6 +381,21 @@ fn ig_fade_vf(exit_sec: f64, duration_sec: f64, alpha: bool) -> Option<String> {
     })
 }
 
+/// Deterministisk innholds-hash for render-caching (ikke krypto — kun cache-
+/// nøkkel). Samme HTML + parametre → samme .mov, så uendrede scener slipper
+/// å re-rendres ved gjentatt «Send to Resolve».
+fn ig_cache_key(html: &str, fps: f64, scale: f64, exit_sec: f64, duration_sec: f64) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    html.hash(&mut h);
+    // f64 er ikke Hash — bruk bit-representasjonen.
+    fps.to_bits().hash(&mut h);
+    scale.to_bits().hash(&mut h);
+    exit_sec.to_bits().hash(&mut h);
+    duration_sec.to_bits().hash(&mut h);
+    format!("{:016x}", h.finish())
+}
+
 fn ig_out_dir(app: &AppHandle) -> std::path::PathBuf {
     let d = app
         .path()
@@ -403,12 +418,22 @@ pub async fn render_infographic(
 ) -> Result<String, String> {
     let fps = fps.unwrap_or(30.0).clamp(12.0, 60.0);
     let scale = scale.unwrap_or(2.0);
-    let frames = ((duration_sec.max(1.0)) * fps).round().clamp(8.0, 600.0) as i64;
-    let (work, safe) = ig_capture_frames(&app, &html, &name, frames, scale, "render_infographic").await?;
+    let exit = exit_sec.unwrap_or(0.0);
 
-    // ProRes 4444 m/alfa → ~/Movies/Post Agent Infographics/
+    // Render-caching: identisk innhold+parametre → gjenbruk ferdig .mov.
+    let cache_dir = ig_out_dir(&app).join(".cache");
+    let _ = std::fs::create_dir_all(&cache_dir);
+    let cached = cache_dir.join(format!("{}.mov", ig_cache_key(&html, fps, scale, exit, duration_sec)));
+    if cached.exists() {
+        return Ok(cached.to_string_lossy().to_string());
+    }
+
+    let frames = ((duration_sec.max(1.0)) * fps).round().clamp(8.0, 600.0) as i64;
+    let (work, _safe) = ig_capture_frames(&app, &html, &name, frames, scale, "render_infographic").await?;
+
+    // ProRes 4444 m/alfa → cache-mappe (gjenbrukbar).
     let ffmpeg = find_bin("ffmpeg");
-    let out_file = ig_out_dir(&app).join(format!("{safe}.mov"));
+    let out_file = cached;
     let mut args: Vec<String> = vec!["-y".into(), "-framerate".into(), format!("{fps}"),
         "-i".into(), format!("{}/f%03d.png", work.to_string_lossy())];
     if let Some(vf) = ig_fade_vf(exit_sec.unwrap_or(0.0), duration_sec, true) { args.push("-vf".into()); args.push(vf); }
