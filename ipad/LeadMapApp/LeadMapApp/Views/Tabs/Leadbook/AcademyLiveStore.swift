@@ -23,9 +23,17 @@ final class AcademyLiveStore {
     /// Sett-status fra server ved last — PondusTab fletter inn i sin state.
     private(set) var serverWatched: Set<UUID> = []
 
+    // ── Fase 2: full kursliste (offisielle + org-egne) ───────────────
+    /// Alle synlige kurs som DTO-er (Akademi-flaten i Leadbook).
+    private(set) var courses: [AcademyCourseDTO] = []
+    /// Kapitler per kurs-id, mappet til view-modellen.
+    private(set) var chaptersByCourse: [String: [PondusChapter]] = [:]
+
     func attach(api: APIClient?) {
         self.api = api
     }
+
+    var apiClient: APIClient? { api }
 
     /// Kapitlene views faktisk skal vise. Demo-modus = alltid mock.
     var chapters: [PondusChapter]? {
@@ -36,40 +44,28 @@ final class AcademyLiveStore {
         guard !DemoModeManager.isActiveNonisolated, let api else { return }
         do {
             let courses = try await api.fetchAcademyCourses()
-            // Fase 1: Pondus-Akademiet er det offisielle kurset. Org-egne
-            // kurs (scope=org) listes i egen kurs-oversikt i fase 2.
-            guard let course = courses.first(where: { $0.slug == "pondus-akademiet" })
-                ?? courses.first(where: { $0.scope == "leadgrid_official" }) else { return }
 
-            var mapped: [PondusChapter] = []
-            var ids: [UUID: String] = [:]
-            var watchedSet: Set<UUID> = []
-            for dto in course.chapters.sorted(by: { $0.number < $1.number }) {
-                // Stabil UUID fra backend-id så sett-status og valgt kapittel
-                // overlever re-mapping (samme mønster som LeadRow).
-                let uid = UUID(uuidString: dto.id) ?? UUID()
-                let chapter = PondusChapter(
-                    id: uid,
-                    number: dto.number,
-                    section: Self.mapSection(dto.section),
-                    title: dto.title,
-                    summary: dto.summary ?? "",
-                    instructor: dto.instructor ?? "Leadgrid",
-                    duration: dto.durationSeconds,
-                    posterIcon: dto.posterIcon ?? "book.fill",
-                    posterTint: Self.mapTint(dto.posterTint),
-                    learningObjectives: dto.learningObjectives,
-                    transcriptSnippet: dto.transcriptSnippet ?? "",
-                    hasVideo: dto.hasVideo
-                )
-                mapped.append(chapter)
-                ids[uid] = dto.id
-                if dto.watched { watchedSet.insert(uid) }
+            // Fase 2: hele kurslisten mappes for Akademi-flaten.
+            self.courses = courses
+            var byCourse: [String: [PondusChapter]] = [:]
+            for c in courses {
+                var list: [PondusChapter] = []
+                for dto in c.chapters.sorted(by: { $0.number < $1.number }) {
+                    let uid = UUID(uuidString: dto.id) ?? UUID()
+                    list.append(Self.mapChapter(dto, id: uid))
+                    backendIds[uid] = dto.id
+                    if dto.watched { serverWatched.insert(uid) }
+                }
+                byCourse[c.id] = list
             }
-            guard !mapped.isEmpty else { return }
-            self.liveChapters = mapped
-            self.backendIds = ids
-            self.serverWatched = watchedSet
+            self.chaptersByCourse = byCourse
+
+            // Pondus-Akademiet driver banner/spiller i Pondus-fanen.
+            if let course = courses.first(where: { $0.slug == "pondus-akademiet" })
+                ?? courses.first(where: { $0.scope == "leadgrid_official" }),
+               let mapped = byCourse[course.id], !mapped.isEmpty {
+                self.liveChapters = mapped
+            }
         } catch {
             // Mock-fallback er alltid gyldig innhold — ikke støy brukeren.
             print("[academy] kurs-last feilet: \(error)")
@@ -92,7 +88,38 @@ final class AcademyLiveStore {
         }
     }
 
+    /// Presignert avspillings-URL for et video-kapittel. nil hvis kapittelet
+    /// ikke er backend-backet, API mangler, eller kapittelet ikke har video.
+    func videoURL(for chapterId: UUID) async -> URL? {
+        guard let api, let backendId = backendIds[chapterId] else { return nil }
+        do {
+            return try await api.academyVideoURL(chapterId: backendId)
+        } catch {
+            print("[academy] video-url feilet: \(error)")
+            return nil
+        }
+    }
+
     // MARK: - Mapping
+
+    /// Stabil UUID fra backend-id så sett-status og valgt kapittel
+    /// overlever re-mapping (samme mønster som LeadRow).
+    private static func mapChapter(_ dto: AcademyChapterDTO, id: UUID) -> PondusChapter {
+        PondusChapter(
+            id: id,
+            number: dto.number,
+            section: mapSection(dto.section),
+            title: dto.title,
+            summary: dto.summary ?? "",
+            instructor: dto.instructor ?? "Leadgrid",
+            duration: dto.durationSeconds,
+            posterIcon: dto.posterIcon ?? "book.fill",
+            posterTint: mapTint(dto.posterTint),
+            learningObjectives: dto.learningObjectives,
+            transcriptSnippet: dto.transcriptSnippet ?? "",
+            hasVideo: dto.hasVideo
+        )
+    }
 
     private static func mapSection(_ raw: String) -> PondusChapter.Section {
         switch raw {

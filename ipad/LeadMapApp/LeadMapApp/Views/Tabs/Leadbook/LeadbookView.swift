@@ -319,6 +319,7 @@ struct LeadbookView: View {
                             case .oversikt:  oversiktContent
                             case .maler:     malerContent.gated(.leadbookMaler)
                             case .pondus:    pondusContent.gated(.leadbookPondus)
+                            case .akademi:   AcademyTabView()
                             case .eksempler: LeadbookExamplesView().gated(.leadbookEksempler)
                             case .innsikt:   LeadbookInnsiktView().gated(.leadbookInnsikt)
                             }
@@ -949,13 +950,14 @@ enum LeadbookKPI: String, CaseIterable, Identifiable {
 // MARK: - Sub-tabs
 
 enum LeadbookSubTab: String, CaseIterable, Identifiable {
-    case oversikt, maler, pondus, eksempler, innsikt
+    case oversikt, maler, pondus, akademi, eksempler, innsikt
     var id: String { rawValue }
     var label: String {
         switch self {
         case .oversikt: return "Oversikt"
         case .maler: return "Maler"
         case .pondus: return "Pondus"
+        case .akademi: return "Akademi"
         case .eksempler: return "Eksempler"
         case .innsikt: return "Innsikt"
         }

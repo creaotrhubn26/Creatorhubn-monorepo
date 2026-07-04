@@ -135,7 +135,8 @@ struct PondusTabView: View {
         .fullScreenCover(isPresented: $showAcademy) {
             PondusAkademiSheet(
                 watched: $academyWatched,
-                current: academyCurrent ?? PondusAcademyData.chapters[0]
+                current: academyCurrent ?? PondusAcademyData.chapters[0],
+                chapters: PondusAcademyData.chapters
             )
         }
         .fullScreenCover(isPresented: $showTeamUsage) { PondusTeamUsageModal() }
