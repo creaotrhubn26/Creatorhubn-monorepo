@@ -18,11 +18,15 @@ import ExpandMore from '@mui/icons-material/ExpandMore';
 import ExpandLess from '@mui/icons-material/ExpandLess';
 import Add from '@mui/icons-material/Add';
 import Videocam from '@mui/icons-material/Videocam';
+import SelfImprovement from '@mui/icons-material/SelfImprovement';
+import Delete from '@mui/icons-material/Delete';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
 import { WsCard, WsTag, WsStat, WsSectionTitle } from '../ui';
+import WarmupDialog from '../../universal/showcase/WarmupDialog';
 
 const TYPE: Record<string, string> = { recording: 'Opptak', mixing: 'Miksing', mastering: 'Mastering', collaboration: 'Samarbeid' };
+const WARMUP_TARGET: Record<string, string> = { all: 'Alle', vocalist: 'Vokal', instrument: 'Instrument' };
 
 const fmtSec = (s: any) => {
   const n = Number(s); if (!Number.isFinite(n) || n < 0) return '0:00';
@@ -38,10 +42,28 @@ const SesjonerTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const isReal = projectId && projectId !== 'sample';
   const [, navigate] = useLocation();
   const [sessions, setSessions] = useState<any[] | null>(null);
+  const [audioRoomId, setAudioRoomId] = useState<string | null>(null);
   const [meetings, setMeetings] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [planOpen, setPlanOpen] = useState(false);
+  // Oppvarming & fokus (EaseVerse mindfulness) + Bandets form — eier-gatet;
+  // 404 for ikke-eiere → seksjonene skjules stille.
+  const [warmups, setWarmups] = useState<any[] | null>(null);
+  const [moods, setMoods] = useState<any[]>([]);
+  const [bandSize, setBandSize] = useState(0);
+  const [warmupOpen, setWarmupOpen] = useState(false);
+  const loadWellbeing = (arId: string) => {
+    apiRequest(`/api/audio-showcases/${encodeURIComponent(arId)}/warmups`)
+      .then((r: any) => setWarmups(Array.isArray(r?.routines) ? r.routines : []))
+      .catch(() => setWarmups(null));
+    apiRequest(`/api/audio-showcases/${encodeURIComponent(arId)}/mood`)
+      .then((r: any) => setMoods(Array.isArray(r?.moods) ? r.moods : []))
+      .catch(() => {});
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/audio-room/members`)
+      .then((r: any) => setBandSize(Array.isArray(r?.members) ? r.members.length : 0))
+      .catch(() => {});
+  };
 
   const loadMeetings = () => {
     if (!isReal) return;
@@ -52,7 +74,10 @@ const SesjonerTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   useEffect(() => {
     if (!isReal) { setSessions([]); setLoading(false); return; }
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/recording-sessions?include=details`)
-      .then((r: any) => setSessions(Array.isArray(r?.sessions) ? r.sessions : []))
+      .then((r: any) => {
+        setSessions(Array.isArray(r?.sessions) ? r.sessions : []);
+        if (r?.audioRoomId) { setAudioRoomId(r.audioRoomId); loadWellbeing(r.audioRoomId); }
+      })
       .catch(() => setSessions([]))
       .finally(() => setLoading(false));
     loadMeetings();
@@ -174,6 +199,68 @@ const SesjonerTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         )}
       </WsCard>
 
+      {/* Oppvarming & fokus (EaseVerse mindfulness) + Bandets form — kun synlig
+          for lydrom-eieren (endepunktene er eier-gatet; 404 → warmups=null). */}
+      {audioRoomId && warmups !== null && (
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 2 }} alignItems="stretch">
+          <WsCard sx={{ flex: 1, minWidth: 0 }}>
+            <WsSectionTitle
+              icon={<SelfImprovement sx={{ fontSize: 18, color: ws.textDim }} />}
+              title="Oppvarming & fokus"
+              action={<Button size="small" startIcon={<Add sx={{ fontSize: 15 }} />} onClick={() => setWarmupOpen(true)} sx={{ color: ws.accent, textTransform: 'none', fontWeight: 700 }}>Ny rutine</Button>}
+            />
+            {warmups.length === 0 ? (
+              <Stack alignItems="center" sx={{ py: 2.5 }} spacing={0.75}>
+                <SelfImprovement sx={{ fontSize: 28, color: ws.textFaint }} />
+                <Typography sx={{ fontSize: 12.5, fontWeight: 700 }}>Ingen rutiner ennå</Typography>
+                <Typography sx={{ fontSize: 11.5, color: ws.textDim, textAlign: 'center', maxWidth: 380 }}>
+                  Sett opp vokal-, puste- og mindfulness-rutiner fra EaseVerse-biblioteket — bandet kjører dem guidet før opptak og markerer fullført.
+                </Typography>
+              </Stack>
+            ) : (
+              <Stack spacing={0.75}>
+                {warmups.map((w: any) => (
+                  <Stack key={w.id} direction="row" spacing={1.25} alignItems="center" sx={{ p: 1.1, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.panelAlt, border: `1px solid ${ws.borderSoft}` }}>
+                    <Box sx={{ width: 34, height: 34, borderRadius: 1.5, bgcolor: ws.accentSoft, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <SelfImprovement sx={{ color: ws.accent, fontSize: 18 }} />
+                    </Box>
+                    <Box sx={{ minWidth: 0, flex: 1 }}>
+                      <Stack direction="row" spacing={0.75} alignItems="center">
+                        <Typography sx={{ fontSize: 13, fontWeight: 700 }} noWrap>{w.title}</Typography>
+                        <WsTag label={WARMUP_TARGET[w.target] || w.target || 'Alle'} tone="accent" />
+                      </Stack>
+                      <Typography sx={{ fontSize: 11, color: ws.textFaint }}>
+                        {(Array.isArray(w.steps) ? w.steps.length : 0)} steg
+                        {w.completions?.length ? ` · fullført av ${w.completions.map((c: any) => c.name).join(', ')}` : ' · ingen har fullført ennå'}
+                      </Typography>
+                    </Box>
+                    <WsTag label={`${w.completions?.length || 0}${bandSize ? `/${bandSize}` : ''} ✓`} tone={w.completions?.length ? 'green' : 'neutral'} />
+                    <Button size="small" onClick={async () => { if (!window.confirm(`Slette rutinen «${w.title}»?`)) return; try { await apiRequest(`/api/warmups/${encodeURIComponent(w.id)}`, { method: 'DELETE' }); loadWellbeing(audioRoomId); } catch { /* stille */ } }}
+                      sx={{ minWidth: 0, color: ws.textFaint, '&:hover': { color: ws.red } }}><Delete sx={{ fontSize: 16 }} /></Button>
+                  </Stack>
+                ))}
+              </Stack>
+            )}
+          </WsCard>
+
+          <WsCard sx={{ width: { xs: '100%', md: 300 }, flexShrink: 0 }}>
+            <WsSectionTitle title="Bandets form" />
+            {moods.length === 0 ? (
+              <Typography sx={{ fontSize: 12, color: ws.textDim }}>Ingen innsjekk ennå — bandet melder form fra invitasjonslenken sin før økten.</Typography>
+            ) : (
+              <Stack spacing={0.75}>
+                {moods.map((m: any) => (
+                  <Stack key={m.member_name} direction="row" spacing={1} alignItems="center">
+                    <Typography sx={{ fontSize: 12.5, fontWeight: 600, flex: 1, minWidth: 0 }} noWrap>{m.member_name}</Typography>
+                    <WsTag label={m.mood} tone="blue" />
+                  </Stack>
+                ))}
+              </Stack>
+            )}
+          </WsCard>
+        </Stack>
+      )}
+
       {/* Planlagte studio-økter — musikkens produksjonsplan (gjenbruker avtaler/meetings) */}
       <WsCard>
         <WsSectionTitle
@@ -213,6 +300,7 @@ const SesjonerTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       </WsCard>
 
       <PlanSessionDialog open={planOpen} onClose={() => setPlanOpen(false)} projectId={projectId} onCreated={() => { setPlanOpen(false); loadMeetings(); }} />
+      {audioRoomId && <WarmupDialog open={warmupOpen} projectId={audioRoomId} onClose={() => { setWarmupOpen(false); loadWellbeing(audioRoomId); }} />}
     </Box>
   );
 };
