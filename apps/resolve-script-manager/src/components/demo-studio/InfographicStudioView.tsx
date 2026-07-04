@@ -454,19 +454,25 @@ function TemplateThumb({ tpl, accent, values }: { tpl: InfographicTemplate; acce
   const fit = () => {
     try {
       const box = boxRef.current, ifr = frameRef.current, doc = ifr?.contentDocument;
-      const wrap = doc?.getElementById('wrap') as HTMLElement | null;
-      if (!box || !doc || !wrap) return;
+      if (!doc) return;
+      // WKWebView-hvit rot + malen starter på setProgress(0) (usynlig). Tving
+      // transparent OG kall setProgress(1) FØRST — ellers ble kortet blankt når
+      // #wrap manglet (fit bailet før setProgress) eller html-roten var hvit.
+      doc.documentElement.style.background = 'transparent';
       if (doc.body) doc.body.style.cssText = 'margin:0;height:100%;display:grid;place-items:center;overflow:hidden;background:transparent';
-      wrap.style.transform = 'none';
-      const k = Math.min((box.clientWidth - 8) / (wrap.scrollWidth || 1), (box.clientHeight - 8) / (wrap.scrollHeight || 1), 1);
-      wrap.style.transformOrigin = 'center center';
-      wrap.style.transform = `scale(${k.toFixed(4)})`;
       (ifr!.contentWindow as unknown as { setProgress?: (p: number) => void })?.setProgress?.(1);
+      const wrap = doc.getElementById('wrap') as HTMLElement | null;
+      if (box && wrap) {
+        wrap.style.transform = 'none';
+        const k = Math.min((box.clientWidth - 8) / (wrap.scrollWidth || 1), (box.clientHeight - 8) / (wrap.scrollHeight || 1), 1);
+        wrap.style.transformOrigin = 'center center';
+        wrap.style.transform = `scale(${k.toFixed(4)})`;
+      }
     } catch { /* */ }
   };
   return (
     <div ref={boxRef} style={{ width: '100%', height: 52, borderRadius: 8, overflow: 'hidden', background: 'linear-gradient(135deg,#10182a,#0b1120)', marginBottom: 8 }}>
-      {visible && <iframe ref={frameRef} title="" srcDoc={src} onLoad={() => window.setTimeout(fit, 120)} style={{ width: '100%', height: '100%', border: 0, background: 'transparent', pointerEvents: 'none' }} />}
+      {visible && <iframe ref={frameRef} title="" srcDoc={src} onLoad={() => { window.setTimeout(fit, 120); window.setTimeout(fit, 480); }} style={{ width: '100%', height: '100%', border: 0, background: 'transparent', pointerEvents: 'none' }} />}
     </div>
   );
 }
@@ -861,15 +867,22 @@ export function InfographicStudioView(
   const fitPreview = () => {
     try {
       const ifr = iframeRef.current; const canvas = canvasRef.current;
-      const doc = ifr?.contentDocument; const wrap = doc?.getElementById('wrap');
-      if (!ifr || !canvas || !doc || !wrap) return;
-      if (doc.body) { doc.body.style.margin = '0'; doc.body.style.height = '100%'; doc.body.style.display = 'grid'; doc.body.style.placeItems = 'center'; doc.body.style.overflow = 'hidden'; }
-      (wrap as HTMLElement).style.transform = 'none';
+      const doc = ifr?.contentDocument;
+      if (!ifr || !canvas || !doc) return;
+      // ALLTID: sentrer innhold + transparent rot FØR skalering. Uten dette sto
+      // malen venstre-justert i naturlig størrelse og rant ut til høyre (kuttet)
+      // når #wrap-målingen ikke var klar. Nå sentreres den uansett.
+      doc.documentElement.style.background = 'transparent';
+      const b = doc.body;
+      if (b) { b.style.margin = '0'; b.style.height = '100%'; b.style.display = 'grid'; b.style.placeItems = 'center'; b.style.overflow = 'hidden'; b.style.background = 'transparent'; }
+      const wrap = doc.getElementById('wrap') as HTMLElement | null;
+      if (!wrap) return; // sentrering står; skalering prøves på nytt (retry i onIframeLoad)
+      wrap.style.transform = 'none';
       const cw = canvas.clientWidth - 24, ch = canvas.clientHeight - 24;
-      const ww = (wrap as HTMLElement).scrollWidth || 1, wh = (wrap as HTMLElement).scrollHeight || 1;
+      const ww = wrap.scrollWidth || 1, wh = wrap.scrollHeight || 1;
       const k = Math.min(1, cw / ww, ch / wh);
-      (wrap as HTMLElement).style.transformOrigin = 'center center';
-      (wrap as HTMLElement).style.transform = `scale(${k.toFixed(4)})`;
+      wrap.style.transformOrigin = 'center center';
+      wrap.style.transform = `scale(${k.toFixed(4)})`;
     } catch { /* cross-doc kan feile — best-effort */ }
   };
 
@@ -896,7 +909,11 @@ export function InfographicStudioView(
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     rafRef.current = requestAnimationFrame(tick);
   };
-  const onIframeLoad = () => { window.setTimeout(() => { fitPreview(); play(); }, 250); };
+  const onIframeLoad = () => {
+    // Sentrer tidlig, og re-fit når innholdet (async chart-tegning) har satt seg.
+    [60, 250, 550, 1000].forEach((d) => window.setTimeout(fitPreview, d));
+    window.setTimeout(() => play(), 250);
+  };
   useEffect(() => () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); }, []);
   // Kollektiv læring: hent kollektive aggregater (inkrementelt) ved åpning +
   // push evt. køede signaler. Stille no-op når ikke innlogget.

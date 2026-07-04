@@ -55,7 +55,11 @@ export const BUNDLED_FONT_STYLE = `<style>${FONT_FACE_CSS}</style>`;
  *  CDN og degraderer grasiøst til fallback offline. */
 function injectBundledFonts(html: string): string {
   if (html.includes('__CFG_FONTS__')) return html; // allerede injisert
-  const style = BUNDLED_FONT_STYLE.replace('<style>', '<style data-cfg-fonts="__CFG_FONTS__">');
+  // WKWebView maler iframe-DOKUMENTETS rot (html) hvitt når bare `body` er
+  // transparent → i preview vises overlay-en på hvit i stedet for den mørke
+  // canvasen. Tving html+body transparent. (Render bruker omitBackground →
+  // ufarlig; innholdet er uansett transparent der.)
+  const style = BUNDLED_FONT_STYLE.replace('<style>', '<style data-cfg-fonts="__CFG_FONTS__">html,body{background:transparent!important}');
   return html.includes('</head>') ? html.replace('</head>', style + '</head>') : style + html;
 }
 
