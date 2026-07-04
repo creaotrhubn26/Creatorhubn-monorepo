@@ -820,16 +820,13 @@ struct KartView: View {
             let isNarrow = geo.size.width < 1100
             HStack(alignment: .top, spacing: 14) {
                 if !isNarrow { LeadgridHeaderMark().padding(.top, 4) }
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Kart")
-                        .font(.system(size: 28, weight: .bold))
-                        .foregroundStyle(.white)
-                    if !isNarrow {
-                        Text("Se dine leads, kunder og aktiviteter på kartet.")
-                            .font(.system(size: 13))
-                            .foregroundStyle(KrBrand.textSecondary)
-                            .lineLimit(1)
-                    }
+                // Fanetittelen er fjernet — tab-baren/sidebaren viser hvor du er.
+                if !isNarrow {
+                    Text("Se dine leads, kunder og aktiviteter på kartet.")
+                        .font(.system(size: 13))
+                        .foregroundStyle(KrBrand.textSecondary)
+                        .lineLimit(1)
+                        .padding(.top, 12)
                 }
                 Spacer()
                 HStack(spacing: 8) {

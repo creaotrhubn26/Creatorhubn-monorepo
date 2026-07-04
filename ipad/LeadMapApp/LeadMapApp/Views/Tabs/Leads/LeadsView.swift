@@ -457,6 +457,14 @@ struct LeadsView: View {
                     } else {
                         Color.clear.frame(height: 16)
                     }
+                    // iPhone-QA: nederste innhold («+ Nytt lead»-pillen i
+                    // tom-tilstand / pagineringen) lå halvt gjemt bak
+                    // tab-baren — ekstra bunn-luft så alt kan scrolles helt
+                    // fram (samme mønster som Salgsledelse i OversiktView).
+                    // iPad har sidebar-layout uten dette problemet — urørt.
+                    if DeviceIdiom.isPhone {
+                        Color.clear.frame(height: 72)
+                    }
                 }
             }
             .frame(maxWidth: .infinity)
@@ -486,48 +494,68 @@ struct LeadsView: View {
             let isNarrow = geo.size.width < 1100
             HStack(alignment: .top, spacing: 14) {
                 if !isNarrow { LeadgridHeaderMark().padding(.top, 4) }
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Leads")
-                        .font(.system(size: 28, weight: .bold))
-                        .foregroundStyle(.white)
-                    if !isNarrow {
-                        Text("Få full oversikt over alle dine leads og deres status.")
-                            .font(.system(size: 13))
-                            .foregroundStyle(LdBrand.textSecondary)
-                            .lineLimit(1)
-                    }
+                // Fanetittelen er fjernet — tab-baren/sidebaren viser hvor
+                // du er, og på iPhone trengs plassen til knapperaden.
+                if !isNarrow {
+                    Text("Få full oversikt over alle dine leads og deres status.")
+                        .font(.system(size: 13))
+                        .foregroundStyle(LdBrand.textSecondary)
+                        .lineLimit(1)
+                        .padding(.top, 12)
                 }
-                Spacer()
-                HStack(spacing: 8) {
-                    topPicker(icon: "calendar", text: isNarrow ? "Tir 14" : "Tir. 14. mai")
-                    if !isNarrow {
-                        topPicker(icon: "location.fill", text: "Alle områder")
+                Spacer(minLength: 10)
+                if DeviceIdiom.isPhone {
+                    // iPhone: dato-pill + 3 ikonknapper + avatar får ikke
+                    // plass ved siden av tittelen på compact width —
+                    // knapperaden scroller horisontalt i stedet for å
+                    // presse tittelen. Trailing-anker = avatar synlig først
+                    // (matcher høyrejustert design på iPad/Mac).
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        headerActions(isNarrow: isNarrow)
+                            // Luft over knappene så varsel-badgene
+                            // (offset y: -6) ikke klippes av scrolleren.
+                            .padding(.top, 6)
                     }
-                    // 380pt fast ramme klipper på iPhone (~390pt skjerm) —
-                    // adaptiv ramme + sheet-adaptasjon på compact width.
-                    topIconButton(icon: "chart.line.uptrend.xyaxis", badge: nil, isOpen: $analyseOpen)
-                        .popover(isPresented: $analyseOpen, arrowEdge: .top) {
-                            AnalysePopover(leads: appState.leads)
-                                .adaptivePopoverFrame(width: 380, height: 520)
-                                .presentationCompactAdaptation(DeviceIdiom.isPhone ? .sheet : .popover)
-                        }
-                    topIconButton(icon: "checklist", badge: 8, isOpen: $nextActionsOpen)
-                        .popover(isPresented: $nextActionsOpen, arrowEdge: .top) {
-                            NextActionsPopover(leads: appState.leads, totalCount: appState.leads.count)
-                                .adaptivePopoverFrame(width: 380, height: 520)
-                                .presentationCompactAdaptation(DeviceIdiom.isPhone ? .sheet : .popover)
-                        }
-                    topIconButton(icon: "bell.fill", badge: 3, isOpen: $notificationsOpen)
-                        .popover(isPresented: $notificationsOpen, arrowEdge: .top) {
-                            RecentActivitiesPopover(leads: appState.leads, upcomingFollowups: 0, momentum: nil)
-                                .adaptivePopoverFrame(width: 380, height: 520)
-                                .presentationCompactAdaptation(DeviceIdiom.isPhone ? .sheet : .popover)
-                        }
-                    profileAvatar(isNarrow: isNarrow)
+                    .defaultScrollAnchor(.trailing)
+                } else {
+                    headerActions(isNarrow: isNarrow)
                 }
             }
         }
         .frame(height: 64)
+    }
+
+    /// Header-knappene (dato/område/analyse/neste-handlinger/varsler/avatar)
+    /// — trukket ut slik at iPhone kan legge dem i en horisontal scroller
+    /// mens iPad/Mac beholder dem inline.
+    private func headerActions(isNarrow: Bool) -> some View {
+        HStack(spacing: 8) {
+            topPicker(icon: "calendar", text: isNarrow ? "Tir 14" : "Tir. 14. mai")
+            if !isNarrow {
+                topPicker(icon: "location.fill", text: "Alle områder")
+            }
+            // 380pt fast ramme klipper på iPhone (~390pt skjerm) —
+            // adaptiv ramme + sheet-adaptasjon på compact width.
+            topIconButton(icon: "chart.line.uptrend.xyaxis", badge: nil, isOpen: $analyseOpen)
+                .popover(isPresented: $analyseOpen, arrowEdge: .top) {
+                    AnalysePopover(leads: appState.leads)
+                        .adaptivePopoverFrame(width: 380, height: 520)
+                        .presentationCompactAdaptation(DeviceIdiom.isPhone ? .sheet : .popover)
+                }
+            topIconButton(icon: "checklist", badge: 8, isOpen: $nextActionsOpen)
+                .popover(isPresented: $nextActionsOpen, arrowEdge: .top) {
+                    NextActionsPopover(leads: appState.leads, totalCount: appState.leads.count)
+                        .adaptivePopoverFrame(width: 380, height: 520)
+                        .presentationCompactAdaptation(DeviceIdiom.isPhone ? .sheet : .popover)
+                }
+            topIconButton(icon: "bell.fill", badge: 3, isOpen: $notificationsOpen)
+                .popover(isPresented: $notificationsOpen, arrowEdge: .top) {
+                    RecentActivitiesPopover(leads: appState.leads, upcomingFollowups: 0, momentum: nil)
+                        .adaptivePopoverFrame(width: 380, height: 520)
+                        .presentationCompactAdaptation(DeviceIdiom.isPhone ? .sheet : .popover)
+                }
+            profileAvatar(isNarrow: isNarrow)
+        }
     }
 
     private func topPicker(icon: String, text: String) -> some View {

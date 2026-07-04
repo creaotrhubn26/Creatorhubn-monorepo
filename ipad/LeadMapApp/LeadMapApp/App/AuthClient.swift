@@ -17,7 +17,18 @@ enum AuthClient {
         if let email { save(email, account: emailAccount) }
     }
 
-    static func loadToken() -> String? { load(account: tokenAccount) }
+    static func loadToken() -> String? {
+        #if DEBUG
+        // QA-hook: `SIMCTL_CHILD_QA_BEARER_TOKEN=… simctl launch …` logger
+        // inn simulator uten pairing-flyt — brukes til automatisert visuell
+        // QA. Ingen effekt i release-bygg (og env kan ikke settes på device).
+        if let injected = ProcessInfo.processInfo.environment["QA_BEARER_TOKEN"],
+           !injected.isEmpty {
+            return injected
+        }
+        #endif
+        return load(account: tokenAccount)
+    }
     static func loadEmail() -> String? { load(account: emailAccount) }
 
     static func clear() {

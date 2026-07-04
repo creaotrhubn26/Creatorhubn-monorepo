@@ -542,16 +542,14 @@ struct MeetingsView: View {
             let isNarrow = geo.size.width < 1100
             HStack(alignment: .top, spacing: 14) {
                 if !isNarrow { LeadgridHeaderMark().padding(.top, 4) }
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Møter")
-                        .font(.system(size: 28, weight: .bold))
-                        .foregroundStyle(.white)
-                    if !isNarrow {
-                        Text("Planlegg, forbered og følg opp møter")
-                            .font(.system(size: 13))
-                            .foregroundStyle(MtBrand.textSecondary)
-                            .lineLimit(1)
-                    }
+                // Fanetittelen er fjernet — tab-baren/sidebaren viser
+                // allerede hvor du er, og plassen trengs til kontrollene.
+                if !isNarrow {
+                    Text("Planlegg, forbered og følg opp møter")
+                        .font(.system(size: 13))
+                        .foregroundStyle(MtBrand.textSecondary)
+                        .lineLimit(1)
+                        .padding(.top, 12)
                 }
                 Spacer()
                 HStack(spacing: 8) {
@@ -677,11 +675,28 @@ struct MeetingsView: View {
             : v >= 1_000 ? "\(v / 1_000)K kr" : "\(v) kr"
         }
         let remaining = sourceAgenda.filter { $0.startTime > MeetingMapping.timeString(now) }.count
-        return HStack(spacing: 12) {
+
+        // De fire kortene deles mellom layoutene under.
+        @ViewBuilder
+        func kpiCards() -> some View {
             kpiCard(title: "Møter i dag",  value: isDemo ? "5"       : (todayCount > 0 ? "\(todayCount)" : "—"), subtitle: isDemo ? "2 igjen" : (todayCount > 0 ? "\(remaining) igjen" : "Ingen møter i dag"), icon: "calendar", color: MtBrand.purpleLight)
             kpiCard(title: "Denne uken",   value: isDemo ? "12"      : (weekCount > 0 ? "\(weekCount)" : "—"), subtitle: isDemo ? "3 bekreftet" : (weekCount > 0 ? "booket" : "Ingen data"), icon: "chart.line.uptrend.xyaxis", color: MtBrand.purpleLight)
             kpiCard(title: "Kommende",     value: isDemo ? "18"      : (next7 > 0 ? "\(next7)" : "—"), subtitle: "neste 7 dager", icon: "clock.fill", color: MtBrand.purpleLight)
             kpiCard(title: "Booket verdi", value: isDemo ? "2,4M kr" : (bookedValue > 0 ? fmtValue(bookedValue) : "—"), subtitle: isDemo ? "↑ 18% fra forrige uke" : "agenda + kommende", icon: "externaldrive.fill", color: MtBrand.purpleLight, trendPositive: isDemo)
+        }
+
+        // iPhone: fire kort i én HStack blir ~85pt smale søyler der teksten
+        // wrapper per ord — bruk 2x2-grid i stedet. iPad/Mac: uendret rad.
+        return Group {
+            if DeviceIdiom.isPhone {
+                LazyVGrid(columns: MacCatalystGrid.adaptive(phone: 2, iPad: 4, mac: 4), spacing: 12) {
+                    kpiCards()
+                }
+            } else {
+                HStack(spacing: 12) {
+                    kpiCards()
+                }
+            }
         }
     }
 
@@ -714,6 +729,9 @@ struct MeetingsView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(MtBrand.card, in: RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(MtBrand.stroke, lineWidth: 1))
+        // Hindrer at kortet strekker seg vertikalt i grid-celler på iPhone
+        // (2x2-layouten i kpiRow) — kortet skal hugge innholdet sitt.
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     // MARK: Agenda

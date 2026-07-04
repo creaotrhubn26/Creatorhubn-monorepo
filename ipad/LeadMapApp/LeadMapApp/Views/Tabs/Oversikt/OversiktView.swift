@@ -362,16 +362,13 @@ private struct HeaderRow: View {
             let isNarrow = geo.size.width < 1100
             HStack(alignment: .top, spacing: 14) {
                 if !isNarrow { LeadgridHeaderMark().padding(.top, 4) }
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Oversikt")
-                        .font(.system(size: 28, weight: .bold))
-                        .foregroundStyle(.white)
-                    if !isNarrow {
-                        Text("Få full kontroll over dine leads, aktiviteter og resultater.")
-                            .font(.system(size: 13))
-                            .foregroundStyle(Brand.textSecondary)
-                            .lineLimit(1)
-                    }
+                // Fanetittelen er fjernet — tab-baren/sidebaren viser hvor du er.
+                if !isNarrow {
+                    Text("Få full kontroll over dine leads, aktiviteter og resultater.")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Brand.textSecondary)
+                        .lineLimit(1)
+                        .padding(.top, 12)
                 }
                 Spacer()
                 HStack(spacing: 8) {
@@ -3095,6 +3092,10 @@ private struct LeadScoreFilterStrip: View {
                     Text(tier.label)
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(.white)
+                        // iPhone-QA: «Lunken» brakk til «Lunke / n» på 4
+                        // chips over 390pt — labels skal aldri ordbrytes.
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                     Text("\(tier.count.formatted(.number.locale(Locale(identifier: "nb_NO"))))")
                         .font(.system(size: 13, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
@@ -6029,6 +6030,9 @@ struct SellerDetailSheet: View {
 struct SalesLeadershipSheet: View {
     let sellers: [TopSellersSheet.Seller]
     let currentUserName: String
+    /// true når viewet vises som innebygd FANE (SalgsledelseView) i stedet
+    /// for modal sheet — skjuler X-lukkeknappen som ellers ikke gir mening.
+    var embedded: Bool = false
     @Environment(\.dismiss) private var dismiss
     @State private var tab: Tab = .catalog
     @State private var newContestOpen: Bool = false
@@ -6420,26 +6424,38 @@ struct SalesLeadershipSheet: View {
                         case .goal:       goalTab
                         }
                         Spacer(minLength: 16)
+                        // Ekstra bunn-luft på iPhone så siste rad (f.eks.
+                        // produktkort-griden) kan scrolles helt fram og
+                        // ikke klippes bak tab-baren.
+                        if DeviceIdiom.isPhone {
+                            Color.clear.frame(height: 72)
+                        }
                     }
                     .padding(20)
                 }
             }
             .background(Brand.bg.ignoresSafeArea())
-            .navigationTitle("Salgsledelse")
+            // Fanetittelen er fjernet som innebygd fane — tab-baren viser
+            // hvor du er. I sheet-modus beholdes tittelen (ingen tab-bar).
+            .navigationTitle(embedded ? "" : "Salgsledelse")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button { dismiss() } label: {
-                        ZStack {
-                            Circle().fill(Brand.cardHi)
-                            Circle().stroke(Brand.stroke, lineWidth: 1)
-                            Image(systemName: "xmark")
-                                .font(.system(size: 12, weight: .bold))
-                                .foregroundStyle(.white)
+                // X-lukkeknapp kun i sheet-modus — som innebygd fane finnes
+                // det ingenting å lukke.
+                if !embedded {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button { dismiss() } label: {
+                            ZStack {
+                                Circle().fill(Brand.cardHi)
+                                Circle().stroke(Brand.stroke, lineWidth: 1)
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundStyle(.white)
+                            }
+                            .frame(width: 34, height: 34)
                         }
-                        .frame(width: 34, height: 34)
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
                 if tab == .contest {
                     ToolbarItem(placement: .primaryAction) {
@@ -6513,6 +6529,23 @@ struct SalesLeadershipSheet: View {
     }
 
     private var tabBar: some View {
+        // iPhone: pillene får naturlig bredde og rulles horisontalt i stedet
+        // for å presses inn på likt fordelt bredde (ga ord-brekk midt i
+        // «Konkurranser»). iPad beholder full-bredde-fordelingen.
+        Group {
+            if DeviceIdiom.isPhone {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    tabBarPills
+                }
+            } else {
+                tabBarPills
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 12)
+    }
+
+    private var tabBarPills: some View {
         HStack(spacing: 0) {
             ForEach(Tab.allCases, id: \.self) { t in
                 Button { tab = t } label: {
@@ -6521,10 +6554,13 @@ struct SalesLeadershipSheet: View {
                             .font(.system(size: 12, weight: .semibold))
                         Text(t.rawValue)
                             .font(.system(size: 13, weight: .semibold))
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
                     }
                     .foregroundStyle(tab == t ? .white : Brand.textSecondary)
-                    .frame(maxWidth: .infinity)
+                    .frame(maxWidth: DeviceIdiom.isPhone ? nil : .infinity)
                     .padding(.vertical, 10)
+                    .padding(.horizontal, DeviceIdiom.isPhone ? 14 : 0)
                     .background(
                         tab == t ? Brand.purple : Color.clear,
                         in: Capsule()
@@ -6536,8 +6572,6 @@ struct SalesLeadershipSheet: View {
         .padding(4)
         .background(Brand.card, in: Capsule())
         .overlay(Capsule().stroke(Brand.stroke, lineWidth: 1))
-        .padding(.horizontal, 20)
-        .padding(.top, 12)
     }
 
     // MARK: Provisjon
