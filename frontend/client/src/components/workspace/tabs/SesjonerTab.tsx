@@ -326,20 +326,49 @@ const RemindBandDialog: React.FC<{ open: boolean; onClose: () => void; audioRoom
   const [message, setMessage] = useState(defaultMsg);
   const [target, setTarget] = useState('all');
   const [onlyNotWarmed, setOnlyNotWarmed] = useState(false);
+  // Tidspunkt: 'now' = umiddelbart; 'scheduled' = leveres av cronen (hver
+  // halvtime) på valgt tidspunkt — vises og kan avbrytes i listen under.
+  const [whenMode, setWhenMode] = useState<'now' | 'scheduled'>('now');
+  const [sendAt, setSendAt] = useState('');
+  const [planned, setPlanned] = useState<any[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => { if (open) { setMessage(defaultMsg); setError(null); } /* eslint-disable-next-line */ }, [open]);
+
+  const loadPlanned = () => {
+    apiRequest(`/api/audio-showcases/${encodeURIComponent(audioRoomId)}/reminders`)
+      .then((r: any) => setPlanned(Array.isArray(r?.reminders) ? r.reminders : []))
+      .catch(() => {});
+  };
+  useEffect(() => {
+    if (open) { setMessage(defaultMsg); setError(null); setWhenMode('now'); setSendAt(''); loadPlanned(); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const send = async () => {
     if (!message.trim()) { setError('Skriv en melding'); return; }
+    if (whenMode === 'scheduled' && !sendAt) { setError('Velg tidspunkt'); return; }
     setBusy(true); setError(null);
     try {
       const r: any = await apiRequest(`/api/audio-showcases/${encodeURIComponent(audioRoomId)}/remind`, {
-        method: 'POST', body: { message: message.trim(), target, onlyNotWarmed },
+        method: 'POST',
+        body: {
+          message: message.trim(), target, onlyNotWarmed,
+          ...(whenMode === 'scheduled' ? { sendAt: new Date(sendAt).toISOString() } : {}),
+        },
       });
-      window.alert(`Påminnelse sendt til ${r?.recipients ?? 0} medlem(mer) — ${r?.emails ?? 0} e-post${r?.sms ? `, ${r.sms} SMS` : ''}.`);
-      onClose();
+      if (r?.scheduled) {
+        window.alert(`Påminnelsen er planlagt til ${fmtDateTime(r.sendAt)} (leveres innen ~30 min etter tidspunktet).`);
+        loadPlanned(); setWhenMode('now'); setSendAt('');
+      } else {
+        window.alert(`Påminnelse sendt til ${r?.recipients ?? 0} medlem(mer) — ${r?.emails ?? 0} e-post${r?.sms ? `, ${r.sms} SMS` : ''}.`);
+        onClose();
+      }
     } catch (e: any) { setError(e?.message || 'Kunne ikke sende påminnelsen'); } finally { setBusy(false); }
+  };
+
+  const cancelPlanned = async (rid: string) => {
+    try { await apiRequest(`/api/audio-reminders/${encodeURIComponent(rid)}`, { method: 'DELETE' }); loadPlanned(); }
+    catch { /* stille */ }
   };
 
   return (
@@ -355,13 +384,36 @@ const RemindBandDialog: React.FC<{ open: boolean; onClose: () => void; audioRoom
             <MenuItem value="instrument">Kun instrumentalister</MenuItem>
           </TextField>
           <FormControlLabel control={<Checkbox checked={onlyNotWarmed} onChange={(e) => setOnlyNotWarmed(e.target.checked)} size="small" />} label="Kun til de som ikke har varmet opp ennå" />
+          <TextField select label="Når" value={whenMode} onChange={(e) => setWhenMode(e.target.value as any)} fullWidth size="small">
+            <MenuItem value="now">Send nå</MenuItem>
+            <MenuItem value="scheduled">Planlegg tidspunkt</MenuItem>
+          </TextField>
+          {whenMode === 'scheduled' && (
+            <TextField label="Sendes" type="datetime-local" value={sendAt} onChange={(e) => setSendAt(e.target.value)} fullWidth size="small"
+              InputLabelProps={{ shrink: true }} helperText="Leveres innen ~30 min etter valgt tidspunkt" />
+          )}
           <Typography variant="caption" color="text.secondary">Sendes på e-post (og SMS der telefonnummer finnes) med hvert medlems lenke til oppvarming og innsjekk. Økter i økt-kalenderen får i tillegg automatiske påminnelser 24 timer og 1 time før.</Typography>
+          {planned.filter((r) => !r.sent_at).length > 0 && (
+            <Box>
+              <Typography variant="caption" sx={{ fontWeight: 700, display: 'block', mb: 0.5 }}>Planlagte påminnelser</Typography>
+              <Stack spacing={0.5}>
+                {planned.filter((r) => !r.sent_at).map((r) => (
+                  <Stack key={r.id} direction="row" spacing={1} alignItems="center" sx={{ px: 1, py: 0.5, borderRadius: 1, bgcolor: 'rgba(255,255,255,0.05)' }}>
+                    <Typography variant="caption" sx={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {fmtDateTime(r.send_at)} — {r.message}
+                    </Typography>
+                    <Button size="small" onClick={() => cancelPlanned(r.id)} sx={{ minWidth: 0, fontSize: 11, textTransform: 'none' }}>Avbryt</Button>
+                  </Stack>
+                ))}
+              </Stack>
+            </Box>
+          )}
           {error && <Alert severity="error">{error}</Alert>}
         </Stack>
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose} disabled={busy}>Avbryt</Button>
-        <Button variant="contained" onClick={send} disabled={busy || !message.trim()} startIcon={busy ? <CircularProgress size={14} color="inherit" /> : null}>{busy ? 'Sender…' : 'Send påminnelse'}</Button>
+        <Button variant="contained" onClick={send} disabled={busy || !message.trim() || (whenMode === 'scheduled' && !sendAt)} startIcon={busy ? <CircularProgress size={14} color="inherit" /> : null}>{busy ? 'Sender…' : whenMode === 'scheduled' ? 'Planlegg påminnelse' : 'Send påminnelse'}</Button>
       </DialogActions>
     </Dialog>
   );
