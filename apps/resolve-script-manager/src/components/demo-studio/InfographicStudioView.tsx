@@ -483,6 +483,31 @@ async function trimLogoWhitespace(dataUrl: string): Promise<string> {
 
 /** Lett live-thumbnail av en mal i galleriet: lazy iframe (kun når synlig),
  *  rå HTML u/ font-injeksjon, skalert til å passe + frosset ved p=1. */
+// Selvstendig fit-skript injisert i preview/thumbnail-iframen. Måler #wrap og
+// skalerer det til å passe iframens EGEN viewport (= canvas/thumb-boks),
+// sentrerer, og tvinger html+body transparent. Kjører INNE i iframen → robust i
+// WKWebView (ingen kryss-dokument-manipulering fra foreldre, som feilet før).
+// window.__igFreeze=1 → frys ved setProgress(1) (thumbnails uten play-animasjon).
+const FIT_SCRIPT = `(function(){
+  function fit(){
+    try{
+      document.documentElement.style.background='transparent';
+      var b=document.body; if(b){b.style.margin='0';b.style.height='100vh';b.style.display='grid';b.style.placeItems='center';b.style.overflow='hidden';b.style.background='transparent';}
+      if(window.__igFreeze && typeof window.setProgress==='function'){ try{window.setProgress(1);}catch(e){} }
+      var w=document.getElementById('wrap'); if(!w) return;
+      w.style.transformOrigin='center center'; w.style.transform='none';
+      var vw=window.innerWidth||1, vh=window.innerHeight||1;
+      var ww=w.scrollWidth||w.offsetWidth||1, wh=w.scrollHeight||w.offsetHeight||1;
+      var k=Math.min(1,(vw-16)/ww,(vh-16)/wh);
+      w.style.transform='scale('+k.toFixed(4)+')';
+    }catch(e){}
+  }
+  if(document.readyState==='complete') fit(); else window.addEventListener('load',fit);
+  [80,250,600,1100].forEach(function(d){setTimeout(fit,d);});
+  window.addEventListener('resize',fit);
+  window.__igFit=fit;
+})();`;
+
 function TemplateThumb({ tpl, accent, values }: { tpl: InfographicTemplate; accent: string; values?: Record<string, string> }) {
   const boxRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLIFrameElement>(null);
@@ -495,27 +520,12 @@ function TemplateThumb({ tpl, accent, values }: { tpl: InfographicTemplate; acce
   }, []);
   const src = useMemo(() => {
     const cfg = buildInfographicConfig(tpl, values || {}, { accent, ink: '#1f2d4a' });
-    return `<script>window.__CFG__=${JSON.stringify(cfg)}</script>` + rawTemplateHtml(tpl);
+    // __igFreeze=1: frys ved setProgress(1) (ingen play-animasjon i thumbnail).
+    // FIT_SCRIPT måler + skalerer INNE i iframen (robust i WKWebView).
+    return `<script>window.__CFG__=${JSON.stringify(cfg)};window.__igFreeze=1;</script>` + rawTemplateHtml(tpl) + `<script>${FIT_SCRIPT}</script>`;
   }, [tpl, accent, values]);
-  const fit = () => {
-    try {
-      const box = boxRef.current, ifr = frameRef.current, doc = ifr?.contentDocument;
-      if (!doc) return;
-      // WKWebView-hvit rot + malen starter på setProgress(0) (usynlig). Tving
-      // transparent OG kall setProgress(1) FØRST — ellers ble kortet blankt når
-      // #wrap manglet (fit bailet før setProgress) eller html-roten var hvit.
-      doc.documentElement.style.background = 'transparent';
-      if (doc.body) doc.body.style.cssText = 'margin:0;height:100%;display:grid;place-items:center;overflow:hidden;background:transparent';
-      (ifr!.contentWindow as unknown as { setProgress?: (p: number) => void })?.setProgress?.(1);
-      const wrap = doc.getElementById('wrap') as HTMLElement | null;
-      if (box && wrap) {
-        wrap.style.transform = 'none';
-        const k = Math.min((box.clientWidth - 8) / (wrap.scrollWidth || 1), (box.clientHeight - 8) / (wrap.scrollHeight || 1), 1);
-        wrap.style.transformOrigin = 'center center';
-        wrap.style.transform = `scale(${k.toFixed(4)})`;
-      }
-    } catch { /* */ }
-  };
+  // Nudge det injiserte fit-skriptet (kjører uansett selv på load + retries).
+  const fit = () => { try { (frameRef.current?.contentWindow as unknown as { __igFit?: () => void })?.__igFit?.(); } catch { /* */ } };
   return (
     <div ref={boxRef} style={{ width: '100%', height: 52, borderRadius: 8, overflow: 'hidden', background: 'linear-gradient(135deg,#10182a,#0b1120)', marginBottom: 8 }}>
       {visible && <iframe ref={frameRef} title="" srcDoc={src} onLoad={() => { window.setTimeout(fit, 120); window.setTimeout(fit, 480); }} style={{ width: '100%', height: '100%', border: 0, background: 'transparent', pointerEvents: 'none' }} />}
@@ -982,7 +992,7 @@ export function InfographicStudioView(
   const config = useMemo(() => buildInfographicConfig(tpl, fieldVals(scene, tpl), { accent: sceneAccent(scene), ink: '#1f2d4a', logo: sceneLogo(scene) || undefined }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [tpl, scene, accent, logo, localizeNb, dataMap]);
-  const srcDoc = useMemo(() => `<script>window.__CFG__=${JSON.stringify(config)}</script>` + htmlForTemplate(tpl), [config, tpl]);
+  const srcDoc = useMemo(() => `<script>window.__CFG__=${JSON.stringify(config)}</script>` + htmlForTemplate(tpl) + `<script>${FIT_SCRIPT}</script>`, [config, tpl]);
 
   const previewWin = () => iframeRef.current?.contentWindow as (Window & { setProgress?: (p: number) => void }) | null | undefined;
   const setPreviewProgress = (p: number) => { const w = previewWin(); if (w && typeof w.setProgress === 'function') { try { w.setProgress(Math.max(0, Math.min(1, p))); } catch { /* */ } } };
@@ -990,25 +1000,10 @@ export function InfographicStudioView(
   // Skaler malens innhold (#wrap, natural-bredde) så det passer i canvasen —
   // før overflommet flerkorts-maler og ble klippet. Kjøres på load + resize.
   const fitPreview = () => {
-    try {
-      const ifr = iframeRef.current; const canvas = canvasRef.current;
-      const doc = ifr?.contentDocument;
-      if (!ifr || !canvas || !doc) return;
-      // ALLTID: sentrer innhold + transparent rot FØR skalering. Uten dette sto
-      // malen venstre-justert i naturlig størrelse og rant ut til høyre (kuttet)
-      // når #wrap-målingen ikke var klar. Nå sentreres den uansett.
-      doc.documentElement.style.background = 'transparent';
-      const b = doc.body;
-      if (b) { b.style.margin = '0'; b.style.height = '100%'; b.style.display = 'grid'; b.style.placeItems = 'center'; b.style.overflow = 'hidden'; b.style.background = 'transparent'; }
-      const wrap = doc.getElementById('wrap') as HTMLElement | null;
-      if (!wrap) return; // sentrering står; skalering prøves på nytt (retry i onIframeLoad)
-      wrap.style.transform = 'none';
-      const cw = canvas.clientWidth - 24, ch = canvas.clientHeight - 24;
-      const ww = wrap.scrollWidth || 1, wh = wrap.scrollHeight || 1;
-      const k = Math.min(1, cw / ww, ch / wh);
-      wrap.style.transformOrigin = 'center center';
-      wrap.style.transform = `scale(${k.toFixed(4)})`;
-    } catch { /* cross-doc kan feile — best-effort */ }
+    // Delegér til det INJISERTE fit-skriptet inne i iframen (måler + skalerer
+    // selv → robust i WKWebView). Det selv-kjører også på load/retry/resize;
+    // dette er bare et ekstra nudge f.eks. når canvasen endrer størrelse.
+    try { (previewWin() as unknown as { __igFit?: () => void })?.__igFit?.(); } catch { /* */ }
   };
 
   // Simuler exit-fade i preview ved å sette #wrap-opacity (rendret klipp bruker
