@@ -287,7 +287,7 @@ export function triggerMatches(
 
 async function fetchLead(pool: Pool, leadId: string): Promise<LeadRow | null> {
   const r = await pool.query<LeadRow>(
-    `SELECT id::text, business_name, lead_score, lead_temperature,
+    `SELECT id::text, name AS business_name, lead_score, lead_temperature,
             pipeline_stage, industry_id::text, city,
             deal_amount::text AS deal_amount, deal_probability,
             owner_user_id, email, phone
@@ -1437,9 +1437,32 @@ export async function publishEvent(event: WorkflowEvent): Promise<void> {
     if (workflows.length === 0) return;
 
     // Concurrent execution — én feilende workflow stopper ikke de andre
-    await Promise.allSettled(
+    const results = await Promise.allSettled(
       workflows.map((w) => executeWorkflow(event.pool, w, event)),
     );
+    // Feil FØR execution-raden inserts (f.eks. fetchLead) etterlater ellers
+    // null spor — skriv til workflow-radens last_error så det er synlig i DB
+    // og UI i stedet for kun en warn i server-loggen.
+    for (let i = 0; i < results.length; i++) {
+      const r = results[i];
+      if (r.status !== "rejected") continue;
+      const msg =
+        r.reason instanceof Error ? r.reason.message : String(r.reason);
+      console.warn(
+        `[workflow-engine] workflow ${workflows[i].id} (${workflows[i].name}) feilet:`,
+        msg,
+      );
+      try {
+        await event.pool.query(
+          `UPDATE leadgrid_workflows
+              SET last_error_at = NOW(), last_error_message = $2
+            WHERE id = $1::uuid`,
+          [workflows[i].id, msg.slice(0, 500)],
+        );
+      } catch {
+        // best effort — logging skal aldri velte event-publisering
+      }
+    }
   } catch (err) {
     console.warn("[workflow-engine] publishEvent failed:", err);
   }
