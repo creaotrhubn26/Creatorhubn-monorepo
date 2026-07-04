@@ -2532,6 +2532,25 @@ export const roleRoomAgentService = {
     return payload?.plan ?? null;
   },
 
+  /**
+   * #3 — Channel scorecard: recommended marketing-setup channels vs measured
+   * per-channel/pillar performance. Powers the cockpit "command center" card.
+   */
+  async getMarketingScorecard(
+    projectId: string,
+    sinceDays?: number,
+  ): Promise<MarketingChannelScorecardResponse | null> {
+    const u = new URL(
+      `/api/role-room/marketing-plan/${encodeURIComponent(projectId)}/scorecard`,
+      window.location.origin,
+    );
+    if (sinceDays && sinceDays > 0) u.searchParams.set('sinceDays', String(sinceDays));
+    const response = await fetch(u.pathname + u.search, { headers: readRoleRoomAgentHeaders() });
+    const payload = (await response.json().catch(() => null)) as MarketingChannelScorecardResponse | null;
+    if (!response.ok || !payload?.success) return null;
+    return payload;
+  },
+
   async listMarketingPlanPosts(planId: string): Promise<MarketingPlanPost[]> {
     const response = await fetch(
       `/api/role-room/marketing-plan/${encodeURIComponent(planId)}/posts`,
@@ -3532,6 +3551,38 @@ export interface MarketingPlanPillar {
   isActive?: boolean;
   /** Item #144. True = lagt til manuelt av brukeren, kan slettes. */
   isCustom?: boolean;
+}
+
+// #3 — Channel scorecard response (recommended setup vs measured performance).
+export interface ScorecardChannelEntry {
+  channel: string;
+  recommendedPriority: string | null;
+  status: 'active' | 'no_data';
+  postCount: number;
+  snapshotCount: number;
+  metrics: Record<string, number>;
+}
+export interface ScorecardUnexpectedEntry {
+  platform: string;
+  label: string;
+  postCount: number;
+  snapshotCount: number;
+  metrics: Record<string, number>;
+}
+export interface MarketingChannelScorecardResponse {
+  success: boolean;
+  projectId: string;
+  sinceDays: number;
+  planStatus: { id: string; status: string; generatedAt: string | null; startDate: string | null } | null;
+  setup: { businessModel: string | null; geoScope: string | null; primaryCta: string | null; adTech: string[] } | null;
+  channelScorecard: {
+    channels: ScorecardChannelEntry[];
+    unexpected: ScorecardUnexpectedEntry[];
+    recommendedWithData: number;
+    recommendedWithoutData: number;
+    hasAnyData: boolean;
+  };
+  pillarPerformance: Array<{ key: string; label: string; postCount: number; snapshotCount: number; avgByMetric: Record<string, number> }>;
 }
 
 export interface MarketingPlan {

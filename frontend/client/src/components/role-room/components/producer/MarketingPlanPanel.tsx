@@ -84,6 +84,7 @@ import Snackbar from '@mui/material/Snackbar';
 import type { RoleRoomAgentProducerBootstrapResult } from '../../services/roleRoomAgentService';
 import RoleRoomAgentInsightsBanner from './RoleRoomAgentInsightsBanner';
 import RoleRoomAgentApprovalsWidget from './RoleRoomAgentApprovalsWidget';
+import ChannelScorecardCard from './ChannelScorecardCard';
 import { MarketingGenerationProgress } from './MarketingGenerationProgress';
 import { LoadingSkeleton, ErrorAlert } from './ui';
 
@@ -398,6 +399,8 @@ export default function MarketingPlanPanel({
       {error ? <ErrorAlert message={error} /> : null}
 
       {gateMessage}
+
+      {projectId ? <ChannelScorecardCard projectId={projectId} /> : null}
 
       {shareUrl ? (
         <Alert
