@@ -147,7 +147,11 @@ final class TeamLiveStore {
             ConversionRow(label: "Total konvertering",    pct: pct(vunnet, nye), isTotal: true),
         ]
 
-        let scores = leads.compactMap { $0.leadScore ?? $0.aiOpportunityScore }
+        // Kun ekte lead-scores (>0) — samme semantikk som Leads-fanen.
+        // aiOpportunityScore defaulter til 100 for discovery-leads og
+        // blåste snittet til «100» mens hver rad viste 0 (desktop-QA
+        // 2026-07-05).
+        let scores = leads.compactMap(\.leadScore).filter { $0 > 0 }
         avgLeadScore = scores.isEmpty ? 0 : scores.reduce(0, +) / scores.count
         salesCount = vunnet
     }

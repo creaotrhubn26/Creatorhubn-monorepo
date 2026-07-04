@@ -112,7 +112,10 @@ final class QASweepTests: XCTestCase {
         for (idx, navn) in [(0, "oversikt"), (2, "leads"), (3, "moter")] {
             let app = launchApp(tab: idx)
             try app.performAccessibilityAudit { issue in
-                rapport.linjer.append("[\(navn)] \(issue.auditType): \(issue.compactDescription)")
+                // Element-info gjør funnene handlingsbare — uten den vet
+                // vi bare AT noe mangler beskrivelse, ikke HVA.
+                let el = issue.element.map { String(describing: $0) } ?? "ukjent element"
+                rapport.linjer.append("[\(navn)] \(issue.auditType): \(issue.compactDescription) — \(el)")
                 return true // logg, ikke feil — rapporterende modus
             }
             app.terminate()

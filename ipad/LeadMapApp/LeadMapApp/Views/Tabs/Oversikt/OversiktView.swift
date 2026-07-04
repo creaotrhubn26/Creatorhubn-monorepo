@@ -48,8 +48,8 @@ private enum Brand {
     static let yellow = Color(red: 0.98, green: 0.75, blue: 0.14)
     static let green = Color(red: 0.20, green: 0.85, blue: 0.60)
     static let blue = Color(red: 0.34, green: 0.60, blue: 0.98)
-    static let textSecondary = Color.white.opacity(0.55)
-    static let textTertiary = Color.white.opacity(0.35)
+    static let textSecondary = Color.white.opacity(0.62)
+    static let textTertiary = Color.white.opacity(0.45)
 }
 
 struct OversiktView: View {
@@ -3131,7 +3131,10 @@ private struct OvClusterPin: View {
                 .frame(width: 52, height: 52)
                 .blur(radius: 3)
             Circle()
-                .fill(Brand.purple.opacity(0.95))
+                // Mørkere lilla enn Brand.purple: hvit 14pt-tekst på
+                // #a852fc ga ~3.2:1 og strøk WCAG-kontrast (a11y-audit
+                // 2026-07-05). Denne gir >5:1 og beholder glow-en.
+                .fill(Color(red: 0.42, green: 0.16, blue: 0.72))
                 .overlay(Circle().stroke(Color.white.opacity(0.85), lineWidth: 2))
                 .frame(width: 34, height: 34)
                 .shadow(color: Brand.purple.opacity(0.55), radius: 6, x: 0, y: 2)
@@ -3202,6 +3205,9 @@ private struct MiniPin: View {
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.white)
                         .offset(y: -6)
+                        // Dekorativt — pin-en som helhet er treffflaten
+                        // (a11y-audit: «hit area too small» på ikonet).
+                        .accessibilityHidden(true)
                 }
             }
             .frame(width: 38, height: 48)
@@ -5478,8 +5484,8 @@ struct SellerDetailSheet: View {
         static let purpleLight = Color(red: 0.75, green: 0.45, blue: 1.0)
         static let green = Color(red: 0.20, green: 0.85, blue: 0.60)
         static let yellow = Color(red: 0.98, green: 0.75, blue: 0.14)
-        static let textSecondary = Color.white.opacity(0.55)
-        static let textTertiary = Color.white.opacity(0.35)
+        static let textSecondary = Color.white.opacity(0.62)
+        static let textTertiary = Color.white.opacity(0.45)
     }
 
     private func nok(_ v: Double) -> String {
@@ -5850,8 +5856,8 @@ struct SalesLeadershipSheet: View {
         static let orange = Color(red: 0.98, green: 0.55, blue: 0.10)
         static let red = Color(red: 0.95, green: 0.20, blue: 0.20)
         static let blue = Color(red: 0.34, green: 0.60, blue: 0.98)
-        static let textSecondary = Color.white.opacity(0.55)
-        static let textTertiary = Color.white.opacity(0.35)
+        static let textSecondary = Color.white.opacity(0.62)
+        static let textTertiary = Color.white.opacity(0.45)
     }
 
     // MARK: Provisjon — modell-bibliotek
@@ -7851,7 +7857,7 @@ struct NewContestSheet: View {
         static let purple = Color(red: 0.66, green: 0.32, blue: 0.99)
         static let purpleLight = Color(red: 0.75, green: 0.45, blue: 1.0)
         static let yellow = Color(red: 0.98, green: 0.75, blue: 0.14)
-        static let textSecondary = Color.white.opacity(0.55)
+        static let textSecondary = Color.white.opacity(0.62)
     }
 
     private let kpiOptions = ["Mest vunnet NOK", "Flest nye møter",
@@ -8214,8 +8220,8 @@ struct PrizePickerSheet: View {
         static let purple = Color(red: 0.66, green: 0.32, blue: 0.99)
         static let purpleLight = Color(red: 0.75, green: 0.45, blue: 1.0)
         static let yellow = Color(red: 0.98, green: 0.75, blue: 0.14)
-        static let textSecondary = Color.white.opacity(0.55)
-        static let textTertiary = Color.white.opacity(0.35)
+        static let textSecondary = Color.white.opacity(0.62)
+        static let textTertiary = Color.white.opacity(0.45)
     }
 
     private var filtered: [PrizeProduct] {
@@ -8423,8 +8429,8 @@ struct CustomPrizeSheet: View {
         static let purple = Color(red: 0.66, green: 0.32, blue: 0.99)
         static let purpleLight = Color(red: 0.75, green: 0.45, blue: 1.0)
         static let yellow = Color(red: 0.98, green: 0.75, blue: 0.14)
-        static let textSecondary = Color.white.opacity(0.55)
-        static let textTertiary = Color.white.opacity(0.35)
+        static let textSecondary = Color.white.opacity(0.62)
+        static let textTertiary = Color.white.opacity(0.45)
     }
 
     var body: some View {
@@ -8622,8 +8628,8 @@ struct PrizeFulfillmentSheet: View {
         static let green = Color(red: 0.20, green: 0.85, blue: 0.60)
         static let blue = Color(red: 0.34, green: 0.60, blue: 0.98)
         static let orange = Color(red: 0.98, green: 0.55, blue: 0.10)
-        static let textSecondary = Color.white.opacity(0.55)
-        static let textTertiary = Color.white.opacity(0.35)
+        static let textSecondary = Color.white.opacity(0.62)
+        static let textTertiary = Color.white.opacity(0.45)
     }
 
     enum Step: String, CaseIterable {
