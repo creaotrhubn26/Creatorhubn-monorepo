@@ -75,6 +75,10 @@ import FastRewindIcon from '@mui/icons-material/FastRewind';
 import FastForwardIcon from '@mui/icons-material/FastForward';
 import ZoomInIcon from '@mui/icons-material/ZoomIn';
 import ZoomOutIcon from '@mui/icons-material/ZoomOut';
+import UndoIcon from '@mui/icons-material/Undo';
+import RedoIcon from '@mui/icons-material/Redo';
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 
 const D = {
   bg: '#0e1320', panel: '#141b2b', panel2: '#1b2436', line: '#27314a',
@@ -880,6 +884,68 @@ export function InfographicStudioView(
     setScenes((ss) => ss.filter((_, j) => j !== i));
     setSel((s) => Math.max(0, Math.min(s, scenes.length - 2)));
   };
+  const duplicateScene = (i: number) => {
+    const src = scenes[i]; if (!src) return;
+    const t = INFOGRAPHIC_TEMPLATES.find((x) => x.id === src.tplId) || INFOGRAPHIC_TEMPLATES[0];
+    const copy: Scene = { ...src, id: `s${_sid++}`, atSec: src.atSec + effDur(src, t), values: { ...src.values }, bindings: { ...(src.bindings || {}) }, name: src.name ? `${src.name} (kopi)` : undefined };
+    setScenes((ss) => { const n = [...ss]; n.splice(i + 1, 0, copy); return n; });
+    setSel(i + 1);
+  };
+  const moveScene = (i: number, dir: -1 | 1) => {
+    const j = i + dir; if (j < 0 || j >= scenes.length) return;
+    setScenes((ss) => { const n = [...ss]; const [x] = n.splice(i, 1); n.splice(j, 0, x); return n; });
+    setSel(j);
+  };
+
+  // ── Angre/gjenta (undo/redo): snapshot av redigerbar tilstand, debouncet så en
+  //    redigerings-«burst» blir ÉN oppføring. histRestoring-flagget hindrer at en
+  //    undo/redo selv lager ny historikk (stabilt sammen med autosave). ──
+  const editKey = JSON.stringify({ scenes, accent, logo, dataText, palette, liveUrl });
+  const histPast = useRef<string[]>([]);
+  const histFuture = useRef<string[]>([]);
+  const histRestoring = useRef(false);
+  const histPrev = useRef<string>('');
+  const [histTick, setHistTick] = useState(0);
+  useEffect(() => {
+    if (!histPrev.current) { histPrev.current = editKey; return; }
+    if (histRestoring.current) { histRestoring.current = false; histPrev.current = editKey; return; }
+    if (editKey === histPrev.current) return;
+    const before = histPrev.current;
+    const h = window.setTimeout(() => {
+      histPast.current.push(before);
+      if (histPast.current.length > 80) histPast.current.shift();
+      histFuture.current = [];
+      histPrev.current = editKey;
+      setHistTick((t) => t + 1);
+    }, 450);
+    return () => window.clearTimeout(h);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editKey]);
+  const applyHist = (json: string) => {
+    try {
+      const s = JSON.parse(json) as { scenes: Scene[]; accent: string; logo: string; dataText: string; palette: string[]; liveUrl?: string };
+      histRestoring.current = true;
+      setScenes(s.scenes); setAccent(s.accent); setLogo(s.logo); setDataText(s.dataText); setPalette(s.palette); setLiveUrl(s.liveUrl || '');
+      setSel((cur) => Math.min(cur, Math.max(0, (s.scenes?.length || 1) - 1)));
+    } catch { histRestoring.current = false; }
+  };
+  const canUndo = useMemo(() => histPast.current.length > 0, [histTick]);
+  const canRedo = useMemo(() => histFuture.current.length > 0, [histTick]);
+  const undo = () => { if (!histPast.current.length) return; histFuture.current.push(histPrev.current); const prev = histPast.current.pop() as string; histPrev.current = prev; applyHist(prev); setHistTick((t) => t + 1); };
+  const redo = () => { if (!histFuture.current.length) return; histPast.current.push(histPrev.current); const next = histFuture.current.pop() as string; histPrev.current = next; applyHist(next); setHistTick((t) => t + 1); };
+  // Tastatur: Cmd/Ctrl+Z angre, Cmd/Ctrl+Shift+Z gjenta — men ikke mens man skriver i felt.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'z') return;
+      const el = document.activeElement as HTMLElement | null;
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
+      e.preventDefault();
+      if (e.shiftKey) redo(); else undo();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const fieldVals = (sc: Scene, t: InfographicTemplate) => {
     const out: Record<string, string> = { ...t.defaults };
@@ -1752,35 +1818,53 @@ export function InfographicStudioView(
               </>);
             })()}
           </div>
-          {/* Scene-stripe (multi-scene) */}
-          <div style={{ borderTop: `1px solid ${D.line}`, background: D.panel, padding: '10px 16px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <button style={topBtn} onClick={() => play()} title="Spill valgt scene"><PlayArrowIcon style={{ fontSize: 16 }} /></button>
-              <div style={{ display: 'flex', gap: 8, overflowX: 'auto', flex: 1, paddingBottom: 2 }}>
-                {scenes.map((sc, i) => {
-                  const t = INFOGRAPHIC_TEMPLATES.find((x) => x.id === sc.tplId) || INFOGRAPHIC_TEMPLATES[0];
-                  const active = i === sel;
-                  return (
-                    <div key={sc.id} onClick={() => setSel(i)} style={{ width: 104, flex: 'none', borderRadius: 9, border: `2px solid ${active ? D.accent : D.line}`, background: active ? D.panel2 : D.bg, cursor: 'pointer', padding: '8px 9px', position: 'relative' }}>
-                      <div style={{ fontSize: 10, color: D.faint }}>Scene {i + 1} · {sc.atSec}s</div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 }}>
-                        <span style={{ display: 'inline-flex', color: t.style === 'hud' ? D.teal : D.accent }}>{tplIcon(t.id, 15)}</span>
-                        <span style={{ fontSize: 11, fontWeight: 600, color: D.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
-                      </div>
-                      {scenes.length > 1 && <button onClick={(e) => { e.stopPropagation(); deleteScene(i); }} style={{ position: 'absolute', top: 4, right: 5, border: 'none', background: 'transparent', color: D.faint, cursor: 'pointer', lineHeight: 1, padding: 0 }}><CloseIcon style={{ fontSize: 13 }} /></button>}
-                    </div>
-                  );
-                })}
-                <div onClick={addScene} style={{ width: 56, flex: 'none', borderRadius: 9, border: `1px dashed ${D.line}`, display: 'grid', placeItems: 'center', color: D.faint, cursor: 'pointer' }} title="Ny scene"><AddIcon style={{ fontSize: 22 }} /></div>
-              </div>
-              <input value={scene.name ?? ''} onChange={(e) => updateScene({ name: e.target.value })} placeholder={tpl.name} title="Scene-navn (vises i tidslinjen)" style={{ ...inp, width: 130, flex: 'none' }} />
-              <label style={{ fontSize: 12, color: D.soft, display: 'flex', alignItems: 'center', gap: 7, flex: 'none' }}>Dukker opp ved
-                <input style={{ ...inp, width: 64 }} type="number" min="0" step="0.5" value={scene.atSec} onChange={(e) => updateScene({ atSec: parseFloat(e.target.value) || 0 })} /> s</label>
+          {/* Scener: verktøylinje (angre/gjenta/dupliser/slett) + filmstrip m/ ekte
+              thumbnails, dupliser + flytt (rekkefølge). */}
+          <div style={{ borderTop: `1px solid ${D.line}`, background: D.panel, padding: '8px 16px 10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+              <span style={{ fontSize: 10.5, fontWeight: 700, color: D.soft, textTransform: 'uppercase', letterSpacing: 0.5 }}>Scener <span style={{ color: D.faint }}>· {scenes.length}</span></span>
+              <button style={{ ...topBtn, padding: '3px 7px', marginLeft: 6, opacity: canUndo ? 1 : 0.4 }} disabled={!canUndo} onClick={undo} title="Angre (⌘Z)"><UndoIcon style={{ fontSize: 15 }} /></button>
+              <button style={{ ...topBtn, padding: '3px 7px', opacity: canRedo ? 1 : 0.4 }} disabled={!canRedo} onClick={redo} title="Gjenta (⇧⌘Z)"><RedoIcon style={{ fontSize: 15 }} /></button>
+              <div style={{ width: 1, height: 15, background: D.line, margin: '0 3px' }} />
+              <button style={{ ...topBtn, padding: '3px 7px' }} onClick={() => duplicateScene(sel)} title="Dupliser valgt scene"><ContentCopyIcon style={{ fontSize: 15 }} /></button>
+              <button style={{ ...topBtn, padding: '3px 7px', opacity: scenes.length > 1 ? 1 : 0.4 }} disabled={scenes.length <= 1} onClick={() => deleteScene(sel)} title="Slett valgt scene"><DeleteOutlineIcon style={{ fontSize: 15 }} /></button>
+              <button style={{ ...topBtn, padding: '3px 7px' }} onClick={() => play()} title="Spill valgt scene"><PlayArrowIcon style={{ fontSize: 15 }} /></button>
+              <div style={{ flex: 1 }} />
+              <input value={scene.name ?? ''} onChange={(e) => updateScene({ name: e.target.value })} placeholder={tpl.name} title="Scene-navn" style={{ ...inp, width: 140, flex: 'none' }} />
+              <label style={{ fontSize: 12, color: D.soft, display: 'flex', alignItems: 'center', gap: 6, flex: 'none' }}>ved
+                <input style={{ ...inp, width: 58 }} type="number" min="0" step="0.5" value={scene.atSec} onChange={(e) => updateScene({ atSec: parseFloat(e.target.value) || 0 })} /> s</label>
               {CALLOUT_IDS.has(scene.tplId) && (
-                <label style={{ fontSize: 12, color: D.soft, display: 'flex', alignItems: 'center', gap: 6, flex: 'none' }} title="Hvor i bildet callouten peker (% av ramme; 50/50 = sentrert)"><CenterFocusStrongIcon style={{ fontSize: 14 }} /> Plassering
-                  <input style={{ ...inp, width: 54 }} type="number" min="0" max="100" step="1" value={scene.posX ?? 50} onChange={(e) => updateScene({ posX: Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) })} />X
-                  <input style={{ ...inp, width: 54 }} type="number" min="0" max="100" step="1" value={scene.posY ?? 50} onChange={(e) => updateScene({ posY: Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) })} />Y%</label>
+                <label style={{ fontSize: 12, color: D.soft, display: 'flex', alignItems: 'center', gap: 5, flex: 'none' }} title="Hvor callouten peker (% av ramme)"><CenterFocusStrongIcon style={{ fontSize: 14 }} />
+                  <input style={{ ...inp, width: 50 }} type="number" min="0" max="100" value={scene.posX ?? 50} onChange={(e) => updateScene({ posX: Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) })} />
+                  <input style={{ ...inp, width: 50 }} type="number" min="0" max="100" value={scene.posY ?? 50} onChange={(e) => updateScene({ posY: Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) })} /></label>
               )}
+            </div>
+            <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
+              {scenes.map((sc, i) => {
+                const t = INFOGRAPHIC_TEMPLATES.find((x) => x.id === sc.tplId) || INFOGRAPHIC_TEMPLATES[0];
+                const active = i === sel;
+                return (
+                  <div key={sc.id} onClick={() => setSel(i)} style={{ width: 132, flex: 'none', borderRadius: 9, border: `2px solid ${active ? D.accent : D.line}`, background: active ? D.panel2 : D.bg, cursor: 'pointer', padding: 7, position: 'relative' }}>
+                    <TemplateThumb tpl={t} accent={sceneAccent(sc)} values={fieldVals(sc, t)} />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <span style={{ display: 'inline-flex', color: t.style === 'hud' ? D.teal : D.accent, flex: 'none' }}>{tplIcon(sc.tplId, 12)}</span>
+                      <span style={{ fontSize: 10.5, fontWeight: 600, color: D.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sc.name || t.name}</span>
+                    </div>
+                    <div style={{ fontSize: 9, color: D.faint, marginTop: 1 }}>{i + 1} · {sc.atSec}s</div>
+                    <div style={{ position: 'absolute', top: 4, right: 4, display: 'flex', gap: 2 }}>
+                      <button onClick={(e) => { e.stopPropagation(); duplicateScene(i); }} title="Dupliser" style={{ border: 'none', background: 'rgba(0,0,0,0.35)', borderRadius: 4, color: '#cdd6ea', cursor: 'pointer', lineHeight: 1, padding: 2, display: 'inline-flex' }}><ContentCopyIcon style={{ fontSize: 11 }} /></button>
+                      {scenes.length > 1 && <button onClick={(e) => { e.stopPropagation(); deleteScene(i); }} title="Slett" style={{ border: 'none', background: 'rgba(0,0,0,0.35)', borderRadius: 4, color: '#f0a89f', cursor: 'pointer', lineHeight: 1, padding: 2, display: 'inline-flex' }}><CloseIcon style={{ fontSize: 12 }} /></button>}
+                    </div>
+                    {scenes.length > 1 && (
+                      <div style={{ position: 'absolute', bottom: 6, right: 5, display: 'flex', gap: 1 }}>
+                        {i > 0 && <button onClick={(e) => { e.stopPropagation(); moveScene(i, -1); }} title="Flytt venstre" style={{ border: 'none', background: 'rgba(0,0,0,0.3)', borderRadius: 3, color: '#cdd6ea', cursor: 'pointer', padding: 0, display: 'inline-flex' }}><ChevronLeftIcon style={{ fontSize: 14 }} /></button>}
+                        {i < scenes.length - 1 && <button onClick={(e) => { e.stopPropagation(); moveScene(i, 1); }} title="Flytt høyre" style={{ border: 'none', background: 'rgba(0,0,0,0.3)', borderRadius: 3, color: '#cdd6ea', cursor: 'pointer', padding: 0, display: 'inline-flex' }}><ChevronRightIcon style={{ fontSize: 14 }} /></button>}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              <div onClick={addScene} style={{ width: 56, flex: 'none', borderRadius: 9, border: `1px dashed ${D.line}`, display: 'grid', placeItems: 'center', color: D.faint, cursor: 'pointer' }} title="Ny scene"><AddIcon style={{ fontSize: 22 }} /></div>
             </div>
           </div>
           {(msg || renderProgress) && (
@@ -1806,6 +1890,31 @@ export function InfographicStudioView(
           </div>
           <div style={{ flex: 1, overflowY: 'auto', padding: 14 }}>
             {rightTab === 'Data' && (<>
+              {/* Data-binding-sammendrag: kilde + bundne felt (fremhevet, som konseptets Source→Value). */}
+              {(() => {
+                const bound = Object.entries(scene.bindings || {}).filter(([, v]) => v);
+                const sourceLabel = liveUrl.trim() ? (() => { try { return new URL(liveUrl).host; } catch { return 'live'; } })() : (dataKeys.length ? 'limt inn data' : 'ingen');
+                return (
+                  <div style={{ marginBottom: 12, padding: 10, borderRadius: 9, border: `1px solid ${bound.length ? D.teal : D.line}`, background: D.bg }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: bound.length ? 7 : 0 }}>
+                      <DatasetIcon style={{ fontSize: 14, color: bound.length ? D.teal : D.faint }} />
+                      <span style={{ fontSize: 10.5, fontWeight: 700, color: D.soft }}>Datakilde</span>
+                      <span style={{ fontSize: 10.5, color: bound.length ? D.teal : D.faint, marginLeft: 'auto', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 130 }}>{sourceLabel}{dataKeys.length ? ` · ${dataKeys.length} felt` : ''}</span>
+                    </div>
+                    {bound.length > 0 ? bound.map(([k, v]) => {
+                      const f = tpl.fields.find((x) => x.key === k);
+                      return (
+                        <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10.5, padding: '2px 0' }}>
+                          <span style={{ color: D.soft, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{f?.label || k}</span>
+                          <span style={{ color: D.faint }}>→</span>
+                          <span style={{ color: D.teal, fontWeight: 600 }}>{v}</span>
+                          <button onClick={() => setBinding(k, '')} title="Fjern binding" style={{ border: 'none', background: 'transparent', color: D.faint, cursor: 'pointer', padding: 0, display: 'inline-flex' }}><CloseIcon style={{ fontSize: 12 }} /></button>
+                        </div>
+                      );
+                    }) : <div style={{ fontSize: 9.5, color: D.faint, marginTop: 6, lineHeight: 1.4 }}>Bind felt til datakilde-kolonner nedenfor — verdiene fylles automatisk og oppdateres når kilden endres.</div>}
+                  </div>
+                );
+              })()}
               <div style={{ fontSize: 11, fontWeight: 700, color: D.soft, textTransform: 'uppercase', marginBottom: 10 }}>Innhold · scene {sel + 1}</div>
               <div style={{ display: 'grid', gap: 9 }}>
                 {tpl.fields.map((f) => {
