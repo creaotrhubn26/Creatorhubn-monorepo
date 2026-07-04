@@ -119,7 +119,7 @@ extension LeadRow {
         return palette[abs(hash) % palette.count]
     }
 
-    private static func initials(for name: String) -> String {
+    static func initials(for name: String) -> String {
         let parts = name.split(separator: " ").prefix(2)
         let letters = parts.compactMap { $0.first }.map(String.init).joined()
         return letters.isEmpty ? "–" : letters.uppercased()
@@ -1814,13 +1814,21 @@ struct LeadDetailSidebar: View {
                     Text("Lead score")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(.white)
-                    HStack(spacing: 3) {
-                        Image(systemName: "arrow.up")
-                            .font(.system(size: 10, weight: .bold))
-                        Text("12")
-                            .font(.system(size: 12, weight: .bold))
+                    // Mock-trenden («↑12») vises kun når det finnes en score
+                    // å trende fra — «score 0, ↑12» var selvmotsigende.
+                    if lead.leadScore > 0 {
+                        HStack(spacing: 3) {
+                            Image(systemName: "arrow.up")
+                                .font(.system(size: 10, weight: .bold))
+                            Text("12")
+                                .font(.system(size: 12, weight: .bold))
+                        }
+                        .foregroundStyle(LdBrand.green)
+                    } else {
+                        Text("Ingen score enda")
+                            .font(.system(size: 11))
+                            .foregroundStyle(LdBrand.textSecondary)
                     }
-                    .foregroundStyle(LdBrand.green)
                 }
                 Spacer()
             }
@@ -1974,23 +1982,33 @@ struct LeadDetailSidebar: View {
     private var kontaktSection: some View {
         VStack(alignment: .leading, spacing: 9) {
             sectionTitle("Kontaktperson")
-            HStack(spacing: 10) {
-                ZStack {
-                    Circle().fill(LdBrand.purple.opacity(0.30))
-                    Text("JE")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(LdBrand.purpleLight)
+            // Initialene var hardkodet «JE» og navnet ble tomt for backend-
+            // leads — nå ekte initialer, og ærlig tom-tilstand uten navn.
+            if lead.contactName.isEmpty {
+                Text("Ingen kontaktperson registrert")
+                    .font(.system(size: 11))
+                    .foregroundStyle(LdBrand.textSecondary)
+            } else {
+                HStack(spacing: 10) {
+                    ZStack {
+                        Circle().fill(LdBrand.purple.opacity(0.30))
+                        Text(LeadRow.initials(for: lead.contactName))
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(LdBrand.purpleLight)
+                    }
+                    .frame(width: 38, height: 38)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(lead.contactName)
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(.white)
+                        if !lead.contactRole.isEmpty {
+                            Text(lead.contactRole)
+                                .font(.system(size: 11))
+                                .foregroundStyle(LdBrand.textSecondary)
+                        }
+                    }
+                    Spacer()
                 }
-                .frame(width: 38, height: 38)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(lead.contactName)
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(.white)
-                    Text(lead.contactRole)
-                        .font(.system(size: 11))
-                        .foregroundStyle(LdBrand.textSecondary)
-                }
-                Spacer()
             }
             if let phone = lead.displayPhone {
                 contactRow(icon: "phone", text: phone, color: LdBrand.green)
@@ -2024,10 +2042,18 @@ struct LeadDetailSidebar: View {
     private var companySection: some View {
         VStack(alignment: .leading, spacing: 9) {
             sectionTitle("Om selskapet")
-            metaRow("Bransje", "Elektroinstallasjon")
-            metaRow("Sted", "Oslo, Norge")
-            metaRow("Ansatte", "25-50")
-            metaRow("Omsetning", "10-20 mill. NOK")
+            // QA-runde 2: radene var hardkodet mock («Elektroinstallasjon /
+            // Oslo / 25-50») for ALLE leads — nå ekte kategori, og mock kun
+            // i demo-modus.
+            if DemoModeManager.isActiveNonisolated {
+                metaRow("Bransje", "Elektroinstallasjon")
+                metaRow("Sted", "Oslo, Norge")
+                metaRow("Ansatte", "25-50")
+                metaRow("Omsetning", "10-20 mill. NOK")
+            } else {
+                metaRow("Bransje", lead.category == "—" ? "Ikke kategorisert" : lead.category)
+                metaRow("Eier", lead.ownerName)
+            }
             Button {} label: {
                 HStack(spacing: 4) {
                     Text("Se mer informasjon")
@@ -2059,7 +2085,15 @@ struct LeadDetailSidebar: View {
         VStack(alignment: .leading, spacing: 12) {
             sectionTitle("Status i pipelinen")
             let stages = ["Ny lead", "Kontaktet", "Møte\navtalt", "Tilbud\nsendt", "Vunnet"]
-            let current = 2  // Møte avtalt
+            // QA-runde 2: steget var hardkodet til «Møte avtalt» for alle
+            // leads — nå avledet fra faktisk status.
+            let current: Int = {
+                switch lead.status {
+                case .newLead, .notContacted: return 0
+                case .interested, .contacted, .warm: return 1
+                case .hot: return 2
+                }
+            }()
             HStack(spacing: 0) {
                 ForEach(0..<stages.count, id: \.self) { i in
                     VStack(spacing: 5) {
@@ -2081,6 +2115,10 @@ struct LeadDetailSidebar: View {
                             .font(.system(size: 9, weight: i == current ? .bold : .regular))
                             .foregroundStyle(i <= current ? .white : LdBrand.textTertiary)
                             .multilineTextAlignment(.center)
+                            // «Kontaktet» brakk til «Kontakte / t» på iPhone
+                            // — skalér ned i stedet for å ordbryte.
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.75)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     .frame(maxWidth: .infinity)
@@ -2108,7 +2146,9 @@ struct LeadDetailSidebar: View {
             HStack(spacing: 7) {
                 Image(systemName: "calendar")
                     .font(.system(size: 10))
-                    .foregroundStyle(LdBrand.red)
+                    // Rød er alarm-farge — kun når noe faktisk haster
+                    // (overforfalt), ikke for «ikke planlagt».
+                    .foregroundStyle(lead.nextFollowUpOverdue ? LdBrand.red : LdBrand.textSecondary)
                 Text(lead.nextFollowUp ?? "Ikke planlagt")
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(.white)
@@ -2121,9 +2161,13 @@ struct LeadDetailSidebar: View {
                         .overlay(Capsule().stroke(LdBrand.red.opacity(0.4), lineWidth: 1))
                 }
             }
-            Text("Telefonmøte med Jonas Eide")
-                .font(.system(size: 11))
-                .foregroundStyle(LdBrand.textSecondary)
+            // Mock-beskrivelsen vises kun i demo-modus — ekte leads har
+            // ingen oppfølgings-beskrivelse i dette feltet.
+            if DemoModeManager.isActiveNonisolated {
+                Text("Telefonmøte med Jonas Eide")
+                    .font(.system(size: 11))
+                    .foregroundStyle(LdBrand.textSecondary)
+            }
             Button { onOpenFollowUp() } label: {
                 Text("Åpne oppfølging")
                     .font(.system(size: 12, weight: .semibold))
@@ -2147,21 +2191,26 @@ struct LeadDetailSidebar: View {
                     .font(.system(size: 13, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
                     .monospacedDigit()
-                Text("Høy")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(LdBrand.green)
+                // «Høy» sannsynlighet gir bare mening med en faktisk verdi.
+                if lead.valueNok > 0 {
+                    Text("Høy")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(LdBrand.green)
+                }
             }
             Spacer()
+            // QA-runde 2: selgeren var hardkodet «Kari Nordmann» for alle
+            // leads — nå faktisk eier fra tildelingen.
             HStack(spacing: 6) {
                 ZStack {
-                    Circle().fill(LdBrand.purple.opacity(0.30))
-                    Text("KN")
+                    Circle().fill(lead.ownerColor.opacity(0.30))
+                    Text(lead.ownerInitials)
                         .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(LdBrand.purpleLight)
+                        .foregroundStyle(lead.ownerColor)
                 }
                 .frame(width: 28, height: 28)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("Kari Nordmann")
+                    Text(lead.ownerName)
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.white)
                     Text("Selger")
