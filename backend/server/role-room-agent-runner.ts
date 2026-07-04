@@ -33,6 +33,7 @@ import {
 } from './role-room-agent-claude.js';
 import { buildTikTokMcpConfig } from './role-room-tiktok-mcp.js';
 import { buildMetaMcpConfig } from './role-room-meta-mcp.js';
+import { buildGoogleMcpConfig } from './role-room-google-mcp.js';
 import { mergeAgentMcpConfigs } from './role-room-agent-mcp.js';
 import { resolveAdsAccessToken } from './role-room-ads-oauth.js';
 import {
@@ -402,7 +403,16 @@ export async function invokeRoleRoomAgent(
       .catch(() => null);
     metaMcp = buildMetaMcpConfig({ authorizationToken: metaToken });
   }
-  const mcpConfig = mergeAgentMcpConfigs([tiktokMcp, metaMcp]);
+  let googleMcp = null;
+  if (process.env.ROLE_ROOM_GOOGLE_MCP_ENABLED === 'true') {
+    // Google's Ads MCP is self-hosted (Cloud Run) — the URL + optional bearer
+    // come from env; the server itself holds the Google Ads credentials.
+    googleMcp = buildGoogleMcpConfig({
+      serverUrl: process.env.GOOGLE_ADS_MCP_URL,
+      authorizationToken: process.env.GOOGLE_ADS_MCP_TOKEN,
+    });
+  }
+  const mcpConfig = mergeAgentMcpConfigs([tiktokMcp, metaMcp, googleMcp]);
 
   try {
     const raw = await runClaudeAgent({
