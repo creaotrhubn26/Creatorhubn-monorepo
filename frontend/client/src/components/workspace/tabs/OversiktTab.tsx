@@ -23,6 +23,89 @@ import { WsCard, WsSectionTitle, WsRing, WsBar, WsImageGrid } from '../ui';
 import WorkspaceChatPanel from '../WorkspaceChatPanel';
 import { useProjectImages } from '../useProjectImages';
 import { useCaptureRealtime } from '../useCaptureRealtime';
+import { useWsLocale, makeT, wsDateLocale, type WsDict } from '../wsLocale';
+
+// Lokal no/en-ordbok for fanen (samme mønster som OppdragTab). Demo-konstantene
+// (PHASES/BOARD/SYNC_ITEMS/CHECKLIST) er sample-data og forblir norske.
+const T: WsDict = {
+  // Capture-aktivitet (activityMeta)
+  actAssetAdded: { no: 'Nytt bilde lastet opp', en: 'New photo uploaded' },
+  actRating: { no: 'Rating endret', en: 'Rating changed' },
+  actCulling: { no: 'Culling', en: 'Culling' },
+  actFlagged: { no: 'Markert for klient', en: 'Flagged for client' },
+  actHandoff: { no: 'Sendt til editor', en: 'Sent to editor' },
+  actDelivered: { no: 'Levert', en: 'Delivered' },
+  actBackedUp: { no: 'Sikkerhetskopiert', en: 'Backed up' },
+  actSessionStart: { no: 'Capture-session startet', en: 'Capture session started' },
+  actEnhance: { no: 'AI-forbedring', en: 'AI enhancement' },
+  actVoice: { no: 'Talenotat lagt til', en: 'Voice memo added' },
+  actComment: { no: 'Tilbakemelding', en: 'Feedback' },
+  eventWord: { no: 'Hendelse', en: 'Event' },
+  // timeAgo
+  justNow: { no: 'nå nettopp', en: 'just now' },
+  minAgo: { no: 'min siden', en: 'min ago' },
+  hoursAgo: { no: 't siden', en: 'h ago' },
+  daysAgo: { no: 'd siden', en: 'd ago' },
+  // prompts/alerts
+  newCheckPrompt: { no: 'Nytt sjekkpunkt:', en: 'New checklist item:' },
+  newTaskPrompt: { no: 'Ny oppgave:', en: 'New task:' },
+  addFailed: { no: 'Kunne ikke legge til', en: 'Could not add' },
+  // rolle-kolonner (COLS)
+  roleProducer: { no: 'Produsent', en: 'Producer' },
+  roleVocals: { no: 'Vokal', en: 'Vocals' },
+  roleMusicians: { no: 'Musikere', en: 'Musicians' },
+  roleMix: { no: 'Miks', en: 'Mix' },
+  roleOrders: { no: 'Bestilling', en: 'Orders' },
+  rolePrepVendor: { no: 'Klargjøring', en: 'Preparation' },
+  roleDelivery: { no: 'Levering', en: 'Delivery' },
+  roleFollowUp: { no: 'Oppfølging', en: 'Follow-up' },
+  roleBooking: { no: 'Booking', en: 'Booking' },
+  rolePrepService: { no: 'Forberedelse', en: 'Preparation' },
+  roleExecution: { no: 'Gjennomføring', en: 'Execution' },
+  rolePhotographer: { no: 'Fotograf', en: 'Photographer' },
+  roleVideographer: { no: 'Videograf', en: 'Videographer' },
+  roleBoth: { no: 'Begge', en: 'Both' },
+  roleEditor: { no: 'Editor', en: 'Editor' },
+  // fremdrift
+  progressLabel: { no: 'Fremdrift', en: 'Progress' },
+  ofWord: { no: 'av', en: 'of' },
+  tasksDone: { no: 'oppgaver fullført', en: 'tasks completed' },
+  noMilestones: { no: 'Ingen milepæler ennå', en: 'No milestones yet' },
+  // Capture & backup-kort
+  shootingNow: { no: 'SKYTER NÅ', en: 'SHOOTING NOW' },
+  captureSession: { no: 'Capture-session', en: 'Capture session' },
+  photosWord: { no: 'bilder', en: 'photos' },
+  securedB2: { no: 'Sikret i B2 (One Desk)', en: 'Secured in B2 (One Desk)' },
+  originalsVerified: { no: 'originaler verifisert', en: 'originals verified' },
+  oneDeskMirror: { no: 'One Desk-speiling', en: 'One Desk mirroring' },
+  backupHelper: { no: 'Backup-helper', en: 'Backup helper' },
+  destination: { no: 'Destinasjon', en: 'Destination' },
+  hashVerified: { no: 'hash-verifisert', en: 'hash-verified' },
+  copyingWord: { no: 'kopierer…', en: 'copying…' },
+  failedWord: { no: 'feilet', en: 'failed' },
+  jobsWord: { no: 'jobber', en: 'jobs' },
+  fullyVerified: { no: 'fullt verifisert', en: 'fully verified' },
+  // tidslinje
+  todayTimeline: { no: 'Dagens tidslinje', en: 'Today’s timeline' },
+  today: { no: 'I dag', en: 'Today' },
+  // samkjøringsboard
+  syncBoard: { no: 'Samkjøringsboard', en: 'Coordination board' },
+  addTaskBtn: { no: 'Legg til oppgave', en: 'Add task' },
+  // Team Sync
+  teamSyncTitle: { no: 'Samkjøring (Team Sync)', en: 'Team Sync' },
+  ready: { no: 'Klar', en: 'Ready' },
+  noSyncData: { no: 'Ingen samkjøringsdata ennå — legg til oppgaver og sjekkpunkter.', en: 'No sync data yet — add tasks and checklist items.' },
+  seeDetails: { no: 'Se detaljer', en: 'View details' },
+  // sjekkliste
+  checklistTitle: { no: 'Sjekkliste', en: 'Checklist' },
+  addCheckBtn: { no: '+ Legg til sjekkpunkt', en: '+ Add checklist item' },
+  seeAll: { no: 'Se alle', en: 'View all' },
+  // referanser
+  refsTitle: { no: 'Referanser & shots', en: 'References & shots' },
+  addReference: { no: 'Legg til referanse', en: 'Add reference' },
+  // aktivitet
+  captureActivity: { no: 'Capture-aktivitet', en: 'Capture activity' },
+};
 
 const PHASES = [
   { icon: '🤍', label: 'Forberedelser', time: '08:00 – 10:00', color: ws.textDim },
@@ -82,29 +165,29 @@ function eventIcon(title: string): string {
   return '⏱️';
 }
 // Humaniser en capture_events.event_type (fri tekst fra iPad/One Desk) til ikon + tekst.
-function activityMeta(type: string): { icon: string; label: string } {
-  const t = (type || '').toLowerCase();
-  if (t.includes('asset') && (t.includes('add') || t.includes('upload') || t.includes('captur'))) return { icon: '📸', label: 'Nytt bilde lastet opp' };
-  if (t.includes('rating') || t.includes('rated')) return { icon: '⭐', label: 'Rating endret' };
-  if (t.includes('cull') || t.includes('reject')) return { icon: '🗑️', label: 'Culling' };
-  if (t.includes('flag') || t.includes('pick') || t.includes('highlight')) return { icon: '🚩', label: 'Markert for klient' };
-  if (t.includes('handoff')) return { icon: '🎬', label: 'Sendt til editor' };
-  if (t.includes('deliver')) return { icon: '📦', label: 'Levert' };
-  if (t.includes('backup') || t.includes('secured') || t.includes('mirror')) return { icon: '☁️', label: 'Sikkerhetskopiert' };
-  if (t.includes('session') && t.includes('start')) return { icon: '▶️', label: 'Capture-session startet' };
-  if (t.includes('enhance')) return { icon: '✨', label: 'AI-forbedring' };
-  if (t.includes('voice') || t.includes('memo') || t.includes('audio')) return { icon: '🎙️', label: 'Talenotat lagt til' };
-  if (t.includes('comment') || t.includes('review')) return { icon: '💬', label: 'Tilbakemelding' };
-  return { icon: '⚡', label: (type || 'Hendelse').replace(/_/g, ' ') };
+function activityMeta(type: string, t: (k: string) => string): { icon: string; label: string } {
+  const ty = (type || '').toLowerCase();
+  if (ty.includes('asset') && (ty.includes('add') || ty.includes('upload') || ty.includes('captur'))) return { icon: '📸', label: t('actAssetAdded') };
+  if (ty.includes('rating') || ty.includes('rated')) return { icon: '⭐', label: t('actRating') };
+  if (ty.includes('cull') || ty.includes('reject')) return { icon: '🗑️', label: t('actCulling') };
+  if (ty.includes('flag') || ty.includes('pick') || ty.includes('highlight')) return { icon: '🚩', label: t('actFlagged') };
+  if (ty.includes('handoff')) return { icon: '🎬', label: t('actHandoff') };
+  if (ty.includes('deliver')) return { icon: '📦', label: t('actDelivered') };
+  if (ty.includes('backup') || ty.includes('secured') || ty.includes('mirror')) return { icon: '☁️', label: t('actBackedUp') };
+  if (ty.includes('session') && ty.includes('start')) return { icon: '▶️', label: t('actSessionStart') };
+  if (ty.includes('enhance')) return { icon: '✨', label: t('actEnhance') };
+  if (ty.includes('voice') || ty.includes('memo') || ty.includes('audio')) return { icon: '🎙️', label: t('actVoice') };
+  if (ty.includes('comment') || ty.includes('review')) return { icon: '💬', label: t('actComment') };
+  return { icon: '⚡', label: (type || t('eventWord')).replace(/_/g, ' ') };
 }
-function timeAgo(iso: string): string {
+function timeAgo(iso: string, t: (k: string) => string): string {
   if (!iso) return '';
   const d = new Date(iso).getTime(); if (!Number.isFinite(d)) return '';
   const s = Math.max(0, Math.floor((Date.now() - d) / 1000));
-  if (s < 60) return 'nå nettopp';
-  if (s < 3600) return `${Math.floor(s / 60)} min siden`;
-  if (s < 86400) return `${Math.floor(s / 3600)} t siden`;
-  return `${Math.floor(s / 86400)} d siden`;
+  if (s < 60) return t('justNow');
+  if (s < 3600) return `${Math.floor(s / 60)} ${t('minAgo')}`;
+  if (s < 86400) return `${Math.floor(s / 3600)} ${t('hoursAgo')}`;
+  return `${Math.floor(s / 86400)} ${t('daysAgo')}`;
 }
 function addMinutes(hhmm: string, mins: number): string {
   if (!hhmm || !/^\d{2}:\d{2}$/.test(hhmm)) return '';
@@ -115,6 +198,9 @@ function addMinutes(hhmm: string, mins: number): string {
 
 const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ projectId, profession }) => {
   const [, navigate] = useLocation();
+  // Utenlandske partner-vendors får engelsk UI — locale fra WsLocaleProvider.
+  const locale = useWsLocale();
+  const t = makeT(T, locale);
   const go = (key: string) => navigate(`/workspace/${projectId}/${key}`);
   const [progress, setProgress] = useState<{ pct: number; done: number; total: number } | null>(null);
   const [events, setEvents] = useState<any[] | null>(null);
@@ -152,9 +238,9 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
   };
   const addCheck = async () => {
     if (!isReal) return;
-    const label = window.prompt('Nytt sjekkpunkt:'); if (!label) return;
+    const label = window.prompt(t('newCheckPrompt')); if (!label) return;
     try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/checklist`, { method: 'POST', body: { label: label.trim() } }); apiRequest(`/api/projects/${encodeURIComponent(projectId)}/checklist`).then((r: any) => setChecks(r?.items || [])); }
-    catch (e: any) { window.alert(e?.message || 'Kunne ikke legge til'); }
+    catch (e: any) { window.alert(e?.message || t('addFailed')); }
   };
   const checkItems = isReal ? (checks || []).map((c) => ({ id: c.id, t: c.label, ok: c.checked, real: true })) : CHECKLIST;
   const refs = useProjectImages(projectId, 'references');
@@ -215,9 +301,9 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
   };
   const addTask = async (crewRole: string) => {
     if (!isReal) return;
-    const title = window.prompt('Ny oppgave:'); if (!title) return;
+    const title = window.prompt(t('newTaskPrompt')); if (!title) return;
     try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/board-tasks`, { method: 'POST', body: { title: title.trim(), crewRole } }); loadTasks(); }
-    catch (e: any) { window.alert(e?.message || 'Kunne ikke legge til'); }
+    catch (e: any) { window.alert(e?.message || t('addFailed')); }
   };
 
   // Bygg de 4 rolle-kolonnene fra ekte tasks, ellers sample. Kolonnenavn følger
@@ -226,30 +312,30 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
   const wsCategory = useWorkspaceCategory(profession);
   const COLS = wsCategory === 'music'
     ? [
-        { role: 'Produsent', icon: '🎹', crew: 'fotograf' },
-        { role: 'Vokal', icon: '🎤', crew: 'videograf' },
-        { role: 'Musikere', icon: '🎸', crew: 'begge' },
-        { role: 'Miks', icon: '🎚️', crew: 'editor' },
+        { role: t('roleProducer'), icon: '🎹', crew: 'fotograf' },
+        { role: t('roleVocals'), icon: '🎤', crew: 'videograf' },
+        { role: t('roleMusicians'), icon: '🎸', crew: 'begge' },
+        { role: t('roleMix'), icon: '🎚️', crew: 'editor' },
       ]
     : wsCategory === 'vendor'
     ? [
-        { role: 'Bestilling', icon: '🧾', crew: 'fotograf' },
-        { role: 'Klargjøring', icon: '📦', crew: 'videograf' },
-        { role: 'Levering', icon: '🚚', crew: 'begge' },
-        { role: 'Oppfølging', icon: '📞', crew: 'editor' },
+        { role: t('roleOrders'), icon: '🧾', crew: 'fotograf' },
+        { role: t('rolePrepVendor'), icon: '📦', crew: 'videograf' },
+        { role: t('roleDelivery'), icon: '🚚', crew: 'begge' },
+        { role: t('roleFollowUp'), icon: '📞', crew: 'editor' },
       ]
     : wsCategory === 'service'
     ? [
-        { role: 'Booking', icon: '📅', crew: 'fotograf' },
-        { role: 'Forberedelse', icon: '🧴', crew: 'videograf' },
-        { role: 'Gjennomføring', icon: '✂️', crew: 'begge' },
-        { role: 'Oppfølging', icon: '💬', crew: 'editor' },
+        { role: t('roleBooking'), icon: '📅', crew: 'fotograf' },
+        { role: t('rolePrepService'), icon: '🧴', crew: 'videograf' },
+        { role: t('roleExecution'), icon: '✂️', crew: 'begge' },
+        { role: t('roleFollowUp'), icon: '💬', crew: 'editor' },
       ]
     : [
-        { role: 'Fotograf', icon: '📷', crew: 'fotograf' },
-        { role: 'Videograf', icon: '🎥', crew: 'videograf' },
-        { role: 'Begge', icon: '👥', crew: 'begge' },
-        { role: 'Editor', icon: '🎬', crew: 'editor' },
+        { role: t('rolePhotographer'), icon: '📷', crew: 'fotograf' },
+        { role: t('roleVideographer'), icon: '🎥', crew: 'videograf' },
+        { role: t('roleBoth'), icon: '👥', crew: 'begge' },
+        { role: t('roleEditor'), icon: '🎬', crew: 'editor' },
       ];
   const realBoard = tasks && tasks.length > 0
     ? COLS.map((c) => ({ ...c, tasks: tasks.filter((t) => (t.crewRole || 'begge') === c.crew).map((t) => ({ id: t.id, t: t.title, time: t.timeLabel || '', done: t.status === 'done', real: true })) }))
@@ -259,10 +345,10 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
   // Ekte prosjekter: ekte fremdrift (0 til milestones finnes); demo-tall kun på sample.
   const fremdriftPct = progress ? progress.pct : isReal ? 0 : 68;
   const fremdriftText = progress
-    ? `${progress.done} av ${progress.total} oppgaver fullført`
-    : isReal ? 'Ingen milepæler ennå' : '14 av 21 oppgaver fullført';
+    ? `${progress.done} ${t('ofWord')} ${progress.total} ${t('tasksDone')}`
+    : isReal ? t('noMilestones') : `14 ${t('ofWord')} 21 ${t('tasksDone')}`;
   const phaseItems = isReal
-    ? (events || []).map((e: any) => ({ icon: eventIcon(e.title), label: e.title || 'Hendelse', time: e.time ? `${e.time}${e.durationMinutes ? ' – ' + addMinutes(e.time, e.durationMinutes) : ''}` : '', active: e.status === 'in_progress' || e.status === 'current' }))
+    ? (events || []).map((e: any) => ({ icon: eventIcon(e.title), label: e.title || t('eventWord'), time: e.time ? `${e.time}${e.durationMinutes ? ' – ' + addMinutes(e.time, e.durationMinutes) : ''}` : '', active: e.status === 'in_progress' || e.status === 'current' }))
     : PHASES;
 
   // Now-markør: ekte klokke mot 08:00–22:00-linjalen (oppdateres hvert minutt,
@@ -282,7 +368,7 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
       <Box sx={{ flex: 1, minWidth: 0 }}>
         {/* Fremdrift */}
         <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 2 }}>
-          <Typography sx={{ fontSize: 13, color: ws.textDim }}>Fremdrift</Typography>
+          <Typography sx={{ fontSize: 13, color: ws.textDim }}>{t('progressLabel')}</Typography>
           <Typography sx={{ fontSize: 15, fontWeight: 800, color: ws.accent }}>{fremdriftPct} %</Typography>
           <Box sx={{ flex: 1, maxWidth: 360 }}><WsBar value={fremdriftPct} /></Box>
           <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>{fremdriftText}</Typography>
@@ -297,19 +383,19 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
                 <Box>
                   <Stack direction="row" spacing={0.75} alignItems="center">
                     <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>Capture & backup</Typography>
-                    {cap.shootingNow && <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}><Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: ws.red }} /><Typography sx={{ fontSize: 10.5, color: ws.red, fontWeight: 700 }}>SKYTER NÅ</Typography></Box>}
+                    {cap.shootingNow && <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}><Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: ws.red }} /><Typography sx={{ fontSize: 10.5, color: ws.red, fontWeight: 700 }}>{t('shootingNow')}</Typography></Box>}
                   </Stack>
-                  <Typography sx={{ fontSize: 11, color: ws.textFaint }}>{cap.session?.name || 'Capture-session'}</Typography>
+                  <Typography sx={{ fontSize: 11, color: ws.textFaint }}>{cap.session?.name || t('captureSession')}</Typography>
                 </Box>
               </Stack>
               <Box sx={{ textAlign: 'center', px: 1 }}>
                 <Typography sx={{ fontSize: 18, fontWeight: 800 }}>{cap.assets?.total ?? 0}</Typography>
-                <Typography sx={{ fontSize: 10.5, color: ws.textDim }}>bilder</Typography>
+                <Typography sx={{ fontSize: 10.5, color: ws.textDim }}>{t('photosWord')}</Typography>
               </Box>
               <Box sx={{ flex: 1, minWidth: 160 }}>
-                <Stack direction="row" justifyContent="space-between"><Typography sx={{ fontSize: 11.5, color: ws.textDim }}>☁️ Sikret i B2 (One Desk)</Typography><Typography sx={{ fontSize: 11.5, fontWeight: 700, color: (cap.assets?.securedPct ?? 0) >= 100 ? ws.green : ws.amber }}>{cap.assets?.securedPct ?? 0}%</Typography></Stack>
+                <Stack direction="row" justifyContent="space-between"><Typography sx={{ fontSize: 11.5, color: ws.textDim }}>☁️ {t('securedB2')}</Typography><Typography sx={{ fontSize: 11.5, fontWeight: 700, color: (cap.assets?.securedPct ?? 0) >= 100 ? ws.green : ws.amber }}>{cap.assets?.securedPct ?? 0}%</Typography></Stack>
                 <WsBar value={cap.assets?.securedPct ?? 0} color={(cap.assets?.securedPct ?? 0) >= 100 ? ws.green : ws.amber} height={5} />
-                <Typography sx={{ fontSize: 10.5, color: ws.textFaint, mt: 0.25 }}>{cap.assets?.securedToB2 ?? 0} av {cap.assets?.total ?? 0} originaler verifisert</Typography>
+                <Typography sx={{ fontSize: 10.5, color: ws.textFaint, mt: 0.25 }}>{cap.assets?.securedToB2 ?? 0} {t('ofWord')} {cap.assets?.total ?? 0} {t('originalsVerified')}</Typography>
               </Box>
             </Stack>
 
@@ -320,8 +406,8 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
                   <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 150 }}>
                     <Typography sx={{ fontSize: 13 }}>🖥️</Typography>
                     <Box>
-                      <Typography sx={{ fontSize: 11.5, fontWeight: 700 }}>One Desk-speiling</Typography>
-                      <Typography sx={{ fontSize: 10, color: ws.textFaint }}>{dit.oneDeskHosts?.length ? dit.oneDeskHosts.join(', ') : 'Backup-helper'}</Typography>
+                      <Typography sx={{ fontSize: 11.5, fontWeight: 700 }}>{t('oneDeskMirror')}</Typography>
+                      <Typography sx={{ fontSize: 10, color: ws.textFaint }}>{dit.oneDeskHosts?.length ? dit.oneDeskHosts.join(', ') : t('backupHelper')}</Typography>
                     </Box>
                   </Stack>
                   {(dit.destinations || []).map((d: any) => {
@@ -330,7 +416,7 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
                     return (
                       <Stack key={d.id} direction="row" spacing={0.5} alignItems="center" sx={{ px: 1, py: 0.4, borderRadius: 1, bgcolor: ws.panelAlt }}>
                         <Typography sx={{ fontSize: 11 }}>{ic}</Typography>
-                        <Typography sx={{ fontSize: 11, color: ws.text }}>{d.label || d.type || 'Destinasjon'}</Typography>
+                        <Typography sx={{ fontSize: 11, color: ws.text }}>{d.label || d.type || t('destination')}</Typography>
                         <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: ok ? ws.green : ws.textFaint }} />
                       </Stack>
                     );
@@ -338,9 +424,9 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
                   <Box sx={{ flex: 1 }} />
                   <Box sx={{ textAlign: 'right' }}>
                     <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: dit.jobs?.failed ? ws.amber : ws.green }}>
-                      {dit.jobs?.verified ?? 0} hash-verifisert{dit.jobs?.copying ? ` · ${dit.jobs.copying} kopierer…` : ''}{dit.jobs?.failed ? ` · ${dit.jobs.failed} feilet` : ''}
+                      {dit.jobs?.verified ?? 0} {t('hashVerified')}{dit.jobs?.copying ? ` · ${dit.jobs.copying} ${t('copyingWord')}` : ''}{dit.jobs?.failed ? ` · ${dit.jobs.failed} ${t('failedWord')}` : ''}
                     </Typography>
-                    <Typography sx={{ fontSize: 10, color: ws.textFaint }}>{dit.jobs?.completed ?? 0} av {dit.jobs?.total ?? 0} jobber · xxHash64</Typography>
+                    <Typography sx={{ fontSize: 10, color: ws.textFaint }}>{dit.jobs?.completed ?? 0} {t('ofWord')} {dit.jobs?.total ?? 0} {t('jobsWord')} · xxHash64</Typography>
                   </Box>
                 </Stack>
 
@@ -348,7 +434,7 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
                 {Array.isArray(dit.takes) && dit.takes.length > 0 && (
                   <Box sx={{ mt: 1 }}>
                     <Typography sx={{ fontSize: 10, color: ws.textFaint, mb: 0.5 }}>
-                      {dit.takes.length} take{dit.takes.length > 1 ? 's' : ''} · {dit.takes.filter((t: any) => t.fullyVerified).length} fullt verifisert
+                      {dit.takes.length} take{dit.takes.length > 1 ? 's' : ''} · {dit.takes.filter((x: any) => x.fullyVerified).length} {t('fullyVerified')}
                     </Typography>
                     <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
                       {dit.takes.slice(0, 12).map((t: any) => (
@@ -370,10 +456,10 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
         <WsCard sx={{ mb: 2 }}>
           <WsSectionTitle
             icon={<AccessTime sx={{ fontSize: 18, color: ws.textDim }} />}
-            title="Dagens tidslinje"
+            title={t('todayTimeline')}
             action={
               <Stack direction="row" spacing={0.5} alignItems="center">
-                <Button size="small" onClick={() => go('produksjonskart')} sx={{ color: ws.text, textTransform: 'none', minWidth: 0 }}>I dag</Button>
+                <Button size="small" onClick={() => go('produksjonskart')} sx={{ color: ws.text, textTransform: 'none', minWidth: 0 }}>{t('today')}</Button>
                 <IconButton size="small" sx={{ color: ws.textDim }}><ChevronLeft fontSize="small" /></IconButton>
                 <IconButton size="small" sx={{ color: ws.textDim }}><ChevronRight fontSize="small" /></IconButton>
               </Stack>
@@ -413,7 +499,7 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
 
         {/* Samkjøringsboard */}
         <WsCard sx={{ mb: 2 }}>
-          <WsSectionTitle icon={<ViewKanban sx={{ fontSize: 18, color: ws.textDim }} />} title="Samkjøringsboard" />
+          <WsSectionTitle icon={<ViewKanban sx={{ fontSize: 18, color: ws.textDim }} />} title={t('syncBoard')} />
           <Stack direction="row" spacing={1.5} sx={{ overflowX: 'auto' }}>
             {boardCols.map((col) => (
               <Box key={col.role} sx={{ minWidth: 220, flex: 1 }}>
@@ -441,7 +527,7 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
                     </Box>
                   ))}
                   <Button size="small" startIcon={<Add sx={{ fontSize: 15 }} />} onClick={() => addTask(col.crew)} disabled={!isReal} sx={{ color: ws.textDim, textTransform: 'none', justifyContent: 'flex-start' }}>
-                    Legg til oppgave
+                    {t('addTaskBtn')}
                   </Button>
                 </Stack>
               </Box>
@@ -452,12 +538,12 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
         {/* Bunn-rad: Team Sync / Sjekkliste / Referanser */}
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr 1fr' }, gap: 2 }}>
           <WsCard>
-            <Typography sx={{ fontSize: 14, fontWeight: 700, mb: 1.5 }}>Samkjøring (Team Sync)</Typography>
+            <Typography sx={{ fontSize: 14, fontWeight: 700, mb: 1.5 }}>{t('teamSyncTitle')}</Typography>
             <Stack direction="row" spacing={2} alignItems="center">
-              <WsRing value={syncPct} size={104} label={`${syncPct}%`} sub="Klar" color={syncPct >= 80 ? ws.green : ws.amber} />
+              <WsRing value={syncPct} size={104} label={`${syncPct}%`} sub={t('ready')} color={syncPct >= 80 ? ws.green : ws.amber} />
               <Stack spacing={0.75} sx={{ flex: 1 }}>
                 {syncItems.length === 0 && (
-                  <Typography sx={{ fontSize: 12, color: ws.textFaint }}>Ingen samkjøringsdata ennå — legg til oppgaver og sjekkpunkter.</Typography>
+                  <Typography sx={{ fontSize: 12, color: ws.textFaint }}>{t('noSyncData')}</Typography>
                 )}
                 {syncItems.map((s, i) => (
                   <Stack key={i} direction="row" spacing={0.75} alignItems="center">
@@ -467,11 +553,11 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
                 ))}
               </Stack>
             </Stack>
-            <Button fullWidth size="small" onClick={() => go('prosjektplan')} sx={{ mt: 1.5, color: ws.textDim, textTransform: 'none', border: `1px solid ${ws.border}` }}>Se detaljer</Button>
+            <Button fullWidth size="small" onClick={() => go('prosjektplan')} sx={{ mt: 1.5, color: ws.textDim, textTransform: 'none', border: `1px solid ${ws.border}` }}>{t('seeDetails')}</Button>
           </WsCard>
 
           <WsCard>
-            <Typography sx={{ fontSize: 14, fontWeight: 700, mb: 1.5 }}>Sjekkliste</Typography>
+            <Typography sx={{ fontSize: 14, fontWeight: 700, mb: 1.5 }}>{t('checklistTitle')}</Typography>
             <Stack spacing={1}>
               {checkItems.map((c, i) => (
                 <Stack key={c.id || i} direction="row" spacing={0.75} alignItems="center" onClick={() => c.real && toggleCheck(c.id, c.ok)} sx={{ cursor: c.real ? 'pointer' : 'default' }}>
@@ -480,12 +566,12 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
                 </Stack>
               ))}
             </Stack>
-            <Button fullWidth size="small" onClick={addCheck} disabled={!isReal} sx={{ mt: 1.5, color: ws.textDim, textTransform: 'none', border: `1px solid ${ws.border}` }}>{isReal ? '+ Legg til sjekkpunkt' : 'Se alle'}</Button>
+            <Button fullWidth size="small" onClick={addCheck} disabled={!isReal} sx={{ mt: 1.5, color: ws.textDim, textTransform: 'none', border: `1px solid ${ws.border}` }}>{isReal ? t('addCheckBtn') : t('seeAll')}</Button>
           </WsCard>
 
           <WsCard>
-            <WsSectionTitle title="Referanser & shots" action={<Button size="small" onClick={() => go('shotlist')} sx={{ color: ws.accent, textTransform: 'none' }}>Se alle</Button>} />
-            <WsImageGrid columns={3} addLabel="Legg til referanse" images={refs.images} onUpload={refs.onUpload} />
+            <WsSectionTitle title={t('refsTitle')} action={<Button size="small" onClick={() => go('shotlist')} sx={{ color: ws.accent, textTransform: 'none' }}>{t('seeAll')}</Button>} />
+            <WsImageGrid columns={3} addLabel={t('addReference')} images={refs.images} onUpload={refs.onUpload} />
           </WsCard>
         </Box>
       </Box>
@@ -496,7 +582,7 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
           <WsCard sx={{ mb: 2 }}>
             <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 1.25 }}>
               <Typography sx={{ fontSize: 14 }}>⚡</Typography>
-              <Typography sx={{ fontSize: 13, fontWeight: 700 }}>Capture-aktivitet</Typography>
+              <Typography sx={{ fontSize: 13, fontWeight: 700 }}>{t('captureActivity')}</Typography>
               {capLive && <Stack direction="row" spacing={0.5} alignItems="center"><Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: ws.green }} /><Typography sx={{ fontSize: 10, color: ws.green, fontWeight: 700 }}>LIVE</Typography></Stack>}
             </Stack>
             <Stack spacing={0.25} sx={{ maxHeight: 280, overflowY: 'auto' }}>
@@ -505,7 +591,7 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
                 { id: 'd2', type: 'flagged_for_client', filename: 'A7IV_1184.CR3', createdAt: new Date(Date.now() - 180000).toISOString() },
                 { id: 'd3', type: 'handoff_triggered', filename: null, createdAt: new Date(Date.now() - 900000).toISOString() },
               ]).map((ev: any) => {
-                const m = activityMeta(ev.type);
+                const m = activityMeta(ev.type, t);
                 return (
                   <Stack key={ev.id} direction="row" spacing={1} alignItems="flex-start" sx={{ py: 0.65, px: 0.5, borderRadius: 1, '&:hover': { bgcolor: 'rgba(255,255,255,0.03)' } }}>
                     <Typography sx={{ fontSize: 14, lineHeight: 1.3 }}>{m.icon}</Typography>
@@ -513,7 +599,7 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
                       <Typography sx={{ fontSize: 12, color: ws.text, lineHeight: 1.35 }}>
                         {m.label}{ev.filename ? <Typography component="span" sx={{ color: ws.textDim }}> · {ev.filename}</Typography> : null}
                       </Typography>
-                      <Typography sx={{ fontSize: 10.5, color: ws.textFaint }}>{ev.actorName ? `${ev.actorName} · ` : ''}{timeAgo(ev.createdAt)}</Typography>
+                      <Typography sx={{ fontSize: 10.5, color: ws.textFaint }}>{ev.actorName ? `${ev.actorName} · ` : ''}{timeAgo(ev.createdAt, t)}</Typography>
                     </Box>
                   </Stack>
                 );
