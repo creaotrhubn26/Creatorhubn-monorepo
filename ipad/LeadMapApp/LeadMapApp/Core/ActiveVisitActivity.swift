@@ -8,6 +8,14 @@
 //   - NSSupportsLiveActivities = true i Info.plist
 //   - Widget Extension som rendrer ActivityWidget (her i
 //     LeadMapWidget-bundle)
+//
+// Mac Catalyst har IKKE Live Activities — hele fila gates ut på
+// Catalyst-varianten (den viser ikke låseskjerm/Dynamic Island). Kaller
+// på ActiveVisitManager fra iPad/iPhone-kode må derfor bruke `#if
+// !targetEnvironment(macCatalyst)` når det treffer Live Activity-metoder
+// direkte — VisitLogModal beskyttes allerede av `@available(iOS 16.1, *)`.
+
+#if !targetEnvironment(macCatalyst)
 
 import ActivityKit
 import Foundation
@@ -118,3 +126,5 @@ final class ActiveVisitManager {
         }
     }
 }
+
+#endif  // !macCatalyst

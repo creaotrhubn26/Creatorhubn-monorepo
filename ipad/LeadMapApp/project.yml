@@ -98,6 +98,11 @@ targets:
         # App Store-bygging overskrives automatisk til 'production'
         # av Apple ved arkiv-eksport — det skjer transparently.
         aps-environment: development
+        # Mac Catalyst sandbox: CoreLocation-tilgang. Uten denne
+        # entitlementen returnerer CLLocationManager.currentCoordinate
+        # nil på Mac (iPad er ikke sandbox-ed så det trengs ikke der).
+        # NSLocationWhenInUseUsageDescription står allerede i Info.plist.
+        com.apple.security.personal-information.location: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.creatorhubn.LeadMapApp

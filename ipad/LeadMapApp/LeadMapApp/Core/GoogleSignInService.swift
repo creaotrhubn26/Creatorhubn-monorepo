@@ -42,12 +42,15 @@ final class GoogleSignInService: NSObject, ObservableObject {
         guard let authURL = URL(string: resp.auth_url) else { throw SignInError.noURL }
 
         // Steg 2: åpne ASWebAuthenticationSession
+        // NB: ASWebAuthenticationSession kaller completion-handler fra en
+        // XPC-tråd (com.apple.SafariLaunchAgent på macCatalyst). Under
+        // Swift 6 strict concurrency krasjer @MainActor-arvet closure når
+        // den kalles fra ikke-main-tråd. Fix: eksplisitt @Sendable-closure
+        // som fanger continuation nonisolated. CheckedContinuation er
+        // Sendable så resume() fra hvilken tråd som helst er trådsikker.
         let callbackScheme = "leadgrid"
-        let callbackURL: URL = try await withCheckedThrowingContinuation { continuation in
-            let session = ASWebAuthenticationSession(
-                url: authURL,
-                callbackURLScheme: callbackScheme
-            ) { url, error in
+        let callbackURL: URL = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<URL, Error>) in
+            let handler: @Sendable (URL?, Error?) -> Void = { url, error in
                 if let error = error as? ASWebAuthenticationSessionError, error.code == .canceledLogin {
                     continuation.resume(throwing: SignInError.cancelled)
                 } else if let error {
@@ -58,8 +61,19 @@ final class GoogleSignInService: NSObject, ObservableObject {
                     continuation.resume(throwing: SignInError.noURL)
                 }
             }
+            let session = ASWebAuthenticationSession(
+                url: authURL,
+                callbackURLScheme: callbackScheme,
+                completionHandler: handler
+            )
             session.presentationContextProvider = self
-            session.prefersEphemeralWebBrowserSession = false
+            // Mac Catalyst-fix: tvinger embedded ephemeral webview i stedet
+            // for system-browser. Med `false` delegerer macOS til default
+            // browser (Chrome) som ikke kan følge `leadgrid://`-redirect —
+            // callback blir stuck på theroleroom-hovedside. Med `true`
+            // bruker ASWebAuthenticationSession en isolert in-app webview
+            // som fanger `leadgrid://`-scheme direkte.
+            session.prefersEphemeralWebBrowserSession = true
             self.currentSession = session
             session.start()
         }

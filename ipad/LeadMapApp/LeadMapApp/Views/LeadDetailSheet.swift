@@ -381,9 +381,11 @@ struct LeadDetailSheet: View {
     private var actionGrid: some View {
         LazyVGrid(columns: [.init(.flexible()), .init(.flexible())], spacing: 8) {
             Button {
+                #if !targetEnvironment(macCatalyst)
                 if #available(iOS 16.1, *) {
                     ActiveVisitManager.shared.start(lead: lead)
                 }
+                #endif
                 visitLogShown = true
             } label: {
                 Label("Start besøk", systemImage: "play.circle.fill")
