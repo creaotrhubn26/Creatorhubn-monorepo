@@ -30,7 +30,10 @@ import type {
 } from "./role-room-ads-sync.js";
 
 const LINKEDIN_BASE = "https://api.linkedin.com/rest";
-const DEFAULT_LINKEDIN_VERSION = "202501";
+// LinkedIn sunsets Marketing API versions after ~12 months. Keep this current
+// (YYYYMM) — a stale value makes adAnalytics calls fail with a deprecated-version
+// error. Overridable per-env via LINKEDIN_API_VERSION. Latest as of 2026-06.
+const DEFAULT_LINKEDIN_VERSION = "202606";
 
 export interface LinkedInInsightsRow {
   date: string; // YYYY-MM-DD (from dateRange.start)
