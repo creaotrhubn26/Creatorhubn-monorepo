@@ -8,7 +8,7 @@ import {
   Box, Stack, Typography, Button, Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Checkbox, Chip, CircularProgress, Divider, IconButton,
 } from '@mui/material';
-import { SelfImprovement, CheckCircle, DeleteOutline, GraphicEq, Air, FitnessCenter, CloudUpload, MusicNote } from '@mui/icons-material';
+import { SelfImprovement, CheckCircle, DeleteOutline, GraphicEq, Air, FitnessCenter, CloudUpload, MusicNote, RecordVoiceOver } from '@mui/icons-material';
 import { apiRequest, getAuthHeader, buildApiUrl } from '@/lib/queryClient';
 
 const PANEL = '#131316', BORDER = 'rgba(255,255,255,0.08)', TEXT = '#F5F2EA', MUTED = 'rgba(245,242,234,0.55)', FAINT = 'rgba(245,242,234,0.38)', ACCENT = '#FF6B35', GREEN = '#5fb88a';
@@ -24,12 +24,21 @@ const WarmupDialog: React.FC<{ open: boolean; projectId: string; onClose: () => 
   const [note, setNote] = React.useState('');
   const [picked, setPicked] = React.useState<Record<string, any>>({});
   const [busy, setBusy] = React.useState(false);
-  const [uploading, setUploading] = React.useState(false);
+  const [uploading, setUploading] = React.useState<string | null>(null);
   const audioInputRef = React.useRef<HTMLInputElement>(null);
+  const voiceInputRef = React.useRef<HTMLInputElement>(null);
 
-  // Produsenten laster opp sin egen oppvarmings-lyd (gjenbruker /api/upload/audio).
-  const uploadAudio = async (file?: File | null) => {
-    if (!file) return; setUploading(true);
+  // Produsenten laster opp egne lydfiler (gjenbruker /api/upload/audio):
+  //  - 'music' → mindfulness-musikk/-sang (type custom_mindful_music)
+  //  - 'voice' → guidet voice-over (type custom_mindful_voice)
+  // Typene inneholder 'mindful' slik at WarmupPlayers rolige pusteanimasjon
+  // (/breath|mindful/i på step.type) trigges under avspilling.
+  const CUSTOM_KINDS: Record<string, { type: string; fallbackTitle: string; instruction: string }> = {
+    music: { type: 'custom_mindful_music', fallbackTitle: 'Mindfulness-musikk', instruction: 'Mindfulness-musikk fra produsenten — lukk øynene og pust rolig mens du lytter.' },
+    voice: { type: 'custom_mindful_voice', fallbackTitle: 'Guidet voice-over', instruction: 'Guidet voice-over fra produsenten — følg instruksjonene i lyden.' },
+  };
+  const uploadAudio = async (kind: 'music' | 'voice', file?: File | null) => {
+    if (!file) return; setUploading(kind);
     try {
       const fd = new FormData(); fd.append('file', file);
       const headers = await getAuthHeader(); delete (headers as any)['Content-Type'];
@@ -38,9 +47,10 @@ const WarmupDialog: React.FC<{ open: boolean; projectId: string; onClose: () => 
       const { url } = await res.json();
       if (!url) return;
       const durationSec = await new Promise<number>((resolve) => { const a = new Audio(); a.onloadedmetadata = () => resolve(Math.round(a.duration) || 60); a.onerror = () => resolve(60); a.src = url; });
+      const spec = CUSTOM_KINDS[kind];
       const key = `custom:${Date.now()}`;
-      setPicked((p) => ({ ...p, [key]: { sourceId: key, title: file.name.replace(/\.[^.]+$/, '').slice(0, 80) || 'Egen oppvarming', type: 'custom', durationSec, audioUrl: url, instruction: 'Egen lydfil fra produsenten — følg med og varm opp.' } }));
-    } catch { /* */ } finally { setUploading(false); }
+      setPicked((p) => ({ ...p, [key]: { sourceId: key, title: file.name.replace(/\.[^.]+$/, '').slice(0, 80) || spec.fallbackTitle, type: spec.type, durationSec, audioUrl: url, instruction: spec.instruction } }));
+    } catch { /* */ } finally { setUploading(null); }
   };
 
   const loadRoutines = React.useCallback(() => apiRequest(`/api/audio-showcases/${projectId}/warmups`).then((d: any) => setRoutines(d.routines || [])).catch(() => setRoutines([])), [projectId]);
@@ -101,15 +111,17 @@ const WarmupDialog: React.FC<{ open: boolean; projectId: string; onClose: () => 
                   {(lib.affirmations || []).length > 0 && <Item k="aff" step={{ sourceId: 'affirmations', title: 'Affirmasjoner', type: 'affirmation', durationSec: 45, instruction: (lib.affirmations || []).slice(0, 6).map((a: any) => a.text).join('  ·  ') }} sub="Gjenta rolig før opptak" />}
                 </Box>
               )}
-              {/* Egen oppvarmings-lyd */}
+              {/* Egen lyd: mindfulness-musikk + guidet voice-over (flere filer OK) */}
               <Stack spacing={0.5}>
-                <Stack direction="row" alignItems="center" spacing={1}>
-                  <Button onClick={() => audioInputRef.current?.click()} disabled={uploading} startIcon={uploading ? <CircularProgress size={14} sx={{ color: ACCENT }} /> : <CloudUpload sx={{ fontSize: '16px !important' }} />} size="small" sx={{ color: ACCENT, textTransform: 'none', fontSize: '0.72rem' }}>{uploading ? 'Laster opp…' : 'Last opp egen oppvarmings-lyd'}</Button>
-                  <input ref={audioInputRef} type="file" accept="audio/*" hidden onChange={(e) => { void uploadAudio(e.target.files?.[0]); e.target.value = ''; }} />
+                <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap">
+                  <Button onClick={() => audioInputRef.current?.click()} disabled={!!uploading} startIcon={uploading === 'music' ? <CircularProgress size={14} sx={{ color: ACCENT }} /> : <MusicNote sx={{ fontSize: '16px !important' }} />} size="small" sx={{ color: ACCENT, textTransform: 'none', fontSize: '0.72rem' }}>{uploading === 'music' ? 'Laster opp…' : 'Last opp mindfulness-musikk'}</Button>
+                  <input ref={audioInputRef} type="file" accept="audio/*" hidden onChange={(e) => { void uploadAudio('music', e.target.files?.[0]); e.target.value = ''; }} />
+                  <Button onClick={() => voiceInputRef.current?.click()} disabled={!!uploading} startIcon={uploading === 'voice' ? <CircularProgress size={14} sx={{ color: ACCENT }} /> : <RecordVoiceOver sx={{ fontSize: '16px !important' }} />} size="small" sx={{ color: ACCENT, textTransform: 'none', fontSize: '0.72rem' }}>{uploading === 'voice' ? 'Laster opp…' : 'Last opp voice-over (guidet)'}</Button>
+                  <input ref={voiceInputRef} type="file" accept="audio/*" hidden onChange={(e) => { void uploadAudio('voice', e.target.files?.[0]); e.target.value = ''; }} />
                 </Stack>
-                {steps.filter((s: any) => s.type === 'custom').map((s: any) => (
+                {steps.filter((s: any) => String(s.type || '').startsWith('custom')).map((s: any) => (
                   <Stack key={s.sourceId} direction="row" alignItems="center" spacing={1} sx={{ bgcolor: 'rgba(255,255,255,0.04)', borderRadius: '8px', px: 1, py: 0.5 }}>
-                    <MusicNote sx={{ fontSize: 15, color: ACCENT }} />
+                    {s.type === 'custom_mindful_voice' ? <RecordVoiceOver sx={{ fontSize: 15, color: ACCENT }} /> : <MusicNote sx={{ fontSize: 15, color: ACCENT }} />}
                     <Typography sx={{ fontSize: '0.76rem', flex: 1 }} noWrap>{s.title}</Typography>
                     <Typography sx={{ fontSize: '0.66rem', color: FAINT }}>{Math.round(s.durationSec / 60) || 1} min</Typography>
                     <IconButton size="small" onClick={() => toggle(s.sourceId, s)} sx={{ color: FAINT, p: 0.25 }}><DeleteOutline sx={{ fontSize: 15 }} /></IconButton>
