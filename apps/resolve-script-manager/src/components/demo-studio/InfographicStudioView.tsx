@@ -15,6 +15,7 @@ import {
   type InfographicTemplate,
 } from './infographicStudio';
 import { aiPickTemplate, aiInfographicFromSite, logoToDataUrl, recordAiFeedback, recordTemplateUsage, aiFeedbackCount } from './infographicAI';
+import { syncCollective, modelSteps } from './infographicLearning';
 import { scanDom, isCaptureAvailable } from '../../services/demoCaptureService';
 import { analyzeProductEvidence, gatherSiteContext } from './demoStudioAI';
 import { isAiConnected } from '../../services/claudeProxyService';
@@ -588,6 +589,9 @@ export function InfographicStudioView(
   };
   const onIframeLoad = () => { window.setTimeout(() => { fitPreview(); play(); }, 250); };
   useEffect(() => () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); }, []);
+  // Kollektiv læring: hent kollektive aggregater (inkrementelt) ved åpning +
+  // push evt. køede signaler. Stille no-op når ikke innlogget.
+  useEffect(() => { void syncCollective(); }, []);
   // Re-fit ved endring av canvas-størrelse.
   useEffect(() => {
     const el = canvasRef.current; if (!el || typeof ResizeObserver === 'undefined') return;
@@ -920,7 +924,7 @@ export function InfographicStudioView(
                       onClick={() => { recordAiFeedback(aiLastPick.desc, aiLastPick.tplId, false); setAiLastPick(null); setMsg('✓ Lærte: unngå denne malen for slike beskrivelser.'); }}>👎</button>
                   </div>
                 )}
-                {aiFeedbackCount() > 0 && <div style={{ fontSize: 9.5, color: D.faint, marginTop: 6 }}>Lærer av {aiFeedbackCount()} signal{aiFeedbackCount() === 1 ? '' : 'er'} (tomler + hva du faktisk bruker).</div>}
+                {(aiFeedbackCount() > 0 || modelSteps() > 0) && <div style={{ fontSize: 9.5, color: D.faint, marginTop: 6 }}>Modellen har lært av {aiFeedbackCount()} signal{aiFeedbackCount() === 1 ? '' : 'er'} ({modelSteps()} treningssteg) — tomler, det du bruker, og alle brukere.</div>}
               </div>
             )}
             {/* «Mine maler»: import av egen HTML-mal. */}

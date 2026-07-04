@@ -3,7 +3,16 @@
 // feltene. Gjenbruker claudeProxyService (Post Agent anthropic-proxy).
 
 import { claudeProxyService } from '../../services/claudeProxyService';
-import type { InfographicTemplate } from './infographicStudio';
+import { INFOGRAPHIC_TEMPLATES, type InfographicTemplate } from './infographicStudio';
+import { learnedScore, trainOnline, collectiveScore, queueSignal, syncCollective, type Features } from './infographicLearning';
+
+/** Kort, stabil hash av en beskrivelse (anonymisert nøkkel til backend — aldri rå tekst). */
+function hashDesc(s: string): string {
+  let h = 5381;
+  const t = s.trim().toLowerCase();
+  for (let i = 0; i < t.length; i++) h = ((h << 5) + h + t.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
 
 export interface AiPickResult {
   tplId: string;
@@ -35,9 +44,15 @@ function saveFeedback(list: AiFeedback[]): void {
  *  signaler. Kalles fra 👍/👎 (eksplisitt) OG fra atferd (brukt/byttet — implisitt). */
 export function recordAiFeedback(desc: string, tplId: string, liked: boolean, weight = 1): void {
   if (!tplId) return;
+  // Tren re-rangereren på features FØR dette signalet lagres (unngår lekkasje).
+  const tpl = INFOGRAPHIC_TEMPLATES.find((t) => t.id === tplId);
+  if (tpl) trainOnline(featuresFor(desc, tpl), liked ? 1 : 0);
   const list = loadFeedback();
   list.push({ desc: desc.trim().slice(0, 200), tplId, liked, weight, ts: Date.now() });
   saveFeedback(list);
+  // Kollektiv læring: kø + inkrementell synk (anonymisert desc-hash).
+  queueSignal({ tplId, liked, weight, descHash: hashDesc(desc) });
+  void syncCollective();
 }
 
 // ── Bruks-historikk (warm start): systemet lærer av det du FAKTISK bruker, ikke
@@ -52,6 +67,22 @@ export function recordTemplateUsage(tplId: string): void {
   if (!tplId) return;
   const u = loadUsage(); u[tplId] = (u[tplId] || 0) + 1;
   try { localStorage.setItem(USAGE_KEY, JSON.stringify(u)); } catch { /* */ }
+  // Bruk = svakt kollektivt positivt signal (ingen beskrivelse → ikke trening).
+  queueSignal({ tplId, liked: true, weight: 0.4 });
+  void syncCollective();
+}
+
+/** Feature-vektor for re-rangereren: [tekst-match, egen-aksept, egen-bruk (log),
+ *  kollektiv-aksept]. Delt av trening (recordAiFeedback) og rangering. */
+function featuresFor(desc: string, t: InfographicTemplate, accept?: Record<string, number>, usage?: Record<string, number>): Features {
+  const a = accept || acceptanceScores();
+  const u = usage || loadUsage();
+  return [
+    scoreTemplate(desc, t),
+    a[t.id] || 0,
+    Math.min(4, Math.log2(1 + (u[t.id] || 0))),
+    collectiveScore(t.id),
+  ];
 }
 
 /** Netto aksept-score per mal (vektet likt − mislikt). */
@@ -78,26 +109,15 @@ function scoreTemplate(desc: string, t: InfographicTemplate): number {
   return s;
 }
 
-/** Velg ~N beste kandidat-maler for en beskrivelse (alltid minst N, fyller opp
- *  med et bredt tverrsnitt hvis for få matcher). Maler brukeren har akseptert
- *  før løftes (læring: historisk aksept → høyere rangering). */
+/** Velg ~N beste kandidat-maler for en beskrivelse. Rangeringen gjøres av den
+ *  LÆRTE re-rangereren (logistisk regresjon over tekst-match, egen aksept, egen
+ *  bruk og kollektiv aksept) — vektene er lært av data, ikke håndtunet. */
 export function candidateTemplates(desc: string, templates: InfographicTemplate[], n = 40): InfographicTemplate[] {
   const accept = acceptanceScores();
   const usage = loadUsage();
-  // Score = tekst-match + aksept-boost + log-skalert bruks-prior (maler du
-  // faktisk bruker løftes, uten at tunge favoritter drukner alt).
-  const scored = templates.map((t) => ({
-    t,
-    s: scoreTemplate(desc, t) + Math.max(0, accept[t.id] || 0) * 0.5 + Math.min(2, Math.log2(1 + (usage[t.id] || 0))),
-  }));
-  const hits = scored.filter((x) => x.s > 0).sort((a, b) => b.s - a.s).map((x) => x.t);
-  if (hits.length >= n) return hits.slice(0, n);
-  // Fyll opp med et jevnt tverrsnitt av resten så Claude har bredde å velge fra.
-  const rest = templates.filter((t) => !hits.includes(t));
-  const step = Math.max(1, Math.floor(rest.length / (n - hits.length)));
-  const filler: InfographicTemplate[] = [];
-  for (let i = 0; i < rest.length && hits.length + filler.length < n; i += step) filler.push(rest[i]);
-  return [...hits, ...filler];
+  const scored = templates.map((t) => ({ t, s: learnedScore(featuresFor(desc, t, accept, usage)) }));
+  scored.sort((a, b) => b.s - a.s);
+  return scored.slice(0, n).map((x) => x.t);
 }
 
 /** Trekk ut ett JSON-objekt fra en rå AI-respons (tåler ```-fence/omkringtekst). */
