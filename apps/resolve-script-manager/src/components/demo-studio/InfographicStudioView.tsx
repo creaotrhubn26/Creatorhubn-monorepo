@@ -161,6 +161,52 @@ function saveStudio(key: string, s: StudioState): void {
   try { localStorage.setItem(LS_PREFIX + key, JSON.stringify(s)); } catch { /* full/blokkert — ikke-kritisk */ }
 }
 
+/** Norsk tallformat: 1234567 → «1 234 567», 12.5 → «12,5», bevarer fortegn +
+ *  suffiks (%, T, kr …). Rører ikke strenger uten ledende tall. */
+function localizeNumberNb(s: string): string {
+  const m = String(s ?? '').match(/^\s*([-+]?)(\d[\d\s.,]*\d|\d)(.*)$/);
+  if (!m) return s;
+  const sign = m[1], raw = m[2].replace(/\s/g, ''), suffix = m[3];
+  // Skill heltall/desimal (siste , eller . med 1-2 sifre = desimal).
+  const dm = raw.match(/^(\d+)(?:[.,](\d+))?$/);
+  if (!dm) return s;
+  const intPart = dm[1].replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  const dec = dm[2] ? ',' + dm[2] : '';
+  return `${sign}${intPart}${dec}${suffix}`;
+}
+
+/** Multi-rad-parsing: JSON-array eller CSV med header + N verdi-rader →
+ *  { headers, rows: Record<string,string>[] }. For «én scene per rad». */
+function parseDataRows(text: string): { headers: string[]; rows: Record<string, string>[] } {
+  const t = (text || '').trim();
+  if (!t) return { headers: [], rows: [] };
+  try {
+    const j = JSON.parse(t);
+    if (Array.isArray(j) && j.length && typeof j[0] === 'object') {
+      const headers = Object.keys(j[0] as Record<string, unknown>);
+      const rows = (j as Record<string, unknown>[]).map((o) => {
+        const r: Record<string, string> = {};
+        headers.forEach((h) => { const v = o[h]; r[h] = typeof v === 'object' ? JSON.stringify(v) : String(v ?? ''); });
+        return r;
+      });
+      return { headers, rows };
+    }
+  } catch { /* CSV */ }
+  const lines = t.split(/\r?\n/).filter((l) => l.trim());
+  if (lines.length >= 2) {
+    const sep = lines[0].includes(';') ? ';' : ',';
+    const headers = lines[0].split(sep).map((s) => s.trim()).filter(Boolean);
+    const rows = lines.slice(1).map((ln) => {
+      const cells = ln.split(sep).map((s) => s.trim());
+      const r: Record<string, string> = {};
+      headers.forEach((h, i) => { r[h] = cells[i] ?? ''; });
+      return r;
+    });
+    return { headers, rows };
+  }
+  return { headers: [], rows: [] };
+}
+
 /** Parse limt inn data (JSON-objekt eller CSV med header+verdi-rad) → flat
  *  key→value-kart for data-binding. */
 function parseDataSource(text: string): Record<string, string> {
@@ -293,6 +339,14 @@ export function InfographicStudioView(
   const [busy, setBusy] = useState(false);
   const [renderProgress, setRenderProgress] = useState<{ done: number; total: number } | null>(null);
   const [needsPlaywright, setNeedsPlaywright] = useState(false);
+  // Render/eksport-innstillinger (bølge 2): oppløsning, fps, tallformat,
+  // fil-eksport-format, Resolve-overlay-spor.
+  const [scale, setScale] = useState(2); // deviceScaleFactor: 2≈1080p, 4≈4K
+  const [fps, setFps] = useState(30);
+  const [localizeNb, setLocalizeNb] = useState(false);
+  const [exportFmt, setExportFmt] = useState<'prores' | 'mp4' | 'gif' | 'apng' | 'png'>('mp4');
+  const [exportBusy, setExportBusy] = useState(false);
+  const [overlayTrack, setOverlayTrack] = useState(2);
   const cancelRef = useRef(false);
   const [msg, setMsg] = useState<string | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -341,11 +395,13 @@ export function InfographicStudioView(
       const bk = b[f.key];
       if (bk && dataMap[bk] !== undefined) out[f.key] = dataMap[bk];
     }
+    // Norsk tallformat (valgfritt) på tall-felt (ikke ikon-felt).
+    if (localizeNb) for (const f of t.fields) if (!isIconField(f.key) && out[f.key]) out[f.key] = localizeNumberNb(out[f.key]);
     return out;
   };
   const config = useMemo(() => buildInfographicConfig(tpl, fieldVals(scene, tpl), { accent: sceneAccent(scene), ink: '#1f2d4a', logo: sceneLogo(scene) || undefined }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [tpl, scene, accent, logo]);
+    [tpl, scene, accent, logo, localizeNb, dataMap]);
   const srcDoc = useMemo(() => `<script>window.__CFG__=${JSON.stringify(config)}</script>` + htmlForTemplate(tpl), [config, tpl]);
 
   const previewWin = () => iframeRef.current?.contentWindow as (Window & { setProgress?: (p: number) => void }) | null | undefined;
@@ -472,8 +528,8 @@ export function InfographicStudioView(
         const html = `<script>window.__CFG__=${JSON.stringify(cfg)}</script>` + htmlForTemplate(t);
         setRenderProgress({ done: i, total: scenes.length });
         setMsg(`Rendrer scene ${i + 1}/${scenes.length} (${t.name}) …`);
-        const out = await invoke<string>('render_infographic', { html, durationSec: dur, name: `${t.id}-${sc.id}-${Date.now()}` });
-        overlays.push({ path: out, atSec: sc.atSec, durationSec: dur, track: 2, posX: sc.posX ?? 50, posY: sc.posY ?? 50 });
+        const out = await invoke<string>('render_infographic', { html, durationSec: dur, name: `${t.id}-${sc.id}-${Date.now()}`, fps, scale });
+        overlays.push({ path: out, atSec: sc.atSec, durationSec: dur, track: overlayTrack, posX: sc.posX ?? 50, posY: sc.posY ?? 50 });
       }
       setRenderProgress({ done: scenes.length, total: scenes.length });
       setMsg('Sender alle scener til Resolve …');
@@ -488,6 +544,47 @@ export function InfographicStudioView(
       if (/playwright|chromium|node/i.test(m)) { setNeedsPlaywright(true); setMsg('Feil: ' + m + ' — krever Playwright-runtime.'); }
       else setMsg('Feil: ' + m);
     } finally { setBusy(false); setRenderProgress(null); }
+  };
+
+  // Eksporter GJELDENDE scene til en frittstående fil (utenfor Resolve):
+  // ProRes/MP4/GIF/APNG/PNG — for social, web, e-post, slides.
+  const exportFile = async () => {
+    if (exportBusy) return;
+    setExportBusy(true); setNeedsPlaywright(false);
+    const fmtLabel: Record<string, string> = { prores: 'ProRes (.mov)', mp4: 'MP4', gif: 'GIF', apng: 'animert PNG', png: 'stillbilde (PNG)' };
+    setMsg(`Eksporterer ${tpl.name} som ${fmtLabel[exportFmt]} …`);
+    try {
+      const st = await playwrightStatus().catch(() => null);
+      if (st && !st.playwrightInstalled) { setNeedsPlaywright(true); setMsg('Playwright-runtime mangler — sett det opp for å eksportere.'); return; }
+      const cfg = buildInfographicConfig(tpl, fieldVals(scene, tpl), { accent: sceneAccent(scene), ink: '#1f2d4a', logo: sceneLogo(scene) || undefined });
+      const html = `<script>window.__CFG__=${JSON.stringify(cfg)}</script>` + htmlForTemplate(tpl);
+      const out = await invoke<string>('export_infographic', { html, durationSec: effDur(scene, tpl), name: `${tpl.id}-${scene.id}-${Date.now()}`, format: exportFmt, fps, scale });
+      setMsg(`✓ Eksportert: ${out}`);
+      void systemOpen(out).catch(() => {});
+    } catch (e) {
+      const m = e instanceof Error ? e.message : String(e);
+      if (/playwright|chromium|node/i.test(m)) { setNeedsPlaywright(true); setMsg('Feil: ' + m + ' — krever Playwright-runtime.'); }
+      else setMsg('Feil ved eksport: ' + m);
+    } finally { setExportBusy(false); }
+  };
+
+  // «Én scene per rad»: multi-rad-data → generér N scener av gjeldende mal, med
+  // hver kolonne bundet til malens felt i rekkefølge (spar manuelt arbeid).
+  const batchFromRows = () => {
+    const { headers, rows } = parseDataRows(dataText);
+    if (rows.length < 2) { setMsg('Trenger minst 2 datarader (JSON-array eller CSV med flere verdi-rader).'); return; }
+    const fields = tpl.fields.filter((f) => !isIconField(f.key));
+    const built: Scene[] = rows.map((row, i) => {
+      const bindings: Record<string, string> = {};
+      // Bind malens felt til kolonner i rekkefølge (så mange som finnes).
+      fields.forEach((f, j) => { if (headers[j]) bindings[f.key] = headers[j]; });
+      const values: Record<string, string> = {};
+      fields.forEach((f, j) => { if (headers[j]) values[f.key] = row[headers[j]] ?? ''; });
+      const at = i * effDur(scene, tpl);
+      return { id: `s${_sid++}`, tplId: tpl.id, values, atSec: at, bindings };
+    });
+    setScenes(built); setSel(0);
+    setMsg(`✓ Laget ${built.length} scener — én per datarad (${tpl.name}).`);
   };
 
   const railItem = (active: boolean): React.CSSProperties => ({ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', cursor: 'pointer', color: active ? D.ink : D.soft, background: active ? D.panel2 : 'transparent', borderLeft: `3px solid ${active ? D.accent : 'transparent'}`, fontSize: 13 });
@@ -606,6 +703,11 @@ export function InfographicStudioView(
             <textarea value={dataText} onChange={(e) => setDataText(e.target.value)}
               placeholder={'{"total_twh":"24.8T","renewable":"18.6%"}\n\neller CSV:\ntotal_twh,renewable\n24.8T,18.6%'}
               style={{ width: '100%', height: 150, fontSize: 11.5, fontFamily: 'ui-monospace,monospace', padding: 9, borderRadius: 8, border: `1px solid ${D.line}`, background: D.bg, color: D.ink, colorScheme: 'dark', resize: 'vertical' }} />
+            {/* Norsk tallformat: 1234567 → «1 234 567», 12.5 → «12,5». */}
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: D.soft, margin: '10px 0 4px', cursor: 'pointer' }}>
+              <input type="checkbox" checked={localizeNb} onChange={(e) => setLocalizeNb(e.target.checked)} />
+              Norsk tallformat (1 234 567 · 12,5)
+            </label>
             {dataKeys.length > 0 && (
               <div style={{ marginTop: 10 }}>
                 <div style={{ fontSize: 10.5, color: D.teal, fontWeight: 700, marginBottom: 6 }}>{dataKeys.length} felt funnet</div>
@@ -618,10 +720,46 @@ export function InfographicStudioView(
                 </div>
               </div>
             )}
+            {/* Multi-rad → én scene per rad (leaderboard, tabell osv.) */}
+            {(() => { const rc = parseDataRows(dataText).rows.length; return rc >= 2 ? (
+              <button style={{ ...topBtn, width: '100%', justifyContent: 'center', marginTop: 12 }} onClick={batchFromRows}
+                title="Lag én scene av gjeldende mal per datarad — kolonnene bindes til feltene i rekkefølge">
+                ⧉ Lag {rc} scener — én per rad
+              </button>
+            ) : null; })()}
           </>)}
           {leftSec === 'export' && (<>
-            <div style={{ fontSize: 11, fontWeight: 700, color: D.soft, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>Export</div>
-            <div style={{ fontSize: 12, color: D.soft, lineHeight: 1.5 }}>Format: <b style={{ color: D.ink }}>Apple ProRes 4444</b> (alfa)<br />Bakgrunn: <b style={{ color: D.ink }}>Transparent</b><br />Alle {scenes.length} scener rendres + plasseres på timelinen med <b style={{ color: D.ink }}>Send to Resolve</b>.</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: D.soft, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>Kvalitet</div>
+            <div style={{ fontSize: 10.5, color: D.faint, marginBottom: 6 }}>Oppløsning</div>
+            <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+              {[[2, '1080p'], [3, '1440p'], [4, '4K']].map(([sc, lbl]) => (
+                <button key={String(sc)} onClick={() => setScale(sc as number)} style={{ ...topBtn, flex: 1, justifyContent: 'center', fontSize: 11.5, padding: '6px 0', background: scale === sc ? D.accent : D.panel2, border: `1px solid ${scale === sc ? D.accent : D.line}` }}>{lbl}</button>
+              ))}
+            </div>
+            <div style={{ fontSize: 10.5, color: D.faint, marginBottom: 6 }}>Bildefrekvens</div>
+            <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+              {[24, 30, 60].map((f) => (
+                <button key={f} onClick={() => setFps(f)} style={{ ...topBtn, flex: 1, justifyContent: 'center', fontSize: 11.5, padding: '6px 0', background: fps === f ? D.accent : D.panel2, border: `1px solid ${fps === f ? D.accent : D.line}` }}>{f}</button>
+              ))}
+            </div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: D.soft, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>Eksporter fil</div>
+            <div style={{ fontSize: 10.5, color: D.faint, marginBottom: 8, lineHeight: 1.4 }}>Gjeldende scene ({tpl.name}) → frittstående fil for social, web, e-post, slides. Havner i ~/Movies/Post Agent Infographics/.</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 10 }}>
+              {([['prores', 'ProRes (.mov, alfa)'], ['mp4', 'MP4 (svart bakgrunn)'], ['gif', 'GIF (transparent)'], ['apng', 'Animert PNG (alfa)'], ['png', 'Stillbilde (PNG)']] as const).map(([id, lbl]) => (
+                <button key={id} onClick={() => setExportFmt(id)} title={lbl} style={{ ...topBtn, justifyContent: 'flex-start', fontSize: 11, padding: '7px 9px', background: exportFmt === id ? D.panel2 : D.bg, border: `1px solid ${exportFmt === id ? D.accent : D.line}` }}>{lbl}</button>
+              ))}
+            </div>
+            <button style={{ ...topBtn, width: '100%', justifyContent: 'center', background: D.accent, border: 'none', opacity: exportBusy ? 0.6 : 1, marginBottom: 18 }} disabled={exportBusy} onClick={() => void exportFile()}>
+              ⤓ {exportBusy ? 'Eksporterer …' : 'Eksporter fil'}
+            </button>
+            <div style={{ fontSize: 11, fontWeight: 700, color: D.soft, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>Resolve-overlay</div>
+            <div style={{ fontSize: 10.5, color: D.faint, marginBottom: 6 }}>Overlay-spor</div>
+            <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+              {[2, 3, 4].map((tr) => (
+                <button key={tr} onClick={() => setOverlayTrack(tr)} style={{ ...topBtn, flex: 1, justifyContent: 'center', fontSize: 11.5, padding: '6px 0', background: overlayTrack === tr ? D.accent : D.panel2, border: `1px solid ${overlayTrack === tr ? D.accent : D.line}` }}>V{tr}</button>
+              ))}
+            </div>
+            <div style={{ fontSize: 11, color: D.soft, lineHeight: 1.5 }}>Alle {scenes.length} scener rendres ({scale === 4 ? '4K' : scale === 3 ? '1440p' : '1080p'}, {fps}fps) + plasseres på spor V{overlayTrack} ved riktig tid med <b style={{ color: D.ink }}>Send to Resolve</b>.</div>
           </>)}
         </div>
 

@@ -921,6 +921,7 @@ pub fn run() {
             playwright_render::run_playwright_demo,
             playwright_render::playwright_capture_shots,
             playwright_render::render_infographic,
+            playwright_render::export_infographic,
             demo_recording::save_demo_recording,
             demo_recording::check_url_embeddable,
             demo_capture::start_demo_capture,
