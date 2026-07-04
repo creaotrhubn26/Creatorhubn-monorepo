@@ -3,6 +3,37 @@ import { authSessionService } from './authSessionService';
 
 const AGENT_SNAPSHOT_NAMESPACE = 'role-room-agent-snapshot';
 
+export interface BestTimeSlotRecommendation {
+  dayOfWeek: number;
+  hour: number;
+  optimalPostTime: string;
+  sampleSize: number;
+  meanEngagement: number;
+  liftVsAverage: number;
+  label: string;
+}
+
+export interface BestTimeResult {
+  platform: string;
+  totalPosts: number;
+  confident: boolean;
+  recommendations: BestTimeSlotRecommendation[];
+  overallMeanEngagement: number;
+  reason: string;
+}
+
+export interface ClientUpdateDigest {
+  headline: string;
+  publishedCount: number;
+  scheduledCount: number;
+  daysRemaining: number | null;
+  topPost: { platform: string; hook: string; engagement: number } | null;
+  bestTimeTip: string | null;
+  highlights: Array<{ key: string; label: string; value: string }>;
+  producerNote: string | null;
+  isEmpty: boolean;
+}
+
 export interface RoleRoomAgentAccess {
   success: boolean;
   featureId: string;
@@ -2530,6 +2561,44 @@ export const roleRoomAgentService = {
       | { success?: boolean; plan?: MarketingPlan | null }
       | null;
     return payload?.plan ?? null;
+  },
+
+  /**
+   * Data-driven best time to post — ranked weekday×hour slots per platform,
+   * computed from the project's own historical engagement.
+   */
+  async getBestTimesToPost(projectId: string): Promise<BestTimeResult[]> {
+    const response = await fetch(
+      `/api/role-room/best-time-to-post?projectId=${encodeURIComponent(projectId)}`,
+      { headers: readRoleRoomAgentHeaders() },
+    );
+    const payload = (await response.json().catch(() => null)) as { bestTimes?: BestTimeResult[] } | null;
+    return payload?.bestTimes ?? [];
+  },
+
+  /**
+   * Proactive client update — send the client a data-driven summary (published
+   * + scheduled + best-time insight + optional note) via email + portal.
+   */
+  async sendClientUpdate(
+    planId: string,
+    producerNote?: string,
+  ): Promise<{ ok: boolean; sent: number; total: number; digest?: ClientUpdateDigest }> {
+    const response = await fetch(
+      `/api/role-room/marketing-plan/${encodeURIComponent(planId)}/client-update`,
+      {
+        method: 'POST',
+        headers: { ...readRoleRoomAgentHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ producerNote: producerNote ?? '' }),
+      },
+    );
+    const payload = (await response.json().catch(() => null)) as
+      | { ok?: boolean; sent?: number; total?: number; digest?: ClientUpdateDigest; error?: string }
+      | null;
+    if (!response.ok || !payload) {
+      throw new Error(payload?.error ?? 'client_update_failed');
+    }
+    return { ok: !!payload.ok, sent: payload.sent ?? 0, total: payload.total ?? 0, digest: payload.digest };
   },
 
   /**

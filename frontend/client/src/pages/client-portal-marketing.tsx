@@ -90,6 +90,16 @@ interface DashboardProgress {
   skippedCount: number;
 }
 
+interface ClientPortalUpdate {
+  id: string;
+  periodLabel: string;
+  headline: string;
+  highlights: Array<{ key: string; label: string; value: string }>;
+  bestTimeTip: string | null;
+  producerNote: string | null;
+  createdAt: string;
+}
+
 interface DashboardResponse {
   status: 'ok' | 'no_plan_yet';
   clientName: string | null;
@@ -99,6 +109,7 @@ interface DashboardResponse {
   posts?: DashboardPost[];
   progress?: DashboardProgress;
   upcoming?: DashboardPost[];
+  clientUpdates?: ClientPortalUpdate[];
 }
 
 const FORMAT_LABEL: Record<DashboardPost['format'], string> = {
@@ -253,6 +264,7 @@ export default function ClientPortalMarketingPage({ token: tokenProp }: { token?
           <ClientPortalRegisterCard token={token} />
           {/* Forespørsler øverst — viser kun seksjonen hvis det finnes noen */}
           <ClientPortalRequestsSection token={token} highlightRequestId={highlightRequestId} />
+          <ClientUpdatesSection updates={data.clientUpdates ?? []} />
           <ProgressSection progress={data.progress!} plan={data.plan!} />
           <ConnectedPlatformsCard token={token} />
           <ClientMaterialUploadCard token={token} />
@@ -299,6 +311,56 @@ function HeroHeader({ data }: { data: DashboardResponse }) {
           {data.clientName ? `Velkommen ${data.clientName}.` : 'Velkommen.'} Her er hvor prosjektet står nå.
         </Typography>
       </Container>
+    </Box>
+  );
+}
+
+function ClientUpdatesSection({ updates }: { updates: ClientPortalUpdate[] }) {
+  if (updates.length === 0) return null;
+  return (
+    <Box sx={{ p: 2.5, borderRadius: 3, bgcolor: 'rgba(110,63,199,0.10)', border: '1px solid rgba(160,48,192,0.28)' }}>
+      <Typography sx={{ color: '#f8fafc', fontWeight: 800, fontSize: '1.04rem', mb: 0.5 }}>
+        Oppdateringer fra teamet ditt
+      </Typography>
+      <Typography sx={{ color: 'rgba(226,232,240,0.7)', fontSize: '0.84rem', mb: 2 }}>
+        Proaktive statusoppdateringer produsenten har sendt deg.
+      </Typography>
+      <Stack spacing={1.5}>
+        {updates.map((u) => (
+          <Box
+            key={u.id}
+            sx={{ p: 2, borderRadius: 2, bgcolor: 'rgba(15,23,42,0.55)', border: '1px solid rgba(148,163,184,0.14)' }}
+          >
+            <Stack direction="row" justifyContent="space-between" alignItems="baseline" flexWrap="wrap" useFlexGap>
+              <Typography sx={{ color: '#f1f5f9', fontWeight: 700, fontSize: '0.94rem' }}>{u.headline}</Typography>
+              <Typography sx={{ color: 'rgba(226,232,240,0.55)', fontSize: '0.76rem' }}>
+                {new Date(u.createdAt).toLocaleDateString('nb-NO', { day: 'numeric', month: 'short' })}
+              </Typography>
+            </Stack>
+            {u.producerNote ? (
+              <Typography sx={{ color: '#e2e8f0', fontSize: '0.88rem', mt: 1, fontStyle: 'italic' }}>
+                «{u.producerNote}»
+              </Typography>
+            ) : null}
+            {u.highlights.length > 0 ? (
+              <Stack direction="row" spacing={0.8} flexWrap="wrap" useFlexGap sx={{ mt: 1.2 }}>
+                {u.highlights.map((h) => (
+                  <Box
+                    key={h.key}
+                    sx={{ px: 1.2, py: 0.5, borderRadius: 1.5, bgcolor: 'rgba(148,163,184,0.12)', fontSize: '0.78rem' }}
+                  >
+                    <span style={{ color: 'rgba(226,232,240,0.6)' }}>{h.label}: </span>
+                    <span style={{ color: '#f8fafc', fontWeight: 600 }}>{h.value}</span>
+                  </Box>
+                ))}
+              </Stack>
+            ) : null}
+            {u.bestTimeTip ? (
+              <Typography sx={{ color: '#c4b5fd', fontSize: '0.82rem', mt: 1.2 }}>💡 {u.bestTimeTip}</Typography>
+            ) : null}
+          </Box>
+        ))}
+      </Stack>
     </Box>
   );
 }
