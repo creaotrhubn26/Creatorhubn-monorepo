@@ -2,11 +2,12 @@ import { describe, expect, it } from 'vitest';
 import {
   buildTikTokMcpConfig,
   TIKTOK_MCP_BETA,
+  TIKTOK_MCP_READ_ONLY_TOOLS,
   TIKTOK_MCP_SERVER_URLS,
 } from './role-room-tiktok-mcp.js';
 
 describe('buildTikTokMcpConfig', () => {
-  it('builds a progressive-disclosure connector by default with defer_loading', () => {
+  it('defaults to read-only: server def + all tools disabled except the read allowlist', () => {
     const cfg = buildTikTokMcpConfig({ authorizationToken: 'tok123' });
     expect(cfg).not.toBeNull();
     expect(cfg!.mcp_servers[0]).toEqual({
@@ -15,12 +16,20 @@ describe('buildTikTokMcpConfig', () => {
       name: 'tiktok-ads',
       authorization_token: 'tok123',
     });
-    expect(cfg!.tools[0]).toEqual({
-      type: 'mcp_toolset',
-      mcp_server_name: 'tiktok-ads',
-      default_config: { defer_loading: true },
-    });
+    const toolset = cfg!.tools[0];
+    expect(toolset.default_config).toEqual({ enabled: false, defer_loading: true });
+    // Every read-allowlist tool is explicitly enabled; nothing else is.
+    expect(Object.keys(toolset.configs ?? {}).sort()).toEqual([...TIKTOK_MCP_READ_ONLY_TOOLS].sort());
+    expect(toolset.configs?.report_integrated_get).toEqual({ enabled: true });
+    // No write tool is enabled.
+    expect(toolset.configs?.campaign_create).toBeUndefined();
     expect(cfg!.betas).toEqual([TIKTOK_MCP_BETA]);
+  });
+
+  it('mode=full enables all tools (no allowlist)', () => {
+    const cfg = buildTikTokMcpConfig({ authorizationToken: 'tok', mode: 'full' });
+    expect(cfg!.tools[0].default_config).toEqual({ enabled: true, defer_loading: true });
+    expect(cfg!.tools[0].configs).toBeUndefined();
   });
 
   it('uses the full-disclosure URL when requested', () => {
@@ -30,7 +39,7 @@ describe('buildTikTokMcpConfig', () => {
 
   it('respects deferLoading=false', () => {
     const cfg = buildTikTokMcpConfig({ authorizationToken: 'tok', deferLoading: false });
-    expect(cfg!.tools[0].default_config).toEqual({ defer_loading: false });
+    expect(cfg!.tools[0].default_config?.defer_loading).toBe(false);
   });
 
   it('returns null without a token (user not connected)', () => {

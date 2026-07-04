@@ -31,6 +31,8 @@ import {
   runClaudeAgent,
   type RunClaudeAgentResult,
 } from './role-room-agent-claude.js';
+import { buildTikTokMcpConfig } from './role-room-tiktok-mcp.js';
+import { resolveAdsAccessToken } from './role-room-ads-oauth.js';
 import {
   ROLE_ROOM_AGENT_SYSTEM_PROMPT,
   ROLE_ROOM_AGENT_TOOLS,
@@ -375,6 +377,16 @@ export async function invokeRoleRoomAgent(
   // Best-effort: a null block simply omits it.
   const workspaceBlock = await buildWorkspaceContextBlock(pool, { userId, projectId });
 
+  // Spor B: attach the TikTok Ads MCP connector when enabled AND the producer
+  // has a connected TikTok ads account. Read-only by default (reporting/get
+  // tools) — writes are opt-in behind a future confirmation UX. Flag-gated so
+  // production is unaffected until explicitly turned on.
+  let mcpConfig = null;
+  if (process.env.ROLE_ROOM_TIKTOK_MCP_ENABLED === 'true') {
+    const tiktokToken = await resolveAdsAccessToken(pool, 'tiktok', userId).catch(() => null);
+    mcpConfig = buildTikTokMcpConfig({ authorizationToken: tiktokToken });
+  }
+
   try {
     const raw = await runClaudeAgent({
       cachedSystem,
@@ -383,6 +395,8 @@ export async function invokeRoleRoomAgent(
       tools: ROLE_ROOM_AGENT_TOOLS,
       maxTokens: ROLE_ROOM_AGENT_DEFAULT_MAX_TOKENS,
       model: modelId,
+      userId,
+      mcpConfig,
     });
 
     // De-pseudonymize text so the UI renders real names to the user (who
