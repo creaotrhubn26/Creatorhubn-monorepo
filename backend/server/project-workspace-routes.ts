@@ -2866,6 +2866,49 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     catch (e) { console.error("DELETE deliverables", e); res.status(500).json({ error: "failed" }); }
   });
 
+  // ─────────── Vendor-oppdrag (prosjekt-scopet, for referanser i Team Chat) ───────────
+  app.get("/api/projects/:projectId/editing-jobs", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const r = await pool.query(
+        `SELECT id, project_title, vendor_name, status, created_at
+           FROM editing_jobs WHERE project_id = $1 ORDER BY created_at DESC LIMIT 40`,
+        [req.params.projectId],
+      );
+      res.json({ jobs: r.rows.map((j: any) => ({ id: j.id, title: j.project_title || j.vendor_name || "Oppdrag", vendor: j.vendor_name, status: j.status })) });
+    } catch (e) { res.json({ jobs: [] }); }
+  });
+
+  // ─────────── Aktivitets-feed — flettes inn i Team Chat-tidslinjen ───────────
+  // Samler de nyeste prosjekt-hendelsene (leveranser, oppgaver, møter, låter,
+  // oppdrag) med tidsstempel, så chatten blir prosjektets puls.
+  app.get("/api/projects/:projectId/activity", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    const pid = req.params.projectId;
+    const iso = (v: any) => (v instanceof Date ? v.toISOString() : typeof v === "string" ? v : null);
+    try {
+      const [deliv, tasks, tracks, jobs, cust] = await Promise.all([
+        pool.query(`SELECT id, title, status, created_at FROM project_workspace_deliverables WHERE project_id = $1 ORDER BY created_at DESC LIMIT 10`, [pid]).catch(() => ({ rows: [] as any[] })),
+        pool.query(`SELECT id, title, status, created_at FROM project_board_tasks WHERE project_id = $1 ORDER BY created_at DESC LIMIT 10`, [pid]).catch(() => ({ rows: [] as any[] })),
+        pool.query(`SELECT t.id, t.title, t.status, t.updated_at FROM easeverse_tracks t JOIN project_audio_rooms r ON r.audio_review_project_id IN (SELECT id FROM audio_review_projects a WHERE a.easeverse_track_id = t.id::text) WHERE r.project_id = $1 ORDER BY t.updated_at DESC LIMIT 8`, [pid]).catch(() => ({ rows: [] as any[] })),
+        pool.query(`SELECT id, project_title, vendor_name, status, created_at FROM editing_jobs WHERE project_id = $1 ORDER BY created_at DESC LIMIT 8`, [pid]).catch(() => ({ rows: [] as any[] })),
+        pool.query(`SELECT id FROM crm_customers WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1`, [pid]).catch(() => ({ rows: [] as any[] })),
+      ]);
+      let meetings: any[] = [];
+      if (cust.rows[0]?.id) {
+        meetings = (await pool.query(`SELECT id, title, scheduled_at, created_at FROM crm_meetings WHERE customer_id = $1 ORDER BY created_at DESC LIMIT 8`, [cust.rows[0].id]).catch(() => ({ rows: [] as any[] }))).rows;
+      }
+      const items = [
+        ...deliv.rows.map((d: any) => ({ id: `dl-${d.id}`, type: "deliverable", title: d.title, detail: d.status, ts: iso(d.created_at), linkedId: d.id })),
+        ...tasks.rows.map((t: any) => ({ id: `tk-${t.id}`, type: "task", title: t.title, detail: t.status, ts: iso(t.created_at), linkedId: t.id })),
+        ...tracks.rows.map((t: any) => ({ id: `tr-${t.id}`, type: "track", title: t.title, detail: t.status, ts: iso(t.updated_at), linkedId: t.id })),
+        ...jobs.rows.map((j: any) => ({ id: `jb-${j.id}`, type: "job", title: j.project_title || j.vendor_name || "Oppdrag", detail: j.status, ts: iso(j.created_at), linkedId: j.id })),
+        ...meetings.map((mt: any) => ({ id: `mt-${mt.id}`, type: "meeting", title: mt.title || "Møte", detail: iso(mt.scheduled_at), ts: iso(mt.created_at), linkedId: mt.id })),
+      ].filter((x) => x.ts).sort((a, b) => (a.ts! < b.ts! ? 1 : -1)).slice(0, 30);
+      res.json({ activity: items });
+    } catch (e) { console.error("GET activity", e); res.json({ activity: [] }); }
+  });
+
   // ─────────── Hurtignotater (Produksjonskart «rask notat» + Shotlist «kommentar») ───────────
   const ensureNotesTable = () => pool.query(`CREATE TABLE IF NOT EXISTS project_workspace_notes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
