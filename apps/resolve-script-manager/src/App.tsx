@@ -812,7 +812,14 @@ export default function App() {
       )}
       {view === "demo" &&
         (authStatus === "ok" && entitledModules.includes("demo_studio") ? (
-          <DemoStudioShell onClose={() => setView("pipeline")} />
+          // min-height:0 + overflow:hidden: uten dette har grid-cellen (1fr-raden i
+          // .app) default min-height:auto, så Demo Studio / Infographic Studios høye
+          // innhold (518-mal-lista) BLÅSER OPP raden forbi 100vh og skyver bunnen
+          // (tidslinje + filmstrip) UT AV vinduet. Med denne klemmes studioet til
+          // rad-høyden og de indre panelene scroller/krymper som de skal.
+          <div style={{ minHeight: 0, overflow: "hidden", display: "flex" }}>
+            <DemoStudioShell onClose={() => setView("pipeline")} />
+          </div>
         ) : (
           <ModuleGate
             module="demo_studio"
