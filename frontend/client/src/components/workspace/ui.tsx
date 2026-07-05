@@ -91,7 +91,9 @@ export const WsStat: React.FC<{ icon?: React.ReactNode; label: string; value: Re
       )}
       <Box sx={{ minWidth: 0 }}>
         <Typography sx={{ fontSize: 12, color: ws.textDim }}>{label}</Typography>
-        <Typography sx={{ fontSize: 22, fontWeight: 800, color: ws.text, lineHeight: 1.1 }}>{value}</Typography>
+        {/* component="div": `value` er ofte en <Typography> (=<p>) selv — et
+            <p> inne i et <p> er ugyldig HTML (validateDOMNesting-advarsel). */}
+        <Typography component="div" sx={{ fontSize: 22, fontWeight: 800, color: ws.text, lineHeight: 1.1 }}>{value}</Typography>
         {sub && <Typography sx={{ fontSize: 11, color: ws.textFaint }}>{sub}</Typography>}
       </Box>
     </Stack>
