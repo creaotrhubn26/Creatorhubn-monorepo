@@ -102,6 +102,12 @@ const T: WsDict = {
   genMeet: { no: 'Generer Google Meet-lenke', en: 'Generate Google Meet link' },
   meetCreate: { no: 'Book & del', en: 'Book & share' },
   joinMeet: { no: 'Bli med (Google Meet)', en: 'Join (Google Meet)' },
+  aApproval: { no: 'Send til kundegodkjenning', en: 'Send for client approval' },
+  aApprovalSub: { no: 'Velg en leveranse → godkjenn-kort i tråden', en: 'Pick a deliverable → approve card' },
+  approvalPick: { no: 'Send til godkjenning', en: 'Send for approval' },
+  approve: { no: 'Godkjenn', en: 'Approve' },
+  approved: { no: 'Godkjent', en: 'Approved' },
+  awaitingApproval: { no: 'Venter godkjenning', en: 'Awaiting approval' },
   // Forespørsel
   openRequest: { no: 'Åpen forespørsel', en: 'Open request' },
   resolved: { no: 'Løst', en: 'Resolved' },
@@ -197,6 +203,9 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
   const [meetDate, setMeetDate] = useState('');
   const [meetTime, setMeetTime] = useState('14:00');
   const [genMeet, setGenMeet] = useState(true);
+  const [apprOpen, setApprOpen] = useState(false);
+  const [apprLoading, setApprLoading] = useState(false);
+  const [apprItems, setApprItems] = useState([]);
 
   const scrollDown = () => requestAnimationFrame(() => endRef.current?.scrollIntoView({ behavior: 'smooth' }));
   // Er brukeren allerede nederst? Da (og bare da) auto-scroller vi ved nye
@@ -364,6 +373,27 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
       setMeetOpen(false); setMeetTitle(''); setMeetDate('');
     } catch (e) { setToast(e?.message || t('sendFailed')); } finally { setBusyAction(false); }
   };
+  // Send til kundegodkjenning: velg leveranse → godkjenn-kort. «Godkjenn»
+  // markerer leveransen som levert (ekte status) og lukker godkjenn-kortet.
+  const openApprovalPicker = async () => {
+    setActionAnchor(null); setApprOpen(true); setApprLoading(true);
+    try { const r = await apiRequest(`/api/projects/${projectId}/deliverables`); setApprItems((r?.deliverables || []).filter((d) => !['delivered', 'completed', 'archived'].includes(d.status))); }
+    catch { setApprItems([]); } finally { setApprLoading(false); }
+  };
+  const sendForApproval = async (id, title) => {
+    setApprOpen(false); setBusyAction(true);
+    try { await postAction(`✅ ${title}`, { action: 'approval', refKind: 'deliverable', refLabel: title, linkedEntityId: id, status: 'pending' }); }
+    catch { setToast(t('sendFailed')); } finally { setBusyAction(false); }
+  };
+  const approveDeliverable = async (m) => {
+    const id = m.metadata?.linkedEntityId; if (!id) return;
+    setBusyAction(true);
+    try {
+      await apiRequest(`/api/projects/${projectId}/deliverables/${encodeURIComponent(id)}`, { method: 'PATCH', body: { status: 'delivered' } });
+      await apiRequest(`/api/communication/messages/${encodeURIComponent(m.id)}`, { method: 'PATCH', body: { status: 'resolved' } });
+      await load(false);
+    } catch { setToast(t('sendFailed')); } finally { setBusyAction(false); }
+  };
   // Cmd/Ctrl+K åpner Action.
   useEffect(() => {
     const onKey = (e) => { if ((e.metaKey || e.ctrlKey) && String(e.key).toLowerCase() === 'k') { e.preventDefault(); if (actionBtnRef.current) { setActionAnchor(actionBtnRef.current); setActionQuery(''); } } };
@@ -430,6 +460,21 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
           sx={{ mt: 0.5, textTransform: 'none', fontWeight: 700, color: ws.accentContrast, bgcolor: ws.accent, '&:hover': { bgcolor: ws.accentHover }, borderRadius: 2 }}>{t('uploadHere')}</Button>
       );
     }
+    if (act === 'approval') {
+      const done = meta.status === 'resolved';
+      return (
+        <Box sx={{ mt: 0.5, px: 1, py: 0.75, borderRadius: 2, bgcolor: done ? ws.greenSoft : 'rgba(240,171,252,0.1)', border: `1px solid ${done ? ws.greenSoft : 'rgba(240,171,252,0.32)'}`, display: 'inline-flex', alignItems: 'center', gap: 0.75, maxWidth: '100%' }}>
+          <MovieOutlined sx={{ fontSize: 15, color: done ? ws.green : '#f0abfc' }} />
+          <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: ws.text, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{meta.refLabel}</Typography>
+          {done ? (
+            <Chip size="small" icon={<CheckCircleOutline sx={{ fontSize: 13, color: `${ws.green} !important` }} />} label={t('approved')} sx={{ height: 20, fontSize: 10.5, fontWeight: 700, color: ws.green, bgcolor: 'transparent' }} />
+          ) : (
+            <Button onClick={() => approveDeliverable(m)} disabled={busyAction} startIcon={<CheckCircleOutline sx={{ fontSize: 15 }} />} size="small"
+              sx={{ ml: 0.5, textTransform: 'none', fontWeight: 700, fontSize: 11.5, minHeight: 26, color: ws.accentContrast, bgcolor: ws.green, '&:hover': { bgcolor: '#2bb673' }, borderRadius: 1.5 }}>{t('approve')}</Button>
+          )}
+        </Box>
+      );
+    }
     if (act === 'meeting') {
       return (
         <Stack spacing={0.5} sx={{ mt: 0.5 }} alignItems="flex-start">
@@ -471,6 +516,8 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
     { q: 'oppgave board task crew', icon: <PlaylistAddCheck sx={{ color: ws.green }} />, primary: t('aNewTask'), secondary: t('aNewTaskSub'), run: () => { setActionAnchor(null); setTaskOpen(true); } },
     { q: 'mote booking opptaksdag avtale meet kalender', icon: <EventOutlined sx={{ color: '#a5b4fc' }} />, primary: meetingLabel, secondary: t('aMeetingSub'), run: () => { setActionAnchor(null); setMeetOpen(true); } },
     { q: 'referer lat media leveranse okt link', icon: <LinkIcon sx={{ color: ws.accent }} />, primary: t('aReference'), secondary: t('aReferenceSub'), run: () => void openRefPicker() },
+    // Kundegodkjenning er mest relevant for klient-vendte kategorier.
+    ...((category === 'visual' || category === 'service') ? [{ q: 'godkjenning kunde approval leveranse send', icon: <CheckCircleOutline sx={{ color: '#f0abfc' }} />, primary: t('aApproval'), secondary: t('aApprovalSub'), run: () => void openApprovalPicker() }] : []),
     { q: 'opplasting fil vedlegg upload raw kildefil lyd', icon: <AttachFile sx={{ color: '#7dd3fc' }} />, primary: uploadLabel, secondary: t('aRequestUploadSub'), run: () => void requestUpload() },
     { q: 'ai oppsummer sammendrag summary', icon: <Summarize sx={{ color: '#22d3ee' }} />, primary: t('aAiSummary'), secondary: t('aAiSummarySub'), run: () => void runAi('summary') },
     { q: 'ai foreslag utkast draft', icon: <AutoAwesome sx={{ color: '#22d3ee' }} />, primary: t('aAiDraft'), secondary: t('aAiDraftSub'), run: () => void runAi('draft') },
@@ -542,7 +589,7 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
                 {tagMeta && (
                   <Chip size="small" icon={tagMeta.icon} label={t(tagMeta.dictKey)} sx={{ mt: 0.4, height: 18, fontSize: 10, color: tagMeta.color, bgcolor: tagMeta.soft, '& .MuiChip-icon': { color: tagMeta.color } }} />
                 )}
-                {m.content && !['reference', 'task', 'meeting'].includes(m.metadata?.action) && (
+                {m.content && !['reference', 'task', 'meeting', 'approval'].includes(m.metadata?.action) && (
                   <Box sx={{ mt: 0.25, px: 1.25, py: 0.75, borderRadius: 2, bgcolor: mine ? ws.accentSoft : 'rgba(255,255,255,0.05)', border: mine ? `1px solid ${ws.accentBorder}` : 'none', display: 'inline-block', maxWidth: '100%' }}>
                     <Typography sx={{ fontSize: 13, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{m.content}</Typography>
                   </Box>
@@ -738,6 +785,26 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
                 variant="contained" sx={{ bgcolor: ws.accent, color: ws.accentContrast, fontWeight: 700, textTransform: 'none', '&:hover': { bgcolor: ws.accentHover } }}>{t('meetCreate')}</Button>
             </Stack>
           </Stack>
+        </DialogContent>
+      </Dialog>
+
+      {/* Send til kundegodkjenning — velg leveranse */}
+      <Dialog open={apprOpen} onClose={() => setApprOpen(false)} fullWidth maxWidth="xs" PaperProps={{ sx: { bgcolor: ws.panelSolid, color: ws.text, border: `1px solid ${ws.border}` } }}>
+        <DialogTitle sx={{ fontWeight: 800, fontSize: 15 }}>{t('approvalPick')}</DialogTitle>
+        <DialogContent>
+          {apprLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress size={20} sx={{ color: ws.accent }} /></Box>
+          ) : (
+            <Stack spacing={0.25} sx={{ maxHeight: 300, overflowY: 'auto' }}>
+              {apprItems.map((d) => (
+                <ListItemButton key={d.id} onClick={() => void sendForApproval(d.id, d.title)} sx={{ borderRadius: 1.5 }}>
+                  <ListItemIcon sx={{ minWidth: 32 }}><MovieOutlined sx={{ fontSize: 17, color: '#f0abfc' }} /></ListItemIcon>
+                  <ListItemText primary={d.title} secondary={[d.type, d.status].filter(Boolean).join(' · ')} primaryTypographyProps={{ sx: { fontSize: 13, color: ws.text } }} secondaryTypographyProps={{ sx: { fontSize: 11, color: ws.textDim } }} />
+                </ListItemButton>
+              ))}
+              {apprItems.length === 0 && <Typography sx={{ color: ws.textDim, fontSize: 12.5, py: 2, textAlign: 'center' }}>{t('refEmpty')}</Typography>}
+            </Stack>
+          )}
         </DialogContent>
       </Dialog>
 
