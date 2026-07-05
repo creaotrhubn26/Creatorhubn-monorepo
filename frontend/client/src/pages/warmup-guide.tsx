@@ -183,7 +183,7 @@ const WarmupGuidePage: React.FC = () => {
             <li><Em>Maler og «Mine lyder» er dine</Em> — de følger kontoen din på tvers av alle prosjekter, ikke bare dette lydrommet.</li>
             <li><Em>Sletting i «Mine lyder» er trygg</Em> — den fjerner bare lyden fra biblioteket. Rutiner som allerede bruker fila fortsetter å virke.</li>
             <li><Em>Påminnelser kan planlegges</Em> — velg tidspunkt (f.eks. kvelden før økta), målgruppe, og huk av «kun de som ikke har varmet opp». Planlagte påminnelser kan avlyses fram til de sendes.</li>
-            <li><Em>Readiness vises i Oversikt</Em> — studio-kortet viser hvor mange i bandet som er klare før neste økt.</li>
+            <li><Em>Klar-status vises i Oversikt</Em> — studio-kortet viser hvor mange i bandet som er klare før neste økt.</li>
           </Box>
         </Box>
       </Box>
