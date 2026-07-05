@@ -826,6 +826,21 @@ pub fn run() {
         .manage(capture_sources::ScreenRecState::default())
         .manage(Arc::new(PhotoshopBridgeState::default()))
         .setup(|app| {
+            // Tilpass hovedvinduet til skjermen det åpner på + sentrer det. Den faste
+            // størrelsen (1560×980) er HØYERE enn det brukbare området på en 13/14"
+            // innebygd skjerm (≈1512×982 logisk minus menylinje) → bunnen (tidslinje/
+            // transport) havnet UTENFOR skjermen. Klamp til ~94 % bredde / ~90 % høyde
+            // av monitoren (aldri større enn standard, aldri under et brukbart minimum).
+            if let Some(win) = app.get_webview_window("main") {
+                if let Ok(Some(mon)) = win.current_monitor() {
+                    let scale = mon.scale_factor();
+                    let msize = mon.size().to_logical::<f64>(scale);
+                    let w = 1560.0_f64.min((msize.width * 0.94).max(1000.0));
+                    let h = 980.0_f64.min((msize.height * 0.90).max(680.0));
+                    let _ = win.set_size(tauri::LogicalSize::new(w, h));
+                    let _ = win.center();
+                }
+            }
             // (#186/#187) Build + attach native menubar
             let handle = app.handle().clone();
             match build_menu(&handle) {
