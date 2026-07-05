@@ -328,6 +328,21 @@ if(fit){
     const k=Math.min((d.FW*0.92)/bw,(d.FH*0.92)/bh);
     w.style.transform='scale('+k.toFixed(4)+')';
   }, {FW,FH});
+} else {
+  // Native: lås #wrap til sin FULL-progresjon-størrelse (bredest/høyest) FØR
+  // capture-løkka. #wrap er width:max-content, så count-up-tall som endrer
+  // sifferbredde (0 → 1 234) gir ellers frames med ulik px-størrelse, og ffmpeg
+  // avviser sekvensen («Input picture width/height do not match the first
+  // frame») → hele renderen feiler. Å fryse boksen holder alle f###.png like store.
+  await p.evaluate((v)=>window.setProgress && window.setProgress(v), 1);
+  await p.waitForTimeout(80);
+  await p.evaluate(()=>{
+    const w=document.querySelector('#wrap'); if(!w) return;
+    const r=w.getBoundingClientRect();
+    w.style.boxSizing='border-box';
+    w.style.width=Math.ceil(r.width)+'px'; w.style.minWidth=Math.ceil(r.width)+'px';
+    w.style.height=Math.ceil(r.height)+'px'; w.style.minHeight=Math.ceil(r.height)+'px';
+  });
 }
 for (let i=0;i<N;i++){
   const prog = ease(N>1 ? i/(N-1) : 1);
@@ -483,21 +498,29 @@ pub async fn render_infographic(
     }
 
     let frames = ((duration_sec.max(1.0)) * fps).round().clamp(8.0, 600.0) as i64;
+    // Reell klipp-lengde etter clamp — fade-timing MÅ bruke denne, ikke det
+    // ukappede duration_sec (ellers havner fade-ut feil for korte/lange klipp).
+    let real_dur = frames as f64 / fps;
     let (work, _safe) = ig_capture_frames(&app, &html, &name, frames, scale, &frame, &easing, "render_infographic").await?;
 
-    // ProRes 4444 m/alfa → cache-mappe (gjenbrukbar).
+    // ProRes 4444 m/alfa → cache-mappe (gjenbrukbar). Skriv FØRST til en .part-fil
+    // og gi den cache-navnet kun ved suksess — en avbrutt/feilet ffmpeg skal ALDRI
+    // legge igjen en korrupt .mov på cache-stien som senere gjenbrukes som gyldig.
     let ffmpeg = find_bin("ffmpeg");
     let out_file = cached;
+    let tmp_file = out_file.with_extension("part.mov");
     let mut args: Vec<String> = vec!["-y".into(), "-framerate".into(), format!("{fps}"),
         "-i".into(), format!("{}/f%03d.png", work.to_string_lossy())];
-    if let Some(vf) = ig_combine_vf(ig_fade_in_vf(&entrance, true), ig_fade_vf(exit_sec.unwrap_or(0.0), duration_sec, true)) { args.push("-vf".into()); args.push(vf); }
+    if let Some(vf) = ig_combine_vf(ig_fade_in_vf(&entrance, true), ig_fade_vf(exit_sec.unwrap_or(0.0), real_dur, true)) { args.push("-vf".into()); args.push(vf); }
     args.extend(["-c:v".into(), "prores_ks".into(), "-profile:v".into(), "4444".into(),
-        "-pix_fmt".into(), "yuva444p10le".into(), out_file.to_string_lossy().to_string()]);
+        "-pix_fmt".into(), "yuva444p10le".into(), tmp_file.to_string_lossy().to_string()]);
     let status = Command::new(&ffmpeg).args(&args).status().await
         .map_err(|e| format!("ffmpeg-start feilet: {e}"))?;
     if !status.success() {
+        let _ = std::fs::remove_file(&tmp_file);
         return Err("ffmpeg klarte ikke å lage ProRes-fil".into());
     }
+    std::fs::rename(&tmp_file, &out_file).map_err(|e| { let _ = std::fs::remove_file(&tmp_file); format!("kunne ikke ferdigstille cache-fil: {e}") })?;
     Ok(out_file.to_string_lossy().to_string())
 }
 
@@ -529,6 +552,8 @@ pub async fn export_infographic(
     let metadata = metadata.unwrap_or_default();
     let is_still = format == "png";
     let frames = if is_still { 1 } else { ((duration_sec.max(1.0)) * fps).round().clamp(8.0, 600.0) as i64 };
+    // Reell klipp-lengde etter clamp — fade-timing bruker denne (ikke duration_sec).
+    let real_dur = frames as f64 / fps;
     let (work, safe) = ig_capture_frames(&app, &html, &name, frames, scale, &frame, &easing, "export_infographic").await?;
     let ffmpeg = find_bin("ffmpeg");
     let out_dir = ig_out_dir(&app);
@@ -536,8 +561,8 @@ pub async fn export_infographic(
     let fr = format!("{fps}");
     let ex = exit_sec.unwrap_or(0.0);
     // Inngangs-fade-inn + exit-fade-ut, kombinert. Alfa for alfa-formater, svart for mp4.
-    let fade_alpha = ig_combine_vf(ig_fade_in_vf(&entrance, true), ig_fade_vf(ex, duration_sec, true));
-    let fade_black = ig_combine_vf(ig_fade_in_vf(&entrance, false), ig_fade_vf(ex, duration_sec, false));
+    let fade_alpha = ig_combine_vf(ig_fade_in_vf(&entrance, true), ig_fade_vf(ex, real_dur, true));
+    let fade_black = ig_combine_vf(ig_fade_in_vf(&entrance, false), ig_fade_vf(ex, real_dur, false));
 
     let (out_file, args): (std::path::PathBuf, Vec<String>) = match format.as_str() {
         "png" => {

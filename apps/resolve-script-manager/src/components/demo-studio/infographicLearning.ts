@@ -101,14 +101,21 @@ export function collectiveScore(tplId: string): number {
   return Math.tanh(net / 5); // mettes så virale maler ikke dominerer
 }
 
-interface QueuedSignal { tplId: string; liked: boolean; weight: number; descHash?: string }
+interface QueuedSignal { tplId: string; liked: boolean; weight: number; descHash?: string; sigId?: string }
 function loadQueue(): QueuedSignal[] {
   try { const raw = localStorage.getItem(PUSH_QUEUE_KEY); return raw ? (JSON.parse(raw) as QueuedSignal[]) : []; } catch { return []; }
 }
 function saveQueue(q: QueuedSignal[]): void { try { localStorage.setItem(PUSH_QUEUE_KEY, JSON.stringify(q.slice(-500))); } catch { /* */ } }
 
-/** Legg et signal i push-køen (sendes ved neste sync — inkrementelt). */
-export function queueSignal(s: QueuedSignal): void { const q = loadQueue(); q.push(s); saveQueue(q); }
+/** Legg et signal i push-køen (sendes ved neste sync — inkrementelt). Tildeler en
+ *  stabil sigId så en nettverks-retry (svar tapt → køen tømmes ikke) ikke dobbelt-
+ *  teller signalet i det kollektive aggregatet (backend: ON CONFLICT DO NOTHING). */
+export function queueSignal(s: QueuedSignal): void {
+  const q = loadQueue();
+  const sigId = s.sigId || `sg_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+  q.push({ ...s, sigId });
+  saveQueue(q);
+}
 
 function baseUrl(): string {
   const s = loadSettings();

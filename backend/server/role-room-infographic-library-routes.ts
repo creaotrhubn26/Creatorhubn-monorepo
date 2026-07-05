@@ -58,7 +58,7 @@ export function registerRoleRoomInfographicLibraryRoutes(app: Express, deps: Dep
     const previewTplId = b.previewTplId ? String(b.previewTplId).slice(0, 120) : null;
     try {
       // Upsert — men kun eier kan overskrive sin egen rad (created_by-vakt).
-      await pool.query(
+      const r = await pool.query(
         `INSERT INTO infographic_library (id, created_by, author_name, name, snapshot, preview_tpl_id, updated_at)
          VALUES ($1,$2,$3,$4,$5,$6, now())
          ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, snapshot = EXCLUDED.snapshot,
@@ -66,30 +66,58 @@ export function registerRoleRoomInfographicLibraryRoutes(app: Express, deps: Dep
          WHERE infographic_library.created_by = $2`,
         [id, s.userId, authorName, name, JSON.stringify(snapshot), previewTplId],
       );
+      // 0 rader = id-en finnes allerede men eies av EN ANNEN bruker (created_by-
+      // vakten feilet stille). Ikke svar {ok:true} — da tror klienten den delte,
+      // men ingenting ble lagret. 409 så klienten kan bruke en ny id.
+      if ((r.rowCount ?? 0) === 0) { res.status(409).json({ error: "id_tatt_av_annen" }); return; }
       res.json({ ok: true, id });
     } catch (e) {
       res.status(500).json({ error: "lagre_feil", detail: (e as Error).message });
     }
   });
 
-  // Hele team-biblioteket (nyeste først). Markerer hvilke som er mine.
+  // Team-biblioteket (nyeste først). Returnerer et LETT preview per rad — IKKE
+  // hele snapshot-JSONB-en (som kan være megabytes med innebygd logo/data ×200
+  // rader). Kun det miniatyren trenger (aksent + første scenes verdier + antall);
+  // hele snapshotet hentes lazy via GET /:id når brukeren åpner en.
   app.get("/api/role-room/infographic-library", async (req: Request, res: Response) => {
     const s = getSession(req, activeSessions);
     if (!s) { res.status(401).json({ error: "krever_innlogging" }); return; }
     if (!ready) { res.json({ items: [] }); return; }
     try {
       const { rows } = await pool.query(
-        `SELECT id, author_name, name, snapshot, preview_tpl_id, created_by,
+        `SELECT id, author_name, name, preview_tpl_id, created_by,
+                snapshot->'scenes'->0->'values' AS preview_values,
+                snapshot->>'accent'            AS accent,
+                COALESCE(jsonb_array_length(snapshot->'scenes'), 0)::int AS scene_count,
                 EXTRACT(EPOCH FROM updated_at) * 1000 AS updated_ms
            FROM infographic_library
           ORDER BY updated_at DESC LIMIT 200`,
       );
       res.json({
         items: rows.map((r) => ({
-          id: r.id, name: r.name, authorName: r.author_name, snapshot: r.snapshot,
-          previewTplId: r.preview_tpl_id, mine: r.created_by === s.userId, updatedAt: Number(r.updated_ms) || 0,
+          id: r.id, name: r.name, authorName: r.author_name, previewTplId: r.preview_tpl_id,
+          accent: r.accent || null, previewValues: r.preview_values || {}, sceneCount: r.scene_count || 0,
+          mine: r.created_by === s.userId, updatedAt: Number(r.updated_ms) || 0,
         })),
       });
+    } catch (e) {
+      res.status(500).json({ error: "hent_feil", detail: (e as Error).message });
+    }
+  });
+
+  // Hele snapshotet for én delt infographic (lazy — hentes kun ved åpning).
+  app.get("/api/role-room/infographic-library/:id", async (req: Request, res: Response) => {
+    const s = getSession(req, activeSessions);
+    if (!s) { res.status(401).json({ error: "krever_innlogging" }); return; }
+    if (!ready) { res.status(503).json({ error: "ikke_klar" }); return; }
+    try {
+      const { rows } = await pool.query(
+        `SELECT snapshot FROM infographic_library WHERE id = $1`,
+        [String(req.params.id).slice(0, 80)],
+      );
+      if (!rows.length) { res.status(404).json({ error: "finnes_ikke" }); return; }
+      res.json({ snapshot: rows[0].snapshot });
     } catch (e) {
       res.status(500).json({ error: "hent_feil", detail: (e as Error).message });
     }

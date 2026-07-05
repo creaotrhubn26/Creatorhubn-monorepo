@@ -49,6 +49,15 @@ export interface InfographicTemplate {
  *  samme fonter i sitt eget dokument (ikon-velgeren). */
 export const BUNDLED_FONT_STYLE = `<style>${FONT_FACE_CSS}</style>`;
 
+/** Bare Material Icons @font-face (~200KB) — thumbnails trenger ikon-GLYPHENE,
+ *  men ikke hele Inter-bundelen (~1MB × mange gallerikort). Uten denne tegner
+ *  malen ligaturer som rå tekst («groups», «chevron_right»). */
+const ICON_FONT_FACE = (() => {
+  const faces = FONT_FACE_CSS.split(/(?=@font-face)/);
+  return faces.find((f) => /font-family:\s*['"]?Material/i.test(f)) || '';
+})();
+const ICON_FONT_STYLE = `<style data-cfg-fonts="__ICON_FONT__">html,body{background:transparent!important}${ICON_FONT_FACE}</style>`;
+
 /** Injiser de bundlede fontene i en mal-HTML — sist i <head> så de lokale
  *  @font-face-reglene VINNER over malens egne Google Fonts-CDN-lenker (som
  *  ellers feiler offline). Aksent-display-fonter (Poppins o.l.) beholdes fra
@@ -73,7 +82,11 @@ export function htmlForTemplate(tpl: InfographicTemplate): string {
  *  (system-font-fallback holder i en liten thumbnail; unngår ~1 MB font-CSS
  *  per gallerikort). */
 export function rawTemplateHtml(tpl: InfographicTemplate): string {
-  return tpl.html || INFOGRAPHIC_HTML;
+  const html = tpl.html || INFOGRAPHIC_HTML;
+  if (html.includes('__ICON_FONT__') || html.includes('__CFG_FONTS__')) return html;
+  // Injiser KUN ikon-fonten (ikke hele bundelen) så ikon-ligaturer i miniatyren
+  // rendres som glypher, ikke rå tekst. Inter faller grasiøst til system-sans.
+  return html.includes('</head>') ? html.replace('</head>', ICON_FONT_STYLE + '</head>') : ICON_FONT_STYLE + html;
 }
 
 /** Er feltet et Material-ikon-felt? (vis ikon-velger i stedet for tekst). */
@@ -289,7 +302,9 @@ export const INFOGRAPHIC_HTML = String.raw`<!doctype html><html><head><meta char
 <script>
 function ease(t){return t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2}
 function clamp(x){return Math.max(0,Math.min(1,x))}
-function shade(hex,f){var n=parseInt(hex.replace('#',''),16),r=(n>>16)&255,g=(n>>8)&255,b=n&255;
+function shade(hex,f){var h=String(hex||'').replace('#','');
+  if(h.length===3)h=h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+  var n=parseInt(h,16),r=(n>>16)&255,g=(n>>8)&255,b=n&255;
   return 'rgba('+r+','+g+','+b+','+f+')';}
 var CFG=window.__CFG__||{};
 if(!window.__CFG__){try{CFG=JSON.parse(decodeURIComponent(escape(atob(location.hash.slice(1)))));}catch(e){}}
