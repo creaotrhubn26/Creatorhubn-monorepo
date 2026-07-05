@@ -39,22 +39,45 @@ struct LeadStatusChangeSheet: View {
     let companyColor: Color
     let currentStatus: LeadPipelineStatus
     var onSave: ((LeadPipelineStatus, String) -> Void)? = nil
+    /// Workflow-QA 2026-07-05: temperatur kunne bare settes ved
+    /// opprettelse — nå redigerbar her. Nil currentTemperature = ukjent.
+    var currentTemperature: String? = nil
+    var onSaveTemperature: ((String) -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
     @State private var selected: LeadPipelineStatus
+    @State private var selectedTemp: String?
     @State private var note: String = ""
+
+    /// Backend-whitelist (crm_customers check-constraint).
+    static let temperatures: [(value: String, label: String, icon: String, color: Color)] = [
+        ("cold",  "Kald",  "snowflake",           LaBrand.blue),
+        ("warm",  "Varm",  "flame",               LaBrand.orange),
+        ("hot",   "Hot",   "flame.fill",          LaBrand.red),
+        ("ready", "Klar",  "checkmark.seal.fill", LaBrand.green),
+    ]
 
     init(
         companyName: String,
         companyColor: Color,
         currentStatus: LeadPipelineStatus = .interested,
-        onSave: ((LeadPipelineStatus, String) -> Void)? = nil
+        onSave: ((LeadPipelineStatus, String) -> Void)? = nil,
+        currentTemperature: String? = nil,
+        onSaveTemperature: ((String) -> Void)? = nil
     ) {
         self.companyName = companyName
         self.companyColor = companyColor
         self.currentStatus = currentStatus
         self.onSave = onSave
+        self.currentTemperature = currentTemperature
+        self.onSaveTemperature = onSaveTemperature
         self._selected = State(initialValue: currentStatus)
+        self._selectedTemp = State(initialValue: currentTemperature)
+    }
+
+    private var statusChanged: Bool { selected != currentStatus }
+    private var tempChanged: Bool {
+        onSaveTemperature != nil && selectedTemp != nil && selectedTemp != currentTemperature
     }
 
     var body: some View {
@@ -70,6 +93,17 @@ struct LeadStatusChangeSheet: View {
                         VStack(spacing: 8) {
                             ForEach(LeadPipelineStatus.allCases) { s in
                                 statusRow(s)
+                            }
+                        }
+                        if onSaveTemperature != nil {
+                            Text("LEAD-TEMPERATUR")
+                                .font(.appScaled(size: 10, weight: .black))
+                                .foregroundStyle(LaBrand.textTertiary).tracking(0.8)
+                                .padding(.top, 8)
+                            AXStack(spacing: 8) {
+                                ForEach(Self.temperatures, id: \.value) { t in
+                                    tempChip(t)
+                                }
                             }
                         }
                         Text("NOTAT (VALGFRITT)")
@@ -105,7 +139,10 @@ struct LeadStatusChangeSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
-                        onSave?(selected, note)
+                        if statusChanged { onSave?(selected, note) }
+                        if tempChanged, let temp = selectedTemp {
+                            onSaveTemperature?(temp)
+                        }
                         dismiss()
                     } label: {
                         Text("Lagre")
@@ -119,8 +156,8 @@ struct LeadStatusChangeSheet: View {
                             )
                     }
                     .buttonStyle(.plain)
-                    .disabled(selected == currentStatus)
-                    .opacity(selected == currentStatus ? 0.5 : 1)
+                    .disabled(!statusChanged && !tempChanged)
+                    .opacity(!statusChanged && !tempChanged ? 0.5 : 1)
                 }
             }
             .toolbarBackground(LaBrand.bg, for: .navigationBar)
@@ -151,6 +188,30 @@ struct LeadStatusChangeSheet: View {
         .padding(12)
         .background(LaBrand.card, in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(LaBrand.stroke, lineWidth: 1))
+    }
+
+    private func tempChip(_ t: (value: String, label: String, icon: String, color: Color)) -> some View {
+        let isSelected = selectedTemp == t.value
+        return Button {
+            selectedTemp = t.value
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: t.icon)
+                    .font(.appScaled(size: 12, weight: .bold))
+                Text(t.label)
+                    .font(.appScaled(size: 12, weight: .bold))
+            }
+            .foregroundStyle(isSelected ? .white : t.color)
+            .padding(.horizontal, 14).padding(.vertical, 9)
+            .frame(maxWidth: .infinity)
+            .background(
+                isSelected ? AnyShapeStyle(t.color.opacity(0.85)) : AnyShapeStyle(LaBrand.card),
+                in: Capsule()
+            )
+            .overlay(Capsule().stroke(isSelected ? t.color : LaBrand.stroke, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Temperatur \(t.label)")
     }
 
     private func statusRow(_ s: LeadPipelineStatus) -> some View {
@@ -194,6 +255,22 @@ enum LeadPipelineStatus: String, CaseIterable, Identifiable, Hashable {
     case unvisited, contacted, interested, meetingBooked, proposalSent, negotiation, won, lost, doNotContact
 
     var id: String { rawValue }
+
+    /// Backend-status (VALID_STATUSES i lead-map-routes). `contacted` og
+    /// `negotiation` finnes ikke der — mappes til nærmeste ekte status.
+    var apiValue: String {
+        switch self {
+        case .unvisited:     return "unvisited"
+        case .contacted:     return "visited"
+        case .interested:    return "interested"
+        case .meetingBooked: return "meeting_booked"
+        case .proposalSent:  return "proposal_sent"
+        case .negotiation:   return "proposal_sent"
+        case .won:           return "won"
+        case .lost:          return "lost"
+        case .doNotContact:  return "do_not_contact"
+        }
+    }
 
     var label: String {
         switch self {

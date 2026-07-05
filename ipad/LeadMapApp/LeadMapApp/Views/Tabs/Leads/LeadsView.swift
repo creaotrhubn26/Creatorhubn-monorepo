@@ -1591,12 +1591,45 @@ struct LeadDetailSidebar: View {
         }
         // Pakke 10.1: shared lead-action-sheets
         .sheet(isPresented: $showLeadStatusChange) {
+            // Workflow-QA 2026-07-05: onSave var toast-fasade — nå ekte
+            // API-kall i ekte modus (LeadRow.id = crm_customers-uuid for
+            // backend-rader). Demo: toast.
             LeadStatusChangeSheet(
                 companyName: lead.company,
-                companyColor: lead.companyColor
-            ) { newStatus, _ in
-                actionToast = "Status endret til \(newStatus.label)"
-            }
+                companyColor: lead.companyColor,
+                onSave: { newStatus, _ in
+                    let leadId = lead.id.uuidString.lowercased()
+                    if DemoModeManager.isActiveNonisolated {
+                        actionToast = "Status endret til \(newStatus.label)"
+                    } else if let api = appState.api {
+                        Task {
+                            do {
+                                try await api.updateStatus(leadId: leadId, status: newStatus.apiValue)
+                                actionToast = "Status endret til \(newStatus.label)"
+                                await appState.refreshLeads()
+                            } catch {
+                                actionToast = "Kunne ikke endre status"
+                            }
+                        }
+                    }
+                },
+                onSaveTemperature: { temp in
+                    let leadId = lead.id.uuidString.lowercased()
+                    if DemoModeManager.isActiveNonisolated {
+                        actionToast = "Temperatur endret"
+                    } else if let api = appState.api {
+                        Task {
+                            do {
+                                try await api.updateTemperature(leadId: leadId, temperature: temp)
+                                actionToast = "Temperatur endret"
+                                await appState.refreshLeads()
+                            } catch {
+                                actionToast = "Kunne ikke endre temperatur"
+                            }
+                        }
+                    }
+                }
+            )
         }
         .sheet(isPresented: $showLeadAssignSeller) {
             LeadAssignSellerSheet(

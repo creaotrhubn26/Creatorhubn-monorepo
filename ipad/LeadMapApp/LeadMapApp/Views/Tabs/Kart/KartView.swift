@@ -692,12 +692,44 @@ struct KartView: View {
             UploadFileSheet(companyName: selectedLead.name, companyColor: selectedLead.status.color)
         }
         .sheet(isPresented: $showStatusChange) {
+            // Workflow-QA 2026-07-05: onSave var toast-fasade — nå ekte
+            // API-kall i ekte modus (id-en er LeadModel.id). Demo: toast.
             LeadStatusChangeSheet(
                 companyName: selectedLead.name,
-                companyColor: selectedLead.status.color
-            ) { newStatus, note in
-                showToast("Status endret til \(newStatus.label)")
-            }
+                companyColor: selectedLead.status.color,
+                onSave: { newStatus, note in
+                    let leadId = selectedLead.id
+                    if DemoModeManager.isActiveNonisolated {
+                        showToast("Status endret til \(newStatus.label)")
+                    } else if let api = appState.api {
+                        Task {
+                            do {
+                                try await api.updateStatus(leadId: leadId, status: newStatus.apiValue)
+                                showToast("Status endret til \(newStatus.label)")
+                                await appState.refreshLeads()
+                            } catch {
+                                showToast("Kunne ikke endre status")
+                            }
+                        }
+                    }
+                },
+                onSaveTemperature: { temp in
+                    let leadId = selectedLead.id
+                    if DemoModeManager.isActiveNonisolated {
+                        showToast("Temperatur endret")
+                    } else if let api = appState.api {
+                        Task {
+                            do {
+                                try await api.updateTemperature(leadId: leadId, temperature: temp)
+                                showToast("Temperatur endret")
+                                await appState.refreshLeads()
+                            } catch {
+                                showToast("Kunne ikke endre temperatur")
+                            }
+                        }
+                    }
+                }
+            )
         }
         .sheet(isPresented: $showAssignSeller) {
             LeadAssignSellerSheet(
