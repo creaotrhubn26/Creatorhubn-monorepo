@@ -66,7 +66,7 @@ struct VideoMeetingPicker: View {
             VStack(spacing: 16) {
                 leadHeader
                 Text("Velg video-tjeneste")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(FcBrand.textSecondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 20)
@@ -102,16 +102,16 @@ struct VideoMeetingPicker: View {
                 RoundedRectangle(cornerRadius: 10)
                     .fill(lead.companyColor.opacity(0.22))
                 Image(systemName: "building.2.fill")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.appScaled(size: 16, weight: .semibold))
                     .foregroundStyle(lead.companyColor)
             }
             .frame(width: 42, height: 42)
             VStack(alignment: .leading, spacing: 2) {
                 Text(lead.company)
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 Text("Med \(lead.contactName)")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(FcBrand.textSecondary)
             }
             Spacer()
@@ -126,21 +126,21 @@ struct VideoMeetingPicker: View {
                 ZStack {
                     Circle().fill(p.color.opacity(isSelected ? 0.30 : 0.15))
                     Image(systemName: p.icon)
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(.appScaled(size: 18, weight: .semibold))
                         .foregroundStyle(p.color)
                 }
                 .frame(width: 46, height: 46)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(p.rawValue)
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.appScaled(size: 14, weight: .bold))
                         .foregroundStyle(.white)
                     Text(p.subtitle)
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(FcBrand.textSecondary)
                 }
                 Spacer()
                 Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
-                    .font(.system(size: 18))
+                    .font(.appScaled(size: 18))
                     .foregroundStyle(isSelected ? p.color : FcBrand.stroke)
             }
             .padding(12)
@@ -166,9 +166,9 @@ struct VideoMeetingPicker: View {
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: selected.icon)
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                 Text("Start \(selected.rawValue)-møte")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
             }
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)
@@ -256,16 +256,16 @@ struct SMSPicker: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 10).fill(FcBrand.green.opacity(0.22))
                 Image(systemName: "phone.fill")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.appScaled(size: 16, weight: .semibold))
                     .foregroundStyle(FcBrand.green)
             }
             .frame(width: 42, height: 42)
             VStack(alignment: .leading, spacing: 2) {
                 Text(lead.contactName)
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 Text(phoneNumber)
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(FcBrand.textSecondary)
             }
             Spacer()
@@ -278,7 +278,7 @@ struct SMSPicker: View {
     private var channelSelector: some View {
         VStack(alignment: .leading, spacing: 9) {
             Text("Velg kanal")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(FcBrand.textSecondary)
             ForEach(Channel.allCases, id: \.self) { c in
                 channelRow(c)
@@ -293,21 +293,21 @@ struct SMSPicker: View {
                 ZStack {
                     Circle().fill(c.color.opacity(isSelected ? 0.30 : 0.15))
                     Image(systemName: c.icon)
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.appScaled(size: 16, weight: .semibold))
                         .foregroundStyle(c.color)
                 }
                 .frame(width: 42, height: 42)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(c.rawValue)
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(.white)
                     Text(c.subtitle)
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(FcBrand.textSecondary)
                 }
                 Spacer()
                 Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
-                    .font(.system(size: 17))
+                    .font(.appScaled(size: 17))
                     .foregroundStyle(isSelected ? c.color : FcBrand.stroke)
             }
             .padding(10)
@@ -326,17 +326,17 @@ struct SMSPicker: View {
     private var quickMessagesCard: some View {
         VStack(alignment: .leading, spacing: 9) {
             Text("Hurtigmeldinger")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(FcBrand.textSecondary)
             VStack(spacing: 6) {
                 ForEach(quickMessages, id: \.self) { msg in
                     Button { quickMessage = msg } label: {
                         HStack(spacing: 8) {
                             Image(systemName: quickMessage == msg ? "checkmark.circle.fill" : "circle")
-                                .font(.system(size: 13))
+                                .font(.appScaled(size: 13))
                                 .foregroundStyle(quickMessage == msg ? FcBrand.green : FcBrand.stroke)
                             Text(msg)
-                                .font(.system(size: 12))
+                                .font(.appScaled(size: 12))
                                 .foregroundStyle(.white)
                                 .multilineTextAlignment(.leading)
                                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -364,9 +364,9 @@ struct SMSPicker: View {
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: selected.icon)
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                 Text("Åpne \(selected.rawValue)")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
             }
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)
@@ -609,16 +609,16 @@ struct EmailTemplatePicker: View {
             ZStack {
                 Circle().fill(FcBrand.purple.opacity(0.25))
                 Text(initials(lead.contactName))
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(FcBrand.purpleLight)
             }
             .frame(width: 42, height: 42)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Til: \(lead.contactName)")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Text(toEmail)
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(FcBrand.textSecondary)
             }
             Spacer()
@@ -632,14 +632,14 @@ struct EmailTemplatePicker: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 7) {
                 Image(systemName: "doc.text.fill")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(FcBrand.purpleLight)
                 Text("Velg mal")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
                 Text("\(EmailTemplate.allCases.count) maler")
-                    .font(.system(size: 10))
+                    .font(.appScaled(size: 10))
                     .foregroundStyle(FcBrand.textSecondary)
             }
             let cols = [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)]
@@ -662,12 +662,12 @@ struct EmailTemplatePicker: View {
                     RoundedRectangle(cornerRadius: 8)
                         .fill(t.color.opacity(isSelected ? 0.30 : 0.15))
                     Image(systemName: t.icon)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.appScaled(size: 13, weight: .semibold))
                         .foregroundStyle(t.color)
                 }
                 .frame(width: 32, height: 32)
                 Text(t.rawValue)
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(.white)
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
@@ -689,16 +689,16 @@ struct EmailTemplatePicker: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 7) {
                 Image(systemName: "eye.fill")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(FcBrand.purpleLight)
                 Text("Forhåndsvis + rediger")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
                 if customized {
                     Button { applyTemplate(selectedTemplate); customized = false } label: {
                         Text("Tilbakestill")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.appScaled(size: 10, weight: .semibold))
                             .foregroundStyle(FcBrand.purpleLight)
                     }
                     .buttonStyle(.plain)
@@ -706,12 +706,12 @@ struct EmailTemplatePicker: View {
             }
             VStack(alignment: .leading, spacing: 4) {
                 Text("EMNE")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.appScaled(size: 9, weight: .bold))
                     .foregroundStyle(FcBrand.textTertiary)
                 TextField("", text: $subject)
                     .textFieldStyle(.plain)
                     .foregroundStyle(.white)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.appScaled(size: 13, weight: .semibold))
                     .padding(.horizontal, 10).padding(.vertical, 9)
                     .background(FcBrand.cardHi, in: RoundedRectangle(cornerRadius: 8))
                     .overlay(RoundedRectangle(cornerRadius: 8).stroke(FcBrand.stroke, lineWidth: 1))
@@ -719,12 +719,12 @@ struct EmailTemplatePicker: View {
             }
             VStack(alignment: .leading, spacing: 4) {
                 Text("INNHOLD")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.appScaled(size: 9, weight: .bold))
                     .foregroundStyle(FcBrand.textTertiary)
                 TextEditor(text: $messageBody)
                     .scrollContentBackground(.hidden)
                     .foregroundStyle(.white)
-                    .font(.system(size: 12))
+                    .font(.appScaled(size: 12))
                     .frame(minHeight: 160)
                     .padding(10)
                     .background(FcBrand.cardHi, in: RoundedRectangle(cornerRadius: 8))
@@ -741,10 +741,10 @@ struct EmailTemplatePicker: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 7) {
                 Image(systemName: "app.fill")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(FcBrand.purpleLight)
                 Text("Åpne i")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
             }
@@ -763,12 +763,12 @@ struct EmailTemplatePicker: View {
                 ZStack {
                     Circle().fill(a.color.opacity(isSelected ? 0.30 : 0.15))
                     Image(systemName: a.icon)
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.appScaled(size: 16, weight: .semibold))
                         .foregroundStyle(a.color)
                 }
                 .frame(width: 38, height: 38)
                 Text(a.rawValue)
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.appScaled(size: 10, weight: .semibold))
                     .foregroundStyle(isSelected ? .white : FcBrand.textSecondary)
             }
             .frame(maxWidth: .infinity)
@@ -793,9 +793,9 @@ struct EmailTemplatePicker: View {
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: emailApp.icon)
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                 Text("Åpne i \(emailApp.rawValue)")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
             }
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)

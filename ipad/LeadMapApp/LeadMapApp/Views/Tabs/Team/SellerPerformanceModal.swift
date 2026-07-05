@@ -121,20 +121,20 @@ struct SellerPerformanceModal: View {
                 ZStack {
                     Circle().fill(member.color)
                     Text(member.initials)
-                        .font(.system(size: 22, weight: .black))
+                        .font(.appScaled(size: 22, weight: .black))
                         .foregroundStyle(.white)
                 }
                 .frame(width: 64, height: 64)
                 .shadow(color: member.color.opacity(0.5), radius: 10)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(member.name)
-                        .font(.system(size: 19, weight: .bold))
+                        .font(.appScaled(size: 19, weight: .bold))
                         .foregroundStyle(.white)
                     HStack(spacing: 5) {
                         Image(systemName: "mappin.and.ellipse")
-                            .font(.system(size: 10))
+                            .font(.appScaled(size: 10))
                         Text(member.area)
-                            .font(.system(size: 12))
+                            .font(.appScaled(size: 12))
                     }
                     .foregroundStyle(TBrand.textSecondary)
                     HStack(spacing: 5) {
@@ -142,22 +142,22 @@ struct SellerPerformanceModal: View {
                             .frame(width: 7, height: 7)
                             .shadow(color: member.momentumColor.opacity(0.5), radius: 3)
                         Text("Momentum \(member.momentum)%")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.appScaled(size: 11, weight: .bold))
                             .foregroundStyle(member.momentumColor)
                     }
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 1) {
                     Text("RANK")
-                        .font(.system(size: 9, weight: .black))
+                        .font(.appScaled(size: 9, weight: .black))
                         .foregroundStyle(TBrand.textTertiary)
                         .tracking(0.6)
                     Text("#\(rank())")
-                        .font(.system(size: 22, weight: .black, design: .rounded))
+                        .font(.appScaled(size: 22, weight: .black, design: .rounded))
                         .foregroundStyle(rank() <= 2 ? TBrand.green : (rank() <= 3 ? TBrand.yellow : TBrand.orange))
                         .monospacedDigit()
                     Text("av \(TeamData.members.count)")
-                        .font(.system(size: 9))
+                        .font(.appScaled(size: 9))
                         .foregroundStyle(TBrand.textSecondary)
                         .monospacedDigit()
                 }
@@ -186,7 +186,7 @@ struct SellerPerformanceModal: View {
                     withAnimation(.easeInOut(duration: 0.15)) { period = p }
                 } label: {
                     Text(p.rawValue)
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.appScaled(size: 11, weight: .bold))
                         .foregroundStyle(period == p ? .white : TBrand.textSecondary)
                         .padding(.horizontal, 12).padding(.vertical, 7)
                         .background(
@@ -222,7 +222,7 @@ struct SellerPerformanceModal: View {
                 ZStack {
                     Circle().fill(color.opacity(0.22))
                     Image(systemName: icon)
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.appScaled(size: 11, weight: .bold))
                         .foregroundStyle(color)
                 }
                 .frame(width: 28, height: 28)
@@ -230,22 +230,22 @@ struct SellerPerformanceModal: View {
                 if let t = trend {
                     HStack(spacing: 2) {
                         Image(systemName: t >= 0 ? "arrow.up" : "arrow.down")
-                            .font(.system(size: 8, weight: .black))
+                            .font(.appScaled(size: 8, weight: .black))
                         Text("\(abs(t))%")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.appScaled(size: 10, weight: .bold))
                             .monospacedDigit()
                     }
                     .foregroundStyle(t >= 0 ? TBrand.green : TBrand.red)
                 }
             }
             Text(value)
-                .font(.system(size: 18, weight: .black, design: .rounded))
+                .font(.appScaled(size: 18, weight: .black, design: .rounded))
                 .foregroundStyle(.white)
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
             Text(title)
-                .font(.system(size: 10))
+                .font(.appScaled(size: 10))
                 .foregroundStyle(TBrand.textSecondary)
         }
         .padding(12)
@@ -260,11 +260,11 @@ struct SellerPerformanceModal: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("Aktivitet siste 7 dager")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
                 Text("\(trendData.reduce(0) { $0 + $1.value }) leads totalt")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(member.color)
             }
             Chart {
@@ -305,17 +305,17 @@ struct SellerPerformanceModal: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Aktive deals")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Text("\(deals.count)")
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: 10, weight: .bold, design: .rounded))
                     .foregroundStyle(TBrand.textSecondary)
                     .monospacedDigit()
                     .padding(.horizontal, 6).padding(.vertical, 2)
                     .background(TBrand.cardHi, in: Capsule())
                 Spacer()
                 Text("NOK \(formatNok(totalPipelineValue))")
-                    .font(.system(size: 13, weight: .black, design: .rounded))
+                    .font(.appScaled(size: 13, weight: .black, design: .rounded))
                     .foregroundStyle(TBrand.green)
                     .monospacedDigit()
             }
@@ -325,7 +325,7 @@ struct SellerPerformanceModal: View {
                 }
                 if deals.isEmpty {
                     Text("Ingen aktive deals i perioden")
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(TBrand.textTertiary)
                         .padding(.vertical, 14)
                         .frame(maxWidth: .infinity)
@@ -342,28 +342,28 @@ struct SellerPerformanceModal: View {
             ZStack {
                 Circle().fill(d.stageColor.opacity(0.22))
                 Image(systemName: stageIcon(d.stage))
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(d.stageColor)
             }
             .frame(width: 30, height: 30)
             VStack(alignment: .leading, spacing: 1) {
                 Text(d.company)
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(.white)
                 HStack(spacing: 5) {
                     Text(d.stage)
-                        .font(.system(size: 9, weight: .black))
+                        .font(.appScaled(size: 9, weight: .black))
                         .foregroundStyle(d.stageColor)
                         .padding(.horizontal, 6).padding(.vertical, 1)
                         .background(d.stageColor.opacity(0.18), in: Capsule())
                     Text("\(d.probability)% sannsynlighet")
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(TBrand.textSecondary)
                 }
             }
             Spacer()
             Text("NOK \(formatNok(d.valueNok))")
-                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .font(.appScaled(size: 12, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
                 .monospacedDigit()
         }
@@ -403,10 +403,10 @@ struct SellerPerformanceModal: View {
         Button(action: action) {
             VStack(spacing: 5) {
                 Image(systemName: icon)
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(color)
                 Text(label)
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.appScaled(size: 10, weight: .semibold))
                     .foregroundStyle(.white)
             }
             .frame(maxWidth: .infinity)

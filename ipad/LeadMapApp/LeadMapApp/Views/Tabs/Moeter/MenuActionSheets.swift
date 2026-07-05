@@ -76,16 +76,16 @@ struct RescheduleSheet: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 9).fill(meeting.iconColor.opacity(0.22))
                 Image(systemName: meeting.icon)
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(meeting.iconColor)
             }
             .frame(width: 36, height: 36)
             VStack(alignment: .leading, spacing: 2) {
                 Text(meeting.company)
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Text("Nåværende: Tir 20. mai · \(meeting.startTime)–\(meeting.endTime)")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(MABrand.textSecondary)
             }
             Spacer()
@@ -98,7 +98,7 @@ struct RescheduleSheet: View {
     private var datePickerCard: some View {
         VStack(alignment: .leading, spacing: 9) {
             Text("Ny dato")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(MABrand.textSecondary)
             DatePicker("", selection: $newDate, in: Date()..., displayedComponents: .date)
                 .datePickerStyle(.graphical)
@@ -113,7 +113,7 @@ struct RescheduleSheet: View {
     private var timePickerCard: some View {
         VStack(alignment: .leading, spacing: 9) {
             Text("Start-tid")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(MABrand.textSecondary)
             HStack(spacing: 0) {
                 Picker("", selection: $startHour) {
@@ -122,7 +122,7 @@ struct RescheduleSheet: View {
                 .pickerStyle(.wheel)
                 .frame(maxHeight: 100)
                 Text(":")
-                    .font(.system(size: 22, weight: .bold))
+                    .font(.appScaled(size: 22, weight: .bold))
                     .foregroundStyle(.white)
                 Picker("", selection: $startMinute) {
                     ForEach(minutes, id: \.self) { Text(String(format: "%02d", $0)).foregroundStyle(.white) }
@@ -139,7 +139,7 @@ struct RescheduleSheet: View {
     private var durationCard: some View {
         VStack(alignment: .leading, spacing: 9) {
             Text("Varighet")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(MABrand.textSecondary)
             HStack(spacing: 6) {
                 ForEach(durations, id: \.self) { d in
@@ -147,7 +147,7 @@ struct RescheduleSheet: View {
                         withAnimation { duration = d }
                     } label: {
                         Text(d >= 60 ? "\(d/60) t\(d%60 > 0 ? " \(d%60) m" : "")" : "\(d) min")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.appScaled(size: 11, weight: .bold))
                             .foregroundStyle(duration == d ? .white : MABrand.purpleLight)
                             .padding(.horizontal, 11).padding(.vertical, 8)
                             .background(
@@ -168,16 +168,16 @@ struct RescheduleSheet: View {
                 ZStack {
                     Circle().fill(MABrand.green.opacity(0.22))
                     Image(systemName: "bell.fill")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.appScaled(size: 11, weight: .bold))
                         .foregroundStyle(MABrand.green)
                 }
                 .frame(width: 30, height: 30)
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Varsle kontakten")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
                     Text("Sender e-post + invitt-oppdatering til \(meeting.contactName)")
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(MABrand.textSecondary)
                 }
             }
@@ -191,20 +191,20 @@ struct RescheduleSheet: View {
     private var reasonCard: some View {
         VStack(alignment: .leading, spacing: 7) {
             Text("Grunn (valgfritt)")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(MABrand.textSecondary)
             ZStack(alignment: .topLeading) {
                 TextEditor(text: $reason)
                     .scrollContentBackground(.hidden)
                     .foregroundStyle(.white)
-                    .font(.system(size: 12))
+                    .font(.appScaled(size: 12))
                     .frame(minHeight: 70)
                     .padding(8)
                     .background(MABrand.card, in: RoundedRectangle(cornerRadius: 11))
                     .overlay(RoundedRectangle(cornerRadius: 11).stroke(MABrand.stroke, lineWidth: 1))
                 if reason.isEmpty {
                     Text("F.eks. «Konflikt med annet møte»")
-                        .font(.system(size: 12))
+                        .font(.appScaled(size: 12))
                         .foregroundStyle(MABrand.textTertiary)
                         .padding(.horizontal, 12).padding(.vertical, 14)
                         .allowsHitTesting(false)
@@ -217,7 +217,7 @@ struct RescheduleSheet: View {
         HStack(spacing: 10) {
             Button { dismiss() } label: {
                 Text("Avbryt")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.appScaled(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(maxWidth: 110)
                     .padding(.vertical, 13)
@@ -228,9 +228,9 @@ struct RescheduleSheet: View {
             Button { dismiss() } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "calendar.badge.checkmark")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                     Text("Lagre ny tid")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                 }
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
@@ -298,16 +298,16 @@ struct StatusPickerSheet: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 9).fill(meeting.iconColor.opacity(0.22))
                 Image(systemName: meeting.icon)
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(meeting.iconColor)
             }
             .frame(width: 36, height: 36)
             VStack(alignment: .leading, spacing: 2) {
                 Text(meeting.company)
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Text("Nåværende status: \(meeting.status.label)")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(meeting.status.color)
             }
             Spacer()
@@ -326,21 +326,21 @@ struct StatusPickerSheet: View {
                 ZStack {
                     Circle().fill(s.color.opacity(isSelected ? 0.35 : 0.18))
                     Image(systemName: statusIcon(s))
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(s.color)
                 }
                 .frame(width: 38, height: 38)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(s.label)
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(.white)
                     Text(statusDescription(s))
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(MABrand.textSecondary)
                 }
                 Spacer()
                 Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
-                    .font(.system(size: 17))
+                    .font(.appScaled(size: 17))
                     .foregroundStyle(isSelected ? s.color : MABrand.stroke)
             }
             .padding(10)
@@ -377,20 +377,20 @@ struct StatusPickerSheet: View {
     private var noteCard: some View {
         VStack(alignment: .leading, spacing: 7) {
             Text("Notat (valgfritt)")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(MABrand.textSecondary)
             ZStack(alignment: .topLeading) {
                 TextEditor(text: $note)
                     .scrollContentBackground(.hidden)
                     .foregroundStyle(.white)
-                    .font(.system(size: 12))
+                    .font(.appScaled(size: 12))
                     .frame(minHeight: 60)
                     .padding(8)
                     .background(MABrand.card, in: RoundedRectangle(cornerRadius: 11))
                     .overlay(RoundedRectangle(cornerRadius: 11).stroke(MABrand.stroke, lineWidth: 1))
                 if note.isEmpty {
                     Text("Hvorfor endrer du status?")
-                        .font(.system(size: 12))
+                        .font(.appScaled(size: 12))
                         .foregroundStyle(MABrand.textTertiary)
                         .padding(.horizontal, 12).padding(.vertical, 14)
                         .allowsHitTesting(false)
@@ -403,9 +403,9 @@ struct StatusPickerSheet: View {
         Button { dismiss() } label: {
             HStack(spacing: 6) {
                 Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                 Text("Sett status: \(status.label)")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
             }
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)
@@ -480,14 +480,14 @@ struct CancelMeetingSheet: View {
     private var warningBanner: some View {
         HStack(spacing: 9) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 16, weight: .bold))
+                .font(.appScaled(size: 16, weight: .bold))
                 .foregroundStyle(MABrand.red)
             VStack(alignment: .leading, spacing: 1) {
                 Text("Dette kan ikke angres")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(.white)
                 Text("Møtet flyttes til avlyste og prep-status nullstilles")
-                    .font(.system(size: 10))
+                    .font(.appScaled(size: 10))
                     .foregroundStyle(MABrand.textSecondary)
             }
             Spacer()
@@ -502,16 +502,16 @@ struct CancelMeetingSheet: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 9).fill(meeting.iconColor.opacity(0.22))
                 Image(systemName: meeting.icon)
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(meeting.iconColor)
             }
             .frame(width: 36, height: 36)
             VStack(alignment: .leading, spacing: 2) {
                 Text(meeting.company)
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Text("Tir 20. mai · \(meeting.startTime)–\(meeting.endTime) · \(meeting.contactName)")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(MABrand.textSecondary)
             }
             Spacer()
@@ -524,7 +524,7 @@ struct CancelMeetingSheet: View {
     private var reasonsCard: some View {
         VStack(alignment: .leading, spacing: 7) {
             Text("Grunn til avlysning")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(MABrand.textSecondary)
             VStack(spacing: 5) {
                 ForEach(CancelReason.allCases, id: \.self) { r in
@@ -533,15 +533,15 @@ struct CancelMeetingSheet: View {
                     } label: {
                         HStack(spacing: 10) {
                             Image(systemName: r.icon)
-                                .font(.system(size: 13, weight: .bold))
+                                .font(.appScaled(size: 13, weight: .bold))
                                 .foregroundStyle(reason == r ? .white : MABrand.red)
                                 .frame(width: 22)
                             Text(r.rawValue)
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.appScaled(size: 12, weight: .semibold))
                                 .foregroundStyle(.white)
                             Spacer()
                             Image(systemName: reason == r ? "largecircle.fill.circle" : "circle")
-                                .font(.system(size: 16))
+                                .font(.appScaled(size: 16))
                                 .foregroundStyle(reason == r ? MABrand.red : MABrand.stroke)
                         }
                         .padding(10)
@@ -563,14 +563,14 @@ struct CancelMeetingSheet: View {
             TextEditor(text: $customReason)
                 .scrollContentBackground(.hidden)
                 .foregroundStyle(.white)
-                .font(.system(size: 12))
+                .font(.appScaled(size: 12))
                 .frame(minHeight: 70)
                 .padding(8)
                 .background(MABrand.card, in: RoundedRectangle(cornerRadius: 11))
                 .overlay(RoundedRectangle(cornerRadius: 11).stroke(MABrand.stroke, lineWidth: 1))
             if customReason.isEmpty {
                 Text("Skriv inn grunn…")
-                    .font(.system(size: 12))
+                    .font(.appScaled(size: 12))
                     .foregroundStyle(MABrand.textTertiary)
                     .padding(.horizontal, 12).padding(.vertical, 14)
                     .allowsHitTesting(false)
@@ -583,10 +583,10 @@ struct CancelMeetingSheet: View {
             Toggle(isOn: $notify) {
                 HStack(spacing: 8) {
                     Image(systemName: "envelope.fill")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appScaled(size: 12, weight: .bold))
                         .foregroundStyle(MABrand.blue)
                     Text("Varsle \(meeting.contactName)")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
                 }
             }
@@ -595,10 +595,10 @@ struct CancelMeetingSheet: View {
             Toggle(isOn: $suggestNew) {
                 HStack(spacing: 8) {
                     Image(systemName: "calendar.badge.plus")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appScaled(size: 12, weight: .bold))
                         .foregroundStyle(MABrand.green)
                     Text("Foreslå nytt tidspunkt automatisk")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
                 }
             }
@@ -613,9 +613,9 @@ struct CancelMeetingSheet: View {
         Button { dismiss() } label: {
             HStack(spacing: 6) {
                 Image(systemName: "xmark.octagon.fill")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                 Text("Avlys møtet")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
             }
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)
@@ -683,7 +683,7 @@ struct AssignSellerSheet: View {
                     searchBar
                     if filtered.isEmpty {
                         Text(search.isEmpty ? "Ingen selgere i teamet enda" : "Ingen selgere matcher søket")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.appScaled(size: 12, weight: .semibold))
                             .foregroundStyle(MABrand.textSecondary)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 30)
@@ -717,16 +717,16 @@ struct AssignSellerSheet: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 9).fill(meeting.iconColor.opacity(0.22))
                 Image(systemName: meeting.icon)
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(meeting.iconColor)
             }
             .frame(width: 36, height: 36)
             VStack(alignment: .leading, spacing: 2) {
                 Text(meeting.company)
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Text("Tilordne ansvarlig selger for dette møtet")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(MABrand.textSecondary)
             }
             Spacer()
@@ -739,15 +739,15 @@ struct AssignSellerSheet: View {
     private var searchBar: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(MABrand.textSecondary)
             ZStack(alignment: .leading) {
                 TextField("", text: $search)
                     .foregroundStyle(.white)
-                    .font(.system(size: 13))
+                    .font(.appScaled(size: 13))
                 if search.isEmpty {
                     Text("Søk selger…")
-                        .font(.system(size: 13))
+                        .font(.appScaled(size: 13))
                         .foregroundStyle(MABrand.textTertiary)
                         .allowsHitTesting(false)
                 }
@@ -767,7 +767,7 @@ struct AssignSellerSheet: View {
                 ZStack {
                     Circle().fill(s.color.opacity(0.85))
                     Text(s.initials)
-                        .font(.system(size: 12, weight: .black))
+                        .font(.appScaled(size: 12, weight: .black))
                         .foregroundStyle(.white)
                     Circle()
                         .fill(s.online ? MABrand.green : MABrand.textTertiary)
@@ -778,16 +778,16 @@ struct AssignSellerSheet: View {
                 .frame(width: 38, height: 38)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(s.name)
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(.white)
                     HStack(spacing: 5) {
                         Text(s.role)
-                            .font(.system(size: 10))
+                            .font(.appScaled(size: 10))
                             .foregroundStyle(MABrand.textSecondary)
                         Text("·")
                             .foregroundStyle(MABrand.textTertiary)
                         Text("\(s.load) aktive")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.appScaled(size: 10, weight: .semibold))
                             .foregroundStyle(MABrand.blue)
                             .monospacedDigit()
                     }
@@ -795,13 +795,13 @@ struct AssignSellerSheet: View {
                 Spacer()
                 // Win-rate-pill
                 Text("\(s.winRate) %")
-                    .font(.system(size: 11, weight: .black, design: .rounded))
+                    .font(.appScaled(size: 11, weight: .black, design: .rounded))
                     .foregroundStyle(s.winRate >= 70 ? MABrand.green : s.winRate >= 60 ? MABrand.yellow : MABrand.orange)
                     .monospacedDigit()
                     .padding(.horizontal, 8).padding(.vertical, 4)
                     .background((s.winRate >= 70 ? MABrand.green : s.winRate >= 60 ? MABrand.yellow : MABrand.orange).opacity(0.18), in: Capsule())
                 Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
-                    .font(.system(size: 17))
+                    .font(.appScaled(size: 17))
                     .foregroundStyle(isSelected ? MABrand.purple : MABrand.stroke)
             }
             .padding(10)
@@ -819,9 +819,9 @@ struct AssignSellerSheet: View {
         Button { dismiss() } label: {
             HStack(spacing: 6) {
                 Image(systemName: "person.badge.plus.fill")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                 Text(selectedID == nil ? "Velg selger først" : "Tilordne valgte selger")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
             }
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)
@@ -915,9 +915,9 @@ struct AddToCampaignSheet: View {
                     Button { showCreateSheet = true } label: {
                         HStack(spacing: 7) {
                             Image(systemName: "plus.circle.fill")
-                                .font(.system(size: 13, weight: .bold))
+                                .font(.appScaled(size: 13, weight: .bold))
                             Text("Opprett ny kampanje")
-                                .font(.system(size: 12, weight: .bold))
+                                .font(.appScaled(size: 12, weight: .bold))
                         }
                         .foregroundStyle(MABrand.purpleLight)
                         .padding(.vertical, 11)
@@ -961,16 +961,16 @@ struct AddToCampaignSheet: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 9).fill(meeting.iconColor.opacity(0.22))
                 Image(systemName: meeting.icon)
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(meeting.iconColor)
             }
             .frame(width: 36, height: 36)
             VStack(alignment: .leading, spacing: 2) {
                 Text(meeting.company)
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Text("Velg én eller flere kampanjer å legge leadet i")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(MABrand.textSecondary)
             }
             Spacer()
@@ -983,15 +983,15 @@ struct AddToCampaignSheet: View {
     private var searchBar: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(MABrand.textSecondary)
             ZStack(alignment: .leading) {
                 TextField("", text: $search)
                     .foregroundStyle(.white)
-                    .font(.system(size: 13))
+                    .font(.appScaled(size: 13))
                 if search.isEmpty {
                     Text("Søk kampanje…")
-                        .font(.system(size: 13))
+                        .font(.appScaled(size: 13))
                         .foregroundStyle(MABrand.textTertiary)
                         .allowsHitTesting(false)
                 }
@@ -1013,38 +1013,38 @@ struct AddToCampaignSheet: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: 9).fill(c.kind.color.opacity(0.22))
                     Image(systemName: c.kind.icon)
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(c.kind.color)
                 }
                 .frame(width: 38, height: 38)
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 5) {
                         Text(c.name)
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.appScaled(size: 12, weight: .bold))
                             .foregroundStyle(.white)
                             .lineLimit(1)
                         // Status-pill
                         Text(c.status.rawValue)
-                            .font(.system(size: 8, weight: .black))
+                            .font(.appScaled(size: 8, weight: .black))
                             .foregroundStyle(c.status.color)
                             .padding(.horizontal, 5).padding(.vertical, 1)
                             .background(c.status.color.opacity(0.18), in: Capsule())
                     }
                     HStack(spacing: 5) {
                         Text("\(c.leadsCount) leads")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.appScaled(size: 10, weight: .semibold))
                             .foregroundStyle(MABrand.textSecondary)
                             .monospacedDigit()
                         Text("·").foregroundStyle(MABrand.textTertiary)
                         if c.valueNok > 0 {
                             Text("NOK \(c.valueNok/1000)k")
-                                .font(.system(size: 10, weight: .bold, design: .rounded))
+                                .font(.appScaled(size: 10, weight: .bold, design: .rounded))
                                 .foregroundStyle(MABrand.green)
                                 .monospacedDigit()
                             Text("·").foregroundStyle(MABrand.textTertiary)
                         }
                         Text(c.endDate)
-                            .font(.system(size: 10))
+                            .font(.appScaled(size: 10))
                             .foregroundStyle(MABrand.textTertiary)
                     }
                 }
@@ -1055,7 +1055,7 @@ struct AddToCampaignSheet: View {
                         .overlay(RoundedRectangle(cornerRadius: 6).stroke(isSelected ? MABrand.purple : MABrand.stroke, lineWidth: 1.5))
                     if isSelected {
                         Image(systemName: "checkmark")
-                            .font(.system(size: 11, weight: .black))
+                            .font(.appScaled(size: 11, weight: .black))
                             .foregroundStyle(.white)
                     }
                 }
@@ -1076,11 +1076,11 @@ struct AddToCampaignSheet: View {
         Button { dismiss() } label: {
             HStack(spacing: 6) {
                 Image(systemName: "megaphone.fill")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                 Text(selectedIDs.isEmpty
                      ? "Velg minst én kampanje"
                      : "Legg til i \(selectedIDs.count) kampanje\(selectedIDs.count == 1 ? "" : "r")")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
             }
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)
@@ -1210,7 +1210,7 @@ struct CreateCampaignSheet: View {
     private var templatePicker: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Start fra mal")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(MABrand.textSecondary)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 9) {
@@ -1254,23 +1254,23 @@ struct CreateCampaignSheet: View {
                     ZStack {
                         Circle().fill(t.color.opacity(isSelected ? 0.35 : 0.18))
                         Image(systemName: t.icon)
-                            .font(.system(size: 13, weight: .bold))
+                            .font(.appScaled(size: 13, weight: .bold))
                             .foregroundStyle(t.color)
                     }
                     .frame(width: 34, height: 34)
                     Spacer()
                     if isSelected {
                         Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 14, weight: .bold))
+                            .font(.appScaled(size: 14, weight: .bold))
                             .foregroundStyle(t.color)
                     }
                 }
                 Text(t.rawValue)
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
                 Text(t.beskrivelse)
-                    .font(.system(size: 10))
+                    .font(.appScaled(size: 10))
                     .foregroundStyle(MABrand.textSecondary)
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
@@ -1293,18 +1293,18 @@ struct CreateCampaignSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Navn")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(MABrand.textSecondary)
                 ZStack(alignment: .leading) {
                     TextField("", text: $name)
                         .foregroundStyle(.white)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.appScaled(size: 14, weight: .semibold))
                         .padding(.horizontal, 12).padding(.vertical, 12)
                         .background(MABrand.card, in: RoundedRectangle(cornerRadius: 11))
                         .overlay(RoundedRectangle(cornerRadius: 11).stroke(MABrand.stroke, lineWidth: 1))
                     if name.isEmpty {
                         Text("F.eks. Q3 ERP-løft")
-                            .font(.system(size: 14))
+                            .font(.appScaled(size: 14))
                             .foregroundStyle(MABrand.textTertiary)
                             .padding(.horizontal, 15)
                             .allowsHitTesting(false)
@@ -1313,7 +1313,7 @@ struct CreateCampaignSheet: View {
             }
             VStack(alignment: .leading, spacing: 6) {
                 Text("Type")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(MABrand.textSecondary)
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 7) {
                     ForEach(AddToCampaignSheet.Campaign.Kind.allCases, id: \.self) { k in
@@ -1331,10 +1331,10 @@ struct CreateCampaignSheet: View {
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: k.icon)
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(isSelected ? .white : k.color)
                 Text(k.rawValue)
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
                 Spacer()
@@ -1354,20 +1354,20 @@ struct CreateCampaignSheet: View {
     private var descriptionCard: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Beskrivelse")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(MABrand.textSecondary)
             ZStack(alignment: .topLeading) {
                 TextEditor(text: $description)
                     .scrollContentBackground(.hidden)
                     .foregroundStyle(.white)
-                    .font(.system(size: 12))
+                    .font(.appScaled(size: 12))
                     .frame(minHeight: 80)
                     .padding(8)
                     .background(MABrand.card, in: RoundedRectangle(cornerRadius: 11))
                     .overlay(RoundedRectangle(cornerRadius: 11).stroke(MABrand.stroke, lineWidth: 1))
                 if description.isEmpty {
                     Text("Kort beskrivelse av målgruppe og budskap…")
-                        .font(.system(size: 12))
+                        .font(.appScaled(size: 12))
                         .foregroundStyle(MABrand.textTertiary)
                         .padding(.horizontal, 12).padding(.vertical, 14)
                         .allowsHitTesting(false)
@@ -1382,7 +1382,7 @@ struct CreateCampaignSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("Varighet")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(MABrand.textSecondary)
                 Spacer()
                 Toggle("", isOn: $hasEndDate)
@@ -1396,7 +1396,7 @@ struct CreateCampaignSheet: View {
                     .colorScheme(.dark)
                 if hasEndDate {
                     Text("→")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(MABrand.textTertiary)
                     DatePicker("Slutt", selection: $endDate, in: startDate..., displayedComponents: .date)
                         .datePickerStyle(.compact)
@@ -1404,7 +1404,7 @@ struct CreateCampaignSheet: View {
                         .colorScheme(.dark)
                 } else {
                     Text("Løpende")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appScaled(size: 12, weight: .bold))
                         .foregroundStyle(MABrand.green)
                         .padding(.horizontal, 9).padding(.vertical, 5)
                         .background(MABrand.green.opacity(0.18), in: Capsule())
@@ -1421,7 +1421,7 @@ struct CreateCampaignSheet: View {
     private var segmentCard: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Mål-segment")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(MABrand.textSecondary)
             HStack(spacing: 6) {
                 ForEach(SegmentMode.allCases, id: \.self) { mode in
@@ -1430,9 +1430,9 @@ struct CreateCampaignSheet: View {
                     } label: {
                         HStack(spacing: 4) {
                             Image(systemName: mode.icon)
-                                .font(.system(size: 9, weight: .bold))
+                                .font(.appScaled(size: 9, weight: .bold))
                             Text(mode.rawValue)
-                                .font(.system(size: 10, weight: .bold))
+                                .font(.appScaled(size: 10, weight: .bold))
                         }
                         .foregroundStyle(segmentMode == mode ? .white : MABrand.purpleLight)
                         .padding(.horizontal, 8).padding(.vertical, 6)
@@ -1459,14 +1459,14 @@ struct CreateCampaignSheet: View {
         case .auto:
             HStack(spacing: 9) {
                 Image(systemName: "sparkles")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(MABrand.purpleLight)
                 VStack(alignment: .leading, spacing: 1) {
                     Text("AI velger leads basert på kampanje-type")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(.white)
                     Text("~120 leads · pipeline-stage: discovery + demo")
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(MABrand.textSecondary)
                 }
                 Spacer()
@@ -1475,7 +1475,7 @@ struct CreateCampaignSheet: View {
             HStack(spacing: 6) {
                 ForEach(["Elektro", "Bygg", "VVS", "IT"], id: \.self) { b in
                     Text(b)
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.appScaled(size: 10, weight: .bold))
                         .foregroundStyle(MABrand.purpleLight)
                         .padding(.horizontal, 8).padding(.vertical, 4)
                         .background(MABrand.purple.opacity(0.15), in: Capsule())
@@ -1485,13 +1485,13 @@ struct CreateCampaignSheet: View {
             ZStack(alignment: .leading) {
                 TextField("", text: $manualSegment)
                     .foregroundStyle(.white)
-                    .font(.system(size: 12))
+                    .font(.appScaled(size: 12))
                     .padding(10)
                     .background(MABrand.cardHi, in: RoundedRectangle(cornerRadius: 9))
                     .overlay(RoundedRectangle(cornerRadius: 9).stroke(MABrand.stroke, lineWidth: 1))
                 if manualSegment.isEmpty {
                     Text("Skriv lead-navn separert med komma…")
-                        .font(.system(size: 12))
+                        .font(.appScaled(size: 12))
                         .foregroundStyle(MABrand.textTertiary)
                         .padding(.horizontal, 13)
                         .allowsHitTesting(false)
@@ -1500,10 +1500,10 @@ struct CreateCampaignSheet: View {
         case .allLeads:
             HStack {
                 Image(systemName: "info.circle.fill")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(MABrand.orange)
                 Text("Sender til ALLE 1 248 leads — krever godkjenning")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.appScaled(size: 10, weight: .semibold))
                     .foregroundStyle(MABrand.orange)
             }
         }
@@ -1515,11 +1515,11 @@ struct CreateCampaignSheet: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("Forventet verdi")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(MABrand.textSecondary)
                 Spacer()
                 Text("NOK \(Int(expectedValueK)) 000")
-                    .font(.system(size: 14, weight: .black, design: .rounded))
+                    .font(.appScaled(size: 14, weight: .black, design: .rounded))
                     .foregroundStyle(MABrand.green)
                     .monospacedDigit()
             }
@@ -1527,11 +1527,11 @@ struct CreateCampaignSheet: View {
                 .tint(MABrand.purple)
             HStack {
                 Text("0 kr")
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(.appScaled(size: 9, weight: .semibold))
                     .foregroundStyle(MABrand.textTertiary)
                 Spacer()
                 Text("5 mill")
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(.appScaled(size: 9, weight: .semibold))
                     .foregroundStyle(MABrand.textTertiary)
             }
         }
@@ -1546,7 +1546,7 @@ struct CreateCampaignSheet: View {
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 5) {
                 Text("Eier")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(MABrand.textSecondary)
                 Menu {
                     Button("Lars Kristensen") { owner = "Lars Kristensen" }
@@ -1558,16 +1558,16 @@ struct CreateCampaignSheet: View {
                         ZStack {
                             Circle().fill(MABrand.purple.opacity(0.35))
                             Text(initials(owner))
-                                .font(.system(size: 10, weight: .black))
+                                .font(.appScaled(size: 10, weight: .black))
                                 .foregroundStyle(.white)
                         }
                         .frame(width: 26, height: 26)
                         Text(owner)
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.appScaled(size: 12, weight: .bold))
                             .foregroundStyle(.white)
                             .lineLimit(1)
                         Image(systemName: "chevron.down")
-                            .font(.system(size: 8, weight: .bold))
+                            .font(.appScaled(size: 8, weight: .bold))
                             .foregroundStyle(MABrand.textTertiary)
                     }
                     .padding(10)
@@ -1578,7 +1578,7 @@ struct CreateCampaignSheet: View {
             }
             VStack(alignment: .leading, spacing: 5) {
                 Text("Status")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(MABrand.textSecondary)
                 HStack(spacing: 5) {
                     statusPill(.active)
@@ -1599,7 +1599,7 @@ struct CreateCampaignSheet: View {
             withAnimation(.easeInOut(duration: 0.15)) { status = s }
         } label: {
             Text(s.rawValue)
-                .font(.system(size: 11, weight: .bold))
+                .font(.appScaled(size: 11, weight: .bold))
                 .foregroundStyle(isSelected ? .white : s.color)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 10)
@@ -1620,16 +1620,16 @@ struct CreateCampaignSheet: View {
                 ZStack {
                     Circle().fill(MABrand.green.opacity(0.22))
                     Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appScaled(size: 12, weight: .bold))
                         .foregroundStyle(MABrand.green)
                 }
                 .frame(width: 30, height: 30)
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Legg til \(seedLeadCompany) i kampanjen")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
                     Text("Auto-aktiverer kampanjen for dette leadet")
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(MABrand.textSecondary)
                 }
             }
@@ -1646,9 +1646,9 @@ struct CreateCampaignSheet: View {
         Button { dismiss() } label: {
             HStack(spacing: 6) {
                 Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                 Text(canSave ? "Opprett kampanje" : "Skriv inn navn først")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
             }
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)

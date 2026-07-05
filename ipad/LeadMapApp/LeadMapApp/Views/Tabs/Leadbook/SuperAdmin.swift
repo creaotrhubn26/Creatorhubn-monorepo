@@ -343,8 +343,8 @@ struct SuperAdminDashboard: View {
                     } label: {
                         HStack(spacing: 5) {
                             Image(systemName: "arrow.uturn.backward")
-                                .font(.system(size: 11, weight: .bold))
-                            Text("Tilbake til kundeapp").font(.system(size: 12, weight: .semibold))
+                                .font(.appScaled(size: 11, weight: .bold))
+                            Text("Tilbake til kundeapp").font(.appScaled(size: 12, weight: .semibold))
                         }
                         .foregroundStyle(LBrand.purpleLight)
                         .padding(.horizontal, 11).padding(.vertical, 6)
@@ -357,8 +357,8 @@ struct SuperAdminDashboard: View {
                     HStack(spacing: 8) {
                         Button { showDemoMode = true } label: {
                             HStack(spacing: 5) {
-                                Image(systemName: "eye.fill").font(.system(size: 11, weight: .bold))
-                                Text("Demo-modus").font(.system(size: 11, weight: .bold))
+                                Image(systemName: "eye.fill").font(.appScaled(size: 11, weight: .bold))
+                                Text("Demo-modus").font(.appScaled(size: 11, weight: .bold))
                             }
                             .foregroundStyle(.white)
                             .padding(.horizontal, 10).padding(.vertical, 6)
@@ -376,7 +376,7 @@ struct SuperAdminDashboard: View {
                             Button {} label: { Label("Audit-logg (alle orgs)", systemImage: "clock.arrow.circlepath") }
                         } label: {
                             Image(systemName: "ellipsis.circle")
-                                .font(.system(size: 16, weight: .semibold))
+                                .font(.appScaled(size: 16, weight: .semibold))
                                 .foregroundStyle(LBrand.orange)
                         }
                     }
@@ -398,16 +398,16 @@ struct SuperAdminDashboard: View {
         HStack(spacing: 10) {
             ZStack {
                 Circle().fill(LBrand.orange.opacity(0.28))
-                Image(systemName: "crown.fill").font(.system(size: 12, weight: .black))
+                Image(systemName: "crown.fill").font(.appScaled(size: 12, weight: .black))
                     .foregroundStyle(LBrand.orange)
             }
             .frame(width: 30, height: 30)
             VStack(alignment: .leading, spacing: 1) {
                 Text("DU ER LEADGRID-ANSATT")
-                    .font(.system(size: 9, weight: .black))
+                    .font(.appScaled(size: 9, weight: .black))
                     .foregroundStyle(LBrand.orange).tracking(0.8)
                 Text("Du ser data på tvers av alle kunde-organisasjoner. Alt du gjør logges i audit-trail.")
-                    .font(.system(size: 11)).foregroundStyle(LBrand.textSecondary)
+                    .font(.appScaled(size: 11)).foregroundStyle(LBrand.textSecondary)
             }
             Spacer()
         }
@@ -429,12 +429,12 @@ struct SuperAdminDashboard: View {
     private func kpiTile(_ label: String, _ value: String, _ icon: String, _ tint: Color) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 6) {
-                Image(systemName: icon).font(.system(size: 11, weight: .bold)).foregroundStyle(tint)
-                Text(label.uppercased()).font(.system(size: 9, weight: .black))
+                Image(systemName: icon).font(.appScaled(size: 11, weight: .bold)).foregroundStyle(tint)
+                Text(label.uppercased()).font(.appScaled(size: 9, weight: .black))
                     .foregroundStyle(LBrand.textTertiary).tracking(0.6)
                     .lineLimit(1).minimumScaleFactor(0.8)
             }
-            Text(value).font(.system(size: 20, weight: .heavy, design: .rounded))
+            Text(value).font(.appScaled(size: 20, weight: .heavy, design: .rounded))
                 .foregroundStyle(.white).lineLimit(1).minimumScaleFactor(0.7)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -464,11 +464,11 @@ struct SuperAdminDashboard: View {
                 }
             } label: {
                 HStack(spacing: 6) {
-                    Image(systemName: sort.icon).font(.system(size: 11, weight: .bold))
+                    Image(systemName: sort.icon).font(.appScaled(size: 11, weight: .bold))
                         .foregroundStyle(LBrand.orange)
-                    Text(sort.rawValue).font(.system(size: 12, weight: .semibold))
+                    Text(sort.rawValue).font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
-                    Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold))
+                    Image(systemName: "chevron.down").font(.appScaled(size: 9, weight: .semibold))
                         .foregroundStyle(LBrand.textTertiary)
                 }
                 .padding(.horizontal, 12).padding(.vertical, 10)
@@ -480,7 +480,7 @@ struct SuperAdminDashboard: View {
 
     private var filterChips: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("PLAN").font(.system(size: 9, weight: .black))
+            Text("PLAN").font(.appScaled(size: 9, weight: .black))
                 .foregroundStyle(LBrand.textTertiary).tracking(0.6)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
@@ -490,7 +490,7 @@ struct SuperAdminDashboard: View {
                     }
                 }
             }
-            Text("FAKTURERING").font(.system(size: 9, weight: .black))
+            Text("FAKTURERING").font(.appScaled(size: 9, weight: .black))
                 .foregroundStyle(LBrand.textTertiary).tracking(0.6)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
@@ -507,7 +507,7 @@ struct SuperAdminDashboard: View {
     private func planChip(_ p: SubscriptionPlan?, label: String, tint: Color) -> some View {
         let active = planFilter == p
         return Button { planFilter = active ? nil : p } label: {
-            Text(label).font(.system(size: 11, weight: .semibold))
+            Text(label).font(.appScaled(size: 11, weight: .semibold))
                 .foregroundStyle(active ? .white : LBrand.textSecondary)
                 .padding(.horizontal, 11).padding(.vertical, 6)
                 .background(active ? tint.opacity(0.28) : LBrand.cardHi, in: Capsule())
@@ -518,7 +518,7 @@ struct SuperAdminDashboard: View {
     private func billingChip(_ b: Organization.BillingStatus?, label: String, tint: Color) -> some View {
         let active = billingFilter == b
         return Button { billingFilter = active ? nil : b } label: {
-            Text(label).font(.system(size: 11, weight: .semibold))
+            Text(label).font(.appScaled(size: 11, weight: .semibold))
                 .foregroundStyle(active ? .white : LBrand.textSecondary)
                 .padding(.horizontal, 11).padding(.vertical, 6)
                 .background(active ? tint.opacity(0.28) : LBrand.cardHi, in: Capsule())
@@ -540,25 +540,25 @@ struct SuperAdminDashboard: View {
                 HStack(spacing: 12) {
                     ZStack {
                         RoundedRectangle(cornerRadius: 10).fill(org.logoColor.opacity(0.22))
-                        Image(systemName: org.logo).font(.system(size: 17, weight: .bold))
+                        Image(systemName: org.logo).font(.appScaled(size: 17, weight: .bold))
                             .foregroundStyle(org.logoColor)
                     }
                     .frame(width: 44, height: 44)
                     VStack(alignment: .leading, spacing: 3) {
                         Text(org.name)
-                            .font(.system(size: 15, weight: .bold))
+                            .font(.appScaled(size: 15, weight: .bold))
                             .foregroundStyle(.white).lineLimit(1)
                         HStack(spacing: 5) {
-                            Text(org.domain).font(.system(size: 10)).foregroundStyle(LBrand.textSecondary)
+                            Text(org.domain).font(.appScaled(size: 10)).foregroundStyle(LBrand.textSecondary)
                             Text("·").foregroundStyle(LBrand.textTertiary)
-                            Text(org.industry).font(.system(size: 10)).foregroundStyle(LBrand.textSecondary)
+                            Text(org.industry).font(.appScaled(size: 10)).foregroundStyle(LBrand.textSecondary)
                         }
                     }
                     Spacer()
                     HStack(spacing: 5) {
                         Circle().fill(org.billingStatus.color).frame(width: 6, height: 6)
                         Text(org.billingStatus.rawValue.uppercased())
-                            .font(.system(size: 8, weight: .black))
+                            .font(.appScaled(size: 8, weight: .black))
                             .foregroundStyle(org.billingStatus.color).tracking(0.5)
                     }
                     .padding(.horizontal, 7).padding(.vertical, 3)
@@ -567,14 +567,14 @@ struct SuperAdminDashboard: View {
                 }
                 HStack(spacing: 6) {
                     Text(org.plan.rawValue.uppercased())
-                        .font(.system(size: 9, weight: .black))
+                        .font(.appScaled(size: 9, weight: .black))
                         .foregroundStyle(org.plan.tint).tracking(0.6)
                         .padding(.horizontal, 7).padding(.vertical, 3)
                         .background(org.plan.tint.opacity(0.18), in: Capsule())
                         .overlay(Capsule().stroke(org.plan.tint.opacity(0.4), lineWidth: 1))
                     Spacer()
                     Text("\(org.monthlySpend / 1000) k/mnd")
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .font(.appScaled(size: 12, weight: .bold, design: .rounded))
                         .foregroundStyle(LBrand.green)
                 }
                 HStack(spacing: 14) {
@@ -593,10 +593,10 @@ struct SuperAdminDashboard: View {
 
     private func miniStat(icon: String, value: String, label: String) -> some View {
         HStack(spacing: 5) {
-            Image(systemName: icon).font(.system(size: 9, weight: .bold))
+            Image(systemName: icon).font(.appScaled(size: 9, weight: .bold))
                 .foregroundStyle(LBrand.textTertiary)
-            Text(value).font(.system(size: 11, weight: .bold)).foregroundStyle(.white)
-            Text(label).font(.system(size: 10)).foregroundStyle(LBrand.textSecondary)
+            Text(value).font(.appScaled(size: 11, weight: .bold)).foregroundStyle(.white)
+            Text(label).font(.appScaled(size: 10)).foregroundStyle(LBrand.textSecondary)
         }
     }
 
@@ -659,7 +659,7 @@ struct OrgDetailSheet: View {
                     VStack {
                         Spacer().frame(height: 80)
                         Label(t, systemImage: "checkmark.circle.fill")
-                            .font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
+                            .font(.appScaled(size: 12, weight: .bold)).foregroundStyle(.white)
                             .padding(.horizontal, 12).padding(.vertical, 8)
                             .background(LBrand.green, in: Capsule())
                         Spacer()
@@ -682,7 +682,7 @@ struct OrgDetailSheet: View {
                         Button(role: .destructive) {} label: { Label("Suspender org", systemImage: "pause.circle.fill") }
                     } label: {
                         Image(systemName: "ellipsis.circle")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.appScaled(size: 16, weight: .semibold))
                             .foregroundStyle(LBrand.orange)
                     }
                 }
@@ -712,19 +712,19 @@ struct OrgDetailSheet: View {
             HStack(spacing: 14) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 12).fill(org.logoColor.opacity(0.22))
-                    Image(systemName: org.logo).font(.system(size: 22, weight: .bold))
+                    Image(systemName: org.logo).font(.appScaled(size: 22, weight: .bold))
                         .foregroundStyle(org.logoColor)
                 }
                 .frame(width: 56, height: 56)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(org.name).font(.system(size: 18, weight: .heavy)).foregroundStyle(.white)
+                    Text(org.name).font(.appScaled(size: 18, weight: .heavy)).foregroundStyle(.white)
                     HStack(spacing: 6) {
-                        Image(systemName: "globe").font(.system(size: 9))
-                        Text(org.domain).font(.system(size: 11))
+                        Image(systemName: "globe").font(.appScaled(size: 9))
+                        Text(org.domain).font(.appScaled(size: 11))
                         Text("·").foregroundStyle(LBrand.textTertiary)
-                        Text(org.industry).font(.system(size: 11))
+                        Text(org.industry).font(.appScaled(size: 11))
                         Text("·").foregroundStyle(LBrand.textTertiary)
-                        Text(org.country).font(.system(size: 11))
+                        Text(org.country).font(.appScaled(size: 11))
                     }
                     .foregroundStyle(LBrand.textSecondary)
                 }
@@ -742,8 +742,8 @@ struct OrgDetailSheet: View {
 
     private func heroBadge(_ text: String, tint: Color, icon: String) -> some View {
         HStack(spacing: 4) {
-            Image(systemName: icon).font(.system(size: 9, weight: .bold))
-            Text(text).font(.system(size: 10, weight: .bold))
+            Image(systemName: icon).font(.appScaled(size: 9, weight: .bold))
+            Text(text).font(.appScaled(size: 10, weight: .bold))
         }
         .foregroundStyle(tint)
         .padding(.horizontal, 9).padding(.vertical, 4)
@@ -756,8 +756,8 @@ struct OrgDetailSheet: View {
             ForEach(Tab.allCases) { t in
                 Button { withAnimation(.easeInOut(duration: 0.15)) { tab = t } } label: {
                     HStack(spacing: 6) {
-                        Image(systemName: t.icon).font(.system(size: 11, weight: .bold))
-                        Text(t.rawValue).font(.system(size: 12, weight: tab == t ? .bold : .semibold))
+                        Image(systemName: t.icon).font(.appScaled(size: 11, weight: .bold))
+                        Text(t.rawValue).font(.appScaled(size: 12, weight: tab == t ? .bold : .semibold))
                     }
                     .foregroundStyle(tab == t ? .white : LBrand.textSecondary)
                     .padding(.horizontal, 12).padding(.vertical, 8)
@@ -785,8 +785,8 @@ struct OrgDetailSheet: View {
                 Button { showImpersonate = true } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "person.badge.shield.exclamationmark.fill")
-                            .font(.system(size: 12, weight: .bold))
-                        Text("Logg inn som org-admin").font(.system(size: 13, weight: .bold))
+                            .font(.appScaled(size: 12, weight: .bold))
+                        Text("Logg inn som org-admin").font(.appScaled(size: 13, weight: .bold))
                     }
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity).padding(.vertical, 12)
@@ -795,8 +795,8 @@ struct OrgDetailSheet: View {
                 Button { showPlanChange = true } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "arrow.up.right.circle.fill")
-                            .font(.system(size: 12, weight: .bold))
-                        Text("Endre plan").font(.system(size: 13, weight: .bold))
+                            .font(.appScaled(size: 12, weight: .bold))
+                        Text("Endre plan").font(.appScaled(size: 13, weight: .bold))
                     }
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity).padding(.vertical, 12)
@@ -805,10 +805,10 @@ struct OrgDetailSheet: View {
                 }.buttonStyle(.plain)
             }
             VStack(alignment: .leading, spacing: 8) {
-                Text("NOTATER (KUN LEADGRID-INTERN)").font(.system(size: 9, weight: .black))
+                Text("NOTATER (KUN LEADGRID-INTERN)").font(.appScaled(size: 9, weight: .black))
                     .foregroundStyle(LBrand.textTertiary).tracking(0.6)
                 Text(org.notes)
-                    .font(.system(size: 12)).foregroundStyle(.white)
+                    .font(.appScaled(size: 12)).foregroundStyle(.white)
                     .padding(12)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(LBrand.orange.opacity(0.06), in: RoundedRectangle(cornerRadius: 11))
@@ -824,11 +824,11 @@ struct OrgDetailSheet: View {
     private func statBox(_ label: String, _ value: String, _ icon: String, _ tint: Color) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 5) {
-                Image(systemName: icon).font(.system(size: 10, weight: .bold)).foregroundStyle(tint)
-                Text(label.uppercased()).font(.system(size: 8, weight: .black))
+                Image(systemName: icon).font(.appScaled(size: 10, weight: .bold)).foregroundStyle(tint)
+                Text(label.uppercased()).font(.appScaled(size: 8, weight: .black))
                     .foregroundStyle(LBrand.textTertiary).tracking(0.6).lineLimit(1)
             }
-            Text(value).font(.system(size: 16, weight: .heavy, design: .rounded))
+            Text(value).font(.appScaled(size: 16, weight: .heavy, design: .rounded))
                 .foregroundStyle(.white).lineLimit(1).minimumScaleFactor(0.7)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -851,12 +851,12 @@ struct OrgDetailSheet: View {
         HStack(spacing: 12) {
             ZStack {
                 Circle().fill(tint.opacity(0.22))
-                Image(systemName: icon).font(.system(size: 11, weight: .bold)).foregroundStyle(tint)
+                Image(systemName: icon).font(.appScaled(size: 11, weight: .bold)).foregroundStyle(tint)
             }
             .frame(width: 30, height: 30)
             VStack(alignment: .leading, spacing: 2) {
-                Text(label).font(.system(size: 11)).foregroundStyle(LBrand.textSecondary)
-                Text(value).font(.system(size: 13, weight: .semibold)).foregroundStyle(.white)
+                Text(label).font(.appScaled(size: 11)).foregroundStyle(LBrand.textSecondary)
+                Text(value).font(.appScaled(size: 13, weight: .semibold)).foregroundStyle(.white)
             }
             Spacer()
         }
@@ -869,16 +869,16 @@ struct OrgDetailSheet: View {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("FUNKSJONS-TILGANG")
-                        .font(.system(size: 10, weight: .black))
+                        .font(.appScaled(size: 10, weight: .black))
                         .foregroundStyle(LBrand.textTertiary).tracking(0.8)
                     Text("Hvilke Leadgrid-funksjoner organisasjonen kan bruke")
-                        .font(.system(size: 11)).foregroundStyle(LBrand.textSecondary)
+                        .font(.appScaled(size: 11)).foregroundStyle(LBrand.textSecondary)
                 }
                 Spacer()
                 Button { showEntitlementMatrix = true } label: {
                     HStack(spacing: 5) {
-                        Image(systemName: "slider.horizontal.3").font(.system(size: 11, weight: .bold))
-                        Text("Rediger").font(.system(size: 12, weight: .bold))
+                        Image(systemName: "slider.horizontal.3").font(.appScaled(size: 11, weight: .bold))
+                        Text("Rediger").font(.appScaled(size: 12, weight: .bold))
                     }
                     .foregroundStyle(.white)
                     .padding(.horizontal, 12).padding(.vertical, 8)
@@ -895,11 +895,11 @@ struct OrgDetailSheet: View {
                     let count = org.entitlements.filter { $0.state == s }.count
                     VStack(spacing: 3) {
                         HStack(spacing: 4) {
-                            Image(systemName: s.icon).font(.system(size: 10, weight: .bold))
-                            Text("\(count)").font(.system(size: 14, weight: .heavy, design: .rounded))
+                            Image(systemName: s.icon).font(.appScaled(size: 10, weight: .bold))
+                            Text("\(count)").font(.appScaled(size: 14, weight: .heavy, design: .rounded))
                         }
                         .foregroundStyle(s.color)
-                        Text(s.rawValue.uppercased()).font(.system(size: 8, weight: .black))
+                        Text(s.rawValue.uppercased()).font(.appScaled(size: 8, weight: .black))
                             .foregroundStyle(LBrand.textTertiary).tracking(0.6)
                     }
                     .frame(maxWidth: .infinity)
@@ -916,7 +916,7 @@ struct OrgDetailSheet: View {
                         HStack(spacing: 6) {
                             Image(systemName: g.icon).foregroundStyle(g.tint)
                             Text(g.rawValue.uppercased())
-                                .font(.system(size: 10, weight: .black))
+                                .font(.appScaled(size: 10, weight: .black))
                                 .foregroundStyle(g.tint).tracking(0.6)
                         }
                         VStack(spacing: 6) {
@@ -932,19 +932,19 @@ struct OrgDetailSheet: View {
         HStack(spacing: 10) {
             ZStack {
                 RoundedRectangle(cornerRadius: 7).fill(e.state.color.opacity(0.18))
-                Image(systemName: e.feature.icon).font(.system(size: 11, weight: .bold))
+                Image(systemName: e.feature.icon).font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(e.state.color)
             }
             .frame(width: 28, height: 28)
             VStack(alignment: .leading, spacing: 1) {
-                Text(e.feature.rawValue).font(.system(size: 12, weight: .semibold)).foregroundStyle(.white)
+                Text(e.feature.rawValue).font(.appScaled(size: 12, weight: .semibold)).foregroundStyle(.white)
                 if let limit = e.monthlyLimit {
                     HStack(spacing: 4) {
                         Text("\(e.currentUsage) / \(limit) brukt")
-                            .font(.system(size: 9))
+                            .font(.appScaled(size: 9))
                             .foregroundStyle(LBrand.textTertiary)
                         if e.currentUsage > Int(Double(limit) * 0.8) {
-                            Text("· nær grense").font(.system(size: 9, weight: .bold))
+                            Text("· nær grense").font(.appScaled(size: 9, weight: .bold))
                                 .foregroundStyle(LBrand.orange)
                         }
                     }
@@ -952,8 +952,8 @@ struct OrgDetailSheet: View {
             }
             Spacer()
             HStack(spacing: 4) {
-                Image(systemName: e.state.icon).font(.system(size: 9, weight: .bold))
-                Text(e.state.rawValue).font(.system(size: 10, weight: .bold))
+                Image(systemName: e.state.icon).font(.appScaled(size: 9, weight: .bold))
+                Text(e.state.rawValue).font(.appScaled(size: 10, weight: .bold))
             }
             .foregroundStyle(e.state.color)
             .padding(.horizontal, 7).padding(.vertical, 3)
@@ -975,7 +975,7 @@ struct OrgDetailSheet: View {
             }
             VStack(alignment: .leading, spacing: 10) {
                 Text("STRIPE-INTEGRASJON")
-                    .font(.system(size: 10, weight: .black))
+                    .font(.appScaled(size: 10, weight: .black))
                     .foregroundStyle(LBrand.textTertiary).tracking(0.8)
                 VStack(spacing: 8) {
                     stripeRow("Customer-ID", value: "cus_NXR9bK8mY3", icon: "person.badge.key.fill")
@@ -990,8 +990,8 @@ struct OrgDetailSheet: View {
             HStack(spacing: 10) {
                 Button {} label: {
                     HStack(spacing: 5) {
-                        Image(systemName: "doc.text.fill").font(.system(size: 11, weight: .bold))
-                        Text("Send manuell faktura").font(.system(size: 12, weight: .bold))
+                        Image(systemName: "doc.text.fill").font(.appScaled(size: 11, weight: .bold))
+                        Text("Send manuell faktura").font(.appScaled(size: 12, weight: .bold))
                     }
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity).padding(.vertical, 11)
@@ -1000,8 +1000,8 @@ struct OrgDetailSheet: View {
                 }.buttonStyle(.plain)
                 Button {} label: {
                     HStack(spacing: 5) {
-                        Image(systemName: "arrow.up.right.square.fill").font(.system(size: 11, weight: .bold))
-                        Text("Åpne i Stripe").font(.system(size: 12, weight: .bold))
+                        Image(systemName: "arrow.up.right.square.fill").font(.appScaled(size: 11, weight: .bold))
+                        Text("Åpne i Stripe").font(.appScaled(size: 12, weight: .bold))
                     }
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity).padding(.vertical, 11)
@@ -1017,11 +1017,11 @@ struct OrgDetailSheet: View {
 
     private func stripeRow(_ label: String, value: String, icon: String) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: icon).font(.system(size: 11, weight: .bold))
+            Image(systemName: icon).font(.appScaled(size: 11, weight: .bold))
                 .foregroundStyle(LBrand.purpleLight).frame(width: 18)
             VStack(alignment: .leading, spacing: 1) {
-                Text(label).font(.system(size: 10)).foregroundStyle(LBrand.textSecondary)
-                Text(value).font(.system(size: 12, weight: .semibold, design: .monospaced))
+                Text(label).font(.appScaled(size: 10)).foregroundStyle(LBrand.textSecondary)
+                Text(value).font(.appScaled(size: 12, weight: .semibold, design: .monospaced))
                     .foregroundStyle(.white)
             }
             Spacer()
@@ -1056,16 +1056,16 @@ struct OrgDetailSheet: View {
         HStack(alignment: .top, spacing: 11) {
             ZStack {
                 Circle().fill(tint.opacity(0.22))
-                Image(systemName: icon).font(.system(size: 11, weight: .bold)).foregroundStyle(tint)
+                Image(systemName: icon).font(.appScaled(size: 11, weight: .bold)).foregroundStyle(tint)
             }
             .frame(width: 30, height: 30)
             VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.system(size: 12)).foregroundStyle(.white)
+                Text(title).font(.appScaled(size: 12)).foregroundStyle(.white)
                 HStack(spacing: 5) {
-                    Image(systemName: "person.fill").font(.system(size: 8))
-                    Text(actor).font(.system(size: 10, weight: .semibold))
+                    Image(systemName: "person.fill").font(.appScaled(size: 8))
+                    Text(actor).font(.appScaled(size: 10, weight: .semibold))
                     Text("·").foregroundStyle(LBrand.textTertiary)
-                    Text(time).font(.system(size: 10))
+                    Text(time).font(.appScaled(size: 10))
                 }
                 .foregroundStyle(LBrand.textTertiary)
             }
@@ -1122,7 +1122,7 @@ struct EntitlementMatrixSheet: View {
                         onClose(org.entitlements)
                         dismiss()
                     } label: {
-                        Text("Lagre").font(.system(size: 14, weight: .bold))
+                        Text("Lagre").font(.appScaled(size: 14, weight: .bold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 14).padding(.vertical, 8)
                             .background(
@@ -1141,11 +1141,11 @@ struct EntitlementMatrixSheet: View {
             HStack(spacing: 7) {
                 Image(systemName: "checkmark.shield.fill").foregroundStyle(LBrand.orange)
                 Text("\(org.name.uppercased()) · TILGANGS-MATRISE")
-                    .font(.system(size: 10, weight: .black))
+                    .font(.appScaled(size: 10, weight: .black))
                     .foregroundStyle(LBrand.orange).tracking(0.8)
             }
             Text("Sett tilstand per funksjon. «Inkludert» = del av plan. «Tillegg» = addon m/ pris. «Trial» = tidsbegrenset. «Sperret» = ikke tilgang.")
-                .font(.system(size: 12)).foregroundStyle(LBrand.textSecondary)
+                .font(.appScaled(size: 12)).foregroundStyle(LBrand.textSecondary)
         }
     }
 
@@ -1154,7 +1154,7 @@ struct EntitlementMatrixSheet: View {
             HStack(spacing: 6) {
                 Image(systemName: g.icon).foregroundStyle(g.tint)
                 Text(g.rawValue.uppercased())
-                    .font(.system(size: 10, weight: .black))
+                    .font(.appScaled(size: 10, weight: .black))
                     .foregroundStyle(g.tint).tracking(0.6)
             }
             VStack(spacing: 6) {
@@ -1170,9 +1170,9 @@ struct EntitlementMatrixSheet: View {
     private func matrixRow(idx: Int) -> some View {
         let ent = org.entitlements[idx]
         return HStack(spacing: 10) {
-            Image(systemName: ent.feature.icon).font(.system(size: 11, weight: .bold))
+            Image(systemName: ent.feature.icon).font(.appScaled(size: 11, weight: .bold))
                 .foregroundStyle(ent.state.color).frame(width: 18)
-            Text(ent.feature.rawValue).font(.system(size: 12, weight: .semibold))
+            Text(ent.feature.rawValue).font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(.white).lineLimit(1).minimumScaleFactor(0.8)
             Spacer()
             HStack(spacing: 2) {
@@ -1181,7 +1181,7 @@ struct EntitlementMatrixSheet: View {
                         org.entitlements[idx].state = state
                         changed += 1
                     } label: {
-                        Image(systemName: state.icon).font(.system(size: 11, weight: .bold))
+                        Image(systemName: state.icon).font(.appScaled(size: 11, weight: .bold))
                             .foregroundStyle(ent.state == state ? .white : state.color.opacity(0.7))
                             .frame(width: 30, height: 28)
                             .background(ent.state == state ? state.color.opacity(0.32) : .clear, in: Capsule())
@@ -1217,41 +1217,41 @@ struct PlanChangeSheet: View {
                 LBrand.bg.ignoresSafeArea()
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
-                        Text("ENDRE PLAN").font(.system(size: 10, weight: .black))
+                        Text("ENDRE PLAN").font(.appScaled(size: 10, weight: .black))
                             .foregroundStyle(LBrand.textTertiary).tracking(0.8)
                         Text("Velg ny plan for \(org.name). Pris justeres pro-rata på neste faktura.")
-                            .font(.system(size: 13)).foregroundStyle(LBrand.textSecondary)
+                            .font(.appScaled(size: 13)).foregroundStyle(LBrand.textSecondary)
                         VStack(spacing: 10) {
                             ForEach(SubscriptionPlan.allCases) { p in
                                 Button { newPlan = p } label: {
                                     HStack(spacing: 12) {
                                         ZStack {
                                             Circle().fill(p.tint.opacity(0.22))
-                                            Image(systemName: "sparkles").font(.system(size: 13, weight: .bold))
+                                            Image(systemName: "sparkles").font(.appScaled(size: 13, weight: .bold))
                                                 .foregroundStyle(p.tint)
                                         }
                                         .frame(width: 36, height: 36)
                                         VStack(alignment: .leading, spacing: 2) {
                                             HStack(spacing: 7) {
-                                                Text(p.rawValue).font(.system(size: 14, weight: .bold))
+                                                Text(p.rawValue).font(.appScaled(size: 14, weight: .bold))
                                                     .foregroundStyle(.white)
                                                 if org.plan == p {
                                                     Text("NÅVÆRENDE")
-                                                        .font(.system(size: 8, weight: .black))
+                                                        .font(.appScaled(size: 8, weight: .black))
                                                         .foregroundStyle(LBrand.green).tracking(0.5)
                                                         .padding(.horizontal, 5).padding(.vertical, 1)
                                                         .background(LBrand.green.opacity(0.18), in: Capsule())
                                                 }
                                             }
-                                            Text(p.description).font(.system(size: 11))
+                                            Text(p.description).font(.appScaled(size: 11))
                                                 .foregroundStyle(LBrand.textSecondary).lineLimit(2)
                                             Text(p.monthlyPrice == 0 ? "Kontakt salg" : "\(p.monthlyPrice) kr/mnd")
-                                                .font(.system(size: 12, weight: .bold, design: .rounded))
+                                                .font(.appScaled(size: 12, weight: .bold, design: .rounded))
                                                 .foregroundStyle(LBrand.green)
                                         }
                                         Spacer()
                                         Image(systemName: newPlan == p ? "largecircle.fill.circle" : "circle")
-                                            .font(.system(size: 18))
+                                            .font(.appScaled(size: 18))
                                             .foregroundStyle(newPlan == p ? p.tint : LBrand.textTertiary)
                                     }
                                     .padding(12)
@@ -1277,7 +1277,7 @@ struct PlanChangeSheet: View {
                         onChange()
                         dismiss()
                     } label: {
-                        Text("Bekreft endring").font(.system(size: 14, weight: .bold))
+                        Text("Bekreft endring").font(.appScaled(size: 14, weight: .bold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 14).padding(.vertical, 8)
                             .background(
@@ -1310,7 +1310,7 @@ struct ImpersonationSheet: View {
                     VStack(alignment: .leading, spacing: 18) {
                         warningCard
                         VStack(alignment: .leading, spacing: 10) {
-                            Text("OM IMPERSONATION").font(.system(size: 10, weight: .black))
+                            Text("OM IMPERSONATION").font(.appScaled(size: 10, weight: .black))
                                 .foregroundStyle(LBrand.textTertiary).tracking(0.8)
                             policyRow(icon: "eye.fill", text: "Du vil se akkurat det org-admin ser — full app-tilgang som deres bruker.")
                             policyRow(icon: "lock.fill", text: "Du kan ikke endre passord, slette data eller flytte penger. Read + write på UI-nivå, men ikke admin-handlinger.")
@@ -1321,11 +1321,11 @@ struct ImpersonationSheet: View {
                         VStack(spacing: 10) {
                             Toggle(isOn: $ackPolicy) {
                                 Text("Jeg har lest og forstått retningslinjene for impersonation.")
-                                    .font(.system(size: 12)).foregroundStyle(.white)
+                                    .font(.appScaled(size: 12)).foregroundStyle(.white)
                             }
                             Toggle(isOn: $ackAudit) {
                                 Text("Jeg forstår at alt jeg gjør logges i audit-trail.")
-                                    .font(.system(size: 12)).foregroundStyle(.white)
+                                    .font(.appScaled(size: 12)).foregroundStyle(.white)
                             }
                         }
                         .tint(LBrand.orange)
@@ -1345,8 +1345,8 @@ struct ImpersonationSheet: View {
                     Button { dismiss() } label: {
                         HStack(spacing: 6) {
                             Image(systemName: "person.badge.shield.exclamationmark.fill")
-                                .font(.system(size: 11))
-                            Text("Start impersonation").font(.system(size: 13, weight: .bold))
+                                .font(.appScaled(size: 11))
+                            Text("Start impersonation").font(.appScaled(size: 13, weight: .bold))
                         }
                         .foregroundStyle(.white)
                         .padding(.horizontal, 14).padding(.vertical, 8)
@@ -1367,16 +1367,16 @@ struct ImpersonationSheet: View {
         HStack(spacing: 12) {
             ZStack {
                 Circle().fill(LBrand.red.opacity(0.22))
-                Image(systemName: "exclamationmark.shield.fill").font(.system(size: 16, weight: .bold))
+                Image(systemName: "exclamationmark.shield.fill").font(.appScaled(size: 16, weight: .bold))
                     .foregroundStyle(LBrand.red)
             }
             .frame(width: 44, height: 44)
             VStack(alignment: .leading, spacing: 3) {
                 Text("DU SKAL FORLATE LEADGRID-MILJØET")
-                    .font(.system(size: 9, weight: .black))
+                    .font(.appScaled(size: 9, weight: .black))
                     .foregroundStyle(LBrand.red).tracking(0.8)
                 Text("Du logger inn som org-admin hos \(org.name). De vil få beskjed om at en Leadgrid-ansatt ser data deres.")
-                    .font(.system(size: 12)).foregroundStyle(.white)
+                    .font(.appScaled(size: 12)).foregroundStyle(.white)
             }
             Spacer()
         }
@@ -1387,9 +1387,9 @@ struct ImpersonationSheet: View {
 
     private func policyRow(icon: String, text: String) -> some View {
         HStack(alignment: .top, spacing: 9) {
-            Image(systemName: icon).font(.system(size: 11, weight: .bold))
+            Image(systemName: icon).font(.appScaled(size: 11, weight: .bold))
                 .foregroundStyle(LBrand.orange).frame(width: 18)
-            Text(text).font(.system(size: 12)).foregroundStyle(.white)
+            Text(text).font(.appScaled(size: 12)).foregroundStyle(.white)
             Spacer()
         }
         .padding(10)

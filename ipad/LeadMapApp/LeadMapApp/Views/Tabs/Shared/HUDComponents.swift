@@ -170,7 +170,7 @@ struct HUDStatusPill: View {
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: icon)
-                .font(.system(size: 10, weight: .black))
+                .font(.appScaled(size: 10, weight: .black))
             Text(text.uppercased())
                 .font(HUDFont.label(11))
                 .tracking(1.2)
@@ -409,7 +409,7 @@ struct HUDWheelButton: View {
                             .tint(color)
                     } else {
                         Image(systemName: icon)
-                            .font(.system(size: 22, weight: .bold))
+                            .font(.appScaled(size: 22, weight: .bold))
                             .foregroundStyle(color)
                     }
                 }
@@ -480,7 +480,7 @@ struct HUDCloseButton: View {
                 Circle()
                     .strokeBorder(Color.white.opacity(0.3), lineWidth: 1)
                 Image(systemName: "xmark")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
             }
             .frame(width: 40, height: 40)
@@ -505,7 +505,7 @@ struct HUDRefreshButton: View {
                 Circle()
                     .strokeBorder(color.opacity(0.55), lineWidth: 1)
                 Image(systemName: "arrow.clockwise")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(color)
             }
             .frame(width: 40, height: 40)

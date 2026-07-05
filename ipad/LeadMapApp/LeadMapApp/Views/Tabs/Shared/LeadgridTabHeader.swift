@@ -120,7 +120,7 @@ struct LeadgridTabHeader<Extra: View>: View {
                 // Fanetittelen er fjernet — tab-baren/sidebaren viser hvor du er.
                 if !isNarrow {
                     Text(subtitle)
-                        .font(.system(size: 13))
+                        .font(.appScaled(size: 13))
                         .foregroundStyle(Brand.textSecondary)
                         .lineLimit(1)
                         .padding(.top, 12)
@@ -607,7 +607,7 @@ struct LeadgridTabHeader<Extra: View>: View {
             RoundedRectangle(cornerRadius: 12).fill(Brand.card)
             RoundedRectangle(cornerRadius: 12).stroke(Brand.stroke, lineWidth: 1)
             Image(systemName: systemName)
-                .font(.system(size: size, weight: .semibold))
+                .font(.appScaled(size: size, weight: .semibold))
                 .foregroundStyle(Brand.purpleLight)
         }
         .frame(width: 44, height: 44)
@@ -615,7 +615,7 @@ struct LeadgridTabHeader<Extra: View>: View {
 
     private func countBadge(_ n: Int, color: Color = Brand.purple) -> some View {
         Text("\(min(n, 99))")
-            .font(.system(size: 9, weight: .bold))
+            .font(.appScaled(size: 9, weight: .bold))
             .foregroundStyle(.white)
             .padding(.horizontal, 5).padding(.vertical, 2)
             .background(color, in: Capsule())
@@ -626,15 +626,15 @@ struct LeadgridTabHeader<Extra: View>: View {
     private func pickerButton(icon: String, text: String) -> some View {
         HStack(spacing: 10) {
             Image(systemName: icon)
-                .font(.system(size: 14, weight: .semibold))
+                .font(.appScaled(size: 14, weight: .semibold))
                 .foregroundStyle(Brand.purpleLight)
             Text(text)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.appScaled(size: 13, weight: .semibold))
                 .foregroundStyle(.white)
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
             Image(systemName: "chevron.down")
-                .font(.system(size: 10, weight: .semibold))
+                .font(.appScaled(size: 10, weight: .semibold))
                 .foregroundStyle(Brand.textSecondary)
         }
         .padding(.horizontal, 12).padding(.vertical, 10)
@@ -647,23 +647,23 @@ struct LeadgridTabHeader<Extra: View>: View {
             ZStack {
                 Circle().fill(Brand.purple.opacity(0.25))
                 Text(state.initials)
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(Brand.purpleLight)
             }
             .frame(width: 32, height: 32)
             VStack(alignment: .leading, spacing: 1) {
                 Text(state.displayName)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.appScaled(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
                 Text(roleLabel)
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(Brand.textSecondary)
                     .lineLimit(1)
             }
             .fixedSize(horizontal: true, vertical: false)
             Image(systemName: "chevron.down")
-                .font(.system(size: 10, weight: .semibold))
+                .font(.appScaled(size: 10, weight: .semibold))
                 .foregroundStyle(Brand.textSecondary)
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
@@ -676,7 +676,7 @@ struct LeadgridTabHeader<Extra: View>: View {
         ZStack {
             Circle().fill(Brand.purple.opacity(0.25))
             Text(state.initials)
-                .font(.system(size: 13, weight: .bold))
+                .font(.appScaled(size: 13, weight: .bold))
                 .foregroundStyle(Brand.purpleLight)
             Circle().stroke(Brand.stroke, lineWidth: 1)
         }

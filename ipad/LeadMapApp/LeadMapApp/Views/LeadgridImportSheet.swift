@@ -133,7 +133,7 @@ private struct CsvImportTab: View {
     private var uploadPromptView: some View {
         VStack(spacing: 16) {
             Image(systemName: "tablecells.fill")
-                .font(.system(size: 56))
+                .font(.appScaled(size: 56))
                 .foregroundStyle(.purple)
             Text("Velg en CSV- eller Excel-fil")
                 .font(.title3.bold())
@@ -224,7 +224,7 @@ private struct CsvImportTab: View {
     private func successView(_ result: LeadgridImportCommit) -> some View {
         VStack(spacing: 16) {
             Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 64))
+                .font(.appScaled(size: 64))
                 .foregroundStyle(.green)
             Text("\(result.imported) leads importert")
                 .font(.title3.bold())
@@ -771,7 +771,7 @@ struct LeadgridUrlResearchView: View {
     private func successView(_ lead: UrlResearchDraftLead) -> some View {
         VStack(spacing: 16) {
             Image(systemName: "mappin.and.ellipse")
-                .font(.system(size: 64))
+                .font(.appScaled(size: 64))
                 .foregroundStyle(.green)
             Text("Lead lagt til")
                 .font(.title3.bold())

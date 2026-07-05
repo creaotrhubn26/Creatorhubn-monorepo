@@ -135,23 +135,23 @@ struct NavigateSheet: View {
             ZStack {
                 Circle().fill(lead.status.color.opacity(0.25))
                 Image(systemName: "mappin.and.ellipse")
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.appScaled(size: 18, weight: .semibold))
                     .foregroundStyle(lead.status.color)
             }
             .frame(width: 52, height: 52)
             VStack(alignment: .leading, spacing: 3) {
                 Text(lead.name)
-                    .font(.system(size: 16, weight: .bold))
+                    .font(.appScaled(size: 16, weight: .bold))
                     .foregroundStyle(.white)
                 Text(lead.address)
-                    .font(.system(size: 12))
+                    .font(.appScaled(size: 12))
                     .foregroundStyle(NvBrand.textSecondary)
                 let est = mode.estimate(kmAway: lead.kmAway)
                 HStack(spacing: 6) {
                     Image(systemName: mode.icon)
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.appScaled(size: 10, weight: .semibold))
                     Text("\(est.eta) · \(est.distance)")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.appScaled(size: 11, weight: .bold))
                 }
                 .foregroundStyle(mode.color)
             }
@@ -192,7 +192,7 @@ struct NavigateSheet: View {
                                 .frame(width: 28, height: 28)
                                 .shadow(color: lead.status.color.opacity(0.6), radius: 6, x: 0, y: 2)
                             Image(systemName: "building.2.fill")
-                                .font(.system(size: 11, weight: .bold))
+                                .font(.appScaled(size: 11, weight: .bold))
                                 .foregroundStyle(.white)
                         }
                     }
@@ -249,7 +249,7 @@ struct NavigateSheet: View {
                 .overlay(Circle().stroke(Color.white, lineWidth: 1.5))
                 .frame(width: 10, height: 10)
             Text(label)
-                .font(.system(size: 10, weight: .semibold))
+                .font(.appScaled(size: 10, weight: .semibold))
                 .foregroundStyle(.white)
         }
         .padding(.horizontal, 8).padding(.vertical, 4)
@@ -276,14 +276,14 @@ struct NavigateSheet: View {
         return Button { mode = m } label: {
             VStack(spacing: 5) {
                 Image(systemName: m.icon)
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.appScaled(size: 18, weight: .semibold))
                     .foregroundStyle(isSelected ? .white : m.color)
                 Text(est.eta)
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: 14, weight: .bold, design: .rounded))
                     .foregroundStyle(isSelected ? .white : .white)
                     .monospacedDigit()
                 Text(m.rawValue)
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.appScaled(size: 10, weight: .semibold))
                     .foregroundStyle(isSelected ? .white.opacity(0.85) : NvBrand.textSecondary)
             }
             .frame(maxWidth: .infinity)
@@ -321,21 +321,21 @@ struct NavigateSheet: View {
                     RoundedRectangle(cornerRadius: 10)
                         .fill(app.color.opacity(isSelected ? 0.30 : 0.15))
                     Image(systemName: app.icon)
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.appScaled(size: 16, weight: .semibold))
                         .foregroundStyle(app.color)
                 }
                 .frame(width: 42, height: 42)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(app.rawValue)
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(.white)
                     Text(app.subtitle)
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(NvBrand.textSecondary)
                 }
                 Spacer()
                 Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
-                    .font(.system(size: 18))
+                    .font(.appScaled(size: 18))
                     .foregroundStyle(isSelected ? app.color : NvBrand.stroke)
             }
             .padding(10)
@@ -379,21 +379,21 @@ struct NavigateSheet: View {
                 ZStack {
                     Circle().fill(color.opacity(0.22))
                     Image(systemName: icon)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.appScaled(size: 13, weight: .semibold))
                         .foregroundStyle(color)
                 }
                 .frame(width: 34, height: 34)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(label)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.appScaled(size: 13, weight: .semibold))
                         .foregroundStyle(.white)
                     Text(sub)
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(NvBrand.textSecondary)
                 }
                 Spacer()
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.appScaled(size: 10, weight: .semibold))
                     .foregroundStyle(NvBrand.textTertiary)
             }
             .padding(10)
@@ -409,7 +409,7 @@ struct NavigateSheet: View {
         HStack(spacing: 10) {
             Button { dismiss() } label: {
                 Text("Avbryt")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.appScaled(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 13)
@@ -421,12 +421,12 @@ struct NavigateSheet: View {
             Button { openInExternalApp() } label: {
                 HStack(spacing: 8) {
                     Image(systemName: navApp.icon)
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.appScaled(size: 14, weight: .bold))
                     VStack(alignment: .leading, spacing: 0) {
                         Text("Start navigasjon")
-                            .font(.system(size: 14, weight: .bold))
+                            .font(.appScaled(size: 14, weight: .bold))
                         Text("i \(navApp.rawValue) · \(mode.estimate(kmAway: lead.kmAway).eta)")
-                            .font(.system(size: 10))
+                            .font(.appScaled(size: 10))
                             .foregroundStyle(.white.opacity(0.75))
                     }
                 }
@@ -493,10 +493,10 @@ struct NavigateSheet: View {
     private func sectionLabel(_ s: String, icon: String) -> some View {
         HStack(spacing: 6) {
             Image(systemName: icon)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.appScaled(size: 11, weight: .semibold))
                 .foregroundStyle(NvBrand.purpleLight)
             Text(s)
-                .font(.system(size: 12, weight: .bold))
+                .font(.appScaled(size: 12, weight: .bold))
                 .foregroundStyle(.white)
         }
     }

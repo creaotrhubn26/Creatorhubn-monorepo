@@ -140,7 +140,7 @@ struct TeamPerformanceBanner: View {
                 .fill(performance.level.accentColor)
                 .frame(width: 6, height: 6)
             Text(team.name)
-                .font(.system(size: 11, weight: .heavy, design: .rounded))
+                .font(.appScaled(size: 11, weight: .heavy, design: .rounded))
                 .foregroundStyle(.white)
                 .lineLimit(1)
         }
@@ -164,9 +164,9 @@ struct TeamPerformanceBanner: View {
             // Prestasjons-badge (SF Symbol + label)
             HStack(spacing: 5) {
                 Image(systemName: performance.level.icon)
-                    .font(.system(size: 10, weight: .heavy))
+                    .font(.appScaled(size: 10, weight: .heavy))
                 Text(performance.level.label)
-                    .font(.system(size: 9, weight: .black, design: .rounded))
+                    .font(.appScaled(size: 9, weight: .black, design: .rounded))
                     .tracking(1.0)
             }
             .foregroundStyle(.white)
@@ -178,7 +178,7 @@ struct TeamPerformanceBanner: View {
 
             // Team-navn (stor, i team-farge)
             Text(team.name)
-                .font(.system(size: 15, weight: .heavy, design: .rounded))
+                .font(.appScaled(size: 15, weight: .heavy, design: .rounded))
                 .foregroundStyle(.white)
                 .lineLimit(1)
                 .padding(.horizontal, 12).padding(.vertical, 6)
@@ -214,9 +214,9 @@ struct TeamPerformanceBanner: View {
                 // Won count
                 HStack(spacing: 3) {
                     Image(systemName: "trophy.fill")
-                        .font(.system(size: 8, weight: .bold))
+                        .font(.appScaled(size: 8, weight: .bold))
                     Text("\(performance.wonThisWeek) / \(performance.weeklyTarget)")
-                        .font(.system(size: 10, weight: .heavy, design: .rounded))
+                        .font(.appScaled(size: 10, weight: .heavy, design: .rounded))
                         .monospacedDigit()
                 }
                 .foregroundStyle(.white)
@@ -229,9 +229,9 @@ struct TeamPerformanceBanner: View {
                     Image(systemName: performance.trendPercent >= 0
                           ? "arrow.up.right"
                           : "arrow.down.right")
-                        .font(.system(size: 8, weight: .heavy))
+                        .font(.appScaled(size: 8, weight: .heavy))
                     Text("\(abs(performance.trendPercent))%")
-                        .font(.system(size: 10, weight: .heavy, design: .rounded))
+                        .font(.appScaled(size: 10, weight: .heavy, design: .rounded))
                         .monospacedDigit()
                 }
                 .foregroundStyle(

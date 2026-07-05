@@ -39,12 +39,12 @@ struct LeadScoreRing: View {
                 .rotationEffect(.degrees(-90))
             VStack(spacing: 0) {
                 Text("\(score)")
-                    .font(.system(size: diameter / 2.6, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: diameter / 2.6, weight: .bold, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(color)
                 if let d = delta, d != 0 {
                     Text((d > 0 ? "↑" : "↓") + "\(abs(d))")
-                        .font(.system(size: diameter / 7, weight: .bold))
+                        .font(.appScaled(size: diameter / 7, weight: .bold))
                         .foregroundStyle(d > 0
                                           ? Color(red: 0.20, green: 0.78, blue: 0.45)
                                           : Color(red: 0.95, green: 0.40, blue: 0.40))

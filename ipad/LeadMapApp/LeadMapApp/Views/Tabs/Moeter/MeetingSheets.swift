@@ -106,16 +106,16 @@ struct StartMeetingSheet: View {
                 RoundedRectangle(cornerRadius: 10)
                     .fill(meeting.iconColor.opacity(0.22))
                 Image(systemName: meeting.icon)
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.appScaled(size: 16, weight: .semibold))
                     .foregroundStyle(meeting.iconColor)
             }
             .frame(width: 42, height: 42)
             VStack(alignment: .leading, spacing: 2) {
                 Text(meeting.company)
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 Text("\(meeting.startTime) - \(meeting.endTime) · Med \(meeting.contactName)")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(SBrand.textSecondary)
             }
             Spacer()
@@ -128,7 +128,7 @@ struct StartMeetingSheet: View {
     private var modeGrid: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Velg modus")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(SBrand.textSecondary)
             VStack(spacing: 8) {
                 ForEach(Mode.allCases, id: \.self) { m in
@@ -145,21 +145,21 @@ struct StartMeetingSheet: View {
                 ZStack {
                     Circle().fill(m.color.opacity(isSelected ? 0.30 : 0.15))
                     Image(systemName: m.icon)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.appScaled(size: 14, weight: .semibold))
                         .foregroundStyle(m.color)
                 }
                 .frame(width: 40, height: 40)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(m.rawValue)
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(.white)
                     Text(m.subtitle)
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(SBrand.textSecondary)
                 }
                 Spacer()
                 Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
-                    .font(.system(size: 17))
+                    .font(.appScaled(size: 17))
                     .foregroundStyle(isSelected ? m.color : SBrand.stroke)
             }
             .padding(10)
@@ -179,10 +179,10 @@ struct StartMeetingSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 9) {
                 Image(systemName: "mappin.and.ellipse")
-                    .font(.system(size: 13))
+                    .font(.appScaled(size: 13))
                     .foregroundStyle(SBrand.purpleLight)
                 Text("Sjekk inn på adressen")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
             }
@@ -190,16 +190,16 @@ struct StartMeetingSheet: View {
                 ZStack {
                     Circle().fill(SBrand.green.opacity(0.22))
                     Image(systemName: "location.fill")
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(SBrand.green)
                 }
                 .frame(width: 26, height: 26)
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Du er innenfor 50m av adressen")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
                     Text(meeting.address)
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(SBrand.textSecondary)
                 }
                 Spacer()
@@ -218,23 +218,23 @@ struct StartMeetingSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 9) {
                 Image(systemName: mode.icon)
-                    .font(.system(size: 13))
+                    .font(.appScaled(size: 13))
                     .foregroundStyle(mode.color)
                 Text(mode == .phone ? "Telefon-nummer" : "\(mode.rawValue)-lenke")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
                 Button {
                     UIPasteboard.general.string = link
                 } label: {
                     Image(systemName: "doc.on.doc")
-                        .font(.system(size: 12))
+                        .font(.appScaled(size: 12))
                         .foregroundStyle(SBrand.purpleLight)
                 }
                 .buttonStyle(.plain)
             }
             Text(link)
-                .font(.system(size: 11, design: .monospaced))
+                .font(.appScaled(size: 11, design: .monospaced))
                 .foregroundStyle(SBrand.textSecondary)
                 .lineLimit(2)
                 .padding(10)
@@ -255,9 +255,9 @@ struct StartMeetingSheet: View {
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: "play.circle.fill")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                 Text(actionLabel)
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
             }
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)
@@ -372,20 +372,20 @@ struct NavigateMeetingSheet: View {
             ZStack {
                 Circle().fill(SBrand.purple.opacity(0.25))
                 Image(systemName: "mappin.and.ellipse")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.appScaled(size: 16, weight: .semibold))
                     .foregroundStyle(SBrand.purpleLight)
             }
             .frame(width: 46, height: 46)
             VStack(alignment: .leading, spacing: 2) {
                 Text(meeting.company)
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 Text(meeting.address)
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(SBrand.textSecondary)
                 if meeting.driveTimeMin > 0 {
                     Text("\(meeting.driveTimeMin) min · \(meeting.driveDistanceKm) km · \(meeting.trafficStatus)")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.appScaled(size: 10, weight: .bold))
                         .foregroundStyle(transport.color)
                 }
             }
@@ -417,7 +417,7 @@ struct NavigateMeetingSheet: View {
             Annotation("", coordinate: dest) {
                 ZStack {
                     Circle().fill(meeting.iconColor).overlay(Circle().stroke(.white, lineWidth: 2)).frame(width: 28, height: 28)
-                    Image(systemName: meeting.icon).font(.system(size: 11, weight: .bold)).foregroundStyle(.white)
+                    Image(systemName: meeting.icon).font(.appScaled(size: 11, weight: .bold)).foregroundStyle(.white)
                 }
             }
             MapPolyline(coordinates: [myLocation, dest])
@@ -436,7 +436,7 @@ struct NavigateMeetingSheet: View {
     private var transportPicker: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Transportmodus")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(SBrand.textSecondary)
             HStack(spacing: 8) {
                 ForEach(Transport.allCases, id: \.self) { t in
@@ -458,14 +458,14 @@ struct NavigateMeetingSheet: View {
         return Button { transport = t } label: {
             VStack(spacing: 5) {
                 Image(systemName: t.icon)
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.appScaled(size: 16, weight: .semibold))
                     .foregroundStyle(isSelected ? .white : t.color)
                 Text("\(eta) min")
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: 14, weight: .bold, design: .rounded))
                     .foregroundStyle(isSelected ? .white : .white)
                     .monospacedDigit()
                 Text(t.rawValue)
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.appScaled(size: 10, weight: .semibold))
                     .foregroundStyle(isSelected ? .white.opacity(0.85) : SBrand.textSecondary)
             }
             .frame(maxWidth: .infinity)
@@ -482,7 +482,7 @@ struct NavigateMeetingSheet: View {
     private var appPicker: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Åpne i")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(SBrand.textSecondary)
             VStack(spacing: 6) {
                 ForEach(NavApp.allCases, id: \.self) { a in
@@ -500,16 +500,16 @@ struct NavigateMeetingSheet: View {
                     RoundedRectangle(cornerRadius: 9)
                         .fill(a.color.opacity(isSelected ? 0.30 : 0.15))
                     Image(systemName: a.icon)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.appScaled(size: 14, weight: .semibold))
                         .foregroundStyle(a.color)
                 }
                 .frame(width: 36, height: 36)
                 Text(a.rawValue)
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
                 Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
-                    .font(.system(size: 17))
+                    .font(.appScaled(size: 17))
                     .foregroundStyle(isSelected ? a.color : SBrand.stroke)
             }
             .padding(10)
@@ -523,9 +523,9 @@ struct NavigateMeetingSheet: View {
         Button { openExternal(); dismiss() } label: {
             HStack(spacing: 8) {
                 Image(systemName: navApp.icon)
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                 Text("Start navigasjon i \(navApp.rawValue)")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
             }
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)
@@ -630,16 +630,16 @@ struct LogNoteSheet: View {
                 RoundedRectangle(cornerRadius: 9)
                     .fill(meeting.iconColor.opacity(0.22))
                 Image(systemName: meeting.icon)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.appScaled(size: 14, weight: .semibold))
                     .foregroundStyle(meeting.iconColor)
             }
             .frame(width: 38, height: 38)
             VStack(alignment: .leading, spacing: 2) {
                 Text(meeting.company)
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Text("Tirsdag 20. mai · \(meeting.startTime)-\(meeting.endTime)")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(SBrand.textSecondary)
             }
             Spacer()
@@ -652,7 +652,7 @@ struct LogNoteSheet: View {
     private var categoryRow: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Type")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(SBrand.textSecondary)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
@@ -660,9 +660,9 @@ struct LogNoteSheet: View {
                         Button { category = c } label: {
                             HStack(spacing: 5) {
                                 Image(systemName: c.icon)
-                                    .font(.system(size: 10, weight: .semibold))
+                                    .font(.appScaled(size: 10, weight: .semibold))
                                 Text(c.rawValue)
-                                    .font(.system(size: 11, weight: .semibold))
+                                    .font(.appScaled(size: 11, weight: .semibold))
                             }
                             .foregroundStyle(category == c ? .white : c.color)
                             .padding(.horizontal, 12).padding(.vertical, 7)
@@ -682,20 +682,20 @@ struct LogNoteSheet: View {
     private var noteEditor: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Notat")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(SBrand.textSecondary)
             ZStack(alignment: .topLeading) {
                 TextEditor(text: $note)
                     .scrollContentBackground(.hidden)
                     .foregroundStyle(.white)
-                    .font(.system(size: 13))
+                    .font(.appScaled(size: 13))
                     .frame(minHeight: 140)
                     .padding(10)
                     .background(SBrand.card, in: RoundedRectangle(cornerRadius: 11))
                     .overlay(RoundedRectangle(cornerRadius: 11).stroke(SBrand.stroke, lineWidth: 1))
                 if note.isEmpty {
                     Text("Hva ble diskutert? Hvilke beslutninger? Hvem skal gjøre hva?")
-                        .font(.system(size: 13))
+                        .font(.appScaled(size: 13))
                         .foregroundStyle(SBrand.textTertiary)
                         .padding(.horizontal, 14).padding(.vertical, 17)
                         .allowsHitTesting(false)
@@ -713,21 +713,21 @@ struct LogNoteSheet: View {
                         startPoint: .topLeading, endPoint: .bottomTrailing
                     ))
                     Image(systemName: "mic.fill")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(.white)
                 }
                 .frame(width: 38, height: 38)
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Spille inn + transkribere")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appScaled(size: 12, weight: .bold))
                         .foregroundStyle(.white)
                     Text("AI lager automatisk strukturert notat etterpå")
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(SBrand.textSecondary)
                 }
                 Spacer()
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(SBrand.textTertiary)
             }
             .padding(12)
@@ -743,16 +743,16 @@ struct LogNoteSheet: View {
                 ZStack {
                     Circle().fill(SBrand.yellow.opacity(0.22))
                     Image(systemName: "pin.fill")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(SBrand.yellow)
                 }
                 .frame(width: 30, height: 30)
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Fest notat øverst")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
                     Text("Vises først i lead-historikk")
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(SBrand.textSecondary)
                 }
             }
@@ -767,7 +767,7 @@ struct LogNoteSheet: View {
         HStack(spacing: 10) {
             Button { dismiss() } label: {
                 Text("Avbryt")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.appScaled(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 13)
@@ -778,9 +778,9 @@ struct LogNoteSheet: View {
             Button { dismiss() } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                     Text("Lagre notat")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.appScaled(size: 14, weight: .bold))
                 }
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
@@ -896,11 +896,11 @@ struct KartTabSheet: View {
                         Circle().fill(meeting.iconColor.opacity(0.30)).frame(width: 50, height: 50)
                         Circle().fill(meeting.iconColor).overlay(Circle().stroke(.white, lineWidth: 3)).frame(width: 32, height: 32)
                         Image(systemName: meeting.icon)
-                            .font(.system(size: 13, weight: .bold))
+                            .font(.appScaled(size: 13, weight: .bold))
                             .foregroundStyle(.white)
                     }
                     Text(meeting.company)
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.appScaled(size: 10, weight: .bold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 7).padding(.vertical, 3)
                         .background(SBrand.bg.opacity(0.85), in: Capsule())
@@ -927,7 +927,7 @@ struct KartTabSheet: View {
                 ZStack {
                     Circle().fill(SBrand.card)
                     Image(systemName: "chevron.left")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.appScaled(size: 14, weight: .bold))
                         .foregroundStyle(.white)
                 }
                 .frame(width: 38, height: 38)
@@ -937,10 +937,10 @@ struct KartTabSheet: View {
 
             VStack(alignment: .leading, spacing: 1) {
                 Text("Kart")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 Text("Fokusert på \(meeting.company)")
-                    .font(.system(size: 10))
+                    .font(.appScaled(size: 10))
                     .foregroundStyle(SBrand.textSecondary)
             }
             Spacer()
@@ -954,9 +954,9 @@ struct KartTabSheet: View {
             } label: {
                 HStack(spacing: 5) {
                     Image(systemName: "scope")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                     Text("Sentrér")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                 }
                 .foregroundStyle(.white)
                 .padding(.horizontal, 11).padding(.vertical, 9)
@@ -975,16 +975,16 @@ struct KartTabSheet: View {
                     RoundedRectangle(cornerRadius: 10)
                         .fill(meeting.iconColor.opacity(0.22))
                     Image(systemName: meeting.icon)
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.appScaled(size: 15, weight: .semibold))
                         .foregroundStyle(meeting.iconColor)
                 }
                 .frame(width: 42, height: 42)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(meeting.company)
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(.white)
                     Text(meeting.address)
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(SBrand.textSecondary)
                         .lineLimit(1)
                 }
@@ -1009,9 +1009,9 @@ struct KartTabSheet: View {
                 Button { dismiss() } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "checkmark")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.appScaled(size: 11, weight: .bold))
                         Text("Lukk")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.appScaled(size: 12, weight: .semibold))
                     }
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
@@ -1025,9 +1025,9 @@ struct KartTabSheet: View {
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "location.north.line.fill")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.appScaled(size: 11, weight: .bold))
                         Text("Start kjøretur")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.appScaled(size: 12, weight: .bold))
                     }
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
@@ -1056,9 +1056,9 @@ struct KartTabSheet: View {
                 } label: {
                     HStack(spacing: 5) {
                         Image(systemName: t.icon)
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.appScaled(size: 10, weight: .semibold))
                         Text("\(t.eta(base: meeting.driveTimeMin)) min")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.appScaled(size: 11, weight: .bold))
                             .monospacedDigit()
                     }
                     .foregroundStyle(transport == t ? .white : t.color)
@@ -1080,21 +1080,21 @@ struct KartTabSheet: View {
             ZStack {
                 Circle().fill(SBrand.purple.opacity(0.25))
                 Image(systemName: "arrow.turn.up.right")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(SBrand.purpleLight)
             }
             .frame(width: 36, height: 36)
             VStack(alignment: .leading, spacing: 1) {
                 Text("Sving til høyre i Vitaminveien")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(.white)
                 Text("om 400 m")
-                    .font(.system(size: 10))
+                    .font(.appScaled(size: 10))
                     .foregroundStyle(SBrand.textSecondary)
             }
             Spacer()
             Text("ETA \(arrivalTime)")
-                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .font(.appScaled(size: 11, weight: .semibold, design: .rounded))
                 .foregroundStyle(SBrand.green)
                 .monospacedDigit()
                 .padding(.horizontal, 8).padding(.vertical, 4)
@@ -1117,15 +1117,15 @@ struct KartTabSheet: View {
         VStack(spacing: 3) {
             HStack(alignment: .firstTextBaseline, spacing: 3) {
                 Text(value)
-                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: 20, weight: .bold, design: .rounded))
                     .foregroundStyle(color)
                     .monospacedDigit()
                 Text(unit)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(color.opacity(0.8))
             }
             Text(label)
-                .font(.system(size: 10))
+                .font(.appScaled(size: 10))
                 .foregroundStyle(SBrand.textSecondary)
         }
         .frame(maxWidth: .infinity)
@@ -1344,7 +1344,7 @@ struct NavigationFullScreenView: View {
                     Circle().fill(SBrand.blue).overlay(Circle().stroke(.white, lineWidth: 4)).frame(width: 26, height: 26)
                     // Retnings-trekant
                     Image(systemName: "location.north.fill")
-                        .font(.system(size: 11, weight: .black))
+                        .font(.appScaled(size: 11, weight: .black))
                         .foregroundStyle(.white)
                 }
             }
@@ -1354,11 +1354,11 @@ struct NavigationFullScreenView: View {
                         Circle().fill(meeting.iconColor.opacity(0.35)).frame(width: 60, height: 60)
                         Circle().fill(meeting.iconColor).overlay(Circle().stroke(.white, lineWidth: 3)).frame(width: 36, height: 36)
                         Image(systemName: meeting.icon)
-                            .font(.system(size: 14, weight: .bold))
+                            .font(.appScaled(size: 14, weight: .bold))
                             .foregroundStyle(.white)
                     }
                     Text(meeting.company)
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.appScaled(size: 11, weight: .bold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 8).padding(.vertical, 4)
                         .background(SBrand.bg.opacity(0.92), in: Capsule())
@@ -1423,7 +1423,7 @@ struct NavigationFullScreenView: View {
                 .overlay(RoundedRectangle(cornerRadius: 9).stroke(.white, lineWidth: 2.5))
                 .shadow(color: .black.opacity(0.5), radius: 4, y: 2)
             Image(systemName: p.kind.icon)
-                .font(.system(size: isSelected ? 17 : 14, weight: .black))
+                .font(.appScaled(size: isSelected ? 17 : 14, weight: .black))
                 .foregroundStyle(.white)
             Circle()
                 .fill(dotColor)
@@ -1431,7 +1431,7 @@ struct NavigationFullScreenView: View {
                 .frame(width: 11, height: 11)
                 .offset(x: 14, y: -14)
             Text(badgeText)
-                .font(.system(size: 8, weight: .black, design: .rounded))
+                .font(.appScaled(size: 8, weight: .black, design: .rounded))
                 .foregroundStyle(.white)
                 .padding(.horizontal, 4).padding(.vertical, 1)
                 .background(p.brandColor, in: Capsule())
@@ -1474,11 +1474,11 @@ struct NavigationFullScreenView: View {
             } label: {
                 HStack(spacing: 5) {
                     Image(systemName: anyOn ? "eye.fill" : "eye.slash.fill")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.appScaled(size: 11, weight: .bold))
                     Text(anyOn ? (allOn ? "POI vises" : "POI delvis") : "POI skjult")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.appScaled(size: 11, weight: .bold))
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 8, weight: .bold))
+                        .font(.appScaled(size: 8, weight: .bold))
                 }
                 .foregroundStyle(.white)
                 .padding(.horizontal, 11).padding(.vertical, 7)
@@ -1490,9 +1490,9 @@ struct NavigationFullScreenView: View {
             if !anyOn && !proximityAlerts.isEmpty {
                 HStack(spacing: 4) {
                     Image(systemName: "bell.badge.fill")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.appScaled(size: 10, weight: .bold))
                     Text("\(proximityAlerts.count) i nærheten")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.appScaled(size: 10, weight: .bold))
                 }
                 .foregroundStyle(SBrand.yellow)
                 .padding(.horizontal, 9).padding(.vertical, 6)
@@ -1504,9 +1504,9 @@ struct NavigationFullScreenView: View {
             Button { showMileageSheet = true } label: {
                 HStack(spacing: 5) {
                     Image(systemName: "norwegiankronesign.circle.fill")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.appScaled(size: 11, weight: .bold))
                     Text("Kjøregodtgjørelse")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.appScaled(size: 11, weight: .bold))
                 }
                 .foregroundStyle(.white)
                 .padding(.horizontal, 11).padding(.vertical, 7)
@@ -1580,7 +1580,7 @@ struct NavigationFullScreenView: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 9).fill(p.brandColor)
                 Image(systemName: p.kind.icon)
-                    .font(.system(size: 13, weight: .black))
+                    .font(.appScaled(size: 13, weight: .black))
                     .foregroundStyle(.white)
             }
             .frame(width: 36, height: 36)
@@ -1593,15 +1593,15 @@ struct NavigationFullScreenView: View {
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 5) {
                     Text("\(p.kind.rawValue) \(minsAway) min unna")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appScaled(size: 12, weight: .bold))
                         .foregroundStyle(.white)
                     Text("· \(String(format: "%.1f km", km))")
-                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .font(.appScaled(size: 10, weight: .semibold, design: .rounded))
                         .foregroundStyle(SBrand.textSecondary)
                         .monospacedDigit()
                 }
                 Text("\(p.brandName) — \(summary)")
-                    .font(.system(size: 10))
+                    .font(.appScaled(size: 10))
                     .foregroundStyle(SBrand.textSecondary)
                     .lineLimit(1)
             }
@@ -1613,7 +1613,7 @@ struct NavigationFullScreenView: View {
                 }
             } label: {
                 Text("Vis")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 11).padding(.vertical, 7)
                     .background(brandColor, in: Capsule())
@@ -1625,7 +1625,7 @@ struct NavigationFullScreenView: View {
                 }
             } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(SBrand.textSecondary)
                     .padding(7)
             }
@@ -1660,40 +1660,40 @@ struct NavigationFullScreenView: View {
             ZStack {
                 Circle().fill((urgent ? SBrand.red : SBrand.green).opacity(0.22))
                 Image(systemName: urgent ? "exclamationmark.triangle.fill" : "checkmark.shield.fill")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(urgent ? SBrand.red : SBrand.green)
             }
             .frame(width: 36, height: 36)
             VStack(alignment: .leading, spacing: 2) {
                 Text(urgent ? "Reis nå for å være i tide" : "Anbefalt avgangstid")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(.white)
                 HStack(spacing: 4) {
                     Text(f.string(from: departBy))
-                        .font(.system(size: 13, weight: .black, design: .rounded))
+                        .font(.appScaled(size: 13, weight: .black, design: .rounded))
                         .foregroundStyle(urgent ? SBrand.red : SBrand.green)
                         .monospacedDigit()
                     Text("·")
                         .foregroundStyle(SBrand.textTertiary)
                     Text(minsUntilDepart >= 0 ? "om \(minsUntilDepart) min" : "\(-minsUntilDepart) min forsinket")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(SBrand.textSecondary)
                         .monospacedDigit()
                     Text("·")
                         .foregroundStyle(SBrand.textTertiary)
                     Text("inkl. 10 min buffer")
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(SBrand.textTertiary)
                 }
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 1) {
                 Text("Møte \(meeting.startTime)")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(.white)
                     .monospacedDigit()
                 Text(meeting.trafficStatus)
-                    .font(.system(size: 9))
+                    .font(.appScaled(size: 9))
                     .foregroundStyle(SBrand.textSecondary)
             }
         }
@@ -1715,25 +1715,25 @@ struct NavigationFullScreenView: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: 10).fill(p.brandColor)
                     Image(systemName: p.kind.icon)
-                        .font(.system(size: 15, weight: .black))
+                        .font(.appScaled(size: 15, weight: .black))
                         .foregroundStyle(.white)
                 }
                 .frame(width: 42, height: 42)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(p.name)
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(.white)
                     HStack(spacing: 6) {
                         Text(p.brandName)
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.appScaled(size: 11, weight: .bold))
                             .foregroundStyle(p.brandColor)
                         Text("·")
                             .foregroundStyle(SBrand.textTertiary)
                         HStack(spacing: 3) {
                             Image(systemName: "clock.fill")
-                                .font(.system(size: 9))
+                                .font(.appScaled(size: 9))
                             Text("+\(p.detourMin) min omvei")
-                                .font(.system(size: 10, weight: .semibold))
+                                .font(.appScaled(size: 10, weight: .semibold))
                         }
                         .foregroundStyle(SBrand.textSecondary)
                     }
@@ -1743,7 +1743,7 @@ struct NavigationFullScreenView: View {
                     withAnimation { selectedPOI = nil }
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 18))
+                        .font(.appScaled(size: 18))
                         .foregroundStyle(SBrand.textTertiary)
                 }
                 .buttonStyle(.plain)
@@ -1760,9 +1760,9 @@ struct NavigationFullScreenView: View {
                 Button {} label: {
                     HStack(spacing: 5) {
                         Image(systemName: "arrow.triangle.turn.up.right.diamond.fill")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.appScaled(size: 11, weight: .bold))
                         Text("Legg til som stopp")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.appScaled(size: 12, weight: .bold))
                     }
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
@@ -1776,7 +1776,7 @@ struct NavigationFullScreenView: View {
                 .buttonStyle(.plain)
                 Button {} label: {
                     Image(systemName: "info.circle.fill")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.appScaled(size: 14, weight: .bold))
                         .foregroundStyle(.white)
                         .padding(.vertical, 11)
                         .padding(.horizontal, 14)
@@ -1806,7 +1806,7 @@ struct NavigationFullScreenView: View {
             HStack(spacing: 6) {
                 ForEach(p.connectors, id: \.self) { c in
                     Text(c)
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.appScaled(size: 10, weight: .bold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 8).padding(.vertical, 4)
                         .background(SBrand.cardHi, in: Capsule())
@@ -1831,17 +1831,17 @@ struct NavigationFullScreenView: View {
         VStack(spacing: 2) {
             HStack(alignment: .firstTextBaseline, spacing: 2) {
                 Text(value)
-                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: 16, weight: .bold, design: .rounded))
                     .foregroundStyle(color)
                     .monospacedDigit()
                 if !unit.isEmpty {
                     Text(unit)
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.appScaled(size: 9, weight: .semibold))
                         .foregroundStyle(color.opacity(0.8))
                 }
             }
             Text(label)
-                .font(.system(size: 9))
+                .font(.appScaled(size: 9))
                 .foregroundStyle(SBrand.textSecondary)
         }
         .frame(maxWidth: .infinity)
@@ -1861,7 +1861,7 @@ struct NavigationFullScreenView: View {
                     RoundedRectangle(cornerRadius: 14)
                         .fill(SBrand.purple.opacity(0.30))
                     Image(systemName: currentStep.icon)
-                        .font(.system(size: 26, weight: .black))
+                        .font(.appScaled(size: 26, weight: .black))
                         .foregroundStyle(SBrand.purpleLight)
                 }
                 .frame(width: 62, height: 62)
@@ -1870,21 +1870,21 @@ struct NavigationFullScreenView: View {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         if currentStep.distanceMeters > 0 {
                             Text("\(currentStep.distanceMeters >= 1000 ? String(format: "%.1f km", Double(currentStep.distanceMeters)/1000) : "\(currentStep.distanceMeters) m")")
-                                .font(.system(size: 24, weight: .black, design: .rounded))
+                                .font(.appScaled(size: 24, weight: .black, design: .rounded))
                                 .foregroundStyle(.white)
                                 .monospacedDigit()
                         } else {
                             Text("Ankommet")
-                                .font(.system(size: 22, weight: .black))
+                                .font(.appScaled(size: 22, weight: .black))
                                 .foregroundStyle(SBrand.green)
                         }
                     }
                     Text(currentStep.instruction)
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.appScaled(size: 15, weight: .semibold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
                     Text(currentStep.road)
-                        .font(.system(size: 12))
+                        .font(.appScaled(size: 12))
                         .foregroundStyle(SBrand.textSecondary)
                         .lineLimit(1)
                 }
@@ -1895,7 +1895,7 @@ struct NavigationFullScreenView: View {
                     }
                 } label: {
                     Image(systemName: "forward.fill")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(.white)
                         .padding(10)
                         .background(SBrand.cardHi, in: Circle())
@@ -1908,10 +1908,10 @@ struct NavigationFullScreenView: View {
                 Divider().overlay(SBrand.stroke)
                 HStack(spacing: 10) {
                     Image(systemName: next.icon)
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appScaled(size: 12, weight: .bold))
                         .foregroundStyle(SBrand.textSecondary)
                     Text("Deretter \(next.instruction.lowercased()) i \(next.road)")
-                        .font(.system(size: 12))
+                        .font(.appScaled(size: 12))
                         .foregroundStyle(SBrand.textSecondary)
                         .lineLimit(1)
                     Spacer()
@@ -1951,9 +1951,9 @@ struct NavigationFullScreenView: View {
             Button { dismiss() } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                     Text("Avslutt navigasjon")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.appScaled(size: 14, weight: .bold))
                 }
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
@@ -1981,7 +1981,7 @@ struct NavigationFullScreenView: View {
                 Circle().fill(.ultraThinMaterial)
                 Circle().stroke(SBrand.stroke, lineWidth: 1)
                 Image(systemName: icon)
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.appScaled(size: 16, weight: .semibold))
                     .foregroundStyle(color)
             }
             .frame(width: 50, height: 50)
@@ -1993,11 +1993,11 @@ struct NavigationFullScreenView: View {
     private func hudStat(value: String, label: String, color: Color) -> some View {
         VStack(spacing: 4) {
             Text(value)
-                .font(.system(size: 19, weight: .bold, design: .rounded))
+                .font(.appScaled(size: 19, weight: .bold, design: .rounded))
                 .foregroundStyle(color)
                 .monospacedDigit()
             Text(label)
-                .font(.system(size: 10, weight: .semibold))
+                .font(.appScaled(size: 10, weight: .semibold))
                 .foregroundStyle(SBrand.textSecondary)
                 .textCase(.uppercase)
         }
@@ -2041,10 +2041,10 @@ struct ToastBubble: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(SBrand.green)
             Text(text)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(.white)
         }
         .padding(.horizontal, 12).padding(.vertical, 9)
@@ -2093,22 +2093,22 @@ struct LeadDetailStub: View {
                 RoundedRectangle(cornerRadius: 11)
                     .fill(meeting.iconColor.opacity(0.22))
                 Image(systemName: meeting.icon)
-                    .font(.system(size: 22, weight: .semibold))
+                    .font(.appScaled(size: 22, weight: .semibold))
                     .foregroundStyle(meeting.iconColor)
             }
             .frame(width: 56, height: 56)
             VStack(alignment: .leading, spacing: 3) {
                 Text(meeting.company)
-                    .font(.system(size: 18, weight: .bold))
+                    .font(.appScaled(size: 18, weight: .bold))
                     .foregroundStyle(.white)
                 Text(meeting.location)
-                    .font(.system(size: 12))
+                    .font(.appScaled(size: 12))
                     .foregroundStyle(SBrand.textSecondary)
                 HStack(spacing: 5) {
                     Image(systemName: "flame.fill")
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                     Text(meeting.leadType + " · score \(meeting.leadScore)")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.appScaled(size: 11, weight: .bold))
                 }
                 .foregroundStyle(SBrand.yellow)
                 .padding(.horizontal, 8).padding(.vertical, 4)
@@ -2132,10 +2132,10 @@ struct LeadDetailStub: View {
     private func statBox(label: String, value: String, color: Color) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label)
-                .font(.system(size: 10))
+                .font(.appScaled(size: 10))
                 .foregroundStyle(SBrand.textSecondary)
             Text(value)
-                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .font(.appScaled(size: 18, weight: .bold, design: .rounded))
                 .foregroundStyle(color)
                 .monospacedDigit()
         }
@@ -2148,22 +2148,22 @@ struct LeadDetailStub: View {
     private var contactCard: some View {
         VStack(alignment: .leading, spacing: 9) {
             Text("Primær kontakt")
-                .font(.system(size: 12, weight: .bold))
+                .font(.appScaled(size: 12, weight: .bold))
                 .foregroundStyle(.white)
             HStack(spacing: 11) {
                 ZStack {
                     Circle().fill(SBrand.purple.opacity(0.25))
                     Text("JE")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appScaled(size: 12, weight: .bold))
                         .foregroundStyle(SBrand.purpleLight)
                 }
                 .frame(width: 38, height: 38)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(meeting.contactName)
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(.white)
                     Text(meeting.contactRole)
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(SBrand.textSecondary)
                 }
                 Spacer()
@@ -2177,22 +2177,22 @@ struct LeadDetailStub: View {
     private var activitySummary: some View {
         VStack(alignment: .leading, spacing: 9) {
             Text("Siste aktivitet")
-                .font(.system(size: 12, weight: .bold))
+                .font(.appScaled(size: 12, weight: .bold))
                 .foregroundStyle(.white)
             HStack(spacing: 10) {
                 ZStack {
                     Circle().fill(SBrand.blue.opacity(0.20))
                     Image(systemName: "envelope.fill")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(SBrand.blue)
                 }
                 .frame(width: 30, height: 30)
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Tilbud sendt")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
                     Text("15. mai 14:18 · Lars Kristensen")
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(SBrand.textSecondary)
                 }
                 Spacer()
@@ -2290,16 +2290,16 @@ struct MileageSheet: View {
                     RoundedRectangle(cornerRadius: 10)
                         .fill(SBrand.purple.opacity(0.22))
                     Image(systemName: "location.fill")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.appScaled(size: 14, weight: .bold))
                         .foregroundStyle(SBrand.purpleLight)
                 }
                 .frame(width: 38, height: 38)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Tirsdag 20. mai 2025")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appScaled(size: 12, weight: .bold))
                         .foregroundStyle(.white)
                     Text("Møte: \(meeting.company)")
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(SBrand.textSecondary)
                 }
                 Spacer()
@@ -2307,18 +2307,18 @@ struct MileageSheet: View {
             HStack(spacing: 14) {
                 tripLeg(icon: "location.circle.fill", color: SBrand.blue, title: "Fra", subtitle: "Oslo (kontor)")
                 Image(systemName: "arrow.right")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(SBrand.textTertiary)
                 tripLeg(icon: "mappin.circle.fill", color: meeting.iconColor, title: "Til", subtitle: meeting.address)
             }
             HStack(spacing: 14) {
                 Label("\(drivenKm) km enveis", systemImage: "ruler.fill")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(SBrand.textSecondary)
                 Spacer()
                 Toggle(isOn: $returnTrip) {
                     Text("Inkluder retur")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(.white)
                 }
                 .tint(SBrand.purple)
@@ -2333,15 +2333,15 @@ struct MileageSheet: View {
     private func tripLeg(icon: String, color: Color, title: String, subtitle: String) -> some View {
         HStack(spacing: 8) {
             Image(systemName: icon)
-                .font(.system(size: 14, weight: .bold))
+                .font(.appScaled(size: 14, weight: .bold))
                 .foregroundStyle(color)
             VStack(alignment: .leading, spacing: 1) {
                 Text(title)
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(.appScaled(size: 9, weight: .semibold))
                     .foregroundStyle(SBrand.textTertiary)
                     .textCase(.uppercase)
                 Text(subtitle)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
             }
@@ -2352,7 +2352,7 @@ struct MileageSheet: View {
     private var vehiclePicker: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Kjøretøy")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(SBrand.textSecondary)
             HStack(spacing: 8) {
                 ForEach(VehicleType.allCases, id: \.self) { v in
@@ -2361,13 +2361,13 @@ struct MileageSheet: View {
                     } label: {
                         VStack(spacing: 6) {
                             Image(systemName: v.icon)
-                                .font(.system(size: 17, weight: .semibold))
+                                .font(.appScaled(size: 17, weight: .semibold))
                                 .foregroundStyle(vehicleType == v ? .white : SBrand.purpleLight)
                             Text(v.rawValue)
-                                .font(.system(size: 10, weight: .bold))
+                                .font(.appScaled(size: 10, weight: .bold))
                                 .foregroundStyle(vehicleType == v ? .white : .white.opacity(0.85))
                             Text(String(format: "%.2f kr/km", v.baseRate))
-                                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                                .font(.appScaled(size: 9, weight: .semibold, design: .rounded))
                                 .foregroundStyle(vehicleType == v ? .white.opacity(0.85) : SBrand.textSecondary)
                                 .monospacedDigit()
                         }
@@ -2392,14 +2392,14 @@ struct MileageSheet: View {
             VStack(alignment: .leading, spacing: 7) {
                 HStack(spacing: 6) {
                     Image(systemName: "person.2.fill")
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(SBrand.purpleLight)
                     Text("Passasjerer")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
                     Spacer()
                     Text("+1,00 kr/km per passasjer")
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(SBrand.textSecondary)
                 }
                 HStack(spacing: 6) {
@@ -2408,7 +2408,7 @@ struct MileageSheet: View {
                             withAnimation(.easeInOut(duration: 0.15)) { passengers = n }
                         } label: {
                             Text("\(n)")
-                                .font(.system(size: 13, weight: .bold, design: .rounded))
+                                .font(.appScaled(size: 13, weight: .bold, design: .rounded))
                                 .foregroundStyle(passengers == n ? .white : .white.opacity(0.8))
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 10)
@@ -2428,14 +2428,14 @@ struct MileageSheet: View {
             Toggle(isOn: $towing) {
                 HStack(spacing: 6) {
                     Image(systemName: "truck.box.fill")
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(SBrand.purpleLight)
                     Text("Tilhenger / utstyr")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
                     Spacer()
                     Text("+1,00 kr/km")
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(SBrand.textSecondary)
                 }
             }
@@ -2444,14 +2444,14 @@ struct MileageSheet: View {
             Toggle(isOn: $includeToll) {
                 HStack(spacing: 6) {
                     Image(systemName: "road.lanes")
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(SBrand.purpleLight)
                     Text("Inkluder bompenger (estimat)")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
                     Spacer()
                     Text("~55 kr / passering")
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(SBrand.textSecondary)
                 }
             }
@@ -2466,11 +2466,11 @@ struct MileageSheet: View {
         VStack(spacing: 0) {
             HStack {
                 Text("Beregning")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
                 Text("Statens sats 2026")
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(.appScaled(size: 9, weight: .semibold))
                     .foregroundStyle(SBrand.green)
                     .padding(.horizontal, 7).padding(.vertical, 3)
                     .background(SBrand.green.opacity(0.18), in: Capsule())
@@ -2515,15 +2515,15 @@ struct MileageSheet: View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text(label)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(.white)
                 Text(detail)
-                    .font(.system(size: 10, design: .monospaced))
+                    .font(.appScaled(size: 10, design: .monospaced))
                     .foregroundStyle(SBrand.textSecondary)
             }
             Spacer()
             Text(String(format: "%.2f kr", value))
-                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .font(.appScaled(size: 13, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
                 .monospacedDigit()
         }
@@ -2535,15 +2535,15 @@ struct MileageSheet: View {
         HStack {
             VStack(alignment: .leading, spacing: 3) {
                 Text("Total kjøregodtgjørelse")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.85))
                 Text("Skattefri etter statens sats")
-                    .font(.system(size: 9))
+                    .font(.appScaled(size: 9))
                     .foregroundStyle(.white.opacity(0.65))
             }
             Spacer()
             Text(String(format: "%.2f kr", totalAmount))
-                .font(.system(size: 26, weight: .black, design: .rounded))
+                .font(.appScaled(size: 26, weight: .black, design: .rounded))
                 .foregroundStyle(.white)
                 .monospacedDigit()
                 .lineLimit(1)
@@ -2561,20 +2561,20 @@ struct MileageSheet: View {
     private var notesCard: some View {
         VStack(alignment: .leading, spacing: 7) {
             Text("Notat (valgfritt)")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(SBrand.textSecondary)
             ZStack(alignment: .topLeading) {
                 TextEditor(text: $notes)
                     .scrollContentBackground(.hidden)
                     .foregroundStyle(.white)
-                    .font(.system(size: 12))
+                    .font(.appScaled(size: 12))
                     .frame(minHeight: 70)
                     .padding(8)
                     .background(SBrand.card, in: RoundedRectangle(cornerRadius: 11))
                     .overlay(RoundedRectangle(cornerRadius: 11).stroke(SBrand.stroke, lineWidth: 1))
                 if notes.isEmpty {
                     Text("F.eks. møte-formål, ekstra omveier…")
-                        .font(.system(size: 12))
+                        .font(.appScaled(size: 12))
                         .foregroundStyle(SBrand.textTertiary)
                         .padding(.horizontal, 12).padding(.vertical, 14)
                         .allowsHitTesting(false)
@@ -2588,9 +2588,9 @@ struct MileageSheet: View {
             Button {} label: {
                 HStack(spacing: 5) {
                     Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appScaled(size: 12, weight: .bold))
                     Text("PDF")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                 }
                 .foregroundStyle(.white)
                 .frame(maxWidth: 110)
@@ -2602,9 +2602,9 @@ struct MileageSheet: View {
             Button { dismiss() } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                     Text("Logg \(String(format: "%.0f kr", totalAmount))")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                 }
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)

@@ -394,6 +394,11 @@ struct SessionExpiredSheet: View {
 /// preview-portene under `Views/Tabs/<Fane>/`.
 struct MainTabView: View {
     @Environment(AppState.self) private var state
+    /// Dynamic Type (a11y 2026-07-05): fontene bygges via Font.appScaled
+    /// (UIFontMetrics) som leses når body evalueres — les env-verdien her
+    /// og `.id()` roten så HELE hierarkiet re-bygges når brukeren endrer
+    /// tekststørrelse i Innstillinger.
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var selection: Int = {
         #if DEBUG
         // QA-hook: `SIMCTL_CHILD_QA_TAB=<0-7> simctl launch …` åpner appen
@@ -457,6 +462,11 @@ struct MainTabView: View {
                 }
             }
         }
+        .id(dynamicTypeSize)
+        // Accessibility-størrelsene (AX1-AX5) krever ekte adaptive
+        // layouts (kort/tabeller re-flyter ikke enda) — capp på xxxLarge
+        // så tekst skalerer 100→235 % uten å knuse skjermene.
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
     }
 }
 

@@ -315,7 +315,7 @@ struct TeamView: View {
                     RoundedRectangle(cornerRadius: 11).fill(TBrand.card)
                     RoundedRectangle(cornerRadius: 11).stroke(TBrand.green.opacity(0.40), lineWidth: 1)
                     Image(systemName: "dot.radiowaves.left.and.right")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.appScaled(size: 14, weight: .semibold))
                         .foregroundStyle(TBrand.green)
                 }
                 .frame(width: 42, height: 42)
@@ -386,10 +386,10 @@ struct TeamView: View {
         } label: {
             HStack(spacing: 5) {
                 Image(systemName: "plus")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
                 if !isCompact {
                     Text("Ny")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appScaled(size: 12, weight: .bold))
                         .lineLimit(1)
                         .fixedSize()
                 }
@@ -444,22 +444,22 @@ struct TeamView: View {
                     RoundedRectangle(cornerRadius: 10)
                         .fill(TBrand.purple.opacity(0.22))
                     Image(systemName: "chart.bar.fill")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.appScaled(size: 16, weight: .semibold))
                         .foregroundStyle(TBrand.purple)
                 }
                 .frame(width: 40, height: 40)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Statistikk")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.appScaled(size: 14, weight: .bold))
                         .foregroundStyle(.white)
                     Text(subtitle)
-                        .font(.system(size: 12))
+                        .font(.appScaled(size: 12))
                         .foregroundStyle(TBrand.textSecondary)
                 }
                 Spacer()
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.appScaled(size: 13, weight: .semibold))
                     .foregroundStyle(TBrand.textSecondary)
             }
             .padding(14)
@@ -475,7 +475,7 @@ struct TeamView: View {
         ScrollView {
             VStack(spacing: 14) {
                 Text("Statistikk")
-                    .font(.system(size: 20, weight: .bold))
+                    .font(.appScaled(size: 20, weight: .bold))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.top, 18)
@@ -510,31 +510,31 @@ struct TeamView: View {
         return Button { selectedKPI = k } label: {
             VStack(alignment: .leading, spacing: 7) {
                 Text(k.rawValue)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(TBrand.textSecondary)
                     .lineLimit(1)
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(hasData ? value : "—")
-                        .font(.system(size: 22, weight: .bold, design: .rounded))
+                        .font(.appScaled(size: 22, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                         .monospacedDigit()
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                     if hasData && isDemo {
                         Text(trend)
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.appScaled(size: 11, weight: .bold))
                             .foregroundStyle(TBrand.green)
                             .monospacedDigit()
                     }
                 }
                 HStack {
                     Text(noData ? "Ingen data enda" : (isDemo ? "vs. forrige periode" : "live fra teamet"))
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(TBrand.textTertiary)
                     Spacer()
                     if hasData && isDemo {
                         Image(systemName: "arrow.up.right")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.appScaled(size: 9, weight: .bold))
                             .foregroundStyle(k.tint)
                     }
                 }

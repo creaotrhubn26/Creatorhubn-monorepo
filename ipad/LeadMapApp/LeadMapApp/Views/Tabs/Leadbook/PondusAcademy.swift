@@ -234,7 +234,7 @@ struct PondusAcademyBanner: View {
                         .frame(width: 26, height: 26)
                         .overlay(
                             Image(systemName: "play.fill")
-                                .font(.system(size: 10, weight: .bold))
+                                .font(.appScaled(size: 10, weight: .bold))
                                 .foregroundStyle(.white)
                                 .offset(x: 1)
                         )
@@ -245,15 +245,15 @@ struct PondusAcademyBanner: View {
                 VStack(alignment: .leading, spacing: 5) {
                     HStack(spacing: 6) {
                         Text("LÆR LEADGRID PONDUS")
-                            .font(.system(size: 9, weight: .black))
+                            .font(.appScaled(size: 9, weight: .black))
                             .foregroundStyle(LBrand.purpleLight).tracking(0.8)
                         Text("•").foregroundStyle(LBrand.textTertiary)
                         Text("\(watched.count) / \(PondusAcademyData.chapters.count) sett")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.appScaled(size: 9, weight: .bold))
                             .foregroundStyle(LBrand.textTertiary)
                     }
                     Text(watched.isEmpty ? "Start: «\(nextChapter.title)»" : "Fortsett: «\(nextChapter.title)»")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
                     // Progress bar
@@ -271,8 +271,8 @@ struct PondusAcademyBanner: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 HStack(spacing: 6) {
-                    Image(systemName: "play.fill").font(.system(size: 11, weight: .bold))
-                    Text("Åpne Akademi").font(.system(size: 12, weight: .bold))
+                    Image(systemName: "play.fill").font(.appScaled(size: 11, weight: .bold))
+                    Text("Åpne Akademi").font(.appScaled(size: 12, weight: .bold))
                 }
                 .foregroundStyle(.white)
                 .padding(.horizontal, 14).padding(.vertical, 10)
@@ -363,10 +363,10 @@ struct PondusAkademiSheet: View {
                 ToolbarItem(placement: .principal) {
                     VStack(spacing: 0) {
                         Text("\(watched.count) av \(chapters.count) kapitler")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.appScaled(size: 11, weight: .bold))
                             .foregroundStyle(.white)
                         Text("\(formatMinutes(watchedDurationSeconds)) av \(formatMinutes(totalDurationSeconds))")
-                            .font(.system(size: 9))
+                            .font(.appScaled(size: 9))
                             .foregroundStyle(LBrand.textSecondary)
                     }
                 }
@@ -384,7 +384,7 @@ struct PondusAkademiSheet: View {
                         } label: { Label("Nullstill fremdrift", systemImage: "arrow.counterclockwise") }
                     } label: {
                         Image(systemName: "ellipsis.circle")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.appScaled(size: 16, weight: .semibold))
                             .foregroundStyle(LBrand.purpleLight)
                     }
                 }
@@ -446,22 +446,22 @@ struct PondusAkademiSheet: View {
                     VStack(spacing: 10) {
                         ProgressView().tint(.white)
                         Text("Laster video…")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.appScaled(size: 12, weight: .semibold))
                             .foregroundStyle(.white.opacity(0.8))
                     }
                 } else if videoLoadFailed {
                     VStack(spacing: 10) {
                         Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.system(size: 26))
+                            .font(.appScaled(size: 26))
                             .foregroundStyle(LBrand.yellow)
                         Text("Kunne ikke laste videoen")
-                            .font(.system(size: 13, weight: .bold))
+                            .font(.appScaled(size: 13, weight: .bold))
                             .foregroundStyle(.white)
                         Button {
                             Task { await loadVideo() }
                         } label: {
                             Text("Prøv igjen")
-                                .font(.system(size: 12, weight: .bold))
+                                .font(.appScaled(size: 12, weight: .bold))
                                 .foregroundStyle(.white)
                                 .padding(.horizontal, 14).padding(.vertical, 8)
                                 .background(LBrand.purple, in: Capsule())
@@ -534,11 +534,11 @@ struct PondusAkademiSheet: View {
                     Spacer()
                     VStack(spacing: 8) {
                         Text("Kapittel \(current.number) · \(current.section.rawValue)")
-                            .font(.system(size: 10, weight: .black))
+                            .font(.appScaled(size: 10, weight: .black))
                             .foregroundStyle(.white.opacity(0.8))
                             .tracking(0.8)
                         Text(current.title)
-                            .font(.system(size: 24, weight: .heavy))
+                            .font(.appScaled(size: 24, weight: .heavy))
                             .foregroundStyle(.white)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 30)
@@ -554,7 +554,7 @@ struct PondusAkademiSheet: View {
                         .frame(width: 86, height: 86)
                         .overlay(
                             Image(systemName: "play.fill")
-                                .font(.system(size: 36, weight: .bold))
+                                .font(.appScaled(size: 36, weight: .bold))
                                 .foregroundStyle(.white)
                                 .offset(x: 3)
                         )
@@ -569,7 +569,7 @@ struct PondusAkademiSheet: View {
                             Circle().fill(LBrand.red).frame(width: 6, height: 6)
                                 .opacity(0.85)
                             Text("SPILLES AV")
-                                .font(.system(size: 9, weight: .black)).tracking(0.8)
+                                .font(.appScaled(size: 9, weight: .black)).tracking(0.8)
                                 .foregroundStyle(.white)
                         }
                         .padding(.horizontal, 9).padding(.vertical, 4)
@@ -578,9 +578,9 @@ struct PondusAkademiSheet: View {
                     Spacer()
                     HStack(spacing: 6) {
                         Image(systemName: "person.fill")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.appScaled(size: 9, weight: .bold))
                         Text(current.instructor)
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.appScaled(size: 10, weight: .semibold))
                     }
                     .foregroundStyle(.white)
                     .padding(.horizontal, 9).padding(.vertical, 4)
@@ -622,26 +622,26 @@ struct PondusAkademiSheet: View {
             // Time + transport
             HStack(spacing: 16) {
                 Text(formatHMS(playbackSeconds))
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .font(.appScaled(size: 11, weight: .semibold, design: .monospaced))
                     .foregroundStyle(LBrand.textSecondary)
                 Spacer()
                 Button { jumpPrev() } label: {
                     Image(systemName: "backward.end.fill")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.appScaled(size: 14, weight: .bold))
                         .foregroundStyle(.white)
                         .frame(width: 36, height: 36)
                         .background(LBrand.cardHi, in: Circle())
                 }.buttonStyle(.plain)
                 Button { skip(-10) } label: {
                     Image(systemName: "gobackward.10")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.appScaled(size: 14, weight: .bold))
                         .foregroundStyle(.white)
                         .frame(width: 36, height: 36)
                         .background(LBrand.cardHi, in: Circle())
                 }.buttonStyle(.plain)
                 Button { togglePlay() } label: {
                     Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                        .font(.system(size: 18, weight: .heavy))
+                        .font(.appScaled(size: 18, weight: .heavy))
                         .foregroundStyle(.white)
                         .frame(width: 52, height: 52)
                         .background(
@@ -653,14 +653,14 @@ struct PondusAkademiSheet: View {
                 }.buttonStyle(.plain)
                 Button { skip(10) } label: {
                     Image(systemName: "goforward.10")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.appScaled(size: 14, weight: .bold))
                         .foregroundStyle(.white)
                         .frame(width: 36, height: 36)
                         .background(LBrand.cardHi, in: Circle())
                 }.buttonStyle(.plain)
                 Button { jumpNext() } label: {
                     Image(systemName: "forward.end.fill")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.appScaled(size: 14, weight: .bold))
                         .foregroundStyle(.white)
                         .frame(width: 36, height: 36)
                         .background(LBrand.cardHi, in: Circle())
@@ -672,14 +672,14 @@ struct PondusAkademiSheet: View {
                     }
                 } label: {
                     Text(playbackSpeed == 1 ? "1×" : "\(String(format: "%.2gx", playbackSpeed))")
-                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                        .font(.appScaled(size: 12, weight: .bold, design: .monospaced))
                         .foregroundStyle(.white)
                         .frame(width: 44, height: 32)
                         .background(LBrand.cardHi, in: RoundedRectangle(cornerRadius: 8))
                         .overlay(RoundedRectangle(cornerRadius: 8).stroke(LBrand.stroke, lineWidth: 1))
                 }
                 Text(formatHMS(current.duration))
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .font(.appScaled(size: 11, weight: .semibold, design: .monospaced))
                     .foregroundStyle(LBrand.textSecondary)
             }
         }
@@ -689,31 +689,31 @@ struct PondusAkademiSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Text(current.title)
-                    .font(.system(size: 22, weight: .heavy))
+                    .font(.appScaled(size: 22, weight: .heavy))
                     .foregroundStyle(.white)
                 Spacer()
                 if watched.contains(current.id) {
                     Label("Sett", systemImage: "checkmark.circle.fill")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.appScaled(size: 11, weight: .bold))
                         .foregroundStyle(LBrand.green)
                         .padding(.horizontal, 9).padding(.vertical, 4)
                         .background(LBrand.green.opacity(0.16), in: Capsule())
                 }
             }
             Text(current.summary)
-                .font(.system(size: 13))
+                .font(.appScaled(size: 13))
                 .foregroundStyle(LBrand.textSecondary)
             VStack(alignment: .leading, spacing: 8) {
                 Text("DU VIL LÆRE")
-                    .font(.system(size: 10, weight: .black))
+                    .font(.appScaled(size: 10, weight: .black))
                     .foregroundStyle(LBrand.textTertiary).tracking(0.8)
                 ForEach(current.learningObjectives, id: \.self) { obj in
                     HStack(alignment: .top, spacing: 9) {
                         Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 12))
+                            .font(.appScaled(size: 12))
                             .foregroundStyle(LBrand.purpleLight)
                         Text(obj)
-                            .font(.system(size: 13))
+                            .font(.appScaled(size: 13))
                             .foregroundStyle(.white)
                         Spacer()
                     }
@@ -730,20 +730,20 @@ struct PondusAkademiSheet: View {
                 Image(systemName: "text.quote")
                     .foregroundStyle(LBrand.purpleLight)
                 Text("TRANSKRIPT")
-                    .font(.system(size: 10, weight: .black))
+                    .font(.appScaled(size: 10, weight: .black))
                     .foregroundStyle(LBrand.textTertiary).tracking(0.8)
                 Spacer()
                 Button {} label: {
                     HStack(spacing: 4) {
-                        Image(systemName: "square.and.arrow.up").font(.system(size: 10, weight: .bold))
+                        Image(systemName: "square.and.arrow.up").font(.appScaled(size: 10, weight: .bold))
                         Text("Eksporter")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.appScaled(size: 11, weight: .semibold))
                     }
                     .foregroundStyle(LBrand.purpleLight)
                 }.buttonStyle(.plain)
             }
             Text(current.transcriptSnippet)
-                .font(.system(size: 13, design: .serif))
+                .font(.appScaled(size: 13, design: .serif))
                 .foregroundStyle(.white)
                 .lineSpacing(4)
                 .padding(.vertical, 4)
@@ -759,7 +759,7 @@ struct PondusAkademiSheet: View {
 
     private var relatedRow: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("NESTE I AKADEMIET").font(.system(size: 10, weight: .black))
+            Text("NESTE I AKADEMIET").font(.appScaled(size: 10, weight: .black))
                 .foregroundStyle(LBrand.textTertiary).tracking(0.8)
             HStack(spacing: 10) {
                 ForEach(nextSuggestions, id: \.id) { c in
@@ -778,7 +778,7 @@ struct PondusAkademiSheet: View {
                                             colors: [c.posterTint.opacity(0.35), c.posterTint.opacity(0.1)],
                                             startPoint: .topLeading, endPoint: .bottomTrailing))
                                     Image(systemName: c.posterIcon)
-                                        .font(.system(size: 22, weight: .semibold))
+                                        .font(.appScaled(size: 22, weight: .semibold))
                                         .foregroundStyle(.white)
                                 }
                                 LinearGradient(colors: [.clear, .black.opacity(0.55)],
@@ -787,15 +787,15 @@ struct PondusAkademiSheet: View {
                             .frame(height: 70)
                             .clipShape(RoundedRectangle(cornerRadius: 9))
                             Text(c.title)
-                                .font(.system(size: 12, weight: .bold))
+                                .font(.appScaled(size: 12, weight: .bold))
                                 .foregroundStyle(.white)
                                 .lineLimit(2)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                             HStack(spacing: 6) {
                                 Image(systemName: "clock")
-                                    .font(.system(size: 9))
+                                    .font(.appScaled(size: 9))
                                 Text(formatHMS(c.duration))
-                                    .font(.system(size: 10, design: .monospaced))
+                                    .font(.appScaled(size: 10, design: .monospaced))
                             }
                             .foregroundStyle(LBrand.textSecondary)
                         }
@@ -866,7 +866,7 @@ struct PondusAkademiSheet: View {
         let isOn = sectionFilter == s
         return Button { sectionFilter = s } label: {
             Text(label)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.appScaled(size: 11, weight: .semibold))
                 .foregroundStyle(isOn ? .white : LBrand.textSecondary)
                 .padding(.horizontal, 11).padding(.vertical, 6)
                 .background(isOn ? LBrand.purple.opacity(0.30) : LBrand.cardHi, in: Capsule())
@@ -877,15 +877,15 @@ struct PondusAkademiSheet: View {
     private func sectionHeader(_ s: PondusChapter.Section, count: Int) -> some View {
         HStack(spacing: 7) {
             Image(systemName: s.icon)
-                .font(.system(size: 10, weight: .bold))
+                .font(.appScaled(size: 10, weight: .bold))
                 .foregroundStyle(s.tint)
             Text(s.rawValue.uppercased())
-                .font(.system(size: 10, weight: .black))
+                .font(.appScaled(size: 10, weight: .black))
                 .foregroundStyle(s.tint)
                 .tracking(0.6)
             Text("·").foregroundStyle(LBrand.textTertiary)
             Text("\(count)")
-                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .font(.appScaled(size: 10, weight: .bold, design: .rounded))
                 .foregroundStyle(LBrand.textTertiary)
             Spacer()
         }
@@ -912,7 +912,7 @@ struct PondusAkademiSheet: View {
                                 colors: [c.posterTint.opacity(0.40), c.posterTint.opacity(0.10)],
                                 startPoint: .topLeading, endPoint: .bottomTrailing))
                         Image(systemName: c.posterIcon)
-                            .font(.system(size: 14, weight: .bold))
+                            .font(.appScaled(size: 14, weight: .bold))
                             .foregroundStyle(.white)
                     }
                     if isCurrent {
@@ -920,14 +920,14 @@ struct PondusAkademiSheet: View {
                             .frame(width: 22, height: 22)
                             .overlay(
                                 Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                                    .font(.system(size: 8, weight: .heavy))
+                                    .font(.appScaled(size: 8, weight: .heavy))
                                     .foregroundStyle(.white)
                             )
                     } else if isWatched {
                         ZStack {
                             Circle().fill(LBrand.green.opacity(0.95)).frame(width: 18, height: 18)
                             Image(systemName: "checkmark")
-                                .font(.system(size: 9, weight: .black))
+                                .font(.appScaled(size: 9, weight: .black))
                                 .foregroundStyle(.white)
                         }
                     }
@@ -937,23 +937,23 @@ struct PondusAkademiSheet: View {
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 5) {
                         Text("\(c.number)")
-                            .font(.system(size: 10, weight: .black, design: .rounded))
+                            .font(.appScaled(size: 10, weight: .black, design: .rounded))
                             .foregroundStyle(LBrand.textTertiary)
                         Text(c.title)
-                            .font(.system(size: 12, weight: isCurrent ? .bold : .semibold))
+                            .font(.appScaled(size: 12, weight: isCurrent ? .bold : .semibold))
                             .foregroundStyle(isCurrent ? LBrand.purpleLight : .white)
                             .lineLimit(2)
                     }
                     HStack(spacing: 5) {
                         Image(systemName: "clock")
-                            .font(.system(size: 8))
+                            .font(.appScaled(size: 8))
                             .foregroundStyle(LBrand.textTertiary)
                         Text(formatHMS(c.duration))
-                            .font(.system(size: 10, design: .monospaced))
+                            .font(.appScaled(size: 10, design: .monospaced))
                             .foregroundStyle(LBrand.textTertiary)
                         Text("·").foregroundStyle(LBrand.textTertiary)
                         Text(c.instructor)
-                            .font(.system(size: 10))
+                            .font(.appScaled(size: 10))
                             .foregroundStyle(LBrand.textTertiary)
                             .lineLimit(1)
                     }

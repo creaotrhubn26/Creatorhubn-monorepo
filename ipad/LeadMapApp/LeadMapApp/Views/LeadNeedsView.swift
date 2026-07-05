@@ -97,7 +97,7 @@ struct LeadNeedsView: View {
                 .textCase(.uppercase)
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text("\(score)")
-                    .font(.system(size: 56, weight: .bold))
+                    .font(.appScaled(size: 56, weight: .bold))
                     .foregroundStyle(scoreColor(score))
                 Text("/ 100")
                     .font(.title3)

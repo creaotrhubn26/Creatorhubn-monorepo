@@ -361,7 +361,7 @@ struct TeamAccessControlView: View {
                                 dirty = false
                                 flash("Endringer forkastet")
                             } label: {
-                                Text("Forkast").font(.system(size: 12, weight: .semibold))
+                                Text("Forkast").font(.appScaled(size: 12, weight: .semibold))
                                     .foregroundStyle(LBrand.textSecondary)
                             }.buttonStyle(.plain)
                         }
@@ -370,8 +370,8 @@ struct TeamAccessControlView: View {
                             flash("Tilganger lagret · audit-logg oppdatert")
                         } label: {
                             HStack(spacing: 5) {
-                                Image(systemName: "checkmark").font(.system(size: 10, weight: .black))
-                                Text("Lagre").font(.system(size: 12, weight: .bold))
+                                Image(systemName: "checkmark").font(.appScaled(size: 10, weight: .black))
+                                Text("Lagre").font(.appScaled(size: 12, weight: .bold))
                             }
                             .foregroundStyle(.white)
                             .padding(.horizontal, 12).padding(.vertical, 7)
@@ -405,7 +405,7 @@ struct TeamAccessControlView: View {
             .overlay(alignment: .top) {
                 if let t = toast {
                     Label(t, systemImage: "checkmark.circle.fill")
-                        .font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
+                        .font(.appScaled(size: 12, weight: .bold)).foregroundStyle(.white)
                         .padding(.horizontal, 12).padding(.vertical, 8)
                         .background(LBrand.green, in: Capsule())
                         .padding(.top, 6)
@@ -433,13 +433,13 @@ struct TeamAccessControlView: View {
         HStack(spacing: 10) {
             ZStack {
                 RoundedRectangle(cornerRadius: 9).fill(tint.opacity(0.22))
-                Image(systemName: icon).font(.system(size: 14, weight: .bold)).foregroundStyle(tint)
+                Image(systemName: icon).font(.appScaled(size: 14, weight: .bold)).foregroundStyle(tint)
             }
             .frame(width: 36, height: 36)
             VStack(alignment: .leading, spacing: 1) {
-                Text(value).font(.system(size: 18, weight: .heavy, design: .rounded))
+                Text(value).font(.appScaled(size: 18, weight: .heavy, design: .rounded))
                     .foregroundStyle(.white).monospacedDigit()
-                Text(label).font(.system(size: 9, weight: .black))
+                Text(label).font(.appScaled(size: 9, weight: .black))
                     .foregroundStyle(LBrand.textTertiary).tracking(0.6)
             }
             Spacer()
@@ -457,8 +457,8 @@ struct TeamAccessControlView: View {
             ForEach(Mode.allCases) { m in
                 Button { withAnimation(.easeInOut(duration: 0.15)) { mode = m } } label: {
                     HStack(spacing: 6) {
-                        Image(systemName: m.icon).font(.system(size: 11, weight: .bold))
-                        Text(m.rawValue).font(.system(size: 12, weight: mode == m ? .bold : .semibold))
+                        Image(systemName: m.icon).font(.appScaled(size: 11, weight: .bold))
+                        Text(m.rawValue).font(.appScaled(size: 12, weight: mode == m ? .bold : .semibold))
                     }
                     .foregroundStyle(mode == m ? .white : LBrand.textSecondary)
                     .padding(.horizontal, 14).padding(.vertical, 9)
@@ -470,8 +470,8 @@ struct TeamAccessControlView: View {
             if mode == .medlemmer {
                 Button { showInvite = true } label: {
                     HStack(spacing: 5) {
-                        Image(systemName: "person.badge.plus").font(.system(size: 11, weight: .bold))
-                        Text("Inviter").font(.system(size: 12, weight: .bold))
+                        Image(systemName: "person.badge.plus").font(.appScaled(size: 11, weight: .bold))
+                        Text("Inviter").font(.appScaled(size: 12, weight: .bold))
                     }
                     .foregroundStyle(.white)
                     .padding(.horizontal, 12).padding(.vertical, 8)
@@ -509,18 +509,18 @@ struct TeamAccessControlView: View {
                 HStack(spacing: 14) {
                     ZStack {
                         RoundedRectangle(cornerRadius: 13).fill(role.tint.opacity(0.20))
-                        Image(systemName: role.icon).font(.system(size: 22, weight: .bold))
+                        Image(systemName: role.icon).font(.appScaled(size: 22, weight: .bold))
                             .foregroundStyle(role.tint)
                     }
                     .frame(width: 52, height: 52)
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(role.rawValue).font(.system(size: 17, weight: .heavy)).foregroundStyle(.white)
-                        Text(role.description).font(.system(size: 12))
+                        Text(role.rawValue).font(.appScaled(size: 17, weight: .heavy)).foregroundStyle(.white)
+                        Text(role.description).font(.appScaled(size: 12))
                             .foregroundStyle(LBrand.textSecondary).lineLimit(2)
                     }
                     Spacer()
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(LBrand.textTertiary)
                 }
                 HStack(spacing: 8) {
@@ -532,7 +532,7 @@ struct TeamAccessControlView: View {
                 // Preview-grid med 12 features for å vise hva rollen får
                 VStack(alignment: .leading, spacing: 6) {
                     Text("TILGANG (UTDRAG)")
-                        .font(.system(size: 9, weight: .black))
+                        .font(.appScaled(size: 9, weight: .black))
                         .foregroundStyle(LBrand.textTertiary).tracking(0.6)
                     LazyVGrid(columns: MacCatalystGrid.adaptive(phone: 2, iPad: 4, mac: 4, spacing: 6), spacing: 6) {
                         ForEach(Array(LeadgridFeature.allCases.prefix(12))) { f in
@@ -550,9 +550,9 @@ struct TeamAccessControlView: View {
 
     private func statBadge(_ value: String, _ label: String, _ tint: Color) -> some View {
         VStack(spacing: 1) {
-            Text(value).font(.system(size: 16, weight: .heavy, design: .rounded))
+            Text(value).font(.appScaled(size: 16, weight: .heavy, design: .rounded))
                 .foregroundStyle(tint).monospacedDigit()
-            Text(label).font(.system(size: 8, weight: .black))
+            Text(label).font(.appScaled(size: 8, weight: .black))
                 .foregroundStyle(LBrand.textTertiary).tracking(0.6).lineLimit(1).minimumScaleFactor(0.75)
         }
         .frame(maxWidth: .infinity).padding(.vertical, 8)
@@ -561,12 +561,12 @@ struct TeamAccessControlView: View {
 
     private func featurePreviewChip(_ f: LeadgridFeature, level: AccessLevel) -> some View {
         HStack(spacing: 4) {
-            Image(systemName: f.icon).font(.system(size: 8, weight: .bold))
+            Image(systemName: f.icon).font(.appScaled(size: 8, weight: .bold))
                 .foregroundStyle(level == .none ? LBrand.textTertiary : level.color)
-            Text(f.rawValue).font(.system(size: 9, weight: .semibold))
+            Text(f.rawValue).font(.appScaled(size: 9, weight: .semibold))
                 .foregroundStyle(level == .none ? LBrand.textTertiary : .white)
                 .lineLimit(1).minimumScaleFactor(0.7)
-            Image(systemName: level.icon).font(.system(size: 8, weight: .bold))
+            Image(systemName: level.icon).font(.appScaled(size: 8, weight: .bold))
                 .foregroundStyle(level.color)
         }
         .padding(.horizontal, 6).padding(.vertical, 5)
@@ -598,7 +598,7 @@ struct TeamAccessControlView: View {
                     ForEach(filteredMembers) { m in memberRow(m) }
                     if filteredMembers.isEmpty {
                         Text("Ingen medlemmer matcher")
-                            .font(.system(size: 13)).foregroundStyle(LBrand.textSecondary)
+                            .font(.appScaled(size: 13)).foregroundStyle(LBrand.textSecondary)
                             .frame(maxWidth: .infinity).padding(.vertical, 40)
                     }
                 }
@@ -639,8 +639,8 @@ struct TeamAccessControlView: View {
         let active = roleFilter == r
         return Button { roleFilter = active ? nil : r } label: {
             HStack(spacing: 5) {
-                if let r { Image(systemName: r.icon).font(.system(size: 10, weight: .bold)) }
-                Text(label).font(.system(size: 11, weight: .semibold))
+                if let r { Image(systemName: r.icon).font(.appScaled(size: 10, weight: .bold)) }
+                Text(label).font(.appScaled(size: 11, weight: .semibold))
             }
             .foregroundStyle(active ? .white : LBrand.textSecondary)
             .padding(.horizontal, 11).padding(.vertical, 6)
@@ -655,11 +655,11 @@ struct TeamAccessControlView: View {
                 ZStack {
                     Circle().fill(m.avatarColor.opacity(0.25))
                     Text(m.initials)
-                        .font(.system(size: 13, weight: .black))
+                        .font(.appScaled(size: 13, weight: .black))
                         .foregroundStyle(m.avatarColor)
                     if !m.active {
                         Circle().fill(.black.opacity(0.5))
-                        Image(systemName: "pause.fill").font(.system(size: 10, weight: .bold))
+                        Image(systemName: "pause.fill").font(.appScaled(size: 10, weight: .bold))
                             .foregroundStyle(.white)
                     }
                 }
@@ -667,11 +667,11 @@ struct TeamAccessControlView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 6) {
                         Text(m.name)
-                            .font(.system(size: 13, weight: .bold))
+                            .font(.appScaled(size: 13, weight: .bold))
                             .foregroundStyle(.white)
                         if m.hasOverrides {
                             Text("\(m.overrides.count) OVERSTYRINGER")
-                                .font(.system(size: 8, weight: .black))
+                                .font(.appScaled(size: 8, weight: .black))
                                 .foregroundStyle(LBrand.orange)
                                 .tracking(0.5)
                                 .padding(.horizontal, 5).padding(.vertical, 1)
@@ -680,29 +680,29 @@ struct TeamAccessControlView: View {
                         }
                         if !m.active {
                             Text("INAKTIV")
-                                .font(.system(size: 8, weight: .black))
+                                .font(.appScaled(size: 8, weight: .black))
                                 .foregroundStyle(LBrand.textTertiary).tracking(0.5)
                                 .padding(.horizontal, 5).padding(.vertical, 1)
                                 .background(LBrand.cardHi, in: Capsule())
                         }
                     }
                     HStack(spacing: 6) {
-                        Text(m.title).font(.system(size: 11)).foregroundStyle(LBrand.textSecondary)
+                        Text(m.title).font(.appScaled(size: 11)).foregroundStyle(LBrand.textSecondary)
                         Text("·").foregroundStyle(LBrand.textTertiary)
-                        Text(m.email).font(.system(size: 11)).foregroundStyle(LBrand.textSecondary)
+                        Text(m.email).font(.appScaled(size: 11)).foregroundStyle(LBrand.textSecondary)
                     }
                 }
                 Spacer()
                 HStack(spacing: 5) {
-                    Image(systemName: m.role.icon).font(.system(size: 11, weight: .bold))
-                    Text(m.role.rawValue).font(.system(size: 11, weight: .bold))
+                    Image(systemName: m.role.icon).font(.appScaled(size: 11, weight: .bold))
+                    Text(m.role.rawValue).font(.appScaled(size: 11, weight: .bold))
                 }
                 .foregroundStyle(m.role.tint)
                 .padding(.horizontal, 10).padding(.vertical, 5)
                 .background(m.role.tint.opacity(0.16), in: Capsule())
                 .overlay(Capsule().stroke(m.role.tint.opacity(0.4), lineWidth: 1))
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .bold)).foregroundStyle(LBrand.textTertiary)
+                    .font(.appScaled(size: 11, weight: .bold)).foregroundStyle(LBrand.textTertiary)
             }
             .padding(12)
             .background(LBrand.card, in: RoundedRectangle(cornerRadius: 12))
@@ -718,7 +718,7 @@ struct TeamAccessControlView: View {
             VStack(spacing: 8) {
                 if auditEntries.isEmpty {
                     Text("Ingen revisjonshendelser enda")
-                        .font(.system(size: 13)).foregroundStyle(LBrand.textSecondary)
+                        .font(.appScaled(size: 13)).foregroundStyle(LBrand.textSecondary)
                         .frame(maxWidth: .infinity).padding(.vertical, 40)
                 }
                 ForEach(auditEntries) { entry in auditRow(entry) }
@@ -746,18 +746,18 @@ struct TeamAccessControlView: View {
         HStack(alignment: .top, spacing: 12) {
             ZStack {
                 Circle().fill(e.tint.opacity(0.22))
-                Image(systemName: e.icon).font(.system(size: 12, weight: .bold)).foregroundStyle(e.tint)
+                Image(systemName: e.icon).font(.appScaled(size: 12, weight: .bold)).foregroundStyle(e.tint)
             }
             .frame(width: 32, height: 32)
             VStack(alignment: .leading, spacing: 3) {
-                Text(e.title).font(.system(size: 13)).foregroundStyle(.white)
+                Text(e.title).font(.appScaled(size: 13)).foregroundStyle(.white)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 HStack(spacing: 6) {
-                    Image(systemName: "person.fill").font(.system(size: 9))
-                    Text(e.actor).font(.system(size: 10, weight: .semibold))
+                    Image(systemName: "person.fill").font(.appScaled(size: 9))
+                    Text(e.actor).font(.appScaled(size: 10, weight: .semibold))
                     Text("·").foregroundStyle(LBrand.textTertiary)
-                    Image(systemName: "clock").font(.system(size: 9))
-                    Text(e.timeAgo).font(.system(size: 10))
+                    Image(systemName: "clock").font(.appScaled(size: 9))
+                    Text(e.timeAgo).font(.appScaled(size: 10))
                 }
                 .foregroundStyle(LBrand.textTertiary)
             }
@@ -811,7 +811,7 @@ struct EditRolePermissionsSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button { onClose(!overrides.isEmpty); dismiss() } label: {
-                        Text("Lagre").font(.system(size: 14, weight: .bold))
+                        Text("Lagre").font(.appScaled(size: 14, weight: .bold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 14).padding(.vertical, 8)
                             .background(
@@ -829,12 +829,12 @@ struct EditRolePermissionsSheet: View {
         HStack(spacing: 14) {
             ZStack {
                 RoundedRectangle(cornerRadius: 13).fill(role.tint.opacity(0.22))
-                Image(systemName: role.icon).font(.system(size: 22, weight: .bold)).foregroundStyle(role.tint)
+                Image(systemName: role.icon).font(.appScaled(size: 22, weight: .bold)).foregroundStyle(role.tint)
             }
             .frame(width: 52, height: 52)
             VStack(alignment: .leading, spacing: 3) {
-                Text(role.rawValue).font(.system(size: 18, weight: .heavy)).foregroundStyle(.white)
-                Text(role.description).font(.system(size: 12)).foregroundStyle(LBrand.textSecondary)
+                Text(role.rawValue).font(.appScaled(size: 18, weight: .heavy)).foregroundStyle(.white)
+                Text(role.description).font(.appScaled(size: 12)).foregroundStyle(LBrand.textSecondary)
             }
             Spacer()
         }
@@ -845,7 +845,7 @@ struct EditRolePermissionsSheet: View {
             HStack(spacing: 6) {
                 Image(systemName: g.icon).foregroundStyle(g.tint)
                 Text(g.rawValue.uppercased())
-                    .font(.system(size: 10, weight: .black)).tracking(0.8)
+                    .font(.appScaled(size: 10, weight: .black)).tracking(0.8)
                     .foregroundStyle(g.tint)
                 Spacer()
             }
@@ -862,15 +862,15 @@ struct EditRolePermissionsSheet: View {
         return HStack(spacing: 12) {
             ZStack {
                 RoundedRectangle(cornerRadius: 8).fill(LBrand.cardHi)
-                Image(systemName: f.icon).font(.system(size: 12, weight: .bold))
+                Image(systemName: f.icon).font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(level == .none ? LBrand.textTertiary : level.color)
             }
             .frame(width: 32, height: 32)
             VStack(alignment: .leading, spacing: 2) {
-                Text(f.rawValue).font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
+                Text(f.rawValue).font(.appScaled(size: 13, weight: .bold)).foregroundStyle(.white)
                 if overrides[f] != nil {
                     Text("OVERSTYRT FRA STANDARD")
-                        .font(.system(size: 8, weight: .black))
+                        .font(.appScaled(size: 8, weight: .black))
                         .foregroundStyle(LBrand.orange).tracking(0.6)
                 }
             }
@@ -883,8 +883,8 @@ struct EditRolePermissionsSheet: View {
                         else { overrides[f] = lvl }
                     } label: {
                         HStack(spacing: 3) {
-                            Image(systemName: lvl.icon).font(.system(size: 9, weight: .bold))
-                            Text(lvl.rawValue).font(.system(size: 10, weight: .bold))
+                            Image(systemName: lvl.icon).font(.appScaled(size: 9, weight: .bold))
+                            Text(lvl.rawValue).font(.appScaled(size: 10, weight: .bold))
                         }
                         .foregroundStyle(level == lvl ? .white : LBrand.textSecondary)
                         .padding(.horizontal, 8).padding(.vertical, 5)
@@ -950,7 +950,7 @@ struct EditMemberOverrideSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button { onSave(draft); dismiss() } label: {
-                        Text("Lagre").font(.system(size: 14, weight: .bold))
+                        Text("Lagre").font(.appScaled(size: 14, weight: .bold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 14).padding(.vertical, 8)
                             .background(
@@ -969,17 +969,17 @@ struct EditMemberOverrideSheet: View {
             ZStack {
                 Circle().fill(member.avatarColor.opacity(0.25))
                 Text(member.initials)
-                    .font(.system(size: 17, weight: .black))
+                    .font(.appScaled(size: 17, weight: .black))
                     .foregroundStyle(member.avatarColor)
             }
             .frame(width: 56, height: 56)
             VStack(alignment: .leading, spacing: 3) {
-                Text(member.name).font(.system(size: 18, weight: .heavy)).foregroundStyle(.white)
+                Text(member.name).font(.appScaled(size: 18, weight: .heavy)).foregroundStyle(.white)
                 Text("\(member.title) · \(member.email)")
-                    .font(.system(size: 11)).foregroundStyle(LBrand.textSecondary)
+                    .font(.appScaled(size: 11)).foregroundStyle(LBrand.textSecondary)
                 if draft.hasOverrides {
                     Text("\(draft.overrides.count) personlige overstyringer")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.appScaled(size: 11, weight: .bold))
                         .foregroundStyle(LBrand.orange)
                 }
             }
@@ -989,21 +989,21 @@ struct EditMemberOverrideSheet: View {
 
     private var roleSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("ROLLE").font(.system(size: 10, weight: .black))
+            Text("ROLLE").font(.appScaled(size: 10, weight: .black))
                 .foregroundStyle(LBrand.textTertiary).tracking(0.8)
             LazyVGrid(columns: MacCatalystGrid.adaptive(phone: 1, iPad: 2, mac: 3, spacing: 8), spacing: 8) {
                 ForEach(LeadgridRole.allCases) { r in
                     Button { draft.role = r } label: {
                         HStack(spacing: 9) {
-                            Image(systemName: r.icon).font(.system(size: 13, weight: .bold))
+                            Image(systemName: r.icon).font(.appScaled(size: 13, weight: .bold))
                                 .foregroundStyle(draft.role == r ? r.tint : LBrand.textSecondary)
                                 .frame(width: 18)
                             Text(r.rawValue)
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.appScaled(size: 13, weight: .semibold))
                                 .foregroundStyle(draft.role == r ? .white : LBrand.textSecondary)
                             Spacer()
                             Image(systemName: draft.role == r ? "largecircle.fill.circle" : "circle")
-                                .font(.system(size: 14))
+                                .font(.appScaled(size: 14))
                                 .foregroundStyle(draft.role == r ? r.tint : LBrand.textTertiary)
                         }
                         .padding(12)
@@ -1022,9 +1022,9 @@ struct EditMemberOverrideSheet: View {
                     .foregroundStyle(draft.active ? LBrand.green : LBrand.textSecondary)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(draft.active ? "Aktiv konto" : "Inaktiv konto")
-                        .font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
+                        .font(.appScaled(size: 13, weight: .bold)).foregroundStyle(.white)
                     Text(draft.active ? "Brukeren kan logge inn og bruke Leadgrid" : "Innlogging blokkert — beholder all data")
-                        .font(.system(size: 11)).foregroundStyle(LBrand.textSecondary)
+                        .font(.appScaled(size: 11)).foregroundStyle(LBrand.textSecondary)
                 }
             }
         }
@@ -1047,8 +1047,8 @@ struct EditMemberOverrideSheet: View {
                 draft.overrides.removeAll()
             } label: {
                 HStack(spacing: 4) {
-                    Image(systemName: "arrow.uturn.backward").font(.system(size: 10, weight: .bold))
-                    Text("Reset alt").font(.system(size: 11, weight: .semibold))
+                    Image(systemName: "arrow.uturn.backward").font(.appScaled(size: 10, weight: .bold))
+                    Text("Reset alt").font(.appScaled(size: 11, weight: .semibold))
                 }
                 .foregroundStyle(draft.hasOverrides ? LBrand.orange : LBrand.textTertiary)
             }
@@ -1070,7 +1070,7 @@ struct EditMemberOverrideSheet: View {
                     HStack(spacing: 6) {
                         Image(systemName: g.icon).foregroundStyle(g.tint)
                         Text(g.rawValue.uppercased())
-                            .font(.system(size: 10, weight: .black)).tracking(0.8)
+                            .font(.appScaled(size: 10, weight: .black)).tracking(0.8)
                             .foregroundStyle(g.tint)
                         Spacer()
                     }
@@ -1088,24 +1088,24 @@ struct EditMemberOverrideSheet: View {
         return HStack(spacing: 12) {
             ZStack {
                 RoundedRectangle(cornerRadius: 8).fill(LBrand.cardHi)
-                Image(systemName: f.icon).font(.system(size: 11, weight: .bold))
+                Image(systemName: f.icon).font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(level == .none ? LBrand.textTertiary : level.color)
             }
             .frame(width: 28, height: 28)
             VStack(alignment: .leading, spacing: 1) {
-                Text(f.rawValue).font(.system(size: 12, weight: .semibold)).foregroundStyle(.white)
+                Text(f.rawValue).font(.appScaled(size: 12, weight: .semibold)).foregroundStyle(.white)
                 HStack(spacing: 4) {
                     if overridden {
                         Text("OVERSTYRT")
-                            .font(.system(size: 8, weight: .black))
+                            .font(.appScaled(size: 8, weight: .black))
                             .foregroundStyle(LBrand.orange).tracking(0.5)
                     } else {
                         Text("Følger \(draft.role.rawValue)")
-                            .font(.system(size: 9))
+                            .font(.appScaled(size: 9))
                             .foregroundStyle(LBrand.textTertiary)
                     }
                     Text("→ \(level.rawValue)")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.appScaled(size: 9, weight: .bold))
                         .foregroundStyle(level.color)
                 }
             }
@@ -1113,7 +1113,7 @@ struct EditMemberOverrideSheet: View {
             if overridden {
                 Button { draft.overrides.removeValue(forKey: f) } label: {
                     Image(systemName: "arrow.uturn.backward.circle.fill")
-                        .font(.system(size: 14))
+                        .font(.appScaled(size: 14))
                         .foregroundStyle(LBrand.orange)
                 }.buttonStyle(.plain)
             }
@@ -1124,7 +1124,7 @@ struct EditMemberOverrideSheet: View {
                         else { draft.overrides[f] = lvl }
                     } label: {
                         Image(systemName: lvl.icon)
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.appScaled(size: 11, weight: .bold))
                             .foregroundStyle(level == lvl ? .white : lvl.color.opacity(0.6))
                             .frame(width: 26, height: 26)
                             .background(level == lvl ? lvl.color.opacity(0.32) : .clear, in: Circle())
@@ -1157,7 +1157,7 @@ struct LBInviteMemberSheet: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("NAVN").font(.system(size: 10, weight: .black))
+                            Text("NAVN").font(.appScaled(size: 10, weight: .black))
                                 .foregroundStyle(LBrand.textTertiary).tracking(0.8)
                             TextField("Fullt navn", text: $name)
                                 .foregroundStyle(.white).textFieldStyle(.plain)
@@ -1166,7 +1166,7 @@ struct LBInviteMemberSheet: View {
                                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(LBrand.stroke, lineWidth: 1))
                         }
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("E-POST").font(.system(size: 10, weight: .black))
+                            Text("E-POST").font(.appScaled(size: 10, weight: .black))
                                 .foregroundStyle(LBrand.textTertiary).tracking(0.8)
                             TextField("ola@firma.no", text: $email)
                                 .foregroundStyle(.white).textFieldStyle(.plain)
@@ -1175,22 +1175,22 @@ struct LBInviteMemberSheet: View {
                                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(LBrand.stroke, lineWidth: 1))
                         }
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("ROLLE").font(.system(size: 10, weight: .black))
+                            Text("ROLLE").font(.appScaled(size: 10, weight: .black))
                                 .foregroundStyle(LBrand.textTertiary).tracking(0.8)
                             ForEach(LeadgridRole.allCases) { r in
                                 Button { role = r } label: {
                                     HStack(spacing: 12) {
-                                        Image(systemName: r.icon).font(.system(size: 14, weight: .bold))
+                                        Image(systemName: r.icon).font(.appScaled(size: 14, weight: .bold))
                                             .foregroundStyle(role == r ? r.tint : LBrand.textSecondary)
                                             .frame(width: 24)
                                         VStack(alignment: .leading, spacing: 2) {
-                                            Text(r.rawValue).font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
-                                            Text(r.description).font(.system(size: 11)).foregroundStyle(LBrand.textSecondary)
+                                            Text(r.rawValue).font(.appScaled(size: 14, weight: .bold)).foregroundStyle(.white)
+                                            Text(r.description).font(.appScaled(size: 11)).foregroundStyle(LBrand.textSecondary)
                                                 .lineLimit(2)
                                         }
                                         Spacer()
                                         Image(systemName: role == r ? "largecircle.fill.circle" : "circle")
-                                            .font(.system(size: 18)).foregroundStyle(role == r ? r.tint : LBrand.textTertiary)
+                                            .font(.appScaled(size: 18)).foregroundStyle(role == r ? r.tint : LBrand.textTertiary)
                                     }
                                     .padding(12)
                                     .background(LBrand.card, in: RoundedRectangle(cornerRadius: 11))
@@ -1219,8 +1219,8 @@ struct LBInviteMemberSheet: View {
                         dismiss()
                     } label: {
                         HStack(spacing: 5) {
-                            Image(systemName: "paperplane.fill").font(.system(size: 11))
-                            Text("Send invitasjon").font(.system(size: 13, weight: .bold))
+                            Image(systemName: "paperplane.fill").font(.appScaled(size: 11))
+                            Text("Send invitasjon").font(.appScaled(size: 13, weight: .bold))
                         }
                         .foregroundStyle(.white)
                         .padding(.horizontal, 14).padding(.vertical, 8)
@@ -1301,7 +1301,7 @@ struct FeatureCatalogView: View {
         .overlay(alignment: .top) {
             if let t = toast {
                 Label(t, systemImage: "checkmark.circle.fill")
-                    .font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
+                    .font(.appScaled(size: 12, weight: .bold)).foregroundStyle(.white)
                     .padding(.horizontal, 12).padding(.vertical, 8)
                     .background(LBrand.green, in: Capsule())
                     .padding(.top, 6)
@@ -1318,23 +1318,23 @@ struct FeatureCatalogView: View {
             ZStack {
                 Circle().fill(LBrand.green.opacity(0.22))
                 Image(systemName: "arrow.triangle.2.circlepath")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(LBrand.green)
             }
             .frame(width: 36, height: 36)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text("Funksjons-katalog er synkronisert")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(.white)
                     Text(manifestVersion)
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .font(.appScaled(size: 10, weight: .bold, design: .monospaced))
                         .foregroundStyle(LBrand.green)
                         .padding(.horizontal, 6).padding(.vertical, 2)
                         .background(LBrand.green.opacity(0.15), in: Capsule())
                 }
                 Text("Sist synkronisert: \(lastSync) · \(LeadgridFeature.allCases.count) funksjoner registrert · \(newFeatures.count) nye siden sist")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(LBrand.textSecondary)
             }
             Spacer()
@@ -1348,9 +1348,9 @@ struct FeatureCatalogView: View {
             } label: {
                 HStack(spacing: 5) {
                     if checkingForUpdates { ProgressView().tint(.white).scaleEffect(0.7) }
-                    else { Image(systemName: "arrow.clockwise").font(.system(size: 11, weight: .bold)) }
+                    else { Image(systemName: "arrow.clockwise").font(.appScaled(size: 11, weight: .bold)) }
                     Text(checkingForUpdates ? "Sjekker…" : "Sjekk for nye")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.appScaled(size: 11, weight: .bold))
                 }
                 .foregroundStyle(.white)
                 .padding(.horizontal, 12).padding(.vertical, 7)
@@ -1376,7 +1376,7 @@ struct FeatureCatalogView: View {
                 Image(systemName: "sparkles.rectangle.stack.fill")
                     .foregroundStyle(LBrand.purpleLight)
                 Text("\(newFeatures.count) NYE FUNKSJONER OPPDAGET")
-                    .font(.system(size: 10, weight: .black))
+                    .font(.appScaled(size: 10, weight: .black))
                     .foregroundStyle(LBrand.purpleLight).tracking(0.8)
                 Spacer()
                 Button {
@@ -1385,8 +1385,8 @@ struct FeatureCatalogView: View {
                     flashToast("\(approvedCount) funksjoner aktivert med foreslåtte tilganger")
                 } label: {
                     HStack(spacing: 5) {
-                        Image(systemName: "checkmark.circle.fill").font(.system(size: 11, weight: .bold))
-                        Text("Godkjenn alle").font(.system(size: 11, weight: .bold))
+                        Image(systemName: "checkmark.circle.fill").font(.appScaled(size: 11, weight: .bold))
+                        Text("Godkjenn alle").font(.appScaled(size: 11, weight: .bold))
                     }
                     .foregroundStyle(.white)
                     .padding(.horizontal, 11).padding(.vertical, 5)
@@ -1394,7 +1394,7 @@ struct FeatureCatalogView: View {
                 }.buttonStyle(.plain)
             }
             Text("AI har analysert hver funksjon og foreslår standard-tilganger basert på dens feature-group og historiske mønstre. Godkjenn enkeltvis eller alle — du kan alltid endre senere.")
-                .font(.system(size: 12))
+                .font(.appScaled(size: 12))
                 .foregroundStyle(LBrand.textSecondary)
                 .lineLimit(3)
             ForEach(newFeatures) { f in discoveredRow(f) }
@@ -1408,21 +1408,21 @@ struct FeatureCatalogView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Image(systemName: "sparkles")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(LBrand.purpleLight)
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
-                        Text(f.name).font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
-                        Text("NY").font(.system(size: 8, weight: .black))
+                        Text(f.name).font(.appScaled(size: 13, weight: .bold)).foregroundStyle(.white)
+                        Text("NY").font(.appScaled(size: 8, weight: .black))
                             .foregroundStyle(.white).tracking(0.5)
                             .padding(.horizontal, 5).padding(.vertical, 1)
                             .background(LBrand.purpleLight, in: Capsule())
                     }
                     HStack(spacing: 6) {
-                        Text(f.key).font(.system(size: 10, design: .monospaced))
+                        Text(f.key).font(.appScaled(size: 10, design: .monospaced))
                             .foregroundStyle(LBrand.textTertiary)
                         Text("·").foregroundStyle(LBrand.textTertiary)
-                        Text(f.introducedIn).font(.system(size: 10, design: .monospaced))
+                        Text(f.introducedIn).font(.appScaled(size: 10, design: .monospaced))
                             .foregroundStyle(LBrand.purpleLight)
                     }
                 }
@@ -1433,12 +1433,12 @@ struct FeatureCatalogView: View {
                 ForEach(LeadgridRole.allCases) { r in
                     let lvl = f.proposedDefaults[r] ?? .none
                     HStack(spacing: 4) {
-                        Image(systemName: r.icon).font(.system(size: 9, weight: .bold))
+                        Image(systemName: r.icon).font(.appScaled(size: 9, weight: .bold))
                             .foregroundStyle(r.tint)
                         Text(r.rawValue)
-                            .font(.system(size: 9, weight: .semibold))
+                            .font(.appScaled(size: 9, weight: .semibold))
                             .foregroundStyle(.white)
-                        Image(systemName: lvl.icon).font(.system(size: 9, weight: .bold))
+                        Image(systemName: lvl.icon).font(.appScaled(size: 9, weight: .bold))
                             .foregroundStyle(lvl.color)
                     }
                     .padding(.horizontal, 7).padding(.vertical, 4)
@@ -1447,10 +1447,10 @@ struct FeatureCatalogView: View {
                 }
             }
             HStack(spacing: 6) {
-                Image(systemName: "lightbulb.fill").font(.system(size: 10))
+                Image(systemName: "lightbulb.fill").font(.appScaled(size: 10))
                     .foregroundStyle(LBrand.yellow)
                 Text(f.reason)
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(LBrand.textSecondary)
                     .lineLimit(2)
                 Spacer()
@@ -1462,7 +1462,7 @@ struct FeatureCatalogView: View {
                     flashToast("«\(f.name)» avvist — krever manuell konfigurasjon")
                 } label: {
                     Text("Avvis & konfigurer manuelt")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(LBrand.textSecondary)
                         .padding(.horizontal, 11).padding(.vertical, 6)
                         .background(LBrand.cardHi, in: Capsule())
@@ -1473,8 +1473,8 @@ struct FeatureCatalogView: View {
                     flashToast("«\(f.name)» aktivert med foreslåtte tilganger")
                 } label: {
                     HStack(spacing: 5) {
-                        Image(systemName: "checkmark").font(.system(size: 10, weight: .black))
-                        Text("Godta forslag").font(.system(size: 11, weight: .bold))
+                        Image(systemName: "checkmark").font(.appScaled(size: 10, weight: .black))
+                        Text("Godta forslag").font(.appScaled(size: 11, weight: .bold))
                     }
                     .foregroundStyle(.white)
                     .padding(.horizontal, 11).padding(.vertical, 6)
@@ -1496,11 +1496,11 @@ struct FeatureCatalogView: View {
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "shippingbox.fill").foregroundStyle(LBrand.blue)
-                    Text("KILDE OG SYNK").font(.system(size: 10, weight: .black))
+                    Text("KILDE OG SYNK").font(.appScaled(size: 10, weight: .black))
                         .foregroundStyle(LBrand.textTertiary).tracking(0.8)
                     Spacer()
                     Image(systemName: expandedSource ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.appScaled(size: 10, weight: .bold))
                         .foregroundStyle(LBrand.textTertiary)
                 }
             }.buttonStyle(.plain)
@@ -1528,12 +1528,12 @@ struct FeatureCatalogView: View {
         HStack(spacing: 10) {
             ZStack {
                 RoundedRectangle(cornerRadius: 7).fill(tint.opacity(0.22))
-                Image(systemName: icon).font(.system(size: 11, weight: .bold)).foregroundStyle(tint)
+                Image(systemName: icon).font(.appScaled(size: 11, weight: .bold)).foregroundStyle(tint)
             }
             .frame(width: 28, height: 28)
-            Text(label).font(.system(size: 11, weight: .semibold)).foregroundStyle(.white)
+            Text(label).font(.appScaled(size: 11, weight: .semibold)).foregroundStyle(.white)
                 .frame(width: 150, alignment: .leading)
-            Text(value).font(.system(size: 11, design: .monospaced))
+            Text(value).font(.appScaled(size: 11, design: .monospaced))
                 .foregroundStyle(LBrand.textSecondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -1546,7 +1546,7 @@ struct FeatureCatalogView: View {
             HStack(spacing: 6) {
                 Image(systemName: "arrow.triangle.merge").foregroundStyle(LBrand.purpleLight)
                 Text("HVORDAN KATALOGEN OPPDATERES")
-                    .font(.system(size: 10, weight: .black))
+                    .font(.appScaled(size: 10, weight: .black))
                     .foregroundStyle(LBrand.textTertiary).tracking(0.8)
                 Spacer()
             }
@@ -1585,16 +1585,16 @@ struct FeatureCatalogView: View {
             VStack(spacing: 0) {
                 ZStack {
                     Circle().fill(tint.opacity(0.22))
-                    Text("\(num)").font(.system(size: 11, weight: .black, design: .rounded)).foregroundStyle(tint)
+                    Text("\(num)").font(.appScaled(size: 11, weight: .black, design: .rounded)).foregroundStyle(tint)
                 }
                 .frame(width: 28, height: 28)
             }
             HStack(spacing: 10) {
-                Image(systemName: icon).font(.system(size: 13, weight: .bold)).foregroundStyle(tint)
+                Image(systemName: icon).font(.appScaled(size: 13, weight: .bold)).foregroundStyle(tint)
                     .frame(width: 22)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
-                    Text(desc).font(.system(size: 11)).foregroundStyle(LBrand.textSecondary)
+                    Text(title).font(.appScaled(size: 13, weight: .bold)).foregroundStyle(.white)
+                    Text(desc).font(.appScaled(size: 11)).foregroundStyle(LBrand.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
@@ -1608,7 +1608,7 @@ struct FeatureCatalogView: View {
         HStack {
             VStack(spacing: 2) {
                 Image(systemName: "arrow.down")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.appScaled(size: 10, weight: .bold))
                     .foregroundStyle(LBrand.textTertiary)
             }
             .frame(width: 28)
@@ -1624,29 +1624,29 @@ struct FeatureCatalogView: View {
             HStack(spacing: 6) {
                 Image(systemName: "list.bullet.rectangle.fill").foregroundStyle(LBrand.purpleLight)
                 Text("REGISTRERTE FUNKSJONER")
-                    .font(.system(size: 10, weight: .black))
+                    .font(.appScaled(size: 10, weight: .black))
                     .foregroundStyle(LBrand.textTertiary).tracking(0.8)
                 Spacer()
                 Text("\(LeadgridFeature.allCases.count) totalt")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.appScaled(size: 10, weight: .semibold))
                     .foregroundStyle(LBrand.textTertiary)
             }
             ForEach(LeadgridFeature.Group.allCases) { g in
                 let features = LeadgridFeature.allCases.filter { $0.group == g }
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 6) {
-                        Image(systemName: g.icon).font(.system(size: 10, weight: .bold)).foregroundStyle(g.tint)
-                        Text(g.rawValue).font(.system(size: 11, weight: .black)).foregroundStyle(g.tint).tracking(0.5)
+                        Image(systemName: g.icon).font(.appScaled(size: 10, weight: .bold)).foregroundStyle(g.tint)
+                        Text(g.rawValue).font(.appScaled(size: 11, weight: .black)).foregroundStyle(g.tint).tracking(0.5)
                         Text("·").foregroundStyle(LBrand.textTertiary)
-                        Text("\(features.count)").font(.system(size: 10, weight: .semibold, design: .rounded))
+                        Text("\(features.count)").font(.appScaled(size: 10, weight: .semibold, design: .rounded))
                             .foregroundStyle(LBrand.textTertiary)
                         Spacer()
                     }
                     FlowLayoutFallback(spacing: 5) {
                         ForEach(features) { f in
                             HStack(spacing: 4) {
-                                Image(systemName: f.icon).font(.system(size: 9, weight: .bold))
-                                Text(f.rawValue).font(.system(size: 10, weight: .semibold))
+                                Image(systemName: f.icon).font(.appScaled(size: 9, weight: .bold))
+                                Text(f.rawValue).font(.appScaled(size: 10, weight: .semibold))
                             }
                             .foregroundStyle(.white)
                             .padding(.horizontal, 7).padding(.vertical, 4)

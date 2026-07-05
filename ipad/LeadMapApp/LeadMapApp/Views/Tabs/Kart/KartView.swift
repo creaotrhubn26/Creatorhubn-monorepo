@@ -765,7 +765,7 @@ struct KartView: View {
             NavigationStack {
                 VStack(spacing: 16) {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 40))
+                        .font(.appScaled(size: 40))
                         .foregroundStyle(.green)
                     Text("Lead opprettet")
                         .font(.headline)
@@ -916,13 +916,13 @@ struct KartView: View {
     private var kartSearchField: some View {
         HStack(spacing: 7) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 12))
+                .font(.appScaled(size: 12))
                 .foregroundStyle(KrBrand.textSecondary)
             TextField("", text: $search, prompt: Text("Søk etter sted, lead eller selskap…")
                 .foregroundColor(KrBrand.textTertiary))
                 .textFieldStyle(.plain)
                 .foregroundStyle(.white)
-                .font(.system(size: 12))
+                .font(.appScaled(size: 12))
                 .focused($searchFieldFocused)
         }
         .padding(.horizontal, 10).padding(.vertical, 8)
@@ -958,9 +958,9 @@ struct KartView: View {
             Button { routePlannerOpen = true } label: {
                 HStack(spacing: 5) {
                     Image(systemName: "map.fill")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                     Text("Ruteplanlegger")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                 }
                 .foregroundStyle(KrBrand.purpleLight)
                 .padding(.horizontal, 12).padding(.vertical, 8)
@@ -975,9 +975,9 @@ struct KartView: View {
             Button { addLeadOpen = true } label: {
                 HStack(spacing: 5) {
                     Image(systemName: "plus")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.appScaled(size: 11, weight: .bold))
                     Text("Legg til lead")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                 }
                 .foregroundStyle(.white)
                 .padding(.horizontal, 12).padding(.vertical, 8)
@@ -1008,21 +1008,21 @@ struct KartView: View {
             HStack(spacing: 5) {
                 if let icon {
                     Image(systemName: icon)
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.appScaled(size: 10, weight: .semibold))
                         .foregroundStyle(active ? KrBrand.purpleLight : KrBrand.textSecondary)
                 }
                 Text(label)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(.white)
                 if let b = badge, b > 0 {
                     Text("\(b)")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.appScaled(size: 9, weight: .bold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 4).padding(.vertical, 1)
                         .background(KrBrand.purple, in: Capsule())
                 }
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(.appScaled(size: 9, weight: .semibold))
                     .foregroundStyle(KrBrand.textTertiary)
             }
             .padding(.horizontal, 10).padding(.vertical, 8)
@@ -1127,7 +1127,7 @@ struct KartView: View {
                                     .overlay(Circle().stroke(Color.white, lineWidth: 2))
                                     .frame(width: 22, height: 22)
                                 Text("\(idx + 1)")
-                                    .font(.system(size: 11, weight: .bold))
+                                    .font(.appScaled(size: 11, weight: .bold))
                                     .foregroundStyle(.white)
                             }
                         }
@@ -1212,7 +1212,7 @@ struct KartView: View {
 
     private func mapFAB(icon: String) -> some View {
         Image(systemName: icon)
-            .font(.system(size: 13, weight: .semibold))
+            .font(.appScaled(size: 13, weight: .semibold))
             .foregroundStyle(.white)
             .frame(width: 32, height: 32)
     }
@@ -1285,10 +1285,10 @@ struct KartView: View {
     private func toastBanner(_ msg: String) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 13, weight: .semibold))
+                .font(.appScaled(size: 13, weight: .semibold))
                 .foregroundStyle(KrBrand.green)
             Text(msg)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.appScaled(size: 13, weight: .semibold))
                 .foregroundStyle(.white)
         }
         .padding(.horizontal, 16).padding(.vertical, 12)
@@ -1370,7 +1370,7 @@ struct KartView: View {
                 .frame(width: 56, height: 56)
                 .background(
                     Text(isA ? "A" : "B")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.appScaled(size: 11, weight: .bold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 6).padding(.vertical, 2)
                         .background(KrBrand.green, in: Capsule())
@@ -1385,27 +1385,27 @@ struct KartView: View {
             ZStack {
                 Circle().fill(KrBrand.green.opacity(0.25))
                 Image(systemName: "ruler.fill")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.appScaled(size: 13, weight: .semibold))
                     .foregroundStyle(KrBrand.green)
             }
             .frame(width: 36, height: 36)
             VStack(alignment: .leading, spacing: 1) {
                 Text("Mål-verktøy")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(.white)
                 if let a = measurePointA, let b = measurePointB {
                     let km = distanceKm(a, b)
                     let drive = Int(km * 2)
                     Text(String(format: "%.2f km · %d min kjøring", km, drive))
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(KrBrand.green)
                 } else if measurePointA != nil {
                     Text("Tap pin B")
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(KrBrand.textSecondary)
                 } else {
                     Text("Tap pin A")
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(KrBrand.textSecondary)
                 }
             }
@@ -1415,7 +1415,7 @@ struct KartView: View {
                 measurePointB = nil
             } label: {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 16))
+                    .font(.appScaled(size: 16))
                     .foregroundStyle(KrBrand.textTertiary)
             }
             .buttonStyle(.plain)
@@ -1504,12 +1504,12 @@ struct KartView: View {
             ZStack {
                 Circle().fill(st.color.opacity(0.22))
                 Image(systemName: st.icon)
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.appScaled(size: 10, weight: .semibold))
                     .foregroundStyle(st.color)
             }
             .frame(width: 22, height: 22)
             Text(st.label)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(.white)
                 .lineLimit(1)
         }
@@ -1523,19 +1523,19 @@ struct KartView: View {
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("Leads i området")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 if hasAnyLeads {
                     Text("(\(kartLeads.count))")
-                        .font(.system(size: 12))
+                        .font(.appScaled(size: 12))
                         .foregroundStyle(KrBrand.textSecondary)
                 }
                 Spacer()
                 HStack(spacing: 3) {
                     Text("Nær meg")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.appScaled(size: 9, weight: .semibold))
                 }
                 .foregroundStyle(KrBrand.textSecondary)
             }
@@ -1544,15 +1544,15 @@ struct KartView: View {
                 if filteredLeads.isEmpty {
                     VStack(spacing: 6) {
                         Image(systemName: hasAnyLeads ? "magnifyingglass" : "mappin.slash")
-                            .font(.system(size: 18))
+                            .font(.appScaled(size: 18))
                             .foregroundStyle(KrBrand.textTertiary)
                         Text(hasAnyLeads ? "Ingen treff" : "Ingen leads enda")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.appScaled(size: 12, weight: .semibold))
                             .foregroundStyle(KrBrand.textSecondary)
                         Text(hasAnyLeads
                              ? "Prøv å justere søk eller filtre"
                              : "Bruk «+ Legg til lead» eller skru på demo-modus")
-                            .font(.system(size: 10))
+                            .font(.appScaled(size: 10))
                             .foregroundStyle(KrBrand.textTertiary)
                             .multilineTextAlignment(.center)
                     }
@@ -1568,9 +1568,9 @@ struct KartView: View {
             Button { showToast("Åpner full leads-liste") } label: {
                 HStack(spacing: 5) {
                     Text("Se alle leads i området")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                     Image(systemName: "arrow.right")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.appScaled(size: 10, weight: .semibold))
                 }
                 .foregroundStyle(KrBrand.purpleLight)
                 .frame(maxWidth: .infinity, alignment: .center)
@@ -1591,33 +1591,33 @@ struct KartView: View {
                     RoundedRectangle(cornerRadius: 7)
                         .fill(lead.status.color.opacity(0.18))
                     Image(systemName: "building.2.fill")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.appScaled(size: 13, weight: .semibold))
                         .foregroundStyle(lead.status.color)
                 }
                 .frame(width: 34, height: 34)
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 5) {
                         Text(lead.name)
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.appScaled(size: 12, weight: .bold))
                             .foregroundStyle(.white)
                             .lineLimit(1)
                         Spacer(minLength: 4)
                         statusBadge(lead.status)
                     }
                     Text(lead.address)
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(KrBrand.textSecondary)
                         .lineLimit(1)
                     HStack {
                         if let act = lead.lastActivity {
                             Text("Sist aktivitet: \(act)")
-                                .font(.system(size: 9))
+                                .font(.appScaled(size: 9))
                                 .foregroundStyle(KrBrand.textTertiary)
                                 .lineLimit(1)
                         }
                         Spacer()
                         Text(String(format: "%.1f km", lead.kmAway))
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.appScaled(size: 10, weight: .semibold))
                             .foregroundStyle(KrBrand.textSecondary)
                     }
                 }
@@ -1638,7 +1638,7 @@ struct KartView: View {
 
     private func statusBadge(_ st: MapLeadMock.PinStatus) -> some View {
         Text(st.label)
-            .font(.system(size: 8, weight: .bold))
+            .font(.appScaled(size: 8, weight: .bold))
             .foregroundStyle(st.color)
             .padding(.horizontal, 5).padding(.vertical, 2)
             .background(st.color.opacity(0.18), in: Capsule())
@@ -1677,19 +1677,19 @@ struct KartView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("Aktivitetshistorikk")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
                 Button {} label: {
                     Text("Se alle")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(KrBrand.purpleLight)
                 }
                 .buttonStyle(.plain)
             }
             if KartPreviewData.activities.isEmpty {
                 Text("Ingen aktiviteter registrert enda")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(KrBrand.textSecondary)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
@@ -1700,16 +1700,16 @@ struct KartView: View {
                             ZStack {
                                 Circle().fill(KrBrand.purple.opacity(0.18))
                                 Image(systemName: a.icon)
-                                    .font(.system(size: 10, weight: .semibold))
+                                    .font(.appScaled(size: 10, weight: .semibold))
                                     .foregroundStyle(KrBrand.purpleLight)
                             }
                             .frame(width: 26, height: 26)
                             Text(a.label)
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.appScaled(size: 12, weight: .semibold))
                                 .foregroundStyle(.white)
                             Spacer()
                             Text(a.timestamp)
-                                .font(.system(size: 10))
+                                .font(.appScaled(size: 10))
                                 .foregroundStyle(KrBrand.textSecondary)
                                 .lineLimit(1)
                         }
@@ -1732,17 +1732,17 @@ struct KartView: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 12).fill(KrBrand.cardHi)
                 Image(systemName: "building.2")
-                    .font(.system(size: 22, weight: .regular))
+                    .font(.appScaled(size: 22, weight: .regular))
                     .foregroundStyle(KrBrand.textTertiary)
             }
             .frame(width: 56, height: 56)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("Ingen lead valgt")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.appScaled(size: 15, weight: .semibold))
                     .foregroundStyle(.white)
                 Text("Tap på en pin, bruk «+ Legg til lead», eller skru på demo-modus for å se eksempeldata.")
-                    .font(.system(size: 12))
+                    .font(.appScaled(size: 12))
                     .foregroundStyle(KrBrand.textSecondary)
                     .lineLimit(2)
             }
@@ -1751,7 +1751,7 @@ struct KartView: View {
                 showToast("Åpner «Legg til lead»")
             } label: {
                 Text("+ Legg til lead")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 14).padding(.vertical, 8)
                     .background(KrBrand.purple, in: Capsule())
@@ -1779,14 +1779,14 @@ struct KartView: View {
                         RoundedRectangle(cornerRadius: 9)
                             .fill(selectedLead.status.color.opacity(0.18))
                         Image(systemName: "building.2.fill")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.appScaled(size: 16, weight: .semibold))
                             .foregroundStyle(selectedLead.status.color)
                     }
                     .frame(width: 44, height: 44)
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(spacing: 6) {
                             Text(selectedLead.name)
-                                .font(.system(size: 15, weight: .bold))
+                                .font(.appScaled(size: 15, weight: .bold))
                                 .foregroundStyle(.white)
                                 .lineLimit(1)
                             statusBadge(selectedLead.status)
@@ -1795,21 +1795,21 @@ struct KartView: View {
                                 showToast(favorited ? "Lagt til i favoritter" : "Fjernet fra favoritter")
                             } label: {
                                 Image(systemName: favorited ? "star.fill" : "star")
-                                    .font(.system(size: 12))
+                                    .font(.appScaled(size: 12))
                                     .foregroundStyle(favorited ? KrBrand.yellow : KrBrand.textTertiary)
                             }
                             .buttonStyle(.plain)
                         }
                         Text(selectedLead.address)
-                            .font(.system(size: 11))
+                            .font(.appScaled(size: 11))
                             .foregroundStyle(KrBrand.textSecondary)
                             .lineLimit(1)
                         Button { navigateOpen = true } label: {
                             HStack(spacing: 4) {
                                 Image(systemName: "location.north.line.fill")
-                                    .font(.system(size: 9, weight: .semibold))
+                                    .font(.appScaled(size: 9, weight: .semibold))
                                 Text(String(format: "%.1f km unna · Naviger", selectedLead.kmAway))
-                                    .font(.system(size: 10, weight: .semibold))
+                                    .font(.appScaled(size: 10, weight: .semibold))
                             }
                             .foregroundStyle(KrBrand.purpleLight)
                         }
@@ -1821,7 +1821,7 @@ struct KartView: View {
                 HStack(spacing: 8) {
                     Button { openLeadFullSheet = true } label: {
                         Text("Åpne lead")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.appScaled(size: 12, weight: .bold))
                             .foregroundStyle(.white)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 9)
@@ -1837,9 +1837,9 @@ struct KartView: View {
                     Button { scheduleMeetingOpen = true } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "calendar")
-                                .font(.system(size: 10, weight: .semibold))
+                                .font(.appScaled(size: 10, weight: .semibold))
                             Text("Planlegg møte")
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.appScaled(size: 11, weight: .semibold))
                         }
                         .foregroundStyle(.white)
                         .padding(.horizontal, 10).padding(.vertical, 9)
@@ -1851,9 +1851,9 @@ struct KartView: View {
                     Button { navigateOpen = true } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "location.north.line.fill")
-                                .font(.system(size: 10, weight: .semibold))
+                                .font(.appScaled(size: 10, weight: .semibold))
                             Text("Naviger")
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.appScaled(size: 11, weight: .semibold))
                         }
                         .foregroundStyle(.white)
                         .padding(.horizontal, 10).padding(.vertical, 9)
@@ -1884,7 +1884,7 @@ struct KartView: View {
                         }
                     } label: {
                         Image(systemName: "ellipsis")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.appScaled(size: 12, weight: .bold))
                             .foregroundStyle(.white)
                             .frame(width: 32, height: 32)
                             .background(KrBrand.cardHi, in: RoundedRectangle(cornerRadius: 9))
@@ -1953,10 +1953,10 @@ struct KartView: View {
     private func metaItem(label: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label)
-                .font(.system(size: 10))
+                .font(.appScaled(size: 10))
                 .foregroundStyle(KrBrand.textSecondary)
             Text(value)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(.white)
                 .lineLimit(1)
         }
@@ -1967,7 +1967,7 @@ struct KartView: View {
         return Button { selectedTab = tab } label: {
             VStack(spacing: 4) {
                 Text(tab.rawValue)
-                    .font(.system(size: 12, weight: isSelected ? .bold : .semibold))
+                    .font(.appScaled(size: 12, weight: isSelected ? .bold : .semibold))
                     .foregroundStyle(isSelected ? KrBrand.purpleLight : KrBrand.textSecondary)
                     .fixedSize()
                 Rectangle()
@@ -1984,23 +1984,23 @@ struct KartView: View {
     private var tabInformasjon: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("KONTAKTPERSON")
-                .font(.system(size: 9, weight: .bold))
+                .font(.appScaled(size: 9, weight: .bold))
                 .foregroundStyle(KrBrand.textTertiary)
 
             HStack(spacing: 10) {
                 ZStack {
                     Circle().fill(KrBrand.purple.opacity(0.25))
                     Text("AJ")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appScaled(size: 12, weight: .bold))
                         .foregroundStyle(KrBrand.purpleLight)
                 }
                 .frame(width: 34, height: 34)
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Anders Johansen")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.appScaled(size: 13, weight: .semibold))
                         .foregroundStyle(.white)
                     Text("Daglig leder")
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(KrBrand.textSecondary)
                 }
                 Spacer()
@@ -2012,10 +2012,10 @@ struct KartView: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 Text("NOTAT")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.appScaled(size: 9, weight: .bold))
                     .foregroundStyle(KrBrand.textTertiary)
                 Text("Interessert i nytt el-anlegg til kontorbygg. Følge opp prisforslag og referanseprosjekter.")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(.white)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -2023,9 +2023,9 @@ struct KartView: View {
             Button { openLeadFullSheet = true } label: {
                 HStack(spacing: 4) {
                     Text("Se mer informasjon")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                     Image(systemName: "arrow.right")
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.appScaled(size: 9, weight: .semibold))
                 }
                 .foregroundStyle(KrBrand.purpleLight)
             }
@@ -2043,16 +2043,16 @@ struct KartView: View {
                     ZStack {
                         Circle().fill(KrBrand.purple.opacity(0.18))
                         Image(systemName: a.icon)
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.appScaled(size: 10, weight: .semibold))
                             .foregroundStyle(KrBrand.purpleLight)
                     }
                     .frame(width: 26, height: 26)
                     Text(a.label)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
                     Spacer()
                     Text(a.timestamp)
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(KrBrand.textSecondary)
                 }
             }
@@ -2066,16 +2066,16 @@ struct KartView: View {
                     ZStack {
                         Circle().fill(KrBrand.purple.opacity(0.25))
                         Text("LK")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.appScaled(size: 10, weight: .bold))
                             .foregroundStyle(KrBrand.purpleLight)
                     }
                     .frame(width: 28, height: 28)
                     HStack(spacing: 8) {
                         Image(systemName: "square.and.pencil")
-                            .font(.system(size: 11))
+                            .font(.appScaled(size: 11))
                             .foregroundStyle(KrBrand.textTertiary)
                         Text("Skriv et notat…")
-                            .font(.system(size: 11))
+                            .font(.appScaled(size: 11))
                             .foregroundStyle(KrBrand.textTertiary)
                         Spacer()
                     }
@@ -2098,7 +2098,7 @@ struct KartView: View {
     /// Ærlig tom-tilstand for detalj-tabs (ikke-demo uten ekte data).
     private func detailTabEmptyState(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 11, weight: .semibold))
+            .font(.appScaled(size: 11, weight: .semibold))
             .foregroundStyle(KrBrand.textSecondary)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
@@ -2111,25 +2111,25 @@ struct KartView: View {
                 ZStack {
                     Circle().fill(n.authorColor.opacity(0.25))
                     Text(n.authorInitials)
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.appScaled(size: 9, weight: .bold))
                         .foregroundStyle(n.authorColor)
                 }
                 .frame(width: 22, height: 22)
                 Text(n.author)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(.white)
                 if n.pinned {
                     Image(systemName: "pin.fill")
-                        .font(.system(size: 8))
+                        .font(.appScaled(size: 8))
                         .foregroundStyle(KrBrand.yellow)
                 }
                 Spacer()
                 Text(n.timestamp)
-                    .font(.system(size: 9))
+                    .font(.appScaled(size: 9))
                     .foregroundStyle(KrBrand.textTertiary)
             }
             Text(n.body)
-                .font(.system(size: 11))
+                .font(.appScaled(size: 11))
                 .foregroundStyle(.white.opacity(0.85))
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -2148,7 +2148,7 @@ struct KartView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("\(KartPreviewData.files.count) filer")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.appScaled(size: 10, weight: .semibold))
                     .foregroundStyle(KrBrand.textSecondary)
                 Spacer()
                 // Pakke 10.1 (Daniel-feedback 2026-07-01): gjenbruk Leads-
@@ -2157,9 +2157,9 @@ struct KartView: View {
                 Button { showUploadFile = true } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "plus.circle.fill")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.appScaled(size: 10, weight: .bold))
                         Text("Last opp")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.appScaled(size: 11, weight: .semibold))
                     }
                     .foregroundStyle(KrBrand.purpleLight)
                 }
@@ -2189,30 +2189,30 @@ struct KartView: View {
                     RoundedRectangle(cornerRadius: 7)
                         .fill(f.kind.color.opacity(0.22))
                     Image(systemName: f.kind.icon)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.appScaled(size: 14, weight: .semibold))
                         .foregroundStyle(f.kind.color)
                 }
                 .frame(width: 34, height: 34)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(f.name)
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
                     HStack(spacing: 5) {
                         Text(f.size)
-                            .font(.system(size: 9))
+                            .font(.appScaled(size: 9))
                             .foregroundStyle(KrBrand.textSecondary)
                         Text("·")
-                            .font(.system(size: 9))
+                            .font(.appScaled(size: 9))
                             .foregroundStyle(KrBrand.textTertiary)
                         Text(f.uploadedAt)
-                            .font(.system(size: 9))
+                            .font(.appScaled(size: 9))
                             .foregroundStyle(KrBrand.textTertiary)
                     }
                 }
                 Spacer()
                 Image(systemName: "arrow.down.circle")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.appScaled(size: 14, weight: .semibold))
                     .foregroundStyle(KrBrand.purpleLight)
             }
             .padding(9)
@@ -2227,7 +2227,7 @@ struct KartView: View {
             ZStack {
                 Circle().fill(KrBrand.purple.opacity(0.18))
                 Image(systemName: name)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(KrBrand.purpleLight)
             }
             .frame(width: 32, height: 32)
@@ -2259,7 +2259,7 @@ fileprivate struct ClusterPin: View {
                 .frame(width: 44, height: 44)
                 .shadow(color: color.opacity(0.6), radius: 8, x: 0, y: 2)
             Text("\(count)")
-                .font(.system(size: 15, weight: .bold, design: .rounded))
+                .font(.appScaled(size: 15, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
                 .monospacedDigit()
         }
@@ -2302,7 +2302,7 @@ fileprivate struct KartStatusPin: View {
                 .shadow(color: status.color.opacity(0.6), radius: isSelected ? 12 : 6, x: 0, y: 2)
 
             Image(systemName: "building.2.fill")
-                .font(.system(size: 12, weight: .bold))
+                .font(.appScaled(size: 12, weight: .bold))
                 .foregroundStyle(.white)
                 .offset(y: -6)
         }
@@ -2329,7 +2329,7 @@ fileprivate struct DroppedPin: View {
                 .overlay(Circle().stroke(Color.white, lineWidth: 2))
                 .frame(width: 26, height: 26)
             Image(systemName: "plus")
-                .font(.system(size: 12, weight: .bold))
+                .font(.appScaled(size: 12, weight: .bold))
                 .foregroundStyle(.white)
         }
         .onAppear { pulse = true }
@@ -2390,19 +2390,19 @@ struct MapStyleSheet: View {
                             startPoint: .topLeading, endPoint: .bottomTrailing
                         ))
                     Image(systemName: style.icon)
-                        .font(.system(size: 34, weight: .semibold))
+                        .font(.appScaled(size: 34, weight: .semibold))
                         .foregroundStyle(SBrand.purpleLight)
                 }
                 .frame(height: 110)
                 Text(style.rawValue)
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 if isSelected {
                     HStack(spacing: 4) {
                         Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 11))
+                            .font(.appScaled(size: 11))
                         Text("Aktiv")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.appScaled(size: 10, weight: .bold))
                     }
                     .foregroundStyle(SBrand.purpleLight)
                 }
@@ -2454,11 +2454,11 @@ fileprivate struct AISuggestionPin: View {
                 .frame(width: 34, height: 34)
                 .shadow(color: Color(red: 0.66, green: 0.32, blue: 0.99).opacity(0.7), radius: 8, x: 0, y: 2)
             Image(systemName: "sparkles")
-                .font(.system(size: 13, weight: .bold))
+                .font(.appScaled(size: 13, weight: .bold))
                 .foregroundStyle(.white)
             // Score-badge
             Text("\(score)")
-                .font(.system(size: 8, weight: .bold))
+                .font(.appScaled(size: 8, weight: .bold))
                 .foregroundStyle(Color(red: 0.66, green: 0.32, blue: 0.99))
                 .padding(.horizontal, 4).padding(.vertical, 1)
                 .background(Color.white, in: Capsule())
@@ -2508,7 +2508,7 @@ struct LayersSheet: View {
                         dismiss()
                     } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.appScaled(size: 13, weight: .semibold))
                             .foregroundStyle(.white)
                             .frame(width: 28, height: 28)
                             .background(LBrand.cardHi, in: Circle())
@@ -2519,7 +2519,7 @@ struct LayersSheet: View {
                 }
                 ToolbarItem(placement: .principal) {
                     Text("Kartlag")
-                        .font(.system(size: 15, weight: .heavy, design: .rounded))
+                        .font(.appScaled(size: 15, weight: .heavy, design: .rounded))
                         .foregroundStyle(.white)
                 }
                 ToolbarItem(placement: .primaryAction) {
@@ -2527,9 +2527,9 @@ struct LayersSheet: View {
                         Button { activeOverlays.removeAll() } label: {
                             HStack(spacing: 4) {
                                 Image(systemName: "arrow.counterclockwise")
-                                    .font(.system(size: 10, weight: .bold))
+                                    .font(.appScaled(size: 10, weight: .bold))
                                 Text("Nullstill (\(activeOverlays.count))")
-                                    .font(.system(size: 11, weight: .bold))
+                                    .font(.appScaled(size: 11, weight: .bold))
                                     .fixedSize(horizontal: true, vertical: false)
                             }
                             .foregroundStyle(.white)
@@ -2554,10 +2554,10 @@ struct LayersSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 7) {
                 Image(systemName: "map.fill")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(LBrand.purpleLight)
                 Text("Kartstil")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
             }
@@ -2580,12 +2580,12 @@ struct LayersSheet: View {
                             startPoint: .topLeading, endPoint: .bottomTrailing
                         ))
                     Image(systemName: style.icon)
-                        .font(.system(size: 22, weight: .semibold))
+                        .font(.appScaled(size: 22, weight: .semibold))
                         .foregroundStyle(LBrand.purpleLight)
                 }
                 .frame(height: 64)
                 Text(style.rawValue)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(.white)
             }
             .padding(8)
@@ -2603,14 +2603,14 @@ struct LayersSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 7) {
                 Image(systemName: "square.stack.3d.up.fill")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(LBrand.purpleLight)
                 Text("Visuelle lag")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
                 Text("\(activeOverlays.count) aktiv\(activeOverlays.count == 1 ? "" : "e")")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(LBrand.textSecondary)
             }
             VStack(spacing: 8) {
@@ -2631,16 +2631,16 @@ struct LayersSheet: View {
                     RoundedRectangle(cornerRadius: 9)
                         .fill(o.color.opacity(isOn ? 0.30 : 0.15))
                     Image(systemName: o.icon)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.appScaled(size: 14, weight: .semibold))
                         .foregroundStyle(o.color)
                 }
                 .frame(width: 40, height: 40)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(o.rawValue)
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(.white)
                     Text(o.subtitle)
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(LBrand.textSecondary)
                         .multilineTextAlignment(.leading)
                 }

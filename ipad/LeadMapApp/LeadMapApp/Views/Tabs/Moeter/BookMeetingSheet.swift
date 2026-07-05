@@ -249,22 +249,22 @@ struct BookMeetingSheet: View {
             ZStack {
                 Circle().fill(BBrand.purple.opacity(0.22))
                 Text("\(dayOfMonth)")
-                    .font(.system(size: 14, weight: .black, design: .rounded))
+                    .font(.appScaled(size: 14, weight: .black, design: .rounded))
                     .foregroundStyle(BBrand.purpleLight)
                     .monospacedDigit()
             }
             .frame(width: 38, height: 38)
             VStack(alignment: .leading, spacing: 1) {
                 Text("\(dayOfMonth). mai 2026")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Text("Booker møte for denne dagen")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(BBrand.textSecondary)
             }
             Spacer()
             Image(systemName: "calendar.badge.plus")
-                .font(.system(size: 16, weight: .semibold))
+                .font(.appScaled(size: 16, weight: .semibold))
                 .foregroundStyle(BBrand.purpleLight)
         }
         .padding(12)
@@ -281,10 +281,10 @@ struct BookMeetingSheet: View {
             } else {
                 HStack {
                     Text("Velg lead")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(.white)
                     Text("\(filteredLeads.count) av \(candidates.count)")
-                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .font(.appScaled(size: 10, weight: .bold, design: .rounded))
                         .foregroundStyle(BBrand.textSecondary)
                         .monospacedDigit()
                         .padding(.horizontal, 6).padding(.vertical, 2)
@@ -293,9 +293,9 @@ struct BookMeetingSheet: View {
                     Button {} label: {
                         HStack(spacing: 4) {
                             Image(systemName: "plus.circle.fill")
-                                .font(.system(size: 11, weight: .bold))
+                                .font(.appScaled(size: 11, weight: .bold))
                             Text("Ny lead")
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.appScaled(size: 11, weight: .semibold))
                         }
                         .foregroundStyle(BBrand.purpleLight)
                     }
@@ -322,29 +322,29 @@ struct BookMeetingSheet: View {
                 RoundedRectangle(cornerRadius: 10)
                     .fill(lead.iconColor.opacity(0.28))
                 Image(systemName: lead.icon)
-                    .font(.system(size: 17, weight: .bold))
+                    .font(.appScaled(size: 17, weight: .bold))
                     .foregroundStyle(lead.iconColor)
             }
             .frame(width: 46, height: 46)
             VStack(alignment: .leading, spacing: 3) {
                 Text(lead.company)
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 HStack(spacing: 4) {
                     Image(systemName: "person.fill")
-                        .font(.system(size: 9))
+                        .font(.appScaled(size: 9))
                     Text("\(lead.contactName) · \(lead.contactRole)")
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                 }
                 .foregroundStyle(BBrand.textSecondary)
                 HStack(spacing: 5) {
                     leadTypeBadge(lead.leadType, color: lead.leadTypeColor)
                     Text("Score \(lead.leadScore)")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.appScaled(size: 9, weight: .bold))
                         .foregroundStyle(BBrand.purpleLight)
                     Text("·").foregroundStyle(BBrand.textTertiary)
                     Text("NOK \(lead.valueNok/1000)k")
-                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .font(.appScaled(size: 10, weight: .bold, design: .rounded))
                         .foregroundStyle(BBrand.green)
                         .monospacedDigit()
                 }
@@ -355,9 +355,9 @@ struct BookMeetingSheet: View {
             } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "arrow.left.arrow.right")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.appScaled(size: 10, weight: .bold))
                     Text("Bytt")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                 }
                 .foregroundStyle(BBrand.purpleLight)
                 .padding(.horizontal, 9).padding(.vertical, 6)
@@ -374,9 +374,9 @@ struct BookMeetingSheet: View {
     private func leadTypeBadge(_ text: String, color: Color) -> some View {
         HStack(spacing: 2) {
             Image(systemName: "flame.fill")
-                .font(.system(size: 8, weight: .bold))
+                .font(.appScaled(size: 8, weight: .bold))
             Text(text.uppercased())
-                .font(.system(size: 8, weight: .black))
+                .font(.appScaled(size: 8, weight: .black))
                 .tracking(0.5)
         }
         .foregroundStyle(color)
@@ -388,15 +388,15 @@ struct BookMeetingSheet: View {
     private var searchBar: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(BBrand.textSecondary)
             ZStack(alignment: .leading) {
                 TextField("", text: $search)
                     .foregroundStyle(.white)
-                    .font(.system(size: 13))
+                    .font(.appScaled(size: 13))
                 if search.isEmpty {
                     Text("Søk bedrift, kontakt eller sted…")
-                        .font(.system(size: 13))
+                        .font(.appScaled(size: 13))
                         .foregroundStyle(BBrand.textTertiary)
                         .allowsHitTesting(false)
                 }
@@ -404,7 +404,7 @@ struct BookMeetingSheet: View {
             if !search.isEmpty {
                 Button { search = "" } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 12))
+                        .font(.appScaled(size: 12))
                         .foregroundStyle(BBrand.textTertiary)
                 }
                 .buttonStyle(.plain)
@@ -423,7 +423,7 @@ struct BookMeetingSheet: View {
                         withAnimation(.easeInOut(duration: 0.15)) { filter = f }
                     } label: {
                         Text(f.rawValue)
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.appScaled(size: 11, weight: .bold))
                             .foregroundStyle(filter == f ? .white : f.color)
                             .padding(.horizontal, 10).padding(.vertical, 6)
                             .background(
@@ -449,7 +449,7 @@ struct BookMeetingSheet: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: 9).fill(lead.iconColor.opacity(0.22))
                     Image(systemName: lead.icon)
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(lead.iconColor)
                     if lead.hasOpenMeeting {
                         Circle()
@@ -463,30 +463,30 @@ struct BookMeetingSheet: View {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 5) {
                         Text(lead.company)
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.appScaled(size: 12, weight: .bold))
                             .foregroundStyle(.white)
                             .lineLimit(1)
                         leadTypeBadge(lead.leadType, color: lead.leadTypeColor)
                     }
                     HStack(spacing: 5) {
                         Text(lead.contactName)
-                            .font(.system(size: 10))
+                            .font(.appScaled(size: 10))
                             .foregroundStyle(BBrand.textSecondary)
                             .lineLimit(1)
                         Text("·").foregroundStyle(BBrand.textTertiary)
                         Text(lead.location)
-                            .font(.system(size: 10))
+                            .font(.appScaled(size: 10))
                             .foregroundStyle(BBrand.textSecondary)
                             .lineLimit(1)
                         Text("·").foregroundStyle(BBrand.textTertiary)
                         if let d = lead.lastContactDays {
                             Text("\(d) dag\(d == 1 ? "" : "er") siden")
-                                .font(.system(size: 10))
+                                .font(.appScaled(size: 10))
                                 .foregroundStyle(BBrand.textTertiary)
                                 .monospacedDigit()
                         } else {
                             Text("Ingen kontakt")
-                                .font(.system(size: 10))
+                                .font(.appScaled(size: 10))
                                 .foregroundStyle(BBrand.red)
                         }
                     }
@@ -494,17 +494,17 @@ struct BookMeetingSheet: View {
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {
                     Text("NOK \(lead.valueNok/1000)k")
-                        .font(.system(size: 11, weight: .black, design: .rounded))
+                        .font(.appScaled(size: 11, weight: .black, design: .rounded))
                         .foregroundStyle(BBrand.green)
                         .monospacedDigit()
                     Text(lead.pipelineStage)
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.appScaled(size: 9, weight: .semibold))
                         .foregroundStyle(BBrand.purpleLight)
                         .padding(.horizontal, 5).padding(.vertical, 1)
                         .background(BBrand.purple.opacity(0.18), in: Capsule())
                 }
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(BBrand.textTertiary)
             }
             .padding(9)
@@ -517,17 +517,17 @@ struct BookMeetingSheet: View {
     private var emptyState: some View {
         VStack(spacing: 7) {
             Image(systemName: "person.crop.circle.badge.questionmark")
-                .font(.system(size: 24, weight: .semibold))
+                .font(.appScaled(size: 24, weight: .semibold))
                 .foregroundStyle(BBrand.textTertiary)
             Text("Ingen leads matcher")
-                .font(.system(size: 12, weight: .bold))
+                .font(.appScaled(size: 12, weight: .bold))
                 .foregroundStyle(.white)
             Text("Prøv annet søk — eller lag ny lead")
-                .font(.system(size: 10))
+                .font(.appScaled(size: 10))
                 .foregroundStyle(BBrand.textSecondary)
             Button {} label: {
                 Text("+ Lag ny lead")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(BBrand.purpleLight)
                     .padding(.horizontal, 12).padding(.vertical, 7)
                     .background(BBrand.purple.opacity(0.18), in: Capsule())
@@ -546,10 +546,10 @@ struct BookMeetingSheet: View {
         VStack(alignment: .leading, spacing: 11) {
             HStack(spacing: 7) {
                 Image(systemName: "clock.fill")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(BBrand.purpleLight)
                 Text("Tid og varighet")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
             }
@@ -560,7 +560,7 @@ struct BookMeetingSheet: View {
                 .pickerStyle(.wheel)
                 .frame(maxHeight: 90)
                 Text(":")
-                    .font(.system(size: 20, weight: .bold))
+                    .font(.appScaled(size: 20, weight: .bold))
                     .foregroundStyle(.white)
                 Picker("", selection: $startMinute) {
                     ForEach(minutes, id: \.self) { Text(String(format: "%02d", $0)).foregroundStyle(.white).tag($0) }
@@ -577,7 +577,7 @@ struct BookMeetingSheet: View {
                         withAnimation { duration = d }
                     } label: {
                         Text(d >= 60 ? "\(d/60) t\(d%60 > 0 ? " \(d%60) m" : "")" : "\(d) min")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.appScaled(size: 11, weight: .bold))
                             .foregroundStyle(duration == d ? .white : BBrand.purpleLight)
                             .padding(.horizontal, 11).padding(.vertical, 7)
                             .background(
@@ -602,10 +602,10 @@ struct BookMeetingSheet: View {
         VStack(alignment: .leading, spacing: 11) {
             HStack(spacing: 7) {
                 Image(systemName: meetingType.icon)
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(meetingType.color)
                 Text("Type møte")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
             }
@@ -629,16 +629,16 @@ struct BookMeetingSheet: View {
                 ZStack {
                     Circle().fill(t.color.opacity(isSelected ? 0.35 : 0.18))
                     Image(systemName: t.icon)
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(t.color)
                 }
                 .frame(width: 30, height: 30)
                 Text(t.rawValue)
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
                 Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
-                    .font(.system(size: 14))
+                    .font(.appScaled(size: 14))
                     .foregroundStyle(isSelected ? t.color : BBrand.stroke)
             }
             .padding(9)
@@ -658,18 +658,18 @@ struct BookMeetingSheet: View {
         VStack(alignment: .leading, spacing: 9) {
             HStack(spacing: 7) {
                 Image(systemName: "text.bubble.fill")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(BBrand.purpleLight)
                 Text("Agenda")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
                 Button {} label: {
                     HStack(spacing: 3) {
                         Image(systemName: "sparkles")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.appScaled(size: 9, weight: .bold))
                         Text("AI-forslag")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.appScaled(size: 10, weight: .semibold))
                     }
                     .foregroundStyle(BBrand.purpleLight)
                     .padding(.horizontal, 7).padding(.vertical, 4)
@@ -681,14 +681,14 @@ struct BookMeetingSheet: View {
                 TextEditor(text: $agenda)
                     .scrollContentBackground(.hidden)
                     .foregroundStyle(.white)
-                    .font(.system(size: 12))
+                    .font(.appScaled(size: 12))
                     .frame(minHeight: 60)
                     .padding(8)
                     .background(BBrand.cardHi, in: RoundedRectangle(cornerRadius: 11))
                     .overlay(RoundedRectangle(cornerRadius: 11).stroke(BBrand.stroke, lineWidth: 1))
                 if agenda.isEmpty {
                     Text("Hva skal dere snakke om?")
-                        .font(.system(size: 12))
+                        .font(.appScaled(size: 12))
                         .foregroundStyle(BBrand.textTertiary)
                         .padding(.horizontal, 12).padding(.vertical, 14)
                         .allowsHitTesting(false)
@@ -708,17 +708,17 @@ struct BookMeetingSheet: View {
                 ZStack {
                     Circle().fill(BBrand.green.opacity(0.22))
                     Image(systemName: "envelope.fill")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.appScaled(size: 11, weight: .bold))
                         .foregroundStyle(BBrand.green)
                 }
                 .frame(width: 30, height: 30)
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Send invitt + bekreftelse")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
                     if let lead = selectedLead {
                         Text("Til \(lead.contactName)")
-                            .font(.system(size: 10))
+                            .font(.appScaled(size: 10))
                             .foregroundStyle(BBrand.textSecondary)
                     }
                 }
@@ -737,11 +737,11 @@ struct BookMeetingSheet: View {
         return Button { dismiss() } label: {
             HStack(spacing: 6) {
                 Image(systemName: "calendar.badge.checkmark")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                 Text(canSave
                      ? "Bok møte \(String(format: "%02d:%02d", startHour, startMinute))"
                      : "Velg lead først")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
             }
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)

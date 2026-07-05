@@ -240,7 +240,7 @@ struct GuidePin: View {
                 DropPinShape()
                     .stroke(Color.white.opacity(0.95), lineWidth: 2)
                 Text("\(score)")
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: 14, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
                     .monospacedDigit()
                     .offset(y: -7)

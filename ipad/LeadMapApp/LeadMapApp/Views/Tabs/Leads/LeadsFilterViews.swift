@@ -55,17 +55,17 @@ struct LeadsAreaPopover: View {
                             ZStack {
                                 Circle().fill(selected == a ? LfBrand.purple.opacity(0.30) : LfBrand.cardHi)
                                 Image(systemName: a.icon)
-                                    .font(.system(size: 11, weight: .semibold))
+                                    .font(.appScaled(size: 11, weight: .semibold))
                                     .foregroundStyle(selected == a ? LfBrand.purpleLight : LfBrand.textSecondary)
                             }
                             .frame(width: 30, height: 30)
                             Text(a.rawValue)
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.appScaled(size: 13, weight: .semibold))
                                 .foregroundStyle(.white)
                             Spacer()
                             if selected == a {
                                 Image(systemName: "checkmark.circle.fill")
-                                    .font(.system(size: 13))
+                                    .font(.appScaled(size: 13))
                                     .foregroundStyle(LfBrand.purpleLight)
                             }
                         }
@@ -95,13 +95,13 @@ struct LeadsStatusPopover: View {
             popHeader("Lead status", subtitle: "Multi-velg: viser kun valgte")
             HStack {
                 Text("\(selected.count) valgt")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(LfBrand.textSecondary)
                 Spacer()
                 if !selected.isEmpty {
                     Button { selected.removeAll() } label: {
                         Text("Nullstill")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.appScaled(size: 11, weight: .semibold))
                             .foregroundStyle(LfBrand.purpleLight)
                     }
                     .buttonStyle(.plain)
@@ -117,16 +117,16 @@ struct LeadsStatusPopover: View {
                             ZStack {
                                 Circle().fill(st.color.opacity(selected.contains(st) ? 0.30 : 0.15))
                                 Image(systemName: st.icon)
-                                    .font(.system(size: 11, weight: .semibold))
+                                    .font(.appScaled(size: 11, weight: .semibold))
                                     .foregroundStyle(st.color)
                             }
                             .frame(width: 28, height: 28)
                             Text(st.label)
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.appScaled(size: 13, weight: .semibold))
                                 .foregroundStyle(.white)
                             Spacer()
                             Image(systemName: selected.contains(st) ? "checkmark.square.fill" : "square")
-                                .font(.system(size: 14))
+                                .font(.appScaled(size: 14))
                                 .foregroundStyle(selected.contains(st) ? st.color : LfBrand.stroke)
                         }
                         .padding(.horizontal, 8).padding(.vertical, 6)
@@ -177,12 +177,12 @@ struct LeadsScorePopover: View {
                     } label: {
                         HStack {
                             Text(p.rawValue)
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.appScaled(size: 12, weight: .semibold))
                                 .foregroundStyle(.white)
                             Spacer()
                             if preset == p {
                                 Image(systemName: "checkmark.circle.fill")
-                                    .font(.system(size: 12))
+                                    .font(.appScaled(size: 12))
                                     .foregroundStyle(LfBrand.purpleLight)
                             }
                         }
@@ -202,11 +202,11 @@ struct LeadsScorePopover: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Text("Fra \(Int(range.lowerBound))")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(LfBrand.purpleLight)
                     Spacer()
                     Text("til \(Int(range.upperBound))")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(LfBrand.purpleLight)
                 }
                 Slider(value: Binding(
@@ -258,17 +258,17 @@ struct SavedViewsPopover: View {
                             ZStack {
                                 Circle().fill(color.opacity(selected == name ? 0.30 : 0.15))
                                 Image(systemName: icon)
-                                    .font(.system(size: 11, weight: .semibold))
+                                    .font(.appScaled(size: 11, weight: .semibold))
                                     .foregroundStyle(color)
                             }
                             .frame(width: 28, height: 28)
                             Text(name)
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.appScaled(size: 13, weight: .semibold))
                                 .foregroundStyle(.white)
                             Spacer()
                             if selected == name {
                                 Image(systemName: "checkmark.circle.fill")
-                                    .font(.system(size: 13))
+                                    .font(.appScaled(size: 13))
                                     .foregroundStyle(LfBrand.purpleLight)
                             }
                         }
@@ -289,9 +289,9 @@ struct SavedViewsPopover: View {
                 Button { } label: {
                     HStack(spacing: 5) {
                         Image(systemName: "plus.circle.fill")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.appScaled(size: 10, weight: .bold))
                         Text("Lagre nåværende visning")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.appScaled(size: 11, weight: .semibold))
                     }
                     .foregroundStyle(LfBrand.purpleLight)
                     .frame(maxWidth: .infinity)
@@ -371,7 +371,7 @@ struct LeadsMoreFiltersSheet: View {
                 ToolbarItem(placement: .primaryAction) {
                     Button { } label: {
                         Text("Nullstill")
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.appScaled(size: 13, weight: .semibold))
                             .foregroundStyle(LfBrand.textSecondary)
                     }
                 }
@@ -383,7 +383,7 @@ struct LeadsMoreFiltersSheet: View {
                 HStack(spacing: 10) {
                     Button { dismiss() } label: {
                         Text("Tøm filtre")
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.appScaled(size: 13, weight: .semibold))
                             .foregroundStyle(.white)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 13)
@@ -394,9 +394,9 @@ struct LeadsMoreFiltersSheet: View {
                     Button { dismiss() } label: {
                         HStack(spacing: 6) {
                             Image(systemName: "magnifyingglass")
-                                .font(.system(size: 12, weight: .bold))
+                                .font(.appScaled(size: 12, weight: .bold))
                             Text("Vis 1 248 treff")
-                                .font(.system(size: 13, weight: .bold))
+                                .font(.appScaled(size: 13, weight: .bold))
                         }
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
@@ -436,16 +436,16 @@ struct LeadsMoreFiltersSheet: View {
                 ZStack {
                     Circle().fill(color.opacity(0.22))
                     Image(systemName: icon)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(color)
                 }
                 .frame(width: 30, height: 30)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(label)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
                     Text(sub)
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(LfBrand.textSecondary)
                 }
             }
@@ -463,11 +463,11 @@ struct LeadsMoreFiltersSheet: View {
         sectionCard(title: title, icon: icon) {
             HStack {
                 Text("Fra \(format(range.wrappedValue.lowerBound))")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(LfBrand.purpleLight)
                 Spacer()
                 Text("til \(format(range.wrappedValue.upperBound))")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(LfBrand.purpleLight)
             }
             VStack(spacing: 4) {
@@ -499,7 +499,7 @@ struct LeadsMoreFiltersSheet: View {
                     ForEach(Array(T.allCases), id: \.self) { opt in
                         Button { selection.wrappedValue = opt } label: {
                             Text(opt.rawValue)
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.appScaled(size: 12, weight: .semibold))
                                 .foregroundStyle(selection.wrappedValue == opt ? .white : LfBrand.textSecondary)
                                 .padding(.horizontal, 12).padding(.vertical, 7)
                                 .background(
@@ -528,10 +528,10 @@ struct LeadsMoreFiltersSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 7) {
                 Image(systemName: icon)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(LfBrand.purpleLight)
                 Text(title)
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
             }
@@ -622,9 +622,9 @@ struct ImportLeadsSheet: View {
                 Button { dismiss() } label: {
                     HStack(spacing: 8) {
                         Image(systemName: selectedSource.icon)
-                            .font(.system(size: 14, weight: .bold))
+                            .font(.appScaled(size: 14, weight: .bold))
                         Text("Velg \(selectedSource.title)")
-                            .font(.system(size: 14, weight: .bold))
+                            .font(.appScaled(size: 14, weight: .bold))
                     }
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
@@ -650,15 +650,15 @@ struct ImportLeadsSheet: View {
     private var explainCard: some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "info.circle.fill")
-                .font(.system(size: 14))
+                .font(.appScaled(size: 14))
                 .foregroundStyle(LfBrand.purpleLight)
                 .padding(.top, 2)
             VStack(alignment: .leading, spacing: 3) {
                 Text("Importer-flyt")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Text("Velg kilde → kart kolonner til Leadgrid-felter → forhåndsvis → bekreft. AI rydder duplikater automatisk og slår sammen leads med eksisterende.")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(LfBrand.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -672,10 +672,10 @@ struct ImportLeadsSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 7) {
                 Image(systemName: "arrow.down.circle.fill")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(LfBrand.purpleLight)
                 Text("Velg kilde")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
             }
@@ -696,17 +696,17 @@ struct ImportLeadsSheet: View {
                     RoundedRectangle(cornerRadius: 9)
                         .fill(src.color.opacity(isSelected ? 0.30 : 0.15))
                     Image(systemName: src.icon)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.appScaled(size: 14, weight: .semibold))
                         .foregroundStyle(src.color)
                 }
                 .frame(width: 38, height: 38)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(src.title)
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appScaled(size: 12, weight: .bold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
                     Text(src.subtitle)
-                        .font(.system(size: 9))
+                        .font(.appScaled(size: 9))
                         .foregroundStyle(LfBrand.textSecondary)
                         .lineLimit(2)
                 }
@@ -727,10 +727,10 @@ struct ImportLeadsSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 7) {
                 Image(systemName: "gearshape.fill")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(LfBrand.purpleLight)
                 Text("Import-innstillinger")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
             }
@@ -757,16 +757,16 @@ struct ImportLeadsSheet: View {
                 ZStack {
                     Circle().fill(color.opacity(0.22))
                     Image(systemName: icon)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(color)
                 }
                 .frame(width: 30, height: 30)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(label)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
                     Text(sub)
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(LfBrand.textSecondary)
                 }
             }
@@ -782,10 +782,10 @@ struct ImportLeadsSheet: View {
 private func popHeader(_ title: String, subtitle: String) -> some View {
     VStack(alignment: .leading, spacing: 2) {
         Text(title)
-            .font(.system(size: 14, weight: .bold))
+            .font(.appScaled(size: 14, weight: .bold))
             .foregroundStyle(.white)
         Text(subtitle)
-            .font(.system(size: 10))
+            .font(.appScaled(size: 10))
             .foregroundStyle(LfBrand.textSecondary)
     }
     .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 8)

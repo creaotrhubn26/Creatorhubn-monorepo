@@ -149,15 +149,15 @@ struct PondusBackendListView: View {
             if isSuperAdmin {
                 HStack {
                     Text("SuperAdmin — du kan opprette og publisere Leadgrid-maler.")
-                        .font(.system(size: 12))
+                        .font(.appScaled(size: 12))
                         .foregroundStyle(LBrand.textSecondary)
                     Spacer()
                     Button(action: onNew) {
                         HStack(spacing: 6) {
                             Image(systemName: "plus")
-                                .font(.system(size: 11, weight: .bold))
+                                .font(.appScaled(size: 11, weight: .bold))
                             Text("Ny mal")
-                                .font(.system(size: 12, weight: .bold))
+                                .font(.appScaled(size: 12, weight: .bold))
                         }
                         .foregroundStyle(.white)
                         .padding(.horizontal, 12).padding(.vertical, 8)
@@ -195,21 +195,21 @@ private struct PondusBackendCard: View {
                     RoundedRectangle(cornerRadius: 9)
                         .fill(kindTint.opacity(0.22))
                     Image(systemName: kindIcon)
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.appScaled(size: 14, weight: .bold))
                         .foregroundStyle(kindTint)
                 }
                 .frame(width: 38, height: 38)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(template.name)
-                        .font(.system(size: 15, weight: .bold))
+                        .font(.appScaled(size: 15, weight: .bold))
                         .foregroundStyle(.white)
                     HStack(spacing: 6) {
-                        Text(kindLabel).font(.system(size: 11, weight: .semibold)).foregroundStyle(kindTint)
-                        Text("•").foregroundStyle(LBrand.textTertiary).font(.system(size: 10))
-                        Text(categoryLabel).font(.system(size: 11)).foregroundStyle(LBrand.textSecondary)
-                        Text("•").foregroundStyle(LBrand.textTertiary).font(.system(size: 10))
+                        Text(kindLabel).font(.appScaled(size: 11, weight: .semibold)).foregroundStyle(kindTint)
+                        Text("•").foregroundStyle(LBrand.textTertiary).font(.appScaled(size: 10))
+                        Text(categoryLabel).font(.appScaled(size: 11)).foregroundStyle(LBrand.textSecondary)
+                        Text("•").foregroundStyle(LBrand.textTertiary).font(.appScaled(size: 10))
                         Text("Score \(template.score)")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.appScaled(size: 11, weight: .semibold))
                             .foregroundStyle(scoreColor)
                             .monospacedDigit()
                     }
@@ -218,8 +218,8 @@ private struct PondusBackendCard: View {
                 if isSuperAdmin {
                     Button(action: onEdit) {
                         HStack(spacing: 4) {
-                            Image(systemName: "pencil").font(.system(size: 10, weight: .bold))
-                            Text("Rediger").font(.system(size: 11, weight: .bold))
+                            Image(systemName: "pencil").font(.appScaled(size: 10, weight: .bold))
+                            Text("Rediger").font(.appScaled(size: 11, weight: .bold))
                         }
                         .foregroundStyle(LBrand.purpleLight)
                         .padding(.horizontal, 10).padding(.vertical, 6)
@@ -229,21 +229,21 @@ private struct PondusBackendCard: View {
             }
             if let desc = template.description, !desc.isEmpty {
                 Text(desc)
-                    .font(.system(size: 12))
+                    .font(.appScaled(size: 12))
                     .foregroundStyle(LBrand.textSecondary)
                     .lineLimit(2)
             }
             HStack(spacing: 6) {
                 ForEach(template.orderedSteps.prefix(6)) { step in
                     Text(step.title)
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.appScaled(size: 10, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.75))
                         .padding(.horizontal, 8).padding(.vertical, 3)
                         .background(LBrand.cardHi, in: Capsule())
                 }
                 if template.steps.count > 6 {
                     Text("+\(template.steps.count - 6)")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.appScaled(size: 10, weight: .bold))
                         .foregroundStyle(LBrand.textTertiary)
                 }
                 Spacer(minLength: 0)
@@ -310,23 +310,23 @@ struct PondusEmptyStateView: View {
                 ProgressView().tint(LBrand.purpleLight)
             } else {
                 Image(systemName: "book.pages.fill")
-                    .font(.system(size: 44, weight: .semibold))
+                    .font(.appScaled(size: 44, weight: .semibold))
                     .foregroundStyle(LBrand.purpleLight.opacity(0.7))
             }
             Text("Ingen publiserte pondus-maler enda")
-                .font(.system(size: 22, weight: .heavy))
+                .font(.appScaled(size: 22, weight: .heavy))
                 .foregroundStyle(.white)
             if isSuperAdmin {
                 Text("Legg til første mal og publiser den slik at alle brukere får tilgang.")
-                    .font(.system(size: 13))
+                    .font(.appScaled(size: 13))
                     .foregroundStyle(LBrand.textSecondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 40)
                 Button(action: onNew) {
                     HStack(spacing: 6) {
-                        Image(systemName: "plus.circle.fill").font(.system(size: 12, weight: .bold))
+                        Image(systemName: "plus.circle.fill").font(.appScaled(size: 12, weight: .bold))
                         Text("Legg til første mal")
-                            .font(.system(size: 13, weight: .bold))
+                            .font(.appScaled(size: 13, weight: .bold))
                     }
                     .foregroundStyle(.white)
                     .padding(.horizontal, 18).padding(.vertical, 11)
@@ -337,7 +337,7 @@ struct PondusEmptyStateView: View {
                 }.buttonStyle(.plain)
             } else {
                 Text("Din SuperAdmin publiserer maler her.")
-                    .font(.system(size: 13))
+                    .font(.appScaled(size: 13))
                     .foregroundStyle(LBrand.textSecondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 40)

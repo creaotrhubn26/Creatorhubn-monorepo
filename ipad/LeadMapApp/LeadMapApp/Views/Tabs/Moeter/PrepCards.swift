@@ -262,7 +262,7 @@ enum PrepData {
 /// ekte data (prep-backend mangler enda).
 fileprivate func prepEmptyState(_ text: String) -> some View {
     Text(text)
-        .font(.system(size: 11, weight: .semibold))
+        .font(.appScaled(size: 11, weight: .semibold))
         .foregroundStyle(PBrand.textSecondary)
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
@@ -280,10 +280,10 @@ struct PrepCoreCard: View {
             HStack {
                 HStack(spacing: 7) {
                     Image(systemName: "target")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(PBrand.purpleLight)
                     Text("Møteforberedelse")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.appScaled(size: 14, weight: .bold))
                         .foregroundStyle(.white)
                 }
                 Spacer()
@@ -295,11 +295,11 @@ struct PrepCoreCard: View {
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: regenerating ? "sparkles" : "wand.and.stars")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.appScaled(size: 11, weight: .bold))
                             .rotationEffect(.degrees(regenerating ? 360 : 0))
                             .animation(regenerating ? .linear(duration: 0.8) : .default, value: regenerating)
                         Text(regenerating ? "Genererer…" : "AI-regenerer")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.appScaled(size: 11, weight: .semibold))
                     }
                     .foregroundStyle(PBrand.purpleLight)
                     .padding(.horizontal, 9).padding(.vertical, 5)
@@ -310,14 +310,14 @@ struct PrepCoreCard: View {
                 .disabled(regenerating)
                 Button { showEdit = true } label: {
                     Text("Rediger")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(PBrand.purpleLight)
                 }
                 .buttonStyle(.plain)
             }
             if items.isEmpty {
                 Text("Ingen forberedelser registrert enda")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(PBrand.textSecondary)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
@@ -341,12 +341,12 @@ struct PrepCoreCard: View {
                 ZStack {
                     Circle().fill(p.color.opacity(0.22))
                     Image(systemName: p.icon)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(p.color)
                 }
                 .frame(width: 28, height: 28)
                 Text(p.category)
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(.white)
             }
             .frame(width: 120, alignment: .leading)
@@ -354,10 +354,10 @@ struct PrepCoreCard: View {
                 ForEach(p.bullets, id: \.self) { bullet in
                     HStack(alignment: .top, spacing: 6) {
                         Text("•")
-                            .font(.system(size: 11))
+                            .font(.appScaled(size: 11))
                             .foregroundStyle(PBrand.textSecondary)
                         Text(bullet)
-                            .font(.system(size: 12))
+                            .font(.appScaled(size: 12))
                             .foregroundStyle(.white)
                     }
                 }
@@ -404,7 +404,7 @@ struct PrepEditSheet: View {
                         }
                         dismiss()
                     }
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(PBrand.purpleLight)
                 }
             }
@@ -427,16 +427,16 @@ struct PrepEditSheet: View {
                 ZStack {
                     Circle().fill(item.color.opacity(0.22))
                     Image(systemName: item.icon)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(item.color)
                 }
                 .frame(width: 30, height: 30)
                 Text(item.category)
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
                 Text("Én linje per punkt")
-                    .font(.system(size: 9))
+                    .font(.appScaled(size: 9))
                     .foregroundStyle(PBrand.textTertiary)
             }
             TextEditor(text: Binding(
@@ -445,7 +445,7 @@ struct PrepEditSheet: View {
             ))
             .scrollContentBackground(.hidden)
             .foregroundStyle(.white)
-            .font(.system(size: 12))
+            .font(.appScaled(size: 12))
             .frame(minHeight: 90)
             .padding(10)
             .background(PBrand.cardHi, in: RoundedRectangle(cornerRadius: 11))
@@ -575,11 +575,11 @@ struct PrepChecklistCard: View {
                     .shadow(color: readinessColor.opacity(0.4), radius: 6)
                 VStack(spacing: 0) {
                     Text("\(Int(progress * 100))")
-                        .font(.system(size: 22, weight: .black, design: .rounded))
+                        .font(.appScaled(size: 22, weight: .black, design: .rounded))
                         .foregroundStyle(.white)
                         .monospacedDigit()
                     Text("%")
-                        .font(.system(size: 9, weight: .black))
+                        .font(.appScaled(size: 9, weight: .black))
                         .foregroundStyle(PBrand.textSecondary)
                         .offset(y: -3)
                 }
@@ -589,25 +589,25 @@ struct PrepChecklistCard: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Text("Møte-readiness")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(PBrand.textSecondary)
                         .textCase(.uppercase)
                         .tracking(0.5)
                     if progress >= 1.0 {
                         Image(systemName: "checkmark.seal.fill")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.appScaled(size: 11, weight: .bold))
                             .foregroundStyle(PBrand.green)
                     }
                 }
                 Text(readinessLabel)
-                    .font(.system(size: 17, weight: .black))
+                    .font(.appScaled(size: 17, weight: .black))
                     .foregroundStyle(readinessColor)
                 HStack(spacing: 6) {
                     HStack(spacing: 3) {
                         Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.appScaled(size: 10, weight: .bold))
                         Text("\(done) av \(total)")
-                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .font(.appScaled(size: 11, weight: .bold, design: .rounded))
                             .monospacedDigit()
                     }
                     .foregroundStyle(PBrand.green)
@@ -615,9 +615,9 @@ struct PrepChecklistCard: View {
                         Text("·").foregroundStyle(PBrand.textTertiary)
                         HStack(spacing: 3) {
                             Image(systemName: "clock.fill")
-                                .font(.system(size: 10, weight: .bold))
+                                .font(.appScaled(size: 10, weight: .bold))
                             Text("~\(timeRemaining) min")
-                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .font(.appScaled(size: 11, weight: .bold, design: .rounded))
                                 .monospacedDigit()
                         }
                         .foregroundStyle(PBrand.yellow)
@@ -627,7 +627,7 @@ struct PrepChecklistCard: View {
             Spacer()
             Button { showAddSheet = true } label: {
                 Image(systemName: "plus")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                     .padding(9)
                     .background(
@@ -657,34 +657,34 @@ struct PrepChecklistCard: View {
                         startPoint: .topLeading, endPoint: .bottomTrailing
                     ))
                     Image(systemName: "sparkles")
-                        .font(.system(size: 12, weight: .black))
+                        .font(.appScaled(size: 12, weight: .black))
                         .foregroundStyle(.white)
                 }
                 .frame(width: 32, height: 32)
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 5) {
                         Text("AI ANBEFALER NÅ")
-                            .font(.system(size: 8, weight: .black))
+                            .font(.appScaled(size: 8, weight: .black))
                             .foregroundStyle(PBrand.purpleLight)
                             .tracking(0.6)
                         Image(systemName: "arrow.right.circle.fill")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.appScaled(size: 9, weight: .bold))
                             .foregroundStyle(PBrand.purpleLight)
                     }
                     Text(it.title)
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appScaled(size: 12, weight: .bold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
                     if let d = it.detail {
                         Text(d)
-                            .font(.system(size: 10))
+                            .font(.appScaled(size: 10))
                             .foregroundStyle(PBrand.textSecondary)
                             .lineLimit(1)
                     }
                 }
                 Spacer()
                 Text("\(it.timeEstimateMin) min")
-                    .font(.system(size: 10, weight: .black, design: .rounded))
+                    .font(.appScaled(size: 10, weight: .black, design: .rounded))
                     .foregroundStyle(PBrand.yellow)
                     .monospacedDigit()
                     .padding(.horizontal, 7).padding(.vertical, 3)
@@ -712,17 +712,17 @@ struct PrepChecklistCard: View {
                     startPoint: .topLeading, endPoint: .bottomTrailing
                 ))
                 Image(systemName: "checkmark.seal.fill")
-                    .font(.system(size: 13, weight: .black))
+                    .font(.appScaled(size: 13, weight: .black))
                     .foregroundStyle(.white)
             }
             .frame(width: 32, height: 32)
             VStack(alignment: .leading, spacing: 1) {
                 Text("100 % FORBEREDT")
-                    .font(.system(size: 9, weight: .black))
+                    .font(.appScaled(size: 9, weight: .black))
                     .foregroundStyle(PBrand.green)
                     .tracking(0.5)
                 Text("Du har alt klart for møtet 🚀")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(.white)
             }
             Spacer()
@@ -740,14 +740,14 @@ struct PrepChecklistCard: View {
         return VStack(spacing: 5) {
             HStack(spacing: 6) {
                 Image(systemName: cat.icon)
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.appScaled(size: 9, weight: .bold))
                     .foregroundStyle(cat.color)
                 Text(cat.rawValue.uppercased())
-                    .font(.system(size: 9, weight: .black))
+                    .font(.appScaled(size: 9, weight: .black))
                     .foregroundStyle(cat.color)
                     .tracking(0.5)
                 Text("\(catDone)/\(catCount)")
-                    .font(.system(size: 8, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: 8, weight: .bold, design: .rounded))
                     .foregroundStyle(catDone == catCount ? PBrand.green : PBrand.textTertiary)
                     .monospacedDigit()
                 Rectangle().fill(PBrand.stroke).frame(height: 1)
@@ -773,7 +773,7 @@ struct PrepChecklistCard: View {
                         .scaleEffect(it.completed ? 1 : 1)
                     if it.completed {
                         Image(systemName: "checkmark")
-                            .font(.system(size: 10, weight: .black))
+                            .font(.appScaled(size: 10, weight: .black))
                             .foregroundStyle(.white)
                     } else if it.aiRecommended {
                         // Pulse-anim på AI-anbefalt
@@ -787,20 +787,20 @@ struct PrepChecklistCard: View {
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 5) {
                         Text(it.title)
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.appScaled(size: 12, weight: .semibold))
                             .foregroundStyle(it.completed ? PBrand.textSecondary : .white)
                             .strikethrough(it.completed, color: PBrand.textTertiary)
                             .lineLimit(1)
                         if it.priority == .high && !it.completed {
                             Image(systemName: "flame.fill")
-                                .font(.system(size: 9, weight: .bold))
+                                .font(.appScaled(size: 9, weight: .bold))
                                 .foregroundStyle(PBrand.red)
                         }
                     }
                     HStack(spacing: 5) {
                         if let d = it.detail {
                             Text(d)
-                                .font(.system(size: 10))
+                                .font(.appScaled(size: 10))
                                 .foregroundStyle(PBrand.textTertiary)
                                 .lineLimit(1)
                         }
@@ -840,9 +840,9 @@ struct PrepChecklistCard: View {
     private func tinyBadge(icon: String, text: String, color: Color) -> some View {
         HStack(spacing: 3) {
             Image(systemName: icon)
-                .font(.system(size: 8, weight: .bold))
+                .font(.appScaled(size: 8, weight: .bold))
             Text(text)
-                .font(.system(size: 9, weight: .bold))
+                .font(.appScaled(size: 9, weight: .bold))
                 .monospacedDigit()
         }
         .foregroundStyle(color)
@@ -888,17 +888,17 @@ struct AddChecklistItemSheet: View {
                     field(title: "Detalj (valgfritt)", binding: $detail, placeholder: "Notater til denne oppgaven")
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Kategori")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.appScaled(size: 12, weight: .semibold))
                             .foregroundStyle(PBrand.textSecondary)
                         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
                             ForEach(PrepCategory.allCases, id: \.self) { c in
                                 Button { category = c } label: {
                                     HStack(spacing: 7) {
                                         Image(systemName: c.icon)
-                                            .font(.system(size: 12, weight: .semibold))
+                                            .font(.appScaled(size: 12, weight: .semibold))
                                             .foregroundStyle(category == c ? .white : c.color)
                                         Text(c.rawValue)
-                                            .font(.system(size: 12, weight: .bold))
+                                            .font(.appScaled(size: 12, weight: .bold))
                                             .foregroundStyle(category == c ? .white : .white)
                                     }
                                     .frame(maxWidth: .infinity)
@@ -939,7 +939,7 @@ struct AddChecklistItemSheet: View {
                         items.append(new)
                         dismiss()
                     }
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(PBrand.purpleLight)
                     .disabled(title.isEmpty)
                 }
@@ -953,18 +953,18 @@ struct AddChecklistItemSheet: View {
     private func field(title: String, binding: Binding<String>, placeholder: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(PBrand.textSecondary)
             ZStack(alignment: .leading) {
                 TextField("", text: binding)
                     .foregroundStyle(.white)
-                    .font(.system(size: 13))
+                    .font(.appScaled(size: 13))
                     .padding(11)
                     .background(PBrand.card, in: RoundedRectangle(cornerRadius: 11))
                     .overlay(RoundedRectangle(cornerRadius: 11).stroke(PBrand.stroke, lineWidth: 1))
                 if binding.wrappedValue.isEmpty {
                     Text(placeholder)
-                        .font(.system(size: 13))
+                        .font(.appScaled(size: 13))
                         .foregroundStyle(PBrand.textTertiary)
                         .padding(.horizontal, 14)
                         .allowsHitTesting(false)
@@ -988,10 +988,10 @@ struct PrepStakeholdersCard: View {
             HStack {
                 HStack(spacing: 7) {
                     Image(systemName: "person.3.fill")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(PBrand.blue)
                     Text("Beslutningstakere")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.appScaled(size: 14, weight: .bold))
                         .foregroundStyle(.white)
                 }
                 Spacer()
@@ -1023,9 +1023,9 @@ struct PrepStakeholdersCard: View {
     private func summaryBadge(label: String, color: Color, icon: String) -> some View {
         HStack(spacing: 4) {
             Image(systemName: icon)
-                .font(.system(size: 9, weight: .bold))
+                .font(.appScaled(size: 9, weight: .bold))
             Text(label)
-                .font(.system(size: 10, weight: .bold))
+                .font(.appScaled(size: 10, weight: .bold))
         }
         .foregroundStyle(color)
         .padding(.horizontal, 7).padding(.vertical, 3)
@@ -1038,7 +1038,7 @@ struct PrepStakeholdersCard: View {
             ZStack {
                 Circle().fill(s.color.opacity(0.85))
                 Text(s.initials)
-                    .font(.system(size: 12, weight: .black))
+                    .font(.appScaled(size: 12, weight: .black))
                     .foregroundStyle(.white)
                 if s.attending {
                     Circle()
@@ -1051,19 +1051,19 @@ struct PrepStakeholdersCard: View {
             .frame(width: 38, height: 38)
             VStack(alignment: .leading, spacing: 1) {
                 Text(s.name)
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Text(s.role)
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(PBrand.textSecondary)
             }
             Spacer()
             // Influence-badge
             HStack(spacing: 4) {
                 Image(systemName: s.influence.icon)
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.appScaled(size: 9, weight: .bold))
                 Text(s.influence.rawValue)
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.appScaled(size: 10, weight: .bold))
             }
             .foregroundStyle(s.influence.color)
             .padding(.horizontal, 7).padding(.vertical, 4)
@@ -1086,7 +1086,7 @@ struct PrepStakeholdersCard: View {
                 .stroke(color, style: StrokeStyle(lineWidth: 3, lineCap: .round))
                 .rotationEffect(.degrees(-90))
             Text("\(pct)")
-                .font(.system(size: 9, weight: .black, design: .rounded))
+                .font(.appScaled(size: 9, weight: .black, design: .rounded))
                 .foregroundStyle(color)
                 .monospacedDigit()
         }
@@ -1129,22 +1129,22 @@ struct StakeholderDetailSheet: View {
             ZStack {
                 Circle().fill(stakeholder.color.opacity(0.85))
                 Text(stakeholder.initials)
-                    .font(.system(size: 18, weight: .black))
+                    .font(.appScaled(size: 18, weight: .black))
                     .foregroundStyle(.white)
             }
             .frame(width: 60, height: 60)
             VStack(alignment: .leading, spacing: 3) {
                 Text(stakeholder.name)
-                    .font(.system(size: 17, weight: .bold))
+                    .font(.appScaled(size: 17, weight: .bold))
                     .foregroundStyle(.white)
                 Text(stakeholder.role)
-                    .font(.system(size: 12))
+                    .font(.appScaled(size: 12))
                     .foregroundStyle(PBrand.textSecondary)
                 HStack(spacing: 5) {
                     Image(systemName: stakeholder.influence.icon)
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.appScaled(size: 9, weight: .bold))
                     Text(stakeholder.influence.rawValue)
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.appScaled(size: 11, weight: .bold))
                 }
                 .foregroundStyle(stakeholder.influence.color)
                 .padding(.horizontal, 8).padding(.vertical, 4)
@@ -1169,10 +1169,10 @@ struct StakeholderDetailSheet: View {
     private func statBox(label: String, value: String, color: Color) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label)
-                .font(.system(size: 10))
+                .font(.appScaled(size: 10))
                 .foregroundStyle(PBrand.textSecondary)
             Text(value)
-                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .font(.appScaled(size: 14, weight: .bold, design: .rounded))
                 .foregroundStyle(color)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
@@ -1186,10 +1186,10 @@ struct StakeholderDetailSheet: View {
     private var notesCard: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Notater")
-                .font(.system(size: 13, weight: .bold))
+                .font(.appScaled(size: 13, weight: .bold))
                 .foregroundStyle(.white)
             Text("Nøkkelperson hos kunden. Bekymret for migrering — gi konkret time-line + risiko-plan. Foretrekker e-post over telefon.")
-                .font(.system(size: 12))
+                .font(.appScaled(size: 12))
                 .foregroundStyle(.white.opacity(0.85))
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -1210,9 +1210,9 @@ struct StakeholderDetailSheet: View {
         Button {} label: {
             HStack(spacing: 6) {
                 Image(systemName: icon)
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                 Text(label)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
             }
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)
@@ -1272,21 +1272,21 @@ struct PrepInsightsModal: View {
                     startPoint: .topLeading, endPoint: .bottomTrailing
                 ))
                 Image(systemName: "sparkles")
-                    .font(.system(size: 17, weight: .black))
+                    .font(.appScaled(size: 17, weight: .black))
                     .foregroundStyle(.white)
             }
             .frame(width: 46, height: 46)
             VStack(alignment: .leading, spacing: 2) {
                 Text(meetingCompany)
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 Text("Forberedelse-AI · møte med \(meetingContact)")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(PBrand.textSecondary)
             }
             Spacer()
             Text("Live")
-                .font(.system(size: 9, weight: .black))
+                .font(.appScaled(size: 9, weight: .black))
                 .foregroundStyle(PBrand.green)
                 .tracking(0.5)
                 .padding(.horizontal, 7).padding(.vertical, 3)
@@ -1341,16 +1341,16 @@ struct PrepCoreModal: View {
                     startPoint: .topLeading, endPoint: .bottomTrailing
                 ))
                 Image(systemName: "target")
-                    .font(.system(size: 17, weight: .black))
+                    .font(.appScaled(size: 17, weight: .black))
                     .foregroundStyle(.white)
             }
             .frame(width: 46, height: 46)
             VStack(alignment: .leading, spacing: 2) {
                 Text(meetingCompany)
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 Text("Mål, behov, neste steg og notater")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(PBrand.textSecondary)
             }
             Spacer()
@@ -1411,16 +1411,16 @@ struct PrepStakeholdersModal: View {
                     startPoint: .topLeading, endPoint: .bottomTrailing
                 ))
                 Image(systemName: "person.3.fill")
-                    .font(.system(size: 17, weight: .black))
+                    .font(.appScaled(size: 17, weight: .black))
                     .foregroundStyle(.white)
             }
             .frame(width: 46, height: 46)
             VStack(alignment: .leading, spacing: 2) {
                 Text(meetingCompany)
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 Text("\(PrepData.stakeholders.count) beslutningstakere · \(attendingCount) på møtet")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(PBrand.textSecondary)
             }
             Spacer()
@@ -1485,16 +1485,16 @@ struct PrepChecklistModal: View {
                     startPoint: .topLeading, endPoint: .bottomTrailing
                 ))
                 Image(systemName: "checkmark.seal.fill")
-                    .font(.system(size: 17, weight: .black))
+                    .font(.appScaled(size: 17, weight: .black))
                     .foregroundStyle(.white)
             }
             .frame(width: 46, height: 46)
             VStack(alignment: .leading, spacing: 2) {
                 Text(meetingCompany)
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 Text("Møte-forberedelses-sjekkliste")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(PBrand.textSecondary)
             }
             Spacer()
@@ -1561,11 +1561,11 @@ struct PrepChecklistPreviewButton: View {
                         .shadow(color: readinessColor.opacity(0.5), radius: 4)
                     VStack(spacing: -2) {
                         Text("\(Int(progress * 100))")
-                            .font(.system(size: 13, weight: .black, design: .rounded))
+                            .font(.appScaled(size: 13, weight: .black, design: .rounded))
                             .foregroundStyle(.white)
                             .monospacedDigit()
                         Text("%")
-                            .font(.system(size: 7, weight: .black))
+                            .font(.appScaled(size: 7, weight: .black))
                             .foregroundStyle(PBrand.textSecondary)
                     }
                 }
@@ -1574,13 +1574,13 @@ struct PrepChecklistPreviewButton: View {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 5) {
                         Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.appScaled(size: 10, weight: .bold))
                             .foregroundStyle(readinessColor)
                         Text("Sjekkliste")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.appScaled(size: 12, weight: .bold))
                             .foregroundStyle(.white)
                         Text("\(done) / \(total)")
-                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                            .font(.appScaled(size: 10, weight: .bold, design: .rounded))
                             .foregroundStyle(readinessColor)
                             .monospacedDigit()
                             .padding(.horizontal, 5).padding(.vertical, 1)
@@ -1588,15 +1588,15 @@ struct PrepChecklistPreviewButton: View {
                     }
                     HStack(spacing: 5) {
                         Text(readinessLabel)
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.appScaled(size: 10, weight: .semibold))
                             .foregroundStyle(readinessColor)
                         if timeRemaining > 0 {
                             Text("·").foregroundStyle(PBrand.textTertiary)
                             HStack(spacing: 2) {
                                 Image(systemName: "clock.fill")
-                                    .font(.system(size: 8))
+                                    .font(.appScaled(size: 8))
                                 Text("~\(timeRemaining) min")
-                                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                                    .font(.appScaled(size: 10, weight: .bold, design: .rounded))
                                     .monospacedDigit()
                             }
                             .foregroundStyle(PBrand.yellow)
@@ -1605,7 +1605,7 @@ struct PrepChecklistPreviewButton: View {
                 }
                 Spacer()
                 Image(systemName: "arrow.up.right")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(.white.opacity(0.7))
             }
             .padding(.horizontal, 12).padding(.vertical, 10)
@@ -1687,25 +1687,25 @@ struct PrepHistoryModal: View {
                     startPoint: .topLeading, endPoint: .bottomTrailing
                 ))
                 Image(systemName: "clock.arrow.circlepath")
-                    .font(.system(size: 17, weight: .black))
+                    .font(.appScaled(size: 17, weight: .black))
                     .foregroundStyle(.white)
             }
             .frame(width: 46, height: 46)
             VStack(alignment: .leading, spacing: 2) {
                 Text(meetingCompany)
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 Text("1 anbefalt handling · \(totalEvents) tidligere interaksjoner")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(PBrand.textSecondary)
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 1) {
                 Text("Først kontakt")
-                    .font(.system(size: 9))
+                    .font(.appScaled(size: 9))
                     .foregroundStyle(PBrand.textTertiary)
                 Text("2. mai")
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: 12, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
                     .monospacedDigit()
             }
@@ -1723,14 +1723,14 @@ struct PrepHistoryModal: View {
         VStack(alignment: .leading, spacing: 11) {
             HStack(spacing: 7) {
                 Image(systemName: "target")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(PBrand.purpleLight)
                 Text("Neste beste handling")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
                 Text("AI")
-                    .font(.system(size: 9, weight: .black))
+                    .font(.appScaled(size: 9, weight: .black))
                     .foregroundStyle(PBrand.purpleLight)
                     .padding(.horizontal, 6).padding(.vertical, 2)
                     .background(PBrand.purple.opacity(0.18), in: Capsule())
@@ -1743,16 +1743,16 @@ struct PrepHistoryModal: View {
                         startPoint: .topLeading, endPoint: .bottomTrailing
                     ))
                     Image(systemName: "target")
-                        .font(.system(size: 17, weight: .black))
+                        .font(.appScaled(size: 17, weight: .black))
                         .foregroundStyle(.white)
                 }
                 .frame(width: 46, height: 46)
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Send oppsummering etter møtet")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(.white)
                     Text("Del nøkkelpunkter og avtal neste steg innen 24t — øker konvertering med 38 %.")
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(PBrand.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -1762,9 +1762,9 @@ struct PrepHistoryModal: View {
                 Button {} label: {
                     HStack(spacing: 5) {
                         Image(systemName: "plus.circle.fill")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.appScaled(size: 12, weight: .bold))
                         Text("Opprett oppgave")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.appScaled(size: 12, weight: .bold))
                     }
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
@@ -1779,9 +1779,9 @@ struct PrepHistoryModal: View {
                 Button {} label: {
                     HStack(spacing: 5) {
                         Image(systemName: "clock.fill")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.appScaled(size: 11, weight: .semibold))
                         Text("Snooze")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.appScaled(size: 12, weight: .semibold))
                     }
                     .foregroundStyle(.white)
                     .padding(.horizontal, 14).padding(.vertical, 11)
@@ -1803,7 +1803,7 @@ struct PrepHistoryModal: View {
     private func sectionDivider(_ title: String) -> some View {
         HStack(spacing: 8) {
             Text(title.uppercased())
-                .font(.system(size: 10, weight: .black))
+                .font(.appScaled(size: 10, weight: .black))
                 .foregroundStyle(PBrand.textSecondary)
                 .tracking(0.6)
             Rectangle().fill(PBrand.stroke).frame(height: 1)
@@ -1833,10 +1833,10 @@ struct PrepInsightsCard: View {
             HStack {
                 HStack(spacing: 7) {
                     Image(systemName: "sparkles")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(PBrand.purpleLight)
                     Text("AI-innsikt for møtet")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.appScaled(size: 14, weight: .bold))
                         .foregroundStyle(.white)
                 }
                 Spacer()
@@ -1847,7 +1847,7 @@ struct PrepInsightsCard: View {
                     }
                 } label: {
                     Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.appScaled(size: 11, weight: .bold))
                         .foregroundStyle(PBrand.purpleLight)
                         .rotationEffect(.degrees(regenerating ? 360 : 0))
                         .animation(regenerating ? .linear(duration: 0.9) : .default, value: regenerating)
@@ -1866,9 +1866,9 @@ struct PrepInsightsCard: View {
                     } label: {
                         HStack(spacing: 5) {
                             Image(systemName: t.icon)
-                                .font(.system(size: 10, weight: .bold))
+                                .font(.appScaled(size: 10, weight: .bold))
                             Text(t.rawValue)
-                                .font(.system(size: 11, weight: .bold))
+                                .font(.appScaled(size: 11, weight: .bold))
                         }
                         .foregroundStyle(tab == t ? .white : PBrand.textSecondary)
                         .padding(.horizontal, 11).padding(.vertical, 7)
@@ -1912,22 +1912,22 @@ struct PrepInsightsCard: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 9).fill(tp.category.color.opacity(0.22))
                 Image(systemName: tp.category.icon)
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(tp.category.color)
             }
             .frame(width: 32, height: 32)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(tp.category.rawValue.uppercased())
-                        .font(.system(size: 9, weight: .black))
+                        .font(.appScaled(size: 9, weight: .black))
                         .foregroundStyle(tp.category.color)
                         .tracking(0.5)
                 }
                 Text(tp.title)
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(.white)
                 Text(tp.detail)
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(PBrand.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -1941,10 +1941,10 @@ struct PrepInsightsCard: View {
         HStack(alignment: .top, spacing: 11) {
             VStack(spacing: 1) {
                 Text(q.framework)
-                    .font(.system(size: 9, weight: .black))
+                    .font(.appScaled(size: 9, weight: .black))
                     .foregroundStyle(.white)
                 Text(q.pillar)
-                    .font(.system(size: 8, weight: .semibold))
+                    .font(.appScaled(size: 8, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.8))
             }
             .frame(width: 60)
@@ -1955,7 +1955,7 @@ struct PrepInsightsCard: View {
                 in: RoundedRectangle(cornerRadius: 9)
             )
             Text(q.text)
-                .font(.system(size: 12))
+                .font(.appScaled(size: 12))
                 .foregroundStyle(.white)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -1976,13 +1976,13 @@ struct PrepHistoryCard: View {
             HStack {
                 HStack(spacing: 7) {
                     Image(systemName: "clock.arrow.circlepath")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(PBrand.yellow)
                     Text("Tidligere interaksjoner")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.appScaled(size: 14, weight: .bold))
                         .foregroundStyle(.white)
                     Text("\(interactions.count)")
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .font(.appScaled(size: 11, weight: .bold, design: .rounded))
                         .foregroundStyle(PBrand.textSecondary)
                         .monospacedDigit()
                         .padding(.horizontal, 6).padding(.vertical, 2)
@@ -1991,7 +1991,7 @@ struct PrepHistoryCard: View {
                 Spacer()
                 Button {} label: {
                     Text("Se alle")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(PBrand.purpleLight)
                 }
                 .buttonStyle(.plain)
@@ -2017,7 +2017,7 @@ struct PrepHistoryCard: View {
                 ZStack {
                     Circle().fill(it.kind.color.opacity(0.22))
                     Image(systemName: it.kind.icon)
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.appScaled(size: 11, weight: .bold))
                         .foregroundStyle(it.kind.color)
                 }
                 .frame(width: 28, height: 28)
@@ -2031,20 +2031,20 @@ struct PrepHistoryCard: View {
             .frame(width: 28)
             VStack(alignment: .leading, spacing: 2) {
                 Text(it.title)
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(.white)
                 Text(it.detail)
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(PBrand.textSecondary)
                 HStack(spacing: 5) {
                     Text(it.timestamp)
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.appScaled(size: 9, weight: .semibold))
                         .foregroundStyle(PBrand.textTertiary)
                         .monospacedDigit()
                     Text("·")
                         .foregroundStyle(PBrand.textTertiary)
                     Text(it.by)
-                        .font(.system(size: 9))
+                        .font(.appScaled(size: 9))
                         .foregroundStyle(PBrand.textTertiary)
                 }
                 .padding(.top, 1)

@@ -76,7 +76,7 @@ struct LeadgridDealSection: View {
                 .font(.caption).foregroundStyle(.secondary)
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(fmtNok(weighted))
-                    .font(.system(size: 28, weight: .bold))
+                    .font(.appScaled(size: 28, weight: .bold))
                     .foregroundStyle(colorForProbability(probability))
                 Text("(\(fmtNok(amount)) × \(Int(probability))%)")
                     .font(.caption).foregroundStyle(.secondary)

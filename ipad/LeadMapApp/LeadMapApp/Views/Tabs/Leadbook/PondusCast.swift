@@ -115,12 +115,12 @@ struct PortraitPoster: View {
                 VStack(alignment: .leading, spacing: 3) {
                     if let overlaySubtitle {
                         Text(overlaySubtitle.uppercased())
-                            .font(.system(size: 9, weight: .black))
+                            .font(.appScaled(size: 9, weight: .black))
                             .foregroundStyle(.white.opacity(0.85))
                             .tracking(0.8)
                     }
                     Text(overlayTitle)
-                        .font(.system(size: 16, weight: .heavy))
+                        .font(.appScaled(size: 16, weight: .heavy))
                         .foregroundStyle(.white)
                         .lineLimit(2)
                 }

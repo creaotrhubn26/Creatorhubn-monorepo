@@ -104,7 +104,7 @@ struct LeadgridDropPinSheet: View {
         Section {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: "mappin.circle.fill")
-                    .font(.system(size: 32))
+                    .font(.appScaled(size: 32))
                     .foregroundStyle(Self.brandPurple)
                 VStack(alignment: .leading, spacing: 4) {
                     if let addr = resolvedAddress {

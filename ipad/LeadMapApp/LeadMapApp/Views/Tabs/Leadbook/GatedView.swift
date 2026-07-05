@@ -89,11 +89,11 @@ struct GatedView<Content: View>: View {
     private var trialBanner: some View {
         HStack(spacing: 7) {
             Image(systemName: "clock.fill").foregroundStyle(LBrand.yellow)
-            Text("TRIAL — 8 dager igjen").font(.system(size: 9, weight: .black))
+            Text("TRIAL — 8 dager igjen").font(.appScaled(size: 9, weight: .black))
                 .foregroundStyle(LBrand.yellow).tracking(0.7)
             Spacer()
             Button { showUpsell = true } label: {
-                Text("Kjøp nå").font(.system(size: 10, weight: .bold))
+                Text("Kjøp nå").font(.appScaled(size: 10, weight: .bold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 9).padding(.vertical, 4)
                     .background(LBrand.yellow, in: Capsule())
@@ -107,11 +107,11 @@ struct GatedView<Content: View>: View {
     private var addOnBanner: some View {
         HStack(spacing: 7) {
             Image(systemName: "plus.circle.fill").foregroundStyle(LBrand.blue)
-            Text("ADDON · 990 kr/mnd").font(.system(size: 9, weight: .black))
+            Text("ADDON · 990 kr/mnd").font(.appScaled(size: 9, weight: .black))
                 .foregroundStyle(LBrand.blue).tracking(0.7)
             Spacer()
             Button { showUpsell = true } label: {
-                Text("Aktiver").font(.system(size: 10, weight: .bold))
+                Text("Aktiver").font(.appScaled(size: 10, weight: .bold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 9).padding(.vertical, 4)
                     .background(LBrand.blue, in: Capsule())
@@ -128,16 +128,16 @@ struct GatedView<Content: View>: View {
             ZStack {
                 Circle().fill(LBrand.purpleLight.opacity(0.18)).frame(width: 90, height: 90)
                 Image(systemName: "lock.fill")
-                    .font(.system(size: 36, weight: .bold))
+                    .font(.appScaled(size: 36, weight: .bold))
                     .foregroundStyle(LBrand.purpleLight)
             }
             VStack(spacing: 6) {
                 Text("«\(feature.rawValue)» er ikke i din plan")
-                    .font(.system(size: 18, weight: .heavy))
+                    .font(.appScaled(size: 18, weight: .heavy))
                     .foregroundStyle(.white)
                     .multilineTextAlignment(.center)
                 Text("Din nåværende plan er \(store.currentPlan.rawValue). Oppgrader til \(store.suggestedUpgradePlan(for: feature).rawValue) eller høyere for å låse opp.")
-                    .font(.system(size: 13))
+                    .font(.appScaled(size: 13))
                     .foregroundStyle(LBrand.textSecondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 30)
@@ -145,8 +145,8 @@ struct GatedView<Content: View>: View {
             HStack(spacing: 10) {
                 Button { showUpsell = true } label: {
                     HStack(spacing: 6) {
-                        Image(systemName: "sparkles").font(.system(size: 12, weight: .bold))
-                        Text("Se oppgraderingsalternativer").font(.system(size: 13, weight: .bold))
+                        Image(systemName: "sparkles").font(.appScaled(size: 12, weight: .bold))
+                        Text("Se oppgraderingsalternativer").font(.appScaled(size: 13, weight: .bold))
                     }
                     .foregroundStyle(.white)
                     .padding(.horizontal, 16).padding(.vertical, 11)
@@ -159,9 +159,9 @@ struct GatedView<Content: View>: View {
                 }.buttonStyle(.plain)
             }
             HStack(spacing: 7) {
-                Image(systemName: "envelope.fill").font(.system(size: 11))
+                Image(systemName: "envelope.fill").font(.appScaled(size: 11))
                 Text("Spørsmål? Kontakt din Leadgrid-CSM")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
             }
             .foregroundStyle(LBrand.textTertiary)
             .padding(.top, 4)
@@ -198,7 +198,7 @@ struct UpsellSheet: View {
                     VStack(alignment: .leading, spacing: 18) {
                         hero
                         availabilityCard
-                        Text("VELG PLAN").font(.system(size: 10, weight: .black))
+                        Text("VELG PLAN").font(.appScaled(size: 10, weight: .black))
                             .foregroundStyle(LBrand.textTertiary).tracking(0.8)
                         ForEach(SubscriptionPlan.allCases) { plan in
                             planCard(plan)
@@ -222,8 +222,8 @@ struct UpsellSheet: View {
                             dismiss()
                         } label: {
                             HStack(spacing: 5) {
-                                Image(systemName: "checkmark").font(.system(size: 11, weight: .black))
-                                Text("Bekreft \(p.rawValue)").font(.system(size: 12, weight: .bold))
+                                Image(systemName: "checkmark").font(.appScaled(size: 11, weight: .black))
+                                Text("Bekreft \(p.rawValue)").font(.appScaled(size: 12, weight: .bold))
                             }
                             .foregroundStyle(.white)
                             .padding(.horizontal, 12).padding(.vertical, 7)
@@ -247,17 +247,17 @@ struct UpsellSheet: View {
                     .fill(LinearGradient(colors: [LBrand.purple.opacity(0.35), LBrand.purpleLight.opacity(0.20)],
                                          startPoint: .topLeading, endPoint: .bottomTrailing))
                 Image(systemName: feature.icon)
-                    .font(.system(size: 32, weight: .bold))
+                    .font(.appScaled(size: 32, weight: .bold))
                     .foregroundStyle(LBrand.purpleLight)
             }
             .frame(width: 90, height: 90)
             VStack(spacing: 6) {
                 Text("Lås opp «\(feature.rawValue)»")
-                    .font(.system(size: 22, weight: .heavy))
+                    .font(.appScaled(size: 22, weight: .heavy))
                     .foregroundStyle(.white)
                     .multilineTextAlignment(.center)
                 Text(featureDescription)
-                    .font(.system(size: 13))
+                    .font(.appScaled(size: 13))
                     .foregroundStyle(LBrand.textSecondary)
                     .multilineTextAlignment(.center)
             }
@@ -268,14 +268,14 @@ struct UpsellSheet: View {
 
     private var availabilityCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("TILGJENGELIG I").font(.system(size: 9, weight: .black))
+            Text("TILGJENGELIG I").font(.appScaled(size: 9, weight: .black))
                 .foregroundStyle(LBrand.textTertiary).tracking(0.6)
             HStack(spacing: 8) {
                 ForEach(SubscriptionPlan.allCases) { plan in
                     let ent = PlanDefaults.entitlement(for: feature, plan: plan)
                     HStack(spacing: 4) {
-                        Image(systemName: ent.state.icon).font(.system(size: 9, weight: .bold))
-                        Text(plan.rawValue).font(.system(size: 10, weight: .bold))
+                        Image(systemName: ent.state.icon).font(.appScaled(size: 9, weight: .bold))
+                        Text(plan.rawValue).font(.appScaled(size: 10, weight: .bold))
                     }
                     .foregroundStyle(ent.state.color)
                     .padding(.horizontal, 8).padding(.vertical, 4)
@@ -298,44 +298,44 @@ struct UpsellSheet: View {
                 HStack(spacing: 10) {
                     ZStack {
                         RoundedRectangle(cornerRadius: 10).fill(plan.tint.opacity(0.22))
-                        Image(systemName: "sparkles").font(.system(size: 14, weight: .bold))
+                        Image(systemName: "sparkles").font(.appScaled(size: 14, weight: .bold))
                             .foregroundStyle(plan.tint)
                     }
                     .frame(width: 38, height: 38)
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(spacing: 6) {
-                            Text(plan.rawValue).font(.system(size: 16, weight: .bold))
+                            Text(plan.rawValue).font(.appScaled(size: 16, weight: .bold))
                                 .foregroundStyle(.white)
                             if isCurrent {
-                                Text("NÅVÆRENDE").font(.system(size: 8, weight: .black))
+                                Text("NÅVÆRENDE").font(.appScaled(size: 8, weight: .black))
                                     .foregroundStyle(LBrand.green).tracking(0.5)
                                     .padding(.horizontal, 5).padding(.vertical, 1)
                                     .background(LBrand.green.opacity(0.18), in: Capsule())
                             }
                             if isSuggested {
-                                Text("ANBEFALT").font(.system(size: 8, weight: .black))
+                                Text("ANBEFALT").font(.appScaled(size: 8, weight: .black))
                                     .foregroundStyle(LBrand.purpleLight).tracking(0.5)
                                     .padding(.horizontal, 5).padding(.vertical, 1)
                                     .background(LBrand.purple.opacity(0.18), in: Capsule())
                             }
                         }
-                        Text(plan.description).font(.system(size: 11))
+                        Text(plan.description).font(.appScaled(size: 11))
                             .foregroundStyle(LBrand.textSecondary).lineLimit(2)
                     }
                     Spacer()
                     Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
-                        .font(.system(size: 20)).foregroundStyle(isSelected ? plan.tint : LBrand.textTertiary)
+                        .font(.appScaled(size: 20)).foregroundStyle(isSelected ? plan.tint : LBrand.textTertiary)
                 }
                 HStack(spacing: 10) {
                     HStack(spacing: 4) {
                         Text(plan.monthlyPrice == 0 ? "Kontakt salg" : "\(plan.monthlyPrice) kr/mnd")
-                            .font(.system(size: 14, weight: .heavy, design: .rounded))
+                            .font(.appScaled(size: 14, weight: .heavy, design: .rounded))
                             .foregroundStyle(LBrand.green)
                     }
                     Spacer()
                     HStack(spacing: 4) {
-                        Image(systemName: ent.state.icon).font(.system(size: 10, weight: .bold))
-                        Text(ent.state.rawValue).font(.system(size: 11, weight: .bold))
+                        Image(systemName: ent.state.icon).font(.appScaled(size: 10, weight: .bold))
+                        Text(ent.state.rawValue).font(.appScaled(size: 11, weight: .bold))
                     }
                     .foregroundStyle(ent.state.color)
                     .padding(.horizontal, 8).padding(.vertical, 4)
@@ -357,19 +357,19 @@ struct UpsellSheet: View {
         HStack(spacing: 10) {
             ZStack {
                 Circle().fill(LBrand.blue.opacity(0.22))
-                Image(systemName: "envelope.fill").font(.system(size: 13, weight: .bold))
+                Image(systemName: "envelope.fill").font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(LBrand.blue)
             }
             .frame(width: 36, height: 36)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Trenger Custom-avtale?")
-                    .font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
+                    .font(.appScaled(size: 13, weight: .bold)).foregroundStyle(.white)
                 Text("Snakk med din CSM for volume-rabatt eller skreddersydde tilganger.")
-                    .font(.system(size: 11)).foregroundStyle(LBrand.textSecondary)
+                    .font(.appScaled(size: 11)).foregroundStyle(LBrand.textSecondary)
             }
             Spacer()
             Button {} label: {
-                Text("Kontakt").font(.system(size: 11, weight: .bold))
+                Text("Kontakt").font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 12).padding(.vertical, 7)
                     .background(LBrand.blue, in: Capsule())
@@ -402,15 +402,15 @@ struct DemoModeBanner: View {
         if store.demoMode {
             Button { showSwitcher = true } label: {
                 HStack(spacing: 8) {
-                    Image(systemName: "eye.fill").font(.system(size: 11))
-                    Text("DEMO-MODUS · Du ser appen som").font(.system(size: 10, weight: .black)).tracking(0.5)
+                    Image(systemName: "eye.fill").font(.appScaled(size: 11))
+                    Text("DEMO-MODUS · Du ser appen som").font(.appScaled(size: 10, weight: .black)).tracking(0.5)
                     Text(store.currentPlan.rawValue.uppercased())
-                        .font(.system(size: 11, weight: .black))
+                        .font(.appScaled(size: 11, weight: .black))
                         .padding(.horizontal, 7).padding(.vertical, 2)
                         .background(store.currentPlan.tint.opacity(0.25), in: Capsule())
                         .overlay(Capsule().stroke(store.currentPlan.tint, lineWidth: 1))
                     Spacer()
-                    Image(systemName: "chevron.down").font(.system(size: 9, weight: .bold))
+                    Image(systemName: "chevron.down").font(.appScaled(size: 9, weight: .bold))
                 }
                 .foregroundStyle(.white)
                 .padding(.horizontal, 14).padding(.vertical, 8)
@@ -437,21 +437,21 @@ struct PlanSwitcherSheet: View {
                     VStack(alignment: .leading, spacing: 18) {
                         VStack(alignment: .leading, spacing: 6) {
                             Text("DEMO-MODUS · TEST GATING")
-                                .font(.system(size: 10, weight: .black))
+                                .font(.appScaled(size: 10, weight: .black))
                                 .foregroundStyle(LBrand.orange).tracking(0.8)
                             Text("Se appen som en kunde på en bestemt plan")
-                                .font(.system(size: 18, weight: .heavy))
+                                .font(.appScaled(size: 18, weight: .heavy))
                                 .foregroundStyle(.white)
                             Text("Med denne knappen kan du som Leadgrid-utvikler test hvordan gating fungerer for hver plan. Sperrede features viser locked-skjerm + upsell-CTA.")
-                                .font(.system(size: 12))
+                                .font(.appScaled(size: 12))
                                 .foregroundStyle(LBrand.textSecondary)
                         }
                         Toggle(isOn: $store.demoMode) {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("Aktiver demo-modus").font(.system(size: 13, weight: .bold))
+                                Text("Aktiver demo-modus").font(.appScaled(size: 13, weight: .bold))
                                     .foregroundStyle(.white)
                                 Text(store.demoMode ? "PÅ — du ser appen begrenset" : "AV — du ser alt åpent")
-                                    .font(.system(size: 11)).foregroundStyle(LBrand.textSecondary)
+                                    .font(.appScaled(size: 11)).foregroundStyle(LBrand.textSecondary)
                             }
                         }
                         .tint(LBrand.orange)
@@ -460,26 +460,26 @@ struct PlanSwitcherSheet: View {
 
                         VStack(alignment: .leading, spacing: 8) {
                             Text("VELG PLAN Å SIMULERE")
-                                .font(.system(size: 10, weight: .black))
+                                .font(.appScaled(size: 10, weight: .black))
                                 .foregroundStyle(LBrand.textTertiary).tracking(0.8)
                             ForEach(SubscriptionPlan.allCases) { plan in
                                 Button { store.applyPlan(plan) } label: {
                                     HStack(spacing: 12) {
                                         ZStack {
                                             Circle().fill(plan.tint.opacity(0.22))
-                                            Image(systemName: "sparkles").font(.system(size: 13, weight: .bold))
+                                            Image(systemName: "sparkles").font(.appScaled(size: 13, weight: .bold))
                                                 .foregroundStyle(plan.tint)
                                         }
                                         .frame(width: 36, height: 36)
                                         VStack(alignment: .leading, spacing: 2) {
-                                            Text(plan.rawValue).font(.system(size: 14, weight: .bold))
+                                            Text(plan.rawValue).font(.appScaled(size: 14, weight: .bold))
                                                 .foregroundStyle(.white)
-                                            Text(plan.description).font(.system(size: 11))
+                                            Text(plan.description).font(.appScaled(size: 11))
                                                 .foregroundStyle(LBrand.textSecondary).lineLimit(2)
                                         }
                                         Spacer()
                                         Image(systemName: store.currentPlan == plan ? "largecircle.fill.circle" : "circle")
-                                            .font(.system(size: 16))
+                                            .font(.appScaled(size: 16))
                                             .foregroundStyle(store.currentPlan == plan ? plan.tint : LBrand.textTertiary)
                                     }
                                     .padding(12)

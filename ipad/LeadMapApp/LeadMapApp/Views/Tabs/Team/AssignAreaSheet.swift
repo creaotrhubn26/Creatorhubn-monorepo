@@ -131,9 +131,9 @@ struct AssignAreaSheet: View {
                 } label: {
                     HStack(spacing: 5) {
                         Image(systemName: m.icon)
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.appScaled(size: 10, weight: .bold))
                         Text(m.rawValue)
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.appScaled(size: 11, weight: .bold))
                     }
                     .foregroundStyle(mode == m ? .white : TBrand.textSecondary)
                     .padding(.horizontal, 11).padding(.vertical, 8)
@@ -160,10 +160,10 @@ struct AssignAreaSheet: View {
             // Søkefelt — 357 kommuner uten søk er uhåndterlig
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(TBrand.textSecondary)
                 TextField("Søk kommune eller kommunenummer", text: $kommuneSearch)
-                    .font(.system(size: 13))
+                    .font(.appScaled(size: 13))
                     .foregroundStyle(.white)
                     .autocorrectionDisabled()
                 if !kommuneSearch.isEmpty {
@@ -171,7 +171,7 @@ struct AssignAreaSheet: View {
                         kommuneSearch = ""
                     } label: {
                         Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 13))
+                            .font(.appScaled(size: 13))
                             .foregroundStyle(TBrand.textTertiary)
                     }
                     .buttonStyle(.plain)
@@ -185,20 +185,20 @@ struct AssignAreaSheet: View {
                 HStack(spacing: 8) {
                     ProgressView().tint(TBrand.purpleLight)
                     Text("Laster kommune-katalogen fra Kartverket …")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(TBrand.textSecondary)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 20)
             } else if kommuneListe.isEmpty {
                 Text("Fikk ikke lastet kommune-katalogen — sjekk nettverket og prøv igjen")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.55))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 20)
             } else if filtrerteKommuner.isEmpty {
                 Text("Ingen kommuner matcher «\(kommuneSearch)»")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.55))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 20)
@@ -220,16 +220,16 @@ struct AssignAreaSheet: View {
                     RoundedRectangle(cornerRadius: 9)
                         .fill((eierTeam != nil ? TBrand.orange : TBrand.green).opacity(0.22))
                     Image(systemName: "mappin.and.ellipse")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(eierTeam != nil ? TBrand.orange : TBrand.green)
                 }
                 .frame(width: 36, height: 36)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(k.navn)
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(.white)
                     Text("Kommunenr. \(k.nummer)")
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(TBrand.textSecondary)
                         .monospacedDigit()
                 }
@@ -237,24 +237,24 @@ struct AssignAreaSheet: View {
                 if let eierTeam {
                     VStack(alignment: .trailing, spacing: 1) {
                         Text("EIER")
-                            .font(.system(size: 8, weight: .black))
+                            .font(.appScaled(size: 8, weight: .black))
                             .foregroundStyle(TBrand.textTertiary)
                             .tracking(0.5)
                         Text(eierTeam.name)
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.appScaled(size: 11, weight: .bold))
                             .foregroundStyle(eierTeam.color)
                             .lineLimit(1)
                     }
                 } else {
                     Text("LEDIG")
-                        .font(.system(size: 9, weight: .black))
+                        .font(.appScaled(size: 9, weight: .black))
                         .foregroundStyle(TBrand.green)
                         .padding(.horizontal, 6).padding(.vertical, 3)
                         .background(TBrand.green.opacity(0.18), in: Capsule())
                         .overlay(Capsule().stroke(TBrand.green.opacity(0.4), lineWidth: 1))
                 }
                 Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
-                    .font(.system(size: 16))
+                    .font(.appScaled(size: 16))
                     .foregroundStyle(isSelected ? TBrand.purpleLight : TBrand.stroke)
             }
             .padding(10)
@@ -290,20 +290,20 @@ struct AssignAreaSheet: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: 9).fill(Color(t.color))
                     Image(systemName: "mappin.and.ellipse")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(.white)
                 }
                 .frame(width: 36, height: 36)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(t.areaName)
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(.white)
                     HStack(spacing: 4) {
                         Text("Nåværende eier:")
-                            .font(.system(size: 10))
+                            .font(.appScaled(size: 10))
                             .foregroundStyle(TBrand.textSecondary)
                         Text(t.memberName)
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.appScaled(size: 10, weight: .bold))
                             .foregroundStyle(Color(t.color))
                     }
                 }
@@ -311,17 +311,17 @@ struct AssignAreaSheet: View {
                 if isSelected, let target = selectedMember {
                     HStack(spacing: 4) {
                         Image(systemName: "arrow.right")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.appScaled(size: 11, weight: .bold))
                             .foregroundStyle(TBrand.purpleLight)
                         Text(target.name.split(separator: " ").first.map(String.init) ?? target.name)
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.appScaled(size: 11, weight: .bold))
                             .foregroundStyle(.white)
                     }
                     .padding(.horizontal, 7).padding(.vertical, 4)
                     .background(TBrand.purple.opacity(0.20), in: Capsule())
                 }
                 Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
-                    .font(.system(size: 16))
+                    .font(.appScaled(size: 16))
                     .foregroundStyle(isSelected ? TBrand.purpleLight : TBrand.stroke)
             }
             .padding(10)
@@ -350,9 +350,9 @@ struct AssignAreaSheet: View {
                 } label: {
                     HStack(spacing: 5) {
                         Image(systemName: "applepencil.tip")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.appScaled(size: 11, weight: .bold))
                         Text(pencilOnly ? "Bare Pencil" : "Finger + Pencil")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.appScaled(size: 10, weight: .bold))
                     }
                     .foregroundStyle(pencilOnly ? .white : TBrand.purpleLight)
                     .padding(.horizontal, 9).padding(.vertical, 6)
@@ -373,10 +373,10 @@ struct AssignAreaSheet: View {
             if pencilOnly {
                 HStack(spacing: 8) {
                     Image(systemName: "applepencil.tip")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.appScaled(size: 11, weight: .bold))
                         .foregroundStyle(TBrand.purpleLight)
                     Text("Pencil-modus aktiv — finger-touch ignoreres på kartet")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.appScaled(size: 10, weight: .semibold))
                         .foregroundStyle(TBrand.purpleLight)
                     Spacer()
                 }
@@ -390,9 +390,9 @@ struct AssignAreaSheet: View {
                 } label: {
                     HStack(spacing: 5) {
                         Image(systemName: "arrow.uturn.backward")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.appScaled(size: 11, weight: .bold))
                         Text("Angre")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.appScaled(size: 11, weight: .semibold))
                     }
                     .foregroundStyle(.white)
                     .padding(.horizontal, 11).padding(.vertical, 8)
@@ -406,9 +406,9 @@ struct AssignAreaSheet: View {
                 } label: {
                     HStack(spacing: 5) {
                         Image(systemName: "trash")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.appScaled(size: 11, weight: .bold))
                         Text("Tøm")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.appScaled(size: 11, weight: .semibold))
                     }
                     .foregroundStyle(TBrand.red)
                     .padding(.horizontal, 11).padding(.vertical, 8)
@@ -419,7 +419,7 @@ struct AssignAreaSheet: View {
                 .disabled(drawnPoints.isEmpty)
                 Spacer()
                 Text("\(drawnPoints.count) punkter")
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: 11, weight: .bold, design: .rounded))
                     .foregroundStyle(drawnPoints.count >= 3 ? TBrand.green : TBrand.orange)
                     .monospacedDigit()
             }
@@ -436,7 +436,7 @@ struct AssignAreaSheet: View {
             sectionTitle("Tildel til team", subtitle: "Teamet får kommunen som sitt område på kartet")
             if LeadgridSalesTeamStore.shared.teams.isEmpty {
                 Text("Ingen team enda — opprett et team fra Team-fanen først")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.55))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
@@ -456,24 +456,24 @@ struct AssignAreaSheet: View {
                 ZStack {
                     Circle().fill(team.color.opacity(0.85))
                     Text(team.initials)
-                        .font(.system(size: 11, weight: .black))
+                        .font(.appScaled(size: 11, weight: .black))
                         .foregroundStyle(.white)
                 }
                 .frame(width: 34, height: 34)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(team.name)
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appScaled(size: 12, weight: .bold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
                     Text(teamOmradeTekst(team))
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(TBrand.textSecondary)
                         .lineLimit(1)
                 }
                 Spacer()
                 if isSelected {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 16))
+                        .font(.appScaled(size: 16))
                         .foregroundStyle(team.color)
                 }
             }
@@ -521,24 +521,24 @@ struct AssignAreaSheet: View {
                 ZStack {
                     Circle().fill(m.color.opacity(0.85))
                     Text(m.initials)
-                        .font(.system(size: 11, weight: .black))
+                        .font(.appScaled(size: 11, weight: .black))
                         .foregroundStyle(.white)
                 }
                 .frame(width: 34, height: 34)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(m.name)
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appScaled(size: 12, weight: .bold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
                     Text(m.area)
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(TBrand.textSecondary)
                         .lineLimit(1)
                 }
                 Spacer()
                 if isSelected {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 16))
+                        .font(.appScaled(size: 16))
                         .foregroundStyle(m.color)
                 }
             }
@@ -559,21 +559,21 @@ struct AssignAreaSheet: View {
                 ZStack {
                     Circle().fill(TBrand.purple.opacity(0.22))
                     Image(systemName: "person.badge.plus")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(TBrand.purpleLight)
                 }
                 .frame(width: 34, height: 34)
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Inviter ny selger")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appScaled(size: 12, weight: .bold))
                         .foregroundStyle(.white)
                     Text("Sender invitt-e-post")
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(TBrand.textSecondary)
                 }
                 Spacer()
                 Image(systemName: "arrow.up.right")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(TBrand.purpleLight)
             }
             .padding(10)
@@ -595,16 +595,16 @@ struct AssignAreaSheet: View {
                 ZStack {
                     Circle().fill(TBrand.green.opacity(0.22))
                     Image(systemName: "envelope.fill")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.appScaled(size: 11, weight: .bold))
                         .foregroundStyle(TBrand.green)
                 }
                 .frame(width: 30, height: 30)
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Varsle \(selectedMember?.name.split(separator: " ").first.map(String.init) ?? "selger")")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
                     Text("Sender e-post + push m/ områdedetaljer")
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(TBrand.textSecondary)
                 }
             }
@@ -618,20 +618,20 @@ struct AssignAreaSheet: View {
     private var handoffCard: some View {
         VStack(alignment: .leading, spacing: 7) {
             Text("Overlevering-notat (valgfritt)")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(TBrand.textSecondary)
             ZStack(alignment: .topLeading) {
                 TextEditor(text: $handoffNote)
                     .scrollContentBackground(.hidden)
                     .foregroundStyle(.white)
-                    .font(.system(size: 12))
+                    .font(.appScaled(size: 12))
                     .frame(minHeight: 70)
                     .padding(8)
                     .background(TBrand.card, in: RoundedRectangle(cornerRadius: 11))
                     .overlay(RoundedRectangle(cornerRadius: 11).stroke(TBrand.stroke, lineWidth: 1))
                 if handoffNote.isEmpty {
                     Text("F.eks. nøkkel-leads, bransjefokus, eller forhandlingshistorikk")
-                        .font(.system(size: 12))
+                        .font(.appScaled(size: 12))
                         .foregroundStyle(TBrand.textTertiary)
                         .padding(.horizontal, 12).padding(.vertical, 14)
                         .allowsHitTesting(false)
@@ -646,9 +646,9 @@ struct AssignAreaSheet: View {
         Button { confirm() } label: {
             HStack(spacing: 7) {
                 Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                 Text(confirmLabel)
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
             }
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)
@@ -704,10 +704,10 @@ struct AssignAreaSheet: View {
     private func sectionTitle(_ title: String, subtitle: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
-                .font(.system(size: 13, weight: .bold))
+                .font(.appScaled(size: 13, weight: .bold))
                 .foregroundStyle(.white)
             Text(subtitle)
-                .font(.system(size: 11))
+                .font(.appScaled(size: 11))
                 .foregroundStyle(TBrand.textSecondary)
         }
     }

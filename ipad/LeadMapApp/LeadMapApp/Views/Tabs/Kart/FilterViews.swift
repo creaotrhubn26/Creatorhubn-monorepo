@@ -46,11 +46,11 @@ struct AreaFilterPopover: View {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Text("Radius")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.appScaled(size: 11, weight: .semibold))
                             .foregroundStyle(FlBrand.textSecondary)
                         Spacer()
                         Text("\(Int(radiusKm)) km")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.appScaled(size: 12, weight: .bold))
                             .foregroundStyle(FlBrand.purpleLight)
                             .monospacedDigit()
                     }
@@ -72,17 +72,17 @@ struct AreaFilterPopover: View {
                 ZStack {
                     Circle().fill(isSelected ? FlBrand.purple.opacity(0.30) : FlBrand.cardHi)
                     Image(systemName: area.icon)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(isSelected ? FlBrand.purpleLight : FlBrand.textSecondary)
                 }
                 .frame(width: 32, height: 32)
                 Text(area.rawValue)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.appScaled(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
                 Spacer()
                 if isSelected {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 14))
+                        .font(.appScaled(size: 14))
                         .foregroundStyle(FlBrand.purpleLight)
                 }
             }
@@ -106,13 +106,13 @@ struct TypeFilterPopover: View {
             popHeader("Bransje", subtitle: "Velg én eller flere typer")
             HStack {
                 Text("\(selected.count) valgt")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(FlBrand.textSecondary)
                 Spacer()
                 if !selected.isEmpty {
                     Button { selected.removeAll() } label: {
                         Text("Nullstill")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.appScaled(size: 11, weight: .semibold))
                             .foregroundStyle(FlBrand.purpleLight)
                     }
                     .buttonStyle(.plain)
@@ -145,16 +145,16 @@ struct TypeFilterPopover: View {
                     RoundedRectangle(cornerRadius: 7)
                         .fill(color.opacity(isSelected ? 0.30 : 0.15))
                     Image(systemName: icon)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(color)
                 }
                 .frame(width: 30, height: 30)
                 Text(name)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.appScaled(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
                 Spacer()
                 Image(systemName: isSelected ? "checkmark.square.fill" : "square")
-                    .font(.system(size: 16))
+                    .font(.appScaled(size: 16))
                     .foregroundStyle(isSelected ? FlBrand.purpleLight : FlBrand.stroke)
             }
             .padding(.horizontal, 8).padding(.vertical, 6)
@@ -177,13 +177,13 @@ struct StatusFilterPopover: View {
             popHeader("Lead status", subtitle: "Vis kun pins med valgte statuser")
             HStack {
                 Text("\(selected.count) valgt")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(FlBrand.textSecondary)
                 Spacer()
                 if !selected.isEmpty {
                     Button { selected.removeAll() } label: {
                         Text("Nullstill")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.appScaled(size: 11, weight: .semibold))
                             .foregroundStyle(FlBrand.purpleLight)
                     }
                     .buttonStyle(.plain)
@@ -212,16 +212,16 @@ struct StatusFilterPopover: View {
                 ZStack {
                     Circle().fill(st.color.opacity(isSelected ? 0.30 : 0.15))
                     Image(systemName: st.icon)
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(st.color)
                 }
                 .frame(width: 28, height: 28)
                 Text(st.label)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.appScaled(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
                 Spacer()
                 Image(systemName: isSelected ? "checkmark.square.fill" : "square")
-                    .font(.system(size: 15))
+                    .font(.appScaled(size: 15))
                     .foregroundStyle(isSelected ? st.color : FlBrand.stroke)
             }
             .padding(.horizontal, 8).padding(.vertical, 6)
@@ -313,7 +313,7 @@ struct MoreFiltersSheet: View {
                 ToolbarItem(placement: .primaryAction) {
                     Button { resetAll() } label: {
                         Text("Nullstill")
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.appScaled(size: 13, weight: .semibold))
                             .foregroundStyle(FlBrand.textSecondary)
                     }
                     .buttonStyle(.plain)
@@ -374,16 +374,16 @@ struct MoreFiltersSheet: View {
                 ZStack {
                     Circle().fill(color.opacity(0.22))
                     Image(systemName: icon)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(color)
                 }
                 .frame(width: 32, height: 32)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(label)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.appScaled(size: 13, weight: .semibold))
                         .foregroundStyle(.white)
                     Text(sub)
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(FlBrand.textSecondary)
                 }
             }
@@ -404,11 +404,11 @@ struct MoreFiltersSheet: View {
             sectionHeader(title, icon: icon)
             HStack {
                 Text("Fra \(format(range.wrappedValue.lowerBound))")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(FlBrand.purpleLight)
                 Spacer()
                 Text("til \(format(range.wrappedValue.upperBound))")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(FlBrand.purpleLight)
             }
             // SwiftUI har ikke range-slider native; emuler med to slidere
@@ -432,11 +432,11 @@ struct MoreFiltersSheet: View {
             }
             HStack {
                 Text(format(bounds.lowerBound))
-                    .font(.system(size: 10))
+                    .font(.appScaled(size: 10))
                     .foregroundStyle(FlBrand.textTertiary)
                 Spacer()
                 Text(format(bounds.upperBound))
-                    .font(.system(size: 10))
+                    .font(.appScaled(size: 10))
                     .foregroundStyle(FlBrand.textTertiary)
             }
         }
@@ -458,7 +458,7 @@ struct MoreFiltersSheet: View {
                     ForEach(Array(T.allCases), id: \.self) { opt in
                         Button { selection.wrappedValue = opt } label: {
                             Text(opt.rawValue)
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.appScaled(size: 12, weight: .semibold))
                                 .foregroundStyle(selection.wrappedValue == opt
                                                 ? .white : FlBrand.textSecondary)
                                 .padding(.horizontal, 12).padding(.vertical, 7)
@@ -491,7 +491,7 @@ struct MoreFiltersSheet: View {
         HStack(spacing: 10) {
             Button { resetAll() } label: {
                 Text("Nullstill alle")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.appScaled(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 13)
@@ -503,9 +503,9 @@ struct MoreFiltersSheet: View {
             Button { dismiss() } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "magnifyingglass")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appScaled(size: 12, weight: .bold))
                     Text("Vis treff")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.appScaled(size: 14, weight: .bold))
                 }
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
@@ -532,10 +532,10 @@ struct MoreFiltersSheet: View {
     private func sectionHeader(_ title: String, icon: String) -> some View {
         HStack(spacing: 7) {
             Image(systemName: icon)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(FlBrand.purpleLight)
             Text(title)
-                .font(.system(size: 13, weight: .bold))
+                .font(.appScaled(size: 13, weight: .bold))
                 .foregroundStyle(.white)
             Spacer()
         }
@@ -547,10 +547,10 @@ struct MoreFiltersSheet: View {
 private func popHeader(_ title: String, subtitle: String) -> some View {
     VStack(alignment: .leading, spacing: 2) {
         Text(title)
-            .font(.system(size: 14, weight: .bold))
+            .font(.appScaled(size: 14, weight: .bold))
             .foregroundStyle(.white)
         Text(subtitle)
-            .font(.system(size: 10))
+            .font(.appScaled(size: 10))
             .foregroundStyle(FlBrand.textSecondary)
     }
     .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 8)

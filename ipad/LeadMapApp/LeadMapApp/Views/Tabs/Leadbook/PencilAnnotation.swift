@@ -130,7 +130,7 @@ struct PencilToolbar: View {
 
                 // Strektykkelse-stepper
                 HStack(spacing: 6) {
-                    Image(systemName: "scribble").font(.system(size: 11, weight: .bold))
+                    Image(systemName: "scribble").font(.appScaled(size: 11, weight: .bold))
                         .foregroundStyle(LBrand.textTertiary)
                     Slider(value: Binding(
                         get: { Double(width) },
@@ -139,7 +139,7 @@ struct PencilToolbar: View {
                     .tint(LBrand.purpleLight)
                     .frame(width: 90)
                     Text("\(Int(width))")
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .font(.appScaled(size: 10, weight: .bold, design: .monospaced))
                         .foregroundStyle(.white)
                         .frame(width: 18)
                 }
@@ -150,9 +150,9 @@ struct PencilToolbar: View {
                 Button { allowFinger.toggle() } label: {
                     HStack(spacing: 4) {
                         Image(systemName: allowFinger ? "hand.draw.fill" : "hand.raised.fill")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.appScaled(size: 11, weight: .bold))
                         Text(allowFinger ? "Finger + Pencil" : "Bare Pencil")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.appScaled(size: 10, weight: .semibold))
                     }
                     .foregroundStyle(allowFinger ? LBrand.green : LBrand.purpleLight)
                     .padding(.horizontal, 9).padding(.vertical, 5)
@@ -162,7 +162,7 @@ struct PencilToolbar: View {
 
                 Button { drawing = PKDrawing() } label: {
                     Image(systemName: "trash.fill")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appScaled(size: 12, weight: .bold))
                         .foregroundStyle(LBrand.red)
                         .frame(width: 32, height: 28)
                         .background(LBrand.cardHi, in: RoundedRectangle(cornerRadius: 7))
@@ -170,8 +170,8 @@ struct PencilToolbar: View {
 
                 Button(action: onExport) {
                     HStack(spacing: 5) {
-                        Image(systemName: "square.and.arrow.up").font(.system(size: 11, weight: .bold))
-                        Text("PDF").font(.system(size: 11, weight: .bold))
+                        Image(systemName: "square.and.arrow.up").font(.appScaled(size: 11, weight: .bold))
+                        Text("PDF").font(.appScaled(size: 11, weight: .bold))
                     }
                     .foregroundStyle(.white)
                     .padding(.horizontal, 10).padding(.vertical, 6)
@@ -181,8 +181,8 @@ struct PencilToolbar: View {
 
                 Button(action: onSave) {
                     HStack(spacing: 5) {
-                        Image(systemName: "checkmark").font(.system(size: 11, weight: .bold))
-                        Text("Lagre").font(.system(size: 11, weight: .bold))
+                        Image(systemName: "checkmark").font(.appScaled(size: 11, weight: .bold))
+                        Text("Lagre").font(.appScaled(size: 11, weight: .bold))
                     }
                     .foregroundStyle(.white)
                     .padding(.horizontal, 12).padding(.vertical, 6)
@@ -195,7 +195,7 @@ struct PencilToolbar: View {
 
                 Button(action: onClose) {
                     Image(systemName: "xmark")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appScaled(size: 12, weight: .bold))
                         .foregroundStyle(LBrand.textSecondary)
                         .frame(width: 28, height: 28)
                         .background(LBrand.cardHi, in: Circle())
@@ -227,8 +227,8 @@ struct PencilToolbar: View {
     private func toolButton(icon: String, label: String, active: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             VStack(spacing: 1) {
-                Image(systemName: icon).font(.system(size: 14, weight: .bold))
-                Text(label).font(.system(size: 8, weight: .black)).tracking(0.4)
+                Image(systemName: icon).font(.appScaled(size: 14, weight: .bold))
+                Text(label).font(.appScaled(size: 8, weight: .black)).tracking(0.4)
             }
             .foregroundStyle(active ? .white : LBrand.textSecondary)
             .frame(width: 40, height: 36)

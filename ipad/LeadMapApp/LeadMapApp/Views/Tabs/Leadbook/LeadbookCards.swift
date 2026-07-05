@@ -119,7 +119,7 @@ struct TemplateLibraryModal: View {
                         Button {} label: { Label("Tilpass kolonner", systemImage: "slider.horizontal.3") }
                     } label: {
                         Image(systemName: "ellipsis.circle")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.appScaled(size: 16, weight: .semibold))
                             .foregroundStyle(LBrand.purpleLight)
                     }
                 }
@@ -127,7 +127,7 @@ struct TemplateLibraryModal: View {
             .overlay(alignment: .top) {
                 if let t = toast {
                     Label(t, systemImage: "checkmark.circle.fill")
-                        .font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
+                        .font(.appScaled(size: 12, weight: .bold)).foregroundStyle(.white)
                         .padding(.horizontal, 12).padding(.vertical, 8)
                         .background(LBrand.green, in: Capsule())
                         .padding(.top, 6)
@@ -161,11 +161,11 @@ struct TemplateLibraryModal: View {
     private func stat(_ label: String, _ value: String, _ tint: Color, _ icon: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
-                Image(systemName: icon).font(.system(size: 11, weight: .bold)).foregroundStyle(tint)
-                Text(label).font(.system(size: 9, weight: .black))
+                Image(systemName: icon).font(.appScaled(size: 11, weight: .bold)).foregroundStyle(tint)
+                Text(label).font(.appScaled(size: 9, weight: .black))
                     .foregroundStyle(LBrand.textTertiary).tracking(0.6)
             }
-            Text(value).font(.system(size: 22, weight: .heavy, design: .rounded))
+            Text(value).font(.appScaled(size: 22, weight: .heavy, design: .rounded))
                 .foregroundStyle(.white).lineLimit(1).minimumScaleFactor(0.6)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -197,11 +197,11 @@ struct TemplateLibraryModal: View {
                 }
             } label: {
                 HStack(spacing: 6) {
-                    Image(systemName: sort.icon).font(.system(size: 11, weight: .bold))
+                    Image(systemName: sort.icon).font(.appScaled(size: 11, weight: .bold))
                         .foregroundStyle(LBrand.purpleLight)
-                    Text(sort.rawValue).font(.system(size: 12, weight: .semibold))
+                    Text(sort.rawValue).font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white).lineLimit(1).fixedSize()
-                    Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold))
+                    Image(systemName: "chevron.down").font(.appScaled(size: 9, weight: .semibold))
                         .foregroundStyle(LBrand.textTertiary)
                 }
                 .padding(.horizontal, 12).padding(.vertical, 11)
@@ -243,15 +243,15 @@ struct TemplateLibraryModal: View {
     }
 
     private func chipScrollLabel(_ text: String) -> some View {
-        Text(text).font(.system(size: 9, weight: .black))
+        Text(text).font(.appScaled(size: 9, weight: .black))
             .foregroundStyle(LBrand.textTertiary).tracking(0.6)
     }
 
     private func chip(text: String, icon: String?, active: Bool, tint: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 5) {
-                if let icon { Image(systemName: icon).font(.system(size: 10, weight: .bold)) }
-                Text(text).font(.system(size: 12, weight: .semibold))
+                if let icon { Image(systemName: icon).font(.appScaled(size: 10, weight: .bold)) }
+                Text(text).font(.appScaled(size: 12, weight: .semibold))
             }
             .foregroundStyle(active ? .white : LBrand.textSecondary)
             .padding(.horizontal, 12).padding(.vertical, 7)
@@ -282,18 +282,18 @@ struct TemplateLibraryModal: View {
                     ZStack {
                         RoundedRectangle(cornerRadius: 11).fill(t.channel.color.opacity(0.22))
                         Image(systemName: t.channel.icon)
-                            .font(.system(size: 16, weight: .bold))
+                            .font(.appScaled(size: 16, weight: .bold))
                             .foregroundStyle(t.channel.color)
                     }
                     .frame(width: 44, height: 44)
                     VStack(alignment: .leading, spacing: 4) {
                         Text(t.name)
-                            .font(.system(size: 15, weight: .bold))
+                            .font(.appScaled(size: 15, weight: .bold))
                             .foregroundStyle(.white)
                             .lineLimit(2)
                         HStack(spacing: 6) {
                             Text(t.channel.rawValue.uppercased())
-                                .font(.system(size: 9, weight: .black))
+                                .font(.appScaled(size: 9, weight: .black))
                                 .foregroundStyle(t.channel.color)
                                 .padding(.horizontal, 6).padding(.vertical, 2)
                                 .background(t.channel.color.opacity(0.16), in: Capsule())
@@ -301,7 +301,7 @@ struct TemplateLibraryModal: View {
                             statusBadge(t.status)
                             if isSelected {
                                 Text("VALGT")
-                                    .font(.system(size: 9, weight: .black))
+                                    .font(.appScaled(size: 9, weight: .black))
                                     .foregroundStyle(LBrand.purpleLight)
                                     .padding(.horizontal, 6).padding(.vertical, 2)
                                     .background(LBrand.purple.opacity(0.22), in: Capsule())
@@ -326,7 +326,7 @@ struct TemplateLibraryModal: View {
                         }
                     } label: {
                         Image(systemName: "ellipsis")
-                            .font(.system(size: 14, weight: .bold))
+                            .font(.appScaled(size: 14, weight: .bold))
                             .foregroundStyle(LBrand.textSecondary)
                             .frame(width: 30, height: 30)
                             .background(LBrand.cardHi, in: Circle())
@@ -338,11 +338,11 @@ struct TemplateLibraryModal: View {
                         miniMetric(label: "BRUKT 90D", value: "\(t.used)", tint: LBrand.blue)
                         VStack(alignment: .leading, spacing: 3) {
                             HStack(spacing: 4) {
-                                Text("KONVERTERING").font(.system(size: 9, weight: .black))
+                                Text("KONVERTERING").font(.appScaled(size: 9, weight: .black))
                                     .foregroundStyle(LBrand.textTertiary).tracking(0.5)
                                 Spacer()
                                 Text("\(Int(t.conversion * 100))%")
-                                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                                    .font(.appScaled(size: 12, weight: .bold, design: .rounded))
                                     .foregroundStyle(.white).monospacedDigit()
                             }
                             GeometryReader { geo in
@@ -361,14 +361,14 @@ struct TemplateLibraryModal: View {
                 } else {
                     HStack(spacing: 12) {
                         Label("\(t.step)/\(t.stepTotal)", systemImage: "list.bullet")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.appScaled(size: 11, weight: .semibold))
                             .foregroundStyle(LBrand.textSecondary)
                         Label("\(t.used)", systemImage: "person.2.fill")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.appScaled(size: 11, weight: .semibold))
                             .foregroundStyle(LBrand.textSecondary)
                         Spacer()
                         Text("\(Int(t.conversion * 100))%")
-                            .font(.system(size: 13, weight: .bold, design: .rounded))
+                            .font(.appScaled(size: 13, weight: .bold, design: .rounded))
                             .foregroundStyle(LBrand.green)
                     }
                 }
@@ -389,16 +389,16 @@ struct TemplateLibraryModal: View {
 
     private func miniMetric(label: String, value: String, tint: Color) -> some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(label).font(.system(size: 9, weight: .black))
+            Text(label).font(.appScaled(size: 9, weight: .black))
                 .foregroundStyle(LBrand.textTertiary).tracking(0.5)
-            Text(value).font(.system(size: 14, weight: .bold, design: .rounded))
+            Text(value).font(.appScaled(size: 14, weight: .bold, design: .rounded))
                 .foregroundStyle(.white).monospacedDigit()
         }
     }
 
     private func statusBadge(_ s: LeadbookTemplate.Status) -> some View {
         Text(s.rawValue.uppercased())
-            .font(.system(size: 9, weight: .black))
+            .font(.appScaled(size: 9, weight: .black))
             .foregroundStyle(s.color)
             .padding(.horizontal, 6).padding(.vertical, 2)
             .background(s.color.opacity(0.18), in: Capsule())
@@ -409,15 +409,15 @@ struct TemplateLibraryModal: View {
     private var emptyState: some View {
         VStack(spacing: 10) {
             Image(systemName: "doc.text.magnifyingglass")
-                .font(.system(size: 32)).foregroundStyle(LBrand.textTertiary)
+                .font(.appScaled(size: 32)).foregroundStyle(LBrand.textTertiary)
             Text("Ingen maler matcher")
-                .font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
+                .font(.appScaled(size: 15, weight: .bold)).foregroundStyle(.white)
             Text("Prøv et annet søk eller fjern noen filtre")
-                .font(.system(size: 12)).foregroundStyle(LBrand.textSecondary)
+                .font(.appScaled(size: 12)).foregroundStyle(LBrand.textSecondary)
             Button {
                 query = ""; channels.removeAll(); statuses.removeAll()
             } label: {
-                Text("Nullstill filtre").font(.system(size: 12, weight: .bold))
+                Text("Nullstill filtre").font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(LBrand.purpleLight)
                     .padding(.horizontal, 14).padding(.vertical, 8)
                     .background(LBrand.purple.opacity(0.18), in: Capsule())
@@ -451,21 +451,21 @@ struct TemplatePreviewSheet: View {
                         ZStack {
                             RoundedRectangle(cornerRadius: 13).fill(template.channel.color.opacity(0.25))
                             Image(systemName: template.channel.icon)
-                                .font(.system(size: 22, weight: .bold))
+                                .font(.appScaled(size: 22, weight: .bold))
                                 .foregroundStyle(template.channel.color)
                         }
                         .frame(width: 56, height: 56)
                         VStack(alignment: .leading, spacing: 4) {
                             Text(template.name)
-                                .font(.system(size: 20, weight: .heavy))
+                                .font(.appScaled(size: 20, weight: .heavy))
                                 .foregroundStyle(.white)
                             HStack(spacing: 6) {
                                 Text(template.channel.rawValue.uppercased())
-                                    .font(.system(size: 10, weight: .black))
+                                    .font(.appScaled(size: 10, weight: .black))
                                     .foregroundStyle(template.channel.color).tracking(0.6)
                                 Text("·").foregroundStyle(LBrand.textTertiary)
                                 Text("\(template.stepTotal) steg")
-                                    .font(.system(size: 11)).foregroundStyle(LBrand.textSecondary)
+                                    .font(.appScaled(size: 11)).foregroundStyle(LBrand.textSecondary)
                             }
                         }
                         Spacer()
@@ -476,19 +476,19 @@ struct TemplatePreviewSheet: View {
                         previewStat("STEG", "\(template.step)/\(template.stepTotal)", LBrand.purpleLight)
                     }
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("FORHÅNDSVISNING").font(.system(size: 10, weight: .black))
+                        Text("FORHÅNDSVISNING").font(.appScaled(size: 10, weight: .black))
                             .foregroundStyle(LBrand.textTertiary).tracking(0.8)
                         ForEach(LeadbookData.steps) { s in
                             HStack(alignment: .top, spacing: 12) {
                                 ZStack {
                                     Circle().fill(LBrand.cardHi)
                                     Text("\(s.number)")
-                                        .font(.system(size: 12, weight: .black, design: .rounded))
+                                        .font(.appScaled(size: 12, weight: .black, design: .rounded))
                                         .foregroundStyle(.white)
                                 }
                                 .frame(width: 26, height: 26)
                                 Text(s.title)
-                                    .font(.system(size: 13, weight: .bold))
+                                    .font(.appScaled(size: 13, weight: .bold))
                                     .foregroundStyle(.white)
                                 Spacer()
                             }
@@ -504,7 +504,7 @@ struct TemplatePreviewSheet: View {
                             Image(systemName: "play.fill")
                             Text("Bruk denne malen")
                         }
-                        .font(.system(size: 15, weight: .heavy))
+                        .font(.appScaled(size: 15, weight: .heavy))
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity).padding(.vertical, 14)
                         .background(
@@ -531,9 +531,9 @@ struct TemplatePreviewSheet: View {
 
     private func previewStat(_ label: String, _ value: String, _ tint: Color) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(label).font(.system(size: 9, weight: .black))
+            Text(label).font(.appScaled(size: 9, weight: .black))
                 .foregroundStyle(LBrand.textTertiary).tracking(0.6)
-            Text(value).font(.system(size: 18, weight: .heavy, design: .rounded))
+            Text(value).font(.appScaled(size: 18, weight: .heavy, design: .rounded))
                 .foregroundStyle(tint).monospacedDigit()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -599,21 +599,21 @@ struct TemplateLibraryCard: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 11) {
                 Text("Maler i biblioteket")
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.appScaled(size: 15, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
                 searchBar
                 Button { showFilter = true } label: {
                     HStack(spacing: 5) {
                         Image(systemName: "line.3.horizontal.decrease")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.appScaled(size: 11, weight: .semibold))
                             .foregroundStyle(LBrand.purpleLight)
                         Text("Filter")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.appScaled(size: 12, weight: .semibold))
                             .foregroundStyle(.white)
                         if !filterChannels.isEmpty || !filterStatuses.isEmpty {
                             Text("\(filterChannels.count + filterStatuses.count)")
-                                .font(.system(size: 9, weight: .black))
+                                .font(.appScaled(size: 9, weight: .black))
                                 .foregroundStyle(.white)
                                 .padding(.horizontal, 5).padding(.vertical, 1)
                                 .background(LBrand.purple, in: Capsule())
@@ -652,9 +652,9 @@ struct TemplateLibraryCard: View {
             Button { showAll = true } label: {
                 HStack(spacing: 5) {
                     Text("Se alle maler")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                     Image(systemName: "arrow.up.right")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.appScaled(size: 10, weight: .bold))
                 }
                 .foregroundStyle(LBrand.purpleLight)
                 .padding(.vertical, 13)
@@ -673,7 +673,7 @@ struct TemplateLibraryCard: View {
         .overlay(alignment: .top) {
             if let t = actionToast {
                 Label(t, systemImage: "checkmark.circle.fill")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 11).padding(.vertical, 7)
                     .background(LBrand.green, in: Capsule())
@@ -691,12 +691,12 @@ struct TemplateLibraryCard: View {
         } label: {
             HStack(spacing: 3) {
                 Text(key.rawValue)
-                    .font(.system(size: 9, weight: .black))
+                    .font(.appScaled(size: 9, weight: .black))
                     .tracking(0.5)
                     .foregroundStyle(sortBy == key ? LBrand.purpleLight : LBrand.textTertiary)
                 if sortBy == key {
                     Image(systemName: sortAscending ? "arrow.up" : "arrow.down")
-                        .font(.system(size: 8, weight: .black))
+                        .font(.appScaled(size: 8, weight: .black))
                         .foregroundStyle(LBrand.purpleLight)
                 }
             }
@@ -708,13 +708,13 @@ struct TemplateLibraryCard: View {
     private var emptyState: some View {
         VStack(spacing: 7) {
             Image(systemName: "doc.text.magnifyingglass")
-                .font(.system(size: 22))
+                .font(.appScaled(size: 22))
                 .foregroundStyle(LBrand.textTertiary)
             Text("Ingen maler matcher")
-                .font(.system(size: 12, weight: .bold))
+                .font(.appScaled(size: 12, weight: .bold))
                 .foregroundStyle(.white)
             Text("Prøv annet søk eller filter")
-                .font(.system(size: 10))
+                .font(.appScaled(size: 10))
                 .foregroundStyle(LBrand.textSecondary)
         }
         .frame(maxWidth: .infinity)
@@ -731,15 +731,15 @@ struct TemplateLibraryCard: View {
     private var searchBar: some View {
         HStack(spacing: 6) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.appScaled(size: 11, weight: .semibold))
                 .foregroundStyle(LBrand.textSecondary)
             ZStack(alignment: .leading) {
                 TextField("", text: $search)
                     .foregroundStyle(.white)
-                    .font(.system(size: 12))
+                    .font(.appScaled(size: 12))
                 if search.isEmpty {
                     Text("Søk maler…")
-                        .font(.system(size: 12))
+                        .font(.appScaled(size: 12))
                         .foregroundStyle(LBrand.textTertiary)
                         .allowsHitTesting(false)
                 }
@@ -762,12 +762,12 @@ struct TemplateLibraryCard: View {
                     ZStack {
                         RoundedRectangle(cornerRadius: 8).fill(t.channel.color.opacity(0.22))
                         Image(systemName: t.channel.icon)
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.appScaled(size: 12, weight: .bold))
                             .foregroundStyle(t.channel.color)
                     }
                     .frame(width: 30, height: 30)
                     Text(t.name)
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
                 }
@@ -775,25 +775,25 @@ struct TemplateLibraryCard: View {
 
                 // KANAL
                 Text(t.channel.rawValue)
-                    .font(.system(size: 12)).foregroundStyle(LBrand.textSecondary)
+                    .font(.appScaled(size: 12)).foregroundStyle(LBrand.textSecondary)
                     .frame(width: 70, alignment: .leading)
 
                 // STEG
                 Text("\(t.step) / \(t.stepTotal)")
-                    .font(.system(size: 12, design: .rounded)).foregroundStyle(.white)
+                    .font(.appScaled(size: 12, design: .rounded)).foregroundStyle(.white)
                     .monospacedDigit()
                     .frame(width: 60, alignment: .leading)
 
                 // BRUKT
                 Text("\(t.used)")
-                    .font(.system(size: 12, design: .rounded)).foregroundStyle(.white)
+                    .font(.appScaled(size: 12, design: .rounded)).foregroundStyle(.white)
                     .monospacedDigit()
                     .frame(width: 60, alignment: .leading)
 
                 // KONVERTERING
                 HStack(spacing: 7) {
                     Text("\(Int(t.conversion * 100))%")
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .font(.appScaled(size: 12, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                         .monospacedDigit()
                         .frame(width: 32, alignment: .leading)
@@ -834,7 +834,7 @@ struct TemplateLibraryCard: View {
                     } label: { Label("Arkiver", systemImage: "archivebox") }
                 } label: {
                     Image(systemName: "ellipsis")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(LBrand.textSecondary)
                         .frame(width: 28, height: 28)
                         .contentShape(Rectangle())
@@ -854,7 +854,7 @@ struct TemplateLibraryCard: View {
 
     private func statusBadge(_ s: LeadbookTemplate.Status) -> some View {
         Text(s.rawValue)
-            .font(.system(size: 10, weight: .bold))
+            .font(.appScaled(size: 10, weight: .bold))
             .foregroundStyle(s.color)
             .padding(.horizontal, 9).padding(.vertical, 4)
             .background(s.color.opacity(0.18), in: Capsule())
@@ -884,16 +884,16 @@ struct SelectedLeadbookCard: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text("Valgt Leadbook")
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.appScaled(size: 15, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
                 // Sekundære: Importer mal + Ny mal + Ny innvending (kontekstuelt ved siden av Bruk mal)
                 Button { showImportTemplate = true } label: {
                     HStack(spacing: 5) {
                         Image(systemName: "square.and.arrow.down")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.appScaled(size: 11, weight: .bold))
                         Text("Importer mal")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.appScaled(size: 11, weight: .semibold))
                     }
                     .foregroundStyle(LBrand.blue)
                     .padding(.horizontal, 10).padding(.vertical, 8)
@@ -904,9 +904,9 @@ struct SelectedLeadbookCard: View {
                 Button { showNewTemplate = true } label: {
                     HStack(spacing: 5) {
                         Image(systemName: "doc.badge.plus")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.appScaled(size: 11, weight: .bold))
                         Text("Ny mal")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.appScaled(size: 11, weight: .semibold))
                     }
                     .foregroundStyle(LBrand.purpleLight)
                     .padding(.horizontal, 10).padding(.vertical, 8)
@@ -917,9 +917,9 @@ struct SelectedLeadbookCard: View {
                 Button { showNewObjection = true } label: {
                     HStack(spacing: 5) {
                         Image(systemName: "shield.fill")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.appScaled(size: 11, weight: .bold))
                         Text("Ny innvending")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.appScaled(size: 11, weight: .semibold))
                     }
                     .foregroundStyle(LBrand.orange)
                     .padding(.horizontal, 10).padding(.vertical, 8)
@@ -931,9 +931,9 @@ struct SelectedLeadbookCard: View {
                 Button { showUseMal = true } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "play.fill")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.appScaled(size: 11, weight: .bold))
                         Text("Bruk mal")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.appScaled(size: 12, weight: .bold))
                     }
                     .foregroundStyle(.white)
                     .padding(.horizontal, 13).padding(.vertical, 9)
@@ -952,22 +952,22 @@ struct SelectedLeadbookCard: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: 10).fill(template.channel.color.opacity(0.25))
                     Image(systemName: template.channel.icon)
-                        .font(.system(size: 16, weight: .bold))
+                        .font(.appScaled(size: 16, weight: .bold))
                         .foregroundStyle(template.channel.color)
                 }
                 .frame(width: 42, height: 42)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(template.name)
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.appScaled(size: 14, weight: .bold))
                         .foregroundStyle(.white)
                     HStack(spacing: 5) {
                         Text("Steg \(currentStep) av \(template.stepTotal)")
-                            .font(.system(size: 11))
+                            .font(.appScaled(size: 11))
                             .foregroundStyle(LBrand.textSecondary)
                         Text("•")
                             .foregroundStyle(LBrand.textTertiary)
                         Text(template.channel.rawValue.uppercased())
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.appScaled(size: 11, weight: .bold))
                             .foregroundStyle(template.channel.color)
                             .tracking(0.5)
                     }
@@ -1021,7 +1021,7 @@ struct SelectedLeadbookCard: View {
         .overlay(alignment: .top) {
             if let title = copiedTitle {
                 Label("Kopiert: \(title)", systemImage: "checkmark.circle.fill")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 11).padding(.vertical, 7)
                     .background(LBrand.green, in: Capsule())
@@ -1029,7 +1029,7 @@ struct SelectedLeadbookCard: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
             } else if let t = importToast {
                 Label(t, systemImage: "square.and.arrow.down.fill")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 11).padding(.vertical, 7)
                     .background(LBrand.blue, in: Capsule())
@@ -1052,13 +1052,13 @@ struct SelectedLeadbookCard: View {
                             Circle()
                                 .fill(s.number == currentStep ? LBrand.purple : LBrand.cardHi)
                             Text("\(s.number)")
-                                .font(.system(size: 12, weight: .black, design: .rounded))
+                                .font(.appScaled(size: 12, weight: .black, design: .rounded))
                                 .foregroundStyle(s.number == currentStep ? .white : LBrand.textSecondary)
                                 .monospacedDigit()
                         }
                         .frame(width: 26, height: 26)
                         Text(s.title)
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.appScaled(size: 12, weight: .semibold))
                             .foregroundStyle(s.number == currentStep ? .white : LBrand.textSecondary)
                         Spacer(minLength: 0)
                     }
@@ -1083,10 +1083,10 @@ struct SelectedLeadbookCard: View {
             if contentForCurrentStep.isEmpty {
                 HStack {
                     Image(systemName: "doc.badge.plus")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.appScaled(size: 13, weight: .semibold))
                         .foregroundStyle(LBrand.textTertiary)
                     Text("Ingen innhold for dette steget enda")
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(LBrand.textTertiary)
                     Spacer()
                 }
@@ -1101,23 +1101,23 @@ struct SelectedLeadbookCard: View {
                 ZStack {
                     Circle().fill(c.iconColor.opacity(0.22))
                     Image(systemName: c.icon)
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.appScaled(size: 11, weight: .bold))
                         .foregroundStyle(c.iconColor)
                 }
                 .frame(width: 28, height: 28)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(c.title)
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appScaled(size: 12, weight: .bold))
                         .foregroundStyle(.white)
                     Text(c.body)
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(LBrand.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                         .lineLimit(3)
                 }
                 Spacer(minLength: 0)
                 Image(systemName: "arrow.up.right")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.appScaled(size: 9, weight: .bold))
                     .foregroundStyle(LBrand.textTertiary)
                     .padding(.top, 4)
             }
@@ -1155,10 +1155,10 @@ struct ObjectionsCard: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 6) {
                 Text("Innvendinger")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 Text("\(LeadbookData.objections.count)")
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: 10, weight: .bold, design: .rounded))
                     .foregroundStyle(LBrand.textSecondary)
                     .monospacedDigit()
                     .padding(.horizontal, 6).padding(.vertical, 2)
@@ -1167,9 +1167,9 @@ struct ObjectionsCard: View {
                 Button { showAll = true } label: {
                     HStack(spacing: 4) {
                         Text("Se alle")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.appScaled(size: 11, weight: .semibold))
                         Image(systemName: "arrow.up.right")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.appScaled(size: 9, weight: .bold))
                     }
                     .foregroundStyle(LBrand.purpleLight)
                 }
@@ -1195,7 +1195,7 @@ struct ObjectionsCard: View {
         .overlay(alignment: .top) {
             if let t = toast {
                 Label(t, systemImage: "checkmark.circle.fill")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 11).padding(.vertical, 7)
                     .background(LBrand.green, in: Capsule())
@@ -1212,24 +1212,24 @@ struct ObjectionsCard: View {
                 ZStack {
                     Circle().fill(o.iconColor.opacity(0.22))
                     Image(systemName: o.icon)
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.appScaled(size: 11, weight: .bold))
                         .foregroundStyle(o.iconColor)
                 }
                 .frame(width: 30, height: 30)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(o.title)
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appScaled(size: 12, weight: .bold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
                     Text(o.response)
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(LBrand.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                         .lineLimit(3)
                 }
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(LBrand.textTertiary)
             }
             .padding(11)
@@ -1319,7 +1319,7 @@ struct PerformanceModal: View {
                             }
                             if rows.isEmpty {
                                 Text("Ingen ytelses-data enda")
-                                    .font(.system(size: 13))
+                                    .font(.appScaled(size: 13))
                                     .foregroundStyle(LBrand.textSecondary)
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 40)
@@ -1346,7 +1346,7 @@ struct PerformanceModal: View {
                         Button("Del rapport…") {}
                     } label: {
                         Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.appScaled(size: 14, weight: .semibold))
                             .foregroundStyle(LBrand.purpleLight)
                     }
                 }
@@ -1371,13 +1371,13 @@ struct PerformanceModal: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Image(systemName: icon)
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(tint)
-                Text(label).font(.system(size: 9, weight: .black))
+                Text(label).font(.appScaled(size: 9, weight: .black))
                     .foregroundStyle(LBrand.textTertiary).tracking(0.6)
             }
             Text(value)
-                .font(.system(size: 18, weight: .heavy, design: .rounded))
+                .font(.appScaled(size: 18, weight: .heavy, design: .rounded))
                 .foregroundStyle(.white)
                 .lineLimit(1)
                 .minimumScaleFactor(0.65)
@@ -1406,9 +1406,9 @@ struct PerformanceModal: View {
                 }
             } label: {
                 HStack(spacing: 6) {
-                    Image(systemName: "arrow.up.arrow.down").font(.system(size: 11, weight: .bold))
-                    Text(sort.rawValue).font(.system(size: 12, weight: .semibold))
-                    Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold)).foregroundStyle(LBrand.textTertiary)
+                    Image(systemName: "arrow.up.arrow.down").font(.appScaled(size: 11, weight: .bold))
+                    Text(sort.rawValue).font(.appScaled(size: 12, weight: .semibold))
+                    Image(systemName: "chevron.down").font(.appScaled(size: 9, weight: .semibold)).foregroundStyle(LBrand.textTertiary)
                 }
                 .foregroundStyle(.white)
                 .padding(.horizontal, 12).padding(.vertical, 10)
@@ -1422,9 +1422,9 @@ struct PerformanceModal: View {
                 Button("Hele året") { range = "Hele året" }
             } label: {
                 HStack(spacing: 6) {
-                    Image(systemName: "calendar").font(.system(size: 11, weight: .bold))
-                    Text(range).font(.system(size: 12, weight: .semibold))
-                    Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold)).foregroundStyle(LBrand.textTertiary)
+                    Image(systemName: "calendar").font(.appScaled(size: 11, weight: .bold))
+                    Text(range).font(.appScaled(size: 12, weight: .semibold))
+                    Image(systemName: "chevron.down").font(.appScaled(size: 9, weight: .semibold)).foregroundStyle(LBrand.textTertiary)
                 }
                 .foregroundStyle(.white)
                 .padding(.horizontal, 12).padding(.vertical, 10)
@@ -1441,7 +1441,7 @@ struct PerformanceModal: View {
             Text("KONVERTERING").frame(width: 200, alignment: .leading)
             Text("").frame(width: 18)
         }
-        .font(.system(size: 9, weight: .black))
+        .font(.appScaled(size: 9, weight: .black))
         .tracking(0.5)
         .foregroundStyle(LBrand.textTertiary)
         .padding(.horizontal, 14).padding(.bottom, 2)
@@ -1450,7 +1450,7 @@ struct PerformanceModal: View {
     private func perfRow(_ p: PerformanceRow) -> some View {
         HStack(spacing: 0) {
             Text(p.name)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.appScaled(size: 13, weight: .semibold))
                 .foregroundStyle(.white)
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -1463,7 +1463,7 @@ struct PerformanceModal: View {
                 }
                 .frame(height: 6)
                 Text("\(Int(p.responseRate * 100))%")
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: 12, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
                     .monospacedDigit()
                     .frame(width: 40, alignment: .trailing)
@@ -1478,14 +1478,14 @@ struct PerformanceModal: View {
                 }
                 .frame(height: 6)
                 Text("\(Int(p.conversion * 100))%")
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: 12, weight: .bold, design: .rounded))
                     .foregroundStyle(LBrand.green)
                     .monospacedDigit()
                     .frame(width: 40, alignment: .trailing)
             }
             .frame(width: 200)
             Image(systemName: "chevron.right")
-                .font(.system(size: 10, weight: .bold))
+                .font(.appScaled(size: 10, weight: .bold))
                 .foregroundStyle(LBrand.textTertiary)
                 .frame(width: 18)
         }
@@ -1500,7 +1500,7 @@ struct PerformanceModal: View {
                 Image(systemName: "sparkles")
                     .foregroundStyle(LBrand.purpleLight)
                 Text("AI-INSIKT")
-                    .font(.system(size: 10, weight: .black))
+                    .font(.appScaled(size: 10, weight: .black))
                     .foregroundStyle(LBrand.purpleLight).tracking(0.8)
             }
             (Text("Best presterende mal: ").foregroundStyle(LBrand.textSecondary)
@@ -1510,7 +1510,7 @@ struct PerformanceModal: View {
                 + Text(worst.name).foregroundStyle(.white).bold()
                 + Text(" — vurder å arkivere eller re-skrive.").foregroundStyle(LBrand.textSecondary)
             )
-            .font(.system(size: 13))
+            .font(.appScaled(size: 13))
         }
         .padding(14)
         .background(LBrand.purple.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
@@ -1531,10 +1531,10 @@ struct PerformanceDetailSheet: View {
                     VStack(alignment: .leading, spacing: 16) {
                         VStack(alignment: .leading, spacing: 6) {
                             Text(row.name)
-                                .font(.system(size: 22, weight: .heavy))
+                                .font(.appScaled(size: 22, weight: .heavy))
                                 .foregroundStyle(.white)
                             Text("\(range) · alle kanaler")
-                                .font(.system(size: 12))
+                                .font(.appScaled(size: 12))
                                 .foregroundStyle(LBrand.textSecondary)
                         }
                         HStack(spacing: 12) {
@@ -1545,7 +1545,7 @@ struct PerformanceDetailSheet: View {
                         }
                         VStack(alignment: .leading, spacing: 10) {
                             Text("ANBEFALTE OPTIMALISERINGER")
-                                .font(.system(size: 10, weight: .black))
+                                .font(.appScaled(size: 10, weight: .black))
                                 .foregroundStyle(LBrand.textTertiary).tracking(0.8)
                             tip("Test ny åpningslinje — A/B-test 50/50 i 14 dager")
                             tip("Legg til personlig video for warm leads (+18% historisk)")
@@ -1567,9 +1567,9 @@ struct PerformanceDetailSheet: View {
 
     private func metric(_ label: String, _ value: String, _ tint: Color) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(label).font(.system(size: 10, weight: .black))
+            Text(label).font(.appScaled(size: 10, weight: .black))
                 .foregroundStyle(LBrand.textTertiary).tracking(0.6)
-            Text(value).font(.system(size: 20, weight: .heavy, design: .rounded))
+            Text(value).font(.appScaled(size: 20, weight: .heavy, design: .rounded))
                 .foregroundStyle(tint)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1581,10 +1581,10 @@ struct PerformanceDetailSheet: View {
     private func tip(_ text: String) -> some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "lightbulb.fill")
-                .font(.system(size: 12))
+                .font(.appScaled(size: 12))
                 .foregroundStyle(LBrand.yellow)
                 .padding(.top, 2)
-            Text(text).font(.system(size: 13)).foregroundStyle(.white)
+            Text(text).font(.appScaled(size: 13)).foregroundStyle(.white)
             Spacer()
         }
         .padding(12)
@@ -1670,7 +1670,7 @@ struct VersionsModal: View {
                         Button(role: .destructive) {} label: { Label("Arkiver gamle utkast", systemImage: "archivebox") }
                     } label: {
                         Image(systemName: "ellipsis.circle")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.appScaled(size: 16, weight: .semibold))
                             .foregroundStyle(LBrand.purpleLight)
                     }
                 }
@@ -1693,11 +1693,11 @@ struct VersionsModal: View {
     private func summaryTile(_ label: String, _ value: String, _ tint: Color, _ icon: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
-                Image(systemName: icon).font(.system(size: 11, weight: .bold)).foregroundStyle(tint)
-                Text(label).font(.system(size: 9, weight: .black))
+                Image(systemName: icon).font(.appScaled(size: 11, weight: .bold)).foregroundStyle(tint)
+                Text(label).font(.appScaled(size: 9, weight: .black))
                     .foregroundStyle(LBrand.textTertiary).tracking(0.6)
             }
-            Text(value).font(.system(size: 20, weight: .heavy, design: .rounded))
+            Text(value).font(.appScaled(size: 20, weight: .heavy, design: .rounded))
                 .foregroundStyle(.white)
                 .lineLimit(1).minimumScaleFactor(0.7)
         }
@@ -1722,7 +1722,7 @@ struct VersionsModal: View {
                     ForEach(VersionFilter.allCases) { f in
                         Button { filter = f } label: {
                             Text(f.rawValue)
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.appScaled(size: 12, weight: .semibold))
                                 .foregroundStyle(filter == f ? .white : LBrand.textSecondary)
                                 .padding(.horizontal, 12).padding(.vertical, 7)
                                 .background(filter == f ? LBrand.purple.opacity(0.30) : LBrand.cardHi, in: Capsule())
@@ -1741,20 +1741,20 @@ struct VersionsModal: View {
                 Image(systemName: "person.badge.shield.checkmark.fill")
                     .foregroundStyle(LBrand.green)
                 Text("GODKJENNINGS-FLYT")
-                    .font(.system(size: 10, weight: .black))
+                    .font(.appScaled(size: 10, weight: .black))
                     .foregroundStyle(LBrand.green).tracking(0.8)
                 Spacer()
             }
             (Text("\(pendingCount) versjoner venter på din godkjenning. ").foregroundStyle(.white).bold()
                 + Text("Bruk Sammenlign-verktøyet for å se diff mot godkjent versjon.").foregroundStyle(LBrand.textSecondary))
-                .font(.system(size: 13))
+                .font(.appScaled(size: 13))
             HStack(spacing: 8) {
                 Button { showCompare = true } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "rectangle.split.2x1")
                         Text("Sammenlign")
                     }
-                    .font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
+                    .font(.appScaled(size: 12, weight: .bold)).foregroundStyle(.white)
                     .padding(.horizontal, 14).padding(.vertical, 10)
                     .background(LBrand.purple, in: RoundedRectangle(cornerRadius: 9))
                 }.buttonStyle(.plain)
@@ -1763,7 +1763,7 @@ struct VersionsModal: View {
                         Image(systemName: "checkmark.circle")
                         Text("Godkjenn alle venter")
                     }
-                    .font(.system(size: 12, weight: .bold)).foregroundStyle(LBrand.green)
+                    .font(.appScaled(size: 12, weight: .bold)).foregroundStyle(LBrand.green)
                     .padding(.horizontal, 14).padding(.vertical, 10)
                     .background(LBrand.green.opacity(0.18), in: RoundedRectangle(cornerRadius: 9))
                     .overlay(RoundedRectangle(cornerRadius: 9).stroke(LBrand.green.opacity(0.4), lineWidth: 1))
@@ -1778,9 +1778,9 @@ struct VersionsModal: View {
     private var emptyState: some View {
         VStack(spacing: 8) {
             Image(systemName: "doc.text.magnifyingglass")
-                .font(.system(size: 28)).foregroundStyle(LBrand.textTertiary)
+                .font(.appScaled(size: 28)).foregroundStyle(LBrand.textTertiary)
             Text("Ingen versjoner i dette filteret")
-                .font(.system(size: 13, weight: .semibold))
+                .font(.appScaled(size: 13, weight: .semibold))
                 .foregroundStyle(LBrand.textSecondary)
         }
         .frame(maxWidth: .infinity).padding(30)
@@ -1791,24 +1791,24 @@ struct VersionsModal: View {
         let isCurrent = v.status == .current
         return HStack(spacing: 14) {
             Text(v.version)
-                .font(.system(size: 16, weight: .black, design: .rounded))
+                .font(.appScaled(size: 16, weight: .black, design: .rounded))
                 .foregroundStyle(.white)
                 .monospacedDigit()
                 .frame(width: 56, alignment: .leading)
             VStack(alignment: .leading, spacing: 3) {
                 Text(v.date)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.appScaled(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
                 Text(v.summary)
-                    .font(.system(size: 12))
+                    .font(.appScaled(size: 12))
                     .foregroundStyle(LBrand.textSecondary)
                     .lineLimit(2)
             }
             Spacer()
             statusBadge(v.status)
             Image(systemName: "chevron.right")
-                .font(.system(size: 10, weight: .bold))
+                .font(.appScaled(size: 10, weight: .bold))
                 .foregroundStyle(LBrand.textTertiary)
         }
         .padding(14)
@@ -1826,11 +1826,11 @@ struct VersionsModal: View {
         HStack(spacing: 4) {
             if s == .approved {
                 Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(s.color)
             }
             Text(s.rawValue)
-                .font(.system(size: 10, weight: .bold))
+                .font(.appScaled(size: 10, weight: .bold))
                 .foregroundStyle(s.color)
         }
         .padding(.horizontal, 8).padding(.vertical, 4)
@@ -1924,12 +1924,12 @@ struct NewTemplateSheet: View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(alignment: .top) {
                 Text("Ny mal")
-                    .font(.system(size: 22, weight: .bold))
+                    .font(.appScaled(size: 22, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
                 Button { dismiss() } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(LBrand.textSecondary)
                         .frame(width: 32, height: 32)
                         .background(LBrand.cardHi, in: Circle())
@@ -1937,7 +1937,7 @@ struct NewTemplateSheet: View {
                 .buttonStyle(.plain)
             }
             Text("Opprett en ny salgsmal fra bunnen av.")
-                .font(.system(size: 12))
+                .font(.appScaled(size: 12))
                 .foregroundStyle(LBrand.textSecondary)
         }
         .padding(.horizontal, 24).padding(.top, 22).padding(.bottom, 10)
@@ -1965,11 +1965,11 @@ struct NewTemplateSheet: View {
             } label: {
                 HStack {
                     Text(category?.rawValue ?? "Velg kategori")
-                        .font(.system(size: 13))
+                        .font(.appScaled(size: 13))
                         .foregroundStyle(category == nil ? LBrand.textTertiary : .white)
                     Spacer()
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(LBrand.textTertiary)
                 }
                 .padding(.horizontal, 13).padding(.vertical, 12)
@@ -1989,11 +1989,11 @@ struct NewTemplateSheet: View {
             } label: {
                 HStack {
                     Text(stage?.rawValue ?? "Velg steg i salgsprosessen")
-                        .font(.system(size: 13))
+                        .font(.appScaled(size: 13))
                         .foregroundStyle(stage == nil ? LBrand.textTertiary : .white)
                     Spacer()
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(LBrand.textTertiary)
                 }
                 .padding(.horizontal, 13).padding(.vertical, 12)
@@ -2024,16 +2024,16 @@ struct NewTemplateSheet: View {
                     Circle()
                         .fill(isSelected ? LBrand.purple : LBrand.cardHi)
                     Image(systemName: t.icon)
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(isSelected ? .white : LBrand.textSecondary)
                 }
                 .frame(width: 32, height: 32)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(t.rawValue)
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(.white)
                     Text(t.subtitle)
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(LBrand.textSecondary)
                 }
                 Spacer()
@@ -2064,7 +2064,7 @@ struct NewTemplateSheet: View {
                      minHeight: 76)
             VStack(alignment: .leading, spacing: 7) {
                 Text("Tilknyttede ressurser")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(LBrand.textSecondary)
                 fileUploadCard
             }
@@ -2078,15 +2078,15 @@ struct NewTemplateSheet: View {
                 ZStack {
                     Circle().fill(LBrand.purple.opacity(0.20))
                     Image(systemName: "arrow.up")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.appScaled(size: 14, weight: .bold))
                         .foregroundStyle(LBrand.purpleLight)
                 }
                 .frame(width: 36, height: 36)
                 Text("Dra og slipp filer her, eller klikk for å velge")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(.white)
                 Text("PDF, DOCX, PNG, JPG (maks 10MB)")
-                    .font(.system(size: 10))
+                    .font(.appScaled(size: 10))
                     .foregroundStyle(LBrand.textTertiary)
             }
             .frame(maxWidth: .infinity)
@@ -2106,10 +2106,10 @@ struct NewTemplateSheet: View {
         HStack(alignment: .center, spacing: 14) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Del med teamet")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.appScaled(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
                 Text("Gjør malen tilgjengelig for hele teamet.")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(LBrand.textSecondary)
             }
             Spacer()
@@ -2124,11 +2124,11 @@ struct NewTemplateSheet: View {
     private func labelWithRequired(_ text: String, required: Bool) -> some View {
         HStack(spacing: 3) {
             Text(text)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(LBrand.textSecondary)
             if required {
                 Text("*")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(LBrand.purpleLight)
             }
         }
@@ -2140,13 +2140,13 @@ struct NewTemplateSheet: View {
             ZStack(alignment: .leading) {
                 TextField("", text: binding)
                     .foregroundStyle(.white)
-                    .font(.system(size: 13))
+                    .font(.appScaled(size: 13))
                     .padding(.horizontal, 13).padding(.vertical, 12)
                     .background(LBrand.card, in: RoundedRectangle(cornerRadius: 10))
                     .overlay(RoundedRectangle(cornerRadius: 10).stroke(LBrand.stroke, lineWidth: 1))
                 if binding.wrappedValue.isEmpty {
                     Text(placeholder)
-                        .font(.system(size: 13))
+                        .font(.appScaled(size: 13))
                         .foregroundStyle(LBrand.textTertiary)
                         .padding(.horizontal, 14)
                         .allowsHitTesting(false)
@@ -2158,20 +2158,20 @@ struct NewTemplateSheet: View {
     private func textArea(label: String, binding: Binding<String>, placeholder: String, minHeight: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 7) {
             Text(label)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(LBrand.textSecondary)
             ZStack(alignment: .topLeading) {
                 TextEditor(text: binding)
                     .scrollContentBackground(.hidden)
                     .foregroundStyle(.white)
-                    .font(.system(size: 13))
+                    .font(.appScaled(size: 13))
                     .frame(minHeight: minHeight)
                     .padding(8)
                     .background(LBrand.card, in: RoundedRectangle(cornerRadius: 10))
                     .overlay(RoundedRectangle(cornerRadius: 10).stroke(LBrand.stroke, lineWidth: 1))
                 if binding.wrappedValue.isEmpty {
                     Text(placeholder)
-                        .font(.system(size: 13))
+                        .font(.appScaled(size: 13))
                         .foregroundStyle(LBrand.textTertiary)
                         .padding(.horizontal, 12).padding(.vertical, 14)
                         .allowsHitTesting(false)
@@ -2187,7 +2187,7 @@ struct NewTemplateSheet: View {
             Spacer()
             Button { dismiss() } label: {
                 Text("Avbryt")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.appScaled(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 22).padding(.vertical, 11)
                     .background(LBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
@@ -2196,7 +2196,7 @@ struct NewTemplateSheet: View {
             .buttonStyle(.plain)
             Button { dismiss() } label: {
                 Text("Opprett mal")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 24).padding(.vertical, 11)
                     .background(
@@ -2262,16 +2262,16 @@ struct UseLeadbookSheet: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 10).fill(template.channel.color.opacity(0.25))
                 Image(systemName: template.channel.icon)
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(template.channel.color)
             }
             .frame(width: 40, height: 40)
             VStack(alignment: .leading, spacing: 2) {
                 Text(template.name)
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Text("Starter på steg \(currentStep) av \(template.stepTotal) · \(template.channel.rawValue)")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(LBrand.textSecondary)
             }
             Spacer()
@@ -2284,16 +2284,16 @@ struct UseLeadbookSheet: View {
     private var leadField: some View {
         VStack(alignment: .leading, spacing: 7) {
             Text("Lead / bedrift")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(LBrand.textSecondary)
             ZStack(alignment: .leading) {
                 TextField("", text: $leadName)
-                    .foregroundStyle(.white).font(.system(size: 13))
+                    .foregroundStyle(.white).font(.appScaled(size: 13))
                     .padding(12)
                     .background(LBrand.card, in: RoundedRectangle(cornerRadius: 11))
                     .overlay(RoundedRectangle(cornerRadius: 11).stroke(LBrand.stroke, lineWidth: 1))
                 if leadName.isEmpty {
-                    Text("F.eks. Nordic Elektro AS").font(.system(size: 13)).foregroundStyle(LBrand.textTertiary)
+                    Text("F.eks. Nordic Elektro AS").font(.appScaled(size: 13)).foregroundStyle(LBrand.textTertiary)
                         .padding(.horizontal, 15).allowsHitTesting(false)
                 }
             }
@@ -2303,16 +2303,16 @@ struct UseLeadbookSheet: View {
     private var contactField: some View {
         VStack(alignment: .leading, spacing: 7) {
             Text("Kontakt-person (valgfritt)")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(LBrand.textSecondary)
             ZStack(alignment: .leading) {
                 TextField("", text: $contactName)
-                    .foregroundStyle(.white).font(.system(size: 13))
+                    .foregroundStyle(.white).font(.appScaled(size: 13))
                     .padding(12)
                     .background(LBrand.card, in: RoundedRectangle(cornerRadius: 11))
                     .overlay(RoundedRectangle(cornerRadius: 11).stroke(LBrand.stroke, lineWidth: 1))
                 if contactName.isEmpty {
-                    Text("Navn på kontakten").font(.system(size: 13)).foregroundStyle(LBrand.textTertiary)
+                    Text("Navn på kontakten").font(.appScaled(size: 13)).foregroundStyle(LBrand.textTertiary)
                         .padding(.horizontal, 15).allowsHitTesting(false)
                 }
             }
@@ -2340,12 +2340,12 @@ struct UseLeadbookSheet: View {
             HStack(spacing: 9) {
                 ZStack {
                     Circle().fill(color.opacity(0.22))
-                    Image(systemName: icon).font(.system(size: 11, weight: .bold)).foregroundStyle(color)
+                    Image(systemName: icon).font(.appScaled(size: 11, weight: .bold)).foregroundStyle(color)
                 }
                 .frame(width: 30, height: 30)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(title).font(.system(size: 12, weight: .semibold)).foregroundStyle(.white)
-                    Text(subtitle).font(.system(size: 10)).foregroundStyle(LBrand.textSecondary)
+                    Text(title).font(.appScaled(size: 12, weight: .semibold)).foregroundStyle(.white)
+                    Text(subtitle).font(.appScaled(size: 10)).foregroundStyle(LBrand.textSecondary)
                 }
             }
         }
@@ -2363,9 +2363,9 @@ struct UseLeadbookSheet: View {
         } label: {
             HStack(spacing: 7) {
                 Image(systemName: "play.circle.fill")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                 Text(leadName.isEmpty ? "Skriv inn lead først" : "Start mal-bruk for \(leadName)")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .lineLimit(1).minimumScaleFactor(0.85)
             }
             .foregroundStyle(.white)
@@ -2423,7 +2423,7 @@ struct ContentDetailSheet: View {
                             editing = true
                         }
                     }
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(LBrand.purpleLight)
                 }
             }
@@ -2438,17 +2438,17 @@ struct ContentDetailSheet: View {
             ZStack {
                 Circle().fill(content.iconColor.opacity(0.30))
                 Image(systemName: content.icon)
-                    .font(.system(size: 18, weight: .black))
+                    .font(.appScaled(size: 18, weight: .black))
                     .foregroundStyle(content.iconColor)
             }
             .frame(width: 52, height: 52)
             VStack(alignment: .leading, spacing: 2) {
                 Text(stepTitle.uppercased())
-                    .font(.system(size: 9, weight: .black))
+                    .font(.appScaled(size: 9, weight: .black))
                     .foregroundStyle(content.iconColor)
                     .tracking(0.5)
                 Text(content.title)
-                    .font(.system(size: 17, weight: .bold))
+                    .font(.appScaled(size: 17, weight: .bold))
                     .foregroundStyle(.white)
             }
             Spacer()
@@ -2465,11 +2465,11 @@ struct ContentDetailSheet: View {
     private var bodyCard: some View {
         VStack(alignment: .leading, spacing: 7) {
             Text("INNHOLD")
-                .font(.system(size: 9, weight: .black))
+                .font(.appScaled(size: 9, weight: .black))
                 .foregroundStyle(LBrand.textTertiary)
                 .tracking(0.5)
             Text(content.body)
-                .font(.system(size: 14))
+                .font(.appScaled(size: 14))
                 .foregroundStyle(.white)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -2482,13 +2482,13 @@ struct ContentDetailSheet: View {
     private var editor: some View {
         VStack(alignment: .leading, spacing: 7) {
             Text("REDIGER")
-                .font(.system(size: 9, weight: .black))
+                .font(.appScaled(size: 9, weight: .black))
                 .foregroundStyle(LBrand.purpleLight)
                 .tracking(0.5)
             TextEditor(text: $draft)
                 .scrollContentBackground(.hidden)
                 .foregroundStyle(.white)
-                .font(.system(size: 14))
+                .font(.appScaled(size: 14))
                 .frame(minHeight: 140)
                 .padding(10)
                 .background(LBrand.card, in: RoundedRectangle(cornerRadius: 12))
@@ -2505,9 +2505,9 @@ struct ContentDetailSheet: View {
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appScaled(size: 12, weight: .bold))
                     Text(copied ? "Kopiert" : "Kopier")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appScaled(size: 12, weight: .bold))
                 }
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
@@ -2521,8 +2521,8 @@ struct ContentDetailSheet: View {
             .buttonStyle(.plain)
             Button {} label: {
                 HStack(spacing: 5) {
-                    Image(systemName: "square.and.arrow.up").font(.system(size: 12, weight: .bold))
-                    Text("Del").font(.system(size: 12, weight: .semibold))
+                    Image(systemName: "square.and.arrow.up").font(.appScaled(size: 12, weight: .bold))
+                    Text("Del").font(.appScaled(size: 12, weight: .semibold))
                 }
                 .foregroundStyle(.white)
                 .padding(.horizontal, 18).padding(.vertical, 11)
@@ -2575,7 +2575,7 @@ struct TemplateFilterSheet: View {
                         channels.removeAll()
                         statuses.removeAll()
                     }
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(channels.isEmpty && statuses.isEmpty ? LBrand.textTertiary : LBrand.purpleLight)
                     .disabled(channels.isEmpty && statuses.isEmpty)
                 }
@@ -2590,7 +2590,7 @@ struct TemplateFilterSheet: View {
     private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title.uppercased())
-                .font(.system(size: 9, weight: .black))
+                .font(.appScaled(size: 9, weight: .black))
                 .foregroundStyle(LBrand.textTertiary)
                 .tracking(0.5)
             content()
@@ -2604,13 +2604,13 @@ struct TemplateFilterSheet: View {
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: c.icon)
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(isOn ? .white : c.color)
-                Text(c.rawValue).font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
+                Text(c.rawValue).font(.appScaled(size: 12, weight: .bold)).foregroundStyle(.white)
                 Spacer()
                 if isOn {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 13))
+                        .font(.appScaled(size: 13))
                         .foregroundStyle(.white)
                 }
             }
@@ -2631,10 +2631,10 @@ struct TemplateFilterSheet: View {
         } label: {
             HStack(spacing: 8) {
                 Circle().fill(s.color).frame(width: 9, height: 9)
-                Text(s.rawValue).font(.system(size: 12, weight: .semibold)).foregroundStyle(.white)
+                Text(s.rawValue).font(.appScaled(size: 12, weight: .semibold)).foregroundStyle(.white)
                 Spacer()
                 Image(systemName: isOn ? "largecircle.fill.circle" : "circle")
-                    .font(.system(size: 15))
+                    .font(.appScaled(size: 15))
                     .foregroundStyle(isOn ? s.color : LBrand.stroke)
             }
             .padding(10)
@@ -2651,9 +2651,9 @@ struct TemplateFilterSheet: View {
         Button { dismiss() } label: {
             HStack(spacing: 6) {
                 Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                 Text("Bruk filter (\(channels.count + statuses.count))")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
             }
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)
@@ -2737,10 +2737,10 @@ struct AllTemplatesSheet: View {
     private func sumStat(_ label: String, _ value: String, _ color: Color) -> some View {
         VStack(spacing: 3) {
             Text(value)
-                .font(.system(size: 17, weight: .black, design: .rounded))
+                .font(.appScaled(size: 17, weight: .black, design: .rounded))
                 .foregroundStyle(color)
                 .monospacedDigit()
-            Text(label).font(.system(size: 10)).foregroundStyle(LBrand.textSecondary)
+            Text(label).font(.appScaled(size: 10)).foregroundStyle(LBrand.textSecondary)
         }
         .frame(maxWidth: .infinity)
     }
@@ -2749,14 +2749,14 @@ struct AllTemplatesSheet: View {
     private var searchBar: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(LBrand.textSecondary)
             ZStack(alignment: .leading) {
                 TextField("", text: $search)
-                    .foregroundStyle(.white).font(.system(size: 13))
+                    .foregroundStyle(.white).font(.appScaled(size: 13))
                 if search.isEmpty {
                     Text("Søk i alle maler…")
-                        .font(.system(size: 13))
+                        .font(.appScaled(size: 13))
                         .foregroundStyle(LBrand.textTertiary)
                         .allowsHitTesting(false)
                 }
@@ -2776,39 +2776,39 @@ struct AllTemplatesSheet: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: 9).fill(t.channel.color.opacity(0.22))
                     Image(systemName: t.channel.icon)
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.appScaled(size: 14, weight: .bold))
                         .foregroundStyle(t.channel.color)
                 }
                 .frame(width: 38, height: 38)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(t.name)
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
                     HStack(spacing: 5) {
                         Text("\(t.channel.rawValue) · Steg \(t.step)/\(t.stepTotal)")
-                            .font(.system(size: 11))
+                            .font(.appScaled(size: 11))
                             .foregroundStyle(LBrand.textSecondary)
                         Text("·").foregroundStyle(LBrand.textTertiary)
                         Text("\(t.used) brukt")
-                            .font(.system(size: 11))
+                            .font(.appScaled(size: 11))
                             .foregroundStyle(LBrand.textSecondary)
                     }
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 4) {
                     Text("\(Int(t.conversion * 100)) %")
-                        .font(.system(size: 13, weight: .black, design: .rounded))
+                        .font(.appScaled(size: 13, weight: .black, design: .rounded))
                         .foregroundStyle(LBrand.green)
                         .monospacedDigit()
                     Text(t.status.rawValue)
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.appScaled(size: 9, weight: .bold))
                         .foregroundStyle(t.status.color)
                         .padding(.horizontal, 6).padding(.vertical, 2)
                         .background(t.status.color.opacity(0.18), in: Capsule())
                 }
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(LBrand.textTertiary)
             }
             .padding(11)
@@ -2914,17 +2914,17 @@ struct ObjectionDetailSheet: View {
             ZStack {
                 Circle().fill(objection.iconColor.opacity(0.30))
                 Image(systemName: objection.icon)
-                    .font(.system(size: 19, weight: .black))
+                    .font(.appScaled(size: 19, weight: .black))
                     .foregroundStyle(objection.iconColor)
             }
             .frame(width: 56, height: 56)
             VStack(alignment: .leading, spacing: 3) {
                 Text("INNVENDING")
-                    .font(.system(size: 9, weight: .black))
+                    .font(.appScaled(size: 9, weight: .black))
                     .foregroundStyle(objection.iconColor)
                     .tracking(0.5)
                 Text(objection.title)
-                    .font(.system(size: 17, weight: .bold))
+                    .font(.appScaled(size: 17, weight: .bold))
                     .foregroundStyle(.white)
             }
             Spacer()
@@ -2957,17 +2957,17 @@ struct ObjectionDetailSheet: View {
             ZStack {
                 Circle().fill(color.opacity(0.22))
                 Image(systemName: icon)
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(color)
             }
             .frame(width: 28, height: 28)
             Text(value)
-                .font(.system(size: 17, weight: .black, design: .rounded))
+                .font(.appScaled(size: 17, weight: .black, design: .rounded))
                 .foregroundStyle(.white)
                 .monospacedDigit()
                 .lineLimit(1).minimumScaleFactor(0.7)
             Text(label)
-                .font(.system(size: 9))
+                .font(.appScaled(size: 9))
                 .foregroundStyle(LBrand.textSecondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -2980,7 +2980,7 @@ struct ObjectionDetailSheet: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("ANBEFALT RESPONS")
-                    .font(.system(size: 9, weight: .black))
+                    .font(.appScaled(size: 9, weight: .black))
                     .foregroundStyle(LBrand.green)
                     .tracking(0.5)
                 Spacer()
@@ -2991,9 +2991,9 @@ struct ObjectionDetailSheet: View {
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.appScaled(size: 10, weight: .bold))
                         Text(copied ? "Kopiert" : "Kopier")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.appScaled(size: 10, weight: .semibold))
                     }
                     .foregroundStyle(copied ? LBrand.green : LBrand.purpleLight)
                     .padding(.horizontal, 8).padding(.vertical, 4)
@@ -3006,14 +3006,14 @@ struct ObjectionDetailSheet: View {
                 TextEditor(text: $draft)
                     .scrollContentBackground(.hidden)
                     .foregroundStyle(.white)
-                    .font(.system(size: 14))
+                    .font(.appScaled(size: 14))
                     .frame(minHeight: 100)
                     .padding(8)
                     .background(LBrand.cardHi, in: RoundedRectangle(cornerRadius: 11))
                     .overlay(RoundedRectangle(cornerRadius: 11).stroke(LBrand.purple.opacity(0.4), lineWidth: 1))
             } else {
                 Text(objection.response)
-                    .font(.system(size: 14))
+                    .font(.appScaled(size: 14))
                     .foregroundStyle(.white)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -3028,10 +3028,10 @@ struct ObjectionDetailSheet: View {
         VStack(alignment: .leading, spacing: 9) {
             HStack {
                 Text("Alternative responser")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Text("\(alternatives.count)")
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: 10, weight: .bold, design: .rounded))
                     .foregroundStyle(LBrand.textSecondary)
                     .monospacedDigit()
                     .padding(.horizontal, 6).padding(.vertical, 2)
@@ -3057,19 +3057,19 @@ struct ObjectionDetailSheet: View {
         } label: {
             HStack(alignment: .top, spacing: 10) {
                 Text("\(idx)")
-                    .font(.system(size: 11, weight: .black, design: .rounded))
+                    .font(.appScaled(size: 11, weight: .black, design: .rounded))
                     .foregroundStyle(LBrand.purpleLight)
                     .monospacedDigit()
                     .frame(width: 22, height: 22)
                     .background(LBrand.purple.opacity(0.18), in: Circle())
                 Text(text)
-                    .font(.system(size: 12))
+                    .font(.appScaled(size: 12))
                     .foregroundStyle(.white)
                     .fixedSize(horizontal: false, vertical: true)
                     .multilineTextAlignment(.leading)
                 Spacer(minLength: 0)
                 Image(systemName: "doc.on.doc")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(LBrand.textTertiary)
             }
             .padding(10)
@@ -3086,17 +3086,17 @@ struct ObjectionDetailSheet: View {
                     startPoint: .topLeading, endPoint: .bottomTrailing
                 ))
                 Image(systemName: "sparkles")
-                    .font(.system(size: 13, weight: .black))
+                    .font(.appScaled(size: 13, weight: .black))
                     .foregroundStyle(.white)
             }
             .frame(width: 36, height: 36)
             VStack(alignment: .leading, spacing: 2) {
                 Text("AI-COACH-TIPS")
-                    .font(.system(size: 9, weight: .black))
+                    .font(.appScaled(size: 9, weight: .black))
                     .foregroundStyle(LBrand.purpleLight)
                     .tracking(0.5)
                 Text("Lyt aktivt før du svarer. Speile kundens ord («Du sa at …») bygger tillit og gir tid til å tenke.")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(.white)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -3115,9 +3115,9 @@ struct ObjectionDetailSheet: View {
             } label: {
                 HStack(spacing: 5) {
                     Image(systemName: editing ? "checkmark" : "pencil")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.appScaled(size: 11, weight: .bold))
                     Text(editing ? "Lagre" : "Rediger")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                 }
                 .foregroundStyle(.white)
                 .padding(.horizontal, 14).padding(.vertical, 11)
@@ -3128,9 +3128,9 @@ struct ObjectionDetailSheet: View {
             Button { dismiss() } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                     Text("Bruk denne responsen")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                 }
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
@@ -3215,10 +3215,10 @@ struct AllObjectionsSheet: View {
     private func sumStat(_ label: String, _ value: String, _ color: Color) -> some View {
         VStack(spacing: 3) {
             Text(value)
-                .font(.system(size: 17, weight: .black, design: .rounded))
+                .font(.appScaled(size: 17, weight: .black, design: .rounded))
                 .foregroundStyle(color)
                 .monospacedDigit()
-            Text(label).font(.system(size: 10)).foregroundStyle(LBrand.textSecondary)
+            Text(label).font(.appScaled(size: 10)).foregroundStyle(LBrand.textSecondary)
         }
         .frame(maxWidth: .infinity)
     }
@@ -3227,14 +3227,14 @@ struct AllObjectionsSheet: View {
     private var searchBar: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(LBrand.textSecondary)
             ZStack(alignment: .leading) {
                 TextField("", text: $search)
-                    .foregroundStyle(.white).font(.system(size: 13))
+                    .foregroundStyle(.white).font(.appScaled(size: 13))
                 if search.isEmpty {
                     Text("Søk innvending eller respons…")
-                        .font(.system(size: 13))
+                        .font(.appScaled(size: 13))
                         .foregroundStyle(LBrand.textTertiary)
                         .allowsHitTesting(false)
                 }
@@ -3254,24 +3254,24 @@ struct AllObjectionsSheet: View {
                 ZStack {
                     Circle().fill(o.iconColor.opacity(0.22))
                     Image(systemName: o.icon)
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(o.iconColor)
                 }
                 .frame(width: 36, height: 36)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(o.title)
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
                     Text(o.response)
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(LBrand.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                         .lineLimit(2)
                 }
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(LBrand.textTertiary)
                     .padding(.top, 8)
             }
@@ -3371,23 +3371,23 @@ struct NewObjectionSheet: View {
     private var livePreview: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("FORHÅNDSVISNING")
-                .font(.system(size: 9, weight: .black))
+                .font(.appScaled(size: 9, weight: .black))
                 .foregroundStyle(LBrand.textTertiary)
                 .tracking(0.6)
             HStack(alignment: .top, spacing: 10) {
                 ZStack {
                     Circle().fill(iconColor.color.opacity(0.22))
                     Image(systemName: category.icon)
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.appScaled(size: 11, weight: .bold))
                         .foregroundStyle(iconColor.color)
                 }
                 .frame(width: 30, height: 30)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title.isEmpty ? "Innvending-tittel" : title)
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appScaled(size: 12, weight: .bold))
                         .foregroundStyle(title.isEmpty ? LBrand.textTertiary : .white)
                     Text(response.isEmpty ? "Anbefalt respons vises her …" : response)
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(response.isEmpty ? LBrand.textTertiary : LBrand.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                         .lineLimit(3)
@@ -3405,13 +3405,13 @@ struct NewObjectionSheet: View {
             label("Innvending *")
             ZStack(alignment: .leading) {
                 TextField("", text: $title)
-                    .foregroundStyle(.white).font(.system(size: 13))
+                    .foregroundStyle(.white).font(.appScaled(size: 13))
                     .padding(.horizontal, 13).padding(.vertical, 12)
                     .background(LBrand.card, in: RoundedRectangle(cornerRadius: 10))
                     .overlay(RoundedRectangle(cornerRadius: 10).stroke(LBrand.stroke, lineWidth: 1))
                 if title.isEmpty {
                     Text("F.eks. «For dyrt», «Send info på e-post»")
-                        .font(.system(size: 13))
+                        .font(.appScaled(size: 13))
                         .foregroundStyle(LBrand.textTertiary)
                         .padding(.horizontal, 14)
                         .allowsHitTesting(false)
@@ -3428,9 +3428,9 @@ struct NewObjectionSheet: View {
                 Button { triggerAI.toggle() } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "sparkles")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.appScaled(size: 10, weight: .bold))
                         Text("AI-foreslå")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.appScaled(size: 10, weight: .semibold))
                     }
                     .foregroundStyle(LBrand.purpleLight)
                     .padding(.horizontal, 8).padding(.vertical, 4)
@@ -3441,14 +3441,14 @@ struct NewObjectionSheet: View {
             ZStack(alignment: .topLeading) {
                 TextEditor(text: $response)
                     .scrollContentBackground(.hidden)
-                    .foregroundStyle(.white).font(.system(size: 13))
+                    .foregroundStyle(.white).font(.appScaled(size: 13))
                     .frame(minHeight: 90)
                     .padding(8)
                     .background(LBrand.card, in: RoundedRectangle(cornerRadius: 11))
                     .overlay(RoundedRectangle(cornerRadius: 11).stroke(LBrand.stroke, lineWidth: 1))
                 if response.isEmpty {
                     Text("Skriv hvordan selgere bør svare …")
-                        .font(.system(size: 13))
+                        .font(.appScaled(size: 13))
                         .foregroundStyle(LBrand.textTertiary)
                         .padding(.horizontal, 12).padding(.vertical, 14)
                         .allowsHitTesting(false)
@@ -3467,16 +3467,16 @@ struct NewObjectionSheet: View {
                     } label: {
                         HStack(spacing: 8) {
                             Image(systemName: c.icon)
-                                .font(.system(size: 11, weight: .bold))
+                                .font(.appScaled(size: 11, weight: .bold))
                                 .foregroundStyle(category == c ? .white : iconColor.color)
                             Text(c.rawValue)
-                                .font(.system(size: 11, weight: .bold))
+                                .font(.appScaled(size: 11, weight: .bold))
                                 .foregroundStyle(.white)
                                 .lineLimit(1)
                             Spacer()
                             if category == c {
                                 Image(systemName: "checkmark.circle.fill")
-                                    .font(.system(size: 12)).foregroundStyle(.white)
+                                    .font(.appScaled(size: 12)).foregroundStyle(.white)
                             }
                         }
                         .padding(.horizontal, 10).padding(.vertical, 9)
@@ -3504,7 +3504,7 @@ struct NewObjectionSheet: View {
                             Circle().fill(c.color)
                             if iconColor == c {
                                 Image(systemName: "checkmark")
-                                    .font(.system(size: 11, weight: .black))
+                                    .font(.appScaled(size: 11, weight: .black))
                                     .foregroundStyle(.white)
                             }
                         }
@@ -3529,11 +3529,11 @@ struct NewObjectionSheet: View {
             } label: {
                 HStack {
                     Text(stage.rawValue)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.appScaled(size: 13, weight: .semibold))
                         .foregroundStyle(.white)
                     Spacer()
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.appScaled(size: 10, weight: .semibold))
                         .foregroundStyle(LBrand.textTertiary)
                 }
                 .padding(.horizontal, 13).padding(.vertical, 12)
@@ -3549,16 +3549,16 @@ struct NewObjectionSheet: View {
                 ZStack {
                     Circle().fill(LBrand.green.opacity(0.22))
                     Image(systemName: "doc.text.fill")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.appScaled(size: 11, weight: .bold))
                         .foregroundStyle(LBrand.green)
                 }
                 .frame(width: 30, height: 30)
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Legg til i alle relevante maler")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
                     Text("Innvendingen vises automatisk i alle maler for valgt steg")
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(LBrand.textSecondary)
                 }
             }
@@ -3571,7 +3571,7 @@ struct NewObjectionSheet: View {
 
     private func label(_ t: String) -> some View {
         Text(t)
-            .font(.system(size: 12, weight: .semibold))
+            .font(.appScaled(size: 12, weight: .semibold))
             .foregroundStyle(LBrand.textSecondary)
     }
 
@@ -3579,9 +3579,9 @@ struct NewObjectionSheet: View {
         Button { dismiss() } label: {
             HStack(spacing: 7) {
                 Image(systemName: "shield.fill")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                 Text(canSave ? "Opprett innvending" : "Fyll inn tittel og respons")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .lineLimit(1).minimumScaleFactor(0.85)
             }
             .foregroundStyle(.white)
@@ -3695,7 +3695,7 @@ struct ImportTemplateSheet: View {
                             HStack(spacing: 8) {
                                 Image(systemName: "exclamationmark.triangle.fill")
                                     .foregroundStyle(LBrand.red)
-                                Text(err).font(.system(size: 13))
+                                Text(err).font(.appScaled(size: 13))
                                     .foregroundStyle(LBrand.red)
                             }
                             .padding(10)
@@ -3716,7 +3716,7 @@ struct ImportTemplateSheet: View {
                         HStack(spacing: 6) {
                             if importing { ProgressView().tint(.white) }
                             Text(importing ? "Importerer…" : "Importer")
-                                .font(.system(size: 14, weight: .bold))
+                                .font(.appScaled(size: 14, weight: .bold))
                         }
                         .foregroundStyle(.white)
                         .padding(.horizontal, 14).padding(.vertical, 8)
@@ -3746,17 +3746,17 @@ struct ImportTemplateSheet: View {
     private var sourcePicker: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("KILDE")
-                .font(.system(size: 10, weight: .bold))
+                .font(.appScaled(size: 10, weight: .bold))
                 .foregroundStyle(LBrand.textTertiary).tracking(1)
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
                 ForEach(ImportSource.allCases) { src in
                     Button { selectedSource = src } label: {
                         VStack(spacing: 6) {
                             Image(systemName: src.icon)
-                                .font(.system(size: 18, weight: .bold))
+                                .font(.appScaled(size: 18, weight: .bold))
                                 .foregroundStyle(selectedSource == src ? src.tint : LBrand.textSecondary)
                             Text(src.rawValue)
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.appScaled(size: 11, weight: .semibold))
                                 .foregroundStyle(selectedSource == src ? .white : LBrand.textSecondary)
                         }
                         .frame(maxWidth: .infinity)
@@ -3802,18 +3802,18 @@ struct ImportTemplateSheet: View {
                             ZStack {
                                 RoundedRectangle(cornerRadius: 9).fill(tpl.channel.color.opacity(0.22))
                                 Image(systemName: tpl.channel.icon)
-                                    .font(.system(size: 14, weight: .bold))
+                                    .font(.appScaled(size: 14, weight: .bold))
                                     .foregroundStyle(tpl.channel.color)
                             }
                             .frame(width: 36, height: 36)
                             VStack(alignment: .leading, spacing: 3) {
                                 HStack(spacing: 6) {
                                     Text(tpl.name)
-                                        .font(.system(size: 13, weight: .bold))
+                                        .font(.appScaled(size: 13, weight: .bold))
                                         .foregroundStyle(.white)
                                     if let b = tpl.badge {
                                         Text(b)
-                                            .font(.system(size: 9, weight: .heavy))
+                                            .font(.appScaled(size: 9, weight: .heavy))
                                             .foregroundStyle(LBrand.purpleLight)
                                             .padding(.horizontal, 5).padding(.vertical, 2)
                                             .background(LBrand.purple.opacity(0.2), in: Capsule())
@@ -3822,29 +3822,29 @@ struct ImportTemplateSheet: View {
                                 }
                                 HStack(spacing: 8) {
                                     Text(tpl.author)
-                                        .font(.system(size: 11))
+                                        .font(.appScaled(size: 11))
                                         .foregroundStyle(LBrand.textSecondary)
                                     Text("•").foregroundStyle(LBrand.textTertiary)
                                     HStack(spacing: 3) {
                                         Image(systemName: "star.fill")
-                                            .font(.system(size: 9))
+                                            .font(.appScaled(size: 9))
                                             .foregroundStyle(LBrand.yellow)
                                         Text(String(format: "%.1f", tpl.rating))
-                                            .font(.system(size: 11, weight: .semibold))
+                                            .font(.appScaled(size: 11, weight: .semibold))
                                             .foregroundStyle(.white)
                                     }
                                     Text("•").foregroundStyle(LBrand.textTertiary)
                                     Text("\(tpl.downloads)")
-                                        .font(.system(size: 11))
+                                        .font(.appScaled(size: 11))
                                         .foregroundStyle(LBrand.textSecondary)
                                     Image(systemName: "arrow.down.circle.fill")
-                                        .font(.system(size: 10))
+                                        .font(.appScaled(size: 10))
                                         .foregroundStyle(LBrand.textTertiary)
                                 }
                             }
                             Spacer()
                             Image(systemName: selectedMarketplace.contains(tpl.id.uuidString) ? "checkmark.circle.fill" : "circle")
-                                .font(.system(size: 20, weight: .semibold))
+                                .font(.appScaled(size: 20, weight: .semibold))
                                 .foregroundStyle(selectedMarketplace.contains(tpl.id.uuidString) ? LBrand.green : LBrand.textTertiary)
                         }
                         .padding(12)
@@ -3865,13 +3865,13 @@ struct ImportTemplateSheet: View {
             Button { showFilePicker = true } label: {
                 VStack(spacing: 10) {
                     Image(systemName: fileName == nil ? "tray.and.arrow.down.fill" : "doc.fill")
-                        .font(.system(size: 36, weight: .semibold))
+                        .font(.appScaled(size: 36, weight: .semibold))
                         .foregroundStyle(LBrand.blue)
                     Text(fileName ?? "Velg fil (JSON / TXT / PDF)")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.appScaled(size: 14, weight: .semibold))
                         .foregroundStyle(.white)
                     Text("Maks 5 MB · Vi konverterer automatisk til Leadbook-format")
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(LBrand.textSecondary)
                 }
                 .frame(maxWidth: .infinity)
@@ -3886,12 +3886,12 @@ struct ImportTemplateSheet: View {
             .buttonStyle(.plain)
             VStack(alignment: .leading, spacing: 6) {
                 Label("Støttede formater", systemImage: "info.circle.fill")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(LBrand.textSecondary)
                 Text("• Leadbook JSON-eksport · Salesforce Path Templates · HubSpot Playbooks")
-                    .font(.system(size: 11)).foregroundStyle(LBrand.textTertiary)
+                    .font(.appScaled(size: 11)).foregroundStyle(LBrand.textTertiary)
                 Text("• Outreach.io Sequences (.json) · Gong Smart Trackers")
-                    .font(.system(size: 11)).foregroundStyle(LBrand.textTertiary)
+                    .font(.appScaled(size: 11)).foregroundStyle(LBrand.textTertiary)
             }
             .padding(12)
             .background(LBrand.cardHi.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
@@ -3901,19 +3901,19 @@ struct ImportTemplateSheet: View {
     private var jsonBody: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("LEADBOOK JSON").font(.system(size: 10, weight: .bold))
+                Text("LEADBOOK JSON").font(.appScaled(size: 10, weight: .bold))
                     .foregroundStyle(LBrand.textTertiary).tracking(1)
                 Spacer()
                 Button {
                     pastedJSON = "{\n  \"name\": \"Importert mal\",\n  \"channel\": \"phone\",\n  \"steps\": []\n}"
                 } label: {
                     Text("Lim inn eksempel")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(LBrand.purpleLight)
                 }.buttonStyle(.plain)
             }
             TextEditor(text: $pastedJSON)
-                .font(.system(size: 12, design: .monospaced))
+                .font(.appScaled(size: 12, design: .monospaced))
                 .foregroundStyle(.white)
                 .scrollContentBackground(.hidden)
                 .padding(10)
@@ -3921,13 +3921,13 @@ struct ImportTemplateSheet: View {
                 .background(LBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(LBrand.stroke, lineWidth: 1))
             Text("Vi validerer mot Leadbook-skjema før import.")
-                .font(.system(size: 11)).foregroundStyle(LBrand.textSecondary)
+                .font(.appScaled(size: 11)).foregroundStyle(LBrand.textSecondary)
         }
     }
 
     private var urlBody: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("MAL-URL").font(.system(size: 10, weight: .bold))
+            Text("MAL-URL").font(.appScaled(size: 10, weight: .bold))
                 .foregroundStyle(LBrand.textTertiary).tracking(1)
             HStack(spacing: 8) {
                 Image(systemName: "link").foregroundStyle(LBrand.textTertiary)
@@ -3976,24 +3976,24 @@ struct VersionDetailSheet: View {
                         VStack(alignment: .leading, spacing: 6) {
                             HStack(spacing: 10) {
                                 Text(version.version)
-                                    .font(.system(size: 30, weight: .heavy, design: .rounded))
+                                    .font(.appScaled(size: 30, weight: .heavy, design: .rounded))
                                     .foregroundStyle(.white).monospacedDigit()
                                 statusBadge
                                 Spacer()
                             }
                             Text(version.summary)
-                                .font(.system(size: 14)).foregroundStyle(LBrand.textSecondary)
+                                .font(.appScaled(size: 14)).foregroundStyle(LBrand.textSecondary)
                             HStack(spacing: 12) {
                                 Label(version.date, systemImage: "calendar")
                                 Label("Endret av Lars K.", systemImage: "person.fill")
                                 Label("v\(version.version)", systemImage: "doc.fill")
                             }
-                            .font(.system(size: 11))
+                            .font(.appScaled(size: 11))
                             .foregroundStyle(LBrand.textTertiary)
                         }
                         VStack(alignment: .leading, spacing: 10) {
                             Text("ENDRINGER")
-                                .font(.system(size: 10, weight: .black))
+                                .font(.appScaled(size: 10, weight: .black))
                                 .foregroundStyle(LBrand.textTertiary).tracking(0.8)
                             diffRow(kind: .added, text: "Ny åpningslinje: «Takk for at du tok deg tid…»")
                             diffRow(kind: .modified, text: "Steg 3 — flyttet pris-spørsmål til etter behovsavdekking")
@@ -4019,7 +4019,7 @@ struct VersionDetailSheet: View {
                         Button(role: .destructive) {} label: { Label("Slett versjon", systemImage: "trash") }
                     } label: {
                         Image(systemName: "ellipsis.circle")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.appScaled(size: 16, weight: .semibold))
                             .foregroundStyle(LBrand.purpleLight)
                     }
                 }
@@ -4027,7 +4027,7 @@ struct VersionDetailSheet: View {
             .overlay(alignment: .top) {
                 if let t = toast {
                     Label(t, systemImage: "checkmark.circle.fill")
-                        .font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
+                        .font(.appScaled(size: 12, weight: .bold)).foregroundStyle(.white)
                         .padding(.horizontal, 12).padding(.vertical, 8)
                         .background(LBrand.green, in: Capsule())
                         .padding(.top, 6)
@@ -4042,11 +4042,11 @@ struct VersionDetailSheet: View {
         HStack(spacing: 4) {
             if version.status == .approved {
                 Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(version.status.color)
             }
             Text(version.status.rawValue)
-                .font(.system(size: 11, weight: .bold))
+                .font(.appScaled(size: 11, weight: .bold))
                 .foregroundStyle(version.status.color)
         }
         .padding(.horizontal, 10).padding(.vertical, 5)
@@ -4081,15 +4081,15 @@ struct VersionDetailSheet: View {
     private func diffRow(kind: DiffKind, text: String) -> some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: kind.icon)
-                .font(.system(size: 14, weight: .bold))
+                .font(.appScaled(size: 14, weight: .bold))
                 .foregroundStyle(kind.color)
                 .padding(.top, 2)
             VStack(alignment: .leading, spacing: 3) {
                 Text(kind.label)
-                    .font(.system(size: 9, weight: .black))
+                    .font(.appScaled(size: 9, weight: .black))
                     .foregroundStyle(kind.color).tracking(0.6)
                 Text(text)
-                    .font(.system(size: 13))
+                    .font(.appScaled(size: 13))
                     .foregroundStyle(.white)
             }
             Spacer()
@@ -4109,7 +4109,7 @@ struct VersionDetailSheet: View {
                         Image(systemName: "checkmark.circle.fill")
                         Text("Godkjenn")
                     }
-                    .font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
+                    .font(.appScaled(size: 13, weight: .bold)).foregroundStyle(.white)
                     .frame(maxWidth: .infinity).padding(.vertical, 12)
                     .background(LBrand.green, in: RoundedRectangle(cornerRadius: 11))
                 }.buttonStyle(.plain)
@@ -4121,7 +4121,7 @@ struct VersionDetailSheet: View {
                         Image(systemName: "arrow.uturn.backward")
                         Text("Send tilbake")
                     }
-                    .font(.system(size: 13, weight: .bold)).foregroundStyle(LBrand.orange)
+                    .font(.appScaled(size: 13, weight: .bold)).foregroundStyle(LBrand.orange)
                     .frame(maxWidth: .infinity).padding(.vertical, 12)
                     .background(LBrand.orange.opacity(0.18), in: RoundedRectangle(cornerRadius: 11))
                     .overlay(RoundedRectangle(cornerRadius: 11).stroke(LBrand.orange.opacity(0.4), lineWidth: 1))
@@ -4135,7 +4135,7 @@ struct VersionDetailSheet: View {
                         Image(systemName: "arrow.uturn.backward.circle.fill")
                         Text("Sett som gjeldende")
                     }
-                    .font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
+                    .font(.appScaled(size: 13, weight: .bold)).foregroundStyle(.white)
                     .frame(maxWidth: .infinity).padding(.vertical, 12)
                     .background(
                         LinearGradient(colors: [LBrand.purple, LBrand.purpleLight],
@@ -4207,7 +4207,7 @@ struct CompareVersionsSheet: View {
 
     private func picker(label: String, value: Binding<String>, tint: Color) -> some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(label).font(.system(size: 9, weight: .black))
+            Text(label).font(.appScaled(size: 9, weight: .black))
                 .foregroundStyle(LBrand.textTertiary).tracking(0.6)
             Menu {
                 ForEach(versions, id: \.self) { v in
@@ -4215,9 +4215,9 @@ struct CompareVersionsSheet: View {
                 }
             } label: {
                 HStack(spacing: 6) {
-                    Text(value.wrappedValue).font(.system(size: 14, weight: .bold))
+                    Text(value.wrappedValue).font(.appScaled(size: 14, weight: .bold))
                         .foregroundStyle(.white)
-                    Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold))
+                    Image(systemName: "chevron.down").font(.appScaled(size: 9, weight: .semibold))
                         .foregroundStyle(LBrand.textTertiary)
                 }
                 .padding(.horizontal, 12).padding(.vertical, 10)
@@ -4231,15 +4231,15 @@ struct CompareVersionsSheet: View {
     private func sideColumn(title: String, content: [String], tint: Color) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text(title).font(.system(size: 14, weight: .bold)).foregroundStyle(tint)
+                Text(title).font(.appScaled(size: 14, weight: .bold)).foregroundStyle(tint)
                 Spacer()
-                Text("\(content.count) steg").font(.system(size: 10))
+                Text("\(content.count) steg").font(.appScaled(size: 10))
                     .foregroundStyle(LBrand.textTertiary)
             }
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(content, id: \.self) { line in
                     Text(line)
-                        .font(.system(size: 12))
+                        .font(.appScaled(size: 12))
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(8)
@@ -4255,7 +4255,7 @@ struct CompareVersionsSheet: View {
 
     private var summary: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("OPPSUMMERING").font(.system(size: 10, weight: .black))
+            Text("OPPSUMMERING").font(.appScaled(size: 10, weight: .black))
                 .foregroundStyle(LBrand.textTertiary).tracking(0.8)
             HStack(spacing: 14) {
                 pill(label: "+2", text: "lagt til", color: LBrand.green)
@@ -4270,9 +4270,9 @@ struct CompareVersionsSheet: View {
 
     private func pill(label: String, text: String, color: Color) -> some View {
         HStack(spacing: 6) {
-            Text(label).font(.system(size: 14, weight: .heavy, design: .rounded))
+            Text(label).font(.appScaled(size: 14, weight: .heavy, design: .rounded))
                 .foregroundStyle(color)
-            Text(text).font(.system(size: 11)).foregroundStyle(LBrand.textSecondary)
+            Text(text).font(.appScaled(size: 11)).foregroundStyle(LBrand.textSecondary)
         }
         .padding(.horizontal, 10).padding(.vertical, 6)
         .background(color.opacity(0.14), in: Capsule())
@@ -4357,7 +4357,7 @@ struct LeadbookKPIDetailSheet: View {
                         Button { showSetGoal = true } label: { Label("Sett mål", systemImage: "target") }
                     } label: {
                         Image(systemName: "ellipsis.circle")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.appScaled(size: 16, weight: .semibold))
                             .foregroundStyle(kpi.tint)
                     }
                 }
@@ -4374,7 +4374,7 @@ struct LeadbookKPIDetailSheet: View {
             .overlay(alignment: .top) {
                 if let t = toast {
                     Label(t, systemImage: "checkmark.circle.fill")
-                        .font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
+                        .font(.appScaled(size: 12, weight: .bold)).foregroundStyle(.white)
                         .padding(.horizontal, 12).padding(.vertical, 8)
                         .background(LBrand.green, in: Capsule())
                         .padding(.top, 6)
@@ -4398,29 +4398,29 @@ struct LeadbookKPIDetailSheet: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 14).fill(kpi.tint.opacity(0.22))
                 Image(systemName: kpi.icon)
-                    .font(.system(size: 26, weight: .bold))
+                    .font(.appScaled(size: 26, weight: .bold))
                     .foregroundStyle(kpi.tint)
             }
             .frame(width: 64, height: 64)
             VStack(alignment: .leading, spacing: 6) {
                 Text(kpi.value)
-                    .font(.system(size: 38, weight: .heavy, design: .rounded))
+                    .font(.appScaled(size: 38, weight: .heavy, design: .rounded))
                     .foregroundStyle(.white)
                     .monospacedDigit()
                 HStack(spacing: 10) {
                     HStack(spacing: 4) {
-                        Image(systemName: "arrow.up.right").font(.system(size: 10, weight: .bold))
+                        Image(systemName: "arrow.up.right").font(.appScaled(size: 10, weight: .bold))
                         Text(kpi.trend.replacingOccurrences(of: "↑ ", with: ""))
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.appScaled(size: 12, weight: .bold))
                     }
                     .foregroundStyle(LBrand.green)
                     .padding(.horizontal, 8).padding(.vertical, 4)
                     .background(LBrand.green.opacity(0.16), in: Capsule())
                     Text("vs. forrige periode")
-                        .font(.system(size: 11)).foregroundStyle(LBrand.textSecondary)
+                        .font(.appScaled(size: 11)).foregroundStyle(LBrand.textSecondary)
                 }
                 Text(kpi.subtitle)
-                    .font(.system(size: 12))
+                    .font(.appScaled(size: 12))
                     .foregroundStyle(LBrand.textSecondary)
                     .padding(.top, 2)
             }
@@ -4436,7 +4436,7 @@ struct LeadbookKPIDetailSheet: View {
             ForEach(Range.allCases) { r in
                 Button { range = r } label: {
                     Text(r.rawValue)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(range == r ? .white : LBrand.textSecondary)
                         .padding(.horizontal, 14).padding(.vertical, 8)
                         .background(range == r ? kpi.tint.opacity(0.28) : LBrand.cardHi, in: Capsule())
@@ -4451,11 +4451,11 @@ struct LeadbookKPIDetailSheet: View {
     private var chartCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("UTVIKLING").font(.system(size: 10, weight: .black))
+                Text("UTVIKLING").font(.appScaled(size: 10, weight: .black))
                     .foregroundStyle(LBrand.textTertiary).tracking(0.8)
                 Spacer()
                 Text("Siste \(range.rawValue.lowercased())")
-                    .font(.system(size: 11)).foregroundStyle(LBrand.textTertiary)
+                    .font(.appScaled(size: 11)).foregroundStyle(LBrand.textTertiary)
             }
             Chart {
                 ForEach(trimmedSeries, id: \.0) { idx, value in
@@ -4489,13 +4489,13 @@ struct LeadbookKPIDetailSheet: View {
     private var breakdownCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text(breakdownTitle).font(.system(size: 10, weight: .black))
+                Text(breakdownTitle).font(.appScaled(size: 10, weight: .black))
                     .foregroundStyle(LBrand.textTertiary).tracking(0.8)
                 Spacer()
                 Button {} label: {
                     HStack(spacing: 4) {
-                        Text("Se alle").font(.system(size: 11, weight: .semibold))
-                        Image(systemName: "arrow.up.right").font(.system(size: 9, weight: .bold))
+                        Text("Se alle").font(.appScaled(size: 11, weight: .semibold))
+                        Image(systemName: "arrow.up.right").font(.appScaled(size: 9, weight: .bold))
                     }
                     .foregroundStyle(kpi.tint)
                 }.buttonStyle(.plain)
@@ -4505,21 +4505,21 @@ struct LeadbookKPIDetailSheet: View {
                     let row = breakdownRows[i]
                     HStack(spacing: 12) {
                         Text("#\(i + 1)")
-                            .font(.system(size: 11, weight: .black, design: .rounded))
+                            .font(.appScaled(size: 11, weight: .black, design: .rounded))
                             .foregroundStyle(LBrand.textTertiary)
                             .frame(width: 24, alignment: .leading)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(row.label)
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.appScaled(size: 13, weight: .semibold))
                                 .foregroundStyle(.white)
                             Text(row.sub)
-                                .font(.system(size: 10))
+                                .font(.appScaled(size: 10))
                                 .foregroundStyle(LBrand.textSecondary)
                         }
                         Spacer()
                         VStack(alignment: .trailing, spacing: 2) {
                             Text(row.value)
-                                .font(.system(size: 13, weight: .bold, design: .rounded))
+                                .font(.appScaled(size: 13, weight: .bold, design: .rounded))
                                 .foregroundStyle(.white).monospacedDigit()
                             GeometryReader { geo in
                                 ZStack(alignment: .leading) {
@@ -4597,18 +4597,18 @@ struct LeadbookKPIDetailSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Image(systemName: "sparkles").foregroundStyle(kpi.tint)
-                Text("AI-INSIKT").font(.system(size: 10, weight: .black))
+                Text("AI-INSIKT").font(.appScaled(size: 10, weight: .black))
                     .foregroundStyle(kpi.tint).tracking(0.8)
                 Spacer()
             }
             Text(insightBody)
-                .font(.system(size: 13))
+                .font(.appScaled(size: 13))
                 .foregroundStyle(.white)
             if let action = insightAction {
                 Button {} label: {
                     HStack(spacing: 6) {
-                        Image(systemName: action.icon).font(.system(size: 11, weight: .bold))
-                        Text(action.label).font(.system(size: 12, weight: .bold))
+                        Image(systemName: action.icon).font(.appScaled(size: 11, weight: .bold))
+                        Text(action.label).font(.appScaled(size: 12, weight: .bold))
                     }
                     .foregroundStyle(kpi.tint)
                     .padding(.horizontal, 12).padding(.vertical, 8)
@@ -4644,7 +4644,7 @@ struct LeadbookKPIDetailSheet: View {
 
     private var actionsGrid: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("HANDLINGER").font(.system(size: 10, weight: .black))
+            Text("HANDLINGER").font(.appScaled(size: 10, weight: .black))
                 .foregroundStyle(LBrand.textTertiary).tracking(0.8)
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
                 actionTile(icon: "target", label: "Sett mål", tint: LBrand.green) { showSetGoal = true }
@@ -4660,13 +4660,13 @@ struct LeadbookKPIDetailSheet: View {
             HStack(spacing: 10) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 9).fill(tint.opacity(0.22))
-                    Image(systemName: icon).font(.system(size: 14, weight: .bold)).foregroundStyle(tint)
+                    Image(systemName: icon).font(.appScaled(size: 14, weight: .bold)).foregroundStyle(tint)
                 }
                 .frame(width: 34, height: 34)
-                Text(label).font(.system(size: 13, weight: .semibold)).foregroundStyle(.white)
+                Text(label).font(.appScaled(size: 13, weight: .semibold)).foregroundStyle(.white)
                 Spacer()
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(LBrand.textTertiary)
             }
             .padding(12)
@@ -4693,17 +4693,17 @@ struct LeadbookGoalSheet: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
                         VStack(alignment: .leading, spacing: 6) {
-                            Text("MÅL FOR").font(.system(size: 10, weight: .black))
+                            Text("MÅL FOR").font(.appScaled(size: 10, weight: .black))
                                 .foregroundStyle(LBrand.textTertiary).tracking(0.8)
-                            Text(kpi.title).font(.system(size: 20, weight: .heavy)).foregroundStyle(.white)
-                            Text("Nåværende verdi: \(kpi.value)").font(.system(size: 12))
+                            Text(kpi.title).font(.appScaled(size: 20, weight: .heavy)).foregroundStyle(.white)
+                            Text("Nåværende verdi: \(kpi.value)").font(.appScaled(size: 12))
                                 .foregroundStyle(LBrand.textSecondary)
                         }
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("MÅLVERDI").font(.system(size: 10, weight: .black))
+                            Text("MÅLVERDI").font(.appScaled(size: 10, weight: .black))
                                 .foregroundStyle(LBrand.textTertiary).tracking(0.8)
                             Text("\(Int(goalValue))")
-                                .font(.system(size: 36, weight: .heavy, design: .rounded))
+                                .font(.appScaled(size: 36, weight: .heavy, design: .rounded))
                                 .foregroundStyle(kpi.tint)
                             Slider(value: $goalValue, in: 0...200, step: 1)
                                 .tint(kpi.tint)
@@ -4711,7 +4711,7 @@ struct LeadbookGoalSheet: View {
                         .padding(14)
                         .background(LBrand.card, in: RoundedRectangle(cornerRadius: 12))
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("FRIST").font(.system(size: 10, weight: .black))
+                            Text("FRIST").font(.appScaled(size: 10, weight: .black))
                                 .foregroundStyle(LBrand.textTertiary).tracking(0.8)
                             DatePicker("", selection: $deadline, displayedComponents: .date)
                                 .datePickerStyle(.graphical)
@@ -4734,7 +4734,7 @@ struct LeadbookGoalSheet: View {
                         onSave("\(Int(goalValue)) innen \(deadline.formatted(.dateTime.day().month()))")
                         dismiss()
                     } label: {
-                        Text("Lagre").font(.system(size: 14, weight: .bold))
+                        Text("Lagre").font(.appScaled(size: 14, weight: .bold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 14).padding(.vertical, 8)
                             .background(kpi.tint, in: RoundedRectangle(cornerRadius: 10))
@@ -4783,12 +4783,12 @@ struct LeadbookAlertSheet: View {
                     VStack(alignment: .leading, spacing: 16) {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("VARSLE NÅR \(kpi.title.uppercased()) ER")
-                                .font(.system(size: 10, weight: .black))
+                                .font(.appScaled(size: 10, weight: .black))
                                 .foregroundStyle(LBrand.textTertiary).tracking(0.8)
                             HStack(spacing: 8) {
                                 ForEach(Operator.allCases) { o in
                                     Button { op = o } label: {
-                                        Text(o.rawValue).font(.system(size: 12, weight: .semibold))
+                                        Text(o.rawValue).font(.appScaled(size: 12, weight: .semibold))
                                             .foregroundStyle(op == o ? .white : LBrand.textSecondary)
                                             .padding(.horizontal, 12).padding(.vertical, 7)
                                             .background(op == o ? kpi.tint.opacity(0.3) : LBrand.cardHi, in: Capsule())
@@ -4798,7 +4798,7 @@ struct LeadbookAlertSheet: View {
                             }
                             if op != .change {
                                 Text("\(Int(threshold))")
-                                    .font(.system(size: 36, weight: .heavy, design: .rounded))
+                                    .font(.appScaled(size: 36, weight: .heavy, design: .rounded))
                                     .foregroundStyle(kpi.tint)
                                 Slider(value: $threshold, in: 0...200, step: 1).tint(kpi.tint)
                             }
@@ -4806,7 +4806,7 @@ struct LeadbookAlertSheet: View {
                         .padding(14)
                         .background(LBrand.card, in: RoundedRectangle(cornerRadius: 12))
                         VStack(alignment: .leading, spacing: 10) {
-                            Text("KANALER").font(.system(size: 10, weight: .black))
+                            Text("KANALER").font(.appScaled(size: 10, weight: .black))
                                 .foregroundStyle(LBrand.textTertiary).tracking(0.8)
                             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
                                 ForEach(Channel.allCases) { c in
@@ -4814,8 +4814,8 @@ struct LeadbookAlertSheet: View {
                                         if channels.contains(c) { channels.remove(c) } else { channels.insert(c) }
                                     } label: {
                                         HStack(spacing: 8) {
-                                            Image(systemName: c.icon).font(.system(size: 13, weight: .bold))
-                                            Text(c.rawValue).font(.system(size: 13, weight: .semibold))
+                                            Image(systemName: c.icon).font(.appScaled(size: 13, weight: .bold))
+                                            Text(c.rawValue).font(.appScaled(size: 13, weight: .semibold))
                                             Spacer()
                                             Image(systemName: channels.contains(c) ? "checkmark.circle.fill" : "circle")
                                                 .foregroundStyle(channels.contains(c) ? LBrand.green : LBrand.textTertiary)
@@ -4846,7 +4846,7 @@ struct LeadbookAlertSheet: View {
                         onSave(desc)
                         dismiss()
                     } label: {
-                        Text("Aktiver").font(.system(size: 14, weight: .bold))
+                        Text("Aktiver").font(.appScaled(size: 14, weight: .bold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 14).padding(.vertical, 8)
                             .background(kpi.tint, in: RoundedRectangle(cornerRadius: 10))
@@ -4870,14 +4870,14 @@ struct LeadbookShareSheet: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("DEL RAPPORT FOR").font(.system(size: 10, weight: .black))
+                            Text("DEL RAPPORT FOR").font(.appScaled(size: 10, weight: .black))
                                 .foregroundStyle(LBrand.textTertiary).tracking(0.8)
-                            Text(kpi.title).font(.system(size: 22, weight: .heavy)).foregroundStyle(.white)
-                            Text("\(kpi.value) — \(kpi.trend)").font(.system(size: 13))
+                            Text(kpi.title).font(.appScaled(size: 22, weight: .heavy)).foregroundStyle(.white)
+                            Text("\(kpi.value) — \(kpi.trend)").font(.appScaled(size: 13))
                                 .foregroundStyle(LBrand.textSecondary)
                         }
                         VStack(alignment: .leading, spacing: 6) {
-                            Text("MOTTAKERE").font(.system(size: 10, weight: .black))
+                            Text("MOTTAKERE").font(.appScaled(size: 10, weight: .black))
                                 .foregroundStyle(LBrand.textTertiary).tracking(0.8)
                             TextField("E-post, kommaseparert", text: $recipients)
                                 .foregroundStyle(.white).textFieldStyle(.plain)
@@ -4886,7 +4886,7 @@ struct LeadbookShareSheet: View {
                                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(LBrand.stroke, lineWidth: 1))
                         }
                         VStack(alignment: .leading, spacing: 6) {
-                            Text("MELDING").font(.system(size: 10, weight: .black))
+                            Text("MELDING").font(.appScaled(size: 10, weight: .black))
                                 .foregroundStyle(LBrand.textTertiary).tracking(0.8)
                             TextEditor(text: $message)
                                 .foregroundStyle(.white)
@@ -4899,7 +4899,7 @@ struct LeadbookShareSheet: View {
                         HStack(spacing: 10) {
                             Button {} label: {
                                 Label("Kopier lenke", systemImage: "link")
-                                    .font(.system(size: 12, weight: .semibold))
+                                    .font(.appScaled(size: 12, weight: .semibold))
                                     .foregroundStyle(.white)
                                     .padding(.horizontal, 12).padding(.vertical, 10)
                                     .frame(maxWidth: .infinity)
@@ -4907,7 +4907,7 @@ struct LeadbookShareSheet: View {
                             }.buttonStyle(.plain)
                             Button {} label: {
                                 Label("Eksporter PDF", systemImage: "square.and.arrow.down")
-                                    .font(.system(size: 12, weight: .semibold))
+                                    .font(.appScaled(size: 12, weight: .semibold))
                                     .foregroundStyle(.white)
                                     .padding(.horizontal, 12).padding(.vertical, 10)
                                     .frame(maxWidth: .infinity)
@@ -4928,7 +4928,7 @@ struct LeadbookShareSheet: View {
                     Button {
                         dismiss()
                     } label: {
-                        Text("Send").font(.system(size: 14, weight: .bold))
+                        Text("Send").font(.appScaled(size: 14, weight: .bold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 14).padding(.vertical, 8)
                             .background(

@@ -141,9 +141,9 @@ struct UploadFileSheet: View {
                         Button { stage = .selectSource } label: {
                             HStack(spacing: 4) {
                                 Image(systemName: "chevron.left")
-                                    .font(.system(size: 11, weight: .semibold))
+                                    .font(.appScaled(size: 11, weight: .semibold))
                                 Text("Tilbake")
-                                    .font(.system(size: 13, weight: .semibold))
+                                    .font(.appScaled(size: 13, weight: .semibold))
                             }
                             .foregroundStyle(UfBrand.purpleLight)
                         }
@@ -196,16 +196,16 @@ struct UploadFileSheet: View {
                 RoundedRectangle(cornerRadius: 10)
                     .fill(companyColor.opacity(0.22))
                 Image(systemName: "building.2.fill")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.appScaled(size: 16, weight: .semibold))
                     .foregroundStyle(companyColor)
             }
             .frame(width: 42, height: 42)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Last opp til")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(UfBrand.textSecondary)
                 Text(companyName)
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
             }
             Spacer()
@@ -218,15 +218,15 @@ struct UploadFileSheet: View {
     private var pickSourceCard: some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "info.circle.fill")
-                .font(.system(size: 13))
+                .font(.appScaled(size: 13))
                 .foregroundStyle(UfBrand.purpleLight)
                 .padding(.top, 1)
             VStack(alignment: .leading, spacing: 3) {
                 Text("Velg kilde")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(.white)
                 Text("Du kan laste opp én eller flere filer fra en av kildene under. Filer lagres kryptert i Leadgrid B2-storage.")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(UfBrand.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -259,10 +259,10 @@ struct UploadFileSheet: View {
     private func sectionLabel(_ s: String, icon: String) -> some View {
         HStack(spacing: 7) {
             Image(systemName: icon)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(UfBrand.purpleLight)
             Text(s)
-                .font(.system(size: 12, weight: .bold))
+                .font(.appScaled(size: 12, weight: .bold))
                 .foregroundStyle(.white)
             Spacer()
         }
@@ -278,16 +278,16 @@ struct UploadFileSheet: View {
                             startPoint: .topLeading, endPoint: .bottomTrailing
                         ))
                     Image(systemName: src.icon)
-                        .font(.system(size: 22, weight: .semibold))
+                        .font(.appScaled(size: 22, weight: .semibold))
                         .foregroundStyle(src.color)
                 }
                 .frame(height: 70)
                 Text(src.rawValue)
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
                 Text(src.subtitle)
-                    .font(.system(size: 9))
+                    .font(.appScaled(size: 9))
                     .foregroundStyle(UfBrand.textSecondary)
                     .lineLimit(2)
                     .multilineTextAlignment(.center)
@@ -350,21 +350,21 @@ struct UploadFileSheet: View {
                 RoundedRectangle(cornerRadius: 10)
                     .fill((selectedSource?.color ?? UfBrand.purple).opacity(0.22))
                 Image(systemName: inferIcon(for: fileName))
-                    .font(.system(size: 22, weight: .semibold))
+                    .font(.appScaled(size: 22, weight: .semibold))
                     .foregroundStyle(selectedSource?.color ?? UfBrand.purple)
             }
             .frame(width: 60, height: 60)
             VStack(alignment: .leading, spacing: 3) {
                 Text(fileName)
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                     .lineLimit(2)
                 if let src = selectedSource {
                     HStack(spacing: 4) {
                         Image(systemName: src.icon)
-                            .font(.system(size: 9))
+                            .font(.appScaled(size: 9))
                         Text("Fra \(src.rawValue)")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.appScaled(size: 10, weight: .semibold))
                     }
                     .foregroundStyle(src.color)
                 }
@@ -392,12 +392,12 @@ struct UploadFileSheet: View {
     private var nameField: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Filnavn")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.appScaled(size: 11, weight: .semibold))
                 .foregroundStyle(UfBrand.textSecondary)
             TextField("", text: $fileName)
                 .textFieldStyle(.plain)
                 .foregroundStyle(.white)
-                .font(.system(size: 13))
+                .font(.appScaled(size: 13))
                 .padding(.horizontal, 12).padding(.vertical, 11)
                 .background(UfBrand.card, in: RoundedRectangle(cornerRadius: 10))
                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(UfBrand.stroke, lineWidth: 1))
@@ -407,7 +407,7 @@ struct UploadFileSheet: View {
     private var tagsCard: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Tags")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.appScaled(size: 11, weight: .semibold))
                 .foregroundStyle(UfBrand.textSecondary)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
@@ -416,7 +416,7 @@ struct UploadFileSheet: View {
                             if tags.contains(t) { tags.remove(t) } else { tags.insert(t) }
                         } label: {
                             Text(t)
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.appScaled(size: 11, weight: .semibold))
                                 .foregroundStyle(tags.contains(t) ? .white : UfBrand.textSecondary)
                                 .padding(.horizontal, 12).padding(.vertical, 7)
                                 .background(
@@ -441,20 +441,20 @@ struct UploadFileSheet: View {
     private var descriptionField: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Beskrivelse (valgfritt)")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.appScaled(size: 11, weight: .semibold))
                 .foregroundStyle(UfBrand.textSecondary)
             ZStack(alignment: .topLeading) {
                 TextEditor(text: $fileDescription)
                     .scrollContentBackground(.hidden)
                     .foregroundStyle(.white)
-                    .font(.system(size: 12))
+                    .font(.appScaled(size: 12))
                     .frame(minHeight: 80)
                     .padding(10)
                     .background(UfBrand.card, in: RoundedRectangle(cornerRadius: 10))
                     .overlay(RoundedRectangle(cornerRadius: 10).stroke(UfBrand.stroke, lineWidth: 1))
                 if fileDescription.isEmpty {
                     Text("F.eks. «Endelig tilbud — del 2 inkluderer oppdateringen»")
-                        .font(.system(size: 12))
+                        .font(.appScaled(size: 12))
                         .foregroundStyle(UfBrand.textTertiary)
                         .padding(.horizontal, 14).padding(.vertical, 16)
                         .allowsHitTesting(false)
@@ -467,7 +467,7 @@ struct UploadFileSheet: View {
         HStack(spacing: 10) {
             Button { stage = .selectSource } label: {
                 Text("Tilbake")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.appScaled(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 13)
@@ -478,9 +478,9 @@ struct UploadFileSheet: View {
             Button { startUpload() } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "arrow.up.circle.fill")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                     Text("Last opp")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.appScaled(size: 14, weight: .bold))
                 }
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
@@ -534,15 +534,15 @@ struct UploadFileSheet: View {
                     .frame(width: 100, height: 100)
                     .animation(.linear, value: uploadProgress)
                 Text("\(Int(uploadProgress * 100)) %")
-                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: 22, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
             }
             VStack(spacing: 5) {
                 Text("Laster opp \(fileName)")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 Text("Krypterer + lagrer i Leadgrid B2-storage")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(UfBrand.textSecondary)
             }
             Spacer()
@@ -563,15 +563,15 @@ struct UploadFileSheet: View {
                     ))
                     .frame(width: 100, height: 100)
                 Image(systemName: "checkmark")
-                    .font(.system(size: 40, weight: .bold))
+                    .font(.appScaled(size: 40, weight: .bold))
                     .foregroundStyle(UfBrand.green)
             }
             VStack(spacing: 5) {
                 Text("Opplastet!")
-                    .font(.system(size: 18, weight: .bold))
+                    .font(.appScaled(size: 18, weight: .bold))
                     .foregroundStyle(.white)
                 Text("\(fileName) er lagret på \(companyName)")
-                    .font(.system(size: 12))
+                    .font(.appScaled(size: 12))
                     .foregroundStyle(UfBrand.textSecondary)
                     .multilineTextAlignment(.center)
             }
@@ -586,9 +586,9 @@ struct UploadFileSheet: View {
                 } label: {
                     HStack(spacing: 5) {
                         Image(systemName: "plus.circle.fill")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.appScaled(size: 12, weight: .bold))
                         Text("Last opp en til")
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.appScaled(size: 13, weight: .semibold))
                     }
                     .foregroundStyle(UfBrand.purpleLight)
                     .frame(maxWidth: .infinity)
@@ -599,7 +599,7 @@ struct UploadFileSheet: View {
                 .buttonStyle(.plain)
                 Button { dismiss() } label: {
                     Text("Ferdig")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.appScaled(size: 14, weight: .bold))
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 13)

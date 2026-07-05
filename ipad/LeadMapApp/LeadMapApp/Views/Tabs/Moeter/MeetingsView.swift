@@ -613,22 +613,22 @@ struct MeetingsView: View {
                     RoundedRectangle(cornerRadius: 10)
                         .fill(MtBrand.purpleLight.opacity(0.22))
                     Image(systemName: "chart.bar.fill")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.appScaled(size: 16, weight: .semibold))
                         .foregroundStyle(MtBrand.purpleLight)
                 }
                 .frame(width: 40, height: 40)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Statistikk")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.appScaled(size: 14, weight: .bold))
                         .foregroundStyle(.white)
                     Text(subtitle)
-                        .font(.system(size: 12))
+                        .font(.appScaled(size: 12))
                         .foregroundStyle(MtBrand.textSecondary)
                 }
                 Spacer()
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.appScaled(size: 13, weight: .semibold))
                     .foregroundStyle(MtBrand.textSecondary)
             }
             .padding(14)
@@ -644,7 +644,7 @@ struct MeetingsView: View {
         ScrollView {
             VStack(spacing: 14) {
                 Text("Statistikk")
-                    .font(.system(size: 20, weight: .bold))
+                    .font(.appScaled(size: 20, weight: .bold))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.top, 18)
@@ -663,23 +663,23 @@ struct MeetingsView: View {
         HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 8) {
                 Text(title)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(MtBrand.textSecondary)
                 Text(value)
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: 28, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
                     .monospacedDigit()
                     .lineLimit(1)
                     .minimumScaleFactor(0.6)
                 Text(subtitle)
-                    .font(.system(size: 10))
+                    .font(.appScaled(size: 10))
                     .foregroundStyle(trendPositive ? MtBrand.green : MtBrand.textTertiary)
             }
             Spacer(minLength: 0)
             ZStack {
                 RoundedRectangle(cornerRadius: 10).fill(color.opacity(0.22))
                 Image(systemName: icon)
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.appScaled(size: 16, weight: .semibold))
                     .foregroundStyle(color)
             }
             .frame(width: 40, height: 40)
@@ -700,10 +700,10 @@ struct MeetingsView: View {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(calendarCardTitle)
-                        .font(.system(size: 15, weight: .bold))
+                        .font(.appScaled(size: 15, weight: .bold))
                         .foregroundStyle(.white)
                     Text(calendarCardSubtitle)
-                        .font(.system(size: 12))
+                        .font(.appScaled(size: 12))
                         .foregroundStyle(MtBrand.textSecondary)
                 }
                 Spacer()
@@ -817,7 +817,7 @@ struct MeetingsView: View {
                 ZStack {
                     Circle().fill(m.iconColor.opacity(0.22))
                     Image(systemName: m.icon)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.appScaled(size: 13, weight: .semibold))
                         .foregroundStyle(m.iconColor)
                 }
                 .frame(width: 36, height: 36)
@@ -826,12 +826,12 @@ struct MeetingsView: View {
                     // Tittel + tid
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text(m.company)
-                            .font(.system(size: 13, weight: .bold))
+                            .font(.appScaled(size: 13, weight: .bold))
                             .foregroundStyle(.white)
                             .lineLimit(1)
                         Spacer(minLength: 6)
                         Text("\(m.startTime)–\(m.endTime)")
-                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .font(.appScaled(size: 11, weight: .semibold, design: .rounded))
                             .foregroundStyle(MtBrand.textSecondary)
                             .monospacedDigit()
                     }
@@ -839,11 +839,11 @@ struct MeetingsView: View {
                     HStack(spacing: 6) {
                         VStack(alignment: .leading, spacing: 1) {
                             Text(m.contactName)
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.appScaled(size: 11, weight: .semibold))
                                 .foregroundStyle(.white)
                                 .lineLimit(1)
                             Text(m.location)
-                                .font(.system(size: 10))
+                                .font(.appScaled(size: 10))
                                 .foregroundStyle(MtBrand.textSecondary)
                                 .lineLimit(1)
                         }
@@ -871,11 +871,11 @@ struct MeetingsView: View {
                 // Tid-kolonne
                 VStack(alignment: .leading, spacing: 1) {
                     Text(m.startTime)
-                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .font(.appScaled(size: 13, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                         .monospacedDigit()
                     Text(m.endTime)
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(MtBrand.textSecondary)
                         .monospacedDigit()
                 }
@@ -898,7 +898,7 @@ struct MeetingsView: View {
                 ZStack {
                     Circle().fill(m.iconColor.opacity(0.22))
                     Image(systemName: m.icon)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.appScaled(size: 13, weight: .semibold))
                         .foregroundStyle(m.iconColor)
                 }
                 .frame(width: 36, height: 36)
@@ -907,11 +907,11 @@ struct MeetingsView: View {
                 // Bedrift + sted
                 VStack(alignment: .leading, spacing: 2) {
                     Text(m.company)
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
                     Text(m.location)
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(MtBrand.textSecondary)
                         .lineLimit(1)
                 }
@@ -920,11 +920,11 @@ struct MeetingsView: View {
                 // Kontaktperson
                 VStack(alignment: .leading, spacing: 2) {
                     Text(m.contactName)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
                     Text(m.contactRole)
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(MtBrand.textSecondary)
                         .lineLimit(1)
                 }
@@ -936,7 +936,7 @@ struct MeetingsView: View {
 
                 // Chevron
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(MtBrand.textTertiary)
                     .padding(.leading, 6)
             }
@@ -954,7 +954,7 @@ struct MeetingsView: View {
 
     private func statusBadge(_ st: Meeting.Status) -> some View {
         Text(st.label)
-            .font(.system(size: 10, weight: .bold))
+            .font(.appScaled(size: 10, weight: .bold))
             .foregroundStyle(st.color)
             .padding(.horizontal, 9).padding(.vertical, 4)
             .background(st.color.opacity(0.18), in: Capsule())
@@ -994,13 +994,13 @@ struct MeetingsView: View {
     private var emptyAgendaRow: some View {
         VStack(spacing: 10) {
             Image(systemName: "calendar")
-                .font(.system(size: 34))
+                .font(.appScaled(size: 34))
                 .foregroundStyle(MtBrand.textTertiary)
             Text("Ingen møter i dag")
-                .font(.system(size: 14, weight: .semibold))
+                .font(.appScaled(size: 14, weight: .semibold))
                 .foregroundStyle(.white)
             Text("Bok et møte fra en lead, eller skru på demo-modus for eksempler.")
-                .font(.system(size: 12))
+                .font(.appScaled(size: 12))
                 .foregroundStyle(MtBrand.textSecondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 380)
@@ -1016,11 +1016,11 @@ struct MeetingsView: View {
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("Kommende møter")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 if hasUpcoming {
                     Text("\(sourceUpcoming.count)")
-                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .font(.appScaled(size: 10, weight: .bold, design: .rounded))
                         .foregroundStyle(MtBrand.purpleLight)
                         .monospacedDigit()
                         .padding(.horizontal, 6).padding(.vertical, 2)
@@ -1030,7 +1030,7 @@ struct MeetingsView: View {
                 if hasUpcoming {
                     Button { showAllUpcoming = true } label: {
                         Text("Se alle")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.appScaled(size: 11, weight: .semibold))
                             .foregroundStyle(MtBrand.purpleLight)
                     }
                     .buttonStyle(.plain)
@@ -1057,13 +1057,13 @@ struct MeetingsView: View {
             } else {
                 VStack(spacing: 8) {
                     Image(systemName: "calendar.badge.plus")
-                        .font(.system(size: 26))
+                        .font(.appScaled(size: 26))
                         .foregroundStyle(MtBrand.textTertiary)
                     Text("Ingen kommende møter")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(MtBrand.textSecondary)
                     Text("Bok et møte fra en lead, eller skru på demo-modus for eksempler.")
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(MtBrand.textTertiary)
                         .multilineTextAlignment(.center)
                         .frame(maxWidth: 320)
@@ -1082,11 +1082,11 @@ struct MeetingsView: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Text(u.dayLabel)
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.appScaled(size: 10, weight: .semibold))
                         .foregroundStyle(MtBrand.textSecondary)
                     Spacer()
                     Text(u.time)
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appScaled(size: 12, weight: .bold))
                         .foregroundStyle(.white)
                         .monospacedDigit()
                 }
@@ -1095,17 +1095,17 @@ struct MeetingsView: View {
                         RoundedRectangle(cornerRadius: 7)
                             .fill(u.iconColor.opacity(0.22))
                         Image(systemName: u.icon)
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.appScaled(size: 11, weight: .semibold))
                             .foregroundStyle(u.iconColor)
                     }
                     .frame(width: 24, height: 24)
                     VStack(alignment: .leading, spacing: 0) {
                         Text(u.company)
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.appScaled(size: 12, weight: .bold))
                             .foregroundStyle(.white)
                             .lineLimit(1)
                         Text(u.location)
-                            .font(.system(size: 10))
+                            .font(.appScaled(size: 10))
                             .foregroundStyle(MtBrand.textSecondary)
                             .lineLimit(1)
                     }
@@ -1114,9 +1114,9 @@ struct MeetingsView: View {
                     // Prep-status
                     HStack(spacing: 3) {
                         Image(systemName: u.prepStatus.icon)
-                            .font(.system(size: 8, weight: .bold))
+                            .font(.appScaled(size: 8, weight: .bold))
                         Text(u.prepStatus.rawValue)
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.appScaled(size: 9, weight: .bold))
                     }
                     .foregroundStyle(u.prepStatus.color)
                     .padding(.horizontal, 6).padding(.vertical, 2)
@@ -1125,7 +1125,7 @@ struct MeetingsView: View {
                     Spacer()
                     // Verdi
                     Text("NOK \(u.valueNok / 1000)k")
-                        .font(.system(size: 9, weight: .bold, design: .rounded))
+                        .font(.appScaled(size: 9, weight: .bold, design: .rounded))
                         .foregroundStyle(MtBrand.green)
                         .monospacedDigit()
                 }
@@ -1142,13 +1142,13 @@ struct MeetingsView: View {
         Button { showAllUpcoming = true } label: {
             VStack(spacing: 5) {
                 Image(systemName: "arrow.up.right.square.fill")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.appScaled(size: 16, weight: .semibold))
                     .foregroundStyle(MtBrand.purpleLight)
                 Text("Se alle møter")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(MtBrand.purpleLight)
                 Text("+\(max(0, sourceUpcoming.count - 3)) flere")
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(.appScaled(size: 9, weight: .semibold))
                     .foregroundStyle(MtBrand.textTertiary)
                     .monospacedDigit()
             }
@@ -1170,19 +1170,19 @@ struct MeetingsView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Møteforberedelse")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
                 Button {} label: {
                     Text("Rediger")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(MtBrand.purpleLight)
                 }
                 .buttonStyle(.plain)
             }
             if MeetingsData.prep.isEmpty {
                 Text("Ingen forberedelser registrert enda")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(MtBrand.textSecondary)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
@@ -1205,12 +1205,12 @@ struct MeetingsView: View {
                 ZStack {
                     Circle().fill(p.color.opacity(0.22))
                     Image(systemName: p.icon)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(p.color)
                 }
                 .frame(width: 28, height: 28)
                 Text(p.category)
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(.white)
             }
             .frame(width: 120, alignment: .leading)
@@ -1219,10 +1219,10 @@ struct MeetingsView: View {
                 ForEach(p.bullets, id: \.self) { bullet in
                     HStack(alignment: .top, spacing: 6) {
                         Text("•")
-                            .font(.system(size: 11))
+                            .font(.appScaled(size: 11))
                             .foregroundStyle(MtBrand.textSecondary)
                         Text(bullet)
-                            .font(.system(size: 12))
+                            .font(.appScaled(size: 12))
                             .foregroundStyle(.white)
                     }
                 }
@@ -1241,13 +1241,13 @@ struct MeetingDetailEmptyState: View {
         VStack(spacing: 14) {
             Spacer()
             Image(systemName: "calendar.circle")
-                .font(.system(size: 44))
+                .font(.appScaled(size: 44))
                 .foregroundStyle(MtBrand.textTertiary)
             Text("Ingen møte valgt")
-                .font(.system(size: 15, weight: .semibold))
+                .font(.appScaled(size: 15, weight: .semibold))
                 .foregroundStyle(.white)
             Text("Detaljer, rute og AI-innsikt vises her når du har valgt et møte.")
-                .font(.system(size: 12))
+                .font(.appScaled(size: 12))
                 .foregroundStyle(MtBrand.textSecondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 24)
@@ -1347,21 +1347,21 @@ struct MeetingDetailSidebar: View {
                 ZStack {
                     Circle().fill(meeting.iconColor.opacity(0.25))
                     Image(systemName: meeting.icon)
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(.appScaled(size: 18, weight: .semibold))
                         .foregroundStyle(meeting.iconColor)
                 }
                 .frame(width: 46, height: 46)
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
                         Text(meeting.company)
-                            .font(.system(size: 15, weight: .bold))
+                            .font(.appScaled(size: 15, weight: .bold))
                             .foregroundStyle(.white)
                         Button {
                             favorited.toggle()
                             flashToast(favorited ? "Markert som favoritt" : "Favoritt fjernet")
                         } label: {
                             Image(systemName: favorited ? "star.fill" : "star")
-                                .font(.system(size: 12))
+                                .font(.appScaled(size: 12))
                                 .foregroundStyle(favorited ? MtBrand.yellow : MtBrand.textTertiary)
                         }
                         .buttonStyle(.plain)
@@ -1375,7 +1375,7 @@ struct MeetingDetailSidebar: View {
                 Text("·")
                     .foregroundStyle(MtBrand.textTertiary)
                 Text("Lead score \(meeting.leadScore)")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.appScaled(size: 10, weight: .semibold))
                     .foregroundStyle(MtBrand.textSecondary)
                 badge(meeting.leadType, color: MtBrand.yellow)
             }
@@ -1438,7 +1438,7 @@ struct MeetingDetailSidebar: View {
             }
         } label: {
             Image(systemName: "ellipsis")
-                .font(.system(size: 13, weight: .bold))
+                .font(.appScaled(size: 13, weight: .bold))
                 .foregroundStyle(MtBrand.textSecondary)
                 .padding(8)
                 .contentShape(Rectangle())
@@ -1447,7 +1447,7 @@ struct MeetingDetailSidebar: View {
 
     private func badge(_ label: String, color: Color) -> some View {
         Text(label)
-            .font(.system(size: 9, weight: .bold))
+            .font(.appScaled(size: 9, weight: .bold))
             .foregroundStyle(color)
             .padding(.horizontal, 7).padding(.vertical, 3)
             .background(color.opacity(0.18), in: Capsule())
@@ -1457,27 +1457,27 @@ struct MeetingDetailSidebar: View {
     private var meta: some View {
         VStack(alignment: .leading, spacing: 11) {
             HStack(spacing: 9) {
-                ZStack { Circle().fill(MtBrand.purple.opacity(0.18)); Image(systemName: "calendar").font(.system(size: 11)).foregroundStyle(MtBrand.purpleLight) }
+                ZStack { Circle().fill(MtBrand.purple.opacity(0.18)); Image(systemName: "calendar").font(.appScaled(size: 11)).foregroundStyle(MtBrand.purpleLight) }
                 .frame(width: 26, height: 26)
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Tirsdag 20. mai 2025")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
                     Text("\(meeting.startTime) – \(meeting.endTime)")
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(MtBrand.textSecondary)
                 }
             }
             HStack(spacing: 9) {
-                ZStack { Circle().fill(MtBrand.purple.opacity(0.18)); Image(systemName: "mappin.and.ellipse").font(.system(size: 11)).foregroundStyle(MtBrand.purpleLight) }
+                ZStack { Circle().fill(MtBrand.purple.opacity(0.18)); Image(systemName: "mappin.and.ellipse").font(.appScaled(size: 11)).foregroundStyle(MtBrand.purpleLight) }
                 .frame(width: 26, height: 26)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(meeting.address)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
                     if let room = meeting.meetingRoom {
                         Text("Møterom: \(room)")
-                            .font(.system(size: 11))
+                            .font(.appScaled(size: 11))
                             .foregroundStyle(MtBrand.textSecondary)
                     }
                 }
@@ -1487,14 +1487,14 @@ struct MeetingDetailSidebar: View {
 
     private var contactRow: some View {
         HStack(spacing: 9) {
-            ZStack { Circle().fill(MtBrand.purple.opacity(0.18)); Image(systemName: "person.fill").font(.system(size: 11)).foregroundStyle(MtBrand.purpleLight) }
+            ZStack { Circle().fill(MtBrand.purple.opacity(0.18)); Image(systemName: "person.fill").font(.appScaled(size: 11)).foregroundStyle(MtBrand.purpleLight) }
             .frame(width: 26, height: 26)
             VStack(alignment: .leading, spacing: 1) {
                 Text(meeting.contactName)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(.white)
                 Text(meeting.contactRole)
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(MtBrand.textSecondary)
             }
             Spacer()
@@ -1512,7 +1512,7 @@ struct MeetingDetailSidebar: View {
             ZStack {
                 Circle().fill(color.opacity(0.20))
                 Image(systemName: icon)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(color)
             }
             .frame(width: 28, height: 28)
@@ -1523,15 +1523,15 @@ struct MeetingDetailSidebar: View {
     private var value: some View {
         HStack {
             HStack(spacing: 9) {
-                ZStack { Circle().fill(MtBrand.purple.opacity(0.18)); Image(systemName: "norwegiankronesign.circle.fill").font(.system(size: 11)).foregroundStyle(MtBrand.purpleLight) }
+                ZStack { Circle().fill(MtBrand.purple.opacity(0.18)); Image(systemName: "norwegiankronesign.circle.fill").font(.appScaled(size: 11)).foregroundStyle(MtBrand.purpleLight) }
                 .frame(width: 26, height: 26)
                 Text("Forventet verdi")
-                    .font(.system(size: 12))
+                    .font(.appScaled(size: 12))
                     .foregroundStyle(MtBrand.textSecondary)
             }
             Spacer()
             Text("NOK \(formatNok(meeting.valueNok))")
-                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .font(.appScaled(size: 13, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
                 .monospacedDigit()
         }
@@ -1543,9 +1543,9 @@ struct MeetingDetailSidebar: View {
                 Button { showStartMeeting = true } label: {
                     HStack(spacing: 5) {
                         Image(systemName: "play.circle.fill")
-                            .font(.system(size: 13, weight: .bold))
+                            .font(.appScaled(size: 13, weight: .bold))
                         Text("Start møte")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.appScaled(size: 12, weight: .bold))
                     }
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
@@ -1560,9 +1560,9 @@ struct MeetingDetailSidebar: View {
                 Button { showNavigate = true } label: {
                     HStack(spacing: 5) {
                         Image(systemName: "location.north.line.fill")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.appScaled(size: 11, weight: .semibold))
                         Text("Naviger")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.appScaled(size: 12, weight: .semibold))
                     }
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
@@ -1576,9 +1576,9 @@ struct MeetingDetailSidebar: View {
                 Button { openURL("tel://+4790012345") } label: {
                     HStack(spacing: 5) {
                         Image(systemName: "phone.fill")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.appScaled(size: 11, weight: .semibold))
                         Text("Ring kontakt")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.appScaled(size: 12, weight: .semibold))
                     }
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
@@ -1590,9 +1590,9 @@ struct MeetingDetailSidebar: View {
                 Button { showOpenLead = true } label: {
                     HStack(spacing: 5) {
                         Image(systemName: "arrow.up.right.square")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.appScaled(size: 11, weight: .semibold))
                         Text("Åpne lead")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.appScaled(size: 12, weight: .semibold))
                     }
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
@@ -1611,12 +1611,12 @@ struct MeetingDetailSidebar: View {
             Button { showAIInsights = true } label: {
                 HStack(spacing: 7) {
                     Image(systemName: "sparkles")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                     Text("AI-innsikt for møtet")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                     Spacer()
                     Image(systemName: "arrow.up.right")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.appScaled(size: 11, weight: .bold))
                         .opacity(0.7)
                 }
                 .foregroundStyle(.white)
@@ -1636,9 +1636,9 @@ struct MeetingDetailSidebar: View {
                 Button { showLogNote = true } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "square.and.pencil")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.appScaled(size: 12, weight: .semibold))
                         Text("Logg notat")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.appScaled(size: 12, weight: .semibold))
                     }
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
@@ -1650,11 +1650,11 @@ struct MeetingDetailSidebar: View {
                 Button { showHistory = true } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "clock.arrow.circlepath")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.appScaled(size: 12, weight: .semibold))
                         Text("Aktivitet")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.appScaled(size: 12, weight: .semibold))
                         Text("1+6")
-                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                            .font(.appScaled(size: 9, weight: .bold, design: .rounded))
                             .foregroundStyle(MtBrand.yellow)
                             .monospacedDigit()
                             .padding(.horizontal, 5).padding(.vertical, 1)
@@ -1673,10 +1673,10 @@ struct MeetingDetailSidebar: View {
                 Button { showPrepCore = true } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "target")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.appScaled(size: 12, weight: .semibold))
                             .foregroundStyle(MtBrand.blue)
                         Text("Mål & behov")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.appScaled(size: 12, weight: .semibold))
                             .foregroundStyle(.white)
                     }
                     .frame(maxWidth: .infinity)
@@ -1688,13 +1688,13 @@ struct MeetingDetailSidebar: View {
                 Button { showStakeholders = true } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "person.3.fill")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.appScaled(size: 12, weight: .semibold))
                             .foregroundStyle(MtBrand.green)
                         Text("Stakeholders")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.appScaled(size: 12, weight: .semibold))
                             .foregroundStyle(.white)
                         Text("4")
-                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                            .font(.appScaled(size: 9, weight: .bold, design: .rounded))
                             .foregroundStyle(MtBrand.green)
                             .monospacedDigit()
                             .padding(.horizontal, 5).padding(.vertical, 1)
@@ -1718,11 +1718,11 @@ struct MeetingDetailSidebar: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 6) {
                     Text("Rute til møte")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(.white)
                     Spacer()
                     Image(systemName: "arrow.up.right.square.fill")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appScaled(size: 12, weight: .bold))
                         .foregroundStyle(MtBrand.purpleLight)
                 }
                 HStack(spacing: 10) {
@@ -1737,7 +1737,7 @@ struct MeetingDetailSidebar: View {
                                         .overlay(Circle().stroke(Color.white, lineWidth: 2))
                                         .frame(width: 22, height: 22)
                                     Image(systemName: "mappin")
-                                        .font(.system(size: 10, weight: .bold))
+                                        .font(.appScaled(size: 10, weight: .bold))
                                         .foregroundStyle(.white)
                                 }
                             }
@@ -1753,9 +1753,9 @@ struct MeetingDetailSidebar: View {
                         // Trykk-hint-pille nederst i høyre hjørne av mini-kartet
                         HStack(spacing: 3) {
                             Image(systemName: "hand.tap.fill")
-                                .font(.system(size: 8, weight: .bold))
+                                .font(.appScaled(size: 8, weight: .bold))
                             Text("Åpne")
-                                .font(.system(size: 9, weight: .black))
+                                .font(.appScaled(size: 9, weight: .black))
                                 .tracking(0.4)
                         }
                         .foregroundStyle(.white)
@@ -1770,21 +1770,21 @@ struct MeetingDetailSidebar: View {
                         // Ekte møter mangler datakilde for dette enda.
                         if meeting.driveTimeMin > 0 {
                             Text("\(meeting.driveTimeMin) min")
-                                .font(.system(size: 18, weight: .bold, design: .rounded))
+                                .font(.appScaled(size: 18, weight: .bold, design: .rounded))
                                 .foregroundStyle(.white)
                                 .monospacedDigit()
                             Text("(\(meeting.driveDistanceKm) km)")
-                                .font(.system(size: 11))
+                                .font(.appScaled(size: 11))
                                 .foregroundStyle(MtBrand.textSecondary)
                                 .monospacedDigit()
                         }
                         if !meeting.trafficStatus.isEmpty {
                             Text(meeting.trafficStatus)
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.appScaled(size: 11, weight: .semibold))
                                 .foregroundStyle(meeting.trafficStatus.lowercased().contains("lett") ? MtBrand.green : (meeting.trafficStatus.lowercased().contains("tett") ? MtBrand.red : MtBrand.orange))
                         }
                         Text(meeting.address)
-                            .font(.system(size: 10))
+                            .font(.appScaled(size: 10))
                             .foregroundStyle(MtBrand.textSecondary)
                             .lineLimit(2)
                             .padding(.top, 2)
@@ -1804,7 +1804,7 @@ struct MeetingDetailSidebar: View {
     private var nbaCard: some View {
         VStack(alignment: .leading, spacing: 9) {
             Text("Neste beste handling")
-                .font(.system(size: 13, weight: .bold))
+                .font(.appScaled(size: 13, weight: .bold))
                 .foregroundStyle(.white)
             HStack(spacing: 11) {
                 ZStack {
@@ -1813,20 +1813,20 @@ struct MeetingDetailSidebar: View {
                         startPoint: .topLeading, endPoint: .bottomTrailing
                     ))
                     Image(systemName: "target")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.appScaled(size: 14, weight: .bold))
                         .foregroundStyle(.white)
                 }
                 .frame(width: 42, height: 42)
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Send oppsummering etter møtet")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appScaled(size: 12, weight: .bold))
                         .foregroundStyle(.white)
                     Text("Del nøkkelpunkter og avtal neste steg.")
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(MtBrand.textSecondary)
                     Button { flashToast("Oppgave opprettet i innboks") } label: {
                         Text("Opprett oppgave")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.appScaled(size: 11, weight: .semibold))
                             .foregroundStyle(MtBrand.purpleLight)
                             .padding(.horizontal, 10).padding(.vertical, 5)
                             .background(MtBrand.purple.opacity(0.20), in: Capsule())

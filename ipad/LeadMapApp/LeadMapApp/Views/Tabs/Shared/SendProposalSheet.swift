@@ -100,11 +100,11 @@ struct SendProposalSheet: View {
                 sectionCard("Mottaker", icon: "envelope.fill") {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(leadName)
-                            .font(.system(size: 14, weight: .bold))
+                            .font(.appScaled(size: 14, weight: .bold))
                             .foregroundStyle(.white)
                         if let email = leadEmail, !email.isEmpty {
                             Text(email)
-                                .font(.system(size: 12))
+                                .font(.appScaled(size: 12))
                                 .foregroundStyle(SPBrand.textDim)
                         } else {
                             TextField("E-postadresse (leaden mangler e-post)", text: $overrideEmail)
@@ -169,7 +169,7 @@ struct SendProposalSheet: View {
                             lines.append(ProposalLineDraft())
                         } label: {
                             Label("Legg til linje", systemImage: "plus.circle.fill")
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.appScaled(size: 12, weight: .semibold))
                                 .foregroundStyle(SPBrand.purpleLight)
                         }
                         .buttonStyle(.plain)
@@ -178,11 +178,11 @@ struct SendProposalSheet: View {
                         Divider().background(SPBrand.stroke)
                         HStack {
                             Text("Totalsum eks. mva.")
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.appScaled(size: 13, weight: .semibold))
                                 .foregroundStyle(SPBrand.textDim)
                             Spacer()
                             Text("\(Self.fmt(total)) kr")
-                                .font(.system(size: 17, weight: .bold, design: .rounded))
+                                .font(.appScaled(size: 17, weight: .bold, design: .rounded))
                                 .foregroundStyle(SPBrand.green)
                                 .monospacedDigit()
                         }
@@ -195,12 +195,12 @@ struct SendProposalSheet: View {
                         Toggle("Sett gyldig-til-dato", isOn: $hasValidUntil)
                             .tint(SPBrand.purple)
                             .foregroundStyle(.white)
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.appScaled(size: 13, weight: .semibold))
                         if hasValidUntil {
                             DatePicker("Gyldig til", selection: $validUntil, displayedComponents: .date)
                                 .datePickerStyle(.compact)
                                 .colorScheme(.dark)
-                                .font(.system(size: 13))
+                                .font(.appScaled(size: 13))
                                 .foregroundStyle(.white)
                         }
                     }
@@ -208,7 +208,7 @@ struct SendProposalSheet: View {
 
                 if let errorText {
                     Text(errorText)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(SPBrand.red)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -230,10 +230,10 @@ struct SendProposalSheet: View {
                     ProgressView().tint(.white)
                 } else {
                     Image(systemName: "paperplane.fill")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.appScaled(size: 14, weight: .bold))
                 }
                 Text(sending ? "Sender…" : "Send tilbud")
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.appScaled(size: 15, weight: .bold))
             }
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)
@@ -255,20 +255,20 @@ struct SendProposalSheet: View {
             ZStack {
                 Circle().fill(SPBrand.green.opacity(0.20))
                 Image(systemName: "checkmark")
-                    .font(.system(size: 28, weight: .heavy))
+                    .font(.appScaled(size: 28, weight: .heavy))
                     .foregroundStyle(SPBrand.green)
             }
             .frame(width: 72, height: 72)
             Text("Tilbudet er sendt")
-                .font(.system(size: 18, weight: .bold))
+                .font(.appScaled(size: 18, weight: .bold))
                 .foregroundStyle(.white)
             Text("«\(title)» er på vei til \(resolvedEmail). Du får proposal.opened-hendelsen i workflows når det åpnes.")
-                .font(.system(size: 13))
+                .font(.appScaled(size: 13))
                 .foregroundStyle(SPBrand.textDim)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 380)
             Button("Ferdig") { dismiss() }
-                .font(.system(size: 14, weight: .bold))
+                .font(.appScaled(size: 14, weight: .bold))
                 .foregroundStyle(SPBrand.purpleLight)
                 .padding(.top, 6)
         }
@@ -333,10 +333,10 @@ struct SendProposalSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 7) {
                 Image(systemName: icon)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(SPBrand.purpleLight)
                 Text(titleText)
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(SPBrand.textDim)
                     .textCase(.uppercase)
                     .tracking(0.6)

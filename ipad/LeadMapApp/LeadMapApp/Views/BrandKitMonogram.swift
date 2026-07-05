@@ -13,10 +13,10 @@ struct BrandKitMonogram: View {
         let parts = name.uppercased().split(separator: " ", maxSplits: 1)
         VStack(spacing: 1) {
             Text(parts.first.map { String($0.prefix(8)) } ?? "?")
-                .font(.system(size: fontSize, weight: .black, design: .default))
+                .font(.appScaled(size: fontSize, weight: .black, design: .default))
             if parts.count > 1 {
                 Text(String(parts[1].prefix(8)))
-                    .font(.system(size: fontSize, weight: .black, design: .default))
+                    .font(.appScaled(size: fontSize, weight: .black, design: .default))
             }
         }
         .foregroundStyle(.white)

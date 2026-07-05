@@ -39,7 +39,7 @@ struct NotificationsView: View {
     private var emptyState: some View {
         VStack(spacing: 12) {
             Image(systemName: "bell.slash")
-                .font(.system(size: 56))
+                .font(.appScaled(size: 56))
                 .foregroundStyle(.secondary)
             Text("Ingen varsler enda").font(.headline)
             Text("Du får varsler når du blir tildelt leads eller en lead-status endres.")

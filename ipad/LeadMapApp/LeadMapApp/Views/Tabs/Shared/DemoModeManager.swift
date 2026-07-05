@@ -182,17 +182,17 @@ struct MockDataBanner: View {
         if manager.isActive {
             HStack(spacing: 8) {
                 Image(systemName: "theatermasks.fill")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                 Text("DEMO-MODUS")
-                    .font(.system(size: 11, weight: .black))
+                    .font(.appScaled(size: 11, weight: .black))
                     .tracking(0.8)
                 Text("·")
                     .opacity(0.7)
                 Text("Bruker mock-data, ikke ekte org")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.appScaled(size: 11, weight: .medium))
                 Spacer()
                 Button("Slå av") { manager.isActive = false }
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .padding(.horizontal, 10).padding(.vertical, 4)
                     .background(Color.white.opacity(0.18), in: Capsule())
             }
@@ -224,16 +224,16 @@ struct DemoModeToggleRow: View {
                 RoundedRectangle(cornerRadius: 9)
                     .fill(Color.orange.opacity(0.22))
                 Image(systemName: "theatermasks.fill")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.appScaled(size: 14, weight: .semibold))
                     .foregroundStyle(.orange)
             }
             .frame(width: 36, height: 36)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Demo-modus")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.appScaled(size: 14, weight: .semibold))
                     .foregroundStyle(.white)
                 Text("Erstatter ekte data med 50 mock-leads spredt i Oslo. KPI-tiles + kart fylles opp så du kan se UI-et som med en full org.")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(.white.opacity(0.65))
                     .lineLimit(3)
             }

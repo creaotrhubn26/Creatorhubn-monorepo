@@ -236,7 +236,7 @@ struct LiveTranscriptionSheet: View {
                         Spacer().frame(height: 70)
                         Label("\(savedTitle) lagret i Eksempler",
                               systemImage: "checkmark.circle.fill")
-                            .font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
+                            .font(.appScaled(size: 12, weight: .bold)).foregroundStyle(.white)
                             .padding(.horizontal, 12).padding(.vertical, 8)
                             .background(LBrand.green, in: Capsule())
                         Spacer()
@@ -261,7 +261,7 @@ struct LiveTranscriptionSheet: View {
                             dismiss()
                         } label: {
                             Label("Bruk i notat", systemImage: "arrow.down.doc.fill")
-                                .font(.system(size: 13, weight: .bold))
+                                .font(.appScaled(size: 13, weight: .bold))
                         }
                         .tint(LBrand.green)
                     }
@@ -278,8 +278,8 @@ struct LiveTranscriptionSheet: View {
                         } label: {
                             HStack(spacing: 5) {
                                 Image(systemName: "tray.and.arrow.down.fill")
-                                    .font(.system(size: 11, weight: .bold))
-                                Text("Lagre i Eksempler").font(.system(size: 12, weight: .bold))
+                                    .font(.appScaled(size: 11, weight: .bold))
+                                Text("Lagre i Eksempler").font(.appScaled(size: 12, weight: .bold))
                             }
                             .foregroundStyle(.white)
                             .padding(.horizontal, 12).padding(.vertical, 7)
@@ -307,23 +307,23 @@ struct LiveTranscriptionSheet: View {
             ZStack {
                 Circle().fill(LBrand.green.opacity(0.22))
                 Image(systemName: "checkmark.shield.fill")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(LBrand.green)
             }
             .frame(width: 36, height: 36)
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 6) {
                     Text("ALT ON-DEVICE")
-                        .font(.system(size: 9, weight: .black))
+                        .font(.appScaled(size: 9, weight: .black))
                         .foregroundStyle(LBrand.green).tracking(0.8)
                     if engine.supportsOnDevice {
                         Text("· APPLE SPEECH \(engine.recognizerAvailable ? "KLAR" : "VENTER")")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.appScaled(size: 9, weight: .bold))
                             .foregroundStyle(LBrand.textSecondary).tracking(0.5)
                     }
                 }
                 Text("Lyden forlater aldri iPad-en. Transkripsjonen kjører lokalt via SFSpeechRecognizer m/ nb-NO språkmodell.")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(LBrand.textSecondary)
             }
             Spacer()
@@ -338,12 +338,12 @@ struct LiveTranscriptionSheet: View {
     private var permissionGate: some View {
         VStack(spacing: 16) {
             Image(systemName: "mic.slash.fill")
-                .font(.system(size: 48, weight: .semibold))
+                .font(.appScaled(size: 48, weight: .semibold))
                 .foregroundStyle(LBrand.orange)
             Text("Vi trenger mikrofon-tilgang")
-                .font(.system(size: 18, weight: .heavy)).foregroundStyle(.white)
+                .font(.appScaled(size: 18, weight: .heavy)).foregroundStyle(.white)
             Text("Leadgrid bruker mikrofonen + tale-gjenkjenning for å transkribere det du sier. Begge deler kjører lokalt på enheten.")
-                .font(.system(size: 13))
+                .font(.appScaled(size: 13))
                 .foregroundStyle(LBrand.textSecondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 20)
@@ -351,7 +351,7 @@ struct LiveTranscriptionSheet: View {
                 Task { await engine.requestPermissions() }
             } label: {
                 Text(engine.permissionStatus == .denied ? "Åpne Innstillinger" : "Gi tilgang")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 16).padding(.vertical, 11)
                     .background(
@@ -389,17 +389,17 @@ struct LiveTranscriptionSheet: View {
                             .frame(width: 100, height: 100)
                             .shadow(color: (engine.isRecording ? LBrand.red : LBrand.purple).opacity(0.45), radius: 16)
                         Image(systemName: engine.isRecording ? "stop.fill" : "mic.fill")
-                            .font(.system(size: 36, weight: .heavy))
+                            .font(.appScaled(size: 36, weight: .heavy))
                             .foregroundStyle(.white)
                     }
                 }.buttonStyle(.plain)
             }
             VStack(spacing: 4) {
                 Text(engine.isRecording ? "Snakker — fortsett!" : (engine.transcript.isEmpty ? "Trykk for å starte" : "Opptak stoppet"))
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 Text(formatTime(engine.elapsedSeconds))
-                    .font(.system(size: 28, weight: .heavy, design: .monospaced))
+                    .font(.appScaled(size: 28, weight: .heavy, design: .monospaced))
                     .foregroundStyle(engine.isRecording ? LBrand.red : .white)
                     .monospacedDigit()
             }
@@ -410,7 +410,7 @@ struct LiveTranscriptionSheet: View {
                 HStack(spacing: 7) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundStyle(LBrand.red)
-                    Text(err).font(.system(size: 11)).foregroundStyle(LBrand.red)
+                    Text(err).font(.appScaled(size: 11)).foregroundStyle(LBrand.red)
                 }
                 .padding(10)
                 .background(LBrand.red.opacity(0.12), in: RoundedRectangle(cornerRadius: 9))
@@ -442,23 +442,23 @@ struct LiveTranscriptionSheet: View {
                 HStack(spacing: 6) {
                     Image(systemName: "text.bubble.fill").foregroundStyle(LBrand.purpleLight)
                     Text("TRANSKRIPSJON")
-                        .font(.system(size: 10, weight: .black))
+                        .font(.appScaled(size: 10, weight: .black))
                         .foregroundStyle(LBrand.textTertiary).tracking(0.8)
                 }
                 Spacer()
                 if !engine.transcript.isEmpty || !engine.liveSegment.isEmpty {
                     Text("\(combinedWordCount) ord")
-                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .font(.appScaled(size: 10, weight: .semibold, design: .monospaced))
                         .foregroundStyle(LBrand.textTertiary)
                 }
             }
             if engine.transcript.isEmpty && engine.liveSegment.isEmpty {
                 VStack(spacing: 6) {
                     Image(systemName: "text.cursor")
-                        .font(.system(size: 22))
+                        .font(.appScaled(size: 22))
                         .foregroundStyle(LBrand.textTertiary)
                     Text("Si noe, så dukker ordene opp her")
-                        .font(.system(size: 12))
+                        .font(.appScaled(size: 12))
                         .foregroundStyle(LBrand.textSecondary)
                 }
                 .frame(maxWidth: .infinity).padding(.vertical, 30)
@@ -466,12 +466,12 @@ struct LiveTranscriptionSheet: View {
                 VStack(alignment: .leading, spacing: 6) {
                     if !engine.transcript.isEmpty {
                         Text(engine.transcript)
-                            .font(.system(size: 14, design: .serif))
+                            .font(.appScaled(size: 14, design: .serif))
                             .foregroundStyle(.white)
                     }
                     if !engine.liveSegment.isEmpty {
                         Text(engine.liveSegment)
-                            .font(.system(size: 14, design: .serif))
+                            .font(.appScaled(size: 14, design: .serif))
                             .foregroundStyle(LBrand.textSecondary)
                             .italic()
                     }
@@ -501,12 +501,12 @@ struct LiveTranscriptionSheet: View {
         HStack(spacing: 10) {
             ZStack {
                 Circle().fill(tint.opacity(0.22))
-                Image(systemName: icon).font(.system(size: 11, weight: .bold)).foregroundStyle(tint)
+                Image(systemName: icon).font(.appScaled(size: 11, weight: .bold)).foregroundStyle(tint)
             }
             .frame(width: 28, height: 28)
-            Text(label).font(.system(size: 11)).foregroundStyle(LBrand.textSecondary)
+            Text(label).font(.appScaled(size: 11)).foregroundStyle(LBrand.textSecondary)
             Spacer()
-            Text(value).font(.system(size: 11, weight: .semibold)).foregroundStyle(.white)
+            Text(value).font(.appScaled(size: 11, weight: .semibold)).foregroundStyle(.white)
         }
     }
 

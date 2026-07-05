@@ -101,7 +101,7 @@ struct CenterOnMeFAB: View {
                         )
                 }
                 Image(systemName: mode.sfSymbol)
-                    .font(.system(size: 22, weight: .semibold))
+                    .font(.appScaled(size: 22, weight: .semibold))
                     .foregroundStyle(.white)
                     // Subtil rotasjon av kompass-pilen i heading-mode.
                     .rotationEffect(.degrees(mode == .followWithHeading && pulse ? 8 : 0))
