@@ -40,9 +40,9 @@ function readAll(): SavedInfographic[] {
     return Array.isArray(arr) ? arr : [];
   } catch { return []; }
 }
-function writeAll(list: SavedInfographic[]): void {
-  try { localStorage.setItem(LIB_KEY, JSON.stringify(list.slice(0, MAX_ENTRIES))); }
-  catch { /* full/blokkert — ikke-kritisk */ }
+function writeAll(list: SavedInfographic[]): boolean {
+  try { localStorage.setItem(LIB_KEY, JSON.stringify(list.slice(0, MAX_ENTRIES))); return true; }
+  catch { return false; } // full/blokkert (kvote) → signaliser fiasko oppover
 }
 
 /** Alle lagrede infographics, nyeste først. */
@@ -52,8 +52,10 @@ export function listInfographics(): SavedInfographic[] {
 
 type SaveInput = Omit<SavedInfographic, 'id' | 'createdAt' | 'updatedAt'>;
 
-/** Lagre gjeldende studio-tilstand som en ny gjenbrukbar infographic. */
-export function saveInfographic(input: SaveInput): SavedInfographic {
+/** Lagre gjeldende studio-tilstand som en ny gjenbrukbar infographic. Returnerer
+ *  null hvis localStorage er full/blokkert (kvote) — så kalleren IKKE viser en
+ *  falsk «Lagret»-melding når ingenting faktisk ble persistert. */
+export function saveInfographic(input: SaveInput): SavedInfographic | null {
   const now = Date.now();
   const entry: SavedInfographic = {
     ...input,
@@ -63,8 +65,7 @@ export function saveInfographic(input: SaveInput): SavedInfographic {
   };
   const list = readAll();
   list.unshift(entry);
-  writeAll(list);
-  return entry;
+  return writeAll(list) ? entry : null;
 }
 
 // Liten salt så to lagringer i samme ms ikke kolliderer (Math.random unngås for
@@ -93,8 +94,18 @@ export function updateInfographic(id: string, patch: Partial<SaveInput>): void {
 // ── Team-delt bibliotek (backend) ──────────────────────────────────────────
 // «Del med team» pusher hele snapshotet til backend → synlig for alle innloggede.
 
-export interface TeamInfographic extends SavedInfographic {
+/** Lett team-bibliotek-rad — kun det listen/miniatyren trenger. Hele snapshotet
+ *  (scener/logo/data) hentes lazy via fetchTeamSnapshot() når brukeren åpner. */
+export interface TeamInfographic {
+  id: string;
+  name: string;
   authorName?: string;
+  previewTplId: string;
+  accent?: string;
+  /** Første scenes verdier — for miniatyren uten å laste hele snapshotet. */
+  previewValues?: Record<string, string>;
+  sceneCount?: number;
+  updatedAt: number;
   /** Delt av meg (kan avdeles). */
   mine?: boolean;
 }
@@ -123,20 +134,34 @@ export async function shareToTeam(entry: SavedInfographic): Promise<boolean> {
   } catch { return false; }
 }
 
-/** Hent hele team-biblioteket (delt av alle). Tom liste når offline/ikke innlogget. */
+/** Hent team-biblioteket (delt av alle) — lette rader, uten snapshot. Tom liste
+ *  når offline/ikke innlogget. */
 export async function fetchTeamLibrary(): Promise<TeamInfographic[]> {
   const b = bearer();
   if (!b) return [];
   try {
     const res = await fetch(`${baseUrl()}/api/role-room/infographic-library`, { headers: { Authorization: `Bearer ${b}` } });
     if (!res.ok) return [];
-    const json = (await res.json()) as { items: Array<{ id: string; name: string; authorName?: string; snapshot: SavedInfographic; previewTplId?: string; mine?: boolean; updatedAt?: number }> };
+    const json = (await res.json()) as { items: Array<{ id: string; name: string; authorName?: string; previewTplId?: string; accent?: string | null; previewValues?: Record<string, string>; sceneCount?: number; mine?: boolean; updatedAt?: number }> };
     return (json.items || []).map((it) => ({
-      ...it.snapshot,
-      id: it.id, name: it.name, previewTplId: it.previewTplId || it.snapshot?.previewTplId,
-      authorName: it.authorName, mine: it.mine, updatedAt: it.updatedAt || it.snapshot?.updatedAt || 0,
+      id: it.id, name: it.name, authorName: it.authorName,
+      previewTplId: it.previewTplId || '', accent: it.accent || undefined,
+      previewValues: it.previewValues || {}, sceneCount: it.sceneCount || 0,
+      mine: it.mine, updatedAt: it.updatedAt || 0,
     }));
   } catch { return []; }
+}
+
+/** Hent hele snapshotet for én delt infographic (lazy — kun ved åpning). */
+export async function fetchTeamSnapshot(id: string): Promise<SavedInfographic | null> {
+  const b = bearer();
+  if (!b) return null;
+  try {
+    const res = await fetch(`${baseUrl()}/api/role-room/infographic-library/${encodeURIComponent(id)}`, { headers: { Authorization: `Bearer ${b}` } });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { snapshot: SavedInfographic };
+    return json.snapshot || null;
+  } catch { return null; }
 }
 
 /** Avdel egen delt infographic. */

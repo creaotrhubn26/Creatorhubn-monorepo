@@ -65,11 +65,16 @@ export function registerRoleRoomInfographicSignalsRoutes(app: Express, deps: Dep
         const liked = !!s?.liked;
         const weight = Math.max(0, Math.min(1, Number(s?.weight) || 1));
         const descHash = s?.descHash ? String(s.descHash).slice(0, 64) : null;
-        await pool.query(
-          `INSERT INTO infographic_ai_signals (id, created_by, tpl_id, liked, weight, desc_hash) VALUES ($1,$2,$3,$4,$5,$6)`,
-          [`s_${randomBytes(8).toString("hex")}`, uid, tplId, liked, weight, descHash],
+        // Idempotens: klienten sender en stabil sigId per signal. Ved nettverks-
+        // retry (POST kom fram, men svaret gikk tapt → køen tømmes ikke → re-push)
+        // hindrer ON CONFLICT DO NOTHING at samme signal dobbelt-telles i aggregatet.
+        const sigId = s?.sigId && /^[\w-]{1,64}$/.test(String(s.sigId)) ? String(s.sigId) : `s_${randomBytes(8).toString("hex")}`;
+        const r = await pool.query(
+          `INSERT INTO infographic_ai_signals (id, created_by, tpl_id, liked, weight, desc_hash) VALUES ($1,$2,$3,$4,$5,$6)
+             ON CONFLICT (id) DO NOTHING`,
+          [sigId, uid, tplId, liked, weight, descHash],
         );
-        inserted++;
+        inserted += r.rowCount ?? 0;
       }
       res.json({ ok: true, inserted });
     } catch (e) {
@@ -82,9 +87,14 @@ export function registerRoleRoomInfographicSignalsRoutes(app: Express, deps: Dep
   app.get("/api/role-room/infographic-signals/collective", async (req: Request, res: Response) => {
     const uid = getUserId(req, activeSessions);
     if (!uid) { res.status(401).json({ error: "krever_innlogging" }); return; }
-    if (!ready) { res.json({ signals: [], now: new Date().toISOString() }); return; }
+    // Tabellen ikke klar ennå: returnér IKKE en fersk `now`-cursor — klienten
+    // ville lagret den og dermed hoppet over ALL historikk før tabellen kom opp.
+    // `now: null` → klienten beholder sin gamle cursor (henter alt neste gang).
+    if (!ready) { res.json({ signals: [], now: null }); return; }
     const since = String(req.query.since ?? "").trim();
-    const now = new Date().toISOString();
+    // Valider `since` FØR den sendes rått som timestamp-parameter — ellers kaster
+    // Postgres på en uparsbar verdi og klienten får 500 i stedet for 400.
+    if (since && Number.isNaN(Date.parse(since))) { res.status(400).json({ error: "ugyldig_since" }); return; }
     try {
       const { rows } = await pool.query(
         `SELECT tpl_id,
@@ -96,7 +106,17 @@ export function registerRoleRoomInfographicSignalsRoutes(app: Express, deps: Dep
           ORDER BY n DESC LIMIT 1000`,
         since ? [since] : [],
       );
-      res.json({ signals: rows.map((r) => ({ tplId: r.tpl_id, net: r.net, n: r.n })), now });
+      // Cursor = created_at for den FAKTISK nyeste raden vi så, ikke wall-clock
+      // `now` fanget før SELECT. En rad som commit-er etter denne SELECT-en har
+      // created_at ≤ max men blir ikke inkludert nå; siden cursor = det vi så,
+      // fanges den av neste kall (created_at > cursor) i stedet for å hoppes over.
+      // Ingen nye rader → behold klientens gamle cursor (`since`), ikke advancér.
+      const { rows: mx } = await pool.query(
+        `SELECT MAX(created_at) AS m FROM infographic_ai_signals ${since ? "WHERE created_at > $1" : ""}`,
+        since ? [since] : [],
+      );
+      const cursor = mx[0]?.m ? new Date(mx[0].m).toISOString() : (since || null);
+      res.json({ signals: rows.map((r) => ({ tplId: r.tpl_id, net: r.net, n: r.n })), now: cursor });
     } catch (e) {
       res.status(500).json({ error: "hent_feil", detail: (e as Error).message });
     }

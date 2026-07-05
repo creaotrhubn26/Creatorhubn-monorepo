@@ -22,7 +22,7 @@ import { analyzeProductEvidence, gatherSiteContext } from './demoStudioAI';
 import { isAiConnected } from '../../services/claudeProxyService';
 import { FONT_FACE_CSS } from './fontAssets.generated';
 import { ROLE_ROOM_LOGO, CREATORHUB_LOGO } from './kitLogos.generated';
-import { listInfographics, saveInfographic, deleteInfographic, canShareToTeam, shareToTeam, fetchTeamLibrary, unshareFromTeam, type SavedInfographic, type TeamInfographic } from './infographicLibrary';
+import { listInfographics, saveInfographic, deleteInfographic, canShareToTeam, shareToTeam, fetchTeamLibrary, fetchTeamSnapshot, unshareFromTeam, type SavedInfographic, type TeamInfographic } from './infographicLibrary';
 // MUI-ikoner (erstatter emoji/glyfer i UI-et) — path-import tre-shaker best.
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import DashboardCustomizeIcon from '@mui/icons-material/DashboardCustomize';
@@ -269,6 +269,13 @@ function entranceStyle(kind: EntranceKind | undefined, ef: number): { transform:
 const ENTRANCE_DUR = 0.5; // sekunder inngangen tar
 let _sid = 1;
 const newScene = (tplId: string, atSec: number): Scene => ({ id: `s${_sid++}`, tplId, values: {}, atSec, bindings: {} });
+// Høyeste «s<N>»-id i et scene-sett (0 om ingen) — brukes for å reseede _sid forbi
+// restaurerte scener så nye scene-id-er ikke kolliderer med dem etter reload.
+function maxSceneId(scenes: Scene[] | undefined): number {
+  let mx = 0;
+  for (const s of scenes || []) { const m = /^s(\d+)$/.exec(s?.id || ''); if (m) mx = Math.max(mx, parseInt(m[1], 10)); }
+  return mx;
+}
 
 // ── Persistering: hele studio-tilstanden overlever reload (før: alt i useState
 //    → tapt ved refresh). Nøklet pr. prosjekt så flere demoer holdes adskilt. ──
@@ -511,6 +518,14 @@ const FIT_SCRIPT = `(function(){
   [80,250,600,1100].forEach(function(d){setTimeout(fit,d);});
   window.addEventListener('resize',fit);
   window.__igFit=fit;
+  // Inngangs-/exit-bevegelse settes via denne funksjonen (kall på contentWindow),
+  // IKKE ved at foreldre skriver til iframe-DOM-en — det feiler stille i WKWebView.
+  // body bærer inngangs-transformen (komponerer med #wrap sin fit-scale), #wrap
+  // bærer opacity (inngang × exit).
+  window.__igMotion=function(tf,op){try{
+    var b=document.body; if(b){b.style.transform=tf||'none'; b.style.transformOrigin='center center';}
+    var w=document.getElementById('wrap'); if(w){ w.style.opacity=String(op); }
+  }catch(e){}};
 })();`;
 
 function TemplateThumb({ tpl, accent, values, height = 88 }: { tpl: InfographicTemplate; accent: string; values?: Record<string, string>; height?: number }) {
@@ -690,6 +705,10 @@ export function InfographicStudioView(
   const storeKey = project?.id || 'standalone';
   // Gjenopprett lagret studio-tilstand (én gang) — ellers starter alt tomt ved reload.
   const initial = useRef<StudioState | null>(loadStudio(storeKey));
+  // Reseed scene-id-telleren forbi de restaurerte scenene (som beholder sine gamle
+  // «s1», «s2» …). Uten dette lager addScene/duplicateScene id-er som kolliderer.
+  const seededSid = useRef(false);
+  if (!seededSid.current) { seededSid.current = true; _sid = Math.max(_sid, maxSceneId(initial.current?.scenes) + 1); }
   const [scenes, setScenes] = useState<Scene[]>(() => initial.current?.scenes?.length ? initial.current.scenes : [newScene(INFOGRAPHIC_TEMPLATES[0].id, 0)]);
   const [sel, setSel] = useState(() => Math.min(initial.current?.sel ?? 0, (initial.current?.scenes?.length ?? 1) - 1));
   const scene = scenes[sel] || scenes[0];
@@ -804,13 +823,15 @@ export function InfographicStudioView(
   /** Lagre gjeldende studio-tilstand som gjenbrukbar infographic i biblioteket. */
   const saveCurrentToLibrary = () => {
     const name = libName.trim() || `${project?.name || 'Infographic'} · ${scenes.length} scene(r)`;
-    saveInfographic({
+    const saved = saveInfographic({
       name, fromProject: project?.name,
       scenes: scenes.map((s) => ({ ...s })), accent, logo, dataText, palette,
       previewTplId: scenes[sel]?.tplId || scenes[0]?.tplId || INFOGRAPHIC_TEMPLATES[0].id,
     });
     setLibName(''); setLibTick((n) => n + 1);
-    setMsg(`Lagret «${name}» i biblioteket — gjenbruk den i ethvert prosjekt.`);
+    setMsg(saved
+      ? `Lagret «${name}» i biblioteket — gjenbruk den i ethvert prosjekt.`
+      : 'Kunne ikke lagre — lokal lagring er full. Slett noen tidligere infographics og prøv igjen.');
   };
   /** Åpne et lagret snapshot inn i studioet (erstatter gjeldende scener). Scene-
    *  id-er regenereres så de ikke kolliderer med nye scener. */
@@ -833,6 +854,13 @@ export function InfographicStudioView(
     setTeamBusy(true);
     try { setTeamList(await fetchTeamLibrary()); } finally { setTeamBusy(false); }
   };
+  // Åpne en team-delt infographic: hent hele snapshotet lazy (listen bærer kun et
+  // lett preview), og last det inn i studioet.
+  const openTeam = async (s: TeamInfographic) => {
+    setMsg(`Henter «${s.name}» …`);
+    const full = await fetchTeamSnapshot(s.id);
+    if (full) loadSnapshot(full); else setMsg('Kunne ikke hente den delte infographic-en — prøv igjen.');
+  };
   const shareEntry = async (s: SavedInfographic) => {
     if (!canShareToTeam()) { setMsg('Deling krever innlogging (Role Room-token i Innstillinger).'); return; }
     setMsg(`Deler «${s.name}» med teamet …`);
@@ -845,6 +873,11 @@ export function InfographicStudioView(
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const rafRef = useRef<number | null>(null);
+  // Undertrykk enkelt-scene-autoplay ved iframe-last når vi spiller HELE sekvensen
+  // eller nettopp scrubbet — ellers starter en konkurrerende rAF fra p=0 som slåss
+  // mot playAll og overskriver scrub-posisjonen (to rAF-løkker på samme iframe).
+  const playingAllRef = useRef(false);
+  const recentScrubRef = useRef(0);
 
   // Autolagre (debounced) — hele tilstanden overlever reload. Setter lastSavedAt
   // for «Autolagret»-indikatoren i toppen.
@@ -913,7 +946,9 @@ export function InfographicStudioView(
   const deleteScene = (i: number) => {
     if (scenes.length <= 1) return;
     setScenes((ss) => ss.filter((_, j) => j !== i));
-    setSel((s) => Math.max(0, Math.min(s, scenes.length - 2)));
+    // Behold BRUKERENS valgte scene: sletter vi en scene FØR den, rykker den ned én
+    // plass (s-1). Sletter vi den valgte selv, tar neste scene plassen (samme indeks).
+    setSel((s) => { const ns = i < s ? s - 1 : s; return Math.max(0, Math.min(ns, scenes.length - 2)); });
   };
   const duplicateScene = (i: number) => {
     const src = scenes[i]; if (!src) return;
@@ -995,6 +1030,10 @@ export function InfographicStudioView(
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [tpl, scene, accent, logo, localizeNb, dataMap]);
   const srcDoc = useMemo(() => `<script>window.__CFG__=${JSON.stringify(config)}</script>` + htmlForTemplate(tpl) + `<script>${FIT_SCRIPT}</script>`, [config, tpl]);
+  // «Alle formater»-kortene skal fryse ved sluttbildet. __igFreeze=1 → FIT_SCRIPT
+  // kaller setProgress(1) INNE i iframen (robust i WKWebView) i stedet for at
+  // foreldre må lese contentDocument (som feiler → kortene sto frosset på p=0).
+  const formatSrcDoc = useMemo(() => `<script>window.__CFG__=${JSON.stringify(config)};window.__igFreeze=1;</script>` + htmlForTemplate(tpl) + `<script>${FIT_SCRIPT}</script>`, [config, tpl]);
 
   const previewWin = () => iframeRef.current?.contentWindow as (Window & { setProgress?: (p: number) => void }) | null | undefined;
   const setPreviewProgress = (p: number) => { const w = previewWin(); if (w && typeof w.setProgress === 'function') { try { w.setProgress(Math.max(0, Math.min(1, p))); } catch { /* */ } } };
@@ -1013,14 +1052,13 @@ export function InfographicStudioView(
   // Inngangs-bevegelse (body-transform) × opacity (#wrap = inngang × exit). Body
   // bærer inngangs-transformen så den komponerer med #wrap sin fit-scale.
   const setPreviewMotion = (sc: Scene, elapsedSec: number, exitOpacity: number) => {
-    try {
-      const doc = iframeRef.current?.contentDocument; if (!doc) return;
-      const ef = easeVal('out', ENTRANCE_DUR > 0 ? elapsedSec / ENTRANCE_DUR : 1);
-      const en = entranceStyle(sc.entrance, ef);
-      if (doc.body) { doc.body.style.transform = en.transform; doc.body.style.transformOrigin = 'center center'; }
-      const w = doc.getElementById('wrap') as HTMLElement | null;
-      if (w) w.style.opacity = String(Math.max(0, Math.min(1, en.opacity * exitOpacity)));
-    } catch { /* */ }
+    // Kall __igMotion INNE i iframen (via contentWindow) i stedet for å skrive til
+    // iframe-DOM-en fra foreldre — sistnevnte er stille upålitelig i WKWebView, så
+    // inngangs-/exit-bevegelsen ville aldri vist i preview (men gjør det i render).
+    const ef = easeVal('out', ENTRANCE_DUR > 0 ? elapsedSec / ENTRANCE_DUR : 1);
+    const en = entranceStyle(sc.entrance, ef);
+    const op = Math.max(0, Math.min(1, en.opacity * exitOpacity));
+    try { (previewWin() as unknown as { __igMotion?: (tf: string, op: number) => void } | null | undefined)?.__igMotion?.(en.transform, op); } catch { /* */ }
   };
   // Sett ett scrub-bilde: eased progresjon + inngang/exit ved lokal p.
   const applyScrubFrame = (sc: Scene, p: number) => {
@@ -1053,7 +1091,12 @@ export function InfographicStudioView(
   const onIframeLoad = () => {
     // Sentrer tidlig, og re-fit når innholdet (async chart-tegning) har satt seg.
     [60, 250, 550, 1000].forEach((d) => window.setTimeout(fitPreview, d));
-    window.setTimeout(() => play(), 250);
+    // Autoplay KUN når brukeren nettopp valgte en scene — ikke midt i «Spill alt»
+    // eller rett etter en scrub (der posisjonen styres av playAll/scrub-effekten).
+    window.setTimeout(() => {
+      if (playingAllRef.current || performance.now() - recentScrubRef.current < 700) return;
+      play();
+    }, 250);
   };
   useEffect(() => () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); }, []);
   // Kollektiv læring: hent kollektive aggregater (inkrementelt) ved åpning +
@@ -1087,6 +1130,7 @@ export function InfographicStudioView(
     return { index: best, p: 1 };
   };
   const scrubTo = (t: number) => {
+    recentScrubRef.current = performance.now(); // marker: undertrykk autoplay ved evt. iframe-reload
     setScrubT(t); const { index, p } = sceneAtTime(t);
     if (index !== sel) setSel(index); else applyScrubFrame(scenes[index], p);
   };
@@ -1094,9 +1138,10 @@ export function InfographicStudioView(
   useEffect(() => { if (playingAll || scrubT > 0) { const { p } = sceneAtTime(scrubT); const h = setTimeout(() => applyScrubFrame(scene, p), 60); return () => clearTimeout(h); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sel]);
-  const stopPlayAll = () => { if (playAllRef.current) cancelAnimationFrame(playAllRef.current); playAllRef.current = null; setPlayingAll(false); };
+  const stopPlayAll = () => { if (playAllRef.current) cancelAnimationFrame(playAllRef.current); playAllRef.current = null; playingAllRef.current = false; setPlayingAll(false); };
   const playAll = () => {
-    stopPlayAll(); setPlayingAll(true);
+    stopPlayAll(); playingAllRef.current = true; setPlayingAll(true);
+    if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; } // stopp enkelt-scene-loop
     let t0 = performance.now();
     const tick = (now: number) => {
       const t = (now - t0) / 1000;
@@ -1632,14 +1677,14 @@ export function InfographicStudioView(
                 ? <div style={{ fontSize: 10.5, color: D.faint, lineHeight: 1.5 }}>{teamBusy ? 'Henter …' : 'Ingen delte ennå. Trykk gruppe-ikonet på en av dine for å dele med teamet.'}</div>
                 : teamList.map((s) => {
                     const t = INFOGRAPHIC_TEMPLATES.find((x) => x.id === s.previewTplId) || INFOGRAPHIC_TEMPLATES[0];
-                    const firstVals = s.scenes?.[0]?.values || {};
+                    const firstVals = s.previewValues || {};
                     return (
                       <div key={s.id} style={{ marginBottom: 10, padding: 8, borderRadius: 9, border: `1px solid ${D.line}`, background: D.bg }}>
                         <TemplateThumb tpl={t} accent={s.accent || accent} values={firstVals} />
                         <div style={{ fontSize: 11.5, fontWeight: 600, color: D.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</div>
-                        <div style={{ fontSize: 9.5, color: D.faint, marginBottom: 6 }}>{s.authorName ? `delt av ${s.authorName}` : 'delt'}{s.mine ? ' · deg' : ''} · {s.scenes?.length || 0} scene(r)</div>
+                        <div style={{ fontSize: 9.5, color: D.faint, marginBottom: 6 }}>{s.authorName ? `delt av ${s.authorName}` : 'delt'}{s.mine ? ' · deg' : ''} · {s.sceneCount || 0} scene(r)</div>
                         <div style={{ display: 'flex', gap: 6 }}>
-                          <button style={{ ...topBtn, flex: 1, justifyContent: 'center', fontSize: 11 }} onClick={() => loadSnapshot(s)}><FolderOpenIcon style={{ fontSize: 14 }} /> Åpne</button>
+                          <button style={{ ...topBtn, flex: 1, justifyContent: 'center', fontSize: 11 }} onClick={() => void openTeam(s)}><FolderOpenIcon style={{ fontSize: 14 }} /> Åpne</button>
                           {s.mine && <button style={{ ...topBtn, padding: '4px 9px', fontSize: 11, color: '#f08a82' }} title="Avdel fra teamet" onClick={async () => { await unshareFromTeam(s.id); void loadTeamLibrary(); }}><DeleteOutlineIcon style={{ fontSize: 15 }} /></button>}
                         </div>
                       </div>
@@ -1793,7 +1838,7 @@ export function InfographicStudioView(
               <div style={{ position: 'relative', flex: 1, borderRadius: 12, overflow: 'hidden', border: `1px solid ${D.line}`, background: '#0b1120', padding: 16 }}>
                 <div style={{ display: 'flex', gap: 18, height: '100%', justifyContent: 'flex-start', alignItems: 'center', overflowX: 'auto', padding: '0 4px' }}>
                   {PLATFORMS.map((pf) => (
-                    <FormatPreview key={pf.id} srcDoc={srcDoc} aspect={pf.aspect} label={pf.name} sub={pf.sub} bg={bgImage}
+                    <FormatPreview key={pf.id} srcDoc={formatSrcDoc} aspect={pf.aspect} label={pf.name} sub={pf.sub} bg={bgImage}
                       active={fmt === pf.fmt} mockup={mockup} advice={placementAdviceFor(tpl.id, pf.aspect)} zones={pf.zones}
                       onClick={() => { setFmt(pf.fmt); setMultiPreview(false); }} />
                   ))}
