@@ -526,28 +526,37 @@ function cfgScript(obj: unknown): string {
 // WKWebView (ingen kryss-dokument-manipulering fra foreldre, som feilet før).
 // window.__igFreeze=1 → frys ved setProgress(1) (thumbnails uten play-animasjon).
 const FIT_SCRIPT = `(function(){
-  function fit(){
+  // fitTo(vw,vh): skalér #wrap inn i en boks. Foreldre gir iframens EKTE størrelse
+  // (iframe.clientWidth/Height) via __igFitTo — en srcdoc-iframe kan i WKWebView
+  // IKKE måle sin egen viewport pålitelig (window.innerHeight kan bli 0 → negativ
+  // scale → blankt lerret, eller for stor → innhold skjøvet ut av syne). Selv-mål
+  // (innerWidth/Height) er fallback for Chromium/på-lasting.
+  function fitTo(vw,vh){
     try{
       document.documentElement.style.background='transparent';
-      var b=document.body; if(b){b.style.margin='0';b.style.height='100vh';b.style.overflow='hidden';b.style.background='transparent';b.style.position='relative';}
+      var b=document.body; if(b){b.style.margin='0';b.style.overflow='hidden';b.style.background='transparent';b.style.position='relative';}
       if(window.__igFreeze && typeof window.setProgress==='function'){ try{window.setProgress(1);}catch(e){} }
       var w=document.getElementById('wrap'); if(!w) return;
-      // Grid-sentrering feiler når #wrap er bredere enn viewporten (kolonnen sizer
-      // til innholdet). Posisjonér absolutt + translate-sentrer den SKALERTE
-      // størrelsen manuelt (transform-origin top-left).
+      // Grid-sentrering feiler når #wrap er bredere enn viewporten. Posisjonér
+      // absolutt + translate-sentrer den SKALERTE størrelsen (transform-origin top-left).
       w.style.position='absolute'; w.style.top='0'; w.style.left='0';
       w.style.transformOrigin='top left'; w.style.transform='none';
-      var vw=window.innerWidth||1, vh=window.innerHeight||1;
+      vw = vw || window.innerWidth || document.documentElement.clientWidth || 1;
+      vh = vh || window.innerHeight || document.documentElement.clientHeight || 1;
       var ww=w.scrollWidth||w.offsetWidth||1, wh=w.scrollHeight||w.offsetHeight||1;
       var k=Math.min(1,(vw-16)/ww,(vh-16)/wh);
-      var tx=(vw-ww*k)/2, ty=(vh-wh*k)/2;
+      if(!(k>0)) k=Math.min(1,(vw-16)/ww); // vh upålitelig → fall tilbake til bredde-fit
+      if(!(k>0)) k=1;                       // fortsatt ugyldig → ingen skalering (aldri blankt)
+      var tx=(vw-ww*k)/2, ty=Math.max(0,(vh-wh*k)/2);
       w.style.transform='translate('+tx.toFixed(1)+'px,'+ty.toFixed(1)+'px) scale('+k.toFixed(4)+')';
     }catch(e){}
   }
+  function fit(){ fitTo(0,0); }
   if(document.readyState==='complete') fit(); else window.addEventListener('load',fit);
   [80,250,600,1100].forEach(function(d){setTimeout(fit,d);});
   window.addEventListener('resize',fit);
   window.__igFit=fit;
+  window.__igFitTo=fitTo;
   // Inngangs-/exit-bevegelse settes via denne funksjonen (kall på contentWindow),
   // IKKE ved at foreldre skriver til iframe-DOM-en — det feiler stille i WKWebView.
   // body bærer inngangs-transformen (komponerer med #wrap sin fit-scale), #wrap
@@ -575,7 +584,7 @@ function TemplateThumb({ tpl, accent, values, height = 88 }: { tpl: InfographicT
     return `<script>window.__CFG__=${cfgScript(cfg)};window.__igFreeze=1;</script>` + rawTemplateHtml(tpl) + `<script>${FIT_SCRIPT}</script>`;
   }, [tpl, accent, values]);
   // Nudge det injiserte fit-skriptet (kjører uansett selv på load + retries).
-  const fit = () => { try { (frameRef.current?.contentWindow as unknown as { __igFit?: () => void })?.__igFit?.(); } catch { /* */ } };
+  const fit = () => { try { const el = frameRef.current; const w = el?.contentWindow as unknown as { __igFitTo?: (w: number, h: number) => void; __igFit?: () => void } | null | undefined; if (w?.__igFitTo && el) w.__igFitTo(el.clientWidth, el.clientHeight); else w?.__igFit?.(); } catch { /* */ } };
   return (
     <div ref={boxRef} style={{ width: '100%', height, borderRadius: 8, overflow: 'hidden', background: 'linear-gradient(135deg,#10182a,#0b1120)', marginBottom: 8 }}>
       {visible && <iframe ref={frameRef} title="" srcDoc={src} onLoad={() => { window.setTimeout(fit, 120); window.setTimeout(fit, 480); }} style={{ width: '100%', height: '100%', border: 0, background: 'transparent', pointerEvents: 'none' }} />}
@@ -653,7 +662,11 @@ function FormatPreview(
     // innholds-boksen for kollisjons-sjekk (best-effort — degraderer til «ingen
     // advarsel» hvis kryss-dokument-lesing er blokkert).
     try {
-      const ifr = ref.current, doc = ifr?.contentDocument;
+      const ifr = ref.current;
+      // Send iframens EKTE størrelse inn (funksjonskall → WKWebView-robust), FØR
+      // den valgfrie kryss-dokument-lesingen (kan være blokkert i WKWebView).
+      if (ifr) { (ifr.contentWindow as unknown as { __igFitTo?: (w: number, h: number) => void })?.__igFitTo?.(ifr.clientWidth, ifr.clientHeight); }
+      const doc = ifr?.contentDocument;
       const w = doc?.getElementById('wrap') as HTMLElement | null;
       if (!ifr || !doc || !w) return;
       (ifr.contentWindow as unknown as { setProgress?: (p: number) => void })?.setProgress?.(1);
@@ -1082,10 +1095,15 @@ export function InfographicStudioView(
   // Skaler malens innhold (#wrap, natural-bredde) så det passer i canvasen —
   // før overflommet flerkorts-maler og ble klippet. Kjøres på load + resize.
   const fitPreview = () => {
-    // Delegér til det INJISERTE fit-skriptet inne i iframen (måler + skalerer
-    // selv → robust i WKWebView). Det selv-kjører også på load/retry/resize;
-    // dette er bare et ekstra nudge f.eks. når canvasen endrer størrelse.
-    try { (previewWin() as unknown as { __igFit?: () => void })?.__igFit?.(); } catch { /* */ }
+    // Send iframens EKTE størrelse (målt fra foreldre) inn via __igFitTo — en
+    // srcdoc-iframe kan i WKWebView ikke måle sin egen viewport pålitelig. Fall
+    // tilbake til self-fit (__igFit) om funksjonen ikke finnes ennå.
+    try {
+      const el = iframeRef.current;
+      const win = previewWin() as unknown as { __igFitTo?: (w: number, h: number) => void; __igFit?: () => void } | null | undefined;
+      if (win?.__igFitTo && el) win.__igFitTo(el.clientWidth, el.clientHeight);
+      else win?.__igFit?.();
+    } catch { /* */ }
   };
 
   // Simuler exit-fade i preview ved å sette #wrap-opacity (rendret klipp bruker
