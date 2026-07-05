@@ -18440,7 +18440,7 @@ async function resolveCompatSubscriptionStatus(
 
   if (userId !== "guest" && (await hasTable("user_subscriptions"))) {
     const result = await pool.query(
-      `SELECT plan_id, status, started_at, auto_renew
+      `SELECT plan_id, status, started_at, auto_renew, billing_cycle, next_billing_date
        FROM user_subscriptions
        WHERE user_id = $1
        ORDER BY started_at DESC NULLS LAST
@@ -18451,6 +18451,19 @@ async function resolveCompatSubscriptionStatus(
     if (row) {
       const plan = getCompatPlatformSubscriptionPlan(row.plan_id);
       const normalizedStatus = readString(row.status) || "inactive";
+      // Bruk den lagrede ekte periodeslutten; ellers estimat med RIKTIG syklus
+      // (ikke hardkodet 30 dager, som bommet på årsplaner).
+      const startedIso = row.started_at
+        ? new Date(row.started_at).toISOString()
+        : null;
+      const periodEnd = row.next_billing_date
+        ? new Date(row.next_billing_date).toISOString()
+        : startedIso
+          ? addBillingCycleIso(
+              startedIso,
+              normalizeCreatorHubBillingCycle(row.billing_cycle),
+            )
+          : null;
       return buildCompatSubscriptionStatus(userId, plan, {
         selectedPlan: plan?.id ?? null,
         planName: plan?.displayName ?? null,
@@ -18458,15 +18471,9 @@ async function resolveCompatSubscriptionStatus(
           normalizedStatus === "active" || normalizedStatus === "trial",
         paymentCompleted:
           normalizedStatus === "active" || normalizedStatus === "trial",
-        memberSince: row.started_at
-          ? new Date(row.started_at).toISOString()
-          : null,
-        nextBillingDate: row.started_at
-          ? addDaysIso(new Date(row.started_at).toISOString(), 30)
-          : null,
-        accessUntil: row.started_at
-          ? addDaysIso(new Date(row.started_at).toISOString(), 30)
-          : null,
+        memberSince: startedIso,
+        nextBillingDate: periodEnd,
+        accessUntil: periodEnd,
         autoRenew: row.auto_renew !== false,
         email,
         source: "database",
@@ -19046,6 +19053,19 @@ async function syncCompatUserSubscriptionRecord(
     return;
   }
 
+  // Lagre faktureringssyklus + ekte periodeslutt slik at fallback-resolveren
+  // slipper å hardkode 30 dager (som bommer på årsplaner). Foretrekk den ekte
+  // Stripe-datoen (metadata.currentPeriodEnd), ellers estimat med RIKTIG syklus.
+  const subMeta = normalizeJsonObjectField(record.metadata) || {};
+  const subBillingCycle = normalizeCreatorHubBillingCycle(subMeta.billingCycle);
+  const subPeriodEnd =
+    typeof subMeta.currentPeriodEnd === "string" && subMeta.currentPeriodEnd
+      ? subMeta.currentPeriodEnd
+      : addBillingCycleIso(
+          record.completedAt || record.createdAt,
+          subBillingCycle,
+        );
+
   const existing = await pool.query(
     `SELECT id
      FROM user_subscriptions
@@ -19060,18 +19080,20 @@ async function syncCompatUserSubscriptionRecord(
     await pool.query(
       `UPDATE user_subscriptions
        SET status = 'active',
-           auto_renew = true
+           auto_renew = true,
+           billing_cycle = $2,
+           next_billing_date = $3
        WHERE id = $1`,
-      [existing.rows[0]?.id],
+      [existing.rows[0]?.id, subBillingCycle, subPeriodEnd],
     );
     return;
   }
 
   await pool.query(
     `INSERT INTO user_subscriptions
-      (user_id, plan_id, status, started_at, auto_renew)
-     VALUES ($1, $2, 'active', NOW(), true)`,
-    [record.userId, planId],
+      (user_id, plan_id, status, started_at, auto_renew, billing_cycle, next_billing_date)
+     VALUES ($1, $2, 'active', NOW(), true, $3, $4)`,
+    [record.userId, planId, subBillingCycle, subPeriodEnd],
   );
 }
 
