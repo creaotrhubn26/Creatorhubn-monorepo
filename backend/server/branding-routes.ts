@@ -125,8 +125,11 @@ export function setupBrandingRoutes(deps: BrandingRoutesDeps): void {
       // profesjon hit, så dette lukker NULL-profesjon-hullet uten frontend-endring.
       const canonProfession = canonicalizeProfession(normalized.profession);
       if (canonProfession) {
+        // Profesjon er GATED: settes kun første gang. COALESCE(NULLIF(...))
+        // beholder eksisterende profesjon, så branding-lagring aldri blir en
+        // bakvei for å bytte profesjon (endring krever betaling/Enterprise).
         await pool
-          .query(`UPDATE users SET profession = $1, updated_at = now() WHERE id = $2`, [canonProfession, userId])
+          .query(`UPDATE users SET profession = COALESCE(NULLIF(profession, ''), $1), updated_at = now() WHERE id = $2`, [canonProfession, userId])
           .catch((e: any) => console.warn("users.profession-sync feilet:", e?.message));
       }
       const branding = await resolveDocumentBranding(pool, userId, {

@@ -132,7 +132,10 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
     }
     if ("profession" in b) {
       const canon = canonicalizeProfession(b.profession);
-      if (canon) { sets.push(`profession = $${n++}`); params.push(canon); }
+      // Profesjon er GATED: settes kun første gang (onboarding). Endring krever
+      // betaling / Enterprise-oppgradering — aldri fri redigering herfra.
+      // COALESCE(NULLIF(...)) beholder eksisterende profesjon hvis den er satt.
+      if (canon) { sets.push(`profession = COALESCE(NULLIF(profession, ''), $${n++})`); params.push(canon); }
     }
     if (!sets.length) return res.status(400).json({ error: "Ingen felter å oppdatere" });
     sets.push("updated_at = now()"); params.push(uid);
