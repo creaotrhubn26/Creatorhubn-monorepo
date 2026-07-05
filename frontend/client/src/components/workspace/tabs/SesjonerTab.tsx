@@ -21,6 +21,7 @@ import Videocam from '@mui/icons-material/Videocam';
 import SelfImprovement from '@mui/icons-material/SelfImprovement';
 import Delete from '@mui/icons-material/Delete';
 import { apiRequest } from '@/lib/queryClient';
+import { useTeamAccess } from '@/hooks/useTeamAccess';
 import { ws } from '../workspaceTheme';
 import { WsCard, WsTag, WsStat, WsSectionTitle } from '../ui';
 import WarmupDialog from '../../universal/showcase/WarmupDialog';
@@ -39,6 +40,7 @@ const fmtDateTime = (iso: any) => {
 };
 
 const SesjonerTab: React.FC<{ projectId: string }> = ({ projectId }) => {
+  const { hasTeamAccess } = useTeamAccess(); // band/samarbeid er Enterprise-gated
   const isReal = projectId && projectId !== 'sample';
   const [, navigate] = useLocation();
   const [sessions, setSessions] = useState<any[] | null>(null);
@@ -200,9 +202,10 @@ const SesjonerTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         )}
       </WsCard>
 
-      {/* Oppvarming & fokus (EaseVerse mindfulness) + Bandets form — kun synlig
-          for lydrom-eieren (endepunktene er eier-gatet; 404 → warmups=null). */}
-      {audioRoomId && warmups !== null && (
+      {/* Oppvarming & fokus (EaseVerse mindfulness) + Bandets form — band/samarbeid
+          er en Enterprise-funksjon (hasTeamAccess). Ellers eier-gatet på endepunkt-
+          nivå (404 → warmups=null). Individuelle uten team ser ikke band-seksjonen. */}
+      {hasTeamAccess && audioRoomId && warmups !== null && (
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 2 }} alignItems="stretch">
           <WsCard sx={{ flex: 1, minWidth: 0 }}>
             <WsSectionTitle
