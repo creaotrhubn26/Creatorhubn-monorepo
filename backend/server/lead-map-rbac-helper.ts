@@ -49,14 +49,22 @@ async function defaultResolveOrgId(
   pool: Pool,
   userId: string,
 ): Promise<string | null> {
-  // 1. Eksplisitt i request
+  // 1. Eksplisitt i request.
+  // Workflow-QA 2026-07-05: `req.params.id` lå blindt i listen «for
+  // /organizations/:id-rutene» — men på /leads/:id/... er params.id
+  // LEAD-uuid-en, som da ble tolket som org-id → «ikke_medlem_av_org»
+  // 403 på ALLE lead-muterende ruter bak denne vakta (status, geo,
+  // visits, deal, temperatur). Nå brukes params.id KUN når ruten
+  // faktisk er en organizations-rute.
+  const isOrgRoute = String(req.route?.path ?? req.path ?? "")
+    .includes("/organizations/");
   const candidates = [
     req.body?.organization_id,
     req.body?.organizationId,
     req.query?.organization_id,
     req.query?.organizationId,
     req.params?.organizationId,
-    req.params?.id, // for /organizations/:id-rutene
+    ...(isOrgRoute ? [req.params?.id] : []),
   ];
   for (const c of candidates) {
     if (typeof c === "string" && c.length > 0) return c;
@@ -72,11 +80,14 @@ async function defaultResolveOrgId(
     );
     if (r.rows[0]?.organization_id) return r.rows[0].organization_id;
   }
-  // 3. Avled fra lead-id i params (for /leads/:id)
+  // 3. Avled fra lead-id i params (for /leads/:id). crm_customers har
+  // organization_id direkte — prosjekt-JOIN-en er fallback for eldre
+  // rader uten org-kolonne satt.
   const leadId = req.params?.leadId ?? req.params?.id;
   if (typeof leadId === "string" && leadId.length > 0) {
     const r = await pool.query<{ organization_id: string | null }>(
-      `SELECT cp.organization_id::text
+      `SELECT COALESCE(c.organization_id::text, cp.organization_id::text)
+                AS organization_id
          FROM crm_customers c
          LEFT JOIN casting_projects cp ON cp.id = c.project_id
         WHERE c.id = $1 LIMIT 1`,
