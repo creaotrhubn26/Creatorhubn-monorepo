@@ -20,6 +20,7 @@ import Add from '@mui/icons-material/Add';
 import { ws } from '../workspaceTheme';
 import { useWorkspaceCategory } from '../useWorkspaceCategory';
 import { WsCard, WsSectionTitle, WsRing, WsBar, WsImageGrid } from '../ui';
+import { crewIcon, wsIcon } from '../crewIcons';
 import WorkspaceChatPanel from '../WorkspaceChatPanel';
 import { useProjectImages } from '../useProjectImages';
 import { useCaptureRealtime } from '../useCaptureRealtime';
@@ -104,34 +105,34 @@ const T: WsDict = {
 };
 
 const PHASES = [
-  { icon: '🤍', label: 'Forberedelser', time: '08:00 – 10:00', color: ws.textDim },
-  { icon: '💗', label: 'First look', time: '10:30 – 11:00', color: ws.red },
-  { icon: '⛪', label: 'Vielse', time: '11:30 – 12:30', color: ws.accent, active: true },
-  { icon: '🌅', label: 'Golden hour', time: '16:30 – 17:30', color: ws.amber },
-  { icon: '🎙️', label: 'Taler', time: '19:00 – 20:00', color: ws.blue },
-  { icon: '🎉', label: 'Fest', time: '20:30 – 00:00', color: ws.green },
+  { icon: 'Favorite', label: 'Forberedelser', time: '08:00 – 10:00', color: ws.textDim },
+  { icon: 'Favorite', label: 'First look', time: '10:30 – 11:00', color: ws.red },
+  { icon: 'Church', label: 'Vielse', time: '11:30 – 12:30', color: ws.accent, active: true },
+  { icon: 'WbTwilight', label: 'Golden hour', time: '16:30 – 17:30', color: ws.amber },
+  { icon: 'Mic', label: 'Taler', time: '19:00 – 20:00', color: ws.blue },
+  { icon: 'Celebration', label: 'Fest', time: '20:30 – 00:00', color: ws.green },
 ];
 
 const BOARD = [
-  { role: 'Fotograf (Daniel)', icon: '📷', tasks: [
+  { role: 'Fotograf (Daniel)', icon: 'PhotoCamera', tasks: [
     { t: 'Detaljer: ringer & tilbehør', time: '07:30 – 08:00', done: true },
     { t: 'Forberedelser – candids', time: '08:00 – 10:00', done: true },
     { t: 'Portretter av brud & brudgom', time: '10:00 – 10:30', done: false },
     { t: 'Close-ups av ringer', time: '11:20 – 11:30', done: false },
   ]},
-  { role: 'Videograf (Emma)', icon: '🎥', tasks: [
+  { role: 'Videograf (Emma)', icon: 'Videocam', tasks: [
     { t: 'Etableringsbilder + lydsjekk', time: '07:30 – 08:30', done: true },
     { t: 'Forberedelser – video', time: '08:00 – 10:00', done: true },
     { t: 'First look – video', time: '10:30 – 11:00', done: false },
     { t: 'Vielse – flere vinkler', time: '11:30 – 12:30', done: false },
   ]},
-  { role: 'Begge', icon: '👥', tasks: [
+  { role: 'Begge', icon: 'Groups', tasks: [
     { t: 'First look – reaksjoner', time: '10:30 – 11:00', done: true },
     { t: 'Vielse: inngang & første kyss', time: '11:30 – 12:30', done: false },
     { t: 'Gruppebilder familie', time: '13:00 – 13:45', done: false },
     { t: 'Golden hour – parbilder', time: '16:30 – 17:30', done: false },
   ]},
-  { role: 'Editor (Lukas)', icon: '🎬', tasks: [
+  { role: 'Editor (Lukas)', icon: 'Movie', tasks: [
     { t: 'Råmateriale backup', time: 'Løpende', done: true },
     { t: 'Marker sterke øyeblikk', time: 'Løpende', done: false },
     { t: 'Highlight-klipp (2–3 min)', time: 'Etter festen', done: false },
@@ -152,29 +153,29 @@ const RULER = ['08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00', '2
 
 function eventIcon(title: string): string {
   const t = (title || '').toLowerCase();
-  if (t.includes('first look')) return '💗';
-  if (t.includes('viel') || t.includes('seremoni')) return '⛪';
-  if (t.includes('golden')) return '🌅';
-  if (t.includes('tale') || t.includes('toast')) return '🎙️';
-  if (t.includes('fest') || t.includes('dans')) return '🎉';
-  if (t.includes('forbered') || t.includes('getting ready')) return '🤍';
-  return '⏱️';
+  if (t.includes('first look')) return 'Favorite';
+  if (t.includes('viel') || t.includes('seremoni')) return 'Church';
+  if (t.includes('golden')) return 'WbTwilight';
+  if (t.includes('tale') || t.includes('toast')) return 'Mic';
+  if (t.includes('fest') || t.includes('dans')) return 'Celebration';
+  if (t.includes('forbered') || t.includes('getting ready')) return 'Favorite';
+  return 'AccessTime';
 }
 // Humaniser en capture_events.event_type (fri tekst fra iPad/One Desk) til ikon + tekst.
 function activityMeta(type: string, t: (k: string) => string): { icon: string; label: string } {
   const ty = (type || '').toLowerCase();
-  if (ty.includes('asset') && (ty.includes('add') || ty.includes('upload') || ty.includes('captur'))) return { icon: '📸', label: t('actAssetAdded') };
-  if (ty.includes('rating') || ty.includes('rated')) return { icon: '⭐', label: t('actRating') };
-  if (ty.includes('cull') || ty.includes('reject')) return { icon: '🗑️', label: t('actCulling') };
-  if (ty.includes('flag') || ty.includes('pick') || ty.includes('highlight')) return { icon: '🚩', label: t('actFlagged') };
-  if (ty.includes('handoff')) return { icon: '🎬', label: t('actHandoff') };
-  if (ty.includes('deliver')) return { icon: '📦', label: t('actDelivered') };
-  if (ty.includes('backup') || ty.includes('secured') || ty.includes('mirror')) return { icon: '☁️', label: t('actBackedUp') };
-  if (ty.includes('session') && ty.includes('start')) return { icon: '▶️', label: t('actSessionStart') };
-  if (ty.includes('enhance')) return { icon: '✨', label: t('actEnhance') };
-  if (ty.includes('voice') || ty.includes('memo') || ty.includes('audio')) return { icon: '🎙️', label: t('actVoice') };
-  if (ty.includes('comment') || ty.includes('review')) return { icon: '💬', label: t('actComment') };
-  return { icon: '⚡', label: (type || t('eventWord')).replace(/_/g, ' ') };
+  if (ty.includes('asset') && (ty.includes('add') || ty.includes('upload') || ty.includes('captur'))) return { icon: 'PhotoCamera', label: t('actAssetAdded') };
+  if (ty.includes('rating') || ty.includes('rated')) return { icon: 'Star', label: t('actRating') };
+  if (ty.includes('cull') || ty.includes('reject')) return { icon: 'DeleteOutline', label: t('actCulling') };
+  if (ty.includes('flag') || ty.includes('pick') || ty.includes('highlight')) return { icon: 'FlagOutlined', label: t('actFlagged') };
+  if (ty.includes('handoff')) return { icon: 'Movie', label: t('actHandoff') };
+  if (ty.includes('deliver')) return { icon: 'Inventory2', label: t('actDelivered') };
+  if (ty.includes('backup') || ty.includes('secured') || ty.includes('mirror')) return { icon: 'CloudDone', label: t('actBackedUp') };
+  if (ty.includes('session') && ty.includes('start')) return { icon: 'PlayArrow', label: t('actSessionStart') };
+  if (ty.includes('enhance')) return { icon: 'AutoAwesome', label: t('actEnhance') };
+  if (ty.includes('voice') || ty.includes('memo') || ty.includes('audio')) return { icon: 'SettingsVoice', label: t('actVoice') };
+  if (ty.includes('comment') || ty.includes('review')) return { icon: 'ChatBubbleOutline', label: t('actComment') };
+  return { icon: 'Bolt', label: (type || t('eventWord')).replace(/_/g, ' ') };
 }
 function timeAgo(iso: string, t: (k: string) => string): string {
   if (!iso) return '';
@@ -350,11 +351,11 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
   const catDefaults = CATEGORY_DEFAULT_CREW[wsCategory] || CATEGORY_DEFAULT_CREW.visual;
   const roleDefs = crewData ? crewData.roles : catDefaults.keys.map(crewRoleDef);
   const crewFallbackKey = crewData?.fallbackKey || catDefaults.fallbackKey;
-  const COLS = roleDefs.map((r: any) => ({ role: locale === 'en' ? (r.labelEn || r.label) : r.label, icon: r.icon || '👤', crew: r.key }));
+  const COLS = roleDefs.map((r: any) => ({ role: locale === 'en' ? (r.labelEn || r.label) : r.label, icon: r.icon || 'Person', crew: r.key }));
   const realBoard = tasks && tasks.length > 0
     ? COLS.map((c) => ({ ...c, tasks: tasks.filter((t) => (t.crewRole || crewFallbackKey) === c.crew).map((t) => ({ id: t.id, t: t.title, time: t.timeLabel || '', done: t.status === 'done', real: true })) }))
     : null;
-  const boardCols = isReal ? (realBoard || COLS.map((c) => ({ role: c.role || c.label || c.crew, icon: c.icon || '👥', crew: c.crew, tasks: [] }))) : BOARD.map((c, i) => ({ role: c.role, icon: c.icon, crew: COLS[i]?.crew || 'begge', tasks: c.tasks }));
+  const boardCols = isReal ? (realBoard || COLS.map((c) => ({ role: c.role || c.label || c.crew, icon: c.icon || 'Groups', crew: c.crew, tasks: [] }))) : BOARD.map((c, i) => ({ role: c.role, icon: c.icon, crew: COLS[i]?.crew || 'begge', tasks: c.tasks }));
 
   // Ekte prosjekter: ekte fremdrift (0 til milestones finnes); demo-tall kun på sample.
   const fremdriftPct = progress ? progress.pct : isReal ? 0 : 68;
@@ -393,14 +394,14 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
           <WsCard sx={{ mb: 2 }}>
             <Stack direction="row" alignItems="center" spacing={2} flexWrap="wrap" gap={1.5}>
               <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 180 }}>
-                <Typography sx={{ fontSize: 17 }}>🎚️</Typography>
+                {wsIcon('Tune', { fontSize: 18, color: ws.accent })}
                 <Box>
                   <Stack direction="row" spacing={0.75} alignItems="center">
                     <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>{t('studioTitle')}</Typography>
                     {liveStudio?.playhead?.timecode && (
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                         <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: ws.green }} />
-                        <Typography sx={{ fontSize: 10.5, color: ws.green, fontWeight: 700 }}>▶ {liveStudio.playhead.timecode}</Typography>
+                        <Typography sx={{ fontSize: 10.5, color: ws.green, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 0.25 }}>{wsIcon('PlayArrow', { fontSize: 12 })}{liveStudio.playhead.timecode}</Typography>
                       </Box>
                     )}
                   </Stack>
@@ -417,7 +418,7 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
               </Box>
               {studioReadiness && (studioReadiness.warmed > 0 || studioReadiness.moods > 0) && (
                 <Stack direction="row" spacing={0.75} alignItems="center" sx={{ px: 1 }}>
-                  <Typography sx={{ fontSize: 13 }}>🧘</Typography>
+                  {wsIcon('SelfImprovement', { fontSize: 15, color: ws.textDim })}
                   <Typography sx={{ fontSize: 11.5, color: ws.textDim }}>
                     {studioReadiness.warmed}{studioReadiness.band ? `/${studioReadiness.band}` : ''} {t('readyForRecording')}{studioReadiness.moods > 0 ? ` · ${studioReadiness.moods} ${t('moodCheckins')}` : ''}
                   </Typography>
@@ -434,7 +435,7 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
                 <Stack spacing={0.5}>
                   {latestBounces.map((b: any) => (
                     <Stack key={b.id} direction="row" spacing={1} alignItems="center" sx={{ px: 1, py: 0.55, borderRadius: 1, bgcolor: ws.panelInput }}>
-                      <Typography sx={{ fontSize: 12 }}>🎧</Typography>
+                      {wsIcon('Headphones', { fontSize: 14, color: ws.textDim })}
                       <Typography sx={{ fontSize: 12, color: ws.text, flex: 1, minWidth: 0 }} noWrap>{b.fileName || 'Bounce'}</Typography>
                       {b.sessionName && <Typography sx={{ fontSize: 10.5, color: ws.textFaint }} noWrap>{b.sessionName}</Typography>}
                       {b.reviewVersionId && <Typography sx={{ fontSize: 10.5, color: ws.green, fontWeight: 700 }}>{t('toVersion')}</Typography>}
@@ -450,7 +451,7 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
           <WsCard sx={{ mb: 2 }}>
             <Stack direction="row" alignItems="center" spacing={2} flexWrap="wrap" gap={1.5}>
               <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 180 }}>
-                <Typography sx={{ fontSize: 17 }}>📷</Typography>
+                {wsIcon('PhotoCamera', { fontSize: 18, color: ws.accent })}
                 <Box>
                   <Stack direction="row" spacing={0.75} alignItems="center">
                     <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>Capture & backup</Typography>
@@ -464,7 +465,7 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
                 <Typography sx={{ fontSize: 10.5, color: ws.textDim }}>{t('photosWord')}</Typography>
               </Box>
               <Box sx={{ flex: 1, minWidth: 160 }}>
-                <Stack direction="row" justifyContent="space-between"><Typography sx={{ fontSize: 11.5, color: ws.textDim }}>☁️ {t('securedB2')}</Typography><Typography sx={{ fontSize: 11.5, fontWeight: 700, color: (cap.assets?.securedPct ?? 0) >= 100 ? ws.green : ws.amber }}>{cap.assets?.securedPct ?? 0}%</Typography></Stack>
+                <Stack direction="row" justifyContent="space-between"><Typography sx={{ fontSize: 11.5, color: ws.textDim, display: 'inline-flex', alignItems: 'center', gap: 0.4 }}>{wsIcon('CloudDone', { fontSize: 13 })}{t('securedB2')}</Typography><Typography sx={{ fontSize: 11.5, fontWeight: 700, color: (cap.assets?.securedPct ?? 0) >= 100 ? ws.green : ws.amber }}>{cap.assets?.securedPct ?? 0}%</Typography></Stack>
                 <WsBar value={cap.assets?.securedPct ?? 0} color={(cap.assets?.securedPct ?? 0) >= 100 ? ws.green : ws.amber} height={5} />
                 <Typography sx={{ fontSize: 10.5, color: ws.textFaint, mt: 0.25 }}>{cap.assets?.securedToB2 ?? 0} {t('ofWord')} {cap.assets?.total ?? 0} {t('originalsVerified')}</Typography>
               </Box>
@@ -475,7 +476,7 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
               <Box sx={{ mt: 1.5, pt: 1.5, borderTop: `1px solid ${ws.borderSoft}` }}>
                 <Stack direction="row" alignItems="center" spacing={1.5} flexWrap="wrap" gap={1}>
                   <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 150 }}>
-                    <Typography sx={{ fontSize: 13 }}>🖥️</Typography>
+                    {wsIcon('Computer', { fontSize: 15, color: ws.textDim })}
                     <Box>
                       <Typography sx={{ fontSize: 11.5, fontWeight: 700 }}>{t('oneDeskMirror')}</Typography>
                       <Typography sx={{ fontSize: 10, color: ws.textFaint }}>{dit.oneDeskHosts?.length ? dit.oneDeskHosts.join(', ') : t('backupHelper')}</Typography>
@@ -483,10 +484,10 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
                   </Stack>
                   {(dit.destinations || []).map((d: any) => {
                     const ok = d.status === 'online' || d.status === 'connected' || d.status === 'ok' || d.status === 'active';
-                    const ic = d.type === 'cloud' || d.storage === 'cloud' || d.cloud ? '☁️' : d.type === 'raid' || d.storage === 'raid' ? '🗄️' : '💾';
+                    const ic = d.type === 'cloud' || d.storage === 'cloud' || d.cloud ? 'CloudDone' : d.type === 'raid' || d.storage === 'raid' ? 'Storage' : 'Save';
                     return (
                       <Stack key={d.id} direction="row" spacing={0.5} alignItems="center" sx={{ px: 1, py: 0.4, borderRadius: 1, bgcolor: ws.panelAlt }}>
-                        <Typography sx={{ fontSize: 11 }}>{ic}</Typography>
+                        {wsIcon(ic, { fontSize: 13, color: ws.textDim })}
                         <Typography sx={{ fontSize: 11, color: ws.text }}>{d.label || d.type || t('destination')}</Typography>
                         <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: ok ? ws.green : ws.textFaint }} />
                       </Stack>
@@ -543,9 +544,11 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
             </Stack>
             <Box sx={{ position: 'relative', height: 1, bgcolor: ws.border, mt: 0.5 }}>
               {nowVisible && (
-                <Box sx={{ position: 'absolute', left: `${nowPct}%`, top: -18, transform: 'translateX(-50%)' }}>
+                // «Nå»-markør: etikett over linjalen + kort tick. Kort tick (ikke
+                // en 60px-linje) så den ikke vasker over fase-kortenes tekst under.
+                <Box sx={{ position: 'absolute', left: `${nowPct}%`, top: -18, transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                   <Chip size="small" label={nowLabel} sx={{ height: 18, bgcolor: ws.accent, color: ws.accentContrast, fontWeight: 800, fontSize: 11 }} />
-                  <Box sx={{ width: 1, height: 60, bgcolor: ws.accent, mx: 'auto', mt: 0.5, opacity: 0.6 }} />
+                  <Box sx={{ width: 1, height: 12, bgcolor: ws.accent, mt: 0.5, opacity: 0.7 }} />
                 </Box>
               )}
             </Box>
@@ -559,7 +562,7 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
                 border: `1px solid ${p.active ? ws.accentBorder : ws.borderSoft}`,
               }}>
                 <Stack direction="row" spacing={0.75} alignItems="center">
-                  <Typography sx={{ fontSize: 16 }}>{p.icon}</Typography>
+                  {wsIcon(p.icon, { fontSize: 17, color: p.color })}
                   <Typography sx={{ fontSize: 13, fontWeight: 700 }}>{p.label}</Typography>
                 </Stack>
                 <Typography sx={{ fontSize: 11.5, color: ws.textDim, mt: 0.5 }}>{p.time}</Typography>
@@ -575,7 +578,7 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
             {boardCols.map((col) => (
               <Box key={col.role} sx={{ minWidth: 220, flex: 1 }}>
                 <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 1 }}>
-                  <Typography sx={{ fontSize: 14 }}>{col.icon}</Typography>
+                  {crewIcon(col.icon, { fontSize: 15, color: ws.textDim })}
                   <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: ws.textDim }}>{col.role}</Typography>
                 </Stack>
                 <Stack spacing={1}>
@@ -652,7 +655,7 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
         {(isReal ? activity.length > 0 : true) && (
           <WsCard sx={{ mb: 2 }}>
             <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 1.25 }}>
-              <Typography sx={{ fontSize: 14 }}>⚡</Typography>
+              {wsIcon('Bolt', { fontSize: 15, color: ws.textDim })}
               <Typography sx={{ fontSize: 13, fontWeight: 700 }}>{t('captureActivity')}</Typography>
               {capLive && <Stack direction="row" spacing={0.5} alignItems="center"><Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: ws.green }} /><Typography sx={{ fontSize: 10, color: ws.green, fontWeight: 700 }}>LIVE</Typography></Stack>}
             </Stack>
@@ -665,7 +668,7 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
                 const m = activityMeta(ev.type, t);
                 return (
                   <Stack key={ev.id} direction="row" spacing={1} alignItems="flex-start" sx={{ py: 0.65, px: 0.5, borderRadius: 1, '&:hover': { bgcolor: 'rgba(255,255,255,0.03)' } }}>
-                    <Typography sx={{ fontSize: 14, lineHeight: 1.3 }}>{m.icon}</Typography>
+                    {wsIcon(m.icon, { fontSize: 15, color: ws.textDim })}
                     <Box sx={{ minWidth: 0, flex: 1 }}>
                       <Typography sx={{ fontSize: 12, color: ws.text, lineHeight: 1.35 }}>
                         {m.label}{ev.filename ? <Typography component="span" sx={{ color: ws.textDim }}> · {ev.filename}</Typography> : null}

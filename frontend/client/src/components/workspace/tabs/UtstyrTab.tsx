@@ -15,6 +15,7 @@ import Close from '@mui/icons-material/Close';
 import PriceCheck from '@mui/icons-material/PriceCheck';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
+import { wsIcon } from '../crewIcons';
 import { WsCard, WsTag } from '../ui';
 import SoftwareKostnaderPanel from './SoftwareKostnaderPanel';
 import { useWsLocale, makeT, wsDateLocale, type WsDict } from '../wsLocale';
@@ -212,7 +213,7 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
         return (
           <WsCard sx={{ mb: 2 }}>
             <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
-              <Typography sx={{ fontSize: 15 }}>💳</Typography>
+              {wsIcon('CreditCard', { fontSize: 16, color: ws.textDim })}
               <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>{t('equipLicenses')}</Typography>
               <Box sx={{ flex: 1 }} />
               <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>{t('recurring')} <b style={{ color: ws.accent }}>{fmtKr(monthly)}/{t('perMonth')}</b> ≈ {fmtKr(monthly * 12)}/{t('perYear')}</Typography>
@@ -229,7 +230,7 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
                 );
               })}
             </Stack>
-            {upcoming.length > 0 && <Typography sx={{ fontSize: 11.5, color: ws.amber, mt: 1 }}>⚠️ {upcoming.length} {upcoming.length === 1 ? t('renewal') : t('renewals')} {t('within30')}</Typography>}
+            {upcoming.length > 0 && <Typography sx={{ fontSize: 11.5, color: ws.amber, mt: 1, display: 'inline-flex', alignItems: 'center', gap: 0.4 }}>{wsIcon('WarningAmber', { fontSize: 13 })}{upcoming.length} {upcoming.length === 1 ? t('renewal') : t('renewals')} {t('within30')}</Typography>}
           </WsCard>
         );
       })()}

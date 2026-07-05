@@ -13,6 +13,7 @@ import Close from '@mui/icons-material/Close';
 import Check from '@mui/icons-material/Check';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
+import { wsIcon } from '../crewIcons';
 import { WsCard, WsTag } from '../ui';
 
 const fmtKr = (n?: number) => (n && n > 0 ? `${Math.round(n).toLocaleString('nb-NO')} kr` : '—');
@@ -135,7 +136,7 @@ const SoftwareKostnaderPanel: React.FC<{ userId?: string; onEquipmentChange?: ()
     <WsCard sx={{ mb: 2 }}>
       {/* Header + skann/manuell */}
       <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: nothing ? 1 : 1.5 }}>
-        <Typography sx={{ fontSize: 15 }}>💳</Typography>
+        {wsIcon('CreditCard', { fontSize: 16, color: ws.textDim })}
         <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>Programvare & abonnement</Typography>
         <Box sx={{ flex: 1 }} />
         {sum.monthlyNok > 0 && <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Løpende: <b style={{ color: ws.accent }}>{fmtKr(sum.monthlyNok)}/mnd</b> ≈ {fmtKr(sum.yearlyNok)}/år</Typography>}
@@ -155,7 +156,7 @@ const SoftwareKostnaderPanel: React.FC<{ userId?: string; onEquipmentChange?: ()
 
       {aiCredits && (aiCredits.spentNok > 0 || aiCredits.billingMode === 'credits') && (
         <Typography sx={{ fontSize: 11, color: ws.textFaint, mb: nothing ? 0 : 1.25 }}>
-          🤖 AI-forbruk (CreatorHub-lommebok): brukt <b style={{ color: ws.textDim }}>{fmtKr(aiCredits.spentNok)}</b>
+          AI-forbruk (CreatorHub-lommebok): brukt <b style={{ color: ws.textDim }}>{fmtKr(aiCredits.spentNok)}</b>
           {aiCredits.billingMode === 'credits' && aiCredits.balanceNok != null ? <> · saldo <b style={{ color: aiCredits.balanceNok > 0 ? ws.accent : '#fca5a5' }}>{fmtKr(aiCredits.balanceNok)}</b></> : ''}
         </Typography>
       )}
@@ -173,7 +174,7 @@ const SoftwareKostnaderPanel: React.FC<{ userId?: string; onEquipmentChange?: ()
       {/* Software-forslag til gjennomgang */}
       {swSuggestions.length > 0 && (
         <Box sx={{ mb: (hwSuggestions.length || data.confirmed.length) ? 1.75 : 0 }}>
-          <Typography sx={{ fontSize: 12, fontWeight: 700, color: ws.amber, mb: 0.75 }}>📥 Programvare funnet i e-post — til gjennomgang ({swSuggestions.length})</Typography>
+          <Typography sx={{ fontSize: 12, fontWeight: 700, color: ws.amber, mb: 0.75, display: 'inline-flex', alignItems: 'center', gap: 0.4 }}>{wsIcon('Download', { fontSize: 14 })}Programvare funnet i e-post — til gjennomgang ({swSuggestions.length})</Typography>
           <Stack spacing={0.6}>
             {swSuggestions.map((r: any) => { const l = line(r); return (
               <Stack key={r.id} direction="row" alignItems="center" spacing={1} sx={{ p: 0.85, borderRadius: 1, bgcolor: ws.panelAlt, border: `1px solid ${ws.accentBorder}` }}>
@@ -192,7 +193,7 @@ const SoftwareKostnaderPanel: React.FC<{ userId?: string; onEquipmentChange?: ()
       {/* Utstyr-forslag → importeres til inventaret m/ garanti + reklamasjon */}
       {hwSuggestions.length > 0 && (
         <Box sx={{ mb: data.confirmed.length ? 1.75 : 0 }}>
-          <Typography sx={{ fontSize: 12, fontWeight: 700, color: ws.amber, mb: 0.75 }}>🛡️ Utstyr funnet i e-post — legg til i inventar ({hwSuggestions.length})</Typography>
+          <Typography sx={{ fontSize: 12, fontWeight: 700, color: ws.amber, mb: 0.75, display: 'inline-flex', alignItems: 'center', gap: 0.4 }}>{wsIcon('Security', { fontSize: 14 })}Utstyr funnet i e-post — legg til i inventar ({hwSuggestions.length})</Typography>
           <Stack spacing={0.6}>
             {hwSuggestions.map((r: any) => { const l = line(r); return (
               <Stack key={r.id} direction="row" alignItems="center" spacing={1} sx={{ p: 0.85, borderRadius: 1, bgcolor: ws.panelAlt, border: `1px solid ${ws.accentBorder}` }}>

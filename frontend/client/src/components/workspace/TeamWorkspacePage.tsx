@@ -39,6 +39,7 @@ import CommunityHub from '../community/CommunityHub';
 import WorkspaceChatPanel from './WorkspaceChatPanel';
 import { usePresence } from './usePresence';
 import { ws, WS_NAV, navForProfession, localizeNav, workspaceCategoryFor, isMusicProfession } from './workspaceTheme';
+import { getProfessionDisplayName } from '@shared/profession-types';
 import { useWorkspaceCategoryMap } from './useWorkspaceCategory';
 import { WsLocaleProvider, type WsLocale } from './wsLocale';
 import { localeForVendor } from '../universal/editing-marketplace/editingMarketplaceStrings';
@@ -147,9 +148,10 @@ const TeamWorkspacePage: React.FC = () => {
   const project = { ...(realProject || { ...SAMPLE_PROJECT, id: projectId }), members };
   const wsUser = {
     name: user?.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : (user?.name || user?.email || 'Bruker'),
-    role: isMusicProfession(user?.profession) ? 'Musikkprodusent'
-      : user?.profession === 'vendor' ? 'Leverandør'
-      : user?.profession === 'videographer' ? 'Videograf' : 'Fotograf',
+    // Rolle-etiketten hentes fra profesjons-registeret (dekker alle ~20
+    // profesjonene, ikke bare foto/video/musikk/vendor — service-profesjoner
+    // som hundefrisør fikk før feilaktig «Fotograf»).
+    role: getProfessionDisplayName(user?.profession) || 'Medlem',
     email: user?.email || null,
     avatarUrl: user?.avatarUrl || null,
   };

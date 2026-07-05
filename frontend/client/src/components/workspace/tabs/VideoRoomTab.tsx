@@ -16,6 +16,7 @@ import EditNote from '@mui/icons-material/EditNote';
 import AutoAwesome from '@mui/icons-material/AutoAwesome';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
+import { wsIcon } from '../crewIcons';
 import { WsCard, WsTag, WsModal } from '../ui';
 import AiBuyCreditsModal from '../AiBuyCreditsModal';
 import CinematicVideoPlayer from '@/components/gallery/CinematicVideoPlayer';
@@ -304,7 +305,7 @@ const VideoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         ) : !aiCfg?.consent?.consented ? (
           <Stack spacing={2}>
             <Box sx={{ p: 1.5, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.amberSoft, border: `1px solid ${ws.amber}55` }}>
-              <Typography sx={{ fontSize: 13, fontWeight: 700, color: ws.amber, mb: 0.5 }}>⚠️ Samtykke kreves</Typography>
+              <Typography sx={{ fontSize: 13, fontWeight: 700, color: ws.amber, mb: 0.5, display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>{wsIcon('WarningAmber', { fontSize: 15 })}Samtykke kreves</Typography>
               <Typography sx={{ fontSize: 12.5, color: ws.text }}>Restyle sender videoen til en tredjeparts AI (SwitchX / Beeble) som kan behandle data utenfor EØS.</Typography>
             </Box>
             <Stack direction="row" justifyContent="flex-end" spacing={1}>

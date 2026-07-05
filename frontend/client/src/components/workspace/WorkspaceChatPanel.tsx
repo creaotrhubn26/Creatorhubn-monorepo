@@ -36,8 +36,11 @@ import MusicNote from '@mui/icons-material/MusicNote';
 import MovieOutlined from '@mui/icons-material/MovieOutlined';
 import EventOutlined from '@mui/icons-material/EventOutlined';
 import PhotoLibraryOutlined from '@mui/icons-material/PhotoLibraryOutlined';
+import WorkOutline from '@mui/icons-material/WorkOutline';
 import OpenInNew from '@mui/icons-material/OpenInNew';
-import { ListItemIcon, ListItemText, Dialog, DialogTitle, DialogContent, Tabs, Tab, ListItemButton, Snackbar, Button, FormControl, Select, Checkbox, FormControlLabel } from '@mui/material';
+import { ListItemIcon, ListItemText, Dialog, DialogTitle, DialogContent, Tabs, Tab, ListItemButton, Snackbar, Button, FormControl, Select, Checkbox, FormControlLabel, ToggleButtonGroup, ToggleButton } from '@mui/material';
+import Lock from '@mui/icons-material/Lock';
+import Public from '@mui/icons-material/Public';
 import { useLocation } from 'wouter';
 import { apiRequest, getAuthHeader, buildApiUrl } from '@/lib/queryClient';
 import { useAuth } from '@/hooks/useAuth';
@@ -118,8 +121,19 @@ const T: WsDict = {
   refPick: { no: 'Referer til …', en: 'Reference …' },
   refSongs: { no: 'Låter', en: 'Songs' },
   refMedia: { no: 'Media', en: 'Media' },
+  refJobs: { no: 'Oppdrag', en: 'Jobs' },
   refDeliverables: { no: 'Leveranser', en: 'Deliverables' },
   refSessions: { no: 'Økter', en: 'Sessions' },
+  roomTeam: { no: 'Team', en: 'Team' },
+  roomShared: { no: 'Delt', en: 'Shared' },
+  sharedBanner: { no: 'Delt-rom — dette er synlig for klienten.', en: 'Shared room — visible to the client.' },
+  emptyShared: { no: 'Ingen delte meldinger ennå. Det du sender her er synlig for klienten.', en: 'No shared messages yet. What you send here is visible to the client.' },
+  actNew: { no: 'Ny', en: 'New' },
+  actDeliverable: { no: 'leveranse', en: 'deliverable' },
+  actTask: { no: 'oppgave', en: 'task' },
+  actTrack: { no: 'låt oppdatert', en: 'song updated' },
+  actMeeting: { no: 'møte planlagt', en: 'meeting scheduled' },
+  actJob: { no: 'oppdrag', en: 'job' },
   refEmpty: { no: 'Ingenting her ennå.', en: 'Nothing here yet.' },
   taskTitle: { no: 'Ny oppgave', en: 'New task' },
   taskName: { no: 'Hva skal gjøres?', en: 'What needs doing?' },
@@ -178,6 +192,8 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [pinnedOnly, setPinnedOnly] = useState(false);
+  const [room, setRoom] = useState('team'); // 'team' (internt) | 'shared' (delt m/ klient)
+  const [activity, setActivity] = useState([]); // prosjekt-hendelser flettet inn i tidslinjen
   const [tag, setTag] = useState(null); // merkelapp for neste melding
   const [pending, setPending] = useState([]); // vedlegg som venter på å sendes
   const [uploading, setUploading] = useState(false);
@@ -228,9 +244,13 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
     } catch { /* sekundær */ } finally { if (initial) setLoading(false); }
   };
 
+  // Prosjekt-hendelser (leveranser, oppgaver, møter, låter, oppdrag) flettes
+  // inn i tidslinjen så chatten blir prosjektets puls.
+  const loadActivity = React.useCallback(() => apiRequest(`/api/projects/${projectId}/activity`).then((d) => setActivity(Array.isArray(d?.activity) ? d.activity : [])).catch(() => setActivity([])), [projectId]);
+
   useEffect(() => {
-    load(true);
-    const iv = setInterval(() => { if (!document.hidden) load(false); }, 15000);
+    load(true); loadActivity();
+    const iv = setInterval(() => { if (!document.hidden) { load(false); loadActivity(); } }, 15000);
     return () => clearInterval(iv);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [channelId]);
@@ -247,18 +267,23 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
     return [...seen.values()];
   }, [messages, myId, myName]);
 
-  // Synlige meldinger etter søk + viktig-filter.
-  const visible = useMemo(() => {
+  // Tidslinje: meldinger (rom-filtrert) + prosjekt-aktivitet, sortert på tid.
+  // Rom: Team viser internt (+ default), Delt viser kun shared-meldinger.
+  // Aktivitet vises i Team-rommet (arbeidskontekst), skjult ved søk/pin.
+  const visFor = (m) => m.metadata?.visibility || 'internal';
+  const feed = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return messages.filter((m) => {
+    const msgs = messages.filter((m) => {
+      if (room === 'shared' ? visFor(m) !== 'shared' : visFor(m) === 'shared') return false;
       if (pinnedOnly && m.tag !== 'important') return false;
-      if (q) {
-        const hay = `${m.content || ''} ${m.senderName || m.senderId || ''}`.toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
+      if (q) { const hay = `${m.content || ''} ${m.senderName || m.senderId || ''}`.toLowerCase(); if (!hay.includes(q)) return false; }
       return true;
-    });
-  }, [messages, query, pinnedOnly]);
+    }).map((m) => ({ _t: 'msg', ts: m.timestamp ? new Date(m.timestamp).getTime() : 0, m }));
+    const acts = (room === 'team' && !q && !pinnedOnly)
+      ? activity.map((a) => ({ _t: 'act', ts: a.ts ? new Date(a.ts).getTime() : 0, a })).filter((x) => x.ts)
+      : [];
+    return [...msgs, ...acts].sort((a, b) => a.ts - b.ts);
+  }, [messages, activity, query, pinnedOnly, room]);
 
   const insertAtCursor = (snippet) => {
     const el = inputRef.current;
@@ -296,7 +321,7 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
         method: 'POST',
         body: {
           conversationId: channelId, content, senderId: myId, senderName: myName,
-          metadata: { senderName: myName, ...(tag ? { tag } : {}) },
+          metadata: { senderName: myName, ...(tag ? { tag } : {}), ...(room === 'shared' ? { visibility: 'shared' } : {}) },
           ...(pending.length ? { attachments: pending } : {}),
         },
       });
@@ -342,8 +367,9 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
     media: { key: 'media', label: t('refMedia'), icon: <PhotoLibraryOutlined sx={{ fontSize: 17, color: '#7dd3fc' }} />, kind: 'media', ep: `/api/projects/${projectId}/media`, map: (r) => (r?.assets || []).slice(0, 60).map((x) => ({ id: x.id, primary: x.filename || 'fil', secondary: x.state || '' })) },
     deliverable: { key: 'deliverable', label: t('refDeliverables'), icon: <MovieOutlined sx={{ fontSize: 17, color: '#f0abfc' }} />, kind: 'deliverable', ep: `/api/projects/${projectId}/deliverables`, map: (r) => (r?.deliverables || []).map((x) => ({ id: x.id, primary: x.title, secondary: [x.type, x.status].filter(Boolean).join(' · ') })) },
     session: { key: 'session', label: t('refSessions'), icon: <EventOutlined sx={{ fontSize: 17, color: '#a5b4fc' }} />, kind: 'session', ep: `/api/projects/${projectId}/avtaler`, map: (r) => (r?.meetings || []).map((x) => ({ id: x.id, primary: x.title || 'Økt', secondary: x.scheduledAt ? new Date(x.scheduledAt).toLocaleString(wsDateLocale(locale)) : '' })) },
+    oppdrag: { key: 'oppdrag', label: t('refJobs'), icon: <WorkOutline sx={{ fontSize: 17, color: '#fbbf24' }} />, kind: 'oppdrag', ep: `/api/projects/${projectId}/editing-jobs`, map: (r) => (r?.jobs || []).map((x) => ({ id: x.id, primary: x.vendorName || (x.services || [])[0] || 'Oppdrag', secondary: [(x.services || []).join(', '), x.status].filter(Boolean).join(' · ') })) },
   };
-  const REF_KEYS_BY_CAT = { music: ['track', 'deliverable', 'session'], visual: ['media', 'deliverable', 'session'], service: ['deliverable', 'session'], vendor: ['deliverable', 'session'] };
+  const REF_KEYS_BY_CAT = { music: ['track', 'deliverable', 'session'], visual: ['media', 'deliverable', 'session'], service: ['deliverable', 'session'], vendor: ['oppdrag', 'deliverable', 'session'] };
   const openRefPicker = async () => {
     setActionAnchor(null); setRefOpen(true); setRefLoading(true); setRefTab(0);
     const keys = REF_KEYS_BY_CAT[category] || ['deliverable', 'session'];
@@ -402,7 +428,7 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
     return () => window.removeEventListener('keydown', onKey);
   }, []);
   // Referanse-/oppgave-kort → naviger til riktig fane.
-  const REF_ROUTE = { track: 'laater', song: 'laater', media: 'media', deliverable: 'leveranser', oppgaver: 'oppgaver' };
+  const REF_ROUTE = { track: 'laater', song: 'laater', media: 'media', deliverable: 'leveranser', oppgaver: 'oppgaver', oppdrag: 'oppdrag' };
   // Møter/økter havner i Sesjoner for musikk, ellers i Avtaler (crm_meetings).
   const gotoRef = (refKind) => {
     const seg = (refKind === 'session' || refKind === 'meeting') ? (category === 'music' ? 'sesjoner' : 'avtaler') : (REF_ROUTE[refKind] || 'oversikt');
@@ -441,7 +467,32 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
     );
   });
 
-  const REF_ICON = { track: <MusicNote sx={{ fontSize: 15 }} />, song: <MusicNote sx={{ fontSize: 15 }} />, media: <PhotoLibraryOutlined sx={{ fontSize: 15 }} />, deliverable: <MovieOutlined sx={{ fontSize: 15 }} />, session: <EventOutlined sx={{ fontSize: 15 }} />, oppgaver: <PlaylistAddCheck sx={{ fontSize: 15 }} /> };
+  const REF_ICON = { track: <MusicNote sx={{ fontSize: 15 }} />, song: <MusicNote sx={{ fontSize: 15 }} />, media: <PhotoLibraryOutlined sx={{ fontSize: 15 }} />, deliverable: <MovieOutlined sx={{ fontSize: 15 }} />, session: <EventOutlined sx={{ fontSize: 15 }} />, oppgaver: <PlaylistAddCheck sx={{ fontSize: 15 }} />, oppdrag: <WorkOutline sx={{ fontSize: 15 }} /> };
+  // Aktivitets-rad: prosjekt-hendelser flettet inn i tidslinjen (leveranse,
+  // oppgave, låt, møte, oppdrag). Kompakt, dempet, klikkbar → riktig fane.
+  const ACT_META = {
+    deliverable: { icon: <MovieOutlined sx={{ fontSize: 14 }} />, color: '#f0abfc', kind: 'deliverable', verb: t('actDeliverable') },
+    task: { icon: <PlaylistAddCheck sx={{ fontSize: 14 }} />, color: ws.green, kind: 'oppgaver', verb: t('actTask') },
+    track: { icon: <MusicNote sx={{ fontSize: 14 }} />, color: ws.accent, kind: 'track', verb: t('actTrack') },
+    meeting: { icon: <EventOutlined sx={{ fontSize: 14 }} />, color: '#a5b4fc', kind: 'meeting', verb: t('actMeeting') },
+    job: { icon: <WorkOutline sx={{ fontSize: 14 }} />, color: '#fbbf24', kind: 'oppdrag', verb: t('actJob') },
+  };
+  const renderActivity = (a) => {
+    const meta = ACT_META[a.type] || ACT_META.task;
+    return (
+      <Box key={a.id} onClick={() => gotoRef(meta.kind)} role="button" tabIndex={0}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); gotoRef(meta.kind); } }}
+        sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1, py: 0.6, borderRadius: 2, cursor: 'pointer', border: `1px dashed ${ws.border}`, bgcolor: 'rgba(255,255,255,0.02)', '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' } }}>
+        <Box sx={{ color: meta.color, display: 'flex' }}>{meta.icon}</Box>
+        <Box sx={{ minWidth: 0, flex: 1 }}>
+          <Typography sx={{ fontSize: 11.5, color: ws.text, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <Box component="span" sx={{ color: ws.textDim, fontWeight: 500 }}>{t('actNew')} {meta.verb}: </Box>{a.title}
+          </Typography>
+        </Box>
+        <Typography sx={{ fontSize: 10, color: ws.textFaint, flexShrink: 0 }}>{a.ts ? new Date(a.ts).toLocaleTimeString(wsDateLocale(locale), { hour: '2-digit', minute: '2-digit' }) : ''}</Typography>
+      </Box>
+    );
+  };
   // Interaktivt kort utledet av metadata.action.
   const renderCard = (m) => {
     const meta = m.metadata || {};
@@ -553,26 +604,39 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
         </Box>
       )}
 
-      {/* Kanal-velger */}
+      {/* Kanal-velger + rom-skille (Team / Delt) */}
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 1.75, py: 1 }}>
-        <Stack direction="row" spacing={0.75} alignItems="center">
-          <Chip size="small" label={t('channelProduction')} sx={{ bgcolor: 'rgba(255,255,255,0.05)', color: ws.text, fontWeight: 600 }} />
-          {openRequests > 0 && <Chip size="small" label={`${openRequests} ${t('unanswered')}`} sx={{ height: 22, fontSize: 11, fontWeight: 700, color: ws.green, bgcolor: ws.greenSoft }} />}
+        <ToggleButtonGroup size="small" exclusive value={room} onChange={(_e, v) => { if (v) setRoom(v); }} aria-label={t('title')}
+          sx={{ '& .MuiToggleButton-root': { textTransform: 'none', fontSize: 12, fontWeight: 700, py: 0.25, px: 1, color: ws.textDim, borderColor: ws.border }, '& .Mui-selected': { color: `${ws.accent} !important`, bgcolor: `${ws.accentSoft} !important` } }}>
+          <ToggleButton value="team" aria-label={t('roomTeam')}><Lock sx={{ fontSize: 13, mr: 0.5 }} /> {t('roomTeam')}</ToggleButton>
+          <ToggleButton value="shared" aria-label={t('roomShared')}><Public sx={{ fontSize: 13, mr: 0.5 }} /> {t('roomShared')}</ToggleButton>
+        </ToggleButtonGroup>
+        <Stack direction="row" spacing={0.5} alignItems="center">
+          {room === 'team' && openRequests > 0 && <Chip size="small" label={`${openRequests} ${t('unanswered')}`} sx={{ height: 22, fontSize: 11, fontWeight: 700, color: ws.green, bgcolor: ws.greenSoft }} />}
+          <Tooltip title={pinnedOnly ? t('pinFilterOff') : t('pinFilterOn')}>
+            <IconButton size="small" aria-label={pinnedOnly ? t('pinFilterOff') : t('pinFilterOn')} aria-pressed={pinnedOnly} onClick={() => setPinnedOnly((v) => !v)} sx={{ color: pinnedOnly ? ws.red : ws.textDim }}><PushPin sx={{ fontSize: 16 }} /></IconButton>
+          </Tooltip>
         </Stack>
-        <Tooltip title={pinnedOnly ? t('pinFilterOff') : t('pinFilterOn')}>
-          <IconButton size="small" aria-label={pinnedOnly ? t('pinFilterOff') : t('pinFilterOn')} aria-pressed={pinnedOnly} onClick={() => setPinnedOnly((v) => !v)} sx={{ color: pinnedOnly ? ws.red : ws.textDim }}><PushPin sx={{ fontSize: 16 }} /></IconButton>
-        </Tooltip>
       </Stack>
+      {/* Delt-rom-banner: alt her er synlig for klienten */}
+      {room === 'shared' && (
+        <Box sx={{ mx: 1.75, mb: 0.5, px: 1.25, py: 0.6, borderRadius: 1.5, bgcolor: 'rgba(240,171,252,0.1)', border: '1px solid rgba(240,171,252,0.32)', display: 'flex', alignItems: 'center', gap: 0.75 }}>
+          <Public sx={{ fontSize: 14, color: '#f0abfc' }} />
+          <Typography sx={{ fontSize: 11.5, color: ws.text, fontWeight: 600 }}>{t('sharedBanner')}</Typography>
+        </Box>
+      )}
 
       {/* Meldinger — role=log + aria-live så skjermlesere fanger innkommende */}
       <Box ref={listRef} role="log" aria-live="polite" aria-relevant="additions" aria-label={t('messagesRegion')} sx={{ flex: 1, overflowY: 'auto', px: 1.5, py: 1, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
         {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress size={20} /></Box>
-        ) : visible.length === 0 ? (
+        ) : feed.length === 0 ? (
           <Typography sx={{ fontSize: 13, color: ws.textDim, textAlign: 'center', py: 4 }}>
-            {(query || pinnedOnly) ? t('noMatches') : t('emptyChat')}
+            {(query || pinnedOnly) ? t('noMatches') : room === 'shared' ? t('emptyShared') : t('emptyChat')}
           </Typography>
-        ) : visible.map((m) => {
+        ) : feed.map((it) => {
+          if (it._t === 'act') return renderActivity(it.a);
+          const m = it.m;
           const mine = String(m.senderId || '').toLowerCase() === String(myId).toLowerCase();
           const tagMeta = m.tag && TAG_META[m.tag];
           return (

@@ -21,6 +21,7 @@ import Download from '@mui/icons-material/Download';
 import Close from '@mui/icons-material/Close';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
+import { wsIcon } from '../crewIcons';
 import { WsCard, WsTag } from '../ui';
 
 const fmtTime = (s: number) => { const n = Math.max(0, Math.floor(Number(s) || 0)); const m = Math.floor(n / 60); const sec = n % 60; return `${m}:${String(sec).padStart(2, '0')}`; };
@@ -232,7 +233,7 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       {roomId && (
         <WsCard sx={{ mt: 2 }}>
           <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.25 }}>
-            <Typography sx={{ fontSize: 15 }}>🚀</Typography>
+            {wsIcon('RocketLaunch', { fontSize: 16, color: ws.accent })}
             <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>Utgivelse</Typography>
             <Box sx={{ flex: 1 }} />
             {release && validation && (
@@ -341,7 +342,7 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       {/* Pro Tools Companion — native desktop-agent som synker markører + bounces hit */}
       <WsCard sx={{ mt: 2 }}>
         <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.25 }}>
-          <Typography sx={{ fontSize: 15 }}>🎛️</Typography>
+          {wsIcon('Equalizer', { fontSize: 16, color: ws.accent })}
           <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>Pro Tools Companion</Typography>
           <Box sx={{ flex: 1 }} />
           {pt?.paired ? <WsTag label="Tilkoblet" tone="green" /> : <WsTag label="Ikke koblet" tone="neutral" />}
@@ -394,7 +395,7 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
                 <Stack spacing={0.5}>
                   {pt.bounces.slice(0, 4).map((b: any) => (
                     <Stack key={b.id} direction="row" alignItems="center" spacing={1} sx={{ p: 0.75, borderRadius: 1, bgcolor: ws.panelAlt, border: `1px solid ${ws.borderSoft}` }}>
-                      <Typography sx={{ fontSize: 13 }}>🎚️</Typography>
+                      {wsIcon('Tune', { fontSize: 15, color: ws.textDim })}
                       <Typography sx={{ fontSize: 12, flex: 1, minWidth: 0 }} noWrap>{b.file_name || 'Bounce'}</Typography>
                       {b.review_version_id && <WsTag label="→ versjon" tone="green" />}
                     </Stack>
@@ -411,7 +412,7 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       {/* EaseVerse-tracks — koble en låt fra EaseVerse inn i Sound Room (toveis-synk) */}
       <WsCard sx={{ mt: 2 }}>
         <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.25 }}>
-          <Typography sx={{ fontSize: 14 }}>🎵</Typography>
+          {wsIcon('MusicNote', { fontSize: 15, color: ws.textDim })}
           <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>EaseVerse-tracks</Typography>
           <Box sx={{ flex: 1 }} />
           {ev?.linkedTrackId && <WsTag label="Koblet" tone="green" />}
