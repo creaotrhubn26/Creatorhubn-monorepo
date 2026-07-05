@@ -1033,7 +1033,7 @@ import {
 } from "../../frontend/client/src/data/audio-storage-device-database.ts";
 import { WORLD_CAMERA_DATABASE } from "../../frontend/shared/camera-database.ts";
 import { CAMERA_RELEASE_REGISTRY_2020_2026 } from "../../frontend/shared/camera-release-registry.ts";
-import { normalizeProfession as normalizeCanonicalProfession } from "../../frontend/shared/profession-types.ts";
+import { normalizeProfession as normalizeCanonicalProfession, canonicalizeProfession } from "../../frontend/shared/profession-types.ts";
 import { DEFAULT_PROFESSION_CONFIGS } from "../../frontend/client/src/types/ProfessionConfig.ts";
 import {
   ACADEMY_PRESENTATION_GRAMMAR_BUDGETS,
@@ -19172,10 +19172,18 @@ async function recordCompatPaymentCompletion(
   const billingCycle = normalizeCreatorHubBillingCycle(
     normalizeJsonObjectField(record.metadata)?.billingCycle,
   );
-  const currentPeriodEnd = addBillingCycleIso(
-    record.completedAt || record.createdAt,
-    billingCycle,
-  );
+  // Foretrekk den EKTE Stripe-periodeslutten (current_period_end) når den er
+  // lagret på betalings-recorden (settes i markCreatorHubStripeCheckoutRecordPaid).
+  // Ellers falltilbake til estimat (completedAt + faktureringssyklus). Estimatet
+  // bommer på trial/proration; den ekte verdien er korrekt.
+  const metaPeriodEnd = normalizeJsonObjectField(record.metadata)?.currentPeriodEnd;
+  const currentPeriodEnd =
+    typeof metaPeriodEnd === "string" && metaPeriodEnd
+      ? metaPeriodEnd
+      : addBillingCycleIso(
+          record.completedAt || record.createdAt,
+          billingCycle,
+        );
   const history = await readCompatPaymentHistory(record.userId);
   const nextHistory = [
     {
@@ -26890,6 +26898,30 @@ async function markCreatorHubStripeCheckoutRecordPaid(
       : null) ||
     (await readCompatPaymentStatusRecord(`pay_${record.sessionId}`));
 
+  // Hent den EKTE periodeslutten fra Stripe-abonnementet (håndterer trial/
+  // proration korrekt) i stedet for completedAt+syklus-estimatet. Best-effort.
+  let realStripePeriodEnd: string | null = null;
+  if (nextRecord.stripeSubscriptionId) {
+    try {
+      const stripeClient = getCreatorHubStripeClient();
+      if (stripeClient) {
+        const sub = await stripeClient.subscriptions.retrieve(
+          nextRecord.stripeSubscriptionId,
+        );
+        const periodEnd = (sub as unknown as { current_period_end?: number })
+          .current_period_end;
+        if (typeof periodEnd === "number" && periodEnd > 0) {
+          realStripePeriodEnd = new Date(periodEnd * 1000).toISOString();
+        }
+      }
+    } catch (e) {
+      console.warn(
+        "Stripe current_period_end-oppslag feilet:",
+        (e as any)?.message,
+      );
+    }
+  }
+
   const compatRecord: CompatPaymentStatusRecord = {
     id: existingPaymentRecord?.id || `pay_${record.sessionId}`,
     transactionId: input.transactionId,
@@ -26914,6 +26946,9 @@ async function markCreatorHubStripeCheckoutRecordPaid(
       stripeSessionId: nextRecord.sessionId,
       stripeSubscriptionId: nextRecord.stripeSubscriptionId,
       stripeCustomerId: nextRecord.stripeCustomerId,
+      // Ekte Stripe-periodeslutt (foretrekkes over estimat i
+      // recordCompatPaymentCompletion). null → estimat brukes.
+      ...(realStripePeriodEnd ? { currentPeriodEnd: realStripePeriodEnd } : {}),
     },
     receiptSentAt: existingPaymentRecord?.receiptSentAt || null,
     membershipCard: existingPaymentRecord?.membershipCard || null,
@@ -26944,6 +26979,27 @@ async function markCreatorHubStripeCheckoutRecordPaid(
     } catch (e) {
       console.warn(
         "Enterprise-medlemskap-grant feilet:",
+        (e as any)?.message,
+      );
+    }
+  }
+
+  // Profesjons-endring krever betaling: fri-veien (PATCH /api/user/profile +
+  // branding) er låst via COALESCE-guard, men et fullført kjøp der brukeren
+  // valgte en profesjon SKAL kunne endre den. Dette er server-håndhevelsen —
+  // betalingen ER gaten, så her overskriver vi (uten COALESCE).
+  if (nextRecord.profession && nextRecord.userId) {
+    try {
+      const canon = canonicalizeProfession(nextRecord.profession);
+      if (canon) {
+        await pool.query(
+          `UPDATE users SET profession = $1, updated_at = now() WHERE id = $2`,
+          [canon, nextRecord.userId],
+        );
+      }
+    } catch (e) {
+      console.warn(
+        "Betalt profesjons-endring feilet:",
         (e as any)?.message,
       );
     }
