@@ -14,7 +14,7 @@ import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
 import { WsCard, WsStat, WsTag } from '../ui';
 import { useWsLocale, makeT, type WsDict } from '../wsLocale';
-import { crewRoleDef } from '@shared/crew-roles';
+import { crewRoleDef, CREW_ROLE_CATALOG } from '@shared/crew-roles';
 
 // Lokal no/en-ordbok for fanen (samme mønster som OppdragTab).
 const T: WsDict = {
@@ -140,7 +140,7 @@ const OppgaverTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       </Stack>
 
       <Menu open={!!addMenu} anchorEl={addMenu?.el} onClose={() => setAddMenu(null)}>
-        {CREW.map((c) => <MenuItem key={c.value} onClick={() => add(addMenu?.col, c.value)}>{c.label[locale] || c.label.no}</MenuItem>)}
+        {CREW_ROLE_CATALOG.map((c) => <MenuItem key={c.key} onClick={() => add(addMenu?.col, c.key)}>{c.icon} {locale === 'en' ? c.labelEn : c.label}</MenuItem>)}
       </Menu>
     </Box>
   );
