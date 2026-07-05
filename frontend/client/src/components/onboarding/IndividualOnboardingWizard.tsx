@@ -1348,9 +1348,32 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
               <Typography variant="body1" sx={{ color: 'rgba(246,242,234,0.72)', mt: 1, maxWidth: 500, mx: 'auto' }}>
                 CreatorHub er nå satt opp som <strong>{activeProfession.label.toLowerCase()}</strong>
                 {businessName && <> for <strong>{businessName}</strong></>}.
-                Du blir tatt til dashboardet ditt.
+                Velg hvordan du vil starte.
               </Typography>
             </Box>
+
+            {/* Bro inn i workspace — prøv demoen uten å opprette noe */}
+            <Card
+              onClick={async () => { await handleFinish(); try { window.location.assign('/workspace/sample'); } catch { /* noop */ } }}
+              sx={{
+                p: 2.5, cursor: 'pointer',
+                background: `linear-gradient(135deg, ${alpha(brandColor, 0.14)}, rgba(15,10,7,0.86))`,
+                border: `2px solid ${brandColor}`, borderRadius: 3, boxShadow: 'none',
+                transition: 'all 0.2s', '&:hover': { transform: 'translateY(-2px)' },
+              }}>
+              <Stack direction="row" alignItems="center" spacing={2}>
+                <Avatar sx={{ bgcolor: alpha(brandColor, 0.18), color: brandColor, width: 48, height: 48 }}>
+                  <LayersIcon />
+                </Avatar>
+                <Box sx={{ flex: 1 }}>
+                  <Typography variant="body1" sx={{ fontWeight: 800, color: '#fff5e8' }}>Utforsk workspace (demo)</Typography>
+                  <Typography variant="caption" sx={{ color: 'rgba(246,242,234,0.72)' }}>
+                    Se hvordan prosjekt-workspacet fungerer — trygt, ingenting lagres.
+                  </Typography>
+                </Box>
+                <ChevronRightIcon sx={{ color: brandColor }} />
+              </Stack>
+            </Card>
 
             <Box sx={{
               p: 2.5, borderRadius: 2,
@@ -1358,14 +1381,14 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
               border: '1px solid rgba(16,185,129,0.32)',
             }}>
               <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#10b981', mb: 1 }}>
-                Hva du kan gjøre nå:
+                Eller gå til dashboardet og:
               </Typography>
               <Stack spacing={0.75}>
                 {[
-                  'Opprette ditt første prosjekt',
-                  'Legge til klient og sende første tilbud',
-                  'Utforske marketplace for verktøy som passer deg',
-                  'Invitere team-medlemmer hvis du vokser',
+                  'Opprett ditt første prosjekt',
+                  'Legg til klient og send første tilbud',
+                  'Utforsk marketplace for verktøy som passer deg',
+                  'Inviter team-medlemmer hvis du vokser',
                 ].map((text) => (
                   <Stack key={text} direction="row" spacing={1} alignItems="center">
                     <DoneIcon sx={{ fontSize: 16, color: '#10b981' }} />
