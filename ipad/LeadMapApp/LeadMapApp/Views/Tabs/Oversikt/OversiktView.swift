@@ -4364,10 +4364,63 @@ struct MyProfileSheet: View {
     // Realistisk månedsmål — basert på Daniels gjennomsnitt + 15% strekk.
     private var monthGoal: Int { max(wonThisMonth + 80, 250) }
     private var monthProgress: Double { min(Double(wonThisMonth) / Double(monthGoal), 1.0) }
-    private var teamRank: Int { 3 }
-    private var teamSize: Int { 24 }
-    private var currentStreak: Int { 12 }
-    private var bestStreak: Int { 28 }
+
+    private var isDemo: Bool { DemoModeManager.isActiveNonisolated }
+
+    /// Team-plassering: demo → mock (#3 av 24); ekte → rangert på vunnet
+    /// verdi blant teamets medlemmer. Nil (skjul) med under 2 medlemmer —
+    /// «#1 av 1» er ikke en plassering.
+    private var teamRankInfo: (rank: Int, size: Int)? {
+        if isDemo { return (3, 24) }
+        let members = TeamLiveStore.shared.memberDTOs
+        guard members.count >= 2 else { return nil }
+        let sorted = members.sorted { $0.totalValueNok > $1.totalValueNok }
+        guard let idx = sorted.firstIndex(where: { $0.name == name }) else { return nil }
+        return (idx + 1, sorted.count)
+    }
+
+    /// Dager med faktisk aktivitet (lead opprettet eller besøkt).
+    private var activityDays: [Date] {
+        let cal = Calendar.current
+        var days = Set<Date>()
+        for l in leads {
+            days.insert(cal.startOfDay(for: l.createdAt))
+            if let v = l.lastVisitAt { days.insert(cal.startOfDay(for: v)) }
+        }
+        return days.sorted()
+    }
+
+    /// Streaks fra ekte aktivitetsdager (demo → mock 12/28).
+    private var streaks: (current: Int, best: Int) {
+        if isDemo { return (12, 28) }
+        let cal = Calendar.current
+        let days = activityDays
+        guard !days.isEmpty else { return (0, 0) }
+        // Beste: lengste sammenhengende dag-rekke
+        var best = 1, run = 1
+        for i in 1..<days.count {
+            if cal.dateComponents([.day], from: days[i - 1], to: days[i]).day == 1 {
+                run += 1
+                best = max(best, run)
+            } else {
+                run = 1
+            }
+        }
+        // Nåværende: tell bakover fra i dag (eller i går)
+        var current = 0
+        var cursor = cal.startOfDay(for: Date())
+        let daySet = Set(days)
+        if !daySet.contains(cursor) {
+            cursor = cal.date(byAdding: .day, value: -1, to: cursor) ?? cursor
+        }
+        while daySet.contains(cursor) {
+            current += 1
+            cursor = cal.date(byAdding: .day, value: -1, to: cursor) ?? cursor
+        }
+        return (current, best)
+    }
+    private var currentStreak: Int { streaks.current }
+    private var bestStreak: Int { streaks.best }
 
     var body: some View {
         NavigationStack {
@@ -4494,8 +4547,8 @@ struct MyProfileSheet: View {
                         .foregroundStyle(Brand.textSecondary)
                 }
                 HStack(spacing: 16) {
-                    streakChip
-                    teamRankChip
+                    if currentStreak > 0 { streakChip }
+                    if teamRankInfo != nil { teamRankChip }
                 }
                 .padding(.top, 6)
             }
@@ -4537,7 +4590,7 @@ struct MyProfileSheet: View {
             Image(systemName: "trophy.fill")
                 .font(.appScaled(size: 11, weight: .bold))
                 .foregroundStyle(Brand.yellow)
-            Text("#\(teamRank) av \(teamSize)")
+            Text("#\(teamRankInfo?.rank ?? 0) av \(teamRankInfo?.size ?? 0)")
                 .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(.white)
         }
@@ -4546,7 +4599,14 @@ struct MyProfileSheet: View {
         .overlay(Capsule().stroke(Brand.yellow.opacity(0.4), lineWidth: 1))
     }
 
+    @ViewBuilder
     private var teamPositionCard: some View {
+        if let info = teamRankInfo {
+            teamPositionCardBody(info)
+        }
+    }
+
+    private func teamPositionCardBody(_ info: (rank: Int, size: Int)) -> some View {
         Button { topSellersOpen = true } label: {
             HStack(spacing: 16) {
                 ZStack {
@@ -4562,10 +4622,14 @@ struct MyProfileSheet: View {
                 .shadow(color: Brand.yellow.opacity(0.5), radius: 8, y: 3)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Topp \(teamRank) av \(teamSize) selgere")
+                    Text("Topp \(info.rank) av \(info.size) selgere")
                         .font(.appScaled(size: 15, weight: .bold))
                         .foregroundStyle(.white)
-                    Text("Du ligger på 3. plass i Creatorhub Norge for Q2 2026")
+                    // Demo: mockup-tekst. Ekte: si hva rangeringen faktisk
+                    // bygger på — «3. plass i Creatorhub Norge» var oppspinn.
+                    Text(isDemo
+                         ? "Du ligger på 3. plass i Creatorhub Norge for Q2 2026"
+                         : "Rangert på vunnet verdi i teamet ditt")
                         .font(.appScaled(size: 11))
                         .foregroundStyle(Brand.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -4573,9 +4637,12 @@ struct MyProfileSheet: View {
                 Spacer(minLength: 0)
                 VStack(alignment: .trailing, spacing: 2) {
                     HStack(spacing: 4) {
-                        Text("↑ 2")
-                            .font(.appScaled(size: 14, weight: .bold))
-                            .foregroundStyle(Brand.green)
+                        if isDemo {
+                            // Plass-endring krever historikk — kun demo.
+                            Text("↑ 2")
+                                .font(.appScaled(size: 14, weight: .bold))
+                                .foregroundStyle(Brand.green)
+                        }
                         Image(systemName: "chevron.right")
                             .font(.appScaled(size: 11, weight: .bold))
                             .foregroundStyle(Brand.textTertiary)
@@ -4595,37 +4662,72 @@ struct MyProfileSheet: View {
         }
     }
 
-    private var activityTrendCard: some View {
-        // Mini sparkline siste 30 dager (akkumulert won deals)
-        struct P: Identifiable { let id = UUID(); let day: Int; let v: Double }
-        let cal = Calendar.current
-        let now = Date()
-        var running = 0
-        let points: [P] = (0..<30).map { d in
-            let chance = Double(d) / 30.0 + Double((d * 7) % 5) / 10
-            if chance > 0.5 { running += 1 }
-            return P(day: d, v: Double(running))
+    /// Sparkline-serien: demo → syntetisk mockup-kurve; ekte → akkumulerte
+    /// NYE leads siste 30 dager fra `createdAt` (QA 2026-07-05: kurven var
+    /// syntetisk og «+18%»-pillen oppspinn også i ekte modus).
+    private struct TrendPoint: Identifiable {
+        let id = UUID(); let day: Int; let v: Double
+    }
+    private var trendPoints: [TrendPoint] {
+        if isDemo {
+            var running = 0
+            return (0..<30).map { d in
+                let chance = Double(d) / 30.0 + Double((d * 7) % 5) / 10
+                if chance > 0.5 { running += 1 }
+                return TrendPoint(day: d, v: Double(running))
+            }
         }
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        var perDay = [Int](repeating: 0, count: 30)
+        for l in leads {
+            let diff = cal.dateComponents([.day], from: cal.startOfDay(for: l.createdAt), to: today).day ?? 99
+            if (0..<30).contains(diff) { perDay[29 - diff] += 1 }
+        }
+        var running = 0
+        return perDay.enumerated().map { d, c in
+            running += c
+            return TrendPoint(day: d, v: Double(running))
+        }
+    }
+
+    /// Trend-pille: demo → mock «+18%»; ekte → siste 15 dager vs. de 15
+    /// før (nil = ikke nok historikk til å si noe).
+    private var trendLabel: String? {
+        if isDemo { return "+18%" }
+        let pts = trendPoints
+        guard pts.count == 30, pts[29].v > 0 else { return nil }
+        let firstHalf = pts[14].v
+        let secondHalf = pts[29].v - firstHalf
+        guard firstHalf > 0 else { return nil }
+        let pct = Int(((secondHalf - firstHalf) / firstHalf * 100).rounded())
+        return pct >= 0 ? "+\(pct)%" : "\(pct)%"
+    }
+
+    private var activityTrendCard: some View {
+        let points = trendPoints
         return VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Min trend — siste 30 dager")
+                Text(isDemo ? "Min trend — siste 30 dager" : "Nye leads — siste 30 dager")
                     .font(.appScaled(size: 15, weight: .semibold))
                     .foregroundStyle(.white)
                 Spacer()
-                Text("+18%")
-                    .font(.appScaled(size: 11, weight: .semibold))
-                    .foregroundStyle(Brand.green)
-                    .padding(.horizontal, 8).padding(.vertical, 3)
-                    .background(Brand.green.opacity(0.15), in: Capsule())
+                if let trend = trendLabel {
+                    Text(trend)
+                        .font(.appScaled(size: 11, weight: .semibold))
+                        .foregroundStyle(trend.hasPrefix("-") ? Brand.red : Brand.green)
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background((trend.hasPrefix("-") ? Brand.red : Brand.green).opacity(0.15), in: Capsule())
+                }
             }
             Chart(points) { pt in
-                LineMark(x: .value("Dag", pt.day), y: .value("Won", pt.v))
+                LineMark(x: .value("Dag", pt.day), y: .value("Antall", pt.v))
                     .interpolationMethod(.catmullRom)
                     .foregroundStyle(LinearGradient(
                         colors: [Brand.purple, Brand.purpleLight],
                         startPoint: .leading, endPoint: .trailing))
                     .lineStyle(StrokeStyle(lineWidth: 2.5))
-                AreaMark(x: .value("Dag", pt.day), y: .value("Won", pt.v))
+                AreaMark(x: .value("Dag", pt.day), y: .value("Antall", pt.v))
                     .interpolationMethod(.catmullRom)
                     .foregroundStyle(LinearGradient(
                         colors: [Brand.purple.opacity(0.4), Brand.purple.opacity(0)],
@@ -4634,14 +4736,16 @@ struct MyProfileSheet: View {
             .chartXAxis(.hidden)
             .chartYAxis(.hidden)
             .frame(height: 90)
-            HStack {
-                Text("Beste streak")
-                    .font(.appScaled(size: 10))
-                    .foregroundStyle(Brand.textTertiary)
-                Spacer()
-                Text("\(bestStreak) dager")
-                    .font(.appScaled(size: 11, weight: .semibold))
-                    .foregroundStyle(.white)
+            if bestStreak > 0 {
+                HStack {
+                    Text("Beste streak")
+                        .font(.appScaled(size: 10))
+                        .foregroundStyle(Brand.textTertiary)
+                    Spacer()
+                    Text("\(bestStreak) dager")
+                        .font(.appScaled(size: 11, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
             }
         }
         .padding(16)
@@ -4655,11 +4759,11 @@ struct MyProfileSheet: View {
             statCard(icon: "person.2.fill", color: Brand.blue,
                      label: "Mine leads",
                      value: formatNum(totalLeads),
-                     trend: "+18%")
+                     trend: isDemo ? "+18%" : nil)
             statCard(icon: "trophy.fill", color: Brand.green,
                      label: "Vunnet i mnd",
                      value: "\(wonThisMonth)",
-                     trend: "+5")
+                     trend: isDemo ? "+5" : nil)
             statCard(icon: "chart.bar.fill", color: Brand.purple,
                      label: "Gjennomsnittlig score",
                      value: "\(avgScore)",
@@ -4667,7 +4771,7 @@ struct MyProfileSheet: View {
             statCard(icon: "checkmark.seal.fill", color: Brand.orange,
                      label: "Conversion",
                      value: String(format: "%.1f%%", conversionRate),
-                     trend: "+2.3%")
+                     trend: isDemo ? "+2.3%" : nil)
         }
     }
 
