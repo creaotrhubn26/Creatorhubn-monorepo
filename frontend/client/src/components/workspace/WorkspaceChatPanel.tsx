@@ -57,8 +57,27 @@ const T: WsDict = {
   send: { no: 'Send melding', en: 'Send message' },
   removeAttachment: { no: 'Fjern vedlegg', en: 'Remove attachment' },
   clearTag: { no: 'Fjern merkelapp', en: 'Clear tag' },
+  clearSearch: { no: 'Tøm søket', en: 'Clear search' },
   you: { no: 'Deg', en: 'You' },
+  title: { no: 'Team Chat', en: 'Team Chat' },
+  attachmentFallback: { no: 'vedlegg', en: 'attachment' },
+  emojiPrefix: { no: 'Emoji', en: 'Emoji' },
+  messagesRegion: { no: 'Meldinger', en: 'Messages' },
 };
+
+// Trygg å rendre som <img>/<a href>? Tillat kun same-origin relativ sti (våre
+// opplastinger → /api/showcase-media/…) og inline data:image (ingen nettverk/
+// skript). Blokker eksterne http(s) (sporing), javascript:/vbscript: (XSS) og
+// data:text/html. Alt annet vises som ren tekst.
+const isSafeMediaUrl = (u) => {
+  if (typeof u !== 'string' || !u) return false;
+  if (/^\s*(javascript|vbscript):/i.test(u)) return false;
+  if (/^data:image\//i.test(u)) return true;
+  if (/^\s*data:/i.test(u)) return false;
+  return /^\/[^/]/.test(u) && !/[\s<>"'\\]/.test(u);
+};
+// Maskér e-post i visningsnavn-fallback (viser ikke kollegers adresse i klartekst).
+const maskId = (s) => { const v = String(s || ''); const at = v.indexOf('@'); return at > 0 ? `${v.slice(0, at)}` : v; };
 
 const EMOJIS = ['👍', '🙌', '🎧', '🎤', '🔥', '✅', '❤️', '😄', '🎸', '🥁', '🎹', '🎶', '👏', '🙏', '💡', '⏱️', '📌', '⚡'];
 
@@ -82,6 +101,7 @@ const WorkspaceChatPanel: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [sending, setSending] = useState(false);
   const [err, setErr] = useState('');
   const endRef = useRef(null);
+  const listRef = useRef(null);
   const inputRef = useRef(null);
   const fileRef = useRef(null);
   const myId = user?.email || user?.id || 'me';
@@ -100,12 +120,22 @@ const WorkspaceChatPanel: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [mentionMode, setMentionMode] = useState(false); // members-popover brukes til @mention
 
   const scrollDown = () => requestAnimationFrame(() => endRef.current?.scrollIntoView({ behavior: 'smooth' }));
+  // Er brukeren allerede nederst? Da (og bare da) auto-scroller vi ved nye
+  // meldinger — ellers stjeler pollet leseposisjonen når man leser historikk.
+  const atBottom = () => { const el = listRef.current; return !el || el.scrollHeight - el.scrollTop - el.clientHeight < 80; };
 
   const load = async (initial = false) => {
     try {
       const r = await apiRequest(`/api/communication/messages/${encodeURIComponent(channelId)}?limit=100`);
       const next = Array.isArray(r?.messages) ? r.messages : [];
-      setMessages((prev) => { if (initial || next.length !== prev.length) scrollDown(); return next; });
+      const wasAtBottom = atBottom();
+      const lastId = next.length ? next[next.length - 1].id : null;
+      setMessages((prev) => {
+        const prevLast = prev.length ? prev[prev.length - 1].id : null;
+        // Ny melding = siste id endret seg (robust selv når kanalen står på taket).
+        if (initial || (lastId !== prevLast && wasAtBottom)) scrollDown();
+        return next;
+      });
     } catch { /* sekundær */ } finally { if (initial) setLoading(false); }
   };
 
@@ -122,7 +152,7 @@ const WorkspaceChatPanel: React.FC<{ projectId: string }> = ({ projectId }) => {
     for (const m of messages) {
       const id = String(m.senderId || '');
       if (!id || seen.has(id)) continue;
-      seen.set(id, { id, name: m.senderName || id, mine: id === String(myId) });
+      seen.set(id, { id, name: m.senderName || maskId(id), mine: id === String(myId) });
     }
     if (!seen.has(String(myId))) seen.set(String(myId), { id: String(myId), name: myName, mine: true });
     return [...seen.values()];
@@ -168,7 +198,9 @@ const WorkspaceChatPanel: React.FC<{ projectId: string }> = ({ projectId }) => {
 
   const send = async () => {
     const content = text.trim();
-    if ((!content && pending.length === 0) || sending) return;
+    // Ikke send mens en opplasting pågår — ellers ryker vedlegget (pending er
+    // fortsatt tomt, og bildet havner på neste melding).
+    if ((!content && pending.length === 0) || sending || uploading) return;
     setSending(true); setErr('');
     try {
       await apiRequest('/api/chat/messages', {
@@ -194,14 +226,21 @@ const WorkspaceChatPanel: React.FC<{ projectId: string }> = ({ projectId }) => {
   };
 
   const renderAttachments = (atts) => (atts || []).filter((a) => a?.downloadUrl).map((a, i) => {
+    const name = a.filename || t('attachmentFallback');
+    // Kun same-origin opplastinger rendres som bilde/lenke — eksterne og
+    // farlige URL-er (javascript:/data:/tracking-piksler) vises som ren tekst.
+    const safe = isSafeMediaUrl(a.downloadUrl);
     const isImg = /^image\//.test(a.mimeType || '') || /\.(png|jpe?g|gif|webp|avif)$/i.test(a.filename || '');
+    if (!safe) {
+      return <Typography key={i} sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, mt: 0.5, fontSize: 12, color: ws.textDim }}><AttachFile sx={{ fontSize: 14 }} /> {name}</Typography>;
+    }
     return isImg ? (
       <Box key={i} component="a" href={a.downloadUrl} target="_blank" rel="noopener" sx={{ display: 'block', mt: 0.5 }}>
-        <Box component="img" src={a.downloadUrl} alt={a.filename || 'vedlegg'} loading="lazy" sx={{ maxWidth: 220, maxHeight: 180, borderRadius: 1.5, border: `1px solid ${ws.border}` }} />
+        <Box component="img" src={a.downloadUrl} alt={name} loading="lazy" sx={{ maxWidth: 220, maxHeight: 180, borderRadius: 1.5, border: `1px solid ${ws.border}` }} />
       </Box>
     ) : (
       <Box key={i} component="a" href={a.downloadUrl} target="_blank" rel="noopener" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, mt: 0.5, fontSize: 12, color: ws.accent }}>
-        <AttachFile sx={{ fontSize: 14 }} /> {a.filename || 'vedlegg'}
+        <AttachFile sx={{ fontSize: 14 }} /> {name}
       </Box>
     );
   });
@@ -215,7 +254,7 @@ const WorkspaceChatPanel: React.FC<{ projectId: string }> = ({ projectId }) => {
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 1.75, py: 1.5, borderBottom: `1px solid ${ws.border}` }}>
         <Stack direction="row" spacing={1} alignItems="center">
           <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: ws.green }} />
-          <Typography sx={{ fontSize: 14, fontWeight: 700 }}>Team Chat</Typography>
+          <Typography component="h2" sx={{ fontSize: 14, fontWeight: 700 }}>{t('title')}</Typography>
         </Stack>
         <Stack direction="row" spacing={0.25}>
           <Tooltip title={t('search')}><IconButton size="small" aria-label={t('search')} aria-pressed={searchOpen} onClick={() => { setSearchOpen((v) => { if (v) setQuery(''); return !v; }); }} sx={{ color: searchOpen ? ws.accent : ws.textDim }}><Search fontSize="small" /></IconButton></Tooltip>
@@ -230,7 +269,7 @@ const WorkspaceChatPanel: React.FC<{ projectId: string }> = ({ projectId }) => {
           <TextField autoFocus fullWidth size="small" placeholder={t('searchPlaceholder')} value={query} onChange={(e) => setQuery(e.target.value)}
             inputProps={{ 'aria-label': t('search') }}
             InputProps={{ startAdornment: <InputAdornment position="start"><Search sx={{ fontSize: 16, color: ws.textFaint }} /></InputAdornment>,
-              endAdornment: query ? <InputAdornment position="end"><IconButton size="small" aria-label={t('clearTag')} onClick={() => setQuery('')} sx={{ color: ws.textDim }}><Close sx={{ fontSize: 15 }} /></IconButton></InputAdornment> : null }}
+              endAdornment: query ? <InputAdornment position="end"><IconButton size="small" aria-label={t('clearSearch')} onClick={() => setQuery('')} sx={{ color: ws.textDim }}><Close sx={{ fontSize: 15 }} /></IconButton></InputAdornment> : null }}
             sx={{ '& .MuiOutlinedInput-root': { bgcolor: ws.panelInput, fontSize: 13 } }} />
         </Box>
       )}
@@ -243,8 +282,8 @@ const WorkspaceChatPanel: React.FC<{ projectId: string }> = ({ projectId }) => {
         </Tooltip>
       </Stack>
 
-      {/* Meldinger */}
-      <Box sx={{ flex: 1, overflowY: 'auto', px: 1.5, py: 1, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+      {/* Meldinger — role=log + aria-live så skjermlesere fanger innkommende */}
+      <Box ref={listRef} role="log" aria-live="polite" aria-relevant="additions" aria-label={t('messagesRegion')} sx={{ flex: 1, overflowY: 'auto', px: 1.5, py: 1, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
         {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress size={20} /></Box>
         ) : visible.length === 0 ? (
@@ -257,12 +296,12 @@ const WorkspaceChatPanel: React.FC<{ projectId: string }> = ({ projectId }) => {
           return (
             <Stack key={m.id} direction="row" spacing={1} sx={{ alignItems: 'flex-start', flexDirection: mine ? 'row-reverse' : 'row' }}>
               <Avatar sx={{ width: 30, height: 30, fontSize: 12, bgcolor: mine ? ws.accent : 'rgba(255,255,255,0.12)', color: mine ? ws.accentContrast : ws.text }}>
-                {initials(m.senderName || m.senderId)}
+                {initials(m.senderName || maskId(m.senderId))}
               </Avatar>
               <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: mine ? 'flex-end' : 'flex-start' }}>
                 <Stack direction="row" spacing={1} alignItems="baseline" sx={{ flexDirection: mine ? 'row-reverse' : 'row' }}>
-                  <Typography sx={{ fontSize: 12.5, fontWeight: 700 }}>{mine ? t('you') : (m.senderName || m.senderId)}</Typography>
-                  <Typography sx={{ fontSize: 10.5, color: ws.textFaint }}>
+                  <Typography sx={{ fontSize: 12.5, fontWeight: 700 }}>{mine ? t('you') : (m.senderName || maskId(m.senderId))}</Typography>
+                  <Typography sx={{ fontSize: 10.5, color: ws.textDim }}>
                     {m.timestamp ? new Date(m.timestamp).toLocaleTimeString(wsDateLocale(locale), { hour: '2-digit', minute: '2-digit' }) : ''}
                   </Typography>
                 </Stack>
@@ -310,10 +349,10 @@ const WorkspaceChatPanel: React.FC<{ projectId: string }> = ({ projectId }) => {
             fullWidth size="small" multiline maxRows={4} placeholder={t('composerPlaceholder')}
             value={text} onChange={(e) => setText(e.target.value)}
             inputProps={{ 'aria-label': t('composerPlaceholder') }}
-            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent?.isComposing) { e.preventDefault(); send(); } }}
             sx={{ '& .MuiOutlinedInput-root': { bgcolor: ws.panelInput, fontSize: 13 } }}
           />
-          <IconButton onClick={send} disabled={sending || (!text.trim() && pending.length === 0)} aria-label={t('send')}
+          <IconButton onClick={send} disabled={sending || uploading || (!text.trim() && pending.length === 0)} aria-label={t('send')}
             sx={{ bgcolor: ws.accent, color: ws.accentContrast, '&:hover': { bgcolor: ws.accentHover }, '&.Mui-disabled': { bgcolor: 'rgba(255,255,255,0.08)' } }}>
             {sending ? <CircularProgress size={18} /> : <Send fontSize="small" />}
           </IconButton>
@@ -334,21 +373,23 @@ const WorkspaceChatPanel: React.FC<{ projectId: string }> = ({ projectId }) => {
       {/* Deltakere / mention-plukker */}
       <Popover open={!!membersAnchor} anchorEl={membersAnchor} onClose={() => setMembersAnchor(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }} transformOrigin={{ vertical: 'top', horizontal: 'right' }}
         PaperProps={{ sx: { bgcolor: ws.panelSolid, color: ws.text, border: `1px solid ${ws.border}`, minWidth: 200 } }}>
-        <Typography sx={{ px: 1.5, pt: 1, pb: 0.5, fontSize: 11, color: ws.textFaint, textTransform: 'uppercase', letterSpacing: 0.5 }}>{t('members')} · {participants.length}</Typography>
+        <Typography sx={{ px: 1.5, pt: 1, pb: 0.5, fontSize: 11, color: ws.textDim, textTransform: 'uppercase', letterSpacing: 0.5 }}>{t('members')} · {participants.length}</Typography>
+        <Box role="menu" aria-label={t('members')}>
         {participants.map((p) => (
-          <MenuItem key={p.id} onClick={() => { if (mentionMode) insertAtCursor(`@${p.name} `); setMembersAnchor(null); }} sx={{ gap: 1, fontSize: 13 }}>
+          <MenuItem key={p.id} role="menuitem" onClick={() => { if (mentionMode) insertAtCursor(`@${p.name} `); setMembersAnchor(null); }} sx={{ gap: 1, fontSize: 13 }}>
             <Avatar sx={{ width: 24, height: 24, fontSize: 11, bgcolor: p.mine ? ws.accent : 'rgba(255,255,255,0.12)', color: p.mine ? ws.accentContrast : ws.text }}>{initials(p.name)}</Avatar>
             {p.name}{p.mine ? ` (${t('you')})` : ''}
           </MenuItem>
         ))}
+        </Box>
       </Popover>
 
       {/* Emoji-plukker */}
       <Popover open={!!emojiAnchor} anchorEl={emojiAnchor} onClose={() => setEmojiAnchor(null)} anchorOrigin={{ vertical: 'top', horizontal: 'center' }} transformOrigin={{ vertical: 'bottom', horizontal: 'center' }}
         PaperProps={{ sx: { bgcolor: ws.panelSolid, border: `1px solid ${ws.border}`, p: 1 } }}>
-        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 0.25, maxWidth: 220 }}>
+        <Box role="group" aria-label={t('emoji')} sx={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 0.25, maxWidth: 220 }}>
           {EMOJIS.map((e) => (
-            <IconButton key={e} size="small" aria-label={`Emoji ${e}`} onClick={() => { insertAtCursor(e); setEmojiAnchor(null); }} sx={{ fontSize: 18 }}>{e}</IconButton>
+            <IconButton key={e} size="small" aria-label={`${t('emojiPrefix')} ${e}`} onClick={() => { insertAtCursor(e); setEmojiAnchor(null); }} sx={{ fontSize: 18 }}>{e}</IconButton>
           ))}
         </Box>
       </Popover>

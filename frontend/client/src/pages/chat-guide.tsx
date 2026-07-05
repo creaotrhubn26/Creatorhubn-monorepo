@@ -91,7 +91,7 @@ const ChatGuidePage: React.FC = () => {
           <SectionHeading id="chat-skriv" tag="Skriv" title="Send meldinger" />
           <Box component="ol" sx={{ m: 0, p: 0 }}>
             <Step n={1} title="Skriv og send">
-              <P>Skriv i feltet nederst og trykk <Ui>Enter</Ui> eller <Send sx={{ fontSize: 15, verticalAlign: 'text-bottom', color: ACCENT }} aria-label="send" />-knappen for å sende. <Ui>Shift&nbsp;+&nbsp;Enter</Ui> gir linjeskift så du kan skrive avsnitt. Dine egne meldinger legger seg til høyre med oransje boble — teamets til venstre med avatar og navn.</P>
+              <P>Skriv i feltet nederst og trykk <Ui>Enter</Ui> eller <Send sx={{ fontSize: 15, verticalAlign: 'text-bottom', color: ACCENT }} aria-hidden />-knappen for å sende. <Ui>Shift&nbsp;+&nbsp;Enter</Ui> gir linjeskift så du kan skrive avsnitt. Dine egne meldinger legger seg til høyre med oransje boble — teamets til venstre med avatar og navn.</P>
             </Step>
             <Step n={2} title="Merk viktige meldinger">
               <P>Under skrivefeltet ligger tre merkelapper: <Em>Oppdatering</Em>, <Em>Spørsmål</Em> og <Em>Viktig</Em>. Trykk én før du sender, så festes den på meldingen som en farget chip — lett å skanne senere, og «Viktig» kan filtreres fram.</P>

@@ -1183,7 +1183,10 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
         const id = toNonEmptyString(record?.id) ?? crypto.randomUUID();
         const filename = toNonEmptyString(record?.filename ?? record?.name);
         const mimeType = toNonEmptyString(record?.mimeType) ?? 'application/octet-stream';
-        const downloadUrl = toNonEmptyString(record?.downloadUrl ?? record?.webViewUrl ?? record?.webContentLink);
+        const rawDownloadUrl = toNonEmptyString(record?.downloadUrl ?? record?.webViewUrl ?? record?.webContentLink);
+        // Avvis farlige skjemaer (javascript:/data:/vbscript:) — ingen ekte
+        // vedlegg bruker dem, men de gir lagret XSS når URL-en rendres som href.
+        const downloadUrl = rawDownloadUrl && !/^\s*(javascript|data|vbscript):/i.test(rawDownloadUrl) ? rawDownloadUrl : undefined;
         const uploadedAt = toNonEmptyString(record?.uploadedAt) ?? new Date().toISOString();
         const fileSizeValue = Number(record?.fileSize ?? record?.size ?? 1);
         const fileSize = Number.isFinite(fileSizeValue) && fileSizeValue > 0
@@ -2629,8 +2632,12 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
         })
         .from(schema.communicationMessages)
         .where(eq(schema.communicationMessages.channelId, channelId))
-        .orderBy(schema.communicationMessages.createdAt)
+        // Hent de NYESTE `limit` meldingene (desc), og snu til stigende for
+        // visning. Tidligere hentet asc+limit de ELDSTE, så nye meldinger
+        // aldri kom med når en kanal passerte limit-taket.
+        .orderBy(desc(schema.communicationMessages.createdAt))
         .limit(limit);
+      messages.reverse();
 
       const mappedMessages = messages.map((msg) => {
         const metadata = getMessageMetadataRecord(msg.metadata);
@@ -2739,13 +2746,11 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
       const content = toNonEmptyString(msg.content);
       const attachments = sanitizeChatAttachments(msg.attachments);
       const rawMetadata = getMessageMetadataRecord(msg.metadata);
-      const persistedContent = content || (attachments.length > 0
-        ? attachments.length === 1
-          ? `Delte vedlegg: ${attachments[0]?.filename ?? 'vedlegg'}`
-          : `Delte ${attachments.length} vedlegg fra Google Drive`
-        : null);
+      // Vedlegg-kun-melding lagres med tomt innhold (ikke en hardkodet/feil
+      // «fra Google Drive»-caption) — klienten viser bare selve vedlegget.
+      const persistedContent = content ?? (attachments.length > 0 ? '' : null);
 
-      if (!persistedContent) {
+      if (persistedContent === null) {
         return res.status(400).json({ error: 'Message content is required' });
       }
 
