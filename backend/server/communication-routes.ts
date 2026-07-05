@@ -21,6 +21,7 @@ import * as schema from '../migrations/schema.js';
 import crypto from 'crypto';
 import { Readable } from 'stream';
 import { decryptGoogleToken as sharedDecryptGoogleToken } from './google-oauth-shared.js';
+import { loadPersistedAuthSession } from './auth-session-store.js';
 import { ensureContractsCompatibilitySchema } from './contract-google-signing.js';
 import {
   getGoogleWorkspaceOauthConfig,
@@ -192,8 +193,67 @@ type ConversationContractRow = {
   updated_at: string | null;
 };
 
-export function createCommunicationRouter(db: DB, pool: Pool): Router {
+type AuthedUser = { userId: string; email: string };
+
+export function createCommunicationRouter(
+  db: DB,
+  pool: Pool,
+  activeSessions?: Map<string, any>,
+): Router {
   const router = Router();
+
+  // ── Tilgangskontroll for prosjekt-kanaler (channelId = project-<projectId>) ──
+  // Bare prosjekt-kanaler gates; alle andre kanaltyper (support/anonyme widgets
+  // osv.) beholder eksisterende oppførsel så vi ikke brekker andre chat-flater.
+  const projectIdFromChannel = (channelId: string): string | null => {
+    const m = /^project-(.+)$/.exec(String(channelId || '').trim());
+    return m ? m[1] : null;
+  };
+  const resolveAuthedUser = async (req: Request): Promise<AuthedUser | null> => {
+    const bearer = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+    if (!bearer) return null;
+    const inMem = activeSessions?.get(bearer);
+    if (inMem?.userId) return { userId: String(inMem.userId), email: String(inMem.email || '') };
+    const persisted = await loadPersistedAuthSession(pool, bearer);
+    if (persisted?.userId) return { userId: String(persisted.userId), email: String(persisted.email || '') };
+    return null;
+  };
+  // Eier ELLER aktivt teammedlem (via user_id eller e-post). Returnerer et
+  // visningsnavn utledet server-side (aldri klientstyrt) eller null hvis nektet.
+  const resolveProjectAccess = async (projectId: string, user: AuthedUser): Promise<{ displayName: string } | null> => {
+    try {
+      const owner = await pool.query(
+        `SELECT COALESCE(NULLIF(TRIM(CONCAT_WS(' ', first_name, last_name)), ''), name, email) AS display_name
+           FROM projects p JOIN users u ON u.id = p.user_id
+          WHERE p.id::text = $1 AND p.user_id::text = $2 LIMIT 1`,
+        [projectId, user.userId],
+      ).catch(() => ({ rows: [] as any[] }));
+      if (owner.rows[0]) return { displayName: String(owner.rows[0].display_name || user.email) };
+      const mem = await pool.query(
+        `SELECT COALESCE(NULLIF(TRIM(m.name), ''), NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.name, m.email) AS display_name
+           FROM project_team_members m LEFT JOIN users u ON u.id = m.user_id
+          WHERE m.project_id = $1 AND m.deactivated_at IS NULL
+            AND (m.user_id = $2 OR LOWER(m.email) = LOWER($3)) LIMIT 1`,
+        [projectId, user.userId, user.email || ''],
+      ).catch(() => ({ rows: [] as any[] }));
+      if (mem.rows[0]) return { displayName: String(mem.rows[0].display_name || user.email) };
+      return null;
+    } catch { return null; }
+  };
+  // Gate lesing/skriving av en prosjekt-kanal. For ikke-prosjekt-kanaler
+  // returnerer den { ok:true, user:null } (uendret oppførsel).
+  const guardProjectChannel = async (
+    channelId: string, req: Request, res: Response,
+  ): Promise<{ ok: boolean; access: { displayName: string } | null; user: AuthedUser | null }> => {
+    const projectId = projectIdFromChannel(channelId);
+    if (!projectId) return { ok: true, access: null, user: null };
+    const user = await resolveAuthedUser(req);
+    if (!user) { res.status(401).json({ error: 'unauthorized' }); return { ok: false, access: null, user: null }; }
+    const access = await resolveProjectAccess(projectId, user);
+    if (!access) { res.status(403).json({ error: 'forbidden' }); return { ok: false, access: null, user: null }; }
+    return { ok: true, access, user };
+  };
+
   const GMAIL_READ_SCOPES = ['https://www.googleapis.com/auth/gmail.readonly'];
   const GMAIL_DRAFT_SCOPES = ['https://www.googleapis.com/auth/gmail.compose'];
   const GMAIL_SEND_SCOPES = ['https://www.googleapis.com/auth/gmail.send'];
@@ -2611,6 +2671,9 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
   router.get('/api/communication/messages/:channelId', async (req, res) => {
     try {
       const { channelId } = req.params;
+      // Prosjekt-kanaler krever auth + medlemskap (ellers IDOR på tvers av prosjekter).
+      const gate = await guardProjectChannel(channelId, req, res);
+      if (!gate.ok) return;
       const limit = parseInt(req.query.limit as string) || 100;
 
       const messages = await db
@@ -2673,12 +2736,15 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
       const payload = (req.body || {}) as Record<string, unknown>;
       const content = toNonEmptyString(payload.content) || toNonEmptyString(payload.message);
       const conversationId = normalizeChannelId(payload.conversationId || payload.contactId || payload.channelId);
-      const senderId =
-        toNonEmptyString(req.headers['x-user-id']) ||
-        toNonEmptyString(req.headers['x-user-email']) ||
-        'anonymous';
+      // Prosjekt-kanal: krev auth + medlemskap, bind avsender til sesjonen.
+      const gate = await guardProjectChannel(conversationId, req, res);
+      if (!gate.ok) return;
+      const senderId = gate.user
+        ? gate.user.email
+        : (toNonEmptyString(req.headers['x-user-id']) || toNonEmptyString(req.headers['x-user-email']) || 'anonymous');
       const attachments = sanitizeChatAttachments(payload.attachments);
       const rawMetadata = getMessageMetadataRecord(payload.metadata);
+      if (gate.access) rawMetadata.senderName = gate.access.displayName;
       const persistedContent = content || (attachments.length > 0
         ? attachments.length === 1
           ? `Delte vedlegg: ${attachments[0]?.filename ?? 'vedlegg'}`
@@ -2738,14 +2804,19 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
   router.post('/api/chat/messages', async (req, res) => {
     try {
       const msg = (req.body || {}) as Record<string, unknown>;
-      const senderId =
-        toNonEmptyString(msg.senderId) ||
-        toNonEmptyString(req.headers['x-user-email']) ||
-        'anonymous';
       const channelId = normalizeChannelId(msg.conversationId || 'general');
+      // Prosjekt-kanal: krev auth + medlemskap, og bind avsender-identitet til
+      // den autentiserte brukeren (klientstyrt senderId/senderName ignoreres).
+      const gate = await guardProjectChannel(channelId, req, res);
+      if (!gate.ok) return;
+      const senderId = gate.user
+        ? gate.user.email
+        : (toNonEmptyString(msg.senderId) || toNonEmptyString(req.headers['x-user-email']) || 'anonymous');
       const content = toNonEmptyString(msg.content);
       const attachments = sanitizeChatAttachments(msg.attachments);
       const rawMetadata = getMessageMetadataRecord(msg.metadata);
+      // For prosjekt-kanaler: overstyr visningsnavn med server-utledet navn.
+      if (gate.access) rawMetadata.senderName = gate.access.displayName;
       // Vedlegg-kun-melding lagres med tomt innhold (ikke en hardkodet/feil
       // «fra Google Drive»-caption) — klienten viser bare selve vedlegget.
       const persistedContent = content ?? (attachments.length > 0 ? '' : null);

@@ -152,7 +152,7 @@ const WorkspaceChatPanel: React.FC<{ projectId: string }> = ({ projectId }) => {
     for (const m of messages) {
       const id = String(m.senderId || '');
       if (!id || seen.has(id)) continue;
-      seen.set(id, { id, name: m.senderName || maskId(id), mine: id === String(myId) });
+      seen.set(id, { id, name: m.senderName || maskId(id), mine: id.toLowerCase() === String(myId).toLowerCase() });
     }
     if (!seen.has(String(myId))) seen.set(String(myId), { id: String(myId), name: myName, mine: true });
     return [...seen.values()];
@@ -291,7 +291,7 @@ const WorkspaceChatPanel: React.FC<{ projectId: string }> = ({ projectId }) => {
             {(query || pinnedOnly) ? t('noMatches') : t('emptyChat')}
           </Typography>
         ) : visible.map((m) => {
-          const mine = String(m.senderId || '') === String(myId);
+          const mine = String(m.senderId || '').toLowerCase() === String(myId).toLowerCase();
           const tagMeta = m.tag && TAG_META[m.tag];
           return (
             <Stack key={m.id} direction="row" spacing={1} sx={{ alignItems: 'flex-start', flexDirection: mine ? 'row-reverse' : 'row' }}>
