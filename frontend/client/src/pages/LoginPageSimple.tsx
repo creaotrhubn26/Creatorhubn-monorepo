@@ -43,7 +43,10 @@ export default function LoginPageSimple() {
       return;
     }
 
-    setLocation(redirectTarget || '/dashboard');
+    // Workspace er hovedflaten: send innloggede brukere til /workspace-hjem
+    // (prosjektvelger) i stedet for UniversalDashboard. Eksplisitt redirectTarget
+    // (f.eks. dyplenke eller /admin) respekteres fortsatt.
+    setLocation(redirectTarget || '/workspace');
   }, [currentUserCanAccessRedirect, hasStoredToken, isAuthenticated, redirectTarget, setLocation]);
 
   if (isAuthenticated && hasStoredToken && currentUserCanAccessRedirect) {

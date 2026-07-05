@@ -808,17 +808,14 @@ export default function UniversalOnboarding({ isOpen: open = true, onClose = () 
           const shouldAutoRedirect = prefData.autoRedirectToDashboard ?? false;
 
           if (shouldAutoRedirect) {
-            // Auto-redirect to dashboard
-            const dashboardMap: { [key: string]: string } = {
-              photographer: '/photographer-dashboard-material',
-              videographer: '/videographer-dashboard',
-              music_producer: '/music-producer-dashboard',
-              vendor: '/vendor-dashboard',
+            // Workspace er hovedflaten for skaper-profesjoner. Klient-/admin-typer
+            // (couple/partner/admin) beholder sine egne dashbord.
+            const nonWorkspaceDash: { [key: string]: string } = {
               couple: '/couple-dashboard',
               partner: '/partner-dashboard',
-              admin: '/admin-dashboard'
+              admin: '/admin-dashboard',
             };
-            const dashboardUrl = dashboardMap[onboardingData.profession] || '/photographer-dashboard-material';
+            const dashboardUrl = nonWorkspaceDash[onboardingData.profession] || '/workspace';
             window.location.href = dashboardUrl;
           }
           // Otherwise stay on landing page
