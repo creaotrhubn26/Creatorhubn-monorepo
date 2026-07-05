@@ -304,6 +304,25 @@ function localizeNumberNb(s: string): string {
 
 /** Multi-rad-parsing: JSON-array eller CSV med header + N verdi-rader →
  *  { headers, rows: Record<string,string>[] }. For «én scene per rad». */
+// CSV-linje-splitt som respekterer doble anførselstegn (RFC-4180): «"Oslo, Norge"»
+// forblir ÉN celle, «""» = escaped quote. Uten dette forskyver et innebygd komma/
+// semikolon (vanlig i publiserte Google Sheets + norsk desimalkomma) ALLE
+// etterfølgende kolonner → systematisk feilmappet data.
+function splitCsvLine(line: string, sep: string): string[] {
+  const out: string[] = []; let cur = ''; let q = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (q) {
+      if (c === '"') { if (line[i + 1] === '"') { cur += '"'; i++; } else q = false; }
+      else cur += c;
+    } else if (c === '"') { q = true; }
+    else if (c === sep) { out.push(cur); cur = ''; }
+    else cur += c;
+  }
+  out.push(cur);
+  return out.map((s) => s.trim());
+}
+
 function parseDataRows(text: string): { headers: string[]; rows: Record<string, string>[] } {
   const t = (text || '').trim();
   if (!t) return { headers: [], rows: [] };
@@ -322,14 +341,17 @@ function parseDataRows(text: string): { headers: string[]; rows: Record<string, 
   const lines = t.split(/\r?\n/).filter((l) => l.trim());
   if (lines.length >= 2) {
     const sep = lines[0].includes(';') ? ';' : ',';
-    const headers = lines[0].split(sep).map((s) => s.trim()).filter(Boolean);
+    // IKKE filter(Boolean) her — det komprimerer header-indeksene mens cellene
+    // fortsatt er posisjonelle → alt etter en tom header mappes til feil kolonne.
+    // Behold posisjon, hopp over tomme headere per celle (samme som parseDataSource).
+    const headers = splitCsvLine(lines[0], sep);
     const rows = lines.slice(1).map((ln) => {
-      const cells = ln.split(sep).map((s) => s.trim());
+      const cells = splitCsvLine(ln, sep);
       const r: Record<string, string> = {};
-      headers.forEach((h, i) => { r[h] = cells[i] ?? ''; });
+      headers.forEach((h, i) => { if (h) r[h] = cells[i] ?? ''; });
       return r;
     });
-    return { headers, rows };
+    return { headers: headers.filter(Boolean), rows };
   }
   return { headers: [], rows: [] };
 }
@@ -348,15 +370,15 @@ function parseDataSource(text: string): Record<string, string> {
     }
     if (Array.isArray(j) && j.length && typeof j[0] === 'object') {
       const out: Record<string, string> = {};
-      Object.entries(j[0] as Record<string, unknown>).forEach(([k, v]) => { out[k] = String(v); });
+      Object.entries(j[0] as Record<string, unknown>).forEach(([k, v]) => { out[k] = typeof v === 'object' && v !== null ? JSON.stringify(v) : String(v ?? ''); });
       return out;
     }
   } catch { /* ikke JSON — prøv CSV */ }
   const lines = t.split(/\r?\n/).filter((l) => l.trim());
   if (lines.length >= 2) {
     const sep = lines[0].includes(';') ? ';' : ',';
-    const heads = lines[0].split(sep).map((s) => s.trim());
-    const vals = lines[1].split(sep).map((s) => s.trim());
+    const heads = splitCsvLine(lines[0], sep);
+    const vals = splitCsvLine(lines[1], sep);
     const out: Record<string, string> = {};
     heads.forEach((h, i) => { if (h) out[h] = vals[i] ?? ''; });
     return out;
@@ -488,6 +510,14 @@ async function trimLogoWhitespace(dataUrl: string): Promise<string> {
   });
 }
 
+// JSON for injeksjon i inline <script> (window.__CFG__=…). Escaper `<` (hindrer at
+// «</script>» eller «<!--» i et felt lukker skriptet) + linjeseparatorene U+2028/
+// U+2029 (gyldige i JSON, men bryter en JS-streng). Uten dette taper et felt som
+// inneholder «</script>» ALL scene-data i preview OG render (__CFG__ blir udefinert).
+function cfgScript(obj: unknown): string {
+  return JSON.stringify(obj).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+}
+
 /** Lett live-thumbnail av en mal i galleriet: lazy iframe (kun når synlig),
  *  rå HTML u/ font-injeksjon, skalert til å passe + frosset ved p=1. */
 // Selvstendig fit-skript injisert i preview/thumbnail-iframen. Måler #wrap og
@@ -542,7 +572,7 @@ function TemplateThumb({ tpl, accent, values, height = 88 }: { tpl: InfographicT
     const cfg = buildInfographicConfig(tpl, values || {}, { accent, ink: '#1f2d4a' });
     // __igFreeze=1: frys ved setProgress(1) (ingen play-animasjon i thumbnail).
     // FIT_SCRIPT måler + skalerer INNE i iframen (robust i WKWebView).
-    return `<script>window.__CFG__=${JSON.stringify(cfg)};window.__igFreeze=1;</script>` + rawTemplateHtml(tpl) + `<script>${FIT_SCRIPT}</script>`;
+    return `<script>window.__CFG__=${cfgScript(cfg)};window.__igFreeze=1;</script>` + rawTemplateHtml(tpl) + `<script>${FIT_SCRIPT}</script>`;
   }, [tpl, accent, values]);
   // Nudge det injiserte fit-skriptet (kjører uansett selv på load + retries).
   const fit = () => { try { (frameRef.current?.contentWindow as unknown as { __igFit?: () => void })?.__igFit?.(); } catch { /* */ } };
@@ -825,8 +855,10 @@ export function InfographicStudioView(
     const name = libName.trim() || `${project?.name || 'Infographic'} · ${scenes.length} scene(r)`;
     const saved = saveInfographic({
       name, fromProject: project?.name,
-      scenes: scenes.map((s) => ({ ...s })), accent, logo, dataText, palette,
-      previewTplId: scenes[sel]?.tplId || scenes[0]?.tplId || INFOGRAPHIC_TEMPLATES[0].id,
+      scenes: scenes.map((s) => ({ ...s })), accent, logo, dataText, palette, liveUrl,
+      // Miniatyren rendrer FØRSTE scene (scenes[0].values) → previewTplId MÅ også
+      // være scene 0s mal, ellers vises scene 0s tall oppå en annen scenes mal.
+      previewTplId: scenes[0]?.tplId || INFOGRAPHIC_TEMPLATES[0].id,
     });
     setLibName(''); setLibTick((n) => n + 1);
     setMsg(saved
@@ -842,6 +874,7 @@ export function InfographicStudioView(
     setAccent(s.accent || accent);
     setLogo(s.logo || '');
     setDataText(s.dataText || '');
+    setLiveUrl(s.liveUrl || ''); // gjenopprett kildens URL — og NULLSTILL den om snapshotet ikke har en (ellers henger forrige datakilde igjen)
     if (s.palette?.length) setPalette(s.palette);
     setLeftSec('templates');
     setMsg(`Åpnet «${s.name}» — bygg videre og send til Resolve.`);
@@ -1029,11 +1062,11 @@ export function InfographicStudioView(
   const config = useMemo(() => buildInfographicConfig(tpl, fieldVals(scene, tpl), { accent: sceneAccent(scene), ink: '#1f2d4a', logo: sceneLogo(scene) || undefined }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [tpl, scene, accent, logo, localizeNb, dataMap]);
-  const srcDoc = useMemo(() => `<script>window.__CFG__=${JSON.stringify(config)}</script>` + htmlForTemplate(tpl) + `<script>${FIT_SCRIPT}</script>`, [config, tpl]);
+  const srcDoc = useMemo(() => `<script>window.__CFG__=${cfgScript(config)}</script>` + htmlForTemplate(tpl) + `<script>${FIT_SCRIPT}</script>`, [config, tpl]);
   // «Alle formater»-kortene skal fryse ved sluttbildet. __igFreeze=1 → FIT_SCRIPT
   // kaller setProgress(1) INNE i iframen (robust i WKWebView) i stedet for at
   // foreldre må lese contentDocument (som feiler → kortene sto frosset på p=0).
-  const formatSrcDoc = useMemo(() => `<script>window.__CFG__=${JSON.stringify(config)};window.__igFreeze=1;</script>` + htmlForTemplate(tpl) + `<script>${FIT_SCRIPT}</script>`, [config, tpl]);
+  const formatSrcDoc = useMemo(() => `<script>window.__CFG__=${cfgScript(config)};window.__igFreeze=1;</script>` + htmlForTemplate(tpl) + `<script>${FIT_SCRIPT}</script>`, [config, tpl]);
 
   const previewWin = () => iframeRef.current?.contentWindow as (Window & { setProgress?: (p: number) => void }) | null | undefined;
   const setPreviewProgress = (p: number) => { const w = previewWin(); if (w && typeof w.setProgress === 'function') { try { w.setProgress(Math.max(0, Math.min(1, p))); } catch { /* */ } } };
@@ -1220,11 +1253,14 @@ export function InfographicStudioView(
         const t = INFOGRAPHIC_TEMPLATES.find((x) => x.id === sc.tplId) || INFOGRAPHIC_TEMPLATES[0];
         const dur = effDur(sc, t);
         const cfg = buildInfographicConfig(t, fieldVals(sc, t), { accent: sceneAccent(sc), ink: '#1f2d4a', logo: sceneLogo(sc) || undefined });
-        const html = `<script>window.__CFG__=${JSON.stringify(cfg)}</script>` + htmlForTemplate(t);
+        const html = `<script>window.__CFG__=${cfgScript(cfg)}</script>` + htmlForTemplate(t);
         setRenderProgress({ done: i, total: scenes.length });
         setMsg(`Rendrer scene ${i + 1}/${scenes.length} (${t.name}) …`);
         const out = await invoke<string>('render_infographic', { html, durationSec: dur, name: `${t.id}-${sc.id}-${Date.now()}`, fps, scale, exitSec: sc.exitSec ?? 0, frame: frameArg(), easing: sc.easing ?? 'outcubic', entrance: sc.entrance ?? 'none' });
-        overlays.push({ path: out, atSec: sc.atSec, durationSec: dur, track: overlayTrack, posX: sc.posX ?? 50, posY: sc.posY ?? 50 });
+        // fps = klippets EGEN bildefrekvens (.mov ble rendret med denne). place_overlay
+        // MÅ bruke den for source-out-punktet — ikke timeline-fps — ellers kuttes/
+        // overskytes alfa-klippet på alle ikke-30fps-timelines.
+        overlays.push({ path: out, atSec: sc.atSec, durationSec: dur, track: overlayTrack, posX: sc.posX ?? 50, posY: sc.posY ?? 50, fps });
         recordTemplateUsage(t.id); // implisitt: brukt mal = smak-signal (uten klikk)
       }
       setRenderProgress({ done: scenes.length, total: scenes.length });
@@ -1259,7 +1295,7 @@ export function InfographicStudioView(
       const st = await playwrightStatus().catch(() => null);
       if (st && !st.playwrightInstalled) { setNeedsPlaywright(true); setMsg('Playwright-runtime mangler — sett det opp for å eksportere.'); return; }
       const cfg = buildInfographicConfig(tpl, fieldVals(scene, tpl), { accent: sceneAccent(scene), ink: '#1f2d4a', logo: sceneLogo(scene) || undefined });
-      const html = `<script>window.__CFG__=${JSON.stringify(cfg)}</script>` + htmlForTemplate(tpl);
+      const html = `<script>window.__CFG__=${cfgScript(cfg)}</script>` + htmlForTemplate(tpl);
       const metaTitle = includeMeta ? (scene.name || `${project?.name || 'Infographic'} · ${tpl.name}`) : '';
       const out = await invoke<string>('export_infographic', { html, durationSec: effDur(scene, tpl), name: `${tpl.id}-${scene.id}-${Date.now()}`, format: exportFmt, fps, scale, exitSec: scene.exitSec ?? 0, frame: frameArg(), easing: scene.easing ?? 'outcubic', entrance: scene.entrance ?? 'none', metadata: metaTitle });
       setMsg(`Eksportert: ${out}`);

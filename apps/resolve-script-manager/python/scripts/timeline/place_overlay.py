@@ -51,6 +51,9 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
             "track": int(o.get("track") or 2),
             "posX": float(px) if px is not None else 50.0,
             "posY": float(py) if py is not None else 50.0,
+            # Klippets EGEN fps (bildefrekvensen .mov-en ble rendret med). Brukes for
+            # source-out-punktet; faller tilbake til timeline-fps om ikke oppgitt.
+            "fps": float(o.get("fps") or 0),
             "exists": bool(p) and os.path.isfile(p),
         })
 
@@ -103,6 +106,10 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         track = max(2, o["track"])
         while timeline.GetTrackCount("video") < track:
             timeline.AddTrack("video")
+        # recordFrame = timeline-posisjon → timeline-fps. endFrame = source-ut-punkt
+        # → klippets EGEN fps (.mov-ens bildefrekvens). Blandes disse (som før: begge
+        # timeline-fps) blir kilde-in/ut feil når timeline-fps ≠ render-fps.
+        src_fps = o["fps"] if o["fps"] > 0 else fps
         clip = {
             "mediaPoolItem": item,
             "trackIndex": track,
@@ -110,7 +117,7 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         }
         if o["durationSec"] > 0:
             clip["startFrame"] = 0
-            clip["endFrame"] = max(1, int(round(o["durationSec"] * fps)) - 1)
+            clip["endFrame"] = max(1, int(round(o["durationSec"] * src_fps)) - 1)
         try:
             res = media_pool.AppendToTimeline([clip])
             if res:

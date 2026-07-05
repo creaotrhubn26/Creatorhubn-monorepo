@@ -134,12 +134,20 @@ export async function syncCollective(): Promise<void> {
   if (!b) return;
   const headers = { Authorization: `Bearer ${b}`, 'Content-Type': 'application/json' };
   const base = baseUrl();
-  // 1) Push nye signaler (tømmer køen ved suksess).
+  // 1) Push nye signaler i BATCHER på ≤200 (backendens MAX_BATCH — sender vi mer
+  //    inserter den kun de første 200 men svarer ok → resten ville gått tapt). Etter
+  //    hver vellykkede batch fjerner vi KUN de sendte (re-les kø + slice), så
+  //    signaler som ble køet UNDER POST-en ikke overskrives av en blank saveQueue([]).
+  const PUSH_BATCH = 200;
   try {
-    const q = loadQueue();
-    if (q.length) {
-      const res = await fetch(`${base}/api/role-room/infographic-signals`, { method: 'POST', headers, body: JSON.stringify({ signals: q }) });
-      if (res.ok) saveQueue([]);
+    for (let guard = 0; guard < 10; guard++) {
+      const q = loadQueue();
+      if (!q.length) break;
+      const batch = q.slice(0, PUSH_BATCH);
+      const res = await fetch(`${base}/api/role-room/infographic-signals`, { method: 'POST', headers, body: JSON.stringify({ signals: batch }) });
+      if (!res.ok) break; // prøver igjen neste sync — behold hele køen
+      saveQueue(loadQueue().slice(batch.length)); // fjern de sendte; behold evt. nye fra under POST-en
+      if (batch.length < PUSH_BATCH) break; // køen var tømt
     }
   } catch { /* prøver igjen neste sync */ }
   // 2) Pull kollektive aggregater siden forrige cursor (inkrementelt).
