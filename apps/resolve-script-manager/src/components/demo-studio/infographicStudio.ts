@@ -348,10 +348,18 @@ function buildBar(){
 if(CFG.layout==='stat-bar')buildBar();else buildCards();
 function animNum(elm,target,t){
   var s=String(target||'');if(!isNum(s)){elm.textContent=s;return;}
-  var m=s.match(/^([-+]?)(\d+(?:[.,]\d+)?)(.*)$/);if(!m){elm.textContent=s;return;}
+  // Norsk tallformat: «1 250» (mellomrom-tusenskille) / «12,5» (komma-desimal)
+  // MÅ kunne telle opp. Strip gruppering + komma→punktum FØR parsing, husk om vi
+  // skal re-gruppere på utskrift så visningen forblir norsk. Uten dette matchet
+  // regexen bare «1» og «250» ble et statisk suffiks → count-up viste «0 250».
+  var grp=/\d[\s ]\d/.test(s), comdec=/\d,\d/.test(s);
+  var raw=s.replace(/[\s ]/g,'');
+  var m=raw.match(/^([-+]?)(\d+(?:[.,]\d+)?)(.*)$/);if(!m){elm.textContent=s;return;}
   var sign=m[1],n=parseFloat(m[2].replace(',','.')),suf=m[3];
   var dec=(m[2].split(/[.,]/)[1]||'').length;
-  elm.textContent=sign+(n*t).toFixed(dec)+suf;
+  var out=(n*t).toFixed(dec);
+  if(grp||comdec){var pp=out.split('.');pp[0]=pp[0].replace(/\B(?=(\d{3})+(?!\d))/g,' ');out=pp.join(',');}
+  elm.textContent=sign+out+suf;
 }
 window.setProgress=function(p){
  document.querySelectorAll('[data-d]').forEach(function(e){

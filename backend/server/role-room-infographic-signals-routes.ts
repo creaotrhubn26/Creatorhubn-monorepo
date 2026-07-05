@@ -96,26 +96,29 @@ export function registerRoleRoomInfographicSignalsRoutes(app: Express, deps: Dep
     // Postgres på en uparsbar verdi og klienten får 500 i stedet for 400.
     if (since && Number.isNaN(Date.parse(since))) { res.status(400).json({ error: "ugyldig_since" }); return; }
     try {
+      // Cursor MÅ komme fra SAMME snapshot som aggregatet. En egen MAX-spørring
+      // ville kjørt på et senere snapshot → en rad som commit-er MELLOM de to
+      // spørringene teller ikke i SUM, men løfter MAX → cursor avanserer forbi
+      // raden → den telles ALDRI. `MAX(MAX(created_at)) OVER ()` gir global maks
+      // created_at i ÉN spørring: indre MAX = per-gruppe (etter GROUP BY), ytre
+      // MAX() OVER () = over gruppene. Cursor kan da aldri overstige det vi summerte.
       const { rows } = await pool.query(
         `SELECT tpl_id,
                 SUM(CASE WHEN liked THEN weight ELSE -weight END)::float AS net,
-                COUNT(*)::int AS n
+                COUNT(*)::int AS n,
+                MAX(MAX(created_at)) OVER () AS cursor
            FROM infographic_ai_signals
           ${since ? "WHERE created_at > $1" : ""}
           GROUP BY tpl_id
           ORDER BY n DESC LIMIT 1000`,
         since ? [since] : [],
       );
-      // Cursor = created_at for den FAKTISK nyeste raden vi så, ikke wall-clock
-      // `now` fanget før SELECT. En rad som commit-er etter denne SELECT-en har
-      // created_at ≤ max men blir ikke inkludert nå; siden cursor = det vi så,
-      // fanges den av neste kall (created_at > cursor) i stedet for å hoppes over.
       // Ingen nye rader → behold klientens gamle cursor (`since`), ikke advancér.
-      const { rows: mx } = await pool.query(
-        `SELECT MAX(created_at) AS m FROM infographic_ai_signals ${since ? "WHERE created_at > $1" : ""}`,
-        since ? [since] : [],
-      );
-      const cursor = mx[0]?.m ? new Date(mx[0].m).toISOString() : (since || null);
+      // (Merk: created_at settes ved INSERT-tid; en rad som commit-er ut av
+      // created_at-rekkefølge KAN i sjeldne tilfeller havne ≤ cursor og hoppes
+      // over — iboende i tidsstempel-cursors uten sekvens; signalene er lav-
+      // frekvente enkelt-inserts så vinduet er svært smalt.)
+      const cursor = rows[0]?.cursor ? new Date(rows[0].cursor).toISOString() : (since || null);
       res.json({ signals: rows.map((r) => ({ tplId: r.tpl_id, net: r.net, n: r.n })), now: cursor });
     } catch (e) {
       res.status(500).json({ error: "hent_feil", detail: (e as Error).message });

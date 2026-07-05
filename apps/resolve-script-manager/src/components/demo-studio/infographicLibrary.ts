@@ -12,6 +12,8 @@ export interface SnapshotScene {
   id: string; tplId: string; values: Record<string, string>; atSec: number;
   bindings?: Record<string, string>; posX?: number; posY?: number;
   durSec?: number; accent?: string; logo?: string; exitSec?: number;
+  // Animate-felt — MÅ round-trippe (før: overlevde kun via runtime-spread, ikke typekontrakt).
+  name?: string; entrance?: string; easing?: string;
 }
 
 export interface SavedInfographic {
@@ -26,8 +28,13 @@ export interface SavedInfographic {
   logo: string;
   dataText: string;
   palette: string[];
+  /** Live-datakilde-URL (JSON/CSV) — så den følger med snapshotet, ikke tapes. */
+  liveUrl?: string;
   /** Mal-id for miniatyren (typisk første scene). */
   previewTplId: string;
+  /** Binding-OPPLØSTE verdier for scene 0 (miniatyren) — så kortet viser de FAKTISKE
+   *  tallene, ikke rå placeholder-felt før data-binding. */
+  previewValues?: Record<string, string>;
 }
 
 const LIB_KEY = 'trrpa.infographicStudio.library';
