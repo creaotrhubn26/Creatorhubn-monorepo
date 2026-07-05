@@ -2635,15 +2635,21 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
       const mappedMessages = messages.map((msg) => {
         const metadata = getMessageMetadataRecord(msg.metadata);
         const attachments = sanitizeChatAttachments(metadata.attachments);
+        // senderName/tag lagres i metadata (kolonnen har ikke egne felter) —
+        // eksponer dem så klienten viser visningsnavn, ikke e-post, og tagg-chip.
+        const senderName = toNonEmptyString(metadata.senderName) || null;
+        const tag = toNonEmptyString(metadata.tag) || null;
 
         return {
         id: msg.id,
         senderId: msg.senderId,
+        senderName,
         content: msg.content,
         timestamp: msg.createdAt,
         type: msg.messageType,
         status: msg.isRead ? 'read' : msg.deliveredAt ? 'delivered' : 'sent',
         attachments,
+        tag,
         metadata: msg.metadata,
         };
       });
