@@ -74044,7 +74044,7 @@ app.post(
 const dashboardCompatRouter = createDashboardCompatRouter();
 app.use(dashboardCompatRouter);
 
-const communicationRouter = createCommunicationRouter(db, pool);
+const communicationRouter = createCommunicationRouter(db, pool, activeSessions);
 app.use(communicationRouter);
 
 const lightroomRouter = createLightroomRouter(pool);
