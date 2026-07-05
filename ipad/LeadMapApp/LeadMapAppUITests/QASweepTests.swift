@@ -159,6 +159,108 @@ final class QASweepTests: XCTestCase {
         app.terminate()
     }
 
+    // MARK: - SuperAdmin: konsoll + org-detalj + entitlement-matrise
+
+    /// Sveiper hele «gi organisasjon tilgang»-flyten: profil-meny →
+    /// SuperAdmin-konsoll → org-kort → detalj-faner → tilgangs-matrise
+    /// → toggle → Lagre. Alle steg får skjermbilde.
+    func testSuperAdminDeepSweep() throws {
+        let app = launchApp(tab: 6)
+        let appW = app.frame.width
+
+        // 1. Profil-knapp i delt header → popover → SuperAdmin-konsoll
+        let avatar = app.buttons["header-profile-button"].firstMatch
+        guard avatar.waitForExistence(timeout: 5) else {
+            snap(app, "superadmin-0-avatar-UTILGJENGELIG")
+            return
+        }
+        avatar.tap()
+        sleep(1)
+        snap(app, "superadmin-0-profilmeny")
+        let konsoll = app.buttons["SuperAdmin-konsoll"].firstMatch
+        guard konsoll.waitForExistence(timeout: 3) else {
+            snap(app, "superadmin-1-konsoll-rad-UTILGJENGELIG")
+            return
+        }
+        konsoll.tap()
+        sleep(3)
+        snap(app, "superadmin-1-dashboard")
+
+        // 2. Første org-kort → OrgDetailSheet
+        let orgCard = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH 'superadmin-org-card'")
+        ).firstMatch
+        guard orgCard.waitForExistence(timeout: 5) else {
+            snap(app, "superadmin-2-orgkort-UTILGJENGELIG")
+            return
+        }
+        orgCard.tap()
+        sleep(2)
+        snap(app, "superadmin-2-orgdetalj-oversikt")
+
+        // 3. Detalj-faner (Tilganger/Fakturering/Audit-logg) — fane-raden
+        // er en scroller på iPhone; sveip den hvis fanen er off-screen.
+        let orgTabBar = app.scrollViews["orgdetail-tabbar"].firstMatch
+        for (i, navn) in ["Tilganger", "Fakturering", "Audit-logg"].enumerated() {
+            func synligDetaljFane() -> XCUIElement? {
+                app.buttons.containing(
+                    NSPredicate(format: "label CONTAINS %@", navn)
+                ).allElementsBoundByIndex.first {
+                    $0.exists && $0.frame.minX >= 0 && $0.frame.maxX <= appW
+                }
+            }
+            var fane = synligDetaljFane()
+            var forsok = 0
+            while fane == nil, forsok < 2, orgTabBar.exists {
+                orgTabBar.swipeLeft()
+                sleep(1)
+                fane = synligDetaljFane()
+                forsok += 1
+            }
+            if let fane {
+                fane.tap()
+                sleep(1)
+                snap(app, "superadmin-3\(i)-fane-\(navn.lowercased())")
+            } else {
+                snap(app, "superadmin-3\(i)-fane-\(navn.lowercased())-UTILGJENGELIG")
+            }
+        }
+
+        // 4. Mer-meny → Rediger entitlements → matrise
+        let mer = app.buttons["org-detail-more"].firstMatch
+        guard mer.waitForExistence(timeout: 3) else {
+            snap(app, "superadmin-4-mer-meny-UTILGJENGELIG")
+            return
+        }
+        mer.tap()
+        sleep(1)
+        let rediger = app.buttons["Rediger entitlements"].firstMatch
+        guard rediger.waitForExistence(timeout: 3) else {
+            snap(app, "superadmin-4-rediger-UTILGJENGELIG")
+            return
+        }
+        rediger.tap()
+        sleep(2)
+        snap(app, "superadmin-4-matrise")
+
+        // 5. Toggle første feature til Sperret → Lagre → toast
+        let sperr = app.buttons["matrix-0-Sperret"].firstMatch
+        if sperr.waitForExistence(timeout: 3) {
+            sperr.tap()
+            sleep(1)
+            snap(app, "superadmin-5-matrise-toggled")
+        } else {
+            snap(app, "superadmin-5-toggle-UTILGJENGELIG")
+        }
+        let lagre = app.buttons["matrix-lagre"].firstMatch
+        if lagre.exists {
+            lagre.tap()
+            sleep(2)
+            snap(app, "superadmin-6-etter-lagre")
+        }
+        app.terminate()
+    }
+
     // MARK: - Oversikt: pin-info-sheet via kart utilgjengelig for XCUITest
     // (Map-annotations er ikke accessibility-elementer) — dekkes manuelt.
 

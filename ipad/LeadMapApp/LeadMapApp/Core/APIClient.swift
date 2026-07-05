@@ -2182,6 +2182,51 @@ extension APIClient {
         try await get("/api/superadmin/organizations")
     }
 
+    // -- Feature-entitlements (tilgangs-matrisen, mig 0370) ---------
+
+    func fetchOrgEntitlements(_ orgId: String) async throws -> OrgEntitlementsEnvelope {
+        try await get("/api/superadmin/organizations/\(orgId)/entitlements")
+    }
+
+    /// Full erstatning — matrisen sender alltid hele katalogen.
+    func saveOrgEntitlements(_ orgId: String, entitlements: [Entitlement]) async throws {
+        let rows: [[String: Any]] = entitlements.map { ent in
+            var row: [String: Any] = [
+                "feature_key": ent.feature.key,
+                "state": ent.state.apiValue,
+            ]
+            if let l = ent.monthlyLimit { row["monthly_limit"] = l }
+            if let p = ent.addOnPriceMonthly { row["addon_price_monthly"] = p }
+            return row
+        }
+        try await put(
+            "/api/superadmin/organizations/\(orgId)/entitlements",
+            body: ["entitlements": rows]
+        )
+    }
+
+    /// Egen orgs entitlements (kunde-siden av løkka — leses ved bootstrap).
+    func fetchMyEntitlements() async throws -> OrgEntitlementsEnvelope {
+        try await get("/api/leadgrid/me/entitlements")
+    }
+
+    /// Audit-hendelser for én org (OrgDetailSheet > Audit-logg).
+    func fetchSuperAdminAuditLog(orgId: String, limit: Int = 50) async throws -> SuperAdminAuditLogResponse {
+        try await get("/api/superadmin/audit-log?organization_id=\(orgId)&limit=\(limit)")
+    }
+
+    /// Global audit-logg på tvers av alle orgs (dashboard-menyen).
+    func fetchSuperAdminAuditLog(limit: Int = 100) async throws -> SuperAdminAuditLogResponse {
+        try await get("/api/superadmin/audit-log?limit=\(limit)")
+    }
+
+    /// Suspender/reaktiver org (POST set-status; reason påkrevd ved ikke-active).
+    func setOrgStatus(_ orgId: String, status: String, reason: String?) async throws {
+        var body: [String: Any] = ["status": status]
+        if let reason, !reason.isEmpty { body["reason"] = reason }
+        try await post("/api/superadmin/organizations/\(orgId)/set-status", body: body)
+    }
+
     func fetchActiveImpersonation() async throws -> ImpersonationStatus {
         try await get("/api/superadmin/active-impersonation")
     }

@@ -66,6 +66,20 @@ enum EntitlementState: String, CaseIterable, Identifiable, Hashable {
         case .locked: return "lock.fill"
         }
     }
+
+    /// Backend-verdi (mig 0370) — rawValue er norsk display-tekst.
+    var apiValue: String {
+        switch self {
+        case .included: return "included"
+        case .trial: return "trial"
+        case .addOn: return "add_on"
+        case .locked: return "locked"
+        }
+    }
+
+    static func fromAPI(_ value: String) -> EntitlementState? {
+        allCases.first { $0.apiValue == value }
+    }
 }
 
 struct Entitlement: Identifiable, Hashable {
@@ -80,6 +94,9 @@ struct Entitlement: Identifiable, Hashable {
 
 struct Organization: Identifiable, Hashable {
     let id = UUID()
+    /// Backend-uuid når org-en kommer fra `/api/superadmin/organizations`
+    /// (ekte modus). nil = demo-mock.
+    var serverId: String? = nil
     let name: String
     let domain: String
     let industry: String
@@ -114,7 +131,11 @@ struct Organization: Identifiable, Hashable {
 }
 
 enum PlanDefaults {
-    static func entitlement(for feature: LeadgridFeature, plan: SubscriptionPlan) -> Entitlement {
+    static func entitlement(
+        for feature: LeadgridFeature,
+        plan: SubscriptionPlan,
+        mockUsage: Bool = true
+    ) -> Entitlement {
         let state: EntitlementState
         var limit: Int? = nil
         switch plan {
@@ -151,14 +172,56 @@ enum PlanDefaults {
             feature: feature,
             state: state,
             monthlyLimit: limit,
-            currentUsage: Int.random(in: 0...(limit ?? 200)),
+            // Tilfeldig forbruk er DEMO-pynt — i ekte modus finnes ingen
+            // usage-måling enda, så 0 er den ærlige verdien.
+            currentUsage: mockUsage ? Int.random(in: 0...(limit ?? 200)) : 0,
             trialEndsAt: state == .trial ? Calendar.current.date(byAdding: .day, value: 14, to: Date()) : nil,
             addOnPriceMonthly: state == .addOn ? 990 : nil
         )
     }
 
-    static func allEntitlements(for plan: SubscriptionPlan) -> [Entitlement] {
-        LeadgridFeature.allCases.map { entitlement(for: $0, plan: plan) }
+    static func allEntitlements(for plan: SubscriptionPlan, mockUsage: Bool = true) -> [Entitlement] {
+        LeadgridFeature.allCases.map { entitlement(for: $0, plan: plan, mockUsage: mockUsage) }
+    }
+}
+
+// MARK: - Ekte org fra backend → Organization
+
+extension Organization {
+    /// Mapper en rad fra `GET /api/superadmin/organizations` til konsollens
+    /// modell. Felter backend ikke har (omsetning, aktive 30d, renewal)
+    /// settes til ærlige null-verdier — IKKE oppdiktede tall.
+    init(server entry: SuperAdminOrgEntry) {
+        let plan: SubscriptionPlan = switch (entry.planKey ?? "").lowercased() {
+        case "trial": .trial
+        case "starter": .starter
+        case "pro": .pro
+        case "enterprise": .enterprise
+        default: .custom
+        }
+        let created = ISO8601DateFormatter().date(
+            from: entry.createdAt ?? ""
+        ) ?? Date()
+        self.init(
+            serverId: entry.id,
+            name: entry.name,
+            domain: entry.ownerEmail?.split(separator: "@").last.map(String.init) ?? "—",
+            industry: entry.orgType == "agency" ? "Byrå"
+                : entry.orgType == "developer" ? "Utvikler" : "Kunde",
+            logo: "building.2.fill",
+            logoColor: LBrand.blue,
+            plan: plan,
+            memberCount: entry.memberCount ?? 0,
+            activeUsers30d: 0,
+            monthlySpend: 0,
+            contractRenewal: Calendar.current.date(byAdding: .year, value: 1, to: created) ?? created,
+            billingStatus: plan == .trial ? .trial : .good,
+            country: "Norge",
+            primaryContact: entry.ownerEmail ?? "—",
+            entitlements: PlanDefaults.allEntitlements(for: plan, mockUsage: false),
+            notes: "",
+            createdAt: created
+        )
     }
 }
 
@@ -259,13 +322,47 @@ enum SuperAdminData {
 
 struct SuperAdminDashboard: View {
     var onExit: () -> Void = {}
-    @State private var orgs: [Organization] = SuperAdminData.organizations
+    @Environment(AppState.self) private var appState
+    // Demo-modus: mock-orgs. Ekte modus: `/api/superadmin/organizations`
+    // lastes i .task og ERSTATTER mocken — konsollen skal aldri vise
+    // oppdiktede kunder til en innlogget Leadgrid-ansatt.
+    @State private var orgs: [Organization] = DemoModeManager.isActiveNonisolated
+        ? SuperAdminData.organizations : []
+    @State private var isLive = false
+    @State private var loadError: String?
     @State private var search: String = ""
     @State private var planFilter: SubscriptionPlan?
     @State private var billingFilter: Organization.BillingStatus?
     @State private var selectedOrg: Organization?
     @State private var sort: Sort = .revenue
     @State private var showDemoMode = false
+    @State private var showFeatureCatalog = false
+    @State private var showGlobalAudit = false
+
+    /// CSV av org-listen slik den vises (LIVE fra backend eller demo-mock).
+    private var mrrCSV: String {
+        var lines = ["Organisasjon;Domene;Plan;Fakturering;Brukere;Aktive 30d;MRR (NOK)"]
+        for o in filtered {
+            lines.append("\(o.name);\(o.domain);\(o.plan.rawValue);\(o.billingStatus.rawValue);\(o.memberCount);\(o.activeUsers30d);\(o.monthlySpend)")
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private func loadRealOrgs() async {
+        guard !DemoModeManager.isActiveNonisolated else { return }
+        guard let api = appState.api else {
+            loadError = "Ingen API-klient — logg inn på nytt"
+            return
+        }
+        do {
+            let resp = try await api.fetchSuperAdminOrgs()
+            orgs = resp.organizations.map(Organization.init(server:))
+            isLive = true
+            loadError = nil
+        } catch {
+            loadError = "Kunne ikke hente organisasjoner: \(error.localizedDescription)"
+        }
+    }
 
     enum Sort: String, CaseIterable, Identifiable {
         case revenue = "Høyest omsetning"
@@ -325,6 +422,7 @@ struct SuperAdminDashboard: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         superAdminBadge
+                        sourceStatus
                         kpiRow
                         searchAndSort
                         filterChips
@@ -369,11 +467,21 @@ struct SuperAdminDashboard: View {
                             )
                         }.buttonStyle(.plain)
                         Menu {
-                            Button {} label: { Label("Eksporter MRR-rapport", systemImage: "tablecells") }
-                            Button {} label: { Label("Send Stripe-sync-trigger", systemImage: "arrow.triangle.2.circlepath") }
-                            Button {} label: { Label("Funksjons-katalog", systemImage: "shippingbox.fill") }
+                            // CSV fra den faktisk lastede org-listen (LIVE
+                            // eller demo — begge er det brukeren ser).
+                            ShareLink(
+                                item: mrrCSV,
+                                preview: SharePreview("Leadgrid MRR-rapport")
+                            ) {
+                                Label("Eksporter MRR-rapport (CSV)", systemImage: "tablecells")
+                            }
+                            Button { showFeatureCatalog = true } label: {
+                                Label("Funksjons-katalog", systemImage: "shippingbox.fill")
+                            }
                             Divider()
-                            Button {} label: { Label("Audit-logg (alle orgs)", systemImage: "clock.arrow.circlepath") }
+                            Button { showGlobalAudit = true } label: {
+                                Label("Audit-logg (alle orgs)", systemImage: "clock.arrow.circlepath")
+                            }
                         } label: {
                             Image(systemName: "ellipsis.circle")
                                 .font(.appScaled(size: 16, weight: .semibold))
@@ -390,8 +498,34 @@ struct SuperAdminDashboard: View {
                 }
             }
             .sheet(isPresented: $showDemoMode) { PlanSwitcherSheet() }
+            .sheet(isPresented: $showFeatureCatalog) { FeatureCatalogView() }
+            .sheet(isPresented: $showGlobalAudit) { GlobalAuditSheet() }
+            .task { await loadRealOrgs() }
         }
         .macCatalystSheetSize(minWidth: 1100, minHeight: 800)
+    }
+
+    /// Ærlig kilde-linje under badgen: LIVE m/ antall, demo, laster
+    /// eller feil — konsollen skal aldri se «ekte» ut når den ikke er det.
+    @ViewBuilder
+    private var sourceStatus: some View {
+        if let loadError {
+            Label(loadError, systemImage: "exclamationmark.triangle.fill")
+                .font(.appScaled(size: 11, weight: .semibold))
+                .foregroundStyle(LBrand.red)
+        } else if isLive {
+            Label("LIVE — \(orgs.count) organisasjoner fra backend", systemImage: "dot.radiowaves.left.and.right")
+                .font(.appScaled(size: 11, weight: .semibold))
+                .foregroundStyle(LBrand.green)
+        } else if DemoModeManager.isActiveNonisolated {
+            Label("DEMO-DATA — mock-organisasjoner", systemImage: "eye.fill")
+                .font(.appScaled(size: 11, weight: .semibold))
+                .foregroundStyle(LBrand.yellow)
+        } else {
+            Label("Henter organisasjoner …", systemImage: "arrow.triangle.2.circlepath")
+                .font(.appScaled(size: 11, weight: .semibold))
+                .foregroundStyle(LBrand.textSecondary)
+        }
     }
 
     private var superAdminBadge: some View {
@@ -416,14 +550,26 @@ struct SuperAdminDashboard: View {
         .overlay(RoundedRectangle(cornerRadius: 11).stroke(LBrand.orange.opacity(0.3), lineWidth: 1))
     }
 
+    // iPhone: fem tiles deler ikke compact width — etikettene krympet til
+    // «A…»/«RE…». Scrollbar rad m/ fast bredde (Leadbook-mønsteret).
+    @ViewBuilder
     private var kpiRow: some View {
-        HStack(spacing: 10) {
-            kpiTile("Antall orgs", "\(orgs.count)", "building.2.fill", LBrand.purpleLight)
-            kpiTile("MRR", "\(totalMRR / 1000) k", "banknote.fill", LBrand.green)
-            kpiTile("Brukere totalt", "\(totalUsers)", "person.3.fill", LBrand.blue)
-            kpiTile("Renewal 30d", "\(renewing30dCount)", "calendar.badge.clock", LBrand.yellow)
-            kpiTile("At risk", "\(atRiskCount)", "exclamationmark.triangle.fill", LBrand.red)
+        if DeviceIdiom.isPhone {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) { kpiTiles }
+            }
+        } else {
+            HStack(spacing: 10) { kpiTiles }
         }
+    }
+
+    @ViewBuilder
+    private var kpiTiles: some View {
+        kpiTile("Antall orgs", "\(orgs.count)", "building.2.fill", LBrand.purpleLight)
+        kpiTile("MRR", "\(totalMRR / 1000) k", "banknote.fill", LBrand.green)
+        kpiTile("Brukere totalt", "\(totalUsers)", "person.3.fill", LBrand.blue)
+        kpiTile("Renewal 30d", "\(renewing30dCount)", "calendar.badge.clock", LBrand.yellow)
+        kpiTile("At risk", "\(atRiskCount)", "exclamationmark.triangle.fill", LBrand.red)
     }
 
     private func kpiTile(_ label: String, _ value: String, _ icon: String, _ tint: Color) -> some View {
@@ -589,6 +735,7 @@ struct SuperAdminDashboard: View {
             .overlay(RoundedRectangle(cornerRadius: 12).stroke(LBrand.stroke, lineWidth: 1))
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("superadmin-org-card-\(org.domain)")
     }
 
     private func miniStat(icon: String, value: String, label: String) -> some View {
@@ -612,12 +759,124 @@ struct SuperAdminDashboard: View {
 struct OrgDetailSheet: View {
     @State var org: Organization
     var onUpdate: (Organization) -> Void
+    @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
     @State private var tab: Tab = .oversikt
     @State private var showEntitlementMatrix = false
     @State private var showPlanChange = false
     @State private var showImpersonate = false
     @State private var toast: String?
+    @State private var toastIsError = false
+    @State private var realAuditEntries: [SuperAdminAuditEntryDTO] = []
+    @State private var realAuditError: String?
+    @State private var showSuspendPrompt = false
+    @State private var suspendReason = ""
+
+    /// Ekte data konsollen holder om org-en — delbar JSON (GDPR-innsyn).
+    private var gdprExportJSON: String {
+        var dict: [String: Any] = [
+            "organization": [
+                "id": org.serverId ?? org.id.uuidString,
+                "name": org.name,
+                "domain": org.domain,
+                "plan": org.plan.rawValue,
+                "billing_status": org.billingStatus.rawValue,
+                "member_count": org.memberCount,
+                "primary_contact": org.primaryContact,
+                "created_at": ISO8601DateFormatter().string(from: org.createdAt),
+            ],
+            "entitlements": org.entitlements.map { e in
+                [
+                    "feature": e.feature.key,
+                    "state": e.state.apiValue,
+                    "monthly_limit": e.monthlyLimit as Any,
+                ]
+            },
+        ]
+        dict["audit_log"] = realAuditEntries.map { e in
+            ["action": e.action, "by": e.superAdminEmail ?? "", "at": e.createdAt ?? ""]
+        }
+        let data = (try? JSONSerialization.data(
+            withJSONObject: dict, options: [.prettyPrinted, .sortedKeys]
+        )) ?? Data()
+        return String(data: data, encoding: .utf8) ?? "{}"
+    }
+
+    /// Suspender via ekte set-status-endepunkt (reason påkrevd). Demo:
+    /// kun lokal status-endring.
+    private func suspendOrg() {
+        guard let sid = org.serverId, let api = appState.api,
+              !DemoModeManager.isActiveNonisolated else {
+            org.billingStatus = .suspended
+            flash("Org suspendert (demo)", isError: false)
+            onUpdate(org)
+            return
+        }
+        // Backend krever begrunnelse ved ikke-active — stopp før kallet.
+        guard !suspendReason.trimmingCharacters(in: .whitespaces).isEmpty else {
+            flash("Begrunnelse er påkrevd", isError: true)
+            return
+        }
+        Task {
+            do {
+                try await api.setOrgStatus(sid, status: "suspended", reason: suspendReason)
+                org.billingStatus = .suspended
+                flash("Org suspendert", isError: false)
+            } catch {
+                flash("Suspendering feilet", isError: true)
+            }
+            onUpdate(org)
+        }
+    }
+
+    /// Ekte modus: hent lagrede overrides fra backend og legg dem oppå
+    /// plan-defaults, slik at matrisen viser det som FAKTISK er gitt.
+    private func loadSavedEntitlements() async {
+        guard let sid = org.serverId, let api = appState.api,
+              !DemoModeManager.isActiveNonisolated else { return }
+        do {
+            let env = try await api.fetchOrgEntitlements(sid)
+            guard !env.entitlements.isEmpty else { return }
+            var ents = org.entitlements
+            for row in env.entitlements {
+                guard let feature = LeadgridFeature.fromKey(row.featureKey),
+                      let state = EntitlementState.fromAPI(row.state),
+                      let idx = ents.firstIndex(where: { $0.feature == feature })
+                else { continue }
+                ents[idx].state = state
+                ents[idx].monthlyLimit = row.monthlyLimit
+                ents[idx].addOnPriceMonthly = row.addonPriceMonthly
+            }
+            org.entitlements = ents
+        } catch {
+            flash("Kunne ikke hente lagrede tilganger", isError: true)
+        }
+    }
+
+    /// Ekte modus: PUT hele matrisen. Demo: kun lokal state.
+    private func saveEntitlements(_ updated: [Entitlement]) {
+        guard let sid = org.serverId, let api = appState.api,
+              !DemoModeManager.isActiveNonisolated else {
+            flash("\(updated.count) tilganger oppdatert (demo)", isError: false)
+            onUpdate(org)
+            return
+        }
+        Task {
+            do {
+                try await api.saveOrgEntitlements(sid, entitlements: updated)
+                flash("\(updated.count) tilganger lagret", isError: false)
+            } catch {
+                flash("Lagring feilet — prøv igjen", isError: true)
+            }
+            onUpdate(org)
+        }
+    }
+
+    private func flash(_ text: String, isError: Bool) {
+        toastIsError = isError
+        toast = text
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { toast = nil }
+    }
 
     enum Tab: String, CaseIterable, Identifiable {
         case oversikt = "Oversikt"
@@ -658,10 +917,11 @@ struct OrgDetailSheet: View {
                 if let t = toast {
                     VStack {
                         Spacer().frame(height: 80)
-                        Label(t, systemImage: "checkmark.circle.fill")
+                        Label(t, systemImage: toastIsError
+                              ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
                             .font(.appScaled(size: 12, weight: .bold)).foregroundStyle(.white)
                             .padding(.horizontal, 12).padding(.vertical, 8)
-                            .background(LBrand.green, in: Capsule())
+                            .background(toastIsError ? LBrand.red : LBrand.green, in: Capsule())
                         Spacer()
                     }
                 }
@@ -678,22 +938,38 @@ struct OrgDetailSheet: View {
                         Button { showPlanChange = true } label: { Label("Endre plan", systemImage: "arrow.up.right.circle.fill") }
                         Button { showEntitlementMatrix = true } label: { Label("Rediger entitlements", systemImage: "checkmark.shield.fill") }
                         Divider()
-                        Button {} label: { Label("Eksporter org-data (GDPR)", systemImage: "square.and.arrow.up") }
-                        Button(role: .destructive) {} label: { Label("Suspender org", systemImage: "pause.circle.fill") }
+                        // Ekte eksport: alt konsollen VET om org-en (info +
+                        // entitlements + audit) som delbar JSON.
+                        ShareLink(
+                            item: gdprExportJSON,
+                            preview: SharePreview("\(org.name) — org-data")
+                        ) {
+                            Label("Eksporter org-data (GDPR)", systemImage: "square.and.arrow.up")
+                        }
+                        Button(role: .destructive) { showSuspendPrompt = true } label: {
+                            Label("Suspender org", systemImage: "pause.circle.fill")
+                        }
                     } label: {
                         Image(systemName: "ellipsis.circle")
                             .font(.appScaled(size: 16, weight: .semibold))
                             .foregroundStyle(LBrand.orange)
                     }
+                    .accessibilityIdentifier("org-detail-more")
                 }
             }
             .sheet(isPresented: $showEntitlementMatrix) {
                 EntitlementMatrixSheet(org: $org) { updated in
-                    toast = "\(updated.count) tilganger oppdatert"
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { toast = nil }
-                    onUpdate(org)
+                    saveEntitlements(updated)
                 }
             }
+            .alert("Suspender \(org.name)?", isPresented: $showSuspendPrompt) {
+                TextField("Begrunnelse (påkrevd)", text: $suspendReason)
+                Button("Suspender", role: .destructive) { suspendOrg() }
+                Button("Avbryt", role: .cancel) {}
+            } message: {
+                Text("Organisasjonen mister tilgang og Stripe-innkreving pauses. Begrunnelsen logges i audit-trail.")
+            }
+            .task { await loadSavedEntitlements() }
             .sheet(isPresented: $showPlanChange) {
                 PlanChangeSheet(org: $org) {
                     toast = "Plan endret til \(org.plan.rawValue)"
@@ -751,23 +1027,31 @@ struct OrgDetailSheet: View {
         .overlay(Capsule().stroke(tint.opacity(0.4), lineWidth: 1))
     }
 
+    // iPhone: fire faner får ikke plass side om side — ordene brøt
+    // («Oversi kt»). Scrollbar rad m/ .fixedSize() (Leadbook-mønsteret).
     private var tabBar: some View {
-        HStack(spacing: 4) {
-            ForEach(Tab.allCases) { t in
-                Button { withAnimation(.easeInOut(duration: 0.15)) { tab = t } } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: t.icon).font(.appScaled(size: 11, weight: .bold))
-                        Text(t.rawValue).font(.appScaled(size: 12, weight: tab == t ? .bold : .semibold))
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 4) {
+                ForEach(Tab.allCases) { t in
+                    Button { withAnimation(.easeInOut(duration: 0.15)) { tab = t } } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: t.icon).font(.appScaled(size: 11, weight: .bold))
+                            Text(t.rawValue).font(.appScaled(size: 12, weight: tab == t ? .bold : .semibold))
+                                .lineLimit(1).fixedSize()
+                        }
+                        .foregroundStyle(tab == t ? .white : LBrand.textSecondary)
+                        .padding(.horizontal, 12).padding(.vertical, 8)
+                        .background(tab == t ? LBrand.orange.opacity(0.22) : .clear, in: Capsule())
                     }
-                    .foregroundStyle(tab == t ? .white : LBrand.textSecondary)
-                    .padding(.horizontal, 12).padding(.vertical, 8)
-                    .background(tab == t ? LBrand.orange.opacity(0.22) : .clear, in: Capsule())
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
+                Spacer()
             }
-            Spacer()
+            .padding(.horizontal, 16)
         }
-        .padding(.horizontal, 16).padding(.bottom, 10)
+        .accessibilityIdentifier("orgdetail-tabbar")
+        .fixedSize(horizontal: !DeviceIdiom.isPhone, vertical: true)
+        .padding(.bottom, 10)
     }
 
     // MARK: Tab — Oversikt
@@ -966,27 +1250,44 @@ struct OrgDetailSheet: View {
 
     // MARK: Tab — Fakturering
 
+    /// Ekte modus: Stripe-detaljene (customer/sub-id, kort, neste faktura)
+    /// er ikke koblet enda — vis ærlig tom-tilstand, ALDRI mock-ID-er på
+    /// en ekte kunde-org. Demo beholder illustrasjonen.
     private var faktureringTab: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 10) {
-                statBox("MRR", "\(org.monthlySpend) kr", "banknote.fill", LBrand.green)
-                statBox("ARR", "\(org.monthlySpend * 12 / 1000) k kr", "calendar", LBrand.purpleLight)
-                statBox("Status", org.billingStatus.rawValue, "creditcard.fill", org.billingStatus.color)
+            if org.serverId == nil {
+                HStack(spacing: 10) {
+                    statBox("MRR", "\(org.monthlySpend) kr", "banknote.fill", LBrand.green)
+                    statBox("ARR", "\(org.monthlySpend * 12 / 1000) k kr", "calendar", LBrand.purpleLight)
+                    statBox("Status", org.billingStatus.rawValue, "creditcard.fill", org.billingStatus.color)
+                }
             }
             VStack(alignment: .leading, spacing: 10) {
                 Text("STRIPE-INTEGRASJON")
                     .font(.appScaled(size: 10, weight: .black))
                     .foregroundStyle(LBrand.textTertiary).tracking(0.8)
-                VStack(spacing: 8) {
-                    stripeRow("Customer-ID", value: "cus_NXR9bK8mY3", icon: "person.badge.key.fill")
-                    stripeRow("Subscription-ID", value: "sub_1OqK8m...", icon: "arrow.triangle.2.circlepath")
-                    stripeRow("Default-betalingsmetode", value: "VISA •••• 4242", icon: "creditcard.fill")
-                    stripeRow("Neste faktura", value: longDate(org.contractRenewal), icon: "calendar.badge.clock")
+                if org.serverId != nil {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Label("Ingen Stripe-kobling for denne organisasjonen enda",
+                              systemImage: "creditcard.trianglebadge.exclamationmark")
+                            .font(.appScaled(size: 12, weight: .semibold))
+                            .foregroundStyle(.white)
+                        Text("Fakturering settes opp når organisasjonen får abonnement i Stripe.")
+                            .font(.appScaled(size: 11)).foregroundStyle(LBrand.textSecondary)
+                    }
+                } else {
+                    VStack(spacing: 8) {
+                        stripeRow("Customer-ID", value: "cus_NXR9bK8mY3", icon: "person.badge.key.fill")
+                        stripeRow("Subscription-ID", value: "sub_1OqK8m...", icon: "arrow.triangle.2.circlepath")
+                        stripeRow("Default-betalingsmetode", value: "VISA •••• 4242", icon: "creditcard.fill")
+                        stripeRow("Neste faktura", value: longDate(org.contractRenewal), icon: "calendar.badge.clock")
+                    }
                 }
             }
             .padding(14)
             .background(LBrand.card, in: RoundedRectangle(cornerRadius: 12))
 
+            if org.serverId == nil {
             HStack(spacing: 10) {
                 Button {} label: {
                     HStack(spacing: 5) {
@@ -1012,6 +1313,7 @@ struct OrgDetailSheet: View {
                     )
                 }.buttonStyle(.plain)
             }
+            }
         }
     }
 
@@ -1030,7 +1332,56 @@ struct OrgDetailSheet: View {
 
     // MARK: Tab — Audit
 
+    /// Demo: illustrative mock-hendelser. Ekte modus: KUN rader fra
+    /// superadmin_audit_log — oppdiktede «Lars Kristensen»-hendelser på
+    /// en ekte kunde-org er villedende.
+    @ViewBuilder
     private var auditTab: some View {
+        if org.serverId != nil, !DemoModeManager.isActiveNonisolated {
+            realAuditList
+        } else {
+            mockAuditList
+        }
+    }
+
+    @ViewBuilder
+    private var realAuditList: some View {
+        VStack(spacing: 8) {
+            if let realAuditError {
+                Label(realAuditError, systemImage: "exclamationmark.triangle.fill")
+                    .font(.appScaled(size: 12, weight: .semibold))
+                    .foregroundStyle(LBrand.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12)
+                    .background(LBrand.card, in: RoundedRectangle(cornerRadius: 10))
+            } else if realAuditEntries.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(.appScaled(size: 26)).foregroundStyle(LBrand.textTertiary)
+                    Text("Ingen audit-hendelser enda")
+                        .font(.appScaled(size: 13, weight: .semibold)).foregroundStyle(.white)
+                    Text("Endringer i tilganger, plan og impersonation logges her.")
+                        .font(.appScaled(size: 11)).foregroundStyle(LBrand.textSecondary)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 30)
+            } else {
+                ForEach(realAuditEntries, id: \.id) { entry in
+                    auditEntry(
+                        auditTitle(entry),
+                        actor: entry.superAdminEmail ?? "Ukjent",
+                        time: auditTime(entry.createdAt),
+                        icon: auditIcon(entry.action).0,
+                        tint: auditIcon(entry.action).1
+                    )
+                }
+            }
+        }
+        .task { await loadRealAudit() }
+    }
+
+    private var mockAuditList: some View {
         VStack(spacing: 8) {
             auditEntry("Endret plan fra Pro til Enterprise", actor: "Lars Kristensen (Leadgrid)",
                        time: "2 t siden", icon: "arrow.up.right.circle.fill", tint: LBrand.green)
@@ -1050,6 +1401,54 @@ struct OrgDetailSheet: View {
                        actor: "System", time: longDate(org.createdAt),
                        icon: "sparkles", tint: LBrand.yellow)
         }
+    }
+
+    private func loadRealAudit() async {
+        guard let sid = org.serverId, let api = appState.api else { return }
+        do {
+            let resp = try await api.fetchSuperAdminAuditLog(orgId: sid)
+            realAuditEntries = resp.entries
+            realAuditError = nil
+        } catch {
+            realAuditError = "Kunne ikke hente audit-logg"
+        }
+    }
+
+    private func auditTitle(_ entry: SuperAdminAuditEntryDTO) -> String {
+        switch entry.action {
+        case "update_entitlements":
+            if let count = entry.details?.count {
+                return "Oppdaterte tilgangs-matrisen (\(count) features)"
+            }
+            return "Oppdaterte tilgangs-matrisen"
+        case "create_organization": return "Opprettet organisasjonen"
+        case "switch_org_context": return "Byttet org-kontekst"
+        case "impersonate_user": return "Logget inn som org-admin (impersonation)"
+        case "invite_org_admin": return "Inviterte org-admin"
+        default: return entry.action
+        }
+    }
+
+    private func auditIcon(_ action: String) -> (String, Color) {
+        switch action {
+        case "update_entitlements": return ("checkmark.shield.fill", LBrand.orange)
+        case "create_organization": return ("sparkles", LBrand.yellow)
+        case "impersonate_user": return ("person.badge.shield.exclamationmark.fill", LBrand.red)
+        case "invite_org_admin": return ("envelope.fill", LBrand.blue)
+        default: return ("clock.arrow.circlepath", LBrand.textSecondary)
+        }
+    }
+
+    private func auditTime(_ iso: String?) -> String {
+        guard let iso else { return "—" }
+        let fmt = ISO8601DateFormatter()
+        fmt.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let date = fmt.date(from: iso) ?? ISO8601DateFormatter().date(from: iso)
+        guard let date else { return iso }
+        let out = DateFormatter()
+        out.dateFormat = "d. MMM HH:mm"
+        out.locale = Locale(identifier: "nb_NO")
+        return out.string(from: date)
     }
 
     private func auditEntry(_ title: String, actor: String, time: String, icon: String, tint: Color) -> some View {
@@ -1085,6 +1484,86 @@ struct OrgDetailSheet: View {
         fmt.dateFormat = "d. MMM yyyy"
         fmt.locale = Locale(identifier: "nb_NO")
         return fmt.string(from: d)
+    }
+}
+
+// MARK: - GlobalAuditSheet — audit-logg på tvers av alle orgs
+
+struct GlobalAuditSheet: View {
+    @Environment(AppState.self) private var appState
+    @Environment(\.dismiss) private var dismiss
+    @State private var entries: [SuperAdminAuditEntryDTO] = []
+    @State private var loadError: String?
+    @State private var loaded = false
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                LBrand.bg.ignoresSafeArea()
+                ScrollView {
+                    VStack(spacing: 8) {
+                        if let loadError {
+                            Label(loadError, systemImage: "exclamationmark.triangle.fill")
+                                .font(.appScaled(size: 12, weight: .semibold))
+                                .foregroundStyle(LBrand.red)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(12)
+                                .background(LBrand.card, in: RoundedRectangle(cornerRadius: 10))
+                        } else if loaded && entries.isEmpty {
+                            VStack(spacing: 8) {
+                                Image(systemName: "clock.arrow.circlepath")
+                                    .font(.appScaled(size: 26)).foregroundStyle(LBrand.textTertiary)
+                                Text("Ingen audit-hendelser enda")
+                                    .font(.appScaled(size: 13, weight: .semibold)).foregroundStyle(.white)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 40)
+                        } else {
+                            ForEach(entries, id: \.id) { e in
+                                HStack(alignment: .top, spacing: 11) {
+                                    Image(systemName: "clock.arrow.circlepath")
+                                        .font(.appScaled(size: 11, weight: .bold))
+                                        .foregroundStyle(LBrand.orange)
+                                        .frame(width: 26, height: 26)
+                                        .background(LBrand.orange.opacity(0.15), in: Circle())
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(e.action)
+                                            .font(.appScaled(size: 12, weight: .semibold))
+                                            .foregroundStyle(.white)
+                                        Text("\(e.orgName ?? "—") · \(e.superAdminEmail ?? "ukjent") · \(e.createdAt?.prefix(16) ?? "—")")
+                                            .font(.appScaled(size: 10))
+                                            .foregroundStyle(LBrand.textTertiary)
+                                    }
+                                    Spacer()
+                                }
+                                .padding(11)
+                                .background(LBrand.card, in: RoundedRectangle(cornerRadius: 10))
+                            }
+                        }
+                    }
+                    .padding(20)
+                }
+            }
+            .navigationTitle("Audit-logg — alle orgs")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Lukk") { dismiss() }.tint(LBrand.textSecondary)
+                }
+            }
+            .task {
+                guard let api = appState.api else {
+                    loadError = "Ingen API-klient"
+                    return
+                }
+                do {
+                    entries = try await api.fetchSuperAdminAuditLog(limit: 100).entries
+                    loaded = true
+                } catch {
+                    loadError = "Kunne ikke hente audit-logg"
+                }
+            }
+        }
     }
 }
 
@@ -1131,6 +1610,7 @@ struct EntitlementMatrixSheet: View {
                                 in: RoundedRectangle(cornerRadius: 10)
                             )
                     }
+                    .accessibilityIdentifier("matrix-lagre")
                 }
             }
         }
@@ -1185,7 +1665,9 @@ struct EntitlementMatrixSheet: View {
                             .foregroundStyle(ent.state == state ? .white : state.color.opacity(0.7))
                             .frame(width: 30, height: 28)
                             .background(ent.state == state ? state.color.opacity(0.32) : .clear, in: Capsule())
-                    }.buttonStyle(.plain)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("matrix-\(idx)-\(state.rawValue)")
                 }
             }
             .padding(3)

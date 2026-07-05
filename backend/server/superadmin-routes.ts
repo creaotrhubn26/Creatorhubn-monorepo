@@ -165,6 +165,169 @@ export function registerSuperadminRoutes({
     }
   });
 
+  // ---------- Feature-entitlements per org (mig 0370) ----------
+  //
+  // SuperAdmin-konsollens tilgangs-matrise. Ingen rader for en org =
+  // ingen overrides = alt følger planen. PUT er full erstatning (matrisen
+  // sender alltid hele katalogen) og logges i superadmin_audit_log.
+
+  const ENTITLEMENT_STATES = new Set(["included", "trial", "add_on", "locked"]);
+
+  app.get(`${ROOT}/organizations/:id/entitlements`, async (req, res) => {
+    const session = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!session) return;
+    try {
+      const orgR = await pool.query<{ id: string; plan: string | null }>(
+        `SELECT id, plan FROM organizations WHERE id = $1`,
+        [req.params.id],
+      );
+      if (orgR.rows.length === 0) {
+        return res.status(404).json({ error: "Ukjent organisasjon" });
+      }
+      const r = await pool.query(
+        `SELECT feature_key, state, monthly_limit, trial_ends_at,
+                addon_price_monthly, updated_at
+           FROM leadgrid_org_entitlements
+          WHERE organization_id = $1
+          ORDER BY feature_key`,
+        [req.params.id],
+      );
+      res.json({
+        organization_id: req.params.id,
+        plan: orgR.rows[0].plan,
+        entitlements: r.rows,
+      });
+    } catch (e) {
+      console.error("[superadmin] get entitlements failed", e);
+      res.status(500).json({ error: "Kunne ikke hente entitlements" });
+    }
+  });
+
+  app.put(`${ROOT}/organizations/:id/entitlements`, async (req, res) => {
+    const session = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!session) return;
+    const entitlements = req.body?.entitlements;
+    if (!Array.isArray(entitlements) || entitlements.length === 0) {
+      return res.status(400).json({ error: "entitlements-liste mangler" });
+    }
+    if (entitlements.length > 200) {
+      return res.status(400).json({ error: "For mange entitlements (maks 200)" });
+    }
+    const seen = new Set<string>();
+    for (const e of entitlements) {
+      if (typeof e?.feature_key !== "string" || e.feature_key.length === 0
+          || e.feature_key.length > 80) {
+        return res.status(400).json({ error: "Ugyldig feature_key" });
+      }
+      if (!ENTITLEMENT_STATES.has(e?.state)) {
+        return res.status(400).json({
+          error: "Ugyldig state",
+          allowed: Array.from(ENTITLEMENT_STATES),
+          feature_key: e.feature_key,
+        });
+      }
+      if (seen.has(e.feature_key)) {
+        return res.status(400).json({ error: `Duplikat feature_key: ${e.feature_key}` });
+      }
+      seen.add(e.feature_key);
+    }
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const orgR = await client.query(
+        `SELECT id, name FROM organizations WHERE id = $1`,
+        [req.params.id],
+      );
+      if (orgR.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ error: "Ukjent organisasjon" });
+      }
+      await client.query(
+        `DELETE FROM leadgrid_org_entitlements WHERE organization_id = $1`,
+        [req.params.id],
+      );
+      for (const e of entitlements) {
+        await client.query(
+          `INSERT INTO leadgrid_org_entitlements
+             (organization_id, feature_key, state, monthly_limit,
+              trial_ends_at, addon_price_monthly, updated_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [
+            req.params.id,
+            e.feature_key,
+            e.state,
+            Number.isFinite(e.monthly_limit) ? e.monthly_limit : null,
+            e.trial_ends_at ?? null,
+            Number.isFinite(e.addon_price_monthly) ? e.addon_price_monthly : null,
+            session.userId,
+          ],
+        );
+      }
+      await client.query("COMMIT");
+      await logAudit(pool, session.userId, "update_entitlements", {
+        org_name: orgR.rows[0].name,
+        count: entitlements.length,
+        locked: entitlements.filter((e: any) => e.state === "locked").map((e: any) => e.feature_key),
+        trial: entitlements.filter((e: any) => e.state === "trial").map((e: any) => e.feature_key),
+        add_on: entitlements.filter((e: any) => e.state === "add_on").map((e: any) => e.feature_key),
+      }, {
+        targetOrgId: req.params.id,
+        ipAddress: req.ip,
+        userAgent: req.headers["user-agent"],
+      });
+      res.json({ ok: true, count: entitlements.length });
+    } catch (e) {
+      await client.query("ROLLBACK").catch(() => {});
+      console.error("[superadmin] put entitlements failed", e);
+      res.status(500).json({ error: "Kunne ikke lagre entitlements" });
+    } finally {
+      client.release();
+    }
+  });
+
+  // ---------- Egen orgs entitlements (kunde-appen, IKKE super_admin) ----
+  //
+  // Leses ved bootstrap i iPad-appen så .gated()-flatene speiler hva
+  // SuperAdmin faktisk har gitt organisasjonen. Tom liste = ingen
+  // overrides = alt åpent (bakoverkompatibelt for orgs uten rader).
+  app.get("/api/leadgrid/me/entitlements", async (req, res) => {
+    const session = getSessionFromReq(req, activeSessions);
+    if (!session?.userId) {
+      return res.status(401).json({ error: "Ikke innlogget" });
+    }
+    try {
+      const orgR = await pool.query<{ organization_id: string; plan: string | null }>(
+        `SELECT om.organization_id::text, o.plan
+           FROM organization_members om
+           JOIN organizations o ON o.id = om.organization_id
+          WHERE om.user_id = $1
+          ORDER BY CASE om.role WHEN 'admin' THEN 1 WHEN 'salgssjef' THEN 2 ELSE 3 END,
+                   om.joined_at ASC
+          LIMIT 1`,
+        [session.userId],
+      );
+      if (orgR.rows.length === 0) {
+        return res.json({ organization_id: null, plan: null, entitlements: [] });
+      }
+      const orgId = orgR.rows[0].organization_id;
+      const r = await pool.query(
+        `SELECT feature_key, state, monthly_limit, trial_ends_at, addon_price_monthly
+           FROM leadgrid_org_entitlements
+          WHERE organization_id = $1
+          ORDER BY feature_key`,
+        [orgId],
+      );
+      res.json({
+        organization_id: orgId,
+        plan: orgR.rows[0].plan,
+        entitlements: r.rows,
+      });
+    } catch (e) {
+      console.error("[leadgrid] me/entitlements failed", e);
+      res.status(500).json({ error: "Kunne ikke hente entitlements" });
+    }
+  });
+
   // ---------- Setup-templates ----------
   app.get(`${ROOT}/setup-templates`, async (req, res) => {
     const session = await requireSuperAdmin(req, res, pool, activeSessions);
@@ -432,14 +595,19 @@ export function registerSuperadminRoutes({
     const session = await requireSuperAdmin(req, res, pool, activeSessions);
     if (!session) return;
     const limit = Math.min(Number(req.query.limit ?? 100), 500);
+    // Valgfritt org-filter — OrgDetailSheet-audit-fanen viser kun
+    // hendelser for den ene organisasjonen.
+    const orgId = typeof req.query.organization_id === "string"
+      ? req.query.organization_id : null;
     const r = await pool.query(
       `SELECT a.*, o.name AS org_name, u.email AS super_admin_email
          FROM superadmin_audit_log a
          LEFT JOIN organizations o ON o.id = a.target_org_id
          LEFT JOIN users u ON u.id = a.super_admin_id
+        WHERE ($2::uuid IS NULL OR a.target_org_id = $2::uuid)
          ORDER BY a.created_at DESC
          LIMIT $1`,
-      [limit],
+      [limit, orgId],
     );
     res.json({ entries: r.rows });
   });

@@ -43656,11 +43656,17 @@ async function buildSessionUserFromActiveSession(session: ActiveSessionData) {
   const accountIsAdminRole = ADMIN_SESSION_ROLES.has(accountRoleId);
   const sessionIsAdminRole = ADMIN_SESSION_ROLES.has(sessionRoleId);
   const roleId =
-    accountIsAdminRole && !sessionIsAdminRole
-      ? accountRoleId
-      : sessionRoleId === "user" && accountRoleId !== "user"
+    // DB-rollen 'super_admin' er høyeste tier og skal aldri skygges av en
+    // sesjon som bare sier 'admin' (sesjoner minter rollen ved login og
+    // blir stående etter en DB-oppgradering). Uten denne så iPad-appens
+    // isSuperAdmin aldri super_admin → SuperAdmin-konsollen forble skjult.
+    accountRoleId === "super_admin" && sessionIsAdminRole
+      ? "super_admin"
+      : accountIsAdminRole && !sessionIsAdminRole
         ? accountRoleId
-        : sessionRoleId || accountRoleId;
+        : sessionRoleId === "user" && accountRoleId !== "user"
+          ? accountRoleId
+          : sessionRoleId || accountRoleId;
   const roleEntry = buildAdminRoleEntry(roleId);
   const permissions = (() => {
     const normalized = normalizeSessionPermissions(session.permissions);

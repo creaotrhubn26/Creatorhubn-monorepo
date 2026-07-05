@@ -239,6 +239,33 @@ struct SuperAdminOrgEntry: Codable, Hashable, Identifiable {
 
     var planKey: String? { plan }
     var lastActiveAt: String? { nil }
+
+    // Postgres COUNT(*) er bigint → node-pg serialiserer som STRENG
+    // («"1"», ikke 1). Lenient dekoding tåler begge — uten denne kastet
+    // hele org-listen DecodingError.typeMismatch på memberCount.
+    private enum CodingKeys: String, CodingKey {
+        case id, name, memberCount, createdAt, plan, orgType, ownerEmail, customerCount
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        memberCount = Self.lenientInt(c, .memberCount)
+        createdAt = try? c.decodeIfPresent(String.self, forKey: .createdAt)
+        plan = try? c.decodeIfPresent(String.self, forKey: .plan)
+        orgType = try? c.decodeIfPresent(String.self, forKey: .orgType)
+        ownerEmail = try? c.decodeIfPresent(String.self, forKey: .ownerEmail)
+        customerCount = Self.lenientInt(c, .customerCount)
+    }
+
+    private static func lenientInt(
+        _ c: KeyedDecodingContainer<CodingKeys>, _ key: CodingKeys
+    ) -> Int? {
+        if let i = try? c.decodeIfPresent(Int.self, forKey: key) { return i }
+        if let s = try? c.decodeIfPresent(String.self, forKey: key) { return Int(s) }
+        return nil
+    }
 }
 
 struct SuperAdminOrgsResponse: Codable {

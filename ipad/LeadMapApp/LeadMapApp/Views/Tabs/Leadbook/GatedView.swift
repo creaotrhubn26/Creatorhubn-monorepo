@@ -15,13 +15,45 @@ final class EntitlementStore: ObservableObject {
     @Published var currentPlan: SubscriptionPlan = .enterprise
     @Published var entitlements: [LeadgridFeature: Entitlement] = [:]
     @Published var demoMode: Bool = false
+    /// true når backend har levert ekte overrides for brukerens org
+    /// (`/api/leadgrid/me/entitlements`). Da gater vi på dem — også
+    /// utenfor demo-modus. Ingen rader = alt åpent (bakoverkompatibelt).
+    @Published var hasServerEntitlements = false
 
     private init() { applyPlan(.enterprise) }
 
     func access(_ feature: LeadgridFeature) -> EntitlementState {
-        // Hvis demo-modus er av, alt er åpent (du er Leadgrid-utvikler)
-        if !demoMode { return .included }
-        return entitlements[feature]?.state ?? .locked
+        if demoMode { return entitlements[feature]?.state ?? .locked }
+        if hasServerEntitlements {
+            // Manglende nøkkel = feature lansert etter forrige lagring —
+            // åpen til SuperAdmin sier noe annet.
+            return entitlements[feature]?.state ?? .included
+        }
+        // Ingen server-data og ikke demo: alt åpent (utvikler/legacy-org).
+        return .included
+    }
+
+    /// Ekte overrides fra backend. Tom liste rører ingenting.
+    func applyServer(_ envelope: OrgEntitlementsEnvelope) {
+        guard !envelope.entitlements.isEmpty else {
+            hasServerEntitlements = false
+            return
+        }
+        var dict: [LeadgridFeature: Entitlement] = [:]
+        for row in envelope.entitlements {
+            guard let feature = LeadgridFeature.fromKey(row.featureKey),
+                  let state = EntitlementState.fromAPI(row.state) else { continue }
+            dict[feature] = Entitlement(
+                feature: feature,
+                state: state,
+                monthlyLimit: row.monthlyLimit,
+                currentUsage: 0,
+                trialEndsAt: nil,
+                addOnPriceMonthly: row.addonPriceMonthly
+            )
+        }
+        entitlements = dict
+        hasServerEntitlements = true
     }
 
     func canUse(_ feature: LeadgridFeature) -> Bool {
@@ -368,7 +400,15 @@ struct UpsellSheet: View {
                     .font(.appScaled(size: 11)).foregroundStyle(LBrand.textSecondary)
             }
             Spacer()
-            Button {} label: {
+            Button {
+                // Ekte kontaktpunkt — knappen var en tom closure, og dette
+                // er flaten kunder treffer når de vil KJØPE mer tilgang.
+                let subject = "Leadgrid: oppgradering — \(feature.rawValue)"
+                    .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+                if let url = URL(string: "mailto:salg@creatorhubn.com?subject=\(subject)") {
+                    UIApplication.shared.open(url)
+                }
+            } label: {
                 Text("Kontakt").font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 12).padding(.vertical, 7)

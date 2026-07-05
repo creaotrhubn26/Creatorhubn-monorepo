@@ -161,6 +161,7 @@ struct LeadgridTabHeader<Extra: View>: View {
                         if !isNarrow { userBadge } else { userAvatarOnly }
                     }
                     .buttonStyle(.plain)
+                    .accessibilityIdentifier("header-profile-button")
                     .macCatalystHover()
                     .popover(isPresented: $profileOpen, arrowEdge: .top) {
                         ProfilePopover(
