@@ -2,6 +2,12 @@
 /**
  * MinProfil — samlet profil- + tilgangs-hub («/profil», alle profesjoner).
  *
+ * Branding: KANONISK dark CreatorHub-tema (workspaceTheme `ws` + workspaceDarkTheme)
+ * — oransje aksent (#ff8c00) på mørk navy (#0a0f1a), glassmorphism, hvit tekst.
+ * Samme skall som Team Workspace / resten av CreatorHub. Profesjonsfargen brukes
+ * kun på profesjons-badgen; brukerens egen merkefarge vises som redigerbar data
+ * (deres bedriftsbrand — ikke app-chrome).
+ *
  * - Fritt redigerbart: avatar, navn, telefon, business-identitet, merkefarge.
  * - Profesjon er GATED (låst) — endring krever betaling / Enterprise-oppgradering,
  *   ikke fri redigering (backend håndhever via COALESCE-guard).
@@ -15,7 +21,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Box, Container, Stack, Typography, Avatar, IconButton, TextField, Button,
-  Chip, Divider, CircularProgress, Snackbar, Alert, Card, Grid,
+  Chip, Divider, CircularProgress, Snackbar, Alert, Card, Grid, ThemeProvider,
 } from '@mui/material';
 import Lock from '@mui/icons-material/Lock';
 import PhotoCamera from '@mui/icons-material/PhotoCamera';
@@ -27,15 +33,16 @@ import OpenInNew from '@mui/icons-material/OpenInNew';
 import { useLocation } from 'wouter';
 import { apiRequest } from '@/lib/queryClient';
 import { useAuth } from '@/hooks/useAuth';
-import { workspaceCategoryFor, navForCategory } from '@/components/workspace/workspaceTheme';
+import { ws, workspaceDarkTheme, workspaceCategoryFor, navForCategory } from '@/components/workspace/workspaceTheme';
 import { getProfessionDisplayName, getProfessionIconColor } from '@shared/profession-types';
 
-const BG = '#0a0807';
-const PANEL = 'rgba(255,255,255,0.04)';
-const BORDER = 'rgba(255,255,255,0.10)';
-const TEXT = '#fff5e8';
-const DIM = 'rgba(246,242,234,0.72)';
-const FAINT = 'rgba(246,242,234,0.5)';
+const BG = ws.bg;                 // #0a0f1a
+const PANEL = ws.panel;           // glassmorphism
+const BORDER = ws.border;
+const TEXT = ws.text;
+const DIM = ws.textDim;
+const FAINT = ws.textFaint;
+const ACCENT = ws.accent;         // CreatorHub oransje #ff8c00
 const GROUP_LABEL = { hoved: 'Hovedmeny', rom: 'Smart rom', klient: 'Kundeportal' };
 
 const MinProfil: React.FC = () => {
@@ -49,7 +56,7 @@ const MinProfil: React.FC = () => {
   const [avatar, setAvatar] = useState<string | null>(null);
   const [form, setForm] = useState({
     firstName: '', lastName: '', phone: '', businessName: '', tagline: '',
-    organizationNumber: '', businessAddress: '', website: '', brandingColor: '#ff8c00',
+    organizationNumber: '', businessAddress: '', website: '', brandingColor: ACCENT,
   });
 
   useEffect(() => {
@@ -69,7 +76,7 @@ const MinProfil: React.FC = () => {
           businessName: bi?.businessName || prof?.companyName || '', tagline: bi?.tagline || '',
           organizationNumber: bi?.organizationNumber || '', businessAddress: bi?.businessAddress || '',
           website: bi?.website || '',
-          brandingColor: bi?.brandingColor || getProfessionIconColor(prof?.profession) || '#ff8c00',
+          brandingColor: bi?.brandingColor || getProfessionIconColor(prof?.profession) || ACCENT,
         });
       } finally { setLoading(false); }
     })();
@@ -78,9 +85,8 @@ const MinProfil: React.FC = () => {
   const profession = profile?.profession || user?.profession;
   const category = workspaceCategoryFor(profession);
   const professionLabel = profession ? getProfessionDisplayName(profession) : 'Ikke satt';
-  const professionColor = getProfessionIconColor(profession) || '#ff8c00';
+  const professionColor = getProfessionIconColor(profession) || ACCENT;
   const services = useMemo(() => navForCategory(category), [category]);
-  const accent = form.brandingColor || professionColor;
 
   const completeness = (() => {
     const req: Array<[string, boolean]> = [
@@ -115,17 +121,20 @@ const MinProfil: React.FC = () => {
   };
 
   const fieldSx = {
-    '& .MuiInputLabel-root': { color: FAINT }, '& .MuiInputLabel-root.Mui-focused': { color: accent },
-    '& .MuiOutlinedInput-root': { color: TEXT, '& fieldset': { borderColor: BORDER }, '&:hover fieldset': { borderColor: accent }, '&.Mui-focused fieldset': { borderColor: accent } },
+    '& .MuiInputLabel-root': { color: FAINT }, '& .MuiInputLabel-root.Mui-focused': { color: ACCENT },
+    '& .MuiOutlinedInput-root': { color: TEXT, bgcolor: ws.panelInput, '& fieldset': { borderColor: BORDER }, '&:hover fieldset': { borderColor: ws.accentBorder }, '&.Mui-focused fieldset': { borderColor: ACCENT } },
   };
 
   if (loading) return (
-    <Box sx={{ minHeight: '100vh', bgcolor: BG, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <CircularProgress sx={{ color: accent }} />
-    </Box>
+    <ThemeProvider theme={workspaceDarkTheme}>
+      <Box sx={{ minHeight: '100vh', bgcolor: BG, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <CircularProgress sx={{ color: ACCENT }} />
+      </Box>
+    </ThemeProvider>
   );
 
   return (
+    <ThemeProvider theme={workspaceDarkTheme}>
     <Box sx={{ minHeight: '100vh', bgcolor: BG, color: TEXT, py: 4 }}>
       <Container maxWidth="lg">
         {/* Header */}
@@ -135,14 +144,14 @@ const MinProfil: React.FC = () => {
         </Stack>
 
         {/* Hero: profilkort + fullføringsgrad */}
-        <Card sx={{ p: 3, mb: 3, bgcolor: PANEL, border: `1px solid ${BORDER}`, borderRadius: 3, boxShadow: 'none',
-          background: `linear-gradient(135deg, ${accent}22, rgba(15,10,7,0.86))` }}>
+        <Card sx={{ p: 3, mb: 3, bgcolor: PANEL, border: `1px solid ${BORDER}`, borderRadius: `${ws.radius}px`,
+          background: `linear-gradient(135deg, ${ws.accentSoft}, ${ws.panelSolid})` }}>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3} alignItems={{ xs: 'flex-start', sm: 'center' }}>
             <Box sx={{ position: 'relative' }}>
-              <Avatar src={avatar || undefined} sx={{ width: 96, height: 96, bgcolor: `${accent}2e`, color: accent, fontSize: 38, fontWeight: 800 }}>
+              <Avatar src={avatar || undefined} sx={{ width: 96, height: 96, bgcolor: ws.accentSoft, color: ACCENT, fontSize: 38, fontWeight: 800 }}>
                 {(form.firstName || '?').charAt(0).toUpperCase()}
               </Avatar>
-              <IconButton component="label" size="small" sx={{ position: 'absolute', bottom: -4, right: -4, bgcolor: accent, color: '#150d05', '&:hover': { bgcolor: accent } }} aria-label="Last opp profilbilde">
+              <IconButton component="label" size="small" sx={{ position: 'absolute', bottom: -4, right: -4, bgcolor: ACCENT, color: ws.accentContrast, '&:hover': { bgcolor: ws.accentHover } }} aria-label="Last opp profilbilde">
                 <PhotoCamera sx={{ fontSize: 17 }} />
                 <input type="file" accept="image/*" hidden onChange={(e) => { onAvatar(e.target.files?.[0]); e.target.value = ''; }} />
               </IconButton>
@@ -156,14 +165,14 @@ const MinProfil: React.FC = () => {
               </Stack>
               {/* Fullføringsgrad */}
               <Box sx={{ mt: 1.5, maxWidth: 460 }}>
-                <Typography variant="caption" sx={{ color: accent, fontWeight: 700, letterSpacing: '0.06em' }}>PROFIL {completeness.done}/{completeness.total} KOMPLETT</Typography>
+                <Typography variant="caption" sx={{ color: ACCENT, fontWeight: 700, letterSpacing: '0.06em' }}>PROFIL {completeness.done}/{completeness.total} KOMPLETT</Typography>
                 <Stack direction="row" spacing={0.75} sx={{ my: 0.75 }}>
-                  {completeness.items.map(([label, ok]) => <Box key={label} sx={{ flex: 1, height: 5, borderRadius: 3, bgcolor: ok ? '#10b981' : 'rgba(255,255,255,0.12)' }} />)}
+                  {completeness.items.map(([label, ok]) => <Box key={label} sx={{ flex: 1, height: 5, borderRadius: 3, bgcolor: ok ? ws.green : 'rgba(255,255,255,0.12)' }} />)}
                 </Stack>
                 <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap>
                   {completeness.items.map(([label, ok]) => (
                     <Stack key={label} direction="row" spacing={0.4} alignItems="center">
-                      <Check sx={{ fontSize: 13, color: ok ? '#10b981' : FAINT }} />
+                      <Check sx={{ fontSize: 13, color: ok ? ws.green : FAINT }} />
                       <Typography variant="caption" sx={{ color: ok ? TEXT : FAINT }}>{label}</Typography>
                     </Stack>
                   ))}
@@ -176,7 +185,7 @@ const MinProfil: React.FC = () => {
         <Grid container spacing={3}>
           {/* Venstre: redigerbare profil-innstillinger */}
           <Grid item xs={12} md={7}>
-            <Card sx={{ p: 3, bgcolor: PANEL, border: `1px solid ${BORDER}`, borderRadius: 3, boxShadow: 'none' }}>
+            <Card sx={{ p: 3, bgcolor: PANEL, border: `1px solid ${BORDER}`, borderRadius: `${ws.radius}px`, boxShadow: 'none' }}>
               <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>Profil-innstillinger</Typography>
               <Stack spacing={2}>
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
@@ -194,7 +203,7 @@ const MinProfil: React.FC = () => {
                 </Stack>
                 <TextField label="Forretningsadresse" fullWidth size="small" value={form.businessAddress} onChange={set('businessAddress')} sx={fieldSx} />
                 <Box>
-                  <Typography variant="caption" sx={{ color: DIM }}>Merkefarge</Typography>
+                  <Typography variant="caption" sx={{ color: DIM }}>Merkefarge (din bedriftsbrand)</Typography>
                   <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mt: 0.5 }}>
                     <Box sx={{ width: 40, height: 40, borderRadius: 1.5, bgcolor: form.brandingColor, border: `1px solid ${BORDER}` }} />
                     <TextField size="small" value={form.brandingColor} onChange={set('brandingColor')} sx={{ ...fieldSx, maxWidth: 160 }} />
@@ -203,7 +212,7 @@ const MinProfil: React.FC = () => {
               </Stack>
               <Box sx={{ mt: 3, textAlign: 'right' }}>
                 <Button variant="contained" onClick={save} disabled={saving}
-                  sx={{ borderRadius: 999, px: 3, fontWeight: 700, textTransform: 'none', bgcolor: accent, color: '#150d05', '&:hover': { bgcolor: accent } }}>
+                  sx={{ borderRadius: 999, px: 3, fontWeight: 700, textTransform: 'none', bgcolor: ACCENT, color: ws.accentContrast, '&:hover': { bgcolor: ws.accentHover } }}>
                   {saving ? 'Lagrer…' : 'Lagre endringer'}
                 </Button>
               </Box>
@@ -214,7 +223,7 @@ const MinProfil: React.FC = () => {
           <Grid item xs={12} md={5}>
             <Stack spacing={3}>
               {/* Profesjon — GATED */}
-              <Card sx={{ p: 3, bgcolor: PANEL, border: `1px solid ${BORDER}`, borderRadius: 3, boxShadow: 'none' }}>
+              <Card sx={{ p: 3, bgcolor: PANEL, border: `1px solid ${BORDER}`, borderRadius: `${ws.radius}px`, boxShadow: 'none' }}>
                 <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
                   <Lock sx={{ fontSize: 18, color: FAINT }} />
                   <Typography variant="h6" sx={{ fontWeight: 700 }}>Profesjon</Typography>
@@ -225,23 +234,23 @@ const MinProfil: React.FC = () => {
                 </Typography>
                 <Stack spacing={1}>
                   <Button variant="outlined" startIcon={<Upgrade />} onClick={() => navigate('/subscription')}
-                    sx={{ borderRadius: 999, textTransform: 'none', fontWeight: 700, borderColor: BORDER, color: TEXT, '&:hover': { borderColor: accent } }}>
+                    sx={{ borderRadius: 999, textTransform: 'none', fontWeight: 700, borderColor: BORDER, color: TEXT, '&:hover': { borderColor: ACCENT, bgcolor: ws.accentSoft } }}>
                     Endre profesjon (mot betaling)
                   </Button>
                   <Button variant="contained" startIcon={<WorkspacePremium />} onClick={() => navigate('/subscription')}
-                    sx={{ borderRadius: 999, textTransform: 'none', fontWeight: 700, bgcolor: '#6c3483', color: '#fff', '&:hover': { bgcolor: '#7d3f99' } }}>
+                    sx={{ borderRadius: 999, textTransform: 'none', fontWeight: 700, bgcolor: ACCENT, color: ws.accentContrast, '&:hover': { bgcolor: ws.accentHover } }}>
                     Oppgrader til Enterprise (team)
                   </Button>
                 </Stack>
               </Card>
 
               {/* Tjenester du har tilgang til */}
-              <Card sx={{ p: 3, bgcolor: PANEL, border: `1px solid ${BORDER}`, borderRadius: 3, boxShadow: 'none' }}>
+              <Card sx={{ p: 3, bgcolor: PANEL, border: `1px solid ${BORDER}`, borderRadius: `${ws.radius}px`, boxShadow: 'none' }}>
                 <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>Tjenester du har tilgang til</Typography>
                 {/* Plan */}
                 <Stack direction="row" spacing={1} alignItems="center" sx={{ my: 1.5 }}>
                   <Chip label={plan?.planName || plan?.tier || plan?.status || 'CreatorHub Standard'} size="small"
-                    sx={{ bgcolor: `${accent}24`, color: accent, fontWeight: 700 }} />
+                    sx={{ bgcolor: ws.accentSoft, color: ACCENT, fontWeight: 700 }} />
                   <Button size="small" endIcon={<OpenInNew sx={{ fontSize: 14 }} />} onClick={() => navigate('/pricing')}
                     sx={{ textTransform: 'none', color: DIM }}>Se planer</Button>
                 </Stack>
@@ -277,6 +286,7 @@ const MinProfil: React.FC = () => {
         <Alert severity={/kunne ikke|feil/i.test(toast) ? 'error' : 'success'} variant="filled" onClose={() => setToast('')}>{toast}</Alert>
       </Snackbar>
     </Box>
+    </ThemeProvider>
   );
 };
 
