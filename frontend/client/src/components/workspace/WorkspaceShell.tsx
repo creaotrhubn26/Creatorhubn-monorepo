@@ -47,18 +47,40 @@ import KeyboardArrowDown from '@mui/icons-material/KeyboardArrowDown';
 import Settings from '@mui/icons-material/Settings';
 import HexagonOutlined from '@mui/icons-material/HexagonOutlined';
 import Add from '@mui/icons-material/Add';
+import WorkOutline from '@mui/icons-material/WorkOutline';
+import EventAvailable from '@mui/icons-material/EventAvailable';
 import { ws, workspaceDarkTheme, WS_NAV, type WsNavItem } from './workspaceTheme';
+import { useWsLocale, makeT } from './wsLocale';
+
+// Shell-chrome no/en (utenlandske partner-vendors får engelsk via WsLocaleProvider).
+const SHELL_T = {
+  newProject: { no: 'Nytt prosjekt', en: 'New project' },
+  groupHoved: { no: 'HOVEDMENY', en: 'MAIN MENU' },
+  groupRom: { no: 'SMART ROM', en: 'SMART ROOMS' },
+  groupKlient: { no: 'KUNDEPORTAL', en: 'CLIENT PORTAL' },
+  profileSettings: { no: 'Profil & innstillinger', en: 'Profile & settings' },
+  branding: { no: 'Merkevare', en: 'Branding' },
+  security: { no: 'Sikkerhet', en: 'Security' },
+  logout: { no: 'Logg ut', en: 'Log out' },
+  online: { no: 'online', en: 'online' },
+  clientView: { no: 'Kundevisning', en: 'Client view' },
+  inviteMember: { no: 'Inviter medlem', en: 'Invite member' },
+  teamMembers: { no: 'Team & medlemmer', en: 'Team & members' },
+  openClientView: { no: 'Åpne kundevisning', en: 'Open client view' },
+  agreementsSettings: { no: 'Avtaler & innstillinger', en: 'Agreements & settings' },
+};
 
 const ICONS: Record<string, React.ElementType> = {
   Dashboard, AccountTree, Map, PhotoCameraBack, GridView, PermMedia, LocalShipping,
   CheckCircleOutline, Group, ChatBubbleOutline, PhotoCamera, Videocam, Movie, GraphicEq,
   Visibility, EventNote, Album, LibraryMusic, School, MoveToInbox, Forum, Inventory2,
+  WorkOutline, EventAvailable,
 };
 
-const GROUP_LABEL: Record<string, string> = {
-  hoved: 'HOVEDMENY',
-  rom: 'SMART ROM',
-  klient: 'KUNDEPORTAL',
+const GROUP_KEY: Record<string, string> = {
+  hoved: 'groupHoved',
+  rom: 'groupRom',
+  klient: 'groupKlient',
 };
 
 export interface WorkspaceProject {
@@ -129,6 +151,7 @@ function NavItem({ item, active, onClick }: any) {
 
 const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab, online, onNewProject, onLogout, headerActions, onClientView, onInvite, navItems = WS_NAV, badges, children }) => {
   const groups: Array<'hoved' | 'rom' | 'klient'> = ['hoved', 'rom', 'klient'];
+  const t = makeT(SHELL_T, useWsLocale());
   const [userMenu, setUserMenu] = React.useState<null | HTMLElement>(null);
   const [projMenu, setProjMenu] = React.useState<null | HTMLElement>(null);
   const go = (path: string) => { setUserMenu(null); window.location.href = path; };
@@ -150,7 +173,7 @@ const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab,
           <Box sx={{ px: 1.5, pb: 1 }}>
             <Button fullWidth onClick={onNewProject} startIcon={<Add />} variant="contained"
               sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, borderRadius: 999, py: 1, '&:hover': { bgcolor: ws.accentHover } }}>
-              Nytt prosjekt
+              {t('newProject')}
             </Button>
           </Box>
 
@@ -174,7 +197,7 @@ const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab,
               return (
                 <Box key={g} sx={{ mb: 1 }}>
                   <Typography sx={{ px: 2.5, py: 0.75, fontSize: 10.5, fontWeight: 800, letterSpacing: 1.2, color: ws.textFaint }}>
-                    {GROUP_LABEL[g]}
+                    {t(GROUP_KEY[g])}
                   </Typography>
                   {items.map((item) => {
                     const dyn = badges?.[item.key];
@@ -210,12 +233,12 @@ const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab,
                 <Typography sx={{ fontSize: 11.5, color: ws.textDim }}>{user.email || user.role}</Typography>
               </Box>
               <Divider />
-              <MenuItem onClick={() => go('/settings')}><ListItemIcon><Person fontSize="small" /></ListItemIcon>Profil & innstillinger</MenuItem>
-              <MenuItem onClick={() => go('/business-branding')}><ListItemIcon><Palette fontSize="small" /></ListItemIcon>Merkevare</MenuItem>
-              <MenuItem onClick={() => go('/innstillinger/sikkerhet')}><ListItemIcon><Lock fontSize="small" /></ListItemIcon>Sikkerhet</MenuItem>
+              <MenuItem onClick={() => go('/settings')}><ListItemIcon><Person fontSize="small" /></ListItemIcon>{t('profileSettings')}</MenuItem>
+              <MenuItem onClick={() => go('/business-branding')}><ListItemIcon><Palette fontSize="small" /></ListItemIcon>{t('branding')}</MenuItem>
+              <MenuItem onClick={() => go('/innstillinger/sikkerhet')}><ListItemIcon><Lock fontSize="small" /></ListItemIcon>{t('security')}</MenuItem>
               <Divider />
               <MenuItem onClick={() => { setUserMenu(null); onLogout ? onLogout() : (window.location.href = '/login'); }}>
-                <ListItemIcon><Logout fontSize="small" /></ListItemIcon>Logg ut
+                <ListItemIcon><Logout fontSize="small" /></ListItemIcon>{t('logout')}
               </MenuItem>
             </Menu>
           </Box>
@@ -257,7 +280,7 @@ const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab,
             {typeof online === 'number' && (
               <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mr: 0.5 }}>
                 <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: online > 0 ? ws.green : ws.textFaint }} />
-                <Typography sx={{ fontSize: 12, color: ws.textDim }}>{online} online</Typography>
+                <Typography sx={{ fontSize: 12, color: ws.textDim }}>{online} {t('online')}</Typography>
               </Stack>
             )}
             <AvatarGroup max={5} sx={{ '& .MuiAvatar-root': { width: 30, height: 30, fontSize: 12, border: `2px solid ${ws.bg}` } }}>
@@ -271,18 +294,18 @@ const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab,
                 <>
                   <Button size="small" startIcon={<Visibility sx={{ fontSize: 16 }} />} onClick={onClientView}
                     sx={{ color: ws.text, borderColor: ws.border, textTransform: 'none' }} variant="outlined">
-                    Kundevisning
+                    {t('clientView')}
                   </Button>
                   <Button size="small" startIcon={<PersonAdd sx={{ fontSize: 16 }} />} onClick={onInvite}
                     sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }} variant="contained">
-                    Inviter medlem
+                    {t('inviteMember')}
                   </Button>
                   <IconButton size="small" onClick={(e) => setProjMenu(e.currentTarget)} sx={{ color: ws.textDim }}><MoreVert fontSize="small" /></IconButton>
                   <Menu anchorEl={projMenu} open={!!projMenu} onClose={() => setProjMenu(null)}
                     PaperProps={{ sx: { bgcolor: ws.panel, color: ws.text, border: `1px solid ${ws.border}` } }}>
-                    <MenuItem onClick={() => { setProjMenu(null); onTab('team'); }}><ListItemIcon><PersonAdd fontSize="small" sx={{ color: ws.textDim }} /></ListItemIcon>Team & medlemmer</MenuItem>
-                    <MenuItem onClick={() => { setProjMenu(null); onTab('kundevisning'); }}><ListItemIcon><Visibility fontSize="small" sx={{ color: ws.textDim }} /></ListItemIcon>Åpne kundevisning</MenuItem>
-                    <MenuItem onClick={() => { setProjMenu(null); onTab('avtaler'); }}><ListItemIcon><Settings fontSize="small" sx={{ color: ws.textDim }} /></ListItemIcon>Avtaler & innstillinger</MenuItem>
+                    <MenuItem onClick={() => { setProjMenu(null); onTab('team'); }}><ListItemIcon><PersonAdd fontSize="small" sx={{ color: ws.textDim }} /></ListItemIcon>{t('teamMembers')}</MenuItem>
+                    <MenuItem onClick={() => { setProjMenu(null); onTab('kundevisning'); }}><ListItemIcon><Visibility fontSize="small" sx={{ color: ws.textDim }} /></ListItemIcon>{t('openClientView')}</MenuItem>
+                    <MenuItem onClick={() => { setProjMenu(null); onTab('avtaler'); }}><ListItemIcon><Settings fontSize="small" sx={{ color: ws.textDim }} /></ListItemIcon>{t('agreementsSettings')}</MenuItem>
                   </Menu>
                 </>
               )}

@@ -77,6 +77,7 @@ import {
 } from "./role-room-marketing-plan-posts.js";
 import { listInstagramConnections } from "./role-room-instagram-oauth.js";
 import { loadFeedPlan, saveFeedPlan } from "./role-room-feed-plan.js";
+import { buildChannelScorecard } from "./role-room-marketing-scorecard.js";
 
 interface AdminSession {
   userId: string;
@@ -1230,6 +1231,94 @@ Returner KUN JSON: { "hook": "...", "script": "...", "captionDraft": "...", "cal
       corrections,
       targets,
     });
+  });
+
+  // #3 — Channel scorecard: recommended marketing-setup (F9) vs measured
+  // per-channel/pillar performance. This is the cockpit "command center" view —
+  // it merges the deterministic recommended channels with actual KPI reality so
+  // the producer sees which recommended channels are being used + performing,
+  // and which platforms are surprise winners not yet in the setup. Project-
+  // scoped (not plan-scoped) so it works even before a plan exists.
+  app.get("/api/role-room/marketing-plan/:projectId/scorecard", async (req, res) => {
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+    const projectId = String(req.params.projectId || "").trim();
+    if (!projectId) return res.status(400).json({ success: false, error: "projectId er påkrevd." });
+
+    const sinceDays = Number(req.query.sinceDays) > 0 ? Number(req.query.sinceDays) : 30;
+    try {
+      // Recommended setup from the latest persisted research version.
+      const setupRow = await pool.query<{
+        serialized_result: {
+          marketingSetup?: {
+            businessModel?: string | null;
+            geoScope?: string | null;
+            channels?: Array<{ name?: string | null; priority?: string | null }> | null;
+            primaryCta?: string | null;
+            adTech?: string[] | null;
+          } | null;
+        } | null;
+      }>(
+        `SELECT serialized_result
+           FROM role_room_research_versions
+          WHERE project_id = $1
+          ORDER BY generated_at DESC
+          LIMIT 1`,
+        [projectId],
+      );
+      const setup = setupRow.rows[0]?.serialized_result?.marketingSetup ?? null;
+      const recommendedChannels = (setup?.channels ?? [])
+        .filter((c): c is { name: string; priority?: string | null } => Boolean(c && typeof c.name === "string" && c.name.trim()))
+        .map((c) => ({ name: c.name, priority: c.priority ?? null }));
+
+      // Actual performance from the active plan's KPI snapshots (if any).
+      const plan = await fetchActiveMarketingPlan(pool, projectId);
+      if (plan && plan.ownerUserId && plan.ownerUserId !== session.userId) {
+        return res.status(403).json({ success: false, error: "Du eier ikke prosjektets plan." });
+      }
+
+      let platformAggregates: ReturnType<typeof aggregateByPlatform> = [];
+      let pillarAggregates: ReturnType<typeof aggregateByPillar> = [];
+      if (plan) {
+        const snapshots = await listKpiSnapshots(pool, plan.id, { sinceDays });
+        const r = await pool.query<{ id: string; pillar_id: string | null; pillar_name: string | null; primary_platform: string | null; format: string; scheduled_for: Date | null }>(
+          `SELECT pp.id, pp.pillar_id, piln.name AS pillar_name, pp.primary_platform, pp.format, pp.scheduled_for
+             FROM role_room_marketing_plan_posts pp
+             LEFT JOIN role_room_marketing_plan_pillars piln ON piln.id = pp.pillar_id
+            WHERE pp.plan_id = $1`,
+          [plan.id],
+        );
+        const posts = r.rows.map((row) => ({
+          id: row.id,
+          pillarId: row.pillar_id,
+          pillarName: row.pillar_name,
+          primaryPlatform: row.primary_platform,
+          format: row.format,
+          scheduledFor: row.scheduled_for?.toISOString() ?? null,
+        }));
+        platformAggregates = aggregateByPlatform(snapshots, posts);
+        pillarAggregates = aggregateByPillar(snapshots, posts);
+      }
+
+      const channelScorecard = buildChannelScorecard(recommendedChannels, platformAggregates);
+
+      return res.json({
+        success: true,
+        projectId,
+        sinceDays,
+        planStatus: plan
+          ? { id: plan.id, status: plan.status, generatedAt: plan.generatedAt, startDate: plan.startDate }
+          : null,
+        setup: setup
+          ? { businessModel: setup.businessModel ?? null, geoScope: setup.geoScope ?? null, primaryCta: setup.primaryCta ?? null, adTech: setup.adTech ?? [] }
+          : null,
+        channelScorecard,
+        pillarPerformance: pillarAggregates,
+      });
+    } catch (error) {
+      console.error("[marketing-plan-routes] scorecard failed", error);
+      return res.status(500).json({ success: false, error: "Kunne ikke laste scorecard." });
+    }
   });
 
   // Item #152 — post-generation progress endpoint. Returner antall posts

@@ -130,6 +130,11 @@ export default function ProfessionTypeManager() {
   const [selectedProfession, setSelectedProfession] = useState<ProfessionTypeConfig | null>(null);
   const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
   const [search, setSearch] = useState("");
+  // Skjema for opprett/rediger — workspaceCategory styrer hvilken flate-familie
+  // profesjonen får i Team Workspace (profession_types.workspace_category).
+  const [form, setForm] = useState<{ name: string; displayName: string; description: string; iconColor: string; workspaceCategory: string }>({
+    name: '', displayName: '', description: '', iconColor: '#ff8c00', workspaceCategory: 'visual',
+  });
 
   const isMobile = useIsMobile();
   const queryClient = useQueryClient();
@@ -369,13 +374,24 @@ export default function ProfessionTypeManager() {
     }
   });
 
+  const seedForm = (p?: Partial<ProfessionTypeConfig> | any) => setForm({
+    name: p?.name || p?.id || '',
+    displayName: p?.displayName || '',
+    description: p?.description || '',
+    iconColor: p?.iconColor || '#ff8c00',
+    workspaceCategory: (p as any)?.workspaceCategory
+      || (p?.category === 'service' ? 'service' : p?.category === 'business' ? 'vendor' : 'visual'),
+  });
+
   const handleCreateProfession = (template: ProfessionTypeConfig) => {
     setSelectedProfession(template);
+    seedForm(template);
     setCreateDialogOpen(true);
   };
 
   const handleEditProfession = (profession: ProfessionTypeConfig) => {
     setSelectedProfession(profession);
+    seedForm(profession);
     setEditDialogOpen(true);
   };
 
@@ -448,6 +464,8 @@ export default function ProfessionTypeManager() {
                 analytics.trackEvent('create_profession_button_clicked', {
                   hasAccess: createProfessionAccess.hasAccess
                 });
+                setSelectedProfession(null);
+                seedForm(null);
                 setCreateDialogOpen(true);
               }}
               sx={{
@@ -1054,18 +1072,72 @@ export default function ProfessionTypeManager() {
             {createDialogOpen ? 'Opprett Ny Profesjon' : 'Rediger Profesjon'}
           </Typography>
         </DialogTitle>
-        
+
         <DialogContent>
           <Alert severity="info" sx={{ mb: 3 }}>
-            Dette er en kraftig funksjon som lar deg legge til helt nye profesjoner til CreatorHub Norge.
-            Systemet vil automatisk hente SSB og Proff.no data basert på næringskoden du oppgir.
+            Profesjonen lagres i profesjonsregisteret (profession_types) og blir umiddelbart
+            tilgjengelig i registrering, dashbord og Team Workspace. <strong>Workspace-kategorien</strong> avgjør
+            hvilke faner brukere med denne profesjonen får i workspacet — endringer slår inn automatisk, uten deploy.
           </Alert>
-          
-          <Typography variant="body2" sx={{ color: 'text.secondary', mb: 3 }}>
-            Funksjonalitet kommer snart! For nå, bruk tilgjengelige maler i fanen "Tilgjengelige Maler".
-          </Typography>
+
+          <Grid container spacing={2}>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Teknisk navn (id)"
+                value={form.name}
+                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                disabled={editDialogOpen}
+                helperText="Lowercase med underscore, f.eks. hairdresser eller tattoo_artist"
+                fullWidth
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Visningsnavn"
+                value={form.displayName}
+                onChange={(e) => setForm((f) => ({ ...f, displayName: e.target.value }))}
+                helperText="Norsk navn, f.eks. Frisør"
+                fullWidth
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                select
+                label="Workspace-kategori"
+                value={form.workspaceCategory}
+                onChange={(e) => setForm((f) => ({ ...f, workspaceCategory: e.target.value }))}
+                helperText="Flate-familien i Team Workspace"
+                fullWidth
+              >
+                <MenuItem value="visual">Foto/Video (Shotlist, Produksjonskart, Photo/Video Room)</MenuItem>
+                <MenuItem value="music">Musikk (Låter, Sesjoner, Sound Room)</MenuItem>
+                <MenuItem value="service">Service/booking (universelle faner — booking-faner kommer)</MenuItem>
+                <MenuItem value="vendor">Leverandør (Oppdrag, Lager, Ordreplan, Inspirasjon)</MenuItem>
+              </TextField>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Ikonfarge"
+                type="color"
+                value={form.iconColor}
+                onChange={(e) => setForm((f) => ({ ...f, iconColor: e.target.value }))}
+                fullWidth
+                InputLabelProps={{ shrink: true }}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                label="Beskrivelse"
+                value={form.description}
+                onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                multiline
+                minRows={2}
+                fullWidth
+              />
+            </Grid>
+          </Grid>
         </DialogContent>
-        
+
         <DialogActions>
           <AdminButton tone="ghost" onClick={() => {
             setCreateDialogOpen(false);
@@ -1073,7 +1145,21 @@ export default function ProfessionTypeManager() {
           }}>
             Avbryt
           </AdminButton>
-          <AdminButton tone="primary" disabled>
+          <AdminButton
+            tone="primary"
+            disabled={!form.name.trim() || !form.displayName.trim() || createProfessionMutation.isPending || updateProfessionMutation.isPending}
+            onClick={() => {
+              const payload = {
+                name: form.name.trim(),
+                displayName: form.displayName.trim(),
+                description: form.description.trim() || undefined,
+                iconColor: form.iconColor,
+                workspaceCategory: form.workspaceCategory,
+              };
+              if (createDialogOpen) createProfessionMutation.mutate(payload);
+              else updateProfessionMutation.mutate({ id: (selectedProfession as any)?.name || (selectedProfession as any)?.id || form.name, data: payload });
+            }}
+          >
             {createDialogOpen ? 'Opprett' : 'Lagre'}
           </AdminButton>
         </DialogActions>

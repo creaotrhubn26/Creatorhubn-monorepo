@@ -1,0 +1,107 @@
+import { describe, expect, it } from 'vitest';
+import {
+  buildSearchQueries,
+  scoreBrregNameCandidate,
+  scoreGooglePlaceCandidate,
+} from './role-room-agent-match-scoring.js';
+
+describe('buildSearchQueries (F3)', () => {
+  it('puts the locality-pinned query first when a hint is given', () => {
+    const queries = buildSearchQueries(
+      { companyName: 'Bella Pizza', websiteUrl: 'https://bellapizza.no' },
+      {},
+      'Tromsø',
+    );
+    expect(queries[0]).toBe('Bella Pizza Tromsø');
+    expect(queries).toContain('Bella Pizza');
+  });
+
+  it('omits the locality query when no hint is given', () => {
+    const queries = buildSearchQueries({ companyName: 'Bella Pizza' }, {});
+    expect(queries.every((q) => !q.includes('Tromsø'))).toBe(true);
+    expect(queries[0]).toBe('Bella Pizza');
+  });
+
+  it('dedupes and caps at 3 queries', () => {
+    const queries = buildSearchQueries(
+      { companyName: 'Bella Pizza', websiteUrl: 'https://bella-pizza.no' },
+      { siteName: 'Bella Pizza' },
+      'Oslo',
+    );
+    expect(queries.length).toBeLessThanOrEqual(3);
+    expect(new Set(queries).size).toBe(queries.length);
+  });
+});
+
+describe('scoreBrregNameCandidate (F5)', () => {
+  const q = 'bella pizza';
+
+  it('scores an exact name match', () => {
+    expect(scoreBrregNameCandidate({ navn: 'Bella Pizza' }, q, null)).toBe(100);
+  });
+
+  it('website-host match lets the right entity beat a same-name one', () => {
+    const withHost = scoreBrregNameCandidate(
+      { navn: 'Bella Pizza AS', hjemmeside: 'https://bellapizza.no' },
+      q,
+      'bellapizza.no',
+    );
+    const nameOnly = scoreBrregNameCandidate({ navn: 'Bella Pizza AS' }, q, 'bellapizza.no');
+    expect(withHost).toBeGreaterThan(nameOnly);
+    expect(withHost - nameOnly).toBe(120);
+  });
+
+  it('host match rescues a non-name-overlapping entity above zero', () => {
+    const score = scoreBrregNameCandidate(
+      { navn: 'HC Drift AS', hjemmeside: 'http://www.bellapizza.no/kontakt' },
+      q,
+      'bellapizza.no',
+    );
+    expect(score).toBeGreaterThan(0);
+  });
+
+  it('penalizes deleted / bankrupt enterprises', () => {
+    expect(scoreBrregNameCandidate({ navn: 'Bella Pizza', slettedato: '2020-01-01' }, q, null)).toBe(70);
+    expect(scoreBrregNameCandidate({ navn: 'Bella Pizza', konkurs: true }, q, null)).toBe(75);
+  });
+
+  it('scores an unrelated hit at zero so the caller can reject it', () => {
+    expect(scoreBrregNameCandidate({ navn: 'Rørlegger Nord AS' }, q, null)).toBe(0);
+  });
+});
+
+describe('scoreGooglePlaceCandidate (F3)', () => {
+  const localBusiness = {
+    displayName: { text: 'Bella Pizza' },
+    formattedAddress: 'Storgata 1, 9008 Tromsø, Norge',
+    rating: 4.5,
+    userRatingCount: 12,
+  };
+  const wrongTownChain = {
+    displayName: { text: 'Bella Pizza' },
+    formattedAddress: 'Torgallmenningen 2, 5014 Bergen, Norge',
+    rating: 4.8,
+    userRatingCount: 400,
+  };
+
+  it('locality hint makes the correct local business beat a bigger same-name chain', () => {
+    const local = scoreGooglePlaceCandidate(localBusiness, 'Bella Pizza', null, 'Tromsø');
+    const chain = scoreGooglePlaceCandidate(wrongTownChain, 'Bella Pizza', null, 'Tromsø');
+    expect(local).toBeGreaterThan(chain);
+  });
+
+  it('without the locality hint the review-heavy wrong-town chain wins (the old bug)', () => {
+    const local = scoreGooglePlaceCandidate(localBusiness, 'Bella Pizza', null, null);
+    const chain = scoreGooglePlaceCandidate(wrongTownChain, 'Bella Pizza', null, null);
+    expect(chain).toBeGreaterThan(local);
+  });
+
+  it('website-host match dominates regardless of locality', () => {
+    const score = scoreGooglePlaceCandidate(
+      { displayName: { text: 'Noe Annet' }, websiteUri: 'https://bellapizza.no', formattedAddress: 'X' },
+      'Bella Pizza',
+      'bellapizza.no',
+    );
+    expect(score).toBeGreaterThanOrEqual(120);
+  });
+});

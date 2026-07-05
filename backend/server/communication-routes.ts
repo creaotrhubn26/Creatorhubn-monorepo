@@ -21,6 +21,7 @@ import * as schema from '../migrations/schema.js';
 import crypto from 'crypto';
 import { Readable } from 'stream';
 import { decryptGoogleToken as sharedDecryptGoogleToken } from './google-oauth-shared.js';
+import { loadPersistedAuthSession } from './auth-session-store.js';
 import { ensureContractsCompatibilitySchema } from './contract-google-signing.js';
 import {
   getGoogleWorkspaceOauthConfig,
@@ -192,8 +193,67 @@ type ConversationContractRow = {
   updated_at: string | null;
 };
 
-export function createCommunicationRouter(db: DB, pool: Pool): Router {
+type AuthedUser = { userId: string; email: string };
+
+export function createCommunicationRouter(
+  db: DB,
+  pool: Pool,
+  activeSessions?: Map<string, any>,
+): Router {
   const router = Router();
+
+  // ── Tilgangskontroll for prosjekt-kanaler (channelId = project-<projectId>) ──
+  // Bare prosjekt-kanaler gates; alle andre kanaltyper (support/anonyme widgets
+  // osv.) beholder eksisterende oppførsel så vi ikke brekker andre chat-flater.
+  const projectIdFromChannel = (channelId: string): string | null => {
+    const m = /^project-(.+)$/.exec(String(channelId || '').trim());
+    return m ? m[1] : null;
+  };
+  const resolveAuthedUser = async (req: Request): Promise<AuthedUser | null> => {
+    const bearer = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+    if (!bearer) return null;
+    const inMem = activeSessions?.get(bearer);
+    if (inMem?.userId) return { userId: String(inMem.userId), email: String(inMem.email || '') };
+    const persisted = await loadPersistedAuthSession(pool, bearer);
+    if (persisted?.userId) return { userId: String(persisted.userId), email: String(persisted.email || '') };
+    return null;
+  };
+  // Eier ELLER aktivt teammedlem (via user_id eller e-post). Returnerer et
+  // visningsnavn utledet server-side (aldri klientstyrt) eller null hvis nektet.
+  const resolveProjectAccess = async (projectId: string, user: AuthedUser): Promise<{ displayName: string } | null> => {
+    try {
+      const owner = await pool.query(
+        `SELECT COALESCE(NULLIF(TRIM(CONCAT_WS(' ', first_name, last_name)), ''), name, email) AS display_name
+           FROM projects p JOIN users u ON u.id = p.user_id
+          WHERE p.id::text = $1 AND p.user_id::text = $2 LIMIT 1`,
+        [projectId, user.userId],
+      ).catch(() => ({ rows: [] as any[] }));
+      if (owner.rows[0]) return { displayName: String(owner.rows[0].display_name || user.email) };
+      const mem = await pool.query(
+        `SELECT COALESCE(NULLIF(TRIM(m.name), ''), NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.name, m.email) AS display_name
+           FROM project_team_members m LEFT JOIN users u ON u.id = m.user_id
+          WHERE m.project_id = $1 AND m.deactivated_at IS NULL
+            AND (m.user_id = $2 OR LOWER(m.email) = LOWER($3)) LIMIT 1`,
+        [projectId, user.userId, user.email || ''],
+      ).catch(() => ({ rows: [] as any[] }));
+      if (mem.rows[0]) return { displayName: String(mem.rows[0].display_name || user.email) };
+      return null;
+    } catch { return null; }
+  };
+  // Gate lesing/skriving av en prosjekt-kanal. For ikke-prosjekt-kanaler
+  // returnerer den { ok:true, user:null } (uendret oppførsel).
+  const guardProjectChannel = async (
+    channelId: string, req: Request, res: Response,
+  ): Promise<{ ok: boolean; access: { displayName: string } | null; user: AuthedUser | null }> => {
+    const projectId = projectIdFromChannel(channelId);
+    if (!projectId) return { ok: true, access: null, user: null };
+    const user = await resolveAuthedUser(req);
+    if (!user) { res.status(401).json({ error: 'unauthorized' }); return { ok: false, access: null, user: null }; }
+    const access = await resolveProjectAccess(projectId, user);
+    if (!access) { res.status(403).json({ error: 'forbidden' }); return { ok: false, access: null, user: null }; }
+    return { ok: true, access, user };
+  };
+
   const GMAIL_READ_SCOPES = ['https://www.googleapis.com/auth/gmail.readonly'];
   const GMAIL_DRAFT_SCOPES = ['https://www.googleapis.com/auth/gmail.compose'];
   const GMAIL_SEND_SCOPES = ['https://www.googleapis.com/auth/gmail.send'];
@@ -1183,7 +1243,10 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
         const id = toNonEmptyString(record?.id) ?? crypto.randomUUID();
         const filename = toNonEmptyString(record?.filename ?? record?.name);
         const mimeType = toNonEmptyString(record?.mimeType) ?? 'application/octet-stream';
-        const downloadUrl = toNonEmptyString(record?.downloadUrl ?? record?.webViewUrl ?? record?.webContentLink);
+        const rawDownloadUrl = toNonEmptyString(record?.downloadUrl ?? record?.webViewUrl ?? record?.webContentLink);
+        // Avvis farlige skjemaer (javascript:/data:/vbscript:) — ingen ekte
+        // vedlegg bruker dem, men de gir lagret XSS når URL-en rendres som href.
+        const downloadUrl = rawDownloadUrl && !/^\s*(javascript|data|vbscript):/i.test(rawDownloadUrl) ? rawDownloadUrl : undefined;
         const uploadedAt = toNonEmptyString(record?.uploadedAt) ?? new Date().toISOString();
         const fileSizeValue = Number(record?.fileSize ?? record?.size ?? 1);
         const fileSize = Number.isFinite(fileSizeValue) && fileSizeValue > 0
@@ -2608,6 +2671,9 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
   router.get('/api/communication/messages/:channelId', async (req, res) => {
     try {
       const { channelId } = req.params;
+      // Prosjekt-kanaler krever auth + medlemskap (ellers IDOR på tvers av prosjekter).
+      const gate = await guardProjectChannel(channelId, req, res);
+      if (!gate.ok) return;
       const limit = parseInt(req.query.limit as string) || 100;
 
       const messages = await db
@@ -2629,21 +2695,31 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
         })
         .from(schema.communicationMessages)
         .where(eq(schema.communicationMessages.channelId, channelId))
-        .orderBy(schema.communicationMessages.createdAt)
+        // Hent de NYESTE `limit` meldingene (desc), og snu til stigende for
+        // visning. Tidligere hentet asc+limit de ELDSTE, så nye meldinger
+        // aldri kom med når en kanal passerte limit-taket.
+        .orderBy(desc(schema.communicationMessages.createdAt))
         .limit(limit);
+      messages.reverse();
 
       const mappedMessages = messages.map((msg) => {
         const metadata = getMessageMetadataRecord(msg.metadata);
         const attachments = sanitizeChatAttachments(metadata.attachments);
+        // senderName/tag lagres i metadata (kolonnen har ikke egne felter) —
+        // eksponer dem så klienten viser visningsnavn, ikke e-post, og tagg-chip.
+        const senderName = toNonEmptyString(metadata.senderName) || null;
+        const tag = toNonEmptyString(metadata.tag) || null;
 
         return {
         id: msg.id,
         senderId: msg.senderId,
+        senderName,
         content: msg.content,
         timestamp: msg.createdAt,
         type: msg.messageType,
         status: msg.isRead ? 'read' : msg.deliveredAt ? 'delivered' : 'sent',
         attachments,
+        tag,
         metadata: msg.metadata,
         };
       });
@@ -2660,12 +2736,15 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
       const payload = (req.body || {}) as Record<string, unknown>;
       const content = toNonEmptyString(payload.content) || toNonEmptyString(payload.message);
       const conversationId = normalizeChannelId(payload.conversationId || payload.contactId || payload.channelId);
-      const senderId =
-        toNonEmptyString(req.headers['x-user-id']) ||
-        toNonEmptyString(req.headers['x-user-email']) ||
-        'anonymous';
+      // Prosjekt-kanal: krev auth + medlemskap, bind avsender til sesjonen.
+      const gate = await guardProjectChannel(conversationId, req, res);
+      if (!gate.ok) return;
+      const senderId = gate.user
+        ? gate.user.email
+        : (toNonEmptyString(req.headers['x-user-id']) || toNonEmptyString(req.headers['x-user-email']) || 'anonymous');
       const attachments = sanitizeChatAttachments(payload.attachments);
       const rawMetadata = getMessageMetadataRecord(payload.metadata);
+      if (gate.access) rawMetadata.senderName = gate.access.displayName;
       const persistedContent = content || (attachments.length > 0
         ? attachments.length === 1
           ? `Delte vedlegg: ${attachments[0]?.filename ?? 'vedlegg'}`
@@ -2725,21 +2804,24 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
   router.post('/api/chat/messages', async (req, res) => {
     try {
       const msg = (req.body || {}) as Record<string, unknown>;
-      const senderId =
-        toNonEmptyString(msg.senderId) ||
-        toNonEmptyString(req.headers['x-user-email']) ||
-        'anonymous';
       const channelId = normalizeChannelId(msg.conversationId || 'general');
+      // Prosjekt-kanal: krev auth + medlemskap, og bind avsender-identitet til
+      // den autentiserte brukeren (klientstyrt senderId/senderName ignoreres).
+      const gate = await guardProjectChannel(channelId, req, res);
+      if (!gate.ok) return;
+      const senderId = gate.user
+        ? gate.user.email
+        : (toNonEmptyString(msg.senderId) || toNonEmptyString(req.headers['x-user-email']) || 'anonymous');
       const content = toNonEmptyString(msg.content);
       const attachments = sanitizeChatAttachments(msg.attachments);
       const rawMetadata = getMessageMetadataRecord(msg.metadata);
-      const persistedContent = content || (attachments.length > 0
-        ? attachments.length === 1
-          ? `Delte vedlegg: ${attachments[0]?.filename ?? 'vedlegg'}`
-          : `Delte ${attachments.length} vedlegg fra Google Drive`
-        : null);
+      // For prosjekt-kanaler: overstyr visningsnavn med server-utledet navn.
+      if (gate.access) rawMetadata.senderName = gate.access.displayName;
+      // Vedlegg-kun-melding lagres med tomt innhold (ikke en hardkodet/feil
+      // «fra Google Drive»-caption) — klienten viser bare selve vedlegget.
+      const persistedContent = content ?? (attachments.length > 0 ? '' : null);
 
-      if (!persistedContent) {
+      if (persistedContent === null) {
         return res.status(400).json({ error: 'Message content is required' });
       }
 
@@ -2765,6 +2847,82 @@ export function createCommunicationRouter(db: DB, pool: Pool): Router {
     } catch (error) {
       console.error('Error saving chat message:', error);
       res.status(500).json({ error: 'Failed to save message' });
+    }
+  });
+
+  // ─── PATCH /api/communication/messages/:id ────────────────
+  // Oppdaterer status i en meldings metadata (f.eks. løs/gjenåpne en
+  // forespørsel). Prosjekt-kanal krever auth + medlemskap.
+  router.patch('/api/communication/messages/:id', async (req, res) => {
+    try {
+      const id = String(req.params.id || '').trim();
+      if (!id) return res.status(400).json({ error: 'id required' });
+      const row = await db
+        .select({ channelId: schema.communicationMessages.channelId, metadata: schema.communicationMessages.metadata })
+        .from(schema.communicationMessages)
+        .where(eq(schema.communicationMessages.id, id)).limit(1);
+      if (!row[0]) return res.status(404).json({ error: 'not_found' });
+      const gate = await guardProjectChannel(row[0].channelId, req, res);
+      if (!gate.ok) return;
+      const status = String((req.body || {}).status || '');
+      if (!['open', 'resolved'].includes(status)) return res.status(400).json({ error: 'invalid_status' });
+      const meta = { ...getMessageMetadataRecord(row[0].metadata), status };
+      await db.update(schema.communicationMessages)
+        .set({ metadata: meta as any })
+        .where(eq(schema.communicationMessages.id, id));
+      return res.json({ success: true, id, status });
+    } catch (error) {
+      console.error('Error patching message:', error);
+      res.status(500).json({ error: 'Failed to update message' });
+    }
+  });
+
+  // ─── POST /api/communication/:channelId/ai ────────────────
+  // Leser de siste meldingene og lar Claude (a) foreslå et svar-utkast eller
+  // (b) oppsummere «hva venter på teamet». Returnerer kun tekst — klienten
+  // fyller komposeren (ingenting sendes auto). Prosjekt-kanal: auth + medlemskap.
+  router.post('/api/communication/:channelId/ai', async (req, res) => {
+    try {
+      const channelId = String(req.params.channelId || '').trim();
+      const gate = await guardProjectChannel(channelId, req, res);
+      if (!gate.ok) return;
+      const mode = String((req.body || {}).mode) === 'summary' ? 'summary' : 'draft';
+      const apiKey = process.env.ANTHROPIC_API_KEY;
+      if (!apiKey) return res.status(503).json({ error: 'AI er ikke tilgjengelig (mangler nøkkel).' });
+      const rows = await db
+        .select({ senderId: schema.communicationMessages.senderId, content: schema.communicationMessages.content, metadata: schema.communicationMessages.metadata, createdAt: schema.communicationMessages.createdAt })
+        .from(schema.communicationMessages)
+        .where(eq(schema.communicationMessages.channelId, channelId))
+        .orderBy(desc(schema.communicationMessages.createdAt)).limit(40);
+      rows.reverse();
+      const transcript = rows.map((r) => {
+        const meta = getMessageMetadataRecord(r.metadata);
+        const who = toNonEmptyString(meta.senderName) || String(r.senderId || 'Medlem');
+        const tag = meta.tag === 'question' || meta.status ? ' [forespørsel]' : '';
+        return `${who}${tag}: ${String(r.content || '')}`;
+      }).join('\n');
+      const system = mode === 'summary'
+        ? 'Du er assistent i et prosjekt-team i CreatorHubn. Oppsummer teamsamtalen kort på norsk: hva er status og hva venter på teamet nå (punktliste med konkrete neste steg). Maks 8 linjer.'
+        : 'Du er assistent i et prosjekt-team i CreatorHubn. Foreslå ÉN kort, profesjonell og vennlig norsk melding til teamet basert på samtalen. Kun selve meldingsteksten, ingen forklaring.';
+      let text = '';
+      try {
+        const mod: any = await import('@anthropic-ai/sdk');
+        const Ctor = mod.default ?? mod.Anthropic;
+        const client: any = new Ctor({ apiKey, maxRetries: 1, timeout: 30_000 });
+        const response = await client.messages.create({
+          model: process.env.ROLE_ROOM_AGENT_CLAUDE_MODEL || 'claude-sonnet-4-6',
+          max_tokens: 700, system,
+          messages: [{ role: 'user', content: `Samtale så langt:\n${transcript || '(tom)'}\n\n${mode === 'summary' ? 'Oppsummer.' : 'Foreslå en melding.'}` }],
+        });
+        text = (response.content ?? []).filter((b: any) => b?.type === 'text').map((b: any) => b.text).join('\n').trim();
+      } catch (aiErr) {
+        console.error('[chat] AI-kall feilet', aiErr);
+        return res.status(502).json({ error: 'AI-kallet feilet. Prøv igjen.' });
+      }
+      return res.json({ success: true, text });
+    } catch (error) {
+      console.error('Error in chat AI:', error);
+      res.status(500).json({ error: 'Kunne ikke generere AI-tekst' });
     }
   });
 

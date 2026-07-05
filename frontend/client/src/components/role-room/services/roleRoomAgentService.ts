@@ -3,6 +3,37 @@ import { authSessionService } from './authSessionService';
 
 const AGENT_SNAPSHOT_NAMESPACE = 'role-room-agent-snapshot';
 
+export interface BestTimeSlotRecommendation {
+  dayOfWeek: number;
+  hour: number;
+  optimalPostTime: string;
+  sampleSize: number;
+  meanEngagement: number;
+  liftVsAverage: number;
+  label: string;
+}
+
+export interface BestTimeResult {
+  platform: string;
+  totalPosts: number;
+  confident: boolean;
+  recommendations: BestTimeSlotRecommendation[];
+  overallMeanEngagement: number;
+  reason: string;
+}
+
+export interface ClientUpdateDigest {
+  headline: string;
+  publishedCount: number;
+  scheduledCount: number;
+  daysRemaining: number | null;
+  topPost: { platform: string; hook: string; engagement: number } | null;
+  bestTimeTip: string | null;
+  highlights: Array<{ key: string; label: string; value: string }>;
+  producerNote: string | null;
+  isEmpty: boolean;
+}
+
 export interface RoleRoomAgentAccess {
   success: boolean;
   featureId: string;
@@ -398,6 +429,20 @@ export interface RoleRoomAgentProducerBootstrapResult {
   socialProfileCandidates: RoleRoomAgentSocialProfileCandidate[];
   competitorAnalysis: RoleRoomAgentCompetitorAnalysis;
   localPresencePlan: RoleRoomAgentLocalPresencePlan;
+  /** Deterministic marketing-setup (F9): recommended channels / content
+   *  pillars / CTA / ad-tech from the verified NACE business model + geo.
+   *  Forwarded to marketing-plan generation as grounding. */
+  marketingSetup?: {
+    businessModel?: string | null;
+    geoScope?: 'local' | 'national' | string | null;
+    channels?: Array<{ name: string; priority: string; reason?: string }> | null;
+    contentPillars?: string[] | null;
+    primaryCta?: string | null;
+    secondaryCtas?: string[] | null;
+    adTech?: string[] | null;
+    kpis?: string[] | null;
+    rationale?: string | null;
+  } | null;
   merchSuppliers?: RoleRoomAgentMerchSuppliers | null;
   retrievalMeta?: {
     cohereRerankUsed: boolean;
@@ -1346,6 +1391,34 @@ export const roleRoomAgentService = {
 
     await this.saveSnapshot(input.projectId, normalizedResult);
     return normalizedResult;
+  },
+
+  /**
+   * Capture the producer's accept/edit feedback per field (Lag 0 of the
+   * learning loop). Best-effort and fire-and-forget — a failure here must
+   * never block the apply flow. Only non-personal classification fields are
+   * sent (backend enforces the same allowlist).
+   */
+  async captureFieldFeedback(input: {
+    projectId: string;
+    researchId: string;
+    edits: unknown[];
+  }): Promise<void> {
+    if (!input.projectId || !input.researchId || !Array.isArray(input.edits) || input.edits.length === 0) {
+      return;
+    }
+    try {
+      await fetch('/api/role-room/agent/field-feedback', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...readRoleRoomAgentHeaders(),
+        },
+        body: JSON.stringify(input),
+      });
+    } catch {
+      // best-effort: never surface to the producer or block the apply.
+    }
   },
 
   async getSnapshot(projectId: string): Promise<RoleRoomAgentProducerBootstrapResult | null> {
@@ -2490,6 +2563,63 @@ export const roleRoomAgentService = {
     return payload?.plan ?? null;
   },
 
+  /**
+   * Data-driven best time to post — ranked weekday×hour slots per platform,
+   * computed from the project's own historical engagement.
+   */
+  async getBestTimesToPost(projectId: string): Promise<BestTimeResult[]> {
+    const response = await fetch(
+      `/api/role-room/best-time-to-post?projectId=${encodeURIComponent(projectId)}`,
+      { headers: readRoleRoomAgentHeaders() },
+    );
+    const payload = (await response.json().catch(() => null)) as { bestTimes?: BestTimeResult[] } | null;
+    return payload?.bestTimes ?? [];
+  },
+
+  /**
+   * Proactive client update — send the client a data-driven summary (published
+   * + scheduled + best-time insight + optional note) via email + portal.
+   */
+  async sendClientUpdate(
+    planId: string,
+    producerNote?: string,
+  ): Promise<{ ok: boolean; sent: number; total: number; digest?: ClientUpdateDigest }> {
+    const response = await fetch(
+      `/api/role-room/marketing-plan/${encodeURIComponent(planId)}/client-update`,
+      {
+        method: 'POST',
+        headers: { ...readRoleRoomAgentHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ producerNote: producerNote ?? '' }),
+      },
+    );
+    const payload = (await response.json().catch(() => null)) as
+      | { ok?: boolean; sent?: number; total?: number; digest?: ClientUpdateDigest; error?: string }
+      | null;
+    if (!response.ok || !payload) {
+      throw new Error(payload?.error ?? 'client_update_failed');
+    }
+    return { ok: !!payload.ok, sent: payload.sent ?? 0, total: payload.total ?? 0, digest: payload.digest };
+  },
+
+  /**
+   * #3 — Channel scorecard: recommended marketing-setup channels vs measured
+   * per-channel/pillar performance. Powers the cockpit "command center" card.
+   */
+  async getMarketingScorecard(
+    projectId: string,
+    sinceDays?: number,
+  ): Promise<MarketingChannelScorecardResponse | null> {
+    const u = new URL(
+      `/api/role-room/marketing-plan/${encodeURIComponent(projectId)}/scorecard`,
+      window.location.origin,
+    );
+    if (sinceDays && sinceDays > 0) u.searchParams.set('sinceDays', String(sinceDays));
+    const response = await fetch(u.pathname + u.search, { headers: readRoleRoomAgentHeaders() });
+    const payload = (await response.json().catch(() => null)) as MarketingChannelScorecardResponse | null;
+    if (!response.ok || !payload?.success) return null;
+    return payload;
+  },
+
   async listMarketingPlanPosts(planId: string): Promise<MarketingPlanPost[]> {
     const response = await fetch(
       `/api/role-room/marketing-plan/${encodeURIComponent(planId)}/posts`,
@@ -3490,6 +3620,38 @@ export interface MarketingPlanPillar {
   isActive?: boolean;
   /** Item #144. True = lagt til manuelt av brukeren, kan slettes. */
   isCustom?: boolean;
+}
+
+// #3 — Channel scorecard response (recommended setup vs measured performance).
+export interface ScorecardChannelEntry {
+  channel: string;
+  recommendedPriority: string | null;
+  status: 'active' | 'no_data';
+  postCount: number;
+  snapshotCount: number;
+  metrics: Record<string, number>;
+}
+export interface ScorecardUnexpectedEntry {
+  platform: string;
+  label: string;
+  postCount: number;
+  snapshotCount: number;
+  metrics: Record<string, number>;
+}
+export interface MarketingChannelScorecardResponse {
+  success: boolean;
+  projectId: string;
+  sinceDays: number;
+  planStatus: { id: string; status: string; generatedAt: string | null; startDate: string | null } | null;
+  setup: { businessModel: string | null; geoScope: string | null; primaryCta: string | null; adTech: string[] } | null;
+  channelScorecard: {
+    channels: ScorecardChannelEntry[];
+    unexpected: ScorecardUnexpectedEntry[];
+    recommendedWithData: number;
+    recommendedWithoutData: number;
+    hasAnyData: boolean;
+  };
+  pillarPerformance: Array<{ key: string; label: string; postCount: number; snapshotCount: number; avgByMetric: Record<string, number> }>;
 }
 
 export interface MarketingPlan {

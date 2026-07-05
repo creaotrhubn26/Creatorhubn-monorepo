@@ -55,7 +55,7 @@ weights/
 *.sqlite
 backups/
 backups_temp/
-workspace/
+/workspace/
 plugins/
 blender/
 python_ml_service/venv/

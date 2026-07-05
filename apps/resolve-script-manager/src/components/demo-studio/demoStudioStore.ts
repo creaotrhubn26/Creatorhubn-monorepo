@@ -10,6 +10,7 @@
  */
 
 import { create } from 'zustand';
+import { pushCloudProject } from '../../services/cloudProjectsService';
 import {
   type DemoProject,
   type DemoScene,
@@ -18,10 +19,13 @@ import {
   type SceneStatus,
   type DemoRenderOptions,
   type ResponsiveFix,
+  type SaveResult,
   makeProject,
   makeScene,
   saveProject,
   loadLastProject,
+  loadProject,
+  setLastProjectPointer,
   viewportForDevice,
   flowForDemoType,
   defaultRenderOptions,
@@ -34,10 +38,18 @@ interface DemoStudioState {
   selectedSceneId: string | null;
   /** Indeks i guided recorder (hvilket steg vi er på). */
   recorderStepIndex: number;
+  /** Utfall av siste autolagring — UI skal vise dette ærlig, ikke anta suksess. */
+  saveStatus: SaveResult;
+  /** Når siste (helt eller delvis) vellykkede lagring skjedde (epoch ms). */
+  lastSavedAt: number | null;
 
   // ── Prosjekt ──
   createProject: (url: string, demoType?: DemoType) => void;
   loadExisting: () => boolean;
+  /** Åpne et tidligere lagret prosjekt (fra «Tidligere demoer»-lista). */
+  openProject: (id: string) => boolean;
+  /** Adopter et prosjekt hentet utenfra (sky-pull): persister lokalt + åpne. */
+  importProject: (p: DemoProject) => void;
   setProjectField: <K extends keyof DemoProject>(key: K, value: DemoProject[K]) => void;
   /**
    * Sett demo-type. reseed=true erstatter scene-flow + tone/lengde/format med
@@ -91,12 +103,6 @@ function reindex(scenes: DemoScene[]): DemoScene[] {
   return scenes.map((s, i) => ({ ...s, index: i }));
 }
 
-/** Persistér + returner oppdatert prosjekt (med ny updatedAt). */
-function persist(project: DemoProject): DemoProject {
-  saveProject(project);
-  return project;
-}
-
 const HISTORY_CAP = 60;
 /** Koalescering: raske påfølgende edits med samme nøkkel blir ÉN undo-handling. */
 let _lastSnap: { t: number; key: string } | null = null;
@@ -119,18 +125,36 @@ export const useDemoStudio = create<DemoStudioState>((set, get) => {
     set({ _undo: [..._undo, project].slice(-HISTORY_CAP), _redo: [] });
   };
 
+  /** Persistér + returner oppdatert prosjekt. Oppdaterer saveStatus så UI-et
+   *  viser det EKTE lagrings-utfallet (full localStorage skal ikke vise «Lagret»). */
+  let cloudPushTimer: ReturnType<typeof setTimeout> | null = null;
+  const persist = (project: DemoProject): DemoProject => {
+    const result = saveProject(project);
+    set({ saveStatus: result, lastSavedAt: result === 'error' ? get().lastSavedAt : Date.now() });
+    // Sky-synk (G16): debounced fire-and-forget så prosjektet overlever
+    // maskinen. Leser FERSK state ved fyring (flere edits → én push), og er
+    // stille no-op når bruker ikke er innlogget.
+    if (cloudPushTimer) clearTimeout(cloudPushTimer);
+    cloudPushTimer = setTimeout(() => {
+      const p = get().project;
+      if (p) void pushCloudProject(p).catch(() => { /* offline/utlogget — lokal kopi er fasit */ });
+    }, 3000);
+    return project;
+  };
+
   return {
   project: null,
   selectedSceneId: null,
   recorderStepIndex: 0,
+  saveStatus: 'saved' as SaveResult,
+  lastSavedAt: null,
   _undo: [],
   _redo: [],
   selectedSceneIds: [],
 
   createProject: (url, demoType = 'product_demo') => {
     const project = makeProject(url, demoType);
-    saveProject(project);
-    set({ project, selectedSceneId: project.scenes[0]?.id ?? null, recorderStepIndex: 0 });
+    set({ project: persist(project), selectedSceneId: project.scenes[0]?.id ?? null, recorderStepIndex: 0 });
   },
 
   loadExisting: () => {
@@ -140,6 +164,34 @@ export const useDemoStudio = create<DemoStudioState>((set, get) => {
       return true;
     }
     return false;
+  },
+
+  importProject: (p) => {
+    set({
+      project: persist(p),
+      selectedSceneId: p.scenes[0]?.id ?? null,
+      recorderStepIndex: 0,
+      selectedSceneIds: [],
+      _undo: [],
+      _redo: [],
+    });
+  },
+
+  openProject: (id) => {
+    const project = loadProject(id);
+    if (!project) return false;
+    // Åpning skal ikke bumpe updatedAt (åpning ≠ redigering) — pek bare `last`.
+    setLastProjectPointer(project.id);
+    set({
+      project,
+      selectedSceneId: project.scenes[0]?.id ?? null,
+      recorderStepIndex: 0,
+      selectedSceneIds: [],
+      _undo: [],
+      _redo: [],
+      saveStatus: 'saved',
+    });
+    return true;
   },
 
   setProjectField: (key, value) => {

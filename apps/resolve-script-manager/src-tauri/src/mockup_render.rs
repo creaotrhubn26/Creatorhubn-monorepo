@@ -61,6 +61,9 @@ pub async fn mockup_render_video(
     clips: Vec<String>,   // absolutte stier til kilde-klipp, i rekkefølge
     output_path: String,  // hvor sluttfila skal skrives (.mp4 / .mov)
     music_path: Option<String>,
+    // Narration-lyd (TTS) per klipp, index-alignet med clips (None = ingen
+    // voiceover for det klippet). Pipelinen mikser inn på klippets offset.
+    voiceover: Option<Vec<Option<String>>>,
 ) -> Result<RunSummary, String> {
     let run_id = Uuid::new_v4().to_string();
     let started_at = chrono::Utc::now().to_rfc3339();
@@ -78,6 +81,7 @@ pub async fn mockup_render_video(
         "output": output_path,
         "config": config,
         "music": music_path,
+        "voiceover": voiceover,
     });
     let job_dir = app
         .path()

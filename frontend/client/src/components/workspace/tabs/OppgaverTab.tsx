@@ -13,20 +13,36 @@ import ArrowBack from '@mui/icons-material/ArrowBack';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
 import { WsCard, WsStat, WsTag } from '../ui';
+import { useWsLocale, makeT, type WsDict } from '../wsLocale';
+import { crewRoleDef } from '@shared/crew-roles';
 
+// Lokal no/en-ordbok for fanen (samme mønster som OppdragTab).
+const T: WsDict = {
+  title: { no: 'Oppgaver', en: 'Tasks' },
+  subtitle: { no: 'Samme oppgaver som Samkjøringsboardet — synker mellom flatene.', en: 'The same tasks as the coordination board — they sync between the two views.' },
+  statTotal: { no: 'Totalt', en: 'Total' },
+  statTodo: { no: 'Å gjøre', en: 'To do' },
+  statInProgress: { no: 'Pågår', en: 'In progress' },
+  statDone: { no: 'Ferdig', en: 'Done' },
+  noTasks: { no: 'Ingen oppgaver', en: 'No tasks' },
+  addTask: { no: 'Legg til', en: 'Add' },
+  sampleOnly: { no: 'Lagres når prosjektet er ekte.', en: 'Saved once the project is real.' },
+  promptNewTask: { no: 'Ny oppgave:', en: 'New task:' },
+  addFailed: { no: 'Kunne ikke legge til', en: 'Could not add' },
+};
+
+// Statusverdiene (key) sendes til API-et og forblir uendret — kun etikettene oversettes.
 const COLUMNS = [
-  { key: 'todo', label: 'Å gjøre', tone: 'neutral' },
-  { key: 'in_progress', label: 'Pågår', tone: 'amber' },
-  { key: 'done', label: 'Ferdig', tone: 'green' },
+  { key: 'todo', label: { no: 'Å gjøre', en: 'To do' }, tone: 'neutral' },
+  { key: 'in_progress', label: { no: 'Pågår', en: 'In progress' }, tone: 'amber' },
+  { key: 'done', label: { no: 'Ferdig', en: 'Done' }, tone: 'green' },
 ];
-const CREW = [
-  { value: 'fotograf', label: '📷 Fotograf', tone: 'accent' },
-  { value: 'videograf', label: '🎥 Videograf', tone: 'green' },
-  { value: 'begge', label: '👥 Begge', tone: 'blue' },
-  { value: 'editor', label: '🎬 Editor', tone: 'neutral' },
-  { value: 'lyd', label: '🎧 Lyd', tone: 'amber' },
-];
-const crewTag = (c: string) => CREW.find((x) => x.value === c) || { label: c || 'Begge', tone: 'neutral' };
+// Crew-roller fra den delte katalogen (crew-roles.ts) — dekker alle
+// kategorienes roller + ukjente nøkler med generisk visning (blandede team).
+const crewTag = (c: string, locale: 'no' | 'en') => {
+  const d = crewRoleDef(c || 'begge');
+  return { label: `${d.icon} ${locale === 'en' ? d.labelEn : d.label}`, tone: d.tone };
+};
 
 const SAMPLE = [
   { id: 's1', title: 'Oppdater shotlist', crewRole: 'fotograf', status: 'done' },
@@ -38,6 +54,9 @@ const SAMPLE = [
 ];
 
 const OppgaverTab: React.FC<{ projectId: string }> = ({ projectId }) => {
+  // Utenlandske partner-vendors får engelsk UI — locale fra WsLocaleProvider.
+  const locale = useWsLocale();
+  const t = makeT(T, locale);
   const isReal = projectId && projectId !== 'sample';
   const [tasks, setTasks] = useState<any[]>([]);
   const [addMenu, setAddMenu] = useState<{ el: any; col: string } | null>(null);
@@ -59,10 +78,10 @@ const OppgaverTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   };
   const add = async (col: string, crewRole: string) => {
     setAddMenu(null);
-    if (!isReal) { window.alert('Lagres når prosjektet er ekte.'); return; }
-    const title = window.prompt('Ny oppgave:'); if (!title) return;
+    if (!isReal) { window.alert(t('sampleOnly')); return; }
+    const title = window.prompt(t('promptNewTask')); if (!title) return;
     try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/board-tasks`, { method: 'POST', body: { title: title.trim(), crewRole, status: col } }); load(); }
-    catch (e: any) { window.alert(e?.message || 'Kunne ikke legge til'); }
+    catch (e: any) { window.alert(e?.message || t('addFailed')); }
   };
 
   const byCol = (key: string) => tasks.filter((t) => (t.status || 'todo') === key);
@@ -72,16 +91,16 @@ const OppgaverTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     <Box>
       <Stack direction="row" justifyContent="space-between" alignItems="flex-end" sx={{ mb: 2 }}>
         <Box>
-          <Typography sx={{ fontSize: 20, fontWeight: 800 }}>Oppgaver</Typography>
-          <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Samme oppgaver som Samkjøringsboardet — synker mellom flatene.</Typography>
+          <Typography sx={{ fontSize: 20, fontWeight: 800 }}>{t('title')}</Typography>
+          <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>{t('subtitle')}</Typography>
         </Box>
       </Stack>
 
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(4, 1fr)' }, gap: 1.5, mb: 2 }}>
-        <WsStat label="Totalt" value={tasks.length} />
-        <WsStat label="Å gjøre" value={byCol('todo').length} tone={ws.panelAlt} />
-        <WsStat label="Pågår" value={byCol('in_progress').length} tone={ws.amberSoft} />
-        <WsStat label="Ferdig" value={doneCount} sub={tasks.length ? `${Math.round((doneCount / tasks.length) * 100)}%` : '0%'} tone={ws.greenSoft} />
+        <WsStat label={t('statTotal')} value={tasks.length} />
+        <WsStat label={t('statTodo')} value={byCol('todo').length} tone={ws.panelAlt} />
+        <WsStat label={t('statInProgress')} value={byCol('in_progress').length} tone={ws.amberSoft} />
+        <WsStat label={t('statDone')} value={doneCount} sub={tasks.length ? `${Math.round((doneCount / tasks.length) * 100)}%` : '0%'} tone={ws.greenSoft} />
       </Box>
 
       <Stack direction="row" spacing={2} sx={{ alignItems: 'flex-start' }}>
@@ -91,29 +110,29 @@ const OppgaverTab: React.FC<{ projectId: string }> = ({ projectId }) => {
               <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
                 <Stack direction="row" spacing={1} alignItems="center">
                   <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: ws[col.tone] || ws.textFaint }} />
-                  <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>{col.label}</Typography>
+                  <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>{col.label[locale] || col.label.no}</Typography>
                   <Typography sx={{ fontSize: 12, color: ws.textFaint }}>{byCol(col.key).length}</Typography>
                 </Stack>
                 <IconButton size="small" onClick={(e) => setAddMenu({ el: e.currentTarget, col: col.key })} sx={{ color: ws.textDim }}><Add fontSize="small" /></IconButton>
               </Stack>
               <Stack spacing={1}>
-                {byCol(col.key).map((t) => {
-                  const cr = crewTag(t.crewRole);
+                {byCol(col.key).map((task) => {
+                  const cr = crewTag(task.crewRole, locale);
                   return (
-                    <Box key={t.id} sx={{ p: 1.25, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.panel, border: `1px solid ${ws.borderSoft}` }}>
-                      <Typography sx={{ fontSize: 13, fontWeight: 600, mb: 0.75 }}>{t.title}</Typography>
+                    <Box key={task.id} sx={{ p: 1.25, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.panel, border: `1px solid ${ws.borderSoft}` }}>
+                      <Typography sx={{ fontSize: 13, fontWeight: 600, mb: 0.75 }}>{task.title}</Typography>
                       <Stack direction="row" justifyContent="space-between" alignItems="center">
                         <WsTag label={cr.label} tone={cr.tone} />
                         <Stack direction="row" spacing={0.25}>
-                          {ci > 0 && <IconButton size="small" onClick={() => move(t, -1)} sx={{ color: ws.textFaint }}><ArrowBack sx={{ fontSize: 15 }} /></IconButton>}
-                          {ci < COLUMNS.length - 1 && <IconButton size="small" onClick={() => move(t, 1)} sx={{ color: ws.textDim }}><ArrowForward sx={{ fontSize: 15 }} /></IconButton>}
+                          {ci > 0 && <IconButton size="small" onClick={() => move(task, -1)} sx={{ color: ws.textFaint }}><ArrowBack sx={{ fontSize: 15 }} /></IconButton>}
+                          {ci < COLUMNS.length - 1 && <IconButton size="small" onClick={() => move(task, 1)} sx={{ color: ws.textDim }}><ArrowForward sx={{ fontSize: 15 }} /></IconButton>}
                         </Stack>
                       </Stack>
                     </Box>
                   );
                 })}
-                {byCol(col.key).length === 0 && <Typography sx={{ fontSize: 12, color: ws.textFaint, textAlign: 'center', py: 2 }}>Ingen oppgaver</Typography>}
-                <Button size="small" startIcon={<Add sx={{ fontSize: 15 }} />} onClick={(e) => setAddMenu({ el: e.currentTarget, col: col.key })} sx={{ color: ws.textDim, textTransform: 'none', justifyContent: 'flex-start' }}>Legg til</Button>
+                {byCol(col.key).length === 0 && <Typography sx={{ fontSize: 12, color: ws.textFaint, textAlign: 'center', py: 2 }}>{t('noTasks')}</Typography>}
+                <Button size="small" startIcon={<Add sx={{ fontSize: 15 }} />} onClick={(e) => setAddMenu({ el: e.currentTarget, col: col.key })} sx={{ color: ws.textDim, textTransform: 'none', justifyContent: 'flex-start' }}>{t('addTask')}</Button>
               </Stack>
             </WsCard>
           </Box>
@@ -121,7 +140,7 @@ const OppgaverTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       </Stack>
 
       <Menu open={!!addMenu} anchorEl={addMenu?.el} onClose={() => setAddMenu(null)}>
-        {CREW.map((c) => <MenuItem key={c.value} onClick={() => add(addMenu?.col, c.value)}>{c.label}</MenuItem>)}
+        {CREW.map((c) => <MenuItem key={c.value} onClick={() => add(addMenu?.col, c.value)}>{c.label[locale] || c.label.no}</MenuItem>)}
       </Menu>
     </Box>
   );

@@ -244,3 +244,173 @@ describe('groundBootstrapPayload — defensive / no-op behaviour', () => {
     expect(() => groundBootstrapPayload(undefined as unknown as RoleRoomAgentGroundablePayload, {})).not.toThrow();
   });
 });
+
+describe('groundBootstrapPayload — legal company name (F2)', () => {
+  it('overrides a drifted name when Brreg matched on org-number', () => {
+    const payload: RoleRoomAgentGroundablePayload = {
+      companyProfile: baseProfile({ companyName: 'Holycrust Pizza AS (Tromsø)' }),
+    };
+    const sources: RoleRoomAgentGroundingSources = {
+      brregCompany: {
+        organizationNumber: '933469395',
+        name: 'HOLYCRUST AS',
+        lookupStatus: 'verified',
+        matchedBy: 'organization_number',
+      },
+    };
+    const { payload: grounded, strippedReasons } = groundBootstrapPayload(payload, sources);
+    expect(grounded.companyProfile?.companyName).toBe('HOLYCRUST AS');
+    expect(strippedReasons).toContain('grounding_overrode_company_name_from_brreg');
+  });
+
+  it('does NOT override on a name-only Brreg match (may be wrong entity)', () => {
+    const payload: RoleRoomAgentGroundablePayload = {
+      companyProfile: baseProfile({ companyName: 'Holycrust' }),
+    };
+    const sources: RoleRoomAgentGroundingSources = {
+      brregCompany: {
+        organizationNumber: '933469395',
+        name: 'HOLYCRUST BERGEN AS',
+        lookupStatus: 'verified',
+        matchedBy: 'company_name',
+      },
+    };
+    const { payload: grounded, strippedReasons } = groundBootstrapPayload(payload, sources);
+    expect(grounded.companyProfile?.companyName).toBe('Holycrust');
+    expect(strippedReasons).not.toContain('grounding_overrode_company_name_from_brreg');
+  });
+});
+
+describe('groundBootstrapPayload — business model from NACE (F2)', () => {
+  it('corrects a B2B guess to B2C when NACE says restaurant', () => {
+    const payload: RoleRoomAgentGroundablePayload = {
+      companyProfile: baseProfile({ businessModel: 'B2B' }),
+    };
+    const sources: RoleRoomAgentGroundingSources = {
+      brregCompany: {
+        organizationNumber: '933469395',
+        lookupStatus: 'verified',
+        matchedBy: 'organization_number',
+        industryCode: { code: '56.101' },
+      },
+    };
+    const { payload: grounded, strippedReasons } = groundBootstrapPayload(payload, sources);
+    expect(grounded.companyProfile?.businessModel).toBe('B2C');
+    expect(strippedReasons).toContain('grounding_corrected_business_model_from_nace');
+  });
+
+  it('leaves the model untouched when NACE agrees', () => {
+    const payload: RoleRoomAgentGroundablePayload = {
+      companyProfile: baseProfile({ businessModel: 'B2C' }),
+    };
+    const sources: RoleRoomAgentGroundingSources = {
+      brregCompany: {
+        organizationNumber: '933469395',
+        lookupStatus: 'verified',
+        industryCode: { code: '47.111' },
+      },
+    };
+    const { payload: grounded, strippedReasons } = groundBootstrapPayload(payload, sources);
+    expect(grounded.companyProfile?.businessModel).toBe('B2C');
+    expect(strippedReasons).not.toContain('grounding_corrected_business_model_from_nace');
+  });
+
+  it('leaves the model untouched for an ambiguous NACE code', () => {
+    const payload: RoleRoomAgentGroundablePayload = {
+      companyProfile: baseProfile({ businessModel: 'B2B' }),
+    };
+    const sources: RoleRoomAgentGroundingSources = {
+      brregCompany: {
+        organizationNumber: '933469395',
+        lookupStatus: 'verified',
+        industryCode: { code: '64.202' }, // holding → null
+      },
+    };
+    const { payload: grounded } = groundBootstrapPayload(payload, sources);
+    expect(grounded.companyProfile?.businessModel).toBe('B2B');
+  });
+});
+
+describe('groundBootstrapPayload — probable location address (F4)', () => {
+  it('keeps a claim that agrees with the Brreg address (same postal code)', () => {
+    const payload: RoleRoomAgentGroundablePayload = {
+      companyProfile: baseProfile({ probableLocationAddress: 'Storgata 1, 9008 Tromsø' }),
+    };
+    const sources: RoleRoomAgentGroundingSources = {
+      brregCompany: { organizationNumber: '1', businessAddress: 'Sjøgata 5, 9008 Tromsø' },
+    };
+    const { payload: grounded, strippedReasons } = groundBootstrapPayload(payload, sources);
+    expect(grounded.companyProfile?.probableLocationAddress).toBe('Storgata 1, 9008 Tromsø');
+    expect(strippedReasons).not.toContain('grounding_overrode_location_from_verified_source');
+  });
+
+  it('overrides a wrong-city claim with the verified Brreg address', () => {
+    const payload: RoleRoomAgentGroundablePayload = {
+      companyProfile: baseProfile({ probableLocationAddress: 'Strandgaten 2, 5013 Bergen' }),
+    };
+    const sources: RoleRoomAgentGroundingSources = {
+      brregCompany: { organizationNumber: '1', businessAddress: 'Sjøgata 5, 9008 Tromsø' },
+    };
+    const { payload: grounded, strippedReasons } = groundBootstrapPayload(payload, sources);
+    expect(grounded.companyProfile?.probableLocationAddress).toBe('Sjøgata 5, 9008 Tromsø');
+    expect(strippedReasons).toContain('grounding_overrode_location_from_verified_source');
+  });
+
+  it('strips an ungrounded claim when no source address exists', () => {
+    const payload: RoleRoomAgentGroundablePayload = {
+      companyProfile: baseProfile({ probableLocationAddress: 'Et sted i Norge' }),
+    };
+    const { payload: grounded, strippedReasons } = groundBootstrapPayload(payload, {});
+    expect(grounded.companyProfile?.probableLocationAddress).toBeNull();
+    expect(strippedReasons).toContain('grounding_stripped_ungrounded_location');
+  });
+
+  it('confirms via Google Places address when Brreg has none', () => {
+    const payload: RoleRoomAgentGroundablePayload = {
+      companyProfile: baseProfile({ probableLocationAddress: 'Storgata 1, 9008 Tromsø' }),
+    };
+    const sources: RoleRoomAgentGroundingSources = {
+      businessSignals: { formattedAddress: 'Storgata 1, 9008 Tromsø, Norge' },
+    };
+    const { payload: grounded, strippedReasons } = groundBootstrapPayload(payload, sources);
+    expect(grounded.companyProfile?.probableLocationAddress).toBe('Storgata 1, 9008 Tromsø');
+    expect(strippedReasons).not.toContain('grounding_stripped_ungrounded_location');
+  });
+});
+
+describe('groundBootstrapPayload — learned business-model override (Lag 2a)', () => {
+  it('applies an approved learned override in preference to the static NACE table', () => {
+    const payload: RoleRoomAgentGroundablePayload = {
+      companyProfile: baseProfile({ businessModel: 'B2B' }),
+    };
+    const sources: RoleRoomAgentGroundingSources = {
+      brregCompany: {
+        organizationNumber: '1',
+        lookupStatus: 'verified',
+        industryCode: { code: '70.100' }, // static table → null (ambiguous)
+      },
+      learnedNaceBusinessModelOverrides: [{ nacePrefix: '70.10', businessModel: 'B2C' }],
+    };
+    const { payload: grounded, strippedReasons } = groundBootstrapPayload(payload, sources);
+    expect(grounded.companyProfile?.businessModel).toBe('B2C');
+    expect(strippedReasons).toContain('grounding_applied_learned_business_model');
+    expect(strippedReasons).not.toContain('grounding_corrected_business_model_from_nace');
+  });
+
+  it('falls back to the static NACE table when no override matches', () => {
+    const payload: RoleRoomAgentGroundablePayload = {
+      companyProfile: baseProfile({ businessModel: 'B2B' }),
+    };
+    const sources: RoleRoomAgentGroundingSources = {
+      brregCompany: {
+        organizationNumber: '1',
+        lookupStatus: 'verified',
+        industryCode: { code: '56.101' }, // static table → B2C
+      },
+      learnedNaceBusinessModelOverrides: [{ nacePrefix: '99', businessModel: 'B2B' }],
+    };
+    const { payload: grounded, strippedReasons } = groundBootstrapPayload(payload, sources);
+    expect(grounded.companyProfile?.businessModel).toBe('B2C');
+    expect(strippedReasons).toContain('grounding_corrected_business_model_from_nace');
+  });
+});

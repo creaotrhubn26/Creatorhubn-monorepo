@@ -17,6 +17,13 @@
     } catch (e) { /* IPC utilgjengelig */ }
     return undefined;
   }
+  // G10: meld fremdrift til frontenden så dens timeout holdes levende så lenge
+  // skannet faktisk jobber (før: fast 20 s som var kortere enn skannet selv).
+  function progress(phase, extra) {
+    var p = { phase: phase };
+    if (extra) { for (var k in extra) { p[k] = extra[k]; } }
+    invoke('demo_scan_progress', { progress: p });
+  }
 
   function esc(s) { try { return (window.CSS && CSS.escape) ? CSS.escape(s) : String(s).replace(/[^a-zA-Z0-9_-]/g, '\\$&'); } catch (e) { return s; } }
 
@@ -91,20 +98,51 @@
   function toHex(rgb) { function h(n) { return ('0' + Math.round(n).toString(16)).slice(-2); } return '#' + h(rgb.r) + h(rgb.g) + h(rgb.b); }
   function extractBranding() {
     var brandName = metaContent('meta[property="og:site_name"]') || metaContent('meta[name="application-name"]') || (document.title || '').split(/[|–—\-]/)[0].trim();
-    var logoUrl = '';
+    // Samle FLERE logo-kandidater (header-logo, apple-touch-icon, og:image,
+    // favicon, [class*=logo]-bilder) → studioet kan la brukeren velge.
+    var cands = [], candSeen = {};
+    function addCand(href) { if (!href) return; try { var u = new URL(href, location.href).href; if (!candSeen[u]) { candSeen[u] = 1; cands.push(u); } } catch (e) { /* */ } }
+    var logoImgs = document.querySelectorAll('header img, [class*="logo" i] img, img[alt*="logo" i], img[class*="logo" i], a[href="/"] img, [id*="logo" i] img');
+    for (var li = 0; li < logoImgs.length && cands.length < 8; li++) { if (logoImgs[li].src) addCand(logoImgs[li].src); }
     var icons = ['link[rel="apple-touch-icon"]', 'link[rel="apple-touch-icon-precomposed"]', 'meta[property="og:image"]', 'link[rel="icon"]', 'link[rel="shortcut icon"]'];
     for (var i = 0; i < icons.length; i++) {
       var el = document.querySelector(icons[i]);
-      if (el) { var href = el.getAttribute('href') || el.getAttribute('content'); if (href) { try { logoUrl = new URL(href, location.href).href; break; } catch (e) { /* */ } } }
+      if (el) { addCand(el.getAttribute('href') || el.getAttribute('content')); }
     }
-    if (!logoUrl) { var img = document.querySelector('header img, [class*="logo" i] img, img[alt*="logo" i], img[class*="logo" i]'); if (img && img.src) logoUrl = img.src; }
+    var logoUrl = cands[0] || '';
+    var logoCandidates = cands.slice(0, 6);
     var palette = [], seen = {};
     function add(c) { var rgb = parseColor(c); if (rgb && vivid(rgb)) { var hex = toHex(rgb); if (!seen[hex]) { seen[hex] = 1; palette.push(hex); } } }
     var theme = metaContent('meta[name="theme-color"]');
     if (theme && /^#?[0-9a-fA-F]{3,8}$/.test(theme)) { var th = theme[0] === '#' ? theme : '#' + theme; seen[th] = 1; palette.push(th); }
     var nodes = deepQueryAll('button,a[class*="btn" i],[class*="button" i],[class*="cta" i],header');
     for (var j = 0; j < nodes.length && palette.length < 8; j++) { try { var cs = getComputedStyle(nodes[j]); add(cs.backgroundColor); add(cs.color); } catch (e) { /* */ } }
-    return { brandName: brandName || '', logoUrl: logoUrl || '', brandColor: palette[0] || '', palette: palette.slice(0, 6) };
+    // Fonter: font-family fra overskrifter + brødtekst (hopp over generiske
+    // system-stacks) → studioet viser hvilke fonter siden bruker.
+    var fonts = [], fseen = {};
+    function cleanFontName(first) {
+      // Next.js/next-font genererer «__Inter_f367f3» og «__Inter_Fallback_f367f3».
+      // Trekk ut ekte navn («Inter»); dropp Fallback-aliaser.
+      var m = first.match(/^__([A-Za-z0-9]+?)(_Fallback)?_[0-9a-f]{4,}$/);
+      if (m) return m[2] ? '' : m[1].replace(/([a-z0-9])([A-Z])/g, '$1 $2');
+      return first;
+    }
+    function addFont(ff) {
+      if (!ff) return;
+      var raw = String(ff).split(',')[0].replace(/["']/g, '').trim();
+      if (!raw) return;
+      var first = cleanFontName(raw);
+      if (!first) return;
+      if (/^(inherit|initial|unset|system-ui|-apple-system|blinkmacsystemfont|sans-serif|serif|monospace|ui-sans-serif|ui-serif|ui-monospace|cursive)$/i.test(first)) return;
+      var kf = first.toLowerCase();
+      if (!fseen[kf]) { fseen[kf] = 1; fonts.push(first); }
+    }
+    try {
+      var heads = document.querySelectorAll('h1,h2,h3');
+      for (var hf = 0; hf < heads.length && fonts.length < 4; hf++) addFont(getComputedStyle(heads[hf]).fontFamily);
+      if (document.body) addFont(getComputedStyle(document.body).fontFamily);
+    } catch (e) { /* */ }
+    return { brandName: brandName || '', logoUrl: logoUrl || '', logoCandidates: logoCandidates, brandColor: palette[0] || '', palette: palette.slice(0, 6), fonts: fonts.slice(0, 4) };
   }
 
   // Bredt utvalg av interaktive/innholds-elementer (inkl. klikkbare div-er,
@@ -196,11 +234,16 @@
     return new Promise(function (resolve) {
       if (!window.html2canvas) { resolve(null); return; }
       try {
+        // PII-sladding (G23): shots blir preview-thumbnails, guide-bilder og
+        // vision-input — masker skjemafelt + e-post/telefon under skuddet.
+        if (window.__demoPii) window.__demoPii.mask();
+        function unmask() { if (window.__demoPii) window.__demoPii.restore(); }
         window.html2canvas(document.documentElement, {
           x: window.scrollX || 0, y: window.scrollY || 0,
           width: window.innerWidth, height: window.innerHeight,
           useCORS: true, logging: false, scale: 1, backgroundColor: '#ffffff'
         }).then(function (canvas) {
+          unmask();
           var maxW = 900, c = canvas;
           if (canvas.width > maxW) {
             c = document.createElement('canvas');
@@ -208,8 +251,11 @@
             var ctx = c.getContext('2d'); if (ctx) ctx.drawImage(canvas, 0, 0, c.width, c.height);
           }
           resolve(c.toDataURL('image/jpeg', 0.7));
-        }).catch(function () { resolve(null); });
-      } catch (e) { resolve(null); }
+        }).catch(function () { unmask(); resolve(null); });
+      } catch (e) {
+        if (window.__demoPii) window.__demoPii.restore();
+        resolve(null);
+      }
     });
   }
 
@@ -225,6 +271,7 @@
       var scrollPct = maxScroll > 0 ? Math.max(0, Math.min(1, y / maxScroll)) : 0;
       window.scrollTo(0, y);
       setTimeout(function () {
+        progress('shot', { index: i + 1, of: bands });
         shootViewport().then(function (dataUrl) {
           if (dataUrl) shots.push({ scrollPct: scrollPct, dataUrl: dataUrl });
           i++; nextShot();
@@ -246,7 +293,8 @@
       pageText: pageText, branding: branding,
       viewport: { w: window.innerWidth || 0, h: window.innerHeight || 0 },
       docHeight: (document.documentElement.scrollHeight || 0),
-      shots: shots || []
+      shots: shots || [],
+      wall: WALL
     });
   }
 
@@ -262,6 +310,7 @@
       setTimeout(function () {
         collect(out, seen);
         guard++;
+        progress('scan', { step: guard, found: out.length });
         if (y >= maxScroll || guard > 40 || out.length >= 150) {
           window.scrollTo(0, 0);
           setTimeout(function () { captureShots(function (shots) { finish(out, shots); }); }, 150);
@@ -274,7 +323,69 @@
     next();
   }
 
-  function go() { setTimeout(scrollThrough, 1200); } // gi SPA-en tid til første render
+  // G10: ikke fast 1200 ms — vent til DOM-en har vært ROLIG i 500 ms (trege
+  // SPA-er/lazy hero rendrer ferdig), minst 400 ms, maks 5 s.
+  function waitForStable(cb) {
+    var start = Date.now(), last = Date.now(), mo = null;
+    try {
+      mo = new MutationObserver(function () { last = Date.now(); });
+      mo.observe(document.documentElement, { childList: true, subtree: true, attributes: true });
+    } catch (e) { /* */ }
+    (function poll() {
+      var now = Date.now();
+      if ((now - last >= 500 && now - start >= 400) || now - start >= 5000) {
+        if (mo) { try { mo.disconnect(); } catch (e) { /* */ } }
+        cb();
+        return;
+      }
+      setTimeout(poll, 120);
+    })();
+  }
+
+  // G12: cookie-/login-vegg skal ikke katalogiseres som om den var produktet.
+  // Consent-bannere forsøkes lukket automatisk (godta-knapp); login-vegger kan
+  // ikke fikses — de flagges i resultatet så UI-et kan si det ærlig.
+  var WALL = null;
+  function detectAndDismissWall(done) {
+    try {
+      var pw = document.querySelector('input[type="password"]');
+      if (pw) {
+        var pr = pw.getBoundingClientRect();
+        if (pr.width > 0 && pr.height > 0) { WALL = { kind: 'login', dismissed: false }; done(); return; }
+      }
+      var iw = window.innerWidth || 1, ih = window.innerHeight || 1;
+      var cands = document.querySelectorAll('[class*="cookie" i],[id*="cookie" i],[class*="consent" i],[id*="consent" i],[class*="gdpr" i],[role="dialog"],[aria-modal="true"]');
+      for (var i = 0; i < cands.length; i++) {
+        var el = cands[i], rc = el.getBoundingClientRect();
+        if (rc.width * rc.height < iw * ih * 0.05) continue; // små badges teller ikke
+        var t = ((el.innerText || '') + '').slice(0, 500).toLowerCase();
+        if (!/cookie|samtykke|consent|personvern|informasjonskapsl|gdpr/.test(t)) continue;
+        var btns = el.querySelectorAll('button,[role="button"],a');
+        for (var j = 0; j < btns.length; j++) {
+          var bl = ((btns[j].innerText || btns[j].textContent || '') + '').replace(/\s+/g, ' ').trim().toLowerCase();
+          if (/godta alle|aksepter alle|accept all|allow all|tillat alle/.test(bl) || /^(godta|aksepter|tillat|accept|agree|allow|ok)\b/.test(bl)) {
+            try { btns[j].click(); } catch (e) { /* */ }
+            WALL = { kind: 'consent', dismissed: true, label: bl.slice(0, 40) };
+            progress('wall', { kind: 'consent', dismissed: true });
+            setTimeout(done, 700); // la banneret lukke før skann
+            return;
+          }
+        }
+        WALL = { kind: 'consent', dismissed: false };
+        progress('wall', { kind: 'consent', dismissed: false });
+        done();
+        return;
+      }
+    } catch (e) { /* */ }
+    done();
+  }
+
+  function go() {
+    waitForStable(function () {
+      progress('stable');
+      detectAndDismissWall(scrollThrough);
+    });
+  }
   if (document.readyState === 'complete') go();
   else window.addEventListener('load', go);
 })();

@@ -29,6 +29,8 @@ import VideoRoomTab from './tabs/VideoRoomTab';
 import PhotoRoomTab from './tabs/PhotoRoomTab';
 import LaaterTab from './tabs/LaaterTab';
 import SesjonerTab from './tabs/SesjonerTab';
+import OppdragTab from './tabs/OppdragTab';
+import BookingerTab from './tabs/BookingerTab';
 import ForesporslerTab from './tabs/ForesporslerTab';
 import UtstyrTab from './tabs/UtstyrTab';
 import AcademyInstructorAdminStudio from '../academy/AcademyInstructorAdminStudio';
@@ -36,7 +38,10 @@ import { AcademyProvider } from '@/contexts/AcademyContext';
 import CommunityHub from '../community/CommunityHub';
 import WorkspaceChatPanel from './WorkspaceChatPanel';
 import { usePresence } from './usePresence';
-import { ws, WS_NAV, navForProfession, isMusicProfession } from './workspaceTheme';
+import { ws, WS_NAV, navForProfession, localizeNav, workspaceCategoryFor, isMusicProfession } from './workspaceTheme';
+import { useWorkspaceCategoryMap } from './useWorkspaceCategory';
+import { WsLocaleProvider, type WsLocale } from './wsLocale';
+import { localeForVendor } from '../universal/editing-marketplace/editingMarketplaceStrings';
 
 // Prøveprosjekt (Sara & Amir) — byttes med ekte prosjekt-fetch i wire-fasen.
 const SAMPLE_PROJECT = {
@@ -114,6 +119,7 @@ const TeamWorkspacePage: React.FC = () => {
           id: p.id, name: p.title || 'Uten tittel', type: p.projectType || undefined,
           status: p.status === 'active' ? 'Pågående' : (p.status || undefined),
           date, location: p.location || undefined, coverUrl: p.coverUrl || null, members: [],
+          updatedAt: p.updatedAt || p.updated_at || null,
         });
       })
       .catch(() => setRealProject(null));
@@ -141,7 +147,9 @@ const TeamWorkspacePage: React.FC = () => {
   const project = { ...(realProject || { ...SAMPLE_PROJECT, id: projectId }), members };
   const wsUser = {
     name: user?.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : (user?.name || user?.email || 'Bruker'),
-    role: isMusicProfession(user?.profession) ? 'Musikkprodusent' : (user?.profession === 'videographer' ? 'Videograf' : 'Fotograf'),
+    role: isMusicProfession(user?.profession) ? 'Musikkprodusent'
+      : user?.profession === 'vendor' ? 'Leverandør'
+      : user?.profession === 'videographer' ? 'Videograf' : 'Fotograf',
     email: user?.email || null,
     avatarUrl: user?.avatarUrl || null,
   };
@@ -175,9 +183,26 @@ const TeamWorkspacePage: React.FC = () => {
       .catch(() => setBandUnseen(0));
   }, [projectId, tab]);
 
-  // Profesjons-filtrert nav — musikkprodusent får Låter/Sesjoner/Sound Room
-  // i stedet for Shotlist/Produksjonskart/Photo+Video Room.
-  const nav = useMemo(() => navForProfession(user?.profession, { isMentor }), [user?.profession, isMentor]);
+  // Profesjons-filtrert nav — kategorien er admin-styrt (profession_types.
+  // workspace_category via useWorkspaceCategoryMap), med kode-map som fallback.
+  const categoryOverrides = useWorkspaceCategoryMap();
+
+  // Workspace-språk: utenlandske partner-vendors (is_foreign fra vendor/me,
+  // samme deteksjon som partner-portalen) får engelsk i nav, shell og faner.
+  // Kun vendor-kategorien sjekkes — alle andre er alltid norske.
+  const [wsLocale, setWsLocale] = useState<WsLocale>('no');
+  const isVendorCategory = workspaceCategoryFor(user?.profession, categoryOverrides) === 'vendor';
+  useEffect(() => {
+    if (!isVendorCategory) { setWsLocale('no'); return; }
+    apiRequest('/api/editing/vendor/me')
+      .then((me: any) => setWsLocale(localeForVendor({ isForeign: me?.isForeign, country: me?.country })))
+      .catch(() => setWsLocale('no'));
+  }, [isVendorCategory]);
+
+  const nav = useMemo(
+    () => localizeNav(navForProfession(user?.profession, { isMentor, categoryOverrides }), wsLocale),
+    [user?.profession, isMentor, categoryOverrides, wsLocale],
+  );
   // Hvis aktiv fane ikke finnes i profesjonens nav (f.eks. delt lenke til
   // 'shotlist' for en musikkprodusent), fall tilbake til Oversikt.
   useEffect(() => {
@@ -188,15 +213,19 @@ const TeamWorkspacePage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, nav]);
 
-  const navItem = WS_NAV.find((n) => n.key === tab);
+  // Slå opp i den kategori-resolvede nav-en (riktig label for f.eks. vendor);
+  // WS_NAV som fallback for keys utenfor profesjonens nav.
+  const navItem = nav.find((n) => n.key === tab) || WS_NAV.find((n) => n.key === tab);
 
   const TABS: Record<string, React.ReactNode> = {
-    oversikt: <OversiktTab projectId={projectId} />,
+    oversikt: <OversiktTab projectId={projectId} profession={user?.profession} />,
     prosjektplan: <ProsjektplanTab projectId={projectId} />,
     produksjonskart: <ProduksjonskartTab projectId={projectId} />,
     shotlist: <ShotlistTab projectId={projectId} />,
     laater: <LaaterTab projectId={projectId} />,
     sesjoner: <SesjonerTab projectId={projectId} />,
+    oppdrag: <OppdragTab projectId={projectId} />,
+    bookinger: <BookingerTab projectId={projectId} />,
     academy: <AcademyProvider><AcademyInstructorAdminStudio /></AcademyProvider>,
     community: <CommunityHub userId={user?.id} userEmail={user?.email} profession={user?.profession || 'photographer'} />,
     moodboard: <MoodboardTab projectId={projectId} />,
@@ -207,19 +236,20 @@ const TeamWorkspacePage: React.FC = () => {
     avtaler: <AvtalerTab projectId={projectId} />,
     foresporsler: <ForesporslerTab projectId={projectId} profession={user?.profession} userId={user?.id} userName={user?.firstName || (user as any)?.name || user?.email} />,
     kundevisning: <KundevisningTab projectId={projectId} />,
-    team: <TeamTab projectId={projectId} profession={user?.profession} userId={user?.id} projectName={(project as any)?.title || (project as any)?.name} />,
+    team: <TeamTab projectId={projectId} profession={user?.profession} userId={user?.id} projectName={(project as any)?.title || (project as any)?.name} lastUpdated={(realProject as any)?.updatedAt || null} />,
     'sound-room': <SoundRoomTab projectId={projectId} />,
     'video-room': <VideoRoomTab projectId={projectId} />,
     'photo-room': <PhotoRoomTab projectId={projectId} />,
     chat: (
       <Box sx={{ height: 'calc(100vh - 160px)', maxWidth: 760, mx: 'auto' }}>
-        <WorkspaceChatPanel projectId={projectId} />
+        <WorkspaceChatPanel projectId={projectId} category={workspaceCategoryFor(user?.profession, categoryOverrides)} />
       </Box>
     ),
   };
   const content = TABS[tab] || <ComingTab label={navItem?.label || tab} />;
 
   return (
+    <WsLocaleProvider value={wsLocale}>
     <WorkspaceShell
       project={project}
       user={wsUser}
@@ -254,6 +284,7 @@ const TeamWorkspacePage: React.FC = () => {
         </DialogContent>
       </Dialog>
     </WorkspaceShell>
+    </WsLocaleProvider>
   );
 };
 

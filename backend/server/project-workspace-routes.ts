@@ -22,6 +22,8 @@ import type express from "express";
 import crypto from "crypto";
 import multer from "multer";
 import { canAccessProject } from "./project-team-routes";
+import { resolveCrewRoles } from "../../frontend/shared/crew-roles.ts";
+import { CANONICAL_PROFESSIONS, normalizeProfession as normalizeCanonProfession, isWorkspaceCategory as isWsCategory } from "../../frontend/shared/profession-types.ts";
 import { signAssetReadUrl } from "./capture-upload-service";
 import { archiveToRoleRoomB2, presignRoleRoomB2Download, getFromRoleRoomB2, slugifyForKey } from "./b2-archive-helper";
 import { Vibrant } from "node-vibrant/node";
@@ -156,6 +158,34 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       res.json({ tasks: r.rows.map((t: any) => ({ id: t.id, crewRole: t.crew_role, title: t.title, timeLabel: t.time_label, status: t.status, orderIndex: t.order_index })) });
     } catch (e) { console.error("GET board-tasks", e); res.status(500).json({ error: "failed" }); }
   });
+  // ─────────── Crew-roller som DATA (blandede team) ───────────
+  // Et prosjekts rollekolonner = eier-kategoriens default-sett ∪ roller
+  // teamet/boardet faktisk bruker (project_team_members + project_board_tasks).
+  // Kategorien hentes fra profession_types.workspace_category (admin-styrt),
+  // med kanonisk kode-baseline som fallback. Ukjente nøkler beholdes med
+  // generisk visning — et blandet team (foto + musikk) mister aldri kolonner.
+  app.get("/api/projects/:projectId/crew-roles", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const pid = req.params.projectId;
+      const [owner, members, tasks] = await Promise.all([
+        pool.query(`SELECT u.profession FROM projects p JOIN users u ON u.id = p.user_id WHERE p.id = $1 LIMIT 1`, [pid]).catch(() => ({ rows: [] as any[] })),
+        pool.query(`SELECT DISTINCT crew_role FROM project_team_members WHERE project_id = $1 AND status <> 'revoked' AND crew_role IS NOT NULL`, [pid]).catch(() => ({ rows: [] as any[] })),
+        pool.query(`SELECT DISTINCT crew_role FROM project_board_tasks WHERE project_id = $1 AND crew_role IS NOT NULL`, [pid]).catch(() => ({ rows: [] as any[] })),
+      ]);
+      const profession = normalizeCanonProfession(owner.rows[0]?.profession);
+      // Kategori: DB (profession_types.workspace_category) vinner, baseline som fallback.
+      let category = CANONICAL_PROFESSIONS.find((c) => c.name === profession)?.workspaceCategory || "visual";
+      try {
+        const c = await pool.query(`SELECT workspace_category FROM profession_types WHERE name = $1 LIMIT 1`, [profession]);
+        if (isWsCategory(c.rows[0]?.workspace_category)) category = c.rows[0].workspace_category;
+      } catch { /* kolonnen kom i mig 0369 — baseline holder */ }
+      const used = [...members.rows, ...tasks.rows].map((r: any) => r.crew_role);
+      const { roles, fallbackKey } = resolveCrewRoles(category as any, used);
+      res.json({ category, fallbackKey, roles });
+    } catch (e) { console.error("GET crew-roles", e); res.status(500).json({ error: "failed" }); }
+  });
+
   app.post("/api/projects/:projectId/board-tasks", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
     try {
@@ -1262,18 +1292,68 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
         [req.params.projectId],
       ).catch(() => ({ rows: [] }));
       const linkedTrackId = linked.rows[0]?.easeverse_track_id || null;
+      // Per-track review-statistikk via siste ikke-arkiverte review-rom (LATERAL):
+      // antall versjoner, siste versjon (label/status) og åpne kommentarer.
       const t = await pool.query(
-        `SELECT id, title, artist, status, bpm, musical_key, duration_seconds, updated_at,
-                EXISTS(SELECT 1 FROM audio_review_projects ar WHERE ar.easeverse_track_id = easeverse_tracks.id::text) AS has_review
-           FROM easeverse_tracks WHERE user_id = $1 ORDER BY updated_at DESC NULLS LAST LIMIT 50`,
+        `SELECT t.id, t.title, t.artist, t.status, t.bpm, t.musical_key, t.duration_seconds, t.updated_at,
+                EXISTS(SELECT 1 FROM audio_review_projects ar0 WHERE ar0.easeverse_track_id = t.id::text) AS has_review,
+                (SELECT count(*)::int FROM audio_review_versions v WHERE v.project_id = ar.id) AS version_count,
+                lv.version_label AS latest_version_label, lv.status AS latest_version_status,
+                (SELECT count(*)::int FROM audio_review_comments c
+                   JOIN audio_review_versions v2 ON v2.id = c.version_id
+                  WHERE v2.project_id = ar.id AND (c.status IS NULL OR c.status NOT IN ('resolved','rejected'))) AS open_comment_count,
+                ssx.status AS split_status, ssx.signed AS split_signed, ssx.total AS split_total
+           FROM easeverse_tracks t
+           LEFT JOIN LATERAL (SELECT a.id, a.owner_user_id FROM audio_review_projects a
+                               WHERE a.easeverse_track_id = t.id::text AND a.status <> 'archived'
+                               ORDER BY a.created_at DESC LIMIT 1) ar ON true
+           LEFT JOIN LATERAL (SELECT v.version_label, v.status FROM audio_review_versions v
+                               WHERE v.project_id = ar.id ORDER BY v.version_number DESC LIMIT 1) lv ON true
+           -- Split-sheet per låt: audio-showcase-systemet kobler via
+           -- metadata->>'sourceReviewId' (ikke FK) — se audio-showcase-routes.
+           LEFT JOIN LATERAL (SELECT ss.status,
+                                (SELECT count(*) FILTER (WHERE c2.signed_at IS NOT NULL)::int
+                                   FROM split_sheet_contributors c2 WHERE c2.split_sheet_id = ss.id) AS signed,
+                                (SELECT count(*)::int FROM split_sheet_contributors c2
+                                  WHERE c2.split_sheet_id = ss.id) AS total
+                                FROM split_sheets ss
+                               WHERE ss.metadata->>'sourceReviewId' = ar.id::text
+                                 AND ss.user_id = ar.owner_user_id AND ss.status <> 'archived'
+                               ORDER BY ss.created_at DESC LIMIT 1) ssx ON true
+          WHERE t.user_id = $1 ORDER BY t.updated_at DESC NULLS LAST LIMIT 50`,
         [uid],
       ).catch(() => ({ rows: [] }));
       res.json({
         connected: t.rows.length > 0,
         linkedTrackId,
-        tracks: t.rows.map((r: any) => ({ id: r.id, title: r.title, artist: r.artist, status: r.status, bpm: r.bpm, key: r.musical_key, durationSeconds: r.duration_seconds, hasReview: !!r.has_review, linked: r.id === linkedTrackId })),
+        tracks: t.rows.map((r: any) => ({
+          id: r.id, title: r.title, artist: r.artist, status: r.status, bpm: r.bpm, key: r.musical_key,
+          durationSeconds: r.duration_seconds, hasReview: !!r.has_review, linked: r.id === linkedTrackId,
+          versionCount: r.version_count || 0, latestVersionLabel: r.latest_version_label || null,
+          latestVersionStatus: r.latest_version_status || null, openCommentCount: r.open_comment_count || 0,
+          splitSheet: r.split_status ? { status: r.split_status, signed: r.split_signed || 0, total: r.split_total || 0 } : null,
+        })),
       });
     } catch (e) { console.error("GET easeverse-tracks", e); res.json({ connected: false, tracks: [] }); }
+  });
+
+  // Manuell status-fremrykk på en EaseVerse-låt fra Låter-fanen (opptak→miks→
+  // master→ferdig). Kun eieren av låten; godkjenningsflyten i Sound Room synker
+  // samme felt automatisk (se audio-showcase-routes approve).
+  app.patch("/api/projects/:projectId/easeverse-tracks/:trackId/status", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const status = String(req.body?.status || "");
+      if (!["recording", "mixing", "mastering", "completed"].includes(status)) {
+        return res.status(400).json({ error: "invalid_status" });
+      }
+      const r = await pool.query(
+        `UPDATE easeverse_tracks SET status = $2, updated_at = NOW() WHERE id = $1::uuid AND user_id = $3 RETURNING id, status`,
+        [req.params.trackId, status, uid],
+      ).catch(() => ({ rows: [] }));
+      if (!r.rows.length) return res.status(404).json({ error: "track_not_found" });
+      res.json({ ok: true, id: r.rows[0].id, status: r.rows[0].status });
+    } catch (e) { console.error("PATCH easeverse-track status", e); res.status(500).json({ error: "failed" }); }
   });
 
   // Koble en EaseVerse-track til prosjektets Sound Room: finn/opprett review-rom
@@ -1453,6 +1533,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
   // Prosjekt-scopet: sesjonene koblet til prosjektets lydrom (project_audio_rooms →
   // protools_companion_sessions.audio_review_project_id). Read-only oversikt for
   // «Sesjoner»-fanen; selve sesjonene settes opp via companion-appen (se Sound Room).
+  // ?include=details legger på markers (låt-seksjoner) + siste 5 bounces per sesjon.
   app.get("/api/projects/:projectId/recording-sessions", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
     try {
@@ -1469,7 +1550,29 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
           ORDER BY s.last_activity DESC LIMIT 50`,
         [arId],
       ).catch(() => ({ rows: [] }));
-      res.json({ sessions: r.rows, audioRoomId: arId });
+      let sessions = r.rows;
+      if (String(req.query.include || "") === "details" && sessions.length) {
+        const ids = sessions.map((s: any) => s.id);
+        const [markers, bounces] = await Promise.all([
+          pool.query(
+            `SELECT session_id, name, start_seconds, end_seconds, color FROM protools_companion_markers
+              WHERE session_id = ANY($1::uuid[]) ORDER BY session_id, order_index, start_seconds`,
+            [ids],
+          ).catch(() => ({ rows: [] })),
+          pool.query(
+            `SELECT id, session_id, file_name, duration_seconds, review_version_id, created_at
+               FROM (SELECT *, row_number() OVER (PARTITION BY session_id ORDER BY created_at DESC) AS rn
+                       FROM protools_companion_bounces WHERE session_id = ANY($1::uuid[])) x
+              WHERE rn <= 5 ORDER BY session_id, created_at DESC`,
+            [ids],
+          ).catch(() => ({ rows: [] })),
+        ]);
+        const mBy: Record<string, any[]> = {}; const bBy: Record<string, any[]> = {};
+        for (const m of markers.rows) (mBy[m.session_id] ||= []).push({ name: m.name, startSeconds: m.start_seconds, endSeconds: m.end_seconds, color: m.color });
+        for (const b of bounces.rows) (bBy[b.session_id] ||= []).push({ id: b.id, fileName: b.file_name, durationSeconds: b.duration_seconds, reviewVersionId: b.review_version_id, createdAt: b.created_at });
+        sessions = sessions.map((s: any) => ({ ...s, markers: mBy[s.id] || [], bounces: bBy[s.id] || [] }));
+      }
+      res.json({ sessions, audioRoomId: arId });
     } catch (e) { console.error("GET recording-sessions", e); res.status(500).json({ error: "failed" }); }
   });
 

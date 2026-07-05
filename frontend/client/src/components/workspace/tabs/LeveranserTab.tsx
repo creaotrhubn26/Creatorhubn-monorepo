@@ -11,6 +11,48 @@ import CheckCircle from '@mui/icons-material/CheckCircle';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
 import { WsCard, WsSectionTitle, WsRing, WsPills, WsTag, WsImageGrid, WsModal } from '../ui';
+import { useWsLocale, makeT, wsDateLocale, type WsDict } from '../wsLocale';
+
+// Lokal no/en-ordbok for fanen (samme mønster som OppdragTab).
+const T: WsDict = {
+  newBtn: { no: 'Ny', en: 'New' },
+  emptyList: { no: 'Ingen leveranser ennå. Trykk «Ny» for å legge til.', en: 'No deliverables yet. Click "New" to add one.' },
+  due: { no: 'Frist', en: 'Due' },
+  markDone: { no: 'Marker som ferdig', en: 'Mark as done' },
+  uploadVersion: { no: 'Last opp versjon (video/preview)', en: 'Upload version (video/preview)' },
+  selections: { no: 'valg', en: 'selections' },
+  comments: { no: 'kommentarer', en: 'comments' },
+  markApproved: { no: 'Marker godkjent', en: 'Mark approved' },
+  stepDone: { no: 'Ferdig', en: 'Done' },
+  clientGallery: { no: 'Klient-galleri (Showcase)', en: 'Client gallery (Showcase)' },
+  noGallery: { no: 'Ingen galleri publisert ennå. Opprett et klient-galleri for å dele leveransen som showcase.', en: 'No gallery published yet. Create a client gallery to share the delivery as a showcase.' },
+  ready: { no: 'klar', en: 'ready' },
+  shareWithClient: { no: 'Del med klient ↗', en: 'Share with client ↗' },
+  editingVendor: { no: 'Redigerings-vendor', en: 'Editing vendor' },
+  editing: { no: 'Redigering', en: 'Editing' },
+  sent: { no: 'sendt', en: 'sent' },
+  revisionsTitle: { no: 'Revisjoner', en: 'Revisions' },
+  openCount: { no: 'åpne', en: 'open' },
+  image: { no: 'Bilde', en: 'Image' },
+  resolved: { no: 'Løst', en: 'Resolved' },
+  openTag: { no: 'Åpen', en: 'Open' },
+  ofCompleted: { no: 'av 5 fullført', en: 'of 5 completed' },
+  seeAll: { no: 'Se alle', en: 'See all' },
+  noFeedback: { no: 'Ingen klient-tilbakemeldinger ennå.', en: 'No client feedback yet.' },
+  client: { no: 'Klient', en: 'Client' },
+  act1: { no: 'lastet opp versjon 1', en: 'uploaded version 1' },
+  act2: { no: 'la til et notat', en: 'added a note' },
+  act3: { no: 'markerte task som ferdig', en: 'marked a task as done' },
+  allFeedback: { no: 'All klient-feedback', en: 'All client feedback' },
+  noGalleryApprove: { no: 'Ingen klient-galleri å markere som godkjent ennå.', en: 'No client gallery to mark as approved yet.' },
+  approveConfirm: { no: 'Marker leveransen som godkjent (fullfør galleriet)?', en: 'Mark the delivery as approved (complete the gallery)?' },
+  couldNotMark: { no: 'Kunne ikke markere', en: 'Could not mark' },
+  promptTitle: { no: 'Ny leveranse (tittel):', en: 'New deliverable (title):' },
+  promptType: { no: 'Type (f.eks. Video / Online gallery):', en: 'Type (e.g. Video / Online gallery):' },
+  couldNotAdd: { no: 'Kunne ikke legge til', en: 'Could not add' },
+  noOpenDeliverables: { no: 'Ingen åpne leveranser å markere som ferdig.', en: 'No open deliverables to mark as done.' },
+  deliverConfirm: { no: 'Marker «{title}» som levert?', en: 'Mark "{title}" as delivered?' },
+};
 
 const STATUS_LABEL: Record<string, [string, string]> = {
   not_started: ['Not started', 'neutral'], in_progress: ['In progress', 'amber'],
@@ -33,6 +75,9 @@ const LeveranserTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [filter, setFilter] = useState('planned');
   const [real, setReal] = useState<any[] | null>(null);
   const isReal = projectId && projectId !== 'sample';
+  const locale = useWsLocale();
+  const t = makeT(T, locale);
+  const dl = wsDateLocale(locale);
 
   const [galleries, setGalleries] = useState<any[]>([]);
   const [delivery, setDelivery] = useState<{ phase: number; signals: any } | null>(null);
@@ -71,10 +116,10 @@ const LeveranserTab: React.FC<{ projectId: string }> = ({ projectId }) => {
 
   const markApproved = async () => {
     const g = galleries[0];
-    if (!g?.id) { window.alert('Ingen klient-galleri å markere som godkjent ennå.'); return; }
-    if (!window.confirm('Marker leveransen som godkjent (fullfør galleriet)?')) return;
+    if (!g?.id) { window.alert(t('noGalleryApprove')); return; }
+    if (!window.confirm(t('approveConfirm'))) return;
     try { await apiRequest(`/api/photographer/galleries/${g.id}/mark-complete`, { method: 'POST' }); load(); }
-    catch (e: any) { window.alert(e?.message || 'Kunne ikke markere'); }
+    catch (e: any) { window.alert(e?.message || t('couldNotMark')); }
   };
 
   const shareGallery = (sharePath: string) => {
@@ -86,24 +131,24 @@ const LeveranserTab: React.FC<{ projectId: string }> = ({ projectId }) => {
 
   const addDeliverable = async () => {
     if (!isReal) return;
-    const title = window.prompt('Ny leveranse (tittel):'); if (!title) return;
-    const type = window.prompt('Type (f.eks. Video / Online gallery):') || null;
+    const title = window.prompt(t('promptTitle')); if (!title) return;
+    const type = window.prompt(t('promptType')) || null;
     try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/deliverables`, { method: 'POST', body: { title: title.trim(), type } }); load(); }
-    catch (e: any) { window.alert(e?.message || 'Kunne ikke legge til'); }
+    catch (e: any) { window.alert(e?.message || t('couldNotAdd')); }
   };
 
   const markDeliverableDone = async () => {
     if (!isReal) return;
     const pending = (real || []).find((d: any) => !['delivered', 'done', 'completed'].includes(d.status));
-    if (!pending?.id) { window.alert('Ingen åpne leveranser å markere som ferdig.'); return; }
-    if (!window.confirm(`Marker «${pending.title}» som levert?`)) return;
+    if (!pending?.id) { window.alert(t('noOpenDeliverables')); return; }
+    if (!window.confirm(t('deliverConfirm').replace('{title}', pending.title))) return;
     try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/deliverables/${pending.id}`, { method: 'PATCH', body: { status: 'delivered' } }); load(); }
-    catch (e: any) { window.alert(e?.message || 'Kunne ikke markere'); }
+    catch (e: any) { window.alert(e?.message || t('couldNotMark')); }
   };
 
   // Ekte prosjekt → ekte data (tomt = tom-tilstand). Mock kun på /workspace/sample.
   const list = isReal
-    ? (real || []).map((d: any) => [d.title, d.type || '', ...(STATUS_LABEL[d.status] || ['—', 'neutral']), d.dueDate ? new Date(d.dueDate).toLocaleDateString('nb-NO', { day: 'numeric', month: 'short' }) : '—', false])
+    ? (real || []).map((d: any) => [d.title, d.type || '', ...(STATUS_LABEL[d.status] || ['—', 'neutral']), d.dueDate ? new Date(d.dueDate).toLocaleDateString(dl, { day: 'numeric', month: 'short' }) : '—', false])
     : DELIVERABLES;
 
   return (
@@ -113,18 +158,18 @@ const LeveranserTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         <WsCard>
           <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
             <Typography sx={{ fontSize: 15, fontWeight: 700 }}>Deliverables</Typography>
-            <Button size="small" variant="contained" onClick={addDeliverable} disabled={!isReal} startIcon={<Add sx={{ fontSize: 15 }} />} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Ny</Button>
+            <Button size="small" variant="contained" onClick={addDeliverable} disabled={!isReal} startIcon={<Add sx={{ fontSize: 15 }} />} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>{t('newBtn')}</Button>
           </Stack>
           <Box sx={{ mb: 1.5 }}><WsPills items={[{ key: 'planned', label: 'Planned' }, { key: 'progress', label: 'In progress' }, { key: 'delivered', label: 'Delivered' }]} value={filter} onChange={setFilter} /></Box>
           <Stack spacing={0.75}>
-            {list.length === 0 && <Typography sx={{ fontSize: 12.5, color: ws.textDim, py: 2, textAlign: 'center' }}>Ingen leveranser ennå. Trykk «Ny» for å legge til.</Typography>}
+            {list.length === 0 && <Typography sx={{ fontSize: 12.5, color: ws.textDim, py: 2, textAlign: 'center' }}>{t('emptyList')}</Typography>}
             {list.map(([n, type, st, tone, due, active], i) => (
               <Box key={i} sx={{ p: 1.25, borderRadius: 2, cursor: 'pointer', border: `1px solid ${active ? ws.accentBorder : ws.borderSoft}`, bgcolor: active ? ws.accentSoft : 'transparent' }}>
                 <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
                   <Box><Typography sx={{ fontSize: 13, fontWeight: 700 }}>{n}</Typography><Typography sx={{ fontSize: 11, color: ws.textFaint }}>{type}</Typography></Box>
                   <WsTag label={st} tone={tone} />
                 </Stack>
-                <Typography sx={{ fontSize: 11, color: ws.textDim, mt: 0.5 }}>Frist {due}</Typography>
+                <Typography sx={{ fontSize: 11, color: ws.textDim, mt: 0.5 }}>{t('due')} {due}</Typography>
               </Box>
             ))}
           </Stack>
@@ -135,11 +180,11 @@ const LeveranserTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
           <Stack direction="row" spacing={1} alignItems="center"><Typography sx={{ fontSize: 18, fontWeight: 800 }}>Highlight Film (6-8 min)</Typography><WsTag label="In progress" tone="amber" /></Stack>
-          <Button size="small" startIcon={<CheckCircle sx={{ fontSize: 16 }} />} onClick={markDeliverableDone} disabled={!isReal} sx={{ color: ws.green, textTransform: 'none', border: `1px solid ${ws.greenSoft}` }}>Marker som ferdig</Button>
+          <Button size="small" startIcon={<CheckCircle sx={{ fontSize: 16 }} />} onClick={markDeliverableDone} disabled={!isReal} sx={{ color: ws.green, textTransform: 'none', border: `1px solid ${ws.greenSoft}` }}>{t('markDone')}</Button>
         </Stack>
 
         <WsCard sx={{ mb: 2 }}>
-          <WsImageGrid columns={1} ratio="16 / 9" addLabel="Last opp versjon (video/preview)" />
+          <WsImageGrid columns={1} ratio="16 / 9" addLabel={t('uploadVersion')} />
         </WsCard>
 
         <WsCard sx={{ mb: 2 }}>
@@ -147,8 +192,8 @@ const LeveranserTab: React.FC<{ projectId: string }> = ({ projectId }) => {
             <Typography sx={{ fontSize: 14, fontWeight: 700 }}>Progress</Typography>
             {isReal && (
               <Stack direction="row" spacing={1} alignItems="center">
-                {sig.hasGallery && <Typography sx={{ fontSize: 11, color: ws.textFaint }}>{sig.selections || 0} valg · {sig.comments || 0} kommentarer</Typography>}
-                {activePhase < 5 && <Button size="small" onClick={markApproved} sx={{ color: ws.green, textTransform: 'none', border: `1px solid ${ws.greenSoft}` }}>Marker godkjent</Button>}
+                {sig.hasGallery && <Typography sx={{ fontSize: 11, color: ws.textFaint }}>{sig.selections || 0} {t('selections')} · {sig.comments || 0} {t('comments')}</Typography>}
+                {activePhase < 5 && <Button size="small" onClick={markApproved} sx={{ color: ws.green, textTransform: 'none', border: `1px solid ${ws.greenSoft}` }}>{t('markApproved')}</Button>}
               </Stack>
             )}
           </Stack>
@@ -165,7 +210,7 @@ const LeveranserTab: React.FC<{ projectId: string }> = ({ projectId }) => {
                     bgcolor: active ? ws.accent : done ? ws.greenSoft : ws.panelSolid, color: active ? ws.accentContrast : done ? ws.green : ws.textDim,
                     border: `2px solid ${active ? ws.accent : done ? ws.green : ws.border}` }}>{done ? '✓' : step}</Box>
                   <Typography sx={{ fontSize: 11, color: active ? ws.accent : ws.textDim, fontWeight: active ? 700 : 500, textAlign: 'center' }}>{s}</Typography>
-                  <Typography sx={{ fontSize: 9.5, color: ws.textFaint }}>{active ? 'In progress' : done ? 'Ferdig' : 'Pending'}</Typography>
+                  <Typography sx={{ fontSize: 9.5, color: ws.textFaint }}>{active ? 'In progress' : done ? t('stepDone') : 'Pending'}</Typography>
                 </Stack>
               );
             })}
@@ -184,9 +229,9 @@ const LeveranserTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       <Box sx={{ width: 280, flexShrink: 0 }}>
         {isReal && (
           <WsCard sx={{ mb: 2 }}>
-            <WsSectionTitle title="Klient-galleri (Showcase)" />
+            <WsSectionTitle title={t('clientGallery')} />
             {galleries.length === 0 ? (
-              <Typography sx={{ fontSize: 12, color: ws.textDim }}>Ingen galleri publisert ennå. Opprett et klient-galleri for å dele leveransen som showcase.</Typography>
+              <Typography sx={{ fontSize: 12, color: ws.textDim }}>{t('noGallery')}</Typography>
             ) : (
               <Stack spacing={1}>
                 {galleries.map((g) => (
@@ -196,11 +241,11 @@ const LeveranserTab: React.FC<{ projectId: string }> = ({ projectId }) => {
                         <Typography noWrap sx={{ fontSize: 12.5, fontWeight: 700 }}>{g.title}</Typography>
                         <Typography noWrap sx={{ fontSize: 11, color: ws.textFaint }}>{g.clientName || g.clientEmail || ''}</Typography>
                       </Box>
-                      <WsTag label={g.status || 'klar'} tone={g.status === 'completed' ? 'green' : 'blue'} />
+                      <WsTag label={g.status || t('ready')} tone={g.status === 'completed' ? 'green' : 'blue'} />
                     </Stack>
                     {g.sharePath && (
                       <Button fullWidth size="small" onClick={() => shareGallery(g.sharePath)} sx={{ mt: 0.75, color: ws.accent, textTransform: 'none', border: `1px solid ${ws.accentBorder}` }}>
-                        Del med klient ↗
+                        {t('shareWithClient')}
                       </Button>
                     )}
                   </Box>
@@ -217,10 +262,10 @@ const LeveranserTab: React.FC<{ projectId: string }> = ({ projectId }) => {
                 <Box key={j.id} sx={{ p: 1, borderRadius: 1.5, border: `1px solid ${ws.borderSoft}` }}>
                   <Stack direction="row" justifyContent="space-between" alignItems="center">
                     <Box sx={{ minWidth: 0 }}>
-                      <Typography noWrap sx={{ fontSize: 12.5, fontWeight: 700 }}>{j.vendorName || 'Redigerings-vendor'}</Typography>
-                      <Typography noWrap sx={{ fontSize: 11, color: ws.textFaint }}>{(j.services || []).join(', ') || 'Redigering'}{j.amount != null ? ` · ${Math.round(j.amount).toLocaleString('nb-NO')} ${j.currency || 'kr'}` : ''}</Typography>
+                      <Typography noWrap sx={{ fontSize: 12.5, fontWeight: 700 }}>{j.vendorName || t('editingVendor')}</Typography>
+                      <Typography noWrap sx={{ fontSize: 11, color: ws.textFaint }}>{(j.services || []).join(', ') || t('editing')}{j.amount != null ? ` · ${Math.round(j.amount).toLocaleString('nb-NO')} ${j.currency || 'kr'}` : ''}</Typography>
                     </Box>
-                    <WsTag label={j.status || 'sendt'} tone={EJ_TONE[j.status] || 'neutral'} />
+                    <WsTag label={j.status || t('sent')} tone={EJ_TONE[j.status] || 'neutral'} />
                   </Stack>
                 </Box>
               ))}
@@ -229,17 +274,17 @@ const LeveranserTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         )}
         {isReal && revisions.length > 0 && (
           <WsCard sx={{ mb: 2 }}>
-            <WsSectionTitle title={`Revisjoner (${revisions.filter((r) => r.status !== 'resolved' && r.status !== 'done').length} åpne)`} />
+            <WsSectionTitle title={`${t('revisionsTitle')} (${revisions.filter((r) => r.status !== 'resolved' && r.status !== 'done').length} ${t('openCount')})`} />
             <Stack spacing={1}>
               {revisions.slice(0, 6).map((r) => (
                 <Box key={r.id} sx={{ p: 1, borderRadius: 1.5, border: `1px solid ${ws.borderSoft}` }}>
                   <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>
                     <Box sx={{ minWidth: 0 }}>
-                      <Typography noWrap sx={{ fontSize: 12.5, fontWeight: 600 }}>{r.filename || 'Bilde'}</Typography>
+                      <Typography noWrap sx={{ fontSize: 12.5, fontWeight: 600 }}>{r.filename || t('image')}</Typography>
                       <Typography sx={{ fontSize: 11, color: ws.textDim }}>{r.note}</Typography>
                       <Typography noWrap sx={{ fontSize: 10.5, color: ws.textFaint }}>{r.clientEmail || ''}</Typography>
                     </Box>
-                    <WsTag label={r.status === 'resolved' || r.status === 'done' ? 'Løst' : 'Åpen'} tone={r.status === 'resolved' || r.status === 'done' ? 'green' : 'amber'} />
+                    <WsTag label={r.status === 'resolved' || r.status === 'done' ? t('resolved') : t('openTag')} tone={r.status === 'resolved' || r.status === 'done' ? 'green' : 'amber'} />
                   </Stack>
                 </Box>
               ))}
@@ -255,42 +300,42 @@ const LeveranserTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           <Stack direction="row" spacing={2} alignItems="center">
             <WsRing value={pct} size={84} color={ws.accent} label={`${pct}%`} />
             <Stack spacing={0.5} sx={{ flex: 1 }}>
-              <Typography sx={{ fontSize: 12, color: ws.textDim }}>{completed} av 5 fullført</Typography>
+              <Typography sx={{ fontSize: 12, color: ws.textDim }}>{completed} {t('ofCompleted')}</Typography>
               {[['In progress', 1, ws.amber], ['Not started', 2, ws.textFaint], ['Overdue', 0, ws.red]].map(([l, n, c]) => <Stack key={l} direction="row" spacing={1} alignItems="center"><Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: c }} /><Typography sx={{ fontSize: 11.5, flex: 1 }}>{l}</Typography><Typography sx={{ fontSize: 11.5, fontWeight: 700 }}>{n}</Typography></Stack>)}
             </Stack>
           </Stack>
             ); })()}
         </WsCard>
         <WsCard sx={{ mb: 2 }}>
-          <WsSectionTitle title="Client feedback" action={<Button size="small" onClick={() => setFbModal(true)} sx={{ color: ws.accent, textTransform: 'none' }}>Se alle</Button>} />
+          <WsSectionTitle title="Client feedback" action={<Button size="small" onClick={() => setFbModal(true)} sx={{ color: ws.accent, textTransform: 'none' }}>{t('seeAll')}</Button>} />
           {(isReal ? feedback : [{ clientName: 'Sara', comment: 'Amazing work! We love the vibe 😍', at: '2024-09-16' }]).length === 0 ? (
-            <Typography sx={{ fontSize: 12, color: ws.textDim }}>Ingen klient-tilbakemeldinger ennå.</Typography>
+            <Typography sx={{ fontSize: 12, color: ws.textDim }}>{t('noFeedback')}</Typography>
           ) : (isReal ? feedback : [{ clientName: 'Sara', comment: 'Amazing work! We love the vibe 😍', at: '2024-09-16' }]).slice(0, 4).map((f, i) => (
             <Box key={i} sx={{ mt: i ? 1 : 0, p: 1.25, borderRadius: 2, bgcolor: ws.panelInput }}>
               <Typography sx={{ fontSize: 12.5, color: ws.text }}>{f.comment}</Typography>
-              <Typography sx={{ fontSize: 11, color: ws.textFaint, mt: 0.5 }}>– {f.clientName || 'Klient'}{f.at ? ` · ${new Date(f.at).toLocaleDateString('nb-NO')}` : ''}</Typography>
+              <Typography sx={{ fontSize: 11, color: ws.textFaint, mt: 0.5 }}>– {f.clientName || t('client')}{f.at ? ` · ${new Date(f.at).toLocaleDateString(dl)}` : ''}</Typography>
             </Box>
           ))}
         </WsCard>
         <WsCard>
           <WsSectionTitle title="Activity" />
           <Stack spacing={1.25}>
-            {(isReal && activity.length ? activity.map((a) => [a.who, a.what, a.at ? new Date(a.at).toLocaleDateString('nb-NO') : '']) : [['Julie', 'lastet opp versjon 1', '16. sep'], ['Thomas', 'la til et notat', '15. sep'], ['Marcus', 'markerte task som ferdig', '14. sep']]).map(([who, what, t], i) => (
+            {(isReal && activity.length ? activity.map((a) => [a.who, a.what, a.at ? new Date(a.at).toLocaleDateString(dl) : '']) : [['Julie', t('act1'), '16. sep'], ['Thomas', t('act2'), '15. sep'], ['Marcus', t('act3'), '14. sep']]).map(([who, what, t], i) => (
               <Stack key={i} direction="row" spacing={1}><Avatar sx={{ width: 24, height: 24, fontSize: 10 }}>{(who || '?')[0]}</Avatar><Box sx={{ flex: 1 }}><Typography sx={{ fontSize: 12 }}><b>{who}</b> {what}</Typography><Typography sx={{ fontSize: 10.5, color: ws.textFaint }}>{t}</Typography></Box></Stack>
             ))}
           </Stack>
         </WsCard>
       </Box>
 
-      <WsModal open={fbModal} onClose={() => setFbModal(false)} title="All klient-feedback" maxWidth="sm">
+      <WsModal open={fbModal} onClose={() => setFbModal(false)} title={t('allFeedback')} maxWidth="sm">
         {feedback.length === 0 ? (
-          <Typography sx={{ fontSize: 13, color: ws.textDim }}>Ingen klient-tilbakemeldinger ennå.</Typography>
+          <Typography sx={{ fontSize: 13, color: ws.textDim }}>{t('noFeedback')}</Typography>
         ) : (
           <Stack spacing={1.25}>
             {feedback.map((f, i) => (
               <Box key={i} sx={{ p: 1.5, borderRadius: 2, bgcolor: ws.panelInput }}>
                 <Typography sx={{ fontSize: 13, color: ws.text }}>{f.comment}</Typography>
-                <Typography sx={{ fontSize: 11, color: ws.textFaint, mt: 0.5 }}>– {f.clientName || 'Klient'}{f.at ? ` · ${new Date(f.at).toLocaleString('nb-NO')}` : ''}</Typography>
+                <Typography sx={{ fontSize: 11, color: ws.textFaint, mt: 0.5 }}>– {f.clientName || t('client')}{f.at ? ` · ${new Date(f.at).toLocaleString(dl)}` : ''}</Typography>
               </Box>
             ))}
           </Stack>

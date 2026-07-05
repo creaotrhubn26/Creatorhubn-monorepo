@@ -66,6 +66,8 @@ import { registerRoleRoomByoStorageRoutes } from "./role-room-byo-storage-routes
 import { startInProcessCleanupLoop as startRoleRoomStorageCleanupLoop } from "./role-room-storage-cleanup-worker.js";
 import { registerRoleRoomPublishedGuidesRoutes } from "./role-room-published-guides-routes.js";
 import { registerRoleRoomDemoAssetsRoutes } from "./role-room-demo-assets-routes.js";
+import { registerRoleRoomInfographicSignalsRoutes } from "./role-room-infographic-signals-routes.js";
+import { registerRoleRoomInfographicLibraryRoutes } from "./role-room-infographic-library-routes.js";
 import { registerRoleRoomThumbnailTemplatesRoutes } from "./role-room-thumbnail-templates-routes.js";
 import { registerRoleRoomLowerThirdsRoutes } from "./role-room-lower-thirds-routes.js";
 import { registerRoleRoomCaptionsRoutes } from "./role-room-captions-routes.js";
@@ -1031,6 +1033,7 @@ import {
 } from "../../frontend/client/src/data/audio-storage-device-database.ts";
 import { WORLD_CAMERA_DATABASE } from "../../frontend/shared/camera-database.ts";
 import { CAMERA_RELEASE_REGISTRY_2020_2026 } from "../../frontend/shared/camera-release-registry.ts";
+import { normalizeProfession as normalizeCanonicalProfession } from "../../frontend/shared/profession-types.ts";
 import { DEFAULT_PROFESSION_CONFIGS } from "../../frontend/client/src/types/ProfessionConfig.ts";
 import {
   ACADEMY_PRESENTATION_GRAMMAR_BUDGETS,
@@ -1928,6 +1931,13 @@ const KNOWN_ORIGINS = new Set([
   'http://localhost:3000',
   'http://127.0.0.1:5001',
   'http://127.0.0.1:5173',
+  // Post Agent desktop-app (Tauri v2 webview-origin): macOS = tauri://localhost,
+  // Windows/Linux = http(s)://tauri.localhost. Sign-in-dialogen bruker webview-
+  // fetch (CORS-subjekt) mot /api/post-agent/pairing/*, så disse MÅ stå her —
+  // ellers «TypeError: Load failed» ved innlogging i det signerte bygget.
+  'tauri://localhost',
+  'http://tauri.localhost',
+  'https://tauri.localhost',
 ]);
 app.use(cors({
   origin: (origin, callback) => {
@@ -2310,6 +2320,8 @@ registerRoleRoomByoStorageRoutes(app, { pool, activeSessions });
 startRoleRoomStorageCleanupLoop(pool);
 registerRoleRoomPublishedGuidesRoutes(app, { activeSessions, pool });
 registerRoleRoomDemoAssetsRoutes(app, { pool, activeSessions });
+registerRoleRoomInfographicSignalsRoutes(app, { pool, activeSessions });
+registerRoleRoomInfographicLibraryRoutes(app, { pool, activeSessions });
 registerRoleRoomThumbnailTemplatesRoutes(app, { pool, activeSessions });
 registerRoleRoomLowerThirdsRoutes(app, { pool, activeSessions });
 registerRoleRoomCaptionsRoutes(app, { pool, activeSessions });
@@ -42761,7 +42773,9 @@ const normalizeAdminProfession = (
   profession: unknown,
   roleId?: string | null,
 ): string | null => {
-  const directProfession = toAdminString(profession)?.toLowerCase() || null;
+  // Kanoniser via delt normalizeProfession (frontend/shared/profession-types):
+  // 'MusicProducer'/'musicproducer' → 'music_producer', 'Fotograf' → 'photographer' osv.
+  const directProfession = normalizeCanonicalProfession(toAdminString(profession)) || null;
   if (directProfession) return directProfession;
   if (roleId === "vendor") return "vendor";
   if (roleId === "enterprise_admin") return "enterprise";
@@ -74036,7 +74050,7 @@ app.post(
 const dashboardCompatRouter = createDashboardCompatRouter();
 app.use(dashboardCompatRouter);
 
-const communicationRouter = createCommunicationRouter(db, pool);
+const communicationRouter = createCommunicationRouter(db, pool, activeSessions);
 app.use(communicationRouter);
 
 const lightroomRouter = createLightroomRouter(pool);

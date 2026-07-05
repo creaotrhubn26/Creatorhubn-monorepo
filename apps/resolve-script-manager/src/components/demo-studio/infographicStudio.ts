@@ -1,0 +1,377 @@
+// infographicStudio — modell for Infographic Studio (Product Demo).
+// Brukeren ser KUN enkle felter + et design-galleri. HTML/CSS ligger skjult her
+// og er config-drevet: appen injiserer en JSON-config + en setProgress(p) som
+// styrer animasjonen deterministisk (count-up, søyle-vekst, stagger). Samme HTML
+// brukes til (a) live-preview (iframe srcdoc) og (b) alfa-capture → ProRes → Resolve.
+
+// Workflow-genererte + render-verifiserte maler (cover, donut, linjegraf,
+// KPI-hero, verdenskart, A/B-test). Selvstendige config-drevne HTML-maler.
+import GENERATED_TEMPLATES from './infographicTemplates.generated.json';
+import { SOCIAL_TEMPLATES } from './infographicSocialTemplates';
+// Hele Material Icons (Outlined)-katalogen (2195 navn) for ikon-velgeren.
+import ALL_ICONS from './materialIcons.generated.json';
+// Bundlede fonter (Inter + Material Icons Outlined som base64 @font-face) →
+// render OG preview fungerer OFFLINE uten Google Fonts-CDN.
+import { FONT_FACE_CSS } from './fontAssets.generated';
+
+/** Hele Material Icons-katalogen (søkbar i ikon-velgeren). */
+export const ALL_MATERIAL_ICONS: string[] = ALL_ICONS as string[];
+
+export type InfographicStyle = 'light' | 'hud';
+
+export interface InfographicField {
+  key: string;
+  label: string;
+  type: 'text' | 'number' | 'color';
+  placeholder?: string;
+}
+
+export interface InfographicTemplate {
+  id: string;
+  name: string;
+  desc: string;
+  style: InfographicStyle;
+  /** Forhåndsvisnings-glyph for galleriet (enkelt, ingen ekstra asset). */
+  glyph: string;
+  /** Enkle felter brukeren fyller (ingen HTML). */
+  fields: InfographicField[];
+  /** Standardverdier. */
+  defaults: Record<string, string>;
+  /** Default varighet på klippet i sekunder. */
+  durationSec: number;
+  /** Selvstendig HTML-mal (config-drevet via window.__CFG__ + setProgress). Når
+   *  satt brukes GENERISK config = {...feltverdier, accent, ink, logo}. Når tom
+   *  brukes den delte INFOGRAPHIC_HTML + buildInfographicConfig-logikken. */
+  html?: string;
+}
+
+/** Bundlet font-CSS som ett <style>. Eksponert så studio-UI-et kan injisere
+ *  samme fonter i sitt eget dokument (ikon-velgeren). */
+export const BUNDLED_FONT_STYLE = `<style>${FONT_FACE_CSS}</style>`;
+
+/** Bare Material Icons @font-face (~200KB) — thumbnails trenger ikon-GLYPHENE,
+ *  men ikke hele Inter-bundelen (~1MB × mange gallerikort). Uten denne tegner
+ *  malen ligaturer som rå tekst («groups», «chevron_right»). */
+const ICON_FONT_FACE = (() => {
+  const faces = FONT_FACE_CSS.split(/(?=@font-face)/);
+  return faces.find((f) => /font-family:\s*['"]?Material/i.test(f)) || '';
+})();
+const ICON_FONT_STYLE = `<style data-cfg-fonts="__ICON_FONT__">html,body{background:transparent!important}${ICON_FONT_FACE}</style>`;
+
+/** Injiser de bundlede fontene i en mal-HTML — sist i <head> så de lokale
+ *  @font-face-reglene VINNER over malens egne Google Fonts-CDN-lenker (som
+ *  ellers feiler offline). Aksent-display-fonter (Poppins o.l.) beholdes fra
+ *  CDN og degraderer grasiøst til fallback offline. */
+function injectBundledFonts(html: string): string {
+  if (html.includes('__CFG_FONTS__')) return html; // allerede injisert
+  // WKWebView maler iframe-DOKUMENTETS rot (html) hvitt når bare `body` er
+  // transparent → i preview vises overlay-en på hvit i stedet for den mørke
+  // canvasen. Tving html+body transparent. (Render bruker omitBackground →
+  // ufarlig; innholdet er uansett transparent der.)
+  const style = BUNDLED_FONT_STYLE.replace('<style>', '<style data-cfg-fonts="__CFG_FONTS__">html,body{background:transparent!important}');
+  return html.includes('</head>') ? html.replace('</head>', style + '</head>') : style + html;
+}
+
+/** HTML som faktisk brukes for en mal (egen html eller den delte) — alltid med
+ *  bundlede fonter så preview + render er offline-robust. */
+export function htmlForTemplate(tpl: InfographicTemplate): string {
+  return injectBundledFonts(tpl.html || INFOGRAPHIC_HTML);
+}
+
+/** Rå mal-HTML UTEN font-injeksjon — for lette thumbnail-forhåndsvisninger
+ *  (system-font-fallback holder i en liten thumbnail; unngår ~1 MB font-CSS
+ *  per gallerikort). */
+export function rawTemplateHtml(tpl: InfographicTemplate): string {
+  const html = tpl.html || INFOGRAPHIC_HTML;
+  if (html.includes('__ICON_FONT__') || html.includes('__CFG_FONTS__')) return html;
+  // Injiser KUN ikon-fonten (ikke hele bundelen) så ikon-ligaturer i miniatyren
+  // rendres som glypher, ikke rå tekst. Inter faller grasiøst til system-sans.
+  return html.includes('</head>') ? html.replace('</head>', ICON_FONT_STYLE + '</head>') : ICON_FONT_STYLE + html;
+}
+
+/** Er feltet et Material-ikon-felt? (vis ikon-velger i stedet for tekst). */
+export function isIconField(key: string): boolean {
+  return /(^|_)icon(\d*)$/i.test(key) || key.toLowerCase().endsWith('icon');
+}
+
+/** Kuratert sett Material Icons (Outlined) for ikon-velgeren, gruppert etter
+ *  bruk. (Material-fonten har ~1200; dette er de mest relevante for produkt/
+ *  demo/helse/analyse — søkbart i velgeren, kan utvides.) */
+export const MATERIAL_ICONS: string[] = [
+  // people / brukere
+  'person', 'group', 'groups', 'person_add', 'supervisor_account', 'diversity_3', 'handshake', 'support_agent', 'face',
+  // analyse / data
+  'insights', 'analytics', 'trending_up', 'trending_down', 'bar_chart', 'show_chart', 'pie_chart', 'donut_large', 'leaderboard', 'query_stats', 'monitoring', 'data_usage', 'percent', 'speed',
+  // handlinger / status
+  'check_circle', 'task_alt', 'verified', 'done_all', 'thumb_up', 'star', 'flag', 'priority_high', 'new_releases', 'workspace_premium', 'military_tech',
+  // tid
+  'schedule', 'timer', 'hourglass_top', 'event', 'calendar_today', 'update', 'history', 'alarm',
+  // kommunikasjon
+  'chat', 'forum', 'mail', 'notifications', 'campaign', 'send', 'call', 'sms', 'mark_email_read',
+  // forretning / penger
+  'payments', 'attach_money', 'savings', 'account_balance', 'receipt_long', 'shopping_cart', 'sell', 'store', 'work', 'business_center', 'rocket_launch',
+  // sikkerhet
+  'lock', 'shield', 'security', 'verified_user', 'gpp_good', 'visibility', 'visibility_off', 'fingerprint',
+  // helse
+  'favorite', 'monitor_heart', 'medical_services', 'health_and_safety', 'medication', 'vaccines', 'stethoscope', 'ecg_heart',
+  // media / produksjon
+  'play_circle', 'movie', 'videocam', 'photo_camera', 'mic', 'music_note', 'palette', 'brush', 'auto_awesome', 'bolt', 'lightbulb',
+  // navigasjon / sted
+  'location_on', 'public', 'map', 'explore', 'near_me', 'flight', 'language',
+  // dokumenter / arbeidsflyt
+  'description', 'article', 'folder', 'checklist', 'edit_note', 'draw', 'fact_check', 'inventory_2', 'assignment', 'rule',
+  // natur / energi
+  'eco', 'energy_savings_leaf', 'water_drop', 'solar_power', 'recycling', 'forest',
+  // diverse symboler
+  'settings', 'tune', 'build', 'extension', 'hub', 'cloud', 'wifi', 'devices', 'smartphone', 'laptop', 'dashboard', 'widgets', 'category', 'layers', 'grid_view',
+];
+
+export const INFOGRAPHIC_TEMPLATES: InfographicTemplate[] = [
+  {
+    id: 'kpi-cards',
+    name: 'KPI-kort (3 tall)',
+    desc: 'Tre rene kort med ikon, stort tall som teller opp og etikett. Lys SaaS-stil.',
+    style: 'light',
+    glyph: '▦',
+    durationSec: 5,
+    fields: [
+      { key: 'l1', label: 'Kort 1 – etikett', type: 'text', placeholder: 'Pasienter i dag' },
+      { key: 'v1', label: 'Kort 1 – tall', type: 'text', placeholder: '124' },
+      { key: 'l2', label: 'Kort 2 – etikett', type: 'text', placeholder: 'Digitale innsjekk' },
+      { key: 'v2', label: 'Kort 2 – tall', type: 'text', placeholder: '76%' },
+      { key: 'l3', label: 'Kort 3 – etikett', type: 'text', placeholder: 'Redusert ventetid' },
+      { key: 'v3', label: 'Kort 3 – tall', type: 'text', placeholder: '-18%' },
+    ],
+    defaults: { l1: 'Pasienter i dag', v1: '124', l2: 'Digitale innsjekk', v2: '76%', l3: 'Redusert ventetid', v3: '-18%' },
+  },
+  {
+    id: 'stat-bar',
+    name: 'Live-analytics-bar (lower third)',
+    desc: 'Horisontal bar med tittel + tre KPI-er med delta. Legg nederst i bildet.',
+    style: 'light',
+    glyph: '▭',
+    durationSec: 6,
+    fields: [
+      { key: 'title', label: 'Tittel', type: 'text', placeholder: 'PreVisit AI' },
+      { key: 'k1', label: 'KPI 1', type: 'text', placeholder: 'Utfylte skjema' },
+      { key: 'kv1', label: 'KPI 1 – verdi', type: 'text', placeholder: '82%' },
+      { key: 'k2', label: 'KPI 2', type: 'text', placeholder: 'Gj.sn. svartid' },
+      { key: 'kv2', label: 'KPI 2 – verdi', type: 'text', placeholder: '2:14' },
+      { key: 'k3', label: 'KPI 3', type: 'text', placeholder: 'Pasientforberedelse' },
+      { key: 'kv3', label: 'KPI 3 – verdi', type: 'text', placeholder: '91%' },
+    ],
+    defaults: { title: 'PreVisit AI', k1: 'Utfylte skjema', kv1: '82%', k2: 'Gj.sn. svartid', kv2: '2:14', k3: 'Pasientforberedelse', kv3: '91%' },
+  },
+  ...SOCIAL_TEMPLATES,
+  ...(GENERATED_TEMPLATES as unknown as InfographicTemplate[]),
+];
+
+// ── Egne maler (in-app import): brukeren limer inn / laster opp en HTML-mal
+//    med window.__CFG__ + setProgress. Lagres i localStorage og flettes inn i
+//    INFOGRAPHIC_TEMPLATES ved oppstart, så de dukker opp i galleriet. ──
+const CUSTOM_KEY = 'trrpa.infographicStudio.customTemplates';
+export function isCustomTemplate(id: string): boolean { return id.startsWith('custom-'); }
+
+/** Utled felt-nøkler fra en mal-HTML: alle CFG.<key>/__CFG__.<key>-referanser
+ *  utenom reserverte (accent/ink/logo/layout). Gir Data-panelet felter å fylle. */
+function deriveFieldsFromHtml(html: string): InfographicField[] {
+  const reserved = new Set(['accent', 'ink', 'logo', 'layout']);
+  const keys = new Set<string>();
+  const re = /(?:__CFG__|CFG)\.([a-zA-Z_]\w*)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html))) { if (!reserved.has(m[1])) keys.add(m[1]); }
+  return [...keys].map((k) => ({ key: k, label: k, type: 'text' as const, placeholder: '' }));
+}
+
+function loadCustomTemplates(): InfographicTemplate[] {
+  try { const raw = localStorage.getItem(CUSTOM_KEY); return raw ? (JSON.parse(raw) as InfographicTemplate[]) : []; }
+  catch { return []; }
+}
+function saveCustomTemplates(list: InfographicTemplate[]): void {
+  try { localStorage.setItem(CUSTOM_KEY, JSON.stringify(list)); } catch { /* full — ikke-kritisk */ }
+}
+
+let _customSeq = 0;
+/** Legg til en egen mal fra rå HTML. Returnerer den nye malen (også pushet inn
+ *  i INFOGRAPHIC_TEMPLATES så den er umiddelbart tilgjengelig). */
+export function addCustomTemplate(name: string, html: string): InfographicTemplate {
+  const id = `custom-${Date.now().toString(36)}-${_customSeq++}`;
+  const fields = deriveFieldsFromHtml(html);
+  const defaults: Record<string, string> = {};
+  fields.forEach((f) => { defaults[f.key] = ''; });
+  const tpl: InfographicTemplate = {
+    id, name: name.trim() || 'Egen mal', desc: 'Importert HTML-mal.', style: 'light',
+    glyph: '★', durationSec: 5, fields, defaults, html,
+  };
+  INFOGRAPHIC_TEMPLATES.push(tpl);
+  const list = loadCustomTemplates(); list.push(tpl); saveCustomTemplates(list);
+  return tpl;
+}
+
+/** Slett en egen mal (fra registeret + localStorage). */
+export function removeCustomTemplate(id: string): void {
+  const i = INFOGRAPHIC_TEMPLATES.findIndex((t) => t.id === id);
+  if (i >= 0) INFOGRAPHIC_TEMPLATES.splice(i, 1);
+  saveCustomTemplates(loadCustomTemplates().filter((t) => t.id !== id));
+}
+
+/** Id-ene til de egne malene (for «Mine maler»-kategorien). */
+export function customTemplateIds(): string[] {
+  return INFOGRAPHIC_TEMPLATES.filter((t) => isCustomTemplate(t.id)).map((t) => t.id);
+}
+
+// Flett inn lagrede egne maler ved modul-last (én gang).
+try { for (const t of loadCustomTemplates()) if (!INFOGRAPHIC_TEMPLATES.some((x) => x.id === t.id)) INFOGRAPHIC_TEMPLATES.push(t); } catch { /* */ }
+
+export interface InfographicBrand {
+  accent: string;   // hex
+  ink: string;      // hex (tekst)
+  logo?: string;    // data-URL eller sti til logo (valgfritt)
+}
+
+/** Bygg config-JSON som HTML-malen leser (fra location.hash). */
+export function buildInfographicConfig(
+  tpl: InfographicTemplate,
+  values: Record<string, string>,
+  brand: InfographicBrand,
+): Record<string, unknown> {
+  const v = (k: string) => (values[k] ?? tpl.defaults[k] ?? '');
+  // Selvstendige maler: generisk config = alle feltverdier + brand.
+  if (tpl.html) {
+    const cfg: Record<string, unknown> = { accent: brand.accent, ink: brand.ink, logo: brand.logo };
+    for (const f of tpl.fields) cfg[f.key] = v(f.key);
+    return cfg;
+  }
+  if (tpl.id === 'kpi-cards') {
+    return {
+      layout: 'kpi-cards', accent: brand.accent, ink: brand.ink, logo: brand.logo,
+      cards: [
+        { icon: 'groups', label: v('l1'), value: v('v1') },
+        { icon: 'task_alt', label: v('l2'), value: v('v2'), bars: [30, 38, 34, 48, 56, 50, 66, 72, 64, 80, 88, 100] },
+        { icon: 'schedule', label: v('l3'), value: v('v3'), pill: 'vs. forrige måned' },
+      ],
+    };
+  }
+  // stat-bar
+  return {
+    layout: 'stat-bar', accent: brand.accent, ink: brand.ink, logo: brand.logo, title: v('title'),
+    kpis: [
+      { label: v('k1'), value: v('kv1') },
+      { label: v('k2'), value: v('kv2') },
+      { label: v('k3'), value: v('kv3') },
+    ],
+  };
+}
+
+/** Den config-drevne HTML-malen (skjult for brukeren). Leser cfg fra
+ *  location.hash (#<base64 json>) og eksponerer window.setProgress(p). */
+// Fontene injiseres av htmlForTemplate (bundlet, offline-robust) — ingen
+// Google Fonts-CDN-lenker her.
+export const INFOGRAPHIC_HTML = String.raw`<!doctype html><html><head><meta charset="utf-8">
+<style>
+ *{margin:0;padding:0;box-sizing:border-box;font-family:'Inter',sans-serif}
+ html,body{background:transparent}
+ #wrap{display:flex;gap:30px;align-items:center;padding:60px;width:max-content}
+ .card{background:#fff;border-radius:24px;padding:28px 32px;min-width:380px;
+   box-shadow:0 24px 60px rgba(20,40,80,.10),0 4px 14px rgba(20,40,80,.05);
+   border:1px solid rgba(20,40,80,.05);opacity:0;transform:translateY(26px)}
+ .top{display:flex;align-items:center;gap:16px}
+ .ic{width:62px;height:62px;border-radius:50%;display:grid;place-items:center;flex:none;background:var(--soft)}
+ .ic .material-icons-outlined{font-size:30px;color:var(--accent)}
+ .lbl{color:#5b6b7d;font-size:20px;font-weight:500}
+ .num{font-size:58px;font-weight:800;color:var(--ink);letter-spacing:-1px;line-height:1.05;margin-top:2px}
+ .bars{display:flex;align-items:flex-end;gap:6px;height:58px;margin-top:12px}
+ .bars i{flex:1;background:var(--soft2);border-radius:4px;height:0%}
+ .bars i.hi{background:var(--accent)}
+ .pill{display:inline-flex;align-items:center;gap:7px;background:var(--soft);color:var(--accent);
+   font-weight:600;font-size:17px;padding:8px 15px;border-radius:30px;margin-top:14px;opacity:0}
+ .pill .material-icons-outlined{font-size:17px}
+ .chev{color:#c7d2e3;font-size:28px;flex:none;opacity:0}
+ /* stat-bar */
+ #bar{background:#fff;border-radius:26px;padding:26px 36px;display:flex;align-items:center;gap:38px;
+   box-shadow:0 24px 60px rgba(20,40,80,.10);opacity:0;transform:translateY(24px)}
+ #bar .ttl{font-size:34px;font-weight:800;color:var(--ink)}
+ #bar .kpi{text-align:center}
+ #bar .kpi .k{font-size:18px;color:#5b6b7d;font-weight:500;margin-bottom:4px}
+ #bar .kpi .kv{font-size:42px;font-weight:800;color:var(--accent);letter-spacing:-.5px}
+ #bar .sep{width:1px;height:64px;background:rgba(20,40,80,.08)}
+ #bar .logo,.cardlogo{height:46px;width:auto;object-fit:contain;display:block}
+ .cardlogo{position:absolute;top:22px;right:26px;height:30px;opacity:.9}
+ .card{position:relative}
+</style></head><body><div id="wrap"></div>
+<script>
+function ease(t){return t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2}
+function clamp(x){return Math.max(0,Math.min(1,x))}
+function shade(hex,f){var h=String(hex||'').replace('#','');
+  if(h.length===3)h=h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+  var n=parseInt(h,16),r=(n>>16)&255,g=(n>>8)&255,b=n&255;
+  return 'rgba('+r+','+g+','+b+','+f+')';}
+var CFG=window.__CFG__||{};
+if(!window.__CFG__){try{CFG=JSON.parse(decodeURIComponent(escape(atob(location.hash.slice(1)))));}catch(e){}}
+var root=document.documentElement.style;
+root.setProperty('--accent', CFG.accent||'#2f6df0');
+root.setProperty('--ink', CFG.ink||'#1f2d4a');
+root.setProperty('--soft', shade(CFG.accent||'#2f6df0',.12));
+root.setProperty('--soft2', shade(CFG.accent||'#2f6df0',.28));
+var wrap=document.getElementById('wrap');
+function el(t,c,h){var e=document.createElement(t);if(c)e.className=c;if(h!=null)e.innerHTML=h;return e;}
+function isNum(s){return /^[-+]?\d/.test(String(s||''));}
+function buildCards(){
+ (CFG.cards||[]).forEach(function(c,idx){
+  if(idx>0){var ch=el('span','material-icons-outlined chev','chevron_right');ch.dataset.d=0.08*idx;wrap.appendChild(ch);}
+  var card=el('div','card');card.dataset.d=0.12*idx;
+  var top=el('div','top');
+  top.appendChild(el('div','ic','<span class="material-icons-outlined">'+(c.icon||'insights')+'</span>'));
+  var col=el('div');col.appendChild(el('div','lbl',c.label||''));
+  var num=el('div','num','0');num.dataset.to=c.value;col.appendChild(num);
+  top.appendChild(col);card.appendChild(top);
+  if(c.bars){var b=el('div','bars');b.dataset.bars=c.bars.join(',');
+    c.bars.forEach(function(_,i){b.appendChild(el('i',i===c.bars.length-1?'hi':''));});card.appendChild(b);}
+  if(c.pill){var p=el('div','pill','<span class="material-icons-outlined">south</span> '+c.pill);p.dataset.d=0.12*idx+0.25;card.appendChild(p);}
+  if(idx===0&&CFG.logo){var cl=el('img','cardlogo');cl.src=CFG.logo;card.appendChild(cl);}
+  wrap.appendChild(card);
+ });
+}
+function buildBar(){
+ var bar=el('div');bar.id='bar';bar.dataset.d=0;
+ if(CFG.logo){var lg=el('img','logo');lg.src=CFG.logo;bar.appendChild(lg);}
+ bar.appendChild(el('div','ttl',CFG.title||''));
+ (CFG.kpis||[]).forEach(function(k,i){
+   bar.appendChild(el('div','sep'));
+   var kp=el('div','kpi');kp.dataset.d=0.12+0.1*i;
+   kp.appendChild(el('div','k',k.label||''));
+   var kv=el('div','kv','0');kv.dataset.tv=k.value;kp.appendChild(kv);
+   bar.appendChild(kp);
+ });
+ wrap.appendChild(bar);
+}
+if(CFG.layout==='stat-bar')buildBar();else buildCards();
+function animNum(elm,target,t){
+  var s=String(target||'');if(!isNum(s)){elm.textContent=s;return;}
+  // Norsk tallformat: «1 250» (mellomrom-tusenskille) / «12,5» (komma-desimal)
+  // MÅ kunne telle opp. Strip gruppering + komma→punktum FØR parsing, husk om vi
+  // skal re-gruppere på utskrift så visningen forblir norsk. Uten dette matchet
+  // regexen bare «1» og «250» ble et statisk suffiks → count-up viste «0 250».
+  var grp=/\d[\s ]\d/.test(s), comdec=/\d,\d/.test(s);
+  var raw=s.replace(/[\s ]/g,'');
+  var m=raw.match(/^([-+]?)(\d+(?:[.,]\d+)?)(.*)$/);if(!m){elm.textContent=s;return;}
+  var sign=m[1],n=parseFloat(m[2].replace(',','.')),suf=m[3];
+  var dec=(m[2].split(/[.,]/)[1]||'').length;
+  var out=(n*t).toFixed(dec);
+  if(grp||comdec){var pp=out.split('.');pp[0]=pp[0].replace(/\B(?=(\d{3})+(?!\d))/g,' ');out=pp.join(',');}
+  elm.textContent=sign+out+suf;
+}
+window.setProgress=function(p){
+ document.querySelectorAll('[data-d]').forEach(function(e){
+   var d=parseFloat(e.dataset.d||0),t=ease(clamp((p-d)/0.45));e.style.opacity=t;
+   if(e.classList.contains('card')||e.id==='bar')e.style.transform='translateY('+(26*(1-t))+'px)';
+ });
+ document.querySelectorAll('.num[data-to]').forEach(function(e){animNum(e,e.dataset.to,ease(clamp((p-0.15)/0.6)));});
+ document.querySelectorAll('.kv[data-tv]').forEach(function(e){animNum(e,e.dataset.tv,ease(clamp((p-0.2)/0.6)));});
+ document.querySelectorAll('.bars[data-bars]').forEach(function(b){
+   var vals=b.dataset.bars.split(',').map(Number),t=ease(clamp((p-0.2)/0.6));
+   b.querySelectorAll('i').forEach(function(bar,i){bar.style.height=(vals[i]*t)+'%';});
+ });
+};
+window.setProgress(0);
+</script></body></html>`;

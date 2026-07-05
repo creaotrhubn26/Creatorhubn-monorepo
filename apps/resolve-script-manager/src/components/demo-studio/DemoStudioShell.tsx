@@ -21,6 +21,7 @@ import { ScriptBuilderView } from './ScriptBuilderView';
 import { GuidedRecorderView } from './GuidedRecorderView';
 import { ExportView } from './ExportView';
 import { MarketingPanel } from './MarketingPanel';
+import { InfographicStudioView } from './InfographicStudioView';
 import { ModuleGate } from '../ModuleGate';
 import { hasModule, onEntitlementsChanged } from '../../entitlements';
 import { LibraryPanel } from './LibraryPanel';
@@ -32,13 +33,15 @@ import { type FrameVariant } from './deviceFrames';
 import { isAiConnected } from '../../services/claudeProxyService';
 import { RoleRoomSignInDialog } from '../RoleRoomSignInDialog';
 import { useSceneRecorder } from './useSceneRecorder';
-import { generateDemoFlow, completeDemoFlow, fetchSiteContext, analyzeSiteContext, runResponsiveCheck, healTarget, runDirectorCritic, ocrDetectElements, verifyOutcomeVision, interpretCommand, translateForVoiceover, suggestVisualBeats, type CommandResult, type VisualBeat, type SiteUnderstanding } from './demoStudioAI';
-import { executeScript, playwrightStatus, playwrightCaptureShots, extractPdfText, systemOpen } from '../../api';
+import { generateDemoFlow, completeDemoFlow, fetchSiteContext, analyzeSiteContext, runResponsiveCheck, runDirectorCritic, ocrDetectElements, interpretCommand, translateForVoiceover, suggestVisualBeats, type CommandResult, type VisualBeat, type SiteUnderstanding } from './demoStudioAI';
+import { executeScript, playwrightStatus, playwrightCaptureShots, extractPdfText, systemOpen, checkUrlEmbeddable } from '../../api';
 import { open as openFileDialog } from '@tauri-apps/plugin-dialog';
 import { runAutonomousDemo } from './autonomousDemo';
 import { renderIntroCard, renderOutroCard, renderBrowserFrame } from './demoBranding';
 import type { DemoFinalizeOpts } from '../../api';
-import { isCaptureAvailable, startDemoCapture, onCaptureStep, onCaptureDone, scanDom, verifyAction, autoExecute, captureScreenshot, type CapturedStep } from '../../services/demoCaptureService';
+import { isCaptureAvailable, startDemoCapture, onCaptureStep, onCaptureDone, scanDom, captureScreenshot, sessionOpen, sessionExec, type CapturedStep } from '../../services/demoCaptureService';
+import { sessionAutoRunCurrent, sessionVerifyCurrent } from './demoSessionActions';
+import { listCloudProjects, pullCloudProject, deleteCloudProject, type CloudProjectMeta } from '../../services/cloudProjectsService';
 import { useDemoStudio } from './demoStudioStore';
 import {
   DEMO_TYPE_LABELS, DEMO_TYPE_FRIENDLY, DEMO_TYPE_TEMPLATES, SCENE_STATUS_LABELS, SCENE_STATUS_COLORS,
@@ -48,7 +51,7 @@ import {
   totalDuration, hasRecordedWork, defaultRenderOptions, captureStepsToScenes,
   sceneActionMatch, expectedActionText, validateScene, learnCtas, CTA_LABELS,
   recordLearnedTarget, learnedTargetCount, listLearnedTargetsForHost, removeLearnedTarget, syncLearnedTargetsFromBackend,
-  clearLearnedTargets, detectLearnedDrift, pickShot, type LearnedTarget,
+  clearLearnedTargets, detectLearnedDrift, pickShot, listStoredProjects, deleteStoredProject, type LearnedTarget,
   type DemoScene, type DemoDevice, type DemoType, type DemoActionType, type DemoRenderOptions, type ResponsiveReport, type ResponsiveFix, type DirectorCritique, type DomScanResult,
 } from './demoStudioModel';
 import { demoScenesToPicks, demoChapters } from './demoStudioStoryAdapter';
@@ -64,6 +67,7 @@ const NAV_ITEMS = [
   { id: 'create', label: 'Create Demo', ic: '▢' },
   { id: 'flow', label: 'Flow Builder', ic: '⤳' },
   { id: 'marketing', label: 'Marketing', ic: '◆' },
+  { id: 'infographics', label: 'Infographic Studio', ic: '◷' },
   { id: 'library', label: 'Bibliotek', ic: '▤' },
   { id: 'script', label: 'Script Builder', ic: '✎' },
   { id: 'recorder', label: 'Guided Recorder', ic: '●' },
@@ -104,6 +108,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
     loadExisting,
     undo, redo, canUndo, canRedo,
     selectedSceneIds, toggleSceneSelected, clearSceneSelection, removeSelectedScenes,
+    saveStatus, lastSavedAt,
   } = useDemoStudio();
 
   // Gjenopprett lagret prosjekt ved oppstart (ellers virket alt arbeid borte).
@@ -169,6 +174,9 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const [urlInput, setUrlInput] = useState('');
   const [directorBusy, setDirectorBusy] = useState(false);
   const [directorMsg, setDirectorMsg] = useState<string | null>(null);
+  // G11/G12: ærlig varsel når AI-grunnlaget er svakt — login-/consent-vegg i
+  // skannet eller nesten tom sidetekst (SPA). Vises ved siden av director-status.
+  const [ctxWarning, setCtxWarning] = useState<string | null>(null);
   // «Forstå siden først»: Claudes forståelse av produkt + målgruppe, vist som
   // en brief før noe lages — grunnlag for diskusjon/justering.
   const [understanding, setUnderstanding] = useState<SiteUnderstanding | null>(null);
@@ -295,13 +303,27 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   // Nullstill URL-avledet state når man bytter prosjekt, så forrige prosjekts
   // forståelse/QA/«generert»-flagg ikke lekker inn i en ny video.
   const prevProjectId = useRef<string | undefined>(project?.id);
+  const hostOf = (u: string) => { try { return new URL(normalizeUrl(u)).host; } catch { return ''; } };
+  const committedHost = useRef<string>(hostOf(project?.url ?? ''));
   useEffect(() => {
     if (project?.id === prevProjectId.current) return;
     prevProjectId.current = project?.id;
+    committedHost.current = hostOf(project?.url ?? '');
     setUnderstanding(null);
     setGenerated(false);
     setDemoVidResult(null); setDemoVidQa(null); setDemoVidScriptQa(null); setDemoVidScene(null); setDemoVidMsg(null);
   }, [project?.id]);
+  // G18: bytter man nettsted i URL-feltet skal forrige nettsteds scanShots/
+  // forståelse ikke bli hengende igjen (preview viste feil side til neste skann).
+  // Kalles ved COMMIT (blur), ikke per tastetrykk — halvskrevne hosts teller ikke.
+  const handleUrlCommitted = (u: string) => {
+    const h = hostOf(u);
+    if (!h || h === committedHost.current) return;
+    committedHost.current = h;
+    setUnderstanding(null);
+    setGenerated(false);
+    if (useDemoStudio.getState().project?.scanShots?.length) setProjectField('scanShots', undefined);
+  };
   const [respBusy, setRespBusy] = useState(false);
   const [respReport, setRespReport] = useState<ResponsiveReport | null>(null);
   const [critique, setCritique] = useState<DirectorCritique | null>(null);
@@ -418,6 +440,30 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const [visualBeats, setVisualBeats] = useState<VisualBeat[] | null>(null);
   const [visualBusy, setVisualBusy] = useState(false);
   const [showPreflight, setShowPreflight] = useState(false);
+  // G17: X-Frame-Options/CSP-blokkerte sider gir blank iframe-preview — vis
+  // ærlig forklaring + «hent skjermbilder»-utvei i stedet for stille blank boks.
+  const [embedBlocked, setEmbedBlocked] = useState<string | null>(null);
+  const [shotFetchBusy, setShotFetchBusy] = useState(false);
+  const embedCheckUrl = project?.url;
+  useEffect(() => {
+    if (!embedCheckUrl || !isCaptureAvailable()) { setEmbedBlocked(null); return; }
+    let cancelled = false;
+    checkUrlEmbeddable(embedCheckUrl).then((r) => { if (!cancelled) setEmbedBlocked(r.embeddable ? null : r.reason); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [embedCheckUrl]);
+  const fetchShotsNow = async () => {
+    if (!project || shotFetchBusy) return;
+    setShotFetchBusy(true);
+    try {
+      const r = await playwrightCaptureShots(project.url).catch(() => null);
+      if (r?.shots?.length) { setProjectField('scanShots', r.shots); return; }
+      const scan = await scanDom(project.url).catch(() => null);
+      if (scan?.shots?.length) setProjectField('scanShots', scan.shots);
+      else window.alert('Klarte ikke å hente skjermbilder — sett opp Playwright (Export → Sett opp Playwright) eller kjør «Analyser side».');
+    } finally {
+      setShotFetchBusy(false);
+    }
+  };
   const zoomBy = (delta: number) => setPreviewZoom((z) => Math.min(3, Math.max(0.5, Math.round((z + delta) * 100) / 100)));
   const [capturing, setCapturing] = useState(false);
   const [captureCount, setCaptureCount] = useState(0);
@@ -425,78 +471,68 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   const [autoBusy, setAutoBusy] = useState(false);
   const captureBuf = useRef<CapturedStep[]>([]);
 
-  // Auto-utfør gjeldende scenes handling (continueMode:'auto'): systemet finner
-  // target-elementet og utfører handlingen, fyller detectedSelector og avanserer.
+  const sleepMs = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+  // Auto-utfør gjeldende scenes handling i den VEDVARENDE demo-økten (G4):
+  // vinduet gjenbrukes på tvers av steg, så navigasjon/innlogging fra forrige
+  // steg består. Multi-strategi-locators prøves før css-fallback (G19).
   const autoRunCurrent = async () => {
-    if (!isCaptureAvailable()) { window.alert('Auto-utførelse krever Tauri-appen.'); return; }
-    const st = useDemoStudio.getState();
-    const sc = st.project?.scenes[st.recorderStepIndex];
-    if (!sc || !st.project) return;
-    if (!sc.targetSelector) { window.alert('Scenen mangler target-selector — bind elementet via AI Director eller capture først.'); return; }
+    // Delt logikk med GuidedRecorderView (G22) — se demoSessionActions.
     setAutoBusy(true);
     try {
-      const r = await autoExecute(st.project.url, sc.targetSelector, sc.actionType ?? 'click');
-      if (r?.ok && r.found) {
-        updateScene(sc.id, { detectedSelector: sc.targetSelector, status: 'done' });
-        if (st.recorderStepIndex < st.project.scenes.length - 1) nextStep();
-      } else if (r && !r.found) {
-        // Self-healing: skann siden på nytt + la AI finne riktig element → reparer + prøv igjen.
-        const scan = await scanDom(st.project.url).catch(() => null);
-        const els = scan?.elements ?? [];
-        const idx = els.length ? await healTarget({ targetLabel: sc.targetLabel, actionType: sc.actionType, elements: els }).catch(() => null) : null;
-        if (idx != null && els[idx]) {
-          const el = els[idx];
-          updateScene(sc.id, { targetSelector: el.selector, targetLocators: el.locators, targetLabel: el.label, hotspot: el.hotspot, startScrollPct: el.scrollPct != null ? Math.round(el.scrollPct * 100) : undefined });
-          const r2 = await autoExecute(st.project.url, el.selector, sc.actionType ?? 'click');
-          if (r2?.ok && r2.found) {
-            updateScene(sc.id, { detectedSelector: el.selector, status: 'done' });
-            if (st.recorderStepIndex < st.project.scenes.length - 1) nextStep();
-            window.alert('Selector var brutt — AI reparerte den automatisk og handlingen lyktes.');
-          } else {
-            updateScene(sc.id, { status: 'needs_review' });
-            window.alert('AI klarte ikke å reparere target. Scene merket «Needs Review».');
-          }
-        } else {
-          updateScene(sc.id, { status: 'needs_review' });
-          window.alert('Fant ikke elementet på siden. Scene merket «Needs Review».');
+      const r = await sessionAutoRunCurrent();
+      if (r.message) window.alert(r.message);
+    } finally {
+      setAutoBusy(false);
+    }
+  };
+
+  // Kjør ALLE gjenstående scener sekvensielt i ÉN økt — flerstegs-flyter
+  // (naviger → klikk → utfyll) fungerer fordi vinduet består mellom stegene.
+  // Stopper ved første scene som ikke kan utføres.
+  const autoRunAll = async () => {
+    if (!isCaptureAvailable()) { window.alert('Auto-kjøring krever Tauri-appen.'); return; }
+    const st0 = useDemoStudio.getState();
+    if (!st0.project) return;
+    setAutoBusy(true);
+    try {
+      if (!(await sessionOpen(st0.project.url))) { window.alert('Kunne ikke åpne demo-økt-vinduet.'); return; }
+      const total = st0.project.scenes.length;
+      for (let i = st0.recorderStepIndex; i < total; i++) {
+        const scene = useDemoStudio.getState().project?.scenes[i];
+        if (!scene) break;
+        goToStep(i);
+        const at = scene.actionType ?? 'click';
+        if (!scene.targetSelector && !(scene.targetLocators?.length)) {
+          // Ubundet scene: scroll kan kjøres uten target; annet hoppes over.
+          if (at === 'scroll') { await sessionExec('', 'scroll'); updateScene(scene.id, { status: 'done' }); }
+          await sleepMs(800);
+          continue;
         }
+        const r = await sessionExec(scene.targetSelector ?? '', at, undefined, scene.targetLocators);
+        if (r?.ok && r.found) {
+          updateScene(scene.id, { detectedSelector: r.selector || scene.targetSelector, status: 'done' });
+        } else {
+          updateScene(scene.id, { status: 'needs_review' });
+          window.alert(`Scene ${i + 1}${scene.targetLabel ? ` («${scene.targetLabel}»)` : ''}: ${r && !r.found ? 'fant ikke elementet på gjeldende side' : r?.error ? `handlingen feilet: ${r.error}` : 'ingen respons fra økt-vinduet'} — auto-kjøring stoppet. Logg inn / naviger i økt-vinduet og prøv igjen herfra.`);
+          break;
+        }
+        // La en eventuell navigasjon/animasjon lande før neste steg.
+        await sleepMs(1400);
       }
     } finally {
       setAutoBusy(false);
     }
   };
 
-  // Verifiser den gjeldende recorder-scenens handling: brukeren klikker
-  // elementet → detectedSelector fylles → ekte Expected↔Detected-validering.
+  // Verifiser gjeldende recorder-scene i økten. Delt logikk med
+  // GuidedRecorderView (G22) — se demoSessionActions (utfører handlingen for
+  // ekte + vision av tilstanden etterpå + persisterer verifiedOutcome, G5/G6).
   const verifyCurrentAction = async () => {
-    if (!isCaptureAvailable()) { window.alert('Verifisering krever Tauri-appen.'); return; }
-    const st = useDemoStudio.getState();
-    const sc = st.project?.scenes[st.recorderStepIndex];
-    if (!sc || !st.project) return;
     setVerifyBusy(true);
     try {
-      const v = await verifyAction(st.project.url, sc.targetLabel);
-      if (v && !v.cancelled && v.selector) {
-        // Vision-runtime-verifisering: ta skjermbilde ETTER handlingen og sjekk
-        // at forventet utfall faktisk skjedde — ikke bare selector-match.
-        let visionOk: boolean | null = null;
-        const expected = sc.validationRule || sc.targetLabel || sc.requiredAction;
-        if (expected && isCaptureAvailable()) {
-          const shot = await captureScreenshot(st.project.url).catch(() => null);
-          if (shot) { const o = await verifyOutcomeVision({ screenshot: shot, expected }).catch(() => null); if (o) visionOk = o.success; }
-        }
-        const match = sceneActionMatch({ ...sc, detectedSelector: v.selector });
-        const status = visionOk === false ? 'needs_review' : (match === 'match' || visionOk === true) ? 'done' : 'needs_review';
-        updateScene(sc.id, { detectedSelector: v.selector, status, bindingConfidence: 'high' });
-        // Lær av verifiseringen (A): det brukeren faktisk klikket er fasiten.
-        // Avvik fra AI-ens gjetning → lær riktig selector + avvis den gamle.
-        if (sc.targetLabel) {
-          recordLearnedTarget(st.project.url, sc.targetLabel, {
-            selector: v.selector, hotspot: sc.hotspot, source: 'manual',
-            rejectSelector: sc.targetSelector && sc.targetSelector !== v.selector ? sc.targetSelector : undefined,
-          });
-        }
-      }
+      const r = await sessionVerifyCurrent();
+      if (r.message) window.alert(r.message);
     } finally {
       setVerifyBusy(false);
     }
@@ -655,6 +691,18 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
     const doc = project!.productDoc?.trim();
     const siteContext = doc ? `PRODUKT-DOKUMENT (one-pager — autoritativ kilde):\n${doc}\n\n--- NETTSIDE ---\n${pageText}` : pageText;
     applyScannedBranding(scan);
+    // G11/G12: si det ærlig når grunnlaget er svakt, i stedet for at AI-en
+    // stille dikter manus fra URL-en alene / beskriver cookie-banneret.
+    const wall = scan?.wall;
+    setCtxWarning(
+      wall?.kind === 'login'
+        ? 'Siden viser en innloggingsvegg — skannet ser login-siden, ikke produktet. Logg inn i demo-økt-vinduet («Kjør automatisk» åpner det) eller bruk en offentlig URL.'
+        : wall?.kind === 'consent' && !wall.dismissed
+          ? 'Siden har et samtykke-banner som ikke lot seg lukke automatisk — skann/manus kan handle om banneret i stedet for innholdet.'
+          : !doc && (pageText || '').replace(/\s+/g, ' ').trim().length < 120
+            ? 'Tynn side-kontekst: siden ga nesten ingen lesbar tekst (typisk SPA eller innlogget innhold). Manuset lages på tynt grunnlag — vurder å laste opp en one-pager (Product Brain).'
+            : null,
+    );
     const brandName = scan?.branding?.brandName;
     directorCtx.current = { url: project!.url, elements, siteContext, brandName };
     return { elements, siteContext, brandName };
@@ -831,6 +879,9 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   if (nav === 'recorder' && !storyMode) {
     return <GuidedRecorderView onNav={(id) => setNav(id as NavId)} />;
   }
+  if (nav === 'infographics' && !storyMode) {
+    return <InfographicStudioView onNav={(id) => setNav(id as NavId)} />;
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, fontFamily: C.font, background: C.bg, color: C.ink, fontSize: 13 }}>
@@ -839,18 +890,27 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
         <div style={iconBtn} onClick={onClose} title="Tilbake til hjem">☰</div>
         <div>
           <input style={{ ...titleField }} value={project.name} onChange={(e) => setProjectField('name', e.target.value)} />
-          <div style={{ fontSize: 11, color: C.inkFaint, display: 'flex', alignItems: 'center', gap: 5, marginTop: 1 }}>
-            <span style={{ width: 7, height: 7, borderRadius: '50%', background: C.green }} /> Draft · Autosaved just now
+          <div style={{ fontSize: 11, color: saveStatus === 'error' ? '#dc2626' : C.inkFaint, display: 'flex', alignItems: 'center', gap: 5, marginTop: 1 }}>
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: saveStatus === 'saved' ? C.green : saveStatus === 'saved_partial' ? '#f59e0b' : '#dc2626' }} />
+            {saveStatus === 'saved' && (lastSavedAt
+              ? `Draft · Autolagret ${new Date(lastSavedAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}`
+              : 'Draft')}
+            {saveStatus === 'saved_partial' && 'Draft · Lagret uten skjermbilder (lite lagringsplass)'}
+            {saveStatus === 'error' && 'Draft · IKKE lagret — lagringsplass full'}
           </div>
         </div>
         <div style={{ flex: 1, maxWidth: 420, display: 'flex', alignItems: 'center', gap: 8, background: C.cream, border: `1px solid ${C.line}`, borderRadius: 9, padding: '7px 12px' }}>
           <span style={{ color: C.inkFaint }}>🌐</span>
           <input style={{ flex: 1, border: 0, background: 'transparent', outline: 'none', fontSize: 13, color: C.ink }}
             value={project.url} onChange={(e) => setProjectField('url', e.target.value)}
-            onBlur={(e) => setProjectField('url', normalizeUrl(e.target.value))} placeholder="https://example.com" />
+            onBlur={(e) => { const nu = normalizeUrl(e.target.value); setProjectField('url', nu); handleUrlCommitted(nu); }} placeholder="https://example.com" />
         </div>
         <div style={{ flex: 1 }} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: C.inkSoft }}><span style={{ color: C.green }}>✓</span> Lagret</div>
+        {saveStatus === 'error' ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#dc2626', fontWeight: 600 }} title="localStorage er full — siste endringer er ikke persistert. Eksporter eller slett gamle demoer.">⚠ Ikke lagret</div>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: C.inkSoft }}><span style={{ color: saveStatus === 'saved_partial' ? '#f59e0b' : C.green }}>✓</span> {saveStatus === 'saved_partial' ? 'Delvis lagret' : 'Lagret'}</div>
+        )}
         <button style={recording ? { ...btn, background: '#ef4444', color: '#fff', borderColor: '#ef4444' } : btn}
           onClick={async () => {
             if (recording) return;
@@ -921,7 +981,12 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                 </div>
               ) : null;
               const replyLine = cmdReply ? <div style={{ fontSize: 11.5, color: cmdReply.startsWith('Feil') ? '#c4453b' : C.inkSoft, marginBottom: 8 }}>{cmdReply}</div> : null;
-              const directorLine = directorMsg ? <div style={{ fontSize: 11, color: directorMsg.startsWith('Feil') ? '#c4453b' : C.inkSoft, marginTop: 8 }}>{directorMsg}</div> : null;
+              const directorLine = (directorMsg || ctxWarning) ? (
+                <>
+                  {directorMsg && <div style={{ fontSize: 11, color: directorMsg.startsWith('Feil') ? '#c4453b' : C.inkSoft, marginTop: 8 }}>{directorMsg}</div>}
+                  {ctxWarning && <div style={{ fontSize: 11, color: '#8a6516', background: '#fff8ec', border: '1px solid #f0d9a8', borderRadius: 7, padding: '6px 9px', marginTop: 6 }}>⚠ {ctxWarning}</div>}
+                </>
+              ) : null;
               // Delt progress/resultat for autonom ferdig demo (brukt i Beskriv + Forfin).
               const demoVidShot = demoVidScene ? pickShot(project.scanShots, (scenes[demoVidScene.index]?.startScrollPct ?? 0) / 100) : null;
               const demoVidBlock = (
@@ -1261,7 +1326,6 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                   </div>
                 ))}
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, fontWeight: 700, marginTop: 18 }}>Lagrede maler <span style={{ color: C.inkFaint }}>›</span></div>
 
               {/* ── Visning (render-toggles) ── */}
               <div style={{ fontSize: 13, fontWeight: 700, marginTop: 20, marginBottom: 4 }}>Visning</div>
@@ -1315,6 +1379,17 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                     style={{ width: 26, height: 26, display: 'grid', placeItems: 'center', borderRadius: 6, cursor: 'pointer', fontSize: 15, color: previewZoom >= 3 ? C.inkFaint : C.ink }}>+</div>
                 </div>
               </div>
+
+              {/* G17: frame-blokkert side uten skjermbilder → forklar hvorfor
+                  rammen under er blank, med utvei — i stedet for stille feil. */}
+              {embedBlocked && !(project.scanShots && project.scanShots.length) && (
+                <div style={{ margin: '10px 18px 0', padding: '10px 14px', borderRadius: 10, background: '#fff8ec', border: '1px solid #f0d9a8', fontSize: 12.5, color: '#8a6516', display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span>⚠</span>
+                  <span style={{ flex: 1 }}>Denne siden blokkerer innebygd forhåndsvisning ({embedBlocked}) — rammen under er derfor blank. Hent ekte skjermbilder i stedet.</span>
+                  <button style={{ ...btn, whiteSpace: 'nowrap', opacity: shotFetchBusy ? 0.6 : 1 }} disabled={shotFetchBusy}
+                    onClick={() => void fetchShotsNow()}>{shotFetchBusy ? 'Henter…' : 'Hent forhåndsvisning'}</button>
+                </div>
+              )}
 
               {/* Scene: enheten på et "bord" — varm spotlight + overflate + kontaktskygge,
                   så det føles som å sitte ved et bord med enheten foran seg. */}
@@ -1464,6 +1539,11 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                     title="La systemet utføre handlingen automatisk på target-elementet (continueMode: auto)">
                     ▶ {autoBusy ? 'Kjører…' : 'Kjør automatisk'}
                   </button>
+                  <button style={{ ...outlineBtn, width: '100%', marginBottom: 8, opacity: autoBusy ? 0.6 : 1 }} disabled={autoBusy}
+                    onClick={() => void autoRunAll()}
+                    title="Kjør alle gjenstående scener sekvensielt i ÉN vedvarende økt — navigasjon og innlogging består mellom stegene">
+                    ⏩ {autoBusy ? 'Kjører…' : 'Kjør alle automatisk'}
+                  </button>
                   <button style={{ ...outlineBtn, width: '100%', marginBottom: 8, opacity: verifyBusy ? 0.6 : 1 }} disabled={verifyBusy}
                     onClick={() => void verifyCurrentAction()}
                     title="Åpne siden og klikk elementet for å bekrefte at riktig handling utføres">
@@ -1552,7 +1632,12 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                   )}
 
                   <div style={fldLabel}>Progresjon</div>
-                  <div style={{ ...sel, background: C.cream }}>continueMode: manual — venter på deg</div>
+                  <select style={sel} value={project.continueMode ?? 'manual'}
+                    onChange={(e) => setProjectField('continueMode', e.target.value as 'manual' | 'auto')}
+                    title="Gjelder hele demoen: manual venter på deg per steg; auto utfører handlingene automatisk">
+                    <option value="manual">Manuell — venter på deg per steg</option>
+                    <option value="auto">Auto — utfører handlingene selv</option>
+                  </select>
 
                   <button style={{ ...outlineBtn, width: '100%', marginTop: 14, color: '#c4453b', borderColor: '#e6c5c2' }}
                     disabled={scenes.length <= 1} onClick={() => removeScene(selected.id)}>Slett scene</button>
@@ -1566,11 +1651,11 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
       {/* ── Bottom: stat cards ── */}
       {!storyMode && nav !== 'export' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 1, background: C.line, borderTop: `1px solid ${C.line}`, flexShrink: 0 }}>
-          <Stat h="⚇ Devices" v={[...new Set(scenes.map((s) => DEVICE_LABEL[s.device]))].join(' · ')} link="Endre →" />
+          <Stat h="⚇ Devices" v={[...new Set(scenes.map((s) => DEVICE_LABEL[s.device]))].join(' · ')} link="Endre →" onLink={() => setNav('script')} />
           <Stat h="▦ Scener" v={`${scenes.length} scener`} s={`${doneCount} ferdig`} />
           <Stat h="⏱ Varighet" v={`${fmt(totalDuration(scenes))} total`} s="Anbefalt 60–90 s" />
           <Stat h="◷ Opptak" v={recording ? `Steg ${recorderStepIndex + 1} av ${scenes.length}` : 'Ikke startet'} s={recording ? 'Venter på deg' : 'Trykk Record'} />
-          <Stat h="⤓ Format" v={`${project.format} · 1080p`} link="Eksport →" />
+          <Stat h="⤓ Format" v={`${project.format} · 1080p`} link="Eksport →" onLink={() => setNav('export')} />
           <div style={{ background: C.panel, padding: '13px 15px' }}>
             <div style={{ width: 42, height: 42, borderRadius: '50%', border: `3px solid ${C.green}`, display: 'grid', placeItems: 'center', fontSize: 13, fontWeight: 700, float: 'right' }}>{Math.round((doneCount / Math.max(scenes.length, 1)) * 100)}</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: C.inkSoft, marginBottom: 7 }}>✓ Demo-score</div>
@@ -1931,15 +2016,36 @@ function SceneThumb({ scene, url, height = 80 }: { scene: DemoScene; url: string
   );
 }
 
-/** Create Demo — start/oversikt: gjeldende demo + skjema for å starte en ny. */
+/** Create Demo — start/oversikt: gjeldende demo + tidligere demoer + skjema for ny. */
 function CreateDemoView({ onCreated }: { onCreated?: () => void }) {
-  const { project, createProject } = useDemoStudio();
+  const { project, createProject, openProject, importProject } = useDemoStudio();
   const [urlInput, setUrlInput] = useState('');
   const [demoType, setDemoType] = useState<DemoType>('product_demo');
+  // G15: alle lagrede prosjekter er nå tilgjengelige — før fantes bare
+  // `last`-pekeren, så «Lag ny video» gjorde forrige demo utilgjengelig.
+  const [, bumpList] = useState(0);
+  const stored = listStoredProjects().filter((m) => m.id !== project?.id);
+  // G16: sky-prosjekter — prosjekter fra andre maskiner (eller slettet lokalt)
+  // kan hentes ned. Lokale poster viser ☁ når de også finnes i skyen.
+  const [cloud, setCloud] = useState<CloudProjectMeta[]>([]);
+  const [cloudBusy, setCloudBusy] = useState<string | null>(null);
+  useEffect(() => { void listCloudProjects().then(setCloud).catch(() => {}); }, []);
+  const localIds = new Set(stored.map((m) => m.id));
+  if (project) localIds.add(project.id);
+  const cloudIds = new Set(cloud.map((m) => m.id));
+  const cloudOnly = cloud.filter((m) => !localIds.has(m.id));
+  const openFromCloud = async (id: string) => {
+    setCloudBusy(id);
+    try {
+      const p = await pullCloudProject(id);
+      if (p) { importProject(p); onCreated?.(); }
+      else window.alert('Klarte ikke å hente prosjektet fra skyen.');
+    } finally { setCloudBusy(null); }
+  };
   const normalizedUrl = normalizeUrl(urlInput);
   const valid = /^https?:\/\/\S+\.\S+/i.test(normalizedUrl);
   const start = () => {
-    if (project && !window.confirm('Erstatte gjeldende demo med en ny? (Du kan eksportere først.)')) return;
+    if (project && !window.confirm('Starte en ny demo? Den nåværende blir liggende under «Tidligere demoer».')) return;
     createProject(normalizedUrl, demoType);
     onCreated?.(); // gå rett til Flow Builder for å redigere den nye demoen
   };
@@ -1951,6 +2057,42 @@ function CreateDemoView({ onCreated }: { onCreated?: () => void }) {
             <div style={{ fontSize: 11, color: C.inkFaint, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Nåværende demo</div>
             <div style={{ fontSize: 18, fontWeight: 700 }}>{project.name}</div>
             <div style={{ fontSize: 12.5, color: C.inkSoft, marginTop: 4 }}>{project.url} · {DEMO_TYPE_LABELS[project.demoType]} · {project.scenes.length} scener · {fmt(totalDuration(project.scenes))}</div>
+          </div>
+        )}
+        {(stored.length > 0 || cloudOnly.length > 0) && (
+          <div style={{ border: `1px solid ${C.line}`, borderRadius: 12, padding: 18, background: '#fff', marginBottom: 26 }}>
+            <div style={{ fontSize: 11, color: C.inkFaint, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>Tidligere demoer</div>
+            {stored.map((m) => (
+              <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderTop: `1px solid ${C.line}` }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {m.name}{cloudIds.has(m.id) && <span title="Synket til skyen" style={{ marginLeft: 6, fontSize: 11, color: C.inkFaint }}>☁</span>}
+                  </div>
+                  <div style={{ fontSize: 11.5, color: C.inkSoft, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {m.url}{m.sceneCount ? ` · ${m.sceneCount} scener` : ''}{m.updatedAt ? ` · ${new Date(m.updatedAt).toLocaleDateString('nb-NO')}` : ''}
+                  </div>
+                </div>
+                <button style={{ ...outlineBtn, padding: '6px 12px', fontSize: 12 }} onClick={() => { if (openProject(m.id)) onCreated?.(); }}>Åpne</button>
+                <button style={{ ...outlineBtn, padding: '6px 10px', fontSize: 12, color: '#c4453b', borderColor: '#e6c5c2' }} title="Slett denne demoen permanent (lokalt)"
+                  onClick={() => { if (window.confirm(`Slette «${m.name}» permanent?`)) { deleteStoredProject(m.id); bumpList((n) => n + 1); } }}>✕</button>
+              </div>
+            ))}
+            {cloudOnly.map((m) => (
+              <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderTop: `1px solid ${C.line}` }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {m.name}<span title="Finnes kun i skyen — hentes ned ved åpning" style={{ marginLeft: 6, fontSize: 11, color: C.accent }}>☁ sky</span>
+                  </div>
+                  <div style={{ fontSize: 11.5, color: C.inkSoft, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {m.url}{m.sceneCount ? ` · ${m.sceneCount} scener` : ''}{m.updatedAt ? ` · ${new Date(m.updatedAt).toLocaleDateString('nb-NO')}` : ''}
+                  </div>
+                </div>
+                <button style={{ ...outlineBtn, padding: '6px 12px', fontSize: 12, opacity: cloudBusy === m.id ? 0.6 : 1 }} disabled={!!cloudBusy}
+                  onClick={() => void openFromCloud(m.id)}>{cloudBusy === m.id ? 'Henter…' : 'Åpne'}</button>
+                <button style={{ ...outlineBtn, padding: '6px 10px', fontSize: 12, color: '#c4453b', borderColor: '#e6c5c2' }} title="Slett sky-kopien"
+                  onClick={() => { if (window.confirm(`Slette sky-kopien av «${m.name}»?`)) { void deleteCloudProject(m.id).then(() => listCloudProjects().then(setCloud)); } }}>✕</button>
+              </div>
+            ))}
           </div>
         )}
         <h2 style={{ fontSize: 22, fontWeight: 700, margin: '0 0 4px' }}>{project ? 'Start en ny video' : 'Hva vil du lage?'}</h2>
@@ -2099,13 +2241,13 @@ function ResponsiveCheckModal({ report, onClose, onApply }: {
   );
 }
 
-function Stat({ h, v, s, link }: { h: string; v: string; s?: string; link?: string }) {
+function Stat({ h, v, s, link, onLink }: { h: string; v: string; s?: string; link?: string; onLink?: () => void }) {
   return (
     <div style={{ background: C.panel, padding: '13px 15px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: C.inkSoft, marginBottom: 7 }}>{h}</div>
       <div style={{ fontSize: 13.5, fontWeight: 700 }}>{v}</div>
       {s && <div style={{ fontSize: 11, color: C.inkFaint, marginTop: 3 }}>{s}</div>}
-      {link && <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 8 }}>{link}</div>}
+      {link && <div onClick={onLink} style={{ fontSize: 11, color: C.inkSoft, marginTop: 8, cursor: onLink ? 'pointer' : 'default' }}>{link}</div>}
     </div>
   );
 }

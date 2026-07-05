@@ -826,6 +826,21 @@ pub fn run() {
         .manage(capture_sources::ScreenRecState::default())
         .manage(Arc::new(PhotoshopBridgeState::default()))
         .setup(|app| {
+            // Tilpass hovedvinduet til skjermen det åpner på + sentrer det. Den faste
+            // størrelsen (1560×980) er HØYERE enn det brukbare området på en 13/14"
+            // innebygd skjerm (≈1512×982 logisk minus menylinje) → bunnen (tidslinje/
+            // transport) havnet UTENFOR skjermen. Klamp til ~94 % bredde / ~90 % høyde
+            // av monitoren (aldri større enn standard, aldri under et brukbart minimum).
+            if let Some(win) = app.get_webview_window("main") {
+                if let Ok(Some(mon)) = win.current_monitor() {
+                    let scale = mon.scale_factor();
+                    let msize = mon.size().to_logical::<f64>(scale);
+                    let w = 1560.0_f64.min((msize.width * 0.94).max(1000.0));
+                    let h = 980.0_f64.min((msize.height * 0.90).max(680.0));
+                    let _ = win.set_size(tauri::LogicalSize::new(w, h));
+                    let _ = win.center();
+                }
+            }
             // (#186/#187) Build + attach native menubar
             let handle = app.handle().clone();
             match build_menu(&handle) {
@@ -920,20 +935,27 @@ pub fn run() {
             playwright_render::setup_playwright,
             playwright_render::run_playwright_demo,
             playwright_render::playwright_capture_shots,
+            playwright_render::render_infographic,
+            playwright_render::export_infographic,
             demo_recording::save_demo_recording,
             demo_recording::check_url_embeddable,
             demo_capture::start_demo_capture,
             demo_capture::demo_capture_step,
             demo_capture::demo_capture_done,
             demo_capture::demo_fetch_site_context,
+            demo_capture::fetch_live_data,
             demo_capture::demo_scan_dom,
             demo_capture::demo_scan_result,
-            demo_capture::demo_verify_action,
-            demo_capture::demo_verify_result,
-            demo_capture::demo_auto_execute,
-            demo_capture::demo_auto_result,
+            demo_capture::demo_scan_progress,
+            demo_capture::demo_scan_cancel,
             demo_capture::demo_screenshot,
             demo_capture::demo_shot_result,
+            demo_capture::demo_session_open,
+            demo_capture::demo_session_exec,
+            demo_capture::demo_session_verify,
+            demo_capture::demo_session_shot,
+            demo_capture::demo_session_close,
+            demo_capture::demo_session_report,
             demo_export::demo_write_text,
             demo_export::demo_write_binary,
             demo_export::demo_print_html,

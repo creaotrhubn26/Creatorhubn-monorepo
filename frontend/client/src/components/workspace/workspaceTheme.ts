@@ -68,6 +68,21 @@ export type WorkspaceTab =
   | 'team'
   | 'chat';
 
+/**
+ * Workspace-kategori — hvilken «flate-familie» en profesjon får i workspacet.
+ * Kategorien er ADMIN-STYRT: profession_types.workspace_category i DB (settes
+ * i ProfessionTypeManager) vinner via overrides-parametret; PROFESSION_CATEGORY
+ * under er kode-fallback for offline/første render. Nav-items tagges med
+ * `categories`. Ny profesjon = admin-klikk; ny kategori = utvid typen + tagg items.
+ *   'visual'  = foto/video (Shotlist, Produksjonskart, Photo/Video Room)
+ *   'music'   = musikk (Låter, Sesjoner, Sound Room)
+ *   'service' = booking-/tjenestebaserte (frisør, hundefrisør, yoga …) — faner kommer
+ *   'vendor'  = leverandører (Oppdrag, Lager, Ordreplan, Inspirasjon)
+ * Typen eies av frontend/shared/profession-types.ts (delt med backend).
+ */
+export type { WorkspaceCategory } from '@shared/profession-types';
+import { type WorkspaceCategory } from '@shared/profession-types';
+
 export interface WsNavItem {
   key: WorkspaceTab | string;
   label: string;
@@ -77,71 +92,134 @@ export interface WsNavItem {
   online?: boolean;
   route?: boolean; // true = egen tab i workspacet
   /**
-   * Profesjons-synlighet (deklarativt). Mangler feltet → universell (alle).
-   *   'visual' = foto/video-flater (Shotlist, Produksjonskart, Photo/Video Room)
-   *   'music'  = musikk-flater (Låter, Sesjoner, Sound Room)
-   * Se navForProfession().
+   * Kategori-synlighet (deklarativt). Mangler feltet → universell (alle).
+   * Se navForProfession() / workspaceCategoryFor().
    */
-  professions?: Array<'visual' | 'music'>;
+  categories?: WorkspaceCategory[];
+  /**
+   * Kategori-spesifikk label-overstyring for universelle items — samme fane,
+   * riktig språk for flaten (vendor: Utstyr→«Lager», Moodboard→«Inspirasjon»).
+   * navForProfession() resolver til `label`.
+   */
+  labelByCategory?: Partial<Record<WorkspaceCategory, string>>;
+  /**
+   * Engelsk label for utenlandske partner-vendors (wsLocale='en'). EN skjer i
+   * praksis kun for vendor-kategorien, så én engelsk label per item holder.
+   * Resolves av localizeNav().
+   */
+  labelEn?: string;
   /** Kun synlig for mentorer/instruktører (uavhengig av profesjon). */
   mentorOnly?: boolean;
 }
 
 // Venstre-nav — eksakt rekkefølge fra Daniels design. Items er tagget med
-// profesjon; navForProfession() filtrerer. Musikk- og visuell-varianter er
-// interleavet så rekkefølgen blir riktig for begge etter filtrering.
+// workspace-kategori; navForProfession() filtrerer. Musikk- og visuell-varianter
+// er interleavet så rekkefølgen blir riktig for begge etter filtrering.
 export const WS_NAV: WsNavItem[] = [
-  { key: 'oversikt', label: 'Oversikt', icon: 'Dashboard', group: 'hoved', route: true },
-  { key: 'prosjektplan', label: 'Prosjektplan', icon: 'AccountTree', group: 'hoved', route: true },
-  { key: 'produksjonskart', label: 'Produksjonskart', icon: 'Map', group: 'hoved', route: true, professions: ['visual'] },
-  { key: 'sesjoner', label: 'Sesjoner', icon: 'Album', group: 'hoved', route: true, professions: ['music'] },
-  { key: 'shotlist', label: 'Shotlist', icon: 'PhotoCameraBack', group: 'hoved', route: true, professions: ['visual'] },
-  { key: 'laater', label: 'Låter', icon: 'LibraryMusic', group: 'hoved', route: true, professions: ['music'] },
-  { key: 'moodboard', label: 'Moodboard', icon: 'GridView', group: 'hoved', route: true },
-  { key: 'media', label: 'Media', icon: 'PermMedia', group: 'hoved', route: true },
-  { key: 'utstyr', label: 'Utstyr', icon: 'Inventory2', group: 'hoved', route: true },
-  { key: 'leveranser', label: 'Leveranser', icon: 'LocalShipping', group: 'hoved', route: true },
-  { key: 'oppgaver', label: 'Oppgaver', icon: 'CheckCircleOutline', group: 'hoved', badge: 12, route: true },
-  { key: 'team', label: 'Team', icon: 'Group', group: 'hoved', route: true },
-  { key: 'chat', label: 'Chat', icon: 'ChatBubbleOutline', group: 'hoved', route: true },
+  { key: 'oversikt', label: 'Oversikt', labelEn: 'Overview', icon: 'Dashboard', group: 'hoved', route: true },
+  { key: 'prosjektplan', label: 'Prosjektplan', labelEn: 'Order plan', icon: 'AccountTree', group: 'hoved', route: true, labelByCategory: { vendor: 'Ordreplan' } },
+  { key: 'produksjonskart', label: 'Produksjonskart', icon: 'Map', group: 'hoved', route: true, categories: ['visual'] },
+  { key: 'sesjoner', label: 'Sesjoner', icon: 'Album', group: 'hoved', route: true, categories: ['music'] },
+  { key: 'oppdrag', label: 'Oppdrag', labelEn: 'Jobs', icon: 'WorkOutline', group: 'hoved', route: true, categories: ['vendor'] },
+  { key: 'bookinger', label: 'Bookinger', icon: 'EventAvailable', group: 'hoved', route: true, categories: ['service'] },
+  { key: 'shotlist', label: 'Shotlist', icon: 'PhotoCameraBack', group: 'hoved', route: true, categories: ['visual'] },
+  { key: 'laater', label: 'Låter', icon: 'LibraryMusic', group: 'hoved', route: true, categories: ['music'] },
+  { key: 'moodboard', label: 'Moodboard', labelEn: 'Inspiration', icon: 'GridView', group: 'hoved', route: true, labelByCategory: { vendor: 'Inspirasjon', service: 'Inspirasjon' } },
+  { key: 'media', label: 'Media', labelEn: 'Media', icon: 'PermMedia', group: 'hoved', route: true },
+  { key: 'utstyr', label: 'Utstyr', labelEn: 'Inventory', icon: 'Inventory2', group: 'hoved', route: true, labelByCategory: { vendor: 'Lager' } },
+  { key: 'leveranser', label: 'Leveranser', labelEn: 'Deliverables', icon: 'LocalShipping', group: 'hoved', route: true },
+  { key: 'oppgaver', label: 'Oppgaver', labelEn: 'Tasks', icon: 'CheckCircleOutline', group: 'hoved', badge: 12, route: true },
+  { key: 'team', label: 'Team', labelEn: 'Team', icon: 'Group', group: 'hoved', route: true },
+  { key: 'chat', label: 'Chat', labelEn: 'Chat', icon: 'ChatBubbleOutline', group: 'hoved', route: true },
   // Academy-administrasjon — kun mentorer/instruktører (uavhengig av profesjon)
   { key: 'academy', label: 'Academy', icon: 'School', group: 'hoved', route: true, mentorOnly: true },
   // Community — for alle; mentorer får admin/styring inne i hub-en (MentorDashboard)
-  { key: 'community', label: 'Community', icon: 'Forum', group: 'hoved', route: true },
+  { key: 'community', label: 'Community', labelEn: 'Community', icon: 'Forum', group: 'hoved', route: true },
   // Smart Rom — profesjons-spesifikke
-  { key: 'photo-room', label: 'Photo Room', icon: 'PhotoCamera', group: 'rom', online: true, route: true, professions: ['visual'] },
-  { key: 'video-room', label: 'Video Room', icon: 'Videocam', group: 'rom', online: true, route: true, professions: ['visual'] },
-  { key: 'sound-room', label: 'Sound Room', icon: 'GraphicEq', group: 'rom', online: true, route: true, professions: ['music'] },
+  { key: 'photo-room', label: 'Photo Room', icon: 'PhotoCamera', group: 'rom', online: true, route: true, categories: ['visual'] },
+  { key: 'video-room', label: 'Video Room', icon: 'Videocam', group: 'rom', online: true, route: true, categories: ['visual'] },
+  { key: 'sound-room', label: 'Sound Room', icon: 'GraphicEq', group: 'rom', online: true, route: true, categories: ['music'] },
   // Edit Room skjult inntil videre — planlegges senere (redigerer-/leveranse-cockpit).
   // { key: 'edit-room', label: 'Edit Room', icon: 'Movie', group: 'rom', online: true },
   // Kundeportal
-  { key: 'foresporsler', label: 'Forespørsler', icon: 'MoveToInbox', group: 'klient', route: true },
-  { key: 'kundevisning', label: 'Kundevisning', icon: 'Visibility', group: 'klient' },
-  { key: 'avtaler', label: 'Avtaler', icon: 'EventNote', group: 'klient' },
+  { key: 'foresporsler', label: 'Forespørsler', labelEn: 'Inquiries', icon: 'MoveToInbox', group: 'klient', route: true },
+  { key: 'kundevisning', label: 'Kundevisning', labelEn: 'Client view', icon: 'Visibility', group: 'klient' },
+  { key: 'avtaler', label: 'Avtaler', labelEn: 'Agreements', icon: 'EventNote', group: 'klient' },
 ];
 
-// Profesjoner som regnes som musikk (Sound Room / Låter / Sesjoner i stedet for
-// Shotlist / Produksjonskart / Photo+Video Room). Alt annet = visuell (foto/video).
-const MUSIC_PROFESSIONS = ['music_producer', 'music-producer', 'musician', 'music'];
+/**
+ * Normaliser profesjonsverdi til sammenlignings-nøkkel: lowercase uten
+ * skilletegn, så én map-entry dekker 'music_producer' / 'music-producer' /
+ * 'musicproducer'. Eksportert så useWorkspaceCategory kan bygge overrides-map
+ * med samme nøkler.
+ */
+export const wsProfessionKey = (s?: string | null) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+const normProf = wsProfessionKey;
+
+// Kode-fallback profesjon → workspace-kategori (offline/første render — den
+// admin-styrte kilden er profession_types.workspace_category via overrides).
+// Nøkler er normalisert (wsProfessionKey). Ukjente profesjoner → 'visual'.
+const PROFESSION_CATEGORY: Record<string, WorkspaceCategory> = {
+  photographer: 'visual',
+  videographer: 'visual',
+  enterprise: 'visual',
+  musicproducer: 'music',
+  musician: 'music',
+  music: 'music',
+  // Vendor er ordre-/lager-/leveranse-orientert (jf. UniversalDashboard: Produkter/
+  // Bestillinger/Lager) — universelle faner + Oppdrag, ingen foto/video/musikk-rom.
+  vendor: 'vendor',
+  petgroomer: 'service',
+};
+
+export function workspaceCategoryFor(
+  profession?: string | null,
+  overrides?: Record<string, WorkspaceCategory>,
+): WorkspaceCategory {
+  const key = normProf(profession);
+  return overrides?.[key] ?? PROFESSION_CATEGORY[key] ?? 'visual';
+}
 
 export function isMusicProfession(profession?: string | null): boolean {
-  return MUSIC_PROFESSIONS.includes(String(profession || '').toLowerCase());
+  return workspaceCategoryFor(profession) === 'music';
 }
 
 /**
- * Filtrer WS_NAV til profesjonen: universelle items vises alltid; 'visual'-items
- * for foto/video; 'music'-items for musikkprodusenter. Rekkefølgen i WS_NAV
- * bevares (musikk- og visuell-varianter er interleavet på riktig plass).
+ * Filtrer WS_NAV til en kategori: universelle items vises alltid; taggede
+ * items kun for sin kategori. Rekkefølgen i WS_NAV bevares (variantene er
+ * interleavet på riktig plass), og labelByCategory resolves.
  */
-export function navForProfession(
-  profession?: string | null,
+export function navForCategory(
+  cat: WorkspaceCategory,
   opts?: { isMentor?: boolean },
 ): WsNavItem[] {
-  const music = isMusicProfession(profession);
   const isMentor = !!opts?.isMentor;
   return WS_NAV.filter((n) => {
     if (n.mentorOnly && !isMentor) return false; // mentor-gated (uavhengig av profesjon)
-    if (!n.professions) return true;
-    return music ? n.professions.includes('music') : n.professions.includes('visual');
+    if (!n.categories) return true;
+    return n.categories.includes(cat);
+  }).map((n) => {
+    const label = n.labelByCategory?.[cat];
+    return label ? { ...n, label } : n;
   });
+}
+
+/**
+ * Bytt til engelske labels for utenlandske partner-vendors (wsLocale='en').
+ * Items uten labelEn beholder sin (norske) label.
+ */
+export function localizeNav(items: WsNavItem[], locale: 'no' | 'en'): WsNavItem[] {
+  if (locale !== 'en') return items;
+  return items.map((n) => (n.labelEn ? { ...n, label: n.labelEn } : n));
+}
+
+/**
+ * Som navForCategory, men fra profesjonsverdi. `categoryOverrides` er det
+ * admin-styrte mapet fra useWorkspaceCategoryMap() (DB vinner over koden).
+ */
+export function navForProfession(
+  profession?: string | null,
+  opts?: { isMentor?: boolean; categoryOverrides?: Record<string, WorkspaceCategory> },
+): WsNavItem[] {
+  return navForCategory(workspaceCategoryFor(profession, opts?.categoryOverrides), opts);
 }

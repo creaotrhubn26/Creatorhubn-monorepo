@@ -1,6 +1,12 @@
 import express from "express";
 import type { Pool } from "pg";
 import crypto from "crypto";
+import {
+  CANONICAL_PROFESSIONS,
+  normalizeProfession,
+  getProfessionIconColor,
+  isWorkspaceCategory,
+} from "../../frontend/shared/profession-types.ts";
 
 export interface AdminMiscRoutesDeps {
   app: express.Application;
@@ -38,33 +44,189 @@ export function setupAdminMiscRoutes(deps: AdminMiscRoutesDeps): void {
     });
   });
 
+  // ─────────── Profesjonstyper — kanonisk baseline (kode) + DB-utvidelser ───────────
+  // Kilde til sannhet: CANONICAL_PROFESSIONS (frontend/shared/profession-types.ts)
+  // som runtime-baseline, merget med profession_types-tabellen (admin kan legge
+  // til/overstyre/deaktivere). DB-rader vinner over baseline på samme navn.
+  const CANONICAL_CATEGORY: Record<string, string> = Object.fromEntries(
+    CANONICAL_PROFESSIONS.map((p) => [p.name, p.category]),
+  );
+  const CANONICAL_WS_CATEGORY: Record<string, string> = Object.fromEntries(
+    CANONICAL_PROFESSIONS.map((p) => [p.name, p.workspaceCategory]),
+  );
+  const professionRowToDto = (r: any) => ({
+    id: r.name,
+    uuid: r.id || null,
+    name: r.name,
+    displayName: r.display_name,
+    description: r.description || null,
+    iconColor: r.icon_color || getProfessionIconColor(r.name),
+    category: CANONICAL_CATEGORY[r.name] || null,
+    // Admin-styrt flate-familie i Team Workspace; DB vinner, baseline som fallback.
+    workspaceCategory: (isWorkspaceCategory(r.workspace_category) ? r.workspace_category : CANONICAL_WS_CATEGORY[r.name]) || null,
+    isActive: !!r.is_active,
+    enabled: !!r.is_active, // bakoverkompatibelt felt-navn
+    sortOrder: r.sort_order ?? 0,
+  });
+  const canonicalToDto = (p: (typeof CANONICAL_PROFESSIONS)[number]) => ({
+    id: p.name,
+    uuid: null,
+    name: p.name,
+    displayName: p.displayName,
+    description: null,
+    iconColor: p.iconColor,
+    category: p.category,
+    workspaceCategory: p.workspaceCategory,
+    isActive: p.isActive,
+    enabled: p.isActive,
+    sortOrder: p.sortOrder,
+  });
+  const listProfessions = async (includeInactive: boolean) => {
+    const merged = new Map<string, any>(
+      CANONICAL_PROFESSIONS.map((p) => [p.name, canonicalToDto(p)]),
+    );
+    try {
+      // workspace_category kom i mig 0369 — fall tilbake til SELECT uten den
+      // i vinduet der backend er deployet men migrasjonen ikke har kjørt.
+      const result = await pool
+        .query("SELECT id, name, display_name, description, icon_color, is_active, sort_order, workspace_category FROM profession_types ORDER BY sort_order")
+        .catch(() => pool.query("SELECT id, name, display_name, description, icon_color, is_active, sort_order FROM profession_types ORDER BY sort_order"));
+      for (const r of result.rows) {
+        const name = normalizeProfession(r.name);
+        merged.set(name, professionRowToDto({ ...r, name }));
+      }
+    } catch (err) {
+      console.warn("profession_types DB read failed, using canonical baseline:", (err as any).message);
+    }
+    return [...merged.values()]
+      .filter((p) => includeInactive || p.isActive)
+      .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
+  };
+
   app.get("/api/admin/profession-types", async (req, res) => {
     // GET er åpen for autentiserte brukere — profesjons-listen brukes av
     // useDynamicProfessions/useProfessionTabs i vanlig dashboard for å
-    // bestemme profesjons-spesifikke UI-faner. POST/PUT/DELETE-mutasjoner
-    // på /api/admin/profession-types/* (i admin-customers-routes.ts og
-    // andre) forblir bak requireAdminSession.
+    // bestemme profesjons-spesifikke UI-faner. Mutasjonene under er admin-gated.
     if (!requireUserSession(req, res)) return;
+    const includeInactive = String(req.query.includeInactive || "") === "1";
+    res.json({ professions: await listProfessions(includeInactive) });
+  });
+
+  app.get("/api/admin/profession-types/:id", async (req, res, next) => {
+    if (req.params.id === "templates") return next(); // håndteres i admin-customers-routes
+    if (!requireUserSession(req, res)) return;
+    const name = normalizeProfession(req.params.id);
+    const found = (await listProfessions(true)).find((p) => p.name === name || p.uuid === req.params.id);
+    if (!found) return res.status(404).json({ error: "not_found" });
+    res.json(found);
+  });
+
+  // Upsert-kjerne for mutasjonene: profession_types har UNIQUE(name).
+  const upsertProfession = async (name: string, fields: { displayName?: string; description?: string | null; iconColor?: string; sortOrder?: number; isActive?: boolean; workspaceCategory?: string | null }) => {
+    const canonicalDefaults = CANONICAL_PROFESSIONS.find((p) => p.name === name);
+    const displayName = fields.displayName || canonicalDefaults?.displayName || name;
+    const iconColor = fields.iconColor || canonicalDefaults?.iconColor || "#ff8c00";
+    const sortOrder = fields.sortOrder ?? canonicalDefaults?.sortOrder ?? 99;
+    const isActive = fields.isActive ?? true;
+    const wsCategory = isWorkspaceCategory(fields.workspaceCategory) ? fields.workspaceCategory : null;
+    const r = await pool.query(
+      `INSERT INTO profession_types (name, display_name, description, icon_color, is_active, sort_order, workspace_category)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT (name) DO UPDATE SET
+         display_name = COALESCE($2, profession_types.display_name),
+         description = COALESCE($3, profession_types.description),
+         icon_color = COALESCE($4, profession_types.icon_color),
+         is_active = $5,
+         sort_order = $6,
+         workspace_category = COALESCE($7, profession_types.workspace_category),
+         updated_at = NOW()
+       RETURNING id, name, display_name, description, icon_color, is_active, sort_order, workspace_category`,
+      [name, displayName, fields.description ?? null, iconColor, isActive, sortOrder, wsCategory],
+    );
+    return professionRowToDto(r.rows[0]);
+  };
+  // :id kan være kanonisk navn eller rad-uuid; 'templates' håndteres i
+  // admin-customers-routes (registrert før denne) — guardet her likevel.
+  const resolveProfessionName = async (id: string): Promise<string | null> => {
+    const byName = normalizeProfession(id);
+    if (CANONICAL_PROFESSIONS.some((p) => p.name === byName)) return byName;
+    const r = await pool.query(`SELECT name FROM profession_types WHERE name = $1 OR id::text = $2 LIMIT 1`, [byName, id]).catch(() => ({ rows: [] as any[] }));
+    return r.rows[0]?.name ? normalizeProfession(r.rows[0].name) : (byName || null);
+  };
+
+  app.post("/api/admin/profession-types", async (req, res) => {
+    if (!requireAdminSession(req, res)) return;
     try {
-      const result = await pool.query(
-        'SELECT name AS id, display_name AS name, is_active AS enabled, sort_order AS "sortOrder", description, category FROM profession_types WHERE is_active = true ORDER BY sort_order',
-      );
-      if (result.rows.length > 0) {
-        return res.json(result.rows);
-      }
-    } catch (err) {
-      console.warn(
-        "profession_types DB read failed, using fallback:",
-        (err as any).message,
-      );
-    }
-    // Fallback
-    res.json([
-      { id: "photographer", name: "Fotograf", enabled: true },
-      { id: "videographer", name: "Videograf", enabled: true },
-      { id: "music_producer", name: "Musikk Produsent", enabled: true },
-      { id: "enterprise", name: "Enterprise", enabled: true },
-    ]);
+      const name = normalizeProfession(req.body?.name || req.body?.id);
+      if (!name) return res.status(400).json({ error: "name_required" });
+      const dto = await upsertProfession(name, {
+        displayName: typeof req.body?.displayName === "string" ? req.body.displayName.trim() : undefined,
+        description: typeof req.body?.description === "string" ? req.body.description.trim() : null,
+        iconColor: typeof req.body?.iconColor === "string" ? req.body.iconColor.trim() : undefined,
+        sortOrder: Number.isFinite(Number(req.body?.sortOrder)) ? Number(req.body.sortOrder) : undefined,
+        isActive: req.body?.isActive !== false,
+        workspaceCategory: req.body?.workspaceCategory ?? null,
+      });
+      res.status(201).json(dto);
+    } catch (e) { console.error("POST profession-types", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  const updateProfessionHandler = async (req: any, res: any, next: any) => {
+    if (req.params.id === "templates") return next();
+    if (!requireAdminSession(req, res)) return;
+    try {
+      const name = await resolveProfessionName(req.params.id);
+      if (!name) return res.status(404).json({ error: "not_found" });
+      const current = (await listProfessions(true)).find((p) => p.name === name);
+      const dto = await upsertProfession(name, {
+        displayName: typeof req.body?.displayName === "string" ? req.body.displayName.trim() : current?.displayName,
+        description: typeof req.body?.description === "string" ? req.body.description.trim() : current?.description ?? null,
+        iconColor: typeof req.body?.iconColor === "string" ? req.body.iconColor.trim() : current?.iconColor,
+        sortOrder: Number.isFinite(Number(req.body?.sortOrder)) ? Number(req.body.sortOrder) : current?.sortOrder,
+        isActive: typeof req.body?.isActive === "boolean" ? req.body.isActive : current?.isActive ?? true,
+        workspaceCategory: req.body?.workspaceCategory ?? null, // null → COALESCE beholder DB-verdien
+      });
+      res.json(dto);
+    } catch (e) { console.error("PUT/PATCH profession-types", e); res.status(500).json({ error: "failed" }); }
+  };
+  app.put("/api/admin/profession-types/:id", updateProfessionHandler);
+  app.patch("/api/admin/profession-types/:id", updateProfessionHandler);
+
+  app.post("/api/admin/profession-types/:id/toggle", async (req, res) => {
+    if (!requireAdminSession(req, res)) return;
+    try {
+      const name = await resolveProfessionName(req.params.id);
+      if (!name) return res.status(404).json({ error: "not_found" });
+      const current = (await listProfessions(true)).find((p) => p.name === name);
+      const isActive = typeof req.body?.isActive === "boolean" ? req.body.isActive : !(current?.isActive ?? true);
+      const dto = await upsertProfession(name, {
+        displayName: current?.displayName,
+        description: current?.description ?? null,
+        iconColor: current?.iconColor,
+        sortOrder: current?.sortOrder,
+        isActive,
+      });
+      res.json(dto);
+    } catch (e) { console.error("toggle profession-types", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  // Soft-delete: kanoniske baseline-profesjoner ligger i kode og kan ikke
+  // hard-slettes — deaktivering er det konsistente for begge kilder.
+  app.delete("/api/admin/profession-types/:id", async (req, res) => {
+    if (!requireAdminSession(req, res)) return;
+    try {
+      const name = await resolveProfessionName(req.params.id);
+      if (!name) return res.status(404).json({ error: "not_found" });
+      const current = (await listProfessions(true)).find((p) => p.name === name);
+      const dto = await upsertProfession(name, {
+        displayName: current?.displayName,
+        description: current?.description ?? null,
+        iconColor: current?.iconColor,
+        sortOrder: current?.sortOrder,
+        isActive: false,
+      });
+      res.json({ ok: true, profession: dto });
+    } catch (e) { console.error("DELETE profession-types", e); res.status(500).json({ error: "failed" }); }
   });
 
   app.post("/api/admin/log-interaction", async (req, res) => {

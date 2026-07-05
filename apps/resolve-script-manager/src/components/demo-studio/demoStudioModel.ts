@@ -166,12 +166,15 @@ export interface DemoScene {
   duration: number;
   status: SceneStatus;
   /**
-   * Progresjons-modus per scene:
-   *   - 'manual':   opptaket venter på brukerens bekreftelse (default, spec-krav)
-   *   - 'assisted': bruker utfører, systemet verifiserer handlingen (detected)
-   *   - 'auto':     systemet utfører required action automatisk og går videre
+   * Progresjons-modus. KUN prosjekt-nivået konsumeres av recorder/auto-kjøring;
+   * dette scene-feltet beholdes for lagrings-kompatibilitet men leses ikke.
+   * ('assisted' er fjernet — den var aldri implementert.)
    */
-  continueMode: 'manual' | 'assisted' | 'auto';
+  continueMode: 'manual' | 'auto';
+  /** G5: EKTE utfall av siste verifisering (vision av tilstanden ETTER at
+   *  handlingen ble utført i økten). Trumfer selector-tekst-sammenligning. */
+  verifiedOutcome?: 'ok' | 'failed';
+  verifiedAt?: string;
   /** Sti til opptaksfil for denne scenen (settes av recorder). */
   recordingPath?: string | null;
   /** Frosset skjermbilde (dataURL) for scene-kortet — fylles av en framtidig
@@ -230,6 +233,9 @@ export interface DemoBranding {
   brandColor?: string;
   /** Logo (URL eller data:image) vist i guide-headeren. */
   logoUrl?: string;
+  /** Flere logo-kandidater fra skann (header-logo, ikoner, og:image) — lar
+   *  brukeren velge når siden har flere. */
+  logoCandidates?: string[];
   /** White-label: skjul «Powered by»-vannmerke (typisk betalt tier). */
   hidePoweredBy?: boolean;
 }
@@ -302,8 +308,9 @@ export interface DemoProject {
   /** Fase 1b: viewport-screenshots fra scan, per scroll-bånd. Brukes til presis
    *  preview-render (riktig del av siden + hotspot oppå, perfekt align). */
   scanShots?: Array<{ scrollPct: number; dataUrl: string }>;
-  /** Global progresjons-modus (kan overstyres per scene). Default 'manual'. */
-  continueMode?: 'manual' | 'assisted' | 'auto';
+  /** Global progresjons-modus: 'manual' venter på bruker, 'auto' utfører
+   *  required action automatisk. Default 'manual'. */
+  continueMode?: 'manual' | 'auto';
   /**
    * Hva som tas opp: 'web' (iframe/getDisplayMedia, default), eller en native
    * capture-kilde. For App Store-apper: 'ios_device' (kablet enhet).
@@ -375,15 +382,25 @@ function normalizeSelector(s: string): string {
 /**
  * Sammenlign forventet (targetSelector) mot detektert (detectedSelector):
  *   - unverified: ingen detektert handling ennå
- *   - match:      detektert == forventet (riktig element ble aktivert)
+ *   - match:      riktig element ble aktivert
  *   - warning:    detektert avviker fra forventet (eller mangler forventet)
+ *
+ * G5: et EKTE verifisert utfall (vision av tilstanden etter handlingen)
+ * trumfer selector-tekst — selector-likhet er bare en heuristikk, og samme
+ * element kan ha mange adresser. Detektert selector som treffer en av scenens
+ * lagrede multi-locators regnes også som match, ikke avvik.
  */
 export function sceneActionMatch(s: DemoScene): ActionMatch {
+  if (s.verifiedOutcome === 'ok') return 'match';
+  if (s.verifiedOutcome === 'failed') return 'warning';
   const detected = (s.detectedSelector || '').trim();
   if (!detected) return 'unverified';
   const expected = (s.targetSelector || '').trim();
   if (!expected) return 'warning';
-  return normalizeSelector(expected) === normalizeSelector(detected) ? 'match' : 'warning';
+  if (normalizeSelector(expected) === normalizeSelector(detected)) return 'match';
+  const detectedNorm = normalizeSelector(detected);
+  if ((s.targetLocators || []).some((l) => normalizeSelector(l.value) === detectedNorm)) return 'match';
+  return 'warning';
 }
 
 /** Menneske-lesbar «Expected action»-tekst for en scene. */
@@ -1153,11 +1170,14 @@ export interface DomScanResult {
   elements: ScannedElement[];
   /** JS-rendret synlig tekst (rikere AI-kontekst enn anonym reqwest). */
   pageText?: string;
-  /** Auto-uthentet merkevare fra siden (navn/logo/farger). */
-  branding?: DemoBranding & { palette?: string[] };
+  /** Auto-uthentet merkevare fra siden (navn/logo/farger/fonter). */
+  branding?: DemoBranding & { palette?: string[]; fonts?: string[] };
   /** Fase 1b: viewport-screenshots per scroll-bånd (presis preview-render). */
   shots?: Array<{ scrollPct: number; dataUrl: string }>;
   viewport?: { w: number; h: number };
+  /** G12: cookie-/login-vegg oppdaget under skann. Consent forsøkes lukket
+   *  automatisk (dismissed=true); login kan ikke fikses og må flagges til bruker. */
+  wall?: { kind: 'consent' | 'login'; dismissed: boolean; label?: string } | null;
   docHeight?: number;
 }
 
@@ -1248,13 +1268,36 @@ export function makeProject(url: string, demoType: DemoType = 'product_demo'): D
 // ── localStorage-persistens (per project-nøkkel) ──
 const LS_PREFIX = 'trrpa.demoStudio.';
 
-export function saveProject(p: DemoProject): void {
+/**
+ * Utfall av en lagring: 'saved' = alt persistert, 'saved_partial' = kvoten var
+ * full så prosjektet ble lagret UTEN base64-skjermbildene (manus/scener/
+ * opptaks-stier overlever; bildene re-lagres ved neste vellykkede fulle save),
+ * 'error' = ingenting ble persistert.
+ */
+export type SaveResult = 'saved' | 'saved_partial' | 'error';
+
+export function saveProject(p: DemoProject): SaveResult {
+  const stamped = { ...p, updatedAt: new Date().toISOString() };
   try {
-    localStorage.setItem(LS_PREFIX + p.id, JSON.stringify({ ...p, updatedAt: new Date().toISOString() }));
+    localStorage.setItem(LS_PREFIX + p.id, JSON.stringify(stamped));
     // Hold en peker til sist åpnede prosjekt.
     localStorage.setItem(LS_PREFIX + 'last', p.id);
+    return 'saved';
   } catch {
-    /* localStorage kan være full/blokkert — ikke-kritisk */
+    // Kvoten er typisk sprengt av base64-bildene (scanShots + scene-thumbs kan
+    // alene passere ~5 MB). Prøv igjen uten dem så selve arbeidet ikke går tapt.
+    try {
+      const slim = {
+        ...stamped,
+        scanShots: undefined,
+        scenes: stamped.scenes.map((s) => ({ ...s, thumbnailDataUrl: undefined })),
+      };
+      localStorage.setItem(LS_PREFIX + p.id, JSON.stringify(slim));
+      localStorage.setItem(LS_PREFIX + 'last', p.id);
+      return 'saved_partial';
+    } catch {
+      return 'error';
+    }
   }
 }
 
@@ -1274,6 +1317,51 @@ export function loadLastProject(): DemoProject | null {
   } catch {
     return null;
   }
+}
+
+/** Kompakt oversikt over et lagret prosjekt (til «Tidligere demoer»-lista). */
+export interface StoredProjectMeta {
+  id: string;
+  name: string;
+  url: string;
+  updatedAt: string;
+  sceneCount: number;
+}
+
+/**
+ * List alle lagrede prosjekter (nyeste først). Før fantes bare `last`-pekeren —
+ * «Lag ny video» gjorde forrige prosjekt utilgjengelig for alltid (G15).
+ */
+export function listStoredProjects(): StoredProjectMeta[] {
+  const out: StoredProjectMeta[] = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k || !k.startsWith(LS_PREFIX)) continue;
+      // Kun prosjekt-poster (id fra makeId('demo')) — ikke 'last'/quickCmds osv.
+      if (!k.slice(LS_PREFIX.length).startsWith('demo')) continue;
+      try {
+        const p = JSON.parse(localStorage.getItem(k) || '') as DemoProject;
+        if (p && p.id && Array.isArray(p.scenes)) {
+          out.push({ id: p.id, name: p.name || 'Untitled Demo', url: p.url || '', updatedAt: p.updatedAt || '', sceneCount: p.scenes.length });
+        }
+      } catch { /* korrupt post — hopp over, ikke velt lista */ }
+    }
+  } catch { /* localStorage utilgjengelig */ }
+  return out.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+/** Slett et lagret prosjekt (og last-pekeren hvis den pekte hit). */
+export function deleteStoredProject(id: string): void {
+  try {
+    localStorage.removeItem(LS_PREFIX + id);
+    if (localStorage.getItem(LS_PREFIX + 'last') === id) localStorage.removeItem(LS_PREFIX + 'last');
+  } catch { /* */ }
+}
+
+/** Pek `last` på et prosjekt uten å røre innholdet (åpning ≠ redigering). */
+export function setLastProjectPointer(id: string): void {
+  try { localStorage.setItem(LS_PREFIX + 'last', id); } catch { /* */ }
 }
 
 export function totalDuration(scenes: DemoScene[]): number {

@@ -54,6 +54,13 @@ import {
   loadPreviousResearchResult,
 } from "./role-room-research-versions.js";
 import { generateExecutiveSummary } from "./role-room-research-summary.js";
+import {
+  captureFieldFeedback,
+  loadApprovedNaceBusinessModelOverrides,
+  loadApprovedNaceChannelPriorityOverrides,
+  listOverrideProposals,
+  reviewOverrideProposal,
+} from "./role-room-agent-learning.js";
 import { checkAgentEntitlement } from "./role-room-agent-entitlements.js";
 import {
   validateResearchResult,
@@ -155,14 +162,25 @@ export function setupRoleRoomAgentCoreRoutes(
     }
 
     try {
-      const result = await generateRoleRoomAgentProducerBootstrap({
-        projectId,
-        projectName: readString(body.projectName) ?? undefined,
-        websiteUrl: readString(body.websiteUrl) ?? undefined,
-        organizationNumber: readString(body.organizationNumber) ?? undefined,
-        companyName: readString(body.companyName) ?? undefined,
-        extraContext: readString(body.extraContext) ?? undefined,
-      });
+      // Lag 2a: load APPROVED learned overrides so producer-corrected
+      // classifications (businessModel) and measured channel performance take
+      // effect. Best-effort — both return [] if the table is absent or DB
+      // hiccups, so the bootstrap never blocks.
+      const [learnedNaceBusinessModelOverrides, learnedChannelPriorityOverrides] = await Promise.all([
+        loadApprovedNaceBusinessModelOverrides(pool),
+        loadApprovedNaceChannelPriorityOverrides(pool),
+      ]);
+      const result = await generateRoleRoomAgentProducerBootstrap(
+        {
+          projectId,
+          projectName: readString(body.projectName) ?? undefined,
+          websiteUrl: readString(body.websiteUrl) ?? undefined,
+          organizationNumber: readString(body.organizationNumber) ?? undefined,
+          companyName: readString(body.companyName) ?? undefined,
+          extraContext: readString(body.extraContext) ?? undefined,
+        },
+        { learnedNaceBusinessModelOverrides, learnedChannelPriorityOverrides },
+      );
 
       // Item #42 — generate executive summary in parallel with version
       // persist. Both are best-effort — failure of either doesn't block
@@ -861,5 +879,110 @@ export function setupRoleRoomAgentCoreRoutes(
       console.error('[approval-pending] query failed', error);
       return res.status(500).json({ success: false, error: "Kunne ikke hente pending-approvals." });
     }
+  });
+
+  // ==========================================================================
+  // Learning loop (Lag 0 + admin review). Capture the producer draft→final
+  // correction per field, and let an admin approve/reject learned overrides.
+  // ==========================================================================
+
+  // GDPR: we only ever persist the VALUE of a small allowlist of NON-personal
+  // classification fields. For every other field path the value is dropped and
+  // only the action + deterministic context (NACE, businessModel, geo,
+  // confidence) is stored — so no personal/company free-text is retained and no
+  // pseudonymization is needed. (Lag 2b few-shot embeddings will need full
+  // consent + pseudonymization; deferred.)
+  const NON_PERSONAL_VALUE_FIELDS = new Set<string>([
+    "companyProfile.businessModel",
+    "companyProfile.industry",
+    "companyProfile.subIndustry",
+    "companyProfile.contentCategory",
+    "companyProfile.productionApproach",
+  ]);
+  const VALID_FEEDBACK_ACTIONS = new Set<string>(["accepted", "edited", "cleared"]);
+
+  app.post("/api/role-room/agent/field-feedback", async (req, res) => {
+    const featureId = "role-room-agent-producer";
+    if (!isCompatAdminFeatureEnabled(featureId)) {
+      return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
+    }
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+
+    const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
+    const projectId = readString(body.projectId);
+    const researchId = readString(body.researchId);
+    if (!projectId || !researchId) {
+      return res.status(400).json({ success: false, error: "projectId og researchId er påkrevd." });
+    }
+    const edits = Array.isArray(body.edits) ? body.edits : [];
+    if (edits.length === 0) {
+      return res.status(400).json({ success: false, error: "edits[] er påkrevd." });
+    }
+
+    let captured = 0;
+    for (const raw of edits) {
+      if (!raw || typeof raw !== "object") continue;
+      const edit = raw as Record<string, unknown>;
+      const fieldPath = readString(edit.fieldPath);
+      const action = readString(edit.action);
+      if (!fieldPath || !action || !VALID_FEEDBACK_ACTIONS.has(action)) continue;
+
+      // Only persist the value for allowlisted non-personal fields.
+      const valueAllowed = NON_PERSONAL_VALUE_FIELDS.has(fieldPath);
+      const sourceChain = Array.isArray(edit.sourceChain)
+        ? edit.sourceChain.filter((v): v is string => typeof v === "string")
+        : null;
+      const confidence =
+        typeof edit.confidence === "number" && Number.isFinite(edit.confidence)
+          ? Math.max(0, Math.min(100, Math.round(edit.confidence)))
+          : null;
+
+      const ok = await captureFieldFeedback(pool, {
+        researchId,
+        projectId,
+        fieldPath,
+        action: action as "accepted" | "edited" | "cleared",
+        aiValue: valueAllowed ? readString(edit.aiValue) ?? null : null,
+        finalValue: valueAllowed ? readString(edit.finalValue) ?? null : null,
+        naceCode: readString(edit.naceCode) ?? null,
+        businessModel: readString(edit.businessModel) ?? null,
+        geoScope: readString(edit.geoScope) ?? null,
+        sourceChain,
+        confidence,
+        createdBy: session.email ?? session.userId,
+      });
+      if (ok) captured += 1;
+    }
+
+    return res.json({ success: true, captured, received: edits.length });
+  });
+
+  app.get("/api/role-room/agent/learning/overrides", async (req, res) => {
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+    const statusRaw = readString(req.query?.status);
+    const status =
+      statusRaw === "approved" || statusRaw === "rejected" || statusRaw === "all"
+        ? statusRaw
+        : "proposed";
+    const overrides = await listOverrideProposals(pool, status);
+    return res.json({ success: true, status, overrides, total: overrides.length });
+  });
+
+  app.post("/api/role-room/agent/learning/overrides/:id/review", async (req, res) => {
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+    const id = readString(req.params?.id);
+    const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
+    const decision = readString(body.decision);
+    if (!id || (decision !== "approved" && decision !== "rejected")) {
+      return res.status(400).json({ success: false, error: "id og decision ('approved'|'rejected') er påkrevd." });
+    }
+    const ok = await reviewOverrideProposal(pool, id, decision, session.email ?? session.userId);
+    if (!ok) {
+      return res.status(404).json({ success: false, error: "Fant ikke override eller kunne ikke oppdatere." });
+    }
+    return res.json({ success: true, id, decision });
   });
 }
