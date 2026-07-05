@@ -150,7 +150,11 @@ export const WsImageGrid: React.FC<{
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   // Synk når bilder lastes asynkront (f.eks. fra B2 via useProjectImages).
-  React.useEffect(() => { setItems(images); }, [images]);
+  // NB: dep-en må være en STABIL signatur, ikke selve array-referansen — ellers
+  // looper effekten (default `images=[]` og inline-mappede props gir ny referanse
+  // hver render → «Maximum update depth exceeded»).
+  const imagesSig = images.map((im) => `${im.id}:${im.url}`).join('|');
+  React.useEffect(() => { setItems(images); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [imagesSig]);
 
   const pick = () => inputRef.current?.click();
   const handleFiles = async (files: FileList | null) => {
