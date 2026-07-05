@@ -603,22 +603,19 @@ function FormatPreview(
   const ref = useRef<HTMLIFrameElement>(null);
   const [warn, setWarn] = useState<string[]>([]);
   const fit = () => {
+    // Sentrering + skalering gjøres av det injiserte FIT_SCRIPT INNE i iframen
+    // (robust i WKWebView). Her: frys ved sluttbildet + les den faktisk rendrede
+    // innholds-boksen for kollisjons-sjekk (best-effort — degraderer til «ingen
+    // advarsel» hvis kryss-dokument-lesing er blokkert).
     try {
       const ifr = ref.current, doc = ifr?.contentDocument;
       const w = doc?.getElementById('wrap') as HTMLElement | null;
       if (!ifr || !doc || !w) return;
-      if (doc.body) doc.body.style.cssText = 'margin:0;background:transparent;overflow:hidden;height:100%;display:grid;place-items:center';
-      w.style.transformOrigin = 'center center'; w.style.transform = 'none';
-      const bw = w.scrollWidth || 1, bh = w.scrollHeight || 1;
-      const cw = ifr.clientWidth || 1, ch = ifr.clientHeight || 1;
-      const k = Math.min((cw * 0.92) / bw, (ch * 0.92) / bh);
-      w.style.transform = `scale(${k.toFixed(4)})`;
       (ifr.contentWindow as unknown as { setProgress?: (p: number) => void })?.setProgress?.(1);
-      // Kollisjon: innholdet er sentrert+skalert → box i fraksjoner av rammen.
-      // Overlapper det en UI-sone vesentlig → advar (nøyaktig det render-en lager).
-      const cbw = (bw * k) / cw, cbh = (bh * k) / ch;
-      const cb = { x: (1 - cbw) / 2, y: (1 - cbh) / 2, w: cbw, h: cbh };
-      const area = cb.w * cb.h || 1;
+      const cw = ifr.clientWidth || 1, ch = ifr.clientHeight || 1;
+      const r = w.getBoundingClientRect();
+      const cb = { x: r.left / cw, y: r.top / ch, w: r.width / cw, h: r.height / ch };
+      const area = (cb.w * cb.h) || 1;
       const hit = zones.filter((z) => {
         const ix = Math.max(0, Math.min(cb.x + cb.w, z.x + z.w) - Math.max(cb.x, z.x));
         const iy = Math.max(0, Math.min(cb.y + cb.h, z.y + z.h) - Math.max(cb.y, z.y));
@@ -632,7 +629,7 @@ function FormatPreview(
   const screen = (
     <div style={{ position: 'relative', overflow: 'hidden', display: 'grid', placeItems: 'center', height: '100%', aspectRatio: String(aspect), background: bg ? '#000' : 'linear-gradient(135deg,#10182a,#0b1120)', borderRadius: mockup && device === 'phone' ? 26 : 6 }}>
       {bg && <img src={bg} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', zIndex: 0 }} />}
-      <iframe ref={ref} title={label} srcDoc={srcDoc} onLoad={() => window.setTimeout(fit, 140)} style={{ position: 'relative', zIndex: 1, width: '100%', height: '100%', border: 0, background: 'transparent', pointerEvents: 'none' }} />
+      <iframe ref={ref} title={label} srcDoc={srcDoc} onLoad={() => { window.setTimeout(fit, 200); window.setTimeout(fit, 800); }} style={{ position: 'relative', zIndex: 1, width: '100%', height: '100%', border: 0, background: 'transparent', pointerEvents: 'none' }} />
       {/* Plattformens UI-soner (der TikTok/IG/YT legger egne elementer). Rød tint
           + label; sterkere når infographic-en faktisk kolliderer. */}
       {zones.map((z, i) => {
@@ -1794,7 +1791,7 @@ export function InfographicStudioView(
               // Side-ved-side: alle sosiale formater av samme infographic (frosset
               // ved sluttbildet). Klikk et kort → velg det formatet for render/eksport.
               <div style={{ position: 'relative', flex: 1, borderRadius: 12, overflow: 'hidden', border: `1px solid ${D.line}`, background: '#0b1120', padding: 16 }}>
-                <div style={{ display: 'flex', gap: 18, height: '100%', justifyContent: 'center', alignItems: 'center', overflowX: 'auto' }}>
+                <div style={{ display: 'flex', gap: 18, height: '100%', justifyContent: 'flex-start', alignItems: 'center', overflowX: 'auto', padding: '0 4px' }}>
                   {PLATFORMS.map((pf) => (
                     <FormatPreview key={pf.id} srcDoc={srcDoc} aspect={pf.aspect} label={pf.name} sub={pf.sub} bg={bgImage}
                       active={fmt === pf.fmt} mockup={mockup} advice={placementAdviceFor(tpl.id, pf.aspect)} zones={pf.zones}
@@ -2055,7 +2052,7 @@ export function InfographicStudioView(
                   );
                 })}
               </div>
-              <div style={{ fontSize: 9.5, color: D.faint, lineHeight: 1.4, marginBottom: 14 }}>Bevegelsen vises i preview og render (skyv/skalér via ffmpeg-komposisjon; alltid mykt fade-inn).</div>
+              <div style={{ fontSize: 9.5, color: D.faint, lineHeight: 1.4, marginBottom: 14 }}>Bevegelsen (skyv/skalér) vises i preview; i render brukes easing + mykt fade-inn.</div>
               {/* Easing: remapper progresjonen (både preview og render). */}
               <div style={{ fontSize: 11, fontWeight: 700, color: D.soft, textTransform: 'uppercase', margin: '4px 0 8px' }}>Easing <span style={{ color: D.faint, fontWeight: 500 }}>· kurve</span></div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 14 }}>
