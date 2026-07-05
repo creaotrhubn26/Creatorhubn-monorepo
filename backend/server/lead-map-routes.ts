@@ -161,6 +161,39 @@ export function setupLeadMapRoutes(deps: Deps): void {
     }
   });
 
+  // Workflow-trigger-publisering (QA 2026-07-05): lead.status_changed
+  // hadde INGEN publisher — workflows med status-trigger fyrte aldri.
+  // Brukes av begge status-endepunktene + begge visit-endepunktene
+  // (besøk kan sette newStatus). Fire-and-forget.
+  function publishLeadStatusChanged(opts: {
+    leadId: string;
+    from: string | null;
+    to: string;
+    userId: string;
+  }): void {
+    void (async () => {
+      try {
+        const { resolveOrgIdForUser } = await import("./leadgrid-org-resolver.js");
+        const { publishEvent } = await import("./leadgrid-workflow-engine.js");
+        const orgId = await resolveOrgIdForUser(pool, opts.userId);
+        await publishEvent({
+          pool,
+          organizationId: orgId,
+          type: "lead.status_changed",
+          leadId: opts.leadId,
+          actorUserId: opts.userId,
+          data: {
+            from: opts.from,
+            to: opts.to,
+            occurred_at: new Date().toISOString(),
+          },
+        });
+      } catch (err) {
+        console.warn("[lead-map] lead.status_changed publish feilet:", (err as Error).message);
+      }
+    })();
+  }
+
   // PATCH /leads/:id/status
   app.patch("/api/admin-room/lead-map/leads/:id/status",
     requireLeadMapPermission("leads.update", { pool, activeSessions }),
@@ -197,6 +230,12 @@ export function setupLeadMapRoutes(deps: Deps): void {
             newStatus: body.status!,
             triggeredByUserId: session.userId,
           });
+        });
+        publishLeadStatusChanged({
+          leadId: req.params.id,
+          from: oldStatus,
+          to: body.status,
+          userId: session.userId,
         });
       }
 
@@ -263,6 +302,17 @@ export function setupLeadMapRoutes(deps: Deps): void {
     }
 
     try {
+      // Gammel status FØR logVisit — besøk kan sette newStatus, og da
+      // skal lead.status_changed-workflows fyre (QA 2026-07-05).
+      let oldStatus: string | null = null;
+      if (body.newStatus) {
+        const prev = await pool.query<{ lead_status: string | null }>(
+          `SELECT lead_status FROM crm_customers WHERE id = $1`,
+          [req.params.id],
+        );
+        oldStatus = prev.rows[0]?.lead_status ?? null;
+      }
+
       const r = await logVisit(pool, {
         ownerUserId: session.userId,
         leadId: req.params.id,
@@ -278,6 +328,16 @@ export function setupLeadMapRoutes(deps: Deps): void {
         visitLongitude: body.visitLongitude,
       });
       if (!r.ok) return res.status(404).json({ error: "not_found" });
+
+      if (body.newStatus && oldStatus !== body.newStatus) {
+        publishLeadStatusChanged({
+          leadId: req.params.id,
+          from: oldStatus,
+          to: body.newStatus,
+          userId: session.userId,
+        });
+      }
+
       return res.json(r);
     } catch (err) {
       return res.status(500).json({ error: "visit_failed", detail: String(err) });
@@ -664,6 +724,13 @@ export function setupLeadMapRoutes(deps: Deps): void {
       return res.status(400).json({ error: "ugyldig_status" });
     }
     try {
+      // Gammel status FØR oppdatering — trengs av workflow-triggeren.
+      const prev = await pool.query<{ lead_status: string | null }>(
+        `SELECT lead_status FROM crm_customers WHERE id = $1`,
+        [req.params.id],
+      );
+      const oldStatus = prev.rows[0]?.lead_status ?? null;
+
       const r = await updateLeadStatus(pool, {
         ownerUserId: session.userId,
         agentConfigId: req.params.configId,
@@ -672,6 +739,17 @@ export function setupLeadMapRoutes(deps: Deps): void {
         notes: body.notes,
       });
       if (!r.ok) return res.status(404).json({ error: "not_found" });
+
+      // Workflow-trigger (QA 2026-07-05): samme kobling som admin-ruten.
+      if (oldStatus !== body.status) {
+        publishLeadStatusChanged({
+          leadId: req.params.id,
+          from: oldStatus,
+          to: body.status,
+          userId: session.userId,
+        });
+      }
+
       return res.json(r);
     } catch (err) {
       return res.status(500).json({ error: "status_failed", detail: String(err) });
@@ -696,6 +774,16 @@ export function setupLeadMapRoutes(deps: Deps): void {
       return res.status(400).json({ error: "ugyldig_visit_type" });
     }
     try {
+      // Gammel status FØR logVisit (workflow-trigger, QA 2026-07-05).
+      let oldStatus: string | null = null;
+      if (body.newStatus) {
+        const prev = await pool.query<{ lead_status: string | null }>(
+          `SELECT lead_status FROM crm_customers WHERE id = $1`,
+          [req.params.id],
+        );
+        oldStatus = prev.rows[0]?.lead_status ?? null;
+      }
+
       const r = await logVisit(pool, {
         ownerUserId: session.userId,
         agentConfigId: req.params.configId,
@@ -711,6 +799,16 @@ export function setupLeadMapRoutes(deps: Deps): void {
         visitLatitude: body.visitLatitude, visitLongitude: body.visitLongitude,
       });
       if (!r.ok) return res.status(404).json({ error: "not_found" });
+
+      if (body.newStatus && oldStatus !== body.newStatus) {
+        publishLeadStatusChanged({
+          leadId: req.params.id,
+          from: oldStatus,
+          to: body.newStatus,
+          userId: session.userId,
+        });
+      }
+
       return res.json(r);
     } catch (err) {
       return res.status(500).json({ error: "visit_failed", detail: String(err) });
