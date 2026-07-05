@@ -571,7 +571,8 @@ struct LeadsView: View {
                     RoundedRectangle(cornerRadius: 10)
                         .fill(LdBrand.purple.opacity(0.22))
                     Image(systemName: "chart.bar.fill")
-                        .font(.appScaled(size: 16, weight: .semibold))
+                        // Fast 40pt-flis — ikonet skal ikke AX-skalere
+                        .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(LdBrand.purple)
                 }
                 .frame(width: 40, height: 40)
@@ -1186,12 +1187,15 @@ struct LeadTableRow: View {
     /// verdi + status stablet til høyre. Gjenbruker feltene fra full-raden.
     private var compactBody: some View {
         Button(action: onTap) {
-            HStack(spacing: 10) {
+            // AXStack: på accessibility-størrelser stables verdi + status
+            // under navnet i stedet for å klemme det til «Coop…» (AX5-QA).
+            AXStack(spacing: 10) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 8)
                         .fill(lead.companyColor.opacity(0.20))
                     Image(systemName: "building.2.fill")
-                        .font(.appScaled(size: 14, weight: .semibold))
+                        // Fast 36pt-flis — ikonet skal ikke AX-skalere
+                        .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(lead.companyColor)
                 }
                 .frame(width: 36, height: 36)
@@ -1200,11 +1204,11 @@ struct LeadTableRow: View {
                     Text(lead.company)
                         .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(.white)
-                        .lineLimit(1)
+                        .axLineLimit(1, ax: 2)
                     Text(lead.contactName.isEmpty ? lead.category : lead.contactName)
                         .font(.appScaled(size: 10))
                         .foregroundStyle(LdBrand.textSecondary)
-                        .lineLimit(1)
+                        .axLineLimit(1, ax: 2)
                 }
 
                 Spacer(minLength: 8)

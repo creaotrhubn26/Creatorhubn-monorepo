@@ -444,7 +444,8 @@ struct TeamView: View {
                     RoundedRectangle(cornerRadius: 10)
                         .fill(TBrand.purple.opacity(0.22))
                     Image(systemName: "chart.bar.fill")
-                        .font(.appScaled(size: 16, weight: .semibold))
+                        // Fast 40pt-flis — ikonet skal ikke AX-skalere
+                        .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(TBrand.purple)
                 }
                 .frame(width: 40, height: 40)

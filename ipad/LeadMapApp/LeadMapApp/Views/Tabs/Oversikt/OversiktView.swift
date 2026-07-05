@@ -270,7 +270,8 @@ private struct KPICardRow: View {
                     RoundedRectangle(cornerRadius: 10)
                         .fill(Brand.purple.opacity(0.22))
                     Image(systemName: "chart.bar.fill")
-                        .font(.appScaled(size: 16, weight: .semibold))
+                        // Fast 40pt-flis — ikonet skal ikke AX-skalere
+                        .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(Brand.purple)
                 }
                 .frame(width: 40, height: 40)
@@ -279,16 +280,15 @@ private struct KPICardRow: View {
                     Text("Statistikk")
                         .font(.appScaled(size: 14, weight: .bold))
                         .foregroundStyle(.white)
-                    HStack(spacing: 6) {
-                        Text("\(formatNumber(totalLeads)) leads")
-                            .font(.appScaled(size: 12))
-                            .foregroundStyle(Brand.textSecondary)
-                        if totalLeads > 0 {
-                            Text("↑ +18%")
-                                .font(.appScaled(size: 11, weight: .bold))
-                                .foregroundStyle(Brand.green)
-                        }
-                    }
+                    // Én sammensatt Text (ikke HStack) så underteksten
+                    // wrapper som tekst på AX-størrelser. Trenden er
+                    // hardkodet mockup — vises KUN i demo-modus.
+                    (Text("\(formatNumber(totalLeads)) leads")
+                        .font(.appScaled(size: 12))
+                        .foregroundColor(Brand.textSecondary)
+                     + Text(DemoModeManager.isActiveNonisolated && totalLeads > 0 ? "  ↑ +18%" : "")
+                        .font(.appScaled(size: 11, weight: .bold))
+                        .foregroundColor(Brand.green))
                 }
                 Spacer()
                 Image(systemName: "chevron.right")
@@ -336,14 +336,16 @@ private struct KPICardRow: View {
             icon: "person.2.fill", iconBg: Brand.blue.opacity(0.25), iconColor: Brand.blue,
             label: "Total leads",
             value: formatNumber(totalLeads),
-            trend: totalLeads > 0 ? "+18%" : nil, trendUp: totalLeads > 0 ? true : nil)
+            trend: DemoModeManager.isActiveNonisolated && totalLeads > 0 ? "+18%" : nil,
+            trendUp: DemoModeManager.isActiveNonisolated && totalLeads > 0 ? true : nil)
     }
     private var hotLeadsCard: some View {
         KPICard(
             icon: "flame.fill", iconBg: Brand.red.opacity(0.25), iconColor: Brand.red,
             label: "Hot leads",
             value: "\(hotLeads)",
-            trend: hotLeads > 0 ? "+24%" : nil, trendUp: hotLeads > 0 ? true : nil)
+            trend: DemoModeManager.isActiveNonisolated && hotLeads > 0 ? "+24%" : nil,
+            trendUp: DemoModeManager.isActiveNonisolated && hotLeads > 0 ? true : nil)
     }
     private var followupsCard: some View {
         KPICard(
@@ -360,7 +362,8 @@ private struct KPICardRow: View {
             iconColor: Brand.purple,
             label: "Forventet verdi",
             value: forecastValue,
-            trend: hasValue ? "+15%" : nil, trendUp: hasValue ? true : nil)
+            trend: DemoModeManager.isActiveNonisolated && hasValue ? "+15%" : nil,
+            trendUp: DemoModeManager.isActiveNonisolated && hasValue ? true : nil)
     }
     private var wonCard: some View {
         let wonCount = leads.filter { $0.status == .won }.count
@@ -368,7 +371,8 @@ private struct KPICardRow: View {
             icon: "trophy.fill", iconBg: Brand.green.opacity(0.25), iconColor: Brand.green,
             label: "Vunnet i år",
             value: wonValue,
-            trend: wonCount > 0 ? "+32%" : nil, trendUp: wonCount > 0 ? true : nil)
+            trend: DemoModeManager.isActiveNonisolated && wonCount > 0 ? "+32%" : nil,
+            trendUp: DemoModeManager.isActiveNonisolated && wonCount > 0 ? true : nil)
     }
 
     private var totalLeads: Int { leads.count }
@@ -790,7 +794,9 @@ private struct LeadsInAreaCard: View {
 
     private var bodyContent: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
+            // AXStack: ved accessibility-størrelser kveles tittelen ved
+            // siden av filter-chipen (brakk bokstav-for-bokstav på AX5).
+            AXStack {
                 Text("Leads i området").font(.headline).foregroundStyle(.white)
                 // iPhone: tallet står allerede i statistikk-knappen og
                 // temperatur-chipsene — tre steder er to for mange.
@@ -2557,7 +2563,8 @@ private struct LeadsInAreaCard: View {
         let iconSize: CGFloat = DeviceIdiom.isPhone ? 13 : 16
         return Button(action: action) {
             Image(systemName: icon)
-                .font(.appScaled(size: iconSize, weight: .semibold))
+                // Fast kart-FAB-ramme — ikonet skal ikke AX-skalere
+                .font(.system(size: iconSize, weight: .semibold))
                 .foregroundStyle(.white)
                 .frame(width: side, height: side)
                 .contentShape(Rectangle())
@@ -3139,7 +3146,8 @@ private struct OvClusterPin: View {
                 .frame(width: 34, height: 34)
                 .shadow(color: Brand.purple.opacity(0.55), radius: 6, x: 0, y: 2)
             Text("\(count)")
-                .font(.appScaled(size: 14, weight: .bold, design: .rounded))
+                // Kart-grafikk — fast størrelse (AX sprenger sirkelen)
+                .font(.system(size: 14, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
                 .monospacedDigit()
         }
@@ -3196,13 +3204,13 @@ private struct MiniPin: View {
                 // for et misvisende «0» (QA-runde 2, Daniels funn).
                 if score > 0 {
                     Text("\(score)")
-                        .font(.appScaled(size: 12, weight: .bold, design: .rounded))
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                         .monospacedDigit()
                         .offset(y: -6)
                 } else {
                     Image(systemName: "building.2.fill")
-                        .font(.appScaled(size: 11, weight: .semibold))
+                        .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.white)
                         .offset(y: -6)
                         // Dekorativt — pin-en som helhet er treffflaten

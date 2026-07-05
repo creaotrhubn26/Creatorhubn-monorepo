@@ -630,7 +630,9 @@ struct TeamAreasCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
+            // AXStack: tittel + badge + knapper kveles side-om-side på
+            // accessibility-størrelser (AX5-QA: «Tea met s o…»).
+            AXStack {
                 Text("Teamets områder")
                     .font(.appScaled(size: 15, weight: .bold))
                     .foregroundStyle(.white)
@@ -837,7 +839,8 @@ struct TeamAreasCard: View {
     private func mapControlButton(_ icon: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: icon)
-                .font(.appScaled(size: 12, weight: .bold))
+                // Fast 32pt kart-kontroll — skal ikke AX-skalere
+                .font(.system(size: 12, weight: .bold))
                 .foregroundStyle(.white)
                 .frame(width: 32, height: 32)
                 .background(TBrand.card.opacity(0.9), in: RoundedRectangle(cornerRadius: 8))
