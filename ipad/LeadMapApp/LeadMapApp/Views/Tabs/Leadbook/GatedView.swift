@@ -400,7 +400,15 @@ struct UpsellSheet: View {
                     .font(.appScaled(size: 11)).foregroundStyle(LBrand.textSecondary)
             }
             Spacer()
-            Button {} label: {
+            Button {
+                // Ekte kontaktpunkt — knappen var en tom closure, og dette
+                // er flaten kunder treffer når de vil KJØPE mer tilgang.
+                let subject = "Leadgrid: oppgradering — \(feature.rawValue)"
+                    .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+                if let url = URL(string: "mailto:salg@creatorhubn.com?subject=\(subject)") {
+                    UIApplication.shared.open(url)
+                }
+            } label: {
                 Text("Kontakt").font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 12).padding(.vertical, 7)

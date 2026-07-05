@@ -65,6 +65,7 @@ struct SuperAdminAuditEntryDTO: Codable, Hashable {
     let createdAt: String?
     let superAdminEmail: String?
     let targetOrgId: String?
+    let orgName: String?
     let details: Details?
 }
 

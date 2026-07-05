@@ -5006,6 +5006,7 @@ struct ProfilePopover: View {
     /// SuperAdmin-konsoll — kun satt for Leadgrid-ansatte på faner som
     /// eier root-switchen (Leadbook).
     var onOpenSuperAdmin: (() -> Void)? = nil
+    @Environment(AppState.self) private var appState
 
     /// Ekte app-versjon fra bundelen (før: hardkodet «v1.3.1»).
     private var appVersion: String {
@@ -5026,10 +5027,50 @@ struct ProfilePopover: View {
                             row(icon: "person.fill", color: Brand.purple, label: "Min profil")
                         }
                         .buttonStyle(.plain)
-                        row(icon: "building.2.fill", color: Brand.blue,
-                            label: "Bytt organisasjon")
-                        row(icon: "folder.fill", color: Brand.green,
-                            label: "Bytt prosjekt")
+                        // Ekte org/prosjekt-bytte via AppState — radene var
+                        // døde (ingen action) frem til 2026-07-05-QA-en.
+                        Menu {
+                            ForEach(appState.organizations, id: \.id) { o in
+                                Button {
+                                    appState.activeOrganizationId = o.id
+                                    Task { await appState.loadOrgContext() }
+                                } label: {
+                                    if appState.activeOrganizationId == o.id {
+                                        Label(o.name, systemImage: "checkmark")
+                                    } else {
+                                        Text(o.name)
+                                    }
+                                }
+                            }
+                        } label: {
+                            row(icon: "building.2.fill", color: Brand.blue,
+                                label: "Bytt organisasjon",
+                                trailing: appState.organizations.first {
+                                    $0.id == appState.activeOrganizationId
+                                }?.name)
+                        }
+                        .buttonStyle(.plain)
+                        Menu {
+                            ForEach(appState.projects, id: \.id) { p in
+                                Button {
+                                    appState.activeProjectId = p.id
+                                    Task { await appState.refreshLeads() }
+                                } label: {
+                                    if appState.activeProjectId == p.id {
+                                        Label(p.name, systemImage: "checkmark")
+                                    } else {
+                                        Text(p.name)
+                                    }
+                                }
+                            }
+                        } label: {
+                            row(icon: "folder.fill", color: Brand.green,
+                                label: "Bytt prosjekt",
+                                trailing: appState.projects.first {
+                                    $0.id == appState.activeProjectId
+                                }?.name)
+                        }
+                        .buttonStyle(.plain)
                         if let onOpenSuperAdmin {
                             Button(action: onOpenSuperAdmin) {
                                 row(icon: "crown.fill", color: Brand.yellow,
@@ -5039,13 +5080,34 @@ struct ProfilePopover: View {
                         }
                     }
                     section(title: "Apper") {
-                        row(icon: "gearshape.fill", color: Brand.textSecondary, label: "Innstillinger")
+                        Button {
+                            if let url = URL(string: UIApplication.openSettingsURLString) {
+                                UIApplication.shared.open(url)
+                            }
+                        } label: {
+                            row(icon: "gearshape.fill", color: Brand.textSecondary, label: "Innstillinger")
+                        }
+                        .buttonStyle(.plain)
                         row(icon: "moon.fill", color: Brand.purpleLight, label: "Mørk modus",
                             toggle: .constant(true))
-                        row(icon: "bell.badge.fill", color: Brand.orange, label: "Varslinger")
+                        Button {
+                            if let url = URL(string: UIApplication.openSettingsURLString) {
+                                UIApplication.shared.open(url)
+                            }
+                        } label: {
+                            row(icon: "bell.badge.fill", color: Brand.orange, label: "Varslinger")
+                        }
+                        .buttonStyle(.plain)
                     }
                     section(title: "Hjelp") {
-                        row(icon: "questionmark.circle.fill", color: Brand.blue, label: "Hjelp & støtte")
+                        Button {
+                            if let url = URL(string: "mailto:support@creatorhubn.com?subject=Leadgrid%20support") {
+                                UIApplication.shared.open(url)
+                            }
+                        } label: {
+                            row(icon: "questionmark.circle.fill", color: Brand.blue, label: "Hjelp & støtte")
+                        }
+                        .buttonStyle(.plain)
                         row(icon: "lightbulb.fill", color: Brand.yellow, label: "Forstå pinsene")
                         row(icon: "info.circle.fill", color: Brand.textSecondary,
                             label: "Om Leadgrid", trailing: appVersion)
@@ -5058,7 +5120,9 @@ struct ProfilePopover: View {
 
             Divider().background(Brand.stroke)
 
-            Button {} label: {
+            Button {
+                appState.signOut()
+            } label: {
                 HStack(spacing: 10) {
                     Image(systemName: "rectangle.portrait.and.arrow.right")
                         .font(.appScaled(size: 13, weight: .semibold))

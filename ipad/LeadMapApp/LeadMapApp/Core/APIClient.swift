@@ -2215,6 +2215,18 @@ extension APIClient {
         try await get("/api/superadmin/audit-log?organization_id=\(orgId)&limit=\(limit)")
     }
 
+    /// Global audit-logg på tvers av alle orgs (dashboard-menyen).
+    func fetchSuperAdminAuditLog(limit: Int = 100) async throws -> SuperAdminAuditLogResponse {
+        try await get("/api/superadmin/audit-log?limit=\(limit)")
+    }
+
+    /// Suspender/reaktiver org (POST set-status; reason påkrevd ved ikke-active).
+    func setOrgStatus(_ orgId: String, status: String, reason: String?) async throws {
+        var body: [String: Any] = ["status": status]
+        if let reason, !reason.isEmpty { body["reason"] = reason }
+        try await post("/api/superadmin/organizations/\(orgId)/set-status", body: body)
+    }
+
     func fetchActiveImpersonation() async throws -> ImpersonationStatus {
         try await get("/api/superadmin/active-impersonation")
     }

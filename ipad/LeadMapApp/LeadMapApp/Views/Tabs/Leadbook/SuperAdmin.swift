@@ -336,6 +336,17 @@ struct SuperAdminDashboard: View {
     @State private var selectedOrg: Organization?
     @State private var sort: Sort = .revenue
     @State private var showDemoMode = false
+    @State private var showFeatureCatalog = false
+    @State private var showGlobalAudit = false
+
+    /// CSV av org-listen slik den vises (LIVE fra backend eller demo-mock).
+    private var mrrCSV: String {
+        var lines = ["Organisasjon;Domene;Plan;Fakturering;Brukere;Aktive 30d;MRR (NOK)"]
+        for o in filtered {
+            lines.append("\(o.name);\(o.domain);\(o.plan.rawValue);\(o.billingStatus.rawValue);\(o.memberCount);\(o.activeUsers30d);\(o.monthlySpend)")
+        }
+        return lines.joined(separator: "\n")
+    }
 
     private func loadRealOrgs() async {
         guard !DemoModeManager.isActiveNonisolated else { return }
@@ -456,11 +467,21 @@ struct SuperAdminDashboard: View {
                             )
                         }.buttonStyle(.plain)
                         Menu {
-                            Button {} label: { Label("Eksporter MRR-rapport", systemImage: "tablecells") }
-                            Button {} label: { Label("Send Stripe-sync-trigger", systemImage: "arrow.triangle.2.circlepath") }
-                            Button {} label: { Label("Funksjons-katalog", systemImage: "shippingbox.fill") }
+                            // CSV fra den faktisk lastede org-listen (LIVE
+                            // eller demo — begge er det brukeren ser).
+                            ShareLink(
+                                item: mrrCSV,
+                                preview: SharePreview("Leadgrid MRR-rapport")
+                            ) {
+                                Label("Eksporter MRR-rapport (CSV)", systemImage: "tablecells")
+                            }
+                            Button { showFeatureCatalog = true } label: {
+                                Label("Funksjons-katalog", systemImage: "shippingbox.fill")
+                            }
                             Divider()
-                            Button {} label: { Label("Audit-logg (alle orgs)", systemImage: "clock.arrow.circlepath") }
+                            Button { showGlobalAudit = true } label: {
+                                Label("Audit-logg (alle orgs)", systemImage: "clock.arrow.circlepath")
+                            }
                         } label: {
                             Image(systemName: "ellipsis.circle")
                                 .font(.appScaled(size: 16, weight: .semibold))
@@ -477,6 +498,8 @@ struct SuperAdminDashboard: View {
                 }
             }
             .sheet(isPresented: $showDemoMode) { PlanSwitcherSheet() }
+            .sheet(isPresented: $showFeatureCatalog) { FeatureCatalogView() }
+            .sheet(isPresented: $showGlobalAudit) { GlobalAuditSheet() }
             .task { await loadRealOrgs() }
         }
         .macCatalystSheetSize(minWidth: 1100, minHeight: 800)
@@ -746,6 +769,65 @@ struct OrgDetailSheet: View {
     @State private var toastIsError = false
     @State private var realAuditEntries: [SuperAdminAuditEntryDTO] = []
     @State private var realAuditError: String?
+    @State private var showSuspendPrompt = false
+    @State private var suspendReason = ""
+
+    /// Ekte data konsollen holder om org-en — delbar JSON (GDPR-innsyn).
+    private var gdprExportJSON: String {
+        var dict: [String: Any] = [
+            "organization": [
+                "id": org.serverId ?? org.id.uuidString,
+                "name": org.name,
+                "domain": org.domain,
+                "plan": org.plan.rawValue,
+                "billing_status": org.billingStatus.rawValue,
+                "member_count": org.memberCount,
+                "primary_contact": org.primaryContact,
+                "created_at": ISO8601DateFormatter().string(from: org.createdAt),
+            ],
+            "entitlements": org.entitlements.map { e in
+                [
+                    "feature": e.feature.key,
+                    "state": e.state.apiValue,
+                    "monthly_limit": e.monthlyLimit as Any,
+                ]
+            },
+        ]
+        dict["audit_log"] = realAuditEntries.map { e in
+            ["action": e.action, "by": e.superAdminEmail ?? "", "at": e.createdAt ?? ""]
+        }
+        let data = (try? JSONSerialization.data(
+            withJSONObject: dict, options: [.prettyPrinted, .sortedKeys]
+        )) ?? Data()
+        return String(data: data, encoding: .utf8) ?? "{}"
+    }
+
+    /// Suspender via ekte set-status-endepunkt (reason påkrevd). Demo:
+    /// kun lokal status-endring.
+    private func suspendOrg() {
+        guard let sid = org.serverId, let api = appState.api,
+              !DemoModeManager.isActiveNonisolated else {
+            org.billingStatus = .suspended
+            flash("Org suspendert (demo)", isError: false)
+            onUpdate(org)
+            return
+        }
+        // Backend krever begrunnelse ved ikke-active — stopp før kallet.
+        guard !suspendReason.trimmingCharacters(in: .whitespaces).isEmpty else {
+            flash("Begrunnelse er påkrevd", isError: true)
+            return
+        }
+        Task {
+            do {
+                try await api.setOrgStatus(sid, status: "suspended", reason: suspendReason)
+                org.billingStatus = .suspended
+                flash("Org suspendert", isError: false)
+            } catch {
+                flash("Suspendering feilet", isError: true)
+            }
+            onUpdate(org)
+        }
+    }
 
     /// Ekte modus: hent lagrede overrides fra backend og legg dem oppå
     /// plan-defaults, slik at matrisen viser det som FAKTISK er gitt.
@@ -856,8 +938,17 @@ struct OrgDetailSheet: View {
                         Button { showPlanChange = true } label: { Label("Endre plan", systemImage: "arrow.up.right.circle.fill") }
                         Button { showEntitlementMatrix = true } label: { Label("Rediger entitlements", systemImage: "checkmark.shield.fill") }
                         Divider()
-                        Button {} label: { Label("Eksporter org-data (GDPR)", systemImage: "square.and.arrow.up") }
-                        Button(role: .destructive) {} label: { Label("Suspender org", systemImage: "pause.circle.fill") }
+                        // Ekte eksport: alt konsollen VET om org-en (info +
+                        // entitlements + audit) som delbar JSON.
+                        ShareLink(
+                            item: gdprExportJSON,
+                            preview: SharePreview("\(org.name) — org-data")
+                        ) {
+                            Label("Eksporter org-data (GDPR)", systemImage: "square.and.arrow.up")
+                        }
+                        Button(role: .destructive) { showSuspendPrompt = true } label: {
+                            Label("Suspender org", systemImage: "pause.circle.fill")
+                        }
                     } label: {
                         Image(systemName: "ellipsis.circle")
                             .font(.appScaled(size: 16, weight: .semibold))
@@ -870,6 +961,13 @@ struct OrgDetailSheet: View {
                 EntitlementMatrixSheet(org: $org) { updated in
                     saveEntitlements(updated)
                 }
+            }
+            .alert("Suspender \(org.name)?", isPresented: $showSuspendPrompt) {
+                TextField("Begrunnelse (påkrevd)", text: $suspendReason)
+                Button("Suspender", role: .destructive) { suspendOrg() }
+                Button("Avbryt", role: .cancel) {}
+            } message: {
+                Text("Organisasjonen mister tilgang og Stripe-innkreving pauses. Begrunnelsen logges i audit-trail.")
             }
             .task { await loadSavedEntitlements() }
             .sheet(isPresented: $showPlanChange) {
@@ -1386,6 +1484,86 @@ struct OrgDetailSheet: View {
         fmt.dateFormat = "d. MMM yyyy"
         fmt.locale = Locale(identifier: "nb_NO")
         return fmt.string(from: d)
+    }
+}
+
+// MARK: - GlobalAuditSheet — audit-logg på tvers av alle orgs
+
+struct GlobalAuditSheet: View {
+    @Environment(AppState.self) private var appState
+    @Environment(\.dismiss) private var dismiss
+    @State private var entries: [SuperAdminAuditEntryDTO] = []
+    @State private var loadError: String?
+    @State private var loaded = false
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                LBrand.bg.ignoresSafeArea()
+                ScrollView {
+                    VStack(spacing: 8) {
+                        if let loadError {
+                            Label(loadError, systemImage: "exclamationmark.triangle.fill")
+                                .font(.appScaled(size: 12, weight: .semibold))
+                                .foregroundStyle(LBrand.red)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(12)
+                                .background(LBrand.card, in: RoundedRectangle(cornerRadius: 10))
+                        } else if loaded && entries.isEmpty {
+                            VStack(spacing: 8) {
+                                Image(systemName: "clock.arrow.circlepath")
+                                    .font(.appScaled(size: 26)).foregroundStyle(LBrand.textTertiary)
+                                Text("Ingen audit-hendelser enda")
+                                    .font(.appScaled(size: 13, weight: .semibold)).foregroundStyle(.white)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 40)
+                        } else {
+                            ForEach(entries, id: \.id) { e in
+                                HStack(alignment: .top, spacing: 11) {
+                                    Image(systemName: "clock.arrow.circlepath")
+                                        .font(.appScaled(size: 11, weight: .bold))
+                                        .foregroundStyle(LBrand.orange)
+                                        .frame(width: 26, height: 26)
+                                        .background(LBrand.orange.opacity(0.15), in: Circle())
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(e.action)
+                                            .font(.appScaled(size: 12, weight: .semibold))
+                                            .foregroundStyle(.white)
+                                        Text("\(e.orgName ?? "—") · \(e.superAdminEmail ?? "ukjent") · \(e.createdAt?.prefix(16) ?? "—")")
+                                            .font(.appScaled(size: 10))
+                                            .foregroundStyle(LBrand.textTertiary)
+                                    }
+                                    Spacer()
+                                }
+                                .padding(11)
+                                .background(LBrand.card, in: RoundedRectangle(cornerRadius: 10))
+                            }
+                        }
+                    }
+                    .padding(20)
+                }
+            }
+            .navigationTitle("Audit-logg — alle orgs")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Lukk") { dismiss() }.tint(LBrand.textSecondary)
+                }
+            }
+            .task {
+                guard let api = appState.api else {
+                    loadError = "Ingen API-klient"
+                    return
+                }
+                do {
+                    entries = try await api.fetchSuperAdminAuditLog(limit: 100).entries
+                    loaded = true
+                } catch {
+                    loadError = "Kunne ikke hente audit-logg"
+                }
+            }
+        }
     }
 }
 
