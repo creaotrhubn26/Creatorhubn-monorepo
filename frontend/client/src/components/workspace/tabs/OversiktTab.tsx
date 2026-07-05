@@ -543,9 +543,11 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
             </Stack>
             <Box sx={{ position: 'relative', height: 1, bgcolor: ws.border, mt: 0.5 }}>
               {nowVisible && (
-                <Box sx={{ position: 'absolute', left: `${nowPct}%`, top: -18, transform: 'translateX(-50%)' }}>
+                // «Nå»-markør: etikett over linjalen + kort tick. Kort tick (ikke
+                // en 60px-linje) så den ikke vasker over fase-kortenes tekst under.
+                <Box sx={{ position: 'absolute', left: `${nowPct}%`, top: -18, transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                   <Chip size="small" label={nowLabel} sx={{ height: 18, bgcolor: ws.accent, color: ws.accentContrast, fontWeight: 800, fontSize: 11 }} />
-                  <Box sx={{ width: 1, height: 60, bgcolor: ws.accent, mx: 'auto', mt: 0.5, opacity: 0.6 }} />
+                  <Box sx={{ width: 1, height: 12, bgcolor: ws.accent, mt: 0.5, opacity: 0.7 }} />
                 </Box>
               )}
             </Box>
