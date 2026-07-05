@@ -225,6 +225,45 @@ const lrcStamp = (sec: number) => { const m = Math.floor(sec / 60), s = sec - m 
 // ── .ics-kalenderfil (RFC 5545) for en økt ────────────────────────────────
 const icsDate = (d: Date) => d.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
 const icsEsc = (s: string) => String(s || "").replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\n/g, "\\n");
+// HTML-escape for brukerinnhold i e-post-HTML (icsEsc gjelder KUN .ics-tekst og
+// escaper ikke < > & " ' — bruk denne for alt brukerstyrt innhold i HTML).
+const htmlEsc = (s: string) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+
+// Lyd-URL må være en same-origin relativ sti (våre opplastinger returnerer
+// /api/showcase-media/… eller /api/audio/file/…). Absolutte/eksterne URL-er
+// avvises — de kan lekke bandmedlemmers IP via <audio> på delingssiden.
+const validMediaUrl = (u: any): boolean => typeof u === "string" && /^\/[^/]/.test(u) && u.length <= 800 && !/[\x00-\x20<>"'\\]/.test(u);
+
+// Saner produsentens steg-array før lagring: hvert steg må være et objekt med
+// gyldig type/durationSec, tekstfelter kappes, og audioUrl må være same-origin.
+// Ugyldige steg fjernes helt — ellers kan f.eks. [null] bricke medlemmets flyt.
+const clampStr = (v: any, max: number): string => String(v ?? "").slice(0, max);
+function sanitizeSteps(input: any): any[] {
+  if (!Array.isArray(input)) return [];
+  const out: any[] = [];
+  for (const raw of input.slice(0, 30)) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const title = clampStr((raw as any).title, 160);
+    const type = clampStr((raw as any).type, 60);
+    if (!title || !type) continue;
+    const d = Number((raw as any).durationSec);
+    const step: any = {
+      sourceId: clampStr((raw as any).sourceId, 120) || type,
+      title, type,
+      durationSec: Number.isFinite(d) && d > 0 ? Math.min(Math.round(d), 7200) : 60,
+      instruction: clampStr((raw as any).instruction, 2000),
+    };
+    if (validMediaUrl((raw as any).audioUrl)) step.audioUrl = (raw as any).audioUrl;
+    const b = (raw as any).breathing;
+    if (b && typeof b === "object") {
+      const n = (x: any) => { const v = Number(x); return Number.isFinite(v) && v >= 0 ? Math.min(v, 120) : 0; };
+      const inhale = n(b.inhale), exhale = n(b.exhale);
+      if (inhale > 0 && exhale > 0) step.breathing = { inhale, hold: n(b.hold), exhale, holdAfter: n(b.holdAfter), cycles: Math.min(Math.max(1, Number(b.cycles) || 4), 30) };
+    }
+    out.push(step);
+  }
+  return out;
+}
 // SMS via Twilio (env-gated). Returnerer true ved sendt, false ellers/uten config.
 async function sendSms(to: string, body: string): Promise<boolean> {
   const sid = process.env.TWILIO_ACCOUNT_SID, tok = process.env.TWILIO_AUTH_TOKEN, from = process.env.TWILIO_FROM;
@@ -2356,7 +2395,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
   app.post("/api/audio-showcases/:id/warmups", async (req, res) => {
     const s = requireUserSession(req, res); if (!s) return;
     const title = str(req.body?.title, 120); const target = str(req.body?.target, 60) || "all";
-    const steps = Array.isArray(req.body?.steps) ? req.body.steps.slice(0, 30) : [];
+    const steps = sanitizeSteps(req.body?.steps);
     if (!title || steps.length === 0) return res.status(400).json({ error: "title_and_steps_required" });
     try {
       const p = await pool.query(`SELECT 1 FROM audio_review_projects WHERE id=$1::uuid AND owner_user_id=$2 LIMIT 1`, [str(req.params.id, 64), s.userId]);
@@ -2383,7 +2422,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
   app.post("/api/audio-showcase/warmup-templates", async (req, res) => {
     const s = requireUserSession(req, res); if (!s) return;
     const title = str(req.body?.title, 120); const target = str(req.body?.target, 60) || "all";
-    const steps = Array.isArray(req.body?.steps) ? req.body.steps.slice(0, 30) : [];
+    const steps = sanitizeSteps(req.body?.steps);
     if (!title || steps.length === 0) return res.status(400).json({ error: "title_and_steps_required" });
     try {
       const r = await pool.query(`INSERT INTO audio_warmup_templates (owner_user_id, title, target, steps, note) VALUES ($1,$2,$3,$4::jsonb,$5) RETURNING id, title, target, steps, note, created_at`,
@@ -2411,6 +2450,9 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     const kind = str(req.body?.kind, 20) === "voice" ? "voice" : "music";
     const durationSec = Number(req.body?.durationSec);
     if (!title || !url) return res.status(400).json({ error: "title_and_url_required" });
+    // Kun same-origin relative opplastings-URL-er (se validMediaUrl) — hindrer
+    // at eksterne sporings-URL-er lagres og senere serveres til delingssiden.
+    if (!validMediaUrl(url)) return res.status(400).json({ error: "invalid_url" });
     try {
       const r = await pool.query(`INSERT INTO audio_user_sounds (owner_user_id, title, url, kind, duration_sec) VALUES ($1,$2,$3,$4,$5) RETURNING id, title, url, kind, duration_sec, created_at`,
         [s.userId, title, url, kind, Number.isFinite(durationSec) && durationSec > 0 ? Math.round(durationSec) : null]);
@@ -2492,9 +2534,9 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
           const when = new Date(startAt).toLocaleString("no-NO", { dateStyle: "full", timeStyle: "short" });
           const rsvp = `${APP_URL}/audio-review/shared/${a.invite_token}`;
           const ics = `${APP_URL}/api/audio-review-shared/${a.invite_token}/sessions/${session.id}/session.ics`;
-          const html = `<div style="font-family:system-ui,Arial,sans-serif;max-width:520px;margin:0 auto;color:#1a1a1a"><h2 style="margin:0 0 4px">${icsEsc(title)}</h2>
-            <p style="margin:0 0 8px;color:#555">${when}${session.location ? ` · ${session.location}` : ""}${session.online_url ? ` · ${session.online_url}` : ""}</p>
-            ${session.notes ? `<p style="margin:0 0 12px;color:#555">${session.notes}</p>` : ""}
+          const html = `<div style="font-family:system-ui,Arial,sans-serif;max-width:520px;margin:0 auto;color:#1a1a1a"><h2 style="margin:0 0 4px">${htmlEsc(title)}</h2>
+            <p style="margin:0 0 8px;color:#555">${when}${session.location ? ` · ${htmlEsc(session.location)}` : ""}${session.online_url ? ` · ${htmlEsc(session.online_url)}` : ""}</p>
+            ${session.notes ? `<p style="margin:0 0 12px;color:#555">${htmlEsc(session.notes)}</p>` : ""}
             <a href="${rsvp}" style="display:inline-block;background:#FF6B35;color:#150d05;font-weight:700;text-decoration:none;padding:10px 20px;border-radius:999px">Svar (bekreft/avslå)</a>
             <p style="margin:14px 0 0;font-size:13px"><a href="${ics}">Legg til i kalenderen (.ics)</a></p></div>`;
           void sendEmail({ to: a.email, subject: `Innkalling: ${title}`, html, text: `${title}\n${when}\nSvar: ${rsvp}\nKalender: ${ics}`, kind: "audio_session_invite" }).catch(() => {});
@@ -2835,7 +2877,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
       const link = a.invite_token ? `${APP_URL}/audio-review/shared/${a.invite_token}` : null;
       const text = `${opts.message}${link ? `\n\nÅpne rommet ditt (oppvarming & innsjekk): ${link}` : ""}`;
       const html = `<div style="font-family:system-ui,Arial,sans-serif;max-width:520px;margin:0 auto;color:#1a1a1a">
-        <p style="white-space:pre-wrap;margin:0 0 12px">${icsEsc(opts.message)}</p>
+        <p style="white-space:pre-wrap;margin:0 0 12px">${htmlEsc(opts.message)}</p>
         ${link ? `<a href="${link}" style="display:inline-block;background:#FF6B35;color:#150d05;font-weight:700;text-decoration:none;padding:10px 20px;border-radius:999px">Åpne rommet ditt</a>` : ""}</div>`;
       if (sendEmail && a.email) {
         await sendEmail({ to: a.email, subject: `Påminnelse: ${projectTitle}`, html, text, kind: "audio_manual_reminder" }).then(() => { emailsSent++; }).catch(() => {});
@@ -2922,7 +2964,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
           const when = new Date(sess.start_at).toLocaleString("no-NO", { dateStyle: "full", timeStyle: "short" });
           const text = `Påminnelse: «${sess.title}» ${w.label} (${when})${sess.location ? ` · ${sess.location}` : ""}.${hasWarmup ? " Husk oppvarming før økta." : ""}`;
           for (const a of inv.rows) {
-            if (sendEmail && a.email) { await sendEmail({ to: a.email, subject: `Påminnelse: ${sess.title}`, html: `<div style="font-family:system-ui,Arial,sans-serif;color:#1a1a1a">${text}</div>`, text, kind: "audio_session_reminder" }).then(() => { emails++; }).catch(() => {}); }
+            if (sendEmail && a.email) { await sendEmail({ to: a.email, subject: `Påminnelse: ${sess.title}`, html: `<div style="font-family:system-ui,Arial,sans-serif;color:#1a1a1a">${htmlEsc(text)}</div>`, text, kind: "audio_session_reminder" }).then(() => { emails++; }).catch(() => {}); }
             if (a.phone && await sendSms(a.phone, text)) sms++;
           }
           await pool.query(`UPDATE audio_sessions SET ${w.col}=true WHERE id=$1::uuid`, [sess.id]);
