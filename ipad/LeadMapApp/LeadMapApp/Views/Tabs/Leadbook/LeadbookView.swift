@@ -739,32 +739,10 @@ struct LeadbookView: View {
     // MARK: KPI-rad
 
     private var kpiRow: some View {
-        // iPhone: fire KPI-kort tok for mye plass — nå én kompakt
-        // statistikk-knapp der kortene ligger i modal med full bredde
-        // (samme mønster som Oversikt-fanen). iPad-compact beholder
-        // 2×2-grid, iPad/Mac-regular beholder 1×4 HStack.
-        Group {
-            if DeviceIdiom.isPhone {
-                statsButton
-                    .sheet(isPresented: $showStatsModal) { statsModal }
-            } else if isCompactLayout {
-                LazyVGrid(
-                    columns: [GridItem(.flexible(), spacing: 10),
-                              GridItem(.flexible(), spacing: 10)],
-                    spacing: 10
-                ) {
-                    ForEach(LeadbookKPI.allCases) { kpi in
-                        kpiCard(kpi: kpi)
-                    }
-                }
-            } else {
-                HStack(spacing: 12) {
-                    ForEach(LeadbookKPI.allCases) { kpi in
-                        kpiCard(kpi: kpi)
-                    }
-                }
-            }
-        }
+        // Alle idiomer (Daniel 2026-07-05): kompakt statistikk-knapp m/
+        // kortene i modal — samme mønster på iPhone, iPad og Mac.
+        statsButton
+            .sheet(isPresented: $showStatsModal) { statsModal }
     }
 
     // ── iPhone: kompakt statistikk-knapp + modal ─────────────────────

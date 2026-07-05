@@ -223,40 +223,11 @@ private struct KPICardRow: View {
 
     @ViewBuilder
     var body: some View {
-        if compact {
-            if DeviceIdiom.isPhone {
-                // iPhone (QA-runde 2): fem KPI-kort tok hele skjermen og
-                // labels trunkerte («Oppfølging…», «Forventet v…»). Nå én
-                // kompakt statistikk-knapp — kortene ligger i modal med
-                // full bredde og hele labels.
-                statsButton
-                    .sheet(isPresented: $showStatsModal) { statsModal }
-            } else {
-                // Portrait iPad: 5 KPI fordelt på 2 like rader så hvert
-                // kort får mest mulig plass. Total + Hot på rad 1, og
-                // Oppfølginger + Forventet + Vunnet på rad 2 (de tre med
-                // tydeligere tall/badges fungerer fint i smalere format).
-                VStack(spacing: 14) {
-                    HStack(spacing: 14) {
-                        totalLeadsCard.frame(maxWidth: .infinity)
-                        hotLeadsCard.frame(maxWidth: .infinity)
-                    }
-                    HStack(spacing: 14) {
-                        followupsCard.frame(maxWidth: .infinity)
-                        expectedValueCard.frame(maxWidth: .infinity)
-                        wonCard.frame(maxWidth: .infinity)
-                    }
-                }
-            }
-        } else {
-            HStack(spacing: 14) {
-                totalLeadsCard
-                hotLeadsCard
-                followupsCard
-                expectedValueCard
-                wonCard
-            }
-        }
+        // Alle idiomer (Daniel 2026-07-05): én kompakt statistikk-knapp
+        // med kortene i modal — iPad-gridene tok for mye vertikal plass
+        // og iPhone-mønsteret fungerer like godt der.
+        statsButton
+            .sheet(isPresented: $showStatsModal) { statsModal }
     }
 
     // ── iPhone: kompakt statistikk-knapp + modal ─────────────────────

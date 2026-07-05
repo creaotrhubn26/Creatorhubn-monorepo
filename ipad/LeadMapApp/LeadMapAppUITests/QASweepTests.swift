@@ -20,6 +20,12 @@ final class QASweepTests: XCTestCase {
     // MARK: - Hjelpere
 
     private func launchApp(tab: Int) -> XCUIApplication {
+        // Portrett-lås på iOS-enheter — rotert/opp-ned sim gir speilvendte
+        // tap-koordinater og letterbox-artefakter i skjermbildene.
+        // (Setteren finnes ikke på Mac Catalyst og feller testen der.)
+        #if !targetEnvironment(macCatalyst)
+        XCUIDevice.shared.orientation = .portrait
+        #endif
         let app = XCUIApplication()
         app.launchEnvironment["QA_BEARER_TOKEN"] =
             ProcessInfo.processInfo.environment["QA_BEARER_TOKEN"] ?? ""
@@ -168,13 +174,6 @@ final class QASweepTests: XCTestCase {
         // Leadbook eier SuperAdmin-inngangen: QA_TAB 6 på iPhone (via
         // Mer-push), 5 på iPad/Mac (ingen Mer-fane — indeksene forskyves).
         let leadbookTab = UIDevice.current.userInterfaceIdiom == .phone ? 6 : 5
-        // Lås orientering — landskap-sim ga portrett-vindu m/ svart
-        // dødfelt i skjermbildene (letterbox-artefakt, ikke app-bug).
-        // KUN på iOS-enheter: settern finnes ikke på Mac Catalyst og
-        // feller hele testen der.
-        #if !targetEnvironment(macCatalyst)
-        XCUIDevice.shared.orientation = .portrait
-        #endif
         let app = launchApp(tab: leadbookTab)
         let appW = app.frame.width
 
