@@ -492,14 +492,19 @@ const FIT_SCRIPT = `(function(){
   function fit(){
     try{
       document.documentElement.style.background='transparent';
-      var b=document.body; if(b){b.style.margin='0';b.style.height='100vh';b.style.display='grid';b.style.placeItems='center';b.style.overflow='hidden';b.style.background='transparent';}
+      var b=document.body; if(b){b.style.margin='0';b.style.height='100vh';b.style.overflow='hidden';b.style.background='transparent';b.style.position='relative';}
       if(window.__igFreeze && typeof window.setProgress==='function'){ try{window.setProgress(1);}catch(e){} }
       var w=document.getElementById('wrap'); if(!w) return;
-      w.style.transformOrigin='center center'; w.style.transform='none';
+      // Grid-sentrering feiler når #wrap er bredere enn viewporten (kolonnen sizer
+      // til innholdet). Posisjonér absolutt + translate-sentrer den SKALERTE
+      // størrelsen manuelt (transform-origin top-left).
+      w.style.position='absolute'; w.style.top='0'; w.style.left='0';
+      w.style.transformOrigin='top left'; w.style.transform='none';
       var vw=window.innerWidth||1, vh=window.innerHeight||1;
       var ww=w.scrollWidth||w.offsetWidth||1, wh=w.scrollHeight||w.offsetHeight||1;
       var k=Math.min(1,(vw-16)/ww,(vh-16)/wh);
-      w.style.transform='scale('+k.toFixed(4)+')';
+      var tx=(vw-ww*k)/2, ty=(vh-wh*k)/2;
+      w.style.transform='translate('+tx.toFixed(1)+'px,'+ty.toFixed(1)+'px) scale('+k.toFixed(4)+')';
     }catch(e){}
   }
   if(document.readyState==='complete') fit(); else window.addEventListener('load',fit);
@@ -508,7 +513,7 @@ const FIT_SCRIPT = `(function(){
   window.__igFit=fit;
 })();`;
 
-function TemplateThumb({ tpl, accent, values }: { tpl: InfographicTemplate; accent: string; values?: Record<string, string> }) {
+function TemplateThumb({ tpl, accent, values, height = 88 }: { tpl: InfographicTemplate; accent: string; values?: Record<string, string>; height?: number }) {
   const boxRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLIFrameElement>(null);
   const [visible, setVisible] = useState(false);
@@ -527,7 +532,7 @@ function TemplateThumb({ tpl, accent, values }: { tpl: InfographicTemplate; acce
   // Nudge det injiserte fit-skriptet (kjører uansett selv på load + retries).
   const fit = () => { try { (frameRef.current?.contentWindow as unknown as { __igFit?: () => void })?.__igFit?.(); } catch { /* */ } };
   return (
-    <div ref={boxRef} style={{ width: '100%', height: 52, borderRadius: 8, overflow: 'hidden', background: 'linear-gradient(135deg,#10182a,#0b1120)', marginBottom: 8 }}>
+    <div ref={boxRef} style={{ width: '100%', height, borderRadius: 8, overflow: 'hidden', background: 'linear-gradient(135deg,#10182a,#0b1120)', marginBottom: 8 }}>
       {visible && <iframe ref={frameRef} title="" srcDoc={src} onLoad={() => { window.setTimeout(fit, 120); window.setTimeout(fit, 480); }} style={{ width: '100%', height: '100%', border: 0, background: 'transparent', pointerEvents: 'none' }} />}
     </div>
   );
@@ -1388,7 +1393,7 @@ export function InfographicStudioView(
           {/* Prosjekt-metadata-kort */}
           {!railCollapsed && (
             <div style={{ margin: '8px 10px', padding: 8, borderRadius: 9, border: `1px solid ${D.line}`, background: D.bg }}>
-              <TemplateThumb tpl={INFOGRAPHIC_TEMPLATES.find((t) => t.id === scenes[0]?.tplId) || INFOGRAPHIC_TEMPLATES[0]} accent={sceneAccent(scenes[0] || scene)} values={fieldVals(scenes[0] || scene, INFOGRAPHIC_TEMPLATES.find((t) => t.id === scenes[0]?.tplId) || INFOGRAPHIC_TEMPLATES[0])} />
+              <TemplateThumb tpl={INFOGRAPHIC_TEMPLATES.find((t) => t.id === scenes[0]?.tplId) || INFOGRAPHIC_TEMPLATES[0]} accent={sceneAccent(scenes[0] || scene)} values={fieldVals(scenes[0] || scene, INFOGRAPHIC_TEMPLATES.find((t) => t.id === scenes[0]?.tplId) || INFOGRAPHIC_TEMPLATES[0])} height={50} />
               <div style={{ fontSize: 12, fontWeight: 700, color: D.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{project?.name || 'Untitled Demo'}</div>
               <div style={{ fontSize: 9.5, color: D.faint, marginTop: 1 }}>{fmt === 'native' ? 'Naturlig' : fmt} · {fps} fps · {scenes.length} scene(r)</div>
               <div style={{ fontSize: 9.5, color: D.faint }}>{totalDur.toFixed(1)}s total{project?.url ? ` · ${(() => { try { return new URL(project.url).host; } catch { return ''; } })()}` : ''}</div>
@@ -1802,7 +1807,7 @@ export function InfographicStudioView(
               {/* Ramme: naturlig = fyll boksen; ellers vis eksakt sosialt forhold. */}
               <div style={{ position: 'relative', overflow: 'hidden', display: 'grid', placeItems: 'center', background: bgImage ? '#000' : 'linear-gradient(135deg,#10182a,#0b1120)', ...(fmt === 'native' ? { width: '100%', height: '100%' } : { height: '100%', maxWidth: '100%', aspectRatio: String(fmtAspect()), borderRadius: 8, boxShadow: `0 0 0 1px ${D.line}` }) }}>
                 {bgImage && <img src={bgImage} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', zIndex: 0 }} />}
-                <iframe ref={iframeRef} title="preview" srcDoc={srcDoc} onLoad={onIframeLoad} style={{ position: 'relative', zIndex: 1, width: '100%', height: '100%', minHeight: fmt === 'native' ? 280 : 0, border: 0, background: 'transparent' }} />
+                <iframe ref={iframeRef} title="preview" srcDoc={srcDoc} onLoad={onIframeLoad} style={{ position: 'relative', zIndex: 1, width: '100%', height: '100%', minHeight: fmt === 'native' ? 140 : 0, border: 0, background: 'transparent' }} />
                 {/* Scene-brødsmule (som konseptets «Scene 03 · Main Stats»). */}
                 <div style={{ position: 'absolute', top: 8, left: 10, zIndex: 3, display: 'flex', alignItems: 'center', gap: 5, padding: '3px 8px', borderRadius: 6, background: 'rgba(11,17,32,0.7)', border: `1px solid ${D.line}`, fontSize: 10.5, color: D.soft, pointerEvents: 'none' }}>
                   <span style={{ display: 'inline-flex', color: tpl.style === 'hud' ? D.teal : D.accent }}>{tplIcon(tpl.id, 12)}</span>
@@ -1906,7 +1911,7 @@ export function InfographicStudioView(
                 const active = i === sel;
                 return (
                   <div key={sc.id} onClick={() => setSel(i)} style={{ width: 132, flex: 'none', borderRadius: 9, border: `2px solid ${active ? D.accent : D.line}`, background: active ? D.panel2 : D.bg, cursor: 'pointer', padding: 7, position: 'relative' }}>
-                    <TemplateThumb tpl={t} accent={sceneAccent(sc)} values={fieldVals(sc, t)} />
+                    <TemplateThumb tpl={t} accent={sceneAccent(sc)} values={fieldVals(sc, t)} height={40} />
                     <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                       <span style={{ display: 'inline-flex', color: t.style === 'hud' ? D.teal : D.accent, flex: 'none' }}>{tplIcon(sc.tplId, 12)}</span>
                       <span style={{ fontSize: 10.5, fontWeight: 600, color: D.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sc.name || t.name}</span>
