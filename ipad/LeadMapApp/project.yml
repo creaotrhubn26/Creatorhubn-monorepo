@@ -104,6 +104,17 @@ targets:
         # NSLocationWhenInUseUsageDescription står allerede i Info.plist.
         com.apple.security.personal-information.location: true
     settings:
+      # TestFlight-CI (2026-07-05): archive-fasen signerte automatisk og
+      # opprettet et nytt iOS Development-cert PER ephemeral runner til
+      # kontoen traff Apples cert-tak («choose a certificate to revoke»).
+      # Manuell Release-signering m/ distribusjonsprofilene (samme som
+      # ExportOptions.plist) trenger aldri å opprette noe. Debug er
+      # fortsatt automatisk (sim/lokal utvikling upåvirket).
+      configs:
+        Release:
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: "Apple Distribution"
+          PROVISIONING_PROFILE_SPECIFIER: "LeadMap App Store"
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.creatorhubn.LeadMapApp
         INFOPLIST_FILE: LeadMapApp/Generated/Info.plist
@@ -143,6 +154,17 @@ targets:
         com.apple.security.application-groups:
           - group.com.creatorhubn.LeadMapApp
     settings:
+      # TestFlight-CI (2026-07-05): archive-fasen signerte automatisk og
+      # opprettet et nytt iOS Development-cert PER ephemeral runner til
+      # kontoen traff Apples cert-tak («choose a certificate to revoke»).
+      # Manuell Release-signering m/ distribusjonsprofilene (samme som
+      # ExportOptions.plist) trenger aldri å opprette noe. Debug er
+      # fortsatt automatisk (sim/lokal utvikling upåvirket).
+      configs:
+        Release:
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: "Apple Distribution"
+          PROVISIONING_PROFILE_SPECIFIER: "LeadMap Widget App Store"
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.creatorhubn.LeadMapApp.LeadMapWidget
         INFOPLIST_FILE: LeadMapWidget/Generated/Info.plist
@@ -193,6 +215,17 @@ targets:
         # ikke shared container). App Group krever Apple-side-binding
         # som ikke kan automatiseres via ASC API i nåværende rolle.
     settings:
+      # TestFlight-CI (2026-07-05): archive-fasen signerte automatisk og
+      # opprettet et nytt iOS Development-cert PER ephemeral runner til
+      # kontoen traff Apples cert-tak («choose a certificate to revoke»).
+      # Manuell Release-signering m/ distribusjonsprofilene (samme som
+      # ExportOptions.plist) trenger aldri å opprette noe. Debug er
+      # fortsatt automatisk (sim/lokal utvikling upåvirket).
+      configs:
+        Release:
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: "Apple Distribution"
+          PROVISIONING_PROFILE_SPECIFIER: "LeadMap Watch App Store"
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.creatorhubn.LeadMapApp.watchkitapp
         INFOPLIST_FILE: LeadgridWatchApp/Generated/Info.plist
