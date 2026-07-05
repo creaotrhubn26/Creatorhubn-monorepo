@@ -25,6 +25,7 @@ import PriorityHigh from '@mui/icons-material/PriorityHigh';
 import Close from '@mui/icons-material/Close';
 import KeyboardArrowDown from '@mui/icons-material/KeyboardArrowDown';
 import Refresh from '@mui/icons-material/Refresh';
+import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import { apiRequest, getAuthHeader, buildApiUrl } from '@/lib/queryClient';
 import { useAuth } from '@/hooks/useAuth';
 import { ws } from './workspaceTheme';
@@ -50,6 +51,7 @@ const T: WsDict = {
   moreActions: { no: 'Flere valg', en: 'More options' },
   jumpToLatest: { no: 'Hopp til nyeste', en: 'Jump to latest' },
   refresh: { no: 'Oppdater', en: 'Refresh' },
+  guide: { no: 'Hjelp / guide', en: 'Help / guide' },
   pinFilterOn: { no: 'Vis kun viktige', en: 'Show important only' },
   pinFilterOff: { no: 'Vis alle meldinger', en: 'Show all messages' },
   send: { no: 'Send melding', en: 'Send message' },
@@ -355,6 +357,7 @@ const WorkspaceChatPanel: React.FC<{ projectId: string }> = ({ projectId }) => {
       <Menu anchorEl={moreAnchor} open={!!moreAnchor} onClose={() => setMoreAnchor(null)} PaperProps={{ sx: { bgcolor: ws.panelSolid, color: ws.text, border: `1px solid ${ws.border}` } }}>
         <MenuItem onClick={() => { setMoreAnchor(null); scrollDown(); }} sx={{ gap: 1, fontSize: 13 }}><KeyboardArrowDown sx={{ fontSize: 18 }} /> {t('jumpToLatest')}</MenuItem>
         <MenuItem onClick={() => { setMoreAnchor(null); load(false); }} sx={{ gap: 1, fontSize: 13 }}><Refresh sx={{ fontSize: 18 }} /> {t('refresh')}</MenuItem>
+        <MenuItem component="a" href="/guide/chat" target="_blank" rel="noopener" onClick={() => setMoreAnchor(null)} sx={{ gap: 1, fontSize: 13 }}><HelpOutlineIcon sx={{ fontSize: 18 }} /> {t('guide')}</MenuItem>
       </Menu>
     </Box>
   );
