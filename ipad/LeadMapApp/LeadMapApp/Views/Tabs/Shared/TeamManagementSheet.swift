@@ -55,7 +55,7 @@ struct TeamManagementSheet: View {
                         dismiss()
                     } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.appScaled(size: 14, weight: .semibold))
                             .foregroundStyle(.white)
                             .frame(width: 30, height: 30)
                             .background(TMB.cardHi, in: Circle())
@@ -65,7 +65,7 @@ struct TeamManagementSheet: View {
                 }
                 ToolbarItem(placement: .principal) {
                     Text("Administrer team")
-                        .font(.system(size: 15, weight: .heavy, design: .rounded))
+                        .font(.appScaled(size: 15, weight: .heavy, design: .rounded))
                         .foregroundStyle(.white)
                 }
                 ToolbarItem(placement: .primaryAction) {
@@ -81,9 +81,9 @@ struct TeamManagementSheet: View {
                     } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "plus")
-                                .font(.system(size: 11, weight: .bold))
+                                .font(.appScaled(size: 11, weight: .bold))
                             Text("Nytt")
-                                .font(.system(size: 12, weight: .bold))
+                                .font(.appScaled(size: 12, weight: .bold))
                         }
                         .foregroundStyle(.white)
                         .padding(.horizontal, 12).padding(.vertical, 7)
@@ -130,10 +130,10 @@ struct TeamManagementSheet: View {
     private var emptyState: some View {
         VStack(spacing: 10) {
             Image(systemName: "person.3.sequence.fill")
-                .font(.system(size: 32))
+                .font(.appScaled(size: 32))
                 .foregroundStyle(TMB.textTertiary)
             Text("Ingen team ennå")
-                .font(.system(size: 15, weight: .semibold))
+                .font(.appScaled(size: 15, weight: .semibold))
                 .foregroundStyle(.white)
             Text("Trykk «Nytt» øverst for å opprette ditt første team.")
                 .font(.caption)
@@ -162,26 +162,26 @@ struct TeamManagementSheet: View {
                 Circle().fill(team.color.opacity(0.25))
                 Circle().strokeBorder(team.color, lineWidth: 2)
                 Text(team.initials)
-                    .font(.system(size: 14, weight: .heavy, design: .rounded))
+                    .font(.appScaled(size: 14, weight: .heavy, design: .rounded))
                     .foregroundStyle(.white)
             }
             .frame(width: 44, height: 44)
             VStack(alignment: .leading, spacing: 3) {
                 Text(team.name)
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
                 HStack(spacing: 6) {
                     Text("\(team.memberIds.count) medlem\(team.memberIds.count == 1 ? "" : "mer")")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(TMB.textDim)
                     if team.leaderId != nil {
                         Text("·").foregroundStyle(TMB.textTertiary)
                         Image(systemName: "person.badge.key.fill")
-                            .font(.system(size: 8))
+                            .font(.appScaled(size: 8))
                             .foregroundStyle(team.color)
                         Text("Har leder")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.appScaled(size: 11, weight: .semibold))
                             .foregroundStyle(TMB.textDim)
                     }
                 }
@@ -200,7 +200,7 @@ struct TeamManagementSheet: View {
                 }
             } label: {
                 Image(systemName: "ellipsis")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(TMB.textDim)
                     .padding(8)
                     .background(TMB.cardHi, in: Circle())
@@ -248,7 +248,7 @@ struct TeamEditSheet: View {
                         onCancel()
                     } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.appScaled(size: 14, weight: .semibold))
                             .foregroundStyle(.white)
                             .frame(width: 30, height: 30)
                             .background(TMB.cardHi, in: Circle())
@@ -261,7 +261,7 @@ struct TeamEditSheet: View {
                         onSave(team)
                     } label: {
                         Text("Lagre")
-                            .font(.system(size: 13, weight: .heavy))
+                            .font(.appScaled(size: 13, weight: .heavy))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 14).padding(.vertical, 7)
                             .background(team.color, in: Capsule())
@@ -283,17 +283,17 @@ struct TeamEditSheet: View {
                 Circle().fill(team.color.opacity(0.25))
                 Circle().strokeBorder(team.color, lineWidth: 3)
                 Text(team.initials)
-                    .font(.system(size: 26, weight: .black, design: .rounded))
+                    .font(.appScaled(size: 26, weight: .black, design: .rounded))
                     .foregroundStyle(.white)
             }
             .frame(width: 76, height: 76)
             .shadow(color: team.color.opacity(0.4), radius: 12, y: 4)
             Text(team.name.isEmpty ? "Nytt team" : team.name)
-                .font(.system(size: 18, weight: .heavy, design: .rounded))
+                .font(.appScaled(size: 18, weight: .heavy, design: .rounded))
                 .foregroundStyle(.white)
                 .lineLimit(1)
             Text("\(team.memberIds.count) medlem\(team.memberIds.count == 1 ? "" : "mer")")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.appScaled(size: 11, weight: .semibold))
                 .foregroundStyle(TMB.textDim)
         }
         .frame(maxWidth: .infinity)
@@ -303,12 +303,12 @@ struct TeamEditSheet: View {
     private var nameField: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("NAVN")
-                .font(.system(size: 9, weight: .black, design: .rounded))
+                .font(.appScaled(size: 9, weight: .black, design: .rounded))
                 .tracking(1.0)
                 .foregroundStyle(TMB.textDim)
             TextField("Team-navn", text: $team.name)
                 .textFieldStyle(.plain)
-                .font(.system(size: 14, weight: .semibold))
+                .font(.appScaled(size: 14, weight: .semibold))
                 .foregroundStyle(.white)
                 .padding(12)
                 .background(TMB.card, in: RoundedRectangle(cornerRadius: 11))
@@ -320,7 +320,7 @@ struct TeamEditSheet: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
                 Text("ALLOKERT OMRÅDE")
-                    .font(.system(size: 9, weight: .black, design: .rounded))
+                    .font(.appScaled(size: 9, weight: .black, design: .rounded))
                     .tracking(1.0)
                     .foregroundStyle(TMB.textDim)
                 Spacer()
@@ -331,7 +331,7 @@ struct TeamEditSheet: View {
                         team.areaRadiusKm = nil
                     } label: {
                         Text("Fjern")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.appScaled(size: 10, weight: .bold))
                             .foregroundStyle(TMB.red)
                     }
                     .buttonStyle(.plain)
@@ -342,13 +342,13 @@ struct TeamEditSheet: View {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
                         Image(systemName: "circle.dashed")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.appScaled(size: 11, weight: .bold))
                             .foregroundStyle(team.color)
                         Text("Radius:")
-                            .font(.system(size: 11))
+                            .font(.appScaled(size: 11))
                             .foregroundStyle(TMB.textDim)
                         Text(String(format: "%.1f km", team.areaRadiusKm ?? 3.0))
-                            .font(.system(size: 12, weight: .heavy, design: .rounded))
+                            .font(.appScaled(size: 12, weight: .heavy, design: .rounded))
                             .foregroundStyle(.white)
                             .monospacedDigit()
                     }
@@ -374,9 +374,9 @@ struct TeamEditSheet: View {
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "plus.circle.fill")
-                            .font(.system(size: 14, weight: .bold))
+                            .font(.appScaled(size: 14, weight: .bold))
                         Text("Sett område på kartet")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.appScaled(size: 12, weight: .semibold))
                     }
                     .foregroundStyle(team.color)
                     .frame(maxWidth: .infinity)
@@ -395,7 +395,7 @@ struct TeamEditSheet: View {
     private var colorPalette: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("FARGE")
-                .font(.system(size: 9, weight: .black, design: .rounded))
+                .font(.appScaled(size: 9, weight: .black, design: .rounded))
                 .tracking(1.0)
                 .foregroundStyle(TMB.textDim)
             LazyVGrid(
@@ -412,14 +412,14 @@ struct TeamEditSheet: View {
                                 Circle().fill(Color(teamHex: c.hex) ?? .purple)
                                 if isActive {
                                     Image(systemName: "checkmark")
-                                        .font(.system(size: 15, weight: .heavy))
+                                        .font(.appScaled(size: 15, weight: .heavy))
                                         .foregroundStyle(.white)
                                 }
                             }
                             .frame(width: 38, height: 38)
                             .shadow(color: (Color(teamHex: c.hex) ?? .purple).opacity(0.4), radius: 5, y: 2)
                             Text(c.name)
-                                .font(.system(size: 9, weight: .bold, design: .rounded))
+                                .font(.appScaled(size: 9, weight: .bold, design: .rounded))
                                 .foregroundStyle(isActive ? .white : TMB.textDim)
                         }
                         .padding(.vertical, 6)
@@ -443,11 +443,11 @@ struct TeamEditSheet: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
                 Text("MEDLEMMER")
-                    .font(.system(size: 9, weight: .black, design: .rounded))
+                    .font(.appScaled(size: 9, weight: .black, design: .rounded))
                     .tracking(1.0)
                     .foregroundStyle(TMB.textDim)
                 Text("\(team.memberIds.count)")
-                    .font(.system(size: 9, weight: .heavy, design: .rounded))
+                    .font(.appScaled(size: 9, weight: .heavy, design: .rounded))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 6).padding(.vertical, 1)
                     .background(team.color.opacity(0.6), in: Capsule())
@@ -468,20 +468,20 @@ struct TeamEditSheet: View {
                 Circle().fill(m.role.color.opacity(0.22))
                 Circle().strokeBorder(m.role.color.opacity(0.55), lineWidth: 1)
                 Text(m.avatarInitials)
-                    .font(.system(size: 12, weight: .heavy, design: .rounded))
+                    .font(.appScaled(size: 12, weight: .heavy, design: .rounded))
                     .foregroundStyle(.white)
             }
             .frame(width: 34, height: 34)
             VStack(alignment: .leading, spacing: 2) {
                 Text(m.name)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.appScaled(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
                 HStack(spacing: 5) {
                     Image(systemName: m.role.icon)
-                        .font(.system(size: 8))
+                        .font(.appScaled(size: 8))
                     Text(m.role.label)
-                        .font(.system(size: 10, weight: .heavy, design: .rounded))
+                        .font(.appScaled(size: 10, weight: .heavy, design: .rounded))
                 }
                 .foregroundStyle(m.role.color)
             }
@@ -492,7 +492,7 @@ struct TeamEditSheet: View {
                     team.leaderId = isLeader ? nil : m.userId
                 } label: {
                     Image(systemName: "person.badge.key.fill")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.appScaled(size: 11, weight: .bold))
                         .foregroundStyle(isLeader ? team.color : TMB.textTertiary)
                         .padding(6)
                         .background(

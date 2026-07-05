@@ -307,7 +307,7 @@ struct DiscoveryProgressView: View {
         VStack(spacing: 16) {
             Image(systemName: summary.totalPinned > 0
                   ? "mappin.circle.fill" : "exclamationmark.triangle.fill")
-                .font(.system(size: 56))
+                .font(.appScaled(size: 56))
                 .foregroundStyle(tintFor)
 
             Text(summary.totalPinned > 0
@@ -412,7 +412,7 @@ struct DiscoveryProgressView: View {
     private func failedCard(message: String) -> some View {
         VStack(spacing: 14) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 44))
+                .font(.appScaled(size: 44))
                 .foregroundStyle(.red)
             Text("Discovery feilet")
                 .font(.headline)

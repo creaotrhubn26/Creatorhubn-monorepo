@@ -19,7 +19,7 @@ struct StatusPin: View {
                 .frame(width: selected ? 34 : 28, height: selected ? 44 : 36)
             // Hvit innvendig ikon
             Image(systemName: iconName)
-                .font(.system(size: selected ? 12 : 10, weight: .bold))
+                .font(.appScaled(size: selected ? 12 : 10, weight: .bold))
                 .foregroundStyle(.white)
                 .offset(y: selected ? -8 : -6)
             if selected {

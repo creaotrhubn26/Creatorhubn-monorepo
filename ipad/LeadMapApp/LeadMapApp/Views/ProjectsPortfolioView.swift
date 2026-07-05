@@ -147,7 +147,7 @@ struct ProjectsPortfolioView: View {
                 Spacer()
             }
             Text(value)
-                .font(.system(size: 28, weight: .bold))
+                .font(.appScaled(size: 28, weight: .bold))
             Text(label)
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -290,7 +290,7 @@ struct ProjectsPortfolioView: View {
         let s = score ?? 0
         return VStack(spacing: 0) {
             Text("\(s)")
-                .font(.system(size: 22, weight: .bold))
+                .font(.appScaled(size: 22, weight: .bold))
                 .foregroundStyle(scoreColor(s))
             Text("score")
                 .font(.caption2)

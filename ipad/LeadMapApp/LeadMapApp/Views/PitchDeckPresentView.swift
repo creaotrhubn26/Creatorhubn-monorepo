@@ -172,7 +172,7 @@ struct PitchDeckPresentView: View {
                     withAnimation { currentIndex -= 1 }
                 } label: {
                     Image(systemName: "chevron.left.circle.fill")
-                        .font(.system(size: 36))
+                        .font(.appScaled(size: 36))
                         .foregroundStyle(.white.opacity(0.6))
                 }
             }
@@ -182,7 +182,7 @@ struct PitchDeckPresentView: View {
                     withAnimation { currentIndex += 1 }
                 } label: {
                     Image(systemName: "chevron.right.circle.fill")
-                        .font(.system(size: 36))
+                        .font(.appScaled(size: 36))
                         .foregroundStyle(.white.opacity(0.8))
                 }
             } else {

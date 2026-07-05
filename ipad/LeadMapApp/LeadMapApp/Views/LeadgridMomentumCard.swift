@@ -75,7 +75,7 @@ struct LeadgridMomentumCard: View {
     private func scoreRow(_ m: LeadgridMomentum) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             Text("\(Int(m.score))")
-                .font(.system(size: 56, weight: .bold))
+                .font(.appScaled(size: 56, weight: .bold))
                 .foregroundStyle(momentumColor(m.score))
             Text("%")
                 .font(.title2)

@@ -121,7 +121,7 @@ struct MePinActionsSheet: View {
                     Circle()
                         .strokeBorder(HUDPalette.blue.opacity(0.7), lineWidth: 1.5)
                     Text(appState.initials)
-                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .font(.appScaled(size: 13, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                 }
                 .frame(width: 36, height: 36)
@@ -135,19 +135,19 @@ struct MePinActionsSheet: View {
                     if let address = resolvedAddress {
                         HStack(spacing: 4) {
                             Text(address)
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.appScaled(size: 11, weight: .semibold))
                                 .foregroundStyle(HUDPalette.textDim)
                                 .lineLimit(1)
                             if resolvedSource == .kartverket {
                                 Text("🇳🇴")
-                                    .font(.system(size: 9))
+                                    .font(.appScaled(size: 9))
                                     .accessibilityLabel("Fra Kartverket")
                             }
                         }
                         .transition(.opacity)
                         if let kom = resolvedMunicipality, !kom.isEmpty {
                             Text(formatMunicipality(kom))
-                                .font(.system(size: 8, weight: .black, design: .rounded))
+                                .font(.appScaled(size: 8, weight: .black, design: .rounded))
                                 .tracking(0.9)
                                 .foregroundStyle(HUDPalette.blue.opacity(0.85))
                                 .lineLimit(1)
@@ -155,7 +155,7 @@ struct MePinActionsSheet: View {
                     } else if let coord = currentCoord {
                         // Fallback mens reverse-geocode kjører
                         Text(coordString(coord))
-                            .font(.system(size: 10, weight: .medium, design: .monospaced))
+                            .font(.appScaled(size: 10, weight: .medium, design: .monospaced))
                             .foregroundStyle(HUDPalette.textDim)
                             .lineLimit(1)
                     } else {
@@ -276,7 +276,7 @@ struct MePinActionsSheet: View {
                 .frame(width: 52, height: 52)
                 .shadow(color: HUDPalette.blue, radius: 8)
             Text(appState.initials)
-                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .font(.appScaled(size: 18, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
         }
     }
@@ -327,9 +327,9 @@ struct MePinActionsSheet: View {
     private func errorPill(_ text: String) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 12, weight: .bold))
+                .font(.appScaled(size: 12, weight: .bold))
             Text(text)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .lineLimit(2)
         }
         .foregroundStyle(HUDPalette.red)

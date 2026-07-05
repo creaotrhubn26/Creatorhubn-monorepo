@@ -83,7 +83,7 @@ struct LeadgridFullIntelligenceSheet: View {
     private var emptyState: some View {
         VStack(spacing: 14) {
             Image(systemName: "sparkles.rectangle.stack")
-                .font(.system(size: 60))
+                .font(.appScaled(size: 60))
                 .foregroundStyle(.purple)
             Text("Ingen rapport ennå")
                 .font(.headline)

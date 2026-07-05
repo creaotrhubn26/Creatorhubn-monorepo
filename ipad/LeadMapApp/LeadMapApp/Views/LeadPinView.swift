@@ -165,7 +165,7 @@ struct LeadPinView: View {
             DropPinShape()
                 .stroke(Color.white.opacity(0.95), lineWidth: 2)
             Text("\(score)")
-                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .font(.appScaled(size: 14, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
                 .monospacedDigit()
                 .offset(y: -h * 0.13)
@@ -191,7 +191,7 @@ struct LeadPinView: View {
                     img.resizable().scaledToFit()
                 case .failure:
                     Text(initials)
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appScaled(size: 12, weight: .bold))
                         .foregroundStyle(.white)
                 default:
                     ProgressView().controlSize(.mini)
@@ -291,7 +291,7 @@ struct StatusBadge: View {
             Circle().fill(color)
             Circle().stroke(Color.white, lineWidth: 1.5)
             Image(systemName: icon)
-                .font(.system(size: 10, weight: .bold))
+                .font(.appScaled(size: 10, weight: .bold))
                 .foregroundStyle(.white)
         }
         .frame(width: 20, height: 20)

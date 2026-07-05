@@ -95,19 +95,19 @@ struct UpcomingMeetingDetailSheet: View {
                     RoundedRectangle(cornerRadius: 12)
                         .fill(upcoming.iconColor.opacity(0.25))
                     Image(systemName: upcoming.icon)
-                        .font(.system(size: 22, weight: .bold))
+                        .font(.appScaled(size: 22, weight: .bold))
                         .foregroundStyle(upcoming.iconColor)
                 }
                 .frame(width: 56, height: 56)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(upcoming.company)
-                        .font(.system(size: 18, weight: .bold))
+                        .font(.appScaled(size: 18, weight: .bold))
                         .foregroundStyle(.white)
                     HStack(spacing: 5) {
                         Image(systemName: "person.fill")
-                            .font(.system(size: 10))
+                            .font(.appScaled(size: 10))
                         Text("\(upcoming.contactName) · \(upcoming.contactRole)")
-                            .font(.system(size: 11))
+                            .font(.appScaled(size: 11))
                     }
                     .foregroundStyle(UBrand.textSecondary)
                 }
@@ -119,11 +119,11 @@ struct UpcomingMeetingDetailSheet: View {
                 badge(upcoming.leadType, color: UBrand.yellow)
                 Text("·").foregroundStyle(UBrand.textTertiary)
                 Text("Score \(upcoming.leadScore)")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.appScaled(size: 10, weight: .bold))
                     .foregroundStyle(UBrand.purpleLight)
                 Spacer()
                 Text("NOK \(formatThousands(upcoming.valueNok))")
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: 14, weight: .bold, design: .rounded))
                     .foregroundStyle(UBrand.green)
                     .monospacedDigit()
             }
@@ -132,12 +132,12 @@ struct UpcomingMeetingDetailSheet: View {
                 ZStack {
                     Circle().fill(UBrand.purple.opacity(0.22))
                     Image(systemName: "text.bubble.fill")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.appScaled(size: 11, weight: .bold))
                         .foregroundStyle(UBrand.purpleLight)
                 }
                 .frame(width: 28, height: 28)
                 Text(upcoming.agenda)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(.white)
                 Spacer()
             }
@@ -152,7 +152,7 @@ struct UpcomingMeetingDetailSheet: View {
 
     private func badge(_ text: String, color: Color) -> some View {
         Text(text)
-            .font(.system(size: 10, weight: .bold))
+            .font(.appScaled(size: 10, weight: .bold))
             .foregroundStyle(color)
             .padding(.horizontal, 8).padding(.vertical, 3)
             .background(color.opacity(0.18), in: Capsule())
@@ -182,18 +182,18 @@ struct UpcomingMeetingDetailSheet: View {
             ZStack {
                 Circle().fill(color.opacity(0.22))
                 Image(systemName: icon)
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(color)
             }
             .frame(width: 30, height: 30)
             VStack(alignment: .leading, spacing: 1) {
                 Text(value)
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: 14, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
                     .monospacedDigit()
                     .lineLimit(1)
                 Text(sub.isEmpty ? label : sub)
-                    .font(.system(size: 9))
+                    .font(.appScaled(size: 9))
                     .foregroundStyle(UBrand.textSecondary)
             }
             Spacer(minLength: 0)
@@ -213,18 +213,18 @@ struct UpcomingMeetingDetailSheet: View {
             VStack(alignment: .leading, spacing: 11) {
                 HStack(spacing: 7) {
                     Image(systemName: "mappin.and.ellipse")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(UBrand.purpleLight)
                     Text("Sted")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(.white)
                     Spacer()
                     Image(systemName: "arrow.up.right.square.fill")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appScaled(size: 12, weight: .bold))
                         .foregroundStyle(UBrand.purpleLight)
                 }
                 Text(upcoming.address)
-                    .font(.system(size: 12))
+                    .font(.appScaled(size: 12))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 if upcoming.lat != 0 {
@@ -239,7 +239,7 @@ struct UpcomingMeetingDetailSheet: View {
                                         .overlay(Circle().stroke(.white, lineWidth: 2.5))
                                         .frame(width: 28, height: 28)
                                     Image(systemName: upcoming.icon)
-                                        .font(.system(size: 11, weight: .bold))
+                                        .font(.appScaled(size: 11, weight: .bold))
                                         .foregroundStyle(.white)
                                 }
                             }
@@ -254,9 +254,9 @@ struct UpcomingMeetingDetailSheet: View {
 
                         HStack(spacing: 4) {
                             Image(systemName: "hand.tap.fill")
-                                .font(.system(size: 9, weight: .bold))
+                                .font(.appScaled(size: 9, weight: .bold))
                             Text("Åpne i kart")
-                                .font(.system(size: 10, weight: .black))
+                                .font(.appScaled(size: 10, weight: .black))
                                 .tracking(0.4)
                         }
                         .foregroundStyle(.white)
@@ -282,10 +282,10 @@ struct UpcomingMeetingDetailSheet: View {
         VStack(alignment: .leading, spacing: 11) {
             HStack(spacing: 7) {
                 Image(systemName: "person.crop.circle.fill")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(UBrand.green)
                 Text("Kontaktperson")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
             }
@@ -293,16 +293,16 @@ struct UpcomingMeetingDetailSheet: View {
                 ZStack {
                     Circle().fill(UBrand.green.opacity(0.30))
                     Text(initials(upcoming.contactName))
-                        .font(.system(size: 13, weight: .black))
+                        .font(.appScaled(size: 13, weight: .black))
                         .foregroundStyle(UBrand.green)
                 }
                 .frame(width: 40, height: 40)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(upcoming.contactName)
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(.white)
                     Text(upcoming.contactRole)
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(UBrand.textSecondary)
                 }
                 Spacer()
@@ -325,7 +325,7 @@ struct UpcomingMeetingDetailSheet: View {
             ZStack {
                 Circle().fill(color.opacity(0.22))
                 Image(systemName: icon)
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(color)
             }
             .frame(width: 32, height: 32)
@@ -340,22 +340,22 @@ struct UpcomingMeetingDetailSheet: View {
             ZStack {
                 Circle().fill(upcoming.prepStatus.color.opacity(0.22))
                 Image(systemName: upcoming.prepStatus.icon)
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(upcoming.prepStatus.color)
             }
             .frame(width: 38, height: 38)
             VStack(alignment: .leading, spacing: 1) {
                 Text("Forberedelse: \(upcoming.prepStatus.rawValue)")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(.white)
                 Text(prepStatusDetail(upcoming.prepStatus))
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(UBrand.textSecondary)
             }
             Spacer()
             Button {} label: {
                 Text("Åpne")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 11).padding(.vertical, 7)
                     .background(upcoming.prepStatus.color, in: Capsule())
@@ -400,9 +400,9 @@ struct UpcomingMeetingDetailSheet: View {
         Button(action: action) {
             HStack(spacing: 6) {
                 Image(systemName: icon)
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                 Text(label)
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
             }
             .foregroundStyle(.white)
             .frame(maxWidth: fullWidth ? .infinity : nil)
@@ -425,7 +425,7 @@ struct UpcomingMeetingDetailSheet: View {
         HStack(spacing: 9) {
             Button { dismiss() } label: {
                 Text("Lukk")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.appScaled(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(maxWidth: 110)
                     .padding(.vertical, 13)
@@ -436,9 +436,9 @@ struct UpcomingMeetingDetailSheet: View {
             Button { showNavigate = true } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "play.circle.fill")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.appScaled(size: 14, weight: .bold))
                     Text("Start møte / Naviger")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                 }
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
@@ -586,13 +586,13 @@ struct AllUpcomingMeetingsSheet: View {
     private func summaryStat(value: String, label: String, color: Color) -> some View {
         VStack(spacing: 4) {
             Text(value)
-                .font(.system(size: 19, weight: .black, design: .rounded))
+                .font(.appScaled(size: 19, weight: .black, design: .rounded))
                 .foregroundStyle(color)
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
             Text(label)
-                .font(.system(size: 10))
+                .font(.appScaled(size: 10))
                 .foregroundStyle(UBrand.textSecondary)
                 .multilineTextAlignment(.center)
         }
@@ -606,15 +606,15 @@ struct AllUpcomingMeetingsSheet: View {
     private var searchBar: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(UBrand.textSecondary)
             ZStack(alignment: .leading) {
                 TextField("", text: $search)
                     .foregroundStyle(.white)
-                    .font(.system(size: 13))
+                    .font(.appScaled(size: 13))
                 if search.isEmpty {
                     Text("Søk bedrift, kontakt eller sted…")
-                        .font(.system(size: 13))
+                        .font(.appScaled(size: 13))
                         .foregroundStyle(UBrand.textTertiary)
                         .allowsHitTesting(false)
                 }
@@ -622,7 +622,7 @@ struct AllUpcomingMeetingsSheet: View {
             if !search.isEmpty {
                 Button { search = "" } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 12))
+                        .font(.appScaled(size: 12))
                         .foregroundStyle(UBrand.textTertiary)
                 }
                 .buttonStyle(.plain)
@@ -642,9 +642,9 @@ struct AllUpcomingMeetingsSheet: View {
                     } label: {
                         HStack(spacing: 5) {
                             Image(systemName: f.icon)
-                                .font(.system(size: 10, weight: .bold))
+                                .font(.appScaled(size: 10, weight: .bold))
                             Text(f.rawValue)
-                                .font(.system(size: 11, weight: .bold))
+                                .font(.appScaled(size: 11, weight: .bold))
                         }
                         .foregroundStyle(filter == f ? .white : f.color)
                         .padding(.horizontal, 11).padding(.vertical, 7)
@@ -664,11 +664,11 @@ struct AllUpcomingMeetingsSheet: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
                 Text(day.uppercased())
-                    .font(.system(size: 10, weight: .black))
+                    .font(.appScaled(size: 10, weight: .black))
                     .foregroundStyle(UBrand.purpleLight)
                     .tracking(0.5)
                 Text("\(items.count)")
-                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: 9, weight: .bold, design: .rounded))
                     .foregroundStyle(UBrand.textSecondary)
                     .monospacedDigit()
                     .padding(.horizontal, 5).padding(.vertical, 1)
@@ -694,11 +694,11 @@ struct AllUpcomingMeetingsSheet: View {
                 // Tid-kolonne
                 VStack(alignment: .center, spacing: 1) {
                     Text(u.time)
-                        .font(.system(size: 14, weight: .black, design: .rounded))
+                        .font(.appScaled(size: 14, weight: .black, design: .rounded))
                         .foregroundStyle(.white)
                         .monospacedDigit()
                     Text(u.endTime)
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(UBrand.textSecondary)
                         .monospacedDigit()
                 }
@@ -709,30 +709,30 @@ struct AllUpcomingMeetingsSheet: View {
                     RoundedRectangle(cornerRadius: 9)
                         .fill(u.iconColor.opacity(0.22))
                     Image(systemName: u.icon)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.appScaled(size: 13, weight: .semibold))
                         .foregroundStyle(u.iconColor)
                 }
                 .frame(width: 36, height: 36)
                 // Hoved
                 VStack(alignment: .leading, spacing: 2) {
                     Text(u.company)
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
                     HStack(spacing: 5) {
                         Text(u.contactName)
-                            .font(.system(size: 11))
+                            .font(.appScaled(size: 11))
                             .foregroundStyle(UBrand.textSecondary)
                             .lineLimit(1)
                         Text("·")
                             .foregroundStyle(UBrand.textTertiary)
                         Text(u.location)
-                            .font(.system(size: 11))
+                            .font(.appScaled(size: 11))
                             .foregroundStyle(UBrand.textSecondary)
                             .lineLimit(1)
                     }
                     Text(u.agenda)
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(UBrand.textTertiary)
                         .lineLimit(1)
                 }
@@ -740,14 +740,14 @@ struct AllUpcomingMeetingsSheet: View {
                 // Verdi + prep
                 VStack(alignment: .trailing, spacing: 4) {
                     Text("NOK \(u.valueNok / 1000)k")
-                        .font(.system(size: 12, weight: .black, design: .rounded))
+                        .font(.appScaled(size: 12, weight: .black, design: .rounded))
                         .foregroundStyle(UBrand.green)
                         .monospacedDigit()
                     HStack(spacing: 3) {
                         Image(systemName: u.prepStatus.icon)
-                            .font(.system(size: 8, weight: .bold))
+                            .font(.appScaled(size: 8, weight: .bold))
                         Text(u.prepStatus.rawValue)
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.appScaled(size: 9, weight: .bold))
                     }
                     .foregroundStyle(u.prepStatus.color)
                     .padding(.horizontal, 6).padding(.vertical, 2)
@@ -755,7 +755,7 @@ struct AllUpcomingMeetingsSheet: View {
                     .overlay(Capsule().stroke(u.prepStatus.color.opacity(0.4), lineWidth: 1))
                 }
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(UBrand.textTertiary)
             }
             .padding(11)
@@ -768,13 +768,13 @@ struct AllUpcomingMeetingsSheet: View {
     private var emptyState: some View {
         VStack(spacing: 9) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 28, weight: .semibold))
+                .font(.appScaled(size: 28, weight: .semibold))
                 .foregroundStyle(UBrand.textTertiary)
             Text("Ingen møter funnet")
-                .font(.system(size: 13, weight: .bold))
+                .font(.appScaled(size: 13, weight: .bold))
                 .foregroundStyle(.white)
             Text("Prøv annet søk eller bytt filter")
-                .font(.system(size: 11))
+                .font(.appScaled(size: 11))
                 .foregroundStyle(UBrand.textSecondary)
         }
         .frame(maxWidth: .infinity)

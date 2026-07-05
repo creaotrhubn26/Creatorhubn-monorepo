@@ -164,16 +164,16 @@ struct LogActivitySheet: View {
                 RoundedRectangle(cornerRadius: 10)
                     .fill(lead.companyColor.opacity(0.22))
                 Image(systemName: "building.2.fill")
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.appScaled(size: 18, weight: .semibold))
                     .foregroundStyle(lead.companyColor)
             }
             .frame(width: 46, height: 46)
             VStack(alignment: .leading, spacing: 2) {
                 Text(lead.company)
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.appScaled(size: 15, weight: .bold))
                     .foregroundStyle(.white)
                 Text("Logger som Lars Kristensen · \(formattedNow)")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(LaBrand.textSecondary)
             }
             Spacer()
@@ -211,12 +211,12 @@ struct LogActivitySheet: View {
                 ZStack {
                     Circle().fill(t.color.opacity(isSelected ? 0.30 : 0.15))
                     Image(systemName: t.icon)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.appScaled(size: 14, weight: .semibold))
                         .foregroundStyle(t.color)
                 }
                 .frame(width: 36, height: 36)
                 Text(t.rawValue)
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.appScaled(size: 10, weight: .semibold))
                     .foregroundStyle(isSelected ? .white : LaBrand.textSecondary)
             }
             .frame(maxWidth: .infinity)
@@ -252,7 +252,7 @@ struct LogActivitySheet: View {
                 if type.needsDuration {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Varighet")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.appScaled(size: 11, weight: .semibold))
                             .foregroundStyle(LaBrand.textSecondary)
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 6) {
@@ -271,7 +271,7 @@ struct LogActivitySheet: View {
         let isSelected = durationMinutes == minutes
         return Button { durationMinutes = minutes } label: {
             Text("\(minutes) min")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(isSelected ? .white : LaBrand.textSecondary)
                 .padding(.horizontal, 12).padding(.vertical, 7)
                 .background(
@@ -307,27 +307,27 @@ struct LogActivitySheet: View {
                 ZStack {
                     Circle().fill(o.color.opacity(isSelected ? 0.30 : 0.15))
                     Image(systemName: o.icon)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(o.color)
                 }
                 .frame(width: 32, height: 32)
                 Text(o.rawValue)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(.white)
                 Spacer()
                 if let stage = o.movesToStage, movePipelineStage, isSelected {
                     HStack(spacing: 4) {
                         Image(systemName: "arrow.right")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.appScaled(size: 9, weight: .bold))
                         Text(stage)
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.appScaled(size: 10, weight: .bold))
                     }
                     .foregroundStyle(LaBrand.purpleLight)
                     .padding(.horizontal, 7).padding(.vertical, 3)
                     .background(LaBrand.purple.opacity(0.20), in: Capsule())
                 }
                 Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
-                    .font(.system(size: 15))
+                    .font(.appScaled(size: 15))
                     .foregroundStyle(isSelected ? o.color : LaBrand.stroke)
             }
             .padding(9)
@@ -352,14 +352,14 @@ struct LogActivitySheet: View {
                     TextEditor(text: $note)
                         .scrollContentBackground(.hidden)
                         .foregroundStyle(.white)
-                        .font(.system(size: 13))
+                        .font(.appScaled(size: 13))
                         .frame(minHeight: 90)
                         .padding(10)
                         .background(LaBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
                         .overlay(RoundedRectangle(cornerRadius: 10).stroke(LaBrand.stroke, lineWidth: 1))
                     if note.isEmpty {
                         Text(notePlaceholder)
-                            .font(.system(size: 13))
+                            .font(.appScaled(size: 13))
                             .foregroundStyle(LaBrand.textTertiary)
                             .padding(.horizontal, 14).padding(.vertical, 16)
                             .allowsHitTesting(false)
@@ -370,7 +370,7 @@ struct LogActivitySheet: View {
                 // stedet for å skrive.
                 Button { showTranscription = true } label: {
                     Label("Transkriber møtet", systemImage: "waveform.badge.mic")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(LaBrand.purpleLight)
                 }
                 .buttonStyle(.plain)
@@ -406,16 +406,16 @@ struct LogActivitySheet: View {
                         ZStack {
                             Circle().fill(LaBrand.purple.opacity(0.22))
                             Image(systemName: "calendar.badge.plus")
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.appScaled(size: 12, weight: .semibold))
                                 .foregroundStyle(LaBrand.purpleLight)
                         }
                         .frame(width: 30, height: 30)
                         VStack(alignment: .leading, spacing: 1) {
                             Text("Avtal ny oppfølging")
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.appScaled(size: 13, weight: .semibold))
                                 .foregroundStyle(.white)
                             Text("Legg automatisk i kalenderen")
-                                .font(.system(size: 10))
+                                .font(.appScaled(size: 10))
                                 .foregroundStyle(LaBrand.textSecondary)
                         }
                     }
@@ -439,21 +439,21 @@ struct LogActivitySheet: View {
                         ZStack {
                             Circle().fill(LaBrand.green.opacity(0.22))
                             Image(systemName: "arrow.right.circle.fill")
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.appScaled(size: 12, weight: .semibold))
                                 .foregroundStyle(LaBrand.green)
                         }
                         .frame(width: 30, height: 30)
                         VStack(alignment: .leading, spacing: 1) {
                             Text("Flytt i pipeline")
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.appScaled(size: 13, weight: .semibold))
                                 .foregroundStyle(.white)
                             if let stage = outcome.movesToStage {
                                 Text("Auto-stage: \(stage)")
-                                    .font(.system(size: 10))
+                                    .font(.appScaled(size: 10))
                                     .foregroundStyle(LaBrand.green)
                             } else {
                                 Text("Ingen endring fra dette utfallet")
-                                    .font(.system(size: 10))
+                                    .font(.appScaled(size: 10))
                                     .foregroundStyle(LaBrand.textTertiary)
                             }
                         }
@@ -473,23 +473,23 @@ struct LogActivitySheet: View {
             // Sammendrag-rad
             HStack(spacing: 8) {
                 Image(systemName: type.icon)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(type.color)
                 Text(type.rawValue)
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(.white)
                 Text("·")
                     .foregroundStyle(LaBrand.textTertiary)
                 Text(outcome.rawValue)
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(outcome.color)
                 Spacer()
                 if let stage = outcome.movesToStage, movePipelineStage {
                     HStack(spacing: 4) {
                         Image(systemName: "arrow.right.circle.fill")
-                            .font(.system(size: 10))
+                            .font(.appScaled(size: 10))
                         Text("→ \(stage)")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.appScaled(size: 10, weight: .semibold))
                     }
                     .foregroundStyle(LaBrand.green)
                 }
@@ -501,7 +501,7 @@ struct LogActivitySheet: View {
             HStack(spacing: 10) {
                 Button { dismiss() } label: {
                     Text("Avbryt")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.appScaled(size: 13, weight: .semibold))
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 13)
@@ -512,7 +512,7 @@ struct LogActivitySheet: View {
 
                 Button { dismiss() } label: {
                     Text("Lagre + lag ny")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(LaBrand.purpleLight)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 13)
@@ -524,9 +524,9 @@ struct LogActivitySheet: View {
                 Button { dismiss() } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 13, weight: .bold))
+                            .font(.appScaled(size: 13, weight: .bold))
                         Text("Lagre")
-                            .font(.system(size: 14, weight: .bold))
+                            .font(.appScaled(size: 14, weight: .bold))
                     }
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
@@ -557,10 +557,10 @@ struct LogActivitySheet: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 7) {
                 Image(systemName: icon)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(LaBrand.purpleLight)
                 Text(title)
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
             }

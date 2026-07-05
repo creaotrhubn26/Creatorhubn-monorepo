@@ -66,17 +66,17 @@ struct LeadgridDateFieldRow: View {
         } label: {
             HStack(spacing: 12) {
                 Image(systemName: icon)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.appScaled(size: 14, weight: .semibold))
                     .foregroundStyle(LDP.purpleLight)
                     .frame(width: 22)
                 Text(title)
                     .foregroundStyle(.white)
                 Spacer()
                 Text(formattedDate)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.appScaled(size: 13, weight: .semibold))
                     .foregroundStyle(LDP.purpleLight)
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(LDP.textTertiary)
             }
             .contentShape(Rectangle())
@@ -199,7 +199,7 @@ struct LeadgridDatePickerSheet: View {
                         onCancel()
                     } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.appScaled(size: 14, weight: .semibold))
                     }
                     .accessibilityLabel("Avbryt")
                 }
@@ -222,7 +222,7 @@ struct LeadgridDatePickerSheet: View {
             Spacer()
             VStack(spacing: 2) {
                 Text(monthYearString().uppercased())
-                    .font(.system(size: 13, weight: .black, design: .rounded))
+                    .font(.appScaled(size: 13, weight: .black, design: .rounded))
                     .tracking(1.2)
                     .foregroundStyle(LDP.purpleLight)
                 if !cal.isDate(displayedMonth, equalTo: Date(), toGranularity: .month) {
@@ -232,7 +232,7 @@ struct LeadgridDatePickerSheet: View {
                             selectedDate = Date()
                         }
                     }
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.appScaled(size: 10, weight: .semibold))
                     .foregroundStyle(LDP.textDim)
                     .buttonStyle(.plain)
                 }
@@ -245,7 +245,7 @@ struct LeadgridDatePickerSheet: View {
     private func navButton(_ icon: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: icon)
-                .font(.system(size: 12, weight: .bold))
+                .font(.appScaled(size: 12, weight: .bold))
                 .foregroundStyle(.white)
                 .frame(width: 34, height: 34)
                 .background(LDP.cardHi, in: Circle())
@@ -258,7 +258,7 @@ struct LeadgridDatePickerSheet: View {
         HStack(spacing: 0) {
             ForEach(0..<7, id: \.self) { i in
                 Text(weekdaySymbols[i])
-                    .font(.system(size: 10, weight: .black, design: .rounded))
+                    .font(.appScaled(size: 10, weight: .black, design: .rounded))
                     .tracking(0.6)
                     .foregroundStyle(LDP.textDim)
                     .frame(maxWidth: .infinity)
@@ -301,7 +301,7 @@ struct LeadgridDatePickerSheet: View {
                         .strokeBorder(LDP.purpleLight.opacity(0.5), lineWidth: 1.5)
                 }
                 Text(day.number)
-                    .font(.system(size: 14, weight: isSelected ? .heavy : (isToday ? .bold : .medium), design: .rounded))
+                    .font(.appScaled(size: 14, weight: isSelected ? .heavy : (isToday ? .bold : .medium), design: .rounded))
                     .foregroundStyle(
                         day.date == nil
                             ? LDP.textTertiary
@@ -350,13 +350,13 @@ struct LeadgridDatePickerSheet: View {
             HStack(spacing: 5) {
                 Circle().fill(LDP.purpleLight).frame(width: 6, height: 6)
                 Text("Møte")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.appScaled(size: 10, weight: .semibold))
                     .foregroundStyle(LDP.textDim)
             }
             HStack(spacing: 5) {
                 Circle().fill(Color(red: 0.34, green: 0.60, blue: 0.98)).frame(width: 6, height: 6)
                 Text("Oppfølging")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.appScaled(size: 10, weight: .semibold))
                     .foregroundStyle(LDP.textDim)
             }
             Spacer()
@@ -376,7 +376,7 @@ struct LeadgridDatePickerSheet: View {
     private var dateShortcutsBar: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("HURTIGVALG")
-                .font(.system(size: 9, weight: .black, design: .rounded))
+                .font(.appScaled(size: 9, weight: .black, design: .rounded))
                 .tracking(1.0)
                 .foregroundStyle(LDP.textDim)
             HStack(spacing: 6) {
@@ -400,7 +400,7 @@ struct LeadgridDatePickerSheet: View {
             }
         } label: {
             Text(label)
-                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .font(.appScaled(size: 11, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
@@ -416,7 +416,7 @@ struct LeadgridDatePickerSheet: View {
     private var calendarActionButtons: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("HANDLING")
-                .font(.system(size: 9, weight: .black, design: .rounded))
+                .font(.appScaled(size: 9, weight: .black, design: .rounded))
                 .tracking(1.0)
                 .foregroundStyle(LDP.textDim)
             VStack(spacing: 6) {
@@ -435,17 +435,17 @@ struct LeadgridDatePickerSheet: View {
                 ZStack {
                     Circle().fill(action.color.opacity(0.20))
                     Image(systemName: action.icon)
-                        .font(.system(size: 15, weight: .bold))
+                        .font(.appScaled(size: 15, weight: .bold))
                         .foregroundStyle(action.color)
                 }
                 .frame(width: 36, height: 36)
                 .overlay(Circle().strokeBorder(action.color.opacity(0.35), lineWidth: 1))
                 Text(action.title)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.appScaled(size: 14, weight: .semibold))
                     .foregroundStyle(.white)
                 Spacer()
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(LDP.textTertiary)
             }
             .padding(.horizontal, 12)
@@ -459,7 +459,7 @@ struct LeadgridDatePickerSheet: View {
     private var timePicker: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("TIDSPUNKT")
-                .font(.system(size: 9, weight: .black, design: .rounded))
+                .font(.appScaled(size: 9, weight: .black, design: .rounded))
                 .tracking(1.0)
                 .foregroundStyle(LDP.textDim)
             HStack(spacing: 10) {
@@ -480,7 +480,7 @@ struct LeadgridDatePickerSheet: View {
                     )
                 }
                 Text(":")
-                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: 22, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
                 // Minutt-picker (15-minutters intervall)
                 Menu {
@@ -512,11 +512,11 @@ struct LeadgridDatePickerSheet: View {
     private func timeChip(value: String, label: String) -> some View {
         VStack(spacing: 1) {
             Text(value)
-                .font(.system(size: 22, weight: .heavy, design: .rounded))
+                .font(.appScaled(size: 22, weight: .heavy, design: .rounded))
                 .foregroundStyle(.white)
                 .monospacedDigit()
             Text(label)
-                .font(.system(size: 8, weight: .black, design: .rounded))
+                .font(.appScaled(size: 8, weight: .black, design: .rounded))
                 .tracking(0.8)
                 .foregroundStyle(LDP.textDim)
         }
@@ -532,7 +532,7 @@ struct LeadgridDatePickerSheet: View {
             selectedDate = combineTime(selectedDate)
         } label: {
             Text(text)
-                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .font(.appScaled(size: 10, weight: .bold, design: .rounded))
                 .foregroundStyle(LDP.purpleLight)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 5)

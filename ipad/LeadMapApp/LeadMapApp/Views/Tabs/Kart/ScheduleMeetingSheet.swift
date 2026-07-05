@@ -150,16 +150,16 @@ struct ScheduleMeetingSheet: View {
                 RoundedRectangle(cornerRadius: 10)
                     .fill(lead.status.color.opacity(0.20))
                 Image(systemName: "building.2.fill")
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.appScaled(size: 18, weight: .semibold))
                     .foregroundStyle(lead.status.color)
             }
             .frame(width: 48, height: 48)
             VStack(alignment: .leading, spacing: 3) {
                 Text(lead.name)
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.appScaled(size: 15, weight: .bold))
                     .foregroundStyle(.white)
                 Text(lead.address)
-                    .font(.system(size: 12))
+                    .font(.appScaled(size: 12))
                     .foregroundStyle(SmBrand.textSecondary)
             }
             Spacer()
@@ -181,7 +181,7 @@ struct ScheduleMeetingSheet: View {
                 .foregroundColor(SmBrand.textTertiary))
                 .textFieldStyle(.plain)
                 .foregroundStyle(.white)
-                .font(.system(size: 14))
+                .font(.appScaled(size: 14))
                 .padding(.horizontal, 12).padding(.vertical, 12)
                 .background(SmBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(SmBrand.stroke, lineWidth: 1))
@@ -207,21 +207,21 @@ struct ScheduleMeetingSheet: View {
                 ZStack {
                     Circle().fill(t.color.opacity(isSelected ? 0.30 : 0.15))
                     Image(systemName: t.icon)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.appScaled(size: 14, weight: .semibold))
                         .foregroundStyle(t.color)
                 }
                 .frame(width: 38, height: 38)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(t.rawValue)
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(.white)
                     Text(t.description)
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(SmBrand.textSecondary)
                 }
                 Spacer()
                 Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
-                    .font(.system(size: 18))
+                    .font(.appScaled(size: 18))
                     .foregroundStyle(isSelected ? t.color : SmBrand.stroke)
             }
             .padding(10)
@@ -254,7 +254,7 @@ struct ScheduleMeetingSheet: View {
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Varighet")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(SmBrand.textSecondary)
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 6) {
@@ -275,7 +275,7 @@ struct ScheduleMeetingSheet: View {
             : "\(minutes) min"
         return Button { duration = minutes } label: {
             Text(label)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(isSelected ? .white : SmBrand.textSecondary)
                 .padding(.horizontal, 14).padding(.vertical, 8)
                 .background(
@@ -317,7 +317,7 @@ struct ScheduleMeetingSheet: View {
                 } else {
                     HStack(spacing: 8) {
                         Image(systemName: meetingType.icon)
-                            .font(.system(size: 12))
+                            .font(.appScaled(size: 12))
                             .foregroundStyle(meetingType.color)
                         TextField("", text: $location,
                                   prompt: Text(meetingType == .physical
@@ -326,7 +326,7 @@ struct ScheduleMeetingSheet: View {
                                     .foregroundColor(SmBrand.textTertiary))
                             .textFieldStyle(.plain)
                             .foregroundStyle(.white)
-                            .font(.system(size: 13))
+                            .font(.appScaled(size: 13))
                     }
                     .padding(.horizontal, 12).padding(.vertical, 11)
                     .background(SmBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
@@ -344,7 +344,7 @@ struct ScheduleMeetingSheet: View {
                                     .overlay(Circle().stroke(Color.white, lineWidth: 2))
                                     .frame(width: 30, height: 30)
                                 Image(systemName: "building.2.fill")
-                                    .font(.system(size: 11, weight: .bold))
+                                    .font(.appScaled(size: 11, weight: .bold))
                                     .foregroundStyle(.white)
                             }
                         }
@@ -370,20 +370,20 @@ struct ScheduleMeetingSheet: View {
                 ZStack {
                     Circle().fill(meetingType.color.opacity(0.22))
                     Image(systemName: meetingType.icon)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.appScaled(size: 13, weight: .semibold))
                         .foregroundStyle(meetingType.color)
                 }
                 .frame(width: 32, height: 32)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(location.isEmpty ? "Genererer lenke…" : location)
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
                         .truncationMode(.middle)
                     Text(meetingType == .facetime
                          ? "Apple ID kreves ikke — fungerer på alle plattformer"
                          : "Krever Google-konto eller anonym tilgang")
-                        .font(.system(size: 9))
+                        .font(.appScaled(size: 9))
                         .foregroundStyle(SmBrand.textSecondary)
                 }
                 Spacer(minLength: 4)
@@ -391,7 +391,7 @@ struct ScheduleMeetingSheet: View {
                     UIPasteboard.general.string = location
                 } label: {
                     Image(systemName: "doc.on.doc")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(SmBrand.purpleLight)
                         .frame(width: 30, height: 30)
                         .background(SmBrand.cardHi.opacity(0.6), in: Circle())
@@ -412,9 +412,9 @@ struct ScheduleMeetingSheet: View {
                 } label: {
                     HStack(spacing: 5) {
                         Image(systemName: "arrow.triangle.2.circlepath")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.appScaled(size: 11, weight: .semibold))
                         Text("Regenerér")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.appScaled(size: 12, weight: .semibold))
                     }
                     .foregroundStyle(SmBrand.purpleLight)
                     .padding(.horizontal, 12).padding(.vertical, 8)
@@ -430,9 +430,9 @@ struct ScheduleMeetingSheet: View {
                 } label: {
                     HStack(spacing: 5) {
                         Image(systemName: "arrow.up.forward.app.fill")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.appScaled(size: 11, weight: .bold))
                         Text(meetingType == .facetime ? "Test FaceTime" : "Test Meet")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.appScaled(size: 12, weight: .bold))
                     }
                     .foregroundStyle(.white)
                     .padding(.horizontal, 14).padding(.vertical, 8)
@@ -451,13 +451,13 @@ struct ScheduleMeetingSheet: View {
             // Info-banner
             HStack(alignment: .top, spacing: 8) {
                 Image(systemName: "info.circle.fill")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(meetingType.color)
                     .padding(.top, 1)
                 Text(meetingType == .facetime
                      ? "Når møtet starter, åpnes FaceTime automatisk på din iPad. Inviterte får lenken på e-post + .ics-fil."
                      : "Møtet legges i Google Calendar via koblet konto. Lenken sendes som del av invitasjonen.")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(SmBrand.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer()
@@ -494,9 +494,9 @@ struct ScheduleMeetingSheet: View {
                 Button {} label: {
                     HStack(spacing: 6) {
                         Image(systemName: "plus.circle.fill")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.appScaled(size: 12, weight: .bold))
                         Text("Inviter teammedlem")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.appScaled(size: 12, weight: .semibold))
                     }
                     .foregroundStyle(SmBrand.purpleLight)
                     .frame(maxWidth: .infinity)
@@ -520,31 +520,31 @@ struct ScheduleMeetingSheet: View {
             ZStack {
                 Circle().fill(color.opacity(0.25))
                 Text(initials)
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(color)
             }
             .frame(width: 32, height: 32)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 5) {
                     Text(name)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
                     if isOrganizer {
                         Text("ARRANGØR")
-                            .font(.system(size: 7, weight: .bold))
+                            .font(.appScaled(size: 7, weight: .bold))
                             .foregroundStyle(SmBrand.yellow)
                             .padding(.horizontal, 4).padding(.vertical, 1)
                             .background(SmBrand.yellow.opacity(0.18), in: Capsule())
                     }
                 }
                 Text(role)
-                    .font(.system(size: 10))
+                    .font(.appScaled(size: 10))
                     .foregroundStyle(SmBrand.textSecondary)
             }
             Spacer()
             if locked {
                 Image(systemName: "lock.fill")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(SmBrand.textTertiary)
             } else {
                 Toggle("", isOn: toggled)
@@ -564,14 +564,14 @@ struct ScheduleMeetingSheet: View {
                 TextEditor(text: $agenda)
                     .scrollContentBackground(.hidden)
                     .foregroundStyle(.white)
-                    .font(.system(size: 13))
+                    .font(.appScaled(size: 13))
                     .frame(minHeight: 90)
                     .padding(10)
                     .background(SmBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
                     .overlay(RoundedRectangle(cornerRadius: 10).stroke(SmBrand.stroke, lineWidth: 1))
                 if agenda.isEmpty {
                     Text("• Befaring av bygget\n• Gjennomgang av tilbud\n• Avklare neste steg")
-                        .font(.system(size: 13))
+                        .font(.appScaled(size: 13))
                         .foregroundStyle(SmBrand.textTertiary)
                         .padding(.horizontal, 14).padding(.vertical, 17)
                         .allowsHitTesting(false)
@@ -588,15 +588,15 @@ struct ScheduleMeetingSheet: View {
                 Toggle(isOn: $sendInvite) {
                     HStack(spacing: 8) {
                         Image(systemName: "envelope.fill")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.appScaled(size: 12, weight: .semibold))
                             .foregroundStyle(SmBrand.blue)
                             .frame(width: 22)
                         VStack(alignment: .leading, spacing: 1) {
                             Text("Send invitasjon på e-post")
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.appScaled(size: 13, weight: .semibold))
                                 .foregroundStyle(.white)
                             Text("Med agenda + adresse + .ics")
-                                .font(.system(size: 10))
+                                .font(.appScaled(size: 10))
                                 .foregroundStyle(SmBrand.textSecondary)
                         }
                     }
@@ -606,15 +606,15 @@ struct ScheduleMeetingSheet: View {
                 Toggle(isOn: $addToCalendar) {
                     HStack(spacing: 8) {
                         Image(systemName: "calendar.badge.plus")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.appScaled(size: 12, weight: .semibold))
                             .foregroundStyle(SmBrand.green)
                             .frame(width: 22)
                         VStack(alignment: .leading, spacing: 1) {
                             Text("Legg til i kalenderen min")
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.appScaled(size: 13, weight: .semibold))
                                 .foregroundStyle(.white)
                             Text("iCal + Google Cal-sync hvis aktivert")
-                                .font(.system(size: 10))
+                                .font(.appScaled(size: 10))
                                 .foregroundStyle(SmBrand.textSecondary)
                         }
                     }
@@ -623,7 +623,7 @@ struct ScheduleMeetingSheet: View {
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Påminnelse")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(SmBrand.textSecondary)
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 6) {
@@ -642,7 +642,7 @@ struct ScheduleMeetingSheet: View {
         let label = minutes >= 60 ? (minutes >= 1440 ? "1 dag" : "\(minutes / 60) t") : "\(minutes) min"
         return Button { reminderBefore = minutes } label: {
             Text(label)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.appScaled(size: 11, weight: .semibold))
                 .foregroundStyle(isSelected ? .white : SmBrand.textSecondary)
                 .padding(.horizontal, 12).padding(.vertical, 7)
                 .background(
@@ -661,23 +661,23 @@ struct ScheduleMeetingSheet: View {
             // Sammendrag-rad
             HStack(spacing: 8) {
                 Image(systemName: meetingType.icon)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(meetingType.color)
                 Text(formattedDateTime)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(.white)
                 Text("·")
                     .foregroundStyle(SmBrand.textTertiary)
                 Text("\(duration) min")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(SmBrand.textSecondary)
                 Spacer()
                 if sendInvite {
                     HStack(spacing: 4) {
                         Image(systemName: "envelope.badge.fill")
-                            .font(.system(size: 10))
+                            .font(.appScaled(size: 10))
                         Text("Invitasjon sendes")
-                            .font(.system(size: 10))
+                            .font(.appScaled(size: 10))
                     }
                     .foregroundStyle(SmBrand.green)
                 }
@@ -689,7 +689,7 @@ struct ScheduleMeetingSheet: View {
             HStack(spacing: 10) {
                 Button { dismiss() } label: {
                     Text("Avbryt")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.appScaled(size: 14, weight: .semibold))
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 13)
@@ -701,9 +701,9 @@ struct ScheduleMeetingSheet: View {
                 Button { dismiss() } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "calendar.badge.checkmark")
-                            .font(.system(size: 13, weight: .bold))
+                            .font(.appScaled(size: 13, weight: .bold))
                         Text("Planlegg møte")
-                            .font(.system(size: 14, weight: .bold))
+                            .font(.appScaled(size: 14, weight: .bold))
                     }
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
@@ -743,10 +743,10 @@ struct ScheduleMeetingSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Image(systemName: icon)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.appScaled(size: 13, weight: .semibold))
                     .foregroundStyle(SmBrand.purpleLight)
                 Text(title)
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
             }

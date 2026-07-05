@@ -89,7 +89,7 @@ struct LeadgridAIUsageView: View {
             }
             HStack(alignment: .firstTextBaseline) {
                 Text(String(format: "$%.2f", s.totalCostUsd))
-                    .font(.system(size: 42, weight: .bold).monospacedDigit())
+                    .font(.appScaled(size: 42, weight: .bold).monospacedDigit())
                     .foregroundStyle(costColor(s.totalCostUsd))
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {

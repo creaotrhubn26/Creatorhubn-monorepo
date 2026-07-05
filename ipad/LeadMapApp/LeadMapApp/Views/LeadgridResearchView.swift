@@ -108,7 +108,7 @@ struct LeadgridResearchView: View {
     private var emptyState: some View {
         VStack(spacing: 16) {
             Image(systemName: "sparkles.rectangle.stack.fill")
-                .font(.system(size: 56))
+                .font(.appScaled(size: 56))
                 .foregroundStyle(.purple)
             Text("Ingen research enda")
                 .font(.title3.bold())

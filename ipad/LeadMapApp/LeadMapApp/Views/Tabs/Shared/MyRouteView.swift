@@ -140,7 +140,7 @@ struct MyRouteView: View {
                 .overlay(Circle().strokeBorder(.white, lineWidth: 2))
                 .shadow(color: color.opacity(0.7), radius: 6)
             Text("\(stop.orderIndex + 1)")
-                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .font(.appScaled(size: 12, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
         }
     }
@@ -191,7 +191,7 @@ struct MyRouteView: View {
                 VStack {
                     Spacer()
                     Text(errorMessage)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(HUDPalette.red)
                         .padding(12)
                         .hudGlass(cornerRadius: 12, glow: HUDPalette.red)
@@ -223,7 +223,7 @@ struct MyRouteView: View {
                     .lineLimit(1)
                 if let arrivalTime = ns?.plannedArrivalTime {
                     Text("Planlagt ankomst \(arrivalTime)")
-                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                        .font(.appScaled(size: 10, weight: .medium, design: .rounded))
                         .foregroundStyle(HUDPalette.textDim)
                 }
             }
@@ -272,7 +272,7 @@ struct MyRouteView: View {
                 .strokeBorder(HUDPalette.blue.opacity(0.7), lineWidth: 1.5)
                 .frame(width: 48, height: 48)
             Image(systemName: "location.north.fill")
-                .font(.system(size: 20, weight: .bold))
+                .font(.appScaled(size: 20, weight: .bold))
                 .foregroundStyle(HUDPalette.blue)
                 .rotationEffect(.degrees(heading ?? 0))
                 .shadow(color: HUDPalette.blue, radius: 4)
@@ -348,7 +348,7 @@ struct MyRouteView: View {
                 Circle().fill(.ultraThinMaterial)
                 Circle().strokeBorder(color.opacity(0.55), lineWidth: 1)
                 Image(systemName: icon)
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(color)
             }
             .frame(width: 40, height: 40)
@@ -473,29 +473,29 @@ struct MyRouteView: View {
                 Circle().strokeBorder(color.opacity(0.7), lineWidth: 1)
                 if visited {
                     Image(systemName: "checkmark")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.appScaled(size: 10, weight: .bold))
                         .foregroundStyle(color)
                 } else {
                     Text("\(stop.orderIndex + 1)")
-                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .font(.appScaled(size: 10, weight: .bold, design: .rounded))
                         .foregroundStyle(color)
                 }
             }
             .frame(width: 24, height: 24)
             VStack(alignment: .leading, spacing: 2) {
                 Text(stopTitle(stop))
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
                 HStack(spacing: 6) {
                     if let t = stop.plannedArrivalTime {
                         Text(t)
-                            .font(.system(size: 9, weight: .medium, design: .monospaced))
+                            .font(.appScaled(size: 9, weight: .medium, design: .monospaced))
                             .foregroundStyle(HUDPalette.textFaint)
                     }
                     if let v = visit, let dev = v.deviationFromPlannedM {
                         Text("· \(dev) m avvik")
-                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                            .font(.appScaled(size: 9, weight: .bold, design: .rounded))
                             .foregroundStyle(onRoute ? HUDPalette.green : HUDPalette.red)
                     }
                 }
@@ -521,14 +521,14 @@ struct MyRouteView: View {
     private var emptyHUD: some View {
         VStack(spacing: 12) {
             Image(systemName: "map.circle.fill")
-                .font(.system(size: 48))
+                .font(.appScaled(size: 48))
                 .foregroundStyle(HUDPalette.textDim)
             Text("INGEN RUTE I DAG")
                 .font(HUDFont.title(15))
                 .tracking(1.5)
                 .foregroundStyle(.white)
             Text("Salgssjefen kan tildele deg en planlagt rute.")
-                .font(.system(size: 12, weight: .medium, design: .rounded))
+                .font(.appScaled(size: 12, weight: .medium, design: .rounded))
                 .foregroundStyle(HUDPalette.textDim)
                 .multilineTextAlignment(.center)
             Button {
@@ -559,7 +559,7 @@ struct MyRouteView: View {
             HUDPalette.blue.opacity(0.05).ignoresSafeArea()
             VStack(spacing: 20) {
                 Image(systemName: "location.north.line.fill")
-                    .font(.system(size: 44))
+                    .font(.appScaled(size: 44))
                     .foregroundStyle(HUDPalette.orange)
                     .shadow(color: HUDPalette.orange, radius: 12)
                 Text("ÅPNE I APPLE MAPS")
@@ -568,7 +568,7 @@ struct MyRouteView: View {
                     .foregroundStyle(.white)
                 if let stop {
                     Text(stopTitle(stop))
-                        .font(.system(size: 13))
+                        .font(.appScaled(size: 13))
                         .foregroundStyle(HUDPalette.textDim)
                 }
                 HStack(spacing: 12) {

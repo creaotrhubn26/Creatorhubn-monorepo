@@ -44,13 +44,13 @@ struct LeadbookInnsiktView: View {
             } else {
                 VStack(spacing: 10) {
                     Image(systemName: "chart.bar.doc.horizontal")
-                        .font(.system(size: 32, weight: .semibold))
+                        .font(.appScaled(size: 32, weight: .semibold))
                         .foregroundStyle(LBrand.textTertiary)
                     Text("Ingen innsikt enda")
-                        .font(.system(size: 15, weight: .bold))
+                        .font(.appScaled(size: 15, weight: .bold))
                         .foregroundStyle(.white)
                     Text("AI-innsikten fylles når teamet har registrert samtaler og Pondus-data.")
-                        .font(.system(size: 12))
+                        .font(.appScaled(size: 12))
                         .foregroundStyle(LBrand.textSecondary)
                         .multilineTextAlignment(.center)
                 }
@@ -62,7 +62,7 @@ struct LeadbookInnsiktView: View {
         .overlay(alignment: .top) {
             if let t = toast {
                 Label(t, systemImage: "checkmark.circle.fill")
-                    .font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
+                    .font(.appScaled(size: 12, weight: .bold)).foregroundStyle(.white)
                     .padding(.horizontal, 12).padding(.vertical, 8)
                     .background(LBrand.green, in: Capsule())
                     .padding(.top, 6)
@@ -81,15 +81,15 @@ struct LeadbookInnsiktView: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 9) {
                     Text("Leadbook — Innsikt")
-                        .font(.system(size: 22, weight: .bold)).foregroundStyle(.white)
+                        .font(.appScaled(size: 22, weight: .bold)).foregroundStyle(.white)
                     Button { favorited.toggle() } label: {
                         Image(systemName: favorited ? "star.fill" : "star")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.appScaled(size: 16, weight: .semibold))
                             .foregroundStyle(favorited ? LBrand.yellow : LBrand.textTertiary)
                     }.buttonStyle(.plain)
                     HStack(spacing: 4) {
-                        Image(systemName: "sparkles").font(.system(size: 10, weight: .bold))
-                        Text("AI-KURATERT").font(.system(size: 9, weight: .black))
+                        Image(systemName: "sparkles").font(.appScaled(size: 10, weight: .bold))
+                        Text("AI-KURATERT").font(.appScaled(size: 9, weight: .black))
                     }
                     .foregroundStyle(LBrand.purpleLight).tracking(0.6)
                     .padding(.horizontal, 7).padding(.vertical, 3)
@@ -97,7 +97,7 @@ struct LeadbookInnsiktView: View {
                     .overlay(Capsule().stroke(LBrand.purpleLight.opacity(0.45), lineWidth: 1))
                 }
                 Text("Pondus-mønstre, tema-clustring og selger-trender — automatisk oppdaget av AI.")
-                    .font(.system(size: 12)).foregroundStyle(LBrand.textSecondary)
+                    .font(.appScaled(size: 12)).foregroundStyle(LBrand.textSecondary)
                     .lineLimit(2)
             }
             Spacer(minLength: 12)
@@ -111,11 +111,11 @@ struct LeadbookInnsiktView: View {
                     }
                 } label: {
                     HStack(spacing: 5) {
-                        Image(systemName: "calendar").font(.system(size: 11, weight: .bold))
+                        Image(systemName: "calendar").font(.appScaled(size: 11, weight: .bold))
                             .foregroundStyle(LBrand.orange)
-                        Text(period.rawValue).font(.system(size: 12, weight: .semibold))
+                        Text(period.rawValue).font(.appScaled(size: 12, weight: .semibold))
                             .foregroundStyle(.white)
-                        Image(systemName: "chevron.down").font(.system(size: 9, weight: .bold))
+                        Image(systemName: "chevron.down").font(.appScaled(size: 9, weight: .bold))
                             .foregroundStyle(LBrand.textTertiary)
                     }
                     .padding(.horizontal, 12).padding(.vertical, 9)
@@ -126,8 +126,8 @@ struct LeadbookInnsiktView: View {
                     flash("Ukerapport sendt til team")
                 } label: {
                     HStack(spacing: 5) {
-                        Image(systemName: "paperplane.fill").font(.system(size: 11, weight: .bold))
-                        Text("Send rapport").font(.system(size: 12, weight: .semibold))
+                        Image(systemName: "paperplane.fill").font(.appScaled(size: 11, weight: .bold))
+                        Text("Send rapport").font(.appScaled(size: 12, weight: .semibold))
                     }
                     .foregroundStyle(.white)
                     .padding(.horizontal, 12).padding(.vertical, 9)
@@ -136,8 +136,8 @@ struct LeadbookInnsiktView: View {
                 }.buttonStyle(.plain)
                 Button { showFullReport = true } label: {
                     HStack(spacing: 6) {
-                        Image(systemName: "doc.text.fill").font(.system(size: 11, weight: .bold))
-                        Text("Full rapport").font(.system(size: 13, weight: .bold))
+                        Image(systemName: "doc.text.fill").font(.appScaled(size: 11, weight: .bold))
+                        Text("Full rapport").font(.appScaled(size: 13, weight: .bold))
                     }
                     .foregroundStyle(.white)
                     .padding(.horizontal, 14).padding(.vertical, 9)
@@ -163,19 +163,19 @@ struct LeadbookInnsiktView: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 6) {
                     Text("MARIT'S UKENTLIGE INNSIKT")
-                        .font(.system(size: 10, weight: .black))
+                        .font(.appScaled(size: 10, weight: .black))
                         .foregroundStyle(LBrand.purpleLight).tracking(0.8)
                     Text("·").foregroundStyle(LBrand.textTertiary)
                     Text("OPPDATERT 1. JULI")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.appScaled(size: 9, weight: .bold))
                         .foregroundStyle(LBrand.textTertiary).tracking(0.6)
                 }
                 Text("Maria's 4-sekunders pause på pris-innvendinger driver pondus opp 8 poeng denne uka")
-                    .font(.system(size: 17, weight: .heavy))
+                    .font(.appScaled(size: 17, weight: .heavy))
                     .foregroundStyle(.white)
                     .lineLimit(3)
                 Text("Hun har gjentatt mønsteret 11 ganger på 14 samtaler. To andre i teamet har begynt å imitere — pondus-snitt steg fra 78 til 82 på 7 dager. Rull ut som «mester-mønster» til hele teamet?")
-                    .font(.system(size: 13))
+                    .font(.appScaled(size: 13))
                     .foregroundStyle(LBrand.textSecondary)
                     .lineLimit(3)
                 HStack(spacing: 8) {
@@ -183,8 +183,8 @@ struct LeadbookInnsiktView: View {
                         flash("Mester-mønster delt med teamet")
                     } label: {
                         HStack(spacing: 5) {
-                            Image(systemName: "person.3.fill").font(.system(size: 11, weight: .bold))
-                            Text("Rull ut til team").font(.system(size: 12, weight: .bold))
+                            Image(systemName: "person.3.fill").font(.appScaled(size: 11, weight: .bold))
+                            Text("Rull ut til team").font(.appScaled(size: 12, weight: .bold))
                         }
                         .foregroundStyle(.white)
                         .padding(.horizontal, 11).padding(.vertical, 7)
@@ -192,8 +192,8 @@ struct LeadbookInnsiktView: View {
                     }.buttonStyle(.plain)
                     Button {} label: {
                         HStack(spacing: 5) {
-                            Image(systemName: "play.fill").font(.system(size: 10, weight: .bold))
-                            Text("Hør Maria's samtale").font(.system(size: 12, weight: .semibold))
+                            Image(systemName: "play.fill").font(.appScaled(size: 10, weight: .bold))
+                            Text("Hør Maria's samtale").font(.appScaled(size: 12, weight: .semibold))
                         }
                         .foregroundStyle(LBrand.purpleLight)
                         .padding(.horizontal, 11).padding(.vertical, 7)
@@ -223,18 +223,18 @@ struct LeadbookInnsiktView: View {
     private func kpiTile(label: String, value: String, trend: String, icon: String, tint: Color, valueSize: CGFloat = 24) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
-                Image(systemName: icon).font(.system(size: 12, weight: .bold)).foregroundStyle(tint)
-                Text(label).font(.system(size: 9, weight: .black))
+                Image(systemName: icon).font(.appScaled(size: 12, weight: .bold)).foregroundStyle(tint)
+                Text(label).font(.appScaled(size: 9, weight: .black))
                     .foregroundStyle(LBrand.textTertiary).tracking(0.6)
                     .lineLimit(1).minimumScaleFactor(0.8)
             }
-            Text(value).font(.system(size: valueSize, weight: .heavy, design: .rounded))
+            Text(value).font(.appScaled(size: valueSize, weight: .heavy, design: .rounded))
                 .foregroundStyle(.white).monospacedDigit()
                 .lineLimit(1).minimumScaleFactor(0.7)
             HStack(spacing: 4) {
-                Image(systemName: "arrow.up.right").font(.system(size: 9, weight: .bold))
-                Text(trend).font(.system(size: 10, weight: .bold, design: .rounded))
-                Text("vs forrige periode").font(.system(size: 9))
+                Image(systemName: "arrow.up.right").font(.appScaled(size: 9, weight: .bold))
+                Text(trend).font(.appScaled(size: 10, weight: .bold, design: .rounded))
+                Text("vs forrige periode").font(.appScaled(size: 9))
                     .foregroundStyle(LBrand.textTertiary)
             }
             .foregroundStyle(LBrand.green)
@@ -273,13 +273,13 @@ struct LeadbookInnsiktView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("PONDUS-TREND")
-                        .font(.system(size: 10, weight: .black))
+                        .font(.appScaled(size: 10, weight: .black))
                         .foregroundStyle(LBrand.textTertiary).tracking(0.8)
                     Text("Per selger · siste 30 dager")
-                        .font(.system(size: 11)).foregroundStyle(LBrand.textSecondary)
+                        .font(.appScaled(size: 11)).foregroundStyle(LBrand.textSecondary)
                 }
                 Spacer()
-                Text("+12 %").font(.system(size: 14, weight: .bold, design: .rounded))
+                Text("+12 %").font(.appScaled(size: 14, weight: .bold, design: .rounded))
                     .foregroundStyle(LBrand.green)
             }
             Chart(trendData) { p in
@@ -341,10 +341,10 @@ struct LeadbookInnsiktView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("TEMA-CLUSTRING")
-                        .font(.system(size: 10, weight: .black))
+                        .font(.appScaled(size: 10, weight: .black))
                         .foregroundStyle(LBrand.textTertiary).tracking(0.8)
                     Text("AI grupperer samtaler automatisk")
-                        .font(.system(size: 11)).foregroundStyle(LBrand.textSecondary)
+                        .font(.appScaled(size: 11)).foregroundStyle(LBrand.textSecondary)
                 }
                 Spacer()
                 Image(systemName: "sparkles").foregroundStyle(LBrand.purpleLight)
@@ -354,25 +354,25 @@ struct LeadbookInnsiktView: View {
                     HStack(spacing: 10) {
                         ZStack {
                             RoundedRectangle(cornerRadius: 7).fill(tema.tint.opacity(0.22))
-                            Image(systemName: tema.icon).font(.system(size: 11, weight: .bold))
+                            Image(systemName: tema.icon).font(.appScaled(size: 11, weight: .bold))
                                 .foregroundStyle(tema.tint)
                         }
                         .frame(width: 28, height: 28)
                         VStack(alignment: .leading, spacing: 1) {
-                            Text(tema.name).font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
-                            Text("\(tema.count) samtaler").font(.system(size: 9))
+                            Text(tema.name).font(.appScaled(size: 12, weight: .bold)).foregroundStyle(.white)
+                            Text("\(tema.count) samtaler").font(.appScaled(size: 9))
                                 .foregroundStyle(LBrand.textTertiary)
                         }
                         Spacer()
                         VStack(alignment: .trailing, spacing: 1) {
                             Text(percent(tema.conversion))
-                                .font(.system(size: 13, weight: .bold, design: .rounded))
+                                .font(.appScaled(size: 13, weight: .bold, design: .rounded))
                                 .foregroundStyle(.white).monospacedDigit()
                             HStack(spacing: 2) {
                                 Image(systemName: tema.trend >= 0 ? "arrow.up" : "arrow.down")
-                                    .font(.system(size: 7, weight: .black))
+                                    .font(.appScaled(size: 7, weight: .black))
                                 Text(percent(abs(tema.trend)))
-                                    .font(.system(size: 9, weight: .bold, design: .rounded)).monospacedDigit()
+                                    .font(.appScaled(size: 9, weight: .bold, design: .rounded)).monospacedDigit()
                             }
                             .foregroundStyle(tema.trend >= 0 ? LBrand.green : LBrand.red)
                         }
@@ -394,7 +394,7 @@ struct LeadbookInnsiktView: View {
             HStack(spacing: 7) {
                 Image(systemName: "checkmark.circle.fill").foregroundStyle(LBrand.green)
                 Text("DET SOM VIRKER")
-                    .font(.system(size: 10, weight: .black))
+                    .font(.appScaled(size: 10, weight: .black))
                     .foregroundStyle(LBrand.green).tracking(0.8)
             }
             VStack(spacing: 10) {
@@ -419,7 +419,7 @@ struct LeadbookInnsiktView: View {
             HStack(spacing: 7) {
                 Image(systemName: "xmark.octagon.fill").foregroundStyle(LBrand.red)
                 Text("DET SOM IKKE VIRKER")
-                    .font(.system(size: 10, weight: .black))
+                    .font(.appScaled(size: 10, weight: .black))
                     .foregroundStyle(LBrand.red).tracking(0.8)
             }
             VStack(spacing: 10) {
@@ -441,12 +441,12 @@ struct LeadbookInnsiktView: View {
 
     private func workRow(_ text: String, impact: String, icon: String, color: Color) -> some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: icon).font(.system(size: 12, weight: .bold))
+            Image(systemName: icon).font(.appScaled(size: 12, weight: .bold))
                 .foregroundStyle(color).frame(width: 18)
             VStack(alignment: .leading, spacing: 2) {
-                Text(text).font(.system(size: 12, weight: .semibold)).foregroundStyle(.white)
+                Text(text).font(.appScaled(size: 12, weight: .semibold)).foregroundStyle(.white)
                 Text(impact)
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: 10, weight: .bold, design: .rounded))
                     .foregroundStyle(color)
             }
             Spacer()
@@ -477,16 +477,16 @@ struct LeadbookInnsiktView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("SELGER-LEADERBOARD")
-                        .font(.system(size: 10, weight: .black))
+                        .font(.appScaled(size: 10, weight: .black))
                         .foregroundStyle(LBrand.textTertiary).tracking(0.8)
                     Text("Pondus + konvertering · siste \(period.rawValue.lowercased())")
-                        .font(.system(size: 11)).foregroundStyle(LBrand.textSecondary)
+                        .font(.appScaled(size: 11)).foregroundStyle(LBrand.textSecondary)
                 }
                 Spacer()
                 Button {} label: {
                     HStack(spacing: 4) {
-                        Text("Se alle").font(.system(size: 11, weight: .semibold))
-                        Image(systemName: "arrow.up.right").font(.system(size: 9, weight: .bold))
+                        Text("Se alle").font(.appScaled(size: 11, weight: .semibold))
+                        Image(systemName: "arrow.up.right").font(.appScaled(size: 9, weight: .bold))
                     }.foregroundStyle(LBrand.purpleLight)
                 }.buttonStyle(.plain)
             }
@@ -506,11 +506,11 @@ struct LeadbookInnsiktView: View {
             ZStack {
                 Circle().fill(rank == 1 ? LBrand.yellow.opacity(0.25) : LBrand.cardHi)
                 Text("\(rank)")
-                    .font(.system(size: 12, weight: .heavy, design: .rounded))
+                    .font(.appScaled(size: 12, weight: .heavy, design: .rounded))
                     .foregroundStyle(rank == 1 ? LBrand.yellow : LBrand.textSecondary)
                 if rank == 1 {
                     Image(systemName: "crown.fill")
-                        .font(.system(size: 8, weight: .black))
+                        .font(.appScaled(size: 8, weight: .black))
                         .foregroundStyle(LBrand.yellow)
                         .offset(y: -16)
                 }
@@ -521,24 +521,24 @@ struct LeadbookInnsiktView: View {
                 .overlay(Circle().stroke(LBrand.stroke, lineWidth: 1))
             VStack(alignment: .leading, spacing: 2) {
                 Text(seller.cast.displayName)
-                    .font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
+                    .font(.appScaled(size: 13, weight: .bold)).foregroundStyle(.white)
                 Text("\(seller.calls) samtaler · \(percent(seller.conversion)) konvertering")
-                    .font(.system(size: 10)).foregroundStyle(LBrand.textSecondary)
+                    .font(.appScaled(size: 10)).foregroundStyle(LBrand.textSecondary)
             }
             Spacer()
             HStack(spacing: 8) {
                 VStack(alignment: .trailing, spacing: 1) {
                     Text("\(seller.pondus)")
-                        .font(.system(size: 18, weight: .heavy, design: .rounded))
+                        .font(.appScaled(size: 18, weight: .heavy, design: .rounded))
                         .foregroundStyle(.white).monospacedDigit()
-                    Text("PONDUS").font(.system(size: 7, weight: .black))
+                    Text("PONDUS").font(.appScaled(size: 7, weight: .black))
                         .foregroundStyle(LBrand.textTertiary).tracking(0.5)
                 }
                 HStack(spacing: 2) {
                     Image(systemName: seller.trend >= 0 ? "arrow.up" : "arrow.down")
-                        .font(.system(size: 8, weight: .black))
+                        .font(.appScaled(size: 8, weight: .black))
                     Text("\(abs(seller.trend))")
-                        .font(.system(size: 10, weight: .bold, design: .rounded)).monospacedDigit()
+                        .font(.appScaled(size: 10, weight: .bold, design: .rounded)).monospacedDigit()
                 }
                 .foregroundStyle(seller.trend >= 0 ? LBrand.green : LBrand.red)
                 .padding(.horizontal, 6).padding(.vertical, 3)
@@ -576,10 +576,10 @@ struct LeadbookInnsiktView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("KONVERTERING PER TID PÅ DAGEN")
-                        .font(.system(size: 10, weight: .black))
+                        .font(.appScaled(size: 10, weight: .black))
                         .foregroundStyle(LBrand.textTertiary).tracking(0.8)
                     Text("kl. 10–11 vinner stort — book viktige samtaler der")
-                        .font(.system(size: 11)).foregroundStyle(LBrand.purpleLight)
+                        .font(.appScaled(size: 11)).foregroundStyle(LBrand.purpleLight)
                 }
                 Spacer()
             }
@@ -598,7 +598,7 @@ struct LeadbookInnsiktView: View {
                     AxisValueLabel {
                         if let val = v.as(Double.self) {
                             Text("\(Int(val * 100))%")
-                                .font(.system(size: 9))
+                                .font(.appScaled(size: 9))
                                 .foregroundStyle(LBrand.textTertiary)
                         }
                     }
@@ -641,38 +641,38 @@ struct LeadbookInnsiktView: View {
                         HStack(spacing: 6) {
                             Image(systemName: ex.outcome == .won ? "trophy.fill" : "lightbulb.fill")
                                 .foregroundStyle(tint)
-                            Text(label).font(.system(size: 9, weight: .black))
+                            Text(label).font(.appScaled(size: 9, weight: .black))
                                 .foregroundStyle(tint).tracking(0.6)
                         }
                         Text(ex.title)
-                            .font(.system(size: 14, weight: .bold))
+                            .font(.appScaled(size: 14, weight: .bold))
                             .foregroundStyle(.white)
                             .lineLimit(2)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         HStack(spacing: 8) {
                             Text("Pondus")
-                                .font(.system(size: 10)).foregroundStyle(LBrand.textTertiary)
+                                .font(.appScaled(size: 10)).foregroundStyle(LBrand.textTertiary)
                             Text("\(ex.pondusScore)")
-                                .font(.system(size: 22, weight: .heavy, design: .rounded))
+                                .font(.appScaled(size: 22, weight: .heavy, design: .rounded))
                                 .foregroundStyle(tint)
                                 .monospacedDigit()
                             Spacer()
                             HStack(spacing: 4) {
-                                Image(systemName: ex.outcome.icon).font(.system(size: 9, weight: .bold))
+                                Image(systemName: ex.outcome.icon).font(.appScaled(size: 9, weight: .bold))
                                 Text(ex.outcome.rawValue.uppercased())
-                                    .font(.system(size: 9, weight: .black))
+                                    .font(.appScaled(size: 9, weight: .black))
                             }
                             .foregroundStyle(.white)
                             .padding(.horizontal, 7).padding(.vertical, 3)
                             .background(ex.outcome.color, in: Capsule())
                         }
-                        Text(ex.summary).font(.system(size: 11))
+                        Text(ex.summary).font(.appScaled(size: 11))
                             .foregroundStyle(LBrand.textSecondary)
                             .lineLimit(2)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         HStack(spacing: 5) {
-                            Image(systemName: "arrow.right.circle.fill").font(.system(size: 11))
-                            Text("Spill av samtalen").font(.system(size: 11, weight: .bold))
+                            Image(systemName: "arrow.right.circle.fill").font(.appScaled(size: 11))
+                            Text("Spill av samtalen").font(.appScaled(size: 11, weight: .bold))
                         }
                         .foregroundStyle(tint)
                     }
@@ -712,20 +712,20 @@ struct FullInsiktReportSheet: View {
                 LBrand.bg.ignoresSafeArea()
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
-                        Text("Full insikt-rapport").font(.system(size: 22, weight: .heavy))
+                        Text("Full insikt-rapport").font(.appScaled(size: 22, weight: .heavy))
                             .foregroundStyle(.white)
                         Text("Q2 2026 · Leadgrid AS")
-                            .font(.system(size: 12)).foregroundStyle(LBrand.textSecondary)
+                            .font(.appScaled(size: 12)).foregroundStyle(LBrand.textSecondary)
                         Text("📈 EXECUTIVE SUMMARY")
-                            .font(.system(size: 11, weight: .black))
+                            .font(.appScaled(size: 11, weight: .black))
                             .foregroundStyle(LBrand.purpleLight).tracking(0.8)
                         Text("Pondus-snittet steg fra 78 til 82 i Q2 (+5 %). Hovedtrenden er at teamet har internalisert pause-mønsteret etter prisinnvendinger. Vinn-raten følger med, fra 25,2 % til 28,6 %. Møtebooking-malen er klar markedsleder med 41 % konvertering.")
-                            .font(.system(size: 13))
+                            .font(.appScaled(size: 13))
                             .foregroundStyle(.white)
                             .padding(14)
                             .background(LBrand.card, in: RoundedRectangle(cornerRadius: 11))
                         Text("Hele rapporten porteres til PDF-eksport i prod. Her er bare en placeholder for å vise modal-mønsteret.")
-                            .font(.system(size: 11)).foregroundStyle(LBrand.textTertiary)
+                            .font(.appScaled(size: 11)).foregroundStyle(LBrand.textTertiary)
                             .padding(.top, 30)
                     }
                     .padding(20)
@@ -740,8 +740,8 @@ struct FullInsiktReportSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button {} label: {
                         HStack(spacing: 5) {
-                            Image(systemName: "square.and.arrow.up").font(.system(size: 11))
-                            Text("Eksporter PDF").font(.system(size: 12, weight: .bold))
+                            Image(systemName: "square.and.arrow.up").font(.appScaled(size: 11))
+                            Text("Eksporter PDF").font(.appScaled(size: 12, weight: .bold))
                         }
                         .foregroundStyle(.white)
                         .padding(.horizontal, 12).padding(.vertical, 7)

@@ -137,7 +137,7 @@ struct CreateCustomKPISheet: View {
     private var livePreview: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("FORHÅNDSVISNING")
-                .font(.system(size: 9, weight: .black))
+                .font(.appScaled(size: 9, weight: .black))
                 .foregroundStyle(TBrand.textTertiary)
                 .tracking(0.6)
             HStack(spacing: 11) {
@@ -147,27 +147,27 @@ struct CreateCustomKPISheet: View {
                         startPoint: .topLeading, endPoint: .bottomTrailing
                     ))
                     Image(systemName: pickedIcon)
-                        .font(.system(size: 14, weight: .black))
+                        .font(.appScaled(size: 14, weight: .black))
                         .foregroundStyle(.white)
                 }
                 .frame(width: 40, height: 40)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(name.isEmpty ? "KPI-navn vises her" : name)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(name.isEmpty ? TBrand.textTertiary : TBrand.textSecondary)
                     HStack(alignment: .firstTextBaseline, spacing: 7) {
                         Text(format.example)
-                            .font(.system(size: 22, weight: .black, design: .rounded))
+                            .font(.appScaled(size: 22, weight: .black, design: .rounded))
                             .foregroundStyle(.white)
                             .monospacedDigit()
                         if comparison != .none {
                             Text("↑ 12 %")
-                                .font(.system(size: 11, weight: .black))
+                                .font(.appScaled(size: 11, weight: .black))
                                 .foregroundStyle(TBrand.green)
                         }
                     }
                     Text(comparison.rawValue)
-                        .font(.system(size: 9))
+                        .font(.appScaled(size: 9))
                         .foregroundStyle(TBrand.textTertiary)
                 }
                 Spacer()
@@ -183,18 +183,18 @@ struct CreateCustomKPISheet: View {
     private var nameField: some View {
         VStack(alignment: .leading, spacing: 7) {
             Text("Navn på KPI")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(TBrand.textSecondary)
             ZStack(alignment: .leading) {
                 TextField("", text: $name)
                     .foregroundStyle(.white)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.appScaled(size: 14, weight: .semibold))
                     .padding(12)
                     .background(TBrand.card, in: RoundedRectangle(cornerRadius: 11))
                     .overlay(RoundedRectangle(cornerRadius: 11).stroke(TBrand.stroke, lineWidth: 1))
                 if name.isEmpty {
                     Text("F.eks. Antall salg, Snitt deal-størrelse, Konvertering-rate")
-                        .font(.system(size: 13))
+                        .font(.appScaled(size: 13))
                         .foregroundStyle(TBrand.textTertiary)
                         .padding(.horizontal, 15)
                         .allowsHitTesting(false)
@@ -209,7 +209,7 @@ struct CreateCustomKPISheet: View {
     private var iconPicker: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Ikon")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(TBrand.textSecondary)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 7) {
@@ -221,7 +221,7 @@ struct CreateCustomKPISheet: View {
                             ZStack {
                                 Circle().fill(isSelected ? pickedColor.color : TBrand.cardHi)
                                 Image(systemName: ic)
-                                    .font(.system(size: 14, weight: .bold))
+                                    .font(.appScaled(size: 14, weight: .bold))
                                     .foregroundStyle(isSelected ? .white : .white.opacity(0.7))
                             }
                             .frame(width: 38, height: 38)
@@ -241,7 +241,7 @@ struct CreateCustomKPISheet: View {
     private var colorPicker: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Farge")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(TBrand.textSecondary)
             HStack(spacing: 8) {
                 ForEach(KPIColor.allCases, id: \.self) { c in
@@ -253,7 +253,7 @@ struct CreateCustomKPISheet: View {
                             Circle().fill(c.color)
                             if isSelected {
                                 Image(systemName: "checkmark")
-                                    .font(.system(size: 12, weight: .black))
+                                    .font(.appScaled(size: 12, weight: .black))
                                     .foregroundStyle(.white)
                             }
                         }
@@ -273,7 +273,7 @@ struct CreateCustomKPISheet: View {
     private var dataSourceCard: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Datakilde")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(TBrand.textSecondary)
             // iPhone: 1 kolonne — lange kilde-navn («Stripe / fakturering»)
             // trunkeres på halv sheet-bredde.
@@ -288,16 +288,16 @@ struct CreateCustomKPISheet: View {
                     } label: {
                         HStack(spacing: 9) {
                             Image(systemName: src.icon)
-                                .font(.system(size: 12, weight: .bold))
+                                .font(.appScaled(size: 12, weight: .bold))
                                 .foregroundStyle(isSelected ? .white : pickedColor.color)
                             Text(src.rawValue)
-                                .font(.system(size: 11, weight: .bold))
+                                .font(.appScaled(size: 11, weight: .bold))
                                 .foregroundStyle(.white)
                                 .lineLimit(1)
                             Spacer()
                             if isSelected {
                                 Image(systemName: "checkmark.circle.fill")
-                                    .font(.system(size: 13))
+                                    .font(.appScaled(size: 13))
                                     .foregroundStyle(.white)
                             }
                         }
@@ -320,15 +320,15 @@ struct CreateCustomKPISheet: View {
         VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 6) {
                 Image(systemName: "function")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(pickedColor.color)
                 Text("Formel")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(TBrand.textSecondary)
                 Spacer()
                 Button { TeamStubActions.toast("AI-foreslå formel") } label: {
                     Text("AI-foreslå")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.appScaled(size: 10, weight: .bold))
                         .foregroundStyle(TBrand.purpleLight)
                         .padding(.horizontal, 7).padding(.vertical, 3)
                         .background(TBrand.purple.opacity(0.18), in: Capsule())
@@ -337,12 +337,12 @@ struct CreateCustomKPISheet: View {
             }
             TextField("", text: $formula)
                 .foregroundStyle(.white)
-                .font(.system(size: 12, design: .monospaced))
+                .font(.appScaled(size: 12, design: .monospaced))
                 .padding(10)
                 .background(TBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(TBrand.stroke, lineWidth: 1))
             Text("Tomt = bruk standard COUNT for datakilden. Avanserte: bruk SQL-syntax.")
-                .font(.system(size: 9))
+                .font(.appScaled(size: 9))
                 .foregroundStyle(TBrand.textTertiary)
         }
         .padding(12)
@@ -355,7 +355,7 @@ struct CreateCustomKPISheet: View {
     private var formatPickerCard: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Vis som")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(TBrand.textSecondary)
             HStack(spacing: 6) {
                 ForEach(FormatType.allCases, id: \.self) { f in
@@ -364,10 +364,10 @@ struct CreateCustomKPISheet: View {
                     } label: {
                         VStack(spacing: 3) {
                             Text(f.rawValue)
-                                .font(.system(size: 11, weight: .bold))
+                                .font(.appScaled(size: 11, weight: .bold))
                                 .foregroundStyle(format == f ? .white : .white.opacity(0.85))
                             Text(f.example)
-                                .font(.system(size: 10, weight: .bold, design: .rounded))
+                                .font(.appScaled(size: 10, weight: .bold, design: .rounded))
                                 .foregroundStyle(format == f ? .white.opacity(0.85) : TBrand.textSecondary)
                                 .monospacedDigit()
                         }
@@ -390,7 +390,7 @@ struct CreateCustomKPISheet: View {
     private var comparisonPickerCard: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Sammenligning")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(TBrand.textSecondary)
             VStack(spacing: 5) {
                 ForEach(Comparison.allCases, id: \.self) { c in
@@ -399,11 +399,11 @@ struct CreateCustomKPISheet: View {
                     } label: {
                         HStack {
                             Text(c.rawValue.capitalized)
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.appScaled(size: 12, weight: .semibold))
                                 .foregroundStyle(.white)
                             Spacer()
                             Image(systemName: comparison == c ? "largecircle.fill.circle" : "circle")
-                                .font(.system(size: 15))
+                                .font(.appScaled(size: 15))
                                 .foregroundStyle(comparison == c ? pickedColor.color : TBrand.stroke)
                         }
                         .padding(.horizontal, 11).padding(.vertical, 9)
@@ -424,7 +424,7 @@ struct CreateCustomKPISheet: View {
     private var periodPickerCard: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Default-periode")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(TBrand.textSecondary)
             HStack(spacing: 6) {
                 ForEach(Period.allCases, id: \.self) { p in
@@ -432,7 +432,7 @@ struct CreateCustomKPISheet: View {
                         withAnimation(.easeInOut(duration: 0.15)) { period = p }
                     } label: {
                         Text(p.rawValue)
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.appScaled(size: 11, weight: .bold))
                             .foregroundStyle(period == p ? .white : TBrand.purpleLight)
                             .padding(.horizontal, 11).padding(.vertical, 7)
                             .background(
@@ -455,16 +455,16 @@ struct CreateCustomKPISheet: View {
                 ZStack {
                     Circle().fill(TBrand.blue.opacity(0.22))
                     Image(systemName: "rectangle.grid.2x2.fill")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.appScaled(size: 11, weight: .bold))
                         .foregroundStyle(TBrand.blue)
                 }
                 .frame(width: 30, height: 30)
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Vis på Team-dashboard")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
                     Text("Vises i KPI-raden ved siden av andre KPIer")
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(TBrand.textSecondary)
                 }
             }
@@ -481,9 +481,9 @@ struct CreateCustomKPISheet: View {
         Button { dismiss() } label: {
             HStack(spacing: 6) {
                 Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                 Text(canSave ? "Opprett KPI «\(name)»" : "Gi KPI-en et navn")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
             }

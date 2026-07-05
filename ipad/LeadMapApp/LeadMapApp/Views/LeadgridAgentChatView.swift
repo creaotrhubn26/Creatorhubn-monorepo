@@ -135,7 +135,7 @@ struct LeadgridAgentChatView: View {
         VStack(spacing: 16) {
             Spacer()
             Image(systemName: "bubble.left.and.exclamationmark.bubble.right")
-                .font(.system(size: 48))
+                .font(.appScaled(size: 48))
                 .foregroundStyle(.secondary)
             Text("Velg et prosjekt først")
                 .font(.headline)
@@ -154,7 +154,7 @@ struct LeadgridAgentChatView: View {
         VStack(spacing: 18) {
             Spacer()
             Image(systemName: "sparkles.rectangle.stack")
-                .font(.system(size: 56))
+                .font(.appScaled(size: 56))
                 .foregroundStyle(Self.brandPurple)
             Text("Start samtalen")
                 .font(.title3.bold())
@@ -265,7 +265,7 @@ struct LeadgridAgentChatView: View {
                             .background(Color(.secondarySystemBackground), in: Circle())
                     } else {
                         Image(systemName: "arrow.up.circle.fill")
-                            .font(.system(size: 32))
+                            .font(.appScaled(size: 32))
                             .foregroundStyle(
                                 draftMessage.trimmingCharacters(in: .whitespaces).isEmpty
                                     ? Color.gray.opacity(0.4)

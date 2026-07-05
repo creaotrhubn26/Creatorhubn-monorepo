@@ -121,7 +121,7 @@ struct PondusTabView: View {
         .overlay(alignment: .top) {
             if let t = toast {
                 Label(t, systemImage: "checkmark.circle.fill")
-                    .font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
+                    .font(.appScaled(size: 12, weight: .bold)).foregroundStyle(.white)
                     .padding(.horizontal, 12).padding(.vertical, 8)
                     .background(LBrand.green, in: Capsule())
                     .padding(.top, 6)
@@ -163,16 +163,16 @@ struct PondusTabView: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 9) {
                     Text("Leadbook — Pondus")
-                        .font(.system(size: 22, weight: .bold))
+                        .font(.appScaled(size: 22, weight: .bold))
                         .foregroundStyle(.white)
                     Button { favorited.toggle() } label: {
                         Image(systemName: favorited ? "star.fill" : "star")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.appScaled(size: 16, weight: .semibold))
                             .foregroundStyle(favorited ? LBrand.yellow : LBrand.textTertiary)
                     }.buttonStyle(.plain)
                 }
                 Text("Pondus hjelper teamet med å bygge sterkere autoritet, selvtillit, tillit og salgsvekt i all utadrettet kommunikasjon og møter.")
-                    .font(.system(size: 12))
+                    .font(.appScaled(size: 12))
                     .foregroundStyle(LBrand.textSecondary)
                     .lineLimit(2)
             }
@@ -180,9 +180,9 @@ struct PondusTabView: View {
             HStack(spacing: 8) {
                 Button { withAnimation { showCheatNote = true } } label: {
                     HStack(spacing: 5) {
-                        Image(systemName: "doc.text.fill").font(.system(size: 11, weight: .bold))
+                        Image(systemName: "doc.text.fill").font(.appScaled(size: 11, weight: .bold))
                             .foregroundStyle(Color(red: 0.98, green: 0.78, blue: 0.20))
-                        Text("Cheat note").font(.system(size: 12, weight: .semibold))
+                        Text("Cheat note").font(.appScaled(size: 12, weight: .semibold))
                             .foregroundStyle(.white)
                     }
                     .padding(.horizontal, 12).padding(.vertical, 9)
@@ -191,9 +191,9 @@ struct PondusTabView: View {
                 }.buttonStyle(.plain)
                 Button { showTeamUsage = true } label: {
                     HStack(spacing: 5) {
-                        Image(systemName: "person.3.fill").font(.system(size: 11, weight: .bold))
+                        Image(systemName: "person.3.fill").font(.appScaled(size: 11, weight: .bold))
                             .foregroundStyle(LBrand.green)
-                        Text("Teamets bruk").font(.system(size: 12, weight: .semibold))
+                        Text("Teamets bruk").font(.appScaled(size: 12, weight: .semibold))
                             .foregroundStyle(.white)
                     }
                     .padding(.horizontal, 12).padding(.vertical, 9)
@@ -202,8 +202,8 @@ struct PondusTabView: View {
                 }.buttonStyle(.plain)
                 Button { showNewMal = true } label: {
                     HStack(spacing: 5) {
-                        Image(systemName: "plus").font(.system(size: 11, weight: .bold))
-                        Text("Ny mal").font(.system(size: 12, weight: .semibold))
+                        Image(systemName: "plus").font(.appScaled(size: 11, weight: .bold))
+                        Text("Ny mal").font(.appScaled(size: 12, weight: .semibold))
                     }
                     .foregroundStyle(.white)
                     .padding(.horizontal, 12).padding(.vertical, 9)
@@ -212,8 +212,8 @@ struct PondusTabView: View {
                 }.buttonStyle(.plain)
                 Button { showExport = true } label: {
                     HStack(spacing: 5) {
-                        Image(systemName: "square.and.arrow.down").font(.system(size: 11, weight: .bold))
-                        Text("Eksporter").font(.system(size: 12, weight: .semibold))
+                        Image(systemName: "square.and.arrow.down").font(.appScaled(size: 11, weight: .bold))
+                        Text("Eksporter").font(.appScaled(size: 12, weight: .semibold))
                     }
                     .foregroundStyle(.white)
                     .padding(.horizontal, 12).padding(.vertical, 9)
@@ -222,8 +222,8 @@ struct PondusTabView: View {
                 }.buttonStyle(.plain)
                 Button { showPublish = true } label: {
                     HStack(spacing: 6) {
-                        Image(systemName: "paperplane.fill").font(.system(size: 11, weight: .bold))
-                        Text("Publiser").font(.system(size: 13, weight: .bold))
+                        Image(systemName: "paperplane.fill").font(.appScaled(size: 11, weight: .bold))
+                        Text("Publiser").font(.appScaled(size: 13, weight: .bold))
                     }
                     .foregroundStyle(.white)
                     .padding(.horizontal, 14).padding(.vertical, 9)
@@ -258,19 +258,19 @@ struct PondusTabView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
                 Text("Pondus-maler")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
                 Button {} label: {
                     Image(systemName: "magnifyingglass")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(LBrand.textSecondary)
                         .frame(width: 28, height: 28)
                         .background(LBrand.cardHi, in: RoundedRectangle(cornerRadius: 8))
                 }.buttonStyle(.plain)
                 Button {} label: {
                     Image(systemName: "line.3.horizontal.decrease")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(LBrand.textSecondary)
                         .frame(width: 28, height: 28)
                         .background(LBrand.cardHi, in: RoundedRectangle(cornerRadius: 8))
@@ -284,8 +284,8 @@ struct PondusTabView: View {
                 }
                 Button { showNewMal = true } label: {
                     HStack(spacing: 6) {
-                        Image(systemName: "plus").font(.system(size: 12, weight: .bold))
-                        Text("Ny mal").font(.system(size: 13, weight: .semibold))
+                        Image(systemName: "plus").font(.appScaled(size: 12, weight: .bold))
+                        Text("Ny mal").font(.appScaled(size: 13, weight: .semibold))
                     }
                     .foregroundStyle(LBrand.textSecondary)
                     .frame(maxWidth: .infinity)
@@ -316,12 +316,12 @@ struct PondusTabView: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .top, spacing: 10) {
                     Text(t.name)
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(.white)
                         .lineLimit(2)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     Text("\(t.score)")
-                        .font(.system(size: 11, weight: .black, design: .rounded))
+                        .font(.appScaled(size: 11, weight: .black, design: .rounded))
                         .foregroundStyle(.white)
                         .monospacedDigit()
                         .padding(.horizontal, 7).padding(.vertical, 2)
@@ -330,17 +330,17 @@ struct PondusTabView: View {
                 }
                 HStack(spacing: 5) {
                     Image(systemName: t.channel.icon)
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.appScaled(size: 10, weight: .bold))
                         .foregroundStyle(t.channel.color)
                     Text(t.channel.rawValue)
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(LBrand.textSecondary)
                 }
                 .padding(.horizontal, 8).padding(.vertical, 3)
                 .background(t.channel.color.opacity(0.12), in: Capsule())
                 .overlay(Capsule().stroke(t.channel.color.opacity(0.3), lineWidth: 1))
                 Text(t.summary)
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(LBrand.textSecondary)
                     .lineLimit(2)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -365,10 +365,10 @@ struct PondusTabView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
                 Text(selected.name)
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 Text("\(liveScore)")
-                    .font(.system(size: 11, weight: .black, design: .rounded))
+                    .font(.appScaled(size: 11, weight: .black, design: .rounded))
                     .foregroundStyle(.white)
                     .monospacedDigit()
                     .padding(.horizontal, 7).padding(.vertical, 2)
@@ -378,7 +378,7 @@ struct PondusTabView: View {
                     HStack(spacing: 5) {
                         Circle().fill(LBrand.orange).frame(width: 6, height: 6)
                         Text("\(modifiedCount) usavnet")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.appScaled(size: 10, weight: .bold))
                             .foregroundStyle(LBrand.orange)
                     }
                     .padding(.horizontal, 8).padding(.vertical, 3)
@@ -389,8 +389,8 @@ struct PondusTabView: View {
                 if modifiedCount > 0 {
                     Button { saveAllEdits() } label: {
                         HStack(spacing: 5) {
-                            Image(systemName: "checkmark").font(.system(size: 10, weight: .black))
-                            Text("Lagre").font(.system(size: 11, weight: .bold))
+                            Image(systemName: "checkmark").font(.appScaled(size: 10, weight: .black))
+                            Text("Lagre").font(.appScaled(size: 11, weight: .bold))
                         }
                         .foregroundStyle(.white)
                         .padding(.horizontal, 11).padding(.vertical, 7)
@@ -407,7 +407,7 @@ struct PondusTabView: View {
                     Button(role: .destructive) {} label: { Label("Arkiver mal", systemImage: "archivebox") }
                 } label: {
                     Image(systemName: "ellipsis")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.appScaled(size: 14, weight: .bold))
                         .foregroundStyle(LBrand.textSecondary)
                         .frame(width: 28, height: 28)
                         .background(LBrand.cardHi, in: RoundedRectangle(cornerRadius: 8))
@@ -431,7 +431,7 @@ struct PondusTabView: View {
             ForEach(EditorMode.allCases) { mode in
                 Button { editorMode = mode } label: {
                     Text(mode.rawValue)
-                        .font(.system(size: 11, weight: editorMode == mode ? .bold : .semibold))
+                        .font(.appScaled(size: 11, weight: editorMode == mode ? .bold : .semibold))
                         .foregroundStyle(editorMode == mode ? LBrand.purpleLight : LBrand.textSecondary)
                         .padding(.horizontal, 10).padding(.vertical, 6)
                         .background(
@@ -461,13 +461,13 @@ struct PondusTabView: View {
             } label: {
                 HStack(alignment: .top, spacing: 12) {
                     Image(systemName: "line.3.horizontal")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.appScaled(size: 10, weight: .bold))
                         .foregroundStyle(LBrand.textTertiary)
                         .padding(.top, 14)
                     ZStack {
                         RoundedRectangle(cornerRadius: 9).fill(step.iconColor.opacity(0.22))
                         Image(systemName: step.icon)
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.appScaled(size: 12, weight: .bold))
                             .foregroundStyle(step.iconColor)
                     }
                     .frame(width: 32, height: 32)
@@ -475,11 +475,11 @@ struct PondusTabView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(spacing: 6) {
                             Text(step.label)
-                                .font(.system(size: 13, weight: .bold))
+                                .font(.appScaled(size: 13, weight: .bold))
                                 .foregroundStyle(.white)
                             if modified {
                                 Text("ENDRET")
-                                    .font(.system(size: 8, weight: .black))
+                                    .font(.appScaled(size: 8, weight: .black))
                                     .foregroundStyle(LBrand.orange)
                                     .padding(.horizontal, 5).padding(.vertical, 1)
                                     .background(LBrand.orange.opacity(0.18), in: Capsule())
@@ -487,7 +487,7 @@ struct PondusTabView: View {
                             }
                         }
                         Text(currentContent)
-                            .font(.system(size: 12))
+                            .font(.appScaled(size: 12))
                             .foregroundStyle(LBrand.textSecondary)
                             .lineLimit(isExpanded ? nil : 2)
                             .fixedSize(horizontal: false, vertical: true)
@@ -496,12 +496,12 @@ struct PondusTabView: View {
                     VStack(alignment: .trailing, spacing: 8) {
                         if let limit = step.charLimit {
                             Text("\(currentContent.count)/\(limit)")
-                                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                .font(.appScaled(size: 10, weight: .semibold, design: .rounded))
                                 .foregroundStyle(currentContent.count > limit ? LBrand.red : LBrand.textTertiary)
                                 .monospacedDigit()
                         }
                         Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.appScaled(size: 10, weight: .bold))
                             .foregroundStyle(LBrand.textTertiary)
                     }
                 }
@@ -538,7 +538,7 @@ struct PondusTabView: View {
             ZStack(alignment: .topLeading) {
                 if currentContent.isEmpty {
                     Text("Skriv mal-innholdet her…")
-                        .font(.system(size: 13))
+                        .font(.appScaled(size: 13))
                         .foregroundStyle(LBrand.textTertiary)
                         .padding(.horizontal, 14).padding(.top, 14)
                 }
@@ -546,7 +546,7 @@ struct PondusTabView: View {
                     get: { currentContent },
                     set: { stepEdits[step.id] = $0 }
                 ))
-                .font(.system(size: 13))
+                .font(.appScaled(size: 13))
                 .foregroundStyle(.white)
                 .scrollContentBackground(.hidden)
                 .focused($focusedStepID, equals: step.id)
@@ -560,7 +560,7 @@ struct PondusTabView: View {
             // Variabel-chips
             VStack(alignment: .leading, spacing: 6) {
                 Text("SETT INN VARIABEL")
-                    .font(.system(size: 9, weight: .black))
+                    .font(.appScaled(size: 9, weight: .black))
                     .foregroundStyle(LBrand.textTertiary).tracking(0.6)
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
@@ -569,7 +569,7 @@ struct PondusTabView: View {
                                 insertVariable(v, for: step)
                             } label: {
                                 Text(v)
-                                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                    .font(.appScaled(size: 11, weight: .semibold, design: .monospaced))
                                     .foregroundStyle(LBrand.purpleLight)
                                     .padding(.horizontal, 9).padding(.vertical, 5)
                                     .background(LBrand.purple.opacity(0.15), in: Capsule())
@@ -591,10 +591,10 @@ struct PondusTabView: View {
                         if aiBusyStepID == step.id {
                             ProgressView().tint(.white).scaleEffect(0.7)
                         } else {
-                            Image(systemName: "sparkles").font(.system(size: 11, weight: .bold))
+                            Image(systemName: "sparkles").font(.appScaled(size: 11, weight: .bold))
                         }
                         Text(aiBusyStepID == step.id ? "Foreslår…" : "AI-foreslå sterkere")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.appScaled(size: 11, weight: .bold))
                     }
                     .foregroundStyle(.white)
                     .padding(.horizontal, 11).padding(.vertical, 7)
@@ -611,8 +611,8 @@ struct PondusTabView: View {
                     resetStep(step)
                 } label: {
                     HStack(spacing: 5) {
-                        Image(systemName: "arrow.uturn.backward").font(.system(size: 10, weight: .bold))
-                        Text("Tilbakestill").font(.system(size: 11, weight: .semibold))
+                        Image(systemName: "arrow.uturn.backward").font(.appScaled(size: 10, weight: .bold))
+                        Text("Tilbakestill").font(.appScaled(size: 11, weight: .semibold))
                     }
                     .foregroundStyle(modified ? LBrand.orange : LBrand.textTertiary)
                     .padding(.horizontal, 11).padding(.vertical, 7)
@@ -628,8 +628,8 @@ struct PondusTabView: View {
                     saveStep(step)
                 } label: {
                     HStack(spacing: 5) {
-                        Image(systemName: "checkmark").font(.system(size: 10, weight: .black))
-                        Text("Lagre").font(.system(size: 11, weight: .bold))
+                        Image(systemName: "checkmark").font(.appScaled(size: 10, weight: .black))
+                        Text("Lagre").font(.appScaled(size: 11, weight: .bold))
                     }
                     .foregroundStyle(.white)
                     .padding(.horizontal, 11).padding(.vertical, 7)
@@ -648,17 +648,17 @@ struct PondusTabView: View {
             Divider().overlay(LBrand.stroke).padding(.horizontal, 12)
             HStack(spacing: 8) {
                 Image(systemName: "eye.fill")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(LBrand.blue)
                 Text("KUNDEVENNLIG FORHÅNDSVISNING")
-                    .font(.system(size: 9, weight: .black))
+                    .font(.appScaled(size: 9, weight: .black))
                     .foregroundStyle(LBrand.textTertiary).tracking(0.6)
             }
             .padding(.horizontal, 12)
 
             // Replace variables w/ realistic stub-values
             Text(previewSubstituted(currentContent))
-                .font(.system(size: 13))
+                .font(.appScaled(size: 13))
                 .foregroundStyle(.white)
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -770,16 +770,16 @@ struct PondusTabView: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 6) {
                 Text("Pondus-analyse")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 Image(systemName: "info.circle")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(LBrand.textTertiary)
                 Spacer()
             }
             VStack(spacing: 6) {
                 Text("Pondus score")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(LBrand.textSecondary)
                 ZStack {
                     Circle()
@@ -798,13 +798,13 @@ struct PondusTabView: View {
                         .animation(.easeInOut(duration: 0.4), value: liveScore)
                     VStack(spacing: 2) {
                         Text("\(liveScore)")
-                            .font(.system(size: 36, weight: .heavy, design: .rounded))
+                            .font(.appScaled(size: 36, weight: .heavy, design: .rounded))
                             .foregroundStyle(.white)
                             .monospacedDigit()
                             .contentTransition(.numericText())
                             .animation(.easeInOut(duration: 0.3), value: liveScore)
                         Text(liveScoreLabel)
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.appScaled(size: 10, weight: .semibold))
                             .foregroundStyle(LBrand.purpleLight)
                     }
                 }
@@ -827,11 +827,11 @@ struct PondusTabView: View {
     private func scoreRow(icon: String, label: String, value: Int) -> some View {
         HStack(spacing: 8) {
             Image(systemName: icon)
-                .font(.system(size: 10, weight: .bold))
+                .font(.appScaled(size: 10, weight: .bold))
                 .foregroundStyle(LBrand.purpleLight)
                 .frame(width: 14)
             Text(label)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.appScaled(size: 11, weight: .semibold))
                 .foregroundStyle(.white)
                 .frame(width: 86, alignment: .leading)
             GeometryReader { geo in
@@ -846,7 +846,7 @@ struct PondusTabView: View {
             }
             .frame(height: 5)
             Text("\(value)")
-                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .font(.appScaled(size: 11, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
                 .monospacedDigit()
                 .frame(width: 24, alignment: .trailing)
@@ -856,16 +856,16 @@ struct PondusTabView: View {
     private var tipsCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Hva gir mer pondus?")
-                .font(.system(size: 13, weight: .bold))
+                .font(.appScaled(size: 13, weight: .bold))
                 .foregroundStyle(.white)
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(selected.analysis.tips, id: \.self) { tip in
                     HStack(alignment: .top, spacing: 9) {
                         Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 12))
+                            .font(.appScaled(size: 12))
                             .foregroundStyle(LBrand.purpleLight)
                         Text(tip)
-                            .font(.system(size: 12))
+                            .font(.appScaled(size: 12))
                             .foregroundStyle(.white)
                         Spacer()
                     }
@@ -888,19 +888,19 @@ struct PondusTabView: View {
             Button { withAnimation { showCheatNote = true } } label: {
                 HStack(spacing: 9) {
                     Image(systemName: "doc.text.fill")
-                        .font(.system(size: 16, weight: .heavy))
+                        .font(.appScaled(size: 16, weight: .heavy))
                         .foregroundStyle(LBrand.bg)
                     VStack(alignment: .leading, spacing: 1) {
                         Text("CHEAT NOTE")
-                            .font(.system(size: 8, weight: .black))
+                            .font(.appScaled(size: 8, weight: .black))
                             .foregroundStyle(LBrand.bg.opacity(0.7))
                             .tracking(0.8)
                         Text("Anbefalt kommunikasjon")
-                            .font(.system(size: 12, weight: .heavy))
+                            .font(.appScaled(size: 12, weight: .heavy))
                             .foregroundStyle(LBrand.bg)
                     }
                     Image(systemName: "chevron.left")
-                        .font(.system(size: 10, weight: .black))
+                        .font(.appScaled(size: 10, weight: .black))
                         .foregroundStyle(LBrand.bg.opacity(0.7))
                 }
                 .padding(.vertical, 14).padding(.horizontal, 16)
@@ -938,10 +938,10 @@ struct PondusTabView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 6) {
                 Text("Teamets bruk")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 Image(systemName: "info.circle")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(LBrand.textTertiary)
                 Spacer()
                 Menu {
@@ -950,9 +950,9 @@ struct PondusTabView: View {
                     Button("Siste 90 dager") { period = "Siste 90 dager" }
                 } label: {
                     HStack(spacing: 5) {
-                        Text(period).font(.system(size: 11, weight: .semibold))
+                        Text(period).font(.appScaled(size: 11, weight: .semibold))
                             .foregroundStyle(.white)
-                        Image(systemName: "chevron.down").font(.system(size: 9, weight: .bold))
+                        Image(systemName: "chevron.down").font(.appScaled(size: 9, weight: .bold))
                             .foregroundStyle(LBrand.textTertiary)
                     }
                     .padding(.horizontal, 10).padding(.vertical, 7)
@@ -969,7 +969,7 @@ struct PondusTabView: View {
                 Text("MØTE-RATE").frame(width: 110, alignment: .trailing)
                 Text("KONVERTERING").frame(width: 130, alignment: .trailing)
             }
-            .font(.system(size: 9, weight: .black))
+            .font(.appScaled(size: 9, weight: .black))
             .tracking(0.5)
             .foregroundStyle(LBrand.textTertiary)
             .padding(.horizontal, 14).padding(.bottom, 8)
@@ -981,8 +981,8 @@ struct PondusTabView: View {
 
             Button {} label: {
                 HStack(spacing: 5) {
-                    Text("Se full rapport").font(.system(size: 12, weight: .semibold))
-                    Image(systemName: "arrow.right").font(.system(size: 10, weight: .bold))
+                    Text("Se full rapport").font(.appScaled(size: 12, weight: .semibold))
+                    Image(systemName: "arrow.right").font(.appScaled(size: 10, weight: .bold))
                 }
                 .foregroundStyle(LBrand.purpleLight)
                 .padding(.vertical, 13)
@@ -998,17 +998,17 @@ struct PondusTabView: View {
         HStack(spacing: 0) {
             HStack(spacing: 8) {
                 Image(systemName: t.channel.icon)
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.appScaled(size: 10, weight: .bold))
                     .foregroundStyle(t.channel.color)
                     .frame(width: 16)
                 Text(t.name)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             Text("\(t.usage.brukt)")
-                .font(.system(size: 12, design: .rounded))
+                .font(.appScaled(size: 12, design: .rounded))
                 .foregroundStyle(.white).monospacedDigit()
                 .frame(width: 70, alignment: .trailing)
             deltaCell(value: t.usage.svarrate, delta: t.usage.svarrateDelta).frame(width: 110, alignment: .trailing)
@@ -1023,14 +1023,14 @@ struct PondusTabView: View {
     private func deltaCell(value: Double, delta: Double) -> some View {
         HStack(spacing: 5) {
             Text(percentFormat(value))
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .font(.appScaled(size: 12, weight: .semibold, design: .rounded))
                 .foregroundStyle(.white)
                 .monospacedDigit()
             HStack(spacing: 2) {
                 Image(systemName: "arrow.up")
-                    .font(.system(size: 8, weight: .black))
+                    .font(.appScaled(size: 8, weight: .black))
                 Text(percentFormat(delta))
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: 10, weight: .bold, design: .rounded))
                     .monospacedDigit()
             }
             .foregroundStyle(LBrand.green)
@@ -1049,10 +1049,10 @@ struct PondusTabView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 6) {
                 Text("Anbefalt språk")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 Image(systemName: "info.circle")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(LBrand.textTertiary)
                 Spacer()
             }
@@ -1060,7 +1060,7 @@ struct PondusTabView: View {
 
             HStack(spacing: 14) {
                 Label {
-                    Text("Sterkere formulering").font(.system(size: 11, weight: .black))
+                    Text("Sterkere formulering").font(.appScaled(size: 11, weight: .black))
                 } icon: {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(LBrand.green)
@@ -1069,7 +1069,7 @@ struct PondusTabView: View {
                 .tracking(0.5)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 Label {
-                    Text("Svakere formulering").font(.system(size: 11, weight: .black))
+                    Text("Svakere formulering").font(.appScaled(size: 11, weight: .black))
                 } icon: {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(LBrand.red)
@@ -1085,14 +1085,14 @@ struct PondusTabView: View {
                 ForEach(pairs) { pair in
                     HStack(alignment: .top, spacing: 12) {
                         Text(pair.stronger)
-                            .font(.system(size: 12))
+                            .font(.appScaled(size: 12))
                             .foregroundStyle(.white)
                             .padding(10)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .background(LBrand.green.opacity(0.10), in: RoundedRectangle(cornerRadius: 9))
                             .overlay(RoundedRectangle(cornerRadius: 9).stroke(LBrand.green.opacity(0.28), lineWidth: 1))
                         Text(pair.weaker)
-                            .font(.system(size: 12))
+                            .font(.appScaled(size: 12))
                             .foregroundStyle(LBrand.textSecondary)
                             .padding(10)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -1147,21 +1147,21 @@ struct PondusExportSheet: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
                         VStack(alignment: .leading, spacing: 6) {
-                            Text("EKSPORTER").font(.system(size: 10, weight: .black))
+                            Text("EKSPORTER").font(.appScaled(size: 10, weight: .black))
                                 .foregroundStyle(LBrand.textTertiary).tracking(0.8)
-                            Text(template.name).font(.system(size: 22, weight: .heavy)).foregroundStyle(.white)
+                            Text(template.name).font(.appScaled(size: 22, weight: .heavy)).foregroundStyle(.white)
                         }
                         VStack(alignment: .leading, spacing: 10) {
-                            Text("FORMAT").font(.system(size: 10, weight: .black))
+                            Text("FORMAT").font(.appScaled(size: 10, weight: .black))
                                 .foregroundStyle(LBrand.textTertiary).tracking(0.8)
                             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
                                 ForEach(ExportFormat.allCases) { f in
                                     Button { format = f } label: {
                                         VStack(spacing: 8) {
                                             Image(systemName: f.icon)
-                                                .font(.system(size: 22, weight: .bold))
+                                                .font(.appScaled(size: 22, weight: .bold))
                                                 .foregroundStyle(format == f ? LBrand.purpleLight : LBrand.textSecondary)
-                                            Text(f.rawValue).font(.system(size: 12, weight: .semibold))
+                                            Text(f.rawValue).font(.appScaled(size: 12, weight: .semibold))
                                                 .foregroundStyle(format == f ? .white : LBrand.textSecondary)
                                         }
                                         .frame(maxWidth: .infinity).padding(.vertical, 16)
@@ -1178,7 +1178,7 @@ struct PondusExportSheet: View {
                             }
                         }
                         VStack(alignment: .leading, spacing: 10) {
-                            Text("INKLUDÉR").font(.system(size: 10, weight: .black))
+                            Text("INKLUDÉR").font(.appScaled(size: 10, weight: .black))
                                 .foregroundStyle(LBrand.textTertiary).tracking(0.8)
                             Toggle("Pondus-analyse + score", isOn: $includeAnalysis).tint(LBrand.purpleLight)
                             Toggle("Teamets bruk (siste 30 d)", isOn: $includeUsage).tint(LBrand.purpleLight)
@@ -1199,7 +1199,7 @@ struct PondusExportSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button { dismiss() } label: {
-                        Text("Eksporter").font(.system(size: 14, weight: .bold))
+                        Text("Eksporter").font(.appScaled(size: 14, weight: .bold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 14).padding(.vertical, 8)
                             .background(
@@ -1246,28 +1246,28 @@ struct PondusPublishSheet: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
                         VStack(alignment: .leading, spacing: 6) {
-                            Text("PUBLISER").font(.system(size: 10, weight: .black))
+                            Text("PUBLISER").font(.appScaled(size: 10, weight: .black))
                                 .foregroundStyle(LBrand.textTertiary).tracking(0.8)
-                            Text(template.name).font(.system(size: 22, weight: .heavy)).foregroundStyle(.white)
+                            Text(template.name).font(.appScaled(size: 22, weight: .heavy)).foregroundStyle(.white)
                             Text("Pondus-score \(template.analysis.score) — \(template.analysis.scoreLabel)")
-                                .font(.system(size: 12)).foregroundStyle(LBrand.purpleLight)
+                                .font(.appScaled(size: 12)).foregroundStyle(LBrand.purpleLight)
                         }
                         VStack(alignment: .leading, spacing: 10) {
-                            Text("ROLL UT TIL").font(.system(size: 10, weight: .black))
+                            Text("ROLL UT TIL").font(.appScaled(size: 10, weight: .black))
                                 .foregroundStyle(LBrand.textTertiary).tracking(0.8)
                             ForEach(Scope.allCases) { s in
                                 Button { scope = s } label: {
                                     HStack(spacing: 10) {
                                         Image(systemName: s.icon)
-                                            .font(.system(size: 13, weight: .bold))
+                                            .font(.appScaled(size: 13, weight: .bold))
                                             .foregroundStyle(scope == s ? LBrand.purpleLight : LBrand.textSecondary)
                                             .frame(width: 26)
                                         Text(s.rawValue)
-                                            .font(.system(size: 13, weight: .semibold))
+                                            .font(.appScaled(size: 13, weight: .semibold))
                                             .foregroundStyle(scope == s ? .white : LBrand.textSecondary)
                                         Spacer()
                                         Image(systemName: scope == s ? "largecircle.fill.circle" : "circle")
-                                            .font(.system(size: 16))
+                                            .font(.appScaled(size: 16))
                                             .foregroundStyle(scope == s ? LBrand.purpleLight : LBrand.textTertiary)
                                     }
                                     .padding(12)
@@ -1278,7 +1278,7 @@ struct PondusPublishSheet: View {
                             }
                         }
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("RELEASE NOTES").font(.system(size: 10, weight: .black))
+                            Text("RELEASE NOTES").font(.appScaled(size: 10, weight: .black))
                                 .foregroundStyle(LBrand.textTertiary).tracking(0.8)
                             TextEditor(text: $releaseNotes)
                                 .foregroundStyle(.white)
@@ -1311,7 +1311,7 @@ struct PondusPublishSheet: View {
                             Image(systemName: "paperplane.fill")
                             Text(requireApproval ? "Send til godkjenning" : "Publiser nå")
                         }
-                        .font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
+                        .font(.appScaled(size: 13, weight: .bold)).foregroundStyle(.white)
                         .padding(.horizontal, 14).padding(.vertical, 8)
                         .background(
                             LinearGradient(colors: [LBrand.purple, LBrand.purpleLight],
@@ -1339,28 +1339,28 @@ struct TemplateLibraryModalEmbedded: View {
                         ZStack {
                             RoundedRectangle(cornerRadius: 10).fill(t.channel.color.opacity(0.22))
                             Image(systemName: t.channel.icon)
-                                .font(.system(size: 14, weight: .bold))
+                                .font(.appScaled(size: 14, weight: .bold))
                                 .foregroundStyle(t.channel.color)
                         }
                         .frame(width: 38, height: 38)
                         VStack(alignment: .leading, spacing: 3) {
                             Text(t.name)
-                                .font(.system(size: 14, weight: .bold))
+                                .font(.appScaled(size: 14, weight: .bold))
                                 .foregroundStyle(.white)
                             HStack(spacing: 6) {
-                                Text(t.channel.rawValue).font(.system(size: 11)).foregroundStyle(LBrand.textSecondary)
+                                Text(t.channel.rawValue).font(.appScaled(size: 11)).foregroundStyle(LBrand.textSecondary)
                                 Text("·").foregroundStyle(LBrand.textTertiary)
-                                Text("Steg \(t.step)/\(t.stepTotal)").font(.system(size: 11)).foregroundStyle(LBrand.textSecondary)
+                                Text("Steg \(t.step)/\(t.stepTotal)").font(.appScaled(size: 11)).foregroundStyle(LBrand.textSecondary)
                                 Text("·").foregroundStyle(LBrand.textTertiary)
-                                Text("Brukt \(t.used)").font(.system(size: 11)).foregroundStyle(LBrand.textSecondary)
+                                Text("Brukt \(t.used)").font(.appScaled(size: 11)).foregroundStyle(LBrand.textSecondary)
                             }
                         }
                         Spacer()
                         Text("\(Int(t.conversion * 100))%")
-                            .font(.system(size: 13, weight: .bold, design: .rounded))
+                            .font(.appScaled(size: 13, weight: .bold, design: .rounded))
                             .foregroundStyle(LBrand.green)
                         Image(systemName: "chevron.right")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.appScaled(size: 11, weight: .bold))
                             .foregroundStyle(LBrand.textTertiary)
                     }
                     .padding(12)
@@ -1440,9 +1440,9 @@ struct CommunicationCheatNote: View {
                         if filtered.isEmpty {
                             VStack(spacing: 8) {
                                 Image(systemName: "magnifyingglass")
-                                    .font(.system(size: 22)).foregroundStyle(inkLight)
+                                    .font(.appScaled(size: 22)).foregroundStyle(inkLight)
                                 Text("Ingen tips matcher")
-                                    .font(.system(size: 12, design: .serif))
+                                    .font(.appScaled(size: 12, design: .serif))
                                     .foregroundStyle(ink)
                             }
                             .frame(maxWidth: .infinity).padding(.vertical, 30)
@@ -1472,14 +1472,14 @@ struct CommunicationCheatNote: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 7) {
                     Image(systemName: "doc.text.fill").foregroundStyle(ink)
-                    Text("CHEAT NOTE · KURATERT AV MARIT").font(.system(size: 9, weight: .black))
+                    Text("CHEAT NOTE · KURATERT AV MARIT").font(.appScaled(size: 9, weight: .black))
                         .foregroundStyle(ink).tracking(0.8)
                 }
                 Text("Anbefalt kommunikasjon")
-                    .font(.system(size: 22, weight: .heavy, design: .serif))
+                    .font(.appScaled(size: 22, weight: .heavy, design: .serif))
                     .foregroundStyle(ink)
                 Text("Hold meg åpen mens du snakker. Bytt en svak formulering med en sterk på sekunder.")
-                    .font(.system(size: 11, design: .serif))
+                    .font(.appScaled(size: 11, design: .serif))
                     .foregroundStyle(inkLight)
                     .italic()
                     .lineLimit(2)
@@ -1487,7 +1487,7 @@ struct CommunicationCheatNote: View {
             Spacer()
             Button(action: onClose) {
                 Image(systemName: "xmark")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(ink)
                     .frame(width: 32, height: 32)
                     .background(
@@ -1504,7 +1504,7 @@ struct CommunicationCheatNote: View {
                 Image(systemName: "magnifyingglass").foregroundStyle(inkLight)
                 TextField("Søk formulering…", text: $search)
                     .foregroundStyle(ink).textFieldStyle(.plain)
-                    .font(.system(size: 12, design: .serif))
+                    .font(.appScaled(size: 12, design: .serif))
                 if !search.isEmpty {
                     Button { search = "" } label: {
                         Image(systemName: "xmark.circle.fill").foregroundStyle(inkLight)
@@ -1519,8 +1519,8 @@ struct CommunicationCheatNote: View {
                     ForEach(Category.allCases) { c in
                         Button { category = c } label: {
                             HStack(spacing: 4) {
-                                Image(systemName: c.icon).font(.system(size: 9, weight: .bold))
-                                Text(c.rawValue).font(.system(size: 11, weight: .semibold))
+                                Image(systemName: c.icon).font(.appScaled(size: 9, weight: .bold))
+                                Text(c.rawValue).font(.appScaled(size: 11, weight: .semibold))
                             }
                             .foregroundStyle(category == c ? paper : ink)
                             .padding(.horizontal, 10).padding(.vertical, 5)
@@ -1537,20 +1537,20 @@ struct CommunicationCheatNote: View {
     private var legend: some View {
         HStack(spacing: 14) {
             Label {
-                Text("STERK").font(.system(size: 10, weight: .black)).tracking(0.6)
+                Text("STERK").font(.appScaled(size: 10, weight: .black)).tracking(0.6)
             } icon: {
                 Image(systemName: "checkmark.circle.fill")
             }
             .foregroundStyle(strong)
             Label {
-                Text("SVAK").font(.system(size: 10, weight: .black)).tracking(0.6)
+                Text("SVAK").font(.appScaled(size: 10, weight: .black)).tracking(0.6)
             } icon: {
                 Image(systemName: "xmark.circle.fill")
             }
             .foregroundStyle(weak)
             Spacer()
             Text("\(filtered.count) tips")
-                .font(.system(size: 10, design: .monospaced))
+                .font(.appScaled(size: 10, design: .monospaced))
                 .foregroundStyle(inkLight)
         }
         .padding(.bottom, 4)
@@ -1561,17 +1561,17 @@ struct CommunicationCheatNote: View {
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 7) {
                 Image(systemName: tip.category.icon)
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.appScaled(size: 10, weight: .bold))
                     .foregroundStyle(inkLight)
                 Text(tip.category.rawValue.uppercased())
-                    .font(.system(size: 9, weight: .black))
+                    .font(.appScaled(size: 9, weight: .black))
                     .foregroundStyle(inkLight).tracking(0.6)
                 Spacer()
                 Button {
                     if isPinned { pinned.remove(tip.id) } else { pinned.insert(tip.id) }
                 } label: {
                     Image(systemName: isPinned ? "pin.fill" : "pin")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.appScaled(size: 11, weight: .bold))
                         .foregroundStyle(isPinned ? Color(red: 0.85, green: 0.2, blue: 0.2) : inkLight)
                         .rotationEffect(.degrees(isPinned ? 0 : -30))
                 }.buttonStyle(.plain)
@@ -1580,21 +1580,21 @@ struct CommunicationCheatNote: View {
             Button { copyTip(tip.strong, id: tip.id) } label: {
                 HStack(alignment: .top, spacing: 8) {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 13)).foregroundStyle(strong).padding(.top, 1)
+                        .font(.appScaled(size: 13)).foregroundStyle(strong).padding(.top, 1)
                     Text(tip.strong)
-                        .font(.system(size: 13, design: .serif))
+                        .font(.appScaled(size: 13, design: .serif))
                         .foregroundStyle(ink)
                         .multilineTextAlignment(.leading)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     if copiedID == tip.id {
                         Text("KOPIERT")
-                            .font(.system(size: 8, weight: .black))
+                            .font(.appScaled(size: 8, weight: .black))
                             .foregroundStyle(strong).tracking(0.6)
                             .padding(.horizontal, 5).padding(.vertical, 2)
                             .background(strong.opacity(0.15), in: Capsule())
                     } else {
                         Image(systemName: "doc.on.doc")
-                            .font(.system(size: 10))
+                            .font(.appScaled(size: 10))
                             .foregroundStyle(inkLight)
                     }
                 }
@@ -1605,9 +1605,9 @@ struct CommunicationCheatNote: View {
             // SVAK
             HStack(alignment: .top, spacing: 8) {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 13)).foregroundStyle(weak).padding(.top, 1)
+                    .font(.appScaled(size: 13)).foregroundStyle(weak).padding(.top, 1)
                 Text(tip.weak)
-                    .font(.system(size: 12, design: .serif))
+                    .font(.appScaled(size: 12, design: .serif))
                     .italic()
                     .foregroundStyle(inkLight)
                     .strikethrough(true, color: weak.opacity(0.5))
@@ -1618,10 +1618,10 @@ struct CommunicationCheatNote: View {
             if let why = tip.why {
                 HStack(alignment: .top, spacing: 6) {
                     Image(systemName: "lightbulb.fill")
-                        .font(.system(size: 9))
+                        .font(.appScaled(size: 9))
                         .foregroundStyle(Color(red: 0.85, green: 0.6, blue: 0.1))
                     Text(why)
-                        .font(.system(size: 10, design: .serif))
+                        .font(.appScaled(size: 10, design: .serif))
                         .italic()
                         .foregroundStyle(inkLight)
                     Spacer()
@@ -1641,7 +1641,7 @@ struct CommunicationCheatNote: View {
             HStack(spacing: 6) {
                 Image(systemName: "sparkles").foregroundStyle(Color(red: 0.85, green: 0.55, blue: 0.1))
                 Text("HÅNDSKREVNE NOTATER FRA LARS")
-                    .font(.system(size: 9, weight: .black))
+                    .font(.appScaled(size: 9, weight: .black))
                     .foregroundStyle(ink).tracking(0.8)
             }
             VStack(alignment: .leading, spacing: 5) {
@@ -1651,7 +1651,7 @@ struct CommunicationCheatNote: View {
                 Text("• Aldri «kanskje». Bytt med «vi vet at».")
                 Text("• Bekreft alltid neste steg med DATO + TID.")
             }
-            .font(.system(size: 11, design: .serif))
+            .font(.appScaled(size: 11, design: .serif))
             .italic()
             .foregroundStyle(ink)
         }
@@ -1856,7 +1856,7 @@ struct PondusTeamUsageModal: View {
                         Button {} label: { Label("Del rapport", systemImage: "square.and.arrow.up") }
                     } label: {
                         Image(systemName: "ellipsis.circle")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.appScaled(size: 16, weight: .semibold))
                             .foregroundStyle(LBrand.purpleLight)
                     }
                 }
@@ -1878,16 +1878,16 @@ struct PondusTeamUsageModal: View {
         HStack(spacing: 12) {
             ZStack {
                 RoundedRectangle(cornerRadius: 10).fill(tint.opacity(0.22))
-                Image(systemName: icon).font(.system(size: 15, weight: .bold)).foregroundStyle(tint)
+                Image(systemName: icon).font(.appScaled(size: 15, weight: .bold)).foregroundStyle(tint)
             }
             .frame(width: 40, height: 40)
             VStack(alignment: .leading, spacing: 2) {
                 Text(label)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(LBrand.textSecondary)
                     .lineLimit(1).fixedSize()
                 Text(value)
-                    .font(.system(size: 22, weight: .heavy, design: .rounded))
+                    .font(.appScaled(size: 22, weight: .heavy, design: .rounded))
                     .foregroundStyle(.white)
                     .lineLimit(1).minimumScaleFactor(0.7).monospacedDigit()
             }
@@ -1916,9 +1916,9 @@ struct PondusTeamUsageModal: View {
                 }
             } label: {
                 HStack(spacing: 5) {
-                    Image(systemName: sort.icon).font(.system(size: 11, weight: .bold)).foregroundStyle(LBrand.purpleLight)
-                    Text(sort.rawValue).font(.system(size: 12, weight: .semibold)).foregroundStyle(.white)
-                    Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold)).foregroundStyle(LBrand.textTertiary)
+                    Image(systemName: sort.icon).font(.appScaled(size: 11, weight: .bold)).foregroundStyle(LBrand.purpleLight)
+                    Text(sort.rawValue).font(.appScaled(size: 12, weight: .semibold)).foregroundStyle(.white)
+                    Image(systemName: "chevron.down").font(.appScaled(size: 9, weight: .semibold)).foregroundStyle(LBrand.textTertiary)
                 }
                 .padding(.horizontal, 12).padding(.vertical, 10)
                 .background(LBrand.card, in: RoundedRectangle(cornerRadius: 10))
@@ -1930,9 +1930,9 @@ struct PondusTeamUsageModal: View {
                 }
             } label: {
                 HStack(spacing: 5) {
-                    Image(systemName: "calendar").font(.system(size: 11, weight: .bold)).foregroundStyle(LBrand.orange)
-                    Text(period.rawValue).font(.system(size: 12, weight: .semibold)).foregroundStyle(.white)
-                    Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold)).foregroundStyle(LBrand.textTertiary)
+                    Image(systemName: "calendar").font(.appScaled(size: 11, weight: .bold)).foregroundStyle(LBrand.orange)
+                    Text(period.rawValue).font(.appScaled(size: 12, weight: .semibold)).foregroundStyle(.white)
+                    Image(systemName: "chevron.down").font(.appScaled(size: 9, weight: .semibold)).foregroundStyle(LBrand.textTertiary)
                 }
                 .padding(.horizontal, 12).padding(.vertical, 10)
                 .background(LBrand.card, in: RoundedRectangle(cornerRadius: 10))
@@ -1950,7 +1950,7 @@ struct PondusTeamUsageModal: View {
             Text("KONV.").frame(width: 100, alignment: .trailing)
             Color.clear.frame(width: 14)
         }
-        .font(.system(size: 9, weight: .black)).tracking(0.5)
+        .font(.appScaled(size: 9, weight: .black)).tracking(0.5)
         .foregroundStyle(LBrand.textTertiary)
         .padding(.horizontal, 14).padding(.bottom, 2)
     }
@@ -1961,22 +1961,22 @@ struct PondusTeamUsageModal: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: 8).fill(t.channel.color.opacity(0.22))
                     Image(systemName: t.channel.icon)
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appScaled(size: 12, weight: .bold))
                         .foregroundStyle(t.channel.color)
                 }
                 .frame(width: 30, height: 30)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(t.name)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.appScaled(size: 13, weight: .semibold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
                     HStack(spacing: 6) {
                         Text("Score \(t.score)")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.appScaled(size: 10, weight: .bold))
                             .foregroundStyle(LBrand.purpleLight)
                         Text("·").foregroundStyle(LBrand.textTertiary)
                         Text(t.channel.rawValue)
-                            .font(.system(size: 10))
+                            .font(.appScaled(size: 10))
                             .foregroundStyle(LBrand.textSecondary)
                     }
                     .lineLimit(1)
@@ -1985,14 +1985,14 @@ struct PondusTeamUsageModal: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             Text("\(t.usage.brukt)")
-                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .font(.appScaled(size: 13, weight: .bold, design: .rounded))
                 .foregroundStyle(.white).monospacedDigit()
                 .frame(width: 70, alignment: .trailing)
             metricCell(value: t.usage.svarrate, delta: t.usage.svarrateDelta).frame(width: 110, alignment: .trailing)
             metricCell(value: t.usage.moeterate, delta: t.usage.moerateDelta).frame(width: 110, alignment: .trailing)
             metricCell(value: t.usage.konvertering, delta: t.usage.konverteringDelta).frame(width: 100, alignment: .trailing)
             Image(systemName: "chevron.right")
-                .font(.system(size: 10, weight: .bold))
+                .font(.appScaled(size: 10, weight: .bold))
                 .foregroundStyle(LBrand.textTertiary)
                 .frame(width: 14)
         }
@@ -2004,12 +2004,12 @@ struct PondusTeamUsageModal: View {
     private func metricCell(value: Double, delta: Double) -> some View {
         HStack(spacing: 5) {
             Text(percent(value))
-                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .font(.appScaled(size: 12, weight: .bold, design: .rounded))
                 .foregroundStyle(.white).monospacedDigit()
                 .lineLimit(1).fixedSize()
             HStack(spacing: 2) {
-                Image(systemName: delta >= 0 ? "arrow.up" : "arrow.down").font(.system(size: 8, weight: .black))
-                Text(percent(abs(delta))).font(.system(size: 9, weight: .bold, design: .rounded)).monospacedDigit()
+                Image(systemName: delta >= 0 ? "arrow.up" : "arrow.down").font(.appScaled(size: 8, weight: .black))
+                Text(percent(abs(delta))).font(.appScaled(size: 9, weight: .bold, design: .rounded)).monospacedDigit()
                     .lineLimit(1).fixedSize()
             }
             .foregroundStyle(delta >= 0 ? LBrand.green : LBrand.red)
@@ -2020,7 +2020,7 @@ struct PondusTeamUsageModal: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 7) {
                 Image(systemName: "sparkles").foregroundStyle(LBrand.purpleLight)
-                Text("AI-INSIKT").font(.system(size: 10, weight: .black))
+                Text("AI-INSIKT").font(.appScaled(size: 10, weight: .black))
                     .foregroundStyle(LBrand.purpleLight).tracking(0.8)
                 Spacer()
             }
@@ -2032,7 +2032,7 @@ struct PondusTeamUsageModal: View {
                  + Text(worst.name).foregroundStyle(.white).bold()
                  + Text(" — vurder å forsterke åpningsreplikken med kundecase-tall.").foregroundStyle(LBrand.textSecondary)
                 )
-                .font(.system(size: 13))
+                .font(.appScaled(size: 13))
             }
         }
         .padding(14)

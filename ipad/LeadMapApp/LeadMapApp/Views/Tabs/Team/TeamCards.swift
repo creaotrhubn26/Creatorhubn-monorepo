@@ -302,12 +302,12 @@ struct TeamMembersModal: View {
     private func sumStat(label: String, value: String, color: Color) -> some View {
         VStack(spacing: 3) {
             Text(value)
-                .font(.system(size: 17, weight: .black, design: .rounded))
+                .font(.appScaled(size: 17, weight: .black, design: .rounded))
                 .foregroundStyle(color)
                 .monospacedDigit()
                 .lineLimit(1).minimumScaleFactor(0.7)
             Text(label)
-                .font(.system(size: 10))
+                .font(.appScaled(size: 10))
                 .foregroundStyle(TBrand.textSecondary)
         }
         .frame(maxWidth: .infinity)
@@ -320,15 +320,15 @@ struct TeamMembersModal: View {
     private var searchBar: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(TBrand.textSecondary)
             ZStack(alignment: .leading) {
                 TextField("", text: $search)
                     .foregroundStyle(.white)
-                    .font(.system(size: 13))
+                    .font(.appScaled(size: 13))
                 if search.isEmpty {
                     Text("Søk medlem eller område…")
-                        .font(.system(size: 13))
+                        .font(.appScaled(size: 13))
                         .foregroundStyle(TBrand.textTertiary)
                         .allowsHitTesting(false)
                 }
@@ -342,14 +342,14 @@ struct TeamMembersModal: View {
     private var sortChips: some View {
         HStack(spacing: 6) {
             Text("Sortér:")
-                .font(.system(size: 10, weight: .semibold))
+                .font(.appScaled(size: 10, weight: .semibold))
                 .foregroundStyle(TBrand.textSecondary)
             ForEach(SortKey.allCases, id: \.self) { s in
                 Button {
                     withAnimation(.easeInOut(duration: 0.15)) { sortBy = s }
                 } label: {
                     Text(s.rawValue)
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.appScaled(size: 11, weight: .bold))
                         .foregroundStyle(sortBy == s ? .white : TBrand.purpleLight)
                         .padding(.horizontal, 10).padding(.vertical, 6)
                         .background(
@@ -381,7 +381,7 @@ struct TeamPerformanceCard: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text("Teamets prestasjoner")
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.appScaled(size: 15, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
             }
@@ -407,7 +407,7 @@ struct TeamPerformanceCard: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Color.clear.frame(width: 26)
             }
-            .font(.system(size: 10, weight: .black))
+            .font(.appScaled(size: 10, weight: .black))
             .foregroundStyle(TBrand.textTertiary)
             .padding(.horizontal, 16).padding(.bottom, 6)
 
@@ -420,7 +420,7 @@ struct TeamPerformanceCard: View {
 
             Button { showAllMembers = true } label: {
                 Text("Se alle medlemmer")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(TBrand.purpleLight)
                     .padding(.vertical, 13)
                     .frame(maxWidth: .infinity)
@@ -442,14 +442,14 @@ struct TeamPerformanceCard: View {
                     TBrand.bg.ignoresSafeArea()
                     VStack(spacing: 14) {
                         Image(systemName: "envelope.badge.fill")
-                            .font(.system(size: 42, weight: .semibold))
+                            .font(.appScaled(size: 42, weight: .semibold))
                             .foregroundStyle(TBrand.purpleLight)
                             .padding(.top, 60)
                         Text("Send melding til \(m.name)")
-                            .font(.system(size: 18, weight: .bold))
+                            .font(.appScaled(size: 18, weight: .bold))
                             .foregroundStyle(.white)
                         Text("Slack + SMS-integrasjon kobles i egen wiring-runde.\nBruk Message-appen inntil videre.")
-                            .font(.system(size: 12))
+                            .font(.appScaled(size: 12))
                             .foregroundStyle(TBrand.textSecondary)
                             .multilineTextAlignment(.center)
                         Spacer()
@@ -466,7 +466,7 @@ struct TeamPerformanceCard: View {
         .overlay(alignment: .top) {
             if let t = toast {
                 Label(t, systemImage: "checkmark.circle.fill")
-                    .font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
+                    .font(.appScaled(size: 12, weight: .bold)).foregroundStyle(.white)
                     .padding(.horizontal, 14).padding(.vertical, 8)
                     .background(TBrand.green, in: Capsule())
                     .padding(.top, 10)
@@ -486,17 +486,17 @@ struct TeamPerformanceCard: View {
                 ZStack {
                     Circle().fill(m.color.opacity(0.85))
                     Text(m.initials)
-                        .font(.system(size: 11, weight: .black))
+                        .font(.appScaled(size: 11, weight: .black))
                         .foregroundStyle(.white)
                 }
                 .frame(width: 34, height: 34)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(m.name)
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
                     Text(m.area)
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(TBrand.textSecondary)
                         .lineLimit(1)
                 }
@@ -506,7 +506,7 @@ struct TeamPerformanceCard: View {
             // LEADS
             HStack(spacing: 4) {
                 Text("\(m.leads)")
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .font(.appScaled(size: 13, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white)
                     .monospacedDigit()
                 trendBadge(m.leadsTrend)
@@ -516,7 +516,7 @@ struct TeamPerformanceCard: View {
             // MØTER
             HStack(spacing: 4) {
                 Text("\(m.meetings)")
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .font(.appScaled(size: 13, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white)
                     .monospacedDigit()
                 trendBadge(m.meetingsTrend)
@@ -526,7 +526,7 @@ struct TeamPerformanceCard: View {
             // VUNNET VERDI
             HStack(spacing: 4) {
                 Text("NOK \(formatNok(m.valueNok))")
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .font(.appScaled(size: 12, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white)
                     .monospacedDigit()
                     .lineLimit(1)
@@ -534,7 +534,7 @@ struct TeamPerformanceCard: View {
                     trendBadge(m.valueTrend)
                 } else {
                     Text("–")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(TBrand.textTertiary)
                 }
             }
@@ -547,7 +547,7 @@ struct TeamPerformanceCard: View {
                     .frame(width: 8, height: 8)
                     .shadow(color: m.momentumColor.opacity(0.5), radius: 3)
                 Text("\(m.momentum)%")
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: 13, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
                     .monospacedDigit()
                     .frame(width: 36, alignment: .leading)
@@ -563,7 +563,7 @@ struct TeamPerformanceCard: View {
                 Button { setGoalMember = m } label: { Label("Sett mål", systemImage: "target") }
             } label: {
                 Image(systemName: "ellipsis")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(TBrand.textSecondary)
                     .frame(width: 26, height: 26)
                     .contentShape(Rectangle())
@@ -581,9 +581,9 @@ struct TeamPerformanceCard: View {
     private func trendBadge(_ pct: Int) -> some View {
         HStack(spacing: 1) {
             Image(systemName: pct >= 0 ? "arrow.up" : "arrow.down")
-                .font(.system(size: 8, weight: .black))
+                .font(.appScaled(size: 8, weight: .black))
             Text("\(abs(pct))%")
-                .font(.system(size: 10, weight: .bold))
+                .font(.appScaled(size: 10, weight: .bold))
                 .monospacedDigit()
         }
         .foregroundStyle(pct >= 0 ? TBrand.green : TBrand.red)
@@ -632,7 +632,7 @@ struct TeamAreasCard: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text("Teamets områder")
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.appScaled(size: 15, weight: .bold))
                     .foregroundStyle(.white)
                 // Kartverket-badgen vises når kartet faktisk tegner ekte
                 // kommunegrenser fra Kartverket — i demo-modus (demo-teamene
@@ -646,7 +646,7 @@ struct TeamAreasCard: View {
                         .accessibilityLabel("Laster kommunegrenser fra Kartverket")
                 } else if showsKartverketBadge {
                     Text("Kartverket")
-                        .font(.system(size: 9, weight: .black, design: .rounded))
+                        .font(.appScaled(size: 9, weight: .black, design: .rounded))
                         .tracking(0.8)
                         .foregroundStyle(TBrand.purpleLight)
                         .padding(.horizontal, 6).padding(.vertical, 2)
@@ -656,9 +656,9 @@ struct TeamAreasCard: View {
                 Button { showAssign = true } label: {
                     HStack(spacing: 5) {
                         Image(systemName: "plus")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.appScaled(size: 11, weight: .bold))
                         Text("Tildel område")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.appScaled(size: 11, weight: .bold))
                     }
                     .foregroundStyle(.white)
                     .padding(.horizontal, 10).padding(.vertical, 7)
@@ -672,7 +672,7 @@ struct TeamAreasCard: View {
                 .buttonStyle(.plain)
                 Button { TeamStubActions.toast("Filter områder") } label: {
                     Image(systemName: "line.3.horizontal.decrease")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.appScaled(size: 13, weight: .semibold))
                         .foregroundStyle(TBrand.purpleLight)
                         .padding(8)
                         .background(TBrand.cardHi, in: RoundedRectangle(cornerRadius: 9))
@@ -837,7 +837,7 @@ struct TeamAreasCard: View {
     private func mapControlButton(_ icon: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: icon)
-                .font(.system(size: 12, weight: .bold))
+                .font(.appScaled(size: 12, weight: .bold))
                 .foregroundStyle(.white)
                 .frame(width: 32, height: 32)
                 .background(TBrand.card.opacity(0.9), in: RoundedRectangle(cornerRadius: 8))
@@ -864,21 +864,21 @@ struct ActivityCard: View {
         return VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text("Aktivitet i sanntid")
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.appScaled(size: 15, weight: .bold))
                     .foregroundStyle(.white)
                 if hasActivity {
                     Circle().fill(TBrand.green)
                         .frame(width: 6, height: 6)
                         .shadow(color: TBrand.green, radius: 3)
                     Text("LIVE")
-                        .font(.system(size: 8, weight: .black))
+                        .font(.appScaled(size: 8, weight: .black))
                         .foregroundStyle(TBrand.green)
                         .tracking(0.6)
                 }
                 Spacer()
                 if hasActivity {
                     Text("\(TeamData.activities.count) i dag")
-                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .font(.appScaled(size: 10, weight: .bold, design: .rounded))
                         .foregroundStyle(TBrand.textSecondary)
                         .monospacedDigit()
                         .padding(.horizontal, 6).padding(.vertical, 2)
@@ -897,13 +897,13 @@ struct ActivityCard: View {
             } else {
                 VStack(spacing: 8) {
                     Image(systemName: "waveform.path.ecg")
-                        .font(.system(size: 26))
+                        .font(.appScaled(size: 26))
                         .foregroundStyle(TBrand.textTertiary)
                     Text("Ingen aktivitet enda")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(TBrand.textSecondary)
                     Text("Teamets registrerte hendelser dukker opp her i sanntid.")
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(TBrand.textTertiary)
                         .multilineTextAlignment(.center)
                         .frame(maxWidth: 300)
@@ -915,9 +915,9 @@ struct ActivityCard: View {
             Button { showModal = true } label: {
                 HStack(spacing: 5) {
                     Text("Se alle aktiviteter")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                     Image(systemName: "arrow.up.right")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.appScaled(size: 10, weight: .bold))
                 }
                 .foregroundStyle(TBrand.purpleLight)
                 .padding(.vertical, 13)
@@ -937,19 +937,19 @@ struct ActivityCard: View {
             ZStack {
                 Circle().fill(ev.memberColor.opacity(0.85))
                 Text(ev.memberInitials)
-                    .font(.system(size: 11, weight: .black))
+                    .font(.appScaled(size: 11, weight: .black))
                     .foregroundStyle(.white)
             }
             .frame(width: 34, height: 34)
             VStack(alignment: .leading, spacing: 1) {
                 Text(ev.memberName)
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(.white)
                 actionText(ev)
             }
             Spacer()
             Text(ev.timeAgo)
-                .font(.system(size: 10, weight: .semibold))
+                .font(.appScaled(size: 10, weight: .semibold))
                 .foregroundStyle(TBrand.textTertiary)
                 .monospacedDigit()
         }
@@ -961,10 +961,10 @@ struct ActivityCard: View {
         if let h = ev.highlight {
             (Text(ev.action).foregroundStyle(TBrand.textSecondary)
              + Text(h).foregroundStyle(ev.highlightColor).bold())
-                .font(.system(size: 11))
+                .font(.appScaled(size: 11))
         } else {
             Text(ev.action)
-                .font(.system(size: 11))
+                .font(.appScaled(size: 11))
                 .foregroundStyle(TBrand.textSecondary)
         }
     }
@@ -1077,32 +1077,32 @@ struct ActivityModal: View {
                     startPoint: .topLeading, endPoint: .bottomTrailing
                 ))
                 Image(systemName: "dot.radiowaves.left.and.right")
-                    .font(.system(size: 18, weight: .black))
+                    .font(.appScaled(size: 18, weight: .black))
                     .foregroundStyle(.white)
             }
             .frame(width: 50, height: 50)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     Text("Team-aktivitet i dag")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.appScaled(size: 14, weight: .bold))
                         .foregroundStyle(.white)
                     if !TeamData.activities.isEmpty {
                         Circle().fill(TBrand.green)
                             .frame(width: 6, height: 6)
                             .shadow(color: TBrand.green, radius: 3)
                         Text("LIVE")
-                            .font(.system(size: 8, weight: .black))
+                            .font(.appScaled(size: 8, weight: .black))
                             .foregroundStyle(TBrand.green)
                             .tracking(0.6)
                     }
                 }
                 if TeamData.activities.isEmpty {
                     Text("Ingen aktivitet enda")
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(TBrand.textSecondary)
                 } else {
                     Text("\(TeamData.activities.count) hendelser · \(TeamData.activities.filter { $0.highlight == "Vunnet" }.count) deals lukket")
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(TBrand.textSecondary)
                 }
             }
@@ -1110,10 +1110,10 @@ struct ActivityModal: View {
             if !TeamData.activities.isEmpty {
                 VStack(alignment: .trailing, spacing: 1) {
                     Text("Siste hendelse")
-                        .font(.system(size: 9))
+                        .font(.appScaled(size: 9))
                         .foregroundStyle(TBrand.textTertiary)
                     Text(TeamData.activities.first?.timeAgo ?? "—")
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .font(.appScaled(size: 12, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                 }
             }
@@ -1130,15 +1130,15 @@ struct ActivityModal: View {
     private var searchBar: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(TBrand.textSecondary)
             ZStack(alignment: .leading) {
                 TextField("", text: $search)
                     .foregroundStyle(.white)
-                    .font(.system(size: 13))
+                    .font(.appScaled(size: 13))
                 if search.isEmpty {
                     Text("Søk medlem, bedrift eller handling…")
-                        .font(.system(size: 13))
+                        .font(.appScaled(size: 13))
                         .foregroundStyle(TBrand.textTertiary)
                         .allowsHitTesting(false)
                 }
@@ -1146,7 +1146,7 @@ struct ActivityModal: View {
             if !search.isEmpty {
                 Button { search = "" } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 12))
+                        .font(.appScaled(size: 12))
                         .foregroundStyle(TBrand.textTertiary)
                 }
                 .buttonStyle(.plain)
@@ -1166,9 +1166,9 @@ struct ActivityModal: View {
                     } label: {
                         HStack(spacing: 5) {
                             Image(systemName: f.icon)
-                                .font(.system(size: 9, weight: .bold))
+                                .font(.appScaled(size: 9, weight: .bold))
                             Text(f.rawValue)
-                                .font(.system(size: 11, weight: .bold))
+                                .font(.appScaled(size: 11, weight: .bold))
                         }
                         .foregroundStyle(filter == f ? .white : f.color)
                         .padding(.horizontal, 10).padding(.vertical, 6)
@@ -1191,7 +1191,7 @@ struct ActivityModal: View {
                     withAnimation { memberFilter = nil }
                 } label: {
                     Text("Alle medlemmer")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.appScaled(size: 10, weight: .bold))
                         .foregroundStyle(memberFilter == nil ? .white : TBrand.textSecondary)
                         .padding(.horizontal, 8).padding(.vertical, 5)
                         .background(
@@ -1210,12 +1210,12 @@ struct ActivityModal: View {
                             ZStack {
                                 Circle().fill(m.color.opacity(0.85))
                                 Text(m.initials)
-                                    .font(.system(size: 8, weight: .black))
+                                    .font(.appScaled(size: 8, weight: .black))
                                     .foregroundStyle(.white)
                             }
                             .frame(width: 18, height: 18)
                             Text(m.name.split(separator: " ").first.map(String.init) ?? m.name)
-                                .font(.system(size: 10, weight: .bold))
+                                .font(.appScaled(size: 10, weight: .bold))
                                 .foregroundStyle(isSelected ? .white : .white.opacity(0.85))
                         }
                         .padding(.horizontal, 8).padding(.vertical, 4)
@@ -1250,7 +1250,7 @@ struct ActivityModal: View {
                     ZStack {
                         Circle().fill(ev.memberColor.opacity(0.85))
                         Text(ev.memberInitials)
-                            .font(.system(size: 12, weight: .black))
+                            .font(.appScaled(size: 12, weight: .black))
                             .foregroundStyle(.white)
                     }
                     .frame(width: 38, height: 38)
@@ -1263,11 +1263,11 @@ struct ActivityModal: View {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 5) {
                         Text(ev.memberName)
-                            .font(.system(size: 13, weight: .bold))
+                            .font(.appScaled(size: 13, weight: .bold))
                             .foregroundStyle(.white)
                         if let h = ev.highlight {
                             Text(h)
-                                .font(.system(size: 9, weight: .black))
+                                .font(.appScaled(size: 9, weight: .black))
                                 .foregroundStyle(ev.highlightColor)
                                 .padding(.horizontal, 5).padding(.vertical, 1)
                                 .background(ev.highlightColor.opacity(0.18), in: Capsule())
@@ -1275,12 +1275,12 @@ struct ActivityModal: View {
                         }
                     }
                     Text(ev.action.trimmingCharacters(in: .whitespaces) + (ev.highlight != nil && !ev.action.trimmingCharacters(in: .whitespaces).hasSuffix(ev.highlight!) ? "" : ""))
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(TBrand.textSecondary)
                 }
                 Spacer()
                 Text(ev.timeAgo)
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.appScaled(size: 10, weight: .semibold))
                     .foregroundStyle(TBrand.textTertiary)
                     .monospacedDigit()
             }
@@ -1294,13 +1294,13 @@ struct ActivityModal: View {
     private var emptyState: some View {
         VStack(spacing: 8) {
             Image(systemName: "tray")
-                .font(.system(size: 28, weight: .semibold))
+                .font(.appScaled(size: 28, weight: .semibold))
                 .foregroundStyle(TBrand.textTertiary)
             Text("Ingen aktiviteter matcher")
-                .font(.system(size: 13, weight: .bold))
+                .font(.appScaled(size: 13, weight: .bold))
                 .foregroundStyle(.white)
             Text("Prøv annet søk eller filter")
-                .font(.system(size: 11))
+                .font(.appScaled(size: 11))
                 .foregroundStyle(TBrand.textSecondary)
         }
         .frame(maxWidth: .infinity)
@@ -1358,25 +1358,25 @@ struct TeamPipelineModal: View {
                     startPoint: .topLeading, endPoint: .bottomTrailing
                 ))
                 Image(systemName: "chart.line.uptrend.xyaxis")
-                    .font(.system(size: 17, weight: .black))
+                    .font(.appScaled(size: 17, weight: .black))
                     .foregroundStyle(.white)
             }
             .frame(width: 48, height: 48)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Pipeline-helse")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 Text("\(totalLeads) nye leads → \(totalWon) vunnet (1,8 % total konvertering)")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(TBrand.textSecondary)
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 1) {
                 Text("Vunnet verdi")
-                    .font(.system(size: 9))
+                    .font(.appScaled(size: 9))
                     .foregroundStyle(TBrand.textTertiary)
                 Text("NOK 5,2M")
-                    .font(.system(size: 14, weight: .black, design: .rounded))
+                    .font(.appScaled(size: 14, weight: .black, design: .rounded))
                     .foregroundStyle(TBrand.green)
                     .monospacedDigit()
             }
@@ -1400,7 +1400,7 @@ struct TeamPipelineCard: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Text("Teamets pipeline")
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.appScaled(size: 15, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
                 Menu {
@@ -1411,10 +1411,10 @@ struct TeamPipelineCard: View {
                 } label: {
                     HStack(spacing: 5) {
                         Text(range)
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.appScaled(size: 11, weight: .semibold))
                             .foregroundStyle(.white)
                         Image(systemName: "chevron.down")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.appScaled(size: 9, weight: .bold))
                             .foregroundStyle(TBrand.textTertiary)
                     }
                     .padding(.horizontal, 10).padding(.vertical, 7)
@@ -1461,13 +1461,13 @@ struct TeamPipelineCard: View {
                 // Tekst-frame begrenset til segmentets SMALESTE bredde minus liten margin
                 HStack {
                     Text(stage.label)
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
                         .minimumScaleFactor(0.6)
                     Spacer(minLength: 8)
                     Text("\(formatNok(stage.count))")
-                        .font(.system(size: 14, weight: .black, design: .rounded))
+                        .font(.appScaled(size: 14, weight: .black, design: .rounded))
                         .foregroundStyle(.white)
                         .monospacedDigit()
                         .lineLimit(1)
@@ -1483,12 +1483,12 @@ struct TeamPipelineCard: View {
         VStack(spacing: 0) {
             HStack {
                 Text("STEG")
-                    .font(.system(size: 9, weight: .black))
+                    .font(.appScaled(size: 9, weight: .black))
                     .foregroundStyle(TBrand.textTertiary)
                     .tracking(0.5)
                 Spacer()
                 Text("KONVERTERING")
-                    .font(.system(size: 9, weight: .black))
+                    .font(.appScaled(size: 9, weight: .black))
                     .foregroundStyle(TBrand.textTertiary)
                     .tracking(0.5)
             }
@@ -1505,13 +1505,13 @@ struct TeamPipelineCard: View {
     private func conversionRow(_ row: ConversionRow) -> some View {
         HStack {
             Text(row.label)
-                .font(.system(size: 11, weight: row.isTotal ? .bold : .semibold))
+                .font(.appScaled(size: 11, weight: row.isTotal ? .bold : .semibold))
                 .foregroundStyle(row.isTotal ? TBrand.purpleLight : .white)
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
             Spacer()
             Text(row.isTotal ? String(format: "%.1f%%", row.pct) : "\(Int(row.pct))%")
-                .font(.system(size: 12, weight: .black, design: .rounded))
+                .font(.appScaled(size: 12, weight: .black, design: .rounded))
                 .foregroundStyle(row.isTotal ? TBrand.purpleLight : .white)
                 .monospacedDigit()
         }
@@ -1595,7 +1595,7 @@ struct InviteMemberSheet: View {
                     areaPicker
                     Toggle(isOn: $sendInvite) {
                         Text("Send invitt-e-post umiddelbart")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.appScaled(size: 12, weight: .semibold))
                             .foregroundStyle(.white)
                     }
                     .tint(TBrand.purple)
@@ -1615,7 +1615,7 @@ struct InviteMemberSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Send") { dismiss() }
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(TBrand.purpleLight)
                         .disabled(email.isEmpty)
                 }
@@ -1629,12 +1629,12 @@ struct InviteMemberSheet: View {
     private var emailField: some View {
         VStack(alignment: .leading, spacing: 7) {
             Text("E-post")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(TBrand.textSecondary)
             ZStack(alignment: .leading) {
                 TextField("", text: $email)
                     .foregroundStyle(.white)
-                    .font(.system(size: 14))
+                    .font(.appScaled(size: 14))
                     .padding(12)
                     .background(TBrand.card, in: RoundedRectangle(cornerRadius: 11))
                     .overlay(RoundedRectangle(cornerRadius: 11).stroke(TBrand.stroke, lineWidth: 1))
@@ -1642,7 +1642,7 @@ struct InviteMemberSheet: View {
                     .autocorrectionDisabled()
                 if email.isEmpty {
                     Text("navn@bedrift.no")
-                        .font(.system(size: 14))
+                        .font(.appScaled(size: 14))
                         .foregroundStyle(TBrand.textTertiary)
                         .padding(.horizontal, 15)
                         .allowsHitTesting(false)
@@ -1654,7 +1654,7 @@ struct InviteMemberSheet: View {
     private var roleGrid: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Rolle")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(TBrand.textSecondary)
             // Korte rolle-navn — 2 kolonner fungerer også på iPhone.
             LazyVGrid(columns: MacCatalystGrid.adaptive(phone: 2, iPad: 2, mac: 2, spacing: 8), spacing: 8) {
@@ -1662,10 +1662,10 @@ struct InviteMemberSheet: View {
                     Button { role = r } label: {
                         HStack(spacing: 8) {
                             Image(systemName: r.icon)
-                                .font(.system(size: 13, weight: .bold))
+                                .font(.appScaled(size: 13, weight: .bold))
                                 .foregroundStyle(role == r ? .white : r.color)
                             Text(r.rawValue)
-                                .font(.system(size: 12, weight: .bold))
+                                .font(.appScaled(size: 12, weight: .bold))
                                 .foregroundStyle(.white)
                         }
                         .frame(maxWidth: .infinity)
@@ -1685,7 +1685,7 @@ struct InviteMemberSheet: View {
     private var areaPicker: some View {
         VStack(alignment: .leading, spacing: 7) {
             Text("Område")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(TBrand.textSecondary)
             Menu {
                 ForEach(["Oslo Vest", "Oslo Sentrum", "Lørenskog", "Asker / Bærum", "Sarpsborg", "Bergen", "Trondheim", "Stavanger"], id: \.self) { a in
@@ -1694,14 +1694,14 @@ struct InviteMemberSheet: View {
             } label: {
                 HStack {
                     Image(systemName: "mappin.and.ellipse")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(TBrand.purpleLight)
                     Text(area)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.appScaled(size: 13, weight: .semibold))
                         .foregroundStyle(.white)
                     Spacer()
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.appScaled(size: 10, weight: .bold))
                         .foregroundStyle(TBrand.textTertiary)
                 }
                 .padding(12)

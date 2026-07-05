@@ -72,7 +72,7 @@ struct LeadDetailFullSheet: View {
                             Circle().fill(LdBrand.cardHi)
                             Circle().stroke(LdBrand.stroke, lineWidth: 1)
                             Image(systemName: "xmark")
-                                .font(.system(size: 11, weight: .bold))
+                                .font(.appScaled(size: 11, weight: .bold))
                                 .foregroundStyle(.white)
                         }
                         .frame(width: 32, height: 32)
@@ -81,7 +81,7 @@ struct LeadDetailFullSheet: View {
                 }
                 ToolbarItem(placement: .principal) {
                     Text(lead.name)
-                        .font(.system(size: 15, weight: .bold))
+                        .font(.appScaled(size: 15, weight: .bold))
                         .foregroundStyle(.white)
                 }
                 ToolbarItem(placement: .primaryAction) {
@@ -97,7 +97,7 @@ struct LeadDetailFullSheet: View {
                             Circle().fill(LdBrand.cardHi)
                             Circle().stroke(LdBrand.stroke, lineWidth: 1)
                             Image(systemName: "ellipsis")
-                                .font(.system(size: 12, weight: .bold))
+                                .font(.appScaled(size: 12, weight: .bold))
                                 .foregroundStyle(.white)
                         }
                         .frame(width: 32, height: 32)
@@ -119,22 +119,22 @@ struct LeadDetailFullSheet: View {
                 RoundedRectangle(cornerRadius: 12)
                     .fill(lead.status.color.opacity(0.20))
                 Image(systemName: "building.2.fill")
-                    .font(.system(size: 26, weight: .semibold))
+                    .font(.appScaled(size: 26, weight: .semibold))
                     .foregroundStyle(lead.status.color)
             }
             .frame(width: 64, height: 64)
             VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 8) {
                     Text(lead.name)
-                        .font(.system(size: 22, weight: .bold))
+                        .font(.appScaled(size: 22, weight: .bold))
                         .foregroundStyle(.white)
                     statusBadge(lead.status)
                     Image(systemName: "star.fill")
-                        .font(.system(size: 14))
+                        .font(.appScaled(size: 14))
                         .foregroundStyle(LdBrand.yellow)
                 }
                 Text(lead.address)
-                    .font(.system(size: 13))
+                    .font(.appScaled(size: 13))
                     .foregroundStyle(LdBrand.textSecondary)
                 HStack(spacing: 12) {
                     metaPill(icon: "building.columns", label: "Elektro")
@@ -162,9 +162,9 @@ struct LeadDetailFullSheet: View {
     private func metaPill(icon: String, label: String) -> some View {
         HStack(spacing: 4) {
             Image(systemName: icon)
-                .font(.system(size: 10))
+                .font(.appScaled(size: 10))
             Text(label)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.appScaled(size: 11, weight: .semibold))
         }
         .foregroundStyle(LdBrand.textSecondary)
         .padding(.horizontal, 8).padding(.vertical, 4)
@@ -177,12 +177,12 @@ struct LeadDetailFullSheet: View {
                 ZStack {
                     Circle().fill(color.opacity(0.22))
                     Image(systemName: icon)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.appScaled(size: 14, weight: .semibold))
                         .foregroundStyle(color)
                 }
                 .frame(width: 40, height: 40)
                 Text(label)
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.appScaled(size: 10, weight: .semibold))
                     .foregroundStyle(.white)
             }
         }
@@ -192,9 +192,9 @@ struct LeadDetailFullSheet: View {
     private func statusBadge(_ st: MapLeadMock.PinStatus) -> some View {
         HStack(spacing: 4) {
             Image(systemName: st.icon)
-                .font(.system(size: 9, weight: .bold))
+                .font(.appScaled(size: 9, weight: .bold))
             Text(st.label)
-                .font(.system(size: 10, weight: .bold))
+                .font(.appScaled(size: 10, weight: .bold))
         }
         .foregroundStyle(st.color)
         .padding(.horizontal, 8).padding(.vertical, 4)
@@ -222,21 +222,21 @@ struct LeadDetailFullSheet: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Image(systemName: icon)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(color)
                 Spacer()
             }
             HStack(alignment: .lastTextBaseline, spacing: 4) {
                 Text(value)
-                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: 22, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
                     .monospacedDigit()
                 Text(subtitle)
-                    .font(.system(size: 10))
+                    .font(.appScaled(size: 10))
                     .foregroundStyle(LdBrand.textTertiary)
             }
             Text(title)
-                .font(.system(size: 11))
+                .font(.appScaled(size: 11))
                 .foregroundStyle(LdBrand.textSecondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -254,9 +254,9 @@ struct LeadDetailFullSheet: View {
                     Button { selectedSection = s } label: {
                         HStack(spacing: 5) {
                             Image(systemName: s.icon)
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.appScaled(size: 11, weight: .semibold))
                             Text(s.rawValue)
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.appScaled(size: 12, weight: .semibold))
                         }
                         .foregroundStyle(selectedSection == s ? .white : LdBrand.textSecondary)
                         .padding(.horizontal, 12).padding(.vertical, 8)
@@ -318,7 +318,7 @@ struct LeadDetailFullSheet: View {
                                 .overlay(Circle().stroke(Color.white, lineWidth: 2))
                                 .frame(width: 30, height: 30)
                             Image(systemName: "building.2.fill")
-                                .font(.system(size: 11, weight: .bold))
+                                .font(.appScaled(size: 11, weight: .bold))
                                 .foregroundStyle(.white)
                         }
                     }
@@ -331,13 +331,13 @@ struct LeadDetailFullSheet: View {
                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(LdBrand.stroke, lineWidth: 1))
 
                 Text(lead.address)
-                    .font(.system(size: 12))
+                    .font(.appScaled(size: 12))
                     .foregroundStyle(.white)
             }
 
             sectionCard(title: "Beskrivelse + notat", icon: "doc.text") {
                 Text("Interessert i nytt el-anlegg til kontorbygg på Storgata. Følge opp prisforslag og referanseprosjekter fra finansbygg.")
-                    .font(.system(size: 12))
+                    .font(.appScaled(size: 12))
                     .foregroundStyle(.white.opacity(0.85))
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -350,18 +350,18 @@ struct LeadDetailFullSheet: View {
             ZStack {
                 Circle().fill(color.opacity(0.25))
                 Text(initials)
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(color)
             }
             .frame(width: 38, height: 38)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 5) {
                     Text(name)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.appScaled(size: 13, weight: .semibold))
                         .foregroundStyle(.white)
                     if primary {
                         Text("Primær")
-                            .font(.system(size: 8, weight: .bold))
+                            .font(.appScaled(size: 8, weight: .bold))
                             .foregroundStyle(LdBrand.purpleLight)
                             .padding(.horizontal, 5).padding(.vertical, 1)
                             .background(LdBrand.purple.opacity(0.20), in: Capsule())
@@ -369,11 +369,11 @@ struct LeadDetailFullSheet: View {
                 }
                 HStack(spacing: 6) {
                     Text(role)
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(LdBrand.textSecondary)
                     Text("·").foregroundStyle(LdBrand.textTertiary)
                     Text(phone)
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(LdBrand.textTertiary)
                 }
             }
@@ -392,7 +392,7 @@ struct LeadDetailFullSheet: View {
             ZStack {
                 Circle().fill(color.opacity(0.20))
                 Image(systemName: icon)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(color)
             }
             .frame(width: 28, height: 28)
@@ -430,7 +430,7 @@ struct LeadDetailFullSheet: View {
                                 .stroke(i <= currentStageIndex ? LdBrand.purpleLight : LdBrand.stroke, lineWidth: 2)
                             if i < currentStageIndex {
                                 Image(systemName: "checkmark")
-                                    .font(.system(size: 11, weight: .bold))
+                                    .font(.appScaled(size: 11, weight: .bold))
                                     .foregroundStyle(.white)
                             } else if i == currentStageIndex {
                                 Circle().fill(Color.white).frame(width: 8, height: 8)
@@ -438,7 +438,7 @@ struct LeadDetailFullSheet: View {
                         }
                         .frame(width: 26, height: 26)
                         Text(stages[i])
-                            .font(.system(size: 10, weight: i == currentStageIndex ? .bold : .semibold))
+                            .font(.appScaled(size: 10, weight: i == currentStageIndex ? .bold : .semibold))
                             .foregroundStyle(i <= currentStageIndex ? .white : LdBrand.textTertiary)
                     }
                     .frame(maxWidth: .infinity)
@@ -461,11 +461,11 @@ struct LeadDetailFullSheet: View {
                 Circle().stroke(current ? LdBrand.purpleLight : LdBrand.stroke, lineWidth: 1.5)
                 if current {
                     Image(systemName: "arrow.right")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.appScaled(size: 9, weight: .bold))
                         .foregroundStyle(LdBrand.purpleLight)
                 } else {
                     Image(systemName: "checkmark")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.appScaled(size: 9, weight: .bold))
                         .foregroundStyle(LdBrand.green)
                 }
             }
@@ -473,24 +473,24 @@ struct LeadDetailFullSheet: View {
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 6) {
                     Text(stage)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
                     if current {
                         Text("AKTIVT")
-                            .font(.system(size: 8, weight: .bold))
+                            .font(.appScaled(size: 8, weight: .bold))
                             .foregroundStyle(LdBrand.purpleLight)
                             .padding(.horizontal, 5).padding(.vertical, 1)
                             .background(LdBrand.purple.opacity(0.20), in: Capsule())
                     }
                 }
                 Text(date)
-                    .font(.system(size: 10))
+                    .font(.appScaled(size: 10))
                     .foregroundStyle(LdBrand.textTertiary)
             }
             Spacer()
             if let v = value {
                 Text(v)
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(LdBrand.green)
                     .monospacedDigit()
             }
@@ -504,7 +504,7 @@ struct LeadDetailFullSheet: View {
     /// Ærlig tom-tilstand (ikke-demo uten ekte data) — mock vises KUN i demo-modus.
     private func sectionEmptyState(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 12, weight: .semibold))
+            .font(.appScaled(size: 12, weight: .semibold))
             .foregroundStyle(LdBrand.textSecondary)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 18)
@@ -522,21 +522,21 @@ struct LeadDetailFullSheet: View {
                         ZStack {
                             Circle().fill(LdBrand.purple.opacity(0.18))
                             Image(systemName: a.icon)
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.appScaled(size: 12, weight: .semibold))
                                 .foregroundStyle(LdBrand.purpleLight)
                         }
                         .frame(width: 32, height: 32)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(a.label)
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.appScaled(size: 13, weight: .semibold))
                                 .foregroundStyle(.white)
                             Text("Anders Johansen · Nordic Elektro")
-                                .font(.system(size: 10))
+                                .font(.appScaled(size: 10))
                                 .foregroundStyle(LdBrand.textTertiary)
                         }
                         Spacer()
                         Text(a.timestamp)
-                            .font(.system(size: 11))
+                            .font(.appScaled(size: 11))
                             .foregroundStyle(LdBrand.textSecondary)
                     }
                     .padding(10)
@@ -560,25 +560,25 @@ struct LeadDetailFullSheet: View {
                             ZStack {
                                 Circle().fill(n.authorColor.opacity(0.25))
                                 Text(n.authorInitials)
-                                    .font(.system(size: 11, weight: .bold))
+                                    .font(.appScaled(size: 11, weight: .bold))
                                     .foregroundStyle(n.authorColor)
                             }
                             .frame(width: 28, height: 28)
                             Text(n.author)
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.appScaled(size: 12, weight: .semibold))
                                 .foregroundStyle(.white)
                             if n.pinned {
                                 Image(systemName: "pin.fill")
-                                    .font(.system(size: 9))
+                                    .font(.appScaled(size: 9))
                                     .foregroundStyle(LdBrand.yellow)
                             }
                             Spacer()
                             Text(n.timestamp)
-                                .font(.system(size: 10))
+                                .font(.appScaled(size: 10))
                                 .foregroundStyle(LdBrand.textTertiary)
                         }
                         Text(n.body)
-                            .font(.system(size: 12))
+                            .font(.appScaled(size: 12))
                             .foregroundStyle(.white.opacity(0.85))
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -611,22 +611,22 @@ struct LeadDetailFullSheet: View {
                             RoundedRectangle(cornerRadius: 10)
                                 .fill(f.kind.color.opacity(0.18))
                             Image(systemName: f.kind.icon)
-                                .font(.system(size: 28, weight: .semibold))
+                                .font(.appScaled(size: 28, weight: .semibold))
                                 .foregroundStyle(f.kind.color)
                         }
                         .frame(height: 80)
                         Text(f.name)
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.appScaled(size: 11, weight: .semibold))
                             .foregroundStyle(.white)
                             .lineLimit(2)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         HStack {
                             Text(f.size)
-                                .font(.system(size: 9))
+                                .font(.appScaled(size: 9))
                                 .foregroundStyle(LdBrand.textSecondary)
                             Spacer()
                             Text(f.uploadedAt)
-                                .font(.system(size: 9))
+                                .font(.appScaled(size: 9))
                                 .foregroundStyle(LdBrand.textTertiary)
                         }
                     }
@@ -660,30 +660,30 @@ struct LeadDetailFullSheet: View {
             ZStack {
                 Circle().fill(color.opacity(0.25))
                 Text(initials)
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(color)
             }
             .frame(width: 36, height: 36)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 5) {
                     Text(name)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.appScaled(size: 13, weight: .semibold))
                         .foregroundStyle(.white)
                     if primary {
                         Text("OWNER")
-                            .font(.system(size: 8, weight: .bold))
+                            .font(.appScaled(size: 8, weight: .bold))
                             .foregroundStyle(LdBrand.yellow)
                             .padding(.horizontal, 5).padding(.vertical, 1)
                             .background(LdBrand.yellow.opacity(0.18), in: Capsule())
                     }
                 }
                 Text(role)
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(LdBrand.textSecondary)
             }
             Spacer()
             Image(systemName: "chevron.right")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.appScaled(size: 11, weight: .semibold))
                 .foregroundStyle(LdBrand.textTertiary)
         }
         .padding(10)
@@ -698,10 +698,10 @@ struct LeadDetailFullSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Image(systemName: icon)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.appScaled(size: 13, weight: .semibold))
                     .foregroundStyle(LdBrand.purpleLight)
                 Text(title)
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
             }

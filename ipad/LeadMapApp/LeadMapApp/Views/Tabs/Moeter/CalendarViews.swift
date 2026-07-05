@@ -57,10 +57,10 @@ struct CalendarModePicker: View {
                 } label: {
                     HStack(spacing: 5) {
                         Image(systemName: m.icon)
-                            .font(.system(size: compact ? 13 : 10, weight: .bold))
+                            .font(.appScaled(size: compact ? 13 : 10, weight: .bold))
                         if !compact {
                             Text(m.rawValue)
-                                .font(.system(size: 11, weight: .bold))
+                                .font(.appScaled(size: 11, weight: .bold))
                         }
                     }
                     .foregroundStyle(mode == m ? .white : CBrand.textSecondary)
@@ -115,7 +115,7 @@ struct DayCalendarView: View {
             ForEach(startHour...endHour, id: \.self) { h in
                 HStack(alignment: .top, spacing: 0) {
                     Text(String(format: "%02d:00", h))
-                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .font(.appScaled(size: 10, weight: .semibold, design: .rounded))
                         .foregroundStyle(CBrand.textTertiary)
                         .monospacedDigit()
                         .frame(width: 44, alignment: .trailing)
@@ -161,23 +161,23 @@ struct DayCalendarView: View {
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 5) {
                     Image(systemName: m.icon)
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.appScaled(size: 9, weight: .bold))
                         .foregroundStyle(m.iconColor)
                     Text(m.company)
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appScaled(size: 12, weight: .bold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
                     if !isCompact {
                         Spacer()
                         Text("\(m.startTime)–\(m.endTime)")
-                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                            .font(.appScaled(size: 10, weight: .semibold, design: .rounded))
                             .foregroundStyle(CBrand.textSecondary)
                             .monospacedDigit()
                     }
                 }
                 if !isCompact {
                     Text("\(m.contactName) · \(m.location)")
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(CBrand.textSecondary)
                         .lineLimit(1)
                 }
@@ -185,7 +185,7 @@ struct DayCalendarView: View {
             Spacer(minLength: 0)
             if isCompact {
                 Text("\(m.startTime)")
-                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .font(.appScaled(size: 10, weight: .semibold, design: .rounded))
                     .foregroundStyle(CBrand.textTertiary)
                     .monospacedDigit()
             }
@@ -220,7 +220,7 @@ struct DayCalendarView: View {
         let y = totalMin * (rowHeight / 60.0)
         return HStack(spacing: 0) {
             Text(String(format: "%02d:%02d", nowHour, nowMinute))
-                .font(.system(size: 9, weight: .black, design: .rounded))
+                .font(.appScaled(size: 9, weight: .black, design: .rounded))
                 .foregroundStyle(.white)
                 .monospacedDigit()
                 .padding(.horizontal, 5).padding(.vertical, 1)
@@ -273,7 +273,7 @@ struct WeekCalendarView: View {
             ForEach(0..<weekDays.count, id: \.self) { i in
                 VStack(spacing: 2) {
                     Text(weekDays[i].uppercased())
-                        .font(.system(size: 9, weight: .black))
+                        .font(.appScaled(size: 9, weight: .black))
                         .foregroundStyle(i == todayIndex ? CBrand.purpleLight : CBrand.textSecondary)
                         .tracking(0.5)
                     ZStack {
@@ -282,7 +282,7 @@ struct WeekCalendarView: View {
                                 .frame(width: 22, height: 22)
                         }
                         Text("\(weekDates[i])")
-                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                            .font(.appScaled(size: 12, weight: .bold, design: .rounded))
                             .foregroundStyle(i == todayIndex ? .white : .white)
                             .monospacedDigit()
                     }
@@ -298,7 +298,7 @@ struct WeekCalendarView: View {
             ForEach(startHour...endHour, id: \.self) { h in
                 HStack(alignment: .top, spacing: 0) {
                     Text(String(format: "%02d", h))
-                        .font(.system(size: 9, weight: .semibold, design: .rounded))
+                        .font(.appScaled(size: 9, weight: .semibold, design: .rounded))
                         .foregroundStyle(CBrand.textTertiary)
                         .monospacedDigit()
                         .frame(width: 44, alignment: .trailing)
@@ -355,15 +355,15 @@ struct WeekCalendarView: View {
         VStack(alignment: .leading, spacing: 1) {
             HStack(spacing: 3) {
                 Image(systemName: icon)
-                    .font(.system(size: 8, weight: .bold))
+                    .font(.appScaled(size: 8, weight: .bold))
                     .foregroundStyle(color)
                 Text(time)
-                    .font(.system(size: 9, weight: .black, design: .rounded))
+                    .font(.appScaled(size: 9, weight: .black, design: .rounded))
                     .foregroundStyle(.white)
                     .monospacedDigit()
             }
             Text(company)
-                .font(.system(size: 9, weight: .bold))
+                .font(.appScaled(size: 9, weight: .bold))
                 .foregroundStyle(.white)
                 .lineLimit(2)
         }
@@ -467,7 +467,7 @@ struct MonthCalendarView: View {
         HStack {
             Button {} label: {
                 Image(systemName: "chevron.left")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(CBrand.purpleLight)
                     .padding(7)
                     .background(CBrand.cardHi, in: Circle())
@@ -475,12 +475,12 @@ struct MonthCalendarView: View {
             .buttonStyle(.plain)
             Spacer()
             Text(monthName)
-                .font(.system(size: 14, weight: .bold))
+                .font(.appScaled(size: 14, weight: .bold))
                 .foregroundStyle(.white)
             Spacer()
             Button {} label: {
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(CBrand.purpleLight)
                     .padding(7)
                     .background(CBrand.cardHi, in: Circle())
@@ -493,7 +493,7 @@ struct MonthCalendarView: View {
         HStack(spacing: 0) {
             ForEach(0..<weekdayLabels.count, id: \.self) { i in
                 Text(weekdayLabels[i])
-                    .font(.system(size: 10, weight: .black))
+                    .font(.appScaled(size: 10, weight: .black))
                     .foregroundStyle(i >= 5 ? CBrand.textTertiary : CBrand.textSecondary)
                     .frame(maxWidth: .infinity)
             }
@@ -525,7 +525,7 @@ struct MonthCalendarView: View {
                         Circle().fill(CBrand.purple).frame(width: 26, height: 26)
                     }
                     Text("\(day)")
-                        .font(.system(size: 13, weight: isToday ? .black : .bold, design: .rounded))
+                        .font(.appScaled(size: 13, weight: isToday ? .black : .bold, design: .rounded))
                         .foregroundStyle(isToday ? .white : (isWeekend ? CBrand.textSecondary : .white))
                         .monospacedDigit()
                 }
@@ -539,7 +539,7 @@ struct MonthCalendarView: View {
                     }
                     if count > 3 {
                         Text("+\(count - 3)")
-                            .font(.system(size: 7, weight: .black, design: .rounded))
+                            .font(.appScaled(size: 7, weight: .black, design: .rounded))
                             .foregroundStyle(CBrand.textSecondary)
                             .monospacedDigit()
                     }
@@ -577,26 +577,26 @@ struct MonthCalendarView: View {
             ZStack {
                 Circle().fill(CBrand.purple.opacity(0.22))
                 Text("\(day)")
-                    .font(.system(size: 13, weight: .black, design: .rounded))
+                    .font(.appScaled(size: 13, weight: .black, design: .rounded))
                     .foregroundStyle(CBrand.purpleLight)
                     .monospacedDigit()
             }
             .frame(width: 36, height: 36)
             VStack(alignment: .leading, spacing: 1) {
                 Text(day == today ? "I dag · 20. mai" : "\(day). mai")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(.white)
                 Text(count == 0 ? "Ingen møter" : "\(count) møte\(count == 1 ? "" : "r") · NOK \(value/1000)k forventet")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(CBrand.textSecondary)
             }
             Spacer()
             Button { onBookMeeting(day) } label: {
                 HStack(spacing: 5) {
                     Image(systemName: "plus")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.appScaled(size: 10, weight: .bold))
                     Text("Bok møte")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.appScaled(size: 11, weight: .bold))
                 }
                 .foregroundStyle(.white)
                 .padding(.horizontal, 10).padding(.vertical, 6)

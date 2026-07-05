@@ -211,7 +211,7 @@ struct AssignToTeamMemberSheet: View {
                         }
                     } label: {
                         Image(systemName: step == .confirm ? "chevron.left" : "xmark")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.appScaled(size: 14, weight: .semibold))
                             .foregroundStyle(.white)
                             .frame(width: 30, height: 30)
                             .background(ATB.cardHi, in: Circle())
@@ -222,7 +222,7 @@ struct AssignToTeamMemberSheet: View {
                 }
                 ToolbarItem(placement: .principal) {
                     Text(step == .pick ? "Send oppdrag" : "Bekreft oppdrag")
-                        .font(.system(size: 15, weight: .heavy, design: .rounded))
+                        .font(.appScaled(size: 15, weight: .heavy, design: .rounded))
                         .foregroundStyle(.white)
                 }
             }
@@ -267,9 +267,9 @@ struct AssignToTeamMemberSheet: View {
                     } label: {
                         HStack(spacing: 8) {
                             Text("Fortsett med \(picked.name.split(separator: " ").first.map(String.init) ?? picked.name)")
-                                .font(.system(size: 14, weight: .bold))
+                                .font(.appScaled(size: 14, weight: .bold))
                             Image(systemName: "arrow.right")
-                                .font(.system(size: 12, weight: .bold))
+                                .font(.appScaled(size: 12, weight: .bold))
                         }
                         .foregroundStyle(.white)
                         .padding(.horizontal, 20).padding(.vertical, 14)
@@ -305,23 +305,23 @@ struct AssignToTeamMemberSheet: View {
             ZStack {
                 Circle().fill(ATB.purple.opacity(0.22))
                 Image(systemName: "mappin.and.ellipse")
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.appScaled(size: 15, weight: .bold))
                     .foregroundStyle(ATB.purpleLight)
             }
             .frame(width: 42, height: 42)
             .overlay(Circle().strokeBorder(ATB.purple.opacity(0.35), lineWidth: 1))
             VStack(alignment: .leading, spacing: 2) {
                 Text("LEAD")
-                    .font(.system(size: 9, weight: .black, design: .rounded))
+                    .font(.appScaled(size: 9, weight: .black, design: .rounded))
                     .tracking(0.8)
                     .foregroundStyle(ATB.textDim)
                 Text(leadName)
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.appScaled(size: 15, weight: .bold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
                 if let address = leadAddress, !address.isEmpty {
                     Text(address)
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(ATB.textDim)
                         .lineLimit(1)
                 }
@@ -330,9 +330,9 @@ struct AssignToTeamMemberSheet: View {
             if let score = leadScore, score > 0 {
                 HStack(spacing: 4) {
                     Image(systemName: "flame.fill")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.appScaled(size: 10, weight: .bold))
                     Text("\(score)")
-                        .font(.system(size: 12, weight: .heavy, design: .rounded))
+                        .font(.appScaled(size: 12, weight: .heavy, design: .rounded))
                         .monospacedDigit()
                 }
                 .foregroundStyle(.white)
@@ -379,9 +379,9 @@ struct AssignToTeamMemberSheet: View {
             } label: {
                 HStack(spacing: 5) {
                     Image(systemName: "arrow.up.arrow.down")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.appScaled(size: 10, weight: .bold))
                     Text(sortMode.rawValue)
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                         .fixedSize(horizontal: true, vertical: false)
                 }
                 .foregroundStyle(.white)
@@ -402,11 +402,11 @@ struct AssignToTeamMemberSheet: View {
         } label: {
             HStack(spacing: 5) {
                 Text(label)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .fixedSize(horizontal: true, vertical: false)
                     .lineLimit(1)
                 Text("\(count)")
-                    .font(.system(size: 10, weight: .heavy, design: .rounded))
+                    .font(.appScaled(size: 10, weight: .heavy, design: .rounded))
                     .foregroundStyle(isActive ? .white : ATB.textDim)
                     .monospacedDigit()
             }
@@ -428,18 +428,18 @@ struct AssignToTeamMemberSheet: View {
     private var searchBar: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(ATB.textDim)
             TextField("Søk etter navn eller e-post", text: $searchText)
                 .textFieldStyle(.plain)
-                .font(.system(size: 13))
+                .font(.appScaled(size: 13))
                 .foregroundStyle(.white)
             if !searchText.isEmpty {
                 Button {
                     searchText = ""
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 13))
+                        .font(.appScaled(size: 13))
                         .foregroundStyle(ATB.textDim)
                 }
                 .buttonStyle(.plain)
@@ -463,7 +463,7 @@ struct AssignToTeamMemberSheet: View {
                     Circle().fill(member.role.color.opacity(0.22))
                     Circle().strokeBorder(member.role.color.opacity(0.55), lineWidth: 1)
                     Text(member.avatarInitials)
-                        .font(.system(size: 13, weight: .heavy, design: .rounded))
+                        .font(.appScaled(size: 13, weight: .heavy, design: .rounded))
                         .foregroundStyle(.white)
                 }
                 .frame(width: 40, height: 40)
@@ -471,7 +471,7 @@ struct AssignToTeamMemberSheet: View {
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 6) {
                         Text(member.name)
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.appScaled(size: 14, weight: .semibold))
                             .foregroundStyle(.white)
                             .lineLimit(1)
                         if let avail = member.isAvailable {
@@ -485,9 +485,9 @@ struct AssignToTeamMemberSheet: View {
                         // Rolle-badge
                         HStack(spacing: 3) {
                             Image(systemName: member.role.icon)
-                                .font(.system(size: 8, weight: .bold))
+                                .font(.appScaled(size: 8, weight: .bold))
                             Text(member.role.label)
-                                .font(.system(size: 10, weight: .heavy, design: .rounded))
+                                .font(.appScaled(size: 10, weight: .heavy, design: .rounded))
                         }
                         .foregroundStyle(member.role.color)
                         .padding(.horizontal, 6).padding(.vertical, 2)
@@ -498,12 +498,12 @@ struct AssignToTeamMemberSheet: View {
                             Text("·")
                                 .foregroundStyle(ATB.textTertiary)
                             Image(systemName: "location.fill")
-                                .font(.system(size: 8))
+                                .font(.appScaled(size: 8))
                                 .foregroundStyle(ATB.textDim)
                             Text(d < 1
                                  ? "\(Int(d * 1000)) m"
                                  : String(format: "%.1f km", d))
-                                .font(.system(size: 10, weight: .semibold))
+                                .font(.appScaled(size: 10, weight: .semibold))
                                 .foregroundStyle(ATB.textDim)
                         }
                         // Ytelse
@@ -511,10 +511,10 @@ struct AssignToTeamMemberSheet: View {
                             Text("·")
                                 .foregroundStyle(ATB.textTertiary)
                             Image(systemName: "trophy.fill")
-                                .font(.system(size: 8))
+                                .font(.appScaled(size: 8))
                                 .foregroundStyle(ATB.orange)
                             Text("\(member.weeklyWon) uka")
-                                .font(.system(size: 10, weight: .semibold))
+                                .font(.appScaled(size: 10, weight: .semibold))
                                 .foregroundStyle(ATB.textDim)
                         }
                     }
@@ -524,7 +524,7 @@ struct AssignToTeamMemberSheet: View {
                     ZStack {
                         Circle().fill(member.role.color)
                         Image(systemName: "checkmark")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.appScaled(size: 11, weight: .bold))
                             .foregroundStyle(.white)
                     }
                     .frame(width: 22, height: 22)
@@ -550,10 +550,10 @@ struct AssignToTeamMemberSheet: View {
     private var emptyState: some View {
         VStack(spacing: 10) {
             Image(systemName: "person.crop.circle.badge.questionmark")
-                .font(.system(size: 32))
+                .font(.appScaled(size: 32))
                 .foregroundStyle(ATB.textTertiary)
             Text("Ingen treff")
-                .font(.system(size: 14, weight: .semibold))
+                .font(.appScaled(size: 14, weight: .semibold))
                 .foregroundStyle(.white)
             Text("Prøv å nullstille filter eller søk på annen tekst.")
                 .font(.caption)
@@ -574,7 +574,7 @@ struct AssignToTeamMemberSheet: View {
                 // Melding
                 VStack(alignment: .leading, spacing: 8) {
                     Text("MELDING")
-                        .font(.system(size: 9, weight: .black, design: .rounded))
+                        .font(.appScaled(size: 9, weight: .black, design: .rounded))
                         .tracking(1.0)
                         .foregroundStyle(ATB.textDim)
                     TextField(
@@ -583,7 +583,7 @@ struct AssignToTeamMemberSheet: View {
                         axis: .vertical
                     )
                     .textFieldStyle(.plain)
-                    .font(.system(size: 13))
+                    .font(.appScaled(size: 13))
                     .foregroundStyle(.white)
                     .lineLimit(3...6)
                     .padding(12)
@@ -597,7 +597,7 @@ struct AssignToTeamMemberSheet: View {
                 // Prioritet
                 VStack(alignment: .leading, spacing: 8) {
                     Text("PRIORITET")
-                        .font(.system(size: 9, weight: .black, design: .rounded))
+                        .font(.appScaled(size: 9, weight: .black, design: .rounded))
                         .tracking(1.0)
                         .foregroundStyle(ATB.textDim)
                     HStack(spacing: 8) {
@@ -613,9 +613,9 @@ struct AssignToTeamMemberSheet: View {
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "paperplane.fill")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.appScaled(size: 12, weight: .bold))
                         Text("Send oppdrag")
-                            .font(.system(size: 14, weight: .bold))
+                            .font(.appScaled(size: 14, weight: .bold))
                     }
                     .foregroundStyle(.white)
                     .padding(.horizontal, 20).padding(.vertical, 14)
@@ -648,16 +648,16 @@ struct AssignToTeamMemberSheet: View {
                 iconBadge("mappin.and.ellipse", color: ATB.purple)
                 VStack(alignment: .leading, spacing: 1) {
                     Text("LEAD")
-                        .font(.system(size: 8, weight: .black, design: .rounded))
+                        .font(.appScaled(size: 8, weight: .black, design: .rounded))
                         .tracking(0.8)
                         .foregroundStyle(ATB.textDim)
                     Text(leadName)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.appScaled(size: 13, weight: .semibold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
                     if let a = leadAddress, !a.isEmpty {
                         Text(a)
-                            .font(.system(size: 11))
+                            .font(.appScaled(size: 11))
                             .foregroundStyle(ATB.textDim)
                             .lineLimit(1)
                     }
@@ -666,7 +666,7 @@ struct AssignToTeamMemberSheet: View {
             }
             // Pil
             Image(systemName: "arrow.down")
-                .font(.system(size: 12, weight: .bold))
+                .font(.appScaled(size: 12, weight: .bold))
                 .foregroundStyle(ATB.textDim)
                 .frame(maxWidth: .infinity, alignment: .center)
             // Til-linje
@@ -676,25 +676,25 @@ struct AssignToTeamMemberSheet: View {
                         Circle().fill(m.role.color.opacity(0.22))
                         Circle().strokeBorder(m.role.color.opacity(0.55), lineWidth: 1)
                         Text(m.avatarInitials)
-                            .font(.system(size: 12, weight: .heavy, design: .rounded))
+                            .font(.appScaled(size: 12, weight: .heavy, design: .rounded))
                             .foregroundStyle(.white)
                     }
                     .frame(width: 32, height: 32)
                     VStack(alignment: .leading, spacing: 1) {
                         Text("MOTTAKER")
-                            .font(.system(size: 8, weight: .black, design: .rounded))
+                            .font(.appScaled(size: 8, weight: .black, design: .rounded))
                             .tracking(0.8)
                             .foregroundStyle(ATB.textDim)
                         Text(m.name)
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.appScaled(size: 13, weight: .semibold))
                             .foregroundStyle(.white)
                             .lineLimit(1)
                         HStack(spacing: 4) {
                             Image(systemName: m.role.icon)
-                                .font(.system(size: 8))
+                                .font(.appScaled(size: 8))
                                 .foregroundStyle(m.role.color)
                             Text(m.role.label)
-                                .font(.system(size: 10, weight: .semibold))
+                                .font(.appScaled(size: 10, weight: .semibold))
                                 .foregroundStyle(m.role.color)
                         }
                     }
@@ -702,10 +702,10 @@ struct AssignToTeamMemberSheet: View {
                     if let d = m.distanceKm {
                         VStack(alignment: .trailing, spacing: 1) {
                             Text(d < 1 ? "\(Int(d * 1000)) m" : String(format: "%.1f km", d))
-                                .font(.system(size: 12, weight: .heavy, design: .rounded))
+                                .font(.appScaled(size: 12, weight: .heavy, design: .rounded))
                                 .foregroundStyle(.white)
                             Text("unna")
-                                .font(.system(size: 9, weight: .semibold))
+                                .font(.appScaled(size: 9, weight: .semibold))
                                 .foregroundStyle(ATB.textDim)
                         }
                     }
@@ -722,7 +722,7 @@ struct AssignToTeamMemberSheet: View {
             Circle().fill(color.opacity(0.22))
             Circle().strokeBorder(color.opacity(0.55), lineWidth: 1)
             Image(systemName: icon)
-                .font(.system(size: 12, weight: .bold))
+                .font(.appScaled(size: 12, weight: .bold))
                 .foregroundStyle(color)
         }
         .frame(width: 32, height: 32)
@@ -737,9 +737,9 @@ struct AssignToTeamMemberSheet: View {
         } label: {
             HStack(spacing: 5) {
                 Image(systemName: p.icon)
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.appScaled(size: 10, weight: .bold))
                 Text(p.label)
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
             }
             .foregroundStyle(isActive ? .white : p.color)
             .frame(maxWidth: .infinity)

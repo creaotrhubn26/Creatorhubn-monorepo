@@ -38,7 +38,7 @@ struct NearbyTeamView: View {
                         .padding(.bottom, 40)
                 } else if let errorMessage {
                     Text(errorMessage)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(HUDPalette.red)
                         .padding(12)
                         .hudGlass(cornerRadius: 12, glow: HUDPalette.red)
@@ -108,12 +108,12 @@ struct NearbyTeamView: View {
                         .overlay(Circle().strokeBorder(.white, lineWidth: 2))
                         .shadow(color: color.opacity(0.8), radius: 6)
                     Text(String(m.name.prefix(2)).uppercased())
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .font(.appScaled(size: 12, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                 }
                 if isSelected {
                     Text(m.name)
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.appScaled(size: 10, weight: .bold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
@@ -172,7 +172,7 @@ struct NearbyTeamView: View {
             Task { await refresh() }
         } label: {
             Text("\(Int(r))")
-                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .font(.appScaled(size: 11, weight: .bold, design: .rounded))
                 .foregroundStyle(isActive ? .white : HUDPalette.textDim)
                 .frame(minWidth: 22)
                 .padding(.horizontal, 6)
@@ -257,7 +257,7 @@ struct NearbyTeamView: View {
                     Circle().fill(color.opacity(0.25))
                     Circle().strokeBorder(color.opacity(0.65), lineWidth: 1.5)
                     Text(String(m.name.prefix(2)).uppercased())
-                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .font(.appScaled(size: 13, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                 }
                 .frame(width: 36, height: 36)
@@ -272,7 +272,7 @@ struct NearbyTeamView: View {
                         HUDLiveDot(color: color, size: 5)
                     }
                     Text(m.role ?? "Selger")
-                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                        .font(.appScaled(size: 10, weight: .medium, design: .rounded))
                         .foregroundStyle(HUDPalette.textDim)
                         .lineLimit(1)
                 }
@@ -337,7 +337,7 @@ struct NearbyTeamView: View {
                 Circle().fill(color.opacity(0.2))
                 Circle().strokeBorder(color.opacity(0.6), lineWidth: 1)
                 Image(systemName: icon)
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(color)
             }
             .frame(width: 30, height: 30)
@@ -365,14 +365,14 @@ struct NearbyTeamView: View {
     private var emptyHUD: some View {
         VStack(spacing: 8) {
             Image(systemName: "person.3.sequence")
-                .font(.system(size: 30))
+                .font(.appScaled(size: 30))
                 .foregroundStyle(HUDPalette.textDim)
             Text("INGEN INNENFOR \(Int(radiusKm)) KM")
                 .font(HUDFont.label(12))
                 .tracking(1.3)
                 .foregroundStyle(.white)
             Text("Prøv større radius eller vent på team-oppdatering.")
-                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .font(.appScaled(size: 11, weight: .medium, design: .rounded))
                 .foregroundStyle(HUDPalette.textDim)
                 .multilineTextAlignment(.center)
         }

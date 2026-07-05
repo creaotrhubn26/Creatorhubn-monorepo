@@ -456,14 +456,14 @@ struct LeadbookView: View {
         Button { showLibrary = true } label: {
             HStack(spacing: 6) {
                 Image(systemName: "books.vertical.fill")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(LBrand.purpleLight)
                 Text("Bibliotek")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(.white)
                     .lineLimit(1).fixedSize()
                 Text("\(LeadbookData.templates.count)")
-                    .font(.system(size: 9, weight: .black, design: .rounded))
+                    .font(.appScaled(size: 9, weight: .black, design: .rounded))
                     .foregroundStyle(LBrand.purpleLight)
                     .monospacedDigit()
                     .padding(.horizontal, 5).padding(.vertical, 1)
@@ -481,11 +481,11 @@ struct LeadbookView: View {
         Button { showPerformance = true } label: {
             HStack(spacing: 6) {
                 Image(systemName: "chart.line.uptrend.xyaxis")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(LBrand.green)
                 if !isCompact {
                     Text("Ytelse")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
                         .lineLimit(1).fixedSize()
                 }
@@ -502,16 +502,16 @@ struct LeadbookView: View {
         Button { showVersions = true } label: {
             HStack(spacing: 6) {
                 Image(systemName: "clock.arrow.circlepath")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(LBrand.orange)
                 if !isCompact {
                     Text("Versjoner")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
                         .lineLimit(1).fixedSize()
                 }
                 Text("\(LeadbookData.versions.filter { $0.status == .pending }.count)")
-                    .font(.system(size: 9, weight: .black, design: .rounded))
+                    .font(.appScaled(size: 9, weight: .black, design: .rounded))
                     .foregroundStyle(LBrand.orange)
                     .monospacedDigit()
                     .padding(.horizontal, 5).padding(.vertical, 1)
@@ -529,7 +529,7 @@ struct LeadbookView: View {
         Button { showLiveTranscription = true } label: {
             ZStack {
                 Image(systemName: "mic.fill")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(LBrand.pink)
                     .frame(width: 44, height: 44)
                     .background(LBrand.card, in: RoundedRectangle(cornerRadius: 11))
@@ -542,14 +542,14 @@ struct LeadbookView: View {
         Button { showCardScanner = true } label: {
             ZStack {
                 Image(systemName: "rectangle.and.text.magnifyingglass")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(LBrand.green)
                     .frame(width: 44, height: 44)
                     .background(LBrand.card, in: RoundedRectangle(cornerRadius: 11))
                     .overlay(RoundedRectangle(cornerRadius: 11).stroke(LBrand.green.opacity(0.35), lineWidth: 1))
                 ZStack {
                     Circle().fill(LBrand.purpleLight)
-                    Image(systemName: "plus").font(.system(size: 7, weight: .heavy)).foregroundStyle(.white)
+                    Image(systemName: "plus").font(.appScaled(size: 7, weight: .heavy)).foregroundStyle(.white)
                 }
                 .frame(width: 14, height: 14)
                 .overlay(Circle().stroke(LBrand.bg, lineWidth: 1.5))
@@ -573,9 +573,9 @@ struct LeadbookView: View {
             Button {} label: { Label("Tilpass Leadbook", systemImage: "slider.horizontal.3") }
         } label: {
             HStack(spacing: 5) {
-                Image(systemName: "plus").font(.system(size: 12, weight: .bold))
+                Image(systemName: "plus").font(.appScaled(size: 12, weight: .bold))
                 if !isCompact {
-                    Text("Ny mal").font(.system(size: 12, weight: .bold)).lineLimit(1).fixedSize()
+                    Text("Ny mal").font(.appScaled(size: 12, weight: .bold)).lineLimit(1).fixedSize()
                 }
             }
             .foregroundStyle(.white)
@@ -599,7 +599,7 @@ struct LeadbookView: View {
                 Button { withAnimation(.easeInOut(duration: 0.18)) { subTab = tab } } label: {
                     VStack(spacing: 6) {
                         Text(tab.label)
-                            .font(.system(size: 13, weight: subTab == tab ? .bold : .semibold))
+                            .font(.appScaled(size: 13, weight: subTab == tab ? .bold : .semibold))
                             .foregroundStyle(subTab == tab ? .white : LBrand.textSecondary)
                             .lineLimit(1)
                             .fixedSize()
@@ -694,15 +694,15 @@ struct LeadbookView: View {
     private func placeholderContent(_ title: String, icon: String, subtitle: String) -> some View {
         VStack(spacing: 14) {
             Image(systemName: icon)
-                .font(.system(size: 44, weight: .semibold))
+                .font(.appScaled(size: 44, weight: .semibold))
                 .foregroundStyle(LBrand.purpleLight.opacity(0.7))
-            Text(title).font(.system(size: 22, weight: .heavy)).foregroundStyle(.white)
-            Text(subtitle).font(.system(size: 13))
+            Text(title).font(.appScaled(size: 22, weight: .heavy)).foregroundStyle(.white)
+            Text(subtitle).font(.appScaled(size: 13))
                 .foregroundStyle(LBrand.textSecondary)
                 .multilineTextAlignment(.center)
             Button {} label: {
                 Text("Få beskjed når klar")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 16).padding(.vertical, 10)
                     .background(
@@ -761,22 +761,22 @@ struct LeadbookView: View {
                     RoundedRectangle(cornerRadius: 10)
                         .fill(LBrand.purple.opacity(0.22))
                     Image(systemName: "chart.bar.fill")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.appScaled(size: 16, weight: .semibold))
                         .foregroundStyle(LBrand.purple)
                 }
                 .frame(width: 40, height: 40)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Statistikk")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.appScaled(size: 14, weight: .bold))
                         .foregroundStyle(.white)
                     Text("\(activeTemplates) aktive maler")
-                        .font(.system(size: 12))
+                        .font(.appScaled(size: 12))
                         .foregroundStyle(LBrand.textSecondary)
                 }
                 Spacer()
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.appScaled(size: 13, weight: .semibold))
                     .foregroundStyle(LBrand.textSecondary)
             }
             .padding(14)
@@ -792,7 +792,7 @@ struct LeadbookView: View {
         ScrollView {
             VStack(spacing: 14) {
                 Text("Statistikk")
-                    .font(.system(size: 20, weight: .bold))
+                    .font(.appScaled(size: 20, weight: .bold))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.top, 18)
@@ -820,21 +820,21 @@ struct LeadbookView: View {
         return Button { selectedKPI = kpi } label: {
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 7) {
-                    Text(kpi.title).font(.system(size: 12, weight: .semibold)).foregroundStyle(LBrand.textSecondary)
+                    Text(kpi.title).font(.appScaled(size: 12, weight: .semibold)).foregroundStyle(LBrand.textSecondary)
                     Text(isDemo ? kpi.value : kpi.liveValue)
-                        .font(.system(size: 26, weight: .bold, design: .rounded)).foregroundStyle(.white)
+                        .font(.appScaled(size: 26, weight: .bold, design: .rounded)).foregroundStyle(.white)
                         .monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
                     HStack(spacing: 6) {
-                        Text(isDemo ? "vs. forrige periode" : "live fra teamet").font(.system(size: 10)).foregroundStyle(LBrand.textTertiary)
+                        Text(isDemo ? "vs. forrige periode" : "live fra teamet").font(.appScaled(size: 10)).foregroundStyle(LBrand.textTertiary)
                         if isDemo {
-                            Text(kpi.trend).font(.system(size: 11, weight: .bold)).foregroundStyle(LBrand.green).monospacedDigit()
+                            Text(kpi.trend).font(.appScaled(size: 11, weight: .bold)).foregroundStyle(LBrand.green).monospacedDigit()
                         }
                     }
                 }
                 Spacer(minLength: 0)
                 ZStack {
                     RoundedRectangle(cornerRadius: 10).fill(kpi.tint.opacity(0.22))
-                    Image(systemName: kpi.icon).font(.system(size: 17, weight: .semibold)).foregroundStyle(kpi.tint)
+                    Image(systemName: kpi.icon).font(.appScaled(size: 17, weight: .semibold)).foregroundStyle(kpi.tint)
                 }
                 .frame(width: 42, height: 42)
             }

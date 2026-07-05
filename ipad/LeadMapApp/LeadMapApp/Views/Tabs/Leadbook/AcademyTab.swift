@@ -54,7 +54,7 @@ struct AcademyTabView: View {
         .overlay(alignment: .top) {
             if let t = errorToast {
                 Label(t, systemImage: "exclamationmark.triangle.fill")
-                    .font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
+                    .font(.appScaled(size: 12, weight: .bold)).foregroundStyle(.white)
                     .padding(.horizontal, 12).padding(.vertical, 8)
                     .background(LBrand.red, in: Capsule())
                     .padding(.top, 6)
@@ -122,10 +122,10 @@ struct AcademyTabView: View {
         HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Leadbook — Akademi")
-                    .font(.system(size: 22, weight: .bold))
+                    .font(.appScaled(size: 22, weight: .bold))
                     .foregroundStyle(.white)
                 Text("Videokurs for teamet — offisielle Leadgrid-kurs og organisasjonens egne opplæringsløp.")
-                    .font(.system(size: 12))
+                    .font(.appScaled(size: 12))
                     .foregroundStyle(LBrand.textSecondary)
                     .lineLimit(2)
             }
@@ -133,8 +133,8 @@ struct AcademyTabView: View {
             if isAdmin {
                 Button { showNewCourse = true } label: {
                     HStack(spacing: 6) {
-                        Image(systemName: "plus").font(.system(size: 11, weight: .bold))
-                        Text("Nytt kurs").font(.system(size: 12, weight: .bold))
+                        Image(systemName: "plus").font(.appScaled(size: 11, weight: .bold))
+                        Text("Nytt kurs").font(.appScaled(size: 12, weight: .bold))
                     }
                     .foregroundStyle(.white)
                     .padding(.horizontal, 14).padding(.vertical, 9)
@@ -198,10 +198,10 @@ struct AcademyTabView: View {
     private func sectionLabel(_ text: String, icon: String, tint: Color) -> some View {
         HStack(spacing: 7) {
             Image(systemName: icon)
-                .font(.system(size: 10, weight: .bold))
+                .font(.appScaled(size: 10, weight: .bold))
                 .foregroundStyle(tint)
             Text(text)
-                .font(.system(size: 10, weight: .black))
+                .font(.appScaled(size: 10, weight: .black))
                 .foregroundStyle(tint)
                 .tracking(0.8)
             Spacer()
@@ -211,21 +211,21 @@ struct AcademyTabView: View {
     private var orgEmptyState: some View {
         VStack(spacing: 12) {
             Image(systemName: "graduationcap")
-                .font(.system(size: 30, weight: .semibold))
+                .font(.appScaled(size: 30, weight: .semibold))
                 .foregroundStyle(LBrand.textTertiary)
             Text("Sett en standard i organisasjonen")
-                .font(.system(size: 15, weight: .bold))
+                .font(.appScaled(size: 15, weight: .bold))
                 .foregroundStyle(.white)
             Text("Lær opp ansatte og utvikle dem til bedre og mer effektive leads-jaktere.")
-                .font(.system(size: 12))
+                .font(.appScaled(size: 12))
                 .foregroundStyle(LBrand.textSecondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 340)
             if isAdmin {
                 Button { showNewCourse = true } label: {
                     HStack(spacing: 6) {
-                        Image(systemName: "plus").font(.system(size: 11, weight: .bold))
-                        Text("Nytt kurs").font(.system(size: 12, weight: .bold))
+                        Image(systemName: "plus").font(.appScaled(size: 11, weight: .bold))
+                        Text("Nytt kurs").font(.appScaled(size: 12, weight: .bold))
                     }
                     .foregroundStyle(.white)
                     .padding(.horizontal, 16).padding(.vertical, 10)
@@ -371,14 +371,14 @@ private struct AcademyCourseCard: View {
                                 colors: [tint.opacity(0.35), tint.opacity(0.10)],
                                 startPoint: .topLeading, endPoint: .bottomTrailing))
                         Image(systemName: icon)
-                            .font(.system(size: 18, weight: .bold))
+                            .font(.appScaled(size: 18, weight: .bold))
                             .foregroundStyle(tint)
                     }
                     .frame(width: 44, height: 44)
 
                     VStack(alignment: .leading, spacing: 4) {
                         Text(title)
-                            .font(.system(size: 14, weight: .bold))
+                            .font(.appScaled(size: 14, weight: .bold))
                             .foregroundStyle(.white)
                             .lineLimit(1)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -388,7 +388,7 @@ private struct AcademyCourseCard: View {
                 }
 
                 Text(description.isEmpty ? "Ingen beskrivelse ennå." : description)
-                    .font(.system(size: 12))
+                    .font(.appScaled(size: 12))
                     .foregroundStyle(LBrand.textSecondary)
                     .lineLimit(2)
                     .frame(maxWidth: .infinity, minHeight: 30, alignment: .topLeading)
@@ -407,21 +407,21 @@ private struct AcademyCourseCard: View {
 
                 HStack(spacing: 6) {
                     Text("\(watchedCount) / \(chapters.count) sett")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.appScaled(size: 10, weight: .bold))
                         .foregroundStyle(LBrand.textTertiary)
                     Spacer()
                     Image(systemName: "play.rectangle")
-                        .font(.system(size: 9))
+                        .font(.appScaled(size: 9))
                         .foregroundStyle(LBrand.textTertiary)
                     Text("\(chapters.count) kapitler")
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(LBrand.textTertiary)
                     Text("·").foregroundStyle(LBrand.textTertiary)
                     Image(systemName: "clock")
-                        .font(.system(size: 9))
+                        .font(.appScaled(size: 9))
                         .foregroundStyle(LBrand.textTertiary)
                     Text(formatCourseDuration(totalDuration))
-                        .font(.system(size: 10, design: .monospaced))
+                        .font(.appScaled(size: 10, design: .monospaced))
                         .foregroundStyle(LBrand.textTertiary)
                 }
             }
@@ -437,9 +437,9 @@ private struct AcademyCourseCard: View {
     private var badge: some View {
         HStack(spacing: 4) {
             Image(systemName: isOfficial ? "checkmark.seal.fill" : "building.2.fill")
-                .font(.system(size: 8, weight: .bold))
+                .font(.appScaled(size: 8, weight: .bold))
             Text(isOfficial ? "Leadgrid" : "Ditt kurs")
-                .font(.system(size: 9, weight: .black))
+                .font(.appScaled(size: 9, weight: .black))
                 .tracking(0.4)
         }
         .foregroundStyle(isOfficial ? LBrand.purpleLight : LBrand.orange)
@@ -537,7 +537,7 @@ private struct AcademyNewChapterSheet: View {
                 LBrand.bg.ignoresSafeArea()
                 VStack(alignment: .leading, spacing: 16) {
                     Text(courseTitle)
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appScaled(size: 12, weight: .bold))
                         .foregroundStyle(LBrand.purpleLight)
 
                     fieldLabel("KAPITTEL-TITTEL")
@@ -560,7 +560,7 @@ private struct AcademyNewChapterSheet: View {
                     fieldLabel("VARIGHET (ESTIMAT)")
                     Stepper(value: $minutes, in: 1...120) {
                         Text("\(minutes) min")
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.appScaled(size: 13, weight: .semibold))
                             .foregroundStyle(.white)
                     }
                     .padding(.horizontal, 12).padding(.vertical, 6)
@@ -625,13 +625,13 @@ private struct AcademyCourseAdminSheet: View {
                         if chapters.isEmpty {
                             VStack(spacing: 10) {
                                 Image(systemName: "rectangle.stack.badge.plus")
-                                    .font(.system(size: 28))
+                                    .font(.appScaled(size: 28))
                                     .foregroundStyle(LBrand.textTertiary)
                                 Text("Ingen kapitler ennå")
-                                    .font(.system(size: 14, weight: .bold))
+                                    .font(.appScaled(size: 14, weight: .bold))
                                     .foregroundStyle(.white)
                                 Text("Legg til første kapittel og last opp video.")
-                                    .font(.system(size: 12))
+                                    .font(.appScaled(size: 12))
                                     .foregroundStyle(LBrand.textSecondary)
                             }
                             .frame(maxWidth: .infinity)
@@ -654,7 +654,7 @@ private struct AcademyCourseAdminSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button { showNewChapter = true } label: {
                         Label("Nytt kapittel", systemImage: "plus")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.appScaled(size: 12, weight: .bold))
                     }
                     .tint(LBrand.purpleLight)
                 }
@@ -662,7 +662,7 @@ private struct AcademyCourseAdminSheet: View {
             .overlay(alignment: .top) {
                 if let t = errorToast {
                     Label(t, systemImage: "exclamationmark.triangle.fill")
-                        .font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
+                        .font(.appScaled(size: 12, weight: .bold)).foregroundStyle(.white)
                         .padding(.horizontal, 12).padding(.vertical, 8)
                         .background(LBrand.red, in: Capsule())
                         .padding(.top, 6)
@@ -706,7 +706,7 @@ private struct AcademyCourseAdminSheet: View {
                         colors: [chapter.posterTint.opacity(0.35), chapter.posterTint.opacity(0.10)],
                         startPoint: .topLeading, endPoint: .bottomTrailing))
                 Image(systemName: chapter.posterIcon)
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
             }
             .frame(width: 44, height: 36)
@@ -714,26 +714,26 @@ private struct AcademyCourseAdminSheet: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     Text("\(chapter.number)")
-                        .font(.system(size: 10, weight: .black, design: .rounded))
+                        .font(.appScaled(size: 10, weight: .black, design: .rounded))
                         .foregroundStyle(LBrand.textTertiary)
                     Text(chapter.title)
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
                 }
                 HStack(spacing: 6) {
                     if chapter.hasVideo {
                         Label("Video", systemImage: "video.fill")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.appScaled(size: 9, weight: .bold))
                             .foregroundStyle(LBrand.green)
                     } else {
                         Label("Mangler video", systemImage: "video.slash")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.appScaled(size: 9, weight: .bold))
                             .foregroundStyle(LBrand.textTertiary)
                     }
                     Text("·").foregroundStyle(LBrand.textTertiary)
                     Text(formatCourseDuration(chapter.duration))
-                        .font(.system(size: 10, design: .monospaced))
+                        .font(.appScaled(size: 10, design: .monospaced))
                         .foregroundStyle(LBrand.textTertiary)
                 }
             }
@@ -743,7 +743,7 @@ private struct AcademyCourseAdminSheet: View {
                 HStack(spacing: 6) {
                     ProgressView().tint(LBrand.purpleLight)
                     Text("Laster opp…")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(LBrand.textSecondary)
                 }
             } else {
@@ -760,9 +760,9 @@ private struct AcademyCourseAdminSheet: View {
                 ) {
                     HStack(spacing: 5) {
                         Image(systemName: "arrow.up.circle.fill")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.appScaled(size: 11, weight: .bold))
                         Text(chapter.hasVideo ? "Bytt video" : "Last opp video")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.appScaled(size: 11, weight: .bold))
                     }
                     .foregroundStyle(.white)
                     .padding(.horizontal, 11).padding(.vertical, 7)
@@ -775,7 +775,7 @@ private struct AcademyCourseAdminSheet: View {
                     deleteChapterCandidate = chapter
                 } label: {
                     Image(systemName: "trash")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(LBrand.red)
                         .frame(width: 30, height: 30)
                         .background(LBrand.red.opacity(0.12), in: Circle())
@@ -861,7 +861,7 @@ private struct AcademyCourseAdminSheet: View {
 
 private func fieldLabel(_ text: String) -> some View {
     Text(text)
-        .font(.system(size: 10, weight: .black))
+        .font(.appScaled(size: 10, weight: .black))
         .foregroundStyle(LBrand.textTertiary)
         .tracking(0.8)
 }

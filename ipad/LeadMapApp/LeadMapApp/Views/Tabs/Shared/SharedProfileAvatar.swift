@@ -112,18 +112,18 @@ struct SharedProfileAvatar: View {
                 if !isCompact {
                     VStack(alignment: .leading, spacing: 0) {
                         Text(appState.displayName)
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.appScaled(size: 12, weight: .semibold))
                             .foregroundStyle(.white)
                             .lineLimit(1)
                             .fixedSize()
                         Text(appState.isSuperAdmin ? "Leadgrid-admin" : "Salgssjef")
-                            .font(.system(size: 10))
+                            .font(.appScaled(size: 10))
                             .foregroundStyle(secondaryText)
                             .lineLimit(1)
                             .fixedSize()
                     }
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.appScaled(size: 9, weight: .semibold))
                         .foregroundStyle(tertiaryText)
                 }
             }
@@ -145,7 +145,7 @@ struct SharedProfileAvatar: View {
             ZStack {
                 Circle().fill(tint.opacity(0.3))
                 Text(appState.initials)
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(tint)
             }
         }

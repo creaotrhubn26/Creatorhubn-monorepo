@@ -65,7 +65,7 @@ struct LeadStatusChangeSheet: View {
                     VStack(alignment: .leading, spacing: 16) {
                         leadHeader
                         Text("VELG NY STATUS")
-                            .font(.system(size: 10, weight: .black))
+                            .font(.appScaled(size: 10, weight: .black))
                             .foregroundStyle(LaBrand.textTertiary).tracking(0.8)
                         VStack(spacing: 8) {
                             ForEach(LeadPipelineStatus.allCases) { s in
@@ -73,11 +73,11 @@ struct LeadStatusChangeSheet: View {
                             }
                         }
                         Text("NOTAT (VALGFRITT)")
-                            .font(.system(size: 10, weight: .black))
+                            .font(.appScaled(size: 10, weight: .black))
                             .foregroundStyle(LaBrand.textTertiary).tracking(0.8)
                             .padding(.top, 8)
                         TextEditor(text: $note)
-                            .font(.system(size: 13))
+                            .font(.appScaled(size: 13))
                             .foregroundStyle(.white)
                             .scrollContentBackground(.hidden)
                             .padding(10)
@@ -87,7 +87,7 @@ struct LeadStatusChangeSheet: View {
                             .overlay(alignment: .topLeading) {
                                 if note.isEmpty {
                                     Text("Forklar hvorfor status endres…")
-                                        .font(.system(size: 13))
+                                        .font(.appScaled(size: 13))
                                         .foregroundStyle(LaBrand.textTertiary)
                                         .padding(14)
                                         .allowsHitTesting(false)
@@ -109,7 +109,7 @@ struct LeadStatusChangeSheet: View {
                         dismiss()
                     } label: {
                         Text("Lagre")
-                            .font(.system(size: 13, weight: .bold))
+                            .font(.appScaled(size: 13, weight: .bold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 14).padding(.vertical, 7)
                             .background(
@@ -135,15 +135,15 @@ struct LeadStatusChangeSheet: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 10).fill(companyColor.opacity(0.22))
                 Image(systemName: "building.2.fill")
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.appScaled(size: 15, weight: .bold))
                     .foregroundStyle(companyColor)
             }
             .frame(width: 40, height: 40)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Endre status for")
-                    .font(.system(size: 11)).foregroundStyle(LaBrand.textSecondary)
+                    .font(.appScaled(size: 11)).foregroundStyle(LaBrand.textSecondary)
                 Text(companyName)
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.appScaled(size: 15, weight: .bold))
                     .foregroundStyle(.white)
             }
             Spacer()
@@ -159,19 +159,19 @@ struct LeadStatusChangeSheet: View {
                 ZStack {
                     Circle().fill(s.color.opacity(0.24))
                     Image(systemName: s.icon)
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appScaled(size: 12, weight: .bold))
                         .foregroundStyle(s.color)
                 }.frame(width: 34, height: 34)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(s.label).font(.system(size: 13, weight: .bold))
+                    Text(s.label).font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(.white)
-                    Text(s.subtitle).font(.system(size: 10))
+                    Text(s.subtitle).font(.appScaled(size: 10))
                         .foregroundStyle(LaBrand.textSecondary)
                 }
                 Spacer(minLength: 6)
                 if s == selected {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 18, weight: .bold))
+                        .font(.appScaled(size: 18, weight: .bold))
                         .foregroundStyle(LaBrand.green)
                 }
             }
@@ -315,7 +315,7 @@ struct LeadAssignSellerSheet: View {
                         dismiss()
                     } label: {
                         Text("Tildel")
-                            .font(.system(size: 13, weight: .bold))
+                            .font(.appScaled(size: 13, weight: .bold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 14).padding(.vertical, 7)
                             .background(
@@ -341,19 +341,19 @@ struct LeadAssignSellerSheet: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 10).fill(companyColor.opacity(0.22))
                 Image(systemName: "building.2.fill")
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.appScaled(size: 15, weight: .bold))
                     .foregroundStyle(companyColor)
             }
             .frame(width: 40, height: 40)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Tildel til selger")
-                    .font(.system(size: 11)).foregroundStyle(LaBrand.textSecondary)
+                    .font(.appScaled(size: 11)).foregroundStyle(LaBrand.textSecondary)
                 Text(companyName)
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.appScaled(size: 15, weight: .bold))
                     .foregroundStyle(.white)
                 if let cur = currentSellerName {
                     Text("Nåværende eier: \(cur)")
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(LaBrand.orange)
                 }
             }
@@ -367,10 +367,10 @@ struct LeadAssignSellerSheet: View {
     private var searchField: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(LaBrand.textTertiary)
             TextField("Søk etter selger…", text: $search)
-                .font(.system(size: 13))
+                .font(.appScaled(size: 13))
                 .foregroundStyle(.white)
         }
         .padding(11)
@@ -384,27 +384,27 @@ struct LeadAssignSellerSheet: View {
                 ZStack {
                     Circle().fill(s.avatarColor.opacity(0.28))
                     Text(s.initials)
-                        .font(.system(size: 11, weight: .heavy, design: .rounded))
+                        .font(.appScaled(size: 11, weight: .heavy, design: .rounded))
                         .foregroundStyle(.white)
                 }.frame(width: 36, height: 36)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(s.name).font(.system(size: 13, weight: .bold))
+                    Text(s.name).font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(.white)
-                    Text(s.title).font(.system(size: 10))
+                    Text(s.title).font(.appScaled(size: 10))
                         .foregroundStyle(LaBrand.textSecondary)
                 }
                 Spacer(minLength: 6)
                 VStack(alignment: .trailing, spacing: 1) {
                     Text("\(s.leadsCount) leads")
-                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .font(.appScaled(size: 10, weight: .bold, design: .rounded))
                         .foregroundStyle(LaBrand.textSecondary).monospacedDigit()
                     Text(s.winRateText)
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.appScaled(size: 10, weight: .semibold))
                         .foregroundStyle(LaBrand.green)
                 }
                 if s.id == selectedID {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 18, weight: .bold))
+                        .font(.appScaled(size: 18, weight: .bold))
                         .foregroundStyle(LaBrand.green)
                 }
             }
@@ -485,7 +485,7 @@ struct LeadNoteSheet: View {
                     VStack(alignment: .leading, spacing: 16) {
                         leadHeader
                         Text("KATEGORI")
-                            .font(.system(size: 10, weight: .black))
+                            .font(.appScaled(size: 10, weight: .black))
                             .foregroundStyle(LaBrand.textTertiary).tracking(0.8)
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 8) {
@@ -493,9 +493,9 @@ struct LeadNoteSheet: View {
                                     Button { category = cat } label: {
                                         HStack(spacing: 5) {
                                             Image(systemName: cat.icon)
-                                                .font(.system(size: 10, weight: .bold))
+                                                .font(.appScaled(size: 10, weight: .bold))
                                             Text(cat.rawValue)
-                                                .font(.system(size: 11, weight: .semibold))
+                                                .font(.appScaled(size: 11, weight: .semibold))
                                         }
                                         .foregroundStyle(category == cat ? .white : cat.color)
                                         .padding(.horizontal, 11).padding(.vertical, 6)
@@ -511,11 +511,11 @@ struct LeadNoteSheet: View {
                             }
                         }
                         Text("NOTAT")
-                            .font(.system(size: 10, weight: .black))
+                            .font(.appScaled(size: 10, weight: .black))
                             .foregroundStyle(LaBrand.textTertiary).tracking(0.8)
                             .padding(.top, 4)
                         TextEditor(text: $note)
-                            .font(.system(size: 14))
+                            .font(.appScaled(size: 14))
                             .foregroundStyle(.white)
                             .scrollContentBackground(.hidden)
                             .padding(12)
@@ -525,7 +525,7 @@ struct LeadNoteSheet: View {
                             .overlay(alignment: .topLeading) {
                                 if note.isEmpty {
                                     Text("Skriv notat om samtalen, møtet eller neste steg…")
-                                        .font(.system(size: 14))
+                                        .font(.appScaled(size: 14))
                                         .foregroundStyle(LaBrand.textTertiary)
                                         .padding(16)
                                         .allowsHitTesting(false)
@@ -534,10 +534,10 @@ struct LeadNoteSheet: View {
                         Toggle(isOn: $pinned) {
                             HStack(spacing: 7) {
                                 Image(systemName: "pin.fill")
-                                    .font(.system(size: 12, weight: .bold))
+                                    .font(.appScaled(size: 12, weight: .bold))
                                     .foregroundStyle(pinned ? LaBrand.yellow : LaBrand.textTertiary)
                                 Text("Fest øverst i lead-historikken")
-                                    .font(.system(size: 13, weight: .semibold))
+                                    .font(.appScaled(size: 13, weight: .semibold))
                                     .foregroundStyle(.white)
                             }
                         }
@@ -561,7 +561,7 @@ struct LeadNoteSheet: View {
                         dismiss()
                     } label: {
                         Text("Lagre")
-                            .font(.system(size: 13, weight: .bold))
+                            .font(.appScaled(size: 13, weight: .bold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 14).padding(.vertical, 7)
                             .background(
@@ -587,15 +587,15 @@ struct LeadNoteSheet: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 10).fill(companyColor.opacity(0.22))
                 Image(systemName: "building.2.fill")
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.appScaled(size: 15, weight: .bold))
                     .foregroundStyle(companyColor)
             }
             .frame(width: 40, height: 40)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Nytt notat for")
-                    .font(.system(size: 11)).foregroundStyle(LaBrand.textSecondary)
+                    .font(.appScaled(size: 11)).foregroundStyle(LaBrand.textSecondary)
                 Text(companyName)
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.appScaled(size: 15, weight: .bold))
                     .foregroundStyle(.white)
             }
             Spacer()

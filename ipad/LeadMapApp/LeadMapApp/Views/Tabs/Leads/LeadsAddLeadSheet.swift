@@ -120,9 +120,9 @@ struct LeadsAddLeadSheet: View {
                 Button { mode = m } label: {
                     HStack(spacing: 6) {
                         Image(systemName: m.icon)
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.appScaled(size: 12, weight: .semibold))
                         Text(m.rawValue)
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.appScaled(size: 13, weight: .semibold))
                     }
                     .foregroundStyle(mode == m ? .white : AlBrand.textSecondary)
                     .frame(maxWidth: .infinity)
@@ -151,16 +151,16 @@ struct LeadsAddLeadSheet: View {
                 ZStack {
                     Circle().fill(AlBrand.purple.opacity(0.22))
                     Image(systemName: "sparkles")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.appScaled(size: 14, weight: .semibold))
                         .foregroundStyle(AlBrand.purpleLight)
                 }
                 .frame(width: 36, height: 36)
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Leadgrid scanner og fyller ut for deg")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                         .foregroundStyle(.white)
                     Text("Lim inn nettside-URL, org.nr eller bedriftsnavn")
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(AlBrand.textSecondary)
                 }
                 Spacer()
@@ -169,14 +169,14 @@ struct LeadsAddLeadSheet: View {
             HStack(spacing: 8) {
                 HStack(spacing: 8) {
                     Image(systemName: "link")
-                        .font(.system(size: 12))
+                        .font(.appScaled(size: 12))
                         .foregroundStyle(AlBrand.textSecondary)
                     TextField("", text: $urlOrSearch,
                               prompt: Text("nordicelektro.no  •  Nordic Elektro AS  •  912 345 678")
                                 .foregroundColor(AlBrand.textTertiary))
                         .textFieldStyle(.plain)
                         .foregroundStyle(.white)
-                        .font(.system(size: 13))
+                        .font(.appScaled(size: 13))
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
                 }
@@ -193,10 +193,10 @@ struct LeadsAddLeadSheet: View {
                                 .controlSize(.small)
                         } else {
                             Image(systemName: "sparkles.rectangle.stack")
-                                .font(.system(size: 11, weight: .bold))
+                                .font(.appScaled(size: 11, weight: .bold))
                         }
                         Text(scanning ? "Scanner…" : "Scan")
-                            .font(.system(size: 13, weight: .bold))
+                            .font(.appScaled(size: 13, weight: .bold))
                     }
                     .foregroundStyle(.white)
                     .padding(.horizontal, 16).padding(.vertical, 11)
@@ -215,12 +215,12 @@ struct LeadsAddLeadSheet: View {
 
             HStack(spacing: 6) {
                 Image(systemName: scanComplete ? "checkmark.seal.fill" : "info.circle")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(scanComplete ? AlBrand.green : AlBrand.textTertiary)
                 Text(scanComplete
                      ? "Auto-fylt fra nettside + Brønnøysund. Sjekk feltene under."
                      : "Henter: nettside-meta, kontakt-info, org.nr, koord., bransje, omsetning, ansatte.")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(AlBrand.textSecondary)
                 Spacer()
             }
@@ -317,7 +317,7 @@ struct LeadsAddLeadSheet: View {
                     TextEditor(text: $notat)
                         .scrollContentBackground(.hidden)
                         .foregroundStyle(.white)
-                        .font(.system(size: 13))
+                        .font(.appScaled(size: 13))
                         .frame(minHeight: 70)
                         .padding(10)
                         .background(AlBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
@@ -325,7 +325,7 @@ struct LeadsAddLeadSheet: View {
                         .overlay(alignment: .topLeading) {
                             if notat.isEmpty {
                                 Text("Hvorfor er denne leaden interessant? Hva er neste steg?")
-                                    .font(.system(size: 13))
+                                    .font(.appScaled(size: 13))
                                     .foregroundStyle(AlBrand.textTertiary)
                                     .padding(.horizontal, 14).padding(.vertical, 16)
                                     .allowsHitTesting(false)
@@ -339,20 +339,20 @@ struct LeadsAddLeadSheet: View {
                         ZStack {
                             Circle().fill(AlBrand.purple.opacity(0.25))
                             Text("LK")
-                                .font(.system(size: 11, weight: .bold))
+                                .font(.appScaled(size: 11, weight: .bold))
                                 .foregroundStyle(AlBrand.purpleLight)
                         }
                         .frame(width: 30, height: 30)
                         Text(assignTo)
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.appScaled(size: 13, weight: .semibold))
                             .foregroundStyle(.white)
                         Text("(deg)")
-                            .font(.system(size: 11))
+                            .font(.appScaled(size: 11))
                             .foregroundStyle(AlBrand.textTertiary)
                         Spacer()
                         Button {} label: {
                             Text("Endre")
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.appScaled(size: 12, weight: .semibold))
                                 .foregroundStyle(AlBrand.purpleLight)
                         }
                         .buttonStyle(.plain)
@@ -370,9 +370,9 @@ struct LeadsAddLeadSheet: View {
         return Button { status = st } label: {
             HStack(spacing: 5) {
                 Image(systemName: st.icon)
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.appScaled(size: 10, weight: .semibold))
                 Text(st.label)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
             }
             .foregroundStyle(isSelected ? .white : st.color)
             .padding(.horizontal, 10).padding(.vertical, 7)
@@ -410,7 +410,7 @@ struct LeadsAddLeadSheet: View {
                                     .frame(width: 28, height: 28)
                                     .shadow(color: status.color.opacity(0.7), radius: 6, x: 0, y: 2)
                                 Image(systemName: "building.2.fill")
-                                    .font(.system(size: 10, weight: .bold))
+                                    .font(.appScaled(size: 10, weight: .bold))
                                     .foregroundStyle(.white)
                             }
                         }
@@ -428,10 +428,10 @@ struct LeadsAddLeadSheet: View {
 
                 HStack(spacing: 6) {
                     Image(systemName: "location.fill")
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(AlBrand.purpleLight)
                     Text("Pinnen plasseres automatisk fra adressen. Du kan flytte den manuelt etter at leaden er lagret.")
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(AlBrand.textSecondary)
                     Spacer()
                 }
@@ -445,7 +445,7 @@ struct LeadsAddLeadSheet: View {
         HStack(spacing: 10) {
             Button { dismiss() } label: {
                 Text("Avbryt")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.appScaled(size: 14, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 13)
@@ -464,9 +464,9 @@ struct LeadsAddLeadSheet: View {
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appScaled(size: 13, weight: .bold))
                     Text("Legg til på kartet")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.appScaled(size: 14, weight: .bold))
                 }
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
@@ -498,10 +498,10 @@ struct LeadsAddLeadSheet: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 8) {
                 Image(systemName: icon)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.appScaled(size: 13, weight: .semibold))
                     .foregroundStyle(AlBrand.purpleLight)
                 Text(title)
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 Spacer()
             }
@@ -514,7 +514,7 @@ struct LeadsAddLeadSheet: View {
 
     private func fieldLabel(_ s: String) -> some View {
         Text(s)
-            .font(.system(size: 11, weight: .semibold))
+            .font(.appScaled(size: 11, weight: .semibold))
             .foregroundStyle(AlBrand.textSecondary)
     }
 
@@ -526,7 +526,7 @@ struct LeadsAddLeadSheet: View {
             TextField("", text: text, prompt: Text(placeholder).foregroundColor(AlBrand.textTertiary))
                 .textFieldStyle(.plain)
                 .foregroundStyle(.white)
-                .font(.system(size: 13))
+                .font(.appScaled(size: 13))
                 .keyboardType(keyboard)
                 .padding(.horizontal, 12).padding(.vertical, 11)
                 .background(AlBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))

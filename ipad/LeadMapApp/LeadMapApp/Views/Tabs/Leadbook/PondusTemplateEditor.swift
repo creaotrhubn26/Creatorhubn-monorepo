@@ -178,7 +178,7 @@ struct PondusTemplateEditor: View {
                         steps.swapAt(index, index - 1)
                         reindex()
                     } label: {
-                        Image(systemName: "arrow.up.circle").font(.system(size: 18))
+                        Image(systemName: "arrow.up.circle").font(.appScaled(size: 18))
                     }.buttonStyle(.plain)
                 }
                 if index < steps.count - 1 {
@@ -186,7 +186,7 @@ struct PondusTemplateEditor: View {
                         steps.swapAt(index, index + 1)
                         reindex()
                     } label: {
-                        Image(systemName: "arrow.down.circle").font(.system(size: 18))
+                        Image(systemName: "arrow.down.circle").font(.appScaled(size: 18))
                     }.buttonStyle(.plain)
                 }
             }
@@ -224,7 +224,7 @@ struct PondusTemplateEditor: View {
                     }
                 }
             ))
-            .font(.system(size: 12, design: .monospaced))
+            .font(.appScaled(size: 12, design: .monospaced))
             .foregroundStyle(.secondary)
             TextField("Prompt / eksempeltekst", text: Binding(
                 get: { step.prompt ?? "" },

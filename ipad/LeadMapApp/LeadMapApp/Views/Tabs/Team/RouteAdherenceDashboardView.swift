@@ -53,7 +53,7 @@ struct RouteAdherenceDashboardView: View {
                             membersList(report: report)
                         } else if let errorMessage {
                             Text(errorMessage)
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.appScaled(size: 12, weight: .semibold))
                                 .foregroundStyle(HUDPalette.red)
                                 .padding(12)
                                 .hudGlass(cornerRadius: 12, glow: HUDPalette.red)
@@ -226,7 +226,7 @@ struct RouteAdherenceDashboardView: View {
     private var dateAndFilterCard: some View {
         HStack(spacing: 12) {
             Image(systemName: "calendar")
-                .font(.system(size: 14, weight: .bold))
+                .font(.appScaled(size: 14, weight: .bold))
                 .foregroundStyle(HUDPalette.purple)
             DatePicker("Dato", selection: $selectedDate, displayedComponents: .date)
                 .labelsHidden()
@@ -310,7 +310,7 @@ struct RouteAdherenceDashboardView: View {
                     Circle().fill(color.opacity(0.22))
                     Circle().strokeBorder(color.opacity(0.7), lineWidth: 1.5)
                     Text(String((m.name ?? m.userId).prefix(2)).uppercased())
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .font(.appScaled(size: 12, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                 }
                 .frame(width: 40, height: 40)
@@ -359,7 +359,7 @@ struct RouteAdherenceDashboardView: View {
                 }
 
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(HUDPalette.textFaint)
             }
             .padding(12)
@@ -384,7 +384,7 @@ struct RouteAdherenceDashboardView: View {
     private var emptyHUD: some View {
         VStack(spacing: 10) {
             Image(systemName: "map.circle")
-                .font(.system(size: 36))
+                .font(.appScaled(size: 36))
                 .foregroundStyle(HUDPalette.textDim)
             Text("INGEN RUTER PÅ \(dateISO)")
                 .font(HUDFont.title(13))
@@ -447,7 +447,7 @@ struct MemberAdherenceDetailView: View {
                         dailyListCard(r)
                     } else if let errorMessage {
                         Text(errorMessage)
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.appScaled(size: 12, weight: .semibold))
                             .foregroundStyle(HUDPalette.red)
                     }
                 }
@@ -475,7 +475,7 @@ struct MemberAdherenceDetailView: View {
                 Circle().fill(color.opacity(0.25))
                 Circle().strokeBorder(color.opacity(0.7), lineWidth: 1.5)
                 Text(String((member.name ?? member.userId).prefix(2)).uppercased())
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: 15, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
             }
             .frame(width: 48, height: 48)
@@ -486,7 +486,7 @@ struct MemberAdherenceDetailView: View {
                     .font(HUDFont.title(15))
                     .foregroundStyle(.white)
                 Text(member.email ?? "")
-                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .font(.appScaled(size: 11, weight: .medium, design: .rounded))
                     .foregroundStyle(HUDPalette.textDim)
                     .lineLimit(1)
             }
@@ -566,7 +566,7 @@ struct MemberAdherenceDetailView: View {
                             .frame(width: 10, height: max(4, CGFloat(day.onRoutePct) * 0.6))
                             .shadow(color: HUDColorScale.forOnRoute(day.onRoutePct).opacity(0.6), radius: 3)
                         Text(day.routeDate.suffix(5).description)
-                            .font(.system(size: 7, weight: .medium, design: .monospaced))
+                            .font(.appScaled(size: 7, weight: .medium, design: .monospaced))
                             .foregroundStyle(HUDPalette.textFaint)
                             .rotationEffect(.degrees(-45))
                             .frame(width: 18, height: 22)
@@ -594,12 +594,12 @@ struct MemberAdherenceDetailView: View {
         let color = HUDColorScale.forOnRoute(day.onRoutePct)
         return HStack(spacing: 10) {
             Text(day.routeDate)
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .font(.appScaled(size: 11, weight: .semibold, design: .monospaced))
                 .foregroundStyle(HUDPalette.textDim)
                 .frame(width: 84, alignment: .leading)
             VStack(alignment: .leading, spacing: 2) {
                 Text(day.name)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
                 Text("\(day.completedStops)/\(day.totalStops) STOPP · \(day.avgDeviationM) M AVVIK")

@@ -130,7 +130,7 @@ struct TeamMapPin: View {
                 Circle().fill(ringColor.opacity(0.28))
                 Circle().strokeBorder(ringColor, lineWidth: isCompact ? 1.5 : 2.5)
                 Text(member.avatarInitials)
-                    .font(.system(size: isCompact ? 8 : 13, weight: .heavy, design: .rounded))
+                    .font(.appScaled(size: isCompact ? 8 : 13, weight: .heavy, design: .rounded))
                     .foregroundStyle(.white)
             }
             .frame(width: isCompact ? 22 : 36, height: isCompact ? 22 : 36)
@@ -158,7 +158,7 @@ struct TeamMapPin: View {
             if member.activity == .driving, !isCompact {
                 // Ikon i pulserer-dot — tydelig visuell markør
                 Image(systemName: "car.fill")
-                    .font(.system(size: 5, weight: .heavy))
+                    .font(.appScaled(size: 5, weight: .heavy))
                     .foregroundStyle(.white)
             }
         }
@@ -202,20 +202,20 @@ struct TeamMemberInfoCard: View {
                 Circle().fill(member.role.color.opacity(0.28))
                 Circle().strokeBorder(member.role.color, lineWidth: 2)
                 Text(member.avatarInitials)
-                    .font(.system(size: 14, weight: .heavy, design: .rounded))
+                    .font(.appScaled(size: 14, weight: .heavy, design: .rounded))
                     .foregroundStyle(.white)
             }
             .frame(width: 42, height: 42)
             VStack(alignment: .leading, spacing: 3) {
                 Text(member.name)
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.appScaled(size: 15, weight: .bold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
                 HStack(spacing: 5) {
                     Image(systemName: member.role.icon)
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.appScaled(size: 9, weight: .bold))
                     Text(member.role.label)
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .font(.appScaled(size: 11, weight: .bold, design: .rounded))
                 }
                 .foregroundStyle(member.role.color)
                 .padding(.horizontal, 8).padding(.vertical, 2)
@@ -227,7 +227,7 @@ struct TeamMemberInfoCard: View {
                 onClose()
             } label: {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 18))
+                    .font(.appScaled(size: 18))
                     .foregroundStyle(TeamOnMapBrand.textDim)
             }
             .buttonStyle(.plain)
@@ -239,20 +239,20 @@ struct TeamMemberInfoCard: View {
             // Aktivitet
             HStack(spacing: 6) {
                 Image(systemName: member.activity.icon)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(member.activity.color)
                 Text(member.activity.label)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(.white)
                 Spacer()
                 if let d = distanceFromMe {
                     Image(systemName: "location.fill")
-                        .font(.system(size: 9))
+                        .font(.appScaled(size: 9))
                         .foregroundStyle(TeamOnMapBrand.textDim)
                     Text(d < 1
                          ? "\(Int(d * 1000)) m unna"
                          : String(format: "%.1f km unna", d))
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(TeamOnMapBrand.textDim)
                 }
             }
@@ -260,13 +260,13 @@ struct TeamMemberInfoCard: View {
             if let destName = member.destinationLeadName {
                 HStack(spacing: 6) {
                     Image(systemName: "target")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.appScaled(size: 10, weight: .bold))
                         .foregroundStyle(member.role.color)
                     Text("På vei til")
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(TeamOnMapBrand.textDim)
                     Text(destName)
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
                 }
@@ -274,10 +274,10 @@ struct TeamMemberInfoCard: View {
             // Sist sett
             HStack(spacing: 6) {
                 Image(systemName: "clock.fill")
-                    .font(.system(size: 9))
+                    .font(.appScaled(size: 9))
                     .foregroundStyle(TeamOnMapBrand.textDim)
                 Text("Oppdatert \(lastSeenLabel)")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.appScaled(size: 10, weight: .semibold))
                     .foregroundStyle(TeamOnMapBrand.textDim)
             }
         }
@@ -291,9 +291,9 @@ struct TeamMemberInfoCard: View {
             } label: {
                 HStack(spacing: 5) {
                     Image(systemName: "arrowshape.turn.up.right.fill")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.appScaled(size: 10, weight: .bold))
                     Text("Send lead")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appScaled(size: 12, weight: .bold))
                 }
                 .foregroundStyle(.white)
                 .padding(.horizontal, 12).padding(.vertical, 8)
@@ -310,7 +310,7 @@ struct TeamMemberInfoCard: View {
                 onPing(member)
             } label: {
                 Image(systemName: "bell.fill")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(.white)
                     .padding(8)
                     .background(TeamOnMapBrand.card, in: Circle())
@@ -327,9 +327,9 @@ struct TeamMemberInfoCard: View {
             } label: {
                 HStack(spacing: 5) {
                     Text("Profil")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appScaled(size: 12, weight: .bold))
                     Image(systemName: "arrow.right")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.appScaled(size: 10, weight: .bold))
                 }
                 .foregroundStyle(.white)
                 .padding(.horizontal, 12).padding(.vertical, 8)

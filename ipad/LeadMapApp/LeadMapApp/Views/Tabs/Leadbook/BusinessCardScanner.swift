@@ -66,7 +66,7 @@ struct BusinessCardScannerSheet: View {
                     VStack {
                         Spacer().frame(height: 60)
                         Label(t, systemImage: "checkmark.circle.fill")
-                            .font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
+                            .font(.appScaled(size: 12, weight: .bold)).foregroundStyle(.white)
                             .padding(.horizontal, 12).padding(.vertical, 8)
                             .background(LBrand.green, in: Capsule())
                         Spacer()
@@ -85,8 +85,8 @@ struct BusinessCardScannerSheet: View {
                             saveLead()
                         } label: {
                             HStack(spacing: 5) {
-                                Image(systemName: "checkmark").font(.system(size: 11, weight: .black))
-                                Text("Lagre lead").font(.system(size: 12, weight: .bold))
+                                Image(systemName: "checkmark").font(.appScaled(size: 11, weight: .black))
+                                Text("Lagre lead").font(.appScaled(size: 12, weight: .bold))
                             }
                             .foregroundStyle(.white)
                             .padding(.horizontal, 12).padding(.vertical, 7)
@@ -173,16 +173,16 @@ struct BusinessCardScannerSheet: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 12).fill(LBrand.purple.opacity(0.22))
                 Image(systemName: "rectangle.and.text.magnifyingglass")
-                    .font(.system(size: 22, weight: .bold))
+                    .font(.appScaled(size: 22, weight: .bold))
                     .foregroundStyle(LBrand.purpleLight)
             }
             .frame(width: 56, height: 56)
             VStack(alignment: .leading, spacing: 4) {
                 Text("Fra visittkort til lead på 5 sekunder")
-                    .font(.system(size: 16, weight: .heavy))
+                    .font(.appScaled(size: 16, weight: .heavy))
                     .foregroundStyle(.white)
                 Text("Vision finner navn, firma, telefon og e-post automatisk. Du gjennomgår alt før lagring.")
-                    .font(.system(size: 12))
+                    .font(.appScaled(size: 12))
                     .foregroundStyle(LBrand.textSecondary)
                     .lineLimit(2)
             }
@@ -202,20 +202,20 @@ struct BusinessCardScannerSheet: View {
             HStack {
                 ZStack {
                     RoundedRectangle(cornerRadius: 10).fill(tint.opacity(0.22))
-                    Image(systemName: icon).font(.system(size: 17, weight: .bold)).foregroundStyle(tint)
+                    Image(systemName: icon).font(.appScaled(size: 17, weight: .bold)).foregroundStyle(tint)
                 }
                 .frame(width: 42, height: 42)
                 Spacer()
                 if let badge {
-                    Text(badge).font(.system(size: 8, weight: .black))
+                    Text(badge).font(.appScaled(size: 8, weight: .black))
                         .foregroundStyle(tint).tracking(0.6)
                         .padding(.horizontal, 7).padding(.vertical, 3)
                         .background(tint.opacity(0.18), in: Capsule())
                         .overlay(Capsule().stroke(tint.opacity(0.4), lineWidth: 1))
                 }
             }
-            Text(title).font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
-            Text(subtitle).font(.system(size: 11)).foregroundStyle(LBrand.textSecondary)
+            Text(title).font(.appScaled(size: 14, weight: .bold)).foregroundStyle(.white)
+            Text(subtitle).font(.appScaled(size: 11)).foregroundStyle(LBrand.textSecondary)
                 .lineLimit(3).frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(14)
@@ -228,10 +228,10 @@ struct BusinessCardScannerSheet: View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "lock.shield.fill").foregroundStyle(LBrand.green)
             VStack(alignment: .leading, spacing: 3) {
-                Text("ALT ON-DEVICE").font(.system(size: 9, weight: .black))
+                Text("ALT ON-DEVICE").font(.appScaled(size: 9, weight: .black))
                     .foregroundStyle(LBrand.green).tracking(0.8)
                 Text("OCR + felt-deteksjon kjører lokalt på iPad-en. Bildet og data forlater aldri enheten før du trykker «Lagre lead».")
-                    .font(.system(size: 11)).foregroundStyle(LBrand.textSecondary)
+                    .font(.appScaled(size: 11)).foregroundStyle(LBrand.textSecondary)
             }
             Spacer()
         }
@@ -257,10 +257,10 @@ struct BusinessCardScannerSheet: View {
             VStack(spacing: 10) {
                 ProgressView().tint(LBrand.purpleLight).scaleEffect(1.4)
                 Text("Leser tekst med Vision…")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.appScaled(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
                 Text("Identifiserer navn, firma, telefon og e-post")
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(LBrand.textSecondary)
             }
             Spacer()
@@ -284,19 +284,19 @@ struct BusinessCardScannerSheet: View {
                         VStack(alignment: .leading, spacing: 3) {
                             HStack(spacing: 5) {
                                 Image(systemName: "sparkles").foregroundStyle(LBrand.purpleLight)
-                                    .font(.system(size: 10))
+                                    .font(.appScaled(size: 10))
                                 Text("OCR-RESULTAT")
-                                    .font(.system(size: 9, weight: .black))
+                                    .font(.appScaled(size: 9, weight: .black))
                                     .foregroundStyle(LBrand.purpleLight).tracking(0.8)
                             }
                             Text("Vision fant tekst i bildet")
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.appScaled(size: 12, weight: .semibold))
                                 .foregroundStyle(.white)
                             HStack(spacing: 4) {
                                 Image(systemName: "checkmark.seal.fill")
-                                    .font(.system(size: 9)).foregroundStyle(LBrand.green)
+                                    .font(.appScaled(size: 9)).foregroundStyle(LBrand.green)
                                 Text("\(Int(ocrConfidence * 100)) % konfidens")
-                                    .font(.system(size: 10))
+                                    .font(.appScaled(size: 10))
                                     .foregroundStyle(LBrand.green)
                             }
                         }
@@ -306,7 +306,7 @@ struct BusinessCardScannerSheet: View {
                             fields = CardFields()
                             stage = .source
                         } label: {
-                            Text("Endre").font(.system(size: 11, weight: .semibold))
+                            Text("Endre").font(.appScaled(size: 11, weight: .semibold))
                                 .foregroundStyle(LBrand.purpleLight)
                                 .padding(.horizontal, 10).padding(.vertical, 6)
                                 .background(LBrand.purple.opacity(0.18), in: Capsule())
@@ -316,7 +316,7 @@ struct BusinessCardScannerSheet: View {
                     .background(LBrand.card, in: RoundedRectangle(cornerRadius: 12))
                 }
 
-                Text("KONTAKTINFO").font(.system(size: 10, weight: .black))
+                Text("KONTAKTINFO").font(.appScaled(size: 10, weight: .black))
                     .foregroundStyle(LBrand.textTertiary).tracking(0.8)
                 HStack(spacing: 10) {
                     formField("Fornavn", text: $fields.firstName, icon: "person.fill", auto: !fields.firstName.isEmpty)
@@ -332,7 +332,7 @@ struct BusinessCardScannerSheet: View {
                 if image == nil {
                     HStack(spacing: 8) {
                         Image(systemName: "info.circle.fill").foregroundStyle(LBrand.blue)
-                        Text("Manuell innfyllingsmodus — fyll inn detaljene over").font(.system(size: 11))
+                        Text("Manuell innfyllingsmodus — fyll inn detaljene over").font(.appScaled(size: 11))
                             .foregroundStyle(LBrand.textSecondary)
                         Spacer()
                     }
@@ -350,12 +350,12 @@ struct BusinessCardScannerSheet: View {
                            keyboard: UIKeyboardType = .default, auto: Bool) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 5) {
-                Text(label.uppercased()).font(.system(size: 9, weight: .black))
+                Text(label.uppercased()).font(.appScaled(size: 9, weight: .black))
                     .foregroundStyle(LBrand.textTertiary).tracking(0.6)
                 if auto {
                     HStack(spacing: 3) {
-                        Image(systemName: "sparkles").font(.system(size: 8))
-                        Text("AUTO").font(.system(size: 8, weight: .black))
+                        Image(systemName: "sparkles").font(.appScaled(size: 8))
+                        Text("AUTO").font(.appScaled(size: 8, weight: .black))
                     }
                     .foregroundStyle(LBrand.purpleLight).tracking(0.5)
                     .padding(.horizontal, 4).padding(.vertical, 1)
@@ -364,7 +364,7 @@ struct BusinessCardScannerSheet: View {
                 Spacer()
             }
             HStack(spacing: 9) {
-                Image(systemName: icon).font(.system(size: 11, weight: .bold))
+                Image(systemName: icon).font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(auto ? LBrand.purpleLight : LBrand.textTertiary)
                     .frame(width: 18)
                 TextField(label, text: text)
@@ -576,14 +576,14 @@ private struct SampleCardView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("LEADGRID AS")
-                        .font(.system(size: 11, weight: .black))
+                        .font(.appScaled(size: 11, weight: .black))
                         .foregroundStyle(.purple)
                         .tracking(0.6)
                     Text("Maria Lindholm")
-                        .font(.system(size: 18, weight: .heavy))
+                        .font(.appScaled(size: 18, weight: .heavy))
                         .foregroundStyle(.black)
                     Text("Senior Salgssjef")
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(.gray)
                 }
                 Spacer()
@@ -591,10 +591,10 @@ private struct SampleCardView: View {
             }
             Divider()
             Group {
-                Text("maria@leadgrid.no").font(.system(size: 10, weight: .semibold))
-                Text("+47 41 23 45 67").font(.system(size: 10, weight: .semibold))
-                Text("www.leadgrid.no").font(.system(size: 10, weight: .semibold))
-                Text("Bryggegata 14, 0250 Oslo").font(.system(size: 10))
+                Text("maria@leadgrid.no").font(.appScaled(size: 10, weight: .semibold))
+                Text("+47 41 23 45 67").font(.appScaled(size: 10, weight: .semibold))
+                Text("www.leadgrid.no").font(.appScaled(size: 10, weight: .semibold))
+                Text("Bryggegata 14, 0250 Oslo").font(.appScaled(size: 10))
             }
             .foregroundStyle(.black.opacity(0.7))
             Spacer()

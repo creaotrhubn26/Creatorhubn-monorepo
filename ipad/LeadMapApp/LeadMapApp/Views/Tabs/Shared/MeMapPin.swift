@@ -134,7 +134,7 @@ struct MeMapPin: View {
                     .clipShape(Circle())
             } else {
                 Text(initials)
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: 14, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
                     .frame(width: 36, height: 36)
                     .background(
@@ -150,7 +150,7 @@ struct MeMapPin: View {
             // Retnings-arrow ved bevegelse — roterer med heading
             if location.isMoving, let heading = location.heading {
                 Image(systemName: "location.north.fill")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.appScaled(size: 10, weight: .bold))
                     .foregroundStyle(.white)
                     .padding(4)
                     .background(accentColor, in: Circle())
@@ -163,7 +163,7 @@ struct MeMapPin: View {
             // HUD-status-label UNDER pinen — vises kun ved warning/offRoute
             if let label = statusLabel {
                 Text(label)
-                    .font(.system(size: 9, weight: .black, design: .rounded))
+                    .font(.appScaled(size: 9, weight: .black, design: .rounded))
                     .tracking(1.2)
                     .foregroundStyle(.white)
                     .padding(.horizontal, 6)

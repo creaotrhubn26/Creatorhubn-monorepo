@@ -471,7 +471,7 @@ struct LeadbookExamplesView: View {
         .overlay(alignment: .top) {
             if let t = addToast {
                 Label(t, systemImage: "checkmark.circle.fill")
-                    .font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
+                    .font(.appScaled(size: 12, weight: .bold)).foregroundStyle(.white)
                     .padding(.horizontal, 12).padding(.vertical, 8)
                     .background(LBrand.green, in: Capsule())
                     .padding(.top, 6)
@@ -489,21 +489,21 @@ struct LeadbookExamplesView: View {
                 Image(systemName: "books.vertical.fill")
                     .foregroundStyle(LBrand.purpleLight)
                 Text("EKSEMPLER")
-                    .font(.system(size: 10, weight: .black))
+                    .font(.appScaled(size: 10, weight: .black))
                     .foregroundStyle(LBrand.purpleLight)
                     .tracking(0.8)
                 Spacer()
                 Text("\(LeadbookExampleData.examples.count) reelle samtaler")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(LBrand.textTertiary)
             }
             HStack(alignment: .center, spacing: 18) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Lær fra ekte salgssamtaler")
-                        .font(.system(size: 22, weight: .heavy))
+                        .font(.appScaled(size: 22, weight: .heavy))
                         .foregroundStyle(.white)
                     Text("Hver case er transkribert, scoret og annotert med Apple Pencil. Tap en samtale for å spille av lyden, lese transkriptet og se hva som faktisk fungerte.")
-                        .font(.system(size: 12))
+                        .font(.appScaled(size: 12))
                         .foregroundStyle(LBrand.textSecondary)
                         .lineLimit(2)
                 }
@@ -515,8 +515,8 @@ struct LeadbookExamplesView: View {
                 }
                 Button { showAdd = true } label: {
                     HStack(spacing: 7) {
-                        Image(systemName: "plus.circle.fill").font(.system(size: 13, weight: .bold))
-                        Text("Nytt eksempel").font(.system(size: 13, weight: .bold))
+                        Image(systemName: "plus.circle.fill").font(.appScaled(size: 13, weight: .bold))
+                        Text("Nytt eksempel").font(.appScaled(size: 13, weight: .bold))
                     }
                     .foregroundStyle(.white)
                     .padding(.horizontal, 14).padding(.vertical, 11)
@@ -537,10 +537,10 @@ struct LeadbookExamplesView: View {
     private func heroStat(label: String, value: String, color: Color) -> some View {
         VStack(spacing: 2) {
             Text(value)
-                .font(.system(size: 18, weight: .heavy, design: .rounded))
+                .font(.appScaled(size: 18, weight: .heavy, design: .rounded))
                 .foregroundStyle(color)
             Text(label)
-                .font(.system(size: 9, weight: .black))
+                .font(.appScaled(size: 9, weight: .black))
                 .foregroundStyle(LBrand.textTertiary).tracking(0.6)
         }
         .frame(width: 60)
@@ -571,11 +571,11 @@ struct LeadbookExamplesView: View {
                 }
             } label: {
                 HStack(spacing: 6) {
-                    Image(systemName: sort.icon).font(.system(size: 11, weight: .bold))
+                    Image(systemName: sort.icon).font(.appScaled(size: 11, weight: .bold))
                         .foregroundStyle(LBrand.purpleLight)
-                    Text(sort.rawValue).font(.system(size: 12, weight: .semibold))
+                    Text(sort.rawValue).font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white).lineLimit(1).fixedSize()
-                    Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold))
+                    Image(systemName: "chevron.down").font(.appScaled(size: 9, weight: .semibold))
                         .foregroundStyle(LBrand.textTertiary)
                 }
                 .padding(.horizontal, 12).padding(.vertical, 10)
@@ -619,7 +619,7 @@ struct LeadbookExamplesView: View {
     @ViewBuilder
     private func chipRow<C: View>(label: String, @ViewBuilder content: () -> C) -> some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(label).font(.system(size: 9, weight: .black))
+            Text(label).font(.appScaled(size: 9, weight: .black))
                 .foregroundStyle(LBrand.textTertiary).tracking(0.6)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 7) { content() }
@@ -630,8 +630,8 @@ struct LeadbookExamplesView: View {
     private func chip(text: String, icon: String? = nil, tint: Color, active: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 5) {
-                if let icon { Image(systemName: icon).font(.system(size: 10, weight: .bold)) }
-                Text(text).font(.system(size: 11, weight: .semibold))
+                if let icon { Image(systemName: icon).font(.appScaled(size: 10, weight: .bold)) }
+                Text(text).font(.appScaled(size: 11, weight: .semibold))
             }
             .foregroundStyle(active ? .white : LBrand.textSecondary)
             .padding(.horizontal, 11).padding(.vertical, 6)
@@ -662,23 +662,23 @@ struct LeadbookExamplesView: View {
                 ZStack {
                     Circle().fill(LBrand.purple.opacity(0.18))
                     Image(systemName: "plus")
-                        .font(.system(size: 28, weight: .heavy))
+                        .font(.appScaled(size: 28, weight: .heavy))
                         .foregroundStyle(LBrand.purpleLight)
                 }
                 .frame(width: 64, height: 64)
                 VStack(spacing: 4) {
                     Text("Legg til nytt eksempel")
-                        .font(.system(size: 15, weight: .bold))
+                        .font(.appScaled(size: 15, weight: .bold))
                         .foregroundStyle(.white)
                     Text("Last opp opptak, spill inn, eller skriv inn — AI scorer og foreslår key moments.")
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(LBrand.textSecondary)
                         .multilineTextAlignment(.center)
                         .lineLimit(3)
                 }
                 HStack(spacing: 6) {
-                    Image(systemName: "sparkles").font(.system(size: 10, weight: .bold))
-                    Text("AI-analyse").font(.system(size: 11, weight: .bold))
+                    Image(systemName: "sparkles").font(.appScaled(size: 10, weight: .bold))
+                    Text("AI-analyse").font(.appScaled(size: 11, weight: .bold))
                 }
                 .foregroundStyle(LBrand.purpleLight)
                 .padding(.horizontal, 10).padding(.vertical, 5)
@@ -719,18 +719,18 @@ struct LeadbookExamplesView: View {
                     .padding(.bottom, 12)
                     HStack {
                         HStack(spacing: 5) {
-                            Image(systemName: ex.outcome.icon).font(.system(size: 10, weight: .bold))
+                            Image(systemName: ex.outcome.icon).font(.appScaled(size: 10, weight: .bold))
                             Text(ex.outcome.rawValue.uppercased())
-                                .font(.system(size: 9, weight: .black)).tracking(0.6)
+                                .font(.appScaled(size: 9, weight: .black)).tracking(0.6)
                         }
                         .foregroundStyle(.white)
                         .padding(.horizontal, 8).padding(.vertical, 4)
                         .background(ex.outcome.color, in: Capsule())
                         Spacer()
                         HStack(spacing: 5) {
-                            Image(systemName: ex.channel.icon).font(.system(size: 10, weight: .bold))
+                            Image(systemName: ex.channel.icon).font(.appScaled(size: 10, weight: .bold))
                             Text(ex.channel.rawValue.uppercased())
-                                .font(.system(size: 9, weight: .black)).tracking(0.6)
+                                .font(.appScaled(size: 9, weight: .black)).tracking(0.6)
                         }
                         .foregroundStyle(ex.channel.color)
                         .padding(.horizontal, 8).padding(.vertical, 4)
@@ -744,20 +744,20 @@ struct LeadbookExamplesView: View {
                             // Pondus-score
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("\(ex.pondusScore)")
-                                    .font(.system(size: 30, weight: .heavy, design: .rounded))
+                                    .font(.appScaled(size: 30, weight: .heavy, design: .rounded))
                                     .foregroundStyle(.white)
                                     .shadow(color: .black.opacity(0.4), radius: 3)
                                 Text("PONDUS")
-                                    .font(.system(size: 8, weight: .black))
+                                    .font(.appScaled(size: 8, weight: .black))
                                     .foregroundStyle(.white.opacity(0.8))
                                     .tracking(0.8)
                             }
                             Spacer()
                             // Duration
                             HStack(spacing: 4) {
-                                Image(systemName: "clock.fill").font(.system(size: 10))
+                                Image(systemName: "clock.fill").font(.appScaled(size: 10))
                                 Text(formatMinSec(ex.duration))
-                                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                    .font(.appScaled(size: 11, weight: .semibold, design: .monospaced))
                             }
                             .foregroundStyle(.white)
                             .padding(.horizontal, 8).padding(.vertical, 4)
@@ -771,25 +771,25 @@ struct LeadbookExamplesView: View {
                 // Meta
                 VStack(alignment: .leading, spacing: 8) {
                     Text(ex.title)
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.appScaled(size: 14, weight: .bold))
                         .foregroundStyle(.white)
                         .lineLimit(2)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     HStack(spacing: 6) {
                         Text(ex.customer)
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.appScaled(size: 11, weight: .semibold))
                             .foregroundStyle(.white)
                         Text("·").foregroundStyle(LBrand.textTertiary)
                         Text(ex.industry)
-                            .font(.system(size: 11))
+                            .font(.appScaled(size: 11))
                             .foregroundStyle(LBrand.textSecondary)
                         Spacer()
                         Text(formatNOK(ex.dealValue))
-                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .font(.appScaled(size: 11, weight: .bold, design: .rounded))
                             .foregroundStyle(LBrand.green)
                     }
                     Text(ex.summary)
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(LBrand.textSecondary)
                         .lineLimit(2)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -797,19 +797,19 @@ struct LeadbookExamplesView: View {
                         ZStack {
                             Circle().fill(ex.salespersonColor.opacity(0.25))
                             Text(ex.salespersonInitials)
-                                .font(.system(size: 9, weight: .black))
+                                .font(.appScaled(size: 9, weight: .black))
                                 .foregroundStyle(ex.salespersonColor)
                         }
                         .frame(width: 22, height: 22)
                         Text(ex.salesperson)
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.appScaled(size: 11, weight: .semibold))
                             .foregroundStyle(.white)
                         Spacer()
                         HStack(spacing: 5) {
                             Image(systemName: ex.featuredDimension.icon)
-                                .font(.system(size: 9, weight: .bold))
+                                .font(.appScaled(size: 9, weight: .bold))
                             Text(ex.featuredDimension.rawValue)
-                                .font(.system(size: 10, weight: .bold))
+                                .font(.appScaled(size: 10, weight: .bold))
                         }
                         .foregroundStyle(LBrand.purpleLight)
                         .padding(.horizontal, 8).padding(.vertical, 3)
@@ -828,14 +828,14 @@ struct LeadbookExamplesView: View {
     private var emptyState: some View {
         VStack(spacing: 10) {
             Image(systemName: "books.vertical")
-                .font(.system(size: 32)).foregroundStyle(LBrand.textTertiary)
+                .font(.appScaled(size: 32)).foregroundStyle(LBrand.textTertiary)
             Text("Ingen eksempler matcher filteret")
-                .font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
+                .font(.appScaled(size: 14, weight: .bold)).foregroundStyle(.white)
             Button {
                 outcomeFilter = nil; channelFilter = nil; dimensionFilter = nil; search = ""
             } label: {
                 Text("Nullstill filtre")
-                    .font(.system(size: 12, weight: .bold)).foregroundStyle(LBrand.purpleLight)
+                    .font(.appScaled(size: 12, weight: .bold)).foregroundStyle(LBrand.purpleLight)
                     .padding(.horizontal, 14).padding(.vertical, 8)
                     .background(LBrand.purple.opacity(0.18), in: Capsule())
                     .overlay(Capsule().stroke(LBrand.purple.opacity(0.4), lineWidth: 1))
@@ -937,10 +937,10 @@ struct LeadbookExampleDetailSheet: View {
                 }
                 ToolbarItem(placement: .principal) {
                     VStack(spacing: 0) {
-                        Text(example.title).font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
+                        Text(example.title).font(.appScaled(size: 13, weight: .bold)).foregroundStyle(.white)
                         HStack(spacing: 6) {
-                            Image(systemName: example.outcome.icon).font(.system(size: 9))
-                            Text(example.customer).font(.system(size: 10))
+                            Image(systemName: example.outcome.icon).font(.appScaled(size: 9))
+                            Text(example.customer).font(.appScaled(size: 10))
                         }
                         .foregroundStyle(example.outcome.color)
                     }
@@ -951,9 +951,9 @@ struct LeadbookExampleDetailSheet: View {
                         Button { withAnimation { pencilMode.toggle() } } label: {
                             HStack(spacing: 5) {
                                 Image(systemName: pencilMode ? "pencil.tip.crop.circle.fill" : "pencil.tip.crop.circle")
-                                    .font(.system(size: 12, weight: .bold))
+                                    .font(.appScaled(size: 12, weight: .bold))
                                 Text(pencilMode ? "Annoterer" : "Pencil")
-                                    .font(.system(size: 12, weight: .bold))
+                                    .font(.appScaled(size: 12, weight: .bold))
                             }
                             .foregroundStyle(.white)
                             .padding(.horizontal, 11).padding(.vertical, 6)
@@ -983,7 +983,7 @@ struct LeadbookExampleDetailSheet: View {
                             Button {} label: { Label("Del", systemImage: "square.and.arrow.up") }
                         } label: {
                             Image(systemName: "ellipsis.circle")
-                                .font(.system(size: 16, weight: .semibold))
+                                .font(.appScaled(size: 16, weight: .semibold))
                                 .foregroundStyle(LBrand.purpleLight)
                         }
                     }
@@ -992,7 +992,7 @@ struct LeadbookExampleDetailSheet: View {
             .overlay(alignment: .top) {
                 if let t = saveToast {
                     Label(t, systemImage: "checkmark.circle.fill")
-                        .font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
+                        .font(.appScaled(size: 12, weight: .bold)).foregroundStyle(.white)
                         .padding(.horizontal, 12).padding(.vertical, 8)
                         .background(LBrand.green, in: Capsule())
                         .padding(.top, 6)
@@ -1043,15 +1043,15 @@ struct LeadbookExampleDetailSheet: View {
             }
             HStack {
                 HStack(spacing: 5) {
-                    Image(systemName: example.outcome.icon).font(.system(size: 11, weight: .bold))
-                    Text(example.outcome.rawValue.uppercased()).font(.system(size: 10, weight: .black)).tracking(0.6)
+                    Image(systemName: example.outcome.icon).font(.appScaled(size: 11, weight: .bold))
+                    Text(example.outcome.rawValue.uppercased()).font(.appScaled(size: 10, weight: .black)).tracking(0.6)
                 }
                 .foregroundStyle(.white)
                 .padding(.horizontal, 9).padding(.vertical, 5)
                 .background(example.outcome.color, in: Capsule())
                 Spacer()
                 Text(formatNOK(example.dealValue))
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .font(.appScaled(size: 14, weight: .bold, design: .rounded))
                     .foregroundStyle(LBrand.green)
                     .padding(.horizontal, 10).padding(.vertical, 5)
                     .background(.black.opacity(0.4), in: Capsule())
@@ -1062,10 +1062,10 @@ struct LeadbookExampleDetailSheet: View {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(example.title)
-                            .font(.system(size: 17, weight: .heavy))
+                            .font(.appScaled(size: 17, weight: .heavy))
                             .foregroundStyle(.white)
                         Text("\(example.customer) · \(example.industry) · \(example.date)")
-                            .font(.system(size: 11))
+                            .font(.appScaled(size: 11))
                             .foregroundStyle(.white.opacity(0.7))
                     }
                     Spacer()
@@ -1115,17 +1115,17 @@ struct LeadbookExampleDetailSheet: View {
             .frame(height: 14)
             HStack(spacing: 16) {
                 Text(formatMinSec(playbackSeconds))
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .font(.appScaled(size: 11, weight: .semibold, design: .monospaced))
                     .foregroundStyle(LBrand.textSecondary)
                 Spacer()
                 Button { skip(-10) } label: {
                     Image(systemName: "gobackward.10")
-                        .font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
+                        .font(.appScaled(size: 14, weight: .bold)).foregroundStyle(.white)
                         .frame(width: 36, height: 36).background(LBrand.cardHi, in: Circle())
                 }.buttonStyle(.plain)
                 Button { togglePlay() } label: {
                     Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                        .font(.system(size: 18, weight: .heavy)).foregroundStyle(.white)
+                        .font(.appScaled(size: 18, weight: .heavy)).foregroundStyle(.white)
                         .frame(width: 52, height: 52)
                         .background(
                             LinearGradient(colors: [LBrand.purple, LBrand.purpleLight], startPoint: .leading, endPoint: .trailing),
@@ -1135,12 +1135,12 @@ struct LeadbookExampleDetailSheet: View {
                 }.buttonStyle(.plain)
                 Button { skip(10) } label: {
                     Image(systemName: "goforward.10")
-                        .font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
+                        .font(.appScaled(size: 14, weight: .bold)).foregroundStyle(.white)
                         .frame(width: 36, height: 36).background(LBrand.cardHi, in: Circle())
                 }.buttonStyle(.plain)
                 Spacer()
                 Text(formatMinSec(example.duration))
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .font(.appScaled(size: 11, weight: .semibold, design: .monospaced))
                     .foregroundStyle(LBrand.textSecondary)
             }
             // Key-moments-rad
@@ -1151,13 +1151,13 @@ struct LeadbookExampleDetailSheet: View {
                             Button { playbackSeconds = km.timestamp } label: {
                                 HStack(spacing: 6) {
                                     Image(systemName: km.icon)
-                                        .font(.system(size: 10, weight: .bold))
+                                        .font(.appScaled(size: 10, weight: .bold))
                                         .foregroundStyle(km.tint)
                                     Text(formatMinSec(km.timestamp))
-                                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                        .font(.appScaled(size: 10, weight: .bold, design: .monospaced))
                                         .foregroundStyle(.white)
                                     Text(km.label)
-                                        .font(.system(size: 11, weight: .semibold))
+                                        .font(.appScaled(size: 11, weight: .semibold))
                                         .foregroundStyle(.white)
                                 }
                                 .padding(.horizontal, 10).padding(.vertical, 6)
@@ -1178,24 +1178,24 @@ struct LeadbookExampleDetailSheet: View {
                 ZStack {
                     Circle().fill(example.salespersonColor.opacity(0.25))
                     Text(example.salespersonInitials)
-                        .font(.system(size: 10, weight: .black))
+                        .font(.appScaled(size: 10, weight: .black))
                         .foregroundStyle(example.salespersonColor)
                 }
                 .frame(width: 26, height: 26)
                 Text(example.salesperson)
-                    .font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
+                    .font(.appScaled(size: 12, weight: .bold)).foregroundStyle(.white)
             }
             .padding(.horizontal, 10).padding(.vertical, 5)
             .background(LBrand.card, in: Capsule())
             HStack(spacing: 6) {
-                Image(systemName: example.channel.icon).font(.system(size: 10, weight: .bold)).foregroundStyle(example.channel.color)
-                Text(example.channel.rawValue).font(.system(size: 11, weight: .semibold)).foregroundStyle(.white)
+                Image(systemName: example.channel.icon).font(.appScaled(size: 10, weight: .bold)).foregroundStyle(example.channel.color)
+                Text(example.channel.rawValue).font(.appScaled(size: 11, weight: .semibold)).foregroundStyle(.white)
             }
             .padding(.horizontal, 10).padding(.vertical, 5)
             .background(LBrand.card, in: Capsule())
             HStack(spacing: 6) {
-                Image(systemName: example.featuredDimension.icon).font(.system(size: 10, weight: .bold)).foregroundStyle(LBrand.purpleLight)
-                Text(example.featuredDimension.rawValue).font(.system(size: 11, weight: .semibold)).foregroundStyle(.white)
+                Image(systemName: example.featuredDimension.icon).font(.appScaled(size: 10, weight: .bold)).foregroundStyle(LBrand.purpleLight)
+                Text(example.featuredDimension.rawValue).font(.appScaled(size: 11, weight: .semibold)).foregroundStyle(.white)
             }
             .padding(.horizontal, 10).padding(.vertical, 5)
             .background(LBrand.card, in: Capsule())
@@ -1207,15 +1207,15 @@ struct LeadbookExampleDetailSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Image(systemName: "text.bubble.fill").foregroundStyle(LBrand.purpleLight)
-                Text("TRANSKRIPT").font(.system(size: 10, weight: .black))
+                Text("TRANSKRIPT").font(.appScaled(size: 10, weight: .black))
                     .foregroundStyle(LBrand.textTertiary).tracking(0.8)
                 Spacer()
                 Button { showAnnotations.toggle() } label: {
                     HStack(spacing: 5) {
                         Image(systemName: showAnnotations ? "pencil.tip.crop.circle.badge.minus" : "pencil.tip.crop.circle")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.appScaled(size: 11, weight: .bold))
                         Text(showAnnotations ? "Skjul Pencil-annoteringer" : "Vis Pencil-annoteringer")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.appScaled(size: 11, weight: .semibold))
                     }
                     .foregroundStyle(LBrand.purpleLight)
                 }.buttonStyle(.plain)
@@ -1236,16 +1236,16 @@ struct LeadbookExampleDetailSheet: View {
             HStack(alignment: .top, spacing: 10) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(formatMinSec(line.timestamp))
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .font(.appScaled(size: 10, weight: .bold, design: .monospaced))
                         .foregroundStyle(LBrand.textTertiary)
                     Text(line.speaker.rawValue.uppercased())
-                        .font(.system(size: 9, weight: .black))
+                        .font(.appScaled(size: 9, weight: .black))
                         .foregroundStyle(line.speaker == .selger ? LBrand.purpleLight : LBrand.blue)
                         .tracking(0.6)
                 }
                 .frame(width: 60, alignment: .leading)
                 Text(line.text)
-                    .font(.system(size: 13, design: .serif))
+                    .font(.appScaled(size: 13, design: .serif))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(10)
@@ -1263,9 +1263,9 @@ struct LeadbookExampleDetailSheet: View {
                             // Pencil-annotering: scribble + handwritten label
                             HStack(spacing: 4) {
                                 Image(systemName: "pencil.tip")
-                                    .font(.system(size: 9, weight: .bold))
+                                    .font(.appScaled(size: 9, weight: .bold))
                                 Text("KEY MOMENT")
-                                    .font(.system(size: 8, weight: .black))
+                                    .font(.appScaled(size: 8, weight: .black))
                                     .tracking(0.6)
                             }
                             .foregroundStyle(LBrand.purpleLight)
@@ -1300,7 +1300,7 @@ struct LeadbookExampleDetailSheet: View {
                     Image(systemName: "doc.badge.plus")
                     Text("Lagre som mal")
                 }
-                .font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
+                .font(.appScaled(size: 14, weight: .bold)).foregroundStyle(.white)
                 .frame(maxWidth: .infinity).padding(.vertical, 12)
                 .background(
                     LinearGradient(colors: [LBrand.purple, LBrand.purpleLight],
@@ -1319,11 +1319,11 @@ struct LeadbookExampleDetailSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("PONDUS-BREAKDOWN")
-                    .font(.system(size: 10, weight: .black))
+                    .font(.appScaled(size: 10, weight: .black))
                     .foregroundStyle(LBrand.textTertiary).tracking(0.8)
                 Spacer()
                 Text("\(example.pondusScore)")
-                    .font(.system(size: 28, weight: .heavy, design: .rounded))
+                    .font(.appScaled(size: 28, weight: .heavy, design: .rounded))
                     .foregroundStyle(LBrand.purpleLight)
                     .monospacedDigit()
             }
@@ -1331,11 +1331,11 @@ struct LeadbookExampleDetailSheet: View {
                 let value = example.dimensionScores[d] ?? 0
                 HStack(spacing: 8) {
                     Image(systemName: d.icon)
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.appScaled(size: 10, weight: .bold))
                         .foregroundStyle(LBrand.purpleLight)
                         .frame(width: 14)
                     Text(d.rawValue)
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(.white)
                         .frame(width: 92, alignment: .leading)
                     GeometryReader { geo in
@@ -1349,7 +1349,7 @@ struct LeadbookExampleDetailSheet: View {
                     }
                     .frame(height: 5)
                     Text("\(value)")
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .font(.appScaled(size: 11, weight: .bold, design: .rounded))
                         .foregroundStyle(.white).monospacedDigit()
                         .frame(width: 24, alignment: .trailing)
                 }
@@ -1363,15 +1363,15 @@ struct LeadbookExampleDetailSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Image(systemName: "lightbulb.fill").foregroundStyle(LBrand.yellow)
-                Text("NØKKEL-LÆRINGER").font(.system(size: 10, weight: .black))
+                Text("NØKKEL-LÆRINGER").font(.appScaled(size: 10, weight: .black))
                     .foregroundStyle(LBrand.textTertiary).tracking(0.8)
             }
             ForEach(example.keyLearnings, id: \.self) { l in
                 HStack(alignment: .top, spacing: 9) {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 12))
+                        .font(.appScaled(size: 12))
                         .foregroundStyle(example.outcome == .lost ? LBrand.orange : LBrand.green)
-                    Text(l).font(.system(size: 12)).foregroundStyle(.white)
+                    Text(l).font(.appScaled(size: 12)).foregroundStyle(.white)
                     Spacer()
                 }
             }
@@ -1384,17 +1384,17 @@ struct LeadbookExampleDetailSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Image(systemName: "arrow.left.arrow.right").foregroundStyle(LBrand.blue)
-                Text("ALTERNATIVE FORMULERINGER").font(.system(size: 10, weight: .black))
+                Text("ALTERNATIVE FORMULERINGER").font(.appScaled(size: 10, weight: .black))
                     .foregroundStyle(LBrand.textTertiary).tracking(0.8)
             }
             ForEach(example.alternativePhrasings, id: \.self) { alt in
                 HStack(alignment: .top, spacing: 9) {
                     Image(systemName: "quote.opening")
-                        .font(.system(size: 10))
+                        .font(.appScaled(size: 10))
                         .foregroundStyle(LBrand.textTertiary)
                         .padding(.top, 2)
                     Text(alt)
-                        .font(.system(size: 12, design: .serif))
+                        .font(.appScaled(size: 12, design: .serif))
                         .foregroundStyle(.white)
                     Spacer()
                 }
@@ -1613,13 +1613,13 @@ struct AddExampleSheet: View {
                 )
                 .frame(width: 26, height: 26)
                 if isDone {
-                    Image(systemName: "checkmark").font(.system(size: 11, weight: .black)).foregroundStyle(.white)
+                    Image(systemName: "checkmark").font(.appScaled(size: 11, weight: .black)).foregroundStyle(.white)
                 } else {
-                    Text("\(n)").font(.system(size: 12, weight: .black)).foregroundStyle(isCurrent ? .white : LBrand.textTertiary)
+                    Text("\(n)").font(.appScaled(size: 12, weight: .black)).foregroundStyle(isCurrent ? .white : LBrand.textTertiary)
                 }
             }
             Text(label)
-                .font(.system(size: 12, weight: isCurrent ? .bold : .semibold))
+                .font(.appScaled(size: 12, weight: isCurrent ? .bold : .semibold))
                 .foregroundStyle(isCurrent ? .white : LBrand.textSecondary)
         }
         .padding(.horizontal, 10).padding(.vertical, 5)
@@ -1638,25 +1638,25 @@ struct AddExampleSheet: View {
     private var step1_source: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Hvor kommer samtalen fra?")
-                .font(.system(size: 18, weight: .heavy)).foregroundStyle(.white)
+                .font(.appScaled(size: 18, weight: .heavy)).foregroundStyle(.white)
             Text("AI transkriberer, scorer pondus og foreslår key moments automatisk.")
-                .font(.system(size: 12)).foregroundStyle(LBrand.textSecondary)
+                .font(.appScaled(size: 12)).foregroundStyle(LBrand.textSecondary)
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
                 ForEach(Source.allCases) { s in
                     Button { source = s } label: {
                         HStack(alignment: .top, spacing: 12) {
                             ZStack {
                                 RoundedRectangle(cornerRadius: 10).fill(s.tint.opacity(0.22))
-                                Image(systemName: s.icon).font(.system(size: 16, weight: .bold)).foregroundStyle(s.tint)
+                                Image(systemName: s.icon).font(.appScaled(size: 16, weight: .bold)).foregroundStyle(s.tint)
                             }
                             .frame(width: 40, height: 40)
                             VStack(alignment: .leading, spacing: 3) {
-                                Text(s.rawValue).font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
-                                Text(s.subtitle).font(.system(size: 11)).foregroundStyle(LBrand.textSecondary).lineLimit(2)
+                                Text(s.rawValue).font(.appScaled(size: 13, weight: .bold)).foregroundStyle(.white)
+                                Text(s.subtitle).font(.appScaled(size: 11)).foregroundStyle(LBrand.textSecondary).lineLimit(2)
                             }
                             Spacer(minLength: 4)
                             Image(systemName: source == s ? "largecircle.fill.circle" : "circle")
-                                .font(.system(size: 16))
+                                .font(.appScaled(size: 16))
                                 .foregroundStyle(source == s ? s.tint : LBrand.textTertiary)
                         }
                         .padding(12)
@@ -1668,11 +1668,11 @@ struct AddExampleSheet: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 8) {
                     Image(systemName: "lock.shield.fill").foregroundStyle(LBrand.orange)
-                    Text("PERSONVERN").font(.system(size: 10, weight: .black))
+                    Text("PERSONVERN").font(.appScaled(size: 10, weight: .black))
                         .foregroundStyle(LBrand.textTertiary).tracking(0.8)
                 }
                 Text("Alle samtaler skal ha gyldig opptakssamtykke. Du kan anonymisere kundenavn i steg 3.")
-                    .font(.system(size: 12)).foregroundStyle(LBrand.textSecondary)
+                    .font(.appScaled(size: 12)).foregroundStyle(LBrand.textSecondary)
             }
             .padding(14)
             .background(LBrand.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 11))
@@ -1699,13 +1699,13 @@ struct AddExampleSheet: View {
             Button { fileName = "Skanska_call_2026-06-30.m4a" } label: {
                 VStack(spacing: 12) {
                     Image(systemName: fileName == nil ? "tray.and.arrow.down.fill" : "doc.fill")
-                        .font(.system(size: 44, weight: .semibold))
+                        .font(.appScaled(size: 44, weight: .semibold))
                         .foregroundStyle(LBrand.blue)
                     Text(fileName ?? "Trykk for å velge fil")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.appScaled(size: 15, weight: .semibold))
                         .foregroundStyle(.white)
                     Text("Eller dra-og-slipp en MP3/MP4/WAV/M4A her")
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(LBrand.textSecondary)
                 }
                 .frame(maxWidth: .infinity)
@@ -1745,17 +1745,17 @@ struct AddExampleSheet: View {
                         .frame(width: 100, height: 100)
                         .shadow(color: (isRecording ? LBrand.red : LBrand.purple).opacity(0.45), radius: 15)
                     Image(systemName: isRecording ? "stop.fill" : "mic.fill")
-                        .font(.system(size: 40, weight: .heavy))
+                        .font(.appScaled(size: 40, weight: .heavy))
                         .foregroundStyle(.white)
                 }
             }.buttonStyle(.plain)
 
             VStack(spacing: 4) {
                 Text(isRecording ? "Tar opp…" : (recordingSeconds > 0 ? "Opptak ferdig" : "Trykk for å starte opptak"))
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                 Text(formatMinSec(recordingSeconds))
-                    .font(.system(size: 28, weight: .heavy, design: .monospaced))
+                    .font(.appScaled(size: 28, weight: .heavy, design: .monospaced))
                     .foregroundStyle(isRecording ? LBrand.red : .white)
                     .monospacedDigit()
             }
@@ -1793,11 +1793,11 @@ struct AddExampleSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Image(systemName: s.icon).foregroundStyle(s.tint)
-                Text(s.rawValue.uppercased()).font(.system(size: 10, weight: .black))
+                Text(s.rawValue.uppercased()).font(.appScaled(size: 10, weight: .black))
                     .foregroundStyle(s.tint).tracking(0.8)
                 Spacer()
                 Text("\(mockedCalls.count) samtaler funnet")
-                    .font(.system(size: 11)).foregroundStyle(LBrand.textTertiary)
+                    .font(.appScaled(size: 11)).foregroundStyle(LBrand.textTertiary)
             }
             VStack(spacing: 8) {
                 ForEach(mockedCalls) { call in
@@ -1805,22 +1805,22 @@ struct AddExampleSheet: View {
                         HStack(spacing: 12) {
                             ZStack {
                                 Circle().fill(s.tint.opacity(0.2))
-                                Image(systemName: s.icon).font(.system(size: 13, weight: .bold)).foregroundStyle(s.tint)
+                                Image(systemName: s.icon).font(.appScaled(size: 13, weight: .bold)).foregroundStyle(s.tint)
                             }
                             .frame(width: 36, height: 36)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(call.customer).font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
+                                Text(call.customer).font(.appScaled(size: 13, weight: .bold)).foregroundStyle(.white)
                                 HStack(spacing: 6) {
-                                    Text(call.date).font(.system(size: 10)).foregroundStyle(LBrand.textSecondary)
+                                    Text(call.date).font(.appScaled(size: 10)).foregroundStyle(LBrand.textSecondary)
                                     Text("·").foregroundStyle(LBrand.textTertiary)
-                                    Text(formatMinSec(call.duration)).font(.system(size: 10, design: .monospaced)).foregroundStyle(LBrand.textSecondary)
+                                    Text(formatMinSec(call.duration)).font(.appScaled(size: 10, design: .monospaced)).foregroundStyle(LBrand.textSecondary)
                                     Text("·").foregroundStyle(LBrand.textTertiary)
-                                    Text(call.source).font(.system(size: 10, weight: .semibold)).foregroundStyle(s.tint)
+                                    Text(call.source).font(.appScaled(size: 10, weight: .semibold)).foregroundStyle(s.tint)
                                 }
                             }
                             Spacer()
                             Image(systemName: importedCall == call ? "checkmark.circle.fill" : "circle")
-                                .font(.system(size: 18))
+                                .font(.appScaled(size: 18))
                                 .foregroundStyle(importedCall == call ? LBrand.green : LBrand.textTertiary)
                         }
                         .padding(12)
@@ -1836,10 +1836,10 @@ struct AddExampleSheet: View {
     private var manualView: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("LIM INN TRANSKRIPT")
-                .font(.system(size: 10, weight: .black))
+                .font(.appScaled(size: 10, weight: .black))
                 .foregroundStyle(LBrand.textTertiary).tracking(0.8)
             TextEditor(text: $pastedTranscript)
-                .font(.system(size: 13, design: .serif))
+                .font(.appScaled(size: 13, design: .serif))
                 .foregroundStyle(.white)
                 .scrollContentBackground(.hidden)
                 .frame(minHeight: 280)
@@ -1848,7 +1848,7 @@ struct AddExampleSheet: View {
                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(LBrand.stroke, lineWidth: 1))
             HStack(spacing: 8) {
                 Text("\(pastedTranscript.count) tegn")
-                    .font(.system(size: 11, design: .monospaced)).foregroundStyle(LBrand.textSecondary)
+                    .font(.appScaled(size: 11, design: .monospaced)).foregroundStyle(LBrand.textSecondary)
                 Spacer()
                 Button {
                     pastedTranscript = """
@@ -1860,7 +1860,7 @@ struct AddExampleSheet: View {
 """
                 } label: {
                     Text("Lim inn eksempel-transkript")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.appScaled(size: 11, weight: .semibold))
                         .foregroundStyle(LBrand.purpleLight)
                 }.buttonStyle(.plain)
             }
@@ -1872,13 +1872,13 @@ struct AddExampleSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Image(systemName: "sparkles").foregroundStyle(LBrand.purpleLight)
-                Text("AI-PROSESSERING").font(.system(size: 10, weight: .black))
+                Text("AI-PROSESSERING").font(.appScaled(size: 10, weight: .black))
                     .foregroundStyle(LBrand.purpleLight).tracking(0.8)
                 Spacer()
                 if aiState != .done {
                     Button { runAIPipeline() } label: {
                         Text(aiState == .idle ? "Start" : "…")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.appScaled(size: 11, weight: .bold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 10).padding(.vertical, 5)
                             .background(LBrand.purple, in: Capsule())
@@ -1893,7 +1893,7 @@ struct AddExampleSheet: View {
                 HStack(spacing: 8) {
                     Image(systemName: "checkmark.circle.fill").foregroundStyle(LBrand.green)
                     Text("Klar — Pondus-score 82, 4 key moments funnet")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
                 }
                 .padding(.top, 4)
@@ -1913,7 +1913,7 @@ struct AddExampleSheet: View {
             } else {
                 Image(systemName: "circle").foregroundStyle(LBrand.textTertiary)
             }
-            Text(label).font(.system(size: 12)).foregroundStyle(done ? .white : LBrand.textSecondary)
+            Text(label).font(.appScaled(size: 12)).foregroundStyle(done ? .white : LBrand.textSecondary)
         }
     }
 
@@ -1981,8 +1981,8 @@ struct AddExampleSheet: View {
                         ForEach(LeadbookExample.Outcome.allCases) { o in
                             Button { outcome = o } label: {
                                 HStack(spacing: 4) {
-                                    Image(systemName: o.icon).font(.system(size: 9, weight: .bold))
-                                    Text(o.rawValue).font(.system(size: 11, weight: .semibold))
+                                    Image(systemName: o.icon).font(.appScaled(size: 9, weight: .bold))
+                                    Text(o.rawValue).font(.appScaled(size: 11, weight: .semibold))
                                 }
                                 .foregroundStyle(outcome == o ? .white : LBrand.textSecondary)
                                 .padding(.horizontal, 10).padding(.vertical, 5)
@@ -1997,8 +1997,8 @@ struct AddExampleSheet: View {
                         ForEach(LeadbookTemplate.Channel.allCases, id: \.self) { c in
                             Button { channel = c } label: {
                                 HStack(spacing: 4) {
-                                    Image(systemName: c.icon).font(.system(size: 9, weight: .bold))
-                                    Text(c.rawValue).font(.system(size: 11, weight: .semibold))
+                                    Image(systemName: c.icon).font(.appScaled(size: 9, weight: .bold))
+                                    Text(c.rawValue).font(.appScaled(size: 11, weight: .semibold))
                                 }
                                 .foregroundStyle(channel == c ? .white : LBrand.textSecondary)
                                 .padding(.horizontal, 10).padding(.vertical, 5)
@@ -2014,8 +2014,8 @@ struct AddExampleSheet: View {
                             ForEach(LeadbookExample.Dimension.allCases) { d in
                                 Button { featuredDim = d } label: {
                                     HStack(spacing: 4) {
-                                        Image(systemName: d.icon).font(.system(size: 9, weight: .bold))
-                                        Text(d.rawValue).font(.system(size: 11, weight: .semibold))
+                                        Image(systemName: d.icon).font(.appScaled(size: 9, weight: .bold))
+                                        Text(d.rawValue).font(.appScaled(size: 11, weight: .semibold))
                                     }
                                     .foregroundStyle(featuredDim == d ? .white : LBrand.textSecondary)
                                     .padding(.horizontal, 10).padding(.vertical, 5)
@@ -2033,7 +2033,7 @@ struct AddExampleSheet: View {
                 ForEach(keyLearnings, id: \.self) { l in
                     HStack(spacing: 9) {
                         Image(systemName: "checkmark.circle.fill").foregroundStyle(LBrand.green)
-                        Text(l).font(.system(size: 12)).foregroundStyle(.white)
+                        Text(l).font(.appScaled(size: 12)).foregroundStyle(.white)
                         Spacer()
                         Button { keyLearnings.removeAll { $0 == l } } label: {
                             Image(systemName: "minus.circle.fill")
@@ -2055,7 +2055,7 @@ struct AddExampleSheet: View {
                         }
                     } label: {
                         Image(systemName: "plus.circle.fill")
-                            .font(.system(size: 20))
+                            .font(.appScaled(size: 20))
                             .foregroundStyle(LBrand.purpleLight)
                     }.buttonStyle(.plain)
                 }
@@ -2065,24 +2065,24 @@ struct AddExampleSheet: View {
             VStack(spacing: 10) {
                 Toggle(isOn: $anonymize) {
                     VStack(alignment: .leading, spacing: 1) {
-                        Text("Anonymiser kundenavn").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
-                        Text("Bytter «\(customer.isEmpty ? "Skanska AS" : customer)» med «Kunde A» osv.").font(.system(size: 11)).foregroundStyle(LBrand.textSecondary)
+                        Text("Anonymiser kundenavn").font(.appScaled(size: 13, weight: .bold)).foregroundStyle(.white)
+                        Text("Bytter «\(customer.isEmpty ? "Skanska AS" : customer)» med «Kunde A» osv.").font(.appScaled(size: 11)).foregroundStyle(LBrand.textSecondary)
                     }
                 }
                 Toggle(isOn: $requireConsent) {
                     VStack(alignment: .leading, spacing: 1) {
-                        Text("Bekreft opptakssamtykke").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
-                        Text("Vi krever at du har innhentet samtykke fra kunden").font(.system(size: 11)).foregroundStyle(LBrand.textSecondary)
+                        Text("Bekreft opptakssamtykke").font(.appScaled(size: 13, weight: .bold)).foregroundStyle(.white)
+                        Text("Vi krever at du har innhentet samtykke fra kunden").font(.appScaled(size: 11)).foregroundStyle(LBrand.textSecondary)
                     }
                 }
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Synlighet").font(.system(size: 11, weight: .semibold)).foregroundStyle(LBrand.textSecondary)
+                    Text("Synlighet").font(.appScaled(size: 11, weight: .semibold)).foregroundStyle(LBrand.textSecondary)
                     HStack(spacing: 6) {
                         ForEach(Visibility.allCases) { v in
                             Button { visibility = v } label: {
                                 HStack(spacing: 5) {
-                                    Image(systemName: v.icon).font(.system(size: 10, weight: .bold))
-                                    Text(v.rawValue).font(.system(size: 11, weight: .semibold))
+                                    Image(systemName: v.icon).font(.appScaled(size: 10, weight: .bold))
+                                    Text(v.rawValue).font(.appScaled(size: 11, weight: .semibold))
                                 }
                                 .foregroundStyle(visibility == v ? .white : LBrand.textSecondary)
                                 .padding(.horizontal, 10).padding(.vertical, 6)
@@ -2102,7 +2102,7 @@ struct AddExampleSheet: View {
     private func sectionLabel(_ text: String, icon: String, tint: Color) -> some View {
         HStack(spacing: 7) {
             Image(systemName: icon).foregroundStyle(tint)
-            Text(text).font(.system(size: 10, weight: .black))
+            Text(text).font(.appScaled(size: 10, weight: .black))
                 .foregroundStyle(tint).tracking(0.8)
             Spacer()
         }
@@ -2110,7 +2110,7 @@ struct AddExampleSheet: View {
 
     private func titledField(_ label: String, text: Binding<String>, hint: String, keyboardType: UIKeyboardType = .default) -> some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(label.uppercased()).font(.system(size: 9, weight: .black))
+            Text(label.uppercased()).font(.appScaled(size: 9, weight: .black))
                 .foregroundStyle(LBrand.textTertiary).tracking(0.6)
             TextField(hint, text: text)
                 .keyboardType(keyboardType)
@@ -2124,8 +2124,8 @@ struct AddExampleSheet: View {
     private func pickerRow<C: View>(_ label: String, icon: String, @ViewBuilder content: () -> C) -> some View {
         HStack(alignment: .center, spacing: 12) {
             HStack(spacing: 6) {
-                Image(systemName: icon).font(.system(size: 11, weight: .bold)).foregroundStyle(LBrand.purpleLight)
-                Text(label).font(.system(size: 11, weight: .semibold)).foregroundStyle(LBrand.textSecondary)
+                Image(systemName: icon).font(.appScaled(size: 11, weight: .bold)).foregroundStyle(LBrand.purpleLight)
+                Text(label).font(.appScaled(size: 11, weight: .semibold)).foregroundStyle(LBrand.textSecondary)
                     .lineLimit(1).fixedSize()
             }
             .frame(width: 130, alignment: .leading)
@@ -2143,8 +2143,8 @@ struct AddExampleSheet: View {
             if step > 1 {
                 Button { withAnimation(.easeInOut(duration: 0.18)) { step -= 1 } } label: {
                     HStack(spacing: 5) {
-                        Image(systemName: "chevron.left").font(.system(size: 11, weight: .bold))
-                        Text("Tilbake").font(.system(size: 13, weight: .semibold))
+                        Image(systemName: "chevron.left").font(.appScaled(size: 11, weight: .bold))
+                        Text("Tilbake").font(.appScaled(size: 13, weight: .semibold))
                     }
                     .foregroundStyle(.white)
                     .padding(.horizontal, 14).padding(.vertical, 11)
@@ -2158,8 +2158,8 @@ struct AddExampleSheet: View {
                     withAnimation(.easeInOut(duration: 0.18)) { step += 1 }
                 } label: {
                     HStack(spacing: 6) {
-                        Text("Neste").font(.system(size: 13, weight: .bold))
-                        Image(systemName: "chevron.right").font(.system(size: 11, weight: .bold))
+                        Text("Neste").font(.appScaled(size: 13, weight: .bold))
+                        Image(systemName: "chevron.right").font(.appScaled(size: 11, weight: .bold))
                     }
                     .foregroundStyle(.white)
                     .padding(.horizontal, 16).padding(.vertical, 11)
@@ -2179,8 +2179,8 @@ struct AddExampleSheet: View {
                     dismiss()
                 } label: {
                     HStack(spacing: 6) {
-                        Image(systemName: "checkmark").font(.system(size: 12, weight: .black))
-                        Text("Publiser eksempel").font(.system(size: 13, weight: .bold))
+                        Image(systemName: "checkmark").font(.appScaled(size: 12, weight: .black))
+                        Text("Publiser eksempel").font(.appScaled(size: 13, weight: .bold))
                     }
                     .foregroundStyle(.white)
                     .padding(.horizontal, 16).padding(.vertical, 11)

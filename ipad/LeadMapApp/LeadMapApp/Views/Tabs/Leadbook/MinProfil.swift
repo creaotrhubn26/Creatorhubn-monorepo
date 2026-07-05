@@ -50,7 +50,7 @@ struct MinProfilSheet: View {
                     VStack {
                         Spacer().frame(height: 60)
                         Label(t, systemImage: "checkmark.circle.fill")
-                            .font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
+                            .font(.appScaled(size: 12, weight: .bold)).foregroundStyle(.white)
                             .padding(.horizontal, 12).padding(.vertical, 8)
                             .background(LBrand.green, in: Capsule())
                         Spacer()
@@ -73,7 +73,7 @@ struct MinProfilSheet: View {
                         Button(role: .destructive) {} label: { Label("Logg ut", systemImage: "rectangle.portrait.and.arrow.right") }
                     } label: {
                         Image(systemName: "ellipsis.circle")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.appScaled(size: 16, weight: .semibold))
                             .foregroundStyle(LBrand.purpleLight)
                     }
                 }
@@ -124,29 +124,29 @@ struct MinProfilSheet: View {
                 HStack(spacing: 7) {
                     HStack(spacing: 4) {
                         Circle().fill(LBrand.green).frame(width: 8, height: 8)
-                        Text("ONLINE").font(.system(size: 9, weight: .black))
+                        Text("ONLINE").font(.appScaled(size: 9, weight: .black))
                             .foregroundStyle(LBrand.green).tracking(0.8)
                     }
                     Text("·").foregroundStyle(LBrand.textTertiary)
-                    Text("OSLO & AKERSHUS").font(.system(size: 9, weight: .black))
+                    Text("OSLO & AKERSHUS").font(.appScaled(size: 9, weight: .black))
                         .foregroundStyle(.white.opacity(0.7)).tracking(0.8)
                 }
                 Text(appState.displayName)
-                    .font(.system(size: 30, weight: .heavy))
+                    .font(.appScaled(size: 30, weight: .heavy))
                     .foregroundStyle(.white)
                 HStack(spacing: 6) {
-                    Image(systemName: "crown.fill").font(.system(size: 11))
+                    Image(systemName: "crown.fill").font(.appScaled(size: 11))
                         .foregroundStyle(LBrand.yellow)
                     Text("Salgssjef")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.appScaled(size: 13, weight: .semibold))
                         .foregroundStyle(.white)
                     Text("·").foregroundStyle(LBrand.textTertiary)
                     Text("Leadgrid AS")
-                        .font(.system(size: 12))
+                        .font(.appScaled(size: 12))
                         .foregroundStyle(.white.opacity(0.7))
                 }
                 Text(heroContact)
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(.white.opacity(0.6))
             }
             .padding(20)
@@ -157,8 +157,8 @@ struct MinProfilSheet: View {
                     Button { showFocalEditor = true } label: {
                         HStack(spacing: 5) {
                             Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
-                                .font(.system(size: 11, weight: .bold))
-                            Text("Juster bildet").font(.system(size: 11, weight: .bold))
+                                .font(.appScaled(size: 11, weight: .bold))
+                            Text("Juster bildet").font(.appScaled(size: 11, weight: .bold))
                         }
                         .foregroundStyle(.white)
                         .padding(.horizontal, 11).padding(.vertical, 7)
@@ -193,14 +193,14 @@ struct MinProfilSheet: View {
     private func kpiTile(_ label: String, _ value: String, _ tint: Color, _ icon: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
-                Image(systemName: icon).font(.system(size: 11, weight: .bold)).foregroundStyle(tint)
+                Image(systemName: icon).font(.appScaled(size: 11, weight: .bold)).foregroundStyle(tint)
                 Text(label.uppercased())
-                    .font(.system(size: 9, weight: .black))
+                    .font(.appScaled(size: 9, weight: .black))
                     .foregroundStyle(LBrand.textTertiary).tracking(0.6)
                     .lineLimit(1).minimumScaleFactor(0.8)
             }
             Text(value)
-                .font(.system(size: 18, weight: .heavy, design: .rounded))
+                .font(.appScaled(size: 18, weight: .heavy, design: .rounded))
                 .foregroundStyle(.white)
                 .lineLimit(1).minimumScaleFactor(0.7)
         }
@@ -212,7 +212,7 @@ struct MinProfilSheet: View {
 
     private var infoCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("INFO").font(.system(size: 10, weight: .black))
+            Text("INFO").font(.appScaled(size: 10, weight: .black))
                 .foregroundStyle(LBrand.textTertiary).tracking(0.8)
             VStack(spacing: 10) {
                 infoRow(icon: "person.badge.shield.checkmark.fill", label: "Rolle", value: "Salgssjef · Full admin-tilgang", tint: LBrand.yellow)
@@ -230,12 +230,12 @@ struct MinProfilSheet: View {
         HStack(spacing: 12) {
             ZStack {
                 Circle().fill(tint.opacity(0.22))
-                Image(systemName: icon).font(.system(size: 12, weight: .bold)).foregroundStyle(tint)
+                Image(systemName: icon).font(.appScaled(size: 12, weight: .bold)).foregroundStyle(tint)
             }
             .frame(width: 32, height: 32)
             VStack(alignment: .leading, spacing: 2) {
-                Text(label).font(.system(size: 11)).foregroundStyle(LBrand.textSecondary)
-                Text(value).font(.system(size: 13, weight: .semibold)).foregroundStyle(.white)
+                Text(label).font(.appScaled(size: 11)).foregroundStyle(LBrand.textSecondary)
+                Text(value).font(.appScaled(size: 13, weight: .semibold)).foregroundStyle(.white)
             }
             Spacer()
         }
@@ -245,11 +245,11 @@ struct MinProfilSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Image(systemName: "rosette").foregroundStyle(LBrand.yellow)
-                Text("ACHIEVEMENTS").font(.system(size: 10, weight: .black))
+                Text("ACHIEVEMENTS").font(.appScaled(size: 10, weight: .black))
                     .foregroundStyle(LBrand.textTertiary).tracking(0.8)
                 Spacer()
                 Text("4 av 12")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.appScaled(size: 10, weight: .semibold))
                     .foregroundStyle(LBrand.textTertiary)
             }
             HStack(spacing: 10) {
@@ -268,12 +268,12 @@ struct MinProfilSheet: View {
             ZStack {
                 Circle().fill(earned ? color.opacity(0.22) : LBrand.cardHi)
                 Image(systemName: icon)
-                    .font(.system(size: 18, weight: .bold))
+                    .font(.appScaled(size: 18, weight: .bold))
                     .foregroundStyle(earned ? color : LBrand.textTertiary)
             }
             .frame(width: 52, height: 52)
             Text(title)
-                .font(.system(size: 10, weight: .bold))
+                .font(.appScaled(size: 10, weight: .bold))
                 .foregroundStyle(earned ? .white : LBrand.textTertiary)
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
@@ -291,8 +291,8 @@ struct MinProfilSheet: View {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { toast = nil }
             } label: {
                 HStack(spacing: 6) {
-                    Image(systemName: "pencil").font(.system(size: 12, weight: .bold))
-                    Text("Rediger profil").font(.system(size: 13, weight: .bold))
+                    Image(systemName: "pencil").font(.appScaled(size: 12, weight: .bold))
+                    Text("Rediger profil").font(.appScaled(size: 13, weight: .bold))
                 }
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity).padding(.vertical, 12)
@@ -307,8 +307,8 @@ struct MinProfilSheet: View {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { toast = nil }
             } label: {
                 HStack(spacing: 6) {
-                    Image(systemName: "camera.fill").font(.system(size: 12, weight: .bold))
-                    Text("Bytt bilde").font(.system(size: 13, weight: .bold))
+                    Image(systemName: "camera.fill").font(.appScaled(size: 12, weight: .bold))
+                    Text("Bytt bilde").font(.appScaled(size: 13, weight: .bold))
                 }
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity).padding(.vertical, 12)
@@ -371,7 +371,7 @@ struct FocalPointEditorSheet: View {
                         scale = currentScale
                         dismiss()
                     } label: {
-                        Text("Lagre").font(.system(size: 14, weight: .bold))
+                        Text("Lagre").font(.appScaled(size: 14, weight: .bold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 14).padding(.vertical, 8)
                             .background(
@@ -392,10 +392,10 @@ struct FocalPointEditorSheet: View {
     private var headerText: some View {
         VStack(spacing: 6) {
             Text("Dra for å flytte · klyp for å zoome")
-                .font(.system(size: 13, weight: .semibold))
+                .font(.appScaled(size: 13, weight: .semibold))
                 .foregroundStyle(.white)
             Text("Sørg for at ansiktet er innenfor klippramen i begge forhåndsvisninger.")
-                .font(.system(size: 11))
+                .font(.appScaled(size: 11))
                 .foregroundStyle(LBrand.textSecondary)
                 .multilineTextAlignment(.center)
         }
@@ -472,7 +472,7 @@ struct FocalPointEditorSheet: View {
                         .clipShape(Circle())
                 }
                 .overlay(Circle().stroke(LBrand.purpleLight.opacity(0.5), lineWidth: 1.5))
-                Text("Liten avatar").font(.system(size: 10)).foregroundStyle(LBrand.textTertiary)
+                Text("Liten avatar").font(.appScaled(size: 10)).foregroundStyle(LBrand.textTertiary)
             }
             VStack(spacing: 5) {
                 ZStack {
@@ -488,7 +488,7 @@ struct FocalPointEditorSheet: View {
                         .clipShape(Circle())
                 }
                 .overlay(Circle().stroke(LBrand.purpleLight.opacity(0.5), lineWidth: 1.5))
-                Text("Stor avatar").font(.system(size: 10)).foregroundStyle(LBrand.textTertiary)
+                Text("Stor avatar").font(.appScaled(size: 10)).foregroundStyle(LBrand.textTertiary)
             }
             VStack(spacing: 5) {
                 ZStack {
@@ -508,7 +508,7 @@ struct FocalPointEditorSheet: View {
                 .frame(width: 160, height: 90)
                 .clipShape(RoundedRectangle(cornerRadius: 11))
                 .overlay(RoundedRectangle(cornerRadius: 11).stroke(LBrand.purpleLight.opacity(0.5), lineWidth: 1.5))
-                Text("Hero").font(.system(size: 10)).foregroundStyle(LBrand.textTertiary)
+                Text("Hero").font(.appScaled(size: 10)).foregroundStyle(LBrand.textTertiary)
             }
             Spacer()
         }
@@ -526,7 +526,7 @@ struct FocalPointEditorSheet: View {
                     }
                 } label: {
                     Image(systemName: "minus.magnifyingglass")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.appScaled(size: 14, weight: .bold))
                         .foregroundStyle(.white)
                         .frame(width: 44, height: 44)
                         .background(LBrand.cardHi, in: Circle())
@@ -546,7 +546,7 @@ struct FocalPointEditorSheet: View {
                     }
                 } label: {
                     Image(systemName: "plus.magnifyingglass")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.appScaled(size: 14, weight: .bold))
                         .foregroundStyle(.white)
                         .frame(width: 44, height: 44)
                         .background(LBrand.cardHi, in: Circle())
@@ -559,8 +559,8 @@ struct FocalPointEditorSheet: View {
                 }
             } label: {
                 HStack(spacing: 5) {
-                    Image(systemName: "arrow.counterclockwise").font(.system(size: 11, weight: .bold))
-                    Text("Tilbakestill").font(.system(size: 12, weight: .semibold))
+                    Image(systemName: "arrow.counterclockwise").font(.appScaled(size: 11, weight: .bold))
+                    Text("Tilbakestill").font(.appScaled(size: 12, weight: .semibold))
                 }
                 .foregroundStyle(LBrand.purpleLight)
                 .padding(.horizontal, 14).padding(.vertical, 8)

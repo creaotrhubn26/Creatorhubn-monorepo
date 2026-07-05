@@ -95,7 +95,7 @@ struct TeamStubToastOverlay: View {
         VStack {
             if let t = toast {
                 Label(t, systemImage: toastIcon)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.appScaled(size: 12, weight: .semibold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 14).padding(.vertical, 9)
                     .background(toastColor.opacity(0.95), in: Capsule())

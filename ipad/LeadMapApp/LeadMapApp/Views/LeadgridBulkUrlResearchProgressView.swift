@@ -143,7 +143,7 @@ struct LeadgridBulkUrlResearchProgressView: View {
         VStack(spacing: 16) {
             Image(systemName: p.status == .failed ? "exclamationmark.triangle.fill"
                   : "mappin.circle.fill")
-                .font(.system(size: 64))
+                .font(.appScaled(size: 64))
                 .foregroundStyle(p.status == .failed ? .red : .green)
             Text(counterLine(p))
                 .font(.title3.bold())

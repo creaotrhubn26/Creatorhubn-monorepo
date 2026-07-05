@@ -196,7 +196,7 @@ struct BusinessCardScannerView: View {
     private var unsupportedView: some View {
         VStack(spacing: 12) {
             Image(systemName: "camera.metering.unknown")
-                .font(.system(size: 56))
+                .font(.appScaled(size: 56))
                 .foregroundStyle(.secondary)
             Text("Skanning ikke støttet")
                 .font(.headline)

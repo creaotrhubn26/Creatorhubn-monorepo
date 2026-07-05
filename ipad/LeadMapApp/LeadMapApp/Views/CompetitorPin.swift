@@ -16,7 +16,7 @@ struct CompetitorPin: View {
                 .shadow(color: .black.opacity(0.45), radius: 2, x: 0, y: 1)
                 .frame(width: selected ? 28 : 24, height: selected ? 28 : 24)
             Image(systemName: "star.fill")
-                .font(.system(size: 9, weight: .bold))
+                .font(.appScaled(size: 9, weight: .bold))
                 .foregroundStyle(.white)
             if selected {
                 Circle()

@@ -143,9 +143,9 @@ struct KPIDetailSheet: View {
                     } label: {
                         HStack(spacing: 4) {
                             Text("Q2 2026")
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.appScaled(size: 12, weight: .semibold))
                             Image(systemName: "chevron.down")
-                                .font(.system(size: 9))
+                                .font(.appScaled(size: 9))
                         }
                         .foregroundStyle(KpBrand.purpleLight)
                     }
@@ -167,29 +167,29 @@ struct KPIDetailSheet: View {
                     RoundedRectangle(cornerRadius: 11)
                         .fill(kind.color.opacity(0.22))
                     Image(systemName: kind.icon)
-                        .font(.system(size: 22, weight: .semibold))
+                        .font(.appScaled(size: 22, weight: .semibold))
                         .foregroundStyle(kind.color)
                 }
                 .frame(width: 56, height: 56)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(kind.title)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.appScaled(size: 13, weight: .semibold))
                         .foregroundStyle(KpBrand.textSecondary)
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text(kind.value)
-                            .font(.system(size: 38, weight: .bold, design: .rounded))
+                            .font(.appScaled(size: 38, weight: .bold, design: .rounded))
                             .foregroundStyle(.white)
                             .monospacedDigit()
                         HStack(spacing: 3) {
                             Image(systemName: "arrow.up")
-                                .font(.system(size: 10, weight: .bold))
+                                .font(.appScaled(size: 10, weight: .bold))
                             Text(kind.trend)
-                                .font(.system(size: 12, weight: .bold))
+                                .font(.appScaled(size: 12, weight: .bold))
                         }
                         .foregroundStyle(KpBrand.green)
                     }
                     Text(kind.subtitle)
-                        .font(.system(size: 11))
+                        .font(.appScaled(size: 11))
                         .foregroundStyle(KpBrand.textSecondary)
                 }
                 Spacer()
@@ -212,10 +212,10 @@ struct KPIDetailSheet: View {
     private func heroStat(label: String, value: String, color: Color) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label)
-                .font(.system(size: 10))
+                .font(.appScaled(size: 10))
                 .foregroundStyle(KpBrand.textSecondary)
             Text(value)
-                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .font(.appScaled(size: 16, weight: .bold, design: .rounded))
                 .foregroundStyle(color)
                 .monospacedDigit()
         }
@@ -275,7 +275,7 @@ struct KPIDetailSheet: View {
                     AxisValueLabel {
                         if let day = value.as(Int.self) {
                             Text("-\(29 - day)d")
-                                .font(.system(size: 9))
+                                .font(.appScaled(size: 9))
                                 .foregroundStyle(KpBrand.textTertiary)
                         }
                     }
@@ -372,15 +372,15 @@ struct KPIDetailSheet: View {
             HStack {
                 Circle().fill(color).frame(width: 8, height: 8)
                 Text(label)
-                    .font(.system(size: 12))
+                    .font(.appScaled(size: 12))
                     .foregroundStyle(.white)
                 Spacer()
                 Text("\(value)")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(.white)
                     .monospacedDigit()
                 Text(String(format: "%.0f %%", percent * 100))
-                    .font(.system(size: 11))
+                    .font(.appScaled(size: 11))
                     .foregroundStyle(KpBrand.textSecondary)
                     .frame(width: 38, alignment: .trailing)
                     .monospacedDigit()
@@ -412,25 +412,25 @@ struct KPIDetailSheet: View {
                                 RoundedRectangle(cornerRadius: 8)
                                     .fill(kind.color.opacity(0.20))
                                 Image(systemName: "building.2.fill")
-                                    .font(.system(size: 13, weight: .semibold))
+                                    .font(.appScaled(size: 13, weight: .semibold))
                                     .foregroundStyle(kind.color)
                             }
                             .frame(width: 34, height: 34)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(name)
-                                    .font(.system(size: 12, weight: .semibold))
+                                    .font(.appScaled(size: 12, weight: .semibold))
                                     .foregroundStyle(.white)
                                 Text(category)
-                                    .font(.system(size: 10))
+                                    .font(.appScaled(size: 10))
                                     .foregroundStyle(KpBrand.textSecondary)
                             }
                             Spacer()
                             Text(value)
-                                .font(.system(size: 12, weight: .bold))
+                                .font(.appScaled(size: 12, weight: .bold))
                                 .foregroundStyle(KpBrand.green)
                                 .monospacedDigit()
                             Image(systemName: "chevron.right")
-                                .font(.system(size: 11, weight: .bold))
+                                .font(.appScaled(size: 11, weight: .bold))
                                 .foregroundStyle(KpBrand.textTertiary)
                         }
                         .padding(9)
@@ -442,9 +442,9 @@ struct KPIDetailSheet: View {
             Button { } label: {
                 HStack {
                     Text("Se alle (\(kind.value))")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.appScaled(size: 12, weight: .semibold))
                     Image(systemName: "arrow.right")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.appScaled(size: 10, weight: .semibold))
                 }
                 .foregroundStyle(KpBrand.purpleLight)
                 .frame(maxWidth: .infinity)
@@ -514,21 +514,21 @@ struct KPIDetailSheet: View {
                             ZStack {
                                 Circle().fill(KpBrand.purple.opacity(0.20))
                                 Image(systemName: icon)
-                                    .font(.system(size: 12, weight: .semibold))
+                                    .font(.appScaled(size: 12, weight: .semibold))
                                     .foregroundStyle(KpBrand.purpleLight)
                             }
                             .frame(width: 32, height: 32)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(title)
-                                    .font(.system(size: 12, weight: .semibold))
+                                    .font(.appScaled(size: 12, weight: .semibold))
                                     .foregroundStyle(.white)
                                 Text(sub)
-                                    .font(.system(size: 10))
+                                    .font(.appScaled(size: 10))
                                     .foregroundStyle(KpBrand.textSecondary)
                             }
                             Spacer()
                             Image(systemName: "chevron.right")
-                                .font(.system(size: 10, weight: .bold))
+                                .font(.appScaled(size: 10, weight: .bold))
                                 .foregroundStyle(KpBrand.textTertiary)
                         }
                         .padding(9)
@@ -578,10 +578,10 @@ struct KPIDetailSheet: View {
     private func sectionHeader(_ title: String, icon: String) -> some View {
         HStack(spacing: 7) {
             Image(systemName: icon)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(KpBrand.purpleLight)
             Text(title)
-                .font(.system(size: 13, weight: .bold))
+                .font(.appScaled(size: 13, weight: .bold))
                 .foregroundStyle(.white)
             Spacer()
         }
