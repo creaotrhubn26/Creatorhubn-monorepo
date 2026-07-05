@@ -19,6 +19,7 @@ import { WsCard, WsSectionTitle, WsBar, WsTag, WsTable } from '../ui';
 import WorkspaceSplitSheet from '../WorkspaceSplitSheet';
 import { useWsLocale, makeT, wsDateLocale, type WsDict } from '../wsLocale';
 import { CREW_ROLE_CATALOG, crewRoleDef } from '@shared/crew-roles';
+import { crewIcon } from '../crewIcons';
 
 // Lokal no/en-ordbok for fanen (samme mønster som OppdragTab). Dynamiske
 // strenger (roller/status lagret i state) er selv-nøklet på norsk, slik at
@@ -403,7 +404,7 @@ const InviteMemberDialog: React.FC<{ open: boolean; onClose: () => void; project
           <TextField label={t('nameLabel')} value={name} onChange={(e) => setName(e.target.value)} fullWidth size="small" />
           <TextField label={t('emailLabel')} type="email" value={email} onChange={(e) => setEmail(e.target.value)} fullWidth size="small" required />
           <TextField select label={t('teamRoleLabel')} value={crewRole} onChange={(e) => setCrewRole(e.target.value)} fullWidth size="small">
-            {CREW_ROLE_CATALOG.map((r) => <MenuItem key={r.key} value={r.key}>{r.icon} {locale === 'en' ? r.labelEn : r.label}</MenuItem>)}
+            {CREW_ROLE_CATALOG.map((r) => <MenuItem key={r.key} value={r.key} sx={{ gap: 1 }}>{crewIcon(r.icon, { fontSize: 16 })} {locale === 'en' ? r.labelEn : r.label}</MenuItem>)}
           </TextField>
           <TextField select label={t('accessLabel')} value={role} onChange={(e) => setRole(e.target.value)} fullWidth size="small">
             <MenuItem value="member">{t('canEdit')}</MenuItem>

@@ -16,6 +16,7 @@ import Payments from '@mui/icons-material/Payments';
 import OpenInNew from '@mui/icons-material/OpenInNew';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
+import { wsIcon } from '../crewIcons';
 import { WsCard, WsSectionTitle, WsTag, WsBar } from '../ui';
 import { useWsLocale, makeT, wsDateLocale, type WsDict } from '../wsLocale';
 
@@ -137,7 +138,7 @@ const AvtalerTab: React.FC<{ projectId: string }> = ({ projectId }) => {
               </Stack>
               {dContract.isSigned && (dContract.signerName || dContract.signedAt) && (
                 <Stack direction="row" spacing={0.75} alignItems="center" sx={{ color: ws.green }}>
-                  <Typography sx={{ fontSize: 12 }}>✍️ {t('signedWord')}{dContract.signerName ? ` ${t('signedBy')} ${dContract.signerName}` : ''}{dContract.signedAt ? ` · ${new Date(dContract.signedAt).toLocaleDateString(dloc)}` : ''}</Typography>
+                  <Typography sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.4, fontSize: 12 }}>{wsIcon('Draw', { fontSize: 14 })}{t('signedWord')}{dContract.signerName ? ` ${t('signedBy')} ${dContract.signerName}` : ''}{dContract.signedAt ? ` · ${new Date(dContract.signedAt).toLocaleDateString(dloc)}` : ''}</Typography>
                   {dContract.hasSignature && <WsTag label={t('ipadSignature')} tone="green" />}
                 </Stack>
               )}

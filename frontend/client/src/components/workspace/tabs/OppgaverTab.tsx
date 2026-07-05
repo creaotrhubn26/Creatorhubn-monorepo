@@ -15,6 +15,7 @@ import { ws } from '../workspaceTheme';
 import { WsCard, WsStat, WsTag } from '../ui';
 import { useWsLocale, makeT, type WsDict } from '../wsLocale';
 import { crewRoleDef, CREW_ROLE_CATALOG } from '@shared/crew-roles';
+import { crewIcon } from '../crewIcons';
 
 // Lokal no/en-ordbok for fanen (samme mønster som OppdragTab).
 const T: WsDict = {
@@ -41,7 +42,7 @@ const COLUMNS = [
 // kategorienes roller + ukjente nøkler med generisk visning (blandede team).
 const crewTag = (c: string, locale: 'no' | 'en') => {
   const d = crewRoleDef(c || 'begge');
-  return { label: `${d.icon} ${locale === 'en' ? d.labelEn : d.label}`, tone: d.tone };
+  return { icon: crewIcon(d.icon), label: locale === 'en' ? d.labelEn : d.label, tone: d.tone };
 };
 
 const SAMPLE = [
@@ -122,7 +123,7 @@ const OppgaverTab: React.FC<{ projectId: string }> = ({ projectId }) => {
                     <Box key={task.id} sx={{ p: 1.25, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.panel, border: `1px solid ${ws.borderSoft}` }}>
                       <Typography sx={{ fontSize: 13, fontWeight: 600, mb: 0.75 }}>{task.title}</Typography>
                       <Stack direction="row" justifyContent="space-between" alignItems="center">
-                        <WsTag label={cr.label} tone={cr.tone} />
+                        <WsTag icon={cr.icon} label={cr.label} tone={cr.tone} />
                         <Stack direction="row" spacing={0.25}>
                           {ci > 0 && <IconButton size="small" onClick={() => move(task, -1)} sx={{ color: ws.textFaint }}><ArrowBack sx={{ fontSize: 15 }} /></IconButton>}
                           {ci < COLUMNS.length - 1 && <IconButton size="small" onClick={() => move(task, 1)} sx={{ color: ws.textDim }}><ArrowForward sx={{ fontSize: 15 }} /></IconButton>}
@@ -140,7 +141,7 @@ const OppgaverTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       </Stack>
 
       <Menu open={!!addMenu} anchorEl={addMenu?.el} onClose={() => setAddMenu(null)}>
-        {CREW_ROLE_CATALOG.map((c) => <MenuItem key={c.key} onClick={() => add(addMenu?.col, c.key)}>{c.icon} {locale === 'en' ? c.labelEn : c.label}</MenuItem>)}
+        {CREW_ROLE_CATALOG.map((c) => <MenuItem key={c.key} onClick={() => add(addMenu?.col, c.key)} sx={{ gap: 1, fontSize: 13 }}>{crewIcon(c.icon, { fontSize: 16 })} {locale === 'en' ? c.labelEn : c.label}</MenuItem>)}
       </Menu>
     </Box>
   );

@@ -13,6 +13,7 @@ import CheckCircle from '@mui/icons-material/CheckCircle';
 import Star from '@mui/icons-material/Star';
 import ErrorOutline from '@mui/icons-material/ErrorOutline';
 import { ws } from '../workspaceTheme';
+import { wsIcon } from '../crewIcons';
 import { WsCard, WsSectionTitle, WsStat, WsPills, WsTag, WsTable, WsImageGrid } from '../ui';
 import { useProjectImages } from '../useProjectImages';
 
@@ -131,7 +132,7 @@ const ShotlistTab: React.FC<{ projectId: string }> = ({ projectId }) => {
             <WsTag label="2 av 68" tone="neutral" />
           </Stack>
           <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}><WsTag label={selShot ? selShot[0] : 'Kritisk'} tone={selShot ? selShot[1] : 'red'} /><Typography sx={{ fontSize: 15, fontWeight: 700, flex: 1 }}>{selShot ? selShot[2] : 'Brud inngang'}</Typography><WsTag label={selShot ? (selShot[3] || 'Shot') : 'Vielse'} tone="accent" /></Stack>
-          {selShot && <Typography sx={{ fontSize: 11.5, color: ws.textFaint, mb: 1 }}>📍 {selShot[4] || '—'} · {selShot[5] || '—'}</Typography>}
+          {selShot && <Typography sx={{ fontSize: 11.5, color: ws.textFaint, mb: 1, display: 'inline-flex', alignItems: 'center', gap: 0.4 }}>{wsIcon('Place', { fontSize: 13 })}{selShot[4] || '—'} · {selShot[5] || '—'}</Typography>}
           <WsImageGrid columns={1} ratio="4 / 3" addLabel="Last opp referanse" />
           <Typography sx={{ fontSize: 12.5, color: ws.textDim, my: 1.25 }}>Bruden går ned midtgangen. Fokus på reaksjonene til brudgommen og gjestene.</Typography>
           <Typography sx={{ fontSize: 12, fontWeight: 700, color: ws.textFaint, mb: 0.5 }}>UTSTYR & INNSTILLINGER</Typography>

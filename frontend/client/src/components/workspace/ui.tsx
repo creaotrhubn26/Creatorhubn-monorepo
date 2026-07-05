@@ -69,15 +69,15 @@ export const WsBar: React.FC<{ value: number; color?: string; height?: number }>
 );
 
 /** Liten status-pille (Ferdig/Pågår/Planlagt/Kritisk osv.) */
-export const WsTag: React.FC<{ label: string; tone?: 'green' | 'amber' | 'red' | 'blue' | 'accent' | 'neutral' }> = ({ label, tone = 'neutral' }) => {
+export const WsTag: React.FC<{ label: string; icon?: React.ReactNode; tone?: 'green' | 'amber' | 'red' | 'blue' | 'accent' | 'neutral' }> = ({ label, icon, tone = 'neutral' }) => {
   const map: any = {
     green: [ws.green, ws.greenSoft], amber: [ws.amber, ws.amberSoft], red: [ws.red, ws.redSoft],
     blue: [ws.blue, ws.blueSoft], accent: [ws.accent, ws.accentSoft], neutral: [ws.textDim, 'rgba(255,255,255,0.06)'],
   };
   const [c, bg] = map[tone] || map.neutral;
   return (
-    <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', px: 1, py: 0.25, borderRadius: 1, bgcolor: bg, color: c, fontSize: 11.5, fontWeight: 700, whiteSpace: 'nowrap' }}>
-      {label}
+    <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.4, px: 1, py: 0.25, borderRadius: 1, bgcolor: bg, color: c, fontSize: 11.5, fontWeight: 700, whiteSpace: 'nowrap', '& svg': { fontSize: 13 } }}>
+      {icon}{label}
     </Box>
   );
 };

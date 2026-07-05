@@ -20,6 +20,7 @@ import EditOutlined from '@mui/icons-material/EditOutlined';
 import CheckCircleOutline from '@mui/icons-material/CheckCircleOutline';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
+import { wsIcon } from '../crewIcons';
 import { WsCard, WsSectionTitle, WsTag, WsImg } from '../ui';
 import { useWsLocale, makeT, type WsDict } from '../wsLocale';
 
@@ -106,7 +107,7 @@ const KundevisningTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/client-reviews/${commentId}/respond`, { method: 'POST', body: { response: response.trim() } }); loadReviews(); }
     catch (e: any) { window.alert(e?.message || t('replyFailed')); }
   };
-  const reviewIcon = (type: string) => type === 'heart' || type === 'love' || type === 'favorite' ? '❤️' : type === 'change' || type === 'change-request' || type === 'revision' ? '✏️' : type === 'approval' || type === 'approve' ? '✅' : '💬';
+  const reviewIcon = (type: string) => type === 'heart' || type === 'love' || type === 'favorite' ? 'Favorite' : type === 'change' || type === 'change-request' || type === 'revision' ? 'EditOutlined' : type === 'approval' || type === 'approve' ? 'CheckCircleOutline' : 'ChatBubbleOutline';
 
   const timelinePath = (isReal && timelineToken) ? `/wedding/timeline/${timelineToken}` : (!isReal ? '/wedding/timeline/demo' : null);
 
@@ -184,13 +185,13 @@ const KundevisningTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         return (
           <WsCard sx={{ mb: 2 }}>
             <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.25 }}>
-              <Typography sx={{ fontSize: 14 }}>💬</Typography>
+              {wsIcon('ChatBubbleOutline', { fontSize: 15, color: ws.textDim })}
               <Typography sx={{ fontSize: 14, fontWeight: 700 }}>{t('feedback')}</Typography>
               <Box sx={{ flex: 1 }} />
               <Stack direction="row" spacing={1}>
-                {(c.heart || c.love || c.favorite) ? <Typography sx={{ fontSize: 12, color: ws.textDim }}>❤️ {(c.heart || 0) + (c.love || 0) + (c.favorite || 0)}</Typography> : null}
-                {(c.comment) ? <Typography sx={{ fontSize: 12, color: ws.textDim }}>💬 {c.comment}</Typography> : null}
-                {(c.change || c['change-request'] || c.revision) ? <Typography sx={{ fontSize: 12, color: ws.amber }}>✏️ {(c.change || 0) + (c['change-request'] || 0) + (c.revision || 0)}</Typography> : null}
+                {(c.heart || c.love || c.favorite) ? <Typography sx={{ fontSize: 12, color: ws.textDim, display: 'inline-flex', alignItems: 'center', gap: 0.4 }}>{wsIcon('Favorite', { fontSize: 13 })}{(c.heart || 0) + (c.love || 0) + (c.favorite || 0)}</Typography> : null}
+                {(c.comment) ? <Typography sx={{ fontSize: 12, color: ws.textDim, display: 'inline-flex', alignItems: 'center', gap: 0.4 }}>{wsIcon('ChatBubbleOutline', { fontSize: 13 })}{c.comment}</Typography> : null}
+                {(c.change || c['change-request'] || c.revision) ? <Typography sx={{ fontSize: 12, color: ws.amber, display: 'inline-flex', alignItems: 'center', gap: 0.4 }}>{wsIcon('EditOutlined', { fontSize: 13 })}{(c.change || 0) + (c['change-request'] || 0) + (c.revision || 0)}</Typography> : null}
                 {(sel.selected) ? <Typography sx={{ fontSize: 12, color: ws.green }}>✓ {sel.selected} {t('selected')}{sel.submitted ? t('submitted') : ''}</Typography> : null}
               </Stack>
             </Stack>
@@ -199,11 +200,11 @@ const KundevisningTab: React.FC<{ projectId: string }> = ({ projectId }) => {
                 <Stack key={cm.id} direction="row" spacing={1.25} alignItems="flex-start" sx={{ p: 1, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.panelAlt, border: `1px solid ${ws.borderSoft}` }}>
                   {cm.thumbUrl
                     ? <Box sx={{ width: 38, height: 38, borderRadius: 1, background: `center/cover no-repeat url(${cm.thumbUrl})`, flexShrink: 0 }} />
-                    : <Box sx={{ width: 38, height: 38, borderRadius: 1, bgcolor: 'rgba(255,255,255,0.06)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>{reviewIcon(cm.type)}</Box>}
+                    : <Box sx={{ width: 38, height: 38, borderRadius: 1, bgcolor: 'rgba(255,255,255,0.06)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>{wsIcon(reviewIcon(cm.type), { fontSize: 18, color: ws.textDim })}</Box>}
                   <Box sx={{ minWidth: 0, flex: 1 }}>
                     <Stack direction="row" spacing={0.75} alignItems="center">
                       <Typography sx={{ fontSize: 12.5, fontWeight: 700 }}>{cm.clientName}</Typography>
-                      <Typography sx={{ fontSize: 13 }}>{reviewIcon(cm.type)}</Typography>
+                      {wsIcon(reviewIcon(cm.type), { fontSize: 15, color: ws.textDim })}
                     </Stack>
                     {cm.comment && <Typography sx={{ fontSize: 12.5, color: ws.text, mt: 0.25 }}>«{cm.comment}»</Typography>}
                     {cm.photographerResponse
