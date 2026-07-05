@@ -2850,6 +2850,82 @@ export function createCommunicationRouter(
     }
   });
 
+  // ─── PATCH /api/communication/messages/:id ────────────────
+  // Oppdaterer status i en meldings metadata (f.eks. løs/gjenåpne en
+  // forespørsel). Prosjekt-kanal krever auth + medlemskap.
+  router.patch('/api/communication/messages/:id', async (req, res) => {
+    try {
+      const id = String(req.params.id || '').trim();
+      if (!id) return res.status(400).json({ error: 'id required' });
+      const row = await db
+        .select({ channelId: schema.communicationMessages.channelId, metadata: schema.communicationMessages.metadata })
+        .from(schema.communicationMessages)
+        .where(eq(schema.communicationMessages.id, id)).limit(1);
+      if (!row[0]) return res.status(404).json({ error: 'not_found' });
+      const gate = await guardProjectChannel(row[0].channelId, req, res);
+      if (!gate.ok) return;
+      const status = String((req.body || {}).status || '');
+      if (!['open', 'resolved'].includes(status)) return res.status(400).json({ error: 'invalid_status' });
+      const meta = { ...getMessageMetadataRecord(row[0].metadata), status };
+      await db.update(schema.communicationMessages)
+        .set({ metadata: meta as any })
+        .where(eq(schema.communicationMessages.id, id));
+      return res.json({ success: true, id, status });
+    } catch (error) {
+      console.error('Error patching message:', error);
+      res.status(500).json({ error: 'Failed to update message' });
+    }
+  });
+
+  // ─── POST /api/communication/:channelId/ai ────────────────
+  // Leser de siste meldingene og lar Claude (a) foreslå et svar-utkast eller
+  // (b) oppsummere «hva venter på teamet». Returnerer kun tekst — klienten
+  // fyller komposeren (ingenting sendes auto). Prosjekt-kanal: auth + medlemskap.
+  router.post('/api/communication/:channelId/ai', async (req, res) => {
+    try {
+      const channelId = String(req.params.channelId || '').trim();
+      const gate = await guardProjectChannel(channelId, req, res);
+      if (!gate.ok) return;
+      const mode = String((req.body || {}).mode) === 'summary' ? 'summary' : 'draft';
+      const apiKey = process.env.ANTHROPIC_API_KEY;
+      if (!apiKey) return res.status(503).json({ error: 'AI er ikke tilgjengelig (mangler nøkkel).' });
+      const rows = await db
+        .select({ senderId: schema.communicationMessages.senderId, content: schema.communicationMessages.content, metadata: schema.communicationMessages.metadata, createdAt: schema.communicationMessages.createdAt })
+        .from(schema.communicationMessages)
+        .where(eq(schema.communicationMessages.channelId, channelId))
+        .orderBy(desc(schema.communicationMessages.createdAt)).limit(40);
+      rows.reverse();
+      const transcript = rows.map((r) => {
+        const meta = getMessageMetadataRecord(r.metadata);
+        const who = toNonEmptyString(meta.senderName) || String(r.senderId || 'Medlem');
+        const tag = meta.tag === 'question' || meta.status ? ' [forespørsel]' : '';
+        return `${who}${tag}: ${String(r.content || '')}`;
+      }).join('\n');
+      const system = mode === 'summary'
+        ? 'Du er assistent i et prosjekt-team i CreatorHubn. Oppsummer teamsamtalen kort på norsk: hva er status og hva venter på teamet nå (punktliste med konkrete neste steg). Maks 8 linjer.'
+        : 'Du er assistent i et prosjekt-team i CreatorHubn. Foreslå ÉN kort, profesjonell og vennlig norsk melding til teamet basert på samtalen. Kun selve meldingsteksten, ingen forklaring.';
+      let text = '';
+      try {
+        const mod: any = await import('@anthropic-ai/sdk');
+        const Ctor = mod.default ?? mod.Anthropic;
+        const client: any = new Ctor({ apiKey, maxRetries: 1, timeout: 30_000 });
+        const response = await client.messages.create({
+          model: process.env.ROLE_ROOM_AGENT_CLAUDE_MODEL || 'claude-sonnet-4-6',
+          max_tokens: 700, system,
+          messages: [{ role: 'user', content: `Samtale så langt:\n${transcript || '(tom)'}\n\n${mode === 'summary' ? 'Oppsummer.' : 'Foreslå en melding.'}` }],
+        });
+        text = (response.content ?? []).filter((b: any) => b?.type === 'text').map((b: any) => b.text).join('\n').trim();
+      } catch (aiErr) {
+        console.error('[chat] AI-kall feilet', aiErr);
+        return res.status(502).json({ error: 'AI-kallet feilet. Prøv igjen.' });
+      }
+      return res.json({ success: true, text });
+    } catch (error) {
+      console.error('Error in chat AI:', error);
+      res.status(500).json({ error: 'Kunne ikke generere AI-tekst' });
+    }
+  });
+
   router.get('/api/communication/email/status', async (req, res) => {
     try {
       const preferredIdentity = getPreferredGoogleWorkspaceIdentity(req);

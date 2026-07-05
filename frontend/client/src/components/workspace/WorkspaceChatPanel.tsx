@@ -26,6 +26,18 @@ import Close from '@mui/icons-material/Close';
 import KeyboardArrowDown from '@mui/icons-material/KeyboardArrowDown';
 import Refresh from '@mui/icons-material/Refresh';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
+import AddCircleOutline from '@mui/icons-material/AddCircleOutline';
+import PlaylistAddCheck from '@mui/icons-material/PlaylistAddCheck';
+import LinkIcon from '@mui/icons-material/Link';
+import AutoAwesome from '@mui/icons-material/AutoAwesome';
+import Summarize from '@mui/icons-material/Summarize';
+import CheckCircleOutline from '@mui/icons-material/CheckCircleOutline';
+import MusicNote from '@mui/icons-material/MusicNote';
+import MovieOutlined from '@mui/icons-material/MovieOutlined';
+import EventOutlined from '@mui/icons-material/EventOutlined';
+import OpenInNew from '@mui/icons-material/OpenInNew';
+import { ListItemIcon, ListItemText, Dialog, DialogTitle, DialogContent, Tabs, Tab, ListItemButton, Snackbar, Button, FormControl, Select } from '@mui/material';
+import { useLocation } from 'wouter';
 import { apiRequest, getAuthHeader, buildApiUrl } from '@/lib/queryClient';
 import { useAuth } from '@/hooks/useAuth';
 import { ws } from './workspaceTheme';
@@ -63,6 +75,41 @@ const T: WsDict = {
   attachmentFallback: { no: 'vedlegg', en: 'attachment' },
   emojiPrefix: { no: 'Emoji', en: 'Emoji' },
   messagesRegion: { no: 'Meldinger', en: 'Messages' },
+  // Action-launcher
+  action: { no: 'Handling', en: 'Action' },
+  actionOpen: { no: 'Åpne handlinger (Ctrl+K)', en: 'Open actions (Ctrl+K)' },
+  actionSearch: { no: 'Søk handling …', en: 'Search action …' },
+  actionHint: { no: 'gjør det fra chatten', en: 'do it from chat' },
+  aNewTask: { no: 'Ny oppgave på board', en: 'New task on board' },
+  aNewTaskSub: { no: 'Lag en crew-oppgave fra chatten', en: 'Create a crew task from chat' },
+  aReference: { no: 'Referer til …', en: 'Reference …' },
+  aReferenceSub: { no: 'Låt, leveranse eller økt → klikkbart kort', en: 'Song, deliverable or session → card' },
+  aRequestUpload: { no: 'Be om opplasting', en: 'Request an upload' },
+  aRequestUploadSub: { no: 'Motparten laster opp rett i tråden', en: 'They upload right in the thread' },
+  aAiSummary: { no: 'AI: oppsummer samtalen', en: 'AI: summarize the chat' },
+  aAiSummarySub: { no: 'Hva er status / hva venter', en: 'Status / what is pending' },
+  aAiDraft: { no: 'AI: foreslå melding', en: 'AI: draft a message' },
+  aAiDraftSub: { no: 'Claude skriver et utkast i feltet', en: 'Claude drafts in the field' },
+  // Forespørsel
+  openRequest: { no: 'Åpen forespørsel', en: 'Open request' },
+  resolved: { no: 'Løst', en: 'Resolved' },
+  markResolved: { no: 'Marker som løst', en: 'Mark as resolved' },
+  unanswered: { no: 'ubesvart', en: 'unanswered' },
+  // Kort/dialoger
+  refPick: { no: 'Referer til …', en: 'Reference …' },
+  refSongs: { no: 'Låter', en: 'Songs' },
+  refDeliverables: { no: 'Leveranser', en: 'Deliverables' },
+  refSessions: { no: 'Økter', en: 'Sessions' },
+  refEmpty: { no: 'Ingenting her ennå.', en: 'Nothing here yet.' },
+  taskTitle: { no: 'Ny oppgave', en: 'New task' },
+  taskName: { no: 'Hva skal gjøres?', en: 'What needs doing?' },
+  taskCreate: { no: 'Legg til på board', en: 'Add to board' },
+  cancel: { no: 'Avbryt', en: 'Cancel' },
+  uploadHere: { no: 'Last opp her', en: 'Upload here' },
+  openIn: { no: 'Åpne', en: 'Open' },
+  aiInserted: { no: 'AI-forslag lagt i feltet — rediger og send.', en: 'AI suggestion added — edit and send.' },
+  taskAdded: { no: 'Oppgave lagt på board.', en: 'Task added to board.' },
+  uploadRequested: { no: 'Du kan laste opp her:', en: 'You can upload here:' },
 };
 
 // Trygg å rendre som <img>/<a href>? Tillat kun same-origin relativ sti (våre
@@ -118,6 +165,20 @@ const WorkspaceChatPanel: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [emojiAnchor, setEmojiAnchor] = useState(null);
   const [moreAnchor, setMoreAnchor] = useState(null);
   const [mentionMode, setMentionMode] = useState(false); // members-popover brukes til @mention
+  // Action-launcher + kort
+  const [, navigate] = useLocation();
+  const [toast, setToast] = useState('');
+  const [actionAnchor, setActionAnchor] = useState(null);
+  const [actionQuery, setActionQuery] = useState('');
+  const [busyAction, setBusyAction] = useState(false);
+  const actionBtnRef = useRef(null);
+  const [taskOpen, setTaskOpen] = useState(false);
+  const [taskName, setTaskName] = useState('');
+  const [taskRole, setTaskRole] = useState('begge');
+  const [refOpen, setRefOpen] = useState(false);
+  const [refTab, setRefTab] = useState(0);
+  const [refLoading, setRefLoading] = useState(false);
+  const [refData, setRefData] = useState({ tracks: [], deliverables: [], sessions: [] });
 
   const scrollDown = () => requestAnimationFrame(() => endRef.current?.scrollIntoView({ behavior: 'smooth' }));
   // Er brukeren allerede nederst? Da (og bare da) auto-scroller vi ved nye
@@ -216,6 +277,72 @@ const WorkspaceChatPanel: React.FC<{ projectId: string }> = ({ projectId }) => {
     } catch (e) { setErr(e?.message || t('sendFailed')); } finally { setSending(false); }
   };
 
+  // ── Handlinger fra chatten («Action») ────────────────────────────────────
+  // Poster en melding med strukturert metadata.action som rendres som et kort.
+  const postAction = async (content, meta) => {
+    await apiRequest('/api/chat/messages', { method: 'POST', body: {
+      conversationId: channelId, content, senderId: myId, senderName: myName,
+      metadata: { senderName: myName, ...meta },
+    } });
+    await load(false); scrollDown();
+  };
+  const resolveRequest = async (id) => {
+    try { await apiRequest(`/api/communication/messages/${encodeURIComponent(id)}`, { method: 'PATCH', body: { status: 'resolved' } }); await load(false); }
+    catch { setToast(t('sendFailed')); }
+  };
+  const runAi = async (mode) => {
+    setActionAnchor(null); setBusyAction(true);
+    try {
+      const r = await apiRequest(`/api/communication/${encodeURIComponent(channelId)}/ai`, { method: 'POST', body: { mode } });
+      if (r?.text) { setText(mode === 'summary' ? `${r.text}` : r.text); setToast(t('aiInserted')); requestAnimationFrame(() => inputRef.current?.focus()); }
+    } catch (e) { setToast(e?.message || t('sendFailed')); } finally { setBusyAction(false); }
+  };
+  const createTask = async () => {
+    const title = taskName.trim(); if (!title) return;
+    setBusyAction(true);
+    try {
+      const task = await apiRequest(`/api/projects/${projectId}/board-tasks`, { method: 'POST', body: { title, crewRole: taskRole } });
+      await postAction(`📋 ${title}`, { action: 'task', refKind: 'oppgaver', refLabel: title, linkedEntityId: task?.id });
+      setTaskOpen(false); setTaskName(''); setToast(t('taskAdded'));
+    } catch (e) { setToast(e?.message || t('sendFailed')); } finally { setBusyAction(false); }
+  };
+  const openRefPicker = async () => {
+    setActionAnchor(null); setRefOpen(true); setRefLoading(true); setRefTab(0);
+    const [tr, dl, av] = await Promise.allSettled([
+      apiRequest(`/api/projects/${projectId}/easeverse-tracks`),
+      apiRequest(`/api/projects/${projectId}/deliverables`),
+      apiRequest(`/api/projects/${projectId}/avtaler`),
+    ]);
+    setRefData({
+      tracks: tr.status === 'fulfilled' ? (tr.value?.tracks || []) : [],
+      deliverables: dl.status === 'fulfilled' ? (dl.value?.deliverables || []) : [],
+      sessions: av.status === 'fulfilled' ? (av.value?.meetings || []) : [],
+    });
+    setRefLoading(false);
+  };
+  const pickReference = async (refKind, id, label) => {
+    setRefOpen(false); setBusyAction(true);
+    try { await postAction(`🔗 ${label}`, { action: 'reference', refKind, refLabel: label, linkedEntityId: id }); }
+    catch { setToast(t('sendFailed')); } finally { setBusyAction(false); }
+  };
+  const requestUpload = async () => {
+    setActionAnchor(null); setBusyAction(true);
+    try { await postAction(t('uploadRequested'), { action: 'request_upload' }); }
+    catch { setToast(t('sendFailed')); } finally { setBusyAction(false); }
+  };
+  // Cmd/Ctrl+K åpner Action.
+  useEffect(() => {
+    const onKey = (e) => { if ((e.metaKey || e.ctrlKey) && String(e.key).toLowerCase() === 'k') { e.preventDefault(); if (actionBtnRef.current) { setActionAnchor(actionBtnRef.current); setActionQuery(''); } } };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+  // Referanse-/oppgave-kort → naviger til riktig fane.
+  const REF_ROUTE = { track: 'laater', song: 'laater', deliverable: 'leveranser', session: 'sesjoner', oppgaver: 'oppgaver' };
+  const gotoRef = (refKind) => { const seg = REF_ROUTE[refKind] || 'oversikt'; navigate(`/workspace/${projectId}/${seg}`); };
+
+  // Åpne forespørsler (tag=Spørsmål, ikke løst) — «X ubesvart».
+  const openRequests = useMemo(() => messages.filter((m) => m.tag === 'question' && m.metadata?.status !== 'resolved').length, [messages]);
+
   const tagBtn = (key) => {
     const meta = TAG_META[key]; const active = tag === key;
     return (
@@ -244,6 +371,54 @@ const WorkspaceChatPanel: React.FC<{ projectId: string }> = ({ projectId }) => {
       </Box>
     );
   });
+
+  const REF_ICON = { track: <MusicNote sx={{ fontSize: 15 }} />, song: <MusicNote sx={{ fontSize: 15 }} />, deliverable: <MovieOutlined sx={{ fontSize: 15 }} />, session: <EventOutlined sx={{ fontSize: 15 }} />, oppgaver: <PlaylistAddCheck sx={{ fontSize: 15 }} /> };
+  // Interaktivt kort utledet av metadata.action.
+  const renderCard = (m) => {
+    const meta = m.metadata || {};
+    const act = meta.action;
+    if (act === 'reference' || act === 'task') {
+      return (
+        <Box onClick={() => gotoRef(meta.refKind)} sx={{ mt: 0.5, px: 1, py: 0.75, borderRadius: 2, cursor: 'pointer', bgcolor: ws.accentSoft, border: `1px solid ${ws.accentBorder}`, display: 'inline-flex', alignItems: 'center', gap: 0.75, maxWidth: '100%' }}>
+          <Box sx={{ color: ws.accent, display: 'flex' }}>{REF_ICON[meta.refKind] || <LinkIcon sx={{ fontSize: 15 }} />}</Box>
+          <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: ws.text, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{meta.refLabel || t('openIn')}</Typography>
+          <OpenInNew sx={{ fontSize: 13, color: ws.textDim }} />
+        </Box>
+      );
+    }
+    if (act === 'request_upload') {
+      return (
+        <Button onClick={() => fileRef.current?.click()} startIcon={<AttachFile sx={{ fontSize: 16 }} />} size="small"
+          sx={{ mt: 0.5, textTransform: 'none', fontWeight: 700, color: ws.accentContrast, bgcolor: ws.accent, '&:hover': { bgcolor: ws.accentHover }, borderRadius: 2 }}>{t('uploadHere')}</Button>
+      );
+    }
+    return null;
+  };
+  // Forespørsel-status (tag=Spørsmål): åpen med «Marker som løst», eller «Løst».
+  const renderRequest = (m) => {
+    if (m.tag !== 'question') return null;
+    const done = m.metadata?.status === 'resolved';
+    return (
+      <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.5 }}>
+        {done ? (
+          <Chip size="small" icon={<CheckCircleOutline sx={{ fontSize: 13, color: `${ws.green} !important` }} />} label={t('resolved')} sx={{ height: 20, fontSize: 10.5, fontWeight: 700, color: ws.green, bgcolor: ws.greenSoft }} />
+        ) : (
+          <>
+            <Chip size="small" label={t('openRequest')} sx={{ height: 20, fontSize: 10.5, fontWeight: 700, color: ws.green, bgcolor: ws.greenSoft }} />
+            <Button onClick={() => resolveRequest(m.id)} size="small" sx={{ textTransform: 'none', fontWeight: 700, fontSize: 11, minHeight: 28, color: ws.green }}>{t('markResolved')}</Button>
+          </>
+        )}
+      </Stack>
+    );
+  };
+
+  const ACTIONS = [
+    { q: 'oppgave board task crew', icon: <PlaylistAddCheck sx={{ color: ws.green }} />, primary: t('aNewTask'), secondary: t('aNewTaskSub'), run: () => { setActionAnchor(null); setTaskOpen(true); } },
+    { q: 'referer lat leveranse okt link', icon: <LinkIcon sx={{ color: ws.accent }} />, primary: t('aReference'), secondary: t('aReferenceSub'), run: () => void openRefPicker() },
+    { q: 'opplasting fil vedlegg upload', icon: <AttachFile sx={{ color: '#7dd3fc' }} />, primary: t('aRequestUpload'), secondary: t('aRequestUploadSub'), run: () => void requestUpload() },
+    { q: 'ai oppsummer sammendrag summary', icon: <Summarize sx={{ color: '#22d3ee' }} />, primary: t('aAiSummary'), secondary: t('aAiSummarySub'), run: () => void runAi('summary') },
+    { q: 'ai foreslag utkast draft', icon: <AutoAwesome sx={{ color: '#22d3ee' }} />, primary: t('aAiDraft'), secondary: t('aAiDraftSub'), run: () => void runAi('draft') },
+  ];
 
   return (
     <Box sx={{
@@ -276,7 +451,10 @@ const WorkspaceChatPanel: React.FC<{ projectId: string }> = ({ projectId }) => {
 
       {/* Kanal-velger */}
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 1.75, py: 1 }}>
-        <Chip size="small" label={t('channelProduction')} sx={{ bgcolor: 'rgba(255,255,255,0.05)', color: ws.text, fontWeight: 600 }} />
+        <Stack direction="row" spacing={0.75} alignItems="center">
+          <Chip size="small" label={t('channelProduction')} sx={{ bgcolor: 'rgba(255,255,255,0.05)', color: ws.text, fontWeight: 600 }} />
+          {openRequests > 0 && <Chip size="small" label={`${openRequests} ${t('unanswered')}`} sx={{ height: 22, fontSize: 11, fontWeight: 700, color: ws.green, bgcolor: ws.greenSoft }} />}
+        </Stack>
         <Tooltip title={pinnedOnly ? t('pinFilterOff') : t('pinFilterOn')}>
           <IconButton size="small" aria-label={pinnedOnly ? t('pinFilterOff') : t('pinFilterOn')} aria-pressed={pinnedOnly} onClick={() => setPinnedOnly((v) => !v)} sx={{ color: pinnedOnly ? ws.red : ws.textDim }}><PushPin sx={{ fontSize: 16 }} /></IconButton>
         </Tooltip>
@@ -308,12 +486,14 @@ const WorkspaceChatPanel: React.FC<{ projectId: string }> = ({ projectId }) => {
                 {tagMeta && (
                   <Chip size="small" icon={tagMeta.icon} label={t(tagMeta.dictKey)} sx={{ mt: 0.4, height: 18, fontSize: 10, color: tagMeta.color, bgcolor: tagMeta.soft, '& .MuiChip-icon': { color: tagMeta.color } }} />
                 )}
-                {m.content && (
+                {m.content && !(m.metadata?.action === 'reference' || m.metadata?.action === 'task') && (
                   <Box sx={{ mt: 0.25, px: 1.25, py: 0.75, borderRadius: 2, bgcolor: mine ? ws.accentSoft : 'rgba(255,255,255,0.05)', border: mine ? `1px solid ${ws.accentBorder}` : 'none', display: 'inline-block', maxWidth: '100%' }}>
                     <Typography sx={{ fontSize: 13, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{m.content}</Typography>
                   </Box>
                 )}
                 {renderAttachments(m.attachments)}
+                {renderCard(m)}
+                {renderRequest(m)}
               </Box>
             </Stack>
           );
@@ -344,10 +524,22 @@ const WorkspaceChatPanel: React.FC<{ projectId: string }> = ({ projectId }) => {
           </Stack>
         )}
         <Stack direction="row" spacing={1} alignItems="flex-end">
+          <Tooltip title={t('actionOpen')}>
+            <IconButton ref={actionBtnRef} onClick={(e) => { setActionAnchor(e.currentTarget); setActionQuery(''); }} disabled={busyAction} aria-label={t('actionOpen')}
+              sx={{ color: '#fff', bgcolor: ws.accentSoft, border: `1px solid ${ws.accentBorder}`, '&:hover': { bgcolor: 'rgba(255,140,0,0.24)' } }}>
+              {busyAction ? <CircularProgress size={18} /> : <AddCircleOutline sx={{ fontSize: 20, color: ws.accent }} />}
+            </IconButton>
+          </Tooltip>
           <TextField
             inputRef={inputRef}
             fullWidth size="small" multiline maxRows={4} placeholder={t('composerPlaceholder')}
-            value={text} onChange={(e) => setText(e.target.value)}
+            value={text}
+            onChange={(e) => {
+              const v = e.target.value;
+              // «/» i tomt felt → åpne Action-launcheren.
+              if (v === '/' && !text) { if (actionBtnRef.current) { setActionAnchor(actionBtnRef.current); setActionQuery(''); } return; }
+              setText(v);
+            }}
             inputProps={{ 'aria-label': t('composerPlaceholder') }}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent?.isComposing) { e.preventDefault(); send(); } }}
             sx={{ '& .MuiOutlinedInput-root': { bgcolor: ws.panelInput, fontSize: 13 } }}
@@ -400,6 +592,93 @@ const WorkspaceChatPanel: React.FC<{ projectId: string }> = ({ projectId }) => {
         <MenuItem onClick={() => { setMoreAnchor(null); load(false); }} sx={{ gap: 1, fontSize: 13 }}><Refresh sx={{ fontSize: 18 }} /> {t('refresh')}</MenuItem>
         <MenuItem component="a" href="/guide/chat" target="_blank" rel="noopener" onClick={() => setMoreAnchor(null)} sx={{ gap: 1, fontSize: 13 }}><HelpOutlineIcon sx={{ fontSize: 18 }} /> {t('guide')}</MenuItem>
       </Menu>
+
+      {/* Action-launcher */}
+      <Menu anchorEl={actionAnchor} open={!!actionAnchor} onClose={() => setActionAnchor(null)}
+        anchorOrigin={{ vertical: 'top', horizontal: 'left' }} transformOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+        PaperProps={{ sx: { bgcolor: ws.panelSolid, color: ws.text, border: `1px solid ${ws.accentBorder}`, minWidth: 288 } }}>
+        <Box sx={{ px: 1.75, py: 1, display: 'flex', alignItems: 'center', gap: 0.75 }}>
+          <AutoAwesome sx={{ color: ws.accent, fontSize: 17 }} />
+          <Typography sx={{ fontWeight: 800, fontSize: 13 }}>{t('action')}</Typography>
+          <Typography sx={{ color: ws.textFaint, fontSize: 11, ml: 'auto' }}>⌘K · {t('actionHint')}</Typography>
+        </Box>
+        <Box sx={{ px: 1.25, pb: 0.75 }}>
+          <TextField autoFocus value={actionQuery} onChange={(e) => setActionQuery(e.target.value)} placeholder={t('actionSearch')} size="small" fullWidth
+            inputProps={{ 'aria-label': t('actionSearch') }}
+            sx={{ '& .MuiOutlinedInput-root': { bgcolor: ws.panelInput, fontSize: 13 } }} />
+        </Box>
+        {ACTIONS.filter((a) => !actionQuery || `${a.primary} ${a.q}`.toLowerCase().includes(actionQuery.toLowerCase())).map((a) => (
+          <MenuItem key={a.primary} onClick={a.run} sx={{ py: 0.75 }}>
+            <ListItemIcon sx={{ minWidth: 34 }}>{a.icon}</ListItemIcon>
+            <ListItemText primary={a.primary} secondary={a.secondary}
+              primaryTypographyProps={{ sx: { fontSize: 13, fontWeight: 600, color: ws.text } }}
+              secondaryTypographyProps={{ sx: { fontSize: 11, color: ws.textDim } }} />
+          </MenuItem>
+        ))}
+      </Menu>
+
+      {/* Ny oppgave-dialog */}
+      <Dialog open={taskOpen} onClose={() => setTaskOpen(false)} fullWidth maxWidth="xs" PaperProps={{ sx: { bgcolor: ws.panelSolid, color: ws.text, border: `1px solid ${ws.border}` } }}>
+        <DialogTitle sx={{ fontWeight: 800, fontSize: 15 }}>{t('taskTitle')}</DialogTitle>
+        <DialogContent>
+          <Stack spacing={1.25} sx={{ pt: 0.5 }}>
+            <TextField autoFocus value={taskName} onChange={(e) => setTaskName(e.target.value)} placeholder={t('taskName')} size="small" fullWidth
+              inputProps={{ 'aria-label': t('taskName') }} onKeyDown={(e) => { if (e.key === 'Enter') void createTask(); }}
+              sx={{ '& .MuiOutlinedInput-root': { bgcolor: ws.panelInput, fontSize: 13 } }} />
+            <FormControl size="small" fullWidth>
+              <Select value={taskRole} onChange={(e) => setTaskRole(e.target.value)} aria-label="Crew-rolle" sx={{ bgcolor: ws.panelInput, fontSize: 13, color: ws.text, '& .MuiSvgIcon-root': { color: ws.textDim } }}>
+                {[['begge', 'Alle'], ['produsent', 'Produsent'], ['vokal', 'Vokal'], ['musikere', 'Musikere'], ['miks', 'Miks'], ['foto', 'Foto'], ['video', 'Video'], ['redigering', 'Redigering']].map(([v, l]) => <MenuItem key={v} value={v} sx={{ fontSize: 13 }}>{l}</MenuItem>)}
+              </Select>
+            </FormControl>
+            <Stack direction="row" spacing={1} justifyContent="flex-end">
+              <Button onClick={() => setTaskOpen(false)} sx={{ color: ws.textDim, textTransform: 'none' }}>{t('cancel')}</Button>
+              <Button onClick={() => void createTask()} disabled={busyAction || !taskName.trim()} startIcon={busyAction ? <CircularProgress size={14} /> : <PlaylistAddCheck sx={{ fontSize: 16 }} />}
+                variant="contained" sx={{ bgcolor: ws.accent, color: ws.accentContrast, fontWeight: 700, textTransform: 'none', '&:hover': { bgcolor: ws.accentHover } }}>{t('taskCreate')}</Button>
+            </Stack>
+          </Stack>
+        </DialogContent>
+      </Dialog>
+
+      {/* Referanse-picker */}
+      <Dialog open={refOpen} onClose={() => setRefOpen(false)} fullWidth maxWidth="xs" PaperProps={{ sx: { bgcolor: ws.panelSolid, color: ws.text, border: `1px solid ${ws.border}` } }}>
+        <DialogTitle sx={{ fontWeight: 800, fontSize: 15 }}>{t('refPick')}</DialogTitle>
+        <DialogContent>
+          <Tabs value={refTab} onChange={(_, v) => setRefTab(v)} variant="fullWidth" sx={{ mb: 1, minHeight: 36, '& .MuiTab-root': { textTransform: 'none', fontWeight: 700, fontSize: 12, minHeight: 36, color: ws.textDim }, '& .Mui-selected': { color: `${ws.accent} !important` }, '& .MuiTabs-indicator': { bgcolor: ws.accent } }}>
+            <Tab label={`${t('refSongs')} (${refData.tracks.length})`} />
+            <Tab label={`${t('refDeliverables')} (${refData.deliverables.length})`} />
+            <Tab label={`${t('refSessions')} (${refData.sessions.length})`} />
+          </Tabs>
+          {refLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress size={20} sx={{ color: ws.accent }} /></Box>
+          ) : (
+            <Stack spacing={0.25} sx={{ maxHeight: 300, overflowY: 'auto' }}>
+              {refTab === 0 && refData.tracks.map((tr) => (
+                <ListItemButton key={tr.id} onClick={() => void pickReference('track', tr.id, tr.title)} sx={{ borderRadius: 1.5 }}>
+                  <ListItemIcon sx={{ minWidth: 32 }}><MusicNote sx={{ fontSize: 17, color: ws.accent }} /></ListItemIcon>
+                  <ListItemText primary={tr.title} secondary={[tr.artist, tr.status].filter(Boolean).join(' · ')} primaryTypographyProps={{ sx: { fontSize: 13, color: ws.text } }} secondaryTypographyProps={{ sx: { fontSize: 11, color: ws.textDim } }} />
+                </ListItemButton>
+              ))}
+              {refTab === 1 && refData.deliverables.map((d) => (
+                <ListItemButton key={d.id} onClick={() => void pickReference('deliverable', d.id, d.title)} sx={{ borderRadius: 1.5 }}>
+                  <ListItemIcon sx={{ minWidth: 32 }}><MovieOutlined sx={{ fontSize: 17, color: '#f0abfc' }} /></ListItemIcon>
+                  <ListItemText primary={d.title} secondary={[d.type, d.status].filter(Boolean).join(' · ')} primaryTypographyProps={{ sx: { fontSize: 13, color: ws.text } }} secondaryTypographyProps={{ sx: { fontSize: 11, color: ws.textDim } }} />
+                </ListItemButton>
+              ))}
+              {refTab === 2 && refData.sessions.map((s) => (
+                <ListItemButton key={s.id} onClick={() => void pickReference('session', s.id, s.title || 'Økt')} sx={{ borderRadius: 1.5 }}>
+                  <ListItemIcon sx={{ minWidth: 32 }}><EventOutlined sx={{ fontSize: 17, color: '#a5b4fc' }} /></ListItemIcon>
+                  <ListItemText primary={s.title || 'Økt'} secondary={s.scheduledAt ? new Date(s.scheduledAt).toLocaleString(wsDateLocale(locale)) : ''} primaryTypographyProps={{ sx: { fontSize: 13, color: ws.text } }} secondaryTypographyProps={{ sx: { fontSize: 11, color: ws.textDim } }} />
+                </ListItemButton>
+              ))}
+              {((refTab === 0 && !refData.tracks.length) || (refTab === 1 && !refData.deliverables.length) || (refTab === 2 && !refData.sessions.length)) && (
+                <Typography sx={{ color: ws.textDim, fontSize: 12.5, py: 2, textAlign: 'center' }}>{t('refEmpty')}</Typography>
+              )}
+            </Stack>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Snackbar open={!!toast} autoHideDuration={3500} onClose={() => setToast('')} message={toast} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} />
     </Box>
   );
 };
