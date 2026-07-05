@@ -24,6 +24,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { ws, workspaceDarkTheme, workspaceCategoryFor } from './workspaceTheme';
 import { getProfessionDisplayName } from '@shared/profession-types';
 import ProjectCreationWithMemoryCards from '../project/ProjectCreationWithMemoryCards';
+import GettingStartedChecklist from '../onboarding/GettingStartedChecklist';
 
 const CATEGORY_LABEL = { visual: 'Foto & video', music: 'Musikk', service: 'Tjeneste', vendor: 'Leverandør' };
 
@@ -89,6 +90,17 @@ const WorkspaceHome: React.FC = () => {
               <IconButton onClick={() => { try { (logout as any)?.(); } catch { window.location.href = '/login'; } }} sx={{ color: ws.textDim }} aria-label="Logg ut"><Logout /></IconButton>
             </Stack>
           </Stack>
+
+          {/* «Kom i gang» — første skjerm etter innlogging. Onboarding-readiness
+              (profil/prosjekt/team/verktøy) rett på workspace-hjemmet. */}
+          <Box sx={{ mt: 3 }}>
+            <GettingStartedChecklist
+              userId={userId}
+              profession={profession}
+              userEmail={user?.email}
+              onNewProject={() => setShowCreate(true)}
+            />
+          </Box>
 
           <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mt: 3, mb: 2 }}>
             <Typography variant="h6" sx={{ fontWeight: 700 }}>Dine prosjekter</Typography>
