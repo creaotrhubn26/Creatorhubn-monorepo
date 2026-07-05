@@ -37,7 +37,7 @@ import MovieOutlined from '@mui/icons-material/MovieOutlined';
 import EventOutlined from '@mui/icons-material/EventOutlined';
 import PhotoLibraryOutlined from '@mui/icons-material/PhotoLibraryOutlined';
 import OpenInNew from '@mui/icons-material/OpenInNew';
-import { ListItemIcon, ListItemText, Dialog, DialogTitle, DialogContent, Tabs, Tab, ListItemButton, Snackbar, Button, FormControl, Select } from '@mui/material';
+import { ListItemIcon, ListItemText, Dialog, DialogTitle, DialogContent, Tabs, Tab, ListItemButton, Snackbar, Button, FormControl, Select, Checkbox, FormControlLabel } from '@mui/material';
 import { useLocation } from 'wouter';
 import { apiRequest, getAuthHeader, buildApiUrl } from '@/lib/queryClient';
 import { useAuth } from '@/hooks/useAuth';
@@ -94,6 +94,14 @@ const T: WsDict = {
   aAiSummarySub: { no: 'Hva er status / hva venter', en: 'Status / what is pending' },
   aAiDraft: { no: 'AI: foreslå melding', en: 'AI: draft a message' },
   aAiDraftSub: { no: 'Claude skriver et utkast i feltet', en: 'Claude drafts in the field' },
+  aMeeting: { no: 'Planlegg møte', en: 'Schedule a meeting' },
+  aMeetingVisual: { no: 'Planlegg opptaksdag', en: 'Schedule a shoot day' },
+  aMeetingService: { no: 'Ny booking', en: 'New booking' },
+  aMeetingSub: { no: 'Book tid + generer Google Meet → kort i tråden', en: 'Book time + generate Google Meet → card' },
+  meetTitleField: { no: 'Tittel', en: 'Title' },
+  genMeet: { no: 'Generer Google Meet-lenke', en: 'Generate Google Meet link' },
+  meetCreate: { no: 'Book & del', en: 'Book & share' },
+  joinMeet: { no: 'Bli med (Google Meet)', en: 'Join (Google Meet)' },
   // Forespørsel
   openRequest: { no: 'Åpen forespørsel', en: 'Open request' },
   resolved: { no: 'Løst', en: 'Resolved' },
@@ -184,6 +192,11 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
   const [refTab, setRefTab] = useState(0);
   const [refLoading, setRefLoading] = useState(false);
   const [refSources, setRefSources] = useState([]); // [{key,label,icon,kind,route,items}]
+  const [meetOpen, setMeetOpen] = useState(false);
+  const [meetTitle, setMeetTitle] = useState('');
+  const [meetDate, setMeetDate] = useState('');
+  const [meetTime, setMeetTime] = useState('14:00');
+  const [genMeet, setGenMeet] = useState(true);
 
   const scrollDown = () => requestAnimationFrame(() => endRef.current?.scrollIntoView({ behavior: 'smooth' }));
   // Er brukeren allerede nederst? Da (og bare da) auto-scroller vi ved nye
@@ -339,6 +352,18 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
     try { await postAction(t('uploadRequested'), { action: 'request_upload' }); }
     catch { setToast(t('sendFailed')); } finally { setBusyAction(false); }
   };
+  const createMeeting = async () => {
+    if (!meetDate) { setToast(t('sendFailed')); return; }
+    setBusyAction(true);
+    try {
+      const [h, mm] = (meetTime || '14:00').split(':');
+      const start = new Date(`${meetDate}T${(h || '14').padStart(2, '0')}:${(mm || '00').padStart(2, '0')}:00`);
+      const mt = await apiRequest(`/api/projects/${projectId}/meetings`, { method: 'POST', body: { title: meetTitle.trim() || t('aMeeting'), scheduledAt: start.toISOString(), durationMinutes: 60, generateMeet: genMeet } });
+      const when = start.toLocaleString(wsDateLocale(locale), { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
+      await postAction(`📅 ${mt?.title || meetTitle.trim()} · ${when}`, { action: 'meeting', refKind: 'meeting', refLabel: mt?.title || meetTitle.trim(), linkedEntityId: mt?.id, meetLink: mt?.meetLink || null });
+      setMeetOpen(false); setMeetTitle(''); setMeetDate('');
+    } catch (e) { setToast(e?.message || t('sendFailed')); } finally { setBusyAction(false); }
+  };
   // Cmd/Ctrl+K åpner Action.
   useEffect(() => {
     const onKey = (e) => { if ((e.metaKey || e.ctrlKey) && String(e.key).toLowerCase() === 'k') { e.preventDefault(); if (actionBtnRef.current) { setActionAnchor(actionBtnRef.current); setActionQuery(''); } } };
@@ -346,8 +371,12 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
     return () => window.removeEventListener('keydown', onKey);
   }, []);
   // Referanse-/oppgave-kort → naviger til riktig fane.
-  const REF_ROUTE = { track: 'laater', song: 'laater', media: 'media', deliverable: 'leveranser', session: 'sesjoner', oppgaver: 'oppgaver' };
-  const gotoRef = (refKind) => { const seg = REF_ROUTE[refKind] || 'oversikt'; navigate(`/workspace/${projectId}/${seg}`); };
+  const REF_ROUTE = { track: 'laater', song: 'laater', media: 'media', deliverable: 'leveranser', oppgaver: 'oppgaver' };
+  // Møter/økter havner i Sesjoner for musikk, ellers i Avtaler (crm_meetings).
+  const gotoRef = (refKind) => {
+    const seg = (refKind === 'session' || refKind === 'meeting') ? (category === 'music' ? 'sesjoner' : 'avtaler') : (REF_ROUTE[refKind] || 'oversikt');
+    navigate(`/workspace/${projectId}/${seg}`);
+  };
 
   // Åpne forespørsler (tag=Spørsmål, ikke løst) — «X ubesvart».
   const openRequests = useMemo(() => messages.filter((m) => m.tag === 'question' && m.metadata?.status !== 'resolved').length, [messages]);
@@ -401,6 +430,21 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
           sx={{ mt: 0.5, textTransform: 'none', fontWeight: 700, color: ws.accentContrast, bgcolor: ws.accent, '&:hover': { bgcolor: ws.accentHover }, borderRadius: 2 }}>{t('uploadHere')}</Button>
       );
     }
+    if (act === 'meeting') {
+      return (
+        <Stack spacing={0.5} sx={{ mt: 0.5 }} alignItems="flex-start">
+          <Box onClick={() => gotoRef('meeting')} sx={{ px: 1, py: 0.75, borderRadius: 2, cursor: 'pointer', bgcolor: ws.accentSoft, border: `1px solid ${ws.accentBorder}`, display: 'inline-flex', alignItems: 'center', gap: 0.75, maxWidth: '100%' }}>
+            <EventOutlined sx={{ fontSize: 15, color: ws.accent }} />
+            <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: ws.text, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{meta.refLabel}</Typography>
+            <OpenInNew sx={{ fontSize: 13, color: ws.textDim }} />
+          </Box>
+          {typeof meta.meetLink === 'string' && /^https:\/\/(meet\.google\.com|[\w-]+\.meet\.google\.com)\//i.test(meta.meetLink) && (
+            <Button component="a" href={meta.meetLink} target="_blank" rel="noopener" startIcon={<EventOutlined sx={{ fontSize: 15 }} />} size="small"
+              sx={{ textTransform: 'none', fontWeight: 700, color: ws.accentContrast, bgcolor: ws.green, '&:hover': { bgcolor: '#2bb673' }, borderRadius: 2 }}>{t('joinMeet')}</Button>
+          )}
+        </Stack>
+      );
+    }
     return null;
   };
   // Forespørsel-status (tag=Spørsmål): åpen med «Marker som løst», eller «Løst».
@@ -422,8 +466,10 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
   };
 
   const uploadLabel = category === 'music' ? t('aRequestUploadMusic') : category === 'visual' ? t('aRequestUploadVisual') : category === 'vendor' ? t('aRequestUploadVendor') : t('aRequestUpload');
+  const meetingLabel = category === 'visual' ? t('aMeetingVisual') : category === 'service' ? t('aMeetingService') : t('aMeeting');
   const ACTIONS = [
     { q: 'oppgave board task crew', icon: <PlaylistAddCheck sx={{ color: ws.green }} />, primary: t('aNewTask'), secondary: t('aNewTaskSub'), run: () => { setActionAnchor(null); setTaskOpen(true); } },
+    { q: 'mote booking opptaksdag avtale meet kalender', icon: <EventOutlined sx={{ color: '#a5b4fc' }} />, primary: meetingLabel, secondary: t('aMeetingSub'), run: () => { setActionAnchor(null); setMeetOpen(true); } },
     { q: 'referer lat media leveranse okt link', icon: <LinkIcon sx={{ color: ws.accent }} />, primary: t('aReference'), secondary: t('aReferenceSub'), run: () => void openRefPicker() },
     { q: 'opplasting fil vedlegg upload raw kildefil lyd', icon: <AttachFile sx={{ color: '#7dd3fc' }} />, primary: uploadLabel, secondary: t('aRequestUploadSub'), run: () => void requestUpload() },
     { q: 'ai oppsummer sammendrag summary', icon: <Summarize sx={{ color: '#22d3ee' }} />, primary: t('aAiSummary'), secondary: t('aAiSummarySub'), run: () => void runAi('summary') },
@@ -496,7 +542,7 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
                 {tagMeta && (
                   <Chip size="small" icon={tagMeta.icon} label={t(tagMeta.dictKey)} sx={{ mt: 0.4, height: 18, fontSize: 10, color: tagMeta.color, bgcolor: tagMeta.soft, '& .MuiChip-icon': { color: tagMeta.color } }} />
                 )}
-                {m.content && !(m.metadata?.action === 'reference' || m.metadata?.action === 'task') && (
+                {m.content && !['reference', 'task', 'meeting'].includes(m.metadata?.action) && (
                   <Box sx={{ mt: 0.25, px: 1.25, py: 0.75, borderRadius: 2, bgcolor: mine ? ws.accentSoft : 'rgba(255,255,255,0.05)', border: mine ? `1px solid ${ws.accentBorder}` : 'none', display: 'inline-block', maxWidth: '100%' }}>
                     <Typography sx={{ fontSize: 13, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{m.content}</Typography>
                   </Box>
@@ -671,6 +717,27 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
               )}
             </Stack>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Planlegg møte / booking */}
+      <Dialog open={meetOpen} onClose={() => setMeetOpen(false)} fullWidth maxWidth="xs" PaperProps={{ sx: { bgcolor: ws.panelSolid, color: ws.text, border: `1px solid ${ws.border}` } }}>
+        <DialogTitle sx={{ fontWeight: 800, fontSize: 15 }}>{meetingLabel}</DialogTitle>
+        <DialogContent>
+          <Stack spacing={1.25} sx={{ pt: 0.5 }}>
+            <TextField autoFocus value={meetTitle} onChange={(e) => setMeetTitle(e.target.value)} placeholder={t('meetTitleField')} size="small" fullWidth
+              inputProps={{ 'aria-label': t('meetTitleField') }} sx={{ '& .MuiOutlinedInput-root': { bgcolor: ws.panelInput, fontSize: 13 } }} />
+            <Stack direction="row" spacing={1}>
+              <TextField type="date" value={meetDate} onChange={(e) => setMeetDate(e.target.value)} size="small" fullWidth InputLabelProps={{ shrink: true }} inputProps={{ 'aria-label': 'Dato' }} sx={{ '& .MuiOutlinedInput-root': { bgcolor: ws.panelInput, fontSize: 13, color: ws.text } }} />
+              <TextField type="time" value={meetTime} onChange={(e) => setMeetTime(e.target.value)} size="small" fullWidth InputLabelProps={{ shrink: true }} inputProps={{ 'aria-label': 'Tid' }} sx={{ '& .MuiOutlinedInput-root': { bgcolor: ws.panelInput, fontSize: 13, color: ws.text } }} />
+            </Stack>
+            <FormControlLabel control={<Checkbox checked={genMeet} onChange={(e) => setGenMeet(e.target.checked)} size="small" sx={{ color: ws.textDim, '&.Mui-checked': { color: ws.accent } }} />} label={<Typography sx={{ fontSize: 12.5, color: ws.text }}>{t('genMeet')}</Typography>} />
+            <Stack direction="row" spacing={1} justifyContent="flex-end">
+              <Button onClick={() => setMeetOpen(false)} sx={{ color: ws.textDim, textTransform: 'none' }}>{t('cancel')}</Button>
+              <Button onClick={() => void createMeeting()} disabled={busyAction || !meetDate} startIcon={busyAction ? <CircularProgress size={14} /> : <EventOutlined sx={{ fontSize: 16 }} />}
+                variant="contained" sx={{ bgcolor: ws.accent, color: ws.accentContrast, fontWeight: 700, textTransform: 'none', '&:hover': { bgcolor: ws.accentHover } }}>{t('meetCreate')}</Button>
+            </Stack>
+          </Stack>
         </DialogContent>
       </Dialog>
 
