@@ -91,6 +91,74 @@ final class QASweepTests: XCTestCase {
         app.terminate()
     }
 
+    // MARK: - Leadbook: dyp-sveip over under-faner + header-modaler
+
+    /// Leadbook har 6 under-faner + 3 header-CTAer med egne modaler —
+    /// hoved-sveipet fanger bare landingssiden (Pondus). Dette sveiper alt.
+    func testLeadbookDeepSweep() throws {
+        let app = launchApp(tab: 6)
+        snap(app, "leadbook-0-landing")
+
+        let appW = app.frame.width
+        // Fullskjerm-kursspilleren (Pondus) dekker ALT hvis den åpnes ved
+        // et uhell — kjøring 4 mistet Eksempler/Innsikt + alle modaler
+        // fordi et drag-fallback landet som tap på et kurs-kort. Lukk
+        // defensivt før hvert steg.
+        func lukkEventuellSpiller() {
+            let lukk = app.buttons["Lukk"].firstMatch
+            if lukk.exists, lukk.frame.minY < 300, lukk.frame.minX >= 0 {
+                lukk.tap()
+                sleep(1)
+            }
+        }
+        // Under-fanene har stabile accessibility-ids («leadbook-subtab-…»)
+        // — label-CONTAINS traff kurs-kort og hoved-tab-baren i tidligere
+        // kjøringer. Off-screen faner hentes inn ved å sveipe SCROLLEREN
+        // (egen id), aldri finger-drag fra en knapp.
+        let scroller = app.scrollViews["leadbook-subtab-scroller"].firstMatch
+        func synligFane(_ navn: String) -> XCUIElement? {
+            let tab = app.buttons["leadbook-subtab-\(navn)"].firstMatch
+            guard tab.exists else { return nil }
+            let f = tab.frame
+            return (f.minX >= 0 && f.maxX <= appW) ? tab : nil
+        }
+        for (i, navn) in ["Oversikt", "Maler", "Pondus", "Akademi", "Eksempler", "Innsikt"].enumerated() {
+            lukkEventuellSpiller()
+            var tab = synligFane(navn)
+            var forsok = 0
+            while tab == nil, forsok < 3, scroller.exists {
+                scroller.swipeLeft()
+                sleep(1)
+                tab = synligFane(navn)
+                forsok += 1
+            }
+            if let tab {
+                tab.tap()
+                sleep(2)
+                snap(app, "leadbook-fane-\(i)-\(navn.lowercased())")
+            } else {
+                snap(app, "leadbook-fane-\(i)-\(navn.lowercased())-UTILGJENGELIG")
+            }
+        }
+
+        // Header-CTAer → modaler (lukkes med swipeDown)
+        for navn in ["Bibliotek", "Ytelse", "Versjoner"] {
+            lukkEventuellSpiller()
+            let cta = button(in: app, containing: navn)
+            if cta.waitForExistence(timeout: 3),
+               cta.frame.minX >= 0, cta.frame.maxX <= appW {
+                cta.tap()
+                sleep(2)
+                snap(app, "leadbook-modal-\(navn.lowercased())")
+                app.swipeDown()
+                sleep(1)
+            } else {
+                snap(app, "leadbook-modal-\(navn.lowercased())-UTILGJENGELIG")
+            }
+        }
+        app.terminate()
+    }
+
     // MARK: - Oversikt: pin-info-sheet via kart utilgjengelig for XCUITest
     // (Map-annotations er ikke accessibility-elementer) — dekkes manuelt.
 

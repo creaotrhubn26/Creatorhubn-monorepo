@@ -497,7 +497,13 @@ struct LeadbookExamplesView: View {
                     .font(.appScaled(size: 11, weight: .semibold))
                     .foregroundStyle(LBrand.textTertiary)
             }
-            HStack(alignment: .center, spacing: 18) {
+            // Leadbook-QA 2026-07-05 (iPhone): tittel + stats + CTA i én
+            // rad brakk tittelen bokstav-for-bokstav på 390pt — telefon
+            // stabler vertikalt.
+            let heroLayout = DeviceIdiom.isPhone
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12))
+                : AnyLayout(HStackLayout(alignment: .center, spacing: 18))
+            heroLayout {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Lær fra ekte salgssamtaler")
                         .font(.appScaled(size: 22, weight: .heavy))
@@ -505,7 +511,7 @@ struct LeadbookExamplesView: View {
                     Text("Hver case er transkribert, scoret og annotert med Apple Pencil. Tap en samtale for å spille av lyden, lese transkriptet og se hva som faktisk fungerte.")
                         .font(.appScaled(size: 12))
                         .foregroundStyle(LBrand.textSecondary)
-                        .lineLimit(2)
+                        .lineLimit(DeviceIdiom.isPhone ? 3 : 2)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 HStack(spacing: 10) {

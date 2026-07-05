@@ -149,13 +149,26 @@ struct TemplateLibraryModal: View {
 
     // MARK: Hero stats
 
+    // iPhone: fire tiles deler ikke compact width — etikettene brøt
+    // ord-for-ord vertikalt («ANTA LL MALE R»). Scrollbar rad med fast
+    // bredde i stedet; iPad beholder full-bredde-raden.
+    @ViewBuilder
     private var heroStats: some View {
-        HStack(spacing: 12) {
-            stat("ANTALL MALER", "\(LeadbookData.templates.count)", LBrand.purpleLight, "doc.on.doc.fill")
-            stat("AKTIVE", "\(LeadbookData.templates.filter { $0.status == .active }.count)", LBrand.green, "checkmark.seal.fill")
-            stat("BRUKT (90D)", "\(totalUsed)", LBrand.blue, "person.2.fill")
-            stat("GJ.SNITT KONV.", "\(Int(avgConversion * 100))%", LBrand.orange, "chart.line.uptrend.xyaxis")
+        if DeviceIdiom.isPhone {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) { statTiles }
+            }
+        } else {
+            HStack(spacing: 12) { statTiles }
         }
+    }
+
+    @ViewBuilder
+    private var statTiles: some View {
+        stat("ANTALL MALER", "\(LeadbookData.templates.count)", LBrand.purpleLight, "doc.on.doc.fill")
+        stat("AKTIVE", "\(LeadbookData.templates.filter { $0.status == .active }.count)", LBrand.green, "checkmark.seal.fill")
+        stat("BRUKT (90D)", "\(totalUsed)", LBrand.blue, "person.2.fill")
+        stat("GJ.SNITT KONV.", "\(Int(avgConversion * 100))%", LBrand.orange, "chart.line.uptrend.xyaxis")
     }
 
     private func stat(_ label: String, _ value: String, _ tint: Color, _ icon: String) -> some View {
@@ -164,11 +177,13 @@ struct TemplateLibraryModal: View {
                 Image(systemName: icon).font(.appScaled(size: 11, weight: .bold)).foregroundStyle(tint)
                 Text(label).font(.appScaled(size: 9, weight: .black))
                     .foregroundStyle(LBrand.textTertiary).tracking(0.6)
+                    .lineLimit(1).minimumScaleFactor(0.75)
             }
             Text(value).font(.appScaled(size: 22, weight: .heavy, design: .rounded))
                 .foregroundStyle(.white).lineLimit(1).minimumScaleFactor(0.6)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(width: DeviceIdiom.isPhone ? 168 : nil, alignment: .leading)
+        .frame(maxWidth: DeviceIdiom.isPhone ? nil : .infinity, alignment: .leading)
         .padding(14)
         .background(LBrand.card, in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(LBrand.stroke, lineWidth: 1))
@@ -882,11 +897,24 @@ struct SelectedLeadbookCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
+            // Leadbook-QA 2026-07-05 (iPhone): tittel + 4 knapper i én rad
+            // klemte knappene til vertikale ord-brekk («Imp orte r mal»)
+            // på 390pt. Telefon: tittel over, knappene i horisontal
+            // scroller med naturlig bredde. iPad/Mac: som før.
+            let headerLayout = DeviceIdiom.isPhone
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10))
+                : AnyLayout(HStackLayout())
+            let buttonRow = DeviceIdiom.isPhone
+                ? AnyLayout(HStackLayout(spacing: 8))
+                : AnyLayout(HStackLayout(spacing: 8))
+            headerLayout {
                 Text("Valgt Leadbook")
                     .font(.appScaled(size: 15, weight: .bold))
                     .foregroundStyle(.white)
-                Spacer()
+                    .fixedSize()
+                if !DeviceIdiom.isPhone { Spacer() }
+                ScrollView(.horizontal, showsIndicators: false) {
+                buttonRow {
                 // Sekundære: Importer mal + Ny mal + Ny innvending (kontekstuelt ved siden av Bruk mal)
                 Button { showImportTemplate = true } label: {
                     HStack(spacing: 5) {
@@ -944,6 +972,11 @@ struct SelectedLeadbookCard: View {
                     )
                 }
                 .buttonStyle(.plain)
+                }
+                }
+                // iPad: hug innholdet så knappene høyre-justeres etter
+                // Spacer; telefon: full bredde + scroll.
+                .fixedSize(horizontal: !DeviceIdiom.isPhone, vertical: true)
             }
             .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 13)
 
@@ -1358,13 +1391,26 @@ struct PerformanceModal: View {
         .onAppear { range = initialRange }
     }
 
+    // iPhone: tiles i scrollbar rad m/ fast bredde — fire tiles i full-
+    // bredde-HStack brøt etikettene ord-for-ord og skjøv hele arket
+    // utenfor skjermen på compact width.
+    @ViewBuilder
     private var summaryRow: some View {
-        HStack(spacing: 12) {
-            summaryTile(label: "GJ.SNITT RESPONS", value: "\(Int(avgResponse * 100))%", tint: LBrand.purpleLight, icon: "arrow.uturn.left.circle.fill")
-            summaryTile(label: "GJ.SNITT KONVERTERING", value: "\(Int(avgConversion * 100))%", tint: LBrand.green, icon: "checkmark.circle.fill")
-            summaryTile(label: "AKTIVE MALER", value: "\(rows.count)", tint: LBrand.blue, icon: "doc.on.doc.fill")
-            summaryTile(label: "PERIODE", value: range, tint: LBrand.orange, icon: "calendar")
+        if DeviceIdiom.isPhone {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) { summaryTiles }
+            }
+        } else {
+            HStack(spacing: 12) { summaryTiles }
         }
+    }
+
+    @ViewBuilder
+    private var summaryTiles: some View {
+        summaryTile(label: "GJ.SNITT RESPONS", value: "\(Int(avgResponse * 100))%", tint: LBrand.purpleLight, icon: "arrow.uturn.left.circle.fill")
+        summaryTile(label: "GJ.SNITT KONVERTERING", value: "\(Int(avgConversion * 100))%", tint: LBrand.green, icon: "checkmark.circle.fill")
+        summaryTile(label: "AKTIVE MALER", value: "\(rows.count)", tint: LBrand.blue, icon: "doc.on.doc.fill")
+        summaryTile(label: "PERIODE", value: range, tint: LBrand.orange, icon: "calendar")
     }
 
     private func summaryTile(label: String, value: String, tint: Color, icon: String) -> some View {
@@ -1375,6 +1421,7 @@ struct PerformanceModal: View {
                     .foregroundStyle(tint)
                 Text(label).font(.appScaled(size: 9, weight: .black))
                     .foregroundStyle(LBrand.textTertiary).tracking(0.6)
+                    .lineLimit(1).minimumScaleFactor(0.7)
             }
             Text(value)
                 .font(.appScaled(size: 18, weight: .heavy, design: .rounded))
@@ -1382,14 +1429,20 @@ struct PerformanceModal: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.65)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(width: DeviceIdiom.isPhone ? 176 : nil, alignment: .leading)
+        .frame(maxWidth: DeviceIdiom.isPhone ? nil : .infinity, alignment: .leading)
         .padding(12)
         .background(LBrand.card, in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(LBrand.stroke, lineWidth: 1))
     }
 
     private var filterBar: some View {
-        HStack(spacing: 10) {
+        // iPhone: søk + to menyer får ikke plass på én rad — stable
+        // vertikalt (søk over menyene) i stedet for å presse bredden.
+        let layout = DeviceIdiom.isPhone
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10))
+            : AnyLayout(HStackLayout(spacing: 10))
+        return layout {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(LBrand.textTertiary)
@@ -1400,6 +1453,7 @@ struct PerformanceModal: View {
             .frame(maxWidth: .infinity)
             .background(LBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
             .overlay(RoundedRectangle(cornerRadius: 10).stroke(LBrand.stroke, lineWidth: 1))
+            HStack(spacing: 10) {
             Menu {
                 ForEach(SortField.allCases) { f in
                     Button(f.rawValue) { sort = f }
@@ -1431,14 +1485,21 @@ struct PerformanceModal: View {
                 .background(LBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(LBrand.stroke, lineWidth: 1))
             }
+            }
         }
     }
+
+    // 200pt-kolonnene ×2 er bredere enn en hel iPhone (418pt min) og
+    // skjøv hele arket utenfor skjermen — smalere bars på compact width.
+    private var perfColW: CGFloat { DeviceIdiom.isPhone ? 105 : 200 }
 
     private var tableHeader: some View {
         HStack(spacing: 0) {
             Text("MAL").frame(maxWidth: .infinity, alignment: .leading)
-            Text("RESPONS-RATE").frame(width: 200, alignment: .leading)
-            Text("KONVERTERING").frame(width: 200, alignment: .leading)
+            Text(DeviceIdiom.isPhone ? "RESPONS" : "RESPONS-RATE")
+                .frame(width: perfColW, alignment: .leading)
+            Text(DeviceIdiom.isPhone ? "KONV." : "KONVERTERING")
+                .frame(width: perfColW, alignment: .leading)
             Text("").frame(width: 18)
         }
         .font(.appScaled(size: 9, weight: .black))
@@ -1468,7 +1529,7 @@ struct PerformanceModal: View {
                     .monospacedDigit()
                     .frame(width: 40, alignment: .trailing)
             }
-            .frame(width: 200)
+            .frame(width: perfColW)
             HStack(spacing: 8) {
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
@@ -1483,7 +1544,7 @@ struct PerformanceModal: View {
                     .monospacedDigit()
                     .frame(width: 40, alignment: .trailing)
             }
-            .frame(width: 200)
+            .frame(width: perfColW)
             Image(systemName: "chevron.right")
                 .font(.appScaled(size: 10, weight: .bold))
                 .foregroundStyle(LBrand.textTertiary)
@@ -1680,14 +1741,26 @@ struct VersionsModal: View {
         }
     }
 
+    // iPhone: scrollbar tile-rad — full-bredde-HStack brøt etikettene
+    // ord-for-ord vertikalt («VENTE R GODKJ ENNIN G») på compact width.
+    @ViewBuilder
     private var summaryRow: some View {
-        HStack(spacing: 12) {
-            summaryTile("VENTER GODKJENNING", "\(pendingCount)", LBrand.orange, "clock.fill")
-            summaryTile("GODKJENT", "\(approvedCount)", LBrand.green, "checkmark.seal.fill")
-            summaryTile("TOTALT VERSJONER", "\(LeadbookData.versions.count)", LBrand.purpleLight, "doc.on.doc.fill")
-            // Mock-dato KUN i demo — ellers ærlig strek (ingen versjons-backend).
-            summaryTile("SISTE ENDRING", LeadbookData.versions.isEmpty ? "—" : "20.05", LBrand.blue, "calendar")
+        if DeviceIdiom.isPhone {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) { summaryTiles }
+            }
+        } else {
+            HStack(spacing: 12) { summaryTiles }
         }
+    }
+
+    @ViewBuilder
+    private var summaryTiles: some View {
+        summaryTile("VENTER GODKJENNING", "\(pendingCount)", LBrand.orange, "clock.fill")
+        summaryTile("GODKJENT", "\(approvedCount)", LBrand.green, "checkmark.seal.fill")
+        summaryTile("TOTALT VERSJONER", "\(LeadbookData.versions.count)", LBrand.purpleLight, "doc.on.doc.fill")
+        // Mock-dato KUN i demo — ellers ærlig strek (ingen versjons-backend).
+        summaryTile("SISTE ENDRING", LeadbookData.versions.isEmpty ? "—" : "20.05", LBrand.blue, "calendar")
     }
 
     private func summaryTile(_ label: String, _ value: String, _ tint: Color, _ icon: String) -> some View {
@@ -1696,12 +1769,14 @@ struct VersionsModal: View {
                 Image(systemName: icon).font(.appScaled(size: 11, weight: .bold)).foregroundStyle(tint)
                 Text(label).font(.appScaled(size: 9, weight: .black))
                     .foregroundStyle(LBrand.textTertiary).tracking(0.6)
+                    .lineLimit(1).minimumScaleFactor(0.7)
             }
             Text(value).font(.appScaled(size: 20, weight: .heavy, design: .rounded))
                 .foregroundStyle(.white)
                 .lineLimit(1).minimumScaleFactor(0.7)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(width: DeviceIdiom.isPhone ? 176 : nil, alignment: .leading)
+        .frame(maxWidth: DeviceIdiom.isPhone ? nil : .infinity, alignment: .leading)
         .padding(12)
         .background(LBrand.card, in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(LBrand.stroke, lineWidth: 1))
