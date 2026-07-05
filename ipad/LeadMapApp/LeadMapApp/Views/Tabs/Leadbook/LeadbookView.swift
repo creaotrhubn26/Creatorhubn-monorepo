@@ -332,7 +332,9 @@ struct LeadbookView: View {
                             case .innsikt:   LeadbookInnsiktView().gated(.leadbookInnsikt)
                             }
                         }
-                        Color.clear.frame(height: 20)
+                        // Telefon: den flytende tab-baren overlapper de
+                        // siste ~100pt — innhold lakk bak den (QA 2026-07-05).
+                        Color.clear.frame(height: DeviceIdiom.isPhone ? 110 : 20)
                     }
                     .padding(.horizontal, 20).padding(.top, 14)
                 }
@@ -610,6 +612,9 @@ struct LeadbookView: View {
                     }
                 }
                 .buttonStyle(.plain)
+                // Stabil id for QA-harnessen — label-CONTAINS-søk traff
+                // kurs-kort («…Pondus…») og åpnet fullskjerm-spilleren.
+                .accessibilityIdentifier("leadbook-subtab-\(tab.label)")
             }
         }
     }
@@ -625,6 +630,7 @@ struct LeadbookView: View {
                 subTabButtons
                     .padding(.horizontal, 20)
             }
+            .accessibilityIdentifier("leadbook-subtab-scroller")
             .padding(.horizontal, -20)
             .background(
                 Rectangle().fill(LBrand.stroke).frame(height: 1),

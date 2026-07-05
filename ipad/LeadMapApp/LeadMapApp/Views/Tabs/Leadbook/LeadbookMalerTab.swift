@@ -126,7 +126,13 @@ struct LeadbookMalerView: View {
     // MARK: Header
 
     private var malerHeader: some View {
-        HStack(alignment: .top, spacing: 14) {
+        // Leadbook-QA 2026-07-05 (iPhone): tittel + 3 knapper i én rad
+        // klemte knappene til bokstavsøyler — telefon stabler og legger
+        // knappene i horisontal scroller.
+        let layout = DeviceIdiom.isPhone
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12))
+            : AnyLayout(HStackLayout(alignment: .top, spacing: 14))
+        return layout {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 9) {
                     Text("Leadbook — Maler")
@@ -143,7 +149,8 @@ struct LeadbookMalerView: View {
                     .foregroundStyle(LBrand.textSecondary)
                     .lineLimit(2)
             }
-            Spacer(minLength: 12)
+            if !DeviceIdiom.isPhone { Spacer(minLength: 12) }
+            ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 Button { showImport = true; flashToast("Importer-modal kommer") } label: {
                     HStack(spacing: 5) {
@@ -180,6 +187,8 @@ struct LeadbookMalerView: View {
                     .shadow(color: LBrand.purple.opacity(0.45), radius: 6, y: 2)
                 }.buttonStyle(.plain)
             }
+            }
+            .fixedSize(horizontal: !DeviceIdiom.isPhone, vertical: true)
         }
     }
 
@@ -224,14 +233,32 @@ struct LeadbookMalerView: View {
 
     // MARK: Hero stats
 
+    // Leadbook-QA 2026-07-05 (iPhone): 5 kort m/ fixedSize-labels tvang
+    // ~700pt bredde → HELE Maler-siden (og søsken-radene i LeadbookView)
+    // ble sentrert utenfor skjermen. Telefon: horisontal scroller m/
+    // faste kort-bredder; iPad: som før.
+    @ViewBuilder
     private var heroStats: some View {
-        HStack(spacing: 12) {
-            stat("Antall maler", "\(LeadbookData.templates.count)", LBrand.purpleLight, "doc.on.doc.fill")
-            stat("Aktive", "\(activeCount)", LBrand.green, "checkmark.seal.fill")
-            stat("Høy ytelse", "\(highPerfCount)", LBrand.orange, "star.fill")
-            stat("Brukt 90 d", "\(totalUsed)", LBrand.blue, "person.2.fill")
-            stat("Gj. konv.", "\(Int(avgConversion * 100))%", LBrand.pink, "chart.line.uptrend.xyaxis")
+        if DeviceIdiom.isPhone {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    statCards
+                }
+            }
+        } else {
+            HStack(spacing: 12) {
+                statCards
+            }
         }
+    }
+
+    @ViewBuilder
+    private var statCards: some View {
+        stat("Antall maler", "\(LeadbookData.templates.count)", LBrand.purpleLight, "doc.on.doc.fill")
+        stat("Aktive", "\(activeCount)", LBrand.green, "checkmark.seal.fill")
+        stat("Høy ytelse", "\(highPerfCount)", LBrand.orange, "star.fill")
+        stat("Brukt 90 d", "\(totalUsed)", LBrand.blue, "person.2.fill")
+        stat("Gj. konv.", "\(Int(avgConversion * 100))%", LBrand.pink, "chart.line.uptrend.xyaxis")
     }
 
     private func stat(_ label: String, _ value: String, _ tint: Color, _ icon: String) -> some View {
@@ -254,7 +281,9 @@ struct LeadbookMalerView: View {
             Spacer(minLength: 0)
         }
         .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        // Telefon (i scroller): fast kort-bredde; iPad: flex som før.
+        .frame(width: DeviceIdiom.isPhone ? 168 : nil)
+        .frame(maxWidth: DeviceIdiom.isPhone ? nil : .infinity, alignment: .leading)
         .background(LBrand.card, in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(LBrand.stroke, lineWidth: 1))
     }
