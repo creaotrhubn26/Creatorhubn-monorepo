@@ -242,6 +242,7 @@ const AudioReviewInvitePage = React.lazy(() => import('@/pages/audio-review-invi
 const AudioReviewSharedPage = React.lazy(() => import('@/pages/audio-review-shared'));
 const WarmupGuidePage = React.lazy(() => import('@/pages/warmup-guide'));
 const ChatGuidePage = React.lazy(() => import('@/pages/chat-guide'));
+const ChatActionsGuidePage = React.lazy(() => import('@/pages/chat-actions-guide'));
 // Wrapper components for route compatibility
 const AdminDashboardWrapper = (props: any) => <AdminDashboard {...props} />;
 const CompleteDeploymentManagerWrapper = (props: any) => <CompleteDeploymentManager {...props} />;
@@ -809,6 +810,7 @@ function App() {
                   <Route path="/audio-review/shared/:token" component={AudioReviewSharedPage as React.ComponentType<any>} />
                   <Route path="/guide/oppvarming" component={WarmupGuidePage as React.ComponentType<any>} />
                   <Route path="/guide/chat" component={ChatGuidePage as React.ComponentType<any>} />
+                  <Route path="/guide/actions" component={ChatActionsGuidePage as React.ComponentType<any>} />
                   <Route path="/audio-review/:projectId" component={AudioShowcasePage as React.ComponentType<any>} />
                   <Route path="/audio-review" component={AudioShowcasePage as React.ComponentType<any>} />
                   <Route

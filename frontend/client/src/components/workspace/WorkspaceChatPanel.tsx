@@ -65,6 +65,7 @@ const T: WsDict = {
   jumpToLatest: { no: 'Hopp til nyeste', en: 'Jump to latest' },
   refresh: { no: 'Oppdater', en: 'Refresh' },
   guide: { no: 'Hjelp / guide', en: 'Help / guide' },
+  actionsGuide: { no: 'Om handlinger', en: 'About actions' },
   pinFilterOn: { no: 'Vis kun viktige', en: 'Show important only' },
   pinFilterOff: { no: 'Vis alle meldinger', en: 'Show all messages' },
   send: { no: 'Send melding', en: 'Send message' },
@@ -694,6 +695,7 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
         <MenuItem onClick={() => { setMoreAnchor(null); scrollDown(); }} sx={{ gap: 1, fontSize: 13 }}><KeyboardArrowDown sx={{ fontSize: 18 }} /> {t('jumpToLatest')}</MenuItem>
         <MenuItem onClick={() => { setMoreAnchor(null); load(false); }} sx={{ gap: 1, fontSize: 13 }}><Refresh sx={{ fontSize: 18 }} /> {t('refresh')}</MenuItem>
         <MenuItem component="a" href="/guide/chat" target="_blank" rel="noopener" onClick={() => setMoreAnchor(null)} sx={{ gap: 1, fontSize: 13 }}><HelpOutlineIcon sx={{ fontSize: 18 }} /> {t('guide')}</MenuItem>
+        <MenuItem component="a" href="/guide/actions" target="_blank" rel="noopener" onClick={() => setMoreAnchor(null)} sx={{ gap: 1, fontSize: 13 }}><AutoAwesome sx={{ fontSize: 18 }} /> {t('actionsGuide')}</MenuItem>
       </Menu>
 
       {/* Action-launcher */}
