@@ -19,33 +19,33 @@ export interface CrewRoleDef {
   key: string;
   label: string;    // nb
   labelEn: string;
-  icon: string;     // emoji (brukes i board-kolonner)
+  icon: string;     // MUI-ikonnavn (mappes via crewIcons.tsx i frontend)
   tone: 'accent' | 'green' | 'blue' | 'amber' | 'neutral';
 }
 
 export const CREW_ROLE_CATALOG: CrewRoleDef[] = [
   // Visuell (foto/video)
-  { key: 'fotograf', label: 'Fotograf', labelEn: 'Photographer', icon: '📷', tone: 'accent' },
-  { key: 'videograf', label: 'Videograf', labelEn: 'Videographer', icon: '🎥', tone: 'green' },
-  { key: 'begge', label: 'Begge', labelEn: 'Both', icon: '👥', tone: 'accent' },
-  { key: 'editor', label: 'Editor', labelEn: 'Editor', icon: '🎬', tone: 'blue' },
+  { key: 'fotograf', label: 'Fotograf', labelEn: 'Photographer', icon: 'PhotoCamera', tone: 'accent' },
+  { key: 'videograf', label: 'Videograf', labelEn: 'Videographer', icon: 'Videocam', tone: 'green' },
+  { key: 'begge', label: 'Begge', labelEn: 'Both', icon: 'Groups', tone: 'accent' },
+  { key: 'editor', label: 'Editor', labelEn: 'Editor', icon: 'Movie', tone: 'blue' },
   // Musikk
-  { key: 'produsent', label: 'Produsent', labelEn: 'Producer', icon: '🎹', tone: 'accent' },
-  { key: 'vokal', label: 'Vokal', labelEn: 'Vocals', icon: '🎤', tone: 'green' },
-  { key: 'musikere', label: 'Musikere', labelEn: 'Musicians', icon: '🎸', tone: 'amber' },
-  { key: 'miks', label: 'Miks', labelEn: 'Mix', icon: '🎚️', tone: 'blue' },
+  { key: 'produsent', label: 'Produsent', labelEn: 'Producer', icon: 'Piano', tone: 'accent' },
+  { key: 'vokal', label: 'Vokal', labelEn: 'Vocals', icon: 'Mic', tone: 'green' },
+  { key: 'musikere', label: 'Musikere', labelEn: 'Musicians', icon: 'MusicNote', tone: 'amber' },
+  { key: 'miks', label: 'Miks', labelEn: 'Mix', icon: 'Tune', tone: 'blue' },
   // Vendor (ordre/leveranse)
-  { key: 'bestilling', label: 'Bestilling', labelEn: 'Orders', icon: '🧾', tone: 'accent' },
-  { key: 'klargjoring', label: 'Klargjøring', labelEn: 'Preparation', icon: '📦', tone: 'green' },
-  { key: 'levering', label: 'Levering', labelEn: 'Delivery', icon: '🚚', tone: 'amber' },
-  { key: 'oppfolging', label: 'Oppfølging', labelEn: 'Follow-up', icon: '📞', tone: 'blue' },
+  { key: 'bestilling', label: 'Bestilling', labelEn: 'Orders', icon: 'ReceiptLong', tone: 'accent' },
+  { key: 'klargjoring', label: 'Klargjøring', labelEn: 'Preparation', icon: 'Inventory2', tone: 'green' },
+  { key: 'levering', label: 'Levering', labelEn: 'Delivery', icon: 'LocalShipping', tone: 'amber' },
+  { key: 'oppfolging', label: 'Oppfølging', labelEn: 'Follow-up', icon: 'Call', tone: 'blue' },
   // Service (booking-baserte)
-  { key: 'booking', label: 'Booking', labelEn: 'Booking', icon: '📅', tone: 'accent' },
-  { key: 'forberedelse', label: 'Forberedelse', labelEn: 'Preparation', icon: '🧴', tone: 'green' },
-  { key: 'gjennomforing', label: 'Gjennomføring', labelEn: 'Execution', icon: '✂️', tone: 'amber' },
+  { key: 'booking', label: 'Booking', labelEn: 'Booking', icon: 'CalendarMonth', tone: 'accent' },
+  { key: 'forberedelse', label: 'Forberedelse', labelEn: 'Preparation', icon: 'Spa', tone: 'green' },
+  { key: 'gjennomforing', label: 'Gjennomføring', labelEn: 'Execution', icon: 'ContentCut', tone: 'amber' },
   // Generelle (alle kategorier)
-  { key: 'lyd', label: 'Lydtekniker', labelEn: 'Sound engineer', icon: '🎙️', tone: 'amber' },
-  { key: 'assistent', label: 'Assistent', labelEn: 'Assistant', icon: '🧰', tone: 'neutral' },
+  { key: 'lyd', label: 'Lydtekniker', labelEn: 'Sound engineer', icon: 'SettingsVoice', tone: 'amber' },
+  { key: 'assistent', label: 'Assistent', labelEn: 'Assistant', icon: 'Handyman', tone: 'neutral' },
 ];
 
 const BY_KEY: Record<string, CrewRoleDef> = Object.fromEntries(CREW_ROLE_CATALOG.map((r) => [r.key, r]));
@@ -64,7 +64,7 @@ export const CATEGORY_DEFAULT_CREW: Record<WorkspaceCategory, { keys: string[]; 
 /** Slå opp rolle-definisjon; ukjent nøkkel → generisk (nøkkel kapitalisert). */
 export function crewRoleDef(key: string): CrewRoleDef {
   const k = String(key || '').trim();
-  return BY_KEY[k] || { key: k, label: k ? k[0].toUpperCase() + k.slice(1) : 'Medlem', labelEn: k ? k[0].toUpperCase() + k.slice(1) : 'Member', icon: '👤', tone: 'neutral' };
+  return BY_KEY[k] || { key: k, label: k ? k[0].toUpperCase() + k.slice(1) : 'Medlem', labelEn: k ? k[0].toUpperCase() + k.slice(1) : 'Member', icon: 'Person', tone: 'neutral' };
 }
 
 export function crewRoleLabel(key: string, locale: 'no' | 'en' = 'no'): string {

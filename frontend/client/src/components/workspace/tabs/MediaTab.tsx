@@ -13,6 +13,7 @@ import AutoAwesomeMotion from '@mui/icons-material/AutoAwesomeMotion';
 import Close from '@mui/icons-material/Close';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
+import { wsIcon } from '../crewIcons';
 import { WsCard, WsTag, WsImageGrid, WsModal } from '../ui';
 import AiBuyCreditsModal from '../AiBuyCreditsModal';
 import { useProjectImages } from '../useProjectImages';
@@ -238,7 +239,7 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           <Stack spacing={0.25}>
             {folderList.map(([n, id]) => (
               <Stack key={id || n} direction="row" alignItems="center" sx={{ px: 1, py: 0.5, borderRadius: 1, '&:hover .delf': { opacity: 1 } }}>
-                <Typography sx={{ fontSize: 12.5, flex: 1, color: ws.textDim }}>📁 {n}</Typography>
+                <Typography sx={{ fontSize: 12.5, flex: 1, color: ws.textDim, display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>{wsIcon('Folder', { fontSize: 14 })}{n}</Typography>
                 {id && <IconButton className="delf" size="small" onClick={() => delFolder(id)} sx={{ opacity: 0, color: ws.textFaint, p: 0.1 }}><Close sx={{ fontSize: 13 }} /></IconButton>}
               </Stack>
             ))}
@@ -307,7 +308,7 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
               </Stack>
               {det.flaggedForClient && <><Typography sx={{ fontSize: 11.5, fontWeight: 700, color: ws.textFaint, mt: 1.5, mb: 0.5 }}>LABELS</Typography><Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}><WsTag label="Highlights" tone="amber" /></Stack></>}
               {det.previewUrl && <Button fullWidth size="small" variant="contained" onClick={() => window.open(det.previewUrl, '_blank')} sx={{ mt: 1.5, bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>{t('openDownload')}</Button>}
-              {isReal && det.id && <Button fullWidth size="small" variant="outlined" disabled={enhancing} onClick={() => triggerEnhance([det.id])} startIcon={<Typography sx={{ fontSize: 13 }}>✨</Typography>} sx={{ mt: 1, color: ws.accent, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 600, '&:hover': { borderColor: ws.accent, bgcolor: ws.accentSoft } }}>{enhancing ? t('sending') : t('sendToEnhance')}</Button>}
+              {isReal && det.id && <Button fullWidth size="small" variant="outlined" disabled={enhancing} onClick={() => triggerEnhance([det.id])} startIcon={wsIcon('AutoAwesome', { fontSize: 15 })} sx={{ mt: 1, color: ws.accent, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 600, '&:hover': { borderColor: ws.accent, bgcolor: ws.accentSoft } }}>{enhancing ? t('sending') : t('sendToEnhance')}</Button>}
             </WsCard>
           );
         })()}
@@ -321,7 +322,7 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           return (
             <WsCard sx={{ mt: 2 }}>
               <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 1 }}>
-                <Typography sx={{ fontSize: 14 }}>🤖</Typography>
+                {wsIcon('SmartToy', { fontSize: 15, color: ws.textDim })}
                 <Typography sx={{ fontSize: 13, fontWeight: 700 }}>{t('aiCullTitle')}</Typography>
                 <Box sx={{ flex: 1 }} />
                 <Typography sx={{ fontSize: 10.5, color: ws.textFaint }}>{tot} {t('imagesWord')}</Typography>
@@ -362,7 +363,7 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           return (
             <WsCard sx={{ mt: 2 }}>
               <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 1 }}>
-                <Typography sx={{ fontSize: 14 }}>✨</Typography>
+                {wsIcon('AutoAwesome', { fontSize: 15, color: ws.accent })}
                 <Typography sx={{ fontSize: 13, fontWeight: 700 }}>{t('aiEnhanceTitle')}</Typography>
                 <Box sx={{ flex: 1 }} />
                 <Typography sx={{ fontSize: 10.5, color: ws.green, fontWeight: 700 }}>{s.done || 0}/{s.total || 0} {t('doneWord')}</Typography>
@@ -376,7 +377,7 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
                   <Stack key={j.id} direction="row" spacing={1} alignItems="center" onClick={() => { if (canCompare) { setBaPos(50); setBeforeAfter(j); } }} sx={{ p: 0.65, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.panelAlt, cursor: canCompare ? 'pointer' : 'default', '&:hover': canCompare ? { bgcolor: 'rgba(255,255,255,0.06)' } : undefined }}>
                     {(j.thumbUrl || j.enhancedUrl)
                       ? <Box sx={{ width: 26, height: 26, borderRadius: 0.75, background: `center/cover no-repeat url(${j.thumbUrl || j.enhancedUrl})`, flexShrink: 0 }} />
-                      : <Box sx={{ width: 26, height: 26, borderRadius: 0.75, bgcolor: 'rgba(255,255,255,0.06)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12 }}>✨</Box>}
+                      : <Box sx={{ width: 26, height: 26, borderRadius: 0.75, bgcolor: 'rgba(255,255,255,0.06)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: ws.accent }}>{wsIcon('AutoAwesome', { fontSize: 15 })}</Box>}
                     <Box sx={{ minWidth: 0, flex: 1 }}>
                       <Typography noWrap sx={{ fontSize: 11, fontWeight: 600 }}>{j.photoId || j.id}{canCompare && <Typography component="span" sx={{ fontSize: 9.5, color: ws.accent, ml: 0.5 }}>{t('beforeAfterShort')} ›</Typography>}</Typography>
                       <Typography sx={{ fontSize: 10, color: ws.textFaint }}>{j.model || 'AI'}{j.processingMs ? ` · ${(j.processingMs / 1000).toFixed(1)}s` : ''}</Typography>
@@ -394,7 +395,7 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         {(isReal ? voiceNotes.length > 0 : true) && (
           <WsCard sx={{ mt: 2 }}>
             <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 1 }}>
-              <Typography sx={{ fontSize: 14 }}>🎙️</Typography>
+              {wsIcon('SettingsVoice', { fontSize: 15, color: ws.textDim })}
               <Typography sx={{ fontSize: 13, fontWeight: 700 }}>{t('voiceNotesTitle')}</Typography>
               <Box sx={{ flex: 1 }} />
               <Typography sx={{ fontSize: 11, color: ws.textFaint }}>{isReal ? voiceNotes.length : 2} {t('fromPhotographer')}</Typography>
@@ -408,7 +409,7 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
                   <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
                     {n.thumbUrl
                       ? <Box sx={{ width: 28, height: 28, borderRadius: 1, background: `center/cover no-repeat url(${n.thumbUrl})`, flexShrink: 0 }} />
-                      : <Box sx={{ width: 28, height: 28, borderRadius: 1, bgcolor: 'rgba(255,255,255,0.06)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13 }}>🖼️</Box>}
+                      : <Box sx={{ width: 28, height: 28, borderRadius: 1, bgcolor: 'rgba(255,255,255,0.06)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: ws.textDim }}>{wsIcon('Image', { fontSize: 15 })}</Box>}
                     <Box sx={{ minWidth: 0, flex: 1 }}>
                       <Typography noWrap sx={{ fontSize: 11.5, fontWeight: 600 }}>{n.filename || t('image')}</Typography>
                       <Typography sx={{ fontSize: 10, color: ws.textFaint }}>{n.durationSeconds ? `${n.durationSeconds}s` : ''} {t('voiceNoteWord')}</Typography>

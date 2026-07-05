@@ -19,6 +19,7 @@ import CheckCircle from '@mui/icons-material/CheckCircle';
 import NotificationsActive from '@mui/icons-material/NotificationsActive';
 import Send from '@mui/icons-material/Send';
 import { ws } from '../workspaceTheme';
+import { wsIcon } from '../crewIcons';
 import { WsCard, WsSectionTitle, WsRing, WsPills, WsTag, WsTable, WsImageGrid } from '../ui';
 import { useProjectImages } from '../useProjectImages';
 
@@ -112,7 +113,7 @@ const ProduksjonskartTab: React.FC<{ projectId: string }> = ({ projectId }) => {
             <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}><Cloud sx={{ fontSize: 18, color: ws.accent }} /><Typography sx={{ fontSize: 13, fontWeight: 700 }}>Vær & logistikk</Typography></Stack>
             <Typography sx={{ fontSize: 22, fontWeight: 800 }}>17 °C</Typography>
             <Typography sx={{ fontSize: 12, color: ws.textDim }}>Delvis skyet</Typography>
-            <Typography sx={{ fontSize: 11.5, color: ws.textFaint, mt: 0.5 }}>☀ Solnedgang 21:42</Typography>
+            <Typography sx={{ fontSize: 11.5, color: ws.textFaint, mt: 0.5, display: 'inline-flex', alignItems: 'center', gap: 0.4 }}>{wsIcon('WbSunny', { fontSize: 13 })}Solnedgang 21:42</Typography>
           </WsCard>
           <WsCard pad={1.75}>
             <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}><Sync sx={{ fontSize: 18, color: ws.accent }} /><Typography sx={{ fontSize: 13, fontWeight: 700 }}>Team Sync</Typography></Stack>
