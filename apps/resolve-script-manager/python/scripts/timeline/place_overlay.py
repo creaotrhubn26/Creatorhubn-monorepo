@@ -117,7 +117,14 @@ def run(params: dict[str, Any], dry_run: bool) -> None:
         }
         if o["durationSec"] > 0:
             clip["startFrame"] = 0
-            clip["endFrame"] = max(1, int(round(o["durationSec"] * src_fps)) - 1)
+            want_end = max(1, int(round(o["durationSec"] * src_fps)) - 1)
+            # Render clamper til maks 600 frames — be ALDRI om flere frames enn
+            # kilden faktisk har, ellers klamper Resolve og klippet blir feil lengde.
+            try:
+                src_frames = int(item.GetClipProperty("Frames") or 0)
+            except Exception:  # noqa: BLE001
+                src_frames = 0
+            clip["endFrame"] = min(want_end, src_frames - 1) if src_frames > 1 else want_end
         try:
             res = media_pool.AppendToTimeline([clip])
             if res:

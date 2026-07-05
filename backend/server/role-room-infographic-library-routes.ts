@@ -87,7 +87,7 @@ export function registerRoleRoomInfographicLibraryRoutes(app: Express, deps: Dep
     try {
       const { rows } = await pool.query(
         `SELECT id, author_name, name, preview_tpl_id, created_by,
-                snapshot->'scenes'->0->'values' AS preview_values,
+                COALESCE(snapshot->'previewValues', snapshot->'scenes'->0->'values') AS preview_values,
                 snapshot->>'accent'            AS accent,
                 COALESCE(jsonb_array_length(snapshot->'scenes'), 0)::int AS scene_count,
                 EXTRACT(EPOCH FROM updated_at) * 1000 AS updated_ms

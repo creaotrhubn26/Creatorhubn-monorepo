@@ -853,12 +853,15 @@ export function InfographicStudioView(
   /** Lagre gjeldende studio-tilstand som gjenbrukbar infographic i biblioteket. */
   const saveCurrentToLibrary = () => {
     const name = libName.trim() || `${project?.name || 'Infographic'} · ${scenes.length} scene(r)`;
+    const tpl0 = INFOGRAPHIC_TEMPLATES.find((x) => x.id === scenes[0]?.tplId) || INFOGRAPHIC_TEMPLATES[0];
     const saved = saveInfographic({
       name, fromProject: project?.name,
       scenes: scenes.map((s) => ({ ...s })), accent, logo, dataText, palette, liveUrl,
-      // Miniatyren rendrer FØRSTE scene (scenes[0].values) → previewTplId MÅ også
-      // være scene 0s mal, ellers vises scene 0s tall oppå en annen scenes mal.
+      // Miniatyren rendrer FØRSTE scene → previewTplId MÅ være scene 0s mal, og
+      // previewValues = de BINDING-OPPLØSTE verdiene (fieldVals) så kortet viser de
+      // faktiske tallene, ikke rå placeholders.
       previewTplId: scenes[0]?.tplId || INFOGRAPHIC_TEMPLATES[0].id,
+      previewValues: scenes[0] ? fieldVals(scenes[0], tpl0) : {},
     });
     setLibName(''); setLibTick((n) => n + 1);
     setMsg(saved
@@ -932,8 +935,8 @@ export function InfographicStudioView(
     if (!/^https?:\/\//i.test(url)) { setMsg('Skriv en gyldig http(s)-URL til datakilden.'); return; }
     setLiveBusy(true); setMsg(`Henter data fra ${(() => { try { return new URL(url).host; } catch { return url; } })()} …`);
     try {
-      const text = await invoke<string>('fetch_live_data', { url });
-      const trimmed = (text || '').trim();
+      const data = await invoke<{ text: string; truncated: boolean }>('fetch_live_data', { url });
+      const trimmed = (data?.text || '').trim();
       // Prøv å pretty-printe JSON; ellers behold rå (CSV håndteres av parserne).
       let out = trimmed;
       try { const j = JSON.parse(trimmed); out = JSON.stringify(j, null, 2); } catch { /* CSV/tekst */ }
@@ -941,7 +944,12 @@ export function InfographicStudioView(
       const keys = Object.keys(parseDataSource(out));
       const rows = parseDataRows(out).rows.length;
       setLiveAt(new Date().toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' }));
-      setMsg(keys.length ? `Hentet ${keys.length} felt fra datakilden — bind dem til feltene.` : rows >= 2 ? `Hentet ${rows} rader — «Lag scener» eller bind kolonner.` : 'Hentet data — sjekk formatet (JSON-objekt eller CSV med header).');
+      if (data?.truncated) {
+        // Avkuttet ved 512K tegn → resten mangler (og avkuttet JSON blir ugyldig).
+        setMsg('⚠ Datakilden ble avkuttet ved 512K tegn — bruk et filtrert API-uttrekk eller et mindre datasett. Dataen under er ufullstendig.');
+      } else {
+        setMsg(keys.length ? `Hentet ${keys.length} felt fra datakilden — bind dem til feltene.` : rows >= 2 ? `Hentet ${rows} rader — «Lag scener» eller bind kolonner.` : 'Hentet data — sjekk formatet (JSON-objekt eller CSV med header).');
+      }
     } catch (e) {
       setMsg('Feil ved henting: ' + (e instanceof Error ? e.message : String(e)));
     } finally { setLiveBusy(false); }
@@ -1686,7 +1694,7 @@ export function InfographicStudioView(
               ? <div style={{ fontSize: 11, color: D.faint, lineHeight: 1.5, padding: '8px 2px' }}>Ingen lagrede ennå. Lag en infographic og lagre den her — så kan du åpne og bygge videre på den i ethvert prosjekt.</div>
               : savedList.map((s) => {
                   const t = INFOGRAPHIC_TEMPLATES.find((x) => x.id === s.previewTplId) || INFOGRAPHIC_TEMPLATES[0];
-                  const firstVals = s.scenes[0]?.values || {};
+                  const firstVals = s.previewValues || s.scenes[0]?.values || {};
                   return (
                     <div key={s.id} style={{ marginBottom: 10, padding: 8, borderRadius: 9, border: `1px solid ${D.line}`, background: D.bg }}>
                       <TemplateThumb tpl={t} accent={s.accent || accent} values={firstVals} />

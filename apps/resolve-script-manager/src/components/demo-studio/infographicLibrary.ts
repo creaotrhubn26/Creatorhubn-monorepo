@@ -32,6 +32,9 @@ export interface SavedInfographic {
   liveUrl?: string;
   /** Mal-id for miniatyren (typisk første scene). */
   previewTplId: string;
+  /** Binding-OPPLØSTE verdier for scene 0 (miniatyren) — så kortet viser de FAKTISKE
+   *  tallene, ikke rå placeholder-felt før data-binding. */
+  previewValues?: Record<string, string>;
 }
 
 const LIB_KEY = 'trrpa.infographicStudio.library';
