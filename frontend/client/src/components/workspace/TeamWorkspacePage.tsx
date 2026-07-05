@@ -37,6 +37,7 @@ import AcademyInstructorAdminStudio from '../academy/AcademyInstructorAdminStudi
 import { AcademyProvider } from '@/contexts/AcademyContext';
 import CommunityHub from '../community/CommunityHub';
 import WorkspaceChatPanel from './WorkspaceChatPanel';
+import UniversalPrototypeFeedback from '../prototype-testing/UniversalPrototypeFeedback';
 import { usePresence } from './usePresence';
 import { ws, WS_NAV, navForProfession, localizeNav, workspaceCategoryFor, isMusicProfession } from './workspaceTheme';
 import { getProfessionDisplayName } from '@shared/profession-types';
@@ -71,7 +72,7 @@ const TeamWorkspacePage: React.FC = () => {
   const [, paramsTab] = useRoute('/workspace/:projectId/:tab');
   const projectId = paramsTab?.projectId || params?.projectId || 'sample';
   const [, navigate] = useLocation();
-  const { user, logout } = useAuth();
+  const { user, logout, isPrototypeTester } = useAuth();
 
   const [tab, setTab] = useState<string>(paramsTab?.tab || 'oversikt');
   // URL er sannhetskilden for aktiv fane — så navigate('/workspace/:id/:tab')
@@ -269,6 +270,21 @@ const TeamWorkspacePage: React.FC = () => {
       <Snackbar open={!!accepted} autoHideDuration={5000} onClose={() => setAccepted(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
         <Alert severity="success" variant="filled" onClose={() => setAccepted(null)}>{accepted}</Alert>
       </Snackbar>
+
+      {/* Prototype-tester: feedback-FAB også inne i workspace (ikke bare på
+          dashboardet) — testere gir tilbakemelding der de faktisk jobber.
+          currentTab={tab} tagger feedbacken med hvilken workspace-flate den
+          gjelder. Gated på isPrototypeTester (samme som UniversalDashboard). */}
+      {isPrototypeTester && (
+        <UniversalPrototypeFeedback
+          profession={user?.profession}
+          dashboardType="workspace"
+          component="workspace"
+          currentTab={tab}
+          userEmail={user?.email}
+          floatingPosition={{ bottom: 96, right: 24, zIndex: 1200 }}
+        />
+      )}
 
       {/* Nytt prosjekt — ProjectCreationWithMemoryCards-wizarden */}
       <Dialog open={showCreate} onClose={() => setShowCreate(false)} fullWidth maxWidth="lg">
