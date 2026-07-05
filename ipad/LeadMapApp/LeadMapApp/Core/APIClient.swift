@@ -94,6 +94,15 @@ actor APIClient {
         )
     }
 
+    /// Workflow-QA 2026-07-05: temperatur var kun settbar ved opprettelse
+    /// — nå PATCH-bar, og backend fyrer lead.temperature_changed-workflows.
+    func updateTemperature(leadId: String, temperature: String) async throws {
+        try await patch(
+            "/api/admin-room/lead-map/leads/\(leadId)/temperature",
+            body: ["temperature": temperature]
+        )
+    }
+
     func logVisit(leadId: String, body: [String: Any]) async throws {
         try await post(
             "/api/admin-room/lead-map/leads/\(leadId)/visits",

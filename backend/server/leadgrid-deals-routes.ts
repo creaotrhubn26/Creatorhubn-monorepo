@@ -413,6 +413,25 @@ export function registerLeadgridDealsRoutes(deps: Deps): void {
               },
             });
           }
+          // Workflow-QA 2026-07-05: amount fikk webhook men ALDRI
+          // workflow-event — deal.amount_changed-triggeren fyrte aldri.
+          if (
+            patch.dealAmount !== undefined &&
+            before.dealAmount !== after.dealAmount &&
+            orgId
+          ) {
+            void bus.publishEvent({
+              pool,
+              organizationId: orgId,
+              type: "deal.amount_changed",
+              leadId: req.params.id,
+              actorUserId: session.userId,
+              data: {
+                old_amount: before.dealAmount,
+                new_amount: after.dealAmount,
+              },
+            });
+          }
         } catch (err) {
           console.warn("[deals PATCH] workflow-engine publish skip:", err);
         }

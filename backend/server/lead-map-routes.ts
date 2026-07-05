@@ -245,6 +245,67 @@ export function setupLeadMapRoutes(deps: Deps): void {
     }
   });
 
+  // PATCH /leads/:id/temperature (workflow-QA 2026-07-05)
+  //
+  // Temperatur kunne bare settes ved opprettelse (from-pin) — det fantes
+  // ingen oppdateringsflate, så lead.temperature_changed-workflows kunne
+  // aldri fyre. Whitelist matcher check-constrainten på crm_customers.
+  app.patch("/api/admin-room/lead-map/leads/:id/temperature",
+    requireLeadMapPermission("leads.update", { pool, activeSessions }),
+    async (req: Request, res: Response) => {
+    const session = await getUser(req, pool, activeSessions);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+
+    const VALID_TEMPS = new Set(["cold", "warm", "hot", "ready"]);
+    const body = (req.body ?? {}) as { temperature?: string };
+    if (!body.temperature || !VALID_TEMPS.has(body.temperature)) {
+      return res.status(400).json({ error: "ugyldig_temperatur" });
+    }
+    try {
+      const prev = await pool.query<{ lead_temperature: string | null }>(
+        `SELECT lead_temperature FROM crm_customers WHERE id = $1`,
+        [req.params.id],
+      );
+      if (prev.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      const oldTemp = prev.rows[0].lead_temperature ?? null;
+
+      await pool.query(
+        `UPDATE crm_customers
+            SET lead_temperature = $1, updated_at = NOW()
+          WHERE id = $2`,
+        [body.temperature, req.params.id],
+      );
+
+      if (oldTemp !== body.temperature) {
+        void (async () => {
+          try {
+            const { resolveOrgIdForUser } = await import("./leadgrid-org-resolver.js");
+            const { publishEvent } = await import("./leadgrid-workflow-engine.js");
+            const orgId = await resolveOrgIdForUser(pool, session.userId);
+            await publishEvent({
+              pool,
+              organizationId: orgId,
+              type: "lead.temperature_changed",
+              leadId: req.params.id,
+              actorUserId: session.userId,
+              data: {
+                from: oldTemp,
+                to: body.temperature,
+                occurred_at: new Date().toISOString(),
+              },
+            });
+          } catch (err) {
+            console.warn("[lead-map] lead.temperature_changed publish feilet:", (err as Error).message);
+          }
+        })();
+      }
+
+      return res.json({ ok: true, temperature: body.temperature });
+    } catch (err) {
+      return res.status(500).json({ error: "temperature_failed", detail: String(err) });
+    }
+  });
+
   // PATCH /leads/:id/geo
   app.patch("/api/admin-room/lead-map/leads/:id/geo",
     requireLeadMapPermission("leads.update", { pool, activeSessions }),
