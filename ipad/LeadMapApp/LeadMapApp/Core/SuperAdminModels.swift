@@ -32,6 +32,47 @@ struct AuthUser: Codable, Hashable {
 }
 
 // ============================================================
+// MARK: - Org-entitlements (mig 0370 — tilgangs-matrisen)
+// ============================================================
+
+/// Rad fra `GET /api/superadmin/organizations/:id/entitlements` og
+/// `GET /api/leadgrid/me/entitlements`. camelCase-properties mot
+/// convertFromSnakeCase-dekoderen (DTO-regelen fra Kartverket-buggen).
+struct OrgEntitlementRowDTO: Codable, Hashable {
+    let featureKey: String
+    let state: String
+    let monthlyLimit: Int?
+    /// ISO-streng — .iso8601-dekoderen knekker på Postgres' millisekunder.
+    let trialEndsAt: String?
+    let addonPriceMonthly: Int?
+}
+
+struct OrgEntitlementsEnvelope: Codable {
+    let organizationId: String?
+    let plan: String?
+    let entitlements: [OrgEntitlementRowDTO]
+}
+
+/// Rad fra `GET /api/superadmin/audit-log?organization_id=…`.
+/// `details` (fri-JSONB) dekodes kun for feltene UI-et bruker.
+struct SuperAdminAuditEntryDTO: Codable, Hashable {
+    struct Details: Codable, Hashable {
+        let count: Int?
+        let orgName: String?
+    }
+    let id: String
+    let action: String
+    let createdAt: String?
+    let superAdminEmail: String?
+    let targetOrgId: String?
+    let details: Details?
+}
+
+struct SuperAdminAuditLogResponse: Codable {
+    let entries: [SuperAdminAuditEntryDTO]
+}
+
+// ============================================================
 // MARK: - Agency-leads (B2B-pipeline — markedssjefer som leads)
 // ============================================================
 

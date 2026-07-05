@@ -88,6 +88,14 @@ enum LeadgridFeature: String, CaseIterable, Identifiable, Hashable {
 
     var id: String { rawValue }
 
+    /// Stabil API-nøkkel (Swift-casenavnet, f.eks. «leadbookMaler») —
+    /// rawValue er norsk display-tekst og egner seg ikke som DB-nøkkel.
+    var key: String { String(describing: self) }
+
+    static func fromKey(_ key: String) -> LeadgridFeature? {
+        allCases.first { String(describing: $0) == key }
+    }
+
     var icon: String {
         switch self {
         case .oversikt: return "house.fill"

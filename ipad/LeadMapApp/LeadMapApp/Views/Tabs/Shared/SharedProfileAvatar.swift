@@ -132,6 +132,8 @@ struct SharedProfileAvatar: View {
             .overlay(RoundedRectangle(cornerRadius: 11).stroke(borderColor, lineWidth: 1))
         }
         .macCatalystHover()
+        // Stabil id for QA-harnessen (SuperAdmin-sveipet åpner menyen).
+        .accessibilityIdentifier("shared-profile-avatar")
     }
 
     /// Prøver å laste en asset «portrait-<email-local-part>» — hvis den

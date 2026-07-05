@@ -454,6 +454,12 @@ final class AppState {
             self.authToken = token
             self.userEmail = AuthClient.loadEmail()
             self.api = APIClient(token: token)
+            // Rolle + identitet FØRST — de gater UI (SuperAdmin-inngangen,
+            // avatar-navn) og er ett billig kall. Lå sist i kjeden før →
+            // super_admin så «Gjest/Salgssjef» til hele refreshen var
+            // ferdig (kald backend = titalls sekunder).
+            await loadUserRole()
+            await loadMyEntitlements()
             await refreshAll()
             if let id = activeProjectId {
                 await loadProjectSummary(id: id)
@@ -504,9 +510,27 @@ final class AppState {
             let resp = try await api.fetchAuthUser()
             if let user = resp.user {
                 self.userRole = user.role
+                // QA-hook/pairing lagrer ikke e-post i keychain — uten
+                // denne sto avataren som «Gjest» selv med gyldig sesjon.
+                if self.userEmail == nil || self.userEmail?.isEmpty == true {
+                    self.userEmail = user.email
+                }
             }
         } catch {
             print("[AppState] loadUserRole failed: \(error)")
+        }
+    }
+
+    /// Egen orgs feature-entitlements (mig 0370) → EntitlementStore, slik
+    /// at .gated()-flatene speiler hva SuperAdmin har gitt organisasjonen.
+    /// Feiler stille: ingen data = alt åpent (bakoverkompatibelt).
+    func loadMyEntitlements() async {
+        guard let api else { return }
+        do {
+            let envelope = try await api.fetchMyEntitlements()
+            EntitlementStore.shared.applyServer(envelope)
+        } catch {
+            print("[AppState] loadMyEntitlements failed: \(error)")
         }
     }
 

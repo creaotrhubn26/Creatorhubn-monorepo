@@ -300,16 +300,15 @@ struct LeadbookView: View {
     private var isCompactLayout: Bool { hSize == .compact }
 
     var body: some View {
-        Group {
-            if showSuperAdmin {
+        // fullScreenCover, IKKE innholds-bytte: SuperAdminDashboard har egen
+        // NavigationStack, og på iPhone er LeadbookView pushet inne i
+        // Mer-fanens stack — nestet NavigationStack i en push kollapser
+        // og popper brukeren til Mer-roten. Cover matcher også semantikken:
+        // konsollen er en root-level kontekst-switch, ikke en Leadbook-side.
+        leadbookBody
+            .fullScreenCover(isPresented: $showSuperAdmin) {
                 SuperAdminDashboard(onExit: { showSuperAdmin = false })
-                    .transition(.move(edge: .trailing))
-            } else {
-                leadbookBody
-                    .transition(.move(edge: .leading))
             }
-        }
-        .animation(.easeInOut(duration: 0.25), value: showSuperAdmin)
     }
 
     private var leadbookBody: some View {
