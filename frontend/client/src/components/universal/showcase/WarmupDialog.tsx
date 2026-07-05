@@ -188,7 +188,8 @@ const WarmupDialog: React.FC<{ open: boolean; projectId: string; onClose: () => 
                   <Typography sx={{ fontSize: '0.62rem', color: FAINT, textTransform: 'uppercase' }}>Mine lyder</Typography>
                   <Box sx={{ maxHeight: 132, overflowY: 'auto', border: `1px solid ${BORDER}`, borderRadius: '10px', p: 0.5 }}>
                     {sounds.map((snd) => {
-                      const inRoutine = !!picked[`custom:lib:${snd.id}`];
+                      // Også nyopplastede steg (annen nøkkel) teller — hindrer dobbel lyd.
+                      const inRoutine = !!picked[`custom:lib:${snd.id}`] || steps.some((s: any) => s.audioUrl && s.audioUrl === snd.url);
                       return (
                         <Stack key={snd.id} direction="row" alignItems="center" spacing={1} sx={{ px: 0.75, py: 0.4, borderRadius: '8px', '&:hover': { bgcolor: 'rgba(255,255,255,0.04)' } }}>
                           {snd.kind === 'voice' ? <RecordVoiceOver sx={{ fontSize: 15, color: FAINT }} /> : <MusicNote sx={{ fontSize: 15, color: FAINT }} />}

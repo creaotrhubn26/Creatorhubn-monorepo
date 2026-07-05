@@ -116,7 +116,7 @@ const WarmupPlayer: React.FC<{ token: string; musicalKey?: string }> = ({ token,
                 <Typography sx={{ fontSize: '0.7rem', color: FAINT, flex: 1, textAlign: 'left' }}>Steg {stepIdx + 1} / {active.steps.length}</Typography>
                 <IconButton size="small" onClick={close} sx={{ color: MUTED }}><Close fontSize="small" /></IconButton>
               </Stack>
-              <Chip label={step.type} size="small" sx={{ bgcolor: 'rgba(255,107,53,0.14)', color: ACCENT, textTransform: 'capitalize' }} />
+              <Chip label={step.type === 'custom_mindful_music' ? 'Musikk fra produsenten' : step.type === 'custom_mindful_voice' ? 'Guidet voice-over' : step.type} size="small" sx={{ bgcolor: 'rgba(255,107,53,0.14)', color: ACCENT, textTransform: String(step.type || '').startsWith('custom') ? 'none' : 'capitalize' }} />
               <Typography sx={{ fontWeight: 800, fontSize: '1.15rem' }}>{step.title}</Typography>
               {/* Pust-/fokus-sirkel som puster, eller nedtellingsring */}
               <Box sx={{ position: 'relative', width: 160, height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
