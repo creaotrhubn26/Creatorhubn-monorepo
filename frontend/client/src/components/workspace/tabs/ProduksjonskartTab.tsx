@@ -97,7 +97,7 @@ const ProduksjonskartTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           <WsCard pad={1.75}>
             <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}><CenterFocusStrong sx={{ fontSize: 18, color: ws.accent }} /><Typography sx={{ fontSize: 13, fontWeight: 700 }}>Dagens fokus</Typography></Stack>
             <Stack direction="row" spacing={1.5} alignItems="center">
-              <Box><Typography sx={{ fontSize: 16, fontWeight: 800 }}>{fokus ? fokus.title : 'Vielse'}</Typography><Typography sx={{ fontSize: 12, color: ws.textDim }}>{fokus ? (fokus.time + (fokus.durationMinutes ? ' – ' + addMin(fokus.time, fokus.durationMinutes) : '')) : '12:15 – 13:00'}</Typography><Box sx={{ mt: 0.5 }}><WsTag label={fokus?.location || 'Kritisk moment'} tone="accent" /></Box></Box>
+              <Box><Typography sx={{ fontSize: 16, fontWeight: 800 }}>{fokus ? fokus.title : (isReal ? 'Ingen hendelse i dag' : 'Vielse')}</Typography><Typography sx={{ fontSize: 12, color: ws.textDim }}>{fokus ? (fokus.time + (fokus.durationMinutes ? ' – ' + addMin(fokus.time, fokus.durationMinutes) : '')) : (isReal ? '' : '12:15 – 13:00')}</Typography>{(fokus?.location || !isReal) && <Box sx={{ mt: 0.5 }}><WsTag label={fokus?.location || 'Kritisk moment'} tone="accent" /></Box>}</Box>
               <Box sx={{ width: 64, ml: 'auto' }}><WsImageGrid columns={1} ratio="4 / 3" addLabel="Bilde" /></Box>
             </Stack>
           </WsCard>
@@ -105,15 +105,21 @@ const ProduksjonskartTab: React.FC<{ projectId: string }> = ({ projectId }) => {
             <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}><Groups sx={{ fontSize: 18, color: ws.accent }} /><Typography sx={{ fontSize: 13, fontWeight: 700 }}>Crew på location</Typography></Stack>
             <Typography sx={{ fontSize: 22, fontWeight: 800 }}>{crewOnline} <Typography component="span" sx={{ fontSize: 14, color: ws.textDim }}>/ {crewTotal}</Typography></Typography>
             <Typography sx={{ fontSize: 11.5, color: ws.textDim, mb: 1 }}>teammedlemmer</Typography>
-            <AvatarGroup max={5} sx={{ justifyContent: 'flex-start', '& .MuiAvatar-root': { width: 24, height: 24, fontSize: 10, border: `2px solid ${ws.panelSolid}` } }}>
-              {['M', 'D', 'E', 'L', 'N'].map((x, i) => <Avatar key={i}>{x}</Avatar>)}
-            </AvatarGroup>
+            {!isReal && (
+              <AvatarGroup max={5} sx={{ justifyContent: 'flex-start', '& .MuiAvatar-root': { width: 24, height: 24, fontSize: 10, border: `2px solid ${ws.panelSolid}` } }}>
+                {['M', 'D', 'E', 'L', 'N'].map((x, i) => <Avatar key={i}>{x}</Avatar>)}
+              </AvatarGroup>
+            )}
           </WsCard>
           <WsCard pad={1.75}>
             <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}><Cloud sx={{ fontSize: 18, color: ws.accent }} /><Typography sx={{ fontSize: 13, fontWeight: 700 }}>Vær & logistikk</Typography></Stack>
-            <Typography sx={{ fontSize: 22, fontWeight: 800 }}>17 °C</Typography>
-            <Typography sx={{ fontSize: 12, color: ws.textDim }}>Delvis skyet</Typography>
-            <Typography sx={{ fontSize: 11.5, color: ws.textFaint, mt: 0.5, display: 'inline-flex', alignItems: 'center', gap: 0.4 }}>{wsIcon('WbSunny', { fontSize: 13 })}Solnedgang 21:42</Typography>
+            {isReal ? (
+              <Typography sx={{ fontSize: 12.5, color: ws.textFaint, mt: 1 }}>Vær-data ikke koblet</Typography>
+            ) : (<>
+              <Typography sx={{ fontSize: 22, fontWeight: 800 }}>17 °C</Typography>
+              <Typography sx={{ fontSize: 12, color: ws.textDim }}>Delvis skyet</Typography>
+              <Typography sx={{ fontSize: 11.5, color: ws.textFaint, mt: 0.5, display: 'inline-flex', alignItems: 'center', gap: 0.4 }}>{wsIcon('WbSunny', { fontSize: 13 })}Solnedgang 21:42</Typography>
+            </>)}
           </WsCard>
           <WsCard pad={1.75}>
             <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}><Sync sx={{ fontSize: 18, color: ws.accent }} /><Typography sx={{ fontSize: 13, fontWeight: 700 }}>Team Sync</Typography></Stack>
@@ -130,7 +136,7 @@ const ProduksjonskartTab: React.FC<{ projectId: string }> = ({ projectId }) => {
             <WsPills items={[{ key: 'timeline', label: 'Timeline' }, { key: 'board', label: 'Board' }, { key: 'kart', label: 'Kart' }]} value={view} onChange={setView} />
             <Stack direction="row" spacing={1} alignItems="center">
               <IconButton size="small" sx={{ color: ws.textDim }}><ChevronLeft fontSize="small" /></IconButton>
-              <Typography sx={{ fontSize: 13, color: ws.text }}>Lørdag 24. mai 2025</Typography>
+              <Typography sx={{ fontSize: 13, color: ws.text }}>{isReal ? 'I dag' : 'Lørdag 24. mai 2025'}</Typography>
               <IconButton size="small" sx={{ color: ws.textDim }}><ChevronRight fontSize="small" /></IconButton>
               <Button size="small" startIcon={<Tune sx={{ fontSize: 15 }} />} onClick={(e) => setFilterMenu(e.currentTarget)} sx={{ color: ws.textDim, textTransform: 'none' }}>Filtre</Button>
               <Menu anchorEl={filterMenu} open={!!filterMenu} onClose={() => setFilterMenu(null)} PaperProps={{ sx: { bgcolor: ws.panel, color: ws.text, border: `1px solid ${ws.border}` } }}>
@@ -159,7 +165,9 @@ const ProduksjonskartTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           <WsCard>
             <WsSectionTitle title="Kritiske øyeblikk" action={<Button size="small" onClick={() => navigate(`/workspace/${projectId}/shotlist`)} sx={{ color: ws.accent, textTransform: 'none' }}>Se alle</Button>} />
             <Stack spacing={1}>
-              {[['12:15', 'Vielse', 'Kritisk', 'red'], ['16:30', 'Golden hour', 'Høy', 'amber'], ['20:15', 'Første dans', 'Høy', 'amber']].map(([t, m, lvl, tone]) => (
+              {isReal ? (
+                <Typography sx={{ fontSize: 12.5, color: ws.textDim, py: 1.5, textAlign: 'center' }}>Ingen kritiske øyeblikk merket ennå.</Typography>
+              ) : [['12:15', 'Vielse', 'Kritisk', 'red'], ['16:30', 'Golden hour', 'Høy', 'amber'], ['20:15', 'Første dans', 'Høy', 'amber']].map(([t, m, lvl, tone]) => (
                 <Stack key={t} direction="row" spacing={1} alignItems="center"><Typography sx={{ fontSize: 12, color: ws.textDim, width: 44 }}>{t}</Typography><Typography sx={{ fontSize: 13, flex: 1 }}>{m}</Typography><WsTag label={lvl} tone={tone} /></Stack>
               ))}
             </Stack>
@@ -180,7 +188,8 @@ const ProduksjonskartTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           </Stack>
           <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: ws.textFaint, mb: 1 }}>TEAM UPDATES</Typography>
           <Stack spacing={1.5}>
-            {UPDATES.map((u, i) => (
+            {isReal && <Typography sx={{ fontSize: 12, color: ws.textDim, py: 1 }}>Ingen live-oppdateringer ennå.</Typography>}
+            {!isReal && UPDATES.map((u, i) => (
               <Stack key={i} direction="row" spacing={1}>
                 <Avatar sx={{ width: 28, height: 28, fontSize: 11 }}>{u.who[0]}</Avatar>
                 <Box sx={{ flex: 1 }}>
@@ -195,7 +204,8 @@ const ProduksjonskartTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         <WsCard sx={{ mb: 2 }}>
           <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }}><NotificationsActive sx={{ fontSize: 17, color: ws.amber }} /><Typography sx={{ fontSize: 14, fontWeight: 700 }}>Varsler & viktige notater</Typography></Stack>
           <Stack spacing={1.25}>
-            {ALERTS.map((a, i) => (
+            {isReal && <Typography sx={{ fontSize: 12, color: ws.textDim, py: 1 }}>Ingen varsler.</Typography>}
+            {!isReal && ALERTS.map((a, i) => (
               <Stack key={i} direction="row" spacing={1}>
                 <Box sx={{ width: 6, borderRadius: 3, bgcolor: ws[a.tone] }} />
                 <Box sx={{ flex: 1 }}><Stack direction="row" justifyContent="space-between"><Typography sx={{ fontSize: 12.5, fontWeight: 700 }}>{a.title}</Typography><Typography sx={{ fontSize: 10.5, color: ws.textFaint }}>{a.t}</Typography></Stack><Typography sx={{ fontSize: 11.5, color: ws.textDim }}>{a.sub}</Typography></Box>

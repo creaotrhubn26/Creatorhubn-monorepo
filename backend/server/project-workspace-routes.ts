@@ -2866,18 +2866,8 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     catch (e) { console.error("DELETE deliverables", e); res.status(500).json({ error: "failed" }); }
   });
 
-  // ─────────── Vendor-oppdrag (prosjekt-scopet, for referanser i Team Chat) ───────────
-  app.get("/api/projects/:projectId/editing-jobs", async (req, res) => {
-    const uid = await guard(req, res); if (!uid) return;
-    try {
-      const r = await pool.query(
-        `SELECT id, project_title, vendor_name, status, created_at
-           FROM editing_jobs WHERE project_id = $1 ORDER BY created_at DESC LIMIT 40`,
-        [req.params.projectId],
-      );
-      res.json({ jobs: r.rows.map((j: any) => ({ id: j.id, title: j.project_title || j.vendor_name || "Oppdrag", vendor: j.vendor_name, status: j.status })) });
-    } catch (e) { res.json({ jobs: [] }); }
-  });
+  // (Vendor-oppdrag for Team Chat-referanser bruker det eksisterende
+  //  GET /api/projects/:projectId/editing-jobs-endepunktet lenger opp.)
 
   // ─────────── Aktivitets-feed — flettes inn i Team Chat-tidslinjen ───────────
   // Samler de nyeste prosjekt-hendelsene (leveranser, oppgaver, møter, låter,
