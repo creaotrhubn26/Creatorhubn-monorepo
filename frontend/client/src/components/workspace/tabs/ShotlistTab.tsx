@@ -70,11 +70,18 @@ const ShotlistTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const isRealP = projectId && projectId !== 'sample';
   const rows = isRealP ? (realRows || []) : SHOTS;
 
-  const total = real ? (real.meta.totalShots ?? real.shots.length) : 68;
-  const done = real ? (real.meta.completedShots ?? 0) : 21;
-  const critical = real ? (real.meta.criticalShots ?? 0) : 12;
-  const mangler = real ? Math.max(0, critical - (real.meta.completedCriticalShots ?? 0)) : 5;
+  // Ekte prosjekt uten shots → 0 (ikke sample-tallene 68/21/12/5).
+  const total = real ? (real.meta.totalShots ?? real.shots.length) : (isRealP ? 0 : 68);
+  const done = real ? (real.meta.completedShots ?? 0) : (isRealP ? 0 : 21);
+  const critical = real ? (real.meta.criticalShots ?? 0) : (isRealP ? 0 : 12);
+  const mangler = real ? Math.max(0, critical - (real.meta.completedCriticalShots ?? 0)) : (isRealP ? 0 : 5);
   const donePct = total > 0 ? Math.round((done / total) * 100) : 0;
+  // Kategori-piller: sample-settet kun i demo; ekte prosjekt utleder fra egne shots.
+  const pills = !isRealP ? CATS
+    : real ? [{ key: 'alle', label: `Alle (${real.shots.length})` }, ...Object.entries(
+        real.shots.reduce((acc: any, s: any) => { const k = s.category || s.kategori || s.phase || 'Annet'; acc[k] = (acc[k] || 0) + 1; return acc; }, {}),
+      ).map(([k, n]: any) => ({ key: k, label: `${k} (${n})` }))]
+    : [{ key: 'alle', label: 'Alle (0)' }];
 
   return (
     <Stack direction="row" spacing={2.5} sx={{ alignItems: 'flex-start' }}>
@@ -89,7 +96,7 @@ const ShotlistTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         </Box>
 
         <WsCard>
-          <Box sx={{ mb: 1.5 }}><WsPills items={CATS} value={cat} onChange={setCat} /></Box>
+          <Box sx={{ mb: 1.5 }}><WsPills items={pills} value={cat} onChange={setCat} /></Box>
           {rows.length === 0 && <Typography sx={{ fontSize: 12.5, color: ws.textDim, py: 3, textAlign: 'center' }}>Ingen shots ennå. Shotlister opprettes fra prosjekt-oppsettet eller iPad-appen.</Typography>}
           {rows.length > 0 && <WsTable
             columns={['Prioritet', 'Shot', 'Kategori', 'Foto', 'Video', 'Lokasjon', 'Ansvarlig', 'Status']}
@@ -118,7 +125,9 @@ const ShotlistTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           <WsCard>
             <WsSectionTitle title="Må huskes" action={<Button size="small" onClick={() => navigate(`/workspace/${projectId}/oppgaver`)} sx={{ color: ws.accent, textTransform: 'none' }}>Rediger</Button>} />
             <Stack spacing={0.75}>
-              {[['Batterier ladet', true], ['Backup kort formatert', true], ['Lydopptaker testet', false], ['Reflektor / diffuser', false], ['Ekstra linser med', false]].map(([t, ok]) => <Stack key={t} direction="row" spacing={0.75} alignItems="center"><CheckCircle sx={{ fontSize: 16, color: ok ? ws.green : ws.textFaint }} /><Typography sx={{ fontSize: 12.5 }}>{t}</Typography></Stack>)}
+              {isRealP ? (
+                <Typography sx={{ fontSize: 12.5, color: ws.textDim, py: 1 }}>Legg til huskepunkter i Oppgaver.</Typography>
+              ) : [['Batterier ladet', true], ['Backup kort formatert', true], ['Lydopptaker testet', false], ['Reflektor / diffuser', false], ['Ekstra linser med', false]].map(([t, ok]) => <Stack key={t} direction="row" spacing={0.75} alignItems="center"><CheckCircle sx={{ fontSize: 16, color: ok ? ws.green : ws.textFaint }} /><Typography sx={{ fontSize: 12.5 }}>{t}</Typography></Stack>)}
             </Stack>
           </WsCard>
         </Box>
@@ -129,25 +138,29 @@ const ShotlistTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         <WsCard>
           <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
             <Typography sx={{ fontSize: 14, fontWeight: 700 }}>Shot detaljer</Typography>
-            <WsTag label="2 av 68" tone="neutral" />
+            {isRealP ? (real?.shots?.length ? <WsTag label={`${real.shots.length} shots`} tone="neutral" /> : null) : <WsTag label="2 av 68" tone="neutral" />}
           </Stack>
-          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}><WsTag label={selShot ? selShot[0] : 'Kritisk'} tone={selShot ? selShot[1] : 'red'} /><Typography sx={{ fontSize: 15, fontWeight: 700, flex: 1 }}>{selShot ? selShot[2] : 'Brud inngang'}</Typography><WsTag label={selShot ? (selShot[3] || 'Shot') : 'Vielse'} tone="accent" /></Stack>
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}><WsTag label={selShot ? selShot[0] : (isRealP ? 'Shot' : 'Kritisk')} tone={selShot ? selShot[1] : (isRealP ? 'neutral' : 'red')} /><Typography sx={{ fontSize: 15, fontWeight: 700, flex: 1 }}>{selShot ? selShot[2] : (isRealP ? 'Velg et shot' : 'Brud inngang')}</Typography>{(selShot || !isRealP) && <WsTag label={selShot ? (selShot[3] || 'Shot') : 'Vielse'} tone="accent" />}</Stack>
           {selShot && <Typography sx={{ fontSize: 11.5, color: ws.textFaint, mb: 1, display: 'inline-flex', alignItems: 'center', gap: 0.4 }}>{wsIcon('Place', { fontSize: 13 })}{selShot[4] || '—'} · {selShot[5] || '—'}</Typography>}
           <WsImageGrid columns={1} ratio="4 / 3" addLabel="Last opp referanse" />
-          <Typography sx={{ fontSize: 12.5, color: ws.textDim, my: 1.25 }}>Bruden går ned midtgangen. Fokus på reaksjonene til brudgommen og gjestene.</Typography>
-          <Typography sx={{ fontSize: 12, fontWeight: 700, color: ws.textFaint, mb: 0.5 }}>UTSTYR & INNSTILLINGER</Typography>
-          <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5, mb: 1.5 }}>
-            {['Foto: 85mm f/1.4', '4K 25fps', '50mm', 'Gimbal'].map((x) => <WsTag key={x} label={x} tone="neutral" />)}
-          </Stack>
-          <Typography sx={{ fontSize: 12, fontWeight: 700, color: ws.textFaint, mb: 0.5 }}>SAMTALE</Typography>
-          <Stack spacing={1.25} sx={{ mb: 1 }}>
-            {SAMTALE.map((m, i) => (
-              <Stack key={i} direction="row" spacing={1}>
-                <Avatar sx={{ width: 24, height: 24, fontSize: 10 }}>{m.who[0]}</Avatar>
-                <Box sx={{ flex: 1 }}><Stack direction="row" spacing={1} alignItems="baseline"><Typography sx={{ fontSize: 12, fontWeight: 700 }}>{m.who}</Typography><Typography sx={{ fontSize: 10, color: ws.textFaint }}>{m.t}</Typography></Stack><Typography sx={{ fontSize: 12, color: ws.textDim }}>{m.msg}</Typography></Box>
-              </Stack>
-            ))}
-          </Stack>
+          {/* Beskrivelse/utstyr/samtale er demo-innhold uten ekte datakilde — vises kun i sample. */}
+          {!isRealP && (<>
+            <Typography sx={{ fontSize: 12.5, color: ws.textDim, my: 1.25 }}>Bruden går ned midtgangen. Fokus på reaksjonene til brudgommen og gjestene.</Typography>
+            <Typography sx={{ fontSize: 12, fontWeight: 700, color: ws.textFaint, mb: 0.5 }}>UTSTYR & INNSTILLINGER</Typography>
+            <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5, mb: 1.5 }}>
+              {['Foto: 85mm f/1.4', '4K 25fps', '50mm', 'Gimbal'].map((x) => <WsTag key={x} label={x} tone="neutral" />)}
+            </Stack>
+            <Typography sx={{ fontSize: 12, fontWeight: 700, color: ws.textFaint, mb: 0.5 }}>SAMTALE</Typography>
+            <Stack spacing={1.25} sx={{ mb: 1 }}>
+              {SAMTALE.map((m, i) => (
+                <Stack key={i} direction="row" spacing={1}>
+                  <Avatar sx={{ width: 24, height: 24, fontSize: 10 }}>{m.who[0]}</Avatar>
+                  <Box sx={{ flex: 1 }}><Stack direction="row" spacing={1} alignItems="baseline"><Typography sx={{ fontSize: 12, fontWeight: 700 }}>{m.who}</Typography><Typography sx={{ fontSize: 10, color: ws.textFaint }}>{m.t}</Typography></Stack><Typography sx={{ fontSize: 12, color: ws.textDim }}>{m.msg}</Typography></Box>
+                </Stack>
+              ))}
+            </Stack>
+          </>)}
+          {isRealP && <Box sx={{ my: 1.25 }} />}
           <TextField fullWidth size="small" placeholder="Skriv en kommentar…" value={comment} onChange={(e) => setComment(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') sendComment(); }} disabled={!projectId || projectId === 'sample'} sx={{ '& .MuiOutlinedInput-root': { bgcolor: ws.panelInput, fontSize: 13 } }} />
         </WsCard>
       </Box>
