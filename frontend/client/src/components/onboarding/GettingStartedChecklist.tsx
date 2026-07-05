@@ -47,7 +47,7 @@ const GettingStartedChecklist: React.FC<Props> = ({ userId, profession, projectI
   });
   const [state, setState] = useState<any>({
     loading: true, profileComplete: false, hasProject: false,
-    teamInvited: false, toolsConnected: false, firstProjectId: null,
+    teamInvited: false, toolsConnected: false, firstProjectId: null, isEnterprise: false,
   });
 
   useEffect(() => {
@@ -73,6 +73,11 @@ const GettingStartedChecklist: React.FC<Props> = ({ userId, profession, projectI
       }
       const google = await apiRequest('/api/creatorhub/google/status').catch(() => null);
       const toolsConnected = !!(google?.connected || google?.linked || google?.isConnected || google?.status === 'connected');
+      // Team er en Enterprise-funksjon. «Inviter team»-steget vises kun for
+      // Enterprise-brukere (org-medlemskap eller enterprise-profesjonen) — ikke
+      // for individuelle skapere, som ikke kan ha team.
+      const membership = await apiRequest('/api/enterprise/my-membership').catch(() => null);
+      const isEnterprise = !!(membership?.membership?.organizationId) || profession === 'enterprise';
       if (!alive) return;
       setState({
         loading: false,
@@ -81,6 +86,7 @@ const GettingStartedChecklist: React.FC<Props> = ({ userId, profession, projectI
         teamInvited,
         toolsConnected,
         firstProjectId,
+        isEnterprise,
       });
     })();
     return () => { alive = false; };
@@ -96,8 +102,9 @@ const GettingStartedChecklist: React.FC<Props> = ({ userId, profession, projectI
       cta: 'Åpne profil', onClick: () => navigate('/profil') },
     { key: 'prosjekt', label: 'Lag ditt første prosjekt', desc: 'Kom i gang i Team Workspace', done: state.hasProject,
       cta: 'Nytt prosjekt', onClick: () => (onNewProject ? onNewProject() : navigate('/dashboard')) },
-    { key: 'team', label: 'Inviter teamet ditt', desc: 'Legg til medarbeidere på et prosjekt', done: state.teamInvited,
-      cta: 'Inviter', onClick: () => (state.firstProjectId ? navigate(`/workspace/${state.firstProjectId}/team`) : (onNewProject ? onNewProject() : navigate('/dashboard'))) },
+    // Team-steget er Enterprise-gated (team er en Enterprise-funksjon).
+    ...(state.isEnterprise ? [{ key: 'team', label: 'Inviter teamet ditt', desc: 'Legg til medarbeidere på et prosjekt', done: state.teamInvited,
+      cta: 'Inviter', onClick: () => (state.firstProjectId ? navigate(`/workspace/${state.firstProjectId}/team`) : (onNewProject ? onNewProject() : navigate('/dashboard'))) }] : []),
     { key: 'verktoy', label: 'Koble til verktøyene dine', desc: 'Google Workspace, lagring og backup', done: state.toolsConnected,
       cta: 'Koble til', onClick: () => navigate('/settings') },
   ];
