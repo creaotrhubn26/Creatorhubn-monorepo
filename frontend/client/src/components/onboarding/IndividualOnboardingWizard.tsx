@@ -68,7 +68,7 @@ const TIER_RECOMMENDATIONS: Record<string, { name: string; price: string; reason
   },
 };
 
-const STEPS = ['Velkomst', 'Profesjon', 'Brand', 'Marketplace', 'Backup', 'Skylagring', 'Ferdig'] as const;
+const STEPS = ['Velkomst', 'Profesjon', 'Brand', 'Marketplace', 'Backup', 'Skylagring', 'Profil', 'Ferdig'] as const;
 
 // Drive-aksent (Google blå), Layers-aksent (grønn)
 const DRIVE_ACCENT = '#4285F4';
@@ -161,6 +161,15 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
     const found = PROFESSIONS.find((p) => p.id === (initialProfession || 'photographer'));
     return found?.color || '#ffba6c';
   });
+  // Profil-steg: avatar som data-URL (sendes til /api/user/profile ved finish).
+  const [avatarDataUrl, setAvatarDataUrl] = useState<string | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
+  const handleAvatarPick = (file?: File) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setAvatarDataUrl(typeof reader.result === 'string' ? reader.result : null);
+    reader.readAsDataURL(file);
+  };
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [resumingFromPending, setResumingFromPending] = useState(false);
@@ -276,6 +285,18 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
       setSaving(false);
       return;
     }
+    // Speil identitet + avatar til users-recorden (samlet profil). Best-effort:
+    // profesjon speiles uansett av branding-lagringen; avatar/navn er ekstra.
+    try {
+      await apiRequest('/api/user/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          firstName, profession, companyName: businessName,
+          ...(avatarDataUrl ? { avatarUrl: avatarDataUrl } : {}),
+        }),
+      });
+    } catch { /* branding-sync dekker profesjon; resten er best-effort */ }
     try {
       window.localStorage.setItem('individual-onboarding-completed', '1');
       window.localStorage.removeItem(DRAFT_KEY);
@@ -583,7 +604,7 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
                 // Marketplace, Backup, Cloud Storage, Ferdig (7 steg).
                 // Defensiv || DoneIcon-fallback hindrer "Element type is
                 // invalid"-krasj hvis STEPS skulle vokse uten matching ikon.
-                const Icon = [WelcomeIcon, PersonIcon, PaletteIcon, StoreIcon, BackupIcon, CloudIcon, DoneIcon][i] || DoneIcon;
+                const Icon = [WelcomeIcon, PersonIcon, PaletteIcon, StoreIcon, BackupIcon, CloudIcon, AccountCircleIcon, DoneIcon][i] || DoneIcon;
                 return (
                   <Box sx={{
                     width: 36, height: 36, borderRadius: '50%',
@@ -1246,8 +1267,78 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
           </Stack>
         )}
 
-        {/* STEG 7: Ferdig */}
+        {/* STEG 7: Profil — oversiktlig profil (avatar + identitet) */}
         {step === 6 && (
+          <Stack spacing={3}>
+            <Box>
+              <Typography variant="h6" sx={{ fontWeight: 700 }}>Profilen din</Typography>
+              <Typography variant="caption" sx={{ color: 'rgba(246,242,234,0.72)' }}>
+                Legg til et bilde så team og kunder kjenner deg igjen. Alt kan endres senere under «Min profil».
+              </Typography>
+            </Box>
+
+            {/* Profilkort */}
+            <Card sx={{
+              p: 3,
+              background: `linear-gradient(135deg, ${alpha(brandColor, 0.12)}, rgba(15,10,7,0.86))`,
+              border: `1px solid ${alpha(brandColor, 0.32)}`,
+              borderRadius: 3, boxShadow: 'none',
+            }}>
+              <Stack direction="row" spacing={2.5} alignItems="center">
+                <Box sx={{ position: 'relative' }}>
+                  <Avatar src={avatarDataUrl || undefined} sx={{ width: 84, height: 84, bgcolor: alpha(brandColor, 0.18), color: brandColor, fontSize: 32, fontWeight: 800 }}>
+                    {(firstName || '?').charAt(0).toUpperCase()}
+                  </Avatar>
+                  <IconButton onClick={() => avatarInputRef.current?.click()} size="small"
+                    sx={{ position: 'absolute', bottom: -4, right: -4, bgcolor: brandColor, color: '#150d05', '&:hover': { bgcolor: alpha(brandColor, 0.85) } }}>
+                    <CameraIcon sx={{ fontSize: 16 }} />
+                  </IconButton>
+                  <input ref={avatarInputRef} type="file" accept="image/*" hidden
+                    onChange={(e) => { handleAvatarPick(e.target.files?.[0]); e.target.value = ''; }} />
+                </Box>
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Typography variant="h6" sx={{ fontWeight: 800, color: '#fff5e8' }}>{firstName || 'Ditt navn'}</Typography>
+                  <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5 }}>
+                    <Chip icon={activeProfession.icon} label={activeProfession.label} size="small"
+                      sx={{ bgcolor: alpha(activeProfession.color, 0.18), color: activeProfession.color, fontWeight: 700, '& .MuiChip-icon': { color: activeProfession.color } }} />
+                    <Box sx={{ width: 16, height: 16, borderRadius: '50%', bgcolor: brandColor, border: '1px solid rgba(255,255,255,0.2)' }} />
+                  </Stack>
+                  {businessName && <Typography variant="body2" sx={{ color: 'rgba(246,242,234,0.72)', mt: 0.75 }}>{businessName}</Typography>}
+                </Box>
+              </Stack>
+            </Card>
+
+            {/* Fullføringsgrad */}
+            {(() => {
+              const items: Array<[string, boolean]> = [
+                ['Profilbilde', !!avatarDataUrl], ['Navn', !!firstName.trim()],
+                ['Profesjon', !!profession], ['Firmanavn', !!businessName.trim()],
+              ];
+              const done = items.filter(([, ok]) => ok).length;
+              return (
+                <Box sx={{ p: 2, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.04)' }}>
+                  <Typography variant="caption" sx={{ fontWeight: 700, color: brandColor, letterSpacing: '0.08em' }}>
+                    PROFIL {done}/4 KOMPLETT
+                  </Typography>
+                  <Stack direction="row" spacing={0.75} sx={{ my: 1 }}>
+                    {items.map(([label, ok]) => <Box key={label} sx={{ flex: 1, height: 5, borderRadius: 3, bgcolor: ok ? '#10b981' : 'rgba(255,255,255,0.12)' }} />)}
+                  </Stack>
+                  <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
+                    {items.map(([label, ok]) => (
+                      <Stack key={label} direction="row" spacing={0.5} alignItems="center">
+                        {ok ? <DoneIcon sx={{ fontSize: 14, color: '#10b981' }} /> : <ErrorIcon sx={{ fontSize: 14, color: 'rgba(246,242,234,0.4)' }} />}
+                        <Typography variant="caption" sx={{ color: ok ? '#fff5e8' : 'rgba(246,242,234,0.5)' }}>{label}</Typography>
+                      </Stack>
+                    ))}
+                  </Stack>
+                </Box>
+              );
+            })()}
+          </Stack>
+        )}
+
+        {/* STEG 8: Ferdig */}
+        {step === 7 && (
           <Stack spacing={3}>
             <Box sx={{ textAlign: 'center', py: 2 }}>
               <DoneIcon sx={{ fontSize: 72, color: '#10b981', mb: 1 }} />
