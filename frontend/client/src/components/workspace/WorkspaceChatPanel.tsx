@@ -35,6 +35,7 @@ import CheckCircleOutline from '@mui/icons-material/CheckCircleOutline';
 import MusicNote from '@mui/icons-material/MusicNote';
 import MovieOutlined from '@mui/icons-material/MovieOutlined';
 import EventOutlined from '@mui/icons-material/EventOutlined';
+import PhotoLibraryOutlined from '@mui/icons-material/PhotoLibraryOutlined';
 import OpenInNew from '@mui/icons-material/OpenInNew';
 import { ListItemIcon, ListItemText, Dialog, DialogTitle, DialogContent, Tabs, Tab, ListItemButton, Snackbar, Button, FormControl, Select } from '@mui/material';
 import { useLocation } from 'wouter';
@@ -85,6 +86,9 @@ const T: WsDict = {
   aReference: { no: 'Referer til …', en: 'Reference …' },
   aReferenceSub: { no: 'Låt, leveranse eller økt → klikkbart kort', en: 'Song, deliverable or session → card' },
   aRequestUpload: { no: 'Be om opplasting', en: 'Request an upload' },
+  aRequestUploadMusic: { no: 'Be om lydfil', en: 'Request an audio file' },
+  aRequestUploadVisual: { no: 'Be om RAW/utvalg', en: 'Request RAW / selects' },
+  aRequestUploadVendor: { no: 'Be om kildefiler', en: 'Request source files' },
   aRequestUploadSub: { no: 'Motparten laster opp rett i tråden', en: 'They upload right in the thread' },
   aAiSummary: { no: 'AI: oppsummer samtalen', en: 'AI: summarize the chat' },
   aAiSummarySub: { no: 'Hva er status / hva venter', en: 'Status / what is pending' },
@@ -98,6 +102,7 @@ const T: WsDict = {
   // Kort/dialoger
   refPick: { no: 'Referer til …', en: 'Reference …' },
   refSongs: { no: 'Låter', en: 'Songs' },
+  refMedia: { no: 'Media', en: 'Media' },
   refDeliverables: { no: 'Leveranser', en: 'Deliverables' },
   refSessions: { no: 'Økter', en: 'Sessions' },
   refEmpty: { no: 'Ingenting her ennå.', en: 'Nothing here yet.' },
@@ -136,7 +141,7 @@ const TAG_META = {
   important: { icon: <PriorityHigh sx={{ fontSize: 14 }} />, dictKey: 'chipImportant', color: ws.red, soft: ws.redSoft, border: 'rgba(248,113,113,0.42)' },
 };
 
-const WorkspaceChatPanel: React.FC<{ projectId: string }> = ({ projectId }) => {
+const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = ({ projectId, category = 'music' }) => {
   const { user } = useAuth();
   // Utenlandske partner-vendors får engelsk UI — locale fra WsLocaleProvider.
   const locale = useWsLocale();
@@ -178,7 +183,7 @@ const WorkspaceChatPanel: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [refOpen, setRefOpen] = useState(false);
   const [refTab, setRefTab] = useState(0);
   const [refLoading, setRefLoading] = useState(false);
-  const [refData, setRefData] = useState({ tracks: [], deliverables: [], sessions: [] });
+  const [refSources, setRefSources] = useState([]); // [{key,label,icon,kind,route,items}]
 
   const scrollDown = () => requestAnimationFrame(() => endRef.current?.scrollIntoView({ behavior: 'smooth' }));
   // Er brukeren allerede nederst? Da (og bare da) auto-scroller vi ved nye
@@ -306,18 +311,22 @@ const WorkspaceChatPanel: React.FC<{ projectId: string }> = ({ projectId }) => {
       setTaskOpen(false); setTaskName(''); setToast(t('taskAdded'));
     } catch (e) { setToast(e?.message || t('sendFailed')); } finally { setBusyAction(false); }
   };
+  // Referanse-kilder er KATEGORI-bevisste: musikk viser Låter, visual viser
+  // Media, alle viser Leveranser + Økter. Hver kilde normaliseres til
+  // {id, primary, secondary} så pickeren rendrer uniformt.
+  const REF_CATALOG = {
+    track: { key: 'track', label: t('refSongs'), icon: <MusicNote sx={{ fontSize: 17, color: ws.accent }} />, kind: 'track', ep: `/api/projects/${projectId}/easeverse-tracks`, map: (r) => (r?.tracks || []).map((x) => ({ id: x.id, primary: x.title, secondary: [x.artist, x.status].filter(Boolean).join(' · ') })) },
+    media: { key: 'media', label: t('refMedia'), icon: <PhotoLibraryOutlined sx={{ fontSize: 17, color: '#7dd3fc' }} />, kind: 'media', ep: `/api/projects/${projectId}/media`, map: (r) => (r?.assets || []).slice(0, 60).map((x) => ({ id: x.id, primary: x.filename || 'fil', secondary: x.state || '' })) },
+    deliverable: { key: 'deliverable', label: t('refDeliverables'), icon: <MovieOutlined sx={{ fontSize: 17, color: '#f0abfc' }} />, kind: 'deliverable', ep: `/api/projects/${projectId}/deliverables`, map: (r) => (r?.deliverables || []).map((x) => ({ id: x.id, primary: x.title, secondary: [x.type, x.status].filter(Boolean).join(' · ') })) },
+    session: { key: 'session', label: t('refSessions'), icon: <EventOutlined sx={{ fontSize: 17, color: '#a5b4fc' }} />, kind: 'session', ep: `/api/projects/${projectId}/avtaler`, map: (r) => (r?.meetings || []).map((x) => ({ id: x.id, primary: x.title || 'Økt', secondary: x.scheduledAt ? new Date(x.scheduledAt).toLocaleString(wsDateLocale(locale)) : '' })) },
+  };
+  const REF_KEYS_BY_CAT = { music: ['track', 'deliverable', 'session'], visual: ['media', 'deliverable', 'session'], service: ['deliverable', 'session'], vendor: ['deliverable', 'session'] };
   const openRefPicker = async () => {
     setActionAnchor(null); setRefOpen(true); setRefLoading(true); setRefTab(0);
-    const [tr, dl, av] = await Promise.allSettled([
-      apiRequest(`/api/projects/${projectId}/easeverse-tracks`),
-      apiRequest(`/api/projects/${projectId}/deliverables`),
-      apiRequest(`/api/projects/${projectId}/avtaler`),
-    ]);
-    setRefData({
-      tracks: tr.status === 'fulfilled' ? (tr.value?.tracks || []) : [],
-      deliverables: dl.status === 'fulfilled' ? (dl.value?.deliverables || []) : [],
-      sessions: av.status === 'fulfilled' ? (av.value?.meetings || []) : [],
-    });
+    const keys = REF_KEYS_BY_CAT[category] || ['deliverable', 'session'];
+    const sources = keys.map((k) => REF_CATALOG[k]);
+    const loaded = await Promise.allSettled(sources.map((s) => apiRequest(s.ep)));
+    setRefSources(sources.map((s, i) => ({ ...s, items: loaded[i].status === 'fulfilled' ? s.map(loaded[i].value) : [] })));
     setRefLoading(false);
   };
   const pickReference = async (refKind, id, label) => {
@@ -337,7 +346,7 @@ const WorkspaceChatPanel: React.FC<{ projectId: string }> = ({ projectId }) => {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
   // Referanse-/oppgave-kort → naviger til riktig fane.
-  const REF_ROUTE = { track: 'laater', song: 'laater', deliverable: 'leveranser', session: 'sesjoner', oppgaver: 'oppgaver' };
+  const REF_ROUTE = { track: 'laater', song: 'laater', media: 'media', deliverable: 'leveranser', session: 'sesjoner', oppgaver: 'oppgaver' };
   const gotoRef = (refKind) => { const seg = REF_ROUTE[refKind] || 'oversikt'; navigate(`/workspace/${projectId}/${seg}`); };
 
   // Åpne forespørsler (tag=Spørsmål, ikke løst) — «X ubesvart».
@@ -372,7 +381,7 @@ const WorkspaceChatPanel: React.FC<{ projectId: string }> = ({ projectId }) => {
     );
   });
 
-  const REF_ICON = { track: <MusicNote sx={{ fontSize: 15 }} />, song: <MusicNote sx={{ fontSize: 15 }} />, deliverable: <MovieOutlined sx={{ fontSize: 15 }} />, session: <EventOutlined sx={{ fontSize: 15 }} />, oppgaver: <PlaylistAddCheck sx={{ fontSize: 15 }} /> };
+  const REF_ICON = { track: <MusicNote sx={{ fontSize: 15 }} />, song: <MusicNote sx={{ fontSize: 15 }} />, media: <PhotoLibraryOutlined sx={{ fontSize: 15 }} />, deliverable: <MovieOutlined sx={{ fontSize: 15 }} />, session: <EventOutlined sx={{ fontSize: 15 }} />, oppgaver: <PlaylistAddCheck sx={{ fontSize: 15 }} /> };
   // Interaktivt kort utledet av metadata.action.
   const renderCard = (m) => {
     const meta = m.metadata || {};
@@ -412,10 +421,11 @@ const WorkspaceChatPanel: React.FC<{ projectId: string }> = ({ projectId }) => {
     );
   };
 
+  const uploadLabel = category === 'music' ? t('aRequestUploadMusic') : category === 'visual' ? t('aRequestUploadVisual') : category === 'vendor' ? t('aRequestUploadVendor') : t('aRequestUpload');
   const ACTIONS = [
     { q: 'oppgave board task crew', icon: <PlaylistAddCheck sx={{ color: ws.green }} />, primary: t('aNewTask'), secondary: t('aNewTaskSub'), run: () => { setActionAnchor(null); setTaskOpen(true); } },
-    { q: 'referer lat leveranse okt link', icon: <LinkIcon sx={{ color: ws.accent }} />, primary: t('aReference'), secondary: t('aReferenceSub'), run: () => void openRefPicker() },
-    { q: 'opplasting fil vedlegg upload', icon: <AttachFile sx={{ color: '#7dd3fc' }} />, primary: t('aRequestUpload'), secondary: t('aRequestUploadSub'), run: () => void requestUpload() },
+    { q: 'referer lat media leveranse okt link', icon: <LinkIcon sx={{ color: ws.accent }} />, primary: t('aReference'), secondary: t('aReferenceSub'), run: () => void openRefPicker() },
+    { q: 'opplasting fil vedlegg upload raw kildefil lyd', icon: <AttachFile sx={{ color: '#7dd3fc' }} />, primary: uploadLabel, secondary: t('aRequestUploadSub'), run: () => void requestUpload() },
     { q: 'ai oppsummer sammendrag summary', icon: <Summarize sx={{ color: '#22d3ee' }} />, primary: t('aAiSummary'), secondary: t('aAiSummarySub'), run: () => void runAi('summary') },
     { q: 'ai foreslag utkast draft', icon: <AutoAwesome sx={{ color: '#22d3ee' }} />, primary: t('aAiDraft'), secondary: t('aAiDraftSub'), run: () => void runAi('draft') },
   ];
@@ -644,33 +654,19 @@ const WorkspaceChatPanel: React.FC<{ projectId: string }> = ({ projectId }) => {
         <DialogTitle sx={{ fontWeight: 800, fontSize: 15 }}>{t('refPick')}</DialogTitle>
         <DialogContent>
           <Tabs value={refTab} onChange={(_, v) => setRefTab(v)} variant="fullWidth" sx={{ mb: 1, minHeight: 36, '& .MuiTab-root': { textTransform: 'none', fontWeight: 700, fontSize: 12, minHeight: 36, color: ws.textDim }, '& .Mui-selected': { color: `${ws.accent} !important` }, '& .MuiTabs-indicator': { bgcolor: ws.accent } }}>
-            <Tab label={`${t('refSongs')} (${refData.tracks.length})`} />
-            <Tab label={`${t('refDeliverables')} (${refData.deliverables.length})`} />
-            <Tab label={`${t('refSessions')} (${refData.sessions.length})`} />
+            {refSources.map((s) => <Tab key={s.key} label={`${s.label} (${s.items.length})`} />)}
           </Tabs>
           {refLoading ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress size={20} sx={{ color: ws.accent }} /></Box>
           ) : (
             <Stack spacing={0.25} sx={{ maxHeight: 300, overflowY: 'auto' }}>
-              {refTab === 0 && refData.tracks.map((tr) => (
-                <ListItemButton key={tr.id} onClick={() => void pickReference('track', tr.id, tr.title)} sx={{ borderRadius: 1.5 }}>
-                  <ListItemIcon sx={{ minWidth: 32 }}><MusicNote sx={{ fontSize: 17, color: ws.accent }} /></ListItemIcon>
-                  <ListItemText primary={tr.title} secondary={[tr.artist, tr.status].filter(Boolean).join(' · ')} primaryTypographyProps={{ sx: { fontSize: 13, color: ws.text } }} secondaryTypographyProps={{ sx: { fontSize: 11, color: ws.textDim } }} />
+              {(refSources[refTab]?.items || []).map((it) => (
+                <ListItemButton key={it.id} onClick={() => void pickReference(refSources[refTab].kind, it.id, it.primary)} sx={{ borderRadius: 1.5 }}>
+                  <ListItemIcon sx={{ minWidth: 32 }}>{refSources[refTab].icon}</ListItemIcon>
+                  <ListItemText primary={it.primary} secondary={it.secondary} primaryTypographyProps={{ sx: { fontSize: 13, color: ws.text } }} secondaryTypographyProps={{ sx: { fontSize: 11, color: ws.textDim } }} />
                 </ListItemButton>
               ))}
-              {refTab === 1 && refData.deliverables.map((d) => (
-                <ListItemButton key={d.id} onClick={() => void pickReference('deliverable', d.id, d.title)} sx={{ borderRadius: 1.5 }}>
-                  <ListItemIcon sx={{ minWidth: 32 }}><MovieOutlined sx={{ fontSize: 17, color: '#f0abfc' }} /></ListItemIcon>
-                  <ListItemText primary={d.title} secondary={[d.type, d.status].filter(Boolean).join(' · ')} primaryTypographyProps={{ sx: { fontSize: 13, color: ws.text } }} secondaryTypographyProps={{ sx: { fontSize: 11, color: ws.textDim } }} />
-                </ListItemButton>
-              ))}
-              {refTab === 2 && refData.sessions.map((s) => (
-                <ListItemButton key={s.id} onClick={() => void pickReference('session', s.id, s.title || 'Økt')} sx={{ borderRadius: 1.5 }}>
-                  <ListItemIcon sx={{ minWidth: 32 }}><EventOutlined sx={{ fontSize: 17, color: '#a5b4fc' }} /></ListItemIcon>
-                  <ListItemText primary={s.title || 'Økt'} secondary={s.scheduledAt ? new Date(s.scheduledAt).toLocaleString(wsDateLocale(locale)) : ''} primaryTypographyProps={{ sx: { fontSize: 13, color: ws.text } }} secondaryTypographyProps={{ sx: { fontSize: 11, color: ws.textDim } }} />
-                </ListItemButton>
-              ))}
-              {((refTab === 0 && !refData.tracks.length) || (refTab === 1 && !refData.deliverables.length) || (refTab === 2 && !refData.sessions.length)) && (
+              {refSources[refTab] && refSources[refTab].items.length === 0 && (
                 <Typography sx={{ color: ws.textDim, fontSize: 12.5, py: 2, textAlign: 'center' }}>{t('refEmpty')}</Typography>
               )}
             </Stack>
