@@ -613,7 +613,8 @@ struct MeetingsView: View {
                     RoundedRectangle(cornerRadius: 10)
                         .fill(MtBrand.purpleLight.opacity(0.22))
                     Image(systemName: "chart.bar.fill")
-                        .font(.appScaled(size: 16, weight: .semibold))
+                        // Fast 40pt-flis — ikonet skal ikke AX-skalere
+                        .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(MtBrand.purpleLight)
                 }
                 .frame(width: 40, height: 40)
@@ -697,7 +698,9 @@ struct MeetingsView: View {
 
     private var agendaCard: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .top) {
+            // AXStack: tittelen brakk bokstav-for-bokstav ved siden av
+            // mode-pickeren på accessibility-størrelser (AX5-QA).
+            AXStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(calendarCardTitle)
                         .font(.appScaled(size: 15, weight: .bold))

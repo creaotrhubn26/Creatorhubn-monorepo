@@ -2259,7 +2259,8 @@ fileprivate struct ClusterPin: View {
                 .frame(width: 44, height: 44)
                 .shadow(color: color.opacity(0.6), radius: 8, x: 0, y: 2)
             Text("\(count)")
-                .font(.appScaled(size: 15, weight: .bold, design: .rounded))
+                // Kart-grafikk — fast størrelse (AX sprenger sirkelen)
+                .font(.system(size: 15, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
                 .monospacedDigit()
         }
@@ -2302,7 +2303,7 @@ fileprivate struct KartStatusPin: View {
                 .shadow(color: status.color.opacity(0.6), radius: isSelected ? 12 : 6, x: 0, y: 2)
 
             Image(systemName: "building.2.fill")
-                .font(.appScaled(size: 12, weight: .bold))
+                .font(.system(size: 12, weight: .bold))
                 .foregroundStyle(.white)
                 .offset(y: -6)
         }

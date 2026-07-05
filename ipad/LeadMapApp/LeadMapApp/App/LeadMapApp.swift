@@ -463,10 +463,9 @@ struct MainTabView: View {
             }
         }
         .id(dynamicTypeSize)
-        // Accessibility-størrelsene (AX1-AX5) krever ekte adaptive
-        // layouts (kort/tabeller re-flyter ikke enda) — capp på xxxLarge
-        // så tekst skalerer 100→235 % uten å knuse skjermene.
-        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+        // AX1-AX5 (2026-07-05): cappen på xxxLarge er fjernet — layoutene
+        // er gjort adaptive (AXStack/axLineLimit i ScaledFont.swift) slik
+        // at kort og rader re-flyter i stedet for å knekke.
     }
 }
 

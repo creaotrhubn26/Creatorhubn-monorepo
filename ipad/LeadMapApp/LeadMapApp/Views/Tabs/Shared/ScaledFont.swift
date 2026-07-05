@@ -39,3 +39,47 @@ extension Font {
         #endif
     }
 }
+
+// MARK: - AX-adaptive byggeklosser (AX1-AX5, 2026-07-05)
+
+/// HStack ved vanlige tekststørrelser, VStack (leading) ved
+/// accessibility-størrelsene — standard-mønsteret for «label + verdi»-
+/// rader og knapperekker som ellers klemmes i stykker på AX3-AX5.
+///
+///   AXStack(spacing: 8) { icon; Text(...); Spacer(); value }
+struct AXStack<Content: View>: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    var alignment: VerticalAlignment = .center
+    var axAlignment: HorizontalAlignment = .leading
+    var spacing: CGFloat? = nil
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: axAlignment, spacing: spacing) { content }
+        } else {
+            HStack(alignment: alignment, spacing: spacing) { content }
+        }
+    }
+}
+
+extension View {
+    /// `lineLimit(1)` klipper tekst brutalt på AX-størrelser — dette gir
+    /// den vanlige grensen ved normale størrelser og slipper teksten fri
+    /// (opptil `axLimit`) ved accessibility-størrelser.
+    func axLineLimit(_ normal: Int, ax axLimit: Int? = nil) -> some View {
+        modifier(AXLineLimitModifier(normal: normal, axLimit: axLimit))
+    }
+}
+
+private struct AXLineLimitModifier: ViewModifier {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    let normal: Int
+    let axLimit: Int?
+
+    func body(content: Content) -> some View {
+        content.lineLimit(
+            dynamicTypeSize.isAccessibilitySize ? axLimit : normal
+        )
+    }
+}
