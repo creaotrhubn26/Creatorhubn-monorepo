@@ -35,8 +35,9 @@ import CheckCircleOutline from '@mui/icons-material/CheckCircleOutline';
 import MusicNote from '@mui/icons-material/MusicNote';
 import MovieOutlined from '@mui/icons-material/MovieOutlined';
 import EventOutlined from '@mui/icons-material/EventOutlined';
+import PhotoLibraryOutlined from '@mui/icons-material/PhotoLibraryOutlined';
 import OpenInNew from '@mui/icons-material/OpenInNew';
-import { ListItemIcon, ListItemText, Dialog, DialogTitle, DialogContent, Tabs, Tab, ListItemButton, Snackbar, Button, FormControl, Select } from '@mui/material';
+import { ListItemIcon, ListItemText, Dialog, DialogTitle, DialogContent, Tabs, Tab, ListItemButton, Snackbar, Button, FormControl, Select, Checkbox, FormControlLabel } from '@mui/material';
 import { useLocation } from 'wouter';
 import { apiRequest, getAuthHeader, buildApiUrl } from '@/lib/queryClient';
 import { useAuth } from '@/hooks/useAuth';
@@ -64,6 +65,7 @@ const T: WsDict = {
   jumpToLatest: { no: 'Hopp til nyeste', en: 'Jump to latest' },
   refresh: { no: 'Oppdater', en: 'Refresh' },
   guide: { no: 'Hjelp / guide', en: 'Help / guide' },
+  actionsGuide: { no: 'Om handlinger', en: 'About actions' },
   pinFilterOn: { no: 'Vis kun viktige', en: 'Show important only' },
   pinFilterOff: { no: 'Vis alle meldinger', en: 'Show all messages' },
   send: { no: 'Send melding', en: 'Send message' },
@@ -85,11 +87,28 @@ const T: WsDict = {
   aReference: { no: 'Referer til …', en: 'Reference …' },
   aReferenceSub: { no: 'Låt, leveranse eller økt → klikkbart kort', en: 'Song, deliverable or session → card' },
   aRequestUpload: { no: 'Be om opplasting', en: 'Request an upload' },
+  aRequestUploadMusic: { no: 'Be om lydfil', en: 'Request an audio file' },
+  aRequestUploadVisual: { no: 'Be om RAW/utvalg', en: 'Request RAW / selects' },
+  aRequestUploadVendor: { no: 'Be om kildefiler', en: 'Request source files' },
   aRequestUploadSub: { no: 'Motparten laster opp rett i tråden', en: 'They upload right in the thread' },
   aAiSummary: { no: 'AI: oppsummer samtalen', en: 'AI: summarize the chat' },
   aAiSummarySub: { no: 'Hva er status / hva venter', en: 'Status / what is pending' },
   aAiDraft: { no: 'AI: foreslå melding', en: 'AI: draft a message' },
   aAiDraftSub: { no: 'Claude skriver et utkast i feltet', en: 'Claude drafts in the field' },
+  aMeeting: { no: 'Planlegg møte', en: 'Schedule a meeting' },
+  aMeetingVisual: { no: 'Planlegg opptaksdag', en: 'Schedule a shoot day' },
+  aMeetingService: { no: 'Ny booking', en: 'New booking' },
+  aMeetingSub: { no: 'Book tid + generer Google Meet → kort i tråden', en: 'Book time + generate Google Meet → card' },
+  meetTitleField: { no: 'Tittel', en: 'Title' },
+  genMeet: { no: 'Generer Google Meet-lenke', en: 'Generate Google Meet link' },
+  meetCreate: { no: 'Book & del', en: 'Book & share' },
+  joinMeet: { no: 'Bli med (Google Meet)', en: 'Join (Google Meet)' },
+  aApproval: { no: 'Send til kundegodkjenning', en: 'Send for client approval' },
+  aApprovalSub: { no: 'Velg en leveranse → godkjenn-kort i tråden', en: 'Pick a deliverable → approve card' },
+  approvalPick: { no: 'Send til godkjenning', en: 'Send for approval' },
+  approve: { no: 'Godkjenn', en: 'Approve' },
+  approved: { no: 'Godkjent', en: 'Approved' },
+  awaitingApproval: { no: 'Venter godkjenning', en: 'Awaiting approval' },
   // Forespørsel
   openRequest: { no: 'Åpen forespørsel', en: 'Open request' },
   resolved: { no: 'Løst', en: 'Resolved' },
@@ -98,6 +117,7 @@ const T: WsDict = {
   // Kort/dialoger
   refPick: { no: 'Referer til …', en: 'Reference …' },
   refSongs: { no: 'Låter', en: 'Songs' },
+  refMedia: { no: 'Media', en: 'Media' },
   refDeliverables: { no: 'Leveranser', en: 'Deliverables' },
   refSessions: { no: 'Økter', en: 'Sessions' },
   refEmpty: { no: 'Ingenting her ennå.', en: 'Nothing here yet.' },
@@ -136,7 +156,7 @@ const TAG_META = {
   important: { icon: <PriorityHigh sx={{ fontSize: 14 }} />, dictKey: 'chipImportant', color: ws.red, soft: ws.redSoft, border: 'rgba(248,113,113,0.42)' },
 };
 
-const WorkspaceChatPanel: React.FC<{ projectId: string }> = ({ projectId }) => {
+const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = ({ projectId, category = 'music' }) => {
   const { user } = useAuth();
   // Utenlandske partner-vendors får engelsk UI — locale fra WsLocaleProvider.
   const locale = useWsLocale();
@@ -178,7 +198,15 @@ const WorkspaceChatPanel: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [refOpen, setRefOpen] = useState(false);
   const [refTab, setRefTab] = useState(0);
   const [refLoading, setRefLoading] = useState(false);
-  const [refData, setRefData] = useState({ tracks: [], deliverables: [], sessions: [] });
+  const [refSources, setRefSources] = useState([]); // [{key,label,icon,kind,route,items}]
+  const [meetOpen, setMeetOpen] = useState(false);
+  const [meetTitle, setMeetTitle] = useState('');
+  const [meetDate, setMeetDate] = useState('');
+  const [meetTime, setMeetTime] = useState('14:00');
+  const [genMeet, setGenMeet] = useState(true);
+  const [apprOpen, setApprOpen] = useState(false);
+  const [apprLoading, setApprLoading] = useState(false);
+  const [apprItems, setApprItems] = useState([]);
 
   const scrollDown = () => requestAnimationFrame(() => endRef.current?.scrollIntoView({ behavior: 'smooth' }));
   // Er brukeren allerede nederst? Da (og bare da) auto-scroller vi ved nye
@@ -306,18 +334,22 @@ const WorkspaceChatPanel: React.FC<{ projectId: string }> = ({ projectId }) => {
       setTaskOpen(false); setTaskName(''); setToast(t('taskAdded'));
     } catch (e) { setToast(e?.message || t('sendFailed')); } finally { setBusyAction(false); }
   };
+  // Referanse-kilder er KATEGORI-bevisste: musikk viser Låter, visual viser
+  // Media, alle viser Leveranser + Økter. Hver kilde normaliseres til
+  // {id, primary, secondary} så pickeren rendrer uniformt.
+  const REF_CATALOG = {
+    track: { key: 'track', label: t('refSongs'), icon: <MusicNote sx={{ fontSize: 17, color: ws.accent }} />, kind: 'track', ep: `/api/projects/${projectId}/easeverse-tracks`, map: (r) => (r?.tracks || []).map((x) => ({ id: x.id, primary: x.title, secondary: [x.artist, x.status].filter(Boolean).join(' · ') })) },
+    media: { key: 'media', label: t('refMedia'), icon: <PhotoLibraryOutlined sx={{ fontSize: 17, color: '#7dd3fc' }} />, kind: 'media', ep: `/api/projects/${projectId}/media`, map: (r) => (r?.assets || []).slice(0, 60).map((x) => ({ id: x.id, primary: x.filename || 'fil', secondary: x.state || '' })) },
+    deliverable: { key: 'deliverable', label: t('refDeliverables'), icon: <MovieOutlined sx={{ fontSize: 17, color: '#f0abfc' }} />, kind: 'deliverable', ep: `/api/projects/${projectId}/deliverables`, map: (r) => (r?.deliverables || []).map((x) => ({ id: x.id, primary: x.title, secondary: [x.type, x.status].filter(Boolean).join(' · ') })) },
+    session: { key: 'session', label: t('refSessions'), icon: <EventOutlined sx={{ fontSize: 17, color: '#a5b4fc' }} />, kind: 'session', ep: `/api/projects/${projectId}/avtaler`, map: (r) => (r?.meetings || []).map((x) => ({ id: x.id, primary: x.title || 'Økt', secondary: x.scheduledAt ? new Date(x.scheduledAt).toLocaleString(wsDateLocale(locale)) : '' })) },
+  };
+  const REF_KEYS_BY_CAT = { music: ['track', 'deliverable', 'session'], visual: ['media', 'deliverable', 'session'], service: ['deliverable', 'session'], vendor: ['deliverable', 'session'] };
   const openRefPicker = async () => {
     setActionAnchor(null); setRefOpen(true); setRefLoading(true); setRefTab(0);
-    const [tr, dl, av] = await Promise.allSettled([
-      apiRequest(`/api/projects/${projectId}/easeverse-tracks`),
-      apiRequest(`/api/projects/${projectId}/deliverables`),
-      apiRequest(`/api/projects/${projectId}/avtaler`),
-    ]);
-    setRefData({
-      tracks: tr.status === 'fulfilled' ? (tr.value?.tracks || []) : [],
-      deliverables: dl.status === 'fulfilled' ? (dl.value?.deliverables || []) : [],
-      sessions: av.status === 'fulfilled' ? (av.value?.meetings || []) : [],
-    });
+    const keys = REF_KEYS_BY_CAT[category] || ['deliverable', 'session'];
+    const sources = keys.map((k) => REF_CATALOG[k]);
+    const loaded = await Promise.allSettled(sources.map((s) => apiRequest(s.ep)));
+    setRefSources(sources.map((s, i) => ({ ...s, items: loaded[i].status === 'fulfilled' ? s.map(loaded[i].value) : [] })));
     setRefLoading(false);
   };
   const pickReference = async (refKind, id, label) => {
@@ -330,6 +362,39 @@ const WorkspaceChatPanel: React.FC<{ projectId: string }> = ({ projectId }) => {
     try { await postAction(t('uploadRequested'), { action: 'request_upload' }); }
     catch { setToast(t('sendFailed')); } finally { setBusyAction(false); }
   };
+  const createMeeting = async () => {
+    if (!meetDate) { setToast(t('sendFailed')); return; }
+    setBusyAction(true);
+    try {
+      const [h, mm] = (meetTime || '14:00').split(':');
+      const start = new Date(`${meetDate}T${(h || '14').padStart(2, '0')}:${(mm || '00').padStart(2, '0')}:00`);
+      const mt = await apiRequest(`/api/projects/${projectId}/meetings`, { method: 'POST', body: { title: meetTitle.trim() || t('aMeeting'), scheduledAt: start.toISOString(), durationMinutes: 60, generateMeet: genMeet } });
+      const when = start.toLocaleString(wsDateLocale(locale), { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
+      await postAction(`📅 ${mt?.title || meetTitle.trim()} · ${when}`, { action: 'meeting', refKind: 'meeting', refLabel: mt?.title || meetTitle.trim(), linkedEntityId: mt?.id, meetLink: mt?.meetLink || null });
+      setMeetOpen(false); setMeetTitle(''); setMeetDate('');
+    } catch (e) { setToast(e?.message || t('sendFailed')); } finally { setBusyAction(false); }
+  };
+  // Send til kundegodkjenning: velg leveranse → godkjenn-kort. «Godkjenn»
+  // markerer leveransen som levert (ekte status) og lukker godkjenn-kortet.
+  const openApprovalPicker = async () => {
+    setActionAnchor(null); setApprOpen(true); setApprLoading(true);
+    try { const r = await apiRequest(`/api/projects/${projectId}/deliverables`); setApprItems((r?.deliverables || []).filter((d) => !['delivered', 'completed', 'archived'].includes(d.status))); }
+    catch { setApprItems([]); } finally { setApprLoading(false); }
+  };
+  const sendForApproval = async (id, title) => {
+    setApprOpen(false); setBusyAction(true);
+    try { await postAction(`✅ ${title}`, { action: 'approval', refKind: 'deliverable', refLabel: title, linkedEntityId: id, status: 'pending' }); }
+    catch { setToast(t('sendFailed')); } finally { setBusyAction(false); }
+  };
+  const approveDeliverable = async (m) => {
+    const id = m.metadata?.linkedEntityId; if (!id) return;
+    setBusyAction(true);
+    try {
+      await apiRequest(`/api/projects/${projectId}/deliverables/${encodeURIComponent(id)}`, { method: 'PATCH', body: { status: 'delivered' } });
+      await apiRequest(`/api/communication/messages/${encodeURIComponent(m.id)}`, { method: 'PATCH', body: { status: 'resolved' } });
+      await load(false);
+    } catch { setToast(t('sendFailed')); } finally { setBusyAction(false); }
+  };
   // Cmd/Ctrl+K åpner Action.
   useEffect(() => {
     const onKey = (e) => { if ((e.metaKey || e.ctrlKey) && String(e.key).toLowerCase() === 'k') { e.preventDefault(); if (actionBtnRef.current) { setActionAnchor(actionBtnRef.current); setActionQuery(''); } } };
@@ -337,8 +402,12 @@ const WorkspaceChatPanel: React.FC<{ projectId: string }> = ({ projectId }) => {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
   // Referanse-/oppgave-kort → naviger til riktig fane.
-  const REF_ROUTE = { track: 'laater', song: 'laater', deliverable: 'leveranser', session: 'sesjoner', oppgaver: 'oppgaver' };
-  const gotoRef = (refKind) => { const seg = REF_ROUTE[refKind] || 'oversikt'; navigate(`/workspace/${projectId}/${seg}`); };
+  const REF_ROUTE = { track: 'laater', song: 'laater', media: 'media', deliverable: 'leveranser', oppgaver: 'oppgaver' };
+  // Møter/økter havner i Sesjoner for musikk, ellers i Avtaler (crm_meetings).
+  const gotoRef = (refKind) => {
+    const seg = (refKind === 'session' || refKind === 'meeting') ? (category === 'music' ? 'sesjoner' : 'avtaler') : (REF_ROUTE[refKind] || 'oversikt');
+    navigate(`/workspace/${projectId}/${seg}`);
+  };
 
   // Åpne forespørsler (tag=Spørsmål, ikke løst) — «X ubesvart».
   const openRequests = useMemo(() => messages.filter((m) => m.tag === 'question' && m.metadata?.status !== 'resolved').length, [messages]);
@@ -372,7 +441,7 @@ const WorkspaceChatPanel: React.FC<{ projectId: string }> = ({ projectId }) => {
     );
   });
 
-  const REF_ICON = { track: <MusicNote sx={{ fontSize: 15 }} />, song: <MusicNote sx={{ fontSize: 15 }} />, deliverable: <MovieOutlined sx={{ fontSize: 15 }} />, session: <EventOutlined sx={{ fontSize: 15 }} />, oppgaver: <PlaylistAddCheck sx={{ fontSize: 15 }} /> };
+  const REF_ICON = { track: <MusicNote sx={{ fontSize: 15 }} />, song: <MusicNote sx={{ fontSize: 15 }} />, media: <PhotoLibraryOutlined sx={{ fontSize: 15 }} />, deliverable: <MovieOutlined sx={{ fontSize: 15 }} />, session: <EventOutlined sx={{ fontSize: 15 }} />, oppgaver: <PlaylistAddCheck sx={{ fontSize: 15 }} /> };
   // Interaktivt kort utledet av metadata.action.
   const renderCard = (m) => {
     const meta = m.metadata || {};
@@ -390,6 +459,36 @@ const WorkspaceChatPanel: React.FC<{ projectId: string }> = ({ projectId }) => {
       return (
         <Button onClick={() => fileRef.current?.click()} startIcon={<AttachFile sx={{ fontSize: 16 }} />} size="small"
           sx={{ mt: 0.5, textTransform: 'none', fontWeight: 700, color: ws.accentContrast, bgcolor: ws.accent, '&:hover': { bgcolor: ws.accentHover }, borderRadius: 2 }}>{t('uploadHere')}</Button>
+      );
+    }
+    if (act === 'approval') {
+      const done = meta.status === 'resolved';
+      return (
+        <Box sx={{ mt: 0.5, px: 1, py: 0.75, borderRadius: 2, bgcolor: done ? ws.greenSoft : 'rgba(240,171,252,0.1)', border: `1px solid ${done ? ws.greenSoft : 'rgba(240,171,252,0.32)'}`, display: 'inline-flex', alignItems: 'center', gap: 0.75, maxWidth: '100%' }}>
+          <MovieOutlined sx={{ fontSize: 15, color: done ? ws.green : '#f0abfc' }} />
+          <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: ws.text, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{meta.refLabel}</Typography>
+          {done ? (
+            <Chip size="small" icon={<CheckCircleOutline sx={{ fontSize: 13, color: `${ws.green} !important` }} />} label={t('approved')} sx={{ height: 20, fontSize: 10.5, fontWeight: 700, color: ws.green, bgcolor: 'transparent' }} />
+          ) : (
+            <Button onClick={() => approveDeliverable(m)} disabled={busyAction} startIcon={<CheckCircleOutline sx={{ fontSize: 15 }} />} size="small"
+              sx={{ ml: 0.5, textTransform: 'none', fontWeight: 700, fontSize: 11.5, minHeight: 26, color: ws.accentContrast, bgcolor: ws.green, '&:hover': { bgcolor: '#2bb673' }, borderRadius: 1.5 }}>{t('approve')}</Button>
+          )}
+        </Box>
+      );
+    }
+    if (act === 'meeting') {
+      return (
+        <Stack spacing={0.5} sx={{ mt: 0.5 }} alignItems="flex-start">
+          <Box onClick={() => gotoRef('meeting')} sx={{ px: 1, py: 0.75, borderRadius: 2, cursor: 'pointer', bgcolor: ws.accentSoft, border: `1px solid ${ws.accentBorder}`, display: 'inline-flex', alignItems: 'center', gap: 0.75, maxWidth: '100%' }}>
+            <EventOutlined sx={{ fontSize: 15, color: ws.accent }} />
+            <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: ws.text, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{meta.refLabel}</Typography>
+            <OpenInNew sx={{ fontSize: 13, color: ws.textDim }} />
+          </Box>
+          {typeof meta.meetLink === 'string' && /^https:\/\/(meet\.google\.com|[\w-]+\.meet\.google\.com)\//i.test(meta.meetLink) && (
+            <Button component="a" href={meta.meetLink} target="_blank" rel="noopener" startIcon={<EventOutlined sx={{ fontSize: 15 }} />} size="small"
+              sx={{ textTransform: 'none', fontWeight: 700, color: ws.accentContrast, bgcolor: ws.green, '&:hover': { bgcolor: '#2bb673' }, borderRadius: 2 }}>{t('joinMeet')}</Button>
+          )}
+        </Stack>
       );
     }
     return null;
@@ -412,10 +511,15 @@ const WorkspaceChatPanel: React.FC<{ projectId: string }> = ({ projectId }) => {
     );
   };
 
+  const uploadLabel = category === 'music' ? t('aRequestUploadMusic') : category === 'visual' ? t('aRequestUploadVisual') : category === 'vendor' ? t('aRequestUploadVendor') : t('aRequestUpload');
+  const meetingLabel = category === 'visual' ? t('aMeetingVisual') : category === 'service' ? t('aMeetingService') : t('aMeeting');
   const ACTIONS = [
     { q: 'oppgave board task crew', icon: <PlaylistAddCheck sx={{ color: ws.green }} />, primary: t('aNewTask'), secondary: t('aNewTaskSub'), run: () => { setActionAnchor(null); setTaskOpen(true); } },
-    { q: 'referer lat leveranse okt link', icon: <LinkIcon sx={{ color: ws.accent }} />, primary: t('aReference'), secondary: t('aReferenceSub'), run: () => void openRefPicker() },
-    { q: 'opplasting fil vedlegg upload', icon: <AttachFile sx={{ color: '#7dd3fc' }} />, primary: t('aRequestUpload'), secondary: t('aRequestUploadSub'), run: () => void requestUpload() },
+    { q: 'mote booking opptaksdag avtale meet kalender', icon: <EventOutlined sx={{ color: '#a5b4fc' }} />, primary: meetingLabel, secondary: t('aMeetingSub'), run: () => { setActionAnchor(null); setMeetOpen(true); } },
+    { q: 'referer lat media leveranse okt link', icon: <LinkIcon sx={{ color: ws.accent }} />, primary: t('aReference'), secondary: t('aReferenceSub'), run: () => void openRefPicker() },
+    // Kundegodkjenning er mest relevant for klient-vendte kategorier.
+    ...((category === 'visual' || category === 'service') ? [{ q: 'godkjenning kunde approval leveranse send', icon: <CheckCircleOutline sx={{ color: '#f0abfc' }} />, primary: t('aApproval'), secondary: t('aApprovalSub'), run: () => void openApprovalPicker() }] : []),
+    { q: 'opplasting fil vedlegg upload raw kildefil lyd', icon: <AttachFile sx={{ color: '#7dd3fc' }} />, primary: uploadLabel, secondary: t('aRequestUploadSub'), run: () => void requestUpload() },
     { q: 'ai oppsummer sammendrag summary', icon: <Summarize sx={{ color: '#22d3ee' }} />, primary: t('aAiSummary'), secondary: t('aAiSummarySub'), run: () => void runAi('summary') },
     { q: 'ai foreslag utkast draft', icon: <AutoAwesome sx={{ color: '#22d3ee' }} />, primary: t('aAiDraft'), secondary: t('aAiDraftSub'), run: () => void runAi('draft') },
   ];
@@ -486,7 +590,7 @@ const WorkspaceChatPanel: React.FC<{ projectId: string }> = ({ projectId }) => {
                 {tagMeta && (
                   <Chip size="small" icon={tagMeta.icon} label={t(tagMeta.dictKey)} sx={{ mt: 0.4, height: 18, fontSize: 10, color: tagMeta.color, bgcolor: tagMeta.soft, '& .MuiChip-icon': { color: tagMeta.color } }} />
                 )}
-                {m.content && !(m.metadata?.action === 'reference' || m.metadata?.action === 'task') && (
+                {m.content && !['reference', 'task', 'meeting', 'approval'].includes(m.metadata?.action) && (
                   <Box sx={{ mt: 0.25, px: 1.25, py: 0.75, borderRadius: 2, bgcolor: mine ? ws.accentSoft : 'rgba(255,255,255,0.05)', border: mine ? `1px solid ${ws.accentBorder}` : 'none', display: 'inline-block', maxWidth: '100%' }}>
                     <Typography sx={{ fontSize: 13, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{m.content}</Typography>
                   </Box>
@@ -591,6 +695,7 @@ const WorkspaceChatPanel: React.FC<{ projectId: string }> = ({ projectId }) => {
         <MenuItem onClick={() => { setMoreAnchor(null); scrollDown(); }} sx={{ gap: 1, fontSize: 13 }}><KeyboardArrowDown sx={{ fontSize: 18 }} /> {t('jumpToLatest')}</MenuItem>
         <MenuItem onClick={() => { setMoreAnchor(null); load(false); }} sx={{ gap: 1, fontSize: 13 }}><Refresh sx={{ fontSize: 18 }} /> {t('refresh')}</MenuItem>
         <MenuItem component="a" href="/guide/chat" target="_blank" rel="noopener" onClick={() => setMoreAnchor(null)} sx={{ gap: 1, fontSize: 13 }}><HelpOutlineIcon sx={{ fontSize: 18 }} /> {t('guide')}</MenuItem>
+        <MenuItem component="a" href="/guide/actions" target="_blank" rel="noopener" onClick={() => setMoreAnchor(null)} sx={{ gap: 1, fontSize: 13 }}><AutoAwesome sx={{ fontSize: 18 }} /> {t('actionsGuide')}</MenuItem>
       </Menu>
 
       {/* Action-launcher */}
@@ -644,35 +749,62 @@ const WorkspaceChatPanel: React.FC<{ projectId: string }> = ({ projectId }) => {
         <DialogTitle sx={{ fontWeight: 800, fontSize: 15 }}>{t('refPick')}</DialogTitle>
         <DialogContent>
           <Tabs value={refTab} onChange={(_, v) => setRefTab(v)} variant="fullWidth" sx={{ mb: 1, minHeight: 36, '& .MuiTab-root': { textTransform: 'none', fontWeight: 700, fontSize: 12, minHeight: 36, color: ws.textDim }, '& .Mui-selected': { color: `${ws.accent} !important` }, '& .MuiTabs-indicator': { bgcolor: ws.accent } }}>
-            <Tab label={`${t('refSongs')} (${refData.tracks.length})`} />
-            <Tab label={`${t('refDeliverables')} (${refData.deliverables.length})`} />
-            <Tab label={`${t('refSessions')} (${refData.sessions.length})`} />
+            {refSources.map((s) => <Tab key={s.key} label={`${s.label} (${s.items.length})`} />)}
           </Tabs>
           {refLoading ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress size={20} sx={{ color: ws.accent }} /></Box>
           ) : (
             <Stack spacing={0.25} sx={{ maxHeight: 300, overflowY: 'auto' }}>
-              {refTab === 0 && refData.tracks.map((tr) => (
-                <ListItemButton key={tr.id} onClick={() => void pickReference('track', tr.id, tr.title)} sx={{ borderRadius: 1.5 }}>
-                  <ListItemIcon sx={{ minWidth: 32 }}><MusicNote sx={{ fontSize: 17, color: ws.accent }} /></ListItemIcon>
-                  <ListItemText primary={tr.title} secondary={[tr.artist, tr.status].filter(Boolean).join(' · ')} primaryTypographyProps={{ sx: { fontSize: 13, color: ws.text } }} secondaryTypographyProps={{ sx: { fontSize: 11, color: ws.textDim } }} />
+              {(refSources[refTab]?.items || []).map((it) => (
+                <ListItemButton key={it.id} onClick={() => void pickReference(refSources[refTab].kind, it.id, it.primary)} sx={{ borderRadius: 1.5 }}>
+                  <ListItemIcon sx={{ minWidth: 32 }}>{refSources[refTab].icon}</ListItemIcon>
+                  <ListItemText primary={it.primary} secondary={it.secondary} primaryTypographyProps={{ sx: { fontSize: 13, color: ws.text } }} secondaryTypographyProps={{ sx: { fontSize: 11, color: ws.textDim } }} />
                 </ListItemButton>
               ))}
-              {refTab === 1 && refData.deliverables.map((d) => (
-                <ListItemButton key={d.id} onClick={() => void pickReference('deliverable', d.id, d.title)} sx={{ borderRadius: 1.5 }}>
+              {refSources[refTab] && refSources[refTab].items.length === 0 && (
+                <Typography sx={{ color: ws.textDim, fontSize: 12.5, py: 2, textAlign: 'center' }}>{t('refEmpty')}</Typography>
+              )}
+            </Stack>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Planlegg møte / booking */}
+      <Dialog open={meetOpen} onClose={() => setMeetOpen(false)} fullWidth maxWidth="xs" PaperProps={{ sx: { bgcolor: ws.panelSolid, color: ws.text, border: `1px solid ${ws.border}` } }}>
+        <DialogTitle sx={{ fontWeight: 800, fontSize: 15 }}>{meetingLabel}</DialogTitle>
+        <DialogContent>
+          <Stack spacing={1.25} sx={{ pt: 0.5 }}>
+            <TextField autoFocus value={meetTitle} onChange={(e) => setMeetTitle(e.target.value)} placeholder={t('meetTitleField')} size="small" fullWidth
+              inputProps={{ 'aria-label': t('meetTitleField') }} sx={{ '& .MuiOutlinedInput-root': { bgcolor: ws.panelInput, fontSize: 13 } }} />
+            <Stack direction="row" spacing={1}>
+              <TextField type="date" value={meetDate} onChange={(e) => setMeetDate(e.target.value)} size="small" fullWidth InputLabelProps={{ shrink: true }} inputProps={{ 'aria-label': 'Dato' }} sx={{ '& .MuiOutlinedInput-root': { bgcolor: ws.panelInput, fontSize: 13, color: ws.text } }} />
+              <TextField type="time" value={meetTime} onChange={(e) => setMeetTime(e.target.value)} size="small" fullWidth InputLabelProps={{ shrink: true }} inputProps={{ 'aria-label': 'Tid' }} sx={{ '& .MuiOutlinedInput-root': { bgcolor: ws.panelInput, fontSize: 13, color: ws.text } }} />
+            </Stack>
+            <FormControlLabel control={<Checkbox checked={genMeet} onChange={(e) => setGenMeet(e.target.checked)} size="small" sx={{ color: ws.textDim, '&.Mui-checked': { color: ws.accent } }} />} label={<Typography sx={{ fontSize: 12.5, color: ws.text }}>{t('genMeet')}</Typography>} />
+            <Stack direction="row" spacing={1} justifyContent="flex-end">
+              <Button onClick={() => setMeetOpen(false)} sx={{ color: ws.textDim, textTransform: 'none' }}>{t('cancel')}</Button>
+              <Button onClick={() => void createMeeting()} disabled={busyAction || !meetDate} startIcon={busyAction ? <CircularProgress size={14} /> : <EventOutlined sx={{ fontSize: 16 }} />}
+                variant="contained" sx={{ bgcolor: ws.accent, color: ws.accentContrast, fontWeight: 700, textTransform: 'none', '&:hover': { bgcolor: ws.accentHover } }}>{t('meetCreate')}</Button>
+            </Stack>
+          </Stack>
+        </DialogContent>
+      </Dialog>
+
+      {/* Send til kundegodkjenning — velg leveranse */}
+      <Dialog open={apprOpen} onClose={() => setApprOpen(false)} fullWidth maxWidth="xs" PaperProps={{ sx: { bgcolor: ws.panelSolid, color: ws.text, border: `1px solid ${ws.border}` } }}>
+        <DialogTitle sx={{ fontWeight: 800, fontSize: 15 }}>{t('approvalPick')}</DialogTitle>
+        <DialogContent>
+          {apprLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress size={20} sx={{ color: ws.accent }} /></Box>
+          ) : (
+            <Stack spacing={0.25} sx={{ maxHeight: 300, overflowY: 'auto' }}>
+              {apprItems.map((d) => (
+                <ListItemButton key={d.id} onClick={() => void sendForApproval(d.id, d.title)} sx={{ borderRadius: 1.5 }}>
                   <ListItemIcon sx={{ minWidth: 32 }}><MovieOutlined sx={{ fontSize: 17, color: '#f0abfc' }} /></ListItemIcon>
                   <ListItemText primary={d.title} secondary={[d.type, d.status].filter(Boolean).join(' · ')} primaryTypographyProps={{ sx: { fontSize: 13, color: ws.text } }} secondaryTypographyProps={{ sx: { fontSize: 11, color: ws.textDim } }} />
                 </ListItemButton>
               ))}
-              {refTab === 2 && refData.sessions.map((s) => (
-                <ListItemButton key={s.id} onClick={() => void pickReference('session', s.id, s.title || 'Økt')} sx={{ borderRadius: 1.5 }}>
-                  <ListItemIcon sx={{ minWidth: 32 }}><EventOutlined sx={{ fontSize: 17, color: '#a5b4fc' }} /></ListItemIcon>
-                  <ListItemText primary={s.title || 'Økt'} secondary={s.scheduledAt ? new Date(s.scheduledAt).toLocaleString(wsDateLocale(locale)) : ''} primaryTypographyProps={{ sx: { fontSize: 13, color: ws.text } }} secondaryTypographyProps={{ sx: { fontSize: 11, color: ws.textDim } }} />
-                </ListItemButton>
-              ))}
-              {((refTab === 0 && !refData.tracks.length) || (refTab === 1 && !refData.deliverables.length) || (refTab === 2 && !refData.sessions.length)) && (
-                <Typography sx={{ color: ws.textDim, fontSize: 12.5, py: 2, textAlign: 'center' }}>{t('refEmpty')}</Typography>
-              )}
+              {apprItems.length === 0 && <Typography sx={{ color: ws.textDim, fontSize: 12.5, py: 2, textAlign: 'center' }}>{t('refEmpty')}</Typography>}
             </Stack>
           )}
         </DialogContent>

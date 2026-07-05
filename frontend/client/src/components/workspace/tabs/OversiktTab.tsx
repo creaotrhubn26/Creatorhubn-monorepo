@@ -678,7 +678,7 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
             </Stack>
           </WsCard>
         )}
-        <WorkspaceChatPanel projectId={projectId} />
+        <WorkspaceChatPanel projectId={projectId} category={wsCategory} />
       </Box>
     </Stack>
   );
