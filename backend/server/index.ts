@@ -25862,6 +25862,57 @@ app.get("/api/enterprise/team/:organizationId/members", async (req, res) => {
   }
 });
 
+// GET /api/enterprise/my-membership — innlogget brukers aktive Enterprise-medlemskap.
+// Frontend (useEnterpriseFeatureAccess, useTeamAccess, GettingStartedChecklist)
+// spør dette for å avgjøre team-/Enterprise-tilgang. Manglet tidligere → alle
+// falt til «ikke enterprise». Leser enterprise_team_members på user_id, med
+// e-post-fallback (invitert på e-post før konto-kobling).
+app.get("/api/enterprise/my-membership", async (req, res) => {
+  try {
+    const userId = getUserIdFromAuth(req) || compatResolveUserId(req);
+    if (!userId) {
+      res.json({ membership: null });
+      return;
+    }
+    let email: string | null = null;
+    try {
+      const u = await pool.query(
+        `SELECT email FROM users WHERE id = $1 LIMIT 1`,
+        [userId],
+      );
+      email = u.rows[0]?.email ? String(u.rows[0].email).toLowerCase() : null;
+    } catch {
+      /* e-post-fallback er valgfri */
+    }
+    const r = await pool.query(
+      `SELECT id, organization_id, email, role, status
+         FROM enterprise_team_members
+        WHERE status = 'active'
+          AND (user_id = $1 OR ($2::text IS NOT NULL AND LOWER(email) = $2))
+        ORDER BY (role = 'admin') DESC, joined_at DESC NULLS LAST, invited_at DESC
+        LIMIT 1`,
+      [userId, email],
+    );
+    const row = r.rows[0];
+    if (!row) {
+      res.json({ membership: null });
+      return;
+    }
+    res.json({
+      membership: {
+        id: row.id,
+        organizationId: row.organization_id,
+        email: row.email,
+        role: row.role,
+        status: row.status,
+      },
+    });
+  } catch (err) {
+    console.error("my-membership error:", (err as any)?.message);
+    res.json({ membership: null });
+  }
+});
+
 // Platform stats
 
 // ============================================================================
@@ -26869,6 +26920,34 @@ async function markCreatorHubStripeCheckoutRecordPaid(
   };
 
   await recordCompatPaymentCompletion(compatRecord);
+
+  // Enterprise-kjøp → gi kjøperen et aktivt org-medlemskap (admin), slik at
+  // team-/Enterprise-gatene (useTeamAccess, «Inviter team», Easeverse-band)
+  // faktisk slår inn. Uten dette er et fullført Enterprise-kjøp ≠ tilgang.
+  // Deterministisk org-id (org_<userId>) → idempotent på (org, e-post).
+  if (nextRecord.planId === "enterprise" && nextRecord.userId) {
+    try {
+      const orgId = `org_${nextRecord.userId}`;
+      const memberEmail =
+        (nextRecord.email && nextRecord.email.trim()) ||
+        `${nextRecord.userId}@enterprise.local`;
+      await pool.query(
+        `INSERT INTO enterprise_team_members
+           (organization_id, user_id, email, role, status, invited_by, invited_at, joined_at)
+         VALUES ($1, $2, $3, 'admin', 'active', $2, NOW(), NOW())
+         ON CONFLICT (organization_id, email)
+         DO UPDATE SET user_id = EXCLUDED.user_id, role = 'admin', status = 'active',
+                       joined_at = COALESCE(enterprise_team_members.joined_at, NOW()),
+                       updated_at = NOW()`,
+        [orgId, nextRecord.userId, memberEmail],
+      );
+    } catch (e) {
+      console.warn(
+        "Enterprise-medlemskap-grant feilet:",
+        (e as any)?.message,
+      );
+    }
+  }
 
   if (nextRecord.email && (wasPaymentFailed || wasPendingPayment)) {
     const recipient = await resolveCreatorHubBillingRecipientContext(nextRecord);
