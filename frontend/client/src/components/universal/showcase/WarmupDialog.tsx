@@ -8,7 +8,7 @@ import {
   Box, Stack, Typography, Button, Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Checkbox, Chip, CircularProgress, Divider, IconButton,
 } from '@mui/material';
-import { SelfImprovement, CheckCircle, DeleteOutline, GraphicEq, Air, FitnessCenter, CloudUpload, MusicNote, RecordVoiceOver, PlayArrow, Stop, Add, BookmarkBorder } from '@mui/icons-material';
+import { SelfImprovement, CheckCircle, DeleteOutline, GraphicEq, Air, FitnessCenter, CloudUpload, MusicNote, RecordVoiceOver, PlayArrow, Stop, Add, BookmarkBorder, HelpOutline } from '@mui/icons-material';
 import { apiRequest, getAuthHeader, buildApiUrl } from '@/lib/queryClient';
 
 const PANEL = '#131316', BORDER = 'rgba(255,255,255,0.08)', TEXT = '#F5F2EA', MUTED = 'rgba(245,242,234,0.55)', FAINT = 'rgba(245,242,234,0.38)', ACCENT = '#FF6B35', GREEN = '#5fb88a';
@@ -142,7 +142,8 @@ const WarmupDialog: React.FC<{ open: boolean; projectId: string; onClose: () => 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="md" PaperProps={{ sx: { bgcolor: PANEL, color: TEXT, borderRadius: '14px' } }}>
       <DialogTitle sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}><SelfImprovement sx={{ color: ACCENT }} /> Oppvarming & fokus
-        <Chip label="fra EaseVerse" size="small" sx={{ height: 18, fontSize: '0.6rem', bgcolor: 'rgba(255,255,255,0.08)', color: MUTED }} /></DialogTitle>
+        <Chip label="fra EaseVerse" size="small" sx={{ height: 18, fontSize: '0.6rem', bgcolor: 'rgba(255,255,255,0.08)', color: MUTED }} />
+        <IconButton component="a" href="/guide/oppvarming" target="_blank" rel="noopener" aria-label="Åpne guiden for Oppvarming og fokus" size="small" sx={{ ml: 'auto', color: MUTED, '&:hover': { color: ACCENT } }}><HelpOutline fontSize="small" /></IconButton></DialogTitle>
       <DialogContent>
         {loading ? <Box sx={{ py: 3, textAlign: 'center' }}><CircularProgress size={22} sx={{ color: ACCENT }} /></Box> : (
           <Stack direction="row" spacing={2}>

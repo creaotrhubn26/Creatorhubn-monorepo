@@ -90,6 +90,7 @@ const WarmupPlayer: React.FC<{ token: string; musicalKey?: string }> = ({ token,
     <Box sx={{ bgcolor: 'rgba(255,107,53,0.07)', border: '1px solid rgba(255,107,53,0.3)', borderRadius: '16px', p: 2, mb: 2 }}>
       <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
         <SelfImprovement sx={{ color: ACCENT }} /><Typography sx={{ fontWeight: 700, flex: 1 }}>Anbefalt før opptak</Typography>
+        <Typography component="a" href="/guide/oppvarming" target="_blank" rel="noopener" sx={{ fontSize: '0.72rem', color: MUTED, textDecorationColor: 'rgba(245,242,234,0.3)', '&:hover': { color: ACCENT } }}>Hvordan funker det?</Typography>
       </Stack>
       <Stack spacing={1}>
         {routines.map((r) => (
