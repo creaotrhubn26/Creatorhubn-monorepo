@@ -212,6 +212,7 @@ import PortalPage from '@/pages/portal';
 import PhotographerProjectUpload from '@/pages/photographer-project-upload';
 import PhotographerEquipment from '@/pages/photographer-equipment';
 import PhotographerSettings from '@/pages/photographer-settings';
+import MinProfil from '@/pages/MinProfil';
 import WeddingAccessPage from '@/pages/wedding-access';
 import WeddingClientFormPage from '@/pages/wedding-client-form';
 import ContactFormPublic from '@/pages/contact-form-public';
@@ -938,6 +939,7 @@ function App() {
                   <Route path="/accounting/receipts" component={ReceiptsManager as React.ComponentType<any>} />
                   {/* <Route path="/meeting-workspace" component={MeetingWorkspaceSimple as React.ComponentType<any>} /> */}
                   <Route path="/business-branding" component={BusinessBrandingPage} />
+                  <Route path="/profil" component={MinProfil as React.ComponentType<any>} />
                   <Route path="/contracts/:contractId" component={ContractView} />
                   <Route path="/admin-invite-system" component={AdminInviteSystem as React.ComponentType<any>} />
                   <Route path="/role-room/accept-invite" component={AcceptTesterInvite} />
