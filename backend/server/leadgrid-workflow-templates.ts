@@ -38,16 +38,20 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
     key: "escalate_hot_leads",
     name: "Eskaler hot leads til manager",
     description:
-      "Når lead-temperature blir 'hot', varsle managers via Slack.",
+      "Når en hot lead kommer inn, varsle managers via Slack.",
     category: "Sales Velocity",
-    trigger: { type: "lead.temperature_changed", to: "hot" },
-    conditions: [],
+    // QA 2026-07-05: lead.temperature_changed har ingen publisher
+    // (temperatur oppdateres aldri etter opprettelse) — workflows fra
+    // denne malen fyrte ALDRI. lead.created + temperatur-condition
+    // fyrer faktisk, og dekker intensjonen («varsle når lead er hot»).
+    trigger: { type: "lead.created" },
+    conditions: [{ type: "lead.temperature", value: "hot" }],
     actions: [
       {
         type: "notify_channel",
         channel: "slack",
         message_template:
-          "🔥 Hot lead: {{lead.name}} (score {{lead.score}}). Følg opp innen 24 t.",
+          "Hot lead: {{lead.name}} (score {{lead.score}}). Følg opp innen 24 t.",
       },
     ],
   },
