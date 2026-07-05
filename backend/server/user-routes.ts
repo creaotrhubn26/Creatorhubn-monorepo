@@ -2,6 +2,7 @@ import express from "express";
 import type { Pool } from "pg";
 import crypto from "crypto";
 import { readString, readBoolean, readNumber } from "./_shared";
+import { canonicalizeProfession } from "../../frontend/shared/profession-types.ts";
 
 type CompatPaymentMethod = {
   id: string;
@@ -88,6 +89,58 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
     compatStoreGet,
     compatStoreListByPrefix,
   } = deps;
+
+  // ── Samlet brukerprofil (identitet + fullføringsgrad) ─────────────────────
+  // Onboarding-wizarden og «Min profil» leser/skriver herfra. Profesjon
+  // kanoniseres slik at workspace-nav-en (workspaceCategoryFor) alltid får en
+  // gyldig verdi — dette lukker hullet der Google-brukere fikk profession=NULL
+  // og stille ble behandlet som fotograf.
+  const shapeUserProfile = (r: any) => {
+    const required = [!!r.profile_image_url, !!r.profession, !!(r.first_name || r.last_name), !!r.company_name];
+    const done = required.filter(Boolean).length;
+    return {
+      id: r.id, firstName: r.first_name, lastName: r.last_name, email: r.email,
+      phone: r.phone_number, profession: r.profession, avatarUrl: r.profile_image_url,
+      companyName: r.company_name,
+      completedCount: done, totalRequired: required.length, complete: done === required.length,
+    };
+  };
+  const PROFILE_COLS = "id, first_name, last_name, email, phone_number, profession, profile_image_url, company_name";
+
+  app.get("/api/user/profile", async (req, res) => {
+    const uid = getUserIdFromAuth(req) || compatResolveUserId(req);
+    if (!uid) return res.status(401).json({ error: "Ikke innlogget" });
+    try {
+      const r = await pool.query(`SELECT ${PROFILE_COLS} FROM users WHERE id = $1`, [uid]);
+      if (!r.rows.length) return res.status(404).json({ error: "Bruker ikke funnet" });
+      res.json({ profile: shapeUserProfile(r.rows[0]) });
+    } catch (e: any) { res.status(500).json({ error: e?.message || "Kunne ikke hente profil" }); }
+  });
+
+  app.patch("/api/user/profile", async (req, res) => {
+    const uid = getUserIdFromAuth(req) || compatResolveUserId(req);
+    if (!uid) return res.status(401).json({ error: "Ikke innlogget" });
+    const b = req.body ?? {};
+    // camelCase-alias → users-kolonner (avatar kan være en data-URL-streng).
+    const colMap: Record<string, string> = {
+      firstName: "first_name", lastName: "last_name", phone: "phone_number",
+      avatarUrl: "profile_image_url", profileImageUrl: "profile_image_url", companyName: "company_name",
+    };
+    const sets: string[] = []; const params: any[] = []; let n = 1;
+    for (const [key, col] of Object.entries(colMap)) {
+      if (key in b) { const v = b[key]; if (typeof v === "string" || v === null) { sets.push(`${col} = $${n++}`); params.push(typeof v === "string" ? v.trim() : null); } }
+    }
+    if ("profession" in b) {
+      const canon = canonicalizeProfession(b.profession);
+      if (canon) { sets.push(`profession = $${n++}`); params.push(canon); }
+    }
+    if (!sets.length) return res.status(400).json({ error: "Ingen felter å oppdatere" });
+    sets.push("updated_at = now()"); params.push(uid);
+    try {
+      const r = await pool.query(`UPDATE users SET ${sets.join(", ")} WHERE id = $${params.length} RETURNING ${PROFILE_COLS}`, params);
+      res.json({ profile: shapeUserProfile(r.rows[0]) });
+    } catch (e: any) { res.status(500).json({ error: e?.message || "Oppdatering feilet" }); }
+  });
 
   app.get("/api/user/subscription-status", async (req, res) => {
     try {
