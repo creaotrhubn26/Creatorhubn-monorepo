@@ -30,11 +30,13 @@ import Check from '@mui/icons-material/Check';
 import Upgrade from '@mui/icons-material/Upgrade';
 import WorkspacePremium from '@mui/icons-material/WorkspacePremium';
 import OpenInNew from '@mui/icons-material/OpenInNew';
+import Science from '@mui/icons-material/Science';
 import { useLocation } from 'wouter';
 import { apiRequest } from '@/lib/queryClient';
 import { useAuth } from '@/hooks/useAuth';
 import { ws, workspaceDarkTheme, workspaceCategoryFor, navForCategory } from '@/components/workspace/workspaceTheme';
 import { getProfessionDisplayName, getProfessionIconColor } from '@shared/profession-types';
+import { getTierLabel, resolveTesterAccess } from '@/lib/tester-access-tiers';
 
 const BG = ws.bg;                 // #0a0f1a
 const PANEL = ws.panel;           // glassmorphism
@@ -53,6 +55,7 @@ const MinProfil: React.FC = () => {
   const [toast, setToast] = useState('');
   const [profile, setProfile] = useState<any>(null);
   const [plan, setPlan] = useState<any>(null);
+  const [tester, setTester] = useState<any>(null);
   const [avatar, setAvatar] = useState<string | null>(null);
   const [form, setForm] = useState({
     firstName: '', lastName: '', phone: '', businessName: '', tagline: '',
@@ -62,14 +65,16 @@ const MinProfil: React.FC = () => {
   useEffect(() => {
     (async () => {
       try {
-        const [p, b, s] = await Promise.all([
+        const [p, b, s, t] = await Promise.all([
           apiRequest('/api/user/profile').catch(() => null),
           apiRequest('/api/branding/business-info').catch(() => null),
           apiRequest('/api/user/subscription-status').catch(() => null),
+          apiRequest('/api/prototype-tester-invites/me/status').catch(() => null),
         ]);
         const prof = p?.profile || null; setProfile(prof);
         const bi = b?.businessInfo || b || {};
         setPlan(s || null);
+        setTester(t?.isTester ? t : null);
         setAvatar(prof?.avatarUrl || null);
         setForm({
           firstName: prof?.firstName || '', lastName: prof?.lastName || '', phone: prof?.phone || '',
@@ -230,7 +235,9 @@ const MinProfil: React.FC = () => {
                 </Stack>
                 <Chip label={professionLabel} sx={{ bgcolor: `${professionColor}24`, color: professionColor, fontWeight: 800, fontSize: '0.9rem', height: 34, mb: 1.5 }} />
                 <Typography variant="caption" sx={{ color: DIM, display: 'block', mb: 2 }}>
-                  Profesjon er låst — den skiller flatene og verktøyene fra hverandre. Å bytte krever betaling, eller oppgradering til Enterprise (som også gir team).
+                  {tester
+                    ? 'Profesjon er låst — den skiller flatene og verktøyene fra hverandre. I testprogrammet tester du din tildelte profesjon; etter programmet kan du bytte mot betaling eller Enterprise.'
+                    : 'Profesjon er låst — den skiller flatene og verktøyene fra hverandre. Å bytte krever betaling, eller oppgradering til Enterprise (som også gir team).'}
                 </Typography>
                 <Stack spacing={1}>
                   <Button variant="outlined" startIcon={<Upgrade />} onClick={() => navigate('/subscription')}
@@ -247,13 +254,39 @@ const MinProfil: React.FC = () => {
               {/* Tjenester du har tilgang til */}
               <Card sx={{ p: 3, bgcolor: PANEL, border: `1px solid ${BORDER}`, borderRadius: `${ws.radius}px`, boxShadow: 'none' }}>
                 <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>Tjenester du har tilgang til</Typography>
-                {/* Plan */}
-                <Stack direction="row" spacing={1} alignItems="center" sx={{ my: 1.5 }}>
-                  <Chip label={plan?.planName || plan?.tier || plan?.status || 'CreatorHub Standard'} size="small"
-                    sx={{ bgcolor: ws.accentSoft, color: ACCENT, fontWeight: 700 }} />
-                  <Button size="small" endIcon={<OpenInNew sx={{ fontSize: 14 }} />} onClick={() => navigate('/pricing')}
-                    sx={{ textTransform: 'none', color: DIM }}>Se planer</Button>
-                </Stack>
+                {/* Plan / prototype-tester-program (samme vokabular som TesterStatusBanner) */}
+                {tester ? (() => {
+                  const access = resolveTesterAccess(tester.grantedPlan || 'tester_all_access', tester.grantedFeatures || []);
+                  return (
+                  <Box sx={{ my: 1.5, p: 1.5, borderRadius: 2, bgcolor: ws.blueSoft, border: `1px solid ${ws.blue}44` }}>
+                    <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap>
+                      <Chip icon={<Science sx={{ fontSize: 15, color: `${ws.blue} !important` }} />} label="Prototype-tester" size="small"
+                        sx={{ bgcolor: `${ws.blue}22`, color: ws.blue, fontWeight: 800 }} />
+                      <Chip label={getTierLabel(tester.grantedPlan || 'tester_all_access')} size="small"
+                        sx={{ bgcolor: ws.accentSoft, color: ACCENT, fontWeight: 700 }} />
+                      {typeof tester.daysRemaining === 'number' && (
+                        <Chip label={`${tester.daysRemaining} dager igjen`} size="small" variant="outlined" sx={{ borderColor: BORDER, color: DIM }} />
+                      )}
+                      {tester.teamRole === 'master' && <Chip label="Team-master" size="small" variant="outlined" sx={{ borderColor: ws.accentBorder, color: ACCENT }} />}
+                      {tester.teamRole === 'member' && <Chip label="Team-medlem" size="small" variant="outlined" sx={{ borderColor: BORDER, color: DIM }} />}
+                    </Stack>
+                    <Typography variant="caption" sx={{ color: DIM, display: 'block', mt: 0.75 }}>
+                      {access.isAllAccess
+                        ? `Full tilgang: alt ${access.basedOnPlan} har + alle funksjoner under utvikling.`
+                        : `Tilgang: ${access.basedOnPlan} + ${access.features.length} in-dev-funksjoner.`}
+                      {typeof tester.feedbackCount === 'number' && typeof tester.expectedFeedbacks === 'number'
+                        ? ` · ${tester.feedbackCount}/${tester.expectedFeedbacks} feedbacks logget.` : ''}
+                    </Typography>
+                  </Box>
+                  );
+                })() : (
+                  <Stack direction="row" spacing={1} alignItems="center" sx={{ my: 1.5 }}>
+                    <Chip label={plan?.planName || plan?.tier || plan?.status || 'CreatorHub Standard'} size="small"
+                      sx={{ bgcolor: ws.accentSoft, color: ACCENT, fontWeight: 700 }} />
+                    <Button size="small" endIcon={<OpenInNew sx={{ fontSize: 14 }} />} onClick={() => navigate('/pricing')}
+                      sx={{ textTransform: 'none', color: DIM }}>Se planer</Button>
+                  </Stack>
+                )}
                 <Divider sx={{ borderColor: BORDER, my: 1.5 }} />
                 {/* Workspace-flater profesjonen låser opp */}
                 <Typography variant="caption" sx={{ color: FAINT, fontWeight: 700, letterSpacing: '0.06em' }}>
