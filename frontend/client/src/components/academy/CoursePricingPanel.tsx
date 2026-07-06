@@ -426,19 +426,19 @@ const CoursePricingPanel: React.FC<CoursePricingPanelProps> = ({
           {instructorPlan === 'pro' && (
             <Alert severity="info" sx={{ mt: 2 }}>
               <Typography variant="caption" sx={{ fontWeight: 'bold', display: 'block', mb: 0.5 }}>
-                💡 Oppgrader til Enterprise for mer inntekt:
+                💡 {tt('Oppgrader til Enterprise for mer inntekt:', 'Upgrade to Enterprise for more revenue:')}
               </Typography>
               <Typography variant="caption">
-                Med Enterprise plan (15% fee) ville du tjent{' '}
+                {tt('Med Enterprise plan (15% fee) ville du tjent', 'With the Enterprise plan (15% fee) you would earn')}{' '}
                 <strong>
                   {formatNOK(calculateRevenueSplit(priceOre, 'enterprise').instructorRevenue)}
                 </strong>{' '}
-                per student (+{', '}
+                {tt('per student (+', 'per student (+')}{', '}
                 {formatNOK(
                   calculateRevenueSplit(priceOre, 'enterprise').instructorRevenue -
                     split.instructorRevenue,
                 )}{', '}
-                mer!)
+                {tt('mer!)', 'more!)')}
               </Typography>
             </Alert>
           )}
@@ -449,12 +449,12 @@ const CoursePricingPanel: React.FC<CoursePricingPanelProps> = ({
       <Card sx={{ mt: 3, ...theming.getThemedCardSx() }}>
         <CardContent>
           <Typography variant="h6" gutterBottom>
-            Kursinformasjon
+            {tt('Kursinformasjon', 'Course Information')}
           </Typography>
           <Grid container spacing={2}>
             <Grid item xs={6} sm={3}>
               <Typography variant="caption" color="text.secondary">
-                Videoer:
+                {tt('Videoer:', 'Videos:')}
               </Typography>
               <Typography variant="body1" sx={{ fontWeight: 'bold' }}>
                 {videoCount}
@@ -462,7 +462,7 @@ const CoursePricingPanel: React.FC<CoursePricingPanelProps> = ({
             </Grid>
             <Grid item xs={6} sm={3}>
               <Typography variant="caption" color="text.secondary">
-                Varighet:
+                {tt('Varighet:', 'Duration:')}
               </Typography>
               <Typography variant="body1" sx={{ fontWeight: 'bold' }}>
                 {(totalDurationMinutes / 60).toFixed(1)}h
@@ -470,7 +470,7 @@ const CoursePricingPanel: React.FC<CoursePricingPanelProps> = ({
             </Grid>
             <Grid item xs={6} sm={3}>
               <Typography variant="caption" color="text.secondary">
-                Vanskelighetsgrad:
+                {tt('Vanskelighetsgrad:', 'Difficulty:')}
               </Typography>
               <Chip
                 label={difficulty}
@@ -485,11 +485,11 @@ const CoursePricingPanel: React.FC<CoursePricingPanelProps> = ({
             </Grid>
             <Grid item xs={6} sm={3}>
               <Typography variant="caption" color="text.secondary">
-                Funksjoner:
+                {tt('Funksjoner:', 'Features:')}
               </Typography>
               <Stack direction="row" spacing={0.5}>
-                {hasQuizzes && <Chip label="Quiz" size="small" />}
-                {hasCertificate && <Chip label="Sertifikat" size="small" />}
+                {hasQuizzes && <Chip label={tt('Quiz', 'Quiz')} size="small" />}
+                {hasCertificate && <Chip label={tt('Sertifikat', 'Certificate')} size="small" />}
               </Stack>
             </Grid>
           </Grid>
@@ -499,29 +499,29 @@ const CoursePricingPanel: React.FC<CoursePricingPanelProps> = ({
       {/* Legal & Policy Info */}
       <Alert severity="info" sx={{ mt: 3 }}>
         <Typography variant="body2" sx={{ mb: 1 }}>
-          <strong>📋 Viktig informasjon:</strong>
+          <strong>📋 {tt('Viktig informasjon:', 'Important information:')}</strong>
         </Typography>
         <Typography variant="caption" component="div">
-          • Studenter har 14 dagers angrerett (norsk forbrukerlovgivning)
+          • {tt('Studenter har 14 dagers angrerett (norsk forbrukerlovgivning)', 'Students have a 14-day right of withdrawal (Norwegian consumer law)')}
         </Typography>
         <Typography variant="caption" component="div">
-          • Refusjoner trekkes fra din neste utbetaling
+          • {tt('Refusjoner trekkes fra din neste utbetaling', 'Refunds are deducted from your next payout')}
         </Typography>
         <Typography variant="caption" component="div">
-          • Du er ansvarlig for egen skatteinnberetning
+          • {tt('Du er ansvarlig for egen skatteinnberetning', 'You are responsible for your own tax reporting')}
         </Typography>
         <Typography variant="caption" component="div">
-          • MVA (25%) håndteres automatisk av plattformen
+          • {tt('MVA (25%) håndteres automatisk av plattformen', 'VAT (25%) is handled automatically by the platform')}
         </Typography>
         <Typography variant="caption" component="div">
-          • Utbetalinger behandles månedlig (minimum 500 NOK for Pro, 250 NOK for Enterprise)
+          • {tt('Utbetalinger behandles månedlig (minimum 500 NOK for Pro, 250 NOK for Enterprise)', 'Payouts are processed monthly (minimum 500 NOK for Pro, 250 NOK for Enterprise)')}
         </Typography>
       </Alert>
 
       {/* Action Buttons */}
       <Stack direction="row" spacing={2} sx={{ mt: 4, justifyContent: 'flex-end' }}>
         <Button variant="outlined" onClick={onCancel}>
-          Avbryt
+          {tt('Avbryt', 'Cancel')}
         </Button>
         <Button
           variant="contained"
@@ -529,7 +529,7 @@ const CoursePricingPanel: React.FC<CoursePricingPanelProps> = ({
           sx={{ ...theming.getThemedButtonSx() }}
           startIcon={<CheckCircle />}
         >
-          Lagre Pris
+          {tt('Lagre Pris', 'Save Price')}
         </Button>
       </Stack>
     </Box>
