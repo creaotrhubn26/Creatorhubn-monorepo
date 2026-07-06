@@ -257,7 +257,7 @@ enum SuperAdminData {
             billingStatus: .overdue, country: "Sverige",
             primaryContact: "anders@acme.io",
             entitlements: PlanDefaults.allEntitlements(for: .pro),
-            notes: "⚠️ Fakturert 2 mnd uten betaling. Risiko-tagg.",
+            notes: "Fakturert 2 mnd uten betaling. Risiko-tagg.",
             createdAt: Date().addingTimeInterval(-86_400 * 89)
         ),
         Organization(
@@ -971,10 +971,13 @@ struct OrgDetailSheet: View {
             }
             .task { await loadSavedEntitlements() }
             .sheet(isPresented: $showPlanChange) {
-                PlanChangeSheet(org: $org) {
-                    toast = "Plan endret til \(org.plan.rawValue)"
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { toast = nil }
-                    onUpdate(org)
+                let isRealOrg = org.serverId != nil && !DemoModeManager.isActiveNonisolated
+                PlanChangeSheet(org: $org, isReal: isRealOrg) {
+                    if !isRealOrg {
+                        toast = "Plan endret til \(org.plan.rawValue) (demo)"
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { toast = nil }
+                        onUpdate(org)
+                    }
                 }
             }
             .sheet(isPresented: $showImpersonate) {
@@ -1577,6 +1580,12 @@ struct EntitlementMatrixSheet: View {
     var onClose: ([Entitlement]) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var changed: Int = 0
+    // Toggle-tappene skriver LIVE inn i parent-bindingen (`org.entitlements`).
+    // Uten dette snapshot-et lot «Avbryt» fantom-endringene bli stående i
+    // OrgDetailSheet (summary-tiles + GDPR-eksport viste ulagrede edits, og
+    // en senere «Lagre» ville persistert dem). Snapshot ved åpning →
+    // restore ved Avbryt.
+    @State private var snapshot: [Entitlement] = []
 
     var body: some View {
         NavigationStack {
@@ -1595,9 +1604,13 @@ struct EntitlementMatrixSheet: View {
             }
             .navigationTitle("Rediger entitlements")
             .navigationBarTitleDisplayMode(.inline)
+            .onAppear { if snapshot.isEmpty { snapshot = org.entitlements } }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Avbryt") { dismiss() }.tint(LBrand.textSecondary)
+                    Button("Avbryt") {
+                        org.entitlements = snapshot  // forkast ulagrede edits
+                        dismiss()
+                    }.tint(LBrand.textSecondary)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
@@ -1686,12 +1699,16 @@ struct EntitlementMatrixSheet: View {
 
 struct PlanChangeSheet: View {
     @Binding var org: Organization
+    /// true når org-en er ekte (ikke demo-mock). Da finnes det INGEN plan-
+    /// endepunkt enda, så vi persisterer ikke — og later ikke som.
+    var isReal: Bool = false
     var onChange: () -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var newPlan: SubscriptionPlan
 
-    init(org: Binding<Organization>, onChange: @escaping () -> Void) {
+    init(org: Binding<Organization>, isReal: Bool = false, onChange: @escaping () -> Void) {
         self._org = org
+        self.isReal = isReal
         self.onChange = onChange
         self._newPlan = State(initialValue: org.wrappedValue.plan)
     }
@@ -1704,8 +1721,18 @@ struct PlanChangeSheet: View {
                     VStack(alignment: .leading, spacing: 16) {
                         Text("ENDRE PLAN").font(.appScaled(size: 10, weight: .black))
                             .foregroundStyle(LBrand.textTertiary).tracking(0.8)
-                        Text("Velg ny plan for \(org.name). Pris justeres pro-rata på neste faktura.")
-                            .font(.appScaled(size: 13)).foregroundStyle(LBrand.textSecondary)
+                        if isReal {
+                            // Ærlig: plan-bytte har ingen backend enda. Ikke
+                            // lov pro-rata-fakturering vi ikke utfører.
+                            Label("Plan-bytte lagres ikke enda — bruk tilgangs-matrisen for å styre faktisk tilgang. Denne velgeren er forhåndsvisning.",
+                                  systemImage: "info.circle.fill")
+                                .font(.appScaled(size: 12)).foregroundStyle(LBrand.yellow)
+                                .padding(10)
+                                .background(LBrand.yellow.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+                        } else {
+                            Text("Velg ny plan for \(org.name). Pris justeres pro-rata på neste faktura.")
+                                .font(.appScaled(size: 13)).foregroundStyle(LBrand.textSecondary)
+                        }
                         VStack(spacing: 10) {
                             ForEach(SubscriptionPlan.allCases) { p in
                                 Button { newPlan = p } label: {
@@ -1757,12 +1784,19 @@ struct PlanChangeSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
-                        org.plan = newPlan
-                        org.entitlements = PlanDefaults.allEntitlements(for: newPlan)
+                        // Ekte org: IKKE nullstill entitlements — det ville
+                        // forkastet server-overrides lokalt og en påfølgende
+                        // matrise-«Lagre» ville pushet plan-defaults. Demo:
+                        // behold den illustrative lokale oppførselen.
+                        if !isReal {
+                            org.plan = newPlan
+                            org.entitlements = PlanDefaults.allEntitlements(for: newPlan)
+                        }
                         onChange()
                         dismiss()
                     } label: {
-                        Text("Bekreft endring").font(.appScaled(size: 14, weight: .bold))
+                        Text(isReal ? "Lukk forhåndsvisning" : "Bekreft endring")
+                            .font(.appScaled(size: 14, weight: .bold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 14).padding(.vertical, 8)
                             .background(
@@ -1770,9 +1804,9 @@ struct PlanChangeSheet: View {
                                                startPoint: .leading, endPoint: .trailing),
                                 in: RoundedRectangle(cornerRadius: 10)
                             )
-                            .opacity(newPlan == org.plan ? 0.45 : 1)
+                            .opacity((!isReal && newPlan == org.plan) ? 0.45 : 1)
                     }
-                    .disabled(newPlan == org.plan)
+                    .disabled(!isReal && newPlan == org.plan)
                 }
             }
         }
@@ -1783,9 +1817,33 @@ struct PlanChangeSheet: View {
 
 struct ImpersonationSheet: View {
     let org: Organization
+    @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
     @State private var ackPolicy = false
     @State private var ackAudit = false
+    @State private var starting = false
+    @State private var startError: String?
+
+    /// Kaller ekte switch-context (audited backend) og bytter aktiv org
+    /// slik at appen faktisk viser org-ens data. Demo-org (uten serverId)
+    /// har ingenting å bytte til → bare lukk.
+    private func startImpersonation() {
+        guard let sid = org.serverId, let api = appState.api else {
+            dismiss(); return
+        }
+        starting = true
+        Task {
+            do {
+                try await api.switchOrgContext(sid, reason: "SuperAdmin impersonation")
+                appState.activeOrganizationId = sid  // didSet → full refresh + entitlements
+                starting = false
+                dismiss()
+            } catch {
+                startError = "Kunne ikke starte impersonation"
+                starting = false
+            }
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -1799,9 +1857,13 @@ struct ImpersonationSheet: View {
                                 .foregroundStyle(LBrand.textTertiary).tracking(0.8)
                             policyRow(icon: "eye.fill", text: "Du vil se akkurat det org-admin ser — full app-tilgang som deres bruker.")
                             policyRow(icon: "lock.fill", text: "Du kan ikke endre passord, slette data eller flytte penger. Read + write på UI-nivå, men ikke admin-handlinger.")
-                            policyRow(icon: "clock.fill", text: "Sesjonen utløper etter 30 minutter. Du må forlenge manuelt.")
-                            policyRow(icon: "doc.text.fill", text: "Alt du gjør logges i org-ens audit-trail og i Leadgrid-intern audit.")
-                            policyRow(icon: "person.crop.circle.badge.exclamationmark", text: "Org-admin vil se en notifikasjon: «Leadgrid-ansatt ser data nå».")
+                            policyRow(icon: "clock.fill", text: "Kontekst-sesjonen utløper automatisk etter 2 timer.")
+                            policyRow(icon: "doc.text.fill", text: "Byttet logges i Leadgrid-intern audit-trail (superadmin_audit_log).")
+                        }
+                        if let startError {
+                            Label(startError, systemImage: "exclamationmark.triangle.fill")
+                                .font(.appScaled(size: 12, weight: .semibold))
+                                .foregroundStyle(LBrand.red)
                         }
                         VStack(spacing: 10) {
                             Toggle(isOn: $ackPolicy) {
@@ -1827,10 +1889,14 @@ struct ImpersonationSheet: View {
                     Button("Avbryt") { dismiss() }.tint(LBrand.textSecondary)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button { dismiss() } label: {
+                    Button { startImpersonation() } label: {
                         HStack(spacing: 6) {
-                            Image(systemName: "person.badge.shield.exclamationmark.fill")
-                                .font(.appScaled(size: 11))
+                            if starting {
+                                ProgressView().tint(.white).scaleEffect(0.8)
+                            } else {
+                                Image(systemName: "person.badge.shield.exclamationmark.fill")
+                                    .font(.appScaled(size: 11))
+                            }
                             Text("Start impersonation").font(.appScaled(size: 13, weight: .bold))
                         }
                         .foregroundStyle(.white)
@@ -1840,9 +1906,9 @@ struct ImpersonationSheet: View {
                                            startPoint: .leading, endPoint: .trailing),
                             in: RoundedRectangle(cornerRadius: 10)
                         )
-                        .opacity((ackPolicy && ackAudit) ? 1 : 0.45)
+                        .opacity((ackPolicy && ackAudit && !starting) ? 1 : 0.45)
                     }
-                    .disabled(!(ackPolicy && ackAudit))
+                    .disabled(!(ackPolicy && ackAudit) || starting)
                 }
             }
         }

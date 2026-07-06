@@ -124,6 +124,17 @@ async function lookupBrreg(orgNumber: string): Promise<{
   }
 }
 
+/** UUID-validering FØR verdien når en Postgres uuid-kolonne. Uten dette
+ *  kaster en malformert :id/orgId `invalid input syntax for type uuid`,
+ *  og fordi flere super_admin-handlere manglet try/catch ble den async-
+ *  throwen uhåndtert → Express svarte ALDRI (hang + connection lekket).
+ *  Samme feilklasse som capture/projects-hangen. */
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isUUID(v: unknown): v is string {
+  return typeof v === "string" && UUID_RE.test(v);
+}
+
 // ---------------------------------------------------------------------------
 // Routes
 // ---------------------------------------------------------------------------
@@ -295,16 +306,27 @@ export function registerSuperadminRoutes({
     if (!session?.userId) {
       return res.status(401).json({ error: "Ikke innlogget" });
     }
+    // Valgfri org-param: multi-org-brukere (byrå, super_admin) må kunne
+    // hente entitlements for AKTIV org, ikke bare primær-org. Verifiserer
+    // at brukeren faktisk er medlem (ellers ignoreres param → primær-org).
+    const rawOrg = req.query.organization_id;
+    if (rawOrg !== undefined && !isUUID(rawOrg)) {
+      return res.status(400).json({ error: "Ugyldig organization_id" });
+    }
     try {
       const orgR = await pool.query<{ organization_id: string; plan: string | null }>(
         `SELECT om.organization_id::text, o.plan
            FROM organization_members om
            JOIN organizations o ON o.id = om.organization_id
           WHERE om.user_id = $1
-          ORDER BY CASE om.role WHEN 'admin' THEN 1 WHEN 'salgssjef' THEN 2 ELSE 3 END,
-                   om.joined_at ASC
+            AND ($2::uuid IS NULL OR om.organization_id = $2::uuid)
+          ORDER BY
+            -- Foretrekk eksplisitt valgt org hvis param er satt+medlem
+            CASE WHEN om.organization_id = $2::uuid THEN 0 ELSE 1 END,
+            CASE om.role WHEN 'admin' THEN 1 WHEN 'salgssjef' THEN 2 ELSE 3 END,
+            om.joined_at ASC
           LIMIT 1`,
-        [session.userId],
+        [session.userId, isUUID(rawOrg) ? rawOrg : null],
       );
       if (orgR.rows.length === 0) {
         return res.json({ organization_id: null, plan: null, entitlements: [] });
@@ -537,42 +559,46 @@ export function registerSuperadminRoutes({
     const session = await requireSuperAdmin(req, res, pool, activeSessions);
     if (!session) return;
     const { orgId, reason } = req.body ?? {};
-    if (!orgId) return res.status(400).json({ error: "Mangler orgId" });
+    if (!isUUID(orgId)) return res.status(400).json({ error: "Ugyldig orgId" });
+    try {
+      const orgR = await pool.query(
+        `SELECT id, name, org_type FROM organizations WHERE id = $1`,
+        [orgId],
+      );
+      if (orgR.rows.length === 0) {
+        return res.status(404).json({ error: "Org finnes ikke" });
+      }
 
-    const orgR = await pool.query(
-      `SELECT id, name, org_type FROM organizations WHERE id = $1`,
-      [orgId],
-    );
-    if (orgR.rows.length === 0) {
-      return res.status(404).json({ error: "Org finnes ikke" });
+      await pool.query(
+        `INSERT INTO superadmin_impersonation_session
+          (super_admin_id, active_org_id, started_at, expires_at)
+         VALUES ($1, $2, now(), now() + interval '2 hours')
+         ON CONFLICT (super_admin_id) DO UPDATE
+           SET active_org_id = EXCLUDED.active_org_id,
+               started_at    = now(),
+               expires_at    = EXCLUDED.expires_at`,
+        [session.userId, orgId],
+      );
+
+      await logAudit(pool, session.userId, "switch_org_context", {
+        org_id: orgId,
+        org_name: orgR.rows[0].name,
+        reason: reason ?? null,
+      }, {
+        targetOrgId: orgId,
+        ipAddress: req.ip,
+        userAgent: req.headers["user-agent"] as string,
+      });
+
+      res.json({
+        ok: true,
+        active_org: orgR.rows[0],
+        expires_at_minutes: 120,
+      });
+    } catch (e) {
+      console.error("[superadmin] switch-context failed", e);
+      res.status(500).json({ error: "Kunne ikke bytte kontekst" });
     }
-
-    await pool.query(
-      `INSERT INTO superadmin_impersonation_session
-        (super_admin_id, active_org_id, started_at, expires_at)
-       VALUES ($1, $2, now(), now() + interval '2 hours')
-       ON CONFLICT (super_admin_id) DO UPDATE
-         SET active_org_id = EXCLUDED.active_org_id,
-             started_at    = now(),
-             expires_at    = EXCLUDED.expires_at`,
-      [session.userId, orgId],
-    );
-
-    await logAudit(pool, session.userId, "switch_org_context", {
-      org_id: orgId,
-      org_name: orgR.rows[0].name,
-      reason: reason ?? null,
-    }, {
-      targetOrgId: orgId,
-      ipAddress: req.ip,
-      userAgent: req.headers["user-agent"] as string,
-    });
-
-    res.json({
-      ok: true,
-      active_org: orgR.rows[0],
-      expires_at_minutes: 120,
-    });
   });
 
   // Avslutt impersonation
@@ -596,20 +622,29 @@ export function registerSuperadminRoutes({
     if (!session) return;
     const limit = Math.min(Number(req.query.limit ?? 100), 500);
     // Valgfritt org-filter — OrgDetailSheet-audit-fanen viser kun
-    // hendelser for den ene organisasjonen.
-    const orgId = typeof req.query.organization_id === "string"
-      ? req.query.organization_id : null;
-    const r = await pool.query(
-      `SELECT a.*, o.name AS org_name, u.email AS super_admin_email
-         FROM superadmin_audit_log a
-         LEFT JOIN organizations o ON o.id = a.target_org_id
-         LEFT JOIN users u ON u.id = a.super_admin_id
-        WHERE ($2::uuid IS NULL OR a.target_org_id = $2::uuid)
-         ORDER BY a.created_at DESC
-         LIMIT $1`,
-      [limit, orgId],
-    );
-    res.json({ entries: r.rows });
+    // hendelser for den ene organisasjonen. Ugyldig uuid → 400 (ellers
+    // kastet `::uuid`-casten og handleren hang uten try/catch).
+    const rawOrg = req.query.organization_id;
+    if (rawOrg !== undefined && !isUUID(rawOrg)) {
+      return res.status(400).json({ error: "Ugyldig organization_id" });
+    }
+    const orgId = isUUID(rawOrg) ? rawOrg : null;
+    try {
+      const r = await pool.query(
+        `SELECT a.*, o.name AS org_name, u.email AS super_admin_email
+           FROM superadmin_audit_log a
+           LEFT JOIN organizations o ON o.id = a.target_org_id
+           LEFT JOIN users u ON u.id = a.super_admin_id
+          WHERE ($2::uuid IS NULL OR a.target_org_id = $2::uuid)
+           ORDER BY a.created_at DESC
+           LIMIT $1`,
+        [limit, orgId],
+      );
+      res.json({ entries: r.rows });
+    } catch (e) {
+      console.error("[superadmin] audit-log failed", e);
+      res.status(500).json({ error: "Kunne ikke hente audit-logg" });
+    }
   });
 
   // ---------- Token-usage per organisasjon ----------
@@ -690,6 +725,9 @@ export function registerSuperadminRoutes({
   app.post(`${ROOT}/organizations/:id/set-status`, async (req, res) => {
     const session = await requireSuperAdmin(req, res, pool, activeSessions);
     if (!session) return;
+    if (!isUUID(req.params.id)) {
+      return res.status(400).json({ error: "Ugyldig org-id" });
+    }
     const { status, reason, resumeAt } = req.body ?? {};
     const ALLOWED = ["active", "paused", "read_only", "suspended", "closed"];
     if (!ALLOWED.includes(status)) {
@@ -698,7 +736,12 @@ export function registerSuperadminRoutes({
     if (status !== "active" && (!reason || !reason.trim())) {
       return res.status(400).json({ error: "reason påkrevd ved ikke-active" });
     }
-
+    // resumeAt må være en gyldig dato hvis satt — en søppel-streng traff
+    // pause_resume_at (timestamptz) og kastet → hang uten try/catch.
+    if (resumeAt != null && Number.isNaN(Date.parse(String(resumeAt)))) {
+      return res.status(400).json({ error: "Ugyldig resumeAt-dato" });
+    }
+    try {
     const orgR = await pool.query<{ name: string; stripe_subscription_id: string | null }>(
       `SELECT name, stripe_subscription_id FROM organizations WHERE id = $1`,
       [req.params.id],
@@ -761,40 +804,57 @@ export function registerSuperadminRoutes({
       ok: true, organization_id: req.params.id, status,
       paused_until: resumeAt || null,
     });
+    } catch (e) {
+      console.error("[superadmin] set-status failed", e);
+      res.status(500).json({ error: "Kunne ikke endre org-status" });
+    }
   });
 
   // ---------- Drill-down: én org's siste calls ----------
   app.get(`${ROOT}/organizations/:id/recent-ai-calls`, async (req, res) => {
     const session = await requireSuperAdmin(req, res, pool, activeSessions);
     if (!session) return;
+    if (!isUUID(req.params.id)) {
+      return res.status(400).json({ error: "Ugyldig org-id" });
+    }
     const limit = Math.min(Number(req.query.limit ?? 50), 500);
-    const r = await pool.query(
-      `SELECT model, feature, route, input_tokens, output_tokens,
-              cache_read_tokens, cache_write_tokens,
-              cost_usd::numeric(10,6) AS cost_usd,
-              duration_ms, success, error_code, created_at, user_id
-         FROM ai_usage_log
-        WHERE organization_id = $1
-        ORDER BY created_at DESC
-        LIMIT $2`,
-      [req.params.id, limit],
-    );
-    res.json({ calls: r.rows });
+    try {
+      const r = await pool.query(
+        `SELECT model, feature, route, input_tokens, output_tokens,
+                cache_read_tokens, cache_write_tokens,
+                cost_usd::numeric(10,6) AS cost_usd,
+                duration_ms, success, error_code, created_at, user_id
+           FROM ai_usage_log
+          WHERE organization_id = $1
+          ORDER BY created_at DESC
+          LIMIT $2`,
+        [req.params.id, limit],
+      );
+      res.json({ calls: r.rows });
+    } catch (e) {
+      console.error("[superadmin] recent-ai-calls failed", e);
+      res.status(500).json({ error: "Kunne ikke hente AI-kall" });
+    }
   });
 
   // ---------- Hent aktiv impersonation ----------
   app.get(`${ROOT}/active-impersonation`, async (req, res) => {
     const session = await requireSuperAdmin(req, res, pool, activeSessions);
     if (!session) return;
-    const r = await pool.query(
-      `SELECT s.active_org_id, s.started_at, s.expires_at,
-              o.name AS org_name, o.org_type
-         FROM superadmin_impersonation_session s
-         JOIN organizations o ON o.id = s.active_org_id
-        WHERE s.super_admin_id = $1
-          AND (s.expires_at IS NULL OR s.expires_at > now())`,
-      [session.userId],
-    );
-    res.json({ active: r.rows[0] ?? null });
+    try {
+      const r = await pool.query(
+        `SELECT s.active_org_id, s.started_at, s.expires_at,
+                o.name AS org_name, o.org_type
+           FROM superadmin_impersonation_session s
+           JOIN organizations o ON o.id = s.active_org_id
+          WHERE s.super_admin_id = $1
+            AND (s.expires_at IS NULL OR s.expires_at > now())`,
+        [session.userId],
+      );
+      res.json({ active: r.rows[0] ?? null });
+    } catch (e) {
+      console.error("[superadmin] active-impersonation failed", e);
+      res.status(500).json({ error: "Kunne ikke hente impersonation-status" });
+    }
   });
 }
