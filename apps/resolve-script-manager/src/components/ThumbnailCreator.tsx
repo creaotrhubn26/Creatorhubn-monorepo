@@ -412,7 +412,7 @@ export function ThumbnailCreator({
     <div
       style={{
         position: "fixed", inset: 0, zIndex: 5500,
-        background: "rgba(8,4,20,0.92)", backdropFilter: "blur(10px)",
+        background: "rgba(8,4,20,0.92)", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)",
         display: "flex", flexDirection: "column",
       }}
       onClick={onClose}
@@ -1081,7 +1081,7 @@ export function ThumbnailCreator({
         <div onClick={() => setTemplatesOpen(false)}
              style={{
                position: "fixed", inset: 0, zIndex: 6000,
-               background: "rgba(8,4,20,0.65)", backdropFilter: "blur(6px)",
+               background: "rgba(8,4,20,0.65)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)",
              }}>
           <div onClick={e => e.stopPropagation()}
                style={{

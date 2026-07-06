@@ -41,6 +41,7 @@ pub async fn start_demo_capture(app: AppHandle, url: String) -> Result<(), Strin
     WebviewWindowBuilder::new(&app, CAPTURE_LABEL, WebviewUrl::External(parsed))
         .title("Demo Capture — klikk deg gjennom siden")
         .inner_size(1240.0, 840.0)
+        .center()
         .initialization_script(CAPTURE_JS)
         .build()
         .map_err(|e| format!("kunne ikke åpne capture-vindu: {e}"))?;
@@ -62,6 +63,7 @@ pub async fn demo_scan_dom(app: AppHandle, url: String) -> Result<(), String> {
     WebviewWindowBuilder::new(&app, SCAN_LABEL, WebviewUrl::External(parsed))
         .title("Analyserer side…")
         .inner_size(1200.0, 820.0)
+        .center()
         // html2canvas FØR scan-scriptet → scannen kan ta viewport-screenshots
         // ved hvert scroll-bånd (brukes til presis preview-render, Fase 1b).
         // PII-sladderen maskerer skjemafelt + e-post/telefon under skuddene.
@@ -119,6 +121,7 @@ pub async fn demo_screenshot(app: AppHandle, url: String) -> Result<(), String> 
     WebviewWindowBuilder::new(&app, SHOT_LABEL, WebviewUrl::External(parsed))
         .title("Tar skjermbilde…")
         .inner_size(1280.0, 800.0)
+        .center()
         .initialization_script(H2C_JS)
         .initialization_script(PII_JS)
         .initialization_script(SHOT_JS)
@@ -173,6 +176,7 @@ pub async fn demo_session_open(app: AppHandle, url: String, navigate: Option<boo
     WebviewWindowBuilder::new(&app, SESSION_LABEL, WebviewUrl::External(parsed))
         .title("Demo-økt — stegene kjører i dette vinduet")
         .inner_size(1240.0, 840.0)
+        .center()
         .initialization_script(H2C_JS)
         .initialization_script(PII_JS)
         .initialization_script(SESSION_JS)

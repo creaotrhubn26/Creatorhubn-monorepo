@@ -150,7 +150,7 @@ export function LearningView({ onClose }: Props) {
   return (
     <div onClick={onClose} style={{
       position: "fixed", inset: 0, zIndex: 250,
-      background: "rgba(10,5,24,0.85)", backdropFilter: "blur(4px)",
+      background: "rgba(10,5,24,0.85)", backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)",
       display: "flex", justifyContent: "center", alignItems: "flex-start",
       paddingTop: "6vh",
     }}>
