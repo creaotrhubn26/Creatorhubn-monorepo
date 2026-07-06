@@ -45,7 +45,23 @@ struct LeadMapApp: App {
                     // Flush eventuell buffret Pondus-deep-link fra en Intent
                     // som kjørte før scene-init var ferdig.
                     AppStateBridge.shared.flushPendingDeepLinks()
+                    // MapKit SwiftUI-`Map` respekterer IKKE preferredColorScheme
+                    // — flisene følger vinduets UITraitCollection. Uten dette
+                    // fikk kart-fanene lyse fliser når systemet sto i lys modus
+                    // (resten av appen er mørk-tvunget). Sett vindus-override.
+                    Self.forceDarkWindows()
                 }
+        }
+    }
+
+    /// Tvinger `overrideUserInterfaceStyle = .dark` på alle tilkoblede
+    /// vinduer så MapKit-flisene alltid er mørke, uansett system-appearance.
+    private static func forceDarkWindows() {
+        for scene in UIApplication.shared.connectedScenes {
+            guard let windowScene = scene as? UIWindowScene else { continue }
+            for window in windowScene.windows {
+                window.overrideUserInterfaceStyle = .dark
+            }
         }
     }
 }
@@ -782,6 +798,20 @@ struct MainSidebarView: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
+        .onAppear(perform: applyQATabIfNeeded)
+    }
+
+    /// QA-hook: iPad bruker sidebar (ikke MainTabView-selection), så
+    /// QA_TAB må mappes til `selectedSidebarItem` her — ellers landet
+    /// alle automatiserte sveip på Oversikt uansett indeks. SidebarItem-
+    /// rekkefølgen (0=oversikt … 6=salgsledelse) matcher QA_TAB direkte.
+    private func applyQATabIfNeeded() {
+        #if DEBUG
+        guard let raw = ProcessInfo.processInfo.environment["QA_TAB"],
+              let idx = Int(raw),
+              SidebarItem.allCases.indices.contains(idx) else { return }
+        state.selectedSidebarItem = SidebarItem.allCases[idx]
+        #endif
     }
 
     @ViewBuilder

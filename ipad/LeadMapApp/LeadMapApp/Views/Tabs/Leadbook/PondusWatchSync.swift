@@ -66,9 +66,14 @@ final class PondusWatchSync {
               session.isWatchAppInstalled
         else { return }
 
+        // Gating speiles til klokka: mister org-en Pondus-tilgang, skal
+        // allerede-synkede lynkort forsvinne — ikke bli liggende igjen.
+        // Sperret → push TOM liste (klokka tømmer sin cache).
+        let pondusAllowed = EntitlementStore.shared.canUse(.leadbookPondus)
+
         // Sorter etter score (fallende) — mest verdifulle først.
         let sorted = templates.sorted { $0.score > $1.score }
-        let trimmed = Array(sorted.prefix(maxCount))
+        let trimmed = pondusAllowed ? Array(sorted.prefix(maxCount)) : []
 
         let watchTemplates: [[String: Any]] = trimmed.map { encode($0) }
 
