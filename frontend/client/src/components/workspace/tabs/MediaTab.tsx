@@ -14,7 +14,7 @@ import Close from '@mui/icons-material/Close';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
 import { wsIcon } from '../crewIcons';
-import { WsCard, WsTag, WsImageGrid, WsModal } from '../ui';
+import { WsCard, WsTag, WsImageGrid, WsModal, WsErrorState } from '../ui';
 import AiBuyCreditsModal from '../AiBuyCreditsModal';
 import { useProjectImages } from '../useProjectImages';
 import { useCaptureRealtime } from '../useCaptureRealtime';
@@ -82,6 +82,7 @@ const T: WsDict = {
   enhanceFailed: { no: 'Kunne ikke sende til AI-forbedring', en: 'Could not send to AI enhancement' },
   creditsAdded: { no: 'Kreditter lagt til ✓', en: 'Credits added ✓' },
   error: { no: 'Feil', en: 'Error' },
+  loadError: { no: 'Kunne ikke laste media. Sjekk tilkoblingen og prøv igjen.', en: 'Could not load media. Check your connection and try again.' },
 };
 
 const LIB = [['Alle medier', 2487], ['Bilder', 1732], ['Videoer', 624], ['Lyd', 98], ['Dokumenter', 33]];
@@ -95,6 +96,7 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [lib, setLib] = useState('Alle medier');
   const [assets, setAssets] = useState<any[]>([]);
   const [cull, setCull] = useState<any>({});
+  const [loadErr, setLoadErr] = useState(false);
   const [filter, setFilter] = useState('alle');
   const [q, setQ] = useState('');
   const web = useProjectImages(projectId, 'media');
@@ -127,14 +129,16 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   };
   const folderList = isReal ? folders.map((f) => [f.name, f.id]) : FOLDERS.map(([n]) => [n, null]);
 
+  // Primær-last (media-assets). Stabil ref så feil-state kan re-fetche via onRetry.
+  const reloadMedia = () => {
+    if (!isReal) return;
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/media`)
+      .then((r: any) => { setAssets(Array.isArray(r?.assets) ? r.assets : []); setCull(r?.cullStats || {}); setLoadErr(false); })
+      .catch(() => setLoadErr(true));
+  };
   useEffect(() => {
     if (!isReal) return;
-    const fetchMedia = () => {
-      if (document.hidden) return;
-      apiRequest(`/api/projects/${encodeURIComponent(projectId)}/media`)
-        .then((r: any) => { setAssets(Array.isArray(r?.assets) ? r.assets : []); setCull(r?.cullStats || {}); })
-        .catch(() => {});
-    };
+    const fetchMedia = () => { if (document.hidden) return; reloadMedia(); };
     fetchMedia();
     const t = setInterval(fetchMedia, 25000); // poll-fallback
     return () => clearInterval(t);
@@ -285,8 +289,10 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
             : QUICK.map(([n, c]) => <WsTag key={n} label={`${n} ${c}`} tone="neutral" />)}
         </Stack>
 
-        <WsImageGrid columns={4} addLabel={t('uploadMedia')} images={gridImages} onUpload={web.onUpload}
-          onSelect={(im) => setSelAsset(assets.find((a) => a.id === im.id) || { filename: im.label, previewUrl: im.url, rating: im.rating, flaggedForClient: im.flag })} />
+        {isReal && loadErr && assets.length === 0
+          ? <WsErrorState message={t('loadError')} onRetry={reloadMedia} />
+          : <WsImageGrid columns={4} addLabel={t('uploadMedia')} images={gridImages} onUpload={web.onUpload}
+              onSelect={(im) => setSelAsset(assets.find((a) => a.id === im.id) || { filename: im.label, previewUrl: im.url, rating: im.rating, flaggedForClient: im.flag })} />}
       </Box>
 
       {/* Asset-detaljer */}

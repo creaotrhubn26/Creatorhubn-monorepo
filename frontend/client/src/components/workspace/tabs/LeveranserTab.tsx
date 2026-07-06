@@ -10,7 +10,7 @@ import Add from '@mui/icons-material/Add';
 import CheckCircle from '@mui/icons-material/CheckCircle';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
-import { WsCard, WsSectionTitle, WsRing, WsPills, WsTag, WsImageGrid, WsModal } from '../ui';
+import { WsCard, WsSectionTitle, WsRing, WsPills, WsTag, WsImageGrid, WsModal, WsErrorState } from '../ui';
 import { useWsLocale, makeT, wsDateLocale, type WsDict } from '../wsLocale';
 
 // Lokal no/en-ordbok for fanen (samme mønster som OppdragTab).
@@ -52,6 +52,7 @@ const T: WsDict = {
   couldNotAdd: { no: 'Kunne ikke legge til', en: 'Could not add' },
   noOpenDeliverables: { no: 'Ingen åpne leveranser å markere som ferdig.', en: 'No open deliverables to mark as done.' },
   deliverConfirm: { no: 'Marker «{title}» som levert?', en: 'Mark "{title}" as delivered?' },
+  loadError: { no: 'Kunne ikke laste leveranser. Sjekk tilkoblingen og prøv igjen.', en: 'Could not load deliverables. Check your connection and try again.' },
 };
 
 const STATUS_LABEL: Record<string, [string, string]> = {
@@ -86,11 +87,17 @@ const LeveranserTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [feedback, setFeedback] = useState<any[]>([]);
   const [activity, setActivity] = useState<any[]>([]);
   const [fbModal, setFbModal] = useState(false);
-  const load = () => {
+  const [loadErr, setLoadErr] = useState(false); // feil ved primær-lasting (leveranser)
+  // Primær-fetch: leveranseliste. Egen fn så onRetry kan kjøre den på nytt.
+  const loadDeliverables = () => {
     if (!isReal) return;
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/deliverables`)
-      .then((r: any) => setReal(Array.isArray(r?.deliverables) ? r.deliverables : []))
-      .catch(() => {});
+      .then((r: any) => { setReal(Array.isArray(r?.deliverables) ? r.deliverables : []); setLoadErr(false); })
+      .catch(() => setLoadErr(true));
+  };
+  const load = () => {
+    if (!isReal) return;
+    loadDeliverables();
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/galleries`)
       .then((r: any) => setGalleries(Array.isArray(r?.galleries) ? r.galleries : []))
       .catch(() => {});
@@ -162,7 +169,9 @@ const LeveranserTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           </Stack>
           <Box sx={{ mb: 1.5 }}><WsPills items={[{ key: 'planned', label: 'Planned' }, { key: 'progress', label: 'In progress' }, { key: 'delivered', label: 'Delivered' }]} value={filter} onChange={setFilter} /></Box>
           <Stack spacing={0.75}>
-            {list.length === 0 && <Typography sx={{ fontSize: 12.5, color: ws.textDim, py: 2, textAlign: 'center' }}>{t('emptyList')}</Typography>}
+            {list.length === 0 && (isReal && loadErr
+              ? <WsErrorState message={t('loadError')} onRetry={loadDeliverables} />
+              : <Typography sx={{ fontSize: 12.5, color: ws.textDim, py: 2, textAlign: 'center' }}>{t('emptyList')}</Typography>)}
             {list.map(([n, type, st, tone, due, active], i) => (
               <Box key={i} sx={{ p: 1.25, borderRadius: 2, cursor: 'pointer', border: `1px solid ${active ? ws.accentBorder : ws.borderSoft}`, bgcolor: active ? ws.accentSoft : 'transparent' }}>
                 <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
