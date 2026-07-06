@@ -112,15 +112,19 @@ const TeamWorkspacePage: React.FC = () => {
   const [realProject, setRealProject] = useState<any | null>(null);
   useEffect(() => {
     if (!projectId || projectId === 'sample') { setRealProject(null); return; }
-    apiRequest(`/api/photographer/projects/${encodeURIComponent(projectId)}`)
+    // Profesjons-AGNOSTISK henting (/api/projects/:id) — den forrige brukte kun
+    // /api/photographer/… og falt til sample-prosjektet for musikk/vendor/service.
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}`)
       .then((r: any) => {
-        const p = r?.project;
-        if (!p) return;
-        const date = p.eventDate ? new Date(p.eventDate).toLocaleDateString('nb-NO', { day: 'numeric', month: 'short', year: 'numeric' }) : undefined;
+        const p = r?.project || r; // generisk endepunkt returnerer feltene direkte
+        if (!p || !p.id) return;
+        const rawDate = p.eventDate || p.event_date || p.date;
+        const date = rawDate ? new Date(rawDate).toLocaleDateString('nb-NO', { day: 'numeric', month: 'short', year: 'numeric' }) : undefined;
         setRealProject({
-          id: p.id, name: p.title || 'Uten tittel', type: p.projectType || undefined,
+          id: p.id, name: p.title || p.name || 'Uten tittel',
+          type: p.projectType || p.project_type || undefined,
           status: p.status === 'active' ? 'Pågående' : (p.status || undefined),
-          date, location: p.location || undefined, coverUrl: p.coverUrl || null, members: [],
+          date, location: p.location || undefined, coverUrl: p.coverUrl || p.cover_url || null, members: [],
           updatedAt: p.updatedAt || p.updated_at || null,
         });
       })
@@ -146,7 +150,12 @@ const TeamWorkspacePage: React.FC = () => {
     if (WS_NAV.find((n) => n.key === key)?.route) navigate(`/workspace/${projectId}/${key}`, { replace: true });
   };
 
-  const project = { ...(realProject || { ...SAMPLE_PROJECT, id: projectId }), members };
+  // Kun det EKTE sample-prosjektet får SAMPLE_PROJECT-innhold. Et ekte prosjekt
+  // som ennå ikke er lastet (eller feilet) får et nøytralt skall — ALDRI «Sara &
+  // Amir – Wedding» (sample-lekkasje inn i ikke-fotograf-prosjekter).
+  const project = projectId === 'sample'
+    ? { ...SAMPLE_PROJECT, id: projectId, members }
+    : { ...(realProject || { id: projectId, name: '', type: undefined, status: undefined, date: undefined, location: undefined, coverUrl: null }), members };
   const wsUser = {
     name: user?.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : (user?.name || user?.email || 'Bruker'),
     // Rolle-etiketten hentes fra profesjons-registeret (dekker alle ~20

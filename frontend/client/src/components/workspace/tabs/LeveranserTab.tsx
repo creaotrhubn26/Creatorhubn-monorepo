@@ -68,8 +68,8 @@ const DELIVERABLES = [
   ['Social Media Reels (3x)', 'Video', 'Not started', 'neutral', '18. sep'],
   ['USB Drive', 'Physical', 'Not started', 'neutral', '05. nov'],
 ];
-const STEPS = ['Editing', 'Internal Review', 'Client Review', 'Revisions', 'Approved'];
-const CHECKLIST = [['Rough cut completed', true], ['Audio mix complete', true], ['Color grading', false], ['Titles & graphics', false], ['Final export', false], ['QC & delivery', false]];
+const STEPS = ['Redigering', 'Intern gjennomgang', 'Kundegjennomgang', 'Revisjoner', 'Godkjent'];
+const CHECKLIST = [['Grovklipp ferdig', true], ['Lydmiks ferdig', true], ['Fargekorrigering', false], ['Titler & grafikk', false], ['Endelig eksport', false], ['QC & levering', false]];
 
 const LeveranserTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [filter, setFilter] = useState('planned');

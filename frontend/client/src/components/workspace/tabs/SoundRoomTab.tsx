@@ -9,7 +9,7 @@
  * prosjektet via /api/projects/:id/audio-room, og åpner så full-skjerm-
  * opplevelsen på /audio-review/:audioRoomId?ws=:projectId (med tilbake-lenke).
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Box, Stack, Typography, Button, CircularProgress, TextField, Avatar, IconButton, Dialog, DialogContent, Divider } from '@mui/material';
 import { useLocation } from 'wouter';
 import GraphicEq from '@mui/icons-material/GraphicEq';
@@ -89,9 +89,16 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     finally { setRelBusy(false); }
   };
 
+  // Ref så 7s-pollen (satt opp i [projectId,isReal]-effekten før roomId er løst)
+  // alltid leser GJELDENDE roomId — ellers stale-closure: pollen fikk aldri med
+  // ?audioRoomId= og live markører/bounces sluttet å oppdatere.
+  const roomIdRef = useRef<string | null>(null);
+  useEffect(() => { roomIdRef.current = roomId; }, [roomId]);
   const loadPt = () => {
     if (!isReal) return;
-    const q = roomId ? `?audioRoomId=${encodeURIComponent(roomId)}` : '';
+    if (typeof document !== 'undefined' && document.hidden) return; // ikke poll i bakgrunnsfane
+    const rid = roomIdRef.current;
+    const q = rid ? `?audioRoomId=${encodeURIComponent(rid)}` : '';
     apiRequest(`/api/protools/web/status${q}`).then((r: any) => setPt(r || null)).catch(() => {});
   };
   const makePtCode = async () => {
