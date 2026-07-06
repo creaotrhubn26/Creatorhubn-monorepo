@@ -27,12 +27,20 @@ sider lagres/eksporteres uten PII-sladding.
 symmetrisk med skjermbildet (e-post/tlf/navn-regex + input-verdier), eller (b) eksplisitt
 samtykke-skjerm før scan/opptak av innloggede sider, med tydelig hva som sendes til AI.
 
-## 4. CSP `null` + `assetProtocol scope ["**"]` (MEDIUM)
-`tauri.conf.json`: ingen CSP + asset-protocol leser hele filsystemet. Reduserer forsvar i
-dybden ved en XSS.
-**Anbefalt:** sett en CSP (må crafts nøye pga. srcdoc-iframes + inline `__CFG__`-scripts —
-test Infographic/preview grundig etterpå). Snevre assetProtocol-scope til de mappene appen
-faktisk trenger.
+## ✅ 4. CSP satt (MEDIUM) — DELVIS
+Satt en CSP i `tauri.conf.json` (før: `null`). Bruker Tauris dokumenterte IPC/asset-verdier
+(`connect-src ipc: http://ipc.localhost https:`, `img/media asset: data: blob:`), beholder
+`'unsafe-inline'`/`'unsafe-eval'` for script/style (app-en bruker tungt inline `__CFG__` i
+srcdoc + inline React-styles — uten dette white-screener preview), og strammer `object-src
+'none'`, `base-uri 'self'`, `form-action 'self'`, `frame-src 'self' https: data: blob:`
+(https for Demo Studios eksterne live-preview-iframe).
+**VERIFISERT i Playwright-WebKit:** hele Infographic Studio + srcdoc-preview + thumbnails
+rendrer under CSP-en, 0 violations. **Gjenstår runtime-verifisering på ekte build:** innlogging
+(connect-src backend), asset://-medie (video-preview/thumbnails fra disk), Demo Studio-scan.
+`assetProtocol scope` beholdt `["**"]` (app-en leser bruker-valgte stier/SD-kort/Resolve-
+mapper — innsnevring ville brutt capture/cull/color).
+**Merk:** for REELL script-injeksjons-beskyttelse trengs en nonce-refaktor av inline-scriptene
+(fjerne `'unsafe-inline'`) — større jobb, ikke gjort her.
 
 ## 5. `credential_store.py` klartekst-JSON (MEDIUM)
 Tredjeparts API-nøkler/lisenser lagres i klartekst-JSON. **Allerede** `chmod 0600`
