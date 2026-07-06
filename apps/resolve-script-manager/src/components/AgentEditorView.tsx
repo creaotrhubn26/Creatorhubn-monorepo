@@ -1243,21 +1243,20 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
             </button>
           </div>
 
-          <button onClick={() => alert(`Auto-pilot for ${CFG.name} kommer i V2`)}
-                  disabled
-                  style={{
-                    padding: "9px 12px",
-                    background: "rgba(110,63,199,0.20)",
-                    border: "1px solid rgba(110,63,199,0.40)",
-                    color: "#fff", borderRadius: 6,
-                    cursor: "not-allowed", fontSize: 11.5, fontWeight: 600,
-                    opacity: 0.7,
+          {/* Auto-pilot er ikke tilgjengelig i denne bygget. Vis et diskret
+              «kommer snart»-hint i stedet for en permanent disablet knapp som
+              ser klikkbar ut. */}
+          <div style={{
+                    padding: "8px 12px",
+                    color: "var(--text-3, #a89cb8)",
+                    fontSize: 10.5, fontWeight: 500,
+                    opacity: 0.8,
                     display: "inline-flex", alignItems: "center", justifyContent: "center",
                     gap: 6,
                   }}>
-            <PlayArrowIcon sx={{ fontSize: 14 }} />
-            Start Auto-pilot (V2)
-          </button>
+            <PlayArrowIcon sx={{ fontSize: 13 }} />
+            Auto-pilot kommer i en senere versjon
+          </div>
         </div>
       </div>
 
@@ -1390,11 +1389,10 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
         onClose={() => setCollaborationOpen(false)}
         projectId={projectIdForStudio}
         agentKind={config.kind}
-        currentTimeSec={0 /* TODO: wire fra video-player */}
-        onJumpToTime={(sec) => {
-          console.log("[collab] jump to:", sec);
-          // V2: actually jump editor playback til denne tiden
-        }}
+        /* Tids-forankring er ikke wiret til en video-player enda. Vi dropper
+           currentTimeSec/onJumpToTime bevisst, slik at sidebaren ikke tilbyr en
+           «Forankre ved 0:00»-kontroll som alltid lagrer 0:00, eller en
+           «Hopp til tid»-knapp som ikke gjør noe. Kommentarer (tekst) virker som før. */
       />
 
       {/* Marketing-preview upload — send proxy-render til klient-portal */}
