@@ -2586,7 +2586,10 @@ function CmsEditView({ slug, onClose }: { slug: string; onClose: () => void }) {
   }));
   // Block-CMS state. Når `blocks` er null bruker editoren legacy-skjema-felter.
   const [blocks, setBlocks] = useState<Block[] | null>(null);
-  const [published, setPublished] = useState(true);
+  // Default utkast for nye sider — matcher backend-defaulten i cms-pages-routes.ts
+  // (published=false når raden ikke finnes fra før). Lastes over med faktisk
+  // verdi fra `data.page.published` under hvis en CMS-override allerede finnes.
+  const [published, setPublished] = useState(false);
   const [publishAt, setPublishAt] = useState<string>('');
   const [unpublishAt, setUnpublishAt] = useState<string>('');
   const [loading, setLoading] = useState(true);
