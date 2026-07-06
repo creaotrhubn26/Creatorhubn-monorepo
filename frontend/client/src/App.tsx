@@ -453,6 +453,20 @@ const CommunityLandingPageWrapper = () => {
   }
 };
 
+// Admin-only guard for the visual-editor-enhanced/evendi routes — these were
+// previously registered with no auth wrapper at all, reachable by anyone.
+const VisualEditorEnhancedGuard = ({ children }: { children: React.ReactNode }) => {
+  const { user, isLoading, isAuthenticated, isAdmin } = useAuth();
+  if (isLoading) return null;
+  if (!isAuthenticated || !user?.id || !isAdmin) {
+    if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+      window.location.href = '/login';
+    }
+    return null;
+  }
+  return <>{children}</>;
+};
+
 // Smart Dynamic Dashboard Route Component
 const SmartDashboardRoute = ({ profession }: { profession?: ValidProfession }) => {
   const { getUserProfession } = useDynamicProfessions();
@@ -1030,9 +1044,9 @@ function App() {
                   <Route path="/vendor-dashboard/:vendorType/:vendorName" component={({ params }) => <UniversalVendorDashboard vendorType={params.vendorType} vendorName={params.vendorName} userId="current-user" />} />
                   <Route path="/visual-editor-advanced" component={VisualEditorWithPageSelection as React.ComponentType<any>} />
                   <Route path="/visual-editor-unified" component={() => <CreatorhubVisualEditorRefactored />} />
-                  <Route path="/visual-editor-enhanced" component={() => <EnhancedVisualEditorPage />} />
-                  <Route path="/visual-editor-enhanced/:projectId" component={({ params }) => <EnhancedVisualEditorPage projectId={params.projectId} />} />
-                  <Route path="/evendi" component={() => <EventiOnePager />} />
+                  <Route path="/visual-editor-enhanced" component={() => <VisualEditorEnhancedGuard><EnhancedVisualEditorPage /></VisualEditorEnhancedGuard>} />
+                  <Route path="/visual-editor-enhanced/:projectId" component={({ params }) => <VisualEditorEnhancedGuard><EnhancedVisualEditorPage projectId={params.projectId} /></VisualEditorEnhancedGuard>} />
+                  <Route path="/evendi" component={() => <VisualEditorEnhancedGuard><EventiOnePager /></VisualEditorEnhancedGuard>} />
                   
                   {/* Unified Dashboard Routes */}
                   <Route path="/templates" component={() => <TemplateDashboard onTemplatesClick={() => {}} onCategoriesClick={() => {}} onSearchClick={() => {}} onPreviewClick={() => {}} />} />

@@ -96,9 +96,29 @@ export const AccessibilityChecker: React.FC<AccessibilityCheckerProps> = ({
   const [lastScan, setLastScan] = useState<Date | null>(null);
 
   useEffect(() => {
-    if (open && iframeRef.current) {
-      runAccessibilityScan();
-    }
+    if (!open) return;
+    // The preview iframe can mount a render or two after this drawer opens
+    // (it's owned by a sibling panel that reacts to `open` separately), so
+    // poll briefly instead of only checking once on this effect's own fire.
+    let cancelled = false;
+    let attempts = 0;
+    const tryScan = () => {
+      if (cancelled) return;
+      const iframe = iframeRef.current;
+      const iframeDoc = iframe?.contentDocument || iframe?.contentWindow?.document;
+      if (iframeDoc && iframeDoc.readyState !== 'loading') {
+        runAccessibilityScan();
+        return;
+      }
+      attempts += 1;
+      if (attempts < 20) {
+        window.setTimeout(tryScan, 150);
+      }
+    };
+    tryScan();
+    return () => {
+      cancelled = true;
+    };
   }, [open]);
 
   const runAccessibilityScan = async () => {

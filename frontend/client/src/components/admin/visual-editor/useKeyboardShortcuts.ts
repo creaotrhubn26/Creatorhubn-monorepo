@@ -26,17 +26,34 @@ export const useKeyboardShortcuts = () => {
   const clipboardRef = useRef<EditorElement[]>([]);
 
   useEffect(() => {
+    // Helper to check if input/textarea is focused — must run before the
+    // preventDefault decision below, not just before each action branch,
+    // otherwise native Backspace/Select-All inside a text field gets blocked
+    // even though the corresponding canvas action already checks this.
+    const isInputFocused = (): boolean => {
+      const activeElement = document.activeElement;
+      return (
+        activeElement?.tagName === 'INPUT' ||
+        activeElement?.tagName === 'TEXTAREA' ||
+        activeElement?.getAttribute('contenteditable') === 'true'
+      );
+    };
+
     const handleKeyDown = (e: KeyboardEvent) => {
       const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
       const modifier = isMac ? e.metaKey : e.ctrlKey;
+      const inputFocused = isInputFocused();
 
-      // Prevent default browser shortcuts for our custom ones
+      // Prevent default browser shortcuts for our custom ones — but never for
+      // Backspace/Delete or Select-All while a text field is focused, so
+      // native text editing/selection keeps working.
       const shouldPreventDefault =
         (modifier &&
-          ['z','y','c','v','d','a','g','s','0','=','-','[',']','r'].includes(
+          ['z','y','c','v','d','g','s','0','=','-','[',']','r'].includes(
             e.key.toLowerCase(),
           )) ||
-        ['Delete','Backspace'].includes(e.key);
+        (modifier && e.key.toLowerCase() === 'a' && !inputFocused) ||
+        (['Delete','Backspace'].includes(e.key) && !inputFocused);
 
       if (shouldPreventDefault) {
         e.preventDefault();
@@ -84,7 +101,7 @@ export const useKeyboardShortcuts = () => {
       }
 
       // Select All: Cmd/Ctrl + A
-      if (modifier && e.key.toLowerCase() === 'a') {
+      if (modifier && e.key.toLowerCase() === 'a' && !inputFocused) {
         const allIds = state.elements.map((el) => el.id);
         selectElements(allIds);
         return;
@@ -246,16 +263,6 @@ export const useKeyboardShortcuts = () => {
         }
         return;
       }
-    };
-
-    // Helper to check if input/textarea is focused
-    const isInputFocused = (): boolean => {
-      const activeElement = document.activeElement;
-      return (
-        activeElement?.tagName === 'INPUT' ||
-        activeElement?.tagName === 'TEXTAREA' ||
-        activeElement?.getAttribute('contenteditable') === 'true'
-      );
     };
 
     window.addEventListener('keydown', handleKeyDown);
