@@ -14,7 +14,7 @@ import Close from '@mui/icons-material/Close';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
 import { wsIcon } from '../crewIcons';
-import { WsCard, WsTag, WsImageGrid, WsModal } from '../ui';
+import { WsCard, WsTag, WsImageGrid, WsModal, WsErrorState } from '../ui';
 import AiBuyCreditsModal from '../AiBuyCreditsModal';
 import { useProjectImages } from '../useProjectImages';
 import { useCaptureRealtime } from '../useCaptureRealtime';
@@ -82,6 +82,7 @@ const T: WsDict = {
   enhanceFailed: { no: 'Kunne ikke sende til AI-forbedring', en: 'Could not send to AI enhancement' },
   creditsAdded: { no: 'Kreditter lagt til ✓', en: 'Credits added ✓' },
   error: { no: 'Feil', en: 'Error' },
+  loadError: { no: 'Kunne ikke laste media. Sjekk tilkoblingen og prøv igjen.', en: 'Could not load media. Check your connection and try again.' },
 };
 
 const LIB = [['Alle medier', 2487], ['Bilder', 1732], ['Videoer', 624], ['Lyd', 98], ['Dokumenter', 33]];
@@ -95,7 +96,9 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [lib, setLib] = useState('Alle medier');
   const [assets, setAssets] = useState<any[]>([]);
   const [cull, setCull] = useState<any>({});
+  const [loadErr, setLoadErr] = useState(false);
   const [filter, setFilter] = useState('alle');
+  const [q, setQ] = useState('');
   const web = useProjectImages(projectId, 'media');
   const isReal = projectId && projectId !== 'sample';
   const [selAsset, setSelAsset] = useState<any | null>(null);
@@ -126,14 +129,16 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   };
   const folderList = isReal ? folders.map((f) => [f.name, f.id]) : FOLDERS.map(([n]) => [n, null]);
 
+  // Primær-last (media-assets). Stabil ref så feil-state kan re-fetche via onRetry.
+  const reloadMedia = () => {
+    if (!isReal) return;
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/media`)
+      .then((r: any) => { setAssets(Array.isArray(r?.assets) ? r.assets : []); setCull(r?.cullStats || {}); setLoadErr(false); })
+      .catch(() => setLoadErr(true));
+  };
   useEffect(() => {
     if (!isReal) return;
-    const fetchMedia = () => {
-      if (document.hidden) return;
-      apiRequest(`/api/projects/${encodeURIComponent(projectId)}/media`)
-        .then((r: any) => { setAssets(Array.isArray(r?.assets) ? r.assets : []); setCull(r?.cullStats || {}); })
-        .catch(() => {});
-    };
+    const fetchMedia = () => { if (document.hidden) return; reloadMedia(); };
     fetchMedia();
     const t = setInterval(fetchMedia, 25000); // poll-fallback
     return () => clearInterval(t);
@@ -197,7 +202,8 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     return true;
   };
   const captureItems = assets.filter((a) => a.previewUrl && matchFilter(a)).map((a) => ({ id: a.id, url: a.previewUrl, label: a.filename, rating: a.rating || 0, flag: !!a.flaggedForClient }));
-  const gridImages = isReal ? [...captureItems, ...(filter === 'alle' ? web.images : [])] : [];
+  const gridImages = (isReal ? [...captureItems, ...(filter === 'alle' ? web.images : [])] : [])
+    .filter((im: any) => !q || String(im.label || '').toLowerCase().includes(q.toLowerCase()));
 
   // Hurtigfiltre med EKTE tall fra cull-stats.
   const QUICK_REAL = [
@@ -208,9 +214,9 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   ];
 
   return (
-    <Stack direction="row" spacing={2} sx={{ alignItems: 'flex-start' }}>
+    <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} sx={{ alignItems: 'flex-start' }}>
       {/* Bibliotek-sidebar */}
-      <Box sx={{ width: 220, flexShrink: 0 }}>
+      <Box sx={{ width: { xs: '100%', lg: 220 }, flexShrink: 0 }}>
         <WsCard pad={1.25}>
           <Typography sx={{ fontSize: 11, fontWeight: 700, color: ws.textFaint, mb: 1 }}>{t('mediaLibrary')}</Typography>
           <Stack spacing={0.25} sx={{ mb: 1.5 }}>
@@ -263,8 +269,11 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
             </Typography>
           </Box>
           <Stack direction="row" spacing={1} alignItems="center">
-            <TextField size="small" placeholder={t('searchMedia')} InputProps={{ startAdornment: <Search sx={{ fontSize: 16, color: ws.textFaint, mr: 0.5 }} /> }} sx={{ width: 200, '& .MuiOutlinedInput-root': { bgcolor: ws.panelInput, fontSize: 13 } }} />
-            <Button size="small" variant="contained" startIcon={<CloudUpload sx={{ fontSize: 16 }} />} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>{t('upload')}</Button>
+            <TextField size="small" placeholder={t('searchMedia')} value={q} onChange={(e) => setQ(e.target.value)} InputProps={{ startAdornment: <Search sx={{ fontSize: 16, color: ws.textFaint, mr: 0.5 }} /> }} sx={{ width: 200, '& .MuiOutlinedInput-root': { bgcolor: ws.panelInput, fontSize: 13 } }} />
+            <Button component="label" size="small" variant="contained" startIcon={<CloudUpload sx={{ fontSize: 16 }} />} disabled={!isReal} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>
+              {t('upload')}
+              <input type="file" accept="image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) web.onUpload(f); e.target.value = ''; }} />
+            </Button>
           </Stack>
         </Stack>
 
@@ -280,12 +289,14 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
             : QUICK.map(([n, c]) => <WsTag key={n} label={`${n} ${c}`} tone="neutral" />)}
         </Stack>
 
-        <WsImageGrid columns={4} addLabel={t('uploadMedia')} images={gridImages} onUpload={web.onUpload}
-          onSelect={(im) => setSelAsset(assets.find((a) => a.id === im.id) || { filename: im.label, previewUrl: im.url, rating: im.rating, flaggedForClient: im.flag })} />
+        {isReal && loadErr && assets.length === 0
+          ? <WsErrorState message={t('loadError')} onRetry={reloadMedia} />
+          : <WsImageGrid columns={4} addLabel={t('uploadMedia')} images={gridImages} onUpload={web.onUpload}
+              onSelect={(im) => setSelAsset(assets.find((a) => a.id === im.id) || { filename: im.label, previewUrl: im.url, rating: im.rating, flaggedForClient: im.flag })} />}
       </Box>
 
       {/* Asset-detaljer */}
-      <Box sx={{ width: 280, flexShrink: 0 }}>
+      <Box sx={{ width: { xs: '100%', lg: 280 }, flexShrink: 0 }}>
         {(() => {
           const det = selAsset || (isReal ? null : { filename: 'A7IV_1234.CR3', flaggedForClient: true });
           if (!det) return (

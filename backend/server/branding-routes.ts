@@ -124,7 +124,8 @@ export function setupBrandingRoutes(deps: BrandingRoutesDeps): void {
       // (workspaceCategoryFor) får en kanonisk verdi. Onboarding-wizarden sender
       // profesjon hit, så dette lukker NULL-profesjon-hullet uten frontend-endring.
       const canonProfession = canonicalizeProfession(normalized.profession);
-      if (canonProfession) {
+      // 'enterprise' settes aldri self-serve (ville gitt gratis team-tilgang).
+      if (canonProfession && canonProfession !== "enterprise") {
         // Profesjon er GATED: settes kun første gang. COALESCE(NULLIF(...))
         // beholder eksisterende profesjon, så branding-lagring aldri blir en
         // bakvei for å bytte profesjon (endring krever betaling/Enterprise).

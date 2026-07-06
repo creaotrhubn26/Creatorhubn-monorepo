@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Switch, Route, useLocation } from 'wouter';
+import { Switch, Route, useLocation, Redirect } from 'wouter';
 import { queryClient } from './lib/queryClient';
 import { useQuery, useMutation, useQueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useAuth } from "@/hooks/useAuth";
@@ -929,7 +929,9 @@ function App() {
                     path="/wedding-timeline/:timelineId/:accessCode"
                     component={WeddingTimelineClientResponsive}
                   />
-                  <Route path="/dashboard" component={() => <SmartDashboardRoute />} />
+                  {/* Workspace er hovedflaten — den gamle UniversalDashboard-ruten
+                      redirecter dit. (Vendor beholder /fotograf.) */}
+                  <Route path="/dashboard" component={() => <Redirect to="/workspace" />} />
                   <Route path="/crm" component={CrmStandalone as React.ComponentType<any>} />
                   <Route path="/story-arc-studio" component={StoryArcStudioRouteWrapper} />
                   <Route

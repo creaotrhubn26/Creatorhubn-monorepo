@@ -15,7 +15,7 @@ import Phone from '@mui/icons-material/Phone';
 import PersonAdd from '@mui/icons-material/PersonAdd';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
-import { WsCard, WsSectionTitle, WsBar, WsTag, WsTable } from '../ui';
+import { WsCard, WsSectionTitle, WsBar, WsTag, WsTable, WsErrorState } from '../ui';
 import WorkspaceSplitSheet from '../WorkspaceSplitSheet';
 import { useWsLocale, makeT, wsDateLocale, type WsDict } from '../wsLocale';
 import { CREW_ROLE_CATALOG, crewRoleDef } from '@shared/crew-roles';
@@ -101,6 +101,7 @@ const T: WsDict = {
   cancel: { no: 'Avbryt', en: 'Cancel' },
   sending: { no: 'Sender…', en: 'Sending…' },
   sendInvite: { no: 'Send invitasjon', en: 'Send invitation' },
+  loadError: { no: 'Kunne ikke laste teamet. Sjekk tilkoblingen og prøv igjen.', en: 'Could not load the team. Check your connection and try again.' },
 };
 
 // Crew-roller kommer fra den delte katalogen (crew-roles.ts) — invite-dialogen
@@ -127,6 +128,7 @@ const TeamTab: React.FC<{ projectId: string; profession?: string; userId?: strin
   const [, navigate] = useLocation();
   const totalRoles = ROLES.reduce((s, r) => s + r[1], 0);
   const [real, setReal] = useState<any[] | null>(null);
+  const [loadErr, setLoadErr] = useState(false); // primær medlems-lasting feilet
   const [isOwner, setIsOwner] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [boardTasks, setBoardTasks] = useState<any[] | null>(null);
@@ -162,7 +164,8 @@ const TeamTab: React.FC<{ projectId: string; profession?: string; userId?: strin
       }));
       const combined = [...owner, ...mapped];
       setReal(combined.length > 0 ? combined : null); // tom → behold sample-demo
-    } catch { setReal(null); }
+      setLoadErr(false);
+    } catch { setReal(null); setLoadErr(true); }
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [projectId]);
 
@@ -248,7 +251,7 @@ const TeamTab: React.FC<{ projectId: string; profession?: string; userId?: strin
   ];
 
   return (
-    <Stack direction="row" spacing={2.5} sx={{ alignItems: 'flex-start' }}>
+    <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2.5} sx={{ alignItems: 'flex-start' }}>
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Stack direction="row" justifyContent="space-between" alignItems="flex-end" sx={{ mb: 2 }}>
           <Box>
@@ -257,7 +260,10 @@ const TeamTab: React.FC<{ projectId: string; profession?: string; userId?: strin
           </Box>
         </Stack>
 
-        {/* Medlemskort */}
+        {/* Medlemskort — feilet primær-lasting uten data → feiltilstand m/retry */}
+        {isRealP && loadErr && displayMembers.length === 0 ? (
+          <WsErrorState message={t('loadError')} onRetry={() => load()} sx={{ mb: 2 }} />
+        ) : (
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', lg: 'repeat(3, 1fr)' }, gap: 1.5, mb: 2 }}>
           {displayMembers.map((m) => (
             <WsCard key={m.name} pad={1.75}>
@@ -277,9 +283,13 @@ const TeamTab: React.FC<{ projectId: string; profession?: string; userId?: strin
               </Stack>
               <Stack direction="row" justifyContent="space-between" alignItems="center">
                 <Stack direction="row" spacing={0.25}>
-                  <IconButton size="small" sx={{ color: ws.textDim }}><ChatBubbleOutline sx={{ fontSize: 16 }} /></IconButton>
-                  <IconButton size="small" sx={{ color: ws.textDim }}><MailOutline sx={{ fontSize: 16 }} /></IconButton>
-                  <IconButton size="small" sx={{ color: ws.textDim }}><Phone sx={{ fontSize: 16 }} /></IconButton>
+                  {/* Kun handlinger med ekte mål (var før tre døde knapper). */}
+                  {(m.email || m.epost) && (
+                    <IconButton size="small" component="a" href={`mailto:${m.email || m.epost}`} title="Send e-post" sx={{ color: ws.textDim }}><MailOutline sx={{ fontSize: 16 }} /></IconButton>
+                  )}
+                  {(m.phone || m.telefon || m.tlf) && (
+                    <IconButton size="small" component="a" href={`tel:${m.phone || m.telefon || m.tlf}`} title="Ring" sx={{ color: ws.textDim }}><Phone sx={{ fontSize: 16 }} /></IconButton>
+                  )}
                 </Stack>
                 <Typography sx={{ fontSize: 10.5, color: ws.textFaint }}>{t('lastActive')} {t(m.aktiv)}</Typography>
               </Stack>
@@ -291,6 +301,7 @@ const TeamTab: React.FC<{ projectId: string; profession?: string; userId?: strin
             <Typography sx={{ fontSize: 13, fontWeight: 700 }}>{t('inviteMember')}</Typography>
           </Box>
         </Box>
+        )}
 
         {/* Rolleoversikt + Framdrift + Nøkkelinfo */}
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr 1fr' }, gap: 2, mb: 2 }}>
@@ -345,7 +356,7 @@ const TeamTab: React.FC<{ projectId: string; profession?: string; userId?: strin
       </Box>
 
       {/* Høyre: Chat + Oppgaver + Milepæler */}
-      <Box sx={{ width: 300, flexShrink: 0 }}>
+      <Box sx={{ width: { xs: '100%', lg: 300 }, flexShrink: 0 }}>
         <WsCard sx={{ mb: 2 }}>
           <WsSectionTitle title={t('tasksTitle')} action={<Button size="small" onClick={() => navigate(`/workspace/${projectId}/oppgaver`)} sx={{ color: ws.accent, textTransform: 'none' }}>{t('seeAll')}</Button>} />
           <Stack spacing={1}>

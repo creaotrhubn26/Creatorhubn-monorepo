@@ -5,7 +5,7 @@
  * + Fargepalett / Stilnotater / Må fanges / Referanser delt med teamet.
  * Alle bilde-flater bruker WsImageGrid (legg til / last opp).
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Box, Stack, Typography, Button, TextField, Avatar, IconButton, CircularProgress, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
 import Edit from '@mui/icons-material/Edit';
 import Close from '@mui/icons-material/Close';
@@ -116,6 +116,8 @@ const MoodboardTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [extracting, setExtracting] = useState(false);
   const [search, setSearch] = useState('');
   const [genNotes, setGenNotes] = useState(false);
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
   // Utenlandske partner-vendors får engelsk UI (WsLocaleProvider i TeamWorkspacePage).
   const locale = useWsLocale();
   const t = makeT(T, locale);
@@ -144,16 +146,19 @@ const MoodboardTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       if (!r?.jobId) throw new Error(t('couldNotStart'));
       for (let i = 0; i < 20; i++) {
         await new Promise((res) => setTimeout(res, 2500));
+        if (!mountedRef.current) return; // avmontert mens vi pollet — ikke sett state
         const s: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/jobs/${r.jobId}`);
+        if (!mountedRef.current) return;
         if (s.status === 'completed') { setConceptStatus(t('addedToMoodboard')); mood.reload && mood.reload(); loadCredits(); break; }
         if (s.status === 'failed') { setConceptStatus(t('failed')); break; }
       }
     } catch (e: any) {
+      if (!mountedRef.current) return;
       const msg = String(e?.message || '').toLowerCase();
       if (msg.includes('kreditt') || msg.includes('insufficient')) { setConceptOpen(false); setBuyOpen(true); }
       else window.alert(e?.message || t('conceptFailed'));
       setConceptStatus('');
-    } finally { setConceptBusy(false); }
+    } finally { if (mountedRef.current) setConceptBusy(false); }
   };
   const loadMeta = () => { if (isReal) apiRequest(`/api/projects/${encodeURIComponent(projectId)}/moodboard-meta`).then((r: any) => setMeta(r?.meta || null)).catch(() => {}); };
   const generateNotes = async () => {
@@ -190,7 +195,7 @@ const MoodboardTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     ? mood.images.filter((im: any) => (cat === 'alle' || im.category === cat) && (!q || (im.label || '').toLowerCase().includes(q)))
     : mood.images;
   return (
-    <Stack direction="row" spacing={2.5} sx={{ alignItems: 'flex-start' }}>
+    <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2.5} sx={{ alignItems: 'flex-start' }}>
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
           <Typography sx={{ fontSize: 20, fontWeight: 800 }}>Moodboard</Typography>
@@ -251,7 +256,7 @@ const MoodboardTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       </Box>
 
       {/* Mood details (høyre) */}
-      <Box sx={{ width: 300, flexShrink: 0 }}>
+      <Box sx={{ width: { xs: '100%', lg: 300 }, flexShrink: 0 }}>
         <WsCard>
           <WsSectionTitle title="Mood details" />
           <WsImageGrid columns={1} ratio="4 / 3" addLabel={t('uploadMain')} allowAdd />

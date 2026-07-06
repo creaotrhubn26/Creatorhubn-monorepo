@@ -22,6 +22,7 @@ import type express from "express";
 import crypto from "crypto";
 import multer from "multer";
 import { canAccessProject } from "./project-team-routes";
+import { requireTeamAccess } from "./team-access";
 import { resolveCrewRoles } from "../../frontend/shared/crew-roles.ts";
 import { CANONICAL_PROFESSIONS, normalizeProfession as normalizeCanonProfession, isWorkspaceCategory as isWsCategory } from "../../frontend/shared/profession-types.ts";
 import { signAssetReadUrl } from "./capture-upload-service";
@@ -144,6 +145,16 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       return null;
     }
     return session.userId;
+  };
+
+  // Middleware-variant som MÅ kjøre FØR multer på opplastings-ruter. Ellers
+  // buffrer multer hele filen (opptil 500 MB) i minnet for uautentiserte
+  // requests før guard-en inne i handleren kjører → minne-DoS. Kjør auth først.
+  const guardMw = async (req: any, res: any, next: any) => {
+    const uid = await guard(req, res);
+    if (!uid) return; // guard har allerede sendt respons
+    req._guardUid = uid;
+    next();
   };
 
   // ─────────── Samkjøringsboard / Oppgaver ───────────
@@ -833,7 +844,9 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
         `SELECT column_name FROM information_schema.columns WHERE table_name = 'client_submissions'`,
       ).catch(() => ({ rows: [] as any[] }));
       const has = new Set(cols.rows.map((c: any) => c.column_name));
-      const where = has.has("vendor_email") ? `WHERE vendor_email = $1` : ``;
+      // FAIL-CLOSED: uten tenant-scoping-kolonnen (vendor_email) returnerer vi
+      // INGENTING i stedet for ALLE leverandørers kunde-innsendinger (PII-lekkasje).
+      const where = has.has("vendor_email") ? `WHERE vendor_email = $1` : `WHERE 1=0`;
       const params = has.has("vendor_email") ? [session.email] : [];
       const order = has.has("submitted_at") ? "submitted_at" : "created_at";
       const r = await pool.query(
@@ -876,6 +889,9 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       ).catch(() => ({ rows: [] as any[] }));
       const has = new Set(cols.rows.map((c: any) => c.column_name));
       if (!has.has("status")) return res.json({ ok: false });
+      // FAIL-CLOSED: uten vendor_email-scoping kan vi ikke bekrefte eierskap →
+      // ikke oppdater (ellers kunne man booke en hvilken som helst innsending-id).
+      if (!has.has("vendor_email")) return res.json({ ok: false, error: "unscoped" });
       const sets: string[] = [`status = 'booked'`];
       const params: any[] = [];
       if (projectId && has.has("project_id")) { params.push(projectId); sets.push(`project_id = $${params.length}`); }
@@ -1361,6 +1377,8 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
   // bro-tabellen på den. Krever at brukeren eier track-en.
   app.post("/api/projects/:projectId/audio-room/link-easeverse", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
+    // EaseVerse-kobling synker collaborators inn → team-/Enterprise-gated.
+    if (!(await requireTeamAccess(pool, uid, res))) return;
     try {
       const pid = req.params.projectId;
       const trackId = String(req.body?.trackId || "");
@@ -1429,13 +1447,23 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     try {
       const arId = await resolveAudioRoomId(req.params.projectId, uid);
       if (!arId) return res.json({ members: [] });
+      // Kun prosjekteier ser andres e-post (GDPR — team-medlemmer får maskert).
+      const ownerChk = await pool.query(`SELECT 1 FROM projects WHERE id = $1 AND user_id = $2 LIMIT 1`, [req.params.projectId, uid]).catch(() => ({ rowCount: 0 }));
+      const isProjectOwner = (ownerChk.rowCount ?? 0) > 0;
+      const maskEmail = (e: string | null): string | null => {
+        const v = String(e || "").trim(); const at = v.indexOf("@");
+        if (at < 1) return null;
+        const user = v.slice(0, at), dom = v.slice(at + 1);
+        return `${user.slice(0, 2)}${user.length > 2 ? "***" : "*"}@${dom}`;
+      };
       const m = await pool.query(
         `SELECT id, name, role, instrument, email, avatar_color, is_owner, invite_status, invite_token, easeverse_access
          FROM audio_review_members WHERE project_id = $1::uuid ORDER BY is_owner DESC, order_index ASC, created_at ASC`,
         [arId],
       ).catch(() => ({ rows: [] }));
       const members = m.rows.map((x: any) => ({
-        id: x.id, name: x.name, role: x.role, instrument: x.instrument || null, email: x.email || null,
+        id: x.id, name: x.name, role: x.role, instrument: x.instrument || null,
+        email: isProjectOwner ? (x.email || null) : maskEmail(x.email),
         avatarColor: x.avatar_color, isOwner: x.is_owner, status: x.invite_status,
         inviteUrl: x.invite_token && !x.is_owner ? `/audio-review/invite/${x.invite_token}` : null,
         easeverseAccess: x.easeverse_access || false,
@@ -1446,6 +1474,8 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
 
   app.post("/api/projects/:projectId/audio-room/members", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
+    // Band-invitasjon er en team-/Enterprise-funksjon — håndhev server-side.
+    if (!(await requireTeamAccess(pool, uid, res))) return;
     try {
       // Finn-eller-opprett lydrommet, så «Inviter band» fungerer selv før første låt er koblet.
       let arId = await resolveAudioRoomId(req.params.projectId, uid);
@@ -2466,8 +2496,8 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
   // Last opp videofil → B2 → opprett versjon. Server-side (samme beviste mønster
   // som /images): multer → archiveToRoleRoomB2. Cloudflare Stream = kun streaming,
   // kilden bor på B2. b2_key presignes til avspilling i GET /video-room.
-  app.post("/api/projects/:projectId/video-versions/upload", videoUpload.single("file"), async (req, res) => {
-    const uid = await guard(req, res); if (!uid) return;
+  app.post("/api/projects/:projectId/video-versions/upload", guardMw, videoUpload.single("file"), async (req, res) => {
+    const uid = (req as any)._guardUid; if (!uid) return;
     try {
       await ensureVideoSchema();
       const pid = req.params.projectId;
@@ -2701,8 +2731,8 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     } catch (e) { console.error("GET images", e); res.status(500).json({ error: "failed" }); }
   });
 
-  app.post("/api/projects/:projectId/images", mediaUpload.single("file"), async (req, res) => {
-    const uid = await guard(req, res); if (!uid) return;
+  app.post("/api/projects/:projectId/images", guardMw, mediaUpload.single("file"), async (req, res) => {
+    const uid = (req as any)._guardUid; if (!uid) return;
     try {
       await ensureSchema(pool);
       const file = (req as any).file;

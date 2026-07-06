@@ -31,6 +31,7 @@ import {
   AutoAwesome,
 } from '@mui/icons-material';
 import { useTheming } from '../../utils/theming-helper';
+import { useAcademyLocale } from './academyLocale';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
 import {
@@ -71,6 +72,7 @@ const CoursePricingPanel: React.FC<CoursePricingPanelProps> = ({
   onCancel,
 }) => {
   const theming = useTheming('music_producer');
+  const { tt } = useAcademyLocale();
   const { analytics } = useEnhancedMasterIntegration();
 
   const [priceNOK, setPriceNOK] = useState<number>(
@@ -146,18 +148,20 @@ const CoursePricingPanel: React.FC<CoursePricingPanelProps> = ({
         <CardContent>
           <Alert severity="warning" icon={<Warning />}>
             <Typography variant="h6" gutterBottom>
-              Oppgrader for å selge kurs
+              {tt('Oppgrader for å selge kurs', 'Upgrade to sell courses')}
             </Typography>
             <Typography variant="body2">
-              Du må ha Pro eller Enterprise plan for å kunne selge kurs og tjene penger. Oppgrader
-              nå for å låse opp kursmonetisering!
+              {tt(
+                'Du må ha Pro eller Enterprise plan for å kunne selge kurs og tjene penger. Oppgrader nå for å låse opp kursmonetisering!',
+                'You need a Pro or Enterprise plan to sell courses and earn money. Upgrade now to unlock course monetization!',
+              )}
             </Typography>
             <Button
               variant="contained"
               sx={{ mt: 2, ...theming.getThemedButtonSx() }}
               href="/settings?tab=billing"
             >
-              Oppgrader til Pro
+              {tt('Oppgrader til Pro', 'Upgrade to Pro')}
             </Button>
           </Alert>
         </CardContent>
@@ -172,7 +176,7 @@ const CoursePricingPanel: React.FC<CoursePricingPanelProps> = ({
         gutterBottom
         sx={{ fontWeight: 'bold', color: theming.colors.primary }}
       >
-        Sett Kurspris
+        {tt('Sett Kurspris', 'Set Course Price')}
       </Typography>
       <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
         {courseTitle}
@@ -189,14 +193,14 @@ const CoursePricingPanel: React.FC<CoursePricingPanelProps> = ({
                 sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
               >
                 <AttachMoney />
-                Prissetting
+                {tt('Prissetting', 'Pricing')}
               </Typography>
 
               <Divider sx={{ my: 2 }} />
 
               {/* Price Input */}
               <TextField
-                label="Kurspris"
+                label={tt('Kurspris', 'Course price')}
                 type="number"
                 value={priceNOK}
                 onChange={(e) => handlePriceChange(Number(e.target.value))}
@@ -204,12 +208,12 @@ const CoursePricingPanel: React.FC<CoursePricingPanelProps> = ({
                 InputProps={{
                   endAdornment: <InputAdornment position="end">NOK</InputAdornment>}}
                 sx={{ mb: 3 }}
-                helperText={`Anbefalt pris: ${suggestion.suggestedPriceNOK} NOK`}
+                helperText={`${tt('Anbefalt pris', 'Recommended price')}: ${suggestion.suggestedPriceNOK} NOK`}
               />
 
               {/* Price Slider */}
               <Typography variant="body2" gutterBottom color="text.secondary">
-                Juster pris med slider:
+                {tt('Juster pris med slider:', 'Adjust price with slider:')}
               </Typography>
               <Slider
                 value={priceNOK}
@@ -238,7 +242,7 @@ const CoursePricingPanel: React.FC<CoursePricingPanelProps> = ({
                     onChange={(event) => setShowSuggestion(event.target.checked)}
                   />
                 }
-                label="Vis AI-prisanbefaling"
+                label={tt('Vis AI-prisanbefaling', 'Show AI price recommendation')}
               />
 
               {showSuggestion && (
@@ -248,11 +252,11 @@ const CoursePricingPanel: React.FC<CoursePricingPanelProps> = ({
                   <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
                     <AutoAwesome sx={{ color: 'info.dark', mr: 1 }} />
                     <Typography variant="subtitle2" sx={{ fontWeight: 'bold', color: 'info.dark' }}>
-                      AI Prisanbefaling
+                      {tt('AI Prisanbefaling', 'AI Price Recommendation')}
                     </Typography>
                   </Box>
                   <Typography variant="body2" sx={{ color: 'info.dark', mb: 1 }}>
-                    Basert på kursinnhold: <strong>{suggestion.suggestedPriceNOK} NOK</strong>
+                    {tt('Basert på kursinnhold', 'Based on course content')}: <strong>{suggestion.suggestedPriceNOK} NOK</strong>
                   </Typography>
                   <Typography variant="caption" sx={{ color: 'info.dark', display: 'block', mb: 2 }}>
                     {suggestion.reasoning}
@@ -263,14 +267,14 @@ const CoursePricingPanel: React.FC<CoursePricingPanelProps> = ({
                     onClick={handleUseSuggestion}
                     sx={{ borderColor: 'info.dark', color: 'info.dark' }}
                   >
-                    Bruk anbefalt pris
+                    {tt('Bruk anbefalt pris', 'Use recommended price')}
                   </Button>
                 </Paper>
               )}
 
               {/* Expected Students */}
               <Typography variant="body2" gutterBottom color="text.secondary" sx={{ mt: 3 }}>
-                Forventet antall studenter (for projeksjon):
+                {tt('Forventet antall studenter (for projeksjon):', 'Expected number of students (for projection):')}
               </Typography>
               <TextField
                 type="number"
@@ -278,7 +282,7 @@ const CoursePricingPanel: React.FC<CoursePricingPanelProps> = ({
                 onChange={(e) => setExpectedStudents(Number(e.target.value))}
                 fullWidth
                 InputProps={{
-                  endAdornment: <InputAdornment position="end">studenter</InputAdornment>}}
+                  endAdornment: <InputAdornment position="end">{tt('studenter', 'students')}</InputAdornment>}}
               />
             </CardContent>
           </Card>
@@ -294,25 +298,25 @@ const CoursePricingPanel: React.FC<CoursePricingPanelProps> = ({
                 sx={{ display: 'flex', alignItems: 'center', gap: 1, color: 'success.dark' }}
               >
                 <TrendingUp />
-                Inntektsoversikt
+                {tt('Inntektsoversikt', 'Revenue Overview')}
               </Typography>
 
               <Divider sx={{ my: 2 }} />
 
               {/* Per Student Breakdown */}
               <Typography variant="subtitle2" gutterBottom sx={{ color: 'success.dark' }}>
-                Per student:
+                {tt('Per student:', 'Per student:')}
               </Typography>
               <Stack spacing={1} sx={{ mb: 3 }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <Typography variant="body2">Kurspris:</Typography>
+                  <Typography variant="body2">{tt('Kurspris:', 'Course price:')}</Typography>
                   <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
                     {formatNOK(split.totalPrice)}
                   </Typography>
                 </Box>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                   <Typography variant="body2" sx={{ color: 'error.main' }}>
-                    Platform Fee ({split.platformFeePercentage}%):
+                    {tt('Plattformavgift', 'Platform Fee')} ({split.platformFeePercentage}%):
                   </Typography>
                   <Typography variant="body2" sx={{ color: 'error.main' }}>
                     -{formatNOK(split.platformFee)}
@@ -327,7 +331,7 @@ const CoursePricingPanel: React.FC<CoursePricingPanelProps> = ({
                     borderColor: 'success.dark'}}
                 >
                   <Typography variant="body2" sx={{ fontWeight: 'bold', color: 'success.dark' }}>
-                    Du tjener ({split.instructorRevenuePercentage}%):
+                    {tt('Du tjener', 'You earn')} ({split.instructorRevenuePercentage}%):
                   </Typography>
                   <Typography variant="h6" sx={{ fontWeight: 'bold', color: 'success.dark' }}>
                     {formatNOK(split.instructorRevenue)} 💰
@@ -339,18 +343,18 @@ const CoursePricingPanel: React.FC<CoursePricingPanelProps> = ({
 
               {/* Total Projection */}
               <Typography variant="subtitle2" gutterBottom sx={{ color: 'success.dark' }}>
-                Med {expectedStudents} studenter:
+                {tt('Med', 'With')} {expectedStudents} {tt('studenter:', 'students:')}
               </Typography>
               <Stack spacing={1}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <Typography variant="body2">Total omsetning:</Typography>
+                  <Typography variant="body2">{tt('Total omsetning:', 'Total revenue:')}</Typography>
                   <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
                     {formatNOK(projection.totalRevenue)}
                   </Typography>
                 </Box>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                   <Typography variant="body2" sx={{ color: 'error.main' }}>
-                    Platform Fee:
+                    {tt('Plattformavgift:', 'Platform Fee:')}
                   </Typography>
                   <Typography variant="body2" sx={{ color: 'error.main' }}>
                     -{formatNOK(projection.totalPlatformFee)}
@@ -365,7 +369,7 @@ const CoursePricingPanel: React.FC<CoursePricingPanelProps> = ({
                     borderColor: 'success.dark'}}
                 >
                   <Typography variant="h6" sx={{ fontWeight: 'bold', color: 'success.dark' }}>
-                    Din inntekt:
+                    {tt('Din inntekt:', 'Your revenue:')}
                   </Typography>
                   <Typography variant="h5" sx={{ fontWeight: 'bold', color: 'success.dark' }}>
                     {formatNOK(projection.totalInstructorRevenue)} 💰
@@ -380,7 +384,7 @@ const CoursePricingPanel: React.FC<CoursePricingPanelProps> = ({
                   sx={{ display: 'block', mb: 1, color: 'text.secondary' }}
                 >
                   <Info sx={{ fontSize: 14, mr: 0.5 }} />
-                  Din {instructorPlan === 'pro' ? 'Pro' : 'Enterprise'} plan gir deg:
+                  {tt('Din', 'Your')} {instructorPlan === 'pro' ? 'Pro' : 'Enterprise'} {tt('plan gir deg:', 'plan gives you:')}
                 </Typography>
                 <Stack spacing={0.5}>
                   <Typography
@@ -388,21 +392,21 @@ const CoursePricingPanel: React.FC<CoursePricingPanelProps> = ({
                     sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
                   >
                     <CheckCircle sx={{ fontSize: 14, color: 'success.main' }} />
-                    {split.instructorRevenuePercentage}% av hver påmelding
+                    {split.instructorRevenuePercentage}% {tt('av hver påmelding', 'of each enrollment')}
                   </Typography>
                   <Typography
                     variant="caption"
                     sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
                   >
                     <CheckCircle sx={{ fontSize: 14, color: 'success.main' }} />
-                    Månedlige utbetalinger
+                    {tt('Månedlige utbetalinger', 'Monthly payouts')}
                   </Typography>
                   <Typography
                     variant="caption"
                     sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
                   >
                     <CheckCircle sx={{ fontSize: 14, color: 'success.main' }} />
-                    Stripe Connect / Bankoverføring
+                    {tt('Stripe Connect / Bankoverføring', 'Stripe Connect / Bank transfer')}
                   </Typography>
                   {instructorPlan === 'enterprise' && (
                     <Typography
@@ -410,7 +414,7 @@ const CoursePricingPanel: React.FC<CoursePricingPanelProps> = ({
                       sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
                     >
                       <CheckCircle sx={{ fontSize: 14, color: 'success.main' }} />
-                      Automatiske utbetalinger (250 NOK min.)
+                      {tt('Automatiske utbetalinger', 'Automatic payouts')} (250 NOK {tt('min.', 'min.')})
                     </Typography>
                   )}
                 </Stack>
@@ -422,19 +426,19 @@ const CoursePricingPanel: React.FC<CoursePricingPanelProps> = ({
           {instructorPlan === 'pro' && (
             <Alert severity="info" sx={{ mt: 2 }}>
               <Typography variant="caption" sx={{ fontWeight: 'bold', display: 'block', mb: 0.5 }}>
-                💡 Oppgrader til Enterprise for mer inntekt:
+                💡 {tt('Oppgrader til Enterprise for mer inntekt:', 'Upgrade to Enterprise for more revenue:')}
               </Typography>
               <Typography variant="caption">
-                Med Enterprise plan (15% fee) ville du tjent{' '}
+                {tt('Med Enterprise plan (15% fee) ville du tjent', 'With the Enterprise plan (15% fee) you would earn')}{' '}
                 <strong>
                   {formatNOK(calculateRevenueSplit(priceOre, 'enterprise').instructorRevenue)}
                 </strong>{' '}
-                per student (+{', '}
+                {tt('per student (+', 'per student (+')}{', '}
                 {formatNOK(
                   calculateRevenueSplit(priceOre, 'enterprise').instructorRevenue -
                     split.instructorRevenue,
                 )}{', '}
-                mer!)
+                {tt('mer!)', 'more!)')}
               </Typography>
             </Alert>
           )}
@@ -445,12 +449,12 @@ const CoursePricingPanel: React.FC<CoursePricingPanelProps> = ({
       <Card sx={{ mt: 3, ...theming.getThemedCardSx() }}>
         <CardContent>
           <Typography variant="h6" gutterBottom>
-            Kursinformasjon
+            {tt('Kursinformasjon', 'Course Information')}
           </Typography>
           <Grid container spacing={2}>
             <Grid item xs={6} sm={3}>
               <Typography variant="caption" color="text.secondary">
-                Videoer:
+                {tt('Videoer:', 'Videos:')}
               </Typography>
               <Typography variant="body1" sx={{ fontWeight: 'bold' }}>
                 {videoCount}
@@ -458,7 +462,7 @@ const CoursePricingPanel: React.FC<CoursePricingPanelProps> = ({
             </Grid>
             <Grid item xs={6} sm={3}>
               <Typography variant="caption" color="text.secondary">
-                Varighet:
+                {tt('Varighet:', 'Duration:')}
               </Typography>
               <Typography variant="body1" sx={{ fontWeight: 'bold' }}>
                 {(totalDurationMinutes / 60).toFixed(1)}h
@@ -466,7 +470,7 @@ const CoursePricingPanel: React.FC<CoursePricingPanelProps> = ({
             </Grid>
             <Grid item xs={6} sm={3}>
               <Typography variant="caption" color="text.secondary">
-                Vanskelighetsgrad:
+                {tt('Vanskelighetsgrad:', 'Difficulty:')}
               </Typography>
               <Chip
                 label={difficulty}
@@ -481,11 +485,11 @@ const CoursePricingPanel: React.FC<CoursePricingPanelProps> = ({
             </Grid>
             <Grid item xs={6} sm={3}>
               <Typography variant="caption" color="text.secondary">
-                Funksjoner:
+                {tt('Funksjoner:', 'Features:')}
               </Typography>
               <Stack direction="row" spacing={0.5}>
-                {hasQuizzes && <Chip label="Quiz" size="small" />}
-                {hasCertificate && <Chip label="Sertifikat" size="small" />}
+                {hasQuizzes && <Chip label={tt('Quiz', 'Quiz')} size="small" />}
+                {hasCertificate && <Chip label={tt('Sertifikat', 'Certificate')} size="small" />}
               </Stack>
             </Grid>
           </Grid>
@@ -495,29 +499,29 @@ const CoursePricingPanel: React.FC<CoursePricingPanelProps> = ({
       {/* Legal & Policy Info */}
       <Alert severity="info" sx={{ mt: 3 }}>
         <Typography variant="body2" sx={{ mb: 1 }}>
-          <strong>📋 Viktig informasjon:</strong>
+          <strong>📋 {tt('Viktig informasjon:', 'Important information:')}</strong>
         </Typography>
         <Typography variant="caption" component="div">
-          • Studenter har 14 dagers angrerett (norsk forbrukerlovgivning)
+          • {tt('Studenter har 14 dagers angrerett (norsk forbrukerlovgivning)', 'Students have a 14-day right of withdrawal (Norwegian consumer law)')}
         </Typography>
         <Typography variant="caption" component="div">
-          • Refusjoner trekkes fra din neste utbetaling
+          • {tt('Refusjoner trekkes fra din neste utbetaling', 'Refunds are deducted from your next payout')}
         </Typography>
         <Typography variant="caption" component="div">
-          • Du er ansvarlig for egen skatteinnberetning
+          • {tt('Du er ansvarlig for egen skatteinnberetning', 'You are responsible for your own tax reporting')}
         </Typography>
         <Typography variant="caption" component="div">
-          • MVA (25%) håndteres automatisk av plattformen
+          • {tt('MVA (25%) håndteres automatisk av plattformen', 'VAT (25%) is handled automatically by the platform')}
         </Typography>
         <Typography variant="caption" component="div">
-          • Utbetalinger behandles månedlig (minimum 500 NOK for Pro, 250 NOK for Enterprise)
+          • {tt('Utbetalinger behandles månedlig (minimum 500 NOK for Pro, 250 NOK for Enterprise)', 'Payouts are processed monthly (minimum 500 NOK for Pro, 250 NOK for Enterprise)')}
         </Typography>
       </Alert>
 
       {/* Action Buttons */}
       <Stack direction="row" spacing={2} sx={{ mt: 4, justifyContent: 'flex-end' }}>
         <Button variant="outlined" onClick={onCancel}>
-          Avbryt
+          {tt('Avbryt', 'Cancel')}
         </Button>
         <Button
           variant="contained"
@@ -525,7 +529,7 @@ const CoursePricingPanel: React.FC<CoursePricingPanelProps> = ({
           sx={{ ...theming.getThemedButtonSx() }}
           startIcon={<CheckCircle />}
         >
-          Lagre Pris
+          {tt('Lagre Pris', 'Save Price')}
         </Button>
       </Stack>
     </Box>

@@ -243,10 +243,14 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
   const checkItems = isReal ? (checks || []).map((c) => ({ id: c.id, t: c.label, ok: c.checked, real: true })) : CHECKLIST;
   const refs = useProjectImages(projectId, 'references');
   const [teamSync, setTeamSync] = useState<any | null>(null);
+  // Signatur på antall + fullført-antall i stedet for array-REFERANSENE, ellers
+  // re-fetches team-sync på hvert render/poll (nye array-refs med samme innhold)
+  // — inkl. hvert checkbox-klikk. Nå kun ved reell endring.
+  const doneSig = [...tasks, ...checks].reduce((n: number, x: any) => n + (x?.done || x?.completed || x?.checked || x?.status === 'done' ? 1 : 0), 0);
   useEffect(() => {
     if (!isReal) return;
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/team-sync`).then((r: any) => setTeamSync(r || null)).catch(() => {});
-  }, [projectId, isReal, tasks, checks]);
+  }, [projectId, isReal, tasks.length, checks.length, doneSig]);
   // Ekte prosjekter: kun ekte team-sync (0 %/tom-tilstand til data finnes); demo-tall kun på sample.
   const syncPct = isReal ? (teamSync?.pct ?? 0) : 82;
   const syncItems = (teamSync && Array.isArray(teamSync.readiness) && teamSync.readiness.length)
@@ -379,7 +383,7 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
   const nowVisible = nowPct >= 0 && nowPct <= 100;
 
   return (
-    <Stack direction="row" spacing={2.5} sx={{ alignItems: 'stretch' }}>
+    <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2.5} sx={{ alignItems: 'stretch' }}>
       {/* ───────── Hovedkolonne ───────── */}
       <Box sx={{ flex: 1, minWidth: 0 }}>
         {/* «Kom i gang»-sjekkliste: gjør brukeren workspace-klar (profil, prosjekt,
@@ -537,8 +541,6 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
             action={
               <Stack direction="row" spacing={0.5} alignItems="center">
                 <Button size="small" onClick={() => go('produksjonskart')} sx={{ color: ws.text, textTransform: 'none', minWidth: 0 }}>{t('today')}</Button>
-                <IconButton size="small" sx={{ color: ws.textDim }}><ChevronLeft fontSize="small" /></IconButton>
-                <IconButton size="small" sx={{ color: ws.textDim }}><ChevronRight fontSize="small" /></IconButton>
               </Stack>
             }
           />
@@ -656,7 +658,7 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
       </Box>
 
       {/* ───────── Capture-aktivitet + Team Chat (høyre) ───────── */}
-      <Box sx={{ width: 340, flexShrink: 0 }}>
+      <Box sx={{ width: { xs: '100%', lg: 340 }, flexShrink: 0 }}>
         {(isReal ? activity.length > 0 : true) && (
           <WsCard sx={{ mb: 2 }}>
             <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 1.25 }}>

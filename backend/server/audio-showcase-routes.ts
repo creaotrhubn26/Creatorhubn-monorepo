@@ -18,6 +18,8 @@ import { tmpdir } from "node:os";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import PDFDocument from "pdfkit";
+import { requireTeamAccess } from "./team-access";
+import { canAccessProject } from "./project-team-routes";
 
 // Innebygd TrueType-font (DejaVu Sans, libre) — sikrer at avtale-PDF rendres
 // identisk i alle visere (pdfkit-standardfonter rendres ikke i alle renderere).
@@ -540,6 +542,38 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     return r.rowCount > 0;
   }
 
+  // Samme, men for en kommentar (via versjon → prosjekt → eier).
+  async function ownsComment(commentId: string, userId: string): Promise<boolean> {
+    const r = await pool.query(
+      `SELECT 1 FROM audio_review_comments c
+         JOIN audio_review_versions v ON v.id = c.version_id
+         JOIN audio_review_projects p ON p.id = v.project_id
+        WHERE c.id = $1::uuid AND p.owner_user_id = $2 LIMIT 1`,
+      [commentId, userId],
+    );
+    return r.rowCount > 0;
+  }
+
+  // LESE-tilgang til et lydrom: eieren (produsenten) ELLER et aktivt team-medlem
+  // i workspace-prosjektet lydrommet er koblet til (project_audio_rooms). Brukes
+  // KUN på read-only sammendrag/release — skriving/moderering forblir eier-only.
+  async function canReadAudioRoom(audioRoomId: string, userId: string): Promise<boolean> {
+    if (!audioRoomId || !userId) return false;
+    const owns = await pool.query(
+      `SELECT 1 FROM audio_review_projects WHERE id = $1::uuid AND owner_user_id = $2 LIMIT 1`,
+      [audioRoomId, userId],
+    ).catch(() => ({ rowCount: 0 }));
+    if ((owns.rowCount ?? 0) > 0) return true;
+    // Koblet workspace-prosjekt? (tabellen opprettes lazy i project-workspace-routes)
+    const link = await pool.query(
+      `SELECT project_id FROM project_audio_rooms WHERE audio_review_project_id = $1::uuid LIMIT 1`,
+      [audioRoomId],
+    ).catch(() => ({ rows: [] as any[] }));
+    const pid = link.rows[0]?.project_id;
+    if (!pid) return false;
+    return await canAccessProject(pool, userId, pid);
+  }
+
   // ── Prosjekt ────────────────────────────────────────────────────────────
   app.post("/api/audio-showcases", async (req, res) => {
     const s = requireUserSession(req, res); if (!s) return;
@@ -580,8 +614,10 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     const s = requireUserSession(req, res); if (!s) return;
     const id = str(req.params.id, 64);
     try {
+      // Eier ELLER workspace-team-medlem (read-only sammendrag).
+      if (!(await canReadAudioRoom(id, s.userId))) return res.status(404).json({ error: "not_found" });
       const p = await pool.query(
-        `SELECT * FROM audio_review_projects WHERE id = $1::uuid AND owner_user_id = $2 LIMIT 1`, [id, s.userId]);
+        `SELECT * FROM audio_review_projects WHERE id = $1::uuid LIMIT 1`, [id]);
       if (p.rowCount === 0) return res.status(404).json({ error: "not_found" });
       const [v, members, tasks] = await Promise.all([
         pool.query(`SELECT * FROM audio_review_versions WHERE project_id = $1::uuid ORDER BY version_number ASC`, [id]),
@@ -645,6 +681,8 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     const s = requireUserSession(req, res); if (!s) return;
     const id = str(req.params.id, 64);
     try {
+      // IDOR-guard: kun eieren kan lese versjonen + alle dens kommentarer.
+      if (!(await ownsVersion(id, s.userId))) return res.status(404).json({ error: "not_found" });
       const v = await pool.query(`SELECT * FROM audio_review_versions WHERE id = $1::uuid LIMIT 1`, [id]);
       if (v.rowCount === 0) return res.status(404).json({ error: "not_found" });
       const [comments, sections, approvals] = await Promise.all([
@@ -666,6 +704,9 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     const body = str(req.body?.body ?? req.body?.comment, 4000);
     if (!versionId || !body) return res.status(400).json({ error: "versionId_and_body_required" });
     try {
+      // IDOR-guard: kun eieren av versjonen kan kommentere via dette (innloggede)
+      // endepunktet. Reviewere kommenterer via egen delings-token-flyt.
+      if (!(await ownsVersion(versionId, s.userId))) return res.status(403).json({ error: "no_access" });
       const r = await pool.query(
         `INSERT INTO audio_review_comments
            (version_id, parent_comment_id, user_id, author, author_role, timecode_seconds, body, category, is_decision, section_ref)
@@ -696,6 +737,8 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     if (typeof req.body?.body === "string") { params.push(str(req.body.body, 4000)); sets.push(`body = $${params.length}`); }
     if (params.length === 1) return res.status(400).json({ error: "nothing_to_update" });
     try {
+      // IDOR-guard: kun eieren kan redigere/moderere en kommentar.
+      if (!(await ownsComment(id, s.userId))) return res.status(403).json({ error: "no_access" });
       const r = await pool.query(`UPDATE audio_review_comments SET ${sets.join(", ")} WHERE id = $1::uuid RETURNING *`, params);
       if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
       return res.json(r.rows[0]);
@@ -808,6 +851,8 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     const id = str(req.params.id, 64);
     const dir = num(req.body?.delta) === -1 ? -1 : 1;
     try {
+      // IDOR-guard: kun eieren kan endre like-count via dette innloggede endepunktet.
+      if (!(await ownsComment(id, s.userId))) return res.status(403).json({ error: "no_access" });
       const r = await pool.query(
         `UPDATE audio_review_comments SET like_count = GREATEST(0, like_count + $2), updated_at = NOW()
           WHERE id = $1::uuid RETURNING *`, [id, dir]);
@@ -2394,6 +2439,8 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
   });
   app.post("/api/audio-showcases/:id/warmups", async (req, res) => {
     const s = requireUserSession(req, res); if (!s) return;
+    // Band-oppvarmingsrutiner er en team-/Enterprise-funksjon.
+    if (!(await requireTeamAccess(pool, s.userId, res))) return;
     const title = str(req.body?.title, 120); const target = str(req.body?.target, 60) || "all";
     const steps = sanitizeSteps(req.body?.steps);
     if (!title || steps.length === 0) return res.status(400).json({ error: "title_and_steps_required" });
@@ -2893,6 +2940,8 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
   // leveres av cronen (hver halvtime); uten sendAt sendes den umiddelbart.
   app.post("/api/audio-showcases/:id/remind", async (req, res) => {
     const s = requireUserSession(req, res); if (!s) return;
+    // «Påminn bandet» er en team-/Enterprise-funksjon.
+    if (!(await requireTeamAccess(pool, s.userId, res))) return;
     const id = str(req.params.id, 64);
     const message = str(req.body?.message, 600);
     if (!message) return res.status(400).json({ error: "message_required" });
@@ -3177,8 +3226,11 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
   // Hent eksisterende release for et review-rom UTEN å opprette (for studio-embed).
   app.get("/api/audio-showcases/:id/release", async (req, res) => {
     const s = requireUserSession(req, res); if (!s) return;
+    const id = str(req.params.id, 64);
     try {
-      const r = await pool.query(`SELECT * FROM audio_releases WHERE review_project_id=$1::uuid AND owner_user_id=$2 ORDER BY created_at DESC LIMIT 1`, [str(req.params.id, 64), s.userId]);
+      // Eier ELLER workspace-team-medlem (read-only release-info).
+      if (!(await canReadAudioRoom(id, s.userId))) return res.json({ release: null });
+      const r = await pool.query(`SELECT * FROM audio_releases WHERE review_project_id=$1::uuid ORDER BY created_at DESC LIMIT 1`, [id]);
       return res.json({ release: r.rows[0] || null });
     } catch (e) { if (isMissingTable(e)) return res.json({ release: null }); return res.status(500).json({ error: "release_get_failed" }); }
   });

@@ -100,7 +100,7 @@ const T: WsDict = {
   aAiDraftSub: { no: 'Claude skriver et utkast i feltet', en: 'Claude drafts in the field' },
   aMeeting: { no: 'Planlegg møte', en: 'Schedule a meeting' },
   aMeetingVisual: { no: 'Planlegg opptaksdag', en: 'Schedule a shoot day' },
-  aMeetingService: { no: 'Ny booking', en: 'New booking' },
+  aMeetingService: { no: 'Nytt møte', en: 'New meeting' },
   aMeetingSub: { no: 'Book tid + generer Google Meet → kort i tråden', en: 'Book time + generate Google Meet → card' },
   meetTitleField: { no: 'Tittel', en: 'Title' },
   genMeet: { no: 'Generer Google Meet-lenke', en: 'Generate Google Meet link' },
@@ -224,7 +224,11 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
   const [apprLoading, setApprLoading] = useState(false);
   const [apprItems, setApprItems] = useState([]);
 
-  const scrollDown = () => requestAnimationFrame(() => endRef.current?.scrollIntoView({ behavior: 'smooth' }));
+  // Respekter prefers-reduced-motion (CSS dekker ikke JS-drevet smooth-scroll).
+  const scrollDown = () => requestAnimationFrame(() => {
+    const reduce = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    endRef.current?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth' });
+  });
   // Er brukeren allerede nederst? Da (og bare da) auto-scroller vi ved nye
   // meldinger — ellers stjeler pollet leseposisjonen når man leser historikk.
   const atBottom = () => { const el = listRef.current; return !el || el.scrollHeight - el.scrollTop - el.clientHeight < 80; };

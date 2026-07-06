@@ -28,6 +28,34 @@ export const WsCard: React.FC<{ children: React.ReactNode; sx?: any; pad?: numbe
   </Box>
 );
 
+/**
+ * Feiltilstand for primær-lasting: vises når hovedspørringen til en fane feiler
+ * (nettverk/500), i stedet for en misvisende tom-tilstand. «Prøv igjen» kaller
+ * onRetry. Locale-nøytral — teksten sendes inn (fanen har allerede makeT).
+ */
+export const WsErrorState: React.FC<{ message: string; retryLabel?: string; onRetry?: () => void; sx?: any }> = ({ message, retryLabel = 'Prøv igjen', onRetry, sx }) => (
+  <Box sx={{
+    bgcolor: ws.panel, border: `1px solid ${ws.redSoft}`, borderRadius: `${ws.radius}px`,
+    p: 3, textAlign: 'center', ...sx,
+  }}>
+    <Typography sx={{ fontSize: 13.5, color: ws.textDim, mb: onRetry ? 1.5 : 0 }}>{message}</Typography>
+    {onRetry && (
+      <Box
+        component="button"
+        onClick={onRetry}
+        sx={{
+          font: 'inherit', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+          bgcolor: 'transparent', color: ws.accent, border: `1px solid ${ws.accentBorder}`,
+          borderRadius: `${ws.radiusSm}px`, px: 2, py: 0.75,
+          '&:hover': { bgcolor: ws.accentSoft },
+        }}
+      >
+        {retryLabel}
+      </Box>
+    )}
+  </Box>
+);
+
 export const WsSectionTitle: React.FC<{ icon?: React.ReactNode; title: string; action?: React.ReactNode; sx?: any }> = ({ icon, title, action, sx }) => (
   <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.5, ...sx }}>
     <Stack direction="row" alignItems="center" spacing={1}>

@@ -128,7 +128,7 @@ export const WS_NAV: WsNavItem[] = [
   { key: 'media', label: 'Media', labelEn: 'Media', icon: 'PermMedia', group: 'hoved', route: true },
   { key: 'utstyr', label: 'Utstyr', labelEn: 'Inventory', icon: 'Inventory2', group: 'hoved', route: true, labelByCategory: { vendor: 'Lager' } },
   { key: 'leveranser', label: 'Leveranser', labelEn: 'Deliverables', icon: 'LocalShipping', group: 'hoved', route: true },
-  { key: 'oppgaver', label: 'Oppgaver', labelEn: 'Tasks', icon: 'CheckCircleOutline', group: 'hoved', badge: 12, route: true },
+  { key: 'oppgaver', label: 'Oppgaver', labelEn: 'Tasks', icon: 'CheckCircleOutline', group: 'hoved', route: true },
   { key: 'team', label: 'Team', labelEn: 'Team', icon: 'Group', group: 'hoved', route: true },
   { key: 'chat', label: 'Chat', labelEn: 'Chat', icon: 'ChatBubbleOutline', group: 'hoved', route: true },
   // Academy-administrasjon — kun mentorer/instruktører (uavhengig av profesjon)
@@ -143,8 +143,8 @@ export const WS_NAV: WsNavItem[] = [
   // { key: 'edit-room', label: 'Edit Room', icon: 'Movie', group: 'rom', online: true },
   // Kundeportal
   { key: 'foresporsler', label: 'Forespørsler', labelEn: 'Inquiries', icon: 'MoveToInbox', group: 'klient', route: true },
-  { key: 'kundevisning', label: 'Kundevisning', labelEn: 'Client view', icon: 'Visibility', group: 'klient' },
-  { key: 'avtaler', label: 'Avtaler', labelEn: 'Agreements', icon: 'EventNote', group: 'klient' },
+  { key: 'kundevisning', label: 'Kundevisning', labelEn: 'Client view', icon: 'Visibility', group: 'klient', route: true },
+  { key: 'avtaler', label: 'Avtaler', labelEn: 'Agreements', icon: 'EventNote', group: 'klient', route: true },
 ];
 
 /**
@@ -158,7 +158,9 @@ const normProf = wsProfessionKey;
 
 // Kode-fallback profesjon → workspace-kategori (offline/første render — den
 // admin-styrte kilden er profession_types.workspace_category via overrides).
-// Nøkler er normalisert (wsProfessionKey). Ukjente profesjoner → 'visual'.
+// Nøkler er normalisert (wsProfessionKey). Ukjente profesjoner → 'service'
+// (minimal, trygg default: universelle faner + Bookinger, INGEN foto-verktøy).
+// En umappet service-profesjon (frisør/yoga …) skal ikke få Shotlist/Photo Room.
 const PROFESSION_CATEGORY: Record<string, WorkspaceCategory> = {
   photographer: 'visual',
   videographer: 'visual',
@@ -177,7 +179,7 @@ export function workspaceCategoryFor(
   overrides?: Record<string, WorkspaceCategory>,
 ): WorkspaceCategory {
   const key = normProf(profession);
-  return overrides?.[key] ?? PROFESSION_CATEGORY[key] ?? 'visual';
+  return overrides?.[key] ?? PROFESSION_CATEGORY[key] ?? 'service';
 }
 
 export function isMusicProfession(profession?: string | null): boolean {

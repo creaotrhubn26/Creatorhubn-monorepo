@@ -8,7 +8,7 @@
  * returnerer presigned URL. Samme flyt for ALLE paneler, kun `panel` varierer.
  */
 import { useEffect, useState, useCallback } from 'react';
-import { apiRequest } from '@/lib/queryClient';
+import { apiRequest, getAuthHeader, buildApiUrl } from '@/lib/queryClient';
 
 export interface WsImageItem { id: string; url: string; label?: string; category?: string | null }
 
@@ -34,8 +34,13 @@ export function useProjectImages(projectId: string, panel: string) {
     fd.append('panel', panel);
     fd.append('label', file.name);
     if (category) fd.append('category', category);
-    const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/images`, {
-      method: 'POST', body: fd, credentials: 'include',
+    // Auth-token MÅ med (appen autentiserer via Bearer, ikke cookie) og URL-en må
+    // gå gjennom buildApiUrl (ellers treffer relativ URL Vercel-fronten, ikke API-et).
+    // Content-Type fjernes så browseren setter multipart-boundary selv.
+    const headers = await getAuthHeader();
+    delete (headers as any)['Content-Type'];
+    const res = await fetch(buildApiUrl(`/api/projects/${encodeURIComponent(projectId)}/images`), {
+      method: 'POST', headers, body: fd, credentials: 'include',
     });
     if (!res.ok) throw new Error('Opplasting til B2 feilet');
     const saved = await res.json();

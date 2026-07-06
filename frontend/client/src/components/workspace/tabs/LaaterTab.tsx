@@ -16,7 +16,7 @@ import CheckCircle from '@mui/icons-material/CheckCircle';
 import Link from '@mui/icons-material/Link';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
-import { WsCard, WsTag, WsStat, WsPills } from '../ui';
+import { WsCard, WsTag, WsStat, WsPills, WsErrorState } from '../ui';
 
 const STATUS: Record<string, [string, string]> = {
   recording: ['Opptak', 'neutral'], mixing: ['Miksing', 'amber'],
@@ -44,6 +44,7 @@ const LaaterTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [, navigate] = useLocation();
   const [tracks, setTracks] = useState<any[] | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadErr, setLoadErr] = useState(false); // feil ved primær-lasting av låtelista
   const [filter, setFilter] = useState('alle');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -51,8 +52,8 @@ const LaaterTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const load = () => {
     if (!isReal) { setTracks([]); setLoading(false); return; }
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/easeverse-tracks`)
-      .then((r: any) => setTracks(Array.isArray(r?.tracks) ? r.tracks : []))
-      .catch(() => setTracks([]))
+      .then((r: any) => { setTracks(Array.isArray(r?.tracks) ? r.tracks : []); setLoadErr(false); })
+      .catch(() => setLoadErr(true)) // primær-lasting feilet → vis feiltilstand
       .finally(() => setLoading(false));
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [projectId, isReal]);
@@ -110,10 +111,14 @@ const LaaterTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         items={[{ key: 'alle', label: `Alle (${list.length})` }, ...STATUS_ORDER.map((s) => ({ key: s, label: `${STATUS[s][0]} (${count(s)})` }))]}
       />
 
-      <Stack direction="row" spacing={2} alignItems="flex-start">
+      <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} alignItems="flex-start">
         {/* Låt-liste */}
         <WsCard sx={{ flex: 1, minWidth: 0 }}>
           {filtered.length === 0 ? (
+            isReal && loadErr && list.length === 0 ? (
+              // Primær-lasting feilet og ingen data → feiltilstand m/ retry (header beholdes)
+              <WsErrorState message="Kunne ikke laste låtene. Sjekk tilkoblingen og prøv igjen." onRetry={load} />
+            ) : (
             <Stack alignItems="center" sx={{ py: 5 }} spacing={1}>
               <LibraryMusic sx={{ fontSize: 36, color: ws.textFaint }} />
               <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>{list.length === 0 ? 'Ingen låter ennå' : 'Ingen låter i dette filteret'}</Typography>
@@ -124,6 +129,7 @@ const LaaterTab: React.FC<{ projectId: string }> = ({ projectId }) => {
                 </>
               )}
             </Stack>
+            )
           ) : (
             <Stack spacing={1}>
               {filtered.map((t: any) => {
@@ -162,7 +168,7 @@ const LaaterTab: React.FC<{ projectId: string }> = ({ projectId }) => {
 
         {/* Låt-detaljer */}
         {selected && (
-          <WsCard sx={{ width: 330, flexShrink: 0 }}>
+          <WsCard sx={{ width: { xs: '100%', lg: 330 }, flexShrink: 0 }}>
             <Typography sx={{ fontSize: 15, fontWeight: 800 }} noWrap>{selected.title || 'Uten tittel'}</Typography>
             <Typography sx={{ fontSize: 12, color: ws.textDim, mb: 1.5 }}>
               {selected.artist || 'Ukjent artist'}{selected.bpm ? ` · ${selected.bpm} BPM` : ''}{selected.key ? ` · ${selected.key}` : ''}{fmtDur(selected.durationSeconds) ? ` · ${fmtDur(selected.durationSeconds)}` : ''}

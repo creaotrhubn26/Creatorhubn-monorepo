@@ -2118,8 +2118,8 @@ export default function StoryArcStudio({
       
       console.log('✅ Video exported to project successfully!');
       
-      // Navigate back to dashboard
-      navigate('/dashboard?tab=projects');
+      // Tilbake til prosjektlista (workspace er hovedflaten).
+      navigate('/workspace');
       
     } catch (error) {
       console.error('❌ Error exporting to project:', error);

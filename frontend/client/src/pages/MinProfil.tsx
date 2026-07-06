@@ -144,7 +144,7 @@ const MinProfil: React.FC = () => {
       <Container maxWidth="lg">
         {/* Header */}
         <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 3 }}>
-          <IconButton onClick={() => navigate('/dashboard')} sx={{ color: DIM }} aria-label="Tilbake"><ArrowBack /></IconButton>
+          <IconButton onClick={() => navigate('/workspace')} sx={{ color: DIM }} aria-label="Tilbake"><ArrowBack /></IconButton>
           <Typography variant="h4" sx={{ fontWeight: 800, fontFamily: '"Space Grotesk", sans-serif' }}>Min profil</Typography>
         </Stack>
 
@@ -240,11 +240,11 @@ const MinProfil: React.FC = () => {
                     : 'Profesjon er låst — den skiller flatene og verktøyene fra hverandre. Å bytte krever betaling, eller oppgradering til Enterprise (som også gir team).'}
                 </Typography>
                 <Stack spacing={1}>
-                  <Button variant="outlined" startIcon={<Upgrade />} onClick={() => navigate('/subscription')}
+                  <Button variant="outlined" startIcon={<Upgrade />} onClick={() => navigate('/subscription?intent=change-profession')}
                     sx={{ borderRadius: 999, textTransform: 'none', fontWeight: 700, borderColor: BORDER, color: TEXT, '&:hover': { borderColor: ACCENT, bgcolor: ws.accentSoft } }}>
                     Endre profesjon (mot betaling)
                   </Button>
-                  <Button variant="contained" startIcon={<WorkspacePremium />} onClick={() => navigate('/subscription')}
+                  <Button variant="contained" startIcon={<WorkspacePremium />} onClick={() => navigate('/subscription?plan=enterprise&intent=upgrade')}
                     sx={{ borderRadius: 999, textTransform: 'none', fontWeight: 700, bgcolor: ACCENT, color: ws.accentContrast, '&:hover': { bgcolor: ws.accentHover } }}>
                     Oppgrader til Enterprise (team)
                   </Button>
@@ -273,9 +273,9 @@ const MinProfil: React.FC = () => {
                     <Typography variant="caption" sx={{ color: DIM, display: 'block', mt: 0.75 }}>
                       {access.isAllAccess
                         ? `Full tilgang: alt ${access.basedOnPlan} har + alle funksjoner under utvikling.`
-                        : `Tilgang: ${access.basedOnPlan} + ${access.features.length} in-dev-funksjoner.`}
+                        : `Tilgang: ${access.basedOnPlan} + ${access.features.length} funksjoner under utvikling.`}
                       {typeof tester.feedbackCount === 'number' && typeof tester.expectedFeedbacks === 'number'
-                        ? ` · ${tester.feedbackCount}/${tester.expectedFeedbacks} feedbacks logget.` : ''}
+                        ? ` · ${tester.feedbackCount}/${tester.expectedFeedbacks} tilbakemeldinger logget.` : ''}
                     </Typography>
                   </Box>
                   );

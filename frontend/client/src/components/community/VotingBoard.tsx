@@ -100,6 +100,7 @@ import {
   COMMUNITY_DIALOG_TEXT,
   COMMUNITY_DIALOG_TITLE_SX,
 } from './communityDialogStyles';
+import { useCommunityLocale } from './communityLocale';
 
 // ============================================
 // VOTING NOTIFICATION INTERFACE
@@ -121,12 +122,12 @@ interface VotingNotification {
 // CONFIGURATION OBJECTS
 // ============================================
 
-const boardTypeConfig: Record<string, { label: string; icon: React.ReactElement }> = {
-  feature_request: { label: 'Funksjonsønsker', icon: <Lightbulb fontSize="small" /> },
-  poll: { label: 'Avstemning', icon: <HowToVote fontSize="small" /> },
-  priority: { label: 'Prioritering', icon: <TrendingUp fontSize="small" /> },
-  feedback: { label: 'Tilbakemelding', icon: <Comment fontSize="small" /> },
-  general: { label: 'Generelt', icon: <Flag fontSize="small" /> },
+const boardTypeConfig: Record<string, { label: string; labelEn: string; icon: React.ReactElement }> = {
+  feature_request: { label: 'Funksjonsønsker', labelEn: 'Feature requests', icon: <Lightbulb fontSize="small" /> },
+  poll: { label: 'Avstemning', labelEn: 'Poll', icon: <HowToVote fontSize="small" /> },
+  priority: { label: 'Prioritering', labelEn: 'Prioritization', icon: <TrendingUp fontSize="small" /> },
+  feedback: { label: 'Tilbakemelding', labelEn: 'Feedback', icon: <Comment fontSize="small" /> },
+  general: { label: 'Generelt', labelEn: 'General', icon: <Flag fontSize="small" /> },
 };
 
 // ============================================
@@ -142,6 +143,7 @@ interface VotingNotificationContentProps {
 
 const VotingNotificationContent = forwardRef<HTMLDivElement, VotingNotificationContentProps>(
   ({ id, notification, onJoin, onDismiss }, ref) => {
+    const { tt } = useCommunityLocale();
     return (
       <SnackbarContent ref={ref}>
         <Paper
@@ -170,7 +172,7 @@ const VotingNotificationContent = forwardRef<HTMLDivElement, VotingNotificationC
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <HowToVote />
               <Typography variant="subtitle1" fontWeight={600}>
-                🗳️ Ny avstemning pågår!
+                {tt('🗳️ Ny avstemning pågår!', '🗳️ New vote in progress!')}
               </Typography>
             </Box>
             <IconButton
@@ -208,7 +210,7 @@ const VotingNotificationContent = forwardRef<HTMLDivElement, VotingNotificationC
               <Chip
                 size="small"
                 icon={boardTypeConfig[notification.boardType]?.icon}
-                label={boardTypeConfig[notification.boardType]?.label}
+                label={tt(boardTypeConfig[notification.boardType]?.label, boardTypeConfig[notification.boardType]?.labelEn)}
                 sx={{ bgcolor: 'rgba(255, 140, 0, 0.1)', color: '#FF8C00' }}
               />
               <Chip
@@ -220,14 +222,14 @@ const VotingNotificationContent = forwardRef<HTMLDivElement, VotingNotificationC
               {notification.itemCount > 0 && (
                 <Chip
                   size="small"
-                  label={`${notification.itemCount} forslag`}
+                  label={`${notification.itemCount} ${tt('forslag', 'suggestions')}`}
                   variant="outlined"
                 />
               )}
             </Box>
 
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
-              Opprettet av {notification.creatorName}
+              {tt('Opprettet av', 'Created by')} {notification.creatorName}
             </Typography>
 
             {/* Actions */}
@@ -243,7 +245,7 @@ const VotingNotificationContent = forwardRef<HTMLDivElement, VotingNotificationC
                   fontWeight: 600,
                 }}
               >
-                Delta i avstemningen
+                {tt('Delta i avstemningen', 'Join the vote')}
               </Button>
               <Button
                 variant="outlined"
@@ -255,7 +257,7 @@ const VotingNotificationContent = forwardRef<HTMLDivElement, VotingNotificationC
                   px: 2,
                 }}
               >
-                Senere
+                {tt('Senere', 'Later')}
               </Button>
             </Box>
           </Box>
@@ -348,21 +350,21 @@ interface VotingBoardProps {
 // STATUS CONFIG
 // ============================================
 
-const statusConfig: Record<string, { label: string; color: string; icon: React.ReactElement }> = {
-  open: { label: 'Åpen', color: '#2196f3', icon: <NewReleases fontSize="small" /> },
-  under_review: { label: 'Under vurdering', color: '#ff9800', icon: <Search fontSize="small" /> },
-  planned: { label: 'Planlagt', color: '#9c27b0', icon: <Schedule fontSize="small" /> },
-  in_progress: { label: 'Under utvikling', color: '#ff5722', icon: <Build fontSize="small" /> },
-  completed: { label: 'Fullført', color: '#4caf50', icon: <CheckCircle fontSize="small" /> },
-  declined: { label: 'Avslått', color: '#f44336', icon: <Cancel fontSize="small" /> },
-  duplicate: { label: 'Duplikat', color: '#9e9e9e', icon: <ContentCopy fontSize="small" /> },
+const statusConfig: Record<string, { label: string; labelEn: string; color: string; icon: React.ReactElement }> = {
+  open: { label: 'Åpen', labelEn: 'Open', color: '#2196f3', icon: <NewReleases fontSize="small" /> },
+  under_review: { label: 'Under vurdering', labelEn: 'Under review', color: '#ff9800', icon: <Search fontSize="small" /> },
+  planned: { label: 'Planlagt', labelEn: 'Planned', color: '#9c27b0', icon: <Schedule fontSize="small" /> },
+  in_progress: { label: 'Under utvikling', labelEn: 'In progress', color: '#ff5722', icon: <Build fontSize="small" /> },
+  completed: { label: 'Fullført', labelEn: 'Completed', color: '#4caf50', icon: <CheckCircle fontSize="small" /> },
+  declined: { label: 'Avslått', labelEn: 'Declined', color: '#f44336', icon: <Cancel fontSize="small" /> },
+  duplicate: { label: 'Duplikat', labelEn: 'Duplicate', color: '#9e9e9e', icon: <ContentCopy fontSize="small" /> },
 };
 
-const priorityConfig: Record<string, { label: string; color: string }> = {
-  low: { label: 'Lav', color: '#4caf50' },
-  medium: { label: 'Medium', color: '#ff9800' },
-  high: { label: 'Høy', color: '#f44336' },
-  critical: { label: 'Kritisk', color: '#9c27b0' },
+const priorityConfig: Record<string, { label: string; labelEn: string; color: string }> = {
+  low: { label: 'Lav', labelEn: 'Low', color: '#4caf50' },
+  medium: { label: 'Medium', labelEn: 'Medium', color: '#ff9800' },
+  high: { label: 'Høy', labelEn: 'High', color: '#f44336' },
+  critical: { label: 'Kritisk', labelEn: 'Critical', color: '#9c27b0' },
 };
 
 // ============================================
@@ -370,6 +372,8 @@ const priorityConfig: Record<string, { label: string; color: string }> = {
 // ============================================
 
 export default function VotingBoard({ groupId, userId, onClose }: VotingBoardProps) {
+  const { tt } = useCommunityLocale();
+
   // State
   const [boards, setBoards] = useState<VotingBoard[]>([]);
   const [selectedBoard, setSelectedBoard] = useState<VotingBoard | null>(null);
@@ -575,13 +579,13 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
       });
       
       // Show success message
-      enqueueSnackbar('Gruppemedlemmer har blitt varslet om avstemningen! 🔔', { 
+      enqueueSnackbar(tt('Gruppemedlemmer har blitt varslet om avstemningen! 🔔', 'Group members have been notified about the vote! 🔔'), {
         variant: 'success',
         autoHideDuration: 4000,
       });
     } catch (error) {
       console.error('Error sending voting notification:', error);
-      enqueueSnackbar('Kunne ikke sende varsler til gruppemedlemmer', { variant: 'error' });
+      enqueueSnackbar(tt('Kunne ikke sende varsler til gruppemedlemmer', 'Could not send notifications to group members'), { variant: 'error' });
     }
   }, [groupId, userId, notifyOnCreate, enqueueSnackbar]);
 
@@ -764,11 +768,11 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
         setItems(prev => prev.filter(i => i.id !== itemId));
         setItemMenuAnchor(null);
         setMenuItemId(null);
-        enqueueSnackbar('Forslaget ble slettet', { variant: 'success' });
+        enqueueSnackbar(tt('Forslaget ble slettet', 'The suggestion was deleted'), { variant: 'success' });
       }
     } catch (error) {
       console.error('Error deleting item:', error);
-      enqueueSnackbar('Kunne ikke slette forslaget', { variant: 'error' });
+      enqueueSnackbar(tt('Kunne ikke slette forslaget', 'Could not delete the suggestion'), { variant: 'error' });
     }
   };
 
@@ -788,11 +792,11 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
           i.id === editingItem.id ? { ...i, title: editingItem.title, description: editingItem.description } : i
         ));
         setEditingItem(null);
-        enqueueSnackbar('Forslaget ble oppdatert', { variant: 'success' });
+        enqueueSnackbar(tt('Forslaget ble oppdatert', 'The suggestion was updated'), { variant: 'success' });
       }
     } catch (error) {
       console.error('Error editing item:', error);
-      enqueueSnackbar('Kunne ikke oppdatere forslaget', { variant: 'error' });
+      enqueueSnackbar(tt('Kunne ikke oppdatere forslaget', 'Could not update the suggestion'), { variant: 'error' });
     }
   };
 
@@ -813,7 +817,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
         setComments(prev => [...prev, response.comment]);
         setReplyContent('');
         setReplyingToComment(null);
-        enqueueSnackbar('Svar lagt til', { variant: 'success' });
+        enqueueSnackbar(tt('Svar lagt til', 'Reply added'), { variant: 'success' });
       }
     } catch (error) {
       console.error('Error replying to comment:', error);
@@ -892,7 +896,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
             )}
             <Typography variant="h5" fontWeight={600}>
               <HowToVote sx={{ mr: 1, verticalAlign: 'middle' }} />
-              Stemmebrett
+              {tt('Stemmebrett', 'Voting boards')}
             </Typography>
           </Box>
           {permissions?.canCreateBoard && (
@@ -902,7 +906,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
             onClick={() => setCreateBoardDialogOpen(true)}
             sx={COMMUNITY_DIALOG_PRIMARY_BUTTON_SX}
           >
-            Nytt stemmebrett
+            {tt('Nytt stemmebrett', 'New voting board')}
           </Button>
           )}
         </Box>
@@ -915,12 +919,12 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
           <Paper sx={{ ...COMMUNITY_DIALOG_SURFACE_SUBTLE_SX, p: 4, textAlign: 'center' }}>
             <HowToVote sx={{ fontSize: 64, color: COMMUNITY_DIALOG_MUTED, mb: 2 }} />
             <Typography variant="h6" sx={{ color: COMMUNITY_DIALOG_MUTED }} gutterBottom>
-              Ingen stemmebrett ennå
+              {tt('Ingen stemmebrett ennå', 'No voting boards yet')}
             </Typography>
             <Typography variant="body2" sx={{ color: COMMUNITY_DIALOG_MUTED }}>
               {permissions?.canCreateBoard
-                ? 'Opprett et nytt stemmebrett for å samle tilbakemeldinger og feature requests.'
-                : 'Administratorer kan opprette stemmebrett for denne gruppen.'}
+                ? tt('Opprett et nytt stemmebrett for å samle tilbakemeldinger og feature requests.', 'Create a new voting board to collect feedback and feature requests.')
+                : tt('Administratorer kan opprette stemmebrett for denne gruppen.', 'Administrators can create voting boards for this group.')}
             </Typography>
           </Paper>
         ) : (
@@ -948,7 +952,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
                       {board.title}
                     </Typography>
                     <Chip
-                      label={board.status === 'active' ? 'Aktiv' : board.status === 'closed' ? 'Lukket' : 'Arkivert'}
+                      label={board.status === 'active' ? tt('Aktiv', 'Active') : board.status === 'closed' ? tt('Lukket', 'Closed') : tt('Arkivert', 'Archived')}
                       size="small"
                       color={board.status === 'active' ? 'success' : board.status === 'closed' ? 'error' : 'default'}
                     />
@@ -960,7 +964,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
                   )}
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                      <Tooltip title="Antall forslag">
+                      <Tooltip title={tt('Antall forslag', 'Number of suggestions')}>
                         <Chip
                           icon={<Lightbulb />}
                           label={board.item_count || 0}
@@ -968,7 +972,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
                           variant="outlined"
                         />
                       </Tooltip>
-                      <Tooltip title="Totalt antall stemmer">
+                      <Tooltip title={tt('Totalt antall stemmer', 'Total votes')}>
                         <Chip
                           icon={<ThumbUp />}
                           label={board.total_votes || 0}
@@ -996,7 +1000,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
           sx={COMMUNITY_DIALOG_SX}
           PaperProps={{ sx: COMMUNITY_DIALOG_PAPER_SX }}
         >
-          <DialogTitle sx={COMMUNITY_DIALOG_TITLE_SX}>Opprett nytt stemmebrett</DialogTitle>
+          <DialogTitle sx={COMMUNITY_DIALOG_TITLE_SX}>{tt('Opprett nytt stemmebrett', 'Create new voting board')}</DialogTitle>
           <DialogContent
             sx={{
               ...COMMUNITY_DIALOG_CONTENT_SX,
@@ -1007,14 +1011,14 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
           >
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
               <TextField
-                label="Tittel"
+                label={tt('Tittel', 'Title')}
                 value={newBoardTitle}
                 onChange={(e) => setNewBoardTitle(e.target.value)}
                 fullWidth
                 required
               />
               <TextField
-                label="Beskrivelse"
+                label={tt('Beskrivelse', 'Description')}
                 value={newBoardDescription}
                 onChange={(e) => setNewBoardDescription(e.target.value)}
                 fullWidth
@@ -1032,7 +1036,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
                     <MenuItem key={key} value={key}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         {config.icon}
-                        {config.label}
+                        {tt(config.label, config.labelEn)}
                       </Box>
                     </MenuItem>
                   ))}
@@ -1069,10 +1073,10 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
                       <NotificationsActive sx={{ color: notifyOnCreate ? '#FF8C00' : 'text.secondary' }} />
                       <Box>
                         <Typography variant="body1" fontWeight={500}>
-                          Varsle gruppemedlemmer
+                          {tt('Varsle gruppemedlemmer', 'Notify group members')}
                         </Typography>
                         <Typography variant="caption" color="text.secondary">
-                          Send en notifikasjon til alle medlemmer om denne avstemningen
+                          {tt('Send en notifikasjon til alle medlemmer om denne avstemningen', 'Send a notification to all members about this vote')}
                         </Typography>
                       </Box>
                     </Box>
@@ -1080,7 +1084,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
                 />
                 {notifyOnCreate && (
                   <Alert severity="info" sx={{ mt: 1 }} icon={<Groups />}>
-                    Alle gruppemedlemmer vil motta en notifikasjon med mulighet til å delta i avstemningen.
+                    {tt('Alle gruppemedlemmer vil motta en notifikasjon med mulighet til å delta i avstemningen.', 'All group members will receive a notification with the option to join the vote.')}
                   </Alert>
                 )}
               </Paper>
@@ -1088,7 +1092,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
           </DialogContent>
         <DialogActions sx={COMMUNITY_DIALOG_ACTIONS_SX}>
           <Button onClick={() => setCreateBoardDialogOpen(false)} sx={COMMUNITY_DIALOG_SECONDARY_BUTTON_SX}>
-            Avbryt
+            {tt('Avbryt', 'Cancel')}
           </Button>
           <Button
             onClick={handleCreateBoard}
@@ -1097,7 +1101,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
             startIcon={notifyOnCreate ? <NotificationsActive /> : undefined}
             sx={COMMUNITY_DIALOG_PRIMARY_BUTTON_SX}
           >
-            {notifyOnCreate ? 'Opprett og varsle' : 'Opprett'}
+            {notifyOnCreate ? tt('Opprett og varsle', 'Create and notify') : tt('Opprett', 'Create')}
           </Button>
           </DialogActions>
         </Dialog>
@@ -1132,7 +1136,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
             onClick={() => setCreateItemDialogOpen(true)}
             sx={COMMUNITY_DIALOG_PRIMARY_BUTTON_SX}
           >
-            Nytt forslag
+            {tt('Nytt forslag', 'New suggestion')}
           </Button>
         )}
       </Box>
@@ -1141,7 +1145,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
       <Paper sx={{ p: 2, mb: 3 }}>
         <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
           <TextField
-            placeholder="Søk i forslag..."
+            placeholder={tt('Søk i forslag...', 'Search suggestions...')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             size="small"
@@ -1153,7 +1157,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
                 </InputAdornment>
               )}}
           />
-          <Tooltip title="Sortering">
+          <Tooltip title={tt('Sortering', 'Sorting')}>
             <IconButton onClick={(e) => setSortMenuAnchor(e.currentTarget)}>
               <Badge color="primary" variant="dot" invisible={sortBy === 'score'}>
                 <Sort />
@@ -1170,28 +1174,28 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
               onClick={() => { setSortBy('score'); setSortMenuAnchor(null); }}
             >
               <ListItemIcon><TrendingUp fontSize="small" /></ListItemIcon>
-              <ListItemText>Mest stemt</ListItemText>
+              <ListItemText>{tt('Mest stemt', 'Most voted')}</ListItemText>
             </MenuItem>
             <MenuItem 
               selected={sortBy === 'newest'} 
               onClick={() => { setSortBy('newest'); setSortMenuAnchor(null); }}
             >
               <ListItemIcon><NewReleases fontSize="small" /></ListItemIcon>
-              <ListItemText>Nyeste</ListItemText>
+              <ListItemText>{tt('Nyeste', 'Newest')}</ListItemText>
             </MenuItem>
             <MenuItem 
               selected={sortBy === 'oldest'} 
               onClick={() => { setSortBy('oldest'); setSortMenuAnchor(null); }}
             >
               <ListItemIcon><AccessTime fontSize="small" /></ListItemIcon>
-              <ListItemText>Eldste</ListItemText>
+              <ListItemText>{tt('Eldste', 'Oldest')}</ListItemText>
             </MenuItem>
             <MenuItem 
               selected={sortBy === 'comments'} 
               onClick={() => { setSortBy('comments'); setSortMenuAnchor(null); }}
             >
               <ListItemIcon><Comment fontSize="small" /></ListItemIcon>
-              <ListItemText>Mest diskutert</ListItemText>
+              <ListItemText>{tt('Mest diskutert', 'Most discussed')}</ListItemText>
             </MenuItem>
           </Menu>
           
@@ -1211,7 +1215,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
               selected={filterStatus === 'all'} 
               onClick={() => { setFilterStatus('all'); setFilterMenuAnchor(null); }}
             >
-              <ListItemText>Alle statuser</ListItemText>
+              <ListItemText>{tt('Alle statuser', 'All statuses')}</ListItemText>
             </MenuItem>
             <Divider />
             {Object.entries(statusConfig).map(([key, config]) => (
@@ -1221,7 +1225,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
                 onClick={() => { setFilterStatus(key); setFilterMenuAnchor(null); }}
               >
                 <ListItemIcon>{config.icon}</ListItemIcon>
-                <ListItemText>{config.label}</ListItemText>
+                <ListItemText>{tt(config.label, config.labelEn)}</ListItemText>
               </MenuItem>
             ))}
           </Menu>
@@ -1235,13 +1239,13 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
           onChange={(_, newValue) => setActiveTab(newValue)}
           sx={{ borderBottom: 1, borderColor: 'divider' }}
         >
-          <Tab label="Alle" icon={<HowToVote />} iconPosition="start" />
-          <Tab label="Populære" icon={<TrendingUp />} iconPosition="start" />
-          <Tab label="Nyeste" icon={<NewReleases />} iconPosition="start" />
-          <Tab 
+          <Tab label={tt('Alle', 'All')} icon={<HowToVote />} iconPosition="start" />
+          <Tab label={tt('Populære', 'Popular')} icon={<TrendingUp />} iconPosition="start" />
+          <Tab label={tt('Nyeste', 'Newest')} icon={<NewReleases />} iconPosition="start" />
+          <Tab
             label={
               <Badge badgeContent={items.filter(i => i.userVote).length} color="primary">
-                Mine stemmer
+                {tt('Mine stemmer', 'My votes')}
               </Badge>
             } 
           />
@@ -1256,11 +1260,11 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
           sx={{ mb: 2 }}
           action={
             <Button size="small" onClick={() => activeVotingNotifications[0] && joinVotingFromNotification(activeVotingNotifications[0])}>
-              Se ny avstemning
+              {tt('Se ny avstemning', 'See new vote')}
             </Button>
           }
         >
-          Du har {activeVotingNotifications.length} nye avstemning{activeVotingNotifications.length > 1 ? 'er' : ''} å sjekke ut!
+          {tt('Du har', 'You have')} {activeVotingNotifications.length} {tt(`nye avstemning${activeVotingNotifications.length > 1 ? 'er' : ''}`, `new vote${activeVotingNotifications.length > 1 ? 's' : ''}`)} {tt('å sjekke ut!', 'to check out!')}
         </Alert>
       )}
 
@@ -1294,7 +1298,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
         <Paper sx={{ p: 4, textAlign: 'center' }}>
           <Lightbulb sx={{ fontSize: 64, color: 'grey.400', mb: 2 }} />
           <Typography variant="h6" color="text.secondary">
-            Ingen forslag funnet
+            {tt('Ingen forslag funnet', 'No suggestions found')}
           </Typography>
         </Paper>
       ) : (
@@ -1349,7 +1353,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
                     </Typography>
                     <Chip
                       icon={statusConfig[item.status]?.icon}
-                      label={statusConfig[item.status]?.label}
+                      label={tt(statusConfig[item.status]?.label, statusConfig[item.status]?.labelEn)}
                       size="small"
                       sx={{
                         bgcolor: statusConfig[item.status]?.color,
@@ -1380,7 +1384,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
                       {item.creator_name?.[0]}
                     </Avatar>
                     <Typography variant="caption" color="text.secondary">
-                      {item.is_anonymous ? 'Anonym' : item.creator_name}
+                      {item.is_anonymous ? tt('Anonym', 'Anonymous') : item.creator_name}
                     </Typography>
                   </Box>
                   <Typography variant="caption" color="text.secondary">
@@ -1415,7 +1419,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
 
               {/* Actions menu */}
               <Box sx={{ display: 'flex', flexDirection: 'column', p: 1 }}>
-                <Tooltip title={expandedItems.has(item.id) ? 'Skjul detaljer' : 'Vis detaljer'}>
+                <Tooltip title={expandedItems.has(item.id) ? tt('Skjul detaljer', 'Hide details') : tt('Vis detaljer', 'Show details')}>
                   <IconButton 
                     size="small" 
                     onClick={(e) => {
@@ -1428,7 +1432,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
                 </Tooltip>
                 
                 {(permissions?.canModerate || item.created_by === userId) && (
-                  <Tooltip title="Flere valg">
+                  <Tooltip title={tt('Flere valg', 'More options')}>
                     <IconButton 
                       size="small" 
                       onClick={(e) => {
@@ -1463,7 +1467,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
           }
         }}>
           <ListItemIcon><Edit fontSize="small" /></ListItemIcon>
-          <ListItemText>Rediger</ListItemText>
+          <ListItemText>{tt('Rediger', 'Edit')}</ListItemText>
         </MenuItem>
         <MenuItem onClick={() => {
           if (menuItemId) {
@@ -1471,7 +1475,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
           }
         }} sx={{ color: 'error.main' }}>
           <ListItemIcon><Delete fontSize="small" color="error" /></ListItemIcon>
-          <ListItemText>Slett</ListItemText>
+          <ListItemText>{tt('Slett', 'Delete')}</ListItemText>
         </MenuItem>
       </Menu>
 
@@ -1484,18 +1488,18 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
         sx={COMMUNITY_DIALOG_SX}
         PaperProps={{ sx: COMMUNITY_DIALOG_PAPER_SX }}
       >
-        <DialogTitle sx={COMMUNITY_DIALOG_TITLE_SX}>Rediger forslag</DialogTitle>
+        <DialogTitle sx={COMMUNITY_DIALOG_TITLE_SX}>{tt('Rediger forslag', 'Edit suggestion')}</DialogTitle>
         <DialogContent sx={{ ...COMMUNITY_DIALOG_CONTENT_SX, '& .MuiTextField-root': COMMUNITY_DIALOG_FIELD_SX }}>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
             <TextField
-              label="Tittel"
+              label={tt('Tittel', 'Title')}
               value={editingItem?.title || ''}
               onChange={(e) => setEditingItem(prev => prev ? { ...prev, title: e.target.value } : null)}
               fullWidth
               required
             />
             <TextField
-              label="Beskrivelse"
+              label={tt('Beskrivelse', 'Description')}
               value={editingItem?.description || ''}
               onChange={(e) => setEditingItem(prev => prev ? { ...prev, description: e.target.value } : null)}
               fullWidth
@@ -1505,13 +1509,13 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
           </Box>
         </DialogContent>
         <DialogActions sx={COMMUNITY_DIALOG_ACTIONS_SX}>
-          <Button onClick={() => setEditingItem(null)} sx={COMMUNITY_DIALOG_SECONDARY_BUTTON_SX}>Avbryt</Button>
+          <Button onClick={() => setEditingItem(null)} sx={COMMUNITY_DIALOG_SECONDARY_BUTTON_SX}>{tt('Avbryt', 'Cancel')}</Button>
           <Button 
             variant="contained" 
             onClick={handleEditItem}
             sx={COMMUNITY_DIALOG_PRIMARY_BUTTON_SX}
           >
-            Lagre endringer
+            {tt('Lagre endringer', 'Save changes')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -1525,7 +1529,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
         sx={COMMUNITY_DIALOG_SX}
         PaperProps={{ sx: COMMUNITY_DIALOG_PAPER_SX }}
       >
-        <DialogTitle sx={COMMUNITY_DIALOG_TITLE_SX}>Legg til nytt forslag</DialogTitle>
+        <DialogTitle sx={COMMUNITY_DIALOG_TITLE_SX}>{tt('Legg til nytt forslag', 'Add new suggestion')}</DialogTitle>
         <DialogContent
           sx={{
             ...COMMUNITY_DIALOG_CONTENT_SX,
@@ -1535,21 +1539,21 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
         >
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
             <TextField
-              label="Tittel"
+              label={tt('Tittel', 'Title')}
               value={newItemTitle}
               onChange={(e) => setNewItemTitle(e.target.value)}
               fullWidth
               required
-              placeholder="Beskriv forslaget ditt kort og tydelig"
+              placeholder={tt('Beskriv forslaget ditt kort og tydelig', 'Describe your suggestion briefly and clearly')}
             />
             <TextField
-              label="Beskrivelse"
+              label={tt('Beskrivelse', 'Description')}
               value={newItemDescription}
               onChange={(e) => setNewItemDescription(e.target.value)}
               fullWidth
               multiline
               rows={4}
-              placeholder="Gi mer detaljer om forslaget ditt, hvorfor det er viktig, og hvordan det kan implementeres"
+              placeholder={tt('Gi mer detaljer om forslaget ditt, hvorfor det er viktig, og hvordan det kan implementeres', 'Provide more details about your suggestion, why it is important, and how it can be implemented')}
             />
             <FormControlLabel
               control={
@@ -1558,13 +1562,13 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
                   onChange={(e) => setNewItemAnonymous(e.target.checked)}
                 />
               }
-              label="Send inn anonymt"
+              label={tt('Send inn anonymt', 'Submit anonymously')}
             />
           </Box>
         </DialogContent>
         <DialogActions sx={COMMUNITY_DIALOG_ACTIONS_SX}>
           <Button onClick={() => setCreateItemDialogOpen(false)} sx={COMMUNITY_DIALOG_SECONDARY_BUTTON_SX}>
-            Avbryt
+            {tt('Avbryt', 'Cancel')}
           </Button>
           <Button
             onClick={handleCreateItem}
@@ -1572,7 +1576,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
             disabled={!newItemTitle.trim()}
             sx={COMMUNITY_DIALOG_PRIMARY_BUTTON_SX}
           >
-            Send inn
+            {tt('Send inn', 'Submit')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -1629,7 +1633,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
                     {selectedItem.userVote === 'down' ? <ThumbDown /> : <ThumbDownOutlined />}
                   </IconButton>
                   <Typography variant="caption" sx={{ color: COMMUNITY_DIALOG_MUTED }}>
-                    {selectedItem.upvotes} opp / {selectedItem.downvotes} ned
+                    {selectedItem.upvotes} {tt('opp', 'up')} / {selectedItem.downvotes} {tt('ned', 'down')}
                   </Typography>
                 </Box>
 
@@ -1638,13 +1642,13 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
                   <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
                     <Chip
                       icon={statusConfig[selectedItem.status]?.icon}
-                      label={statusConfig[selectedItem.status]?.label}
+                      label={tt(statusConfig[selectedItem.status]?.label, statusConfig[selectedItem.status]?.labelEn)}
                       sx={{
                         bgcolor: statusConfig[selectedItem.status]?.color,
                         color: 'white','& .MuiChip-icon': { color: 'white' }}}
                     />
                     <Chip
-                      label={priorityConfig[selectedItem.priority]?.label}
+                      label={tt(priorityConfig[selectedItem.priority]?.label, priorityConfig[selectedItem.priority]?.labelEn)}
                       sx={{
                         bgcolor: priorityConfig[selectedItem.priority]?.color,
                         color: 'white'}}
@@ -1663,7 +1667,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
                     </Avatar>
                     <Box>
                       <Typography variant="body2" fontWeight={500}>
-                        {selectedItem.is_anonymous ? 'Anonym' : selectedItem.creator_name}
+                        {selectedItem.is_anonymous ? tt('Anonym', 'Anonymous') : selectedItem.creator_name}
                       </Typography>
                       <Typography variant="caption" sx={{ color: COMMUNITY_DIALOG_MUTED }}>
                         {formatDistanceToNow(new Date(selectedItem.created_at), { addSuffix: true, locale: nb })}
@@ -1675,7 +1679,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
                   {selectedItem.admin_response && (
                     <Alert severity="info" sx={{ mb: 2 }}>
                       <Typography variant="subtitle2" fontWeight={600}>
-                        Offisielt svar:
+                        {tt('Offisielt svar:', 'Official response:')}
                       </Typography>
                       <Typography variant="body2">{selectedItem.admin_response}</Typography>
                     </Alert>
@@ -1685,14 +1689,14 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
 
                   {/* Comments */}
                   <Typography variant="h6" gutterBottom>
-                    Kommentarer ({comments.length})
+                    {tt('Kommentarer', 'Comments')} ({comments.length})
                   </Typography>
 
                   <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
                     <TextField
                       fullWidth
                       size="small"
-                      placeholder="Skriv en kommentar..."
+                      placeholder={tt('Skriv en kommentar...', 'Write a comment...')}
                       value={newComment}
                       onChange={(e) => setNewComment(e.target.value)}
                       onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleAddComment()}
@@ -1738,7 +1742,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
                             secondary={comment.content}
                           />
                           <ListItemSecondaryAction>
-                            <Tooltip title="Svar">
+                            <Tooltip title={tt('Svar', 'Reply')}>
                               <IconButton 
                                 size="small"
                                 onClick={() => setReplyingToComment(
@@ -1758,7 +1762,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
                             <TextField
                               size="small"
                               fullWidth
-                              placeholder={`Svar til ${comment.user_name}...`}
+                              placeholder={`${tt('Svar til', 'Reply to')} ${comment.user_name}...`}
                               value={replyContent}
                               onChange={(e) => setReplyContent(e.target.value)}
                               onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleReplyToComment(comment.id)}
@@ -1770,7 +1774,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
                               disabled={!replyContent.trim()}
                               sx={{ bgcolor: '#FF8C00', '&:hover': { bgcolor: '#e67e00' } }}
                             >
-                              Svar
+                              {tt('Svar', 'Reply')}
                             </Button>
                           </Box>
                         </Collapse>
