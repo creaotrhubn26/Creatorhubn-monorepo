@@ -115,9 +115,9 @@ export function WatchFolderModal({ onClose }: Props) {
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()} style={{ width: 580, maxHeight: "85vh" }}>
-        <h2>Watch Folder · Live Event Mode</h2>
+        <h2>Mappeovervåking · Live event-modus</h2>
         <div className="desc">
-          Watcher en mappe for nye video/audio-filer. Nyttig for event-dager hvor kort kommer inn løpende
+          Overvåker en mappe for nye video/lyd-filer. Nyttig for event-dager hvor kort kommer inn løpende
           — app-en oppdager nye klipp og kan automatisk importere dem til Resolve.
         </div>
 
@@ -134,7 +134,7 @@ export function WatchFolderModal({ onClose }: Props) {
             <label htmlFor="auto-import-toggle">
               <strong>Auto-import nye klipp til Resolve</strong>
               <div className="desc">
-                Når nye klipp lander i en watched mappe, kjør <code>import_media_from_folder</code> automatisk
+                Når nye klipp lander i en overvåket mappe, kjør <code>import_media_from_folder</code> automatisk
                 på den mappa. Resolve må være åpent med et prosjekt.
               </div>
             </label>
@@ -142,9 +142,9 @@ export function WatchFolderModal({ onClose }: Props) {
         </div>
 
         <div className="settings-section">
-          <div className="section-title">Watched folders ({watched.length})</div>
+          <div className="section-title">Overvåkede mapper ({watched.length})</div>
           {watched.length === 0 ? (
-            <div className="empty">Ingen mapper watches akkurat nå.</div>
+            <div className="empty">Ingen mapper overvåkes akkurat nå.</div>
           ) : (
             watched.map((w) => (
               <div key={w.path} className="watched-folder">
@@ -152,11 +152,11 @@ export function WatchFolderModal({ onClose }: Props) {
                   <strong>{w.path.split("/").pop()}</strong>
                   <span className="card-chip-meta">{w.path}</span>
                   <span className="card-chip-meta">
-                    {w.seen_count} klipp · siden {new Date(w.started_at).toLocaleTimeString()}
+                    {w.seen_count} klipp · siden {new Date(w.started_at).toLocaleTimeString('nb-NO')}
                   </span>
                 </div>
                 <button className="small" onClick={() => handleStop(w.path)} disabled={busy}>
-                  Stop
+                  Stopp
                 </button>
               </div>
             ))
@@ -167,21 +167,21 @@ export function WatchFolderModal({ onClose }: Props) {
             disabled={busy}
             style={{ marginTop: 8 }}
           >
-            + Watch ny mappe
+            + Overvåk ny mappe
           </button>
         </div>
 
         {recent.length > 0 && (
           <div className="settings-section">
-            <div className="section-title">Recent events</div>
+            <div className="section-title">Nylige hendelser</div>
             <div className="watch-recent-list">
               {recent.map((r, i) => (
                 <div key={i} className="watch-recent-item">
                   <span className={`chip ${r.imported ? "ready" : "stub"}`}>
-                    {r.imported ? <><IconCheck /> imported</> : "new"}
+                    {r.imported ? <><IconCheck /> importert</> : "ny"}
                   </span>
                   <span>{r.clipCount} klipp i {r.folder.split("/").pop()}</span>
-                  <span className="card-chip-meta">{new Date(r.timestamp).toLocaleTimeString()}</span>
+                  <span className="card-chip-meta">{new Date(r.timestamp).toLocaleTimeString('nb-NO')}</span>
                 </div>
               ))}
             </div>
@@ -189,7 +189,7 @@ export function WatchFolderModal({ onClose }: Props) {
         )}
 
         <div className="actions">
-          <button onClick={onClose}>Close</button>
+          <button onClick={onClose}>Lukk</button>
         </div>
       </div>
     </div>

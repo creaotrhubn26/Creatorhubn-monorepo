@@ -79,7 +79,7 @@ function basename(p: string): string {
 
 function formatSec(n?: number): string {
   if (!n) return "—";
-  return new Date(n * 1000).toLocaleString();
+  return new Date(n * 1000).toLocaleString('nb-NO');
 }
 
 export function LearningView({ onClose }: Props) {

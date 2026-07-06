@@ -165,7 +165,7 @@ function formatRelativeTime(ts: number): string {
   if (hours < 24) return `${hours} t siden`;
   const days = Math.floor(hours / 24);
   if (days < 7) return `${days} d siden`;
-  return new Date(ts).toLocaleDateString();
+  return new Date(ts).toLocaleDateString('nb-NO');
 }
 
 export function HomeView({

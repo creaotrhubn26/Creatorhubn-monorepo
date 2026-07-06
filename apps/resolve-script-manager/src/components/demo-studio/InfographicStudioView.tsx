@@ -1448,8 +1448,11 @@ export function InfographicStudioView(
   const tabBtn = (active: boolean): React.CSSProperties => ({ flex: 1, padding: '7px 0', textAlign: 'center', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: active ? D.ink : D.soft, background: active ? D.panel2 : 'transparent', borderBottom: `2px solid ${active ? D.accent : 'transparent'}` });
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: D.bg, color: D.ink, fontFamily: 'Inter, system-ui, sans-serif' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', borderBottom: `1px solid ${D.line}`, background: D.panel }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minWidth: 0, background: D.bg, color: D.ink, fontFamily: 'Inter, system-ui, sans-serif' }}>
+      {/* flexWrap: header-knappene (Preview/Spill alt/New Scene/Send to Resolve) tvang
+          ellers studioet bredere enn smale vinduer → høyre Data-panel ble klippet. Wrap
+          lar knappene bryte til ny linje i stedet, og minWidth:0 lar studioet krympe. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', borderBottom: `1px solid ${D.line}`, background: D.panel, flexWrap: 'wrap', rowGap: 6 }}>
         <button style={{ ...topBtn, border: 'none', background: 'transparent', color: D.soft }} title={standalone ? 'Tilbake til Home' : 'Tilbake til Flow Builder'} onClick={() => onNav('flow')}><ArrowBackIcon style={{ fontSize: 18 }} /></button>
         <div style={{ fontSize: 15, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8 }}><DashboardCustomizeIcon style={{ fontSize: 18, color: D.accent }} /> Infographic Studio</div>
         {standalone && <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 0.4, textTransform: 'uppercase', color: D.teal, border: `1px solid ${D.line}`, borderRadius: 999, padding: '2px 8px' }}>Egen løsning</span>}
@@ -1856,8 +1859,11 @@ export function InfographicStudioView(
 
         {/* Center */}
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-          <div style={{ flex: 1, minHeight: 0, padding: 18, display: 'flex', flexDirection: 'column' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+          <div style={{ flex: 1, minHeight: 0, minWidth: 0, padding: 18, display: 'flex', flexDirection: 'column' }}>
+            {/* flexWrap: verktøylinja (format-preset + Alle formater + Guides/Bakgrunn) tvang
+                ellers midtkolonnen bredere enn ~600px → hele appen ble bredere enn smale
+                vinduer → høyre Data-panel ble kuttet. Wrap lar den brytes og kolonnen krympe. */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap', rowGap: 6 }}>
               <span style={{ fontSize: 11, color: D.faint }}>Canvas · scene {sel + 1} av {scenes.length} ({tpl.name}) · transparent overlay{playingAll ? ` · spiller sekvens ${scrubT.toFixed(1)}s / ${totalDur.toFixed(1)}s` : ''}</span>
               {/* Sosialt format-preset — ett klikk til 9:16 / 1:1 / 16:9. */}
               <div style={{ display: 'flex', gap: 3, marginLeft: 10, background: D.panel2, borderRadius: 8, padding: 2, border: `1px solid ${D.line}`, alignItems: 'center' }}>

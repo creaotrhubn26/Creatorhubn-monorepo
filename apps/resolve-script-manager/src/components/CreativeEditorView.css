@@ -2436,3 +2436,17 @@
 .ce-start-sub {
   display: none;  /* skjult i kompakt mode — tooltipped i stedet */
 }
+
+/* Respekter prefers-reduced-motion: hoved-editoren har flere «infinite»-animasjoner
+   (ce-balance-shimmer/ce-pulse/ce-bar-pulse/ce-claude-glow/ce-typing/ce-wizard-pulse)
+   som ellers kjører uansett brukerens system-innstilling. */
+@media (prefers-reduced-motion: reduce) {
+  .creative-editor *,
+  .creative-editor *::before,
+  .creative-editor *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
