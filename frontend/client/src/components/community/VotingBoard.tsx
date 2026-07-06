@@ -100,6 +100,7 @@ import {
   COMMUNITY_DIALOG_TEXT,
   COMMUNITY_DIALOG_TITLE_SX,
 } from './communityDialogStyles';
+import { useCommunityLocale } from './communityLocale';
 
 // ============================================
 // VOTING NOTIFICATION INTERFACE
@@ -121,12 +122,12 @@ interface VotingNotification {
 // CONFIGURATION OBJECTS
 // ============================================
 
-const boardTypeConfig: Record<string, { label: string; icon: React.ReactElement }> = {
-  feature_request: { label: 'Funksjonsønsker', icon: <Lightbulb fontSize="small" /> },
-  poll: { label: 'Avstemning', icon: <HowToVote fontSize="small" /> },
-  priority: { label: 'Prioritering', icon: <TrendingUp fontSize="small" /> },
-  feedback: { label: 'Tilbakemelding', icon: <Comment fontSize="small" /> },
-  general: { label: 'Generelt', icon: <Flag fontSize="small" /> },
+const boardTypeConfig: Record<string, { label: string; labelEn: string; icon: React.ReactElement }> = {
+  feature_request: { label: 'Funksjonsønsker', labelEn: 'Feature requests', icon: <Lightbulb fontSize="small" /> },
+  poll: { label: 'Avstemning', labelEn: 'Poll', icon: <HowToVote fontSize="small" /> },
+  priority: { label: 'Prioritering', labelEn: 'Prioritization', icon: <TrendingUp fontSize="small" /> },
+  feedback: { label: 'Tilbakemelding', labelEn: 'Feedback', icon: <Comment fontSize="small" /> },
+  general: { label: 'Generelt', labelEn: 'General', icon: <Flag fontSize="small" /> },
 };
 
 // ============================================
@@ -142,6 +143,7 @@ interface VotingNotificationContentProps {
 
 const VotingNotificationContent = forwardRef<HTMLDivElement, VotingNotificationContentProps>(
   ({ id, notification, onJoin, onDismiss }, ref) => {
+    const { tt } = useCommunityLocale();
     return (
       <SnackbarContent ref={ref}>
         <Paper
@@ -170,7 +172,7 @@ const VotingNotificationContent = forwardRef<HTMLDivElement, VotingNotificationC
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <HowToVote />
               <Typography variant="subtitle1" fontWeight={600}>
-                🗳️ Ny avstemning pågår!
+                {tt('🗳️ Ny avstemning pågår!', '🗳️ New vote in progress!')}
               </Typography>
             </Box>
             <IconButton
@@ -208,7 +210,7 @@ const VotingNotificationContent = forwardRef<HTMLDivElement, VotingNotificationC
               <Chip
                 size="small"
                 icon={boardTypeConfig[notification.boardType]?.icon}
-                label={boardTypeConfig[notification.boardType]?.label}
+                label={tt(boardTypeConfig[notification.boardType]?.label, boardTypeConfig[notification.boardType]?.labelEn)}
                 sx={{ bgcolor: 'rgba(255, 140, 0, 0.1)', color: '#FF8C00' }}
               />
               <Chip
@@ -220,14 +222,14 @@ const VotingNotificationContent = forwardRef<HTMLDivElement, VotingNotificationC
               {notification.itemCount > 0 && (
                 <Chip
                   size="small"
-                  label={`${notification.itemCount} forslag`}
+                  label={`${notification.itemCount} ${tt('forslag', 'suggestions')}`}
                   variant="outlined"
                 />
               )}
             </Box>
 
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
-              Opprettet av {notification.creatorName}
+              {tt('Opprettet av', 'Created by')} {notification.creatorName}
             </Typography>
 
             {/* Actions */}
@@ -243,7 +245,7 @@ const VotingNotificationContent = forwardRef<HTMLDivElement, VotingNotificationC
                   fontWeight: 600,
                 }}
               >
-                Delta i avstemningen
+                {tt('Delta i avstemningen', 'Join the vote')}
               </Button>
               <Button
                 variant="outlined"
@@ -255,7 +257,7 @@ const VotingNotificationContent = forwardRef<HTMLDivElement, VotingNotificationC
                   px: 2,
                 }}
               >
-                Senere
+                {tt('Senere', 'Later')}
               </Button>
             </Box>
           </Box>
@@ -348,21 +350,21 @@ interface VotingBoardProps {
 // STATUS CONFIG
 // ============================================
 
-const statusConfig: Record<string, { label: string; color: string; icon: React.ReactElement }> = {
-  open: { label: 'Åpen', color: '#2196f3', icon: <NewReleases fontSize="small" /> },
-  under_review: { label: 'Under vurdering', color: '#ff9800', icon: <Search fontSize="small" /> },
-  planned: { label: 'Planlagt', color: '#9c27b0', icon: <Schedule fontSize="small" /> },
-  in_progress: { label: 'Under utvikling', color: '#ff5722', icon: <Build fontSize="small" /> },
-  completed: { label: 'Fullført', color: '#4caf50', icon: <CheckCircle fontSize="small" /> },
-  declined: { label: 'Avslått', color: '#f44336', icon: <Cancel fontSize="small" /> },
-  duplicate: { label: 'Duplikat', color: '#9e9e9e', icon: <ContentCopy fontSize="small" /> },
+const statusConfig: Record<string, { label: string; labelEn: string; color: string; icon: React.ReactElement }> = {
+  open: { label: 'Åpen', labelEn: 'Open', color: '#2196f3', icon: <NewReleases fontSize="small" /> },
+  under_review: { label: 'Under vurdering', labelEn: 'Under review', color: '#ff9800', icon: <Search fontSize="small" /> },
+  planned: { label: 'Planlagt', labelEn: 'Planned', color: '#9c27b0', icon: <Schedule fontSize="small" /> },
+  in_progress: { label: 'Under utvikling', labelEn: 'In progress', color: '#ff5722', icon: <Build fontSize="small" /> },
+  completed: { label: 'Fullført', labelEn: 'Completed', color: '#4caf50', icon: <CheckCircle fontSize="small" /> },
+  declined: { label: 'Avslått', labelEn: 'Declined', color: '#f44336', icon: <Cancel fontSize="small" /> },
+  duplicate: { label: 'Duplikat', labelEn: 'Duplicate', color: '#9e9e9e', icon: <ContentCopy fontSize="small" /> },
 };
 
-const priorityConfig: Record<string, { label: string; color: string }> = {
-  low: { label: 'Lav', color: '#4caf50' },
-  medium: { label: 'Medium', color: '#ff9800' },
-  high: { label: 'Høy', color: '#f44336' },
-  critical: { label: 'Kritisk', color: '#9c27b0' },
+const priorityConfig: Record<string, { label: string; labelEn: string; color: string }> = {
+  low: { label: 'Lav', labelEn: 'Low', color: '#4caf50' },
+  medium: { label: 'Medium', labelEn: 'Medium', color: '#ff9800' },
+  high: { label: 'Høy', labelEn: 'High', color: '#f44336' },
+  critical: { label: 'Kritisk', labelEn: 'Critical', color: '#9c27b0' },
 };
 
 // ============================================
@@ -370,6 +372,8 @@ const priorityConfig: Record<string, { label: string; color: string }> = {
 // ============================================
 
 export default function VotingBoard({ groupId, userId, onClose }: VotingBoardProps) {
+  const { tt } = useCommunityLocale();
+
   // State
   const [boards, setBoards] = useState<VotingBoard[]>([]);
   const [selectedBoard, setSelectedBoard] = useState<VotingBoard | null>(null);

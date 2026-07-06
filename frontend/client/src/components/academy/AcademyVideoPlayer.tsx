@@ -114,6 +114,7 @@ import {
   getAcademyVideoSourceType,
   isAcademyVideoPlayableInNativePlayer,
 } from './academyVideoSourceUtils';
+import { useAcademyLocale } from './academyLocale';
 
 interface AcademyVideoPlayerProps {
 	  course: any;
@@ -143,6 +144,7 @@ function AcademyVideoPlayer({
   onChapterSelect,
 }: AcademyVideoPlayerProps) {
   const theme = useTheme();
+  const { tt } = useAcademyLocale();
   const { updateProgress, addBookmark, addNote, updateSettings, state } = useAcademy();
   const { analytics, performance, debugging, features } = useEnhancedMasterIntegration();
 
@@ -1175,7 +1177,7 @@ function AcademyVideoPlayer({
       }
       onTouchEnd={course?.pedagogicalFeatures?.enableMobileGestures ? handleTouchEnd : undefined}
       role="application"
-      aria-label="Video player with accessibility features"
+      aria-label={tt('Videospiller med tilgjengelighetsfunksjoner', 'Video player with accessibility features')}
     >
       {/* ARIA Live Region for Screen Readers */}
       <div
@@ -1204,7 +1206,7 @@ function AcademyVideoPlayer({
             height: '100%',
             objectFit: 'cover'}}
           onClick={isPlaying ? handlePause : handlePlay}
-          aria-label={`${course?.title} - ${lesson?.title || 'Lesson video'}`}
+          aria-label={`${course?.title} - ${lesson?.title || tt('Leksjonsvideo', 'Lesson video')}`}
           role="img"
           tabIndex={-1}
         >
@@ -1254,8 +1256,14 @@ function AcademyVideoPlayer({
               }}
             >
               {resolvedVideoSourceType === 'google-vids'
-                ? 'Denne leksjonen bruker Google Vids som kilde. Academy aapner den eksternt i stedet for aa spille den direkte.'
-                : 'Denne videokilden kan ikke spilles direkte i Academy-playeren.'}
+                ? tt(
+                    'Denne leksjonen bruker Google Vids som kilde. Academy aapner den eksternt i stedet for aa spille den direkte.',
+                    'This lesson uses Google Vids as its source. Academy opens it externally instead of playing it directly.',
+                  )
+                : tt(
+                    'Denne videokilden kan ikke spilles direkte i Academy-playeren.',
+                    'This video source cannot be played directly in the Academy player.',
+                  )}
             </Alert>
             {resolvedExternalVideoUrl ? (
               <Button
@@ -1271,7 +1279,9 @@ function AcademyVideoPlayer({
                   background: 'linear-gradient(180deg, #ffd44e, #f2a616)',
                 }}
               >
-                {resolvedVideoSourceType === 'google-vids' ? 'Open Google Vids' : 'Open source'}
+                {resolvedVideoSourceType === 'google-vids'
+                  ? tt('Åpne Google Vids', 'Open Google Vids')
+                  : tt('Åpne kilde', 'Open source')}
               </Button>
             ) : null}
           </Stack>
@@ -1316,7 +1326,7 @@ function AcademyVideoPlayer({
             zIndex: 100}}
         >
           <Typography variant="h4" sx={{ color: 'white', mb: 3 }}>
-            Learning Goals
+            {tt('Læringsmål', 'Learning Goals')}
           </Typography>
           <Stack spacing={2} sx={{ maxWidth: 600, textAlign: 'center' }}>
             {learningGoals.map((goal, index) => (
@@ -1326,7 +1336,7 @@ function AcademyVideoPlayer({
             ))}
           </Stack>
           <Button variant="contained" onClick={() => setShowLearningGoals(false)} sx={{ mt: 3 }}>
-            Start Learning
+            {tt('Start læringen', 'Start Learning')}
           </Button>
         </Box>
       )}
@@ -1349,7 +1359,7 @@ function AcademyVideoPlayer({
             zIndex: 100}}
         >
           <Typography variant="h4" sx={{ color: 'white', mb: 3 }}>
-            Reflection Point
+            {tt('Refleksjonspunkt', 'Reflection Point')}
           </Typography>
           <Typography
             variant="h6"
@@ -1358,7 +1368,7 @@ function AcademyVideoPlayer({
             {checkpointMessage}
           </Typography>
           <Button variant="contained" onClick={handleCheckpointContinue} sx={{ mt: 2 }}>
-            Continue
+            {tt('Fortsett', 'Continue')}
           </Button>
         </Box>
       )}
@@ -1401,10 +1411,10 @@ function AcademyVideoPlayer({
               onClick={handleQuizSubmit}
               disabled={quizAnswers[currentQuiz.id] === undefined}
             >
-              Submit Answer
+              {tt('Send inn svar', 'Submit Answer')}
             </Button>
             <Button variant="outlined" onClick={() => setShowInVideoQuiz(false)}>
-              Skip
+              {tt('Hopp over', 'Skip')}
             </Button>
           </Stack>
         </Box>
@@ -1496,13 +1506,13 @@ function AcademyVideoPlayer({
               <ListItemIcon>
                 <School sx={{ color: 'white' }} />
               </ListItemIcon>
-              <ListItemText primary="Course Level" secondary={course?.level} />
+              <ListItemText primary={tt('Kursnivå', 'Course Level')} secondary={course?.level} />
             </ListItem>
             <ListItem>
               <ListItemIcon>
                 <VideoLibrary sx={{ color: 'white' }} />
               </ListItemIcon>
-              <ListItemText primary="Lesson Duration" secondary={formatTime(duration)} />
+              <ListItemText primary={tt('Leksjonsvarighet', 'Lesson Duration')} secondary={formatTime(duration)} />
             </ListItem>
           </List>
         </Box>
@@ -1601,26 +1611,26 @@ function AcademyVideoPlayer({
               <Settings />
             </IconButton>
 
-            <Tooltip title={theater ? 'Exit Theater Mode (T)' : 'Enter Theater Mode (T)'}>
+            <Tooltip title={theater ? tt('Avslutt kinomodus (T)', 'Exit Theater Mode (T)') : tt('Start kinomodus (T)', 'Enter Theater Mode (T)')}>
               <IconButton
                 onClick={handleTheater}
                 sx={{
                   color: 'white',
                   border: focusVisible ? '2px solid #ff8c00' : 'none'}}
-                aria-label={theater ? 'Exit theater mode' : 'Enter theater mode'}
+                aria-label={theater ? tt('Avslutt kinomodus', 'Exit theater mode') : tt('Start kinomodus', 'Enter theater mode')}
                 aria-pressed={theater}
               >
                 <Theaters />
               </IconButton>
             </Tooltip>
 
-            <Tooltip title={isFullscreen ? 'Exit Fullscreen (F)' : 'Enter Fullscreen (F)'}>
+            <Tooltip title={isFullscreen ? tt('Avslutt fullskjerm (F)', 'Exit Fullscreen (F)') : tt('Start fullskjerm (F)', 'Enter Fullscreen (F)')}>
               <IconButton
                 onClick={handleFullscreen}
                 sx={{
                   color: 'white',
                   border: focusVisible ? '2px solid #ff8c00' : 'none'}}
-                aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+                aria-label={isFullscreen ? tt('Avslutt fullskjerm', 'Exit fullscreen') : tt('Start fullskjerm', 'Enter fullscreen')}
                 aria-pressed={isFullscreen}
               >
                 {isFullscreen ? <FullscreenExit /> : <Fullscreen />}
@@ -1631,7 +1641,9 @@ function AcademyVideoPlayer({
             {(airPlayAvailable || chromecastAvailable || dlnaAvailable) && (
               <Tooltip
                 title={
-                  isAirPlaying || isChromecasting ? 'Disconnect from device' : 'Cast to device'
+                  isAirPlaying || isChromecasting
+                    ? tt('Koble fra enhet', 'Disconnect from device')
+                    : tt('Cast til enhet', 'Cast to device')
                 }
               >
                 <IconButton
@@ -1648,8 +1660,8 @@ function AcademyVideoPlayer({
                     border: focusVisible ? '2px solid #ff8c00' : 'none'}}
                   aria-label={
                     isAirPlaying || isChromecasting
-                      ? 'Disconnect from casting device'
-                      : 'Cast video to device'
+                      ? tt('Koble fra castingsenhet', 'Disconnect from casting device')
+                      : tt('Cast video til enhet', 'Cast video to device')
                   }
                 >
                   {isAirPlaying || isChromecasting ? <CastConnected /> : <Cast />}
@@ -1661,27 +1673,29 @@ function AcademyVideoPlayer({
 
         {/* Accessibility Controls */}
         <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 1 }}>
-          <Tooltip title="Toggle Captions (C)">
+          <Tooltip title={tt('Veksle teksting (C)', 'Toggle Captions (C)')}>
             <IconButton
               onClick={handleToggleCaptions}
               sx={{
                 color: captionsEnabled ? '#ff8c00' : 'white',
                 border: focusVisible ? '2px solid #ff8c00' : 'none'}}
-              aria-label={captionsEnabled ? 'Disable captions' : 'Enable captions'}
+              aria-label={captionsEnabled ? tt('Slå av teksting', 'Disable captions') : tt('Slå på teksting', 'Enable captions')}
               aria-pressed={captionsEnabled}
             >
               <ClosedCaption />
             </IconButton>
           </Tooltip>
 
-          <Tooltip title="Toggle Audio Description (A)">
+          <Tooltip title={tt('Veksle lydbeskrivelse (A)', 'Toggle Audio Description (A)')}>
             <IconButton
               onClick={handleToggleAudioDescription}
               sx={{
                 color: audioDescriptionEnabled ? '#ff8c00' : 'white',
                 border: focusVisible ? '2px solid #ff8c00' : 'none'}}
               aria-label={
-                audioDescriptionEnabled ? 'Disable audio description' : 'Enable audio description'
+                audioDescriptionEnabled
+                  ? tt('Slå av lydbeskrivelse', 'Disable audio description')
+                  : tt('Slå på lydbeskrivelse', 'Enable audio description')
               }
               aria-pressed={audioDescriptionEnabled}
             >
@@ -1689,26 +1703,26 @@ function AcademyVideoPlayer({
             </IconButton>
           </Tooltip>
 
-          <Tooltip title="Toggle High Contrast (H)">
+          <Tooltip title={tt('Veksle høy kontrast (H)', 'Toggle High Contrast (H)')}>
             <IconButton
               onClick={handleToggleHighContrast}
               sx={{
                 color: highContrastMode ? '#ff8c00' : 'white',
                 border: focusVisible ? '2px solid #ff8c00' : 'none'}}
-              aria-label={highContrastMode ? 'Disable high contrast' : 'Enable high contrast'}
+              aria-label={highContrastMode ? tt('Slå av høy kontrast', 'Disable high contrast') : tt('Slå på høy kontrast', 'Enable high contrast')}
               aria-pressed={highContrastMode}
             >
               <Contrast />
             </IconButton>
           </Tooltip>
 
-          <Tooltip title="Accessibility Settings">
+          <Tooltip title={tt('Tilgjengelighetsinnstillinger', 'Accessibility Settings')}>
             <IconButton
               onClick={() => setShowAccessibilityPanel(!showAccessibilityPanel)}
               sx={{
                 color: showAccessibilityPanel ? '#ff8c00' : 'white',
                 border: focusVisible ? '2px solid #ff8c00' : 'none'}}
-              aria-label="Open accessibility settings"
+              aria-label={tt('Åpne tilgjengelighetsinnstillinger', 'Open accessibility settings')}
               aria-expanded={showAccessibilityPanel}
             >
               <Accessibility />
@@ -1719,38 +1733,38 @@ function AcademyVideoPlayer({
         {/* Enhanced Learning Tools */}
         <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 1 }}>
           {/* Core Learning Tools */}
-          <Tooltip title="X-Ray Information">
+          <Tooltip title={tt('X-Ray-informasjon', 'X-Ray Information')}>
             <IconButton
               onClick={() => setShowXRay(!showXRay)}
               sx={{
                 color: showXRay ? '#ff8c00' : 'white',
                 border: focusVisible ? '2px solid #ff8c00' : 'none'}}
-              aria-label={showXRay ? 'Hide X-Ray information' : 'Show X-Ray information'}
+              aria-label={showXRay ? tt('Skjul X-Ray-informasjon', 'Hide X-Ray information') : tt('Vis X-Ray-informasjon', 'Show X-Ray information')}
               aria-expanded={showXRay}
             >
               <Star />
             </IconButton>
           </Tooltip>
 
-          <Tooltip title="Add Bookmark">
+          <Tooltip title={tt('Legg til bokmerke', 'Add Bookmark')}>
             <IconButton
               onClick={handleAddBookmark}
               sx={{
                 color: 'white',
                 border: focusVisible ? '2px solid #ff8c00' : 'none'}}
-              aria-label={`Add bookmark at ${formatTime(currentTime)}`}
+              aria-label={tt(`Legg til bokmerke ved ${formatTime(currentTime)}`, `Add bookmark at ${formatTime(currentTime)}`)}
             >
               <Star />
             </IconButton>
           </Tooltip>
 
-          <Tooltip title="Learning Notes">
+          <Tooltip title={tt('Læringsnotater', 'Learning Notes')}>
             <IconButton
               onClick={() => setShowNotes(!showNotes)}
               sx={{
                 color: showNotes ? '#ff8c00' : 'white',
                 border: focusVisible ? '2px solid #ff8c00' : 'none'}}
-              aria-label={showNotes ? 'Hide learning notes' : 'Show learning notes'}
+              aria-label={showNotes ? tt('Skjul læringsnotater', 'Hide learning notes') : tt('Vis læringsnotater', 'Show learning notes')}
               aria-expanded={showNotes}
             >
               <Star />
@@ -1759,7 +1773,7 @@ function AcademyVideoPlayer({
 
           {/* Pedagogical Features */}
           {course?.pedagogicalFeatures?.enableTranscriptPanel && (
-            <Tooltip title="Transcript">
+            <Tooltip title={tt('Transkripsjon', 'Transcript')}>
               <IconButton
                 onClick={() => setShowTranscript(!showTranscript)}
                 sx={{ color: 'white' }}
@@ -1770,7 +1784,7 @@ function AcademyVideoPlayer({
           )}
 
           {course?.pedagogicalFeatures?.enableResourceDrawer && (
-            <Tooltip title="Resources">
+            <Tooltip title={tt('Ressurser', 'Resources')}>
               <IconButton
                 onClick={() => setShowResourceDrawer(!showResourceDrawer)}
                 sx={{ color: 'white' }}
@@ -1781,7 +1795,7 @@ function AcademyVideoPlayer({
           )}
 
           {course?.pedagogicalFeatures?.enableLearningGoals && (
-            <Tooltip title="Learning Goals">
+            <Tooltip title={tt('Læringsmål', 'Learning Goals')}>
               <IconButton
                 onClick={() => setShowLearningGoals(!showLearningGoals)}
                 sx={{ color: 'white' }}
@@ -1792,7 +1806,7 @@ function AcademyVideoPlayer({
           )}
 
           {course?.pedagogicalFeatures?.enablePracticeMode && (
-            <Tooltip title="Practice Mode">
+            <Tooltip title={tt('Øvingsmodus', 'Practice Mode')}>
               <IconButton
                 onClick={() => setShowPracticeMode(!showPracticeMode)}
                 sx={{ color: 'white' }}
@@ -1803,7 +1817,7 @@ function AcademyVideoPlayer({
           )}
 
           {course?.pedagogicalFeatures?.enableABLoop && (
-            <Tooltip title="A-B Loop">
+            <Tooltip title={tt('A-B-løkke', 'A-B Loop')}>
               <IconButton
                 onClick={handleABLoopToggle}
                 sx={{ color: isInABLoop ? '#ff8c00' : 'white' }}
@@ -1814,7 +1828,7 @@ function AcademyVideoPlayer({
           )}
 
           {course?.pedagogicalFeatures?.enableDiscussionThreads && (
-            <Tooltip title="Discussion">
+            <Tooltip title={tt('Diskusjon', 'Discussion')}>
               <IconButton
                 onClick={() => setShowDiscussion(!showDiscussion)}
                 sx={{ color: 'white' }}
@@ -1825,7 +1839,7 @@ function AcademyVideoPlayer({
           )}
 
           {course?.pedagogicalFeatures?.enableAssignmentsFromVideo && (
-            <Tooltip title="Assignments">
+            <Tooltip title={tt('Oppgaver', 'Assignments')}>
               <IconButton
                 onClick={() => setShowAssignments(!showAssignments)}
                 sx={{ color: 'white' }}
@@ -1836,7 +1850,7 @@ function AcademyVideoPlayer({
           )}
 
           {course?.pedagogicalFeatures?.enableMultitrackAudio && (
-            <Tooltip title="Audio Tracks">
+            <Tooltip title={tt('Lydspor', 'Audio Tracks')}>
               <IconButton
                 onClick={() => setShowMultitrackAudio(!showMultitrackAudio)}
                 sx={{ color: 'white' }}
@@ -1847,13 +1861,13 @@ function AcademyVideoPlayer({
           )}
 
           {chapters.length > 0 && (
-            <Tooltip title="Chapters (C)">
+            <Tooltip title={tt('Kapitler (C)', 'Chapters (C)')}>
               <IconButton
                 onClick={() => setShowChapters(!showChapters)}
                 sx={{
                   color: showChapters ? '#ff8c00' : 'white',
                   border: focusVisible ? '2px solid #ff8c00' : 'none'}}
-                aria-label={showChapters ? 'Hide chapters' : 'Show chapters'}
+                aria-label={showChapters ? tt('Skjul kapitler', 'Hide chapters') : tt('Vis kapitler', 'Show chapters')}
                 aria-expanded={showChapters}
               >
                 <VideoLibrary />
@@ -1861,7 +1875,7 @@ function AcademyVideoPlayer({
             </Tooltip>
           )}
 
-          <Tooltip title="Complete Lesson">
+          <Tooltip title={tt('Fullfør leksjon', 'Complete Lesson')}>
             <IconButton onClick={handleLessonComplete} sx={{ color: 'white' }}>
               <CheckCircle />
             </IconButton>
@@ -1871,15 +1885,15 @@ function AcademyVideoPlayer({
 
       {/* Settings Dialog */}
       <Dialog open={showSettings} onClose={() => setShowSettings(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Video Settings</DialogTitle>
+        <DialogTitle>{tt('Videoinnstillinger', 'Video Settings')}</DialogTitle>
         <DialogContent>
           <Stack spacing={3} sx={{ mt: 1 }}>
             <FormControl fullWidth>
-              <InputLabel>Playback Speed</InputLabel>
+              <InputLabel>{tt('Avspillingshastighet', 'Playback Speed')}</InputLabel>
               <Select
                 value={playbackRate}
                 onChange={(e) => handlePlaybackRateChange(e.target.value as number)}
-                label="Playback Speed"
+                label={tt('Avspillingshastighet', 'Playback Speed')}
               >
                 <MenuItem value={0.5}>0.5x</MenuItem>
                 <MenuItem value={0.75}>0.75x</MenuItem>

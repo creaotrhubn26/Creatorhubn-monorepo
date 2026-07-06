@@ -503,7 +503,7 @@ export const CommunityLandingFallback: React.FC<CommunityLandingFallbackProps> =
                 >
                   <PlayCircle sx={{ color: '#f59e0b', fontSize: 16 }} />
                   <Typography sx={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.7rem', letterSpacing: '0.1em' }}>
-                    BLI MED NÅ
+                    {tt('BLI MED NÅ', 'JOIN NOW')}
                   </Typography>
                 </Box>
               </Box>
@@ -557,7 +557,7 @@ export const CommunityLandingFallback: React.FC<CommunityLandingFallbackProps> =
                 lineHeight: 1.2,
               }}
             >
-              Få tilgang til Community
+              {tt('Få tilgang til Community', 'Get access to Community')}
             </Typography>
             <Typography
               sx={{
@@ -583,7 +583,10 @@ export const CommunityLandingFallback: React.FC<CommunityLandingFallbackProps> =
               mb: 3,
             }}
           >
-            CreatorHub Community er et eksklusivt fellesskap for medlemmer av CreatorHub Norge.
+            {tt(
+              'CreatorHub Community er et eksklusivt fellesskap for medlemmer av CreatorHub Norge.',
+              'CreatorHub Community is an exclusive community for members of CreatorHub Norge.'
+            )}
           </Typography>
 
           <Typography
@@ -594,15 +597,15 @@ export const CommunityLandingFallback: React.FC<CommunityLandingFallbackProps> =
               mb: 2,
             }}
           >
-            Som medlem får du tilgang til:
+            {tt('Som medlem får du tilgang til:', 'As a member you get access to:')}
           </Typography>
 
           <Box sx={{ mb: 3 }}>
             {[
-              'Diskusjoner med andre kreative',
-              'Deling av tips og erfaringer',
-              'Nettverksbygging',
-              'Eksklusive ressurser og guider',
+              tt('Diskusjoner med andre kreative', 'Discussions with other creatives'),
+              tt('Deling av tips og erfaringer', 'Sharing tips and experiences'),
+              tt('Nettverksbygging', 'Networking'),
+              tt('Eksklusive ressurser og guider', 'Exclusive resources and guides'),
             ].map((item, index) => (
               <Box
                 key={index}
@@ -631,10 +634,10 @@ export const CommunityLandingFallback: React.FC<CommunityLandingFallbackProps> =
             }}
           >
             <Typography sx={{ color: 'rgba(255, 255, 255, 0.9)', mb: 1 }}>
-              <strong>Er du allerede medlem?</strong> Logg inn for å få tilgang.
+              <strong>{tt('Er du allerede medlem?', 'Already a member?')}</strong> {tt('Logg inn for å få tilgang.', 'Log in to get access.')}
             </Typography>
             <Typography sx={{ color: 'rgba(255, 255, 255, 0.7)', fontSize: '0.9rem' }}>
-              Ikke medlem ennå? Besøk{' '}
+              {tt('Ikke medlem ennå? Besøk', 'Not a member yet? Visit')}{' '}
               <Box
                 component="a"
                 href="https://creatorhubn.com"
@@ -648,7 +651,7 @@ export const CommunityLandingFallback: React.FC<CommunityLandingFallbackProps> =
               >
                 creatorhubn.com
               </Box>
-              {' '}for å bli med.
+              {' '}{tt('for å bli med.', 'to join.')}
             </Typography>
           </Box>
         </DialogContent>
@@ -670,7 +673,7 @@ export const CommunityLandingFallback: React.FC<CommunityLandingFallbackProps> =
               },
             }}
           >
-            Lukk
+            {tt('Lukk', 'Close')}
           </Button>
           <Button
             variant="contained"
@@ -689,7 +692,7 @@ export const CommunityLandingFallback: React.FC<CommunityLandingFallbackProps> =
               },
             }}
           >
-            Logg Inn
+            {tt('Logg Inn', 'Log In')}
           </Button>
         </DialogActions>
       </Dialog>
