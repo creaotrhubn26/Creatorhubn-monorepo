@@ -1134,7 +1134,10 @@ export function InfographicStudioView(
     setPreviewProgress(easeVal(sc.easing, p));
     const exitS = Math.max(0, Math.min(sc.exitSec ?? 0, durS));
     const exitStartP = durS > 0 ? (durS - exitS) / durS : 1;
-    const exitOpacity = exitS > 0 && p >= exitStartP ? Math.max(0, 1 - (p - exitStartP) / ((exitS / durS) || 1)) : 1;
+    // Exit-fade vises KUN under aktiv «Spill alt» (playingAllRef) — der den previewer
+    // overgangen mellom scener. Ved hvile/scrub-stopp holdes innholdet synlig,
+    // ellers parkerer siste scene på exit-fadens gjennomsiktige slutt-frame → blankt.
+    const exitOpacity = playingAllRef.current && exitS > 0 && p >= exitStartP ? Math.max(0, 1 - (p - exitStartP) / ((exitS / durS) || 1)) : 1;
     setPreviewMotion(sc, p * durS, exitOpacity);
   };
   const play = (durSecOverride?: number) => {
@@ -1142,14 +1145,15 @@ export function InfographicStudioView(
     if (!win || typeof win.setProgress !== 'function') return;
     const durS = durSecOverride ?? effDur(scene, tpl);
     const dur = Math.max(1, durS) * 1000, t0 = performance.now();
-    const exitMs = Math.max(0, Math.min(scene.exitSec ?? 0, durS)) * 1000;
-    const exitStart = dur - exitMs;
     const tick = (now: number) => {
       const elMs = now - t0;
       const p = Math.min(1, elMs / dur);
       try { win.setProgress!(easeVal(scene.easing, p)); } catch { /* */ }
-      const exitOpacity = exitMs > 0 && elMs >= exitStart ? Math.max(0, 1 - (elMs - exitStart) / exitMs) : 1;
-      setPreviewMotion(scene, elMs / 1000, exitOpacity);
+      // Autoplay ved lasting viser KUN inngangen og HOLDER innholdet på slutten.
+      // Exit-fade her ville parkert preview på en helt gjennomsiktig frame → blankt
+      // lerret ved hvile. (Exit-faden previewes via «Spill alt» + scrubbing, og
+      // gjelder i det rendrede klippet.)
+      setPreviewMotion(scene, elMs / 1000, 1);
       if (p < 1) rafRef.current = requestAnimationFrame(tick);
     };
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
@@ -1161,7 +1165,14 @@ export function InfographicStudioView(
     // Autoplay KUN når brukeren nettopp valgte en scene — ikke midt i «Spill alt»
     // eller rett etter en scrub (der posisjonen styres av playAll/scrub-effekten).
     window.setTimeout(() => {
-      if (playingAllRef.current || performance.now() - recentScrubRef.current < 700) return;
+      if (playingAllRef.current) return; // «Spill alt»-loopen styrer bildet
+      if (performance.now() - recentScrubRef.current < 700) {
+        // Nettopp scrubbet / avsluttet avspilling: ikke autoplay på nytt, men SETT
+        // hvilebildet — ellers står den nylastede iframen på setProgress(0) → blankt.
+        const { p } = sceneAtTime(scrubT);
+        applyScrubFrame(scene, p > 0 ? p : 1);
+        return;
+      }
       play();
     }, 250);
   };
