@@ -115,7 +115,7 @@ export default function RevisionsDrawer({ open, onClose, slug, onRevert }: Revis
           <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: '1rem', flex: 1 }}>
             Versjonshistorikk · /{slug}
           </Typography>
-          <IconButton size="small" onClick={onClose} sx={{ color: 'rgba(203,213,225,0.78)' }}>
+          <IconButton size="small" onClick={onClose} aria-label="Lukk" sx={{ color: 'rgba(203,213,225,0.78)' }}>
             <CloseIcon fontSize="small" />
           </IconButton>
         </Stack>
@@ -140,6 +140,15 @@ export default function RevisionsDrawer({ open, onClose, slug, onRevert }: Revis
                   <Box
                     key={r.id}
                     onClick={() => setSelectedId(r.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setSelectedId(r.id);
+                      }
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    aria-pressed={isSelected}
                     sx={{
                       p: 1.2,
                       borderRadius: 1,
@@ -147,6 +156,7 @@ export default function RevisionsDrawer({ open, onClose, slug, onRevert }: Revis
                       border: isSelected ? '1px solid rgba(167,139,250,0.5)' : '1px solid rgba(148,163,184,0.14)',
                       bgcolor: isSelected ? 'rgba(167,139,250,0.10)' : 'rgba(2,6,23,0.34)',
                       '&:hover': { bgcolor: 'rgba(167,139,250,0.06)' },
+                      '&:focus-visible': { outline: '2px solid #a78bfa', outlineOffset: -2 },
                     }}
                   >
                     <Stack direction="row" spacing={0.8} alignItems="center" sx={{ mb: 0.4 }}>

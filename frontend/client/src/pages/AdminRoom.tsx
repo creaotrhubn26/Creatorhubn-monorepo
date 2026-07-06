@@ -2609,7 +2609,7 @@ function CmsEditView({ slug, onClose }: { slug: string; onClose: () => void }) {
       const previewContent = blocks ? { blocks } : content;
       win.postMessage(
         { type: 'roleroom-cms-preview', pageKey: slug, content: previewContent },
-        '*',
+        window.location.origin,
       );
     });
     return () => cancelAnimationFrame(raf);
@@ -2618,12 +2618,13 @@ function CmsEditView({ slug, onClose }: { slug: string; onClose: () => void }) {
   // Vent til iframe sender "preview-ready" så vi vet at den kan motta postMessage
   useEffect(() => {
     const handler = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
       if (event.data?.type === 'roleroom-cms-preview-ready' && event.data?.pageKey === slug) {
         previewReadyRef.current = true;
         const previewContent = blocks ? { blocks } : content;
         iframeRef.current?.contentWindow?.postMessage(
           { type: 'roleroom-cms-preview', pageKey: slug, content: previewContent },
-          '*',
+          window.location.origin,
         );
       }
     };

@@ -75,6 +75,17 @@ const STAGGER_CHILD_VARIANTS = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.4 } },
 };
 
+// Editorer kan lagre CTA/hero-lenker som fri tekst — sperr farlige
+// URL-schemes (javascript:/data:/vbscript:) før de rendres som ekte
+// <a href>, siden dette går rett til DOM-en uten server-side validering.
+const SAFE_HREF_PATTERN = /^(https?:|mailto:|tel:|\/|#)/i;
+
+function safeHref(url: string | undefined): string {
+  if (!url) return '/';
+  const trimmed = url.trim();
+  return SAFE_HREF_PATTERN.test(trimmed) ? trimmed : '/';
+}
+
 function RevealBlock({ children, delay = 0 }: { children: React.ReactNode; delay?: number }) {
   return (
     <motion.div
@@ -95,7 +106,7 @@ export default function BlockRenderer({ blocks, locale = DEFAULT_LOCALE }: Block
       <Stack spacing={{ xs: 5, md: 8 }}>
         {blocks.map((block, idx) => (
           <RevealBlock key={block.id} delay={idx === 0 ? 0 : 0.05}>
-            <BlockView block={applyLocale(block, locale)} />
+            <BlockView block={applyLocale(block, locale)} locale={locale} />
           </RevealBlock>
         ))}
       </Stack>
@@ -103,7 +114,7 @@ export default function BlockRenderer({ blocks, locale = DEFAULT_LOCALE }: Block
   );
 }
 
-function BlockView({ block }: { block: Block }) {
+function BlockView({ block, locale }: { block: Block; locale: Locale }) {
   switch (block.type) {
     case 'hero':
       return <HeroView block={block} />;
@@ -112,7 +123,7 @@ function BlockView({ block }: { block: Block }) {
     case 'faq':
       return <FaqView block={block} />;
     case 'comparison':
-      return <ComparisonView block={block} />;
+      return <ComparisonView block={block} locale={locale} />;
     case 'cta':
       return <CtaView block={block} />;
     case 'featureList':
@@ -185,7 +196,7 @@ function HeroView({ block }: { block: HeroBlock }) {
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ pt: 1.5 }}>
           {block.primaryCtaLabel ? (
             <Button
-              href={block.primaryCtaUrl || '/'}
+              href={safeHref(block.primaryCtaUrl)}
               variant="contained"
               size="large"
               sx={{
@@ -211,7 +222,7 @@ function HeroView({ block }: { block: HeroBlock }) {
           ) : null}
           {block.secondaryCtaLabel ? (
             <Button
-              href={block.secondaryCtaUrl || '/'}
+              href={safeHref(block.secondaryCtaUrl)}
               variant="outlined"
               size="large"
               sx={{
@@ -250,6 +261,16 @@ const PURIFY_CONFIG = {
   RETURN_DOM_FRAGMENT: false as const,
   RETURN_DOM: false as const,
 };
+
+if (typeof window !== 'undefined') {
+  // Tving rel="noopener noreferrer" på target="_blank"-lenker limt inn fra
+  // eksterne kilder (Word/Docs) — hindrer reverse-tabnabbing.
+  DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+    if (node.tagName === 'A' && node.getAttribute('target') === '_blank') {
+      node.setAttribute('rel', 'noopener noreferrer');
+    }
+  });
+}
 
 function sanitizeHtml(html: string): string {
   if (typeof window === 'undefined') return '';
@@ -366,6 +387,15 @@ function FaqAccordionItem({ q, a }: { q: string; a: string }) {
     >
       <Box
         onClick={() => setOpen((v) => !v)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setOpen((v) => !v);
+          }
+        }}
+        role="button"
+        tabIndex={0}
+        aria-expanded={open}
         sx={{
           display: 'flex',
           alignItems: 'center',
@@ -374,6 +404,10 @@ function FaqAccordionItem({ q, a }: { q: string; a: string }) {
           py: 1.8,
           cursor: 'pointer',
           userSelect: 'none',
+          '&:focus-visible': {
+            outline: '2px solid #a78bfa',
+            outlineOffset: -2,
+          },
         }}
       >
         <Typography sx={{ color: '#f8fafc', fontWeight: 600, fontSize: { xs: '1rem', md: '1.05rem' }, flex: 1 }}>
@@ -398,9 +432,15 @@ function FaqAccordionItem({ q, a }: { q: string; a: string }) {
   );
 }
 
-function ComparisonView({ block }: { block: ComparisonBlock }) {
+const COMPARISON_LABELS: Record<Locale, { feature: string; roleRoom: string }> = {
+  no: { feature: 'Funksjon', roleRoom: 'The Role Room' },
+  en: { feature: 'Feature', roleRoom: 'The Role Room' },
+};
+
+function ComparisonView({ block, locale }: { block: ComparisonBlock; locale: Locale }) {
   const rows = (block.rows ?? []).filter((r) => r.feature);
   if (!rows.length) return null;
+  const labels = COMPARISON_LABELS[locale] ?? COMPARISON_LABELS[DEFAULT_LOCALE];
   return (
     <Stack spacing={3}>
       {block.heading ? (
@@ -442,7 +482,7 @@ function ComparisonView({ block }: { block: ComparisonBlock }) {
                   py: 2,
                 }}
               >
-                Funksjon
+                {labels.feature}
               </TableCell>
               <TableCell
                 align="center"
@@ -454,7 +494,7 @@ function ComparisonView({ block }: { block: ComparisonBlock }) {
                   py: 2,
                 }}
               >
-                The Role Room
+                {labels.roleRoom}
               </TableCell>
               <TableCell
                 align="center"
@@ -560,7 +600,7 @@ function CtaView({ block }: { block: CtaBlock }) {
           ) : null}
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ pt: 1 }}>
             <Button
-              href={block.buttonUrl}
+              href={safeHref(block.buttonUrl)}
               variant="contained"
               size="large"
               sx={{
@@ -585,7 +625,7 @@ function CtaView({ block }: { block: CtaBlock }) {
             </Button>
             {block.secondaryLabel && block.secondaryUrl ? (
               <Button
-                href={block.secondaryUrl}
+                href={safeHref(block.secondaryUrl)}
                 variant="outlined"
                 size="large"
                 sx={{
@@ -804,14 +844,16 @@ function UsageExamplesView({ block }: { block: UsageExamplesBlock }) {
 }
 
 function ImageView({ block }: { block: ImageBlock }) {
-  if (!block.src) return null;
+  const [broken, setBroken] = useState(false);
+  if (!block.src || broken) return null;
   return (
     <Stack spacing={1.2} alignItems="center">
       <Box
         component="img"
         src={block.src}
-        alt={block.alt}
+        alt={block.alt ?? ''}
         loading="lazy"
+        onError={() => setBroken(true)}
         sx={{
           maxWidth: block.maxWidth ? `${block.maxWidth}px` : '100%',
           width: '100%',
