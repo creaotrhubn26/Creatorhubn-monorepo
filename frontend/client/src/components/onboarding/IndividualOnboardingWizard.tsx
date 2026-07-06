@@ -268,7 +268,10 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
     return true;
   })();
 
-  const handleFinish = async () => {
+  // Returnerer true kun ved vellykket lagring — kalleren skal IKKE rute til
+  // workspace hvis dette er false (ellers havner brukeren i workspace før
+  // profesjon/bedriftsinfo faktisk er lagret).
+  const handleFinish = async (): Promise<boolean> => {
     setSaveError(null);
     setSaving(true);
     const payload: DraftData = { firstName, businessName, profession, brandColor };
@@ -286,7 +289,7 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
         `Kunne ikke lagre bedriftsinfo (${message}). Vi har lagret det lokalt og forsøker igjen automatisk neste gang. Prøv på nytt nå hvis du vil.`,
       );
       setSaving(false);
-      return;
+      return false;
     }
     // Speil identitet + avatar til users-recorden (samlet profil). Best-effort:
     // profesjon speiles uansett av branding-lagringen; avatar/navn er ekstra.
@@ -309,6 +312,7 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
     setSaving(false);
     onComplete?.({ profession, businessName });
     onClose();
+    return true;
   };
 
   // Når profesjon endres, oppdater brand-farge automatisk
@@ -1357,7 +1361,7 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
 
             {/* Bro inn i workspace — prøv demoen uten å opprette noe */}
             <Card
-              onClick={async () => { await handleFinish(); try { window.location.assign('/workspace/sample'); } catch { /* noop */ } }}
+              onClick={async () => { const ok = await handleFinish(); if (ok) { try { window.location.assign('/workspace/sample'); } catch { /* noop */ } } }}
               sx={{
                 p: 2.5, cursor: 'pointer',
                 background: `linear-gradient(135deg, ${alpha(brandColor, 0.14)}, rgba(15,10,7,0.86))`,
@@ -1455,7 +1459,7 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
             endIcon={<DoneIcon />}
             variant="contained"
             disabled={saving}
-            onClick={async () => { await handleFinish(); try { window.location.assign('/workspace'); } catch { /* noop */ } }}
+            onClick={async () => { const ok = await handleFinish(); if (ok) { try { window.location.assign('/workspace'); } catch { /* noop */ } } }}
             sx={{
               borderRadius: '999px', px: 3, py: 1.1,
               fontWeight: 700, textTransform: 'none',

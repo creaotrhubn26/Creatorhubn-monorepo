@@ -18,17 +18,25 @@ export async function hasActiveTeamAccess(
 ): Promise<boolean> {
   if (!userId) return false;
   try {
+    // Hent profesjon + e-post i én spørring (e-post brukes til fallback under).
+    const u = await pool.query(
+      `SELECT profession, LOWER(email) AS email FROM users WHERE id = $1 LIMIT 1`,
+      [userId],
+    );
+    if (String(u.rows[0]?.profession || "").toLowerCase() === "enterprise") return true;
+    const email = u.rows[0]?.email ? String(u.rows[0].email) : null;
+    // Aktivt org-medlemskap på user_id ELLER e-post. E-post-fallback speiler
+    // GET /api/enterprise/my-membership: provisjonering setter ofte kun `email`
+    // (invitert som betalt/aktiv) FØR raden kobles til en users-record, og uten
+    // dette ville de fått 403 fra de nylig gatede endepunktene.
     const m = await pool.query(
       `SELECT 1 FROM enterprise_team_members
-        WHERE user_id = $1 AND status = 'active' LIMIT 1`,
-      [userId],
+        WHERE status = 'active'
+          AND (user_id = $1 OR ($2::text IS NOT NULL AND LOWER(email) = $2))
+        LIMIT 1`,
+      [userId, email],
     );
-    if ((m.rowCount ?? 0) > 0) return true;
-    const u = await pool.query(
-      `SELECT profession FROM users WHERE id = $1 LIMIT 1`,
-      [userId],
-    );
-    return String(u.rows[0]?.profession || "").toLowerCase() === "enterprise";
+    return (m.rowCount ?? 0) > 0;
   } catch {
     return false;
   }
