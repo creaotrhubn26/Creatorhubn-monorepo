@@ -9,7 +9,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { executeScript, systemOpen, playwrightStatus, setupPlaywright } from '../../api';
 import { useDemoStudio } from './demoStudioStore';
 import {
-  INFOGRAPHIC_TEMPLATES, htmlForTemplate, rawTemplateHtml, buildInfographicConfig,
+  INFOGRAPHIC_TEMPLATES, INFOGRAPHIC_HTML, htmlForTemplate, rawTemplateHtml, buildInfographicConfig,
   isIconField, MATERIAL_ICONS, ALL_MATERIAL_ICONS,
   addCustomTemplate, removeCustomTemplate, isCustomTemplate, customTemplateIds,
   type InfographicTemplate,
@@ -834,11 +834,15 @@ export function InfographicStudioView(
   const [fmt, setFmt] = useState<'native' | '9:16' | '4:5' | '1:1' | '16:9'>('native');
   // «Alle formater»: side-ved-side-forhåndsvisning av alle sosiale forhold.
   const [multiPreview, setMultiPreview] = useState(false);
-  // «Vis HTML» (dual view): venstre = live preview, høyre = redigerbar HTML-kilde.
-  // htmlView = editor-tekst (null = lukket); htmlPreview = debouncet kopi til iframen
-  // (unngår å re-parse den store font-bundelen ved hvert tastetrykk).
-  const [htmlView, setHtmlView] = useState<string | null>(null);
-  const [htmlPreview, setHtmlPreview] = useState<string>('');
+  // «Vis HTML» (dual view): venstre = live preview, høyre = fane Data (JSON) | Mal (HTML).
+  // Skiller de tre bekymringene: DATA (__CFG__), MAL (gjenbrukbar HTML) og RUNTIME (driver).
+  // Grunnlaget for CMS-binding (data adskilt fra mal) + «Lagre som egen mal».
+  const [htmlOpen, setHtmlOpen] = useState(false);
+  const [cfgText, setCfgText] = useState('');   // redigerbar __CFG__ JSON
+  const [tplText, setTplText] = useState('');      // redigerbar mal-HTML (uten data/fonter/driver)
+  const [htmlTab, setHtmlTab] = useState<'data' | 'tpl'>('data');
+  const [dataErr, setDataErr] = useState<string | null>(null);
+  const [htmlPreview, setHtmlPreview] = useState<string>(''); // debouncet standalone → iframe
   const [htmlBusy, setHtmlBusy] = useState(false);
   // Enhets-mockup (iPhone/feed/nettleser) i side-ved-side-visningen.
   const [mockup, setMockup] = useState(true);
@@ -1353,28 +1357,52 @@ export function InfographicStudioView(
 
   // Eksporter GJELDENDE scene til en frittstående fil (utenfor Resolve):
   // ProRes/MP4/GIF/APNG/PNG — for social, web, e-post, slides.
-  // Bygg den selvstendige HTML-artefakten for GJELDENDE scene og åpne dual view.
-  const openHtmlView = () => { const h = buildStandaloneHtml(srcDoc, effDur(scene, tpl), true); setHtmlView(h); setHtmlPreview(h); };
+  // Bygg det SELVSTENDIGE artefaktet fra gjeldende data + mal (fonter injiseres, driver på).
+  const buildCurrentStandalone = (): string => {
+    let cfg: unknown = config;
+    try { cfg = JSON.parse(cfgText || '{}'); } catch { cfg = config; }
+    const raw = tplText || tpl.html || INFOGRAPHIC_HTML;
+    const doc = `<script>window.__CFG__=${cfgScript(cfg)}</script>` + htmlForTemplate({ ...tpl, html: raw }) + `<script>${FIT_SCRIPT}</script>`;
+    return buildStandaloneHtml(doc, effDur(scene, tpl), true);
+  };
+  const openHtmlView = () => {
+    setCfgText(JSON.stringify(config, null, 2));
+    setTplText(tpl.html || INFOGRAPHIC_HTML);
+    setHtmlPreview(buildStandaloneHtml(srcDoc, effDur(scene, tpl), true)); // øyeblikkelig preview
+    setDataErr(null); setHtmlTab('data'); setHtmlOpen(true);
+  };
   const copyHtmlView = async () => {
-    if (!htmlView) return;
-    try { await navigator.clipboard.writeText(htmlView); setMsg('HTML kopiert til utklippstavlen'); }
+    try { await navigator.clipboard.writeText(buildCurrentStandalone()); setMsg('HTML kopiert til utklippstavlen'); }
     catch { setMsg('Kunne ikke kopiere — marker teksten manuelt'); }
   };
   const downloadHtmlView = async () => {
-    if (!htmlView || htmlBusy) return;
+    if (htmlBusy) return;
     setHtmlBusy(true);
     try {
-      const out = await invoke<string>('export_infographic_html', { html: htmlView, name: `${tpl.id}-${scene.id}` });
+      const out = await invoke<string>('export_infographic_html', { html: buildCurrentStandalone(), name: `${tpl.id}-${scene.id}` });
       setMsg(`Lagret: ${out}`);
     } catch (e) { setMsg(`Kunne ikke lagre HTML: ${(e as Error).message}`); }
     finally { setHtmlBusy(false); }
   };
-  // Debounce editor → live preview (unngå re-parse av font-bundelen ved hvert tastetrykk).
+  // «Lagre som egen mal»: lagrer den REDIGERTE malen (ren HTML, uten data/fonter/driver)
+  // som gjenbrukbar custom-mal — felt utledes fra __CFG__.<key>. Kobler til «Mine maler».
+  const saveAsCustomTemplate = () => {
+    const html = tplText.trim(); if (!html) { setMsg('Mal-HTML er tom.'); return; }
+    const t = addCustomTemplate(`${tpl.name} (egen)`, html);
+    setHtmlOpen(false);
+    setMsg(`Lagret som egen mal: «${t.name}» — finnes under «Mine maler».`);
+  };
+  // Debounce (data|mal) → live preview (unngå re-parse av font-bundelen ved hvert tastetrykk).
   useEffect(() => {
-    if (htmlView == null) return;
-    const h = window.setTimeout(() => setHtmlPreview(htmlView), 400);
+    if (!htmlOpen) return;
+    const h = window.setTimeout(() => {
+      try { JSON.parse(cfgText || '{}'); setDataErr(null); }
+      catch (e) { setDataErr((e as Error).message); return; } // ugyldig JSON → behold forrige preview
+      setHtmlPreview(buildCurrentStandalone());
+    }, 400);
     return () => window.clearTimeout(h);
-  }, [htmlView]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cfgText, tplText, htmlOpen]);
 
   const exportFile = async () => {
     if (exportBusy) return;
@@ -2268,17 +2296,17 @@ export function InfographicStudioView(
         </div>
       </div>
 
-      {/* Dual view: live preview (venstre) + redigerbar HTML-kilde (høyre). */}
-      {htmlView != null && (
-        <div onClick={() => setHtmlView(null)} style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(4,7,14,0.74)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 22 }}>
+      {/* Dual view: live preview (venstre) + Data (JSON) / Mal (HTML)-editor (høyre). */}
+      {htmlOpen && (
+        <div onClick={() => setHtmlOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(4,7,14,0.74)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 22 }}>
           <div onClick={(e) => e.stopPropagation()} style={{ width: '95vw', maxWidth: 1520, height: '88vh', background: D.bg, border: `1px solid ${D.line}`, borderRadius: 14, display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 30px 90px rgba(0,0,0,0.55)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 16px', borderBottom: `1px solid ${D.line}`, background: D.panel, flexWrap: 'wrap', rowGap: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 16px', borderBottom: `1px solid ${D.line}`, background: D.panel, flexWrap: 'wrap', rowGap: 6 }}>
               <div style={{ fontWeight: 800, fontSize: 14, display: 'flex', alignItems: 'center', gap: 8, fontFamily: 'ui-monospace,Menlo,monospace' }}>{'</>'} HTML · {tpl.name}</div>
-              <div style={{ fontSize: 11, color: D.faint, flex: 1, minWidth: 200 }}>Selvstendig, portabel artefakt — åpne i browser eller embed via &lt;iframe&gt;. Data: <code style={{ color: D.soft }}>window.__CFG__</code>, animasjon: <code style={{ color: D.soft }}>setProgress(p)</code>.</div>
-              <span style={{ fontSize: 10.5, color: D.faint }}>{(htmlView.length / 1024).toFixed(0)} KB</span>
+              <div style={{ fontSize: 11, color: D.faint, flex: 1, minWidth: 180 }}>Portabel artefakt. Data: <code style={{ color: D.soft }}>window.__CFG__</code> · animasjon: <code style={{ color: D.soft }}>setProgress(p)</code>.</div>
+              <button style={{ ...topBtn, padding: '5px 11px', fontSize: 12 }} onClick={saveAsCustomTemplate} title="Lagre den redigerte malen som gjenbrukbar mal under «Mine maler»"><SaveIcon style={{ fontSize: 14 }} /> Lagre som egen mal</button>
               <button style={{ ...topBtn, padding: '5px 11px', fontSize: 12 }} onClick={() => void copyHtmlView()}>Kopier</button>
               <button style={{ ...topBtn, padding: '5px 11px', fontSize: 12, background: D.accent, border: 'none', color: '#fff', opacity: htmlBusy ? 0.6 : 1 }} disabled={htmlBusy} onClick={() => void downloadHtmlView()}><FileDownloadIcon style={{ fontSize: 14 }} /> {htmlBusy ? 'Lagrer …' : 'Last ned .html'}</button>
-              <button style={{ ...topBtn, padding: '5px 11px', fontSize: 12 }} onClick={() => setHtmlView(null)}>Lukk</button>
+              <button style={{ ...topBtn, padding: '5px 11px', fontSize: 12 }} onClick={() => setHtmlOpen(false)}>Lukk</button>
             </div>
             <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', minHeight: 0 }}>
               <div style={{ position: 'relative', minWidth: 0, background: 'linear-gradient(135deg,#10182a,#0b1120)', borderRight: `1px solid ${D.line}`, display: 'grid', placeItems: 'center', overflow: 'hidden' }}>
@@ -2286,8 +2314,17 @@ export function InfographicStudioView(
                 <iframe title="html-preview" srcDoc={htmlPreview} style={{ width: '100%', height: '100%', border: 0, background: 'transparent' }} />
               </div>
               <div style={{ position: 'relative', minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-                <div style={{ fontSize: 10, color: D.faint, padding: '4px 10px', borderBottom: `1px solid ${D.line}`, background: D.panel2 }}>HTML-kilde — redigerbar, preview oppdateres live</div>
-                <textarea value={htmlView} onChange={(e) => setHtmlView(e.target.value)} spellCheck={false} style={{ flex: 1, width: '100%', resize: 'none', border: 0, outline: 'none', background: D.bg, color: '#c7d2e3', fontFamily: 'ui-monospace,Menlo,monospace', fontSize: 11.5, lineHeight: 1.5, padding: 12, minHeight: 0, whiteSpace: 'pre', overflow: 'auto' }} />
+                <div style={{ display: 'flex', alignItems: 'center', borderBottom: `1px solid ${D.line}`, background: D.panel2 }}>
+                  {(['data', 'tpl'] as const).map((t) => (
+                    <button key={t} onClick={() => setHtmlTab(t)} style={{ ...tabBtn(htmlTab === t), flex: 'none', padding: '7px 14px', fontSize: 11.5 }}>{t === 'data' ? 'Data (JSON)' : 'Mal (HTML)'}</button>
+                  ))}
+                  <div style={{ flex: 1 }} />
+                  {htmlTab === 'data' && dataErr && <span style={{ fontSize: 10.5, color: '#f0a', padding: '0 10px' }} title={dataErr}>ugyldig JSON</span>}
+                  <span style={{ fontSize: 10, color: D.faint, padding: '0 10px' }}>{htmlTab === 'data' ? 'endre verdier → preview oppdateres' : 'rediger struktur → «Lagre som egen mal»'}</span>
+                </div>
+                {htmlTab === 'data'
+                  ? <textarea value={cfgText} onChange={(e) => setCfgText(e.target.value)} spellCheck={false} style={{ flex: 1, width: '100%', resize: 'none', border: 0, outline: 'none', background: D.bg, color: dataErr ? '#f5a' : '#8affc8', fontFamily: 'ui-monospace,Menlo,monospace', fontSize: 12, lineHeight: 1.55, padding: 12, minHeight: 0, whiteSpace: 'pre', overflow: 'auto' }} />
+                  : <textarea value={tplText} onChange={(e) => setTplText(e.target.value)} spellCheck={false} style={{ flex: 1, width: '100%', resize: 'none', border: 0, outline: 'none', background: D.bg, color: '#c7d2e3', fontFamily: 'ui-monospace,Menlo,monospace', fontSize: 11.5, lineHeight: 1.5, padding: 12, minHeight: 0, whiteSpace: 'pre', overflow: 'auto' }} />}
               </div>
             </div>
           </div>
