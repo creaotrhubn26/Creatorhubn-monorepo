@@ -20,6 +20,7 @@ import Check from '@mui/icons-material/Check';
 import Download from '@mui/icons-material/Download';
 import Close from '@mui/icons-material/Close';
 import { apiRequest } from '@/lib/queryClient';
+import { useTeamAccess } from '@/hooks/useTeamAccess';
 import { ws } from '../workspaceTheme';
 import { wsIcon } from '../crewIcons';
 import { WsCard, WsTag } from '../ui';
@@ -32,6 +33,7 @@ const ti = { '& .MuiOutlinedInput-root': { fontSize: 13, color: ws.text, bgcolor
 
 const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const isReal = projectId && projectId !== 'sample';
+  const { hasTeamAccess } = useTeamAccess(); // band/samarbeid er Enterprise-gated
   const [, navigate] = useLocation();
   const [roomId, setRoomId] = useState<string | null>(null);
   const [summary, setSummary] = useState<any | null>(null);
@@ -291,7 +293,9 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         </WsCard>
       )}
 
-      {/* Band-roster — medlemmer (auto-synket fra EaseVerse-collaborators) + invitér */}
+      {/* Band-roster — medlemmer (auto-synket fra EaseVerse-collaborators) + invitér.
+          Team/samarbeid er en Enterprise-funksjon → skjult for individuelle. */}
+      {hasTeamAccess && (
       <WsCard sx={{ mt: 2 }}>
         <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.25 }}>
           <GroupAdd sx={{ fontSize: 18, color: ws.accent }} />
@@ -338,6 +342,7 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           </Stack>
         )}
       </WsCard>
+      )}
 
       {/* Pro Tools Companion — native desktop-agent som synker markører + bounces hit */}
       <WsCard sx={{ mt: 2 }}>

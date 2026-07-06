@@ -1033,7 +1033,7 @@ import {
 } from "../../frontend/client/src/data/audio-storage-device-database.ts";
 import { WORLD_CAMERA_DATABASE } from "../../frontend/shared/camera-database.ts";
 import { CAMERA_RELEASE_REGISTRY_2020_2026 } from "../../frontend/shared/camera-release-registry.ts";
-import { normalizeProfession as normalizeCanonicalProfession } from "../../frontend/shared/profession-types.ts";
+import { normalizeProfession as normalizeCanonicalProfession, canonicalizeProfession } from "../../frontend/shared/profession-types.ts";
 import { DEFAULT_PROFESSION_CONFIGS } from "../../frontend/client/src/types/ProfessionConfig.ts";
 import {
   ACADEMY_PRESENTATION_GRAMMAR_BUDGETS,
@@ -17449,6 +17449,9 @@ type CompatSubscriptionStatus = {
   email: string | null;
   autoRenew: boolean;
   source: "database" | "compat" | "default";
+  // Stripe-abonnements-id — brukes til lat live-rekonsiliering når cachet
+  // tilgangsvindu er utløpt (fanger tapte webhooks: fornyelse/kansellering).
+  stripeSubscriptionId?: string | null;
 };
 
 type CompatPaymentMethod = {
@@ -18135,6 +18138,7 @@ function buildCompatSubscriptionStatus(
     email: overrides?.email ?? null,
     autoRenew: overrides?.autoRenew ?? true,
     source: overrides?.source ?? (plan ? "compat" : "default"),
+    stripeSubscriptionId: overrides?.stripeSubscriptionId ?? null,
   };
 }
 
@@ -18432,15 +18436,62 @@ async function resolveCompatSubscriptionStatus(
 ): Promise<CompatSubscriptionStatus> {
   const storedStatus = await readCompatSubscriptionStatus(userId);
   if (storedStatus) {
-    return {
+    const withEmail: CompatSubscriptionStatus = {
       ...storedStatus,
       email: storedStatus.email ?? email ?? null,
     };
+    // Lat live-rekonsiliering: kall Stripe KUN når det cachede tilgangsvinduet
+    // er utløpt (eller mangler) og vi har en abonnements-id. Da fanger vi tapte
+    // webhooks — fornyelse (forleng tilgang) eller kansellering (marker inaktiv)
+    // — uten å hitte Stripe på hvert statusoppslag. Best-effort: enhver feil
+    // faller tilbake til cachet verdi.
+    const subId = withEmail.stripeSubscriptionId;
+    const accessMs = withEmail.accessUntil
+      ? new Date(withEmail.accessUntil).getTime()
+      : 0;
+    const stale = !withEmail.accessUntil || accessMs < Date.now();
+    if (subId && stale) {
+      try {
+        const stripeClient = getCreatorHubStripeClient();
+        if (stripeClient) {
+          const sub = await stripeClient.subscriptions.retrieve(subId);
+          const subStatus = String((sub as { status?: string }).status || "");
+          const periodEnd = (sub as { current_period_end?: number })
+            .current_period_end;
+          const cancelAtEnd = Boolean(
+            (sub as { cancel_at_period_end?: boolean }).cancel_at_period_end,
+          );
+          const active = subStatus === "active" || subStatus === "trialing";
+          const periodEndIso =
+            typeof periodEnd === "number" && periodEnd > 0
+              ? new Date(periodEnd * 1000).toISOString()
+              : null;
+          const reconciled: CompatSubscriptionStatus = {
+            ...withEmail,
+            paymentCompleted: active,
+            subscriptionSelected: active,
+            autoRenew: cancelAtEnd ? false : withEmail.autoRenew,
+            accessUntil: periodEndIso ?? withEmail.accessUntil,
+            nextBillingDate: periodEndIso ?? withEmail.nextBillingDate,
+          };
+          await writeCompatSubscriptionStatus(userId, reconciled).catch(
+            () => undefined,
+          );
+          return reconciled;
+        }
+      } catch (e) {
+        console.warn(
+          "Stripe live-rekonsiliering feilet (bruker cache):",
+          (e as any)?.message,
+        );
+      }
+    }
+    return withEmail;
   }
 
   if (userId !== "guest" && (await hasTable("user_subscriptions"))) {
     const result = await pool.query(
-      `SELECT plan_id, status, started_at, auto_renew
+      `SELECT plan_id, status, started_at, auto_renew, billing_cycle, next_billing_date
        FROM user_subscriptions
        WHERE user_id = $1
        ORDER BY started_at DESC NULLS LAST
@@ -18451,6 +18502,19 @@ async function resolveCompatSubscriptionStatus(
     if (row) {
       const plan = getCompatPlatformSubscriptionPlan(row.plan_id);
       const normalizedStatus = readString(row.status) || "inactive";
+      // Bruk den lagrede ekte periodeslutten; ellers estimat med RIKTIG syklus
+      // (ikke hardkodet 30 dager, som bommet på årsplaner).
+      const startedIso = row.started_at
+        ? new Date(row.started_at).toISOString()
+        : null;
+      const periodEnd = row.next_billing_date
+        ? new Date(row.next_billing_date).toISOString()
+        : startedIso
+          ? addBillingCycleIso(
+              startedIso,
+              normalizeCreatorHubBillingCycle(row.billing_cycle),
+            )
+          : null;
       return buildCompatSubscriptionStatus(userId, plan, {
         selectedPlan: plan?.id ?? null,
         planName: plan?.displayName ?? null,
@@ -18458,15 +18522,9 @@ async function resolveCompatSubscriptionStatus(
           normalizedStatus === "active" || normalizedStatus === "trial",
         paymentCompleted:
           normalizedStatus === "active" || normalizedStatus === "trial",
-        memberSince: row.started_at
-          ? new Date(row.started_at).toISOString()
-          : null,
-        nextBillingDate: row.started_at
-          ? addDaysIso(new Date(row.started_at).toISOString(), 30)
-          : null,
-        accessUntil: row.started_at
-          ? addDaysIso(new Date(row.started_at).toISOString(), 30)
-          : null,
+        memberSince: startedIso,
+        nextBillingDate: periodEnd,
+        accessUntil: periodEnd,
         autoRenew: row.auto_renew !== false,
         email,
         source: "database",
@@ -19046,6 +19104,19 @@ async function syncCompatUserSubscriptionRecord(
     return;
   }
 
+  // Lagre faktureringssyklus + ekte periodeslutt slik at fallback-resolveren
+  // slipper å hardkode 30 dager (som bommer på årsplaner). Foretrekk den ekte
+  // Stripe-datoen (metadata.currentPeriodEnd), ellers estimat med RIKTIG syklus.
+  const subMeta = normalizeJsonObjectField(record.metadata) || {};
+  const subBillingCycle = normalizeCreatorHubBillingCycle(subMeta.billingCycle);
+  const subPeriodEnd =
+    typeof subMeta.currentPeriodEnd === "string" && subMeta.currentPeriodEnd
+      ? subMeta.currentPeriodEnd
+      : addBillingCycleIso(
+          record.completedAt || record.createdAt,
+          subBillingCycle,
+        );
+
   const existing = await pool.query(
     `SELECT id
      FROM user_subscriptions
@@ -19060,18 +19131,20 @@ async function syncCompatUserSubscriptionRecord(
     await pool.query(
       `UPDATE user_subscriptions
        SET status = 'active',
-           auto_renew = true
+           auto_renew = true,
+           billing_cycle = $2,
+           next_billing_date = $3
        WHERE id = $1`,
-      [existing.rows[0]?.id],
+      [existing.rows[0]?.id, subBillingCycle, subPeriodEnd],
     );
     return;
   }
 
   await pool.query(
     `INSERT INTO user_subscriptions
-      (user_id, plan_id, status, started_at, auto_renew)
-     VALUES ($1, $2, 'active', NOW(), true)`,
-    [record.userId, planId],
+      (user_id, plan_id, status, started_at, auto_renew, billing_cycle, next_billing_date)
+     VALUES ($1, $2, 'active', NOW(), true, $3, $4)`,
+    [record.userId, planId, subBillingCycle, subPeriodEnd],
   );
 }
 
@@ -19172,10 +19245,18 @@ async function recordCompatPaymentCompletion(
   const billingCycle = normalizeCreatorHubBillingCycle(
     normalizeJsonObjectField(record.metadata)?.billingCycle,
   );
-  const currentPeriodEnd = addBillingCycleIso(
-    record.completedAt || record.createdAt,
-    billingCycle,
-  );
+  // Foretrekk den EKTE Stripe-periodeslutten (current_period_end) når den er
+  // lagret på betalings-recorden (settes i markCreatorHubStripeCheckoutRecordPaid).
+  // Ellers falltilbake til estimat (completedAt + faktureringssyklus). Estimatet
+  // bommer på trial/proration; den ekte verdien er korrekt.
+  const metaPeriodEnd = normalizeJsonObjectField(record.metadata)?.currentPeriodEnd;
+  const currentPeriodEnd =
+    typeof metaPeriodEnd === "string" && metaPeriodEnd
+      ? metaPeriodEnd
+      : addBillingCycleIso(
+          record.completedAt || record.createdAt,
+          billingCycle,
+        );
   const history = await readCompatPaymentHistory(record.userId);
   const nextHistory = [
     {
@@ -19229,6 +19310,10 @@ async function recordCompatPaymentCompletion(
       email: record.email,
       autoRenew: true,
       source: "compat",
+      stripeSubscriptionId:
+        (normalizeJsonObjectField(record.metadata)?.stripeSubscriptionId as
+          | string
+          | undefined) || null,
     },
   );
   await writeCompatSubscriptionStatus(record.userId, nextSubscriptionStatus);
@@ -25862,6 +25947,57 @@ app.get("/api/enterprise/team/:organizationId/members", async (req, res) => {
   }
 });
 
+// GET /api/enterprise/my-membership — innlogget brukers aktive Enterprise-medlemskap.
+// Frontend (useEnterpriseFeatureAccess, useTeamAccess, GettingStartedChecklist)
+// spør dette for å avgjøre team-/Enterprise-tilgang. Manglet tidligere → alle
+// falt til «ikke enterprise». Leser enterprise_team_members på user_id, med
+// e-post-fallback (invitert på e-post før konto-kobling).
+app.get("/api/enterprise/my-membership", async (req, res) => {
+  try {
+    const userId = getUserIdFromAuth(req) || compatResolveUserId(req);
+    if (!userId) {
+      res.json({ membership: null });
+      return;
+    }
+    let email: string | null = null;
+    try {
+      const u = await pool.query(
+        `SELECT email FROM users WHERE id = $1 LIMIT 1`,
+        [userId],
+      );
+      email = u.rows[0]?.email ? String(u.rows[0].email).toLowerCase() : null;
+    } catch {
+      /* e-post-fallback er valgfri */
+    }
+    const r = await pool.query(
+      `SELECT id, organization_id, email, role, status
+         FROM enterprise_team_members
+        WHERE status = 'active'
+          AND (user_id = $1 OR ($2::text IS NOT NULL AND LOWER(email) = $2))
+        ORDER BY (role = 'admin') DESC, joined_at DESC NULLS LAST, invited_at DESC
+        LIMIT 1`,
+      [userId, email],
+    );
+    const row = r.rows[0];
+    if (!row) {
+      res.json({ membership: null });
+      return;
+    }
+    res.json({
+      membership: {
+        id: row.id,
+        organizationId: row.organization_id,
+        email: row.email,
+        role: row.role,
+        status: row.status,
+      },
+    });
+  } catch (err) {
+    console.error("my-membership error:", (err as any)?.message);
+    res.json({ membership: null });
+  }
+});
+
 // Platform stats
 
 // ============================================================================
@@ -26839,6 +26975,30 @@ async function markCreatorHubStripeCheckoutRecordPaid(
       : null) ||
     (await readCompatPaymentStatusRecord(`pay_${record.sessionId}`));
 
+  // Hent den EKTE periodeslutten fra Stripe-abonnementet (håndterer trial/
+  // proration korrekt) i stedet for completedAt+syklus-estimatet. Best-effort.
+  let realStripePeriodEnd: string | null = null;
+  if (nextRecord.stripeSubscriptionId) {
+    try {
+      const stripeClient = getCreatorHubStripeClient();
+      if (stripeClient) {
+        const sub = await stripeClient.subscriptions.retrieve(
+          nextRecord.stripeSubscriptionId,
+        );
+        const periodEnd = (sub as unknown as { current_period_end?: number })
+          .current_period_end;
+        if (typeof periodEnd === "number" && periodEnd > 0) {
+          realStripePeriodEnd = new Date(periodEnd * 1000).toISOString();
+        }
+      }
+    } catch (e) {
+      console.warn(
+        "Stripe current_period_end-oppslag feilet:",
+        (e as any)?.message,
+      );
+    }
+  }
+
   const compatRecord: CompatPaymentStatusRecord = {
     id: existingPaymentRecord?.id || `pay_${record.sessionId}`,
     transactionId: input.transactionId,
@@ -26863,12 +27023,64 @@ async function markCreatorHubStripeCheckoutRecordPaid(
       stripeSessionId: nextRecord.sessionId,
       stripeSubscriptionId: nextRecord.stripeSubscriptionId,
       stripeCustomerId: nextRecord.stripeCustomerId,
+      // Ekte Stripe-periodeslutt (foretrekkes over estimat i
+      // recordCompatPaymentCompletion). null → estimat brukes.
+      ...(realStripePeriodEnd ? { currentPeriodEnd: realStripePeriodEnd } : {}),
     },
     receiptSentAt: existingPaymentRecord?.receiptSentAt || null,
     membershipCard: existingPaymentRecord?.membershipCard || null,
   };
 
   await recordCompatPaymentCompletion(compatRecord);
+
+  // Enterprise-kjøp → gi kjøperen et aktivt org-medlemskap (admin), slik at
+  // team-/Enterprise-gatene (useTeamAccess, «Inviter team», Easeverse-band)
+  // faktisk slår inn. Uten dette er et fullført Enterprise-kjøp ≠ tilgang.
+  // Deterministisk org-id (org_<userId>) → idempotent på (org, e-post).
+  if (nextRecord.planId === "enterprise" && nextRecord.userId) {
+    try {
+      const orgId = `org_${nextRecord.userId}`;
+      const memberEmail =
+        (nextRecord.email && nextRecord.email.trim()) ||
+        `${nextRecord.userId}@enterprise.local`;
+      await pool.query(
+        `INSERT INTO enterprise_team_members
+           (organization_id, user_id, email, role, status, invited_by, invited_at, joined_at)
+         VALUES ($1, $2, $3, 'admin', 'active', $2, NOW(), NOW())
+         ON CONFLICT (organization_id, email)
+         DO UPDATE SET user_id = EXCLUDED.user_id, role = 'admin', status = 'active',
+                       joined_at = COALESCE(enterprise_team_members.joined_at, NOW()),
+                       updated_at = NOW()`,
+        [orgId, nextRecord.userId, memberEmail],
+      );
+    } catch (e) {
+      console.warn(
+        "Enterprise-medlemskap-grant feilet:",
+        (e as any)?.message,
+      );
+    }
+  }
+
+  // Profesjons-endring krever betaling: fri-veien (PATCH /api/user/profile +
+  // branding) er låst via COALESCE-guard, men et fullført kjøp der brukeren
+  // valgte en profesjon SKAL kunne endre den. Dette er server-håndhevelsen —
+  // betalingen ER gaten, så her overskriver vi (uten COALESCE).
+  if (nextRecord.profession && nextRecord.userId) {
+    try {
+      const canon = canonicalizeProfession(nextRecord.profession);
+      if (canon) {
+        await pool.query(
+          `UPDATE users SET profession = $1, updated_at = now() WHERE id = $2`,
+          [canon, nextRecord.userId],
+        );
+      }
+    } catch (e) {
+      console.warn(
+        "Betalt profesjons-endring feilet:",
+        (e as any)?.message,
+      );
+    }
+  }
 
   if (nextRecord.email && (wasPaymentFailed || wasPendingPayment)) {
     const recipient = await resolveCreatorHubBillingRecipientContext(nextRecord);

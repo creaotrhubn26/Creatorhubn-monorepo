@@ -22,6 +22,7 @@ import { useWorkspaceCategory } from '../useWorkspaceCategory';
 import { WsCard, WsSectionTitle, WsRing, WsBar, WsImageGrid } from '../ui';
 import { crewIcon, wsIcon } from '../crewIcons';
 import WorkspaceChatPanel from '../WorkspaceChatPanel';
+import GettingStartedChecklist from '../../onboarding/GettingStartedChecklist';
 import { useProjectImages } from '../useProjectImages';
 import { useCaptureRealtime } from '../useCaptureRealtime';
 import { useWsLocale, makeT, wsDateLocale, type WsDict } from '../wsLocale';
@@ -381,6 +382,10 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
     <Stack direction="row" spacing={2.5} sx={{ alignItems: 'stretch' }}>
       {/* ───────── Hovedkolonne ───────── */}
       <Box sx={{ flex: 1, minWidth: 0 }}>
+        {/* «Kom i gang»-sjekkliste: gjør brukeren workspace-klar (profil, prosjekt,
+            team, verktøy). Leser ekte tilstand, lukkbar, skjuler seg selv når alt
+            er ferdig. projectId gjør team-sjekk/-lenke prosjekt-bevisst. */}
+        <GettingStartedChecklist projectId={projectId} profession={profession} />
         {/* Fremdrift */}
         <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 2 }}>
           <Typography sx={{ fontSize: 13, color: ws.textDim }}>{t('progressLabel')}</Typography>
