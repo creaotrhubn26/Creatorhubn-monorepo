@@ -80,8 +80,12 @@ async function deliverAPNs(
   token: string,
   title: string,
   body: string,
+  customData?: Record<string, unknown>,
 ): Promise<{ sent: boolean; reason?: string; shouldDisable?: boolean }> {
-  const r = await sendAPNs(token, title, body);
+  // customData bæres inn i aps-payloaden slik at iPad-tap-routeren kan
+  // deep-linke (event_type/lead_id/deep_link). Uten dette hadde hvert
+  // push tomt payload → tap kunne aldri rute (Notification-QA 2026-07-06).
+  const r = await sendAPNs(token, title, body, { customData });
   return {
     sent: r.sent,
     reason: r.reason,
@@ -129,7 +133,12 @@ export async function dispatchNotification(
       [recipientUserId],
     );
     for (const t of tokRes.rows) {
-      const r = await deliverAPNs(t.token, title, body);
+      const r = await deliverAPNs(t.token, title, body, {
+        event_type: eventType,
+        ...(leadId ? { lead_id: leadId } : {}),
+        ...(deepLink ? { deep_link: deepLink } : {}),
+        notification_id: notificationId,
+      });
       if (r.sent) {
         apnsSent = true;
         break;

@@ -184,6 +184,13 @@ struct LeadgridTabHeader<Extra: View>: View {
             }
         }
         .frame(height: 60)
+        // Varsel-tap (Notification-QA 2026-07-06): den delte headeren er
+        // montert på hver fane → pålitelig lytter. Åpner inboksen + frisker
+        // opp, og nil-er tappen (første header konsumerer; de andre ser nil).
+        .onChange(of: state.pendingNotificationTap == nil) { _, isNil in
+            if !isNil { consumeNotificationTap() }
+        }
+        .onAppear { if state.pendingNotificationTap != nil { consumeNotificationTap() } }
         .sheet(isPresented: $myProfileOpen) {
             MyProfileSheet(name: state.displayName,
                            email: state.userEmail,
@@ -460,6 +467,14 @@ struct LeadgridTabHeader<Extra: View>: View {
         NotificationsView()
             .adaptivePopoverFrame(width: 400, height: 560)
             .presentationCompactAdaptation(DeviceIdiom.isPhone ? .sheet : .popover)
+    }
+
+    /// Konsumer et push-varsel-tap: åpne inboksen + frisk opp tellingen,
+    /// og nil-ut tappen så andre monterte headere ikke dobbelt-håndterer.
+    private func consumeNotificationTap() {
+        state.pendingNotificationTap = nil
+        notificationsOpen = true
+        Task { await state.refreshLeadgridNotifications() }
     }
 
     // MARK: Knapper

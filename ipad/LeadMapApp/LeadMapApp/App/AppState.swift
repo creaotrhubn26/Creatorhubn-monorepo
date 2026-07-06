@@ -260,6 +260,12 @@ final class AppState {
     var roleInOrg: String?
     var locationConsentGranted: Bool = false
 
+    // ── Varsel-tap (Notification-QA 2026-07-06) ─────────────────
+    /// Settes når brukeren tapper et push-varsel. Den delte header-en
+    /// (montert på hver fane) observerer og åpner varsel-inboksen. Nil-es
+    /// etter konsum. Buffres for cold-start-tap via AppStateBridge.
+    var pendingNotificationTap: [String: String]?
+
     // ── Super-admin (fase 18) ──────────────────────────────────
     /// User-level role fra /api/auth/user (uavhengig av active org).
     /// 'super_admin' låser opp SuperAdminHub for Daniel's B2B-pipeline.
