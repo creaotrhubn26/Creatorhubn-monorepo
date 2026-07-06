@@ -1338,7 +1338,11 @@ export function setupResumeRoutes(deps: ResumeRoutesDeps): void {
     if ("targetIndustry" in body)
       push("target_industry", asString(body.targetIndustry));
     if ("status" in body) push("status", asString(body.status, "draft"));
-    if ("isPublic" in body) push("is_public", readBoolean(body.isPublic));
+    // isPublic er bevisst IKKE støttet her — den må gå via POST
+    // /api/resumes/:id/publish, som setter public_url sammen med
+    // is_public. Denne generiske PATCH-en satte tidligere is_public
+    // uten public_url, som brakk del-lenken (se ResumeBuilder.tsx
+    // handleTogglePublicResume).
     if ("keywords" in body && Array.isArray(body.keywords))
       push("keywords", body.keywords);
     if ("language" in body) push("language", asString(body.language, "no"));

@@ -34,7 +34,7 @@
       "./client/src/types"
     ],
     "paths": {
-      "@/*": ["client/src/components/creatorhubvirtualstudio/src/*", "client/src/*"],
+      "@/*": ["client/src/*"],
       "@shared/*": ["shared/*"]
     }
   }

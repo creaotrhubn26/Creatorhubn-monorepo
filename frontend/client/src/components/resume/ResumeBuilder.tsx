@@ -3687,12 +3687,20 @@ export default function ResumeBuilder() {
     });
   }, [selectedResume, handleUpdateResume, analytics, user?.id]);
 
-  const handleTogglePublicResume = useCallback((isPublic: boolean) => {
+  const handleTogglePublicResume = useCallback(async (isPublic: boolean) => {
     if (!selectedResume) return;
-    const url = isPublic ? publicResumeUrl : undefined;
-    setSelectedResume({ ...selectedResume, isPublic, publicUrl: url });
-    handleUpdateResume({ isPublic, publicUrl: url });
-  }, [selectedResume, handleUpdateResume, publicResumeUrl]);
+    try {
+      const res = await apiRequest(`/api/resumes/${selectedResume.id}/publish`, {
+        method: 'POST',
+        headers: { 'x-user-id': user?.id || '', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isPublic }),
+      });
+      setSelectedResume({ ...selectedResume, isPublic: res.isPublic, publicUrl: res.publicUrl });
+    } catch (err) {
+      console.error('Kunne ikke endre offentlig synlighet', err);
+      setSnackbar({ open: true, severity: 'error', message: 'Kunne ikke endre offentlig synlighet.' });
+    }
+  }, [selectedResume, user?.id]);
 
   const handleCopyPublicUrl = useCallback(() => {
     if (!publicResumeUrl) return;
