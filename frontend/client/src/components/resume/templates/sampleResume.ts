@@ -74,8 +74,8 @@ export const SAMPLE_RESUME = {
     { id: 'l3', name: 'Tysk', proficiency: 'Middels' },
   ],
   certifications: [
-    { id: 'c1', name: 'PRINCE2 Practitioner', issuer: 'AXELOS', date: '2020-05' },
-    { id: 'c2', name: 'Certified ScrumMaster', issuer: 'Scrum Alliance', date: '2019-03' },
+    { id: 'c1', name: 'PRINCE2 Practitioner', issuer: 'AXELOS', issueDate: '2020-05-01' },
+    { id: 'c2', name: 'Certified ScrumMaster', issuer: 'Scrum Alliance', issueDate: '2019-03-01' },
   ],
 } as const;
 

@@ -15,6 +15,7 @@ import {
   Divider,
   Grid,
   Stack,
+  Avatar,
 } from '@mui/material';
 import MailOutlineIcon from '@mui/icons-material/MailOutline';
 import PhoneIphoneIcon from '@mui/icons-material/PhoneIphone';
