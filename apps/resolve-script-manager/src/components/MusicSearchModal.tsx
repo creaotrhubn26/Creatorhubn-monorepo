@@ -137,7 +137,7 @@ export function MusicSearchModal({ sourceVideo, onClose, onSelect, initialQuery,
       if (val?.providerStatuses) setProviderStatuses(val.providerStatuses);
       if (val?.providersAvailable) setProvidersAvailable(val.providersAvailable);
     } catch (err) {
-      setSearchError(String(err));
+      setSearchError('Søk feilet: ' + (err instanceof Error ? err.message : String(err)));
     } finally {
       setSearchBusy(false);
     }
@@ -168,7 +168,7 @@ export function MusicSearchModal({ sourceVideo, onClose, onSelect, initialQuery,
         setDownloadError("Ingen WAV-path returnert");
       }
     } catch (err) {
-      setDownloadError(String(err));
+      setDownloadError('Nedlasting feilet: ' + (err instanceof Error ? err.message : String(err)));
     } finally {
       setDownloadingId(null);
     }

@@ -145,9 +145,12 @@ export function StoryView({
             ← Tilbake til prosjekt
           </button>
           <div style={wizardSteps}>
+            {/* Fase-indikator: steg 1 (bygge historien) er gjeldende fase her; steg 2
+                lyser når brukeren faktisk har engasjert et beat (forhåndsvisning).
+                Steg 3–4 skjer etter «Start redigering». Ikke lenger hardkodet «fullført». */}
             <WizardStep n={1} label="Velg segmenter" active />
             <span style={wizardStepSeparator} />
-            <WizardStep n={2} label="Forhåndsvisning" active />
+            <WizardStep n={2} label="Forhåndsvisning" active={!!focusedBeatId} />
             <span style={wizardStepSeparator} />
             <WizardStep n={3} label="Redigering" />
             <span style={wizardStepSeparator} />

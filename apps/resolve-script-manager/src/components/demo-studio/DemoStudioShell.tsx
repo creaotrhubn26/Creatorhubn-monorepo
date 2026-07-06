@@ -1529,11 +1529,11 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                       } else {
                         setRecording(false);
                       }
-                    }}>✓ Mark as Done</button>
+                    }}>✓ Merk som ferdig</button>
                   <button style={{ ...outlineBtn, width: '100%', marginBottom: 8 }}
-                    onClick={async () => { retakeCurrent(); await startForCurrent(); }}>↺ Retake</button>
+                    onClick={async () => { retakeCurrent(); await startForCurrent(); }}>↺ Ta på nytt</button>
                   <button style={{ ...outlineBtn, width: '100%', marginBottom: 8, opacity: recorderStepIndex >= scenes.length - 1 ? 0.5 : 1 }} disabled={recorderStepIndex >= scenes.length - 1}
-                    onClick={async () => { if (rec.state === 'recording') await rec.stopAndSave(project.id, recorderScene.id).then((pth) => pth && updateScene(recorderScene.id, { recordingPath: pth })); nextStep(); await startForCurrent(); }}>→ Next Step</button>
+                    onClick={async () => { if (rec.state === 'recording') await rec.stopAndSave(project.id, recorderScene.id).then((pth) => pth && updateScene(recorderScene.id, { recordingPath: pth })); nextStep(); await startForCurrent(); }}>→ Neste steg</button>
                   <button style={{ ...outlineBtn, width: '100%', marginBottom: 8, opacity: autoBusy ? 0.6 : 1 }} disabled={autoBusy}
                     onClick={() => void autoRunCurrent()}
                     title="La systemet utføre handlingen automatisk på target-elementet (continueMode: auto)">

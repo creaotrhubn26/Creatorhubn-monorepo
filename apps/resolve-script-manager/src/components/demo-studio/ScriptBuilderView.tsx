@@ -296,15 +296,15 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
                       onChange={(e) => updateScene(selected.id, { requiredAction: e.target.value })} />
                   </div>
                   <div style={{ display: 'flex', gap: 10 }}>
-                    <div style={{ flex: 1, minWidth: 0 }}><Lab>Validation</Lab>
+                    <div style={{ flex: 1, minWidth: 0 }}><Lab>Validering</Lab>
                       <input style={{ ...inp, width: '100%', marginTop: 4 }} value={selected.validationRule ?? ''} placeholder="Vent til modal åpnes"
                         onChange={(e) => updateScene(selected.id, { validationRule: e.target.value })} />
                     </div>
-                    <div><Lab>Fallback</Lab>
+                    <div><Lab>Reserveløsning</Lab>
                       <select style={{ ...miniSel, minWidth: 150, display: 'block', marginTop: 4 }} value={selected.fallback ?? 'retake'}
                         onChange={(e) => updateScene(selected.id, { fallback: e.target.value as 'retake' | 'manual' | 'skip' })}>
-                        <option value="retake">Retake scene</option>
-                        <option value="manual">Mark manually done</option>
+                        <option value="retake">Ta scenen på nytt</option>
+                        <option value="manual">Merk manuelt som ferdig</option>
                         <option value="skip">Hopp over scenen</option>
                       </select>
                     </div>
