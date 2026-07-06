@@ -2205,6 +2205,16 @@ extension APIClient {
         )
     }
 
+    /// GDPR: last ned mine data (rå JSON-streng). Session-scopet.
+    func fetchMyDataExport() async throws -> String {
+        var req = URLRequest(url: baseURL.appendingPathComponent("/api/leadgrid/me/export"))
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        guard let http = resp as? HTTPURLResponse else { throw APIError.invalidResponse }
+        guard http.statusCode == 200 else { throw APIError.statusCode(http.statusCode) }
+        return String(data: data, encoding: .utf8) ?? "{}"
+    }
+
     /// Egen orgs entitlements (kunde-siden av løkka — leses ved bootstrap
     /// og ved org-bytte). `organizationId` scoper til AKTIV org for
     /// multi-org-brukere (ellers server-resolvet primær-org).

@@ -4301,8 +4301,34 @@ struct MyProfileSheet: View {
     let leads: [LeadModel]
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
+    @Environment(\.openURL) private var openURL
     @State private var editing = false
     @State private var topSellersOpen = false
+    // «Last ned mine data» (GDPR) — ekte eksport fra backend.
+    @State private var exporting = false
+    @State private var exportJSON: String?
+    @State private var showExportShare = false
+    @State private var exportError: String?
+
+    /// Konto-sikkerhet (passord/2FA) styres på web-kontoen — iPad logger
+    /// inn via paring/Google, så disse er ærlige lenker dit, ikke native.
+    private let webAccountBase = "https://theroleroom.com/innstillinger"
+
+    private func downloadMyData() {
+        guard let api = appState.api else { return }
+        exporting = true
+        exportError = nil
+        Task {
+            do {
+                exportJSON = try await api.fetchMyDataExport()
+                showExportShare = true
+            } catch {
+                exportError = "Kunne ikke laste ned data"
+            }
+            exporting = false
+        }
+    }
 
     private var initials: String {
         let parts = name.split(separator: " ")
@@ -4932,31 +4958,73 @@ struct MyProfileSheet: View {
 
     private var actionRows: some View {
         VStack(spacing: 10) {
-            actionRow(icon: "lock.fill", color: Brand.purple, label: "Endre passord")
-            actionRow(icon: "key.fill", color: Brand.blue, label: "Tofaktor-autentisering")
-            actionRow(icon: "arrow.down.doc.fill", color: Brand.green, label: "Last ned mine data")
+            // Passord + 2FA styres på web-kontoen (native paring/Google-
+            // login på iPad) → ærlige lenker, ikke døde rader.
+            actionRow(icon: "lock.fill", color: Brand.purple,
+                      label: "Endre passord", trailingIcon: "arrow.up.right") {
+                if let url = URL(string: webAccountBase) { openURL(url) }
+            }
+            actionRow(icon: "key.fill", color: Brand.blue,
+                      label: "Tofaktor-autentisering", trailingIcon: "arrow.up.right") {
+                if let url = URL(string: "\(webAccountBase)/sikkerhet") { openURL(url) }
+            }
+            actionRow(icon: "arrow.down.doc.fill", color: Brand.green,
+                      label: "Last ned mine data",
+                      trailingIcon: exporting ? nil : "chevron.right",
+                      showSpinner: exporting) {
+                downloadMyData()
+            }
+            if let exportError {
+                Text(exportError).font(.appScaled(size: 11)).foregroundStyle(Brand.red)
+            }
+        }
+        .sheet(isPresented: $showExportShare) {
+            if let json = exportJSON, let fileURL = exportFileURL(json) {
+                ShareSheet(items: [fileURL])
+            }
         }
     }
 
-    private func actionRow(icon: String, color: Color, label: String) -> some View {
-        HStack(spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 9).fill(color.opacity(0.22))
-                Image(systemName: icon).font(.appScaled(size: 14, weight: .semibold))
-                    .foregroundStyle(color)
+    /// Skriv JSON til en temp-fil så ShareLink/AirDrop/Filer får et ekte
+    /// dokument (ikke bare en råstreng).
+    private func exportFileURL(_ json: String) -> URL? {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("leadgrid-mine-data.json")
+        try? json.data(using: .utf8)?.write(to: url)
+        return url
+    }
+
+    private func actionRow(
+        icon: String, color: Color, label: String,
+        trailingIcon: String? = "chevron.right",
+        showSpinner: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 9).fill(color.opacity(0.22))
+                    Image(systemName: icon).font(.appScaled(size: 14, weight: .semibold))
+                        .foregroundStyle(color)
+                }
+                .frame(width: 34, height: 34)
+                Text(label)
+                    .font(.appScaled(size: 14, weight: .medium))
+                    .foregroundStyle(.white)
+                Spacer()
+                if showSpinner {
+                    ProgressView().tint(Brand.textTertiary)
+                } else if let trailingIcon {
+                    Image(systemName: trailingIcon)
+                        .font(.appScaled(size: 11, weight: .semibold))
+                        .foregroundStyle(Brand.textTertiary)
+                }
             }
-            .frame(width: 34, height: 34)
-            Text(label)
-                .font(.appScaled(size: 14, weight: .medium))
-                .foregroundStyle(.white)
-            Spacer()
-            Image(systemName: "chevron.right")
-                .font(.appScaled(size: 11, weight: .semibold))
-                .foregroundStyle(Brand.textTertiary)
+            .padding(.horizontal, 14).padding(.vertical, 12)
+            .background(Brand.card, in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Brand.stroke, lineWidth: 1))
         }
-        .padding(.horizontal, 14).padding(.vertical, 12)
-        .background(Brand.card, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Brand.stroke, lineWidth: 1))
+        .buttonStyle(.plain)
     }
 }
 
