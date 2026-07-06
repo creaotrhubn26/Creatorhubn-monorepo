@@ -179,18 +179,18 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
 
     await pool.query(
       `UPDATE crm_customers SET
-         assigned_team_leader_id = $1,
-         assignment_note = COALESCE($2, assignment_note),
+         assigned_team_leader_id = $1::text,
+         assignment_note = COALESCE($2::text, assignment_note),
          assignment_chain = COALESCE(assignment_chain, '[]'::jsonb)
                             || jsonb_build_object(
                                  'type', 'team_leader',
-                                 'user_id', $1,
-                                 'by_user_id', $3,
+                                 'user_id', $1::text,
+                                 'by_user_id', $3::text,
                                  'at', now()::text,
-                                 'note', $2
+                                 'note', $2::text
                                ),
          updated_at = now()
-       WHERE id = $4`,
+       WHERE id = $4::uuid`,
       [team_leader_user_id, note ?? null, s.userId, req.params.id],
     );
 
@@ -277,20 +277,20 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
 
     await pool.query(
       `UPDATE crm_customers SET
-         assigned_user_id = $1,
-         assigned_by_user_id = $2,
+         assigned_user_id = $1::text,
+         assigned_by_user_id = $2::text,
          assigned_at = now(),
-         assignment_note = COALESCE($3, assignment_note),
+         assignment_note = COALESCE($3::text, assignment_note),
          assignment_chain = COALESCE(assignment_chain, '[]'::jsonb)
                             || jsonb_build_object(
                                  'type', 'rep',
-                                 'user_id', $1,
-                                 'by_user_id', $2,
+                                 'user_id', $1::text,
+                                 'by_user_id', $2::text,
                                  'at', now()::text,
-                                 'note', $3
+                                 'note', $3::text
                                ),
          updated_at = now()
-       WHERE id = $4`,
+       WHERE id = $4::uuid`,
       [rep_user_id, s.userId, note ?? null, req.params.id],
     );
 
