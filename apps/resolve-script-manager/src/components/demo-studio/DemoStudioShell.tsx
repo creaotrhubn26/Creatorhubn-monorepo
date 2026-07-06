@@ -504,10 +504,13 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
         goToStep(i);
         const at = scene.actionType ?? 'click';
         if (!scene.targetSelector && !(scene.targetLocators?.length)) {
-          // Ubundet scene: scroll kan kjøres uten target; annet hoppes over.
-          if (at === 'scroll') { await sessionExec('', 'scroll'); updateScene(scene.id, { status: 'done' }); }
-          await sleepMs(800);
-          continue;
+          // Ubundet scene: scroll kan kjøres uten target. Annet (klikk o.l.) kan IKKE
+          // utføres uten et bundet element → marker + STOPP (ikke hopp stille over, som
+          // fikk økten til å se fullført ut mens scener aldri ble kjørt).
+          if (at === 'scroll') { await sessionExec('', 'scroll'); updateScene(scene.id, { status: 'done' }); await sleepMs(800); continue; }
+          updateScene(scene.id, { status: 'needs_review' });
+          window.alert(`Scene ${i + 1}${scene.targetLabel ? ` («${scene.targetLabel}»)` : ''}: mangler et bundet mål (element) — auto-kjøring stoppet. Bind scenen til et element og prøv igjen herfra.`);
+          break;
         }
         const r = await sessionExec(scene.targetSelector ?? '', at, undefined, scene.targetLocators);
         if (r?.ok && r.found) {
@@ -887,7 +890,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, fontFamily: C.font, background: C.bg, color: C.ink, fontSize: 13 }}>
       {/* ── Topbar (URL-input erstatter Search) ── */}
       <div style={topbarStyle}>
-        <div style={iconBtn} onClick={onClose} title="Tilbake til hjem">☰</div>
+        <div style={iconBtn} onClick={() => { if (recording && !window.confirm('Du har et pågående skjermopptak. Forlater du Demo Studio nå, forkastes opptaket. Fortsette?')) return; onClose?.(); }} title="Tilbake til hjem">☰</div>
         <div>
           <input style={{ ...titleField }} value={project.name} onChange={(e) => setProjectField('name', e.target.value)} />
           <div style={{ fontSize: 11, color: saveStatus === 'error' ? '#dc2626' : C.inkFaint, display: 'flex', alignItems: 'center', gap: 5, marginTop: 1 }}>
@@ -919,6 +922,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
             const sc = st.project?.scenes[st.recorderStepIndex];
             const ok = sc && st.project ? await rec.start(st.project.id, sc.id) : false;
             if (ok) setRecording(true);
+            else window.alert('Kunne ikke starte skjermopptak. Sjekk at appen har tillatelse til skjermopptak (Systeminnstillinger → Personvern og sikkerhet → Skjermopptak), og at en scene er valgt.');
           }}>● {rec.state === 'recording' ? 'Recording' : rec.state === 'saving' ? 'Lagrer…' : 'Record'}</button>
         <button style={{ ...btn, background: C.dark, color: '#fff', borderColor: C.dark }}
           onClick={() => { setStoryMode(false); setNav('export'); }}>Export <span>⌄</span></button>
@@ -1640,7 +1644,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                   </select>
 
                   <button style={{ ...outlineBtn, width: '100%', marginTop: 14, color: '#c4453b', borderColor: '#e6c5c2' }}
-                    disabled={scenes.length <= 1} onClick={() => removeScene(selected.id)}>Slett scene</button>
+                    disabled={scenes.length <= 1} onClick={() => { if (window.confirm('Slette denne scenen? Et eventuelt opptak på scenen fjernes også. Dette kan ikke angres.')) removeScene(selected.id); }}>Slett scene</button>
                 </>
               ) : null}
             </div>

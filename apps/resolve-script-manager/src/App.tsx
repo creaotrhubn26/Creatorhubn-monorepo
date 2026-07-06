@@ -1168,12 +1168,9 @@ export default function App() {
         />
       )}
 
-      {showSignIn && (
-        <RoleRoomSignInDialog
-          onClose={() => setShowSignIn(false)}
-          onSignedIn={() => { setShowSignIn(false); void silentAuthCheck(); }}
-        />
-      )}
+      {/* (Innloggings-dialogen rendres ÉN gang lenger opp, gated på !showFirstRun &&
+          showSignIn. En duplikat-render her ga to modaler oppå hverandre + to
+          pairing-forespørsler/-faner — fjernet.) */}
     </div>
   );
 }
