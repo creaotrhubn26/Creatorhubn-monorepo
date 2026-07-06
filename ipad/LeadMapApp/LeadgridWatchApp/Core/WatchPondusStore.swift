@@ -46,13 +46,18 @@ final class WatchPondusStore {
     func apply(_ next: [WatchPondusTemplate]) {
         self.templates = next
         self.lastSync = Date()
-        // Hvis aktiv mal fortsatt finnes, oppdater den (score kan ha endret seg).
-        if let current = activeTemplate,
-           let refreshed = next.first(where: { $0.id == current.id }) {
+        if next.isEmpty {
+            // Tom liste = iPhone gated bort Pondus (mistet tilgang) →
+            // fjern også aktiv mal, ellers henger et lynkort igjen i
+            // «Aktive steg»-fanen.
+            self.activeTemplate = nil
+        } else if let current = activeTemplate,
+                  let refreshed = next.first(where: { $0.id == current.id }) {
+            // Aktiv mal finnes fortsatt — oppdater (score kan ha endret seg).
             self.activeTemplate = refreshed
-        } else if activeTemplate == nil, let first = next.first {
-            // Auto-velg første mal så «Aktive steg»-fanen ikke er tom.
-            self.activeTemplate = first
+        } else if activeTemplate == nil || !next.contains(where: { $0.id == activeTemplate?.id }) {
+            // Ingen (gyldig) aktiv mal → auto-velg første så fanen ikke er tom.
+            self.activeTemplate = next.first
         }
         saveToDisk()
     }
