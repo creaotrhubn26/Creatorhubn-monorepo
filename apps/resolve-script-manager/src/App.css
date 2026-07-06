@@ -67,7 +67,9 @@ select, input[type="text"] {
 }
 select:focus, input:focus { outline: none; border-color: var(--accent); }
 
-.app { display: grid; grid-template-rows: auto 1fr auto; height: 100vh; }
+/* height:100% (kjeder fra #root=100% av vinduet), IKKE 100vh: i WKWebView oppdateres
+   ikke 100vh live under drag-resize → svart gap i bunnen. */
+.app { display: grid; grid-template-rows: auto 1fr auto; height: 100%; }
 
 .header {
   display: flex;

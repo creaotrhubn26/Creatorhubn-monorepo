@@ -1157,12 +1157,25 @@ export function InfographicStudioView(
   const onIframeLoad = () => {
     // Sentrer tidlig, og re-fit når innholdet (async chart-tegning) har satt seg.
     [60, 250, 550, 1000].forEach((d) => window.setTimeout(fitPreview, d));
-    // Autoplay KUN når brukeren nettopp valgte en scene — ikke midt i «Spill alt»
-    // eller rett etter en scrub (der posisjonen styres av playAll/scrub-effekten).
-    window.setTimeout(() => {
-      if (playingAllRef.current || performance.now() - recentScrubRef.current < 700) return;
+    // Driv ET SYNLIG bilde så snart iframen er klar. Uten dette står lerretet på
+    // setProgress(0) → alle kort har opacity:0 → BLANKT. setProgress kan bli definert
+    // SENT (den store bundlede font-<style> kan forsinke parsing forbi autoplay-
+    // vinduet), så vi RETRY-er til funksjonen finnes. Autoplay KUN når brukeren nettopp
+    // valgte scenen; ellers sett hvile-bildet (ikke re-autoplay midt i «Spill alt» eller
+    // rett etter en scrub — der styrer playAll/scrub-effekten posisjonen).
+    let driveTries = 0;
+    const drivePreview = () => {
+      const win = previewWin();
+      if (!win || typeof win.setProgress !== 'function') { if (driveTries++ < 30) window.setTimeout(drivePreview, 80); return; }
+      if (playingAllRef.current) return;
+      if (performance.now() - recentScrubRef.current < 700) {
+        const { p } = sceneAtTime(scrubT);
+        applyScrubFrame(scene, p > 0 ? p : 1);
+        return;
+      }
       play();
-    }, 250);
+    };
+    window.setTimeout(drivePreview, 200);
   };
   useEffect(() => () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); }, []);
   // Kollektiv læring: hent kollektive aggregater (inkrementelt) ved åpning +
@@ -1455,7 +1468,7 @@ export function InfographicStudioView(
   const tabBtn = (active: boolean): React.CSSProperties => ({ flex: 1, padding: '7px 0', textAlign: 'center', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: active ? D.ink : D.soft, background: active ? D.panel2 : 'transparent', borderBottom: `2px solid ${active ? D.accent : 'transparent'}` });
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minWidth: 0, background: D.bg, color: D.ink, fontFamily: 'Inter, system-ui, sans-serif' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%', minWidth: 0, background: D.bg, color: D.ink, fontFamily: 'Inter, system-ui, sans-serif' }}>
       {/* flexWrap: header-knappene (Preview/Spill alt/New Scene/Send to Resolve) tvang
           ellers studioet bredere enn smale vinduer → høyre Data-panel ble klippet. Wrap
           lar knappene bryte til ny linje i stedet, og minWidth:0 lar studioet krympe. */}

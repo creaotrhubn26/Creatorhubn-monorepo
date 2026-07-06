@@ -845,7 +845,7 @@ export default function App() {
           // innhold (518-mal-lista) BLÅSER OPP raden forbi 100vh og skyver bunnen
           // (tidslinje + filmstrip) UT AV vinduet. Med denne klemmes studioet til
           // rad-høyden og de indre panelene scroller/krymper som de skal.
-          <div style={{ minHeight: 0, overflow: "hidden", display: "flex" }}>
+          <div style={{ display: "grid", gridTemplateRows: "minmax(0,1fr)", gridTemplateColumns: "minmax(0,1fr)", overflow: "hidden" }}>
             <DemoStudioShell onClose={() => setView("pipeline")} />
           </div>
         ) : (
