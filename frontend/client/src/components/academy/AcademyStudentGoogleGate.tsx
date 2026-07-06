@@ -11,6 +11,7 @@ import {
 } from '@/lib/creatorhubGoogleAuth';
 import AcademyLoginModal from './AcademyLoginModal';
 import { readAcademyRedirectTarget } from './academyRedirectTarget';
+import { useAcademyLocale } from './academyLocale';
 
 interface AcademyStudentGoogleGateProps {
   children: React.ReactNode;
@@ -25,6 +26,7 @@ function AcademyStudentGoogleGate({ children }: AcademyStudentGoogleGateProps) {
     clearGoogleLoginError,
     isValidating,
   } = useCreatorHubStoredSession();
+  const { tt } = useAcademyLocale();
   const [isRedirecting, setIsRedirecting] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -81,7 +83,7 @@ function AcademyStudentGoogleGate({ children }: AcademyStudentGoogleGateProps) {
       setLocalError(
         error instanceof Error
           ? error.message
-          : 'Kunne ikke starte Google-innloggingen.',
+          : tt('Kunne ikke starte Google-innloggingen.', 'Could not start the Google login.'),
       );
     }
   }, [clearGoogleLoginError]);
@@ -106,14 +108,14 @@ function AcademyStudentGoogleGate({ children }: AcademyStudentGoogleGateProps) {
         <Stack spacing={1.25} alignItems="center" sx={{ color: '#edf0f7' }}>
           <CircularProgress size={26} sx={{ color: '#f8d56f' }} />
           <Typography sx={{ fontWeight: 600 }}>
-            Verifiserer studenttilgang...
+            {tt('Verifiserer studenttilgang...', 'Verifying student access...')}
           </Typography>
         </Stack>
       </Box>
     );
   }
 
-  const roleLabel = user?.roleLabel || user?.role || 'bruker';
+  const roleLabel = user?.roleLabel || user?.role || tt('bruker', 'user');
   const showRoleMismatch = authenticated && Boolean(user) && !hasStudentAcademyAccess;
 
   return (
@@ -157,12 +159,12 @@ function AcademyStudentGoogleGate({ children }: AcademyStudentGoogleGateProps) {
             </Box>
             <Stack spacing={0.25}>
               <Typography sx={{ fontSize: 24, fontWeight: 700, lineHeight: 1.1 }}>
-                Studentinnlogging kreves
+                {tt('Studentinnlogging kreves', 'Student login required')}
               </Typography>
               <Typography sx={{ color: 'rgba(237,240,247,0.64)', fontSize: 13 }}>
                 {showRoleMismatch
-                  ? 'Denne brukeren er ikke satt opp for studentflyten i Academy.'
-                  : 'Academy-studentsiden er kun tilgjengelig med verifisert Google-konto.'}
+                  ? tt('Denne brukeren er ikke satt opp for studentflyten i Academy.', 'This user is not set up for the student flow in Academy.')
+                  : tt('Academy-studentsiden er kun tilgjengelig med verifisert Google-konto.', 'The Academy student page is only available with a verified Google account.')}
               </Typography>
             </Stack>
           </Stack>
@@ -170,7 +172,7 @@ function AcademyStudentGoogleGate({ children }: AcademyStudentGoogleGateProps) {
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
             {user?.email ? (
               <Chip
-                label={`Nåværende økt: ${user.email}`}
+                label={`${tt('Nåværende økt', 'Current session')}: ${user.email}`}
                 sx={{
                   alignSelf: 'flex-start',
                   bgcolor: 'rgba(255,255,255,0.08)',
@@ -180,7 +182,7 @@ function AcademyStudentGoogleGate({ children }: AcademyStudentGoogleGateProps) {
             ) : null}
             {user?.role ? (
               <Chip
-                label={`Rolle: ${roleLabel}`}
+                label={`${tt('Rolle', 'Role')}: ${roleLabel}`}
                 sx={{
                   alignSelf: 'flex-start',
                   bgcolor: 'rgba(108,151,235,0.18)',
@@ -190,7 +192,7 @@ function AcademyStudentGoogleGate({ children }: AcademyStudentGoogleGateProps) {
             ) : null}
             {user?.profession ? (
               <Chip
-                label={`Profesjon: ${user.profession}`}
+                label={`${tt('Profesjon', 'Profession')}: ${user.profession}`}
                 sx={{
                   alignSelf: 'flex-start',
                   bgcolor: 'rgba(248,179,33,0.14)',
@@ -202,14 +204,16 @@ function AcademyStudentGoogleGate({ children }: AcademyStudentGoogleGateProps) {
 
           <Typography sx={{ color: 'rgba(237,240,247,0.82)', lineHeight: 1.6 }}>
             {showRoleMismatch
-              ? `Brukeren er tolket som ${academyAudience === 'instructor' ? 'instruktør' : 'admin'} basert på rolle og rettigheter fra admindashboardet. Bytt til en student-/standardbruker for å teste studentsiden, eller bruk admin-impersonation mot en studentkonto.`
-              : 'For å åpne studentoversikt, player, ressurser og oppgaver må brukeren autentiseres via Google. Andre lokale eller midlertidige økter slipper ikke gjennom denne flaten.'}
+              ? tt(
+                  `Brukeren er tolket som ${academyAudience === 'instructor' ? 'instruktør' : 'admin'} basert på rolle og rettigheter fra admindashboardet. Bytt til en student-/standardbruker for å teste studentsiden, eller bruk admin-impersonation mot en studentkonto.`,
+                  `The user is interpreted as ${academyAudience === 'instructor' ? 'instructor' : 'admin'} based on role and permissions from the admin dashboard. Switch to a student/standard user to test the student page, or use admin impersonation against a student account.`,
+                )
+              : tt('For å åpne studentoversikt, player, ressurser og oppgaver må brukeren autentiseres via Google. Andre lokale eller midlertidige økter slipper ikke gjennom denne flaten.', 'To open the student overview, player, resources and assignments, the user must be authenticated via Google. Other local or temporary sessions do not pass through this surface.')}
           </Typography>
 
           {isAdminImpersonation ? (
             <Alert severity="info">
-              Denne økten er startet via admin-impersonation og får derfor teste
-              studentflyten uten en egen Google redirect.
+              {tt('Denne økten er startet via admin-impersonation og får derfor teste studentflyten uten en egen Google redirect.', 'This session was started via admin impersonation and can therefore test the student flow without a separate Google redirect.')}
             </Alert>
           ) : null}
 
@@ -239,7 +243,7 @@ function AcademyStudentGoogleGate({ children }: AcademyStudentGoogleGateProps) {
                 boxShadow: '0 10px 24px rgba(248,179,33,0.24)',
               }}
             >
-              Logg inn
+              {tt('Logg inn', 'Log in')}
             </Button>
           ) : (
             <Button
@@ -259,7 +263,7 @@ function AcademyStudentGoogleGate({ children }: AcademyStudentGoogleGateProps) {
                 boxShadow: '0 10px 24px rgba(248,179,33,0.24)',
               }}
             >
-              {isRedirecting ? 'Sender deg til Google...' : 'Verifiser med Google'}
+              {isRedirecting ? tt('Sender deg til Google...', 'Sending you to Google...') : tt('Verifiser med Google', 'Verify with Google')}
             </Button>
           )}
         </Stack>
