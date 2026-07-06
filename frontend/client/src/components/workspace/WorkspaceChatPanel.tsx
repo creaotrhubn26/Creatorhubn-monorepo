@@ -224,7 +224,11 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
   const [apprLoading, setApprLoading] = useState(false);
   const [apprItems, setApprItems] = useState([]);
 
-  const scrollDown = () => requestAnimationFrame(() => endRef.current?.scrollIntoView({ behavior: 'smooth' }));
+  // Respekter prefers-reduced-motion (CSS dekker ikke JS-drevet smooth-scroll).
+  const scrollDown = () => requestAnimationFrame(() => {
+    const reduce = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    endRef.current?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth' });
+  });
   // Er brukeren allerede nederst? Da (og bare da) auto-scroller vi ved nye
   // meldinger — ellers stjeler pollet leseposisjonen når man leser historikk.
   const atBottom = () => { const el = listRef.current; return !el || el.scrollHeight - el.scrollTop - el.clientHeight < 80; };
