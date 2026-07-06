@@ -3,6 +3,9 @@ import HubIcon from '@mui/icons-material/Hub';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
 import NewsletterSignupBlock from './NewsletterSignupBlock';
+import BlockRenderer from '../../role-room/cms/BlockRenderer';
+import { useCmsBlocks } from '../../role-room/cms/useCmsBlocks';
+import { DEFAULT_LOCALE } from '../../role-room/cms/blockSchema';
 
 /**
  * /produksjons-os — kjerneposisjoneringen-pillar. Fronter setningen fra
@@ -152,6 +155,12 @@ const NOT_THIS: NotThis[] = [
 ];
 
 export function ProduksjonsOSPage() {
+  const cmsBlocks = useCmsBlocks('produksjons-os');
+
+  if (cmsBlocks) {
+    return <BlockRenderer blocks={cmsBlocks} locale={DEFAULT_LOCALE} />;
+  }
+
   return (
     <Box
       component="article"

@@ -1,6 +1,9 @@
 import { Box, Container, Stack, Typography } from '@mui/material';
 import SchoolIcon from '@mui/icons-material/School';
 import NewsletterSignupBlock from './NewsletterSignupBlock';
+import BlockRenderer from '../../role-room/cms/BlockRenderer';
+import { useCmsBlocks } from '../../role-room/cms/useCmsBlocks';
+import { DEFAULT_LOCALE } from '../../role-room/cms/blockSchema';
 
 /**
  * How-To Education-pillar — funnel-top SEO/GEO-side med praktisk selvtape-guide
@@ -57,6 +60,12 @@ const TECH_SETUP = [
 ];
 
 export function SelvtapeTipsPage() {
+  const cmsBlocks = useCmsBlocks('selvtape-tips');
+
+  if (cmsBlocks) {
+    return <BlockRenderer blocks={cmsBlocks} locale={DEFAULT_LOCALE} />;
+  }
+
   return (
     <Box
       component="article"

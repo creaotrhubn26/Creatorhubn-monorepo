@@ -1,6 +1,9 @@
 import { Box, Chip, Container, Stack, Typography } from '@mui/material';
 import GroupsIcon from '@mui/icons-material/Groups';
 import NewsletterSignupBlock from './NewsletterSignupBlock';
+import BlockRenderer from '../../role-room/cms/BlockRenderer';
+import { useCmsBlocks } from '../../role-room/cms/useCmsBlocks';
+import { DEFAULT_LOCALE } from '../../role-room/cms/blockSchema';
 
 /**
  * Crew i norsk filmbransje — Industry Data-pillar for crew-segmentet.
@@ -63,6 +66,12 @@ const WORKFLOW_PAIN: WorkflowPainPoint[] = [
 ];
 
 export function CrewINorgePage() {
+  const cmsBlocks = useCmsBlocks('crew-i-norge-2026');
+
+  if (cmsBlocks) {
+    return <BlockRenderer blocks={cmsBlocks} locale={DEFAULT_LOCALE} />;
+  }
+
   return (
     <Box
       component="article"

@@ -45,6 +45,9 @@ import type { TalentPortalIntent, TalentPortalSection } from '../utils/talentPor
 import { buildTalentPortalUrl } from '../utils/talentPortal';
 import RoleRoomBrandMark from './shared/RoleRoomBrandMark';
 import TalentConsentsSection from './TalentConsentsSection';
+import BlockRenderer from '../cms/BlockRenderer';
+import { useCmsBlocks } from '../cms/useCmsBlocks';
+import { DEFAULT_LOCALE } from '../cms/blockSchema';
 
 interface TalentPortalViewProps {
   intent?: TalentPortalIntent | null;
@@ -336,6 +339,10 @@ const buildGoogleCalendarHref = (
 };
 
 export default function TalentPortalView({ intent, onClose }: TalentPortalViewProps) {
+  // Optional CMS-editable welcome banner shown above the live dashboard —
+  // admins can add copy for this via AdminRoom (slug 'talentportal') without
+  // touching the dynamic portal data/functionality below it.
+  const cmsHeroBlocks = useCmsBlocks('talentportal');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [portalData, setPortalData] = useState<RoleRoomTalentPortalResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -820,6 +827,11 @@ export default function TalentPortalView({ intent, onClose }: TalentPortalViewPr
           },
         }}
       >
+        {cmsHeroBlocks && cmsHeroBlocks.length > 0 ? (
+          <Box sx={{ mb: 3 }}>
+            <BlockRenderer blocks={cmsHeroBlocks} locale={DEFAULT_LOCALE} />
+          </Box>
+        ) : null}
         <Box sx={{ ...cardSx, p: { xs: 2, md: 3 }, overflow: 'hidden' }}>
           <Stack spacing={3}>
             <Stack

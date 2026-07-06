@@ -27,6 +27,9 @@ import AutoAwesomeOutlinedIcon from '@mui/icons-material/AutoAwesomeOutlined';
 import LightbulbOutlinedIcon from '@mui/icons-material/LightbulbOutlined';
 import FlagOutlinedIcon from '@mui/icons-material/FlagOutlined';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import BlockRenderer from '../components/role-room/cms/BlockRenderer';
+import { useCmsBlocks } from '../components/role-room/cms/useCmsBlocks';
+import { DEFAULT_LOCALE } from '../components/role-room/cms/blockSchema';
 
 const palette = {
   bgRoot: '#0a0118',
@@ -70,6 +73,7 @@ const SLIDES: Slide[] = [
 ];
 
 export default function PitchDeckPage() {
+  const cmsBlocks = useCmsBlocks('pitch');
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [current, setCurrent] = useState(0);
@@ -126,6 +130,10 @@ export default function PitchDeckPage() {
 
   const SlideComponent = SLIDES[current].Component;
   const progress = ((current + 1) / SLIDES.length) * 100;
+
+  if (cmsBlocks) {
+    return <BlockRenderer blocks={cmsBlocks} locale={DEFAULT_LOCALE} />;
+  }
 
   return (
     <Box

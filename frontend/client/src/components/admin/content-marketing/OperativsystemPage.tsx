@@ -1,6 +1,9 @@
 import { Box, Chip, Container, Stack, Typography } from '@mui/material';
 import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
 import NewsletterSignupBlock from './NewsletterSignupBlock';
+import BlockRenderer from '../../role-room/cms/BlockRenderer';
+import { useCmsBlocks } from '../../role-room/cms/useCmsBlocks';
+import { DEFAULT_LOCALE } from '../../role-room/cms/blockSchema';
 
 /**
  * Offentlig versjon av operativsystemet bak The Role Room. Pillar-side
@@ -117,6 +120,12 @@ const FAQ: Array<{ q: string; a: string }> = [
 ];
 
 export function OperativsystemPage() {
+  const cmsBlocks = useCmsBlocks('operativsystem');
+
+  if (cmsBlocks) {
+    return <BlockRenderer blocks={cmsBlocks} locale={DEFAULT_LOCALE} />;
+  }
+
   return (
     <Box
       component="article"

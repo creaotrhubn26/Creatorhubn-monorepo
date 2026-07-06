@@ -15,6 +15,9 @@ import {
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import { useEffect, useState } from 'react';
+import BlockRenderer from '../components/role-room/cms/BlockRenderer';
+import { useCmsBlocks } from '../components/role-room/cms/useCmsBlocks';
+import { DEFAULT_LOCALE } from '../components/role-room/cms/blockSchema';
 
 const palette = {
   bgRoot: '#0a0118',
@@ -143,6 +146,7 @@ const FAQ: FAQItem[] = [
 const CATEGORIES = Array.from(new Set(FAQ.map((f) => f.category)));
 
 export default function AgencyFAQPage() {
+  const cmsBlocks = useCmsBlocks('faq');
   const theme = useTheme();
   const _isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [activeCategory, setActiveCategory] = useState<string>(CATEGORIES[0]);
@@ -187,6 +191,10 @@ export default function AgencyFAQPage() {
   }, []);
 
   const filteredFAQ = FAQ.filter((f) => f.category === activeCategory);
+
+  if (cmsBlocks) {
+    return <BlockRenderer blocks={cmsBlocks} locale={DEFAULT_LOCALE} />;
+  }
 
   return (
     <Box sx={{ bgcolor: palette.bgRoot, color: palette.textPrimary, minHeight: '100vh' }}>

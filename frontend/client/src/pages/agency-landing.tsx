@@ -32,6 +32,9 @@ import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import { useEffect, useState } from 'react';
 import { trackPageView, trackEvent } from '@/utils/ga4-client-tracking';
 import { fireGoogleAdsConversion } from '@/utils/google-ads-conversions';
+import BlockRenderer from '../components/role-room/cms/BlockRenderer';
+import { useCmsBlocks } from '../components/role-room/cms/useCmsBlocks';
+import { DEFAULT_LOCALE } from '../components/role-room/cms/blockSchema';
 
 // ── Design-tokens (samme palett som Talents-app) ──────────────────
 const palette = {
@@ -53,6 +56,7 @@ const palette = {
 };
 
 export default function AgencyLandingPage() {
+  const cmsBlocks = useCmsBlocks('for-byraer');
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
@@ -146,6 +150,10 @@ export default function AgencyLandingPage() {
       document.getElementById('agency-landing-jsonld')?.remove();
     };
   }, []);
+
+  if (cmsBlocks) {
+    return <BlockRenderer blocks={cmsBlocks} locale={DEFAULT_LOCALE} />;
+  }
 
   return (
     <Box

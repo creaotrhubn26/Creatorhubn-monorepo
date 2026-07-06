@@ -2,6 +2,9 @@ import { Box, Chip, Container, Stack, Typography } from '@mui/material';
 import MusicNoteIcon from '@mui/icons-material/MusicNote';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import NewsletterSignupBlock from './NewsletterSignupBlock';
+import BlockRenderer from '../../role-room/cms/BlockRenderer';
+import { useCmsBlocks } from '../../role-room/cms/useCmsBlocks';
+import { DEFAULT_LOCALE } from '../../role-room/cms/blockSchema';
 
 type PainPoint = {
   smerte: string;
@@ -74,6 +77,12 @@ const FUNCTIONS: FunctionItem[] = [
 ];
 
 export function DansestudioNorgePage() {
+  const cmsBlocks = useCmsBlocks('dansestudio-norge');
+
+  if (cmsBlocks) {
+    return <BlockRenderer blocks={cmsBlocks} locale={DEFAULT_LOCALE} />;
+  }
+
   return (
     <Box
       component="article"

@@ -1,6 +1,9 @@
 import { Box, Chip, Container, Stack, Typography } from '@mui/material';
 import CameraAltIcon from '@mui/icons-material/CameraAlt';
 import NewsletterSignupBlock from './NewsletterSignupBlock';
+import BlockRenderer from '../../role-room/cms/BlockRenderer';
+import { useCmsBlocks } from '../../role-room/cms/useCmsBlocks';
+import { DEFAULT_LOCALE } from '../../role-room/cms/blockSchema';
 
 /**
  * Kamera-folk og verktøy i norsk produksjon 2026 — Industry Data-pillar.
@@ -95,6 +98,12 @@ const WORKFLOW_PAINS: WorkflowPain[] = [
 ];
 
 export function KameraFolkVerktoyPage() {
+  const cmsBlocks = useCmsBlocks('kamera-folk-verktoy-2026');
+
+  if (cmsBlocks) {
+    return <BlockRenderer blocks={cmsBlocks} locale={DEFAULT_LOCALE} />;
+  }
+
   return (
     <Box
       component="article"
