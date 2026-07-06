@@ -1670,16 +1670,9 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                 color="secondary"
                 startIcon={<School />}
                 onClick={() => {
-                  // Navigate to Academy Dashboard
-                  // We'll use the router or window location to navigate
-                  const currentPath = window.location.pathname;
-                  if (currentPath.includes('/dashboard')) {
-                    // If we're in dashboard context, trigger tab change
-                    window.dispatchEvent(new CustomEvent('navigate-to-academy'));
-                  } else {
-                    // Otherwise navigate to dashboard with academy tab
-                    window.location.href = '/dashboard?tab=academy';
-                  }
+                  // Academy har egen flate nå (/academy-dashboard); den gamle
+                  // /dashboard?tab=academy redirecter til workspace og mister fanen.
+                  window.location.href = '/academy-dashboard';
                 }}
                 sx={{ textTransform: 'none', justifyContent: 'flex-start' }}
               >
