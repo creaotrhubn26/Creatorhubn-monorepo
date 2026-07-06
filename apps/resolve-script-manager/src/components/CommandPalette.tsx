@@ -155,6 +155,7 @@ export function CommandPalette({
         position: "fixed", inset: 0, zIndex: 300,
         background: "rgba(10,5,24,0.6)",
         backdropFilter: "blur(4px)",
+        WebkitBackdropFilter: "blur(4px)", // WKWebView/Safari trenger -webkit-prefiks
         display: "flex", justifyContent: "center",
         paddingTop: "10vh",
       }}

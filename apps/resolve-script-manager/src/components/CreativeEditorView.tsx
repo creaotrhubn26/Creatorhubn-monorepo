@@ -712,7 +712,7 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
       // per sekund. Save fortsatt rask nok til at restart-bevaring funker.
     }, 1500);
     return () => clearTimeout(handle);
-  }, [stateKey, payload, projectTitle, includedChapters, pickOverrides, activePickOrder, activeSongIdx, clientWishes, pickTransitions, customAudios, markers, pickComments, segmentOrder, extraPicks]);
+  }, [stateKey, payload, projectTitle, includedChapters, pickOverrides, activePickOrder, activeSongIdx, clientWishes, pickTransitions, customAudios, markers, pickComments, segmentOrder, extraPicks, projectKind, projectPurpose, projectTargetMin]);
 
   // Counter trigger advisor-refresh — bumpes etter scan-jobber så
   // useEffecten re-fetcher freshe data fra disk.
