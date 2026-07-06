@@ -1,3 +1,5 @@
+import { detectLocale, buildLocalizedPath } from '../components/role-room/cms/useLocale';
+
 type SiteKey = 'creatorhub' | 'role-room';
 
 interface SiteDefinition {
@@ -234,6 +236,13 @@ function buildCreatorHubSeo(pathname: string): SeoMetadata {
         description:
           'Les hvordan du ber om sletting av personopplysninger og hvilke data CreatorHub beholder etter lovpålagte krav.',
       };
+    case '/cookie-policy':
+      return {
+        ...base,
+        title: 'Cookies og sporing | CreatorHub Norge',
+        description:
+          'Les hvilke cookies CreatorHub Norge bruker, hva de gjør, og hvordan du kan styre samtykke og preferanser.',
+      };
     case '/nextrole':
       return {
         ...base,
@@ -341,14 +350,18 @@ function upsertHreflang(hreflang: string, href: string) {
 
 function buildHreflangAlternates(metadata: SeoMetadata, pathname: string): { hreflang: string; href: string }[] {
   // Path-prefiks-strategi: kanonisk = /<path>, engelsk = /en/<path>.
+  // Delegerer til useLocale.ts sin detectLocale/buildLocalizedPath i stedet
+  // for en egen regex her — en tidligere håndrullet `/^\/en\/?/`-regex
+  // matchet feilaktig slugs som bare *starter* med "en" (f.eks.
+  // /enterprise → /terprise), siden den ikke krevde grense på "/en".
   if (metadata.site.key !== 'role-room') return [];
   const origin = metadata.site.origin;
-  const canonicalPath = pathname === '/' ? '/' : pathname.replace(/^\/en\/?/, '/');
-  const enPath = canonicalPath === '/' ? '/en' : `/en${canonicalPath}`;
+  const { pathname: canonicalPath } = detectLocale(pathname);
+  const enPath = buildLocalizedPath(canonicalPath, 'en');
   return [
-    { hreflang: 'no', href: `${origin}${canonicalPath === '/' ? '/' : canonicalPath}` },
+    { hreflang: 'no', href: `${origin}${canonicalPath}` },
     { hreflang: 'en', href: `${origin}${enPath}` },
-    { hreflang: 'x-default', href: `${origin}${canonicalPath === '/' ? '/' : canonicalPath}` },
+    { hreflang: 'x-default', href: `${origin}${canonicalPath}` },
   ];
 }
 

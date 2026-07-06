@@ -186,7 +186,11 @@ export default function BlockListEditor({ blocks, onChange }: BlockListEditorPro
             <Stack spacing={1.5}>
               {blocks.map((block, idx) => (
                 <BlockCard
-                  key={block.id}
+                  // Remount ved locale-bytte: TipTap-editoren i RichTextBlockEditor
+                  // initialiserer innhold kun ved mount og re-synker aldri på `value`-
+                  // endringer, så uten locale i key-en ville NO/EN-toggle vist stale
+                  // innhold i WYSIWYG-flaten og risikere å skrive det over riktig locale.
+                  key={`${block.id}-${locale}`}
                   block={applyLocale(block, locale)}
                   index={idx}
                   total={blocks.length}

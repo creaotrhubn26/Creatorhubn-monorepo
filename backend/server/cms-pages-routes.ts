@@ -46,6 +46,8 @@ interface CmsPageRow {
   variant: string;
   content: unknown;
   published: boolean;
+  publish_at: Date | string | null;
+  unpublish_at: Date | string | null;
   created_at: Date;
   updated_at: Date;
   updated_by: string | null;
@@ -65,12 +67,20 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   );
 }
 
+function toIsoOrNull(value: Date | string | null | undefined): string | null {
+  if (!value) return null;
+  if (value instanceof Date) return value.toISOString();
+  return value;
+}
+
 function serialize(row: CmsPageRow): Record<string, unknown> {
   return {
     slug: row.slug,
     variant: row.variant,
     content: row.content ?? {},
     published: row.published,
+    publish_at: toIsoOrNull(row.publish_at),
+    unpublish_at: toIsoOrNull(row.unpublish_at),
     created_at: row.created_at?.toISOString?.() ?? row.created_at,
     updated_at: row.updated_at?.toISOString?.() ?? row.updated_at,
     updated_by: row.updated_by ?? undefined,
@@ -121,7 +131,7 @@ export function setupCmsPagesRoutes(deps: CmsPagesRoutesDeps): void {
       if (result.rows.length === 0) {
         return res.status(404).json({ success: false, error: 'Side ikke funnet' });
       }
-      res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=600');
+      res.setHeader('Cache-Control', 'public, max-age=300, s-maxage=300, stale-while-revalidate=600');
       return res.json({ success: true, page: serialize(result.rows[0]) });
     } catch (error) {
       console.error('[cms-pages] public-get failed:', error);
@@ -190,9 +200,14 @@ export function setupCmsPagesRoutes(deps: CmsPagesRoutesDeps): void {
     }
 
     const variant = typeof body.variant === 'string' ? body.variant.slice(0, 32) : 'generic';
-    const published = body.published !== false; // default true
     const publishAt = typeof body.publish_at === 'string' ? body.publish_at : null;
     const unpublishAt = typeof body.unpublish_at === 'string' ? body.unpublish_at : null;
+    if (publishAt && unpublishAt && new Date(unpublishAt).getTime() <= new Date(publishAt).getTime()) {
+      return res.status(400).json({
+        success: false,
+        error: 'unpublish_at må være etter publish_at',
+      });
+    }
 
     const client = await pool.connect();
     try {
@@ -203,12 +218,16 @@ export function setupCmsPagesRoutes(deps: CmsPagesRoutesDeps): void {
         'SELECT * FROM cms_pages WHERE slug = $1',
         [slug],
       );
+      // Nye sider defaulter til utkast (published=false) med mindre eksplisitt
+      // satt til true — kun eksisterende sider arver "default true"-oppførselen
+      // fra `published !== false` (dvs. uendret `published` sendes ikke inn).
+      const published = existing.rows.length > 0 ? body.published !== false : body.published === true;
       if (existing.rows.length > 0) {
         const prev = existing.rows[0];
         await client.query(
-          `INSERT INTO cms_page_revisions (slug, content, variant, published, created_by)
-           VALUES ($1, $2::jsonb, $3, $4, $5)`,
-          [slug, JSON.stringify(prev.content ?? {}), prev.variant, prev.published, session.email],
+          `INSERT INTO cms_page_revisions (slug, content, variant, published, publish_at, unpublish_at, created_by)
+           VALUES ($1, $2::jsonb, $3, $4, $5, $6, $7)`,
+          [slug, JSON.stringify(prev.content ?? {}), prev.variant, prev.published, prev.publish_at, prev.unpublish_at, session.email],
         );
       }
 
@@ -306,18 +325,26 @@ export function setupCmsPagesRoutes(deps: CmsPagesRoutesDeps): void {
       if (current.rows.length > 0) {
         const cur = current.rows[0];
         await client.query(
-          `INSERT INTO cms_page_revisions (slug, content, variant, published, created_by)
-           VALUES ($1, $2::jsonb, $3, $4, $5)`,
-          [slug, JSON.stringify(cur.content ?? {}), cur.variant, cur.published, `${session.email} (auto-revert-snapshot)`],
+          `INSERT INTO cms_page_revisions (slug, content, variant, published, publish_at, unpublish_at, created_by)
+           VALUES ($1, $2::jsonb, $3, $4, $5, $6, $7)`,
+          [slug, JSON.stringify(cur.content ?? {}), cur.variant, cur.published, cur.publish_at, cur.unpublish_at, `${session.email} (auto-revert-snapshot)`],
         );
       }
 
       const result = await client.query<CmsPageRow>(
         `UPDATE cms_pages
-         SET content = $1::jsonb, variant = $2, updated_by = $3
-         WHERE slug = $4
+         SET content = $1::jsonb, variant = $2, published = $3, publish_at = $4, unpublish_at = $5, updated_by = $6
+         WHERE slug = $7
          RETURNING *`,
-        [JSON.stringify(rev.content ?? {}), rev.variant, `${session.email} (revert)`, slug],
+        [
+          JSON.stringify(rev.content ?? {}),
+          rev.variant,
+          rev.published,
+          rev.publish_at ?? null,
+          rev.unpublish_at ?? null,
+          `${session.email} (revert)`,
+          slug,
+        ],
       );
       await client.query('COMMIT');
       return res.json({ success: true, page: serialize(result.rows[0]) });
