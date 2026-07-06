@@ -620,3 +620,15 @@ pub async fn export_infographic(
     }
     Ok(out_file.to_string_lossy().to_string())
 }
+
+/// Lagre en SELVSTENDIG infographic-HTML-fil (portabel artefakt: fonter bundlet,
+/// __CFG__ inlinet, FIT_SCRIPT + auto-play inkludert). Ingen render-pipeline — skriver
+/// bare strengen til utmappa og returnerer stien. Grunnlaget for embed/kode-eksport.
+#[tauri::command]
+pub async fn export_infographic_html(app: AppHandle, html: String, name: String) -> Result<String, String> {
+    let out_dir = ig_out_dir(&app);
+    let safe = ig_safe_name(&name);
+    let out = out_dir.join(format!("{safe}.html"));
+    std::fs::write(&out, html.as_bytes()).map_err(|e| format!("kunne ikke lagre HTML: {e}"))?;
+    Ok(out.to_string_lossy().to_string())
+}

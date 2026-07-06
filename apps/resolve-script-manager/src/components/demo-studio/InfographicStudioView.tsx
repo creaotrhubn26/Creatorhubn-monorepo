@@ -567,6 +567,21 @@ const FIT_SCRIPT = `(function(){
   }catch(e){}};
 })();`;
 
+// Auto-play-driver for SELVSTENDIG (portabel) HTML: kjører setProgress 0→1 over
+// varigheten og holder (evt. loop). FIT_SCRIPT selv-fitter mot vindusstørrelsen når
+// fila åpnes i en browser, så artefakten rendrer + animerer uten studioet.
+const igAutoplayScript = (durSec: number, loop: boolean): string =>
+  `(function(){var DUR=${Math.max(0.5, durSec)}*1000,LOOP=${loop};` +
+  `function play(){var s=Date.now();(function t(){var p=Math.min(1,(Date.now()-s)/DUR);try{window.setProgress&&window.setProgress(p);}catch(e){}if(p<1)requestAnimationFrame(t);else if(LOOP)setTimeout(play,900);})();}` +
+  `function boot(){if(typeof window.setProgress==='function'){try{window.__igFit&&window.__igFit();}catch(e){}play();}else setTimeout(boot,60);}boot();})();`;
+
+/** Selvstendig, portabel infographic-HTML: nøyaktig samme srcDoc som preview
+ *  (fonter bundlet, __CFG__ inlinet, FIT_SCRIPT) + auto-play. Åpnes i en hvilken
+ *  som helst browser eller embeddes via <iframe>. Grunnlaget for embed/kode-eksport. */
+function buildStandaloneHtml(previewSrcDoc: string, durSec: number, loop = true): string {
+  return previewSrcDoc + `<script>${igAutoplayScript(durSec, loop)}</script>`;
+}
+
 function TemplateThumb({ tpl, accent, values, height = 88 }: { tpl: InfographicTemplate; accent: string; values?: Record<string, string>; height?: number }) {
   const boxRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLIFrameElement>(null);
@@ -819,6 +834,12 @@ export function InfographicStudioView(
   const [fmt, setFmt] = useState<'native' | '9:16' | '4:5' | '1:1' | '16:9'>('native');
   // «Alle formater»: side-ved-side-forhåndsvisning av alle sosiale forhold.
   const [multiPreview, setMultiPreview] = useState(false);
+  // «Vis HTML» (dual view): venstre = live preview, høyre = redigerbar HTML-kilde.
+  // htmlView = editor-tekst (null = lukket); htmlPreview = debouncet kopi til iframen
+  // (unngår å re-parse den store font-bundelen ved hvert tastetrykk).
+  const [htmlView, setHtmlView] = useState<string | null>(null);
+  const [htmlPreview, setHtmlPreview] = useState<string>('');
+  const [htmlBusy, setHtmlBusy] = useState(false);
   // Enhets-mockup (iPhone/feed/nettleser) i side-ved-side-visningen.
   const [mockup, setMockup] = useState(true);
   // «Innsikt»: aggregert bevis fra backend på at modellen lærer i drift.
@@ -1332,6 +1353,29 @@ export function InfographicStudioView(
 
   // Eksporter GJELDENDE scene til en frittstående fil (utenfor Resolve):
   // ProRes/MP4/GIF/APNG/PNG — for social, web, e-post, slides.
+  // Bygg den selvstendige HTML-artefakten for GJELDENDE scene og åpne dual view.
+  const openHtmlView = () => { const h = buildStandaloneHtml(srcDoc, effDur(scene, tpl), true); setHtmlView(h); setHtmlPreview(h); };
+  const copyHtmlView = async () => {
+    if (!htmlView) return;
+    try { await navigator.clipboard.writeText(htmlView); setMsg('HTML kopiert til utklippstavlen'); }
+    catch { setMsg('Kunne ikke kopiere — marker teksten manuelt'); }
+  };
+  const downloadHtmlView = async () => {
+    if (!htmlView || htmlBusy) return;
+    setHtmlBusy(true);
+    try {
+      const out = await invoke<string>('export_infographic_html', { html: htmlView, name: `${tpl.id}-${scene.id}` });
+      setMsg(`Lagret: ${out}`);
+    } catch (e) { setMsg(`Kunne ikke lagre HTML: ${(e as Error).message}`); }
+    finally { setHtmlBusy(false); }
+  };
+  // Debounce editor → live preview (unngå re-parse av font-bundelen ved hvert tastetrykk).
+  useEffect(() => {
+    if (htmlView == null) return;
+    const h = window.setTimeout(() => setHtmlPreview(htmlView), 400);
+    return () => window.clearTimeout(h);
+  }, [htmlView]);
+
   const exportFile = async () => {
     if (exportBusy) return;
     setExportBusy(true); setNeedsPlaywright(false);
@@ -1907,6 +1951,8 @@ export function InfographicStudioView(
               )}
               <div style={{ flex: 1 }} />
               <button style={{ ...topBtn, padding: '4px 9px', fontSize: 11, background: showGuides ? D.panel2 : 'transparent', border: `1px solid ${showGuides ? D.accent : D.line}` }} onClick={() => setShowGuides((v) => !v)} title="Vis/skjul linjaler + safe-frame"><TuneIcon style={{ fontSize: 14 }} /> Guides</button>
+              {/* Dual view: live preview + redigerbar HTML-kilde side-ved-side (portabel artefakt). */}
+              <button style={{ ...topBtn, padding: '4px 9px', fontSize: 11, fontFamily: 'ui-monospace,Menlo,monospace' }} onClick={openHtmlView} title="Se + rediger den underliggende HTML-en (portabel: embed / eksport / kode)">{'</>'} HTML</button>
               {/* Composite: legg en still fra videoen bak overlay-en. */}
               <label style={{ ...topBtn, padding: '4px 10px', fontSize: 11 }} title="Legg et stillbilde fra videoen bak overlay-en for å se hvordan den lander">
                 <ImageOutlinedIcon style={{ fontSize: 14 }} /> {bgImage ? 'Bytt bakgrunn' : 'Bakgrunn'}
@@ -2221,6 +2267,32 @@ export function InfographicStudioView(
           </div>
         </div>
       </div>
+
+      {/* Dual view: live preview (venstre) + redigerbar HTML-kilde (høyre). */}
+      {htmlView != null && (
+        <div onClick={() => setHtmlView(null)} style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(4,7,14,0.74)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 22 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: '95vw', maxWidth: 1520, height: '88vh', background: D.bg, border: `1px solid ${D.line}`, borderRadius: 14, display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 30px 90px rgba(0,0,0,0.55)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 16px', borderBottom: `1px solid ${D.line}`, background: D.panel, flexWrap: 'wrap', rowGap: 6 }}>
+              <div style={{ fontWeight: 800, fontSize: 14, display: 'flex', alignItems: 'center', gap: 8, fontFamily: 'ui-monospace,Menlo,monospace' }}>{'</>'} HTML · {tpl.name}</div>
+              <div style={{ fontSize: 11, color: D.faint, flex: 1, minWidth: 200 }}>Selvstendig, portabel artefakt — åpne i browser eller embed via &lt;iframe&gt;. Data: <code style={{ color: D.soft }}>window.__CFG__</code>, animasjon: <code style={{ color: D.soft }}>setProgress(p)</code>.</div>
+              <span style={{ fontSize: 10.5, color: D.faint }}>{(htmlView.length / 1024).toFixed(0)} KB</span>
+              <button style={{ ...topBtn, padding: '5px 11px', fontSize: 12 }} onClick={() => void copyHtmlView()}>Kopier</button>
+              <button style={{ ...topBtn, padding: '5px 11px', fontSize: 12, background: D.accent, border: 'none', color: '#fff', opacity: htmlBusy ? 0.6 : 1 }} disabled={htmlBusy} onClick={() => void downloadHtmlView()}><FileDownloadIcon style={{ fontSize: 14 }} /> {htmlBusy ? 'Lagrer …' : 'Last ned .html'}</button>
+              <button style={{ ...topBtn, padding: '5px 11px', fontSize: 12 }} onClick={() => setHtmlView(null)}>Lukk</button>
+            </div>
+            <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', minHeight: 0 }}>
+              <div style={{ position: 'relative', minWidth: 0, background: 'linear-gradient(135deg,#10182a,#0b1120)', borderRight: `1px solid ${D.line}`, display: 'grid', placeItems: 'center', overflow: 'hidden' }}>
+                <div style={{ position: 'absolute', top: 8, left: 10, zIndex: 2, fontSize: 10, color: D.faint, background: 'rgba(11,17,32,0.7)', padding: '2px 7px', borderRadius: 5, pointerEvents: 'none' }}>Live preview</div>
+                <iframe title="html-preview" srcDoc={htmlPreview} style={{ width: '100%', height: '100%', border: 0, background: 'transparent' }} />
+              </div>
+              <div style={{ position: 'relative', minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                <div style={{ fontSize: 10, color: D.faint, padding: '4px 10px', borderBottom: `1px solid ${D.line}`, background: D.panel2 }}>HTML-kilde — redigerbar, preview oppdateres live</div>
+                <textarea value={htmlView} onChange={(e) => setHtmlView(e.target.value)} spellCheck={false} style={{ flex: 1, width: '100%', resize: 'none', border: 0, outline: 'none', background: D.bg, color: '#c7d2e3', fontFamily: 'ui-monospace,Menlo,monospace', fontSize: 11.5, lineHeight: 1.5, padding: 12, minHeight: 0, whiteSpace: 'pre', overflow: 'auto' }} />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
