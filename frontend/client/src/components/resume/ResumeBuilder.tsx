@@ -7894,6 +7894,22 @@ export default function ResumeBuilder() {
             {(templates.length > 0 ? templates : resumeTemplates).map((template) => (
               <Grid item xs={12} md={6} key={template.id}>
                 <Card variant="outlined">
+                  {/* Galleri-thumbnail (previewImage). Genereres av backend/scripts/
+                      gen-resume-thumbnails fra den EKTE mal-komponenten. Skjules pent
+                      hvis bildet ennå ikke er generert. */}
+                  {template.previewImage && (
+                    <Box
+                      sx={{ height: 168, overflow: 'hidden', bgcolor: 'grey.100', borderBottom: 1, borderColor: 'divider', display: 'flex', justifyContent: 'center' }}
+                    >
+                      <img
+                        src={template.previewImage}
+                        alt={template.name}
+                        loading="lazy"
+                        style={{ width: '100%', objectFit: 'cover', objectPosition: 'top' }}
+                        onError={(e) => { const p = e.currentTarget.parentElement as HTMLElement | null; if (p) p.style.display = 'none'; }}
+                      />
+                    </Box>
+                  )}
                   <CardContent>
                     <Typography variant="h6">{template.name}</Typography>
                     <Typography variant="body2" color="text.secondary">

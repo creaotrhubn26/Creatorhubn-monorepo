@@ -25,6 +25,7 @@ export interface RenderOpts {
   emulateMedia?: 'screen' | 'print';
   waitUntil?: 'load' | 'domcontentloaded' | 'networkidle0' | 'networkidle2';
   waitForSelector?: string;   // vent til dette elementet finnes
+  clipToSelector?: string;    // beskjær til ETT elements bounding box (f.eks. CV-en, ikke sidechrome)
   waitForMs?: number;         // ekstra fast vent (font-dekoding / animasjons-settling)
   timeoutMs?: number;         // navigasjons-/setContent-timeout (default 20000)
 }
@@ -60,12 +61,20 @@ async function shoot(load: (page: Page) => Promise<void>, opts: RenderOpts): Pro
     if (opts.waitForSelector) await page.waitForSelector(opts.waitForSelector, { timeout: opts.timeoutMs ?? 20000 }).catch(() => {});
     if (opts.waitForMs) await new Promise((r) => setTimeout(r, opts.waitForMs));
     const format = opts.format ?? 'png';
+    let clip = opts.clip;
+    if (opts.clipToSelector) {
+      const box = await page.$eval(opts.clipToSelector, (el) => {
+        const r = el.getBoundingClientRect();
+        return { x: r.x + scrollX, y: r.y + scrollY, width: r.width, height: r.height };
+      }).catch(() => null);
+      if (box && box.width > 0 && box.height > 0) clip = box;
+    }
     const shot = await page.screenshot({
       type: format,
       quality: format === 'jpeg' ? (opts.quality ?? 82) : undefined,
-      fullPage: !!opts.fullPage,
+      fullPage: !!opts.fullPage && !clip,
       omitBackground: format === 'png' && !!opts.transparent,
-      clip: opts.clip,
+      clip,
     });
     return Buffer.from(shot);
   } finally {
