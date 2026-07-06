@@ -887,7 +887,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%', minHeight: 0, fontFamily: C.font, background: C.bg, color: C.ink, fontSize: 13 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, fontFamily: C.font, background: C.bg, color: C.ink, fontSize: 13 }}>
       {/* ── Topbar (URL-input erstatter Search) ── */}
       <div style={topbarStyle}>
         <div style={iconBtn} onClick={() => { if (recording && !window.confirm('Du har et pågående skjermopptak. Forlater du Demo Studio nå, forkastes opptaket. Fortsette?')) return; onClose?.(); }} title="Tilbake til hjem">☰</div>

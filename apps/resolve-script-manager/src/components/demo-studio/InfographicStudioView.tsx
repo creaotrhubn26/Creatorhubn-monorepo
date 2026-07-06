@@ -1448,7 +1448,7 @@ export function InfographicStudioView(
   const tabBtn = (active: boolean): React.CSSProperties => ({ flex: 1, padding: '7px 0', textAlign: 'center', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: active ? D.ink : D.soft, background: active ? D.panel2 : 'transparent', borderBottom: `2px solid ${active ? D.accent : 'transparent'}` });
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%', minWidth: 0, background: D.bg, color: D.ink, fontFamily: 'Inter, system-ui, sans-serif' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minWidth: 0, background: D.bg, color: D.ink, fontFamily: 'Inter, system-ui, sans-serif' }}>
       {/* flexWrap: header-knappene (Preview/Spill alt/New Scene/Send to Resolve) tvang
           ellers studioet bredere enn smale vinduer → høyre Data-panel ble klippet. Wrap
           lar knappene bryte til ny linje i stedet, og minWidth:0 lar studioet krympe. */}

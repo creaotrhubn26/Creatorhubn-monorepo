@@ -67,10 +67,7 @@ select, input[type="text"] {
 }
 select:focus, input:focus { outline: none; border-color: var(--accent); }
 
-/* height:100% (kjeder fra #root=100% av vinduet), IKKE 100vh: i WKWebView oppdateres
-   ikke 100vh live under drag-resize → .app blir kortere enn det voksende vinduet og
-   OS-ens svarte vindusbunn vises som et gap. 100% følger vinduet umiddelbart. */
-.app { display: grid; grid-template-rows: auto 1fr auto; height: 100%; }
+.app { display: grid; grid-template-rows: auto 1fr auto; height: 100vh; }
 
 .header {
   display: flex;
