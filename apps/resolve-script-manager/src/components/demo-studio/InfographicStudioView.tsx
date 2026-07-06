@@ -549,9 +549,6 @@ const FIT_SCRIPT = `(function(){
       if(!(k>0)) k=1;                       // fortsatt ugyldig → ingen skalering (aldri blankt)
       var tx=(vw-ww*k)/2, ty=Math.max(0,(vh-wh*k)/2);
       w.style.transform='translate('+tx.toFixed(1)+'px,'+ty.toFixed(1)+'px) scale('+k.toFixed(4)+')';
-      // Fast kompositt-lag: uten dette re-rasteriserer WKWebView den skalerte
-      // (fraksjonell) subtreet ved hver animasjons-frame → konstant sub-piksel-risting.
-      w.style.backfaceVisibility='hidden'; w.style.webkitBackfaceVisibility='hidden';
     }catch(e){}
   }
   function fit(){ fitTo(0,0); }
@@ -564,14 +561,9 @@ const FIT_SCRIPT = `(function(){
   // IKKE ved at foreldre skriver til iframe-DOM-en — det feiler stille i WKWebView.
   // body bærer inngangs-transformen (komponerer med #wrap sin fit-scale), #wrap
   // bærer opacity (inngang × exit).
-  // IDEMPOTENT: skriv KUN når verdien faktisk endres. Ellers re-assignet vi
-  // body.style.transform (ofte 'none') + #wrap.opacity ved HVER animasjons-frame,
-  // som fikk WKWebView til å re-komposittere den skalerte preview-en → konstant
-  // risting under avspilling (verdien var uendret, men skrivingen trigget repaint).
   window.__igMotion=function(tf,op){try{
-    tf=tf||'none';
-    var b=document.body; if(b && b.style.transform!==tf){b.style.transform=tf; b.style.transformOrigin='center center';}
-    var w=document.getElementById('wrap'); if(w){ var o=String(op); if(w.style.opacity!==o) w.style.opacity=o; }
+    var b=document.body; if(b){b.style.transform=tf||'none'; b.style.transformOrigin='center center';}
+    var w=document.getElementById('wrap'); if(w){ w.style.opacity=String(op); }
   }catch(e){}};
 })();`;
 
@@ -1134,10 +1126,7 @@ export function InfographicStudioView(
     setPreviewProgress(easeVal(sc.easing, p));
     const exitS = Math.max(0, Math.min(sc.exitSec ?? 0, durS));
     const exitStartP = durS > 0 ? (durS - exitS) / durS : 1;
-    // Exit-fade vises KUN under aktiv «Spill alt» (playingAllRef) — der den previewer
-    // overgangen mellom scener. Ved hvile/scrub-stopp holdes innholdet synlig,
-    // ellers parkerer siste scene på exit-fadens gjennomsiktige slutt-frame → blankt.
-    const exitOpacity = playingAllRef.current && exitS > 0 && p >= exitStartP ? Math.max(0, 1 - (p - exitStartP) / ((exitS / durS) || 1)) : 1;
+    const exitOpacity = exitS > 0 && p >= exitStartP ? Math.max(0, 1 - (p - exitStartP) / ((exitS / durS) || 1)) : 1;
     setPreviewMotion(sc, p * durS, exitOpacity);
   };
   const play = (durSecOverride?: number) => {
@@ -1145,15 +1134,14 @@ export function InfographicStudioView(
     if (!win || typeof win.setProgress !== 'function') return;
     const durS = durSecOverride ?? effDur(scene, tpl);
     const dur = Math.max(1, durS) * 1000, t0 = performance.now();
+    const exitMs = Math.max(0, Math.min(scene.exitSec ?? 0, durS)) * 1000;
+    const exitStart = dur - exitMs;
     const tick = (now: number) => {
       const elMs = now - t0;
       const p = Math.min(1, elMs / dur);
       try { win.setProgress!(easeVal(scene.easing, p)); } catch { /* */ }
-      // Autoplay ved lasting viser KUN inngangen og HOLDER innholdet på slutten.
-      // Exit-fade her ville parkert preview på en helt gjennomsiktig frame → blankt
-      // lerret ved hvile. (Exit-faden previewes via «Spill alt» + scrubbing, og
-      // gjelder i det rendrede klippet.)
-      setPreviewMotion(scene, elMs / 1000, 1);
+      const exitOpacity = exitMs > 0 && elMs >= exitStart ? Math.max(0, 1 - (elMs - exitStart) / exitMs) : 1;
+      setPreviewMotion(scene, elMs / 1000, exitOpacity);
       if (p < 1) rafRef.current = requestAnimationFrame(tick);
     };
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
@@ -1165,14 +1153,7 @@ export function InfographicStudioView(
     // Autoplay KUN når brukeren nettopp valgte en scene — ikke midt i «Spill alt»
     // eller rett etter en scrub (der posisjonen styres av playAll/scrub-effekten).
     window.setTimeout(() => {
-      if (playingAllRef.current) return; // «Spill alt»-loopen styrer bildet
-      if (performance.now() - recentScrubRef.current < 700) {
-        // Nettopp scrubbet / avsluttet avspilling: ikke autoplay på nytt, men SETT
-        // hvilebildet — ellers står den nylastede iframen på setProgress(0) → blankt.
-        const { p } = sceneAtTime(scrubT);
-        applyScrubFrame(scene, p > 0 ? p : 1);
-        return;
-      }
+      if (playingAllRef.current || performance.now() - recentScrubRef.current < 700) return;
       play();
     }, 250);
   };
