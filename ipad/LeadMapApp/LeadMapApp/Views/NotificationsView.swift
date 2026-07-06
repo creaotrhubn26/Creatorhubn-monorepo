@@ -99,15 +99,13 @@ struct NotificationsView: View {
         guard let api = state.api else { return }
         if notif.isUnread {
             try? await api.markNotificationRead(notif.id)
-            // Optimistisk oppdater lokalt
-            if let idx = notifications.firstIndex(where: { $0.id == notif.id }) {
-                // Vi kan ikke mutere struct-feltet direkte (let), så
-                // erstatt med ny instans via Decodable-roundtrip ville
-                // vært overkill — i stedet bare reload feed.
-                _ = idx
-            }
             unreadCount = max(0, unreadCount - 1)
             await load()
+            // Synk header-bjellens badge (state.leadgridUnreadCount) — den
+            // leser et ANNET endepunkt og oppdateres ellers kun av 60s-
+            // pollen → badgen sto stale/falsk i opptil et minutt etter at
+            // brukeren faktisk hadde lest (Notification-QA 2026-07-06).
+            await state.refreshLeadgridNotifications()
         }
         // Deep-link: hopp til Kart-tab + naviger til lead hvis mulig
         if let leadId = notif.leadId {
@@ -123,6 +121,8 @@ struct NotificationsView: View {
         guard let api = state.api else { return }
         try? await api.markAllNotificationsRead()
         await load()
+        // Nulle header-bjellen umiddelbart (samme stale-badge-årsak).
+        await state.refreshLeadgridNotifications()
     }
 }
 
