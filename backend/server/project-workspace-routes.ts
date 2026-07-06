@@ -1447,13 +1447,23 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     try {
       const arId = await resolveAudioRoomId(req.params.projectId, uid);
       if (!arId) return res.json({ members: [] });
+      // Kun prosjekteier ser andres e-post (GDPR — team-medlemmer får maskert).
+      const ownerChk = await pool.query(`SELECT 1 FROM projects WHERE id = $1 AND user_id = $2 LIMIT 1`, [req.params.projectId, uid]).catch(() => ({ rowCount: 0 }));
+      const isProjectOwner = (ownerChk.rowCount ?? 0) > 0;
+      const maskEmail = (e: string | null): string | null => {
+        const v = String(e || "").trim(); const at = v.indexOf("@");
+        if (at < 1) return null;
+        const user = v.slice(0, at), dom = v.slice(at + 1);
+        return `${user.slice(0, 2)}${user.length > 2 ? "***" : "*"}@${dom}`;
+      };
       const m = await pool.query(
         `SELECT id, name, role, instrument, email, avatar_color, is_owner, invite_status, invite_token, easeverse_access
          FROM audio_review_members WHERE project_id = $1::uuid ORDER BY is_owner DESC, order_index ASC, created_at ASC`,
         [arId],
       ).catch(() => ({ rows: [] }));
       const members = m.rows.map((x: any) => ({
-        id: x.id, name: x.name, role: x.role, instrument: x.instrument || null, email: x.email || null,
+        id: x.id, name: x.name, role: x.role, instrument: x.instrument || null,
+        email: isProjectOwner ? (x.email || null) : maskEmail(x.email),
         avatarColor: x.avatar_color, isOwner: x.is_owner, status: x.invite_status,
         inviteUrl: x.invite_token && !x.is_owner ? `/audio-review/invite/${x.invite_token}` : null,
         easeverseAccess: x.easeverse_access || false,
