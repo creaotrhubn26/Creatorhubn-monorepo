@@ -34,6 +34,9 @@ export function useCaptureRealtime(projectId: string, onEvent?: (payload: any) =
 
     const connect = async () => {
       if (!alive) return;
+      clearTimeout(retry); retry = null;
+      // Allerede tilkoblet/kobler — unngå dobbel-connect (onVis + ventende retry).
+      if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) return;
       // Finn aktiv capture-session for prosjektet.
       let sid: string | null = null;
       try { const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/capture-status`); sid = r?.session?.id || null; } catch { /* */ }

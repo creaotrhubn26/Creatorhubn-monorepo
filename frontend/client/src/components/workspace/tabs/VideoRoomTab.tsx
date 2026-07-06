@@ -241,7 +241,7 @@ const VideoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
                   ))}
                 </Stack>
               </Box>
-              <Stack sx={{ maxHeight: 'calc(100vh - 320px)', overflowY: 'auto' }}>
+              <Stack sx={{ maxHeight: 'calc(100dvh - 320px)', overflowY: 'auto' }}>
                 {shown.length === 0 && <Typography sx={{ fontSize: 12.5, color: ws.textDim, p: 2, textAlign: 'center' }}>Ingen kommentarer. Klikk på tidslinjen i spilleren for å legge til på et tidspunkt.</Typography>}
                 {shown.map((c: any) => {
                   const resolved = c.status === 'resolved' || c.status === 'done';
@@ -273,7 +273,7 @@ const VideoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           <Button variant="outlined" startIcon={<EditNote />} disabled sx={{ color: ws.textDim, borderColor: ws.border, textTransform: 'none', fontWeight: 600 }}>Be om endringer</Button>
           {aiCfg?.enabled && aiCfg?.whitelisted && <Button variant="outlined" startIcon={<AutoAwesome />} onClick={openRe} sx={{ color: ws.accent, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 600 }}>Restyle / Relight</Button>}
           <Button variant="outlined" startIcon={<CloudUpload />} onClick={() => setAddOpen(true)} sx={{ color: ws.text, borderColor: ws.border, textTransform: 'none', fontWeight: 600 }}>Last opp ny versjon</Button>
-          <Button variant="contained" startIcon={<CheckCircle />} onClick={approve} disabled={current.status === 'approved'} sx={{ bgcolor: ws.green, color: '#06281c', textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: '#2bbf8a' } }}>{current.status === 'approved' ? 'Godkjent' : 'Godkjenn video'}</Button>
+          <Button variant="contained" startIcon={<CheckCircle />} onClick={approve} disabled={current.status === 'approved'} sx={{ bgcolor: ws.green, color: ws.bg, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.green, filter: 'brightness(0.92)' } }}>{current.status === 'approved' ? 'Godkjent' : 'Godkjenn video'}</Button>
         </Stack>
       )}
 

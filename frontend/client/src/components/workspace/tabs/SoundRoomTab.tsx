@@ -116,7 +116,16 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
 
   const loadEv = () => { if (isReal) apiRequest(`/api/projects/${encodeURIComponent(projectId)}/easeverse-tracks`).then((r: any) => setEv(r || null)).catch(() => {}); };
   const loadMembers = () => { if (isReal) apiRequest(`/api/projects/${encodeURIComponent(projectId)}/audio-room/members`).then((r: any) => setBandMembers(r?.members || [])).catch(() => {}); };
-  const copyInvite = (url: string) => { const full = url.startsWith('http') ? url : window.location.origin + url; navigator.clipboard?.writeText(full).then(() => { setCopied(url); setTimeout(() => setCopied(null), 1800); }).catch(() => {}); };
+  const copyInvite = (url: string) => {
+    const full = url.startsWith('http') ? url : window.location.origin + url;
+    // Guard: navigator.clipboard er undefined i usikker kontekst / eldre Safari —
+    // `?.writeText(...).then` ville kastet en synkron TypeError uten .catch.
+    try {
+      if (navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(full).then(() => { setCopied(url); setTimeout(() => setCopied(null), 1800); }).catch(() => {});
+      }
+    } catch { /* clipboard utilgjengelig */ }
+  };
   const submitInvite = async () => {
     if (!invite?.name?.trim() || saving) return; setSaving(true);
     try {

@@ -55,8 +55,8 @@ const T: WsDict = {
 };
 
 const STATUS_LABEL: Record<string, [string, string]> = {
-  not_started: ['Not started', 'neutral'], in_progress: ['In progress', 'amber'],
-  completed: ['Completed', 'green'], delivered: ['Delivered', 'green'], archived: ['Archived', 'neutral'],
+  not_started: ['Ikke startet', 'neutral'], in_progress: ['Pågår', 'amber'],
+  completed: ['Fullført', 'green'], delivered: ['Levert', 'green'], archived: ['Arkivert', 'neutral'],
 };
 
 const DELIVERABLES = [

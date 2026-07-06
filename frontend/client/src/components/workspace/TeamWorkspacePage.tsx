@@ -253,7 +253,7 @@ const TeamWorkspacePage: React.FC = () => {
     'video-room': <VideoRoomTab projectId={projectId} />,
     'photo-room': <PhotoRoomTab projectId={projectId} />,
     chat: (
-      <Box sx={{ height: 'calc(100vh - 160px)', maxWidth: 760, mx: 'auto' }}>
+      <Box sx={{ height: 'calc(100dvh - 160px)', maxWidth: 760, mx: 'auto' }}>
         <WorkspaceChatPanel projectId={projectId} category={workspaceCategoryFor(user?.profession, categoryOverrides)} />
       </Box>
     ),

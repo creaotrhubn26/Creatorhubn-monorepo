@@ -100,7 +100,7 @@ const T: WsDict = {
   aAiDraftSub: { no: 'Claude skriver et utkast i feltet', en: 'Claude drafts in the field' },
   aMeeting: { no: 'Planlegg møte', en: 'Schedule a meeting' },
   aMeetingVisual: { no: 'Planlegg opptaksdag', en: 'Schedule a shoot day' },
-  aMeetingService: { no: 'Ny booking', en: 'New booking' },
+  aMeetingService: { no: 'Nytt møte', en: 'New meeting' },
   aMeetingSub: { no: 'Book tid + generer Google Meet → kort i tråden', en: 'Book time + generate Google Meet → card' },
   meetTitleField: { no: 'Tittel', en: 'Title' },
   genMeet: { no: 'Generer Google Meet-lenke', en: 'Generate Google Meet link' },

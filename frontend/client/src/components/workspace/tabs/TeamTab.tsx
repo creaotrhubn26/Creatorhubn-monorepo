@@ -277,9 +277,13 @@ const TeamTab: React.FC<{ projectId: string; profession?: string; userId?: strin
               </Stack>
               <Stack direction="row" justifyContent="space-between" alignItems="center">
                 <Stack direction="row" spacing={0.25}>
-                  <IconButton size="small" sx={{ color: ws.textDim }}><ChatBubbleOutline sx={{ fontSize: 16 }} /></IconButton>
-                  <IconButton size="small" sx={{ color: ws.textDim }}><MailOutline sx={{ fontSize: 16 }} /></IconButton>
-                  <IconButton size="small" sx={{ color: ws.textDim }}><Phone sx={{ fontSize: 16 }} /></IconButton>
+                  {/* Kun handlinger med ekte mål (var før tre døde knapper). */}
+                  {(m.email || m.epost) && (
+                    <IconButton size="small" component="a" href={`mailto:${m.email || m.epost}`} title="Send e-post" sx={{ color: ws.textDim }}><MailOutline sx={{ fontSize: 16 }} /></IconButton>
+                  )}
+                  {(m.phone || m.telefon || m.tlf) && (
+                    <IconButton size="small" component="a" href={`tel:${m.phone || m.telefon || m.tlf}`} title="Ring" sx={{ color: ws.textDim }}><Phone sx={{ fontSize: 16 }} /></IconButton>
+                  )}
                 </Stack>
                 <Typography sx={{ fontSize: 10.5, color: ws.textFaint }}>{t('lastActive')} {t(m.aktiv)}</Typography>
               </Stack>

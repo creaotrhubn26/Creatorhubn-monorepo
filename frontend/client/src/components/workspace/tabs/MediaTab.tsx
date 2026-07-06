@@ -96,6 +96,7 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [assets, setAssets] = useState<any[]>([]);
   const [cull, setCull] = useState<any>({});
   const [filter, setFilter] = useState('alle');
+  const [q, setQ] = useState('');
   const web = useProjectImages(projectId, 'media');
   const isReal = projectId && projectId !== 'sample';
   const [selAsset, setSelAsset] = useState<any | null>(null);
@@ -197,7 +198,8 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     return true;
   };
   const captureItems = assets.filter((a) => a.previewUrl && matchFilter(a)).map((a) => ({ id: a.id, url: a.previewUrl, label: a.filename, rating: a.rating || 0, flag: !!a.flaggedForClient }));
-  const gridImages = isReal ? [...captureItems, ...(filter === 'alle' ? web.images : [])] : [];
+  const gridImages = (isReal ? [...captureItems, ...(filter === 'alle' ? web.images : [])] : [])
+    .filter((im: any) => !q || String(im.label || '').toLowerCase().includes(q.toLowerCase()));
 
   // Hurtigfiltre med EKTE tall fra cull-stats.
   const QUICK_REAL = [
@@ -263,8 +265,11 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
             </Typography>
           </Box>
           <Stack direction="row" spacing={1} alignItems="center">
-            <TextField size="small" placeholder={t('searchMedia')} InputProps={{ startAdornment: <Search sx={{ fontSize: 16, color: ws.textFaint, mr: 0.5 }} /> }} sx={{ width: 200, '& .MuiOutlinedInput-root': { bgcolor: ws.panelInput, fontSize: 13 } }} />
-            <Button size="small" variant="contained" startIcon={<CloudUpload sx={{ fontSize: 16 }} />} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>{t('upload')}</Button>
+            <TextField size="small" placeholder={t('searchMedia')} value={q} onChange={(e) => setQ(e.target.value)} InputProps={{ startAdornment: <Search sx={{ fontSize: 16, color: ws.textFaint, mr: 0.5 }} /> }} sx={{ width: 200, '& .MuiOutlinedInput-root': { bgcolor: ws.panelInput, fontSize: 13 } }} />
+            <Button component="label" size="small" variant="contained" startIcon={<CloudUpload sx={{ fontSize: 16 }} />} disabled={!isReal} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>
+              {t('upload')}
+              <input type="file" accept="image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) web.onUpload(f); e.target.value = ''; }} />
+            </Button>
           </Stack>
         </Stack>
 

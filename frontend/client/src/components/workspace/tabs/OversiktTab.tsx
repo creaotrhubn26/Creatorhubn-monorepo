@@ -541,8 +541,6 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
             action={
               <Stack direction="row" spacing={0.5} alignItems="center">
                 <Button size="small" onClick={() => go('produksjonskart')} sx={{ color: ws.text, textTransform: 'none', minWidth: 0 }}>{t('today')}</Button>
-                <IconButton size="small" sx={{ color: ws.textDim }}><ChevronLeft fontSize="small" /></IconButton>
-                <IconButton size="small" sx={{ color: ws.textDim }}><ChevronRight fontSize="small" /></IconButton>
               </Stack>
             }
           />
