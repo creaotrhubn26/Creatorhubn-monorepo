@@ -128,9 +128,18 @@ export const useDemoStudio = create<DemoStudioState>((set, get) => {
   /** Persistér + returner oppdatert prosjekt. Oppdaterer saveStatus så UI-et
    *  viser det EKTE lagrings-utfallet (full localStorage skal ikke vise «Lagret»). */
   let cloudPushTimer: ReturnType<typeof setTimeout> | null = null;
+  let localSaveTimer: ReturnType<typeof setTimeout> | null = null;
   const persist = (project: DemoProject): DemoProject => {
-    const result = saveProject(project);
-    set({ saveStatus: result, lastSavedAt: result === 'error' ? get().lastSavedAt : Date.now() });
+    // Debounce den TUNGE localStorage-skrivingen: saveProject JSON.stringify-er HELE
+    // prosjektet inkl. base64-scanShots/thumbnails (kan være flere MB) — før kjørte
+    // det synkront ved HVERT tastetrykk → merkbar hakking. In-memory state er allerede
+    // oppdatert av kalleren; kun disk-skrivet utsettes (~500ms coalescing).
+    if (localSaveTimer) clearTimeout(localSaveTimer);
+    localSaveTimer = setTimeout(() => {
+      const p = get().project ?? project;
+      const result = saveProject(p);
+      set({ saveStatus: result, lastSavedAt: result === 'error' ? get().lastSavedAt : Date.now() });
+    }, 500);
     // Sky-synk (G16): debounced fire-and-forget så prosjektet overlever
     // maskinen. Leser FERSK state ved fyring (flere edits → én push), og er
     // stille no-op når bruker ikke er innlogget.

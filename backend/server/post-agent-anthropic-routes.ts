@@ -2235,7 +2235,7 @@ Hvis dette virker feil, ta kontakt med ${ownerName}.
            WHERE is_active = true
            GROUP BY project_id
          ) s ON s.project_id = p.id
-         WHERE p.owner_id = $1
+         WHERE p.user_id = $1
          ORDER BY p.event_date DESC NULLS LAST, p.created_at DESC NULLS LAST
          LIMIT 100`,
         [userId],

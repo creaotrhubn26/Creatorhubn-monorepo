@@ -1995,6 +1995,15 @@ function ValidationModal({ scenes, onClose, onGoto, onSetStatus }: {
 function SceneThumb({ scene, url, height = 80 }: { scene: DemoScene; url: string; height?: number }) {
   const ref = useRef<HTMLDivElement>(null);
   const [boxW, setBoxW] = useState(0);
+  // Lazy-load: last KUN live-iframen når kortet er nær viewporten. Uten dette lastet
+  // hvert scene-kort HELE nettsiden samtidig (N scener → N parallelle side-lastinger).
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof IntersectionObserver === 'undefined') { setVisible(true); return; }
+    const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { setVisible(true); io.disconnect(); } }, { rootMargin: '300px' });
+    io.observe(el); return () => io.disconnect();
+  }, []);
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -2014,8 +2023,8 @@ function SceneThumb({ scene, url, height = 80 }: { scene: DemoScene; url: string
   const logicalH = scale > 0 ? height / scale : height;
   return (
     <div ref={ref} style={{ position: 'relative', width: '100%', height, borderRadius: 7, overflow: 'hidden', background: '#fff', border: `1px solid ${C.line}`, marginBottom: 8 }}>
-      <iframe src={url} scrolling="no" tabIndex={-1} title="" aria-hidden
-        style={{ width: vw, height: logicalH, border: 0, transform: `scale(${scale || 0.001})`, transformOrigin: '0 0', pointerEvents: 'none', opacity: scale > 0 ? 1 : 0 }} />
+      {visible && <iframe src={url} scrolling="no" tabIndex={-1} title="" aria-hidden
+        style={{ width: vw, height: logicalH, border: 0, transform: `scale(${scale || 0.001})`, transformOrigin: '0 0', pointerEvents: 'none', opacity: scale > 0 ? 1 : 0 }} />}
     </div>
   );
 }
