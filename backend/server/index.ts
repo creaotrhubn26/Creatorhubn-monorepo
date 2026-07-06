@@ -17449,6 +17449,9 @@ type CompatSubscriptionStatus = {
   email: string | null;
   autoRenew: boolean;
   source: "database" | "compat" | "default";
+  // Stripe-abonnements-id — brukes til lat live-rekonsiliering når cachet
+  // tilgangsvindu er utløpt (fanger tapte webhooks: fornyelse/kansellering).
+  stripeSubscriptionId?: string | null;
 };
 
 type CompatPaymentMethod = {
@@ -18135,6 +18138,7 @@ function buildCompatSubscriptionStatus(
     email: overrides?.email ?? null,
     autoRenew: overrides?.autoRenew ?? true,
     source: overrides?.source ?? (plan ? "compat" : "default"),
+    stripeSubscriptionId: overrides?.stripeSubscriptionId ?? null,
   };
 }
 
@@ -18432,10 +18436,57 @@ async function resolveCompatSubscriptionStatus(
 ): Promise<CompatSubscriptionStatus> {
   const storedStatus = await readCompatSubscriptionStatus(userId);
   if (storedStatus) {
-    return {
+    const withEmail: CompatSubscriptionStatus = {
       ...storedStatus,
       email: storedStatus.email ?? email ?? null,
     };
+    // Lat live-rekonsiliering: kall Stripe KUN når det cachede tilgangsvinduet
+    // er utløpt (eller mangler) og vi har en abonnements-id. Da fanger vi tapte
+    // webhooks — fornyelse (forleng tilgang) eller kansellering (marker inaktiv)
+    // — uten å hitte Stripe på hvert statusoppslag. Best-effort: enhver feil
+    // faller tilbake til cachet verdi.
+    const subId = withEmail.stripeSubscriptionId;
+    const accessMs = withEmail.accessUntil
+      ? new Date(withEmail.accessUntil).getTime()
+      : 0;
+    const stale = !withEmail.accessUntil || accessMs < Date.now();
+    if (subId && stale) {
+      try {
+        const stripeClient = getCreatorHubStripeClient();
+        if (stripeClient) {
+          const sub = await stripeClient.subscriptions.retrieve(subId);
+          const subStatus = String((sub as { status?: string }).status || "");
+          const periodEnd = (sub as { current_period_end?: number })
+            .current_period_end;
+          const cancelAtEnd = Boolean(
+            (sub as { cancel_at_period_end?: boolean }).cancel_at_period_end,
+          );
+          const active = subStatus === "active" || subStatus === "trialing";
+          const periodEndIso =
+            typeof periodEnd === "number" && periodEnd > 0
+              ? new Date(periodEnd * 1000).toISOString()
+              : null;
+          const reconciled: CompatSubscriptionStatus = {
+            ...withEmail,
+            paymentCompleted: active,
+            subscriptionSelected: active,
+            autoRenew: cancelAtEnd ? false : withEmail.autoRenew,
+            accessUntil: periodEndIso ?? withEmail.accessUntil,
+            nextBillingDate: periodEndIso ?? withEmail.nextBillingDate,
+          };
+          await writeCompatSubscriptionStatus(userId, reconciled).catch(
+            () => undefined,
+          );
+          return reconciled;
+        }
+      } catch (e) {
+        console.warn(
+          "Stripe live-rekonsiliering feilet (bruker cache):",
+          (e as any)?.message,
+        );
+      }
+    }
+    return withEmail;
   }
 
   if (userId !== "guest" && (await hasTable("user_subscriptions"))) {
@@ -19259,6 +19310,10 @@ async function recordCompatPaymentCompletion(
       email: record.email,
       autoRenew: true,
       source: "compat",
+      stripeSubscriptionId:
+        (normalizeJsonObjectField(record.metadata)?.stripeSubscriptionId as
+          | string
+          | undefined) || null,
     },
   );
   await writeCompatSubscriptionStatus(record.userId, nextSubscriptionStatus);
