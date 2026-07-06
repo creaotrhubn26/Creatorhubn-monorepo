@@ -286,6 +286,13 @@
     if (out.length > 150) out = out.slice(0, 150);
     var pageText = '';
     try { pageText = (document.body.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 1600); } catch (e) { /* */ }
+    // PII-maskering av INNSAMLET tekst før den sendes til Claude (symmetrisk med
+    // skjermbilde-maskeringen) — e-post/tlf i pageText + element-labels sladdes.
+    try {
+      var mt = (window.__demoPii && window.__demoPii.maskText) ? window.__demoPii.maskText : function (s) { return s; };
+      pageText = mt(pageText);
+      for (var mi = 0; mi < out.length; mi++) { if (out[mi] && typeof out[mi].label === 'string') out[mi].label = mt(out[mi].label); }
+    } catch (e) { /* */ }
     var branding = {};
     try { branding = extractBranding(); } catch (e) { /* */ }
     invoke('demo_scan_result', {
