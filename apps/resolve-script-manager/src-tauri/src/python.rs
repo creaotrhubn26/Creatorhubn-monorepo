@@ -252,6 +252,11 @@ pub async fn spawn_python(
         serde_json::json!({
             "type": "finished",
             "runId": run_id,
+            // scriptId MÅ være med (som i started-eventet). Uten den blir refresh-vakten
+            // i App.tsx (scriptId !== 'get_media_pool_state') alltid true → uendelig
+            // Media Pool-refresh-loop, og fullført-varselet (gated på scriptId) fyrer aldri.
+            // (script_id ble flyttet inn i `summary` over — les det derfra.)
+            "scriptId": summary.script_id.clone(),
             "succeeded": succeeded,
             "exitCode": status.code(),
             "ts": chrono::Utc::now().timestamp_millis(),

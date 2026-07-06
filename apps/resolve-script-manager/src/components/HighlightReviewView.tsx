@@ -90,9 +90,14 @@ export function HighlightReviewView({ picksPath, onClose, onBuilt }: Props) {
       setPicksRaw((prev) => {
         const next = typeof updater === "function" ? (updater as (p: ReviewState[]) => ReviewState[])(prev) : updater;
         if (historyDescription) {
-          // Push new entry, drop redo branch
-          const newHistory = historyRef.current.slice(0, historyIndexRef.current + 1);
-          newHistory.push({ picks: prev, description: historyDescription });
+          // Standard undo/redo: history[pointer] er ALLTID gjeldende tilstand.
+          // Sørg for at start-tilstanden ligger på history[0] første gang, trunker
+          // redo-grenen, og push den NYE tilstanden (ikke pre-endrings-snapshotet —
+          // det gjorde redo ubrukelig fordi post-endrings-tilstanden aldri ble lagret).
+          let base = historyRef.current;
+          if (base.length === 0) { base = [{ picks: prev, description: "start" }]; historyIndexRef.current = 0; }
+          const newHistory = base.slice(0, historyIndexRef.current + 1);
+          newHistory.push({ picks: next, description: historyDescription });
           if (newHistory.length > HISTORY_DEPTH) newHistory.shift();
           historyRef.current = newHistory;
           historyIndexRef.current = newHistory.length - 1;
@@ -104,22 +109,16 @@ export function HighlightReviewView({ picksPath, onClose, onBuilt }: Props) {
   );
 
   const undo = useCallback(() => {
-    if (historyIndexRef.current < 0) return;
-    const entry = historyRef.current[historyIndexRef.current];
-    if (!entry) return;
+    // history[0] = start-tilstand → kan ikke angre forbi den.
+    if (historyIndexRef.current <= 0) return;
     historyIndexRef.current -= 1;
-    setPicksRaw(entry.picks);
+    setPicksRaw(historyRef.current[historyIndexRef.current].picks);
   }, []);
 
   const redo = useCallback(() => {
-    const nextIdx = historyIndexRef.current + 1;
-    if (nextIdx >= historyRef.current.length) return;
-    // Redo restores the picks state stored "above" the change pointer.
-    // Simplest model: history stores undo-targets, so redo just re-applies
-    // the current picks-snapshot one step ahead. We approximate by jumping
-    // to the next state and popping into picksRaw without rewriting history.
-    historyIndexRef.current = nextIdx;
-    setPicksRaw(historyRef.current[nextIdx].picks);
+    if (historyIndexRef.current >= historyRef.current.length - 1) return;
+    historyIndexRef.current += 1;
+    setPicksRaw(historyRef.current[historyIndexRef.current].picks);
   }, []);
 
   // Load picks payload from cache file
