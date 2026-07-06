@@ -16,6 +16,7 @@ import {
 import Person from '@mui/icons-material/Person';
 import Palette from '@mui/icons-material/Palette';
 import Lock from '@mui/icons-material/Lock';
+import MenuIcon from '@mui/icons-material/Menu';
 import Logout from '@mui/icons-material/Logout';
 import Dashboard from '@mui/icons-material/Dashboard';
 import AccountTree from '@mui/icons-material/AccountTree';
@@ -154,15 +155,24 @@ const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab,
   const t = makeT(SHELL_T, useWsLocale());
   const [userMenu, setUserMenu] = React.useState<null | HTMLElement>(null);
   const [projMenu, setProjMenu] = React.useState<null | HTMLElement>(null);
+  const [mobileNav, setMobileNav] = React.useState(false); // sidebar som slide-in på mobil
   const go = (path: string) => { setUserMenu(null); window.location.href = path; };
 
   return (
     <ThemeProvider theme={workspaceDarkTheme}>
       <Box sx={{ display: 'flex', height: '100vh', bgcolor: ws.bg, color: ws.text, overflow: 'hidden' }}>
-        {/* ───────── Venstre nav ───────── */}
+        {/* Mobil-backdrop bak slide-in-nav-en */}
+        <Box onClick={() => setMobileNav(false)} sx={{
+          display: { xs: mobileNav ? 'block' : 'none', md: 'none' },
+          position: 'fixed', inset: 0, bgcolor: 'rgba(0,0,0,0.5)', zIndex: 1299,
+        }} />
+        {/* ───────── Venstre nav (statisk på desktop, slide-in overlay < md) ───────── */}
         <Box sx={{
           width: 260, flexShrink: 0, bgcolor: ws.bgSidebar, borderRight: `1px solid ${ws.border}`,
           display: 'flex', flexDirection: 'column',
+          position: { xs: 'fixed', md: 'static' }, top: 0, bottom: 0, left: 0, zIndex: 1300,
+          transform: { xs: mobileNav ? 'translateX(0)' : 'translateX(-100%)', md: 'none' },
+          transition: 'transform .2s ease',
         }}>
           {/* Logo — ekte CreatorHub-lockup (creatorhub-wordmark-light.png) */}
           <Box sx={{ px: 1.75, pt: 2, pb: 1.5 }}>
@@ -202,7 +212,7 @@ const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab,
                   {items.map((item) => {
                     const dyn = badges?.[item.key];
                     const merged = dyn != null ? { ...item, badge: dyn || undefined } : item;
-                    return <NavItem key={item.key} item={merged} active={activeTab === item.key} onClick={() => onTab(item.key)} />;
+                    return <NavItem key={item.key} item={merged} active={activeTab === item.key} onClick={() => { onTab(item.key); setMobileNav(false); }} />;
                   })}
                 </Box>
               );
@@ -252,6 +262,9 @@ const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab,
             display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap',
           }}>
             <Stack direction="row" alignItems="center" spacing={1.5} sx={{ minWidth: 0 }}>
+              <IconButton onClick={() => setMobileNav(true)} sx={{ display: { xs: 'inline-flex', md: 'none' }, color: ws.text, ml: -1 }} aria-label="Åpne meny">
+                <MenuIcon />
+              </IconButton>
               <Typography sx={{ fontSize: 22, fontWeight: 800 }} noWrap>{project.name}</Typography>
               {project.status && (
                 <Chip
