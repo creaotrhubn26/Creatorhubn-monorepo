@@ -820,12 +820,15 @@ export default function App() {
       )}
       {view === "demo" &&
         (authStatus === "ok" && entitledModules.includes("demo_studio") ? (
-          // min-height:0 + overflow:hidden: uten dette har grid-cellen (1fr-raden i
-          // .app) default min-height:auto, så Demo Studio / Infographic Studios høye
-          // innhold (518-mal-lista) BLÅSER OPP raden forbi 100vh og skyver bunnen
-          // (tidslinje + filmstrip) UT AV vinduet. Med denne klemmes studioet til
-          // rad-høyden og de indre panelene scroller/krymper som de skal.
-          <div style={{ minHeight: 0, overflow: "hidden", display: "flex" }}>
+          // Enkelt-celle grid (minmax(0,1fr) i BEGGE akser) i stedet for flex:
+          // - minmax(0,1fr) på RAD: uten dette har grid-cellen (1fr-raden i .app)
+          //   default min-height:auto, så studioets høye innhold (518-mal-lista)
+          //   BLÅSER OPP raden og skyver bunnen (tidslinje/filmstrip) ut av vinduet.
+          // - minmax(0,1fr) på KOLONNE + grid-stretch: tvinger DemoStudioShell (som
+          //   kun har height:100%, ikke width) til å FYLLE bredden. Med flex-row tok
+          //   shellen sin intrinsic innholds-bredde → svart gap til høyre når vinduet
+          //   utvides forbi den bredden. Grid-item strekkes til full celle i begge akser.
+          <div style={{ display: "grid", gridTemplateRows: "minmax(0,1fr)", gridTemplateColumns: "minmax(0,1fr)", overflow: "hidden" }}>
             <DemoStudioShell onClose={() => setView("pipeline")} />
           </div>
         ) : (
