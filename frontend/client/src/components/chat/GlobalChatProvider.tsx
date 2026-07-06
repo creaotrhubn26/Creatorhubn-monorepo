@@ -58,11 +58,15 @@ export default function GlobalChatProvider({ children }: GlobalChatProviderProps
   //  - klient-vendte flater: showcase-gallerier + audio-review (kunder er ikke
   //    Creatorhub-brukere)
   //  - dashboards (de har egen innebygd chat)
+  //  - admin/interne verktøy (admin-dashboard, AdminRoom, visual-cms-admin,
+  //    no-code-editoren og /evendi) — disse er interne redigeringsflater,
+  //    ikke Creatorhub-brukerflater, og widgeten dukket opp oppå editor-UI-et
+  //    på flere av disse sidene
   // Academy VISES for innloggede Creatorhub-brukere (Academy er en Creatorhub-flate),
   // og er derfor IKKE i skjul-listen — den offentlige Academy-landingen dekkes av auth-gaten.
   const shouldHideGlobalChat = useMemo(() => {
     if (location === '/') return true;
-    return /^\/(?:dashboard|photographer-dashboard-material|videographer-dashboard(?:-material)?|music(?:_|-)producer-dashboard(?:-material)?|vendor-dashboard(?:-material)?|partner|partner-portal|for-byr|privacy-policy|terms-and-conditions|creatorhub-innovasjon|pitch|faq|community|leadgrid|nextrole|showcase|photo-showcase|video-showcase|audio-review|role-room|casting|talents|theroleroom)(?:\/|$)/.test(location);
+    return /^\/(?:dashboard|photographer-dashboard-material|videographer-dashboard(?:-material)?|music(?:_|-)producer-dashboard(?:-material)?|vendor-dashboard(?:-material)?|partner|partner-portal|for-byr|privacy-policy|terms-and-conditions|creatorhub-innovasjon|pitch|faq|community|leadgrid|nextrole|showcase|photo-showcase|video-showcase|audio-review|role-room|casting|talents|theroleroom|admin|admin-room|admin-workspace|visual-cms-admin|visual-editor-enhanced|evendi)(?:\/|$)/.test(location);
   }, [location]);
 
   // Don't render chat widget if user is not authenticated
