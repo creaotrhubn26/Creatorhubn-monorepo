@@ -6701,8 +6701,11 @@ export default function ResumeBuilder() {
         onClose={() => setUpsellFeature(null)}
       />
 
-      {/* Onboarding-tour — første gang i editoren */}
-      {selectedResume && <NextRoleOnboardingTour />}
+      {/* Onboarding-tour — første gang i editoren. Venter til ToS-dialogen
+          er lukket: tour-en sitt eget Backdrop (zIndex 8000) rendres over
+          ToS-dialogen og blokkerte "Jeg godtar vilkårene"-avkrysningsboksen
+          for pointer-events før brukeren fikk lukket tour-en. */}
+      {selectedResume && !showTermsDialog && <NextRoleOnboardingTour />}
 
       {/* Lazy-loaded Pro-dialoger. Suspense unngår blank skjerm mens
           chunk-en lastes. Hvert dialog rendrer kun når åpnet → ingen
