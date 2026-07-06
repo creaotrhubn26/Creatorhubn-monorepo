@@ -42,22 +42,44 @@ export async function checkEntitlement(
   userId: string,
   featureKey: string,
 ): Promise<EntitlementDecision> {
+  return checkAnyEntitlement(pool, userId, [featureKey]);
+}
+
+/**
+ * «Tillat hvis MINST ÉN av `featureKeys` er åpen». Brukes når ett
+ * endepunkt serverer data som UI-et deler over flere separat-gatede
+ * features (f.eks. pondus_templates → Maler/Pondus/Eksempler/Innsikt).
+ * Å gate et slikt delt endepunkt på én enkelt feature ville sperret
+ * søsken-fanene urettmessig.
+ *
+ * Semantikk: fail-open ved manglende org; åpen hvis org-en IKKE har
+ * noen override-rader for NOEN av nøklene (eldre kunde); ellers åpen
+ * hvis minst én rad er ikke-`locked`. Blokkert kun hvis alle relevante
+ * rader er `locked`.
+ */
+export async function checkAnyEntitlement(
+  pool: Pool,
+  userId: string,
+  featureKeys: string[],
+): Promise<EntitlementDecision> {
   const orgId = await resolveOrgIdForUser(pool, userId).catch(() => null);
-  if (!orgId) {
-    // Ingen org-kobling → behold bakoverkompatibel åpen tilgang.
-    return { allowed: true, state: null, organizationId: null };
+  if (!orgId || featureKeys.length === 0) {
+    return { allowed: true, state: null, organizationId: orgId ?? null };
   }
-  const r = await pool.query<{ state: string }>(
-    `SELECT state FROM leadgrid_org_entitlements
-      WHERE organization_id = $1 AND feature_key = $2
-      LIMIT 1`,
-    [orgId, featureKey],
+  const r = await pool.query<{ feature_key: string; state: string }>(
+    `SELECT feature_key, state FROM leadgrid_org_entitlements
+      WHERE organization_id = $1 AND feature_key = ANY($2::text[])`,
+    [orgId, featureKeys],
   );
-  const state = r.rows[0]?.state ?? null;
-  // Ingen rad = ingen override for denne featuren → åpen (samme som
-  // klientens `hasServerEntitlements ? .included : .included`-default).
-  const allowed = state == null ? true : state !== "locked";
-  return { allowed, state, organizationId: orgId };
+  if (r.rows.length === 0) {
+    // Ingen override for noen av nøklene → åpen (bakoverkompatibelt).
+    return { allowed: true, state: null, organizationId: orgId };
+  }
+  const anyOpen = r.rows.some((row) => row.state !== "locked");
+  // Representativ state for logging: første ikke-locked, ellers locked.
+  const state = r.rows.find((row) => row.state !== "locked")?.state
+    ?? r.rows[0].state;
+  return { allowed: anyOpen, state, organizationId: orgId };
 }
 
 /**
@@ -72,12 +94,25 @@ export async function assertEntitled(
   featureKey: string,
   res: { status: (n: number) => { json: (b: unknown) => unknown } },
 ): Promise<boolean> {
+  return assertAnyEntitled(pool, userId, [featureKey], res);
+}
+
+/**
+ * Som `assertEntitled`, men tillater hvis MINST ÉN av `featureKeys` er
+ * åpen — for delte endepunkter (se `checkAnyEntitlement`).
+ */
+export async function assertAnyEntitled(
+  pool: Pool,
+  userId: string,
+  featureKeys: string[],
+  res: { status: (n: number) => { json: (b: unknown) => unknown } },
+): Promise<boolean> {
   try {
-    const decision = await checkEntitlement(pool, userId, featureKey);
+    const decision = await checkAnyEntitlement(pool, userId, featureKeys);
     if (!decision.allowed) {
       res.status(403).json({
         error: "entitlement_locked",
-        feature: featureKey,
+        features: featureKeys,
         message: "Organisasjonen har ikke tilgang til denne funksjonen.",
       });
       return false;
@@ -88,3 +123,11 @@ export async function assertEntitled(
     return true;
   }
 }
+
+/** Leadbook-feature-gruppen — alle serveres av pondus_templates. */
+export const LEADBOOK_FEATURE_KEYS = [
+  "leadbookMaler",
+  "leadbookPondus",
+  "leadbookEksempler",
+  "leadbookInnsikt",
+];

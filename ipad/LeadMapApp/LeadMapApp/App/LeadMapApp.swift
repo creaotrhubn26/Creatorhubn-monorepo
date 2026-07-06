@@ -51,8 +51,15 @@ struct LeadMapApp: App {
                     // (resten av appen er mørk-tvunget). Sett vindus-override.
                     Self.forceDarkWindows()
                 }
+                // Re-apply ved hver aktivering — nye vinduer (iPad multi-
+                // window, Catalyst sekundær-vinduer) opprettet etter første
+                // onAppear ville ellers mangle override → lyse kart-fliser.
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .active { Self.forceDarkWindows() }
+                }
         }
     }
+    @Environment(\.scenePhase) private var scenePhase
 
     /// Tvinger `overrideUserInterfaceStyle = .dark` på alle tilkoblede
     /// vinduer så MapKit-flisene alltid er mørke, uansett system-appearance.

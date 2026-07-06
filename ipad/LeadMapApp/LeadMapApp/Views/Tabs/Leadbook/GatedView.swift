@@ -154,8 +154,9 @@ struct GatedView<Content: View>: View {
                 .foregroundStyle(LBrand.yellow).tracking(0.7)
             Spacer()
             Button { showUpsell = true } label: {
+                // Mørk tekst på gul — hvit-på-gul feilet WCAG-kontrast.
                 Text("Kjøp nå").font(.appScaled(size: 10, weight: .bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(LBrand.bg)
                     .padding(.horizontal, 9).padding(.vertical, 4)
                     .background(LBrand.yellow, in: Capsule())
             }.buttonStyle(.plain)
