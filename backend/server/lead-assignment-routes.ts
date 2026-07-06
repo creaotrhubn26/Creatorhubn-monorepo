@@ -157,6 +157,10 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
     const { team_leader_user_id, note } = req.body ?? {};
     if (!team_leader_user_id) return res.status(400).json({ error: "team_leader_user_id påkrevd" });
 
+    // Ytre try/catch: enhver kastende query (UPDATE/logAssignment/verify)
+    // ville ellers gitt uhåndtert async → HENG (samme mønster som
+    // my-notifications/assignment-status; Notification-QA 2026-07-06).
+    try {
     // Verifiser at brukeren er teamleder i samme org
     const verify = await pool.query<{ role: string }>(
       `SELECT role FROM organization_members
@@ -223,6 +227,10 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
     } catch (e) { console.warn("[assign-tl] lead-oppslag feilet", e); }
 
     res.json({ ok: true });
+    } catch (e) {
+      console.error("[assign-tl] tildeling feilet", e);
+      res.status(500).json({ error: "Kunne ikke tildele teamleder" });
+    }
   });
 
   // ============================================================
@@ -239,6 +247,8 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
     const { rep_user_id, note } = req.body ?? {};
     if (!rep_user_id) return res.status(400).json({ error: "rep_user_id påkrevd" });
 
+    // Ytre try/catch (se assign-team-leader) — kastende query → 500, ikke heng.
+    try {
     // Verifiser at brukeren er rep i samme org
     const verify = await pool.query<{ role: string }>(
       `SELECT role FROM organization_members
@@ -313,6 +323,10 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
     } catch (e) { console.warn("[assign-rep] lead-oppslag feilet", e); }
 
     res.json({ ok: true });
+    } catch (e) {
+      console.error("[assign-rep] tildeling feilet", e);
+      res.status(500).json({ error: "Kunne ikke tildele rep" });
+    }
   });
 
   // ============================================================
@@ -576,23 +590,33 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
   app.get("/api/leadgrid/my-notifications", async (req, res) => {
     const s = getSession(req, activeSessions);
     if (!s) return res.status(401).json({ error: "Ikke innlogget" });
-    const r = await pool.query(
-      `SELECT id, event_type, title, body, lead_id, deep_link,
-              meta, read_at::text, created_at::text,
-              triggered_by_user_id,
-              tb.first_name AS by_first, tb.last_name AS by_last
-         FROM notification_events n
-         LEFT JOIN users tb ON tb.id = n.triggered_by_user_id
-        WHERE n.recipient_user_id = $1
-        ORDER BY n.created_at DESC LIMIT 50`,
-      [s.userId],
-    );
-    const unread = await pool.query<{ n: string }>(
-      `SELECT COUNT(*)::text AS n FROM notification_events
-        WHERE recipient_user_id = $1 AND read_at IS NULL`,
-      [s.userId],
-    );
-    res.json({ items: r.rows, unread_count: Number(unread.rows[0]?.n ?? 0) });
+    // 🔴 `SELECT id` var TVETYDIG (både notification_events OG users har
+    // `id`) → Postgres kastet «column reference "id" is ambiguous», og
+    // uten try/catch svarte Express ALDRI → HENG. Dette er endepunktet
+    // bjella (leadgridUnreadCount) poller hvert 60s → badgen oppdaterte
+    // seg aldri. Kvalifiser `n.id` + try/catch (Notification-QA 2026-07-06).
+    try {
+      const r = await pool.query(
+        `SELECT n.id, n.event_type, n.title, n.body, n.lead_id, n.deep_link,
+                n.meta, n.read_at::text, n.created_at::text,
+                n.triggered_by_user_id,
+                tb.first_name AS by_first, tb.last_name AS by_last
+           FROM notification_events n
+           LEFT JOIN users tb ON tb.id = n.triggered_by_user_id
+          WHERE n.recipient_user_id = $1
+          ORDER BY n.created_at DESC LIMIT 50`,
+        [s.userId],
+      );
+      const unread = await pool.query<{ n: string }>(
+        `SELECT COUNT(*)::text AS n FROM notification_events
+          WHERE recipient_user_id = $1 AND read_at IS NULL`,
+        [s.userId],
+      );
+      res.json({ items: r.rows, unread_count: Number(unread.rows[0]?.n ?? 0) });
+    } catch (e) {
+      console.error("[leadgrid] my-notifications feilet", e);
+      res.status(500).json({ error: "Kunne ikke hente varsler" });
+    }
   });
 
   app.post("/api/leadgrid/my-notifications/mark-read", async (req, res) => {
@@ -683,33 +707,41 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
   app.get("/api/leadgrid/customers/:id/assignment-status", async (req, res) => {
     const s = getSession(req, activeSessions);
     if (!s) return res.status(401).json({ error: "Ikke innlogget" });
-
-    const r = await pool.query(
-      `SELECT c.id::text,
-              c.assigned_team_leader_id, c.assigned_user_id,
-              c.team_leader_first_opened_at::text,
-              c.team_leader_last_seen_at::text,
-              c.rep_first_opened_at::text,
-              c.rep_last_seen_at::text,
-              c.assigned_at::text,
-              c.last_action_at::text, c.last_action_type,
-              tl.first_name AS tl_first, tl.last_name AS tl_last,
-              tl.profile_image_url AS tl_avatar,
-              tl_up.last_seen_at::text AS tl_last_online,
-              tl_up.current_route AS tl_current_route,
-              rep.first_name AS rep_first, rep.last_name AS rep_last,
-              rep.profile_image_url AS rep_avatar,
-              rep_up.last_seen_at::text AS rep_last_online,
-              rep_up.current_route AS rep_current_route
-         FROM crm_customers c
-         LEFT JOIN users tl  ON tl.id = c.assigned_team_leader_id
-         LEFT JOIN users rep ON rep.id = c.assigned_user_id
-         LEFT JOIN user_presence tl_up  ON tl_up.user_id = tl.id
-         LEFT JOIN user_presence rep_up ON rep_up.user_id = rep.id
-        WHERE c.id = $1`,
-      [req.params.id],
-    );
-    if (r.rows.length === 0) return res.status(404).json({ error: "Ikke funnet" });
-    res.json(r.rows[0]);
+    // 🔴 `user_presence.user_id` (uuid) = `users.id` (varchar) kastet
+    // «operator does not exist: uuid = character varying» → uten try/catch
+    // svarte Express aldri → HENG. Cast users.id::uuid + try/catch
+    // (Notification-QA 2026-07-06).
+    try {
+      const r = await pool.query(
+        `SELECT c.id::text,
+                c.assigned_team_leader_id, c.assigned_user_id,
+                c.team_leader_first_opened_at::text,
+                c.team_leader_last_seen_at::text,
+                c.rep_first_opened_at::text,
+                c.rep_last_seen_at::text,
+                c.assigned_at::text,
+                c.last_action_at::text, c.last_action_type,
+                tl.first_name AS tl_first, tl.last_name AS tl_last,
+                tl.profile_image_url AS tl_avatar,
+                tl_up.last_seen_at::text AS tl_last_online,
+                tl_up.current_route AS tl_current_route,
+                rep.first_name AS rep_first, rep.last_name AS rep_last,
+                rep.profile_image_url AS rep_avatar,
+                rep_up.last_seen_at::text AS rep_last_online,
+                rep_up.current_route AS rep_current_route
+           FROM crm_customers c
+           LEFT JOIN users tl  ON tl.id = c.assigned_team_leader_id
+           LEFT JOIN users rep ON rep.id = c.assigned_user_id
+           LEFT JOIN user_presence tl_up  ON tl_up.user_id = tl.id::uuid
+           LEFT JOIN user_presence rep_up ON rep_up.user_id = rep.id::uuid
+          WHERE c.id = $1`,
+        [req.params.id],
+      );
+      if (r.rows.length === 0) return res.status(404).json({ error: "Ikke funnet" });
+      res.json(r.rows[0]);
+    } catch (e) {
+      console.error("[leadgrid] assignment-status feilet", e);
+      res.status(500).json({ error: "Kunne ikke hente tildelings-status" });
+    }
   });
 }
