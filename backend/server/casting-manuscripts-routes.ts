@@ -645,6 +645,7 @@ export function setupCastingManuscriptsRoutes(
     "/api/casting/manuscripts/:manuscriptId/revisions",
     async (req, res) => {
       try {
+        if (!(await ensureManuscriptOwner(req, res, req.params.manuscriptId))) return;
         const revisions = await manuscriptsService.getRevisions(
           req.params.manuscriptId,
         );
@@ -711,6 +712,7 @@ export function setupCastingManuscriptsRoutes(
     "/api/casting/manuscripts/:manuscriptId/revisions/:revisionId",
     async (req, res) => {
       try {
+        if (!(await ensureManuscriptOwner(req, res, req.params.manuscriptId))) return;
         const revision = await revisionsService.getRevisionById(
           req.params.manuscriptId,
           req.params.revisionId,
@@ -731,6 +733,7 @@ export function setupCastingManuscriptsRoutes(
     "/api/casting/manuscripts/:manuscriptId/revisions/diff",
     async (req, res) => {
       try {
+        if (!(await ensureManuscriptOwner(req, res, req.params.manuscriptId))) return;
         const fromId =
           typeof req.query.from === "string" ? req.query.from.trim() : "";
         const toId =
@@ -850,6 +853,9 @@ export function setupCastingManuscriptsRoutes(
     "/api/casting/manuscripts/:manuscriptId/export",
     async (req, res) => {
       try {
+        // Eierskap-vakt (som søsken-lese-endepunkter :299/:513/:567) — uten den kunne
+        // hvem som helst med en manuscriptId laste ned et annet kundes manus (IDOR).
+        if (!(await ensureManuscriptOwner(req, res, req.params.manuscriptId))) return;
         const format =
           typeof req.query.format === "string"
             ? req.query.format.toLowerCase()

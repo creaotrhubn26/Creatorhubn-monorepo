@@ -249,11 +249,39 @@ pub fn demo_session_report(app: AppHandle, kind: String, result: serde_json::Val
     app.emit(event, result).map_err(|e| e.to_string())
 }
 
+/// SSRF-vern: avvis interne/private/loopback/link-local-adresser før henting, så en
+/// (potensielt fjern-invokert) URL ikke kan probe brukerens localhost/LAN.
+fn reject_internal_url(raw: &str) -> Result<(), String> {
+    let u = reqwest::Url::parse(raw).map_err(|_| "ugyldig URL".to_string())?;
+    match u.scheme() {
+        "http" | "https" => {}
+        _ => return Err("kun http/https er tillatt".into()),
+    }
+    let host = u.host_str().ok_or("mangler host")?.to_lowercase();
+    let h = host.trim_start_matches('[').trim_end_matches(']');
+    if h == "localhost" || h == "::1" || h.ends_with(".local") || h.ends_with(".internal") || !h.contains('.') {
+        return Err("intern host ikke tillatt (SSRF-vern)".into());
+    }
+    let parts: Vec<&str> = h.split('.').collect();
+    if parts.len() == 4 && parts.iter().all(|p| p.parse::<u8>().is_ok()) {
+        let a: u8 = parts[0].parse().unwrap();
+        let b: u8 = parts[1].parse().unwrap();
+        if a == 127 || a == 10 || a == 0 || (a == 169 && b == 254) || (a == 172 && (16..=31).contains(&b)) || (a == 192 && b == 168) {
+            return Err("privat/loopback IP ikke tillatt (SSRF-vern)".into());
+        }
+    }
+    if h.starts_with("fc") || h.starts_with("fd") || h.starts_with("fe80") {
+        return Err("intern IPv6 ikke tillatt (SSRF-vern)".into());
+    }
+    Ok(())
+}
+
 /// Hent EKTE side-kontekst via reqwest (ingen CORS). Trekker ut tittel +
 /// meta-description + klikkbare element-labels (knapper/lenker) + synlig tekst,
 /// så AI Director kan skrive scener basert på hva siden faktisk er/inneholder.
 #[tauri::command]
 pub async fn demo_fetch_site_context(url: String) -> Result<String, String> {
+    reject_internal_url(&url)?;
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
         .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17 Safari/605.1.15")
@@ -277,9 +305,7 @@ pub struct LiveData {
 
 #[tauri::command]
 pub async fn fetch_live_data(url: String) -> Result<LiveData, String> {
-    if !(url.starts_with("http://") || url.starts_with("https://")) {
-        return Err("URL må starte med http:// eller https://".into());
-    }
+    reject_internal_url(&url)?; // http(s)-validering + SSRF-vern (intern/privat blokkert)
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(12))
         .user_agent("PostAgent-Infographic/1.0")

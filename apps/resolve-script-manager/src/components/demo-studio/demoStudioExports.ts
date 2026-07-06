@@ -379,12 +379,35 @@ function esc(s: string): string {
  * Bevarer <image href> (logo) og all vanlig tegne-markup.
  */
 export function sanitizeSvg(svg: string): string {
+  // DOM-basert sanitering (robust i WKWebView) — regex alene var omgåelig
+  // (usiterte on*-handlere, obfuskering). Parser treet, fjern farlige noder/attr.
+  if (typeof DOMParser !== 'undefined' && typeof XMLSerializer !== 'undefined') {
+    try {
+      const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
+      const root = doc.documentElement;
+      if (root && !doc.querySelector('parsererror') && root.nodeName.toLowerCase() !== 'parsererror') {
+        const walk = (el: Element): void => {
+          const tag = el.tagName.toLowerCase();
+          if (tag === 'script' || tag === 'foreignobject') { el.remove(); return; }
+          for (const attr of Array.from(el.attributes)) {
+            const n = attr.name.toLowerCase();
+            const v = attr.value.replace(/\s+/g, '').toLowerCase();
+            if (n.startsWith('on')) el.removeAttribute(attr.name);
+            else if ((n === 'href' || n.endsWith(':href') || n === 'src') && v.startsWith('javascript:')) el.removeAttribute(attr.name);
+          }
+          Array.from(el.children).forEach((c) => walk(c));
+        };
+        walk(root);
+        return new XMLSerializer().serializeToString(root);
+      }
+    } catch { /* faller tilbake til regex under */ }
+  }
+  // Fallback (ikke-DOM-kontekst): forbedret regex — også usiterte on*-handlere.
   return svg
     .replace(/<script[\s\S]*?<\/script>/gi, '')
     .replace(/<foreignObject[\s\S]*?<\/foreignObject>/gi, '')
-    .replace(/\son\w+\s*=\s*"[^"]*"/gi, '')
-    .replace(/\son\w+\s*=\s*'[^']*'/gi, '')
-    .replace(/(href|xlink:href)\s*=\s*("|')\s*javascript:[^"']*\2/gi, '');
+    .replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(/(href|xlink:href|src)\s*=\s*("|'|)\s*javascript:[^"'>\s]*/gi, '');
 }
 
 /** Les faktisk størrelse fra viewBox (foretrukket) eller width/height, med

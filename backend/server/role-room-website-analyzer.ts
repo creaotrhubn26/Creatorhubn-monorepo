@@ -92,7 +92,29 @@ type HttpFetcher = (url: string, options?: { timeoutMs?: number; binary?: boolea
   finalUrl: string;
 }>;
 
+// SSRF-vern: avvis interne/private/loopback/link-local-adresser før henting, så en
+// bruker-styrt URL ikke kan probe backendens interne tjenester/metadata-endepunkt.
+// (Residual: DNS-rebinding / redirect-til-intern krever connection-nivå-vern.)
+function assertPublicUrl(url: string): void {
+  let u: URL;
+  try { u = new URL(url); } catch { throw new Error("ugyldig URL"); }
+  if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error("kun http/https er tillatt");
+  const host = u.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (host === "localhost" || host === "::1" || host.endsWith(".local") || host.endsWith(".internal") || !host.includes(".")) {
+    throw new Error("intern host ikke tillatt");
+  }
+  const m = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (m) {
+    const a = +m[1], b = +m[2];
+    if (a === 127 || a === 10 || a === 0 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)) {
+      throw new Error("privat/loopback IP ikke tillatt");
+    }
+  }
+  if (host.startsWith("fc") || host.startsWith("fd") || host.startsWith("fe80")) throw new Error("intern IPv6 ikke tillatt");
+}
+
 const defaultHttp: HttpFetcher = async (url, options = {}) => {
+  assertPublicUrl(url);
   const res = await axios.get(url, {
     timeout: options.timeoutMs ?? 15_000,
     responseType: options.binary ? "arraybuffer" : "text",
