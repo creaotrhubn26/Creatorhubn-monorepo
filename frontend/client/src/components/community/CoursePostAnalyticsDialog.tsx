@@ -58,6 +58,7 @@ import {
   COMMUNITY_DIALOG_TEXT,
   COMMUNITY_DIALOG_TITLE_SX,
 } from './communityDialogStyles';
+import { useCommunityLocale } from './communityLocale';
 
 interface CoursePostAnalyticsDialogProps {
   open: boolean;
@@ -74,6 +75,7 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
   analyticsData,
   loading,
 }) => {
+  const { tt } = useCommunityLocale();
   const [viewMode, setViewMode] = useState<'single' | 'compare'>('single');
   const [selectedPosts, setSelectedPosts] = useState<any[]>([]);
   const [allPosts, setAllPosts] = useState<any[]>([]);
@@ -874,11 +876,11 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
   const getEventLabel = (eventType: string) => {
     switch (eventType) {
       case 'view':
-        return 'Visning';
+        return tt('Visning', 'View');
       case 'click':
-        return 'Klikk';
+        return tt('Klikk', 'Click');
       case 'enrollment':
-        return 'Påmelding';
+        return tt('Påmelding', 'Enrollment');
       default:
         return eventType;
     }
@@ -897,7 +899,7 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
         <Box display="flex" justifyContent="space-between" alignItems="center" sx={{ position: 'relative', zIndex: 1 }}>
           <Box flex={1}>
             <Typography variant="h6" sx={{ fontWeight: 800, color: COMMUNITY_DIALOG_TEXT }}>
-              Kursinnlegg Statistikk
+              {tt('Kursinnlegg Statistikk', 'Course Post Analytics')}
             </Typography>
           </Box>
           <Box display="flex" gap={2} alignItems="center">
@@ -912,11 +914,11 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
             >
               <ToggleButton value="single">
                 <TrendingUp fontSize="small" sx={{ mr: 0.5 }} />
-                Enkelt
+                {tt('Enkelt', 'Single')}
               </ToggleButton>
               <ToggleButton value="compare">
                 <CompareArrows fontSize="small" sx={{ mr: 0.5 }} />
-                Sammenlign
+                {tt('Sammenlign', 'Compare')}
               </ToggleButton>
             </ToggleButtonGroup>
             <IconButton onClick={onClose} sx={COMMUNITY_DIALOG_CLOSE_BUTTON_SX}>
@@ -932,7 +934,7 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
             <Box py={4}>
               <LinearProgress />
               <Typography variant="body2" sx={{ color: COMMUNITY_DIALOG_MUTED }} align="center" mt={2}>
-                Laster statistikk...
+                {tt('Laster statistikk...', 'Loading analytics...')}
               </Typography>
             </Box>
           ) : analyticsData ? (
@@ -952,10 +954,10 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
                     {post.course_title}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    Kanal: {post.channel_name}
+                    {tt('Kanal', 'Channel')}: {post.channel_name}
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
-                    Publisert: {new Date(post.published_at).toLocaleDateString('nb-NO')}
+                    {tt('Publisert', 'Published')}: {new Date(post.published_at).toLocaleDateString('nb-NO')}
                   </Typography>
                 </Box>
               </Box>
@@ -977,7 +979,7 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
                   <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={2}>
                     <Box>
                       <Typography variant="caption" sx={{ opacity: 0.9, fontWeight: 500}}>
-                        Visninger
+                        {tt('Visninger', 'Views')}
                       </Typography>
                       <Typography variant="h4" fontWeight={700} mt={0.5}>
                         {views.toLocaleString()}
@@ -1046,7 +1048,7 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
                   <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={2}>
                     <Box>
                       <Typography variant="caption" sx={{ opacity: 0.9, fontWeight: 500}}>
-                        Klikk
+                        {tt('Klikk', 'Clicks')}
                       </Typography>
                       <Typography variant="h4" fontWeight={700} mt={0.5}>
                         {clicks.toLocaleString()}
@@ -1114,7 +1116,7 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
                   <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={2}>
                     <Box>
                       <Typography variant="caption" sx={{ opacity: 0.9, fontWeight: 500}}>
-                        Påmeldinger
+                        {tt('Påmeldinger', 'Enrollments')}
                       </Typography>
                       <Typography variant="h4" fontWeight={700} mt={0.5}>
                         {enrollments.toLocaleString()}
@@ -1222,18 +1224,18 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
                 <CardContent sx={{ p: 3 }}>
                   <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
                     <Typography variant="h6" fontWeight={700}>
-                      Aktivitet over tid
+                      {tt('Aktivitet over tid', 'Activity over time')}
                     </Typography>
                     <Box display="flex" gap={1} alignItems="center">
                       <Chip
-                        label="Trend"
+                        label={tt('Trend', 'Trend')}
                         size="small"
                         sx={{
                           background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
                           color: 'white',
                           fontWeight: 600}}
                       />
-                      <Tooltip title="Last ned diagram">
+                      <Tooltip title={tt('Last ned diagram', 'Download chart')}>
                         <IconButton
                           size="small"
                           onClick={(e) => handleOpenExportMenu(e, 'line')}
@@ -1257,7 +1259,7 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
                     />
                   ) : (
                     <Alert severity="info" sx={{ borderRadius: 2 }}>
-                      Ikke nok data for å vise trend
+                      {tt('Ikke nok data for å vise trend', 'Not enough data to show trend')}
                     </Alert>
                   )}
                 </CardContent>
@@ -1275,18 +1277,18 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
                 <CardContent sx={{ p: 3 }}>
                   <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
                     <Typography variant="h6" fontWeight={700}>
-                      Aktivitet etter time på døgnet
+                      {tt('Aktivitet etter time på døgnet', 'Activity by hour of day')}
                     </Typography>
                     <Box display="flex" gap={1} alignItems="center">
                       <Chip
-                        label="Timefordeling"
+                        label={tt('Timefordeling', 'Hourly distribution')}
                         size="small"
                         sx={{
                           background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
                           color: 'white',
                           fontWeight: 600}}
                       />
-                      <Tooltip title="Last ned diagram">
+                      <Tooltip title={tt('Last ned diagram', 'Download chart')}>
                         <IconButton
                           size="small"
                           onClick={(e) => handleOpenExportMenu(e, 'bar')}
@@ -1310,7 +1312,7 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
                     />
                   ) : (
                     <Alert severity="info" sx={{ borderRadius: 2 }}>
-                      Ikke nok data for å vise timefordeling
+                      {tt('Ikke nok data for å vise timefordeling', 'Not enough data to show hourly distribution')}
                     </Alert>
                   )}
                 </CardContent>
@@ -1328,18 +1330,18 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
                 <CardContent sx={{ p: 3 }}>
                   <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
                     <Typography variant="h6" fontWeight={700}>
-                      Konverteringstrakt
+                      {tt('Konverteringstrakt', 'Conversion funnel')}
                     </Typography>
                     <Box display="flex" gap={1} alignItems="center">
                       <Chip
-                        label="Konvertering"
+                        label={tt('Konvertering', 'Conversion')}
                         size="small"
                         sx={{
                           background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
                           color: 'white',
                           fontWeight: 600}}
                       />
-                      <Tooltip title="Last ned diagram">
+                      <Tooltip title={tt('Last ned diagram', 'Download chart')}>
                         <IconButton
                           size="small"
                           onClick={(e) => handleOpenExportMenu(e, 'funnel')}
@@ -1362,7 +1364,7 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
                   />
                   <Box mt={2} p={2} sx={{ backgroundColor: '#f8f9fa', borderRadius: 2 }}>
                     <Typography variant="body2" color="text.secondary" gutterBottom fontWeight={600}>
-                      Konverteringsrate
+                      {tt('Konverteringsrate', 'Conversion rate')}
                     </Typography>
                     <Box display="flex" alignItems="center" gap={2}>
                       <LinearProgress
@@ -1397,10 +1399,10 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
                 <CardContent sx={{ p: 3 }}>
                   <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
                     <Typography variant="h6" fontWeight={700}>
-                      Siste hendelser
+                      {tt('Siste hendelser', 'Recent events')}
                     </Typography>
                     <Chip
-                      label={`${recentEvents.length} hendelser`}
+                      label={`${recentEvents.length} ${tt('hendelser', 'events')}`}
                       size="small"
                       sx={{
                         background: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
@@ -1475,7 +1477,7 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
                     </Box>
                   ) : (
                     <Alert severity="info" sx={{ borderRadius: 2 }}>
-                      Ingen hendelser registrert ennå
+                      {tt('Ingen hendelser registrert ennå', 'No events recorded yet')}
                     </Alert>
                   )}
                 </CardContent>
@@ -1487,13 +1489,13 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
               {post.edit_count > 0 && (
                 <Fade in={true} timeout={2200}>
                   <Alert severity="info">
-                    Dette innlegget har blitt redigert {post.edit_count} gang(er).
+                    {tt('Dette innlegget har blitt redigert', 'This post has been edited')} {post.edit_count} {tt('gang(er).', 'time(s).')}
                   </Alert>
                 </Fade>
               )}
             </Stack>
           ) : (
-            <Alert severity="error">Kunne ikke laste statistikk</Alert>
+            <Alert severity="error">{tt('Kunne ikke laste statistikk', 'Could not load analytics')}</Alert>
           )
         ) : (
           // Comparison View
@@ -1508,10 +1510,10 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
               <CardContent sx={{ p: 3 }}>
                 <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
                   <Typography variant="h6" fontWeight={700}>
-                    Velg innlegg å sammenligne
+                    {tt('Velg innlegg å sammenligne', 'Select posts to compare')}
                   </Typography>
                   <Chip
-                    label={`${selectedPosts.length}/5 valgt`}
+                    label={`${selectedPosts.length}/5 ${tt('valgt', 'selected')}`}
                     size="small"
                     sx={{
                       background: selectedPosts.length > 0
@@ -1559,7 +1561,7 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
                 )}
                 {selectedPosts.length === 0 && (
                   <Alert severity="info" sx={{ mt: 2, borderRadius: 2 }}>
-                    Velg opptil 5 innlegg for å sammenligne ytelse
+                    {tt('Velg opptil 5 innlegg for å sammenligne ytelse', 'Select up to 5 posts to compare performance')}
                   </Alert>
                 )}
               </CardContent>
@@ -1578,10 +1580,10 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
                   <CardContent sx={{ p: 3 }}>
                     <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
                       <Typography variant="h6" fontWeight={700}>
-                        Sammenligning av nøkkeltall
+                        {tt('Sammenligning av nøkkeltall', 'Key metrics comparison')}
                       </Typography>
                       <Chip
-                        label="Oversikt"
+                        label={tt('Oversikt', 'Overview')}
                         size="small"
                         sx={{
                           background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
@@ -1720,10 +1722,10 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
                   <CardContent sx={{ p: 3 }}>
                     <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
                       <Typography variant="h6" fontWeight={700}>
-                        CTR og Konverteringsrate
+                        {tt('CTR og Konverteringsrate', 'CTR and conversion rate')}
                       </Typography>
                       <Chip
-                        label="Ytelse"
+                        label={tt('Ytelse', 'Performance')}
                         size="small"
                         sx={{
                           background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
@@ -1848,10 +1850,10 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
                   <CardContent sx={{ p: 3 }}>
                     <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
                       <Typography variant="h6" fontWeight={700}>
-                        Detaljert sammenligning
+                        {tt('Detaljert sammenligning', 'Detailed comparison')}
                       </Typography>
                       <Chip
-                        label="Tabell"
+                        label={tt('Tabell', 'Table')}
                         size="small"
                         sx={{
                           background: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
@@ -1868,18 +1870,18 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
                               textAlign: 'left',
                               fontWeight: 700,
                               borderRadius: '8px 0 0 8px'}}>
-                              Kurs
+                              {tt('Kurs', 'Course')}
                             </th>
-                            <th style={{ padding: '16px', textAlign: 'right', fontWeight: 700}}>Visninger</th>
-                            <th style={{ padding: '16px', textAlign: 'right', fontWeight: 700}}>Klikk</th>
-                            <th style={{ padding: '16px', textAlign: 'right', fontWeight: 700}}>Påmeldinger</th>
+                            <th style={{ padding: '16px', textAlign: 'right', fontWeight: 700}}>{tt('Visninger', 'Views')}</th>
+                            <th style={{ padding: '16px', textAlign: 'right', fontWeight: 700}}>{tt('Klikk', 'Clicks')}</th>
+                            <th style={{ padding: '16px', textAlign: 'right', fontWeight: 700}}>{tt('Påmeldinger', 'Enrollments')}</th>
                             <th style={{ padding: '16px', textAlign: 'right', fontWeight: 700}}>CTR</th>
                             <th style={{
                               padding: '16px',
                               textAlign: 'right',
                               fontWeight: 700,
                               borderRadius: '0 8px 8px 0'}}>
-                              Konvertering
+                              {tt('Konvertering', 'Conversion')}
                             </th>
                           </tr>
                         </thead>
@@ -2001,7 +2003,7 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
           <Box sx={{ p: 2, textAlign: 'center' }}>
             <LinearProgress sx={{ mb: 1 }} />
             <Typography variant="body2" color="text.secondary">
-              Laster opp til Google Drive...
+              {tt('Laster opp til Google Drive...', 'Uploading to Google Drive...')}
             </Typography>
           </Box>
         )}
@@ -2011,19 +2013,19 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
               <ListItemIcon>
                 <ImageIcon fontSize="small" />
               </ListItemIcon>
-              <ListItemText>Last ned som PNG</ListItemText>
+              <ListItemText>{tt('Last ned som PNG', 'Download as PNG')}</ListItemText>
             </MenuItem>
             <MenuItem onClick={() => handleExportChart('jpg')}>
               <ListItemIcon>
                 <ImageIcon fontSize="small" />
               </ListItemIcon>
-              <ListItemText>Last ned som JPG</ListItemText>
+              <ListItemText>{tt('Last ned som JPG', 'Download as JPG')}</ListItemText>
             </MenuItem>
             <MenuItem onClick={() => handleExportChart('svg')}>
               <ListItemIcon>
                 <PdfIcon fontSize="small" />
               </ListItemIcon>
-              <ListItemText>Last ned som SVG</ListItemText>
+              <ListItemText>{tt('Last ned som SVG', 'Download as SVG')}</ListItemText>
             </MenuItem>
             <Divider sx={{ my: 1 }} />
             <MenuItem onClick={handleExportToGoogleDrive}>
@@ -2037,7 +2039,7 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
               </ListItemIcon>
               <ListItemText>
                 <Typography variant="body2" sx={{ fontWeight: 600}}>
-                  Last opp til Google Drive
+                  {tt('Last opp til Google Drive', 'Upload to Google Drive')}
                 </Typography>
               </ListItemText>
             </MenuItem>
@@ -2067,7 +2069,7 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
               sx={{ width: 32, height: 32 }}
             />
             <Typography variant="h6" sx={{ fontWeight: 700, color: COMMUNITY_DIALOG_TEXT }}>
-              {driveUploadResult?.success ? '✅ Lastet opp til Google Drive!' : '❌ Opplasting feilet'}
+              {driveUploadResult?.success ? tt('✅ Lastet opp til Google Drive!', '✅ Uploaded to Google Drive!') : tt('❌ Opplasting feilet', '❌ Upload failed')}
             </Typography>
           </Stack>
           <IconButton
@@ -2085,17 +2087,17 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
           {driveUploadResult?.success ? (
             <Stack spacing={2}>
               <Alert severity="success" sx={{ borderRadius: 2 }}>
-                Diagrammet ble lastet opp til Google Drive!
+                {tt('Diagrammet ble lastet opp til Google Drive!', 'The chart was uploaded to Google Drive!')}
               </Alert>
               <Box>
                 <Typography variant="body2" sx={{ color: COMMUNITY_DIALOG_MUTED }} gutterBottom>
-                  <strong>Filnavn:</strong>
+                  <strong>{tt('Filnavn:', 'File name:')}</strong>
                 </Typography>
                 <Typography variant="body1" sx={{ mb: 2 }}>
                   {driveUploadResult.fileName}
                 </Typography>
                 <Typography variant="body2" sx={{ color: COMMUNITY_DIALOG_MUTED }} gutterBottom>
-                  <strong>Mappe:</strong>
+                  <strong>{tt('Mappe:', 'Folder:')}</strong>
                 </Typography>
                 <Typography variant="body1">
                   {driveUploadResult.folderPath}
@@ -2104,7 +2106,7 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
             </Stack>
           ) : (
             <Alert severity="error" sx={{ borderRadius: 2 }}>
-              Kunne ikke laste opp til Google Drive. Prøv igjen senere.
+              {tt('Kunne ikke laste opp til Google Drive. Prøv igjen senere.', 'Could not upload to Google Drive. Please try again later.')}
             </Alert>
           )}
         </DialogContent>
@@ -2114,7 +2116,7 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
             variant="outlined"
             sx={COMMUNITY_DIALOG_SECONDARY_BUTTON_SX}
           >
-            Lukk
+            {tt('Lukk', 'Close')}
           </Button>
           {driveUploadResult?.success && driveUploadResult?.webViewLink && (
             <Button
@@ -2123,7 +2125,7 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
               startIcon={<OpenInNewIcon />}
               sx={COMMUNITY_DIALOG_PRIMARY_BUTTON_SX}
             >
-              Vis i Google Drive
+              {tt('Vis i Google Drive', 'View in Google Drive')}
             </Button>
           )}
         </DialogActions>
