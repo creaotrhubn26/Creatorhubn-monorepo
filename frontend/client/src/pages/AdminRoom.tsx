@@ -103,6 +103,7 @@ import { NewsletterStudioTab } from '../components/admin/content-marketing/Newsl
 import { RoleRoomTesterInviteDialog } from '../components/invite/RoleRoomTesterInviteDialog';
 import { STUDENT_PAGE_CONFIGS } from '../components/role-room/components/StudentSEOPage';
 import { COMPETITOR_CONFIGS } from '../components/role-room/components/CompetitorComparisonPage';
+import { MARKETING_PAGES, PILLAR_LABELS } from '../components/admin/content-marketing/marketingPagesConfig';
 import BlockListEditor from '../components/role-room/cms/BlockListEditor';
 import RevisionsDrawer from '../components/role-room/cms/RevisionsDrawer';
 import { createBlock, isBlockArray, type Block, type BlocksContent } from '../components/role-room/cms/blockSchema';
@@ -2431,12 +2432,23 @@ function CmsListView({ onEdit }: { onEdit: (slug: string) => void }) {
     }));
     const landingEntries = [
       { slug: 'home', variant: 'landing', h1: 'The Role Room (forside)', audience: '/' },
-      { slug: 'talentportal', variant: 'landing', h1: 'Talentportal', audience: 'For skuespillere og crew' },
+      { slug: 'talentportal', variant: 'landing', h1: 'Talentportal (hero-seksjon)', audience: 'For skuespillere og crew — kun banner øverst, ikke hele siden' },
+      { slug: 'agencyportal', variant: 'landing', h1: 'Agency-portal (hero-seksjon)', audience: 'For byråer — kun banner øverst, ikke hele siden' },
       { slug: 'utdanningsinstitusjon', variant: 'landing', h1: 'For utdanningsinstitusjoner', audience: 'Skoler og fagmiljø' },
       { slug: 'alternatives', variant: 'competitor', h1: 'Casting-plattform alternativer', audience: 'Indeks-side' },
       { slug: 'presse', variant: 'landing', h1: 'Pressepakke', audience: 'Journalister og partnere' },
+      { slug: 'for-byraer', variant: 'landing', h1: 'For byråer', audience: 'B2B-landingsside' },
+      { slug: 'faq', variant: 'landing', h1: 'Ofte stilte spørsmål', audience: 'Offentlig FAQ' },
+      { slug: 'pitch', variant: 'landing', h1: 'Pitch deck', audience: 'Investorer' },
+      { slug: 'privacy-policy', variant: 'landing', h1: 'Personvernerklæring', audience: 'Juridisk — deles med CreatorHub-varianten av samme URL' },
     ];
-    return [...studentEntries, ...competitorEntries, ...landingEntries];
+    const marketingEntries = MARKETING_PAGES.map((page) => ({
+      slug: page.key,
+      variant: 'landing' as const,
+      h1: page.title,
+      audience: PILLAR_LABELS[page.pillar],
+    }));
+    return [...studentEntries, ...competitorEntries, ...landingEntries, ...marketingEntries];
   }, []);
 
   const [cmsPages, setCmsPages] = useState<CmsPageRow[]>([]);

@@ -2,6 +2,9 @@ import { Box, Button, Container, Stack, Typography } from '@mui/material';
 import BarChartIcon from '@mui/icons-material/BarChart';
 import DownloadIcon from '@mui/icons-material/Download';
 import NewsletterSignupBlock from './NewsletterSignupBlock';
+import BlockRenderer from '../../role-room/cms/BlockRenderer';
+import { useCmsBlocks } from '../../role-room/cms/useCmsBlocks';
+import { DEFAULT_LOCALE } from '../../role-room/cms/blockSchema';
 
 /**
  * Industry Data & Insights-pillar — kampanje-landing for Norwegian Casting
@@ -61,6 +64,12 @@ const METHODOLOGY = [
 ];
 
 export function CastingReport2026Page() {
+  const cmsBlocks = useCmsBlocks('casting-rapport-2026');
+
+  if (cmsBlocks) {
+    return <BlockRenderer blocks={cmsBlocks} locale={DEFAULT_LOCALE} />;
+  }
+
   return (
     <Box
       component="article"
