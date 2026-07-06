@@ -1492,14 +1492,14 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
         <DialogContent sx={{ ...COMMUNITY_DIALOG_CONTENT_SX, '& .MuiTextField-root': COMMUNITY_DIALOG_FIELD_SX }}>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
             <TextField
-              label="Tittel"
+              label={tt('Tittel', 'Title')}
               value={editingItem?.title || ''}
               onChange={(e) => setEditingItem(prev => prev ? { ...prev, title: e.target.value } : null)}
               fullWidth
               required
             />
             <TextField
-              label="Beskrivelse"
+              label={tt('Beskrivelse', 'Description')}
               value={editingItem?.description || ''}
               onChange={(e) => setEditingItem(prev => prev ? { ...prev, description: e.target.value } : null)}
               fullWidth
@@ -1509,13 +1509,13 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
           </Box>
         </DialogContent>
         <DialogActions sx={COMMUNITY_DIALOG_ACTIONS_SX}>
-          <Button onClick={() => setEditingItem(null)} sx={COMMUNITY_DIALOG_SECONDARY_BUTTON_SX}>Avbryt</Button>
+          <Button onClick={() => setEditingItem(null)} sx={COMMUNITY_DIALOG_SECONDARY_BUTTON_SX}>{tt('Avbryt', 'Cancel')}</Button>
           <Button 
             variant="contained" 
             onClick={handleEditItem}
             sx={COMMUNITY_DIALOG_PRIMARY_BUTTON_SX}
           >
-            Lagre endringer
+            {tt('Lagre endringer', 'Save changes')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -1529,7 +1529,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
         sx={COMMUNITY_DIALOG_SX}
         PaperProps={{ sx: COMMUNITY_DIALOG_PAPER_SX }}
       >
-        <DialogTitle sx={COMMUNITY_DIALOG_TITLE_SX}>Legg til nytt forslag</DialogTitle>
+        <DialogTitle sx={COMMUNITY_DIALOG_TITLE_SX}>{tt('Legg til nytt forslag', 'Add new suggestion')}</DialogTitle>
         <DialogContent
           sx={{
             ...COMMUNITY_DIALOG_CONTENT_SX,
@@ -1539,21 +1539,21 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
         >
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
             <TextField
-              label="Tittel"
+              label={tt('Tittel', 'Title')}
               value={newItemTitle}
               onChange={(e) => setNewItemTitle(e.target.value)}
               fullWidth
               required
-              placeholder="Beskriv forslaget ditt kort og tydelig"
+              placeholder={tt('Beskriv forslaget ditt kort og tydelig', 'Describe your suggestion briefly and clearly')}
             />
             <TextField
-              label="Beskrivelse"
+              label={tt('Beskrivelse', 'Description')}
               value={newItemDescription}
               onChange={(e) => setNewItemDescription(e.target.value)}
               fullWidth
               multiline
               rows={4}
-              placeholder="Gi mer detaljer om forslaget ditt, hvorfor det er viktig, og hvordan det kan implementeres"
+              placeholder={tt('Gi mer detaljer om forslaget ditt, hvorfor det er viktig, og hvordan det kan implementeres', 'Provide more details about your suggestion, why it is important, and how it can be implemented')}
             />
             <FormControlLabel
               control={
@@ -1562,7 +1562,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
                   onChange={(e) => setNewItemAnonymous(e.target.checked)}
                 />
               }
-              label="Send inn anonymt"
+              label={tt('Send inn anonymt', 'Submit anonymously')}
             />
           </Box>
         </DialogContent>
