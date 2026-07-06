@@ -379,7 +379,7 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
   const nowVisible = nowPct >= 0 && nowPct <= 100;
 
   return (
-    <Stack direction="row" spacing={2.5} sx={{ alignItems: 'stretch' }}>
+    <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2.5} sx={{ alignItems: 'stretch' }}>
       {/* ───────── Hovedkolonne ───────── */}
       <Box sx={{ flex: 1, minWidth: 0 }}>
         {/* «Kom i gang»-sjekkliste: gjør brukeren workspace-klar (profil, prosjekt,
@@ -656,7 +656,7 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
       </Box>
 
       {/* ───────── Capture-aktivitet + Team Chat (høyre) ───────── */}
-      <Box sx={{ width: 340, flexShrink: 0 }}>
+      <Box sx={{ width: { xs: '100%', lg: 340 }, flexShrink: 0 }}>
         {(isReal ? activity.length > 0 : true) && (
           <WsCard sx={{ mb: 2 }}>
             <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 1.25 }}>

@@ -88,7 +88,10 @@ export function LoginModal({
       case 'super_admin':
         return '/admin';
       default:
-        return '/dashboard';
+        // Workspace er hovedflaten. Dette er den ENE kilden til post-login-ruting
+        // (LoginPageSimple OG landingssidenes direkte LoginModal går gjennom her),
+        // så skaper-brukere (role 'user') havner i workspace uansett inngang.
+        return '/workspace';
     }
   };
 

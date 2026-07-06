@@ -15,11 +15,15 @@ import { useAuth } from './useAuth';
 
 export function useTeamAccess(): { hasTeamAccess: boolean; loading: boolean } {
   const { user } = useAuth();
+  // VIKTIG: samme queryKey som useEnterpriseFeatureAccess/useEnterpriseMembership,
+  // og de unwrapper til `response.membership`. Denne MÅ gjøre det samme, ellers
+  // avhenger cache-formen av hvem som henter først → hasTeamAccess blir feil.
   const { data, isLoading } = useQuery({
     queryKey: ['/api/enterprise/my-membership'],
     queryFn: async () => {
       try {
-        return await apiRequest('/api/enterprise/my-membership');
+        const res = await apiRequest('/api/enterprise/my-membership');
+        return (res as any)?.membership ?? null;
       } catch {
         return null;
       }
@@ -28,7 +32,7 @@ export function useTeamAccess(): { hasTeamAccess: boolean; loading: boolean } {
     retry: false,
   });
   const hasTeamAccess =
-    !!(data as any)?.membership?.organizationId ||
+    !!(data as any)?.organizationId ||
     (user as any)?.profession === 'enterprise';
   return { hasTeamAccess, loading: isLoading };
 }
