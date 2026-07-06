@@ -408,24 +408,10 @@ struct TeamView: View {
     // MARK: KPI row
 
     private var kpiRow: some View {
-        // iPhone: horisontal KPI-scroller tok for mye plass — nå én kompakt
-        // statistikk-knapp der kortene ligger i modal med full bredde
-        // (samme mønster som Oversikt-fanen). iPad/Mac: uendret scroller.
-        Group {
-            if DeviceIdiom.isPhone {
-                statsButton
-                    .sheet(isPresented: $showStatsModal) { statsModal }
-            } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
-                        ForEach(TeamKPI.allCases) { k in
-                            kpiCard(k, trend: k.trend.replacingOccurrences(of: "+", with: "↑ "))
-                                .frame(width: 220)
-                        }
-                    }
-                }
-            }
-        }
+        // Alle idiomer (Daniel 2026-07-05): kompakt statistikk-knapp m/
+        // kortene i modal — samme mønster på iPhone, iPad og Mac.
+        statsButton
+            .sheet(isPresented: $showStatsModal) { statsModal }
     }
 
     // ── iPhone: kompakt statistikk-knapp + modal ─────────────────────

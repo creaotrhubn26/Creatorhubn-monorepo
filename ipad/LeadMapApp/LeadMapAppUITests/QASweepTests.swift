@@ -20,6 +20,12 @@ final class QASweepTests: XCTestCase {
     // MARK: - Hjelpere
 
     private func launchApp(tab: Int) -> XCUIApplication {
+        // Portrett-lås på iOS-enheter — rotert/opp-ned sim gir speilvendte
+        // tap-koordinater og letterbox-artefakter i skjermbildene.
+        // (Setteren finnes ikke på Mac Catalyst og feller testen der.)
+        #if !targetEnvironment(macCatalyst)
+        XCUIDevice.shared.orientation = .portrait
+        #endif
         let app = XCUIApplication()
         app.launchEnvironment["QA_BEARER_TOKEN"] =
             ProcessInfo.processInfo.environment["QA_BEARER_TOKEN"] ?? ""
@@ -165,8 +171,23 @@ final class QASweepTests: XCTestCase {
     /// SuperAdmin-konsoll → org-kort → detalj-faner → tilgangs-matrise
     /// → toggle → Lagre. Alle steg får skjermbilde.
     func testSuperAdminDeepSweep() throws {
-        let app = launchApp(tab: 6)
+        // Leadbook eier SuperAdmin-inngangen: QA_TAB 6 på iPhone (via
+        // Mer-push), 5 på iPad/Mac (ingen Mer-fane — indeksene forskyves).
+        let leadbookTab = UIDevice.current.userInterfaceIdiom == .phone ? 6 : 5
+        let app = launchApp(tab: leadbookTab)
         let appW = app.frame.width
+
+        // iPad/Mac: QA_TAB-selection er upålitelig på sidebar-TabView —
+        // tapp Leadbook-fanen eksplisitt så vi garantert står der
+        // SuperAdmin-inngangen er wiret.
+        if UIDevice.current.userInterfaceIdiom != .phone {
+            let lb = app.buttons["Leadbook"].firstMatch
+            if lb.waitForExistence(timeout: 5) {
+                lb.tap()
+                sleep(2)
+            }
+            snap(app, "superadmin-00-leadbook-landing")
+        }
 
         // 1. Profil-knapp i delt header → popover → SuperAdmin-konsoll
         let avatar = app.buttons["header-profile-button"].firstMatch
@@ -203,11 +224,12 @@ final class QASweepTests: XCTestCase {
         let orgTabBar = app.scrollViews["orgdetail-tabbar"].firstMatch
         for (i, navn) in ["Tilganger", "Fakturering", "Audit-logg"].enumerated() {
             func synligDetaljFane() -> XCUIElement? {
-                app.buttons.containing(
-                    NSPredicate(format: "label CONTAINS %@", navn)
-                ).allElementsBoundByIndex.first {
-                    $0.exists && $0.frame.minX >= 0 && $0.frame.maxX <= appW
-                }
+                // Unik id — label-søk kunne treffe dashboardet bak det
+                // sentrerte iPad-arket, og tap utenfor arket lukket det.
+                let tab = app.buttons["orgdetail-tab-\(navn)"].firstMatch
+                guard tab.exists, tab.frame.minX >= 0, tab.frame.maxX <= appW
+                else { return nil }
+                return tab
             }
             var fane = synligDetaljFane()
             var forsok = 0

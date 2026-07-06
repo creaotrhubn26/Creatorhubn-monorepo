@@ -1044,6 +1044,9 @@ struct OrgDetailSheet: View {
                         .background(tab == t ? LBrand.orange.opacity(0.22) : .clear, in: Capsule())
                     }
                     .buttonStyle(.plain)
+                    // Unik id: på iPad er arket sentrert og label-søk kan
+                    // treffe dashboardet BAK — tap utenfor arket lukker det.
+                    .accessibilityIdentifier("orgdetail-tab-\(t.rawValue)")
                 }
                 Spacer()
             }

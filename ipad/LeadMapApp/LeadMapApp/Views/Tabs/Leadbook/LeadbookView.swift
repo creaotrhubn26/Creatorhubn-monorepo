@@ -300,15 +300,29 @@ struct LeadbookView: View {
     private var isCompactLayout: Bool { hSize == .compact }
 
     var body: some View {
-        // fullScreenCover, IKKE innholds-bytte: SuperAdminDashboard har egen
-        // NavigationStack, og på iPhone er LeadbookView pushet inne i
-        // Mer-fanens stack — nestet NavigationStack i en push kollapser
-        // og popper brukeren til Mer-roten. Cover matcher også semantikken:
-        // konsollen er en root-level kontekst-switch, ikke en Leadbook-side.
-        leadbookBody
-            .fullScreenCover(isPresented: $showSuperAdmin) {
-                SuperAdminDashboard(onExit: { showSuperAdmin = false })
+        // iPhone: fullScreenCover — LeadbookView er pushet inne i Mer-
+        // fanens NavigationStack, og SuperAdminDashboards egen stack
+        // nestet i pushen kollapset og poppet brukeren til Mer-roten.
+        // iPad/Mac: innholds-bytte — Leadbook er egen fane (ingen push),
+        // og fullScreenCover legges ut i portrett-bredde på landskap-iPad
+        // (svart dødfelt til høyre).
+        if DeviceIdiom.isPhone {
+            leadbookBody
+                .fullScreenCover(isPresented: $showSuperAdmin) {
+                    SuperAdminDashboard(onExit: { showSuperAdmin = false })
+                }
+        } else {
+            Group {
+                if showSuperAdmin {
+                    SuperAdminDashboard(onExit: { showSuperAdmin = false })
+                        .transition(.move(edge: .trailing))
+                } else {
+                    leadbookBody
+                        .transition(.move(edge: .leading))
+                }
             }
+            .animation(.easeInOut(duration: 0.25), value: showSuperAdmin)
+        }
     }
 
     private var leadbookBody: some View {
@@ -725,32 +739,10 @@ struct LeadbookView: View {
     // MARK: KPI-rad
 
     private var kpiRow: some View {
-        // iPhone: fire KPI-kort tok for mye plass — nå én kompakt
-        // statistikk-knapp der kortene ligger i modal med full bredde
-        // (samme mønster som Oversikt-fanen). iPad-compact beholder
-        // 2×2-grid, iPad/Mac-regular beholder 1×4 HStack.
-        Group {
-            if DeviceIdiom.isPhone {
-                statsButton
-                    .sheet(isPresented: $showStatsModal) { statsModal }
-            } else if isCompactLayout {
-                LazyVGrid(
-                    columns: [GridItem(.flexible(), spacing: 10),
-                              GridItem(.flexible(), spacing: 10)],
-                    spacing: 10
-                ) {
-                    ForEach(LeadbookKPI.allCases) { kpi in
-                        kpiCard(kpi: kpi)
-                    }
-                }
-            } else {
-                HStack(spacing: 12) {
-                    ForEach(LeadbookKPI.allCases) { kpi in
-                        kpiCard(kpi: kpi)
-                    }
-                }
-            }
-        }
+        // Alle idiomer (Daniel 2026-07-05): kompakt statistikk-knapp m/
+        // kortene i modal — samme mønster på iPhone, iPad og Mac.
+        statsButton
+            .sheet(isPresented: $showStatsModal) { statsModal }
     }
 
     // ── iPhone: kompakt statistikk-knapp + modal ─────────────────────

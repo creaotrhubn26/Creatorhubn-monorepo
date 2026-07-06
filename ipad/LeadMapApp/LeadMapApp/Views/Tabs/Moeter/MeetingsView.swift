@@ -555,19 +555,10 @@ struct MeetingsView: View {
     // MARK: KPI
 
     private var kpiRow: some View {
-        // iPhone: fire KPI-kort tok for mye plass — nå én kompakt
-        // statistikk-knapp der kortene ligger i modal med full bredde
-        // (samme mønster som Oversikt-fanen). iPad/Mac: uendret rad.
-        Group {
-            if DeviceIdiom.isPhone {
-                statsButton
-                    .sheet(isPresented: $showStatsModal) { statsModal }
-            } else {
-                HStack(spacing: 12) {
-                    kpiCards
-                }
-            }
-        }
+        // Alle idiomer (Daniel 2026-07-05): kompakt statistikk-knapp m/
+        // kortene i modal — samme mønster på iPhone, iPad og Mac.
+        statsButton
+            .sheet(isPresented: $showStatsModal) { statsModal }
     }
 
     private var kpiCards: some View {
