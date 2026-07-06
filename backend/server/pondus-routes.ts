@@ -36,6 +36,7 @@
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
+import { assertEntitled } from "./leadgrid-entitlement-guard.js";
 
 // Speil den globale SessionUser-typen i backend/server/index.ts. Denne
 // modulen bruker kun feltene som eksisterer i alle callsteder. isPlatformAdmin
@@ -173,6 +174,9 @@ export function registerPondusRoutes(deps: PondusRoutesDeps): void {
     if (!session) return;
     const orgId = await resolveOrgIdForUser(pool, session.userId);
     const admin = isPlatformAdmin(session);
+    // Server-side håndhevelse (QA 2026-07-06): sperret Pondus-tilgang
+    // blokkeres her, ikke bare i UI. Admin bypasser; fail-open ved 0 rader.
+    if (!admin && !(await assertEntitled(pool, session.userId, "leadbookPondus", res))) return;
     const category = readString(req.query.category).trim();
     const kind = readString(req.query.kind).trim();
     const publishedParam = readString(req.query.published).toLowerCase();
@@ -230,6 +234,7 @@ export function registerPondusRoutes(deps: PondusRoutesDeps): void {
     if (!session) return;
     const orgId = await resolveOrgIdForUser(pool, session.userId);
     const admin = isPlatformAdmin(session);
+    if (!admin && !(await assertEntitled(pool, session.userId, "leadbookPondus", res))) return;
     const id = readString(req.params.id);
     if (!isUuid(id)) return res.status(400).json({ error: "invalid_id" });
 
@@ -639,6 +644,8 @@ export function registerPondusRoutes(deps: PondusRoutesDeps): void {
   app.get("/api/leadgrid/pondus/content-by-step", async (req, res) => {
     const session = requireUserSession(req, res);
     if (!session) return;
+    if (!isPlatformAdmin(session)
+        && !(await assertEntitled(pool, session.userId, "leadbookPondus", res))) return;
     const templateId = readString(req.query.template_id);
     const stepKey = readString(req.query.step_key).trim();
     if (!isUuid(templateId)) return res.status(400).json({ error: "missing_or_invalid_template_id" });

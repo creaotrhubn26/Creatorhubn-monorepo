@@ -2205,9 +2205,15 @@ extension APIClient {
         )
     }
 
-    /// Egen orgs entitlements (kunde-siden av løkka — leses ved bootstrap).
-    func fetchMyEntitlements() async throws -> OrgEntitlementsEnvelope {
-        try await get("/api/leadgrid/me/entitlements")
+    /// Egen orgs entitlements (kunde-siden av løkka — leses ved bootstrap
+    /// og ved org-bytte). `organizationId` scoper til AKTIV org for
+    /// multi-org-brukere (ellers server-resolvet primær-org).
+    func fetchMyEntitlements(organizationId: String? = nil) async throws -> OrgEntitlementsEnvelope {
+        var path = "/api/leadgrid/me/entitlements"
+        if let organizationId, !organizationId.isEmpty {
+            path += "?organization_id=\(organizationId)"
+        }
+        return try await get(path)
     }
 
     /// Audit-hendelser for én org (OrgDetailSheet > Audit-logg).
@@ -2225,6 +2231,14 @@ extension APIClient {
         var body: [String: Any] = ["status": status]
         if let reason, !reason.isEmpty { body["reason"] = reason }
         try await post("/api/superadmin/organizations/\(orgId)/set-status", body: body)
+    }
+
+    /// Start impersonation / org-kontekst-bytte (POST switch-context).
+    /// Serveren logger i superadmin_audit_log + setter aktiv-org-sesjon.
+    func switchOrgContext(_ orgId: String, reason: String?) async throws {
+        var body: [String: Any] = ["orgId": orgId]
+        if let reason, !reason.isEmpty { body["reason"] = reason }
+        try await post("/api/superadmin/switch-context", body: body)
     }
 
     func fetchActiveImpersonation() async throws -> ImpersonationStatus {

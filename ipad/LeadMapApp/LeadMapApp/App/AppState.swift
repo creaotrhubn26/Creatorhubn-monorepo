@@ -241,9 +241,17 @@ final class AppState {
             } else {
                 UserDefaults.standard.removeObject(forKey: "rr.lead_map.active_org")
             }
-            Task {
-                await loadOrgContext()
-                await refreshWorkload()
+            // Org-bytte MÅ oppdatere ALT org-avhengig, ikke bare org-
+            // kontekst — ellers viste Leads/Oversikt/Kart forrige org sine
+            // data til noe annet trigget refreshAll (QA 2026-07-06). Og
+            // entitlements/gating må re-hentes for den nye aktive org-en
+            // (før: kun ved bootstrap → gating frosset til primær-org).
+            if oldValue != activeOrganizationId {
+                Task {
+                    await loadOrgContext()
+                    await loadMyEntitlements()
+                    await refreshAll()
+                }
             }
         }
     }
@@ -459,14 +467,19 @@ final class AppState {
             // super_admin så «Gjest/Salgssjef» til hele refreshen var
             // ferdig (kald backend = titalls sekunder).
             await loadUserRole()
-            await loadMyEntitlements()
+            // Entitlements fail-open og gater-viewene re-rendrer på @Published-
+            // endringen → kjør samtidig med refreshAll i stedet for å blokkere
+            // first paint på et kaldt backend (QA 2026-07-06).
+            async let entitlementsLoad: Void = loadMyEntitlements()
             await refreshAll()
+            await entitlementsLoad
             if let id = activeProjectId {
                 await loadProjectSummary(id: id)
             }
             await loadOrganizations()
             await loadOrgContext()
-            await loadUserRole()
+            // (loadUserRole lå her en gang til — fjernet; rollen er alt
+            //  hentet øverst, dobbeltkallet var bortkastet.)
             await startHeartbeatIfNeeded()
             startNotificationsPolling()
             await refreshAnnotations()
@@ -527,7 +540,7 @@ final class AppState {
     func loadMyEntitlements() async {
         guard let api else { return }
         do {
-            let envelope = try await api.fetchMyEntitlements()
+            let envelope = try await api.fetchMyEntitlements(organizationId: activeOrganizationId)
             EntitlementStore.shared.applyServer(envelope)
         } catch {
             print("[AppState] loadMyEntitlements failed: \(error)")

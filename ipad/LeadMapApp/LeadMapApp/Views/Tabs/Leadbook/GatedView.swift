@@ -39,6 +39,15 @@ final class EntitlementStore: ObservableObject {
             hasServerEntitlements = false
             return
         }
+        // Bær ekte plan fra backend så upsell/locked-tekst ikke lyver om
+        // «Din nåværende plan er Enterprise» for en Starter-org.
+        if let planStr = envelope.plan,
+           let plan = SubscriptionPlan.allCases.first(where: {
+               $0.rawValue.lowercased() == planStr.lowercased()
+           }) {
+            currentPlan = plan
+        }
+        let isoParser = ISO8601DateFormatter()
         var dict: [LeadgridFeature: Entitlement] = [:]
         for row in envelope.entitlements {
             guard let feature = LeadgridFeature.fromKey(row.featureKey),
@@ -48,9 +57,20 @@ final class EntitlementStore: ObservableObject {
                 state: state,
                 monthlyLimit: row.monthlyLimit,
                 currentUsage: 0,
-                trialEndsAt: nil,
+                // Ekte trial-slutt fra backend (før: nil → hardkodet
+                // «8 dager igjen» i banneret).
+                trialEndsAt: row.trialEndsAt.flatMap(isoParser.date(from:)),
                 addOnPriceMonthly: row.addonPriceMonthly
             )
+        }
+        // Fail-CLOSED ved decode-drift: hvis backend sendte rader men
+        // INGEN dekodet (f.eks. enum-case omdøpt i en nyere/eldre app-
+        // versjon), ville et tomt dict + hasServerEntitlements=true låst
+        // opp ALT (access() defaulter til .included på manglende nøkkel).
+        // Behold da forrige tilstand og flagg — ikke lås opp stille.
+        guard !dict.isEmpty else {
+            print("[EntitlementStore] \(envelope.entitlements.count) rader men 0 dekodet — beholder eksisterende (fail-closed)")
+            return
         }
         entitlements = dict
         hasServerEntitlements = true
@@ -118,10 +138,19 @@ struct GatedView<Content: View>: View {
         }
     }
 
+    /// Ekte gjenstående trial-dager fra backend. nil = ubestemt (vis bare
+    /// «TRIAL» uten oppdiktet tall — ALDRI en hardkodet «8 dager»).
+    private var trialDaysLeft: Int? {
+        guard let ends = store.entitlements[feature]?.trialEndsAt else { return nil }
+        let days = Calendar.current.dateComponents([.day], from: Date(), to: ends).day ?? 0
+        return max(0, days)
+    }
+
     private var trialBanner: some View {
         HStack(spacing: 7) {
             Image(systemName: "clock.fill").foregroundStyle(LBrand.yellow)
-            Text("TRIAL — 8 dager igjen").font(.appScaled(size: 9, weight: .black))
+            Text(trialDaysLeft.map { "TRIAL — \($0) dager igjen" } ?? "TRIAL")
+                .font(.appScaled(size: 9, weight: .black))
                 .foregroundStyle(LBrand.yellow).tracking(0.7)
             Spacer()
             Button { showUpsell = true } label: {
@@ -136,10 +165,19 @@ struct GatedView<Content: View>: View {
         .overlay(Capsule().stroke(LBrand.yellow.opacity(0.4), lineWidth: 1))
     }
 
+    /// Ekte addon-pris fra backend. nil = vis bare «ADDON» uten pris
+    /// (ALDRI hardkodet «990 kr» som kan avvike fra faktisk fakturering).
+    private var addOnLabel: String {
+        if let price = store.entitlements[feature]?.addOnPriceMonthly, price > 0 {
+            return "ADDON · \(price) kr/mnd"
+        }
+        return "ADDON"
+    }
+
     private var addOnBanner: some View {
         HStack(spacing: 7) {
             Image(systemName: "plus.circle.fill").foregroundStyle(LBrand.blue)
-            Text("ADDON · 990 kr/mnd").font(.appScaled(size: 9, weight: .black))
+            Text(addOnLabel).font(.appScaled(size: 9, weight: .black))
                 .foregroundStyle(LBrand.blue).tracking(0.7)
             Spacer()
             Button { showUpsell = true } label: {
