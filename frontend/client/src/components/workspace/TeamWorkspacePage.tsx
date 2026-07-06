@@ -239,7 +239,7 @@ const TeamWorkspacePage: React.FC = () => {
     oppdrag: <OppdragTab projectId={projectId} />,
     bookinger: <BookingerTab projectId={projectId} />,
     academy: <AcademyProvider><AcademyInstructorAdminStudio /></AcademyProvider>,
-    community: <CommunityHub userId={user?.id} userEmail={user?.email} profession={user?.profession || 'photographer'} />,
+    community: <CommunityHub userId={user?.id} userEmail={user?.email} profession={user?.profession || undefined} />,
     moodboard: <MoodboardTab projectId={projectId} />,
     media: <MediaTab projectId={projectId} />,
     utstyr: <UtstyrTab projectId={projectId} profession={user?.profession} userId={user?.id} />,
@@ -300,7 +300,7 @@ const TeamWorkspacePage: React.FC = () => {
         <DialogContent dividers sx={{ p: 0 }}>
           {showCreate && (
             <ProjectCreationWithMemoryCards
-              profession={(user?.profession as string) || 'photographer'}
+              profession={(user?.profession as string) || undefined}
               userId={user?.id}
               onProjectCreated={(p: any) => {
                 setShowCreate(false);

@@ -170,7 +170,7 @@ const OppdragTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           <Typography sx={{ fontSize: 20, fontWeight: 800 }}>{t('title')}</Typography>
           <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>{t('subtitle')}</Typography>
         </Box>
-        <Button variant="outlined" onClick={() => navigate('/dashboard')} sx={{ color: ws.accent, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 700 }}>{t('fullWorkspace')}</Button>
+        <Button variant="outlined" onClick={() => navigate('/workspace')} sx={{ color: ws.accent, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 700 }}>{t('fullWorkspace')}</Button>
       </Stack>
 
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: 'repeat(4, 1fr)' }, gap: 1.5, mb: 2 }}>
@@ -241,7 +241,7 @@ const OppdragTab: React.FC<{ projectId: string }> = ({ projectId }) => {
                         </>
                       )}
                       {j.status === 'in_progress' && (
-                        <Button size="small" variant="outlined" onClick={() => navigate('/dashboard')}
+                        <Button size="small" variant="outlined" onClick={() => navigate('/workspace')}
                           sx={{ color: ws.accent, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 600 }}>{t('deliver')}</Button>
                       )}
                     </Stack>
