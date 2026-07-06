@@ -612,6 +612,67 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
   });
 
   // ============================================================
+  // GDPR: last ned mine data (dataportabilitet, art. 20)
+  // Samler brukerens EGNE Leadgrid-data som JSON. Session-scopet —
+  // returnerer kun kallerens egne rader. Bygget etter QA 2026-07-06
+  // (iPad-raden «Last ned mine data» var en død knapp uten backend).
+  // ============================================================
+  app.get("/api/leadgrid/me/export", async (req, res) => {
+    const s = getSession(req, activeSessions);
+    if (!s) return res.status(401).json({ error: "Ikke innlogget" });
+    try {
+      const profile = await pool.query(
+        `SELECT id::text, first_name, last_name, email, role, created_at::text
+           FROM users WHERE id = $1`,
+        [s.userId],
+      );
+      // Leads brukeren eier (som rep ELLER team-leader).
+      const leads = await pool.query(
+        `SELECT id::text, name, status, lead_category, created_at::text,
+                CASE WHEN assigned_user_id = $1 THEN 'rep'
+                     WHEN assigned_team_leader_id = $1::text THEN 'team_leader'
+                     ELSE 'annen' END AS min_rolle
+           FROM crm_customers
+          WHERE assigned_user_id = $1 OR assigned_team_leader_id = $1::text
+          ORDER BY created_at DESC`,
+        [s.userId],
+      );
+      const notifications = await pool.query(
+        `SELECT event_type, title, body, read_at::text, created_at::text
+           FROM notification_events
+          WHERE recipient_user_id = $1
+          ORDER BY created_at DESC LIMIT 500`,
+        [s.userId],
+      );
+      // Entitlements for brukerens org (via medlemskap).
+      const entitlements = await pool.query(
+        `SELECT e.feature_key, e.state, e.monthly_limit
+           FROM leadgrid_org_entitlements e
+           JOIN organization_members om ON om.organization_id = e.organization_id
+          WHERE om.user_id = $1`,
+        [s.userId],
+      );
+      const payload = {
+        eksportert_at: new Date().toISOString(),
+        beskrivelse: "Dine personlige Leadgrid-data (GDPR art. 20 dataportabilitet).",
+        profil: profile.rows[0] ?? null,
+        leads: leads.rows,
+        varsler: notifications.rows,
+        tilganger: entitlements.rows,
+      };
+      res.setHeader("Content-Type", "application/json; charset=utf-8");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="leadgrid-mine-data-${s.userId}.json"`,
+      );
+      res.send(JSON.stringify(payload, null, 2));
+    } catch (e) {
+      console.error("[leadgrid] me/export feilet", e);
+      res.status(500).json({ error: "Kunne ikke eksportere data" });
+    }
+  });
+
+  // ============================================================
   // ASSIGNMENT STATUS — markedssjef vil se om mottakeren har sett
   // ============================================================
   app.get("/api/leadgrid/customers/:id/assignment-status", async (req, res) => {
