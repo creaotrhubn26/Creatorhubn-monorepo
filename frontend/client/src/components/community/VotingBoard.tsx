@@ -1568,7 +1568,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
         </DialogContent>
         <DialogActions sx={COMMUNITY_DIALOG_ACTIONS_SX}>
           <Button onClick={() => setCreateItemDialogOpen(false)} sx={COMMUNITY_DIALOG_SECONDARY_BUTTON_SX}>
-            Avbryt
+            {tt('Avbryt', 'Cancel')}
           </Button>
           <Button
             onClick={handleCreateItem}
@@ -1576,7 +1576,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
             disabled={!newItemTitle.trim()}
             sx={COMMUNITY_DIALOG_PRIMARY_BUTTON_SX}
           >
-            Send inn
+            {tt('Send inn', 'Submit')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -1633,7 +1633,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
                     {selectedItem.userVote === 'down' ? <ThumbDown /> : <ThumbDownOutlined />}
                   </IconButton>
                   <Typography variant="caption" sx={{ color: COMMUNITY_DIALOG_MUTED }}>
-                    {selectedItem.upvotes} opp / {selectedItem.downvotes} ned
+                    {selectedItem.upvotes} {tt('opp', 'up')} / {selectedItem.downvotes} {tt('ned', 'down')}
                   </Typography>
                 </Box>
 
@@ -1642,13 +1642,13 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
                   <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
                     <Chip
                       icon={statusConfig[selectedItem.status]?.icon}
-                      label={statusConfig[selectedItem.status]?.label}
+                      label={tt(statusConfig[selectedItem.status]?.label, statusConfig[selectedItem.status]?.labelEn)}
                       sx={{
                         bgcolor: statusConfig[selectedItem.status]?.color,
                         color: 'white','& .MuiChip-icon': { color: 'white' }}}
                     />
                     <Chip
-                      label={priorityConfig[selectedItem.priority]?.label}
+                      label={tt(priorityConfig[selectedItem.priority]?.label, priorityConfig[selectedItem.priority]?.labelEn)}
                       sx={{
                         bgcolor: priorityConfig[selectedItem.priority]?.color,
                         color: 'white'}}
@@ -1667,7 +1667,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
                     </Avatar>
                     <Box>
                       <Typography variant="body2" fontWeight={500}>
-                        {selectedItem.is_anonymous ? 'Anonym' : selectedItem.creator_name}
+                        {selectedItem.is_anonymous ? tt('Anonym', 'Anonymous') : selectedItem.creator_name}
                       </Typography>
                       <Typography variant="caption" sx={{ color: COMMUNITY_DIALOG_MUTED }}>
                         {formatDistanceToNow(new Date(selectedItem.created_at), { addSuffix: true, locale: nb })}
@@ -1679,7 +1679,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
                   {selectedItem.admin_response && (
                     <Alert severity="info" sx={{ mb: 2 }}>
                       <Typography variant="subtitle2" fontWeight={600}>
-                        Offisielt svar:
+                        {tt('Offisielt svar:', 'Official response:')}
                       </Typography>
                       <Typography variant="body2">{selectedItem.admin_response}</Typography>
                     </Alert>
@@ -1689,14 +1689,14 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
 
                   {/* Comments */}
                   <Typography variant="h6" gutterBottom>
-                    Kommentarer ({comments.length})
+                    {tt('Kommentarer', 'Comments')} ({comments.length})
                   </Typography>
 
                   <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
                     <TextField
                       fullWidth
                       size="small"
-                      placeholder="Skriv en kommentar..."
+                      placeholder={tt('Skriv en kommentar...', 'Write a comment...')}
                       value={newComment}
                       onChange={(e) => setNewComment(e.target.value)}
                       onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleAddComment()}
@@ -1742,7 +1742,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
                             secondary={comment.content}
                           />
                           <ListItemSecondaryAction>
-                            <Tooltip title="Svar">
+                            <Tooltip title={tt('Svar', 'Reply')}>
                               <IconButton 
                                 size="small"
                                 onClick={() => setReplyingToComment(
@@ -1762,7 +1762,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
                             <TextField
                               size="small"
                               fullWidth
-                              placeholder={`Svar til ${comment.user_name}...`}
+                              placeholder={`${tt('Svar til', 'Reply to')} ${comment.user_name}...`}
                               value={replyContent}
                               onChange={(e) => setReplyContent(e.target.value)}
                               onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleReplyToComment(comment.id)}
@@ -1774,7 +1774,7 @@ export default function VotingBoard({ groupId, userId, onClose }: VotingBoardPro
                               disabled={!replyContent.trim()}
                               sx={{ bgcolor: '#FF8C00', '&:hover': { bgcolor: '#e67e00' } }}
                             >
-                              Svar
+                              {tt('Svar', 'Reply')}
                             </Button>
                           </Box>
                         </Collapse>
