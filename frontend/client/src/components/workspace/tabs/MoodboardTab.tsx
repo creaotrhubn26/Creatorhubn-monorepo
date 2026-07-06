@@ -190,7 +190,7 @@ const MoodboardTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     ? mood.images.filter((im: any) => (cat === 'alle' || im.category === cat) && (!q || (im.label || '').toLowerCase().includes(q)))
     : mood.images;
   return (
-    <Stack direction="row" spacing={2.5} sx={{ alignItems: 'flex-start' }}>
+    <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2.5} sx={{ alignItems: 'flex-start' }}>
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
           <Typography sx={{ fontSize: 20, fontWeight: 800 }}>Moodboard</Typography>
@@ -251,7 +251,7 @@ const MoodboardTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       </Box>
 
       {/* Mood details (høyre) */}
-      <Box sx={{ width: 300, flexShrink: 0 }}>
+      <Box sx={{ width: { xs: '100%', lg: 300 }, flexShrink: 0 }}>
         <WsCard>
           <WsSectionTitle title="Mood details" />
           <WsImageGrid columns={1} ratio="4 / 3" addLabel={t('uploadMain')} allowAdd />

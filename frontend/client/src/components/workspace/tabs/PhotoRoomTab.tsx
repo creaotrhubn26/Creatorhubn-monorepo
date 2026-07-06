@@ -235,7 +235,7 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         ))}
       </Stack>
 
-      <Stack direction="row" spacing={2.5} sx={{ alignItems: 'flex-start' }}>
+      <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2.5} sx={{ alignItems: 'flex-start' }}>
         {/* Venstre: viser + filmstrip + stadier */}
         <Box sx={{ flex: 1, minWidth: 0 }}>
           {/* Bildeviser */}
@@ -317,7 +317,7 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         </Box>
 
         {/* Høyre: kommentarer + bildeinfo */}
-        <Box sx={{ width: 340, flexShrink: 0 }}>
+        <Box sx={{ width: { xs: '100%', lg: 340 }, flexShrink: 0 }}>
           <WsCard sx={{ mb: 2, p: 0, overflow: 'hidden' }}>
             <Box sx={{ p: 1.5, borderBottom: `1px solid ${ws.borderSoft}` }}>
               <Typography sx={{ fontSize: 13.5, fontWeight: 700, mb: 1 }}>Kommentarer</Typography>

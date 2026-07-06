@@ -248,7 +248,7 @@ const TeamTab: React.FC<{ projectId: string; profession?: string; userId?: strin
   ];
 
   return (
-    <Stack direction="row" spacing={2.5} sx={{ alignItems: 'flex-start' }}>
+    <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2.5} sx={{ alignItems: 'flex-start' }}>
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Stack direction="row" justifyContent="space-between" alignItems="flex-end" sx={{ mb: 2 }}>
           <Box>
@@ -345,7 +345,7 @@ const TeamTab: React.FC<{ projectId: string; profession?: string; userId?: strin
       </Box>
 
       {/* Høyre: Chat + Oppgaver + Milepæler */}
-      <Box sx={{ width: 300, flexShrink: 0 }}>
+      <Box sx={{ width: { xs: '100%', lg: 300 }, flexShrink: 0 }}>
         <WsCard sx={{ mb: 2 }}>
           <WsSectionTitle title={t('tasksTitle')} action={<Button size="small" onClick={() => navigate(`/workspace/${projectId}/oppgaver`)} sx={{ color: ws.accent, textTransform: 'none' }}>{t('seeAll')}</Button>} />
           <Stack spacing={1}>

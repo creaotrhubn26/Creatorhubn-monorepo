@@ -110,7 +110,7 @@ const LaaterTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         items={[{ key: 'alle', label: `Alle (${list.length})` }, ...STATUS_ORDER.map((s) => ({ key: s, label: `${STATUS[s][0]} (${count(s)})` }))]}
       />
 
-      <Stack direction="row" spacing={2} alignItems="flex-start">
+      <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} alignItems="flex-start">
         {/* Låt-liste */}
         <WsCard sx={{ flex: 1, minWidth: 0 }}>
           {filtered.length === 0 ? (
@@ -162,7 +162,7 @@ const LaaterTab: React.FC<{ projectId: string }> = ({ projectId }) => {
 
         {/* Låt-detaljer */}
         {selected && (
-          <WsCard sx={{ width: 330, flexShrink: 0 }}>
+          <WsCard sx={{ width: { xs: '100%', lg: 330 }, flexShrink: 0 }}>
             <Typography sx={{ fontSize: 15, fontWeight: 800 }} noWrap>{selected.title || 'Uten tittel'}</Typography>
             <Typography sx={{ fontSize: 12, color: ws.textDim, mb: 1.5 }}>
               {selected.artist || 'Ukjent artist'}{selected.bpm ? ` · ${selected.bpm} BPM` : ''}{selected.key ? ` · ${selected.key}` : ''}{fmtDur(selected.durationSeconds) ? ` · ${fmtDur(selected.durationSeconds)}` : ''}

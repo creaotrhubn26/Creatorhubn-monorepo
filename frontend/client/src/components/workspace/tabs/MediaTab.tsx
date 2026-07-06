@@ -208,9 +208,9 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   ];
 
   return (
-    <Stack direction="row" spacing={2} sx={{ alignItems: 'flex-start' }}>
+    <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} sx={{ alignItems: 'flex-start' }}>
       {/* Bibliotek-sidebar */}
-      <Box sx={{ width: 220, flexShrink: 0 }}>
+      <Box sx={{ width: { xs: '100%', lg: 220 }, flexShrink: 0 }}>
         <WsCard pad={1.25}>
           <Typography sx={{ fontSize: 11, fontWeight: 700, color: ws.textFaint, mb: 1 }}>{t('mediaLibrary')}</Typography>
           <Stack spacing={0.25} sx={{ mb: 1.5 }}>
@@ -285,7 +285,7 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       </Box>
 
       {/* Asset-detaljer */}
-      <Box sx={{ width: 280, flexShrink: 0 }}>
+      <Box sx={{ width: { xs: '100%', lg: 280 }, flexShrink: 0 }}>
         {(() => {
           const det = selAsset || (isReal ? null : { filename: 'A7IV_1234.CR3', flaggedForClient: true });
           if (!det) return (

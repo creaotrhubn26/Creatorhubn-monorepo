@@ -152,9 +152,9 @@ const LeveranserTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     : DELIVERABLES;
 
   return (
-    <Stack direction="row" spacing={2} sx={{ alignItems: 'flex-start' }}>
+    <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} sx={{ alignItems: 'flex-start' }}>
       {/* Liste */}
-      <Box sx={{ width: 300, flexShrink: 0 }}>
+      <Box sx={{ width: { xs: '100%', lg: 300 }, flexShrink: 0 }}>
         <WsCard>
           <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
             <Typography sx={{ fontSize: 15, fontWeight: 700 }}>Deliverables</Typography>
@@ -226,7 +226,7 @@ const LeveranserTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       </Box>
 
       {/* Høyre */}
-      <Box sx={{ width: 280, flexShrink: 0 }}>
+      <Box sx={{ width: { xs: '100%', lg: 280 }, flexShrink: 0 }}>
         {isReal && (
           <WsCard sx={{ mb: 2 }}>
             <WsSectionTitle title={t('clientGallery')} />

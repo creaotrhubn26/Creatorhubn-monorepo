@@ -164,7 +164,7 @@ const VideoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       )}
 
       {current && (
-        <Stack direction="row" spacing={2.5} sx={{ alignItems: 'flex-start' }}>
+        <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2.5} sx={{ alignItems: 'flex-start' }}>
           {/* Venstre: spiller + versjoner + stepper */}
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <WsCard pad={0} sx={{ overflow: 'hidden', mb: 2 }}>
@@ -231,7 +231,7 @@ const VideoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           </Box>
 
           {/* Høyre: kommentar-skinne */}
-          <Box sx={{ width: 340, flexShrink: 0 }}>
+          <Box sx={{ width: { xs: '100%', lg: 340 }, flexShrink: 0 }}>
             <WsCard sx={{ p: 0, overflow: 'hidden' }}>
               <Box sx={{ p: 1.5, borderBottom: `1px solid ${ws.borderSoft}` }}>
                 <Typography sx={{ fontSize: 13.5, fontWeight: 700, mb: 1 }}>Kommentarer</Typography>

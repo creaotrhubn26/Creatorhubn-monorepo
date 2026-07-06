@@ -96,7 +96,7 @@ const BookingerTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         <WsStat icon={<Person sx={{ fontSize: 20 }} />} label="Kunde" value={customer?.name ? customer.name.split(' ')[0] : '—'} sub={customer?.status || 'ikke koblet'} tone={ws.greenSoft} />
       </Box>
 
-      <Stack direction="row" spacing={2} alignItems="flex-start">
+      <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} alignItems="flex-start">
         {/* Booking-liste gruppert per dag */}
         <WsCard sx={{ flex: 1, minWidth: 0 }}>
           <WsSectionTitle icon={<EventAvailable sx={{ fontSize: 18, color: ws.textDim }} />} title="Kommende bookinger" />
@@ -156,7 +156,7 @@ const BookingerTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         </WsCard>
 
         {/* Kunde-kort */}
-        <WsCard sx={{ width: 300, flexShrink: 0 }}>
+        <WsCard sx={{ width: { xs: '100%', lg: 300 }, flexShrink: 0 }}>
           <WsSectionTitle icon={<Person sx={{ fontSize: 18, color: ws.textDim }} />} title="Kunde" />
           {customer ? (
             <Stack spacing={1}>
