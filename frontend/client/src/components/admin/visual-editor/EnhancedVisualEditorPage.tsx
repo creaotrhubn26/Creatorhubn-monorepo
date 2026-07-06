@@ -94,6 +94,7 @@ import { LogoManagementPanel } from './LogoManagementPanel';
 import ThemingAdminPanel from './ThemingAdminPanel';
 import LandingSettingsPanel from './LandingSettingsPanel';
 import ShowcasePublisherPanel from '../../showcase/ShowcasePublisherPanel';
+import { NotificationStack } from './NotificationStack';
 import {
   BREAKPOINT_MEDIA_QUERIES,
   buildComponentManifest,
@@ -3187,6 +3188,8 @@ export const EnhancedVisualEditorContent: React.FC = () => {
       {logoManagerOpen && (
         <LogoManagementPanel open={logoManagerOpen} onClose={() => setLogoManagerOpen(false)} />
       )}
+
+      <NotificationStack />
     </Box>
   );
 };

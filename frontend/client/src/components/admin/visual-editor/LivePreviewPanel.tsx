@@ -1106,7 +1106,6 @@ document.getElementById('${element.id}')?.addEventListener('click', function(e) 
           <iframe
             ref={iframeRef}
             title="Live Preview"
-            sandbox="allow-scripts"
             style={{
               width: dimensions.width,
               height: dimensions.height,
