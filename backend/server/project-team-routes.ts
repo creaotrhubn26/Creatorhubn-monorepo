@@ -254,6 +254,18 @@ export function setupProjectTeamRoutes(deps: ProjectTeamRoutesDeps): void {
       );
       if (row.rowCount === 0) return res.status(404).json({ error: "Ugyldig eller utløpt invitasjon" });
       const member = row.rows[0];
+      // Bind aksept til den inviterte e-posten — ellers kan hvem som helst med
+      // lenken kapre invitasjonen og få team-tilgang / rebinde medlemsraden.
+      const invitedEmail = String(member.email || "").trim().toLowerCase();
+      const sessionEmail = String((session as any).email || "").trim().toLowerCase();
+      if (invitedEmail && sessionEmail && invitedEmail !== sessionEmail) {
+        return res.status(403).json({ error: "Denne invitasjonen er sendt til en annen e-postadresse" });
+      }
+      // Utløp: invitasjoner eldre enn 30 dager godtas ikke.
+      const invitedAtMs = member.invited_at ? new Date(member.invited_at).getTime() : 0;
+      if (invitedAtMs && Date.now() - invitedAtMs > 30 * 24 * 3600 * 1000) {
+        return res.status(410).json({ error: "Invitasjonen er utløpt" });
+      }
       const upd = await pool.query(
         `UPDATE project_team_members
             SET user_id = $1, status = 'active', accepted_at = NOW(),

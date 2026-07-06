@@ -147,6 +147,16 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     return session.userId;
   };
 
+  // Middleware-variant som MÅ kjøre FØR multer på opplastings-ruter. Ellers
+  // buffrer multer hele filen (opptil 500 MB) i minnet for uautentiserte
+  // requests før guard-en inne i handleren kjører → minne-DoS. Kjør auth først.
+  const guardMw = async (req: any, res: any, next: any) => {
+    const uid = await guard(req, res);
+    if (!uid) return; // guard har allerede sendt respons
+    req._guardUid = uid;
+    next();
+  };
+
   // ─────────── Samkjøringsboard / Oppgaver ───────────
   app.get("/api/projects/:projectId/board-tasks", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
@@ -834,7 +844,9 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
         `SELECT column_name FROM information_schema.columns WHERE table_name = 'client_submissions'`,
       ).catch(() => ({ rows: [] as any[] }));
       const has = new Set(cols.rows.map((c: any) => c.column_name));
-      const where = has.has("vendor_email") ? `WHERE vendor_email = $1` : ``;
+      // FAIL-CLOSED: uten tenant-scoping-kolonnen (vendor_email) returnerer vi
+      // INGENTING i stedet for ALLE leverandørers kunde-innsendinger (PII-lekkasje).
+      const where = has.has("vendor_email") ? `WHERE vendor_email = $1` : `WHERE 1=0`;
       const params = has.has("vendor_email") ? [session.email] : [];
       const order = has.has("submitted_at") ? "submitted_at" : "created_at";
       const r = await pool.query(
@@ -877,6 +889,9 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       ).catch(() => ({ rows: [] as any[] }));
       const has = new Set(cols.rows.map((c: any) => c.column_name));
       if (!has.has("status")) return res.json({ ok: false });
+      // FAIL-CLOSED: uten vendor_email-scoping kan vi ikke bekrefte eierskap →
+      // ikke oppdater (ellers kunne man booke en hvilken som helst innsending-id).
+      if (!has.has("vendor_email")) return res.json({ ok: false, error: "unscoped" });
       const sets: string[] = [`status = 'booked'`];
       const params: any[] = [];
       if (projectId && has.has("project_id")) { params.push(projectId); sets.push(`project_id = $${params.length}`); }
@@ -2471,8 +2486,8 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
   // Last opp videofil → B2 → opprett versjon. Server-side (samme beviste mønster
   // som /images): multer → archiveToRoleRoomB2. Cloudflare Stream = kun streaming,
   // kilden bor på B2. b2_key presignes til avspilling i GET /video-room.
-  app.post("/api/projects/:projectId/video-versions/upload", videoUpload.single("file"), async (req, res) => {
-    const uid = await guard(req, res); if (!uid) return;
+  app.post("/api/projects/:projectId/video-versions/upload", guardMw, videoUpload.single("file"), async (req, res) => {
+    const uid = (req as any)._guardUid; if (!uid) return;
     try {
       await ensureVideoSchema();
       const pid = req.params.projectId;
@@ -2706,8 +2721,8 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     } catch (e) { console.error("GET images", e); res.status(500).json({ error: "failed" }); }
   });
 
-  app.post("/api/projects/:projectId/images", mediaUpload.single("file"), async (req, res) => {
-    const uid = await guard(req, res); if (!uid) return;
+  app.post("/api/projects/:projectId/images", guardMw, mediaUpload.single("file"), async (req, res) => {
+    const uid = (req as any)._guardUid; if (!uid) return;
     try {
       await ensureSchema(pool);
       const file = (req as any).file;
