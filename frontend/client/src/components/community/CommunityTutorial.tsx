@@ -77,6 +77,7 @@ import {
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { apiRequest } from '../../lib/queryClient';
 import { useSnackbar } from 'notistack';
+import { useCommunityLocale } from './communityLocale';
 
 const TUTORIAL_ID = 'community-guide';
 const COMMUNITY_GUIDE_BACKGROUND = `
@@ -311,6 +312,7 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
   const [completedSteps, setCompletedSteps] = React.useState<number[]>([]);
   const queryClient = useQueryClient();
   const { enqueueSnackbar } = useSnackbar();
+  const { tt } = useCommunityLocale();
 
   // Fetch tutorial preferences from database
   const { data: tutorialPrefs } = useQuery<TutorialPreference>({
@@ -342,13 +344,13 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
   const getProfessionDisplayName = () => {
     if (professionName) return professionName;
     const names: Record<string, string> = {
-      photographer: 'Fotograf',
-      videographer: 'Videograf',
-      musicproducer: 'Musikkprodusent',
-      music_producer: 'Musikkprodusent',
-      vendor: 'Utstyrsleverandør',
+      photographer: tt('Fotograf', 'Photographer'),
+      videographer: tt('Videograf', 'Videographer'),
+      musicproducer: tt('Musikkprodusent', 'Music Producer'),
+      music_producer: tt('Musikkprodusent', 'Music Producer'),
+      vendor: tt('Utstyrsleverandør', 'Equipment Supplier'),
     };
-    return names[profession] || 'Kreativ profesjonell';
+    return names[profession] || tt('Kreativ profesjonell', 'Creative Professional');
   };
 
   // Get profession icon
@@ -442,7 +444,7 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
           completedSteps,
           profession
         });
-        enqueueSnackbar('Guiden er skjult. Du finner den igjen via Hjelp-menyen eller ⌘+?', { 
+        enqueueSnackbar(tt('Guiden er skjult. Du finner den igjen via Hjelp-menyen eller ⌘+?', 'The guide is hidden. You can find it again via the Help menu or ⌘+?'), {
           variant: 'info',
           autoHideDuration: 5000 
         });
@@ -464,49 +466,48 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
 
   const tutorialSteps = [
     {
-      label: 'Velkommen til fellesskapet',
+      label: tt('Velkommen til fellesskapet', 'Welcome to the community'),
       icon: <Forum />,
       content: (
         <Box>
           <Typography variant="h6" gutterBottom fontWeight={600}>
-            🎉 Velkommen til CreatorHub Fellesskap!
+            {tt('🎉 Velkommen til CreatorHub Fellesskap!', '🎉 Welcome to the CreatorHub Community!')}
           </Typography>
-          
+
           <Alert severity="info" sx={{ mb: 2 }}>
             <Typography variant="body2">
-              Dette er din guide til å bli en aktiv del av Norges største kreative fellesskap.
-              Bruk <strong>5-10 minutter</strong> på denne guiden for å komme raskt i gang.
+              {tt('Dette er din guide til å bli en aktiv del av Norges største kreative fellesskap. Bruk', 'This is your guide to becoming an active part of Norway\'s largest creative community. Spend')} <strong>{tt('5-10 minutter', '5-10 minutes')}</strong> {tt('på denne guiden for å komme raskt i gang.', 'on this guide to get up and running quickly.')}
             </Typography>
           </Alert>
 
           <Typography variant="subtitle1" fontWeight={600} gutterBottom>
-            📚 Hva du vil lære:
+            {tt('📚 Hva du vil lære:', '📚 What you will learn:')}
           </Typography>
-          
+
           <List dense>
             <ListItem>
               <ListItemIcon><CheckCircle color="success" fontSize="small" /></ListItemIcon>
-              <ListItemText primary="Navigere i kanaler og grupper" />
+              <ListItemText primary={tt('Navigere i kanaler og grupper', 'Navigate channels and groups')} />
             </ListItem>
             <ListItem>
               <ListItemIcon><CheckCircle color="success" fontSize="small" /></ListItemIcon>
-              <ListItemText primary="Sende meldinger med emoji og vedlegg" />
+              <ListItemText primary={tt('Sende meldinger med emoji og vedlegg', 'Send messages with emoji and attachments')} />
             </ListItem>
             <ListItem>
               <ListItemIcon><CheckCircle color="success" fontSize="small" /></ListItemIcon>
-              <ListItemText primary="Starte private samtaler" />
+              <ListItemText primary={tt('Starte private samtaler', 'Start private conversations')} />
             </ListItem>
             <ListItem>
               <ListItemIcon><CheckCircle color="success" fontSize="small" /></ListItemIcon>
-              <ListItemText primary="Delta i avstemninger og polls" />
+              <ListItemText primary={tt('Delta i avstemninger og polls', 'Take part in votes and polls')} />
             </ListItem>
             <ListItem>
               <ListItemIcon><CheckCircle color="success" fontSize="small" /></ListItemIcon>
-              <ListItemText primary="Få hjelp fra mentorer" />
+              <ListItemText primary={tt('Få hjelp fra mentorer', 'Get help from mentors')} />
             </ListItem>
             <ListItem>
               <ListItemIcon><CheckCircle color="success" fontSize="small" /></ListItemIcon>
-              <ListItemText primary="Tjene merker og poeng" />
+              <ListItemText primary={tt('Tjene merker og poeng', 'Earn badges and points')} />
             </ListItem>
           </List>
 
@@ -522,12 +523,11 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
               {getProfessionIcon()}
               <Typography variant="subtitle2" fontWeight={600}>
-                Tilpasset for deg som {getProfessionDisplayName()}
+                {tt('Tilpasset for deg som', 'Tailored for you as a')} {getProfessionDisplayName()}
               </Typography>
             </Box>
             <Typography variant="body2" sx={{ color: COMMUNITY_GUIDE_MUTED }}>
-              Denne guiden er tilpasset din profesjon. Du vil se tips og kanaler som er 
-              relevante for {getProfessionDisplayName().toLowerCase()}-miljøet.
+              {tt('Denne guiden er tilpasset din profesjon. Du vil se tips og kanaler som er relevante for', 'This guide is tailored to your profession. You will see tips and channels that are relevant to the')} {getProfessionDisplayName().toLowerCase()}{tt('-miljøet.', ' community.')}
             </Typography>
           </Paper>
         </Box>

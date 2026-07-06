@@ -99,6 +99,7 @@ const CommunityNetworkAnimation = React.lazy(() =>
 
 const LoginModal = React.lazy(() => import('@/components/auth/LoginModal'));
 import { GdprNotice } from '@/components/common/GdprNotice';
+import { useCommunityLocale } from './communityLocale';
 
 interface CommunityLandingFallbackProps {
   onOpenLogin: () => void;
@@ -109,6 +110,7 @@ export const CommunityLandingFallback: React.FC<CommunityLandingFallbackProps> =
   onOpenLogin,
   onShowPreview,
 }) => {
+  const { tt } = useCommunityLocale();
   const [, setLocation] = useLocation();
   const [showAccessDialog, setShowAccessDialog] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -273,7 +275,7 @@ export const CommunityLandingFallback: React.FC<CommunityLandingFallbackProps> =
         <Button
           variant="outlined"
           onClick={handleOpenLogin}
-          aria-label="Logg inn på din konto"
+          aria-label={tt('Logg inn på din konto', 'Log in to your account')}
           startIcon={<Login sx={{ fontSize: 18 }} />}
           sx={{
             borderColor: '#ff8c00',
@@ -297,14 +299,14 @@ export const CommunityLandingFallback: React.FC<CommunityLandingFallbackProps> =
             },
           }}
         >
-          Logg Inn
+          {tt('Logg Inn', 'Log In')}
         </Button>
 
         {/* Preview Button */}
         <Button
           variant="contained"
           onClick={onShowPreview}
-          aria-label="Preview community (temporary)"
+          aria-label={tt('Forhåndsvis community (midlertidig)', 'Preview community (temporary)')}
           startIcon={<Forum sx={{ fontSize: 18 }} />}
           sx={{
             background: 'linear-gradient(135deg, #10b981, #059669)',
@@ -323,7 +325,7 @@ export const CommunityLandingFallback: React.FC<CommunityLandingFallbackProps> =
             },
           }}
         >
-          Preview Community
+          {tt('Forhåndsvis Community', 'Preview Community')}
         </Button>
       </Box>
 
@@ -357,7 +359,7 @@ export const CommunityLandingFallback: React.FC<CommunityLandingFallbackProps> =
               >
                 Creators,<br />
                 <Box component="span" sx={{ color: '#f59e0b' }}>
-                  samles her
+                  {tt('samles her', 'gather here')}
                 </Box>
               </Typography>
 
@@ -370,15 +372,16 @@ export const CommunityLandingFallback: React.FC<CommunityLandingFallbackProps> =
                   maxWidth: 400,
                 }}
               >
-                Et engasjerende fellesskap for norske creators. 
-                Ha det gøy mens du jobber, finn nye samarbeidspartnere 
-                og delta i daglige utfordringer.
+                {tt(
+                  'Et engasjerende fellesskap for norske creators. Ha det gøy mens du jobber, finn nye samarbeidspartnere og delta i daglige utfordringer.',
+                  'An engaging community for Norwegian creators. Have fun while you work, find new collaborators and take part in daily challenges.'
+                )}
               </Typography>
 
               <Button
                 variant="contained"
                 onClick={() => setShowAccessDialog(true)}
-                aria-label="Hvordan få tilgang til Community"
+                aria-label={tt('Hvordan få tilgang til Community', 'How to get access to Community')}
                 startIcon={<HelpOutline sx={{ fontSize: 22 }} />}
                 sx={{
                   backgroundColor: '#ff8c00',
@@ -402,7 +405,7 @@ export const CommunityLandingFallback: React.FC<CommunityLandingFallbackProps> =
                   },
                 }}
               >
-                Hvordan få tilgang?
+                {tt('Hvordan få tilgang?', 'How to get access?')}
               </Button>
             </Box>
           </Grid>
@@ -464,7 +467,7 @@ export const CommunityLandingFallback: React.FC<CommunityLandingFallbackProps> =
                   fallback={
                     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <Typography sx={{ color: '#f59e0b', fontSize: '0.875rem' }}>
-                        Animation unavailable
+                        {tt('Animasjon utilgjengelig', 'Animation unavailable')}
                       </Typography>
                     </Box>
                   }
