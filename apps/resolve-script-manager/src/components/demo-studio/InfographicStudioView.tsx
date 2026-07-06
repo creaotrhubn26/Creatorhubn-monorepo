@@ -549,6 +549,9 @@ const FIT_SCRIPT = `(function(){
       if(!(k>0)) k=1;                       // fortsatt ugyldig → ingen skalering (aldri blankt)
       var tx=(vw-ww*k)/2, ty=Math.max(0,(vh-wh*k)/2);
       w.style.transform='translate('+tx.toFixed(1)+'px,'+ty.toFixed(1)+'px) scale('+k.toFixed(4)+')';
+      // Fast kompositt-lag: uten dette re-rasteriserer WKWebView den skalerte
+      // (fraksjonell) subtreet ved hver animasjons-frame → konstant sub-piksel-risting.
+      w.style.backfaceVisibility='hidden'; w.style.webkitBackfaceVisibility='hidden';
     }catch(e){}
   }
   function fit(){ fitTo(0,0); }
@@ -561,9 +564,14 @@ const FIT_SCRIPT = `(function(){
   // IKKE ved at foreldre skriver til iframe-DOM-en — det feiler stille i WKWebView.
   // body bærer inngangs-transformen (komponerer med #wrap sin fit-scale), #wrap
   // bærer opacity (inngang × exit).
+  // IDEMPOTENT: skriv KUN når verdien faktisk endres. Ellers re-assignet vi
+  // body.style.transform (ofte 'none') + #wrap.opacity ved HVER animasjons-frame,
+  // som fikk WKWebView til å re-komposittere den skalerte preview-en → konstant
+  // risting under avspilling (verdien var uendret, men skrivingen trigget repaint).
   window.__igMotion=function(tf,op){try{
-    var b=document.body; if(b){b.style.transform=tf||'none'; b.style.transformOrigin='center center';}
-    var w=document.getElementById('wrap'); if(w){ w.style.opacity=String(op); }
+    tf=tf||'none';
+    var b=document.body; if(b && b.style.transform!==tf){b.style.transform=tf; b.style.transformOrigin='center center';}
+    var w=document.getElementById('wrap'); if(w){ var o=String(op); if(w.style.opacity!==o) w.style.opacity=o; }
   }catch(e){}};
 })();`;
 
