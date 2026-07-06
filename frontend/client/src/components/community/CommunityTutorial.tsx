@@ -923,52 +923,52 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
             }}
           >
             <Typography variant="subtitle2" fontWeight={600} gutterBottom>
-              📋 Kom-i-gang sjekkliste:
+              {tt('📋 Kom-i-gang sjekkliste:', '📋 Getting-started checklist:')}
             </Typography>
             <List dense>
               <ListItem>
                 <ListItemIcon><Checkbox size="small" /></ListItemIcon>
-                <ListItemText primary="Bli med i en gruppe relatert til din profesjon" />
+                <ListItemText primary={tt('Bli med i en gruppe relatert til din profesjon', 'Join a group related to your profession')} />
               </ListItem>
               <ListItem>
                 <ListItemIcon><Checkbox size="small" /></ListItemIcon>
-                <ListItemText primary="Send din første melding i #presentasjoner" />
+                <ListItemText primary={tt('Send din første melding i #presentasjoner', 'Send your first message in #introductions')} />
               </ListItem>
               <ListItem>
                 <ListItemIcon><Checkbox size="small" /></ListItemIcon>
-                <ListItemText primary="Gi en reaksjon på en annens melding" />
+                <ListItemText primary={tt('Gi en reaksjon på en annens melding', "React to someone else's message")} />
               </ListItem>
               <ListItem>
                 <ListItemIcon><Checkbox size="small" /></ListItemIcon>
-                <ListItemText primary="Sjekk ut en aktiv avstemning" />
+                <ListItemText primary={tt('Sjekk ut en aktiv avstemning', 'Check out an active vote')} />
               </ListItem>
               <ListItem>
                 <ListItemIcon><Checkbox size="small" /></ListItemIcon>
-                <ListItemText primary="Still et spørsmål til en mentor (valgfritt)" />
+                <ListItemText primary={tt('Still et spørsmål til en mentor (valgfritt)', 'Ask a mentor a question (optional)')} />
               </ListItem>
             </List>
           </Paper>
 
           <Alert severity="error" icon={<Warning />} sx={{ mb: 2 }}>
             <Typography variant="subtitle2" fontWeight={600}>
-              ⚠️ Vanlige feil å unngå:
+              {tt('⚠️ Vanlige feil å unngå:', '⚠️ Common mistakes to avoid:')}
             </Typography>
             <List dense sx={{ mb: 0, pb: 0 }}>
               <ListItem sx={{ py: 0.5 }}>
-                <ListItemText 
-                  primary="Ikke spam samme melding i flere kanaler" 
+                <ListItemText
+                  primary={tt('Ikke spam samme melding i flere kanaler', 'Do not spam the same message across multiple channels')}
                   primaryTypographyProps={{ variant: 'body2' }}
                 />
               </ListItem>
               <ListItem sx={{ py: 0.5 }}>
-                <ListItemText 
-                  primary="Unngå selvpromotering uten å gi verdi først" 
+                <ListItemText
+                  primary={tt('Unngå selvpromotering uten å gi verdi først', 'Avoid self-promotion without providing value first')}
                   primaryTypographyProps={{ variant: 'body2' }}
                 />
               </ListItem>
               <ListItem sx={{ py: 0.5 }}>
-                <ListItemText 
-                  primary="Ikke del andres innhold uten tillatelse" 
+                <ListItemText
+                  primary={tt('Ikke del andres innhold uten tillatelse', "Do not share others' content without permission")}
                   primaryTypographyProps={{ variant: 'body2' }}
                 />
               </ListItem>
@@ -984,25 +984,25 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
             }}
           >
             <Typography variant="subtitle2" fontWeight={600} gutterBottom>
-              🔑 Hurtigtaster:
+              {tt('🔑 Hurtigtaster:', '🔑 Keyboard shortcuts:')}
             </Typography>
             <Table size="small">
               <TableBody>
                 <TableRow>
                   <TableCell sx={{ fontWeight: 600, fontFamily: 'monospace' }}>⌘ + K</TableCell>
-                  <TableCell>Åpne søk</TableCell>
+                  <TableCell>{tt('Åpne søk', 'Open search')}</TableCell>
                 </TableRow>
                 <TableRow>
                   <TableCell sx={{ fontWeight: 600, fontFamily: 'monospace' }}>⌘ + ?</TableCell>
-                  <TableCell>Åpne denne guiden</TableCell>
+                  <TableCell>{tt('Åpne denne guiden', 'Open this guide')}</TableCell>
                 </TableRow>
                 <TableRow>
                   <TableCell sx={{ fontWeight: 600, fontFamily: 'monospace' }}>Shift + Enter</TableCell>
-                  <TableCell>Ny linje i melding</TableCell>
+                  <TableCell>{tt('Ny linje i melding', 'New line in a message')}</TableCell>
                 </TableRow>
                 <TableRow>
                   <TableCell sx={{ fontWeight: 600, fontFamily: 'monospace' }}>Esc</TableCell>
-                  <TableCell>Lukk dialog/modal</TableCell>
+                  <TableCell>{tt('Lukk dialog/modal', 'Close dialog/modal')}</TableCell>
                 </TableRow>
               </TableBody>
             </Table>
@@ -1011,7 +1011,7 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
           <Divider sx={{ my: 3 }} />
 
           <Typography variant="h6" gutterBottom fontWeight={600}>
-            📖 Komplett eksempel: "Slik blir du aktiv på 5 minutter"
+            {tt('📖 Komplett eksempel: "Slik blir du aktiv på 5 minutter"', '📖 Complete example: "How to get active in 5 minutes"')}
           </Typography>
 
           <Paper
@@ -1021,12 +1021,12 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
             }}
           >
             <Typography variant="body2" component="div">
-              <strong>Steg 1:</strong> Klikk på gruppen "{getProfessionDisplayName()}-fellesskapet" i venstre meny.<br /><br />
-              <strong>Steg 2:</strong> Velg kanalen "#presentasjoner".<br /><br />
-              <strong>Steg 3:</strong> Skriv: "Hei alle! Jeg heter [navn] og jobber som {getProfessionDisplayName().toLowerCase()} i [by]. Gleder meg til å bli kjent med dere! 📸"<br /><br />
-              <strong>Steg 4:</strong> Trykk Enter for å sende.<br /><br />
-              <strong>Steg 5:</strong> Scroll opp og gi en 👍 på noen andres presentasjon.<br /><br />
-              <strong>Gratulerer!</strong> Du har nå sendt din første melding og gitt din første reaksjon. Du er offisielt en del av fellesskapet! 🎉
+              <strong>{tt('Steg 1:', 'Step 1:')}</strong> {tt('Klikk på gruppen', 'Click the group')} "{getProfessionDisplayName()}{tt('-fellesskapet', ' community')}" {tt('i venstre meny.', 'in the left menu.')}<br /><br />
+              <strong>{tt('Steg 2:', 'Step 2:')}</strong> {tt('Velg kanalen "#presentasjoner".', 'Select the channel "#introductions".')}<br /><br />
+              <strong>{tt('Steg 3:', 'Step 3:')}</strong> {tt('Skriv: "Hei alle! Jeg heter [navn] og jobber som', 'Write: "Hi everyone! My name is [name] and I work as a')} {getProfessionDisplayName().toLowerCase()} {tt('i [by]. Gleder meg til å bli kjent med dere! 📸"', 'in [city]. Looking forward to getting to know you all! 📸"')}<br /><br />
+              <strong>{tt('Steg 4:', 'Step 4:')}</strong> {tt('Trykk Enter for å sende.', 'Press Enter to send.')}<br /><br />
+              <strong>{tt('Steg 5:', 'Step 5:')}</strong> {tt('Scroll opp og gi en 👍 på noen andres presentasjon.', "Scroll up and give a 👍 to someone else's introduction.")}<br /><br />
+              <strong>{tt('Gratulerer!', 'Congratulations!')}</strong> {tt('Du har nå sendt din første melding og gitt din første reaksjon. Du er offisielt en del av fellesskapet! 🎉', 'You have now sent your first message and given your first reaction. You are officially part of the community! 🎉')}
             </Typography>
           </Paper>
         </Box>
@@ -1101,7 +1101,7 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
           </Box>
           <Box>
             <Chip
-              label="Fellesskapsguide"
+              label={tt('Fellesskapsguide', 'Community guide')}
               size="small"
               sx={{
                 mb: 1,
@@ -1121,7 +1121,7 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
                 color: COMMUNITY_GUIDE_TEXT,
               }}
             >
-              Velkommen til Fellesskapet
+              {tt('Velkommen til Fellesskapet', 'Welcome to the Community')}
             </Typography>
             <Typography
               variant="body2"
@@ -1137,7 +1137,7 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
               <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', color: COMMUNITY_GUIDE_ACCENT_BRIGHT }}>
                 {getProfessionIcon()}
               </Box>
-              Din komplette guide til CreatorHub Norge Community, tilpasset {getProfessionDisplayName().toLowerCase()}-flyten.
+              {tt('Din komplette guide til CreatorHub Norge Community, tilpasset', 'Your complete guide to CreatorHub Norge Community, tailored to the')} {getProfessionDisplayName().toLowerCase()}{tt('-flyten.', ' flow.')}
             </Typography>
           </Box>
         </Box>
@@ -1190,7 +1190,7 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
                 optional={
                   index === tutorialSteps.length - 1 ? (
                     <Typography variant="caption" sx={{ color: COMMUNITY_GUIDE_MUTED }}>
-                      Siste steg
+                      {tt('Siste steg', 'Final step')}
                     </Typography>
                   ) : null
                 }
@@ -1258,7 +1258,7 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
                       },
                     }}
                   >
-                    Tilbake
+                    {tt('Tilbake', 'Back')}
                   </Button>
                   <Button
                     variant="contained"
@@ -1276,7 +1276,7 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
                       },
                     }}
                   >
-                    {index === tutorialSteps.length - 1 ? 'Fullfør' : 'Neste'}
+                    {index === tutorialSteps.length - 1 ? tt('Fullfør', 'Finish') : tt('Neste', 'Next')}
                   </Button>
                 </Box>
               </StepContent>
@@ -1306,16 +1306,15 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
             >
               <EmojiEvents sx={{ fontSize: 64, color: COMMUNITY_GUIDE_ACCENT_BRIGHT, mb: 2 }} />
               <Typography variant="h5" fontWeight={700} gutterBottom sx={{ color: COMMUNITY_GUIDE_TEXT }}>
-                🎉 Gratulerer!
+                {tt('🎉 Gratulerer!', '🎉 Congratulations!')}
               </Typography>
               <Typography variant="body1" sx={{ color: COMMUNITY_GUIDE_MUTED }} paragraph>
-                Du har fullført guiden og er klar til å bli en aktiv del av fellesskapet.
+                {tt('Du har fullført guiden og er klar til å bli en aktiv del av fellesskapet.', 'You have completed the guide and are ready to become an active part of the community.')}
               </Typography>
               <Alert severity="info" sx={{ textAlign: 'left', maxWidth: 400, mx: 'auto' }}>
                 <Typography variant="body2">
-                  <strong>Åpne guiden igjen:</strong><br />
-                  Klikk på <Help sx={{ fontSize: 14, verticalAlign: 'middle' }} /> Hjelp-ikonet
-                  eller trykk <code>⌘+?</code>
+                  <strong>{tt('Åpne guiden igjen:', 'Open the guide again:')}</strong><br />
+                  {tt('Klikk på', 'Click the')} <Help sx={{ fontSize: 14, verticalAlign: 'middle' }} /> {tt('Hjelp-ikonet eller trykk', 'Help icon or press')} <code>⌘+?</code>
                 </Typography>
               </Alert>
             </Box>
@@ -1351,7 +1350,7 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
           }
           label={
             <Typography variant="body2" sx={{ color: COMMUNITY_GUIDE_MUTED }}>
-              Ikke vis denne guiden automatisk igjen
+              {tt('Ikke vis denne guiden automatisk igjen', 'Do not show this guide automatically again')}
             </Typography>
           }
         />
@@ -1379,7 +1378,7 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
               },
             }}
           >
-            {activeStep === tutorialSteps.length ? 'Lukk' : 'Hopp over'}
+            {activeStep === tutorialSteps.length ? tt('Lukk', 'Close') : tt('Hopp over', 'Skip')}
           </Button>
           {activeStep < tutorialSteps.length && (
             <Button
@@ -1398,7 +1397,7 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
                 },
               }}
             >
-              Gå til slutt
+              {tt('Gå til slutt', 'Go to end')}
             </Button>
           )}
         </Box>
