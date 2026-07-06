@@ -22,6 +22,7 @@ import type express from "express";
 import crypto from "crypto";
 import multer from "multer";
 import { canAccessProject } from "./project-team-routes";
+import { requireTeamAccess } from "./team-access";
 import { resolveCrewRoles } from "../../frontend/shared/crew-roles.ts";
 import { CANONICAL_PROFESSIONS, normalizeProfession as normalizeCanonProfession, isWorkspaceCategory as isWsCategory } from "../../frontend/shared/profession-types.ts";
 import { signAssetReadUrl } from "./capture-upload-service";
@@ -1361,6 +1362,8 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
   // bro-tabellen på den. Krever at brukeren eier track-en.
   app.post("/api/projects/:projectId/audio-room/link-easeverse", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
+    // EaseVerse-kobling synker collaborators inn → team-/Enterprise-gated.
+    if (!(await requireTeamAccess(pool, uid, res))) return;
     try {
       const pid = req.params.projectId;
       const trackId = String(req.body?.trackId || "");
@@ -1446,6 +1449,8 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
 
   app.post("/api/projects/:projectId/audio-room/members", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
+    // Band-invitasjon er en team-/Enterprise-funksjon — håndhev server-side.
+    if (!(await requireTeamAccess(pool, uid, res))) return;
     try {
       // Finn-eller-opprett lydrommet, så «Inviter band» fungerer selv før første låt er koblet.
       let arId = await resolveAudioRoomId(req.params.projectId, uid);

@@ -18456,8 +18456,12 @@ async function resolveCompatSubscriptionStatus(
         if (stripeClient) {
           const sub = await stripeClient.subscriptions.retrieve(subId);
           const subStatus = String((sub as { status?: string }).status || "");
-          const periodEnd = (sub as { current_period_end?: number })
-            .current_period_end;
+          // Stripe v18/v19: current_period_end flyttet fra topp-nivå til
+          // items.data[0]. Les derfra, med topp-nivå som fallback (eldre API).
+          const periodEnd =
+            (sub as { items?: { data?: Array<{ current_period_end?: number }> } })
+              .items?.data?.[0]?.current_period_end ??
+            (sub as { current_period_end?: number }).current_period_end;
           const cancelAtEnd = Boolean(
             (sub as { cancel_at_period_end?: boolean }).cancel_at_period_end,
           );
@@ -18473,6 +18477,10 @@ async function resolveCompatSubscriptionStatus(
             autoRenew: cancelAtEnd ? false : withEmail.autoRenew,
             accessUntil: periodEndIso ?? withEmail.accessUntil,
             nextBillingDate: periodEndIso ?? withEmail.nextBillingDate,
+            // Negativ caching: når abonnementet er bekreftet inaktivt (kansellert/
+            // utløpt), fjern subscription-id-en så vi ikke slår opp mot Stripe på
+            // HVERT statuskall for en churnet bruker. Et nytt kjøp skriver en ny id.
+            stripeSubscriptionId: active ? subId : null,
           };
           await writeCompatSubscriptionStatus(userId, reconciled).catch(
             () => undefined,
@@ -25954,7 +25962,11 @@ app.get("/api/enterprise/team/:organizationId/members", async (req, res) => {
 // e-post-fallback (invitert på e-post før konto-kobling).
 app.get("/api/enterprise/my-membership", async (req, res) => {
   try {
-    const userId = getUserIdFromAuth(req) || compatResolveUserId(req);
+    // Krev en EKTE sesjon (activeSessions-token), ikke det rå X-User-Id-headeren
+    // — ellers kan hvem som helst lese en annen brukers medlemskap + e-post
+    // (IDOR/PII-lekkasje). Uinnlogget → null-medlemskap.
+    const session = getActiveSessionFromRequest(req);
+    const userId = session?.userId || null;
     if (!userId) {
       res.json({ membership: null });
       return;
@@ -25970,7 +25982,7 @@ app.get("/api/enterprise/my-membership", async (req, res) => {
       /* e-post-fallback er valgfri */
     }
     const r = await pool.query(
-      `SELECT id, organization_id, email, role, status
+      `SELECT id, organization_id, role, status
          FROM enterprise_team_members
         WHERE status = 'active'
           AND (user_id = $1 OR ($2::text IS NOT NULL AND LOWER(email) = $2))
@@ -25983,11 +25995,12 @@ app.get("/api/enterprise/my-membership", async (req, res) => {
       res.json({ membership: null });
       return;
     }
+    // Returner IKKE e-post (PII, unødvendig for klienten — den bruker kun
+    // organizationId + role).
     res.json({
       membership: {
         id: row.id,
         organizationId: row.organization_id,
-        email: row.email,
         role: row.role,
         status: row.status,
       },
@@ -26985,8 +26998,13 @@ async function markCreatorHubStripeCheckoutRecordPaid(
         const sub = await stripeClient.subscriptions.retrieve(
           nextRecord.stripeSubscriptionId,
         );
-        const periodEnd = (sub as unknown as { current_period_end?: number })
-          .current_period_end;
+        // Stripe v18/v19: current_period_end ligger på items.data[0], ikke
+        // topp-nivå. Les derfra, med topp-nivå som fallback.
+        const periodEnd =
+          (sub as unknown as {
+            items?: { data?: Array<{ current_period_end?: number }> };
+          }).items?.data?.[0]?.current_period_end ??
+          (sub as unknown as { current_period_end?: number }).current_period_end;
         if (typeof periodEnd === "number" && periodEnd > 0) {
           realStripePeriodEnd = new Date(periodEnd * 1000).toISOString();
         }
@@ -27037,7 +27055,11 @@ async function markCreatorHubStripeCheckoutRecordPaid(
   // team-/Enterprise-gatene (useTeamAccess, «Inviter team», Easeverse-band)
   // faktisk slår inn. Uten dette er et fullført Enterprise-kjøp ≠ tilgang.
   // Deterministisk org-id (org_<userId>) → idempotent på (org, e-post).
-  if (nextRecord.planId === "enterprise" && nextRecord.userId) {
+  if (
+    nextRecord.planId === "enterprise" &&
+    nextRecord.userId &&
+    isPersistableCompatUserId(nextRecord.userId)
+  ) {
     try {
       const orgId = `org_${nextRecord.userId}`;
       const memberEmail =
