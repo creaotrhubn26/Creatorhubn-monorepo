@@ -357,6 +357,44 @@ export async function handleTesterEnterpriseOfferWebhook(
         offerId,
       ],
     );
+    // Gi tester-masteren et aktivt Enterprise-medlemskap slik at team-/Enterprise-
+    // gatene (useTeamAccess, «Inviter team», Easeverse-band) faktisk slår inn —
+    // samme som et standard Enterprise-kjøp. Best-effort; feil skal ikke velte
+    // webhooken (offeren er allerede markert akseptert over).
+    try {
+      const o = await pool.query(
+        `SELECT i.email
+           FROM tester_enterprise_offers o
+           JOIN prototype_tester_invites i ON i.id = o.tester_master_invite_id
+          WHERE o.id = $1 LIMIT 1`,
+        [offerId],
+      );
+      const email = o.rows?.[0]?.email
+        ? String(o.rows[0].email).toLowerCase()
+        : null;
+      if (email) {
+        const u = await pool.query(
+          `SELECT id FROM users WHERE LOWER(email) = $1 LIMIT 1`,
+          [email],
+        );
+        const uid = u.rows?.[0]?.id || null;
+        const orgId = uid ? `org_${uid}` : `org_tester_${offerId}`;
+        await pool.query(
+          `INSERT INTO enterprise_team_members
+             (organization_id, user_id, email, role, status, invited_at, joined_at)
+           VALUES ($1, $2, $3, 'admin', 'active', NOW(), NOW())
+           ON CONFLICT (organization_id, email)
+           DO UPDATE SET user_id = COALESCE(EXCLUDED.user_id, enterprise_team_members.user_id),
+                         role = 'admin', status = 'active', updated_at = NOW()`,
+          [orgId, uid, email],
+        );
+      }
+    } catch (e) {
+      console.warn(
+        "[tester-enterprise] membership-grant feilet:",
+        (e as any)?.message,
+      );
+    }
     console.log(`[tester-enterprise] Offer ${offerId} accepted via Stripe webhook`);
     return true;
   } catch (err) {

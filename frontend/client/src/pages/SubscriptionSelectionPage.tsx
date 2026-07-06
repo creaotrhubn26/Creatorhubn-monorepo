@@ -223,17 +223,14 @@ export default function SubscriptionSelectionPage() {
             const shouldAutoRedirect = data?.autoRedirectToDashboard ?? true; // Default to true for new users
 
             if (shouldAutoRedirect) {
-              // Redirect to profession-specific dashboard
-              const dashboardMap: { [key: string]: string } = {
-                photographer: '/photographer-dashboard-material',
-                videographer: '/videographer-dashboard',
-                music_producer: '/music-producer-dashboard',
-                vendor: '/vendor-dashboard',
+              // Workspace er hovedflaten for skaper-profesjoner; klient-/admin-typer
+              // beholder sine egne dashbord.
+              const nonWorkspaceDash: { [key: string]: string } = {
                 couple: '/couple-dashboard',
                 partner: '/partner-dashboard',
-                admin: '/admin-dashboard'
+                admin: '/admin-dashboard',
               };
-              const dashboardUrl = dashboardMap[profession] || '/photographer-dashboard-material';
+              const dashboardUrl = nonWorkspaceDash[profession] || '/workspace';
               window.location.href = dashboardUrl;
             } else {
               // Go back to landing page

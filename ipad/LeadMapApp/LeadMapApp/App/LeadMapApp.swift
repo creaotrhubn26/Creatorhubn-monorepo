@@ -145,23 +145,28 @@ extension NotificationAppDelegate: UNUserNotificationCenterDelegate {
         let userInfo = response.notification.request.content.userInfo
         let eventType = userInfo["event_type"] as? String ?? ""
 
-        // Leadgrid v2-events → presenter Leadgrid-inbox eller refresh state
-        let isLeadgridEvent = eventType.hasPrefix("lead_assigned")
-                            || eventType == "lead_won"
-                            || eventType == "lead_lost"
-                            || eventType == "lead_status_change"
+        // Notification-QA 2026-07-06: ALLE varsel-tap rutes nå (åpner
+        // inboksen), ikke bare ett hardkodet event-vokabular. Backend har
+        // TO parallelle varsel-systemer (lead-map + leadgrid) med ulike
+        // event_type-navn; den gamle prefiks-testen droppet halvparten
+        // (lead_status_changed, lead_won_on_team, follow_up_due,
+        // approaching_lead) stille → tap gjorde ingenting. Vi ruter alt
+        // som har et event_type ELLER en lead_id.
+        let leadId = userInfo["lead_id"] as? String
+        let hasRoutable = !eventType.isEmpty || leadId != nil
 
-        if isLeadgridEvent {
+        if hasRoutable {
             // Snap ut Sendable-felter FØR task-grensen (Swift 6 strict).
-            // userInfo som dictionary er ikke Sendable, men individuelle
-            // String-felter er det.
-            let leadId = userInfo["lead_id"] as? String
             let deepLink = userInfo["deep_link"] as? String
             let safeEventType = eventType
             Task { @MainActor in
                 var payload: [String: String] = ["event_type": safeEventType]
                 if let leadId { payload["lead_id"] = leadId }
                 if let deepLink { payload["deep_link"] = deepLink }
+                // Buffer via bridge: et cold-start-tap fyrer FØR noe view
+                // abonnerer → gikk tapt før. Bridge-en deployer så snart en
+                // header monteres.
+                AppStateBridge.shared.handleNotificationTap(payload)
                 NotificationCenter.default.post(
                     name: .leadgridNotificationTapped,
                     object: nil,

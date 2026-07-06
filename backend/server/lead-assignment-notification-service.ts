@@ -13,6 +13,7 @@
  */
 
 import type { Pool } from "pg";
+import { sendAPNs } from "./lead-map-apns-client.js";
 
 type EventType =
   | "lead_assigned_as_team_leader"
@@ -291,6 +292,38 @@ export async function notifyAssignment(
       );
       result.in_app = true;
     } catch (e) { console.warn("[lead-assign-notif] in_app feilet", e); }
+  }
+
+  // 1b. Push (APNs) — den PRIMÆRE lead-tildelings-flyten sendte ingen
+  //     push før (Notification-QA 2026-07-06): headline-eventet «du fikk
+  //     en lead» nådde aldri klokka/telefonen som varsel. Gates på samme
+  //     in-app-preferanse (push = mobil-formen av in-app). customData gir
+  //     iPad-tap-routeren deep-link-info.
+  if (prefs.notify_in_app) {
+    try {
+      const tokRes = await pool.query<{ token: string }>(
+        `SELECT token FROM notification_device_tokens
+          WHERE user_id = $1 AND platform = 'apns' AND enabled = TRUE`,
+        [params.recipientUserId],
+      );
+      for (const t of tokRes.rows) {
+        const r = await sendAPNs(t.token, subject, body, {
+          customData: {
+            event_type: params.eventType,
+            lead_id: params.customerId,
+            deep_link: deepLink,
+          },
+        });
+        if (r.sent) break;
+        if (r.shouldDisableToken) {
+          await pool.query(
+            `UPDATE notification_device_tokens SET enabled = FALSE
+              WHERE token = $1 AND user_id = $2`,
+            [t.token, params.recipientUserId],
+          ).catch(() => {});
+        }
+      }
+    } catch (e) { console.warn("[lead-assign-notif] apns feilet", e); }
   }
 
   // 2. E-post
