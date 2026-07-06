@@ -1274,10 +1274,11 @@ Tidspunkt: ${new Date().toISOString()}
     }
   });
 
-  // ── Delt lærings-lager (Demo Studio) — hvor interaktive elementer er per
-  // host. GET er åpent (delt kunnskap som komponerer på tvers av brukere);
-  // POST krever auth mot spam. ───────────────────────────────────────────────
-  router.get('/learned-targets', async (req: Request, res: Response) => {
+  // ── Delt lærings-lager (Demo Studio) — hvor interaktive elementer er per host.
+  // Kunnskapen deles på tvers av brukere, men GET krever nå INNLOGGING (userAuth) så
+  // den ikke lekker (bl.a. eksistensen av + struktur til) skannede private/interne
+  // hosts til uautentiserte. POST krever auth mot spam. ───────────────────────────
+  router.get('/learned-targets', userAuth, async (req: Request, res: Response) => {
     const host = String(req.query.host ?? '').trim().toLowerCase();
     if (!host) { res.status(400).json({ error: 'missing_host' }); return; }
     try {
