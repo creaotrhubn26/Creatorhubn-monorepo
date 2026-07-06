@@ -216,7 +216,7 @@ export function setupCommunityRoutes(deps: CommunityRoutesDeps): void {
         WITH invite_match AS (
           SELECT *
           FROM invite_requests
-          WHERE registered_user_id = $1 OR user_id = $1
+          WHERE registered_user_id = $1
           ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
           LIMIT 1
         ),
@@ -235,7 +235,7 @@ export function setupCommunityRoutes(deps: CommunityRoutesDeps): void {
             NULLIF(SPLIT_PART(COALESCE(um.email, im.email, ''), '@', 1), ''),
             'User'
           ) AS name,
-          um.profile_image_url AS picture,
+          um.profile_picture AS picture,
           COALESCE(im.profession, 'photographer') AS profession,
           im.status AS invite_status
         FROM (SELECT $1::text AS requested_id) requested
@@ -884,13 +884,13 @@ export function setupCommunityRoutes(deps: CommunityRoutesDeps): void {
               NULLIF(SPLIT_PART(COALESCE(u.email, ir.email, ''), '@', 1), ''),
               'User'
             ) AS user_name,
-            u.profile_image_url AS user_avatar
+            u.profile_picture AS user_avatar
           FROM community_messages m
           LEFT JOIN users u ON u.id = m.user_id
           LEFT JOIN LATERAL (
             SELECT *
             FROM invite_requests
-            WHERE registered_user_id = m.user_id OR user_id = m.user_id
+            WHERE registered_user_id = m.user_id
             ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
             LIMIT 1
           ) ir ON true
@@ -1040,13 +1040,13 @@ export function setupCommunityRoutes(deps: CommunityRoutesDeps): void {
               NULLIF(SPLIT_PART(COALESCE(u.email, ir.email, ''), '@', 1), ''),
               'User'
             ) AS user_name,
-            u.profile_image_url AS user_avatar
+            u.profile_picture AS user_avatar
           FROM community_messages m
           LEFT JOIN users u ON u.id = m.user_id
           LEFT JOIN LATERAL (
             SELECT *
             FROM invite_requests
-            WHERE registered_user_id = m.user_id OR user_id = m.user_id
+            WHERE registered_user_id = m.user_id
             ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
             LIMIT 1
           ) ir ON true

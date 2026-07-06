@@ -650,6 +650,14 @@ async function callClaude(opts: {
   };
 }
 
+// Manglende ANTHROPIC_API_KEY er en konfigurasjonsfeil hos oss, ikke en
+// feil i requesten — 503 matcher konvensjonen resten av appen bruker for
+// manglende AI-nøkler (se OPENAI_API_KEY-sjekken i miljø-valideringen).
+function aiErrorStatus(err: unknown): number {
+  const message = err instanceof Error ? err.message : String(err);
+  return message.includes("ANTHROPIC_API_KEY er ikke satt") ? 503 : 500;
+}
+
 function tryParseJson<T = unknown>(text: string): T | null {
   // Claude returnerer iblant JSON pakket i ```json ... ``` fences.
   const cleaned = text
@@ -3301,7 +3309,7 @@ Regler:
     } catch (err) {
       console.error("ai-analyze error", err);
       res
-        .status(500)
+        .status(aiErrorStatus(err))
         .json({ error: "AI-analyse feilet", detail: String((err as Error)?.message ?? err).slice(0, 200) });
     }
   });
@@ -3339,7 +3347,7 @@ Regler:
     } catch (err) {
       console.error("ai-summary error", err);
       res
-        .status(500)
+        .status(aiErrorStatus(err))
         .json({ error: "AI-sammendrag feilet", detail: String((err as Error)?.message ?? err).slice(0, 200) });
     }
   });
@@ -3410,7 +3418,7 @@ Regler:
       } catch (err) {
         console.error("ai-rewrite error", err);
         res
-          .status(500)
+          .status(aiErrorStatus(err))
           .json({ error: "AI-rewrite feilet", detail: String((err as Error)?.message ?? err).slice(0, 200) });
       }
     },
@@ -3556,7 +3564,7 @@ Regler:
     } catch (err) {
       console.error("ai-cover-letter error", err);
       res
-        .status(500)
+        .status(aiErrorStatus(err))
         .json({ error: "AI-søknadsbrev feilet", detail: String((err as Error)?.message ?? err).slice(0, 200) });
     }
   });
@@ -3960,7 +3968,7 @@ Regler:
       });
     } catch (err) {
       console.error("interview-session answer error", err);
-      res.status(500).json({
+      res.status(aiErrorStatus(err)).json({
         error: "AI-feedback feilet",
         detail: String((err as Error)?.message ?? err).slice(0, 200),
       });
@@ -4181,7 +4189,7 @@ Regler:
         });
       } catch (err) {
         console.error("interview-session answer-audio error", err);
-        res.status(500).json({
+        res.status(aiErrorStatus(err)).json({
           error: "AI-feedback feilet",
           detail: String((err as Error)?.message ?? err).slice(0, 200),
         });
@@ -4494,7 +4502,7 @@ Regler:
     } catch (err) {
       console.error("ai-grammar error", err);
       res
-        .status(500)
+        .status(aiErrorStatus(err))
         .json({ error: "AI-grammatikk feilet", detail: String((err as Error)?.message ?? err).slice(0, 200) });
     }
   });
@@ -4564,7 +4572,7 @@ Regler:
     } catch (err) {
       console.error("ai-translate error", err);
       res
-        .status(500)
+        .status(aiErrorStatus(err))
         .json({ error: "AI-oversettelse feilet", detail: String((err as Error)?.message ?? err).slice(0, 200) });
     }
   });
@@ -4609,7 +4617,7 @@ Regler:
     } catch (err) {
       console.error("ai-interview-prep error", err);
       res
-        .status(500)
+        .status(aiErrorStatus(err))
         .json({ error: "AI-intervjuprep feilet", detail: String((err as Error)?.message ?? err).slice(0, 200) });
     }
   });

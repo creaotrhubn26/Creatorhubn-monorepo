@@ -29,7 +29,6 @@
     "lint": "eslint . --ext .ts --fix",
     "format": "prettier --write .",
     "db:push": "npx --yes drizzle-kit push",
-    "db:push:safe": "node scripts/run-db-push-with-timeout.js",
     "db:studio": "npx --yes drizzle-kit studio",
     "generate-assets": "tsx scripts/generate-all-assets.ts",
     "test-generation": "tsx scripts/generate-all-assets.ts -- --limit 1",

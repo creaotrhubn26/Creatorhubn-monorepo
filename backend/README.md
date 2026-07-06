@@ -42,6 +42,10 @@ Create `.env` file:
 DATABASE_URL=postgresql://user:password@host:5432/database
 
 # Server
+# If you change this from the code default (3003), also set
+# VITE_API_PROXY_TARGET=http://localhost:<PORT> when starting the frontend
+# (frontend/vite.config.ts), or the dev proxy will keep pointing at 3003
+# and every /api/* call from the browser will fail.
 PORT=5050
 NODE_ENV=development
 
