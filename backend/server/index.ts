@@ -42834,6 +42834,67 @@ app.get("/api/business-lifecycle/profile-by-email/:email", async (req, res) => {
 });
 
 // ============================================================
+// GDPR: last ned mine data (self-scopet). To web-knapper (BusinessInfo-
+// Settings + wcag-util/ResumeBuilder) kalte tidligere endepunkter som
+// IKKE eksisterte -> 404 (QA 2026-07-06). Ett ekte, session-scopet
+// endepunkt + alias for begge stiene. Bruker session.userId - path-
+// param ignoreres, sa en bruker kan aldri eksportere en ANNENS data.
+// ============================================================
+const handleUserDataExport = async (
+  req: express.Request,
+  res: express.Response,
+) => {
+  const session = await resolveActiveSessionFromRequest(req);
+  if (!session?.userId) {
+    return res.status(401).json({ error: "Innlogging kreves" });
+  }
+  try {
+    const email = session.email ?? "";
+    const [userRow, businessProfile, vendor] = await Promise.all([
+      pool.query(
+        `SELECT id, email, name, first_name, role, created_at
+           FROM users WHERE id = $1`,
+        [session.userId],
+      ),
+      (await hasTable("invite_requests")) && email
+        ? pool.query(
+            `SELECT company_name, organization_number, business_address,
+                    profession, website, phone_number, status, created_at
+               FROM invite_requests WHERE email = $1
+               ORDER BY created_at DESC LIMIT 1`,
+            [email],
+          )
+        : Promise.resolve({ rows: [] as Array<Record<string, unknown>> }),
+      email ? getVendorByEmail(email).catch(() => null) : Promise.resolve(null),
+    ]);
+    const payload = {
+      exported_at: new Date().toISOString(),
+      description:
+        "Dine personlige data (GDPR art. 20 dataportabilitet). Self-scopet til innlogget bruker.",
+      account: userRow.rows[0] ?? null,
+      business_profile: businessProfile.rows[0] ?? null,
+      vendor_profile: vendor
+        ? {
+            business_name: (vendor as any).business_name,
+            category: (vendor as any).category,
+            location: (vendor as any).location,
+            website: (vendor as any).website,
+            status: (vendor as any).status,
+            created_at: (vendor as any).created_at,
+          }
+        : null,
+    };
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    return res.json({ data: payload });
+  } catch (e) {
+    console.error("[gdpr] user data-export failed", e);
+    return res.status(500).json({ error: "Kunne ikke eksportere data" });
+  }
+};
+app.get("/api/users/:id/export-data", handleUserDataExport);
+app.get("/api/business-lifecycle/export-data/:id", handleUserDataExport);
+
+// ============================================================
 // CLIENT SUBMISSIONS API → flyttet til ./submissions-routes.ts
 // (6 endpoints + mapSubmissionRow-helper).
 // ============================================================
