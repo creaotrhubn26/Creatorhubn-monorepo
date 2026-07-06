@@ -382,8 +382,16 @@ const VISUAL_EDITOR_PUBLISHED_STORAGE_PREFIX = 'visual-editor:published:';
 const VISUAL_EDITOR_REVISIONS_STORAGE_PREFIX = 'visual-editor:revisions:';
 const VISUAL_EDITOR_TEMPLATES_STORAGE_KEY = 'visual-editor:templates';
 
-const canUseLocalStorage = (): boolean =>
-  typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
+const canUseLocalStorage = (): boolean => {
+  // Merely reading `window.localStorage` throws in some browsers/contexts
+  // (storage fully disabled, certain sandboxed iframes) rather than just
+  // being undefined, so the `typeof` check itself needs a try/catch.
+  try {
+    return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
+  } catch {
+    return false;
+  }
+};
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
@@ -704,9 +712,9 @@ const readStoredProject = (projectId: string): Project | null => {
   }
 };
 
-const writeStoredProject = (project: Project): void => {
+const writeStoredProject = (project: Project): boolean => {
   if (!canUseLocalStorage()) {
-    return;
+    return false;
   }
 
   try {
@@ -714,14 +722,17 @@ const writeStoredProject = (project: Project): void => {
       `${VISUAL_EDITOR_PROJECT_STORAGE_PREFIX}${project.id}`,
       JSON.stringify(project),
     );
+    return true;
   } catch {
-    // Ignore local persistence errors; editor should remain usable.
+    // Most commonly QuotaExceededError — surfaced to the caller so the UI
+    // can show an accurate failure instead of a blanket "Saved" toast.
+    return false;
   }
 };
 
-const writeStoredPublishedProject = (project: Project): void => {
+const writeStoredPublishedProject = (project: Project): boolean => {
   if (!canUseLocalStorage()) {
-    return;
+    return false;
   }
 
   try {
@@ -729,8 +740,9 @@ const writeStoredPublishedProject = (project: Project): void => {
       `${VISUAL_EDITOR_PUBLISHED_STORAGE_PREFIX}${project.id}`,
       JSON.stringify(project),
     );
+    return true;
   } catch {
-    // Ignore local persistence errors; editor should remain usable.
+    return false;
   }
 };
 
@@ -845,6 +857,26 @@ const buildProjectSnapshot = (
   };
 };
 
+// Undo/redo history is client-memory-only with no server backstop, so cap it
+// — otherwise a long editing session accumulates one full elements-array
+// snapshot per edit forever.
+const MAX_HISTORY_LENGTH = 50;
+
+function pushHistory(
+  history: EditorElement[][],
+  historyIndex: number,
+  nextElements: EditorElement[],
+): { history: EditorElement[][]; historyIndex: number } {
+  const appended = [...history.slice(0, historyIndex + 1), nextElements];
+  if (appended.length <= MAX_HISTORY_LENGTH) {
+    return { history: appended, historyIndex: appended.length - 1 };
+  }
+  return {
+    history: appended.slice(appended.length - MAX_HISTORY_LENGTH),
+    historyIndex: MAX_HISTORY_LENGTH - 1,
+  };
+}
+
 // Reducer
 function visualEditorReducer(state: VisualEditorState, action: VisualEditorAction): VisualEditorState {
   switch (action.type) {
@@ -866,10 +898,10 @@ function visualEditorReducer(state: VisualEditorState, action: VisualEditorActio
       return {
         ...state,
         elements: newElements,
-        history: [...state.history.slice(0, state.historyIndex + 1), newElements],
-        historyIndex: state.historyIndex + 1 };
+        ...pushHistory(state.history, state.historyIndex, newElements),
+      };
     }
-    
+
     case 'UPDATE_ELEMENT': {
       const updatedElements = synchronizeElementChildren(
         state.elements.map((el) =>
@@ -887,8 +919,8 @@ function visualEditorReducer(state: VisualEditorState, action: VisualEditorActio
       return {
         ...state,
         elements: updatedElements,
-        history: [...state.history.slice(0, state.historyIndex + 1), updatedElements],
-        historyIndex: state.historyIndex + 1 };
+        ...pushHistory(state.history, state.historyIndex, updatedElements),
+      };
     }
 
     case 'SET_STYLE_CLASSES':
@@ -953,8 +985,7 @@ function visualEditorReducer(state: VisualEditorState, action: VisualEditorActio
         ...state,
         styleClasses: nextStyleClasses,
         elements: nextElements,
-        history: [...state.history.slice(0, state.historyIndex + 1), nextElements],
-        historyIndex: state.historyIndex + 1,
+        ...pushHistory(state.history, state.historyIndex, nextElements),
       };
     }
 
@@ -1029,8 +1060,7 @@ function visualEditorReducer(state: VisualEditorState, action: VisualEditorActio
         designTokens: nextDesignTokens,
         elements: nextElements,
         styleClasses: nextStyleClasses,
-        history: [...state.history.slice(0, state.historyIndex + 1), nextElements],
-        historyIndex: state.historyIndex + 1,
+        ...pushHistory(state.history, state.historyIndex, nextElements),
       };
     }
     
@@ -1059,8 +1089,8 @@ function visualEditorReducer(state: VisualEditorState, action: VisualEditorActio
             ? null
             : state.selectedElement,
         selectedElements: state.selectedElements.filter((id) => !deletedIds.has(id)),
-        history: [...state.history.slice(0, state.historyIndex + 1), filteredElements],
-        historyIndex: state.historyIndex + 1 };
+        ...pushHistory(state.history, state.historyIndex, filteredElements),
+      };
     }
     
     case 'DUPLICATE_ELEMENT': {
@@ -1084,8 +1114,8 @@ function visualEditorReducer(state: VisualEditorState, action: VisualEditorActio
           elements: elementsWithDuplicate,
           selectedElement: duplicatedElement.id,
           selectedElements: [],
-          history: [...state.history.slice(0, state.historyIndex + 1), elementsWithDuplicate],
-          historyIndex: state.historyIndex + 1 };
+          ...pushHistory(state.history, state.historyIndex, elementsWithDuplicate),
+        };
       }
       return state;
     }
@@ -1113,8 +1143,8 @@ function visualEditorReducer(state: VisualEditorState, action: VisualEditorActio
       return {
         ...state,
         elements: elementsWithPasted,
-        history: [...state.history.slice(0, state.historyIndex + 1), elementsWithPasted],
-        historyIndex: state.historyIndex + 1 };
+        ...pushHistory(state.history, state.historyIndex, elementsWithPasted),
+      };
     }
     
     case 'UNDO':
@@ -1164,8 +1194,7 @@ function visualEditorReducer(state: VisualEditorState, action: VisualEditorActio
       return {
         ...state,
         elements: nextElements,
-        history: [...state.history.slice(0, state.historyIndex + 1), nextElements],
-        historyIndex: state.historyIndex + 1,
+        ...pushHistory(state.history, state.historyIndex, nextElements),
       };
     }
     
@@ -1311,7 +1340,7 @@ function visualEditorReducer(state: VisualEditorState, action: VisualEditorActio
       };
       return {
         ...state,
-        historyEntries: [...state.historyEntries, entry],
+        historyEntries: [...state.historyEntries, entry].slice(-MAX_HISTORY_LENGTH),
       };
     }
     
@@ -1387,8 +1416,10 @@ const VisualEditorContext = createContext<{
   groupElements: (ids: string[]) => void;
   ungroupElement: (containerId: string) => void;
   loadProject: (project: Project) => void;
-  saveProject: () => void;
-  publishProject: () => void;
+  /** Returns whether the local-storage write actually succeeded (e.g. false on quota-exceeded) — do not assume this always means the project is durably saved anywhere but this browser. */
+  saveProject: () => boolean;
+  /** Same caveat as saveProject — "published" here means written to a second local-storage key, not deployed live. */
+  publishProject: () => boolean;
   createTemplate: (template: Omit<Template, 'id' | 'metadata'>) => void;
   loadTemplate: (templateId: string) => void;
   updateSettings: (settings: Partial<VisualEditorState['settings']>) => void;
@@ -1945,7 +1976,7 @@ export function VisualEditorProvider({ children }: { children: React.ReactNode }
       },
     );
 
-    writeStoredProject(updatedProject);
+    const persisted = writeStoredProject(updatedProject);
     appendStoredProjectRevision(updatedProject);
     dispatch({
       type: state.currentProject ? 'UPDATE_PROJECT' : 'SET_CURRENT_PROJECT',
@@ -1955,14 +1986,15 @@ export function VisualEditorProvider({ children }: { children: React.ReactNode }
       type: 'ADD_HISTORY_ENTRY',
       payload: {
         action: 'save',
-        description: `Saved ${updatedProject.name}`,
+        description: persisted ? `Saved ${updatedProject.name}` : `Save failed (storage full): ${updatedProject.name}`,
         timestamp: new Date().toISOString(),
       },
     });
-    
+
     // Broadcast to other components
     communication.sendBroadcast('project:saved', { project: updatedProject });
     dataFlow.syncData('visual-editor:currentProject', updatedProject);
+    return persisted;
   }, [state.currentProject, state.elements, state.styleClasses, state.designTokens, communication, dataFlow]);
 
   const publishProject = useCallback(() => {
@@ -1979,8 +2011,8 @@ export function VisualEditorProvider({ children }: { children: React.ReactNode }
       },
     });
 
-    writeStoredProject(publishedProject);
-    writeStoredPublishedProject(publishedProject);
+    const persistedProject = writeStoredProject(publishedProject);
+    const persistedPublished = writeStoredPublishedProject(publishedProject);
     appendStoredProjectRevision(publishedProject);
     dispatch({
       type: state.currentProject ? 'UPDATE_PROJECT' : 'SET_CURRENT_PROJECT',
@@ -1990,13 +2022,16 @@ export function VisualEditorProvider({ children }: { children: React.ReactNode }
       type: 'ADD_HISTORY_ENTRY',
       payload: {
         action: 'publish',
-        description: `Published ${publishedProject.name}`,
+        description: (persistedProject && persistedPublished)
+          ? `Published ${publishedProject.name}`
+          : `Publish failed (storage full): ${publishedProject.name}`,
         timestamp: new Date().toISOString(),
       },
     });
 
     communication.sendBroadcast('project:published', { project: publishedProject });
     dataFlow.syncData('visual-editor:currentProject', publishedProject);
+    return persistedProject && persistedPublished;
   }, [communication, dataFlow, state.currentProject, state.elements, state.styleClasses, state.designTokens]);
 
   const createTemplate = useCallback((template: Omit<Template, 'id' | 'metadata'>) => {

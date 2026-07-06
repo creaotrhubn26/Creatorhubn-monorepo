@@ -806,7 +806,52 @@ export const FabricCanvas: React.FC = () => {
     let obj: fabric.Object | null = null;
 
     switch (element.type) {
-      case 'button':
+      case 'button': {
+        // A plain Rect never drew the button's label — it only ever showed up
+        // once you switched to preview. Group a Rect + centered IText instead.
+        const buttonRect = new fabric.Rect({
+          left: 0,
+          top: 0,
+          width: element.width,
+          height: element.height,
+          fill: typeof element.styles.backgroundColor === 'string' ? element.styles.backgroundColor : '#ff6b35',
+          stroke: parseBorderColor(border, '#ef5b24'),
+          strokeWidth: parseBorderWidth(border, 2),
+          rx: borderRadius,
+          ry: borderRadius,
+        });
+        const buttonLabel = new fabric.IText(
+          typeof element.props.text === 'string' && element.props.text ? element.props.text : 'Button',
+          {
+            left: element.width / 2,
+            top: element.height / 2,
+            originX: 'center',
+            originY: 'center',
+            fontSize: parseNumericStyle(element.styles.fontSize, 16),
+            fontFamily: typeof element.styles.fontFamily === 'string' ? element.styles.fontFamily : 'Arial',
+            fill: typeof element.styles.color === 'string' ? element.styles.color : '#ffffff',
+            selectable: false,
+            evented: false,
+          },
+        );
+        obj = new fabric.Group([buttonRect, buttonLabel], {
+          left: element.x,
+          top: element.y,
+          width: element.width,
+          height: element.height,
+          opacity,
+          shadow: shadowEnabled
+            ? new fabric.Shadow({
+                color: 'rgba(43, 28, 13, 0.22)',
+                blur: 24,
+                offsetX: 0,
+                offsetY: 14,
+              })
+            : undefined,
+        });
+        break;
+      }
+
       case 'card':
       case 'container':
         obj = new fabric.Rect({
@@ -816,11 +861,9 @@ export const FabricCanvas: React.FC = () => {
           height: element.height,
           fill: typeof element.styles.backgroundColor === 'string'
             ? element.styles.backgroundColor
-            : element.type === 'button'
-              ? '#ff6b35'
-              : '#ffffff',
-          stroke: parseBorderColor(border, element.type === 'button' ? '#ef5b24' : '#e2c5a7'),
-          strokeWidth: parseBorderWidth(border, element.type === 'button' ? 2 : 1),
+            : '#ffffff',
+          stroke: parseBorderColor(border, '#e2c5a7'),
+          strokeWidth: parseBorderWidth(border, 1),
           rx: borderRadius,
           ry: borderRadius,
           opacity,
