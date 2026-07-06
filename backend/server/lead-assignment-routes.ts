@@ -206,7 +206,11 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
         `SELECT name, lead_category FROM crm_customers WHERE id = $1`,
         [req.params.id],
       );
-      await notifyAssignment(pool, {
+      // Fire-and-forget: notifyAssignment fan-outer til APNs (opptil 7
+      // tokens × 10s stream-timeout hvis døde), e-post + WhatsApp — dette
+      // MÅ IKKE blokkere HTTP-svaret (Notification-QA push-test 2026-07-06
+      // avdekket 45s+ heng da awaitet APNs-løkke låste request-stien).
+      void notifyAssignment(pool, {
         recipientUserId: team_leader_user_id,
         organizationId: orgId!,
         eventType: "lead_assigned_as_team_leader",
@@ -215,8 +219,8 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
         customerTier: lead.rows[0]?.lead_category ?? null,
         triggeredByUserId: s.userId,
         note: note ?? null,
-      });
-    } catch (e) { console.warn("[assign-tl] notify feilet", e); }
+      }).catch((e) => console.warn("[assign-tl] notify feilet", e));
+    } catch (e) { console.warn("[assign-tl] lead-oppslag feilet", e); }
 
     res.json({ ok: true });
   });
@@ -295,7 +299,8 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
         `SELECT name, lead_category FROM crm_customers WHERE id = $1`,
         [req.params.id],
       );
-      await notifyAssignment(pool, {
+      // Fire-and-forget (se assign-tl) — varsel-fan-out må ikke blokkere.
+      void notifyAssignment(pool, {
         recipientUserId: rep_user_id,
         organizationId: orgId!,
         eventType: "lead_assigned_as_rep",
@@ -304,8 +309,8 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
         customerTier: lead.rows[0]?.lead_category ?? null,
         triggeredByUserId: s.userId,
         note: note ?? null,
-      });
-    } catch (e) { console.warn("[assign-rep] notify feilet", e); }
+      }).catch((e) => console.warn("[assign-rep] notify feilet", e));
+    } catch (e) { console.warn("[assign-rep] lead-oppslag feilet", e); }
 
     res.json({ ok: true });
   });
