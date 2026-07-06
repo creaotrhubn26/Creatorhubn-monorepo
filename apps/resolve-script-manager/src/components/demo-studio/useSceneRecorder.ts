@@ -184,7 +184,7 @@ export function useSceneRecorder(): SceneRecorder {
       }
     }
     const rec = recorderRef.current;
-    if (!rec || rec.state === 'inactive') { setState(streamRef.current ? 'idle' : 'idle'); return null; }
+    if (!rec || rec.state === 'inactive') { setState('idle'); return null; }
     setState('saving');
     await new Promise<void>((resolve) => {
       rec.onstop = () => resolve();

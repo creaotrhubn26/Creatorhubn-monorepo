@@ -160,6 +160,20 @@ export default function App() {
       .catch(() => { /* web/dev — ingen Tauri */ });
   }, []);
 
+  // Åpne Creative Editor med sist lagrede picks. Path resolves ved kall-tid fra
+  // Tauri app-data-dir (per-bruker: ~/Library/Application Support/<bundle-id>) —
+  // IKKE hardkodet, ellers brytes den for alle andre enn utvikleren når appen
+  // auto-oppdateres til andre maskiner.
+  const openLastHighlightPicks = useCallback(async () => {
+    try {
+      const { appDataDir, join } = await import("@tauri-apps/api/path");
+      const picks = await join(await appDataDir(), "last_highlight_picks.json");
+      setCreativeEditorPath(picks);
+    } catch (e) {
+      console.error("[creative-editor] kunne ikke resolve picks-path:", e);
+    }
+  }, []);
+
   const openAgent = useCallback(async (config: AgentConfig) => {
     try {
       const picked = await openFileDialog({
@@ -531,6 +545,14 @@ export default function App() {
     } catch { /* non-critical */ }
   }, []);
 
+  // «Refresh Project» — lettere enn full health-check: oppdaterer Resolve-
+  // prosjektstatus stille (ingen busy/log-spam) og trigger Media Pool-sidebaren
+  // til å re-hente. Distinkt fra «Run Health Check» som er en full spawn.
+  const handleRefreshProject = useCallback(() => {
+    void silentHealthCheck();
+    setMediaPoolRefreshTrigger((t) => t + 1);
+  }, [silentHealthCheck]);
+
   // Role Room auth-status: undefined (sjekker), "ok" (gyldig token), "expired" (token finnes men 401), "none" (ingen token)
   const [authStatus, setAuthStatus] = useState<"checking" | "ok" | "expired" | "none">("checking");
   const [authUserEmail, setAuthUserEmail] = useState<string | null>(null);
@@ -727,7 +749,7 @@ export default function App() {
         busy={busy}
         onHealthCheck={handleHealthCheck}
         onOpenFolder={handleOpenFolder}
-        onRefreshProject={handleHealthCheck}
+        onRefreshProject={handleRefreshProject}
         onConnect={() => setShowSetup(true)}
         view={view}
         onViewChange={setView}
@@ -736,9 +758,7 @@ export default function App() {
         onTemplateChange={setActiveTemplateId}
         onSetupProject={() => setShowOnboarding(true)}
         onMagicCut={() => setShowMagicCut(true)}
-        onOpenCreativeEditor={() => setCreativeEditorPath(
-          "/Users/danielqazi/Library/Application Support/no.creatorhubn.roleroom-post-agent/last_highlight_picks.json"
-        )}
+        onOpenCreativeEditor={() => void openLastHighlightPicks()}
         onOpenSettings={() => setShowSettings(true)}
         onOpenDependencies={() => setShowDependencies(true)}
         onOpenWatch={() => setShowWatch(true)}
@@ -959,11 +979,15 @@ export default function App() {
           { id: "view_audio", title: "View: Audio",
             subtitle: "audio QC + sync tools",
             handler: () => setView("audio") },
+          { id: "view_color", title: "View: Color",
+            subtitle: "grading QC + LUT/CST tools",
+            handler: () => setView("color") },
+          { id: "view_demo", title: "View: Demo Studio",
+            subtitle: "demo capture + infographic studio",
+            handler: () => setView("demo") },
           { id: "creative_editor", title: "Åpne Creative Editor",
             subtitle: "Pixel-perfect editor med segments + timeline + Claude assistent",
-            handler: () => setCreativeEditorPath(
-              "/Users/danielqazi/Library/Application Support/no.creatorhubn.roleroom-post-agent/last_highlight_picks.json"
-            ) },
+            handler: () => void openLastHighlightPicks() },
         ]}
       />
 

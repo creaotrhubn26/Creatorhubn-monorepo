@@ -84,8 +84,13 @@ export function ExportView() {
   const unlistenRef = useRef<UnlistenFn | null>(null);
   const runIdRef = useRef<string | null>(null);
   const resultRef = useRef<string | null>(null); // unngå stale closure i finally
+  const abortedRef = useRef(false); // satt av Avbryt før første run-event rekker å sette runId
 
   useEffect(() => () => { unlistenRef.current?.(); }, []);
+
+  // Én felles jobb-vakt: render (busy) og lange ops (Playwright/Resolve, longOp) deler
+  // samme runtime-mappe → aldri to samtidig. Deaktiverer alle tre handlingsknappene.
+  const anyJobRunning = busy || longOp;
 
   const pickMusic = async () => {
     const sel = await openFileDialog({ multiple: false, filters: [{ name: 'Lyd', extensions: ['mp3', 'm4a', 'wav', 'aac'] }] });
@@ -93,6 +98,9 @@ export function ExportView() {
   };
 
   const cancelExport = async () => {
+    // Flagg FØR run-id finnes: startExport sjekker dette rundt voiceover-syntesen,
+    // så «Avbryt» virker selv om ingen onScriptEvent har rukket å sette runId ennå.
+    abortedRef.current = true;
     const id = runIdRef.current;
     if (id) { try { await cancelScript(id); } catch { /* ignore */ } }
     setStatusLabel('Avbryter…');
@@ -133,9 +141,10 @@ export function ExportView() {
 
   /** Fase 4: kjør demoen i Chromium via Playwright + ta opp deterministisk video. */
   const recordWithPlaywright = async () => {
-    if (!project || longOp) return;
+    if (!project || anyJobRunning) return;
     setLongOp(true);
     setFileMsg('Sjekker Playwright…');
+    let un: UnlistenFn | null = null;
     try {
       const st = await playwrightStatus();
       if (!st.nodeOk) { setFileMsg('Node.js ikke funnet — installer Node (f.eks. «brew install node») og prøv igjen.'); return; }
@@ -149,12 +158,11 @@ export function ExportView() {
       setFileMsg('Kjører demoen i Chromium + tar opp video…');
       // Fang video-stien fra Rust ('video'-eventet) under kjøringen.
       let videoPath: string | null = null;
-      const un = await onScriptEvent((ev) => {
+      un = await onScriptEvent((ev) => {
         const e = ev as { type?: string; path?: string };
         if (e?.type === 'video' && typeof e.path === 'string') videoPath = e.path;
       });
       const sum = await runPlaywrightDemo(buildPlaywrightScript(project));
-      un?.();
       if (!sum.succeeded) {
         setFileMsg('Opptak feilet — se loggen under (sjekk at selectorene fortsatt treffer; skriptet logger [heal]/[hopp]).');
         return;
@@ -188,7 +196,7 @@ export function ExportView() {
         void openPath(`${st.runtimeDir}/demo-video`).catch(() => {});
       }
     } catch (e) { setFileMsg('Feil ved Playwright-opptak: ' + String(e)); }
-    finally { setLongOp(false); }
+    finally { un?.(); setLongOp(false); }
   };
 
   const exportGuide = async () => {
@@ -242,7 +250,7 @@ export function ExportView() {
   };
 
   const voiceoverResolve = async () => {
-    if (!project || longOp) return;
+    if (!project || anyJobRunning) return;
     const narrations = project.scenes.filter((s) => s.narration?.trim()).map((s) => s.narration!.trim());
     if (!narrations.length) { setFileMsg('Ingen manus å lese opp — skriv narration på scenene først.'); return; }
     setLongOp(true);
@@ -303,7 +311,8 @@ export function ExportView() {
   };
 
   const startExport = async () => {
-    setError(null); setResultPath(null); resultRef.current = null; runIdRef.current = null;
+    if (anyJobRunning) return; // deler runtime-mappe med Playwright/Resolve — aldri samtidig
+    setError(null); setResultPath(null); resultRef.current = null; runIdRef.current = null; abortedRef.current = false;
     setPct(0); setStatusLabel('Starter…'); setBusy(true);
 
     // Voiceover FØR render: TTS per scene → filene sendes til pipelinen som
@@ -314,6 +323,8 @@ export function ExportView() {
       if (vo.paths.some(Boolean)) voiceover = vo.paths;
       if (vo.failed > 0) setFileMsg(`⚠ ${vo.failed} voiceover-spor kunne ikke lages — eksporterer ${vo.paths.some(Boolean) ? 'med de som lyktes' : 'uten voiceover'}.`);
     }
+    // Avbrutt under voiceover-syntesen (før render startet)? Stopp uten å kalle broen.
+    if (abortedRef.current) { setBusy(false); setStatusLabel('Avbrutt'); return; }
     // Lytt på fremdrift fra pipelinen. percent er 0–100; result-eventet legger
     // outputPath TOP-LEVEL (ikke i .value).
     unlistenRef.current = await onScriptEvent((ev) => {
@@ -464,7 +475,7 @@ export function ExportView() {
             <button style={{ ...outlineBtn }} onClick={() => void exportSrt()}>Undertekster (.srt)</button>
             <button style={{ ...outlineBtn }} onClick={() => void exportScriptPdf()}>Manus (PDF)</button>
             <button style={{ ...outlineBtn }} onClick={() => void exportPlaywright()}>Playwright-skript (.mjs)</button>
-            <button style={{ ...outlineBtn }} disabled={longOp} onClick={() => void recordWithPlaywright()}>{longOp ? 'Kjører…' : 'Spill inn video (Playwright)'}</button>
+            <button style={{ ...outlineBtn }} disabled={anyJobRunning} onClick={() => void recordWithPlaywright()}>{longOp ? 'Kjører…' : 'Spill inn video (Playwright)'}</button>
             <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: C.inkSoft, cursor: 'pointer' }} title="Legg opptaket inni en MacBook/iPad/iPhone-ramme (bruker prosjektets enhet)">
               <input type="checkbox" checked={withFrame} onChange={(e) => setWithFrame(e.target.checked)} /> Ta med device-ramme
             </label>
@@ -472,7 +483,7 @@ export function ExportView() {
             <select style={{ ...brandInp }} value={project.voiceModel ?? 'Female 1'} onChange={(e) => setProjectField('voiceModel', e.target.value)} title="Resolve AI-stemme">
               {VOICE_MODELS.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
             </select>
-            <button style={{ ...outlineBtn }} disabled={longOp} onClick={() => void voiceoverResolve()}>{longOp ? 'Kjører…' : 'Voiceover i Resolve (AI)'}</button>
+            <button style={{ ...outlineBtn }} disabled={anyJobRunning} onClick={() => void voiceoverResolve()}>{longOp ? 'Kjører…' : 'Voiceover i Resolve (AI)'}</button>
           </div>
           <div style={{ marginTop: 8, fontSize: 11.5, color: C.inkFaint }}>
             .srt fra manus + varigheter · Manus åpnes i print-vindu (lagre som PDF) · Thumbnail i valgt format.
@@ -529,8 +540,8 @@ export function ExportView() {
             </div>
           )}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <button disabled={busy || !canExport} onClick={() => void startExport()}
-              style={{ ...primaryBtn, opacity: busy || !canExport ? 0.5 : 1 }}>
+            <button disabled={anyJobRunning || !canExport} onClick={() => void startExport()}
+              style={{ ...primaryBtn, opacity: anyJobRunning || !canExport ? 0.5 : 1 }}>
               {busy ? `Eksporterer… ${Math.round(pct)}%` : `Eksporter ${format} ${resolution}`}
             </button>
             {busy && (

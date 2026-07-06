@@ -67,7 +67,7 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
   const { project, selectedSceneId, selectScene, updateScene, addScene, setProjectField, saveStatus } = useDemoStudio();
   const scenes = project?.scenes ?? [];
   const selected = scenes.find((s) => s.id === selectedSceneId) ?? scenes[0];
-  const meta = project?.scriptMeta ?? { tone: 'professional' as ScriptTone, audience: 'General', language: 'Norsk', length: 'medium' as ScriptLength };
+  const meta = project?.scriptMeta ?? { tone: 'professional' as ScriptTone, audience: 'General', language: 'Norwegian', length: 'medium' as ScriptLength };
   const render = project?.render ?? defaultRenderOptions();
 
   const setMeta = (patch: Partial<typeof meta>) => setProjectField('scriptMeta', { ...meta, ...patch });
@@ -117,7 +117,7 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
       const d = sceneShot() || (isCaptureAvailable() ? await captureScreenshot(project.url) : null);
       if (d) updateScene(selected.id, { thumbnailDataUrl: d });
       else setAiError(isCaptureAvailable() ? 'Klarte ikke ta skjermbilde' : 'Skjermbilde krever Tauri-appen (eller kjør «Analyser side» først).');
-    } finally { setAiBusy(null); }
+    } catch (e) { setAiError((e as Error).message); } finally { setAiBusy(null); }
   };
 
   const onAnnotate = async () => {
@@ -161,8 +161,8 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
           <div style={{ width: 30, height: 30, borderRadius: 8, background: C.accent, display: 'grid', placeItems: 'center', color: '#fff' }}>▶</div>
         </div>
         {NAV.map((it) => (
-          <div key={it.id} onClick={() => onNav?.(it.id)}
-            style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '10px 11px', borderRadius: 9, fontSize: 13, cursor: 'pointer', marginBottom: 2,
+          <div key={it.id} onClick={onNav ? () => onNav(it.id) : undefined}
+            style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '10px 11px', borderRadius: 9, fontSize: 13, cursor: onNav ? 'pointer' : 'default', marginBottom: 2,
               background: it.id === 'script' ? C.navActive : 'transparent', color: it.id === 'script' ? C.navActiveText : C.navText, fontWeight: it.id === 'script' ? 600 : 500 }}>
             <span style={{ width: 18, opacity: 0.85 }}>{it.ic}</span> {it.label}
           </div>
@@ -194,7 +194,7 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
       {/* ── Main column ── */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         {/* Topbar */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 18px', background: C.panel, borderBottom: `1px solid ${C.line}` }}>
+        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 12, padding: '12px 18px', background: C.panel, borderBottom: `1px solid ${C.line}` }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, border: `1px solid ${C.lineStrong}`, borderRadius: 9, padding: '8px 12px', minWidth: 220 }}>
             <span style={{ color: C.inkFaint }}>🌐</span> <span style={{ fontWeight: 600 }}>{project.name}</span>
           </div>
@@ -209,7 +209,7 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
             ✦ {aiBusy === 'generate' ? 'Genererer…' : 'Generate Script'}
           </button>
           <button style={{ ...btn, opacity: aiBusy ? 0.6 : 1 }} disabled={!!aiBusy} onClick={() => void onImprove('clarify')}>
-            ✎ {aiBusy && aiBusy !== 'generate' ? 'Forbedrer…' : 'AI Improve'}
+            ✎ {aiBusy === 'clarify' ? 'Forbedrer…' : 'AI Improve'}
           </button>
           <span style={{ fontSize: 12, color: saveStatus === 'error' ? '#dc2626' : saveStatus === 'saved_partial' ? '#f59e0b' : C.green, fontWeight: 600, whiteSpace: 'nowrap' }}
             title={saveStatus === 'error' ? 'localStorage er full — siste endringer er ikke persistert' : saveStatus === 'saved_partial' ? 'Lagret uten skjermbilder (lite lagringsplass)' : 'Endringer lagres automatisk'}>
@@ -223,7 +223,7 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
           <div style={{ flex: 1, overflowY: 'auto', padding: '18px 22px', minWidth: 0 }}>
             {/* Scene header */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
-              <div style={hdrBack} title="Tilbake til Flow Builder" onClick={() => onNav?.('flow')}>←</div>
+              <div style={{ ...hdrBack, cursor: onNav ? 'pointer' : 'default' }} title="Tilbake til Flow Builder" onClick={onNav ? () => onNav('flow') : undefined}>←</div>
               <h2 style={{ fontSize: 21, fontWeight: 700, margin: 0 }}>Scene {selected.index + 1} — {selected.title}</h2>
               <div style={{ flex: 1 }} />
               <span style={chip}>▭ {DEVICE_LABEL[selected.device]}</span>
@@ -353,7 +353,7 @@ export function ScriptBuilderView({ onNav }: { onNav?: (id: string) => void } = 
               <div style={{ flex: 1 }} />
               <span style={{ ...chip, fontSize: 10 }}>▭ {DEVICE_LABEL[selected.device]}</span>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
               <button style={{ ...btn, padding: '6px 11px', fontSize: 12, opacity: aiBusy ? 0.6 : 1 }} disabled={!!aiBusy} onClick={() => void onShot()}>
                 {aiBusy === 'shot' ? 'Tar skjermbilde…' : 'Ta skjermbilde'}
               </button>

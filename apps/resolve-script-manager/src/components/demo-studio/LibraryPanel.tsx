@@ -22,9 +22,7 @@ const FILTERS: Array<{ id: AssetKind | 'all'; label: string }> = [
   { id: 'all', label: 'Alle' },
   { id: 'infographic', label: 'Infographics' },
   { id: 'onepager', label: 'One-pagers' },
-  { id: 'brain', label: 'Product Brain' },
   { id: 'guide', label: 'Guider' },
-  { id: 'variant', label: 'Varianter' },
 ];
 
 function download(dataUrl: string, filename: string) {
@@ -77,7 +75,7 @@ export function LibraryPanel() {
         <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>Bibliotek</h2>
         <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 7, background: '#fdeee6', color: C.accent, fontWeight: 600 }}>{all.length} artefakter</span>
         <div style={{ flex: 1 }} />
-        {all.length > 0 && url && (
+        {source === 'local' && all.length > 0 && url && (
           <button style={{ ...btn, color: '#9a2b2b', borderColor: '#f0b8b8' }}
             onClick={() => { if (window.confirm('Tøm biblioteket for denne siden?')) { clearAssets(url); setTick((t) => t + 1); } }}>Tøm</button>
         )}

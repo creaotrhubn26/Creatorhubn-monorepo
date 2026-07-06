@@ -849,7 +849,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', fontFamily: C.font, background: C.bg, color: C.ink }}>
         <div style={topbarStyle}>
-          <div style={iconBtn} onClick={onClose} title="Tilbake til hjem">☰</div>
+          {onClose && <div style={iconBtn} onClick={() => onClose?.()} title="Tilbake til hjem">☰</div>}
           <div style={{ fontSize: 15, fontWeight: 700 }}>Product Demo Studio</div>
         </div>
         <div style={{ maxWidth: 560, margin: '64px auto', padding: 24, display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -1310,7 +1310,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
         ) : (
           <>
             {/* ── Blocks panel (demo-typer) ── */}
-            <div style={{ width: 230, background: C.panel, borderRight: `1px solid ${C.line}`, padding: 16, flexShrink: 0 }}>
+            <div style={{ width: 230, background: C.panel, borderRight: `1px solid ${C.line}`, padding: 16, flexShrink: 0, overflowY: 'auto', minHeight: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, fontWeight: 700, marginBottom: 14 }}>Demo-typer <span style={{ color: C.inkFaint }}>‹</span></div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 {(Object.keys(DEMO_TYPE_LABELS) as DemoType[]).map((t) => (
@@ -1705,7 +1705,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
           brandColor={project.branding?.brandColor}
           onClose={() => setVisualBeats(null)}
           onApply={(b) => applyVisualBeat(b)}
-          onGoto={(idx) => { const sc = scenes[idx]; if (sc) { selectScene(sc.id); setStoryMode(false); setNav('flow'); } }}
+          onGoto={(idx) => { const sc = scenes[idx]; if (sc) { selectScene(sc.id); setStoryMode(false); setNav('flow'); setVisualBeats(null); } }}
         />
       )}
     </div>
@@ -2085,7 +2085,7 @@ function CreateDemoView({ onCreated }: { onCreated?: () => void }) {
                     {m.url}{m.sceneCount ? ` · ${m.sceneCount} scener` : ''}{m.updatedAt ? ` · ${new Date(m.updatedAt).toLocaleDateString('nb-NO')}` : ''}
                   </div>
                 </div>
-                <button style={{ ...outlineBtn, padding: '6px 12px', fontSize: 12 }} onClick={() => { if (openProject(m.id)) onCreated?.(); }}>Åpne</button>
+                <button style={{ ...outlineBtn, padding: '6px 12px', fontSize: 12 }} onClick={() => { if (openProject(m.id)) onCreated?.(); else window.alert('Klarte ikke å åpne demoen.'); }}>Åpne</button>
                 <button style={{ ...outlineBtn, padding: '6px 10px', fontSize: 12, color: '#c4453b', borderColor: '#e6c5c2' }} title="Slett denne demoen permanent (lokalt)"
                   onClick={() => { if (window.confirm(`Slette «${m.name}» permanent?`)) { deleteStoredProject(m.id); bumpList((n) => n + 1); } }}>✕</button>
               </div>

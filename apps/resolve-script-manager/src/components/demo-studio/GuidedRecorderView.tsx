@@ -267,6 +267,9 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
   };
 
   const doneAndNext = async () => {
+    // Ikke start en ny scene mens en native capture blokkerer eller et web-lagre
+    // pågår — ellers spawner vi recordNativeScene på nytt (dobbel-opptak/state-korrupsjon).
+    if (nativeBusy || rec.state === 'saving') return;
     const sc = freshCurrent() ?? cur;
     if (isNativeCapture) {
       // Native: opptak skjer per scene via recordNativeScene (allerede lagret).
@@ -285,6 +288,22 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
     if (path) updateScene(sc.id, { recordingPath: path });
     markCurrentDone();
     if (recorderStepIndex < scenes.length - 1) { nextStep(); await startForCurrent(); }
+  };
+
+  /** Retake gjeldende scene: nullstill scenen, og for native kilder ta opp på
+   *  nytt via recordNativeScene (ikke web-recorderen) — samme greining som
+   *  beginRecording/doneAndNext. Guard mot in-flight capture unngår dobbel-opptak. */
+  const retakeAndRecord = async () => {
+    if (nativeBusy || rec.state === 'saving') return;
+    setNativeError(null);
+    const sc = freshCurrent() ?? cur;
+    retakeCurrent();
+    if (isNativeCapture) {
+      const path = await recordNativeScene(sc.id);
+      if (path) updateScene(sc.id, { recordingPath: path });
+    } else {
+      await startForCurrent();
+    }
   };
 
   const toggleMode = () => {
@@ -554,8 +573,8 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
             {/* Bunn-knapper */}
             <div style={{ padding: 16, borderTop: `1px solid ${C.line}` }}>
               <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                <button style={{ ...outlineBtn, flex: 1 }} onClick={async () => { retakeCurrent(); await startForCurrent(); }}>↺ Retake</button>
-                <button style={{ ...darkBtn, flex: 1, opacity: rec.state === 'saving' ? 0.6 : 1 }} disabled={rec.state === 'saving'} onClick={() => void doneAndNext()}>✓ Mark as Done</button>
+                <button style={{ ...outlineBtn, flex: 1, opacity: (nativeBusy || rec.state === 'saving') ? 0.6 : 1 }} disabled={nativeBusy || rec.state === 'saving'} onClick={() => void retakeAndRecord()}>↺ Retake</button>
+                <button style={{ ...darkBtn, flex: 1, opacity: (nativeBusy || rec.state === 'saving') ? 0.6 : 1 }} disabled={nativeBusy || rec.state === 'saving'} onClick={() => void doneAndNext()}>✓ Mark as Done</button>
               </div>
               {/* G22: samme verifiser/auto-handlinger som shell-recorderen —
                   validering skal være synlig i HOVED-opptaksflaten også. */}
@@ -568,7 +587,7 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
                   onClick={() => void runSessionAction('verify')}>◎ {sessionBusy === 'verify' ? 'Venter…' : 'Verifiser'}</button>
               </div>
               {sessionMsg && <div style={{ fontSize: 11.5, color: sessionMsg.startsWith('✓') ? C.green : C.inkSoft, marginBottom: 8 }}>{sessionMsg}</div>}
-              <button style={{ ...darkBtn, width: '100%', opacity: recorderStepIndex >= scenes.length - 1 ? 0.5 : 1 }} disabled={recorderStepIndex >= scenes.length - 1}
+              <button style={{ ...darkBtn, width: '100%', opacity: (recorderStepIndex >= scenes.length - 1 || nativeBusy || rec.state === 'saving') ? 0.5 : 1 }} disabled={recorderStepIndex >= scenes.length - 1 || nativeBusy || rec.state === 'saving'}
                 onClick={() => void doneAndNext()}>
                 Next Step →
               </button>

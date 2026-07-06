@@ -843,6 +843,13 @@ export function InfographicStudioView(
   const applyLogo = async (url: string) => {
     setLogoChoices([]);
     const dl = await logoToDataUrl(url).catch(() => url);
+    // Under den strenge CSP-en kan en ikke-innbygd (remote) URL ikke lastes → logoen
+    // ville forsvunnet stille. Bygg kun inn data-URL-er; ellers advar og hopp over.
+    if (!dl.startsWith('data:')) {
+      setLogoHint('Kunne ikke bygge inn logoen fra nettsiden — last den opp manuelt.');
+      setMsg('Klarte ikke å hente logoen fra nettsiden (blokkert). Last den opp som fil i stedet.');
+      return;
+    }
     setLogo(dl);
     const a = await analyzeLogo(dl).catch(() => null);
     if (a && (a.padRatio > 0.32 || a.aspect > 4 || a.aspect < 0.45)) {
@@ -2126,8 +2133,9 @@ export function InfographicStudioView(
                 {palette.map((c, i) => (
                   <button key={i} onClick={() => setAccent(c)} title={c} style={{ width: 30, height: 30, borderRadius: 8, background: c, border: `2px solid ${accent.toLowerCase() === c.toLowerCase() ? D.ink : D.line}`, cursor: 'pointer' }} />
                 ))}
-                <label style={{ width: 30, height: 30, borderRadius: 8, border: `1px dashed ${D.line}`, display: 'grid', placeItems: 'center', color: D.soft, cursor: 'pointer' }}><AddIcon style={{ fontSize: 16 }} />
-                  <input type="color" style={{ display: 'none' }} onChange={(e) => { setPalette((p) => [...p, e.target.value]); setAccent(e.target.value); }} />
+                <label style={{ position: 'relative', overflow: 'hidden', width: 30, height: 30, borderRadius: 8, border: `1px dashed ${D.line}`, display: 'grid', placeItems: 'center', color: D.soft, cursor: 'pointer' }}><AddIcon style={{ fontSize: 16 }} />
+                  {/* Visuelt kollapset (ikke display:none) — WKWebView åpner ikke den native fargevelgeren fra et display:none-input. */}
+                  <input type="color" style={{ position: 'absolute', width: 1, height: 1, opacity: 0, border: 'none', padding: 0, margin: 0 }} onChange={(e) => { setPalette((p) => [...p, e.target.value]); setAccent(e.target.value); }} />
                 </label>
               </div>
               {/* Per-scene brand-overstyring (før: brand var globalt for alle scener). */}
@@ -2137,7 +2145,7 @@ export function InfographicStudioView(
                 <span style={{ fontSize: 12, color: D.soft }}>Farge {scene.accent ? <b style={{ color: D.ink }}>{scene.accent}</b> : <span style={{ color: D.faint }}>(arver {accent})</span>}</span>
               </label>
               <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
-                {scene.accent && <button style={{ ...topBtn, padding: '4px 10px', fontSize: 11.5 }} onClick={() => updateScene({ accent: undefined, logo: undefined })}>Nullstill til default</button>}
+                {(scene.accent || scene.logo) && <button style={{ ...topBtn, padding: '4px 10px', fontSize: 11.5 }} onClick={() => updateScene({ accent: undefined, logo: undefined })}>Nullstill til default</button>}
                 <button style={{ ...topBtn, padding: '4px 10px', fontSize: 11.5 }} onClick={() => setScenes((ss) => ss.map((s) => ({ ...s, accent: sceneAccent(scene), logo: sceneLogo(scene) || undefined })))} title="Bruk denne scenens brand på alle scener">Bruk på alle</button>
               </div>
               <div style={{ fontSize: 11, fontWeight: 700, color: D.soft, textTransform: 'uppercase', marginBottom: 8 }}>Typography</div>

@@ -158,7 +158,8 @@ export function MarketingPanel({ onOpenSignIn }: { onOpenSignIn: () => void }) {
   };
 
   const improveDraft = async () => {
-    if (!aiReady || !critique) return;
+    if (!aiReady) return onOpenSignIn();
+    if (!critique) return;
     setBusy('improve'); setMsg('AI forbedrer utkastet…');
     try {
       const text = await improveOnePager({ onePager, critique, answers, evidence: evidence ?? undefined });
