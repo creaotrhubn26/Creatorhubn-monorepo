@@ -34,6 +34,7 @@ interface Vendor {
   prototype_until: string | null; platform_fee_bps: number | null;
   rating: number | null; review_count: number | null; quality_flagged: boolean; approved_at: string | null;
   cleared: boolean; verificationPercent: number; missing: string[];
+  lastLinkSentAt: string | null; lastLinkUsedAt: string | null;
 }
 
 // Avledet visnings-type for en vendor (prototype aktiv? utløpt? standard? uavklart?)
@@ -164,6 +165,12 @@ export default function EditingPartnersAdminPanel() {
     onSuccess: () => setSnack("Invitasjon sendt — prospektet søker selv."),
     onError: () => setSnack("Kunne ikke sende invitasjon."),
   });
+  // Send fersk magic-link til en godkjent partner (tilbakekaller gamle lenker først).
+  const resendLink = useMutation({
+    mutationFn: (userId: string) => apiRequest(`/api/superadmin/editing/vendors/${userId}/resend-link`, { method: "POST" }),
+    onSuccess: () => setSnack("Fersk magic-link sendt på e-post (gamle lenker slutter å virke)."),
+    onError: () => setSnack("Kunne ikke sende magic-link."),
+  });
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["/api/superadmin/editing-partner-applications"] });
@@ -293,9 +300,20 @@ export default function EditingPartnersAdminPanel() {
                         />
                       ) : null}
                       {v.review_count ? <Typography variant="caption" color="text.secondary">★ {Number(v.rating).toFixed(1)} ({v.review_count})</Typography> : null}
+                      {v.lastLinkSentAt && (
+                        <StatusChip
+                          tone={v.lastLinkUsedAt ? "success" : "warning"}
+                          label={v.lastLinkUsedAt
+                            ? `Magic-link åpnet ${new Date(v.lastLinkUsedAt).toLocaleDateString("nb-NO")}`
+                            : `Magic-link sendt ${new Date(v.lastLinkSentAt).toLocaleDateString("nb-NO")} · ikke åpnet`}
+                        />
+                      )}
                     </Stack>
                   </Box>
-                  <AdminButton tone="secondary" size="small" onClick={() => setTarget({ kind: "vendor", vendor: v })}>Endre type</AdminButton>
+                  <Stack direction="row" spacing={1}>
+                    <AdminButton tone="secondary" size="small" loading={resendLink.isPending} onClick={() => { if (confirm(`Send fersk magic-link til ${v.vendor_name}? Gamle lenker slutter å virke.`)) resendLink.mutate(v.user_id); }}>Send magic-link</AdminButton>
+                    <AdminButton tone="secondary" size="small" onClick={() => setTarget({ kind: "vendor", vendor: v })}>Endre type</AdminButton>
+                  </Stack>
                 </Stack>
               </AdminCard>
             );
