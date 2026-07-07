@@ -83,7 +83,9 @@ export function LoginModal({
 
     switch (String(role || '').toLowerCase()) {
       case 'vendor':
-        return '/fotograf';
+        // Vendor-rollen skal inn i sin egen workspace, IKKE fotograf-dashboardet
+        // (gammel feilruting). /vendor-dashboard = UniversalDashboard(profession=vendor).
+        return '/vendor-dashboard';
       case 'editing_vendor':
       case 'editing':
         // Redigeringspartnere skal inn i sin egen portal/workspace, ALDRI skaper-
