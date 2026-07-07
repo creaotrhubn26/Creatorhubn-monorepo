@@ -1038,6 +1038,12 @@ export function setupLeadMapRoutes(deps: Deps): void {
   app.post("/api/role-room/agent/configs/:configId/lead-map/auto-populate", async (req, res) => {
     const session = await getUser(req, pool, activeSessions);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    // UUID-validering FØR noen ::uuid-cast — en malformet configId ville
+    // ellers kastet «invalid input syntax for type uuid» i verifyConfig-
+    // Access/SELECT (før try) → uhåndtert → HENG (Notification-QA 2026-07-07).
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.params.configId)) {
+      return res.status(400).json({ error: "ugyldig_config_id" });
+    }
     if (!await verifyConfigAccess(req.params.configId, session.userId)) {
       return res.status(403).json({ error: "ingen_tilgang_til_config" });
     }

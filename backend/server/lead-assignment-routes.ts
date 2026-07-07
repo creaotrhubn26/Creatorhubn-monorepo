@@ -102,6 +102,7 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
       : filterRole === "all" ? [...TEAM_LEADER_ROLES, ...REP_ROLES, ...MGMT_ROLES]
       : [...TEAM_LEADER_ROLES, ...REP_ROLES];
 
+    try {
     const r = await pool.query(
       `SELECT om.user_id, om.role,
               u.first_name, u.last_name, u.email,
@@ -113,11 +114,15 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
               (SELECT COUNT(*) FROM crm_customers c
                 WHERE c.assigned_team_leader_id = om.user_id::text
                   AND c.status NOT IN ('won', 'lost', 'archived')) AS team_leader_leads,
-              -- Sist heartbeat (online-status) — fra user_presence
+              -- Sist heartbeat (online-status) — fra user_presence.
+              -- 🔴 up.user_id (uuid) = u.id (varchar) kastet «operator does
+              -- not exist: uuid = character varying» → uten try/catch hang
+              -- Express → «Tildel til teammedlem»-arket lastet ALDRI
+              -- (Notification-QA 2026-07-07). Cast u.id::uuid.
               up.last_seen_at::text
          FROM organization_members om
          JOIN users u ON u.id = om.user_id
-         LEFT JOIN user_presence up ON up.user_id = u.id
+         LEFT JOIN user_presence up ON up.user_id = u.id::uuid
         WHERE om.organization_id = $1
           AND om.role = ANY($2::text[])
         ORDER BY u.first_name, u.last_name`,
@@ -141,6 +146,10 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
           : false,
       })),
     });
+    } catch (e) {
+      console.error("[leadgrid] assignable-users feilet", e);
+      res.status(500).json({ error: "Kunne ikke hente tildelbare brukere" });
+    }
   });
 
   // ============================================================
@@ -342,6 +351,10 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
     const { unassign_type } = req.body ?? {}; // 'rep' | 'team_leader' | 'all'
     const t = unassign_type ?? "rep";
 
+    // Ytre try/catch: begge UPDATE-ene hadde utypet $1 i jsonb_build_object
+    // («could not determine data type») og hele handleren manglet try/catch
+    // → HENG på HVER unassign (Notification-QA 2026-07-07).
+    try {
     const prev = await pool.query<{
       assigned_user_id: string | null;
       assigned_team_leader_id: string | null;
@@ -358,10 +371,10 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
            assignment_chain = COALESCE(assignment_chain, '[]'::jsonb)
                               || jsonb_build_object(
                                    'type', 'unassign_rep',
-                                   'by_user_id', $1, 'at', now()::text
+                                   'by_user_id', $1::text, 'at', now()::text
                                  ),
            updated_at = now()
-         WHERE id = $2`, [s.userId, req.params.id],
+         WHERE id = $2::uuid`, [s.userId, req.params.id],
       );
       if (prev.rows[0]?.assigned_user_id) {
         await logAssignment(pool, {
@@ -381,10 +394,10 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
            assignment_chain = COALESCE(assignment_chain, '[]'::jsonb)
                               || jsonb_build_object(
                                    'type', 'unassign_team_leader',
-                                   'by_user_id', $1, 'at', now()::text
+                                   'by_user_id', $1::text, 'at', now()::text
                                  ),
            updated_at = now()
-         WHERE id = $2`, [s.userId, req.params.id],
+         WHERE id = $2::uuid`, [s.userId, req.params.id],
       );
       if (prev.rows[0]?.assigned_team_leader_id) {
         await logAssignment(pool, {
@@ -395,6 +408,10 @@ export function registerLeadAssignmentRoutes({ app, pool, activeSessions }: Deps
       }
     }
     res.json({ ok: true });
+    } catch (e) {
+      console.error("[leadgrid] unassign feilet", e);
+      res.status(500).json({ error: "Kunne ikke fjerne tildeling" });
+    }
   });
 
   // ============================================================
