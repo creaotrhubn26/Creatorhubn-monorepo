@@ -88,6 +88,7 @@ import WeddingTimelineClientPage from '@/pages/wedding-timeline-client';
 import WeddingTimelineClientResponsive from '@/pages/WeddingTimelineClientResponsive';
 import EvendiTimelineAdmin from '@/components/wedding/WeddingTimelineAdmin';
 import PricingPage from '@/pages/PricingPage';
+import PublicPricingPage from '@/pages/public-pricing';
 import ContractSigningPage from '@/pages/ContractSigningPage';
 // import MillionDollarMeetingSystem from '@/pages/million-dollar-meeting-system'; // File deleted
 // import MeetingWorkspaceSimple from '@/pages/meeting-workspace-simple'; // File deleted
@@ -188,6 +189,8 @@ import LoginPageSimple from '@/pages/LoginPageSimple';
 import SmartMeetingNotesPage from '@/pages/SmartMeetingNotesPage';
 import PrivacyPolicy from '@/pages/privacy-policy';
 import TermsAndConditions from '@/pages/terms-and-conditions';
+import DataDeletion from '@/pages/data-deletion';
+import CookiePolicy from '@/pages/cookie-policy';
 import ClientWorkspaceShell from '@/components/role-room/components/client-workspace/ClientWorkspaceShell';
 import PublicCV from '@/pages/public-cv';
 import NextRoleLanding from '@/pages/nextrole-landing';
@@ -955,9 +958,13 @@ function App() {
                   <Route path="/about" component={About as React.ComponentType<any>} />
                   <Route path="/creatorhub-innovasjon" component={CreatorhubInnovationPage as React.ComponentType<any>} />
                   <Route path="/google-verification-demo" component={GoogleVerificationDemoPage as React.ComponentType<any>} />
-                  <Route path="/pricing" component={PricingPage as React.ComponentType<any>} />
+                  <Route path="/pricing" component={PublicPricingPage as React.ComponentType<any>} />
+                  <Route path="/admin/pricing-calculator" component={() => <VisualEditorEnhancedGuard><PricingPage /></VisualEditorEnhancedGuard>} />
                   <Route path="/privacy-policy" component={PrivacyPolicy as React.ComponentType<any>} />
                   <Route path="/terms-and-conditions" component={TermsAndConditions as React.ComponentType<any>} />
+                  <Route path="/data-deletion" component={DataDeletion as React.ComponentType<any>} />
+                  <Route path="/cookie-policy" component={CookiePolicy as React.ComponentType<any>} />
+                  <Route path="/gdpr-rettigheter" component={PrivacyPolicy as React.ComponentType<any>} />
                   <Route path="/subscription" component={SubscriptionSelectionPage as React.ComponentType<any>} />
                   <Route path="/subscription-selection" component={SubscriptionSelectionPage as React.ComponentType<any>} />
                   <Route path="/about-us" component={About as React.ComponentType<any>} />
