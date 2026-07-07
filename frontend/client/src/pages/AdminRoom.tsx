@@ -2441,6 +2441,9 @@ function CmsListView({ onEdit }: { onEdit: (slug: string) => void }) {
       { slug: 'faq', variant: 'landing', h1: 'Ofte stilte spørsmål', audience: 'Offentlig FAQ' },
       { slug: 'pitch', variant: 'landing', h1: 'Pitch deck', audience: 'Investorer' },
       { slug: 'privacy-policy', variant: 'landing', h1: 'Personvernerklæring', audience: 'Juridisk — deles med CreatorHub-varianten av samme URL' },
+      { slug: 'brief', variant: 'landing', h1: 'Norwegian Casting Brief (arkiv-intro)', audience: '/brief — kun toppseksjon over utgave-listen' },
+      { slug: 'clientportal', variant: 'landing', h1: 'Klientportal (banner)', audience: 'Klienter med magic-link — kun banner øverst, ikke hele siden' },
+      { slug: 'clientworkspace', variant: 'landing', h1: 'Klient-workspace (banner)', audience: 'Klienter med prosjekttilgang — kun banner mellom header og faner' },
     ];
     const marketingEntries = MARKETING_PAGES.map((page) => ({
       slug: page.key,
@@ -2448,7 +2451,16 @@ function CmsListView({ onEdit }: { onEdit: (slug: string) => void }) {
       h1: page.title,
       audience: PILLAR_LABELS[page.pillar],
     }));
-    return [...studentEntries, ...competitorEntries, ...landingEntries, ...marketingEntries];
+    const creatorHubEntries = [
+      { slug: 'creatorhub-home', variant: 'landing' as const, h1: 'CreatorHub (forside)', audience: 'creatorhubn.com /' },
+      { slug: 'about', variant: 'landing' as const, h1: 'Om CreatorHub', audience: '/about, /about-us' },
+      { slug: 'request-access', variant: 'landing' as const, h1: 'Be om tilgang', audience: '/request-access' },
+      { slug: 'creatorhub-innovasjon', variant: 'landing' as const, h1: 'Tidum / CreatorHub Innovasjon', audience: '/creatorhub-innovasjon' },
+      { slug: 'terms-and-conditions', variant: 'landing' as const, h1: 'Vilkår og betingelser', audience: 'Juridisk — deles med Role Room-varianten av samme URL' },
+      { slug: 'nextrole', variant: 'landing' as const, h1: 'NextRole (salgsside)', audience: '/nextrole' },
+      { slug: 'academy', variant: 'landing' as const, h1: 'Academy (hero-seksjon)', audience: '/academy — kun banner øverst, ikke kurslisten' },
+    ];
+    return [...studentEntries, ...competitorEntries, ...landingEntries, ...marketingEntries, ...creatorHubEntries];
   }, []);
 
   const [cmsPages, setCmsPages] = useState<CmsPageRow[]>([]);
