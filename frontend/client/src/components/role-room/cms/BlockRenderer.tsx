@@ -49,6 +49,7 @@ import type {
   FeatureListBlock,
   HeroBlock,
   ImageBlock,
+  InfographicBlock,
   RelatedStudiesBlock,
   RichTextBlock,
   UsageExamplesBlock,
@@ -123,7 +124,51 @@ function BlockView({ block }: { block: Block }) {
       return <UsageExamplesView block={block} />;
     case 'image':
       return <ImageView block={block} />;
+    case 'infographic':
+      return <InfographicView block={block} />;
   }
+}
+
+// Laster embed-bundelen for <role-room-infographic> én gang (klient-side).
+function ensureInfographicScript(): void {
+  if (typeof document === 'undefined') return;
+  if (document.querySelector('script[data-rr-infographic]')) return;
+  const s = document.createElement('script');
+  s.src = '/embed/role-room-infographic.js';
+  s.async = true;
+  s.setAttribute('data-rr-infographic', '');
+  document.head.appendChild(s);
+}
+
+function InfographicView({ block }: { block: InfographicBlock }) {
+  const ref = React.useRef<HTMLElement | null>(null);
+  React.useEffect(() => { ensureInfographicScript(); }, []);
+  React.useEffect(() => {
+    const el = ref.current as (HTMLElement & { data?: unknown; template?: string }) | null;
+    if (!el) return;
+    // Object/HTML settes som PROPERTY (attributter takler bare strenger).
+    if (block.templateHtml) el.template = block.templateHtml;
+    el.data = block.data || {};
+  }, [block.templateHtml, block.data]);
+  const props: Record<string, unknown> = {
+    ref,
+    accent: block.accent,
+    autoplay: block.autoplaySec != null ? String(block.autoplaySec) : undefined,
+    style: { display: 'block', width: '100%', height: `${block.height || 360}px`, border: 0 },
+  };
+  if (!block.templateHtml && block.templateUrl) props['template-url'] = block.templateUrl;
+  return (
+    <RevealBlock>
+      <Box sx={{ my: 5 }}>
+        {block.heading ? (
+          <Typography variant="h4" component="h2" sx={{ fontWeight: 800, mb: 2 }}>
+            {block.heading}
+          </Typography>
+        ) : null}
+        {React.createElement('role-room-infographic' as unknown as React.FC<Record<string, unknown>>, props)}
+      </Box>
+    </RevealBlock>
+  );
 }
 
 function HeroView({ block }: { block: HeroBlock }) {

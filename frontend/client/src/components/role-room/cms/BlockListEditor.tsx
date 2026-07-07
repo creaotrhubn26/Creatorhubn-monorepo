@@ -60,6 +60,7 @@ import type {
   FeatureListBlock,
   HeroBlock,
   ImageBlock,
+  InfographicBlock,
   RelatedStudiesBlock,
   RichTextBlock,
   UsageExamplesBlock,
@@ -343,6 +344,8 @@ function BlockEditor({ block, onUpdate }: { block: Block; onUpdate: (b: Block) =
       return <UsageExamplesEditor block={block} onUpdate={onUpdate} />;
     case 'image':
       return <ImageEditor block={block} onUpdate={onUpdate} />;
+    case 'infographic':
+      return <InfographicEditor block={block} onUpdate={onUpdate} />;
   }
 }
 
@@ -734,6 +737,28 @@ function ImageEditor({ block, onUpdate }: { block: ImageBlock; onUpdate: (b: Ima
           sx={{ ...FIELD_SX, minWidth: 140 }}
         />
       </Stack>
+    </Stack>
+  );
+}
+
+function InfographicEditor({ block, onUpdate }: { block: InfographicBlock; onUpdate: (b: InfographicBlock) => void }) {
+  const upd = (patch: Partial<InfographicBlock>) => onUpdate({ ...block, ...patch });
+  const [dataText, setDataText] = React.useState(() => JSON.stringify(block.data ?? {}, null, 2));
+  const [dataErr, setDataErr] = React.useState(false);
+  const onData = (v: string) => {
+    setDataText(v);
+    try { const parsed = JSON.parse(v || '{}'); setDataErr(false); upd({ data: parsed }); }
+    catch { setDataErr(true); }
+  };
+  return (
+    <Stack spacing={1.5}>
+      <TextRow label="Overskrift (valgfri)" value={block.heading ?? ''} onChange={(v) => upd({ heading: v })} />
+      <TextRow label="Mal-URL (hostet infographic-HTML, f.eks. /embed/demo-template.html)" value={block.templateUrl ?? ''} onChange={(v) => upd({ templateUrl: v })} />
+      <TextRow label="Data (JSON → window.__CFG__)" value={dataText} onChange={onData} multiline rows={5} />
+      {dataErr && <Typography variant="caption" sx={{ color: '#fca5a5' }}>Ugyldig JSON — endringen lagres ikke før den er gyldig.</Typography>}
+      <TextRow label="Aksentfarge (hex)" value={block.accent ?? ''} onChange={(v) => upd({ accent: v })} />
+      <TextRow label="Autoplay (sekunder, 0 = statisk sluttbilde)" value={String(block.autoplaySec ?? 0)} onChange={(v) => upd({ autoplaySec: parseFloat(v) || 0 })} />
+      <TextRow label="Høyde (px)" value={String(block.height ?? 360)} onChange={(v) => upd({ height: parseInt(v, 10) || 360 })} />
     </Stack>
   );
 }
