@@ -703,8 +703,16 @@ export default function EditingVendorWorkspace({ userId }: Props) {
       </Box>
 
       {compliance && !compliance.cleared && (
-        <Alert severity="warning" sx={{ mb: 2 }}>
-          {t("comp_intro", locale)}
+        <Alert
+          severity="warning"
+          sx={{ mb: 2 }}
+          action={
+            <Button color="inherit" size="small" variant="outlined" onClick={() => setTab(1)}>
+              {t("comp_go_cta", locale)}
+            </Button>
+          }
+        >
+          {t("comp_readonly_banner", locale)}
         </Alert>
       )}
 

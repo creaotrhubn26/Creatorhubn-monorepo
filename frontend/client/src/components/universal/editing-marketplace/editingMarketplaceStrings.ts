@@ -150,6 +150,14 @@ const STRINGS: Dict = {
     no: "For å tilby redigeringstjenester gjennom Creatorhub må du godkjenne og følge kravene til kvalitet, lagring, GDPR og leveranse.",
     en: "To offer editing services through Creatorhub you must accept and follow the requirements for quality, storage, GDPR and delivery.",
   },
+  comp_readonly_banner: {
+    no: "Du har foreløpig kun LESETILGANG. For å akseptere og jobbe på oppdrag i Creatorhub må du fullføre Compliance nedenfor (kvalitet, lagring, GDPR, leveranse) og signere DPA + NDA. Uten dette forblir alt skrivebeskyttet.",
+    en: "You currently have READ-ONLY access. To accept and work on jobs in Creatorhub you must complete Compliance below (quality, storage, GDPR, delivery) and sign the DPA + NDA. Until then everything stays read-only.",
+  },
+  comp_go_cta: {
+    no: "Fullfør compliance",
+    en: "Complete compliance",
+  },
   comp_non_eea_notice: {
     no: "Bedriften din er utenfor EØS. Ekstra GDPR-kontroll kreves: Standard Contractual Clauses (SCC) og Transfer Impact Assessment (TIA).",
     en: "Your company is outside the EEA. Extra GDPR controls are required: Standard Contractual Clauses (SCC) and a Transfer Impact Assessment (TIA).",

@@ -17,6 +17,7 @@ import { composeEmail } from "./email-design-system";
 import { sendTransactionalEmail } from "./transactional-email-service";
 import { mintPortalToken, revokeVendorPortalTokens } from "./editing-partner-portal-service";
 import { paypalHealthCheck, paypalTestPayout } from "./editing-payments-service";
+import { buildComplianceSummary, type ComplianceProfile } from "./editing-compliance";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -301,17 +302,29 @@ export function setupEditingPartnerApplicationsAdminRoutes(deps: Deps): void {
     if (!s) return;
     try {
       const r = await pool.query(
-        `SELECT p.user_id, p.vendor_name, p.country, p.is_foreign, p.approval_status,
-                p.partner_type, p.prototype_until, p.platform_fee_bps,
-                p.rating, p.review_count, p.quality_flagged, p.approved_at,
-                u.email
+        `SELECT p.*, u.email
            FROM vendor_onboarding_profiles p
            LEFT JOIN users u ON u.id = p.user_id
           WHERE p.vendor_type = 'editing'
           ORDER BY p.approved_at DESC NULLS LAST, p.created_at DESC
           LIMIT 300`,
       );
-      res.json({ vendors: r.rows });
+      // Beregn compliance-status per vendor → admin ser hvem som er godkjent men IKKE cleared.
+      const vendors = r.rows.map((row) => {
+        const summary = buildComplianceSummary(row as ComplianceProfile);
+        return {
+          user_id: row.user_id, vendor_name: row.vendor_name, email: row.email,
+          country: row.country, is_foreign: row.is_foreign, approval_status: row.approval_status,
+          partner_type: row.partner_type, prototype_until: row.prototype_until, platform_fee_bps: row.platform_fee_bps,
+          rating: row.rating, review_count: row.review_count, quality_flagged: row.quality_flagged, approved_at: row.approved_at,
+          // Compliance-synlighet:
+          cleared: summary.cleared,
+          verificationPercent: summary.verificationPercent,
+          missing: summary.missing,
+          complianceComplete: summary.cleared,
+        };
+      });
+      res.json({ vendors });
     } catch (err) {
       console.error("[editing-vendors:list]", err);
       res.status(500).json({ error: "kunne_ikke_hente" });
