@@ -302,7 +302,9 @@ export function setupEditingPartnerApplicationsAdminRoutes(deps: Deps): void {
     if (!s) return;
     try {
       const r = await pool.query(
-        `SELECT p.*, u.email
+        `SELECT p.*, u.email,
+                (SELECT t.created_at  FROM editing_partner_portal_tokens t WHERE t.vendor_user_id = p.user_id ORDER BY t.created_at DESC LIMIT 1) AS last_link_sent_at,
+                (SELECT t.consumed_at FROM editing_partner_portal_tokens t WHERE t.vendor_user_id = p.user_id ORDER BY t.created_at DESC LIMIT 1) AS last_link_used_at
            FROM vendor_onboarding_profiles p
            LEFT JOIN users u ON u.id = p.user_id
           WHERE p.vendor_type = 'editing'
@@ -322,6 +324,9 @@ export function setupEditingPartnerApplicationsAdminRoutes(deps: Deps): void {
           verificationPercent: summary.verificationPercent,
           missing: summary.missing,
           complianceComplete: summary.cleared,
+          // Magic-link-status: sist sendt + om den er åpnet/brukt (consumed).
+          lastLinkSentAt: row.last_link_sent_at,
+          lastLinkUsedAt: row.last_link_used_at,
         };
       });
       res.json({ vendors });
