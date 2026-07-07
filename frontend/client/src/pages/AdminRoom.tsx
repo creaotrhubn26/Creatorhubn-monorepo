@@ -2459,6 +2459,9 @@ function CmsListView({ onEdit }: { onEdit: (slug: string) => void }) {
       { slug: 'terms-and-conditions', variant: 'landing' as const, h1: 'Vilkår og betingelser', audience: 'Juridisk — deles med Role Room-varianten av samme URL' },
       { slug: 'nextrole', variant: 'landing' as const, h1: 'NextRole (salgsside)', audience: '/nextrole' },
       { slug: 'academy', variant: 'landing' as const, h1: 'Academy (hero-seksjon)', audience: '/academy — kun banner øverst, ikke kurslisten' },
+      { slug: 'pricing', variant: 'landing' as const, h1: 'Priser (offentlig side)', audience: '/pricing — sammenlign planer' },
+      { slug: 'cookie-policy', variant: 'landing' as const, h1: 'Cookie-erklæring', audience: '/cookie-policy — deles med Role Room-varianten av samme URL' },
+      { slug: 'data-deletion', variant: 'landing' as const, h1: 'Sletting av brukerdata', audience: '/data-deletion' },
     ];
     return [...studentEntries, ...competitorEntries, ...landingEntries, ...marketingEntries, ...creatorHubEntries];
   }, []);
