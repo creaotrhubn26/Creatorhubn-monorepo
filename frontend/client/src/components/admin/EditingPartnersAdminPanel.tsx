@@ -33,6 +33,7 @@ interface Vendor {
   is_foreign: boolean; approval_status: string; partner_type: string | null;
   prototype_until: string | null; platform_fee_bps: number | null;
   rating: number | null; review_count: number | null; quality_flagged: boolean; approved_at: string | null;
+  cleared: boolean; verificationPercent: number; missing: string[];
 }
 
 // Avledet visnings-type for en vendor (prototype aktiv? utløpt? standard? uavklart?)
@@ -148,6 +149,8 @@ export default function EditingPartnersAdminPanel() {
   const allVendors = Array.isArray(vendors.data?.vendors) ? vendors.data.vendors : [];
   const prototypeVendors = allVendors.filter((v) => v.partner_type === "prototype");
   const standardVendors = allVendors.filter((v) => v.partner_type === "standard");
+  // Godkjent MEN ikke cleared → kan ikke jobbe på oppdrag (compliance ikke fullført).
+  const pendingCompliance = allVendors.filter((v) => v.approval_status === "approved" && !v.cleared);
 
   const [addLeadOpen, setAddLeadOpen] = useState(false);
   const [snack, setSnack] = useState("");
@@ -179,6 +182,13 @@ export default function EditingPartnersAdminPanel() {
         </Box>
         <AdminButton tone="secondary" size="small" onClick={() => setAddLeadOpen(true)}>+ Legg til lead</AdminButton>
       </Stack>
+
+      {pendingCompliance.length > 0 && (
+        <Alert severity="warning" icon={<WarningAmberIcon />} sx={{ mb: 2 }}>
+          <b>{pendingCompliance.length} godkjent{pendingCompliance.length === 1 ? "" : "e"} partner{pendingCompliance.length === 1 ? "" : "e"} har ikke fullført compliance</b> — de kan ikke akseptere/jobbe på oppdrag før det er gjort:{" "}
+          {pendingCompliance.map((v) => `${v.vendor_name} (${v.verificationPercent}%)`).join(", ")}. Send fersk magic-link + be dem fullføre Compliance-fanen.
+        </Alert>
+      )}
 
       <Tabs value={filter} onChange={(_, v) => setFilter(v)} sx={{ mb: 2 }} variant="scrollable" scrollButtons="auto">
         <Tab label={`Søknader (${pending.length})`} />
@@ -263,6 +273,9 @@ export default function EditingPartnersAdminPanel() {
                     <Typography variant="body2" color="text.secondary">{v.email} · {v.country || "—"}{v.is_foreign ? " (utland)" : ""}</Typography>
                     <Stack direction="row" spacing={1} sx={{ mt: 0.6 }} alignItems="center">
                       <StatusChip tone={tl.tone} icon={tl.icon as React.ReactElement | undefined} label={tl.label} />
+                      {v.cleared
+                        ? <StatusChip tone="success" label="Compliance ✓" />
+                        : <Tooltip title={`Mangler: ${(v.missing || []).join(", ") || "—"}`}><span><StatusChip tone="warning" label={`Compliance ikke fullført · ${v.verificationPercent}%`} /></span></Tooltip>}
                       {v.partner_type === "prototype" && fb ? (
                         <StatusChip
                           tone={fb.escalation === "warning" ? "error" : fb.escalation === "due" ? "warning" : "success"}

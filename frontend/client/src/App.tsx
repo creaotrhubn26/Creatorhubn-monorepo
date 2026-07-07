@@ -240,6 +240,7 @@ const PartnerApplicationForm = React.lazy(() => import('@/components/universal/e
 const PartnerPortalPage = React.lazy(() => import('@/components/universal/editing-marketplace/PartnerPortalPage'));
 const PartnerTerms = React.lazy(() => import('@/components/universal/editing-marketplace/PartnerTerms'));
 const PartnerLanding = React.lazy(() => import('@/components/universal/editing-marketplace/PartnerLanding'));
+const EditingVendorWorkspaceShell = React.lazy(() => import('@/components/universal/editing-marketplace/EditingVendorWorkspace'));
 const AudioReviewInvitePage = React.lazy(() => import('@/pages/audio-review-invite'));
 const AudioReviewSharedPage = React.lazy(() => import('@/pages/audio-review-shared'));
 const WarmupGuidePage = React.lazy(() => import('@/pages/warmup-guide'));
@@ -454,7 +455,22 @@ const CommunityLandingPageWrapper = () => {
 // Smart Dynamic Dashboard Route Component
 const SmartDashboardRoute = ({ profession }: { profession?: ValidProfession }) => {
   const { getUserProfession } = useDynamicProfessions();
-  
+  const { user: authUser } = useAuth();
+
+  // Editing-vendors (magic-link-partnere) skal ALLTID inn i vendor-workspacen,
+  // ALDRI den generiske UniversalDashboard (photographer/vendor-chrome).
+  if ((authUser?.role as string | undefined) === 'editing_vendor' && authUser?.id) {
+    return (
+      <React.Suspense fallback={null}>
+        <div style={{ minHeight: '100vh', background: '#05060a', color: '#f6f2ea', padding: '24px 16px' }}>
+          <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+            <EditingVendorWorkspaceShell userId={authUser.id} />
+          </div>
+        </div>
+      </React.Suspense>
+    );
+  }
+
   // Authentication disabled - use mock data
   const currentUser = {
     email: 'admin@local.dev',
