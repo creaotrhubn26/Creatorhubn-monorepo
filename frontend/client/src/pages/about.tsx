@@ -26,6 +26,9 @@ import { useLanguage } from '@/components/language-provider';
 import { withVisualEditor } from '@/components/admin/visual-editor/withVisualEditor';
 import PublicSocialLinks from '@/components/common/PublicSocialLinks';
 import { getPublicSocialProfiles } from '@/lib/publicBrandLinks';
+import BlockRenderer from '@/components/role-room/cms/BlockRenderer';
+import { useCmsBlocks } from '@/components/role-room/cms/useCmsBlocks';
+import { DEFAULT_LOCALE } from '@/components/role-room/cms/blockSchema';
 
 const CREATORHUB_ICON_URL = '/creatorhub-icon.png';
 const ROLE_ROOM_LOGO_URL = '/role-room-assets/TheRoleRoom_Logo_Tagline.webp';
@@ -332,6 +335,7 @@ function AboutComponent() {
   const [, setLocation] = useLocation();
   const copy = aboutCopy[language];
   const creatorhubSocialLinks = getPublicSocialProfiles('creatorhub');
+  const cmsBlocks = useCmsBlocks('about');
 
   useEffect(() => {
     ensureLandingFonts();
@@ -349,6 +353,10 @@ function AboutComponent() {
     setMenuOpen(false);
     window.location.href = url;
   };
+
+  if (cmsBlocks) {
+    return <BlockRenderer blocks={cmsBlocks} locale={DEFAULT_LOCALE} />;
+  }
 
   return (
     <Box sx={{ bgcolor: '#05060a', color: '#f6f2ea', minHeight: '100vh' }}>

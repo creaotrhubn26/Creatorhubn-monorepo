@@ -28,6 +28,9 @@ import {
 } from '@/lib/publicBrandLinks';
 import { syncSiteSeo } from '@/lib/siteSeo';
 import { trackMarketingPageView } from '@/lib/marketingPixelsRuntime';
+import BlockRenderer from '@/components/role-room/cms/BlockRenderer';
+import { useCmsBlocks } from '@/components/role-room/cms/useCmsBlocks';
+import { DEFAULT_LOCALE } from '@/components/role-room/cms/blockSchema';
 
 const tidumHighlights = [
   {
@@ -50,6 +53,7 @@ const tidumHighlights = [
 export default function CreatorhubInnovationPage() {
   const [, setLocation] = useLocation();
   const socialLinks = getPublicSocialProfiles('creatorhub');
+  const cmsBlocks = useCmsBlocks('creatorhub-innovasjon');
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -62,6 +66,10 @@ export default function CreatorhubInnovationPage() {
     });
     trackMarketingPageView('/creatorhub-innovasjon');
   }, []);
+
+  if (cmsBlocks) {
+    return <BlockRenderer blocks={cmsBlocks} locale={DEFAULT_LOCALE} />;
+  }
 
   return (
     <Box
