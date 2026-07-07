@@ -64,6 +64,7 @@ import {
   Chat,
   ToggleOn,
   Feedback,
+  SupportAgent,
   Notes as NotesIcon,
   Payment,
   CardMembership,
@@ -139,6 +140,7 @@ import AutomationsPanel from './AutomationsPanel';
 import ReportsPanel from './ReportsPanel';
 import AutomatedBusinessReports from './AutomatedBusinessReports';
 import PrototypeFeedbackPanel from './PrototypeFeedbackPanel';
+import SupportTicketsPanel from './SupportTicketsPanel';
 import SystemBackupDashboard from './SystemBackupDashboard';
 import B2ArchiveTab from './B2ArchiveTab';
 import CreatorHubNotes from './Creatorhubnotesnew';
@@ -1391,6 +1393,7 @@ export default function AdminDashboard({
     { id: 'kunder-prosjekter', label: 'Kunder/Prosjekter', icon: Group },
     { id: 'kommunikasjon', label: 'Kommunikasjon', icon: Chat },
     { id: 'inbound-alerts', label: 'Innkommende', icon: Inbox },
+    { id: 'support', label: 'Kundestøtte', icon: SupportAgent },
     { id: 'prototype-feedback', label: 'Prototype Feedback', icon: Feedback },
     { id: 'okonomi', label: 'Økonomi', icon: AttachMoney },
     { id: 'price-management', label: 'Prisstyring', icon: AttachMoney },
@@ -1441,7 +1444,7 @@ export default function AdminDashboard({
     {
       label: 'Oversikt',
       items: adminTabs.filter((tab) =>
-        ['overblikk', 'brukere-roller', 'invite-requests', 'send-notifications', 'community', 'innhold-assets', 'kunder-prosjekter', 'kommunikasjon', 'inbound-alerts'].includes(tab.id),
+        ['overblikk', 'brukere-roller', 'invite-requests', 'send-notifications', 'community', 'innhold-assets', 'kunder-prosjekter', 'kommunikasjon', 'inbound-alerts', 'support'].includes(tab.id),
       ),
     },
     {
@@ -1475,6 +1478,7 @@ export default function AdminDashboard({
     'kunder-prosjekter': 'Se kunder, prosjekter og leveranser i samme operative oversikt.',
     kommunikasjon: 'Koordiner meldinger, møter og intern kommunikasjon.',
     'inbound-alerts': 'Full oversikt over innkommende varsler — søknader, leads og signups som krever oppfølging.',
+    support: 'Support-tickets fra workspace og produktet — kø, kontekst og triage (status/tildeling/løsning).',
     'prototype-feedback': 'Samle produktinnsikt, tester og prioritering fra prototyper.',
     okonomi: 'Følg inntekter, utbetalinger og operativ økonomi.',
     'price-management': 'Juster prismodeller og kommersielle satser på tvers av tilbud.',
@@ -3539,6 +3543,8 @@ export default function AdminDashboard({
         return <AdminCommunicationPanel {...sharedPanelProps} />;
       case 'inbound-alerts':
         return <InboundAlertsPanel />;
+      case 'support':
+        return <SupportTicketsPanel />;
       case 'prototype-feedback':
         return <PrototypeFeedbackPanel {...sharedPanelProps} />;
       case 'okonomi':

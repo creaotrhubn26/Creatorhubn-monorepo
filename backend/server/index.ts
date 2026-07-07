@@ -899,6 +899,7 @@ import { setupWeddingTimelineRoutes } from "./wedding-timeline-routes";
 import { setupProjectsRoutes } from "./projects-routes";
 import { setupRoleRoomDealsRoutes } from "./role-room-deals-routes";
 import { setupRoleRoomInvitesTicketsRoutes } from "./role-room-invites-tickets-routes";
+import { setupSupportTicketsRoutes } from "./support-tickets-routes";
 import { setupProjectsOutliersRoutes } from "./projects-outliers-routes";
 import { setupContractsUploadImportRoutes } from "./contracts-upload-import-routes";
 import { setupBackupRoutes } from "./backup-routes";
@@ -66507,7 +66508,8 @@ setupRoleRoomDealsRoutes({
   legacyContractsByProject,
   legacyProjectAgreementsByProject,
 });
-setupRoleRoomInvitesTicketsRoutes({ app, pool, requireUserSession, requireAdminSession });
+setupRoleRoomInvitesTicketsRoutes({ app, pool, requireUserSession, requireAdminSession, sendEmail: sendTransactionalEmail });
+setupSupportTicketsRoutes({ app, pool, requireUserSession, requireAdminSession, sendEmail: sendTransactionalEmail });
 setupProjectsOutliersRoutes({ app, pool, db, requireUserSession });
 setupContractsUploadImportRoutes({ app, requireUserSession });
 setupBackupRoutes({

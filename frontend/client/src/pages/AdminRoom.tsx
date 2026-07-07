@@ -90,6 +90,7 @@ import {
 import { RoleNavConfigTab } from '../components/role-room/components/admin-room/RoleNavConfigTab';
 import { WhatsNewTab } from '../components/role-room/components/admin-room/WhatsNewTab';
 import ObservabilityPanel from '../components/admin-room/observability/ObservabilityPanel';
+import SupportTicketsPanel from '../components/admin/SupportTicketsPanel';
 import { ResendStatusTab } from '../components/role-room/components/admin-room/ResendStatusTab';
 import { B2ArchiveTab } from '../components/role-room/components/admin-room/B2ArchiveTab';
 import { PlatformStatusWidget } from '../components/role-room/components/admin-room/PlatformStatusWidget';
@@ -115,7 +116,7 @@ import ContentCalendarTab from './admin-room/ContentCalendarTab';
 
 const ADMIN_ROOM_OWNER_EMAIL = 'daniel@creatorhubn.com';
 
-type AdminRoomTab = 'dashboard' | 'business-plan' | 'funding' | 'investors' | 'partners' | 'activity' | 'analytics' | 'cms' | 'presence' | 'role-nav' | 'prototype-testers' | 'post-agent-seats' | 'operating-system' | 'content-marketing' | 'industry-crm' | 'role-room-economy' | 'newsletter-studio' | 'ai-citation' | 'whats-new' | 'resend' | 'marketing-cockpit' | 'role-room-agent' | 'content-calendar' | 'b2-archive' | 'migrations' | 'observability';
+type AdminRoomTab = 'dashboard' | 'business-plan' | 'funding' | 'investors' | 'partners' | 'activity' | 'analytics' | 'cms' | 'presence' | 'role-nav' | 'prototype-testers' | 'post-agent-seats' | 'operating-system' | 'content-marketing' | 'industry-crm' | 'role-room-economy' | 'newsletter-studio' | 'ai-citation' | 'whats-new' | 'resend' | 'marketing-cockpit' | 'role-room-agent' | 'content-calendar' | 'b2-archive' | 'migrations' | 'observability' | 'rr-support';
 
 // ─────────────────────────────────────────────────────────
 // Stable produkt-features for søknadsmaler. Role Room Agent
@@ -4492,7 +4493,7 @@ function resolveInitialAdminTab(): AdminRoomTab {
     'content-marketing', 'industry-crm', 'role-room-economy',
     'newsletter-studio', 'ai-citation', 'whats-new', 'resend',
     'marketing-cockpit', 'role-room-agent', 'content-calendar',
-    'b2-archive', 'migrations', 'observability',
+    'b2-archive', 'migrations', 'observability', 'rr-support',
   ];
   try {
     const fromUrl = new URLSearchParams(window.location.search).get('adminTab');
@@ -4590,6 +4591,7 @@ export default function AdminRoom() {
   else if (tab === 'content-calendar') content = <ContentCalendarTab />;
   else if (tab === 'b2-archive') content = <B2ArchiveTab />;
   else if (tab === 'migrations') content = <MigrationsTab />;
+  else if (tab === 'rr-support') content = <SupportTicketsPanel endpoint="/api/role-room/tickets" title="Role Room-support" subtitle="Feedback og tickets fra The Role Room." />;
 
   return (
     <Container maxWidth="lg" sx={{ py: { xs: 2, md: 4 }, px: { xs: 1.5, md: 3 } }}>
@@ -4646,6 +4648,7 @@ export default function AdminRoom() {
           <Tab value="content-calendar" label="Content-kalender" />
           <Tab value="b2-archive" label="B2-arkiv" />
           <Tab value="migrations" label="Migrasjoner" />
+          <Tab value="rr-support" label="🎧 RR-support" />
         </Tabs>
         <Box>{content}</Box>
       </Stack>

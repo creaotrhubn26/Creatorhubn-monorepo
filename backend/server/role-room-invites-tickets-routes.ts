@@ -1,18 +1,20 @@
 import express from "express";
 import type { Pool } from "pg";
 import crypto from "crypto";
+import { notifySupportTicket } from "./support-notify";
 
 export interface RoleRoomInvitesTicketsRoutesDeps {
   app: express.Application;
   pool: Pool;
   requireUserSession: (req: any, res: any) => any;
   requireAdminSession: (req: any, res: any) => any;
+  sendEmail?: (opts: any) => Promise<any>;
 }
 
 export function setupRoleRoomInvitesTicketsRoutes(
   deps: RoleRoomInvitesTicketsRoutesDeps,
 ): void {
-  const { app, pool, requireUserSession, requireAdminSession } = deps;
+  const { app, pool, requireUserSession, requireAdminSession, sendEmail } = deps;
 
   async function ensureRoleRoomTesterInvitesTable(): Promise<boolean> {
     try {
@@ -269,6 +271,14 @@ export function setupRoleRoomInvitesTicketsRoutes(
         ],
       );
       const row = result.rows[0];
+      // Varsle admin (fire-and-forget — blokkerer ikke svaret).
+      void notifySupportTicket(sendEmail, pool, {
+        id: String(row.id), origin: "Role Room", category, priority, title, description,
+        source: typeof context?.source === "string" ? context.source : "role-room",
+        userName: typeof user.name === "string" ? user.name : null,
+        userEmail: typeof user.email === "string" ? user.email : null,
+        context,
+      });
       res.json({
         id: String(row.id),
         createdAt: row.created_at,
@@ -281,6 +291,8 @@ export function setupRoleRoomInvitesTicketsRoutes(
   });
 
   app.get("/api/role-room/tickets", async (req, res) => {
+    // Admin-only: køen inneholder alle brukeres e-post + kontekst (PII).
+    if (!requireAdminSession(req, res)) return;
     try {
       if (!(await ensureRoleRoomTicketsTable())) {
         return res.json([]);

@@ -18,6 +18,7 @@ import Palette from '@mui/icons-material/Palette';
 import Lock from '@mui/icons-material/Lock';
 import MenuIcon from '@mui/icons-material/Menu';
 import Logout from '@mui/icons-material/Logout';
+import HelpOutline from '@mui/icons-material/HelpOutline';
 import Dashboard from '@mui/icons-material/Dashboard';
 import AccountTree from '@mui/icons-material/AccountTree';
 import Map from '@mui/icons-material/Map';
@@ -52,6 +53,7 @@ import WorkOutline from '@mui/icons-material/WorkOutline';
 import EventAvailable from '@mui/icons-material/EventAvailable';
 import { ws, workspaceDarkTheme, WS_NAV, type WsNavItem } from './workspaceTheme';
 import { useWsLocale, makeT } from './wsLocale';
+import SupportDialog from './SupportDialog';
 
 // Shell-chrome no/en (utenlandske partner-vendors får engelsk via WsLocaleProvider).
 const SHELL_T = {
@@ -60,6 +62,7 @@ const SHELL_T = {
   groupRom: { no: 'SMART ROM', en: 'SMART ROOMS' },
   groupKlient: { no: 'KUNDEPORTAL', en: 'CLIENT PORTAL' },
   profileSettings: { no: 'Profil & innstillinger', en: 'Profile & settings' },
+  getHelp: { no: 'Få hjelp / meld en feil', en: 'Get help / report a problem' },
   branding: { no: 'Merkevare', en: 'Branding' },
   security: { no: 'Sikkerhet', en: 'Security' },
   logout: { no: 'Logg ut', en: 'Log out' },
@@ -156,6 +159,7 @@ const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab,
   const [userMenu, setUserMenu] = React.useState<null | HTMLElement>(null);
   const [projMenu, setProjMenu] = React.useState<null | HTMLElement>(null);
   const [mobileNav, setMobileNav] = React.useState(false); // sidebar som slide-in på mobil
+  const [supportOpen, setSupportOpen] = React.useState(false);
   const go = (path: string) => { setUserMenu(null); window.location.href = path; };
 
   return (
@@ -247,6 +251,8 @@ const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab,
               <MenuItem onClick={() => go('/business-branding')}><ListItemIcon><Palette fontSize="small" /></ListItemIcon>{t('branding')}</MenuItem>
               <MenuItem onClick={() => go('/innstillinger/sikkerhet')}><ListItemIcon><Lock fontSize="small" /></ListItemIcon>{t('security')}</MenuItem>
               <Divider />
+              <MenuItem onClick={() => { setUserMenu(null); setSupportOpen(true); }}><ListItemIcon><HelpOutline fontSize="small" /></ListItemIcon>{t('getHelp')}</MenuItem>
+              <Divider />
               <MenuItem onClick={() => { setUserMenu(null); onLogout ? onLogout() : (window.location.href = '/login'); }}>
                 <ListItemIcon><Logout fontSize="small" /></ListItemIcon>{t('logout')}
               </MenuItem>
@@ -331,6 +337,15 @@ const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab,
           </Box>
         </Box>
       </Box>
+
+      <SupportDialog
+        open={supportOpen}
+        onClose={() => setSupportOpen(false)}
+        user={user}
+        tabLabel={activeTab}
+        projectId={project?.id}
+        projectName={project?.name}
+      />
     </ThemeProvider>
   );
 };
