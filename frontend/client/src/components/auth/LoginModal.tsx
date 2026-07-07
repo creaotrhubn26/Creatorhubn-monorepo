@@ -84,6 +84,12 @@ export function LoginModal({
     switch (String(role || '').toLowerCase()) {
       case 'vendor':
         return '/fotograf';
+      case 'editing_vendor':
+      case 'editing':
+        // Redigeringspartnere skal inn i sin egen portal/workspace, ALDRI skaper-
+        // prosjektvelgeren. /partner-portal viser EditingVendorWorkspace fra
+        // eksisterende sesjon når det ikke er noen magic-link-token i URL-en.
+        return '/partner-portal';
       case 'admin':
       case 'super_admin':
         return '/admin';
