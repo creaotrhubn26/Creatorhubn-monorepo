@@ -65800,6 +65800,32 @@ setupSuperadminImpersonationRoutes({
 });
 setupSuperadminDebugRoutes({ app, pool, activeSessions, readSessionToken: readActiveSessionToken });
 
+// Support-ticket fra innebygd support-chat-knapp → e-post til daniel@creatorhubn.com
+app.post("/api/support/ticket", async (req, res) => {
+  const token = readActiveSessionToken(req);
+  const sess = token ? activeSessions.get(token) : null;
+  if (!sess) return res.status(401).json({ error: "auth_required" });
+  const msg = String(req.body?.message || "").trim();
+  if (!msg) return res.status(400).json({ error: "message_required" });
+  try {
+    await sendTransactionalEmail({
+      to: "daniel@creatorhubn.com",
+      subject: `[Support] Fra ${sess.email || sess.userId}`,
+      html: `<p><b>Fra:</b> ${sess.email || "?"} (${sess.role || "user"})</p><p>${msg.replace(/\n/g, "<br>")}</p>`,
+      text: `Fra: ${sess.email || "?"}\n\n${msg}`,
+      replyTo: sess.email || null,
+      fromLabel: "CreatorHub Support",
+      kind: "support_ticket",
+      sentByUserId: sess.userId,
+      pool,
+    });
+    res.json({ ok: true });
+  } catch (e: any) {
+    console.error("[support/ticket]", e);
+    res.status(500).json({ error: "send_failed" });
+  }
+});
+
 // /api/meeting-notes/* — 7 endpoints (AI-process, writing-assist, CRUD,
 // google-backup). Helpers dep-injiseres siden mapMeetingNotesRecord +
 // ensureMeetingNotesCompatibilitySchema brukes også av NotebookLM-flow.

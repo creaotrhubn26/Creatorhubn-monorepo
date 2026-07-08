@@ -1,9 +1,7 @@
-import { useTheming } from '../../utils/theming-helper';
-import React, { useCallback, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { useLocation } from 'wouter';
 import { useAuth } from '@/hooks/useAuth';
-import UniversalChatWidget from './UniversalChatWidget';
-import { CommunicationStatusProvider } from '../../contexts/CommunicationStatusContext';
+import SupportChatButton from './SupportChatButton';
 
 interface GlobalChatProviderProps {
   children: React.ReactNode
@@ -24,78 +22,21 @@ export default function GlobalChatProvider({ children }: GlobalChatProviderProps
   const [location] = useLocation();
   const { user, isAuthenticated, isAdmin } = useAuth();
 
-  // Determine profession based on user data or default to photographer
-  const userProfession = useMemo(() => {
-    if (!user) return 'photographer';
-    if (typeof user.profession === 'string' && user.profession) {
-      return user.profession;
-    }
-    // Admin users default to photographer
-    if (isAdmin) return 'photographer';
-    return 'photographer';
-  }, [isAdmin, user]);
-
-  // Theming system — driven by the resolved profession
-  const theming = useTheming(userProfession);
-
-  // Notification handler using themed branding
-  const handleNotificationCreate = useCallback(
-    (notification: Record<string, unknown>) => {
-      const professionBranding = theming.getProfessionBranding(userProfession);
-      console.log(
-        `[${professionBranding.label}] Chat notification:`,
-        notification
-      );
-    },
-    [theming, userProfession]
-  );
-
-  // Creatorhub-support-chatten skal KUN vises på Creatorhubs egne flater for
-  // innloggede Creatorhub-brukere (auth-gaten under). Den skal ALDRI dukke opp på:
-  //  - forsiden / offentlige markedsførings-/partner-/leads-sider
-  //  - andre produkter: The Role Room (theroleroom/role-room/casting/talents),
-  //    LeadGrid, NextRole
-  //  - klient-vendte flater: showcase-gallerier + audio-review (kunder er ikke
-  //    Creatorhub-brukere)
-  //  - dashboards (de har egen innebygd chat)
-  // Academy VISES for innloggede Creatorhub-brukere (Academy er en Creatorhub-flate),
-  // og er derfor IKKE i skjul-listen — den offentlige Academy-landingen dekkes av auth-gaten.
-  const shouldHideGlobalChat = useMemo(() => {
+  // Skjul support-knappen på: / + admin/workspace/dashboards/andre produkter/offentlige flater
+  const shouldHide = useMemo(() => {
     if (location === '/') return true;
     return /^\/(?:workspace|admin|dashboard|photographer-dashboard-material|videographer-dashboard(?:-material)?|music(?:_|-)producer-dashboard(?:-material)?|vendor-dashboard(?:-material)?|partner|partner-portal|for-byr|privacy-policy|terms-and-conditions|creatorhub-innovasjon|pitch|faq|community|leadgrid|nextrole|showcase|photo-showcase|video-showcase|audio-review|role-room|casting|talents|theroleroom)(?:\/|$)/.test(location);
   }, [location]);
 
-  // Don't render chat widget if user is not authenticated or is admin/super_admin
-  // (admins don't need the creator support chat, and it clutters their workspace/admin panel)
+  // Ikke vis for uautentiserte brukere eller admins
   if (!isAuthenticated || !user || isAdmin) {
     return <>{children}</>;
   }
 
-  // Build themed container styles using theming colors
-  const chatContainerStyle: React.CSSProperties = {
-    // Apply a subtle profession-colored glow to the chat widget area
-    ['--chat-accent' as string]: theming.colors.primary,
-    ['--chat-accent-light' as string]: `${theming.colors.primary}18`,
-  };
-
   return (
     <>
       {children}
-
-      {/* Global Chat Widget - Available on all pages, themed per profession */}
-      {!shouldHideGlobalChat && (
-        <div style={chatContainerStyle}>
-          <CommunicationStatusProvider>
-            <UniversalChatWidget
-              profession={userProfession}
-              userEmail={user.email}
-              userId={user.id}
-              isOpen={false}
-              onNotificationCreate={handleNotificationCreate}
-            />
-          </CommunicationStatusProvider>
-        </div>
-      )}
+      {!shouldHide && <SupportChatButton />}
     </>
   );
 }
