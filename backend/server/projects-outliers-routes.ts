@@ -208,7 +208,7 @@ export function setupProjectsOutliersRoutes(
         const mapped = milestones.rows.map((row: any, index: number) => {
           const notes =
             row.internal_notes && typeof row.internal_notes === "string"
-              ? JSON.parse(row.internal_notes)
+              ? (() => { try { return JSON.parse(row.internal_notes); } catch { return {}; } })()
               : row.internal_notes || {};
           return {
             id: row.id,

@@ -155,11 +155,11 @@ export function setupCouplesRoutes(deps: CouplesRoutesDeps): void {
         published: r.published,
         settings:
           typeof r.settings === "string"
-            ? JSON.parse(r.settings)
+            ? (() => { try { return JSON.parse(r.settings); } catch { return null; } })()
             : r.settings,
         metadata:
           typeof r.metadata === "string"
-            ? JSON.parse(r.metadata)
+            ? (() => { try { return JSON.parse(r.metadata); } catch { return null; } })()
             : r.metadata,
         createdAt: r.created_at,
         updatedAt: r.updated_at,
@@ -222,11 +222,11 @@ export function setupCouplesRoutes(deps: CouplesRoutesDeps): void {
         published: r.published,
         settings:
           typeof r.settings === "string"
-            ? JSON.parse(r.settings)
+            ? (() => { try { return JSON.parse(r.settings); } catch { return null; } })()
             : r.settings,
         metadata:
           typeof r.metadata === "string"
-            ? JSON.parse(r.metadata)
+            ? (() => { try { return JSON.parse(r.metadata); } catch { return null; } })()
             : r.metadata,
         createdAt: r.created_at,
         updatedAt: r.updated_at,

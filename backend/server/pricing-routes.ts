@@ -455,7 +455,7 @@ export function setupPricingRoutes(deps: PricingRoutesDeps): void {
       if (result.rowCount === 0) {
         result = await pool.query(
           "DELETE FROM packages WHERE id = $1 RETURNING id",
-          [parseInt(req.params.id) || 0],
+          [parseInt(req.params.id, 10)],
         );
       }
       if (result.rowCount === 0)

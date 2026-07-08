@@ -575,7 +575,12 @@ async function refineWithClaude(s: StaticSignals): Promise<ClaudeRefinement> {
     .trim();
 
   const jsonText = text.replace(/^```(?:json)?|```$/gm, "").trim();
-  const parsed = JSON.parse(jsonText) as ClaudeRefinement;
+  let parsed: ClaudeRefinement;
+  try {
+    parsed = JSON.parse(jsonText) as ClaudeRefinement;
+  } catch {
+    return s;
+  }
 
   // Defensive: clip array length + enforce ToneOfVoice union
   return {

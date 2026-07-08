@@ -1,16 +1,23 @@
 import express from "express";
 import type { Pool } from "pg";
 
+const isUuid = (s: string | null | undefined): s is string =>
+  !!s && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+
 export interface WorklogRoutesDeps {
   app: express.Application;
   pool: Pool;
-  getUserIdFromAuth: (req: any) => string | null;
+  compatResolveUserId: (req: any) => string;
 }
 
 export function setupWorklogRoutes(deps: WorklogRoutesDeps): void {
-  const { app, pool, getUserIdFromAuth } = deps;
+  const { app, pool, compatResolveUserId } = deps;
 
   app.post("/api/worklog", async (req, res) => {
+    const actorUserId = compatResolveUserId(req);
+    if (!isUuid(actorUserId)) {
+      return res.status(401).json({ error: "unauthorized" });
+    }
     try {
       const { projectId, description, hours, date, type, userId, task } =
         req.body;
@@ -45,7 +52,7 @@ export function setupWorklogRoutes(deps: WorklogRoutesDeps): void {
            VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
            RETURNING *`,
           [
-            userId || getUserIdFromAuth(req) || null,
+            (userId && isUuid(userId)) ? userId : actorUserId,
             projectId || null,
             task || type || "general",
             description || "",

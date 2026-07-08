@@ -66207,7 +66207,7 @@ setupOnboardingRoutes({ app, pool, resolveActiveSessionFromRequest });
 
 // /api/worklog/* — 3 endpoints (POST/PATCH/DELETE). Multi-tabell-
 // fallback: worklogs → worklog_entries → project_milestones.
-setupWorklogRoutes({ app, pool, getUserIdFromAuth });
+setupWorklogRoutes({ app, pool, compatResolveUserId });
 
 // /api/travel-log — 3 endpoints (GET liste, POST create, DELETE).
 // Kjørebok-data for photographers reise-utlegg.
@@ -66540,7 +66540,6 @@ setupProjectsRoutes({
   app,
   pool,
   mapProjectRow,
-  getUserIdFromAuth,
   compatResolveUserId,
   compatStoreSet,
   buildGalleryShareUrl,

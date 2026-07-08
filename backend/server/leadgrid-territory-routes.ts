@@ -303,9 +303,14 @@ export function registerLeadgridTerritoryRoutes(deps: Deps): void {
       if (leadId) {
         lead = await loadLeadGeo(pool, leadId);
       } else if (req.query.lat && req.query.lng) {
+        const lat = Number(req.query.lat);
+        const lng = Number(req.query.lng);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+          return res.status(400).json({ error: "Ugyldig lat/lng" });
+        }
         lead = {
-          latitude: Number(req.query.lat),
-          longitude: Number(req.query.lng),
+          latitude: lat,
+          longitude: lng,
           postalCode: typeof req.query.postal_code === "string" ? req.query.postal_code : null,
           municipalityCode: typeof req.query.municipality_code === "string" ? req.query.municipality_code : null,
         };

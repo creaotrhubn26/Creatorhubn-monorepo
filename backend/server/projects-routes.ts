@@ -9,7 +9,6 @@ export interface ProjectsRoutesDeps {
   app: express.Application;
   pool: Pool;
   mapProjectRow: (r: any) => any;
-  getUserIdFromAuth: (req: any) => string | null;
   compatResolveUserId: (req: any) => string;
   compatStoreSet: (key: string, value: unknown) => Promise<void>;
   buildGalleryShareUrl: (accessToken: string) => string;
@@ -62,7 +61,6 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
     app,
     pool,
     mapProjectRow,
-    getUserIdFromAuth,
     compatResolveUserId,
     compatStoreSet,
     buildGalleryShareUrl,
@@ -561,7 +559,7 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
         recordAnalyticsEvent('project.status_changed', {
           entityType: 'project',
           entityId: String(id),
-          actorUserId: typeof getUserIdFromAuth === 'function' ? readString(getUserIdFromAuth(req)) ?? null : null,
+          actorUserId: compatResolveUserId(req),
           metadata: {
             oldStatus: oldStatus ?? null,
             newStatus,
