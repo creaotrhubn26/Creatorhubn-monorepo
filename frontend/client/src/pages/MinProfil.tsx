@@ -209,37 +209,35 @@ const MinProfil: React.FC = () => {
                   <TextField label="Fornavn" fullWidth size="small" value={form.firstName} onChange={set('firstName')} sx={fieldSx} />
                   <TextField label="Etternavn" fullWidth size="small" value={form.lastName} onChange={set('lastName')} sx={fieldSx} />
                 </Stack>
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-                  {/* Telefon: landskode + lokalnummer */}
-                  <Stack direction="row" spacing={0.5} sx={{ flex: 1, minWidth: 0 }}>
-                    <FormControl size="small" sx={{ width: 100, flexShrink: 0, '& .MuiOutlinedInput-root': { color: 'white', borderRadius: 1, '& fieldset': { borderColor: BORDER }, '&:hover fieldset': { borderColor: ACCENT }, '&.Mui-focused fieldset': { borderColor: ACCENT } }, '& .MuiSvgIcon-root': { color: DIM } }}>
-                      <InputLabel sx={{ color: DIM, '&.Mui-focused': { color: ACCENT } }}>Land</InputLabel>
-                      <Select label="Land" value={phoneCountryCode} onChange={(e) => setPhoneCountryCode(e.target.value as string)} MenuProps={{ PaperProps: { sx: { bgcolor: '#111827', color: 'white' } } }}>
-                        {[
-                          { code: '+47', flag: '🇳🇴', label: 'NO' },
-                          { code: '+46', flag: '🇸🇪', label: 'SE' },
-                          { code: '+45', flag: '🇩🇰', label: 'DK' },
-                          { code: '+358', flag: '🇫🇮', label: 'FI' },
-                          { code: '+44', flag: '🇬🇧', label: 'GB' },
-                          { code: '+1', flag: '🇺🇸', label: 'US' },
-                          { code: '+49', flag: '🇩🇪', label: 'DE' },
-                          { code: '+33', flag: '🇫🇷', label: 'FR' },
-                          { code: '+31', flag: '🇳🇱', label: 'NL' },
-                          { code: '+880', flag: '🇧🇩', label: 'BD' },
-                          { code: '+91', flag: '🇮🇳', label: 'IN' },
-                          { code: '+92', flag: '🇵🇰', label: 'PK' },
-                          { code: '+48', flag: '🇵🇱', label: 'PL' },
-                        ].map(({ code, flag, label }) => (
-                          <MenuItem key={code} value={code} sx={{ color: 'white', '&:hover': { bgcolor: 'rgba(255,140,0,0.1)' }, '&.Mui-selected': { bgcolor: 'rgba(255,140,0,0.15)' } }}>
-                            {flag} {code}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                    <TextField label="Telefonnummer" fullWidth size="small" value={form.phone} onChange={set('phone')} sx={fieldSx} placeholder="12345678" inputProps={{ inputMode: 'tel' }} />
-                  </Stack>
-                  <TextField label="Firmanavn" fullWidth size="small" value={form.businessName} onChange={set('businessName')} sx={fieldSx} />
+                {/* Telefon: landskode + lokalnummer — egen rad for å unngå label-kollisjon */}
+                <Stack direction="row" spacing={1} alignItems="flex-start">
+                  <FormControl size="small" sx={{ width: 110, flexShrink: 0, '& .MuiOutlinedInput-root': { color: 'white', borderRadius: 1, '& fieldset': { borderColor: BORDER }, '&:hover fieldset': { borderColor: ACCENT }, '&.Mui-focused fieldset': { borderColor: ACCENT } }, '& .MuiSvgIcon-root': { color: DIM } }}>
+                    <InputLabel sx={{ color: DIM, '&.Mui-focused': { color: ACCENT } }}>Land</InputLabel>
+                    <Select label="Land" value={phoneCountryCode} onChange={(e) => setPhoneCountryCode(e.target.value as string)} MenuProps={{ PaperProps: { sx: { bgcolor: '#111827', color: 'white' } } }}>
+                      {[
+                        { code: '+47', flag: '🇳🇴' },
+                        { code: '+46', flag: '🇸🇪' },
+                        { code: '+45', flag: '🇩🇰' },
+                        { code: '+358', flag: '🇫🇮' },
+                        { code: '+44', flag: '🇬🇧' },
+                        { code: '+1', flag: '🇺🇸' },
+                        { code: '+49', flag: '🇩🇪' },
+                        { code: '+33', flag: '🇫🇷' },
+                        { code: '+31', flag: '🇳🇱' },
+                        { code: '+880', flag: '🇧🇩' },
+                        { code: '+91', flag: '🇮🇳' },
+                        { code: '+92', flag: '🇵🇰' },
+                        { code: '+48', flag: '🇵🇱' },
+                      ].map(({ code, flag }) => (
+                        <MenuItem key={code} value={code} sx={{ color: 'white', '&:hover': { bgcolor: 'rgba(255,140,0,0.1)' }, '&.Mui-selected': { bgcolor: 'rgba(255,140,0,0.15)' } }}>
+                          {flag} {code}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  <TextField label="Telefonnummer" fullWidth size="small" value={form.phone} onChange={set('phone')} sx={fieldSx} placeholder="12345678" inputProps={{ inputMode: 'tel' }} />
                 </Stack>
+                <TextField label="Firmanavn" fullWidth size="small" value={form.businessName} onChange={set('businessName')} sx={fieldSx} />
                 <TextField label="Tagline" fullWidth size="small" value={form.tagline} onChange={set('tagline')} sx={fieldSx} placeholder="Kort setning om deg/bedriften" />
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
                   <TextField label="Org.nr" fullWidth size="small" value={form.organizationNumber} onChange={set('organizationNumber')} sx={fieldSx} />
