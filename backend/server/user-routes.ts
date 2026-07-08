@@ -107,9 +107,13 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
   };
   const PROFILE_COLS = "id, first_name, last_name, email, phone_number, profession, profile_image_url, company_name";
 
+  // Validates that a string is a real UUID (prevents raw session tokens from
+  // reaching the DB when activeSessions is empty after a Render restart).
+  const isUuid = (s: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+
   app.get("/api/user/profile", async (req, res) => {
     const uid = getUserIdFromAuth(req) || compatResolveUserId(req);
-    if (!uid) return res.status(401).json({ error: "Ikke innlogget" });
+    if (!uid || !isUuid(uid)) return res.status(401).json({ error: "Ikke innlogget" });
     try {
       const r = await pool.query(`SELECT ${PROFILE_COLS} FROM users WHERE id = $1`, [uid]);
       if (!r.rows.length) return res.status(404).json({ error: "Bruker ikke funnet" });
@@ -119,7 +123,7 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
 
   app.patch("/api/user/profile", async (req, res) => {
     const uid = getUserIdFromAuth(req) || compatResolveUserId(req);
-    if (!uid) return res.status(401).json({ error: "Ikke innlogget" });
+    if (!uid || !isUuid(uid)) return res.status(401).json({ error: "Ikke innlogget" });
     const b = req.body ?? {};
     // camelCase-alias → users-kolonner (avatar kan være en data-URL-streng).
     const colMap: Record<string, string> = {

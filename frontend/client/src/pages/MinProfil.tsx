@@ -22,6 +22,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   Box, Container, Stack, Typography, Avatar, IconButton, TextField, Button,
   Chip, Divider, CircularProgress, Snackbar, Alert, Card, Grid, ThemeProvider,
+  Select, MenuItem, InputLabel, FormControl,
 } from '@mui/material';
 import Lock from '@mui/icons-material/Lock';
 import PhotoCamera from '@mui/icons-material/PhotoCamera';
@@ -57,10 +58,18 @@ const MinProfil: React.FC = () => {
   const [plan, setPlan] = useState<any>(null);
   const [tester, setTester] = useState<any>(null);
   const [avatar, setAvatar] = useState<string | null>(null);
+  const [phoneCountryCode, setPhoneCountryCode] = useState('+47');
   const [form, setForm] = useState({
     firstName: '', lastName: '', phone: '', businessName: '', tagline: '',
     organizationNumber: '', businessAddress: '', website: '', brandingColor: ACCENT,
   });
+
+  // Parse stored phone (e.g. "+47 12345678") → split into code + local number
+  const parsePhone = (raw: string) => {
+    if (!raw) return { code: '+47', local: '' };
+    const m = raw.match(/^(\+\d{1,4})\s*(.*)/);
+    return m ? { code: m[1], local: m[2] } : { code: '+47', local: raw };
+  };
 
   useEffect(() => {
     (async () => {
@@ -76,8 +85,10 @@ const MinProfil: React.FC = () => {
         setPlan(s || null);
         setTester(t?.isTester ? t : null);
         setAvatar(prof?.avatarUrl || null);
+        const { code, local } = parsePhone(prof?.phone || '');
+        setPhoneCountryCode(code);
         setForm({
-          firstName: prof?.firstName || '', lastName: prof?.lastName || '', phone: prof?.phone || '',
+          firstName: prof?.firstName || '', lastName: prof?.lastName || '', phone: local,
           businessName: bi?.businessName || prof?.companyName || '', tagline: bi?.tagline || '',
           organizationNumber: bi?.organizationNumber || '', businessAddress: bi?.businessAddress || '',
           website: bi?.website || '',
@@ -112,8 +123,9 @@ const MinProfil: React.FC = () => {
   const save = async () => {
     setSaving(true);
     try {
+      const fullPhone = form.phone.trim() ? `${phoneCountryCode} ${form.phone.trim()}` : '';
       await apiRequest('/api/user/profile', { method: 'PATCH', body: {
-        firstName: form.firstName, lastName: form.lastName, phone: form.phone, companyName: form.businessName,
+        firstName: form.firstName, lastName: form.lastName, phone: fullPhone, companyName: form.businessName,
         ...(avatar && avatar.startsWith('data:') ? { avatarUrl: avatar } : {}),
       } });
       await apiRequest('/api/branding/business-info', { method: 'PUT', body: {
@@ -198,7 +210,34 @@ const MinProfil: React.FC = () => {
                   <TextField label="Etternavn" fullWidth size="small" value={form.lastName} onChange={set('lastName')} sx={fieldSx} />
                 </Stack>
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-                  <TextField label="Telefon" fullWidth size="small" value={form.phone} onChange={set('phone')} sx={fieldSx} />
+                  {/* Telefon: landskode + lokalnummer */}
+                  <Stack direction="row" spacing={0.5} sx={{ flex: 1, minWidth: 0 }}>
+                    <FormControl size="small" sx={{ width: 100, flexShrink: 0, '& .MuiOutlinedInput-root': { color: 'white', borderRadius: 1, '& fieldset': { borderColor: BORDER }, '&:hover fieldset': { borderColor: ACCENT }, '&.Mui-focused fieldset': { borderColor: ACCENT } }, '& .MuiSvgIcon-root': { color: DIM } }}>
+                      <InputLabel sx={{ color: DIM, '&.Mui-focused': { color: ACCENT } }}>Land</InputLabel>
+                      <Select label="Land" value={phoneCountryCode} onChange={(e) => setPhoneCountryCode(e.target.value as string)} MenuProps={{ PaperProps: { sx: { bgcolor: '#111827', color: 'white' } } }}>
+                        {[
+                          { code: '+47', flag: '🇳🇴', label: 'NO' },
+                          { code: '+46', flag: '🇸🇪', label: 'SE' },
+                          { code: '+45', flag: '🇩🇰', label: 'DK' },
+                          { code: '+358', flag: '🇫🇮', label: 'FI' },
+                          { code: '+44', flag: '🇬🇧', label: 'GB' },
+                          { code: '+1', flag: '🇺🇸', label: 'US' },
+                          { code: '+49', flag: '🇩🇪', label: 'DE' },
+                          { code: '+33', flag: '🇫🇷', label: 'FR' },
+                          { code: '+31', flag: '🇳🇱', label: 'NL' },
+                          { code: '+880', flag: '🇧🇩', label: 'BD' },
+                          { code: '+91', flag: '🇮🇳', label: 'IN' },
+                          { code: '+92', flag: '🇵🇰', label: 'PK' },
+                          { code: '+48', flag: '🇵🇱', label: 'PL' },
+                        ].map(({ code, flag, label }) => (
+                          <MenuItem key={code} value={code} sx={{ color: 'white', '&:hover': { bgcolor: 'rgba(255,140,0,0.1)' }, '&.Mui-selected': { bgcolor: 'rgba(255,140,0,0.15)' } }}>
+                            {flag} {code}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    <TextField label="Telefonnummer" fullWidth size="small" value={form.phone} onChange={set('phone')} sx={fieldSx} placeholder="12345678" inputProps={{ inputMode: 'tel' }} />
+                  </Stack>
                   <TextField label="Firmanavn" fullWidth size="small" value={form.businessName} onChange={set('businessName')} sx={fieldSx} />
                 </Stack>
                 <TextField label="Tagline" fullWidth size="small" value={form.tagline} onChange={set('tagline')} sx={fieldSx} placeholder="Kort setning om deg/bedriften" />
