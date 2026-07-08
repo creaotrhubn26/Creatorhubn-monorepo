@@ -272,7 +272,7 @@ async function checkUserPresenceInner(pool: AdminRoomRoutesDeps['pool']): Promis
               p.user_agent_short,
               CASE WHEN p.user_id IS NOT NULL THEN TRUE ELSE FALSE END AS has_heartbeat
          FROM users u
-         LEFT JOIN user_presence p ON p.user_id = u.id
+         LEFT JOIN user_presence p ON p.user_id = u.id::uuid
         WHERE u.profession = ANY($1::text[]) AND u.is_active = TRUE
      )
      SELECT
@@ -293,7 +293,7 @@ async function checkUserPresenceInner(pool: AdminRoomRoutesDeps['pool']): Promis
             p.is_idle,
             p.user_agent_short
        FROM users u
-       LEFT JOIN user_presence p ON p.user_id = u.id
+       LEFT JOIN user_presence p ON p.user_id = u.id::uuid
       WHERE u.profession = ANY($1::text[]) AND u.is_active = TRUE
         AND COALESCE(p.last_seen_at, u.last_login_at) IS NOT NULL
       ORDER BY COALESCE(p.last_seen_at, u.last_login_at) DESC
