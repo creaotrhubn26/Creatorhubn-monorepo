@@ -10,14 +10,11 @@
 import React, { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Box, Typography, Card, CardActionArea, CardContent, Stack, Alert, Button, TextField, Divider, CircularProgress } from "@mui/material";
-import PhotoCamera from "@mui/icons-material/PhotoCamera";
-import Videocam from "@mui/icons-material/Videocam";
-import GraphicEq from "@mui/icons-material/GraphicEq";
-import Storefront from "@mui/icons-material/Storefront";
 import ArrowBack from "@mui/icons-material/ArrowBack";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import UniversalDashboard from "@/components/universal/UniversalDashboard";
 import { apiRequest } from "@/lib/queryClient";
+import { CANONICAL_PROFESSIONS } from "@shared/profession-types";
 
 interface FoundUser { id: string; email: string; name: string; role: string; profession: string | null }
 
@@ -75,14 +72,13 @@ function ImpersonateSection() {
   );
 }
 
-type Prof = "photographer" | "videographer" | "music_producer" | "vendor";
+type Prof = string;
 
-const PROFS: Array<{ id: Prof; label: string; icon: React.ReactNode; desc: string }> = [
-  { id: "photographer", label: "Fotograf", icon: <PhotoCamera />, desc: "Prosjekter, kunder, utstyr, lønnsomhet" },
-  { id: "videographer", label: "Videograf", icon: <Videocam />, desc: "Video-workspace" },
-  { id: "music_producer", label: "Musikkprodusent", icon: <GraphicEq />, desc: "Produsent-workspace" },
-  { id: "vendor", label: "Vendor", icon: <Storefront />, desc: "Vendor-/leverandør-workspace" },
-];
+// Drift-sikker: alle aktive profesjoner fra den kanoniske registry-en
+// (photographer/videographer/music_producer/pet_groomer/vendor/enterprise + evt. flere).
+const PROFS: Array<{ id: Prof; label: string; color: string }> = CANONICAL_PROFESSIONS
+  .filter((p) => p.isActive)
+  .map((p) => ({ id: p.name, label: p.displayName, color: p.iconColor }));
 
 export default function WorkspacePreviewPanel() {
   const [preview, setPreview] = useState<Prof | null>(null);
@@ -99,7 +95,8 @@ export default function WorkspacePreviewPanel() {
           <b>Forhåndsvisning: {p.label}-workspace</b> — dette er grensesnittet rollen ser (med dine/tomme data). For ekte data, bruk «vis som bruker» (Del 2, kommer).
         </Alert>
         <Box sx={{ border: "1px solid", borderColor: "divider", borderRadius: 2, overflow: "hidden" }}>
-          <UniversalDashboard profession={preview} />
+          {/* profession-typen er smal (ValidProfession); registry støtter flere → cast */}
+          <UniversalDashboard profession={preview as never} />
         </Box>
       </Box>
     );
@@ -118,10 +115,10 @@ export default function WorkspacePreviewPanel() {
             <CardActionArea onClick={() => setPreview(p.id)}>
               <CardContent>
                 <Stack direction="row" spacing={1.2} alignItems="center" sx={{ mb: 0.5 }}>
-                  {p.icon}
+                  <Box sx={{ width: 12, height: 12, borderRadius: "50%", bgcolor: p.color, flexShrink: 0 }} />
                   <Typography sx={{ fontWeight: 700 }}>{p.label}</Typography>
                 </Stack>
-                <Typography variant="caption" color="text.secondary">{p.desc}</Typography>
+                <Typography variant="caption" color="text.secondary">{p.id}</Typography>
               </CardContent>
             </CardActionArea>
           </Card>
