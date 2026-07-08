@@ -50,7 +50,7 @@ const GROUP_LABEL = { hoved: 'Hovedmeny', rom: 'Smart rom', klient: 'Kundeportal
 
 const MinProfil: React.FC = () => {
   const [, navigate] = useLocation();
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState('');
@@ -320,10 +320,15 @@ const MinProfil: React.FC = () => {
                   );
                 })() : (
                   <Stack direction="row" spacing={1} alignItems="center" sx={{ my: 1.5 }}>
-                    <Chip label={plan?.planName || plan?.tier || plan?.status || 'CreatorHub Standard'} size="small"
-                      sx={{ bgcolor: ws.accentSoft, color: ACCENT, fontWeight: 700 }} />
-                    <Button size="small" endIcon={<OpenInNew sx={{ fontSize: 14 }} />} onClick={() => navigate('/pricing')}
-                      sx={{ textTransform: 'none', color: DIM }}>Se planer</Button>
+                    <Chip
+                      label={isAdmin ? 'CreatorHub Admin' : (plan?.planName || plan?.tier || plan?.status || 'CreatorHub Standard')}
+                      size="small"
+                      sx={{ bgcolor: ws.accentSoft, color: ACCENT, fontWeight: 700 }}
+                    />
+                    {!isAdmin && (
+                      <Button size="small" endIcon={<OpenInNew sx={{ fontSize: 14 }} />} onClick={() => navigate('/subscription')}
+                        sx={{ textTransform: 'none', color: DIM }}>Se planer</Button>
+                    )}
                   </Stack>
                 )}
                 <Divider sx={{ borderColor: BORDER, my: 1.5 }} />
