@@ -271,21 +271,25 @@ const MinProfil: React.FC = () => {
                   <Typography variant="h6" sx={{ fontWeight: 700 }}>Profesjon</Typography>
                 </Stack>
                 <Chip label={professionLabel} sx={{ bgcolor: `${professionColor}24`, color: professionColor, fontWeight: 800, fontSize: '0.9rem', height: 34, mb: 1.5 }} />
-                <Typography variant="caption" sx={{ color: DIM, display: 'block', mb: 2 }}>
-                  {tester
-                    ? 'Profesjon er låst — den skiller flatene og verktøyene fra hverandre. I testprogrammet tester du din tildelte profesjon; etter programmet kan du bytte mot betaling eller Enterprise.'
-                    : 'Profesjon er låst — den skiller flatene og verktøyene fra hverandre. Å bytte krever betaling, eller oppgradering til Enterprise (som også gir team).'}
-                </Typography>
-                <Stack spacing={1}>
-                  <Button variant="outlined" startIcon={<Upgrade />} onClick={() => navigate('/subscription?intent=change-profession')}
-                    sx={{ borderRadius: 999, textTransform: 'none', fontWeight: 700, borderColor: BORDER, color: TEXT, '&:hover': { borderColor: ACCENT, bgcolor: ws.accentSoft } }}>
-                    Endre profesjon (mot betaling)
-                  </Button>
-                  <Button variant="contained" startIcon={<WorkspacePremium />} onClick={() => navigate('/subscription?plan=enterprise&intent=upgrade')}
-                    sx={{ borderRadius: 999, textTransform: 'none', fontWeight: 700, bgcolor: ACCENT, color: ws.accentContrast, '&:hover': { bgcolor: ws.accentHover } }}>
-                    Oppgrader til Enterprise (team)
-                  </Button>
-                </Stack>
+                {!isAdmin && (
+                  <>
+                    <Typography variant="caption" sx={{ color: DIM, display: 'block', mb: 2 }}>
+                      {tester
+                        ? 'Profesjon er låst — den skiller flatene og verktøyene fra hverandre. I testprogrammet tester du din tildelte profesjon; etter programmet kan du bytte mot betaling eller Enterprise.'
+                        : 'Profesjon er låst — den skiller flatene og verktøyene fra hverandre. Å bytte krever betaling, eller oppgradering til Enterprise (som også gir team).'}
+                    </Typography>
+                    <Stack spacing={1}>
+                      <Button variant="outlined" startIcon={<Upgrade />} onClick={() => navigate('/subscription?intent=change-profession')}
+                        sx={{ borderRadius: 999, textTransform: 'none', fontWeight: 700, borderColor: BORDER, color: TEXT, '&:hover': { borderColor: ACCENT, bgcolor: ws.accentSoft } }}>
+                        Endre profesjon (mot betaling)
+                      </Button>
+                      <Button variant="contained" startIcon={<WorkspacePremium />} onClick={() => navigate('/subscription?plan=enterprise&intent=upgrade')}
+                        sx={{ borderRadius: 999, textTransform: 'none', fontWeight: 700, bgcolor: ACCENT, color: ws.accentContrast, '&:hover': { bgcolor: ws.accentHover } }}>
+                        Oppgrader til Enterprise (team)
+                      </Button>
+                    </Stack>
+                  </>
+                )}
               </Card>
 
               {/* Tjenester du har tilgang til */}
