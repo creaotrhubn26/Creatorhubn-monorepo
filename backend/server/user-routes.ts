@@ -112,7 +112,10 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
   const isUuid = (s: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
 
   app.get("/api/user/profile", async (req, res) => {
-    const uid = getUserIdFromAuth(req) || compatResolveUserId(req);
+    // compatResolveUserId slår opp activeSessions → returnerer ekte userId (UUID)
+    // når session finnes. getUserIdFromAuth returnerer rå Bearer-token (ikke UUID)
+    // og ville kortslutte || slik at activeSessions aldri ble sjekket.
+    const uid = compatResolveUserId(req);
     if (!uid || !isUuid(uid)) return res.status(401).json({ error: "Ikke innlogget" });
     try {
       const r = await pool.query(`SELECT ${PROFILE_COLS} FROM users WHERE id = $1`, [uid]);
@@ -122,7 +125,7 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
   });
 
   app.patch("/api/user/profile", async (req, res) => {
-    const uid = getUserIdFromAuth(req) || compatResolveUserId(req);
+    const uid = compatResolveUserId(req);
     if (!uid || !isUuid(uid)) return res.status(401).json({ error: "Ikke innlogget" });
     const b = req.body ?? {};
     // camelCase-alias → users-kolonner (avatar kan være en data-URL-streng).
