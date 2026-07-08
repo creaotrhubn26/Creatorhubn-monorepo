@@ -89,6 +89,10 @@ const ALLOWED_IMAGE_MIME = new Set([
 const cmsMediaUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (/^(image\/|video\/|audio\/|application\/pdf)/.test(file.mimetype)) cb(null, true);
+    else cb(new Error("Filtype ikke tillatt") as any, false);
+  },
 });
 
 export function setupCmsPagesRoutes(deps: CmsPagesRoutesDeps): void {

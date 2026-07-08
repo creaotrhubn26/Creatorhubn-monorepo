@@ -77,6 +77,10 @@ const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10 MB
 const prizeImageUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_IMAGE_BYTES, files: 1 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith("image/")) cb(null, true);
+    else cb(new Error("Kun bildefiler er tillatt") as any, false);
+  },
 });
 
 const B2_REGION = process.env.B2_REGION || "eu-central-003";

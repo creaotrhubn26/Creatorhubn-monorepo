@@ -1143,6 +1143,10 @@ const showcaseMediaUpload = multer({
   limits: {
     fileSize: 250 * 1024 * 1024,
   },
+  fileFilter: (_req, file, cb) => {
+    if (/^(image\/|video\/|audio\/)/.test(file.mimetype)) cb(null, true);
+    else cb(new Error("Filtype ikke tillatt") as any, false);
+  },
 });
 
 const ACADEMY_MEDIA_MAX_FILE_BYTES = 512 * 1024 * 1024;

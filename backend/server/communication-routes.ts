@@ -275,6 +275,10 @@ export function createCommunicationRouter(
       fileSize: CONTEXTUAL_DRIVE_UPLOAD_MAX_BYTES,
       files: 24,
     },
+    fileFilter: (_req, file, cb) => {
+      if (/^(image\/|video\/|audio\/|application\/pdf|text\/)/.test(file.mimetype)) cb(null, true);
+      else cb(new Error("Filtype ikke tillatt") as any, false);
+    },
   });
 
   const toNonEmptyString = (value: unknown): string | null => {

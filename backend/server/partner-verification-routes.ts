@@ -38,6 +38,10 @@ import {
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 25 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (/^(image\/|application\/pdf)/.test(file.mimetype)) cb(null, true);
+    else cb(new Error("Kun bilder og PDF er tillatt") as any, false);
+  },
 });
 
 const CRON_TOKEN = process.env.LEADGRID_CRON_TRIGGER_TOKEN ?? "";

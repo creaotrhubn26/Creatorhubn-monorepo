@@ -410,7 +410,7 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
         })),
       });
     } catch (error) {
-      res.status(500).json({ success: false, error: String(error) });
+      res.status(500).json({ success: false, error: "internal_error" });
     }
   });
 
@@ -479,7 +479,7 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
         }),
       });
     } catch (error) {
-      res.status(500).json({ success: false, error: String(error) });
+      res.status(500).json({ success: false, error: "internal_error" });
     }
   });
 
@@ -525,7 +525,7 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
       }
       res.json({ success: true });
     } catch (error) {
-      res.status(500).json({ success: false, error: String(error) });
+      res.status(500).json({ success: false, error: "internal_error" });
     }
   });
 
@@ -608,7 +608,7 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
       }
       res.json({ success: true, applied, skipped: leads.length - applied.length });
     } catch (error) {
-      res.status(500).json({ success: false, error: String(error) });
+      res.status(500).json({ success: false, error: "internal_error" });
     }
   });
 
@@ -661,7 +661,7 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
         audienceNote: String(out.data?.audienceNote || ""),
       });
     } catch (error) {
-      res.status(200).json({ success: false, error: `AI-annonsetekst feilet: ${error instanceof Error ? error.message : String(error)}` });
+      res.status(200).json({ success: false, error: "AI-annonsetekst feilet" });
     }
   });
 
@@ -719,7 +719,7 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
         recommendedActions: Array.isArray(out.data?.recommendedActions) ? out.data.recommendedActions.slice(0, 6) : [],
       });
     } catch (error) {
-      res.status(200).json({ success: false, error: `AI-innsikt feilet: ${error instanceof Error ? error.message : String(error)}` });
+      res.status(200).json({ success: false, error: "AI-innsikt feilet" });
     }
   });
 
@@ -770,7 +770,7 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
       }
       res.json({ success: true });
     } catch (error) {
-      res.status(500).json({ success: false, error: String(error) });
+      res.status(500).json({ success: false, error: "internal_error" });
     }
   });
 
@@ -803,7 +803,7 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
       );
       res.json({ success: true });
     } catch (error) {
-      res.status(500).json({ success: false, error: String(error) });
+      res.status(500).json({ success: false, error: "internal_error" });
     }
   });
 
@@ -882,7 +882,7 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
         roi: spendKr > 0 ? revenueKr / spendKr : 0,
       });
     } catch (error) {
-      res.status(500).json({ success: false, error: String(error) });
+      res.status(500).json({ success: false, error: "internal_error" });
     }
   });
 
@@ -911,7 +911,7 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
         whatsappConfigured: !!whatsappLeadConfig(),
       });
     } catch (error) {
-      res.status(500).json({ success: false, error: String(error) });
+      res.status(500).json({ success: false, error: "internal_error" });
     }
   });
 
@@ -956,7 +956,7 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
       );
       res.json({ success: true });
     } catch (error) {
-      res.status(500).json({ success: false, error: String(error) });
+      res.status(500).json({ success: false, error: "internal_error" });
     }
   });
 
@@ -1141,7 +1141,7 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
 
       res.json({ success: true, smsSent, emailSent, whatsappSent, errors });
     } catch (error) {
-      res.status(500).json({ success: false, error: String(error) });
+      res.status(500).json({ success: false, error: "internal_error" });
     }
   });
 
@@ -1190,7 +1190,7 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
         records,
       });
     } catch (error) {
-      res.status(500).json({ success: false, error: String(error) });
+      res.status(500).json({ success: false, error: "internal_error" });
     }
   });
 
@@ -1254,7 +1254,7 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
         records: mapRecords(Array.isArray(created.records) ? created.records : []),
       });
     } catch (error) {
-      res.status(500).json({ success: false, error: String(error) });
+      res.status(500).json({ success: false, error: "internal_error" });
     }
   });
 
@@ -1298,7 +1298,7 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
       );
       res.json({ success: true, status, records: live ? mapRecords(live.records) : [] });
     } catch (error) {
-      res.status(500).json({ success: false, error: String(error) });
+      res.status(500).json({ success: false, error: "internal_error" });
     }
   });
 }

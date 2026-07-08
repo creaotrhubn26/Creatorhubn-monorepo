@@ -301,7 +301,7 @@ export function registerLeadMapTranscriptRoutes({ app, pool, activeSessions }: D
         }
         return res.json(JSON.parse(jsonMatch[0]));
       } catch (err) {
-        return res.status(500).json({ error: "brief_failed", detail: String(err) });
+        return res.status(500).json({ error: "brief_failed", detail: "internal_error" });
       }
     },
   );
@@ -376,7 +376,7 @@ export function registerLeadMapTranscriptRoutes({ app, pool, activeSessions }: D
         const analysis = JSON.parse(jsonMatch[0]) as TranscriptAnalysis;
         return res.json(analysis);
       } catch (err) {
-        return res.status(500).json({ error: "claude_failed", detail: String(err) });
+        return res.status(500).json({ error: "claude_failed", detail: "internal_error" });
       }
     },
   );
