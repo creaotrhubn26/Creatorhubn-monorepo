@@ -532,6 +532,7 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
 
   // GET /api/contracts/:contractId/signers — Get contract signers by contract ID
   app.get("/api/contracts/:contractId/signers", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       await ensureContractsCompatibilitySchema(pool);
       const { contractId } = req.params;
@@ -952,6 +953,7 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
   });
 
   app.get("/api/contracts/:contractId", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       await ensureContractsCompatibilitySchema(pool);
       const contract = await fetchContractById(req.params.contractId);

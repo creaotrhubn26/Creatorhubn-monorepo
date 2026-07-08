@@ -68,6 +68,7 @@ export interface AdminFeaturesRoutesDeps {
   dbCompatAdminFeatureKey: (featureId: string) => string;
   compatResolveUserId: (req: express.Request) => string;
   isRecord: (value: unknown) => value is Record<string, unknown>;
+  requireAdminSession: (req: express.Request, res: express.Response) => boolean;
 }
 
 export function setupAdminFeaturesRoutes(
@@ -81,6 +82,7 @@ export function setupAdminFeaturesRoutes(
     dbCompatAdminFeatureKey,
     compatResolveUserId,
     isRecord,
+    requireAdminSession,
   } = deps;
 
   app.get("/api/admin/features", (_req, res) => {
@@ -89,6 +91,7 @@ export function setupAdminFeaturesRoutes(
   });
 
   app.patch("/api/admin/features/:featureId", (req, res) => {
+    if (!requireAdminSession(req, res)) return;
     ensureCompatAdminFeatures();
     const featureId = req.params.featureId;
     const existing = compatAdminFeaturesStore.get(featureId);
@@ -127,6 +130,7 @@ export function setupAdminFeaturesRoutes(
   });
 
   app.post("/api/admin/features/:featureId/toggle", (req, res) => {
+    if (!requireAdminSession(req, res)) return;
     ensureCompatAdminFeatures();
     const featureId = req.params.featureId;
     const existing = compatAdminFeaturesStore.get(featureId);
@@ -149,6 +153,7 @@ export function setupAdminFeaturesRoutes(
   });
 
   app.post("/api/admin/features/category/:category/toggle", (req, res) => {
+    if (!requireAdminSession(req, res)) return;
     const category = req.params.category;
     const enable =
       typeof req.body?.enabled === "boolean" ? req.body.enabled : undefined;
@@ -177,6 +182,7 @@ export function setupAdminFeaturesRoutes(
   });
 
   app.post("/api/admin/features/bulk-update", (req, res) => {
+    if (!requireAdminSession(req, res)) return;
     ensureCompatAdminFeatures();
     const updates = Array.isArray(req.body?.updates) ? req.body.updates : [];
     const now = new Date().toISOString();
@@ -225,7 +231,8 @@ export function setupAdminFeaturesRoutes(
     res.json({ success: true, updated: changed.length, features: changed });
   });
 
-  app.post("/api/admin/features/initialize", (_req, res) => {
+  app.post("/api/admin/features/initialize", (req, res) => {
+    if (!requireAdminSession(req, res)) return;
     const features = ensureCompatAdminFeatures();
     res.json({ success: true, features, initialized: features.length });
   });

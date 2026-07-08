@@ -25331,6 +25331,7 @@ setupAdminFeaturesRoutes({
   dbCompatAdminFeatureKey,
   compatResolveUserId,
   isRecord,
+  requireAdminSession,
 });
 
 // ── Admin refund-requests — flyttet til ./admin-refund-requests-routes.ts
