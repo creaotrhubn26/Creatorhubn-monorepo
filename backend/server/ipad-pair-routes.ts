@@ -41,13 +41,11 @@ function getUser(
  * er innlogget i web (eier kontoen iPad'en skal kobles til).
  */
 function generateShortCode(): string {
-  // 8 tegn, store bokstaver + tall (unngår ambivalente: 0/O, 1/I/L)
   const chars = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
   let out = "";
   for (let i = 0; i < 8; i++) {
-    out += chars[Math.floor(Math.random() * chars.length)];
+    out += chars[crypto.randomInt(chars.length)];
   }
-  // Format som XXXX-XXXX for lesbarhet
   return `${out.slice(0, 4)}-${out.slice(4, 8)}`;
 }
 

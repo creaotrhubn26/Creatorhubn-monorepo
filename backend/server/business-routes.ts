@@ -578,6 +578,7 @@ export function setupBusinessRoutes(deps: BusinessRoutesDeps): void {
 
   // GET /api/business/surveys/:surveyId/responses — Load survey responses
   app.get("/api/business/surveys/:surveyId/responses", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       const { surveyId } = req.params;
       const result = await pool.query(

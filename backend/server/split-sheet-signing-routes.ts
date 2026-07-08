@@ -6,6 +6,7 @@
  * bidragsyterne åpner en offentlig ws-portal via koden, ser hele fordelingen, og
  * signerer godkjennelse. Ingen konto nødvendig for bidragsytere.
  */
+import crypto from "crypto";
 import type express from "express";
 import type { Pool } from "pg";
 import { sendTransactionalEmail } from "./transactional-email-service";
@@ -14,7 +15,7 @@ const APP_URL = (process.env.PUBLIC_APP_URL || "https://creatorhubn.com").replac
 const escH = (s: any) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const genCode = () => {
   const A = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // uten forvekslbare tegn
-  let s = ""; for (let i = 0; i < 10; i++) s += A[Math.floor(Math.random() * A.length)];
+  let s = ""; for (let i = 0; i < 10; i++) s += A[crypto.randomInt(A.length)];
   return s;
 };
 const parseAmount = (desc?: string): number => {

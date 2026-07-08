@@ -10,6 +10,7 @@
  *   type ∈ text|email|tel|textarea|select|date|number|checkbox|radio
  *   mapTo ∈ name|email|phone|projectType|eventDate|budget|location|description | null (→ form_data)
  */
+import crypto from "crypto";
 import type express from "express";
 import type { Pool } from "pg";
 import { sendTransactionalEmail } from "./transactional-email-service";
@@ -83,7 +84,7 @@ export function setupContactFormsRoutes(deps: ContactFormsDeps): void {
     const s = requireUserSession(req, res); if (!s) return;
     try {
       await ensureSchema();
-      const token = "cf_" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+      const token = "cf_" + crypto.randomBytes(12).toString("hex");
       const title = String(req.body?.title || "Kontakt oss").slice(0, 200);
       const fields = Array.isArray(req.body?.fields) && req.body.fields.length ? req.body.fields : DEFAULT_FIELDS;
       const r = await pool.query(

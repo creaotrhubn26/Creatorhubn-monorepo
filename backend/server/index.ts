@@ -20636,6 +20636,11 @@ async function getAudioBufferFromUrl(audioUrl: string) {
   }
 
   if (isHttpUrl(normalizedSource)) {
+    let hostname: string;
+    try { hostname = new URL(normalizedSource).hostname; } catch { throw new Error("Ugyldig URL"); }
+    if (/^(127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.|169\.254\.|0\.|::1$|localhost$)/i.test(hostname) || hostname === "metadata.google.internal") {
+      throw new Error("SSRF: intern adresse ikke tillatt");
+    }
     const response = await fetch(normalizedSource);
     if (!response.ok) {
       throw new Error("Failed to fetch audio");
@@ -46481,7 +46486,7 @@ app.get(
 
       // Generate new codes if missing or regenerate requested
       if (!accessCode || regenerate) {
-        accessCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+        accessCode = crypto.randomBytes(3).toString("hex").toUpperCase();
         accessToken = crypto.randomUUID();
 
         await pool.query(
@@ -66004,7 +66009,7 @@ setupInspirationsRoutes({ app, pool, requireUserSession });
 // /api/cms/* — 11 endpoints (admin fields/content-types CRUD + stats +
 // public content GET + write). Dep-injiserer ensureCmsSchema (initialiserer
 // cms_fields/types/content-tabeller ved første kall) + requireUserSession.
-setupCmsRoutes({ app, pool, ensureCmsSchema, requireUserSession });
+setupCmsRoutes({ app, pool, ensureCmsSchema, requireUserSession, requireAdminSession });
 
 // /api/payments/* + /api/google-pay/process-payment — 10 endpoints
 // (kompat-fallback for betalings-flyt: history, receipt/invoice HTML-docs,
