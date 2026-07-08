@@ -2,10 +2,13 @@ import express from "express";
 import type { Pool } from "pg";
 import { readString } from "./_shared";
 
+const isUuid = (s: string | null | undefined): s is string =>
+  !!s && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+
 export interface WeddingTimelineRoutesDeps {
   app: express.Application;
   pool: Pool;
-  getUserIdFromAuth: (req: any) => string | null;
+  compatResolveUserId: (req: any) => string;
   resolveMeetingNotesProjectContext: (...args: any[]) => Promise<any>;
 }
 
@@ -15,7 +18,7 @@ export function setupWeddingTimelineRoutes(
   const {
     app,
     pool,
-    getUserIdFromAuth,
+    compatResolveUserId,
     resolveMeetingNotesProjectContext,
   } = deps;
 
@@ -669,7 +672,8 @@ export function setupWeddingTimelineRoutes(
   app.post("/api/wedding/timeline/project/:projectId", async (req, res) => {
     try {
       const { projectId } = req.params;
-      const userId = getUserIdFromAuth(req);
+      const resolvedUserId = compatResolveUserId(req);
+      const userId = isUuid(resolvedUserId) ? resolvedUserId : null;
       const { weddingDate, venue, coupleName, events, culturalType } = req.body;
 
       // Ensure project exists in public.projects (FK constraint)

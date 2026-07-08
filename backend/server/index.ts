@@ -65717,7 +65717,7 @@ setupSubmissionsRoutes({
   compatStoreSet,
   dbCompatSubmissionKey,
   recordAnalyticsEvent,
-  getUserIdFromAuth,
+  compatResolveUserId,
   readString,
 });
 
@@ -66159,7 +66159,7 @@ setupEmailsRoutes({
 setupTelemetryRoutes({
   app,
   pool,
-  getUserIdFromAuth,
+  compatResolveUserId,
   ingestErgonomicsBatch,
   ingestErgonomicsReflect,
   summariseErgonomicsSession,
@@ -66533,7 +66533,7 @@ setupWeddingRoutes({
 setupWeddingTimelineRoutes({
   app,
   pool,
-  getUserIdFromAuth,
+  compatResolveUserId,
   resolveMeetingNotesProjectContext,
 });
 setupProjectsRoutes({

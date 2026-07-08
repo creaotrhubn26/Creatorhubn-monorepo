@@ -17,7 +17,7 @@ export interface SubmissionsRoutesDeps {
   ) => Promise<void>;
   dbCompatSubmissionKey: (submissionId: string) => string;
   recordAnalyticsEvent: (eventType: string, opts: any) => void;
-  getUserIdFromAuth: (req: any) => string | null;
+  compatResolveUserId: (req: any) => string;
   readString: (value: unknown) => string | null;
 }
 
@@ -29,7 +29,7 @@ export function setupSubmissionsRoutes(deps: SubmissionsRoutesDeps): void {
     compatStoreSet,
     dbCompatSubmissionKey,
     recordAnalyticsEvent,
-    getUserIdFromAuth,
+    compatResolveUserId,
     readString,
   } = deps;
 
@@ -451,7 +451,7 @@ export function setupSubmissionsRoutes(deps: SubmissionsRoutesDeps): void {
       recordAnalyticsEvent("submission.converted", {
         entityType: "submission",
         entityId: String(id),
-        actorUserId: readString(getUserIdFromAuth(req)) ?? null,
+        actorUserId: compatResolveUserId(req),
         metadata: {
           projectId: String(projectId),
           clientEmail: (updated as Record<string, unknown>).email ?? null,
@@ -488,7 +488,7 @@ export function setupSubmissionsRoutes(deps: SubmissionsRoutesDeps): void {
         recordAnalyticsEvent("submission.status_changed", {
           entityType: "submission",
           entityId: String(id),
-          actorUserId: readString(getUserIdFromAuth(req)) ?? null,
+          actorUserId: compatResolveUserId(req),
           metadata: {
             newStatus: status,
             clientEmail: (updated as Record<string, unknown>).email ?? null,

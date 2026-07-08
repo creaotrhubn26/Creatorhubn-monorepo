@@ -1,10 +1,13 @@
 import express from "express";
 import type { Pool } from "pg";
 
+const isUuid = (s: string | null | undefined): s is string =>
+  !!s && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+
 export interface TelemetryRoutesDeps {
   app: express.Application;
   pool: Pool;
-  getUserIdFromAuth: (req: any) => string | null;
+  compatResolveUserId: (req: any) => string;
   ingestErgonomicsBatch: (
     pool: Pool,
     userId: string,
@@ -39,7 +42,7 @@ export function setupTelemetryRoutes(deps: TelemetryRoutesDeps): void {
   const {
     app,
     pool,
-    getUserIdFromAuth,
+    compatResolveUserId,
     ingestErgonomicsBatch,
     ingestErgonomicsReflect,
     summariseErgonomicsSession,
@@ -48,8 +51,8 @@ export function setupTelemetryRoutes(deps: TelemetryRoutesDeps): void {
   } = deps;
 
   app.post("/api/telemetry/culling-session", async (req, res) => {
-    const userId = getUserIdFromAuth(req);
-    if (!userId) {
+    const userId = compatResolveUserId(req);
+    if (!isUuid(userId)) {
       return res.status(401).json({ error: "unauthorized" });
     }
     const body = req.body as { events?: unknown } | undefined;
@@ -119,8 +122,8 @@ export function setupTelemetryRoutes(deps: TelemetryRoutesDeps): void {
   });
 
   app.post("/api/telemetry/reflect", async (req, res) => {
-    const userId = getUserIdFromAuth(req);
-    if (!userId) {
+    const userId = compatResolveUserId(req);
+    if (!isUuid(userId)) {
       return res.status(401).json({ error: "unauthorized" });
     }
     const body = req.body as
@@ -160,8 +163,8 @@ export function setupTelemetryRoutes(deps: TelemetryRoutesDeps): void {
   app.get(
     "/api/telemetry/ergonomics/session/:sessionId",
     async (req, res) => {
-      const userId = getUserIdFromAuth(req);
-      if (!userId) {
+      const userId = compatResolveUserId(req);
+      if (!isUuid(userId)) {
         return res.status(401).json({ error: "unauthorized" });
       }
       const sessionId = String(req.params.sessionId || "").slice(0, 128);
@@ -196,8 +199,8 @@ export function setupTelemetryRoutes(deps: TelemetryRoutesDeps): void {
   );
 
   app.get("/api/telemetry/ergonomics/summary", async (req, res) => {
-    const userId = getUserIdFromAuth(req);
-    if (!userId) {
+    const userId = compatResolveUserId(req);
+    if (!isUuid(userId)) {
       return res.status(401).json({ error: "unauthorized" });
     }
     const lookbackDays = Number(req.query?.lookbackDays) || 30;
