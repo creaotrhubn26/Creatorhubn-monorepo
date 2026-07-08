@@ -320,9 +320,11 @@ class MentionService {
 }
 
   private highlightMatch(text: string, query: string): string {
-    const regex = new RegExp(`(${query})`, 'gi');
-    return text.replace(regex, '<strong>$1</strong>');
-}
+    const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const safeQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`(${safeQuery})`, 'gi');
+    return escaped.replace(regex, '<strong>$1</strong>');
+  }
 
   private getContext(resource: MentionableResource): string {
     const parts: string[] = [];

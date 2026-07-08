@@ -455,7 +455,7 @@ export function setupEvendiPlanningRoutes(
         "SELECT * FROM wedding_timelines WHERE project_id = $1 LIMIT 1",
         [projectId],
       );
-      if (tl.rowCount === 0) {
+      if (!tl.rows.length) {
         return res.json({
           connected: false,
           message: "Ingen tidslinje koblet til prosjektet",
