@@ -241,6 +241,7 @@ const PartnerPortalPage = React.lazy(() => import('@/components/universal/editin
 const PartnerTerms = React.lazy(() => import('@/components/universal/editing-marketplace/PartnerTerms'));
 const PartnerLanding = React.lazy(() => import('@/components/universal/editing-marketplace/PartnerLanding'));
 const EditingVendorWorkspaceShell = React.lazy(() => import('@/components/universal/editing-marketplace/EditingVendorWorkspace'));
+import ImpersonationBanner from '@/components/admin/ImpersonationBanner';
 const AudioReviewInvitePage = React.lazy(() => import('@/pages/audio-review-invite'));
 const AudioReviewSharedPage = React.lazy(() => import('@/pages/audio-review-shared'));
 const WarmupGuidePage = React.lazy(() => import('@/pages/warmup-guide'));
@@ -619,6 +620,7 @@ function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
+      <ImpersonationBanner />
       <DemoModeProvider>
         <UniversalSessionProvider>
           <ClientSessionProvider>

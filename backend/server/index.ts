@@ -817,6 +817,7 @@ import { setupBrandingRoutes } from "./branding-routes";
 import { setupVendorTypesRoutes } from "./vendor-types-routes";
 import { setupEditingJobsRoutes } from "./editing-jobs-routes";
 import { setupEditingPartnerApplicationsAdminRoutes } from "./editing-partner-applications-admin-routes";
+import { setupSuperadminImpersonationRoutes } from "./superadmin-impersonation-routes";
 import { setupMeetingNotesRoutes } from "./meeting-notes-routes";
 import { setupDavinciResolveRoutes } from "./davinci-resolve-routes";
 import { setupSeoBotRoutes } from "./seo-bot-routes";
@@ -2016,6 +2017,12 @@ type ActiveSessionData = {
   picture?: string;
   verified_email?: boolean;
   impersonatedByAdmin?: boolean;
+  // User-nivå impersonation (super_admin «vis som bruker»): peker sesjonen på
+  // målbrukeren, men beholder super_adminen for gjenoppretting + audit.
+  impersonatorId?: string;
+  impersonatorEmail?: string;
+  impersonatorSnapshot?: Partial<ActiveSessionData>;
+  impersonationExpiresAt?: number;
   isAdmin?: boolean;
   vendorId?: string;
   businessName?: string;
@@ -65763,6 +65770,11 @@ setupEditingJobsRoutes({
 // Partner Program — superadmin søknads-/godkjennings-ruter (godkjenning oppretter
 // users-rad + vendor-profil + magic-link portal-tilgang).
 setupEditingPartnerApplicationsAdminRoutes({ app, pool, activeSessions });
+setupSuperadminImpersonationRoutes({
+  app, pool, activeSessions,
+  readSessionToken: readActiveSessionToken,
+  persistSession: (token, session) => persistSession(pool, { token, session }),
+});
 
 // /api/meeting-notes/* — 7 endpoints (AI-process, writing-assist, CRUD,
 // google-backup). Helpers dep-injiseres siden mapMeetingNotesRecord +
