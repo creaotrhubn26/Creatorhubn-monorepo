@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * MinProfil — samlet profil- + tilgangs-hub («/profil», alle profesjoner).
  *

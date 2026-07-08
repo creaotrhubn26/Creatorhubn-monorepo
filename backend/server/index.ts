@@ -43077,7 +43077,7 @@ const adminUsernameFromEmail = (email: string): string => {
 function normalizeAdminRoleId(value: unknown): string {
   const raw = toAdminString(value)?.toLowerCase().replace(/\s+/g, "_") || "";
   if (!raw) return "user";
-  return adminRoleCatalogById.has(raw) ? raw : raw;
+  return adminRoleCatalogById.has(raw) ? raw : "user";
 }
 
 const inferAdminRoleFromProfession = (profession: unknown): string => {
@@ -46158,8 +46158,8 @@ app.post(
   async (req, res) => {
     try {
       const { projectId, shotId } = req.params;
-      const userId = getUserIdFromAuth(req);
-      if (!userId) {
+      const userId = compatResolveUserId(req);
+      if (!userId || !isUuid(userId)) {
         return res.status(401).json({ error: "unauthorized" });
       }
       const capturedAssetId =
@@ -74054,7 +74054,6 @@ app.get("/api/notebooklm/workspace/status", async (req, res) => {
     await ensureMeetingNotesCompatibilitySchema();
     const userId =
       readString(req.query.userId) ||
-      getUserIdFromAuth(req) ||
       compatResolveUserId(req);
     const status = await getNotebookLmWorkspaceStatus(pool, {
       userId,
@@ -74081,7 +74080,6 @@ app.post("/api/notebooklm/workspace/sync", async (req, res) => {
     await ensureMeetingNotesCompatibilitySchema();
     const userId =
       readString(req.body?.userId) ||
-      getUserIdFromAuth(req) ||
       compatResolveUserId(req);
     await syncNotebookLmWorkspaceForScope(pool, {
       userId,

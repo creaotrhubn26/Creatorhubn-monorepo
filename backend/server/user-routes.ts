@@ -510,7 +510,7 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
 
   app.get("/api/user/meeting-preferences", async (req, res) => {
     try {
-      const userId = getUserIdFromAuth(req);
+      const userId = compatResolveUserId(req);
       const profession =
         typeof req.query.profession === "string" ? req.query.profession : null;
       const tableCheck = await pool.query(
@@ -521,7 +521,7 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
       }
 
       let result;
-      if (userId) {
+      if (userId && isUuid(userId)) {
         result = await pool.query(
           "SELECT * FROM user_meeting_preferences WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1",
           [userId],
@@ -535,7 +535,7 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
         return res.json({ meetingOption: "auto", meetingDuration: 60 });
       }
 
-      if (result.rowCount === 0) {
+      if (!result.rows.length) {
         return res.json({ meetingOption: "auto", meetingDuration: 60 });
       }
 
@@ -555,7 +555,7 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
   // POST /api/user/meeting-preferences — save meeting preferences
   app.post("/api/user/meeting-preferences", async (req, res) => {
     try {
-      const userId = getUserIdFromAuth(req);
+      const userId = compatResolveUserId(req);
       const { meetingOption, meetingDuration, meetingTime, profession } =
         req.body;
 
@@ -566,11 +566,12 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
         return res.json({ success: true });
       }
 
+      const resolvedUserId = userId && isUuid(userId) ? userId : null;
       // Delete existing preferences for this user, then insert fresh
-      if (userId) {
+      if (resolvedUserId) {
         await pool.query(
           "DELETE FROM user_meeting_preferences WHERE user_id = $1",
-          [userId],
+          [resolvedUserId],
         );
       }
 
@@ -578,7 +579,7 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
         `INSERT INTO user_meeting_preferences (user_id, profession, meeting_option, meeting_duration, meeting_time, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`,
         [
-          userId || "anonymous",
+          resolvedUserId || "anonymous",
           profession || "photographer",
           meetingOption || "auto",
           meetingDuration || 60,
