@@ -608,7 +608,13 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
 
   app.get("/api/user/interface-preferences/:sessionId", async (req, res) => {
     const { sessionId } = req.params;
-    const fromCompatMemory = compatInterfacePreferencesStore.get(sessionId);
+    // Bruk ekte userId som primærnøkkel — sessionId (Bearer-token) endres ved
+    // re-login og ville føre til at preferanser forsvinner. Fallback til
+    // sessionId for anonyme/compat-klienter som ikke har aktiv sesjon.
+    const resolvedUserId = compatResolveUserId(req);
+    const dbKey = isUuid(resolvedUserId) ? resolvedUserId : sessionId;
+
+    const fromCompatMemory = compatInterfacePreferencesStore.get(dbKey);
     if (fromCompatMemory) {
       return res.json({
         success: true,
@@ -618,10 +624,10 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
     }
 
     const fromCompatDb = await compatStoreGet<Record<string, unknown>>(
-      dbCompatInterfacePreferencesKey(sessionId),
+      dbCompatInterfacePreferencesKey(dbKey),
     );
     if (fromCompatDb && typeof fromCompatDb === "object") {
-      compatInterfacePreferencesStore.set(sessionId, fromCompatDb);
+      compatInterfacePreferencesStore.set(dbKey, fromCompatDb);
       return res.json({
         success: true,
         preferences: fromCompatDb,
@@ -636,14 +642,14 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
          WHERE user_id = $1
          ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
          LIMIT 1`,
-        [sessionId],
+        [dbKey],
       );
 
       if (prefs.rows.length > 0) {
         const normalized = normalizeInterfacePreferencesRecord(prefs.rows[0]);
-        compatInterfacePreferencesStore.set(sessionId, normalized);
+        compatInterfacePreferencesStore.set(dbKey, normalized);
         await compatStoreSet(
-          dbCompatInterfacePreferencesKey(sessionId),
+          dbCompatInterfacePreferencesKey(dbKey),
           normalized,
         );
         return res.json({
@@ -673,13 +679,16 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
   app.put("/api/user/interface-preferences/:sessionId", async (req, res) => {
     const { sessionId } = req.params;
     const preferences = req.body;
+    const resolvedUserId = compatResolveUserId(req);
+    const dbKey = isUuid(resolvedUserId) ? resolvedUserId : sessionId;
+
     const compatNext = {
-      ...(compatInterfacePreferencesStore.get(sessionId) || {}),
+      ...(compatInterfacePreferencesStore.get(dbKey) || {}),
       ...(preferences || {}),
       updatedAt: new Date().toISOString(),
     };
-    compatInterfacePreferencesStore.set(sessionId, compatNext);
-    await compatStoreSet(dbCompatInterfacePreferencesKey(sessionId), compatNext);
+    compatInterfacePreferencesStore.set(dbKey, compatNext);
+    await compatStoreSet(dbCompatInterfacePreferencesKey(dbKey), compatNext);
 
     try {
       const normalized = {
@@ -702,10 +711,6 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
       };
 
       try {
-        // Single atomic upsert — race-free under concurrency (the old
-        // SELECT-then-UPDATE/INSERT could double-insert or lose updates when
-        // several saves for the same user overlapped). Relies on the UNIQUE
-        // index user_preferences(user_id) from migration 004.
         await pool.query(
           `INSERT INTO user_preferences (
             id, user_id, preferences, theme, language, timezone, notifications, dashboard, created_at, updated_at
@@ -722,7 +727,7 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
             updated_at = NOW()`,
           [
             crypto.randomUUID(),
-            sessionId,
+            dbKey,
             JSON.stringify(preferencesPayload),
             normalized.theme,
             normalized.language,
@@ -732,9 +737,6 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
           ],
         );
       } catch (upsertErr) {
-        // 42P10 = no unique/exclusion constraint matching ON CONFLICT. A few
-        // legacy envs never got migration 004's unique index, so fall back to
-        // the read-modify-write path there rather than dropping the DB write.
         if ((upsertErr as { code?: string })?.code !== "42P10") throw upsertErr;
         const existing = await pool.query<{ id: string }>(
           `SELECT id
@@ -742,7 +744,7 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
             WHERE user_id = $1
             ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
             LIMIT 1`,
-          [sessionId],
+          [dbKey],
         );
         if (existing.rows.length > 0) {
           await pool.query(
@@ -770,7 +772,7 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
             )`,
             [
               crypto.randomUUID(),
-              sessionId,
+              dbKey,
               JSON.stringify(preferencesPayload),
               normalized.theme,
               normalized.language,
