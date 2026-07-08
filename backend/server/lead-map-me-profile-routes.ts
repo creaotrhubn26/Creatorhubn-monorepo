@@ -67,14 +67,19 @@ export function registerLeadMapMeProfileRoutes({ app, pool, activeSessions }: De
     const s = getSession(req, activeSessions);
     if (!s) return res.status(401).json({ error: "Ikke innlogget" });
 
-    const r = await pool.query<ProfileRow>(
-      `SELECT id AS user_id, first_name, last_name, email, phone,
-              profession, profile_image_url
-         FROM users WHERE id = $1`,
-      [s.userId],
-    );
-    if (r.rows.length === 0) return res.status(404).json({ error: "Bruker ikke funnet" });
-    res.json({ profile: shapeProfile(r.rows[0]) });
+    try {
+      const r = await pool.query<ProfileRow>(
+        `SELECT id AS user_id, first_name, last_name, email, phone,
+                profession, profile_image_url
+           FROM users WHERE id = $1`,
+        [s.userId],
+      );
+      if (r.rows.length === 0) return res.status(404).json({ error: "Bruker ikke funnet" });
+      res.json({ profile: shapeProfile(r.rows[0]) });
+    } catch (e) {
+      console.error("[leadgrid] me/profile GET feilet", e);
+      res.status(500).json({ error: "Kunne ikke hente profil" });
+    }
   });
 
   app.patch("/api/admin-room/lead-map/me/profile", async (req, res) => {
