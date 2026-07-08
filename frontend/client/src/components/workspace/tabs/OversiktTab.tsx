@@ -219,9 +219,11 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
     apiRequest(`/api/photographer/projects/${encodeURIComponent(projectId)}/milestones`)
       .then((r: any) => { if (r) setProgress({ pct: Math.round(r.totalProgress || 0), done: r.completedCount || 0, total: (r.milestones || []).length }); })
       .catch(() => {});
-    apiRequest(`/api/wedding/timeline/project/${encodeURIComponent(projectId)}`)
-      .then((r: any) => { const evs = Array.isArray(r?.events) ? r.events : []; if (evs.length) setEvents(evs); })
-      .catch(() => {});
+    if (profession === 'photographer' || profession === 'videographer' || !profession) {
+      apiRequest(`/api/wedding/timeline/project/${encodeURIComponent(projectId)}`)
+        .then((r: any) => { const evs = Array.isArray(r?.events) ? r.events : []; if (evs.length) setEvents(evs); })
+        .catch(() => {});
+    }
     loadTasks();
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/checklist`)
       .then((r: any) => { setChecks(Array.isArray(r?.items) ? r.items : []); })

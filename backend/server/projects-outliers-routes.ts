@@ -48,11 +48,10 @@ export function setupProjectsOutliersRoutes(
     if (!requireUserSession(req, res)) return;
     try {
       const { projectId } = req.params;
-      const userId =
-        req.headers["x-user-id"] ||
-        req.headers["authorization"]?.toString().replace("Bearer ", "") ||
-        req.body?.userId ||
-        "";
+      const rawUserId = req.headers["x-user-id"] || req.body?.userId || "";
+      const userId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(rawUserId))
+        ? String(rawUserId)
+        : "";
       const {
         title,
         description,
@@ -320,11 +319,10 @@ export function setupProjectsOutliersRoutes(
     if (!requireUserSession(req, res)) return;
     try {
       const { projectId } = req.params;
-      const userId =
-        req.headers["x-user-id"] ||
-        req.headers["authorization"]?.toString().replace("Bearer ", "") ||
-        req.body?.userId ||
-        "";
+      const rawUserId2 = req.headers["x-user-id"] || req.body?.userId || "";
+      const userId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(rawUserId2))
+        ? String(rawUserId2)
+        : "";
       const {
         title,
         description,

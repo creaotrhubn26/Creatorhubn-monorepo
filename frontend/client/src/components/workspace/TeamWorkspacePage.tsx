@@ -173,7 +173,7 @@ const TeamWorkspacePage: React.FC = () => {
     apiRequest('/api/foresporsler/inbound')
       .then((r: any) => setInboundCount(Array.isArray(r?.items) ? r.items.length : (r?.openCount || 0)))
       .catch(() => setInboundCount(0));
-  }, [user?.id, tab]);
+  }, [user?.id]);
 
   // Ulest klient-aktivitet (nedlasting/utvalg/kommentar) → badge på Kundevisning.
   // Re-fetches ved tab-bytte; nullstilles når Kundevisning-fanen åpnes (marker sett).

@@ -37,10 +37,24 @@ import { enqueuePhotoEnhancerJobFromBuffer, listPhotoEnhancerJobsByProjectId } f
 
 // Web-opplasting holdes i minne og skyves server-side til B2 (Role Room-bøtta).
 // 60 MB tak — store RAW/originaler skal uansett gjennom capture multipart-flyten.
-const mediaUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 60 * 1024 * 1024 } });
+const mediaUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 60 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (/^(image\/|video\/|audio\/|application\/pdf)/.test(file.mimetype)) cb(null, true);
+    else cb(new Error("Filtype ikke tillatt") as any, false);
+  },
+});
 // Video-review-kopier (komprimert H.264/H.265) — 500 MB tak. Større mastere
 // hører hjemme i capture/leveranse-flyten, ikke review-rommet.
-const videoUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 500 * 1024 * 1024 } });
+const videoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 500 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith("video/")) cb(null, true);
+    else cb(new Error("Kun videofiler er tillatt") as any, false);
+  },
+});
 
 export interface ProjectWorkspaceRoutesDeps {
   app: express.Application;
@@ -2790,7 +2804,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
           ORDER BY updated_at DESC NULLS LAST LIMIT 1`,
         [req.params.projectId],
       );
-      if (r.rowCount === 0) return res.json({ shotList: null, shots: [] });
+      if (!r.rows.length) return res.json({ shotList: null, shots: [] });
       const s = r.rows[0];
       const shots = Array.isArray(s.shots_data) ? s.shots_data : [];
       res.json({
