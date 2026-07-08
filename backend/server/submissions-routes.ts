@@ -5,6 +5,9 @@ import { readNumber } from "./_shared";
 import { sendTransactionalEmail } from "./transactional-email-service";
 
 const APP_URL = (process.env.PUBLIC_APP_URL || "https://creatorhubn.com").replace(/\/+$/, "");
+
+const isUuid = (s: string | null | undefined): s is string =>
+  !!s && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
 const escH = (s: any) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 export interface SubmissionsRoutesDeps {
@@ -272,6 +275,8 @@ export function setupSubmissionsRoutes(deps: SubmissionsRoutesDeps): void {
   });
 
   app.get("/api/submissions", async (req, res) => {
+    const requestUserId = compatResolveUserId(req);
+    if (!isUuid(requestUserId)) return res.status(401).json({ error: "unauthorized" });
     try {
       const profession =
         typeof req.query.profession === "string"
@@ -306,7 +311,7 @@ export function setupSubmissionsRoutes(deps: SubmissionsRoutesDeps): void {
         query += ` AND status = $${paramIdx++}`;
         params.push(status);
       }
-      query += " ORDER BY submitted_at DESC";
+      query += " ORDER BY submitted_at DESC LIMIT 500";
 
       const result = await pool.query(query, params);
       const dbRows = result.rows.map(mapSubmissionRow);

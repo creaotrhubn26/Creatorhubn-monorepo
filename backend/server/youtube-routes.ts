@@ -73,15 +73,19 @@ const uploadStorage = multer.diskStorage({
 
 const videoUpload = multer({
   storage: uploadStorage,
-  limits: {
-    fileSize: 1024 * 1024 * 1024,
+  limits: { fileSize: 1024 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith("video/")) cb(null, true);
+    else cb(new Error("Kun videofiler er tillatt") as any, false);
   },
 });
 
 const thumbnailUpload = multer({
   storage: uploadStorage,
-  limits: {
-    fileSize: 10 * 1024 * 1024,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith("image/")) cb(null, true);
+    else cb(new Error("Kun bildefiler er tillatt") as any, false);
   },
 });
 

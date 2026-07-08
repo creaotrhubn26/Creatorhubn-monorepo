@@ -26,6 +26,21 @@ import { Vibrant } from "node-vibrant/node";
 import Anthropic from "@anthropic-ai/sdk";
 import { logAIUsage } from './ai-usage-tracker.js';
 
+function assertNotSsrf(rawUrl: string): void {
+  let hostname: string;
+  try {
+    hostname = new URL(rawUrl).hostname;
+  } catch {
+    throw new Error("Ugyldig URL");
+  }
+  if (
+    /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.|169\.254\.|0\.|::1$|localhost$)/i.test(hostname) ||
+    hostname === "metadata.google.internal"
+  ) {
+    throw new Error("SSRF: intern adresse ikke tillatt");
+  }
+}
+
 // ─────────────────────────────────────────────────────────
 // Public types
 // ─────────────────────────────────────────────────────────
@@ -93,6 +108,7 @@ type HttpFetcher = (url: string, options?: { timeoutMs?: number; binary?: boolea
 }>;
 
 const defaultHttp: HttpFetcher = async (url, options = {}) => {
+  assertNotSsrf(url);
   const res = await axios.get(url, {
     timeout: options.timeoutMs ?? 15_000,
     responseType: options.binary ? "arraybuffer" : "text",

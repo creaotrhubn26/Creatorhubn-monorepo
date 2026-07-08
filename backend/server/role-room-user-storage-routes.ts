@@ -47,6 +47,11 @@ const MAX_UPLOAD_BYTES = 500 * 1024 * 1024; // 500 MB per fil (hard cap separat 
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = /^(image\/|video\/|audio\/|application\/pdf|application\/msword|application\/vnd\.|text\/plain)/;
+    if (allowed.test(file.mimetype)) cb(null, true);
+    else cb(new Error("Filtype ikke tillatt") as any, false);
+  },
 });
 
 function getUserIdFromRequest(

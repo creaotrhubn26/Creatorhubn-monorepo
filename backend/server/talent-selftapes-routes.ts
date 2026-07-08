@@ -35,6 +35,10 @@ const MAX_SELFTAPE_BYTES = 500 * 1024 * 1024;
 const selftapeUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_SELFTAPE_BYTES },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith("video/")) cb(null, true);
+    else cb(new Error("Kun videofiler er tillatt") as any, false);
+  },
 });
 
 interface SessionLike {
