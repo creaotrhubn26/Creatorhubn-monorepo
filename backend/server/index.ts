@@ -818,6 +818,7 @@ import { setupVendorTypesRoutes } from "./vendor-types-routes";
 import { setupEditingJobsRoutes } from "./editing-jobs-routes";
 import { setupEditingPartnerApplicationsAdminRoutes } from "./editing-partner-applications-admin-routes";
 import { setupSuperadminImpersonationRoutes } from "./superadmin-impersonation-routes";
+import { setupSuperadminDebugRoutes } from "./superadmin-debug-routes";
 import { setupMeetingNotesRoutes } from "./meeting-notes-routes";
 import { setupDavinciResolveRoutes } from "./davinci-resolve-routes";
 import { setupSeoBotRoutes } from "./seo-bot-routes";
@@ -65775,6 +65776,7 @@ setupSuperadminImpersonationRoutes({
   readSessionToken: readActiveSessionToken,
   persistSession: (token, session) => persistSession(pool, { token, session }),
 });
+setupSuperadminDebugRoutes({ app, pool, activeSessions, readSessionToken: readActiveSessionToken });
 
 // /api/meeting-notes/* — 7 endpoints (AI-process, writing-assist, CRUD,
 // google-backup). Helpers dep-injiseres siden mapMeetingNotesRecord +
