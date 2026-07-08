@@ -53,20 +53,22 @@ export function setupSuperadminDebugRoutes({ app, pool, activeSessions, readSess
     const q = String(req.query.q || "").trim();
     if (!q) return res.status(400).json({ error: "mangler_q" });
     try {
-      const u = (await pool.query<{ id: string; email: string; name: string; role: string; profession: string | null }>(
-        `SELECT id, email, COALESCE(company_name, username, email) AS name, role, profession
+      const u = (await pool.query<{ id: string; email: string; name: string; role: string; profession: string | null; is_active: boolean | null }>(
+        `SELECT id, email, COALESCE(company_name, username, email) AS name, role, profession, is_active
            FROM users WHERE id = $1 OR lower(email) = lower($1) OR email ILIKE $2 LIMIT 1`,
         [q, `%${q}%`],
       )).rows[0];
       if (!u) return res.json({ found: false, query: q });
 
+      const role = String(u.role).toLowerCase();
       const checks: Check[] = [];
       checks.push({ key: "identity", label: "Identitet", status: "pass", detail: `rolle=${u.role} · profesjon=${u.profession || "—"} · ${u.email}` });
+      checks.push({ key: "account", label: "Konto aktiv", status: u.is_active === false ? "fail" : "pass", detail: u.is_active === false ? "is_active = false (deaktivert)" : "aktiv" });
       const routesTo = routeForRole(u.role);
       checks.push({ key: "routing", label: "Lander på (innlogging)", status: "info", detail: routesTo });
 
       // Editing-partner: full compliance-/payout-/magic-link-diagnose.
-      if (String(u.role).toLowerCase() === "editing_vendor") {
+      if (role === "editing_vendor") {
         const p = (await pool.query(
           `SELECT * FROM vendor_onboarding_profiles WHERE user_id = $1 LIMIT 1`, [u.id],
         )).rows[0];
@@ -107,6 +109,27 @@ export function setupSuperadminDebugRoutes({ app, pool, activeSessions, readSess
           detail: !tok ? "Ingen magic-link sendt" : `sendt ${new Date(tok.created_at).toLocaleString("nb-NO")} · ${tok.consumed_at ? `åpnet ${new Date(tok.consumed_at).toLocaleString("nb-NO")}` : "IKKE åpnet"} · ${tok.valid ? "gyldig" : "utløpt/tilbakekalt"}`,
           fix: { action: "resend_link", label: "Send fersk magic-link" },
         });
+      }
+
+      // Skaper-brukere (fotograf/videograf/produsent — role 'user'): profesjon,
+      // prosjekter (WorkspaceHome-atferd) og abonnement. Defensivt (degraderer).
+      if (role === "user" || role === "photographer" || role === "videographer" || role === "music_producer") {
+        checks.push({
+          key: "profession", label: "Profesjon satt",
+          status: u.profession ? "pass" : "warn",
+          detail: u.profession ? String(u.profession) : "Ingen profesjon → workspace-ruting kan bli feil/tom",
+        });
+        try {
+          const pc = (await pool.query<{ n: number }>(`SELECT count(*)::int AS n FROM projects WHERE user_id=$1`, [u.id])).rows[0]?.n ?? 0;
+          checks.push({ key: "projects", label: "Prosjekter", status: "info", detail: pc === 0 ? "0 prosjekter → «lag ditt første prosjekt»-tilstand" : `${pc} prosjekt(er)` });
+        } catch { /* degrader */ }
+        try {
+          const sub = (await pool.query<{ status: string; plan_id: string | null }>(
+            `SELECT status, plan_id FROM user_subscriptions WHERE user_id=$1 ORDER BY created_at DESC NULLS LAST LIMIT 1`, [u.id],
+          )).rows[0];
+          const active = sub && (sub.status === "active" || sub.status === "trialing");
+          checks.push({ key: "subscription", label: "Abonnement", status: active ? "pass" : sub ? "warn" : "info", detail: sub ? `status=${sub.status} · plan=${sub.plan_id || "—"}` : "Ingen abonnement (gratis/uten plan)" });
+        } catch { /* degrader */ }
       }
 
       const rootCause = checks.find((c) => c.status === "fail") || null;
