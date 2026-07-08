@@ -31,7 +31,6 @@ export function setupVideoRoutes(deps: VideoRoutesDeps): void {
       jobId: crypto.randomUUID(),
       status: "queued",
       requestedAt: new Date().toISOString(),
-      ...req.body,
     });
   });
 

@@ -105,7 +105,7 @@ export function registerB2ArchiveCronRoutes(deps: CronRoutesDeps): void {
       // Henter queries + siste resultat per query (samme aggregering som
       // /api/admin-room/ai-citation/dashboard, men uten å gå via HTTP).
       const queriesResult = await pool.query(
-        `SELECT * FROM role_room_ai_citation_queries ORDER BY created_at DESC`,
+        `SELECT * FROM role_room_ai_citation_queries ORDER BY created_at DESC LIMIT 1000`,
       );
       const resultsResult = await pool.query(
         `SELECT DISTINCT ON (query_id) *
