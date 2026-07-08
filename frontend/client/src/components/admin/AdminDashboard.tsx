@@ -110,6 +110,7 @@ import MarketplaceAppConfigManager from './MarketplaceAppConfigManager';
 import VendorTypeManager from '../vendor/VendorTypeManager';
 import EditingPartnersAdminPanel from './EditingPartnersAdminPanel';
 import WorkspacePreviewPanel from './WorkspacePreviewPanel';
+import DebugToolPanel from './DebugToolPanel';
 import FullscreenChatWidget from '../chat/FullscreenChatWidget';
 import { CommunicationStatusProvider } from '../../contexts/CommunicationStatusContext';
 import AdminCommunicationPanel from './AdminCommunicationPanel';
@@ -1407,6 +1408,7 @@ export default function AdminDashboard({
     { id: 'vendor-types', label: 'Leverandørtyper', icon: Business },
     { id: 'editing-partners', label: 'Redigeringspartnere', icon: Business },
     { id: 'workspace-preview', label: 'Workspaces', icon: Business },
+    { id: 'debug-tool', label: 'Debug', icon: Business },
     { id: 'profession-types', label: 'Profesjonstyper', icon: People },
     { id: 'integrasjoner', label: 'Integrasjoner', icon: Link },
     { id: 'feature-management', label: 'Funksjonsflagg', icon: ToggleOn },
@@ -1449,7 +1451,7 @@ export default function AdminDashboard({
     {
       label: 'Forretning',
       items: adminTabs.filter((tab) =>
-        ['okonomi', 'price-management', 'user-costs', 'reports', 'academy', 'tidum-tilganger', 'vendor-types', 'editing-partners', 'workspace-preview', 'profession-types'].includes(tab.id),
+        ['okonomi', 'price-management', 'user-costs', 'reports', 'academy', 'tidum-tilganger', 'vendor-types', 'editing-partners', 'workspace-preview', 'debug-tool', 'profession-types'].includes(tab.id),
       ),
     },
     {
@@ -1487,6 +1489,7 @@ export default function AdminDashboard({
     'vendor-types': 'Vedlikehold leverandørtyper og tilbudsstruktur.',
     'editing-partners': 'Godkjenn redigerings-søknader; sett prototype-tester (0 % i en periode) vs. vanlig kunde (partner-fee). Filtrer på type.',
     'workspace-preview': 'Forhåndsvis hver profesjons workspace-grensesnitt (foto/video/produsent/vendor) for å inspisere layout/flyt. «Vis som ekte bruker» kommer i Del 2.',
+    'debug-tool': 'Diagnose-verktøy: sjekk hvorfor en bruker har (eller ikke har) tilgang (identitet/godkjenning/compliance/magic-link/routing) + system-helse (PayPal/Stripe/e-post/DB/migrasjoner).',
     'profession-types': 'Administrer profesjoner, roller og kapasitet i CreatorHub.',
     integrasjoner: 'Konfigurer API-er, OAuth og eksterne systemkoblinger.',
     'feature-management': 'Kontroller funksjonsflagg og plattformtilgang.',
@@ -3613,6 +3616,8 @@ export default function AdminDashboard({
         return <EditingPartnersAdminPanel />;
       case 'workspace-preview':
         return <WorkspacePreviewPanel />;
+      case 'debug-tool':
+        return <DebugToolPanel />;
       case 'profession-types':
         return <ProfessionTypeManager />;
       case 'integrasjoner':
