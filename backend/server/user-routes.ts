@@ -153,6 +153,7 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
     sets.push("updated_at = now()"); params.push(uid);
     try {
       const r = await pool.query(`UPDATE users SET ${sets.join(", ")} WHERE id = $${params.length} RETURNING ${PROFILE_COLS}`, params);
+      if (!r.rows.length) return res.status(404).json({ error: "Bruker ikke funnet" });
       res.json({ profile: shapeUserProfile(r.rows[0]) });
     } catch (e: any) { res.status(500).json({ error: e?.message || "Oppdatering feilet" }); }
   });
