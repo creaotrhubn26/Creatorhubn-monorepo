@@ -56,6 +56,7 @@ import {
   StatusChip,
   useIsMobile,
 } from './design-system';
+import DOMPurify from 'dompurify';
 
 type ReceiptTemplateType = 'subscription' | 'marketplace-addon' | 'invoice' | 'refund';
 
@@ -782,7 +783,7 @@ export default function ReceiptTemplateManager() {
                 borderRadius: 1,
                 border: '1px solid #e5e7eb',
               }}
-              dangerouslySetInnerHTML={{ __html: renderedPreview }}
+              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(renderedPreview) }}
             />
           )}
         </DialogContent>

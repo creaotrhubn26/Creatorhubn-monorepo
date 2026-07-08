@@ -62,6 +62,7 @@ import {
   StatusChip,
   useIsMobile,
 } from './design-system';
+import DOMPurify from 'dompurify';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -2950,7 +2951,7 @@ export default function PriceManagementDashboard({
                 <Box sx={{ px: { xs: 2.25, sm: 3.5 }, py: { xs: 2.5, sm: 3.5 } }}>
                   <Box
                     sx={{ color: creatorHubEmailSettings.email.theme.bodyText, lineHeight: 1.9, fontSize: '0.98rem' }}
-                    dangerouslySetInnerHTML={{ __html: editingEmailTemplateBody || '<p>Forhåndsvisning av e-postinnhold.</p>' }}
+                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(editingEmailTemplateBody || '<p>Forhåndsvisning av e-postinnhold.</p>') }}
                   />
                   <Box
                     sx={{

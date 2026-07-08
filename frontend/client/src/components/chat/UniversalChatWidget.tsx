@@ -1,4 +1,5 @@
 // @ts-nocheck
+import DOMPurify from 'dompurify';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
@@ -13490,7 +13491,7 @@ export default function UniversalChatWidget({
                 <Box>
                   <Typography variant="subtitle2" gutterBottom>Admin Notater</Typography>
                   <Paper sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.04)', ...theming.getThemedCardSx() }}>
-                    <div dangerouslySetInnerHTML={{ __html: selectedFeedback.adminNotes }} />
+                    <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(selectedFeedback.adminNotes ?? '') }} />
                   </Paper>
                 </Box>
               )}
