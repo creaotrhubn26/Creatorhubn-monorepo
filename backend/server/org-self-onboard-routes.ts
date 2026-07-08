@@ -150,7 +150,7 @@ export function registerOrgSelfOnboardRoutes({ app, pool }: Deps): void {
         await client.query(
           `UPDATE users
               SET meta = COALESCE(meta, '{}'::jsonb)
-                       || jsonb_build_object('magic_token', $1, 'magic_expires', $2::text)
+                       || jsonb_build_object('magic_token', $1::text, 'magic_expires', $2::text)
             WHERE id = $3`,
           [
             magicToken,
