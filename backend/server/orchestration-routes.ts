@@ -435,7 +435,7 @@ export function setupOrchestrationRoutes(
         });
       } catch (err: any) {
         console.error('[workflow-execute] failed:', err);
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: "internal_error" });
       }
     },
   );
@@ -450,7 +450,7 @@ export function setupOrchestrationRoutes(
         if (!data) return res.status(404).json({ success: false, error: 'not_found' });
         res.json({ success: true, ...data });
       } catch (err: any) {
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: "internal_error" });
       }
     },
   );
@@ -465,7 +465,7 @@ export function setupOrchestrationRoutes(
         await confirmManualStep(pool, req.params.runId, parseInt(req.params.stepIndex, 10), req.body?.note);
         res.json({ success: true });
       } catch (err: any) {
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: "internal_error" });
       }
     },
   );
@@ -510,7 +510,7 @@ export function setupOrchestrationRoutes(
         res.json({ success: true, data: rows });
       } catch (err: any) {
         if (err?.code === '42P01') return res.json({ success: true, data: [] });
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: "internal_error" });
       }
     },
   );
@@ -546,7 +546,7 @@ export function setupOrchestrationRoutes(
         await deleteSchedule(pool, req.params.userId, req.params.workflowId);
         res.json({ success: true });
       } catch (err: any) {
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: "internal_error" });
       }
     },
   );
@@ -564,7 +564,7 @@ export function setupOrchestrationRoutes(
           const { SUPPORTED_EVENTS } = await import('./workflow-triggers.js');
           return res.json({ success: true, data: [], supportedEvents: SUPPORTED_EVENTS });
         }
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: "internal_error" });
       }
     },
   );
@@ -599,7 +599,7 @@ export function setupOrchestrationRoutes(
         await deleteTrigger(pool, req.params.userId, req.params.workflowId, req.params.eventType as any);
         res.json({ success: true });
       } catch (err: any) {
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: "internal_error" });
       }
     },
   );
@@ -642,7 +642,7 @@ export function setupOrchestrationRoutes(
         if (err?.code === '42P01') {
           return res.json({ success: true, data: { days: 30, callCount: 0, totalUsd: 0, totalNok: 0, inputTokens: 0, outputTokens: 0 } });
         }
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: "internal_error" });
       }
     },
   );
@@ -680,7 +680,7 @@ export function setupOrchestrationRoutes(
         });
       } catch (err: any) {
         if (err?.code === '42P01') return res.json({ success: true, data: null });
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: "internal_error" });
       }
     },
   );
@@ -708,7 +708,7 @@ export function setupOrchestrationRoutes(
         res.json({ success: true, data: result.rows });
       } catch (err: any) {
         if (err?.code === '42P01') return res.json({ success: true, data: [] });
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: "internal_error" });
       }
     },
   );

@@ -345,7 +345,13 @@ export function setupEditingPartnerApplicationsAdminRoutes(deps: Deps): void {
         : req.body?.partnerType === "prototype" ? "prototype" : null;
       let prototypeUntil: string | null = null;
       if (partnerType === "prototype") {
-        if (req.body?.prototypeUntil) prototypeUntil = new Date(req.body.prototypeUntil).toISOString();
+        if (req.body?.prototypeUntil) {
+          const rawDate = new Date(req.body.prototypeUntil);
+          if (Number.isNaN(rawDate.getTime())) {
+            return res.status(400).json({ error: "Ugyldig dato for prototypeUntil" });
+          }
+          prototypeUntil = rawDate.toISOString();
+        }
         else if (Number.isFinite(Number(req.body?.prototypeMonths)) && Number(req.body.prototypeMonths) > 0) {
           const d = new Date(); d.setMonth(d.getMonth() + Number(req.body.prototypeMonths)); prototypeUntil = d.toISOString();
         }
@@ -487,7 +493,13 @@ export function setupEditingPartnerApplicationsAdminRoutes(deps: Deps): void {
         : req.body?.partnerType === "prototype" ? "prototype" : null;
       let prototypeUntil: string | null = null;
       if (partnerType === "prototype") {
-        if (req.body?.prototypeUntil) prototypeUntil = new Date(req.body.prototypeUntil).toISOString();
+        if (req.body?.prototypeUntil) {
+          const rawDate = new Date(req.body.prototypeUntil);
+          if (Number.isNaN(rawDate.getTime())) {
+            return res.status(400).json({ error: "Ugyldig dato for prototypeUntil" });
+          }
+          prototypeUntil = rawDate.toISOString();
+        }
         else if (Number.isFinite(Number(req.body?.prototypeMonths)) && Number(req.body.prototypeMonths) > 0) {
           const d = new Date(); d.setMonth(d.getMonth() + Number(req.body.prototypeMonths)); prototypeUntil = d.toISOString();
         }
