@@ -89,6 +89,13 @@ export function setupSuperadminDebugRoutes({ app, pool, activeSessions, readSess
             status: p.payment_connected ? "pass" : "warn",
             detail: p.payment_connected ? `metode = ${p.payout_method || "—"}` : "payment_connected = false (ingen payout-metode registrert)",
           });
+          checks.push({
+            key: "discovery", label: "Synlig i discovery",
+            status: p.quality_flagged ? "warn" : summary.cleared ? "pass" : "info",
+            detail: p.quality_flagged
+              ? "Kvalitetsflagget → skjult fra discovery (klager)"
+              : summary.cleared ? "Synlig (godkjent + cleared)" : "Skjult til compliance er fullført",
+          });
         }
         const tok = (await pool.query<{ created_at: string; consumed_at: string | null; revoked_at: string | null; valid: boolean }>(
           `SELECT created_at, consumed_at, revoked_at, (revoked_at IS NULL AND expires_at > now()) AS valid
