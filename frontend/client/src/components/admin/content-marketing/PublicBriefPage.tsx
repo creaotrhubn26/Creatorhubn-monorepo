@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import DOMPurify from 'dompurify';
 import { Box, Container, Stack, Typography, Chip } from '@mui/material';
 import NewsletterSignupBlock from './NewsletterSignupBlock';
 
@@ -246,7 +247,7 @@ export function PublicBriefDetail({ slug }: { slug: string }) {
             '& img': { maxWidth: '100%', height: 'auto', borderRadius: 1, my: 2 },
             '& hr': { border: 'none', borderTop: '1px solid rgba(255,255,255,0.12)', my: 4 },
           }}
-          dangerouslySetInnerHTML={{ __html: issue.body_html ?? '' }}
+          dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(issue.body_html ?? '') }}
         />
 
         <Box sx={{ mt: 6 }}>

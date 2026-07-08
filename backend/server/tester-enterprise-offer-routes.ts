@@ -197,7 +197,7 @@ export function setupTesterEnterpriseOfferRoutes(deps: TesterEnterpriseOfferDeps
       if (!uid) return res.json({ offer: null });
       await ensureSchema(pool);
       const userR = await pool.query(`SELECT email FROM users WHERE id = $1 LIMIT 1`, [uid]);
-      if (userR.rowCount === 0) return res.json({ offer: null });
+      if (!userR.rows.length) return res.json({ offer: null });
       const email = String(userR.rows[0].email).toLowerCase();
 
       const r = await pool.query(
@@ -210,7 +210,7 @@ export function setupTesterEnterpriseOfferRoutes(deps: TesterEnterpriseOfferDeps
           ORDER BY off.sent_at DESC LIMIT 1`,
         [email],
       );
-      if (r.rowCount === 0) return res.json({ offer: null });
+      if (!r.rows.length) return res.json({ offer: null });
       const row = r.rows[0];
       res.json({
         offer: {
@@ -250,12 +250,12 @@ export function setupTesterEnterpriseOfferRoutes(deps: TesterEnterpriseOfferDeps
           LIMIT 1`,
         [req.params.id],
       );
-      if (offerR.rowCount === 0) return res.status(404).json({ error: "Tilbud ikke funnet eller utløpt" });
+      if (!offerR.rows.length) return res.status(404).json({ error: "Tilbud ikke funnet eller utløpt" });
       const offer = offerR.rows[0];
 
       // Sjekk at innlogget bruker faktisk er masteren
       const userR = await pool.query(`SELECT email FROM users WHERE id = $1 LIMIT 1`, [uid]);
-      if (userR.rowCount === 0 || String(userR.rows[0].email).toLowerCase() !== String(offer.master_email).toLowerCase()) {
+      if (!userR.rows.length || String(userR.rows[0].email).toLowerCase() !== String(offer.master_email).toLowerCase()) {
         return res.status(403).json({ error: "Du er ikke master for dette tilbudet" });
       }
 

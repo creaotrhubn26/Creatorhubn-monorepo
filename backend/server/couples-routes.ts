@@ -56,7 +56,14 @@ export function setupCouplesRoutes(deps: CouplesRoutesDeps): void {
             couple.password,
           );
         } else {
-          passwordValid = password === couple.password;
+          if (password === couple.password) {
+            passwordValid = true;
+            const hashed = await bcrypt.default.hash(password || "", 10);
+            await pool.query(
+              "UPDATE couple_profiles SET password = $1 WHERE id = $2",
+              [hashed, couple.id],
+            ).catch(() => {});
+          }
         }
 
         if (!passwordValid) {

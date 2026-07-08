@@ -1974,7 +1974,7 @@ function apiKeyAuth(pool: Pool, activeSessions?: Map<string, SessionData>) {
         [keyHash]
       );
 
-      if (result.rowCount === 0) {
+      if (!result.rows.length) {
         res.status(403).json({ error: 'Ugyldig eller utløpt API-nøkkel' });
         return;
       }
@@ -12014,7 +12014,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
          WHERE cp.id = $1`,
         [req.params.id]
       );
-      if (result.rowCount === 0) {
+      if (!result.rows.length) {
         res.status(404).json({ error: 'Prosjekt ikke funnet' });
         return;
       }
@@ -13203,7 +13203,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
          LIMIT 1`,
         [notificationId, projectId],
       );
-      if (existingResult.rowCount === 0) {
+      if (!existingResult.rows.length) {
         res.status(404).json({ error: 'Fant ikke innbokselementet' });
         return;
       }
@@ -13331,7 +13331,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
          LIMIT 1`,
         [notificationId, projectId],
       );
-      if (notificationCheck.rowCount === 0) {
+      if (!notificationCheck.rows.length) {
         res.status(404).json({ error: 'Fant ikke varselet' });
         return;
       }
@@ -13718,7 +13718,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
          LIMIT 1`,
         [expenseId, projectId],
       );
-      if (expenseCheck.rowCount === 0) {
+      if (!expenseCheck.rows.length) {
         res.status(404).json({ error: 'Fant ikke utlegget' });
         return;
       }
@@ -13840,7 +13840,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
          LIMIT 1`,
         [expenseId, projectId],
       );
-      if (expenseCheck.rowCount === 0) {
+      if (!expenseCheck.rows.length) {
         res.status(404).json({ error: 'Fant ikke utlegget' });
         return;
       }
@@ -14894,7 +14894,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         `SELECT * FROM role_room_client_reviews WHERE id = $1 AND project_id = $2 LIMIT 1`,
         [reviewId, projectId],
       );
-      if (existingResult.rowCount === 0) {
+      if (!existingResult.rows.length) {
         res.status(404).json({ error: 'Fant ikke review' });
         return;
       }
@@ -14990,7 +14990,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         `SELECT id, title FROM role_room_client_reviews WHERE id = $1 AND project_id = $2`,
         [reviewId, projectId],
       );
-      if (reviewCheck.rowCount === 0) {
+      if (!reviewCheck.rows.length) {
         res.status(404).json({ error: 'Fant ikke review' });
         return;
       }
@@ -15060,7 +15060,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         `SELECT * FROM role_room_client_reviews WHERE id = $1 AND project_id = $2 LIMIT 1`,
         [reviewId, projectId],
       );
-      if (reviewResult.rowCount === 0) {
+      if (!reviewResult.rows.length) {
         res.status(404).json({ error: 'Fant ikke review' });
         return;
       }
@@ -15562,7 +15562,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           WHERE id = $1 AND project_id = $2`,
         [commentId, projectId],
       );
-      if (existing.rowCount === 0) {
+      if (!existing.rows.length) {
         res.status(404).json({ error: 'Kommentar ikke funnet' });
         return;
       }
@@ -16249,7 +16249,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
          LIMIT 1`,
         [materialId, projectId],
       );
-      if (existingMaterialResult.rowCount === 0) {
+      if (!existingMaterialResult.rows.length) {
         res.status(404).json({ error: 'Fant ikke klientmateriale' });
         return;
       }
@@ -16747,7 +16747,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
          LIMIT 1`,
         [requestId, projectId],
       );
-      if (requestResult.rowCount === 0) {
+      if (!requestResult.rows.length) {
         res.status(404).json({ error: 'Fant ikke reveal-forespørselen' });
         return;
       }
@@ -16832,7 +16832,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
          LIMIT 1`,
         [requestId, projectId],
       );
-      if (requestResult.rowCount === 0) {
+      if (!requestResult.rows.length) {
         res.status(404).json({ error: 'Fant ikke reveal-forespørselen' });
         return;
       }
@@ -16865,7 +16865,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
          LIMIT 1`,
         [requestRow.secret_id, projectId],
       );
-      if (secretResult.rowCount === 0) {
+      if (!secretResult.rows.length) {
         res.status(404).json({ error: 'Fant ikke secret' });
         return;
       }
@@ -21130,7 +21130,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         [projectId]
       );
 
-      if (result.rowCount === 0) {
+      if (!result.rows.length) {
         res.status(404).json({ error: 'Prosjekt ikke funnet' });
         return;
       }
@@ -21168,7 +21168,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         [projectId]
       );
 
-      if (existing.rowCount === 0) {
+      if (!existing.rows.length) {
         res.status(404).json({ error: 'Prosjekt ikke funnet' });
         return;
       }
@@ -21210,7 +21210,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         [projectId]
       );
 
-      if (result.rowCount === 0) {
+      if (!result.rows.length) {
         res.status(404).json({ error: 'Prosjekt ikke funnet' });
         return;
       }

@@ -1269,18 +1269,24 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
       }
 
       if (req.body?.validUntil !== undefined) {
+        const validUntil = req.body.validUntil ? new Date(req.body.validUntil) : null;
+        if (validUntil && isNaN(validUntil.getTime())) return res.status(400).json({ error: "Ugyldig dato for validUntil" });
         setClauses.push(`valid_until = $${idx++}`);
-        params.push(req.body.validUntil ? new Date(req.body.validUntil) : null);
+        params.push(validUntil);
       }
 
       if (req.body?.fikenSyncedAt !== undefined) {
+        const fikenSyncedAt = req.body.fikenSyncedAt ? new Date(req.body.fikenSyncedAt) : null;
+        if (fikenSyncedAt && isNaN(fikenSyncedAt.getTime())) return res.status(400).json({ error: "Ugyldig dato for fikenSyncedAt" });
         setClauses.push(`fiken_synced_at = $${idx++}`);
-        params.push(req.body.fikenSyncedAt ? new Date(req.body.fikenSyncedAt) : null);
+        params.push(fikenSyncedAt);
       }
 
       if (req.body?.tripletexSyncedAt !== undefined) {
+        const tripletexSyncedAt = req.body.tripletexSyncedAt ? new Date(req.body.tripletexSyncedAt) : null;
+        if (tripletexSyncedAt && isNaN(tripletexSyncedAt.getTime())) return res.status(400).json({ error: "Ugyldig dato for tripletexSyncedAt" });
         setClauses.push(`tripletex_synced_at = $${idx++}`);
-        params.push(req.body.tripletexSyncedAt ? new Date(req.body.tripletexSyncedAt) : null);
+        params.push(tripletexSyncedAt);
       }
 
       if (req.body?.totalAmount !== undefined) {
