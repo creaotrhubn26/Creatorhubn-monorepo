@@ -257,7 +257,7 @@ export function registerLeadMapProfileRoutes({ app, pool, activeSessions }: Deps
           WHERE organization_id = $1 AND user_id = $2 LIMIT 1`,
         [req.params.id, session.userId],
       );
-      if (memRes.rowCount === 0) {
+      if (!memRes.rows.length) {
         return res.status(403).json({ error: "ikke_medlem" });
       }
       try {

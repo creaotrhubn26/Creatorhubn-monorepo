@@ -185,7 +185,7 @@ export function registerLeadgridSalesTeamsRoutes(deps: SalesTeamsRoutesDeps): vo
       let safeLeaderId: string | null = leaderId;
       if (safeLeaderId) {
         const u = await pool.query(`SELECT 1 FROM users WHERE id = $1`, [safeLeaderId]);
-        if (u.rowCount === 0) safeLeaderId = null;
+        if (!u.rows.length) safeLeaderId = null;
       }
       const r = await pool.query(
         `INSERT INTO leadgrid_sales_teams

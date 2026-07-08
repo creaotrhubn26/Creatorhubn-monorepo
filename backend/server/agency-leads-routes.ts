@@ -860,7 +860,7 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
            FROM agency_leads WHERE id = $1::uuid`,
         [id],
       );
-      if (leadRes.rowCount === 0) return res.status(404).json({ error: "ikke_funnet" });
+      if (!leadRes.rows.length) return res.status(404).json({ error: "ikke_funnet" });
       const lead = leadRes.rows[0] as {
         id: string; agency_name: string; contact_name: string; email: string; status: string;
       };

@@ -881,7 +881,7 @@ export function registerSalesLeadershipRoutes(
           LIMIT 1`,
         [id, orgId],
       );
-      if (contestRes.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      if (!contestRes.rows.length) return res.status(404).json({ error: "not_found" });
       const contest = contestRes.rows[0];
 
       const prizesRes = await pool.query(
@@ -1159,7 +1159,7 @@ export function registerSalesLeadershipRoutes(
           LIMIT 1`,
         [id],
       );
-      if (currentRes.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      if (!currentRes.rows.length) return res.status(404).json({ error: "not_found" });
       const current = currentRes.rows[0] as Record<string, unknown>;
 
       // Tilgang: org-admin ELLER vinneren selv (for awaiting_address-flyt).
@@ -1261,7 +1261,7 @@ export function registerSalesLeadershipRoutes(
           LIMIT 1`,
         [id],
       );
-      if (currentRes.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      if (!currentRes.rows.length) return res.status(404).json({ error: "not_found" });
       const current = currentRes.rows[0] as Record<string, unknown>;
       if (String(current.winner_user_id) !== session.userId) {
         return res.status(403).json({ error: "forbidden" });

@@ -234,7 +234,7 @@ export function setupStorageProvidersRoutes(deps: StorageProvidersRoutesDeps): v
         `SELECT id FROM user_storage_providers WHERE id = $1 AND user_id = $2`,
         [providerId, session.userId],
       );
-      if (provCheck.rowCount === 0) {
+      if (!provCheck.rows.length) {
         return res.status(403).json({ success: false, error: 'Provider tilhører ikke deg' });
       }
 
@@ -338,7 +338,7 @@ export function setupStorageProvidersRoutes(deps: StorageProvidersRoutesDeps): v
         `SELECT id FROM user_storage_providers WHERE id = $1 AND user_id = $2`,
         [providerId, session.userId],
       );
-      if (provCheck.rowCount === 0) {
+      if (!provCheck.rows.length) {
         return res
           .status(403)
           .json({ success: false, error: 'Provider tilhører ikke deg' });
@@ -499,7 +499,7 @@ export function setupStorageProvidersRoutes(deps: StorageProvidersRoutesDeps): v
         `SELECT name, title FROM legacy.projects WHERE id = $1 AND user_id = $2`,
         [projectId, session.userId],
       );
-      if (ownerCheck.rowCount === 0) {
+      if (!ownerCheck.rows.length) {
         return res
           .status(403)
           .json({ success: false, error: 'Prosjekt tilhører ikke deg' });
@@ -709,7 +709,7 @@ export function setupStorageProvidersRoutes(deps: StorageProvidersRoutesDeps): v
         LIMIT 1`,
       [itemId, accessToken],
     );
-    if (itemRes.rowCount === 0) {
+    if (!itemRes.rows.length) {
       return res.status(404).json({ success: false, error: 'Item ikke funnet' });
     }
     const meta = itemRes.rows[0].image_metadata ?? {};
@@ -814,7 +814,7 @@ export function setupStorageProvidersRoutes(deps: StorageProvidersRoutesDeps): v
       `SELECT id FROM legacy.projects WHERE id = $1 AND user_id = $2`,
       [projectId, session.userId],
     );
-    if (ownerCheck.rowCount === 0) {
+    if (!ownerCheck.rows.length) {
       return res.status(403).json({ success: false, error: 'Prosjekt tilhører ikke deg' });
     }
 

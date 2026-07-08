@@ -100,7 +100,7 @@ export function createCastingVideoRouter(
       'SELECT project_id FROM casting_candidate_videos WHERE id = $1',
       [videoId],
     );
-    if (r.rowCount === 0) { res.status(404).json({ error: 'not_found' }); return false; }
+    if (!r.rows.length) { res.status(404).json({ error: 'not_found' }); return false; }
     return ensureProjectOwner(req, res, r.rows[0].project_id);
   }
 

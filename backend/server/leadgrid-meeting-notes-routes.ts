@@ -303,7 +303,7 @@ export function registerLeadgridMeetingNotesRoutes(deps: Deps): void {
              FROM lead_meeting_notes WHERE id = $1::uuid LIMIT 1`,
           [req.params.id],
         );
-        if (r.rowCount === 0) {
+        if (!r.rows.length) {
           res.status(404).json({ error: "ikke_funnet" });
           return;
         }

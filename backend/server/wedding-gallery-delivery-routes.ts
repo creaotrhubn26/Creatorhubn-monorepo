@@ -79,7 +79,7 @@ export function setupWeddingGalleryDeliveryRoutes(deps: WeddingGalleryDeliveryRo
            WHERE wedding_id = $1 AND photographer_id = $2 LIMIT 1`,
         [req.params.weddingId, uid],
       );
-      if (r.rowCount === 0) return res.json({ delivery: null });
+      if (!r.rows.length) return res.json({ delivery: null });
       res.json({ delivery: rowToDelivery(r.rows[0]) });
     } catch (err) {
       console.error("GET /gallery-delivery:", err);

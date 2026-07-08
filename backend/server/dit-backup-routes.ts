@@ -712,7 +712,7 @@ export function setupDitBackupRoutes(deps: DitBackupRoutesDeps): void {
         `SELECT id FROM user_storage_providers WHERE id = $1 AND user_id = $2`,
         [providerId, userId],
       );
-      if (provCheck.rowCount === 0) {
+      if (!provCheck.rows.length) {
         return res
           .status(403)
           .json({ success: false, error: 'Provider tilhører ikke deg' });
@@ -723,7 +723,7 @@ export function setupDitBackupRoutes(deps: DitBackupRoutesDeps): void {
         `SELECT id FROM legacy.projects WHERE id = $1 AND user_id = $2`,
         [projectId, userId],
       );
-      if (projCheck.rowCount === 0) {
+      if (!projCheck.rows.length) {
         return res
           .status(403)
           .json({ success: false, error: 'Prosjekt tilhører ikke deg' });

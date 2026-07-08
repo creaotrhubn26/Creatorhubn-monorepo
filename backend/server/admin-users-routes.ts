@@ -604,7 +604,7 @@ export function setupAdminUsersRoutes(deps: AdminUsersRoutesDeps): void {
         "SELECT id, email, role FROM users WHERE id::text = $1",
         [targetId],
       );
-      if (targetRes.rowCount === 0) {
+      if (!targetRes.rows.length) {
         return res.status(404).json({ error: "Fant ingen bruker med denne ID-en." });
       }
       const target = targetRes.rows[0];

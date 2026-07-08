@@ -252,7 +252,7 @@ export function setupProjectTeamRoutes(deps: ProjectTeamRoutesDeps): void {
         `SELECT * FROM project_team_members WHERE invite_token = $1 AND deactivated_at IS NULL LIMIT 1`,
         [token],
       );
-      if (row.rowCount === 0) return res.status(404).json({ error: "Ugyldig eller utløpt invitasjon" });
+      if (!row.rows.length) return res.status(404).json({ error: "Ugyldig eller utløpt invitasjon" });
       const member = row.rows[0];
       // Bind aksept til den inviterte e-posten — ellers kan hvem som helst med
       // lenken kapre invitasjonen og få team-tilgang / rebinde medlemsraden.

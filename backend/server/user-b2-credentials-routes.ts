@@ -818,7 +818,7 @@ export function setupUserB2CredentialsRoutes(deps: UserB2CredentialsRoutesDeps):
             LIMIT 1`,
           [userId, fileKey],
         );
-        if (ownRes.rowCount === 0) {
+        if (!ownRes.rows.length) {
           return res.status(404).json({ error: "file_not_found" });
         }
       } catch (err) {
@@ -907,7 +907,7 @@ export function setupUserB2CredentialsRoutes(deps: UserB2CredentialsRoutesDeps):
             LIMIT 1`,
           [userId, fileKey],
         );
-        if (ownRes.rowCount === 0) {
+        if (!ownRes.rows.length) {
           return res.status(404).json({ error: "file_not_found" });
         }
       } catch (err) {
@@ -1007,7 +1007,7 @@ export function setupUserB2CredentialsRoutes(deps: UserB2CredentialsRoutesDeps):
             LIMIT 1`,
           [userId],
         );
-        if (credCheck.rowCount === 0) {
+        if (!credCheck.rows.length) {
           return res.status(400).json({ error: "no_credentials" });
         }
       } catch (err) {

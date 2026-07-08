@@ -118,7 +118,7 @@ export function setupRoleRoomInvitesTicketsRoutes(
          FROM role_room_tester_invites WHERE token = $1 LIMIT 1`,
         [token],
       );
-      if (result.rowCount === 0) {
+      if (!result.rows.length) {
         return res.status(404).json({ error: "Invite not found" });
       }
       const row = result.rows[0];
@@ -156,7 +156,7 @@ export function setupRoleRoomInvitesTicketsRoutes(
         `SELECT id, status, expires_at FROM role_room_tester_invites WHERE token = $1 LIMIT 1`,
         [token],
       );
-      if (existing.rowCount === 0) {
+      if (!existing.rows.length) {
         return res.status(404).json({ error: "Invite not found" });
       }
       const inv = existing.rows[0];

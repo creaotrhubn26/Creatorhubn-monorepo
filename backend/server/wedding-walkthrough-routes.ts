@@ -126,7 +126,7 @@ async function checkVenuesInCatalog(pool: any, weddingId: string): Promise<Check
     `SELECT label, address FROM wedding_locations WHERE wedding_id = $1`,
     [weddingId],
   );
-  if (locs.rowCount === 0) {
+  if (!locs.rows.length) {
     return {
       key: "venues_in_catalog",
       label: "Venue-info kjent",
@@ -266,7 +266,7 @@ async function checkMileageReady(pool: any, weddingId: string, photographerId: s
        WHERE wedding_id = $1 AND photographer_id = $2 LIMIT 1`,
     [weddingId, photographerId],
   );
-  if (r.rowCount === 0) {
+  if (!r.rows.length) {
     return {
       key: "mileage_ready",
       label: "Kjøregodtgjørelse beregnet",
@@ -285,7 +285,7 @@ async function checkVehicleRegistered(pool: any, photographerId: string): Promis
        WHERE user_id = $1 AND is_primary = TRUE LIMIT 1`,
     [photographerId],
   );
-  if (r.rowCount === 0) {
+  if (!r.rows.length) {
     return {
       key: "vehicle_registered",
       label: "Bil registrert",

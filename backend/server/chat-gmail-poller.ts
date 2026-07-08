@@ -218,7 +218,7 @@ export async function pollProjectGmailReplies(
      WHERE p.id = $1 AND p.user_id = $2 LIMIT 1`,
     [args.projectId, args.photographerId],
   );
-  if (ctxQ.rowCount === 0) {
+  if (!ctxQ.rows.length) {
     return { status: 'failed', newRepliesCount: 0, message: 'project_not_found' };
   }
   const ctx = ctxQ.rows[0];

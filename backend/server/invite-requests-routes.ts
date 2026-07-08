@@ -424,7 +424,7 @@ export function setupInviteRequestsRoutes(
         "SELECT * FROM invite_requests WHERE id = $1",
         [req.params.id],
       );
-      if (result.rowCount === 0) {
+      if (!result.rows.length) {
         return res.status(404).json({ error: "Forespørsel ikke funnet" });
       }
       const screening = await getInviteRequestProffScreening(
@@ -444,7 +444,7 @@ export function setupInviteRequestsRoutes(
         "SELECT * FROM invite_requests WHERE id = $1",
         [req.params.id],
       );
-      if (result.rowCount === 0) {
+      if (!result.rows.length) {
         return res.status(404).json({ error: "Forespørsel ikke funnet" });
       }
 

@@ -624,7 +624,7 @@ export function setupBusinessRoutes(deps: BusinessRoutesDeps): void {
         [surveyId],
       );
 
-      if (surveyResult.rowCount === 0) {
+      if (!surveyResult.rows.length) {
         return res
           .status(404)
           .json({ success: false, error: "Survey not found" });

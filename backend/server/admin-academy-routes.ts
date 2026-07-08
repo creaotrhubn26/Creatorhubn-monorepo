@@ -658,7 +658,7 @@ export function setupAdminAcademyRoutes(deps: AdminAcademyRoutesDeps): void {
         `SELECT status FROM academy_payouts WHERE id = $1::uuid`,
         [id],
       );
-      if (current.rowCount === 0) {
+      if (!current.rows.length) {
         return res.status(404).json({ error: "payout_not_found" });
       }
       if (current.rows[0].status !== "pending") {
@@ -728,7 +728,7 @@ export function setupAdminAcademyRoutes(deps: AdminAcademyRoutesDeps): void {
         `SELECT status FROM academy_payouts WHERE id = $1::uuid`,
         [id],
       );
-      if (current.rowCount === 0) {
+      if (!current.rows.length) {
         return res.status(404).json({ error: "payout_not_found" });
       }
       if (current.rows[0].status !== "pending") {
@@ -1011,7 +1011,7 @@ export function setupAdminAcademyRoutes(deps: AdminAcademyRoutesDeps): void {
             WHERE id = $1::uuid`,
           [id],
         );
-        if (instructorResult.rowCount === 0) {
+        if (!instructorResult.rows.length) {
           return res.status(404).json({ error: "instructor_not_found" });
         }
         const instructor = instructorResult.rows[0];
@@ -1126,7 +1126,7 @@ export function setupAdminAcademyRoutes(deps: AdminAcademyRoutesDeps): void {
              FROM academy_instructors WHERE id = $1::uuid`,
           [id],
         );
-        if (row.rowCount === 0) {
+        if (!row.rows.length) {
           return res.status(404).json({ error: "instructor_not_found" });
         }
         const local = row.rows[0];
@@ -1259,7 +1259,7 @@ export function setupAdminAcademyRoutes(deps: AdminAcademyRoutesDeps): void {
           WHERE c.id = $1::uuid`,
         [courseId],
       );
-      if (courseResult.rowCount === 0) {
+      if (!courseResult.rows.length) {
         return res.status(404).json({ error: "course_not_found" });
       }
       const revenueSharePct = Number(courseResult.rows[0].revenue_share) || 80;

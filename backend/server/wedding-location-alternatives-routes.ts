@@ -115,7 +115,7 @@ export function setupWeddingLocationAlternativesRoutes(
         `SELECT id FROM wedding_locations WHERE id = $1 AND wedding_id = $2 AND alternative_for_location_id IS NULL`,
         [primaryId, weddingId],
       );
-      if (p.rowCount === 0) {
+      if (!p.rows.length) {
         return res.status(404).json({ error: "Primary location finnes ikke for dette bryllupet" });
       }
       const ins = await pool.query(
@@ -184,7 +184,7 @@ export function setupWeddingLocationAlternativesRoutes(
         `SELECT * FROM wedding_locations WHERE id = $1 AND wedding_id = $2`,
         [altId, weddingId],
       );
-      if (alt.rowCount === 0) return res.status(404).json({ error: "Alternativ finnes ikke" });
+      if (!alt.rows.length) return res.status(404).json({ error: "Alternativ finnes ikke" });
       const altRow = alt.rows[0];
       const primaryId = altRow.alternative_for_location_id;
       if (!primaryId) {
@@ -310,7 +310,7 @@ export function setupWeddingLocationAlternativesRoutes(
         `SELECT alternative_for_location_id FROM wedding_locations WHERE id = $1 AND wedding_id = $2`,
         [altId, weddingId],
       );
-      if (alt.rowCount === 0) return res.status(404).json({ error: "Alternativ finnes ikke" });
+      if (!alt.rows.length) return res.status(404).json({ error: "Alternativ finnes ikke" });
       const primaryId = alt.rows[0].alternative_for_location_id;
       if (!primaryId) return res.status(400).json({ error: "Ikke en plan B" });
 

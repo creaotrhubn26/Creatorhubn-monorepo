@@ -219,7 +219,7 @@ export function setupWeddingAssistantCollabRoutes(deps: WeddingAssistantCollabDe
            WHERE a.id = $1 AND a.wedding_id = $2 AND a.primary_photographer_id = $3 LIMIT 1`,
         [req.params.assistantId, req.params.weddingId, uid],
       );
-      if (a.rowCount === 0) return res.status(404).json({ error: "Assistent finnes ikke" });
+      if (!a.rows.length) return res.status(404).json({ error: "Assistent finnes ikke" });
       const row = a.rows[0];
       if (!row.assistant_email) return res.status(400).json({ error: "Mangler assistent-e-post" });
 

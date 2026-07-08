@@ -741,7 +741,7 @@ export function setupAdminSocialMediaRoutes(
           [id],
         );
 
-        if (result.rowCount === 0) {
+        if (!result.rows.length) {
           return res.status(404).json({ error: "workflow_not_found" });
         }
 

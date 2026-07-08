@@ -513,7 +513,7 @@ async function getValidAccessToken(pool: Pool, userId: string): Promise<string> 
       LIMIT 1`,
     [userId],
   );
-  if (r.rowCount === 0) throw new Error("no_credentials");
+  if (!r.rows.length) throw new Error("no_credentials");
   const row = r.rows[0];
 
   // 60-sek skew: refresh hvis expiry er < 60 sek frem
@@ -1306,7 +1306,7 @@ export function setupUserDriveCredentialsRoutes(
             LIMIT 1`,
           [userId, driveFileId],
         );
-        if (own.rowCount === 0) {
+        if (!own.rows.length) {
           return res.status(404).json({ error: "file_not_found" });
         }
       } catch (err) {
@@ -1374,7 +1374,7 @@ export function setupUserDriveCredentialsRoutes(
             WHERE user_id = $1::uuid AND is_active = TRUE LIMIT 1`,
           [userId],
         );
-        if (credCheck.rowCount === 0) {
+        if (!credCheck.rows.length) {
           return res.status(400).json({ error: "no_credentials" });
         }
       } catch (err) {

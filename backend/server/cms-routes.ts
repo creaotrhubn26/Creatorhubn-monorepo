@@ -271,7 +271,7 @@ export function setupCmsRoutes(deps: CmsRoutesDeps): void {
          LIMIT 1`,
         [key, locale, profession],
       );
-      if (result.rowCount === 0)
+      if (!result.rows.length)
         return res.status(404).json({ error: "not_found" });
       const row = result.rows[0];
       res.json({

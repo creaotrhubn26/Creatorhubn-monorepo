@@ -22078,7 +22078,7 @@ async function checkContractSignature(
       `SELECT signature_status, status FROM contracts WHERE id = $1 LIMIT 1`,
       [contractId],
     );
-    if (r.rowCount === 0) {
+    if (!r.rows.length) {
       // Kontrakten er slettet — fail-safe blokker. Stine må enten
       // unlinke kontrakten eller laste opp ny.
       return { ok: false, status: 412, error: 'linked_contract_missing' };
@@ -33012,7 +33012,7 @@ async function ensureInviteRequestAccessProvisioning(
       [userId, subscriptionPlanId],
     );
 
-    if (existingSubscription.rowCount === 0) {
+    if (!existingSubscription.rows.length) {
       await pool.query(
         `INSERT INTO user_subscriptions
           (user_id, plan_id, status, started_at, auto_renew)
@@ -46301,7 +46301,7 @@ app.post(
         "SELECT id, wedding_date FROM wedding_timelines WHERE project_id = $1 LIMIT 1",
         [projectId],
       );
-      if (tlResult.rowCount === 0) {
+      if (!tlResult.rows.length) {
         return res
           .status(404)
           .json({ error: "Ingen tidslinje funnet for prosjektet" });
@@ -46365,7 +46365,7 @@ app.put(
         "SELECT id, wedding_date FROM wedding_timelines WHERE project_id = $1 LIMIT 1",
         [projectId],
       );
-      if (tlResult.rowCount === 0) {
+      if (!tlResult.rows.length) {
         return res.status(404).json({ error: "Tidslinje ikke funnet" });
       }
       const rawDate2 = tlResult.rows[0].wedding_date;
@@ -46466,7 +46466,7 @@ app.get(
         [projectId],
       );
 
-      if (tlResult.rowCount === 0) {
+      if (!tlResult.rows.length) {
         return res.status(404).json({ error: "Ingen tidslinje funnet" });
       }
 
@@ -46518,7 +46518,7 @@ app.put(
         "SELECT id FROM wedding_timelines WHERE wedding_id = $1 OR project_id = $1 OR id = $1 LIMIT 1",
         [weddingId],
       );
-      if (tlResult.rowCount === 0) {
+      if (!tlResult.rows.length) {
         return res.status(404).json({ error: "Tidslinje ikke funnet" });
       }
       const timelineId = tlResult.rows[0].id;
@@ -46549,7 +46549,7 @@ app.post(
         "SELECT id, wedding_date FROM wedding_timelines WHERE wedding_id = $1 OR project_id = $1 OR id = $1 LIMIT 1",
         [weddingId],
       );
-      if (tlResult.rowCount === 0) {
+      if (!tlResult.rows.length) {
         return res.status(404).json({ error: "Tidslinje ikke funnet" });
       }
       const timelineId = tlResult.rows[0].id;
@@ -65676,7 +65676,7 @@ setupPrototypeTesterInvitesRoutes({
           WHERE user_id = $1 AND plan_id = $2 AND status IN ('active', 'trial') LIMIT 1`,
         [userId, TESTER_PLAN],
       );
-      if (existing.rowCount === 0) {
+      if (!existing.rows.length) {
         await pool.query(
           `INSERT INTO user_subscriptions (user_id, plan_id, status, started_at, auto_renew)
            VALUES ($1, $2, 'active', NOW(), true)`,
@@ -70330,7 +70330,7 @@ async function syncContractLifecycleArtifacts(params: {
           LIMIT 1`,
         [customerId, subject, `${message}\n\n[ref:${externalRef}]`],
       );
-      if (existingActivity.rowCount === 0) {
+      if (!existingActivity.rows.length) {
         await pool.query(
           `INSERT INTO crm_activities (
              id, customer_id, deal_id, type, subject, description, direction, outcome, created_at, updated_at
@@ -70366,7 +70366,7 @@ async function syncContractLifecycleArtifacts(params: {
           LIMIT 1`,
         [contract.projectId, `[ref:${externalRef}]`],
       );
-      if (existingMilestone.rowCount === 0) {
+      if (!existingMilestone.rows.length) {
         await pool.query(
           `INSERT INTO project_milestones (
              id, project_id, user_id, title, description, category, type, status, priority, location, internal_notes, client_visible
@@ -70417,7 +70417,7 @@ async function syncContractLifecycleArtifacts(params: {
             LIMIT 1`,
           [link.conversation_id, externalRef],
         );
-        if (existingMessage.rowCount === 0) {
+        if (!existingMessage.rows.length) {
           await pool.query(
             `INSERT INTO communication_messages (
                id, channel_id, sender_id, message_type, content, metadata, is_read, is_priority, is_system_generated, created_at, updated_at

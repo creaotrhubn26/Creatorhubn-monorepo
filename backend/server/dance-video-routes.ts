@@ -454,7 +454,7 @@ export function createDanceVideoRouter(
       `SELECT clip_id FROM dance_video_annotation WHERE owner_user_id = $1 AND id = $2`,
       [userId, idParsed.data],
     );
-    if (before.rowCount === 0) {
+    if (!before.rows.length) {
       res.status(404).json({ error: 'not_found' });
       return;
     }

@@ -153,7 +153,7 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
         "SELECT * FROM legacy.projects WHERE id = $1",
         [req.params.id],
       );
-      if (result.rowCount === 0) {
+      if (!result.rows.length) {
         return res.status(404).json({ error: "Prosjekt ikke funnet" });
       }
       const project = mapProjectRow(result.rows[0]);
@@ -191,7 +191,7 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
         "SELECT 1 FROM legacy.projects WHERE id = $1 AND user_id = $2 LIMIT 1",
         [req.params.id, userId],
       );
-      if (owns.rowCount === 0) {
+      if (!owns.rows.length) {
         // Returning 404 instead of 403 so callers can't enumerate
         // projects by probing ids.
         return res.status(404).json({ error: "not_found" });
@@ -580,7 +580,7 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
                LIMIT 50`,
               [String(id)],
             );
-            if (linked.rowCount === 0) return;
+            if (!linked.rows.length) return;
             // Photographer name for the From-line. Best-effort lookup —
             // falls back to "CreatorHub".
             let photographerName: string | null = null;

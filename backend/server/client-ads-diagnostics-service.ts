@@ -295,7 +295,7 @@ export async function recordTrackEvent(
      FROM client_ads_configs WHERE id = $1::uuid`,
     [input.configId],
   );
-  if (c.rowCount === 0) return { ok: false, reason: 'config_not_found' };
+  if (!c.rows.length) return { ok: false, reason: 'config_not_found' };
   if (!c.rows[0].tracking_proxy_token) return { ok: false, reason: 'proxy_not_configured' };
   if (c.rows[0].tracking_proxy_token !== input.proxyToken) {
     return { ok: false, reason: 'invalid_proxy_token' };

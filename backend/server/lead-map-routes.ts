@@ -266,7 +266,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
         `SELECT lead_temperature FROM crm_customers WHERE id = $1`,
         [req.params.id],
       );
-      if (prev.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      if (!prev.rows.length) return res.status(404).json({ error: "not_found" });
       const oldTemp = prev.rows[0].lead_temperature ?? null;
 
       await pool.query(

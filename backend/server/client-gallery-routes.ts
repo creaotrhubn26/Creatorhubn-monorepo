@@ -1133,7 +1133,7 @@ export function setupClientGalleryRoutes(
           `SELECT id FROM video_timecode_comments WHERE id = $1 AND gallery_id = $2 LIMIT 1`,
           [parentIdRaw, access.gallery.id],
         );
-        if (p.rowCount === 0) return res.status(400).json({ error: "invalid_parent" });
+        if (!p.rows.length) return res.status(400).json({ error: "invalid_parent" });
         parentId = parentIdRaw;
       }
       const inserted = await pool.query(
@@ -2230,7 +2230,7 @@ export function setupClientGalleryRoutes(
            LIMIT 1`,
           [gallery.id, clientEmail],
         );
-        if (paid.rowCount === 0) {
+        if (!paid.rows.length) {
           return res.status(402).json({
             error: "payment_required",
             pricing,

@@ -240,7 +240,7 @@ export function registerLeadMapPermissionRoutes({ app, pool, activeSessions }: D
       `SELECT 1 FROM permissions WHERE key = $1`,
       [body.permission_key],
     );
-    if (exists.rowCount === 0) {
+    if (!exists.rows.length) {
       res.status(400).json({ error: "ukjent_permission_key" });
       return;
     }

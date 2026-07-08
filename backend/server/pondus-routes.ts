@@ -248,7 +248,7 @@ export function registerPondusRoutes(deps: PondusRoutesDeps): void {
           LIMIT 1`,
         [id],
       );
-      if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      if (!r.rows.length) return res.status(404).json({ error: "not_found" });
       const row = r.rows[0] as Record<string, unknown>;
       // Synlighet — vanlig bruker kan bare se publiserte + Leadgrid/egen org
       if (!admin) {
@@ -355,7 +355,7 @@ export function registerPondusRoutes(deps: PondusRoutesDeps): void {
           LIMIT 1`,
         [id],
       );
-      if (existing.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      if (!existing.rows.length) return res.status(404).json({ error: "not_found" });
       const currentRow = existing.rows[0] as Record<string, unknown>;
 
       // Audit-snapshot: forrige versjon slik den lå
@@ -488,7 +488,7 @@ export function registerPondusRoutes(deps: PondusRoutesDeps): void {
         `SELECT created_by FROM pondus_templates WHERE id = $1 LIMIT 1`,
         [id],
       );
-      if (existing.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      if (!existing.rows.length) return res.status(404).json({ error: "not_found" });
       const createdBy = existing.rows[0]?.created_by;
 
       if (createdBy && String(createdBy) === session.userId) {
@@ -575,7 +575,7 @@ export function registerPondusRoutes(deps: PondusRoutesDeps): void {
           LIMIT 1`,
         [id, versionParam],
       );
-      if (snap.rowCount === 0) {
+      if (!snap.rows.length) {
         return res.status(404).json({ error: "version_not_found" });
       }
       const snapshot = snap.rows[0]?.snapshot as Record<string, unknown> | null;
@@ -590,7 +590,7 @@ export function registerPondusRoutes(deps: PondusRoutesDeps): void {
           LIMIT 1`,
         [id],
       );
-      if (cur.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      if (!cur.rows.length) return res.status(404).json({ error: "not_found" });
       const currentRow = cur.rows[0] as Record<string, unknown>;
 
       await pool.query(

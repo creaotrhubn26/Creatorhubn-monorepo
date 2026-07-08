@@ -290,7 +290,7 @@ export function setupWeddingTimelineRoutes(
         [projectId],
       );
 
-      if (tlResult.rowCount === 0) {
+      if (!tlResult.rows.length) {
         return res
           .status(404)
           .json({ error: "Ingen tidslinje funnet for dette prosjektet" });
@@ -560,7 +560,7 @@ export function setupWeddingTimelineRoutes(
         [timelineId],
       );
 
-      if (tlResult.rowCount === 0) {
+      if (!tlResult.rows.length) {
         return res.status(404).json({ error: "Tidslinje ikke funnet" });
       }
 
@@ -600,7 +600,7 @@ export function setupWeddingTimelineRoutes(
         [accessToken],
       );
 
-      if (tlResult.rowCount === 0) {
+      if (!tlResult.rows.length) {
         return res.status(404).json({ error: "Tidslinje ikke funnet" });
       }
 
@@ -638,7 +638,7 @@ export function setupWeddingTimelineRoutes(
         [projectId],
       );
 
-      if (tlResult.rowCount === 0) {
+      if (!tlResult.rows.length) {
         return res.status(404).json({ error: "Tidslinje ikke funnet" });
       }
 
@@ -682,7 +682,7 @@ export function setupWeddingTimelineRoutes(
         "SELECT id FROM public.projects WHERE id = $1",
         [projectId],
       );
-      if (pubCheck.rowCount === 0) {
+      if (!pubCheck.rows.length) {
         // Copy from legacy.projects or create a minimal record
         const legacyProj = await pool.query(
           "SELECT * FROM legacy.projects WHERE id = $1",
@@ -806,13 +806,13 @@ export function setupWeddingTimelineRoutes(
         "SELECT * FROM wedding_timelines WHERE wedding_id = $1 LIMIT 1",
         [weddingId],
       );
-      if (result.rowCount === 0) {
+      if (!result.rows.length) {
         result = await pool.query(
           "SELECT * FROM wedding_timelines WHERE project_id = $1 OR id = $1 LIMIT 1",
           [weddingId],
         );
       }
-      if (result.rowCount === 0) {
+      if (!result.rows.length) {
         return res.status(404).json({ error: "Tidslinje ikke funnet" });
       }
 
