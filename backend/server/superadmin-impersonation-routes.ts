@@ -160,19 +160,6 @@ export function setupSuperadminImpersonationRoutes({ app, pool, activeSessions, 
     }
     res.json({ active: false });
   });
-
-  // Skriv-audit + utløp: logg mutasjoner utført under impersonation (impersonator
-  // ansvarlig). Registrert her; fanger ruter registrert ETTER dette kallet.
-  app.use((req, _res, next) => {
-    const { token, session } = ctx(req);
-    if (token && session?.impersonatedByAdmin) {
-      if (!expiredThenRestore(token, session)) {
-        const m = req.method.toUpperCase();
-        if ((m === "POST" || m === "PUT" || m === "PATCH" || m === "DELETE") && !req.path.includes("/impersonation") && !req.path.includes("/impersonate")) {
-          audit(session.impersonatorId, "write", session.userId, { method: m, path: req.path.slice(0, 200) });
-        }
-      }
-    }
-    next();
-  });
+  // Merk: skriv-audit + utløps-håndhevelse på hver request registreres TIDLIG i
+  // index.ts (før rutene) for full dekning — ikke her, som ville fanget for lite.
 }

@@ -2219,6 +2219,28 @@ function requireAdminSession(
 
 // ─── GET /api/admin/presence/online ──────────────────────────────────────
 // Admin-guardet oversikt over hvilke brukere som er pålogget akkurat nå.
+// Skriv-audit under impersonation: logg alle mutasjoner utført mens en super_admin
+// «ser som» en bruker (impersonator ansvarlig). Registrert her — FØR rutene — så
+// den fanger så godt som alle endepunkter. Fire-and-forget, blokkerer aldri.
+app.use((req, _res, next) => {
+  try {
+    const token = readActiveSessionToken(req);
+    const s = token ? activeSessions.get(token) : null;
+    if (s?.impersonatedByAdmin) {
+      const m = req.method.toUpperCase();
+      if ((m === "POST" || m === "PUT" || m === "PATCH" || m === "DELETE")
+          && !req.path.includes("/impersonat")) {
+        void pool.query(
+          `INSERT INTO superadmin_impersonation_audit (super_admin_id, action, target_user_id, details)
+           VALUES ($1,'write',$2,$3::jsonb)`,
+          [s.impersonatorId || null, s.userId, JSON.stringify({ method: m, path: String(req.path).slice(0, 200) })],
+        ).catch(() => { /* audit skal aldri blokkere */ });
+      }
+    }
+  } catch { /* aldri blokkér requesten */ }
+  next();
+});
+
 // Presence er personvern-sensitivt → kun admin. Online = user_presence
 // last_seen_at innen 90 sek og ikke idle (samme vindu som Admin Room /
 // platform-status). Degraderer trygt hvis user_presence-tabellen mangler.
