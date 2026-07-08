@@ -13881,7 +13881,19 @@ function compatResolveUserId(req: any): string {
     const token = authHeader.slice("Bearer ".length).trim();
     const activeSession = activeSessions.get(token);
     if (activeSession?.userId) return activeSession.userId;
-    if (token.length > 0) return token;
+    // Session token not in activeSessions (restart race condition): trigger lazy
+    // hydration so the NEXT request finds the real userId, but return "guest"
+    // for this request rather than the raw token (which is a session-ID UUID,
+    // not the user-ID UUID, and would corrupt per-user KV/preference data).
+    if (token.length > 0) {
+      void loadPersistedAuthSession<ActiveSessionData>(pool, token).then(
+        (persisted) => {
+          if (persisted && !activeSessions.has(token)) {
+            activeSessions.set(token, persisted);
+          }
+        },
+      );
+    }
   }
 
   const bodyUserId = compatHeaderString(req.body?.userId ?? req.body?.user_id);
