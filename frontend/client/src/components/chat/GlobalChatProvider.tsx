@@ -62,7 +62,7 @@ export default function GlobalChatProvider({ children }: GlobalChatProviderProps
   // og er derfor IKKE i skjul-listen — den offentlige Academy-landingen dekkes av auth-gaten.
   const shouldHideGlobalChat = useMemo(() => {
     if (location === '/') return true;
-    return /^\/(?:dashboard|photographer-dashboard-material|videographer-dashboard(?:-material)?|music(?:_|-)producer-dashboard(?:-material)?|vendor-dashboard(?:-material)?|partner|partner-portal|for-byr|privacy-policy|terms-and-conditions|creatorhub-innovasjon|pitch|faq|community|leadgrid|nextrole|showcase|photo-showcase|video-showcase|audio-review|role-room|casting|talents|theroleroom)(?:\/|$)/.test(location);
+    return /^\/(?:workspace|admin|dashboard|photographer-dashboard-material|videographer-dashboard(?:-material)?|music(?:_|-)producer-dashboard(?:-material)?|vendor-dashboard(?:-material)?|partner|partner-portal|for-byr|privacy-policy|terms-and-conditions|creatorhub-innovasjon|pitch|faq|community|leadgrid|nextrole|showcase|photo-showcase|video-showcase|audio-review|role-room|casting|talents|theroleroom)(?:\/|$)/.test(location);
   }, [location]);
 
   // Don't render chat widget if user is not authenticated or is admin/super_admin
