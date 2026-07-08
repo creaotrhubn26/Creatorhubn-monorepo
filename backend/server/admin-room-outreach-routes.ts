@@ -215,7 +215,7 @@ export function setupAdminOutreachRoutes(deps: AdminRoomRoutesDeps): void {
       `SELECT product_key, title FROM role_room_outreach_templates WHERE id = $1 AND user_id = $2`,
       [id, session.userId],
     );
-    if (existingResult.rowCount === 0) {
+    if (!existingResult.rows.length) {
       res.status(404).json({ error: "Template ikke funnet eller ikke redigerbar (default-templates kan ikke endres — kopiér i stedet)" });
       return;
     }

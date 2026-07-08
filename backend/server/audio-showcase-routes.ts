@@ -520,7 +520,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     const p = await pool.query(
       `SELECT easeverse_track_id, external_track_id FROM audio_review_projects
         WHERE id = $1::uuid AND owner_user_id = $2 LIMIT 1`, [reviewId, userId]);
-    if (p.rowCount === 0) return { notFound: true };
+    if (!p.rows.length) return { notFound: true };
     const trackId = p.rows[0].easeverse_track_id;
     const externalTrackId = p.rows[0].external_track_id || trackId;
     if (!trackId) return null;
@@ -528,7 +528,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
       `SELECT id, title, artist, bpm, collaborators, lyrics,
               COALESCE(lyrics_updated_at, updated_at) AS lyrics_updated_at
          FROM easeverse_tracks WHERE id = $1::uuid AND user_id = $2 LIMIT 1`, [trackId, userId]);
-    if (t.rowCount === 0) return null;
+    if (!t.rows.length) return null;
     return { ...t.rows[0], externalTrackId };
   }
 

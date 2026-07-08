@@ -325,7 +325,7 @@ export function setupPhotoVenuesRoutes(deps: PhotoVenuesRoutesDeps): void {
         `SELECT * FROM photo_venues WHERE slug = $1 AND is_active = TRUE LIMIT 1`,
         [req.params.slug],
       );
-      if (r.rowCount === 0) return res.status(404).json({ error: "Ikke funnet" });
+      if (!r.rows.length) return res.status(404).json({ error: "Ikke funnet" });
       res.json({ venue: rowToVenue(r.rows[0]) });
     } catch (err) {
       console.error("GET /api/photo-venues/:slug:", err);
@@ -435,7 +435,7 @@ export function setupPhotoVenuesRoutes(deps: PhotoVenuesRoutesDeps): void {
         `SELECT * FROM photo_venue_contributions WHERE id = $1 AND status = 'pending' LIMIT 1`,
         [req.params.id],
       );
-      if (cr.rowCount === 0) return res.status(404).json({ error: "Bidrag finnes ikke eller er ikke pending" });
+      if (!cr.rows.length) return res.status(404).json({ error: "Bidrag finnes ikke eller er ikke pending" });
       const contribution = cr.rows[0];
       const proposed = contribution.proposed_data || {};
 
@@ -453,7 +453,7 @@ export function setupPhotoVenuesRoutes(deps: PhotoVenuesRoutesDeps): void {
         let slug = baseSlug;
         for (let i = 2; i < 100; i++) {
           const exists = await pool.query(`SELECT 1 FROM photo_venues WHERE slug = $1`, [slug]);
-          if (exists.rowCount === 0) break;
+          if (!exists.rows.length) break;
           slug = `${baseSlug}-${i}`;
         }
 
