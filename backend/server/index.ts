@@ -44600,7 +44600,8 @@ function safeAdminCurrency(value: unknown): number {
 }
 
 function escapeAdminCsv(value: unknown): string {
-  const text = String(value ?? "");
+  const raw = String(value ?? "");
+  const text = /^[=+\-@|\t\r]/.test(raw) ? `'${raw}` : raw;
   return `"${text.replace(/"/g, '""')}"`;
 }
 
