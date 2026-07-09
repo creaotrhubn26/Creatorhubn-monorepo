@@ -17042,10 +17042,11 @@ app.post("/api/demo/troll/seed-all", async (req, res) => {
     // "demo-user" kun hvis ingen session — slik kan demo brukes anonymt i dev,
     // men ekte brukere får prosjektet eid av seg selv så /api/casting/projects/:id
     // finner det (filtrerer på created_by).
+    // NOTE: x-user-id header intentionally NOT trusted — attacker-controlled.
     const resolvedUserId = compatResolveUserId(req);
     const ownerUserId = (resolvedUserId && resolvedUserId !== "guest")
       ? resolvedUserId
-      : readString(req.headers["x-user-id"] as string | undefined) || "demo-user";
+      : "demo-user";
     const body = (req.body ?? {}) as {
       projectId?: string;
       projectName?: string;
