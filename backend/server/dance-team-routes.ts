@@ -352,10 +352,8 @@ export function createDanceInviteAcceptRouter(
 
   router.post('/:token/request-pin', async (req, res) => {
     const token = String(req.params.token);
-    // Bygger inviteUrl fra request — beholder samme origin
-    const proto = (req.headers['x-forwarded-proto'] as string | undefined) || req.protocol || 'https';
-    const host = (req.headers['x-forwarded-host'] as string | undefined) || req.headers.host || 'creatorhubn.com';
-    const inviteUrl = `${proto}://${host}/dance/invite/${encodeURIComponent(token)}`;
+    const _baseUrl = (process.env.PUBLIC_APP_URL || process.env.APP_URL || 'https://creatorhubn.com').replace(/\/$/, '');
+    const inviteUrl = `${_baseUrl}/dance/invite/${encodeURIComponent(token)}`;
     try {
       const r = await svc.requestPinForInvite(pool, token, inviteUrl);
       if (!r.sent) {
