@@ -373,6 +373,9 @@ export function setupMeetingNotesRoutes(
       }
 
       const existing = existingResult.rows[0];
+      if (existing.creator_id && existing.creator_id !== creatorId) {
+        return res.status(403).json({ error: "forbidden" });
+      }
       const payload = await normalizeMeetingNotesPayload(
         {
           ...existing,

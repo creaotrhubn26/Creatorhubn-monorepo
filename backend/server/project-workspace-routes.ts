@@ -2986,7 +2986,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
 
   app.delete("/api/projects/:projectId/notes/:id", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
-    try { await ensureNotesTable(); await pool.query(`DELETE FROM project_workspace_notes WHERE id=$1 AND project_id=$2`, [req.params.id, req.params.projectId]); res.json({ success: true }); }
+    try { await ensureNotesTable(); await pool.query(`DELETE FROM project_workspace_notes WHERE id=$1 AND project_id=$2 AND author_id=$3`, [req.params.id, req.params.projectId, uid]); res.json({ success: true }); }
     catch (e) { console.error("DELETE notes", e); res.status(500).json({ error: "failed" }); }
   });
 }
