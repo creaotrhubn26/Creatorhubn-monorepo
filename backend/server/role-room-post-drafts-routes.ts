@@ -47,8 +47,17 @@ async function resolveImageDataUrl(draft: Record<string, unknown>): Promise<Imag
 
   const httpUrl = typeof draft.image_url === 'string' ? draft.image_url.trim() : '';
   if (!httpUrl) return { ok: false, reason: 'no_image' };
-  if (!/^https?:\/\//i.test(httpUrl)) {
-    return { ok: false, reason: 'fetch_failed', error: 'image_url må starte med http:// eller https://' };
+  try {
+    const _u = new URL(httpUrl);
+    const _h = _u.hostname.toLowerCase();
+    if (!['http:', 'https:'].includes(_u.protocol) ||
+        _h === 'localhost' || _h === '127.0.0.1' || _h === '::1' ||
+        /^10\.|^192\.168\.|^172\.(1[6-9]|2\d|3[01])\./.test(_h) ||
+        _h === '169.254.169.254' || _h.endsWith('.internal') || _h.endsWith('.local')) {
+      return { ok: false, reason: 'fetch_failed', error: 'image_url peker til en ikke-tillatt adresse' };
+    }
+  } catch {
+    return { ok: false, reason: 'fetch_failed', error: 'image_url er ugyldig' };
   }
 
   try {

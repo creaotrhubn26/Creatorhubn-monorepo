@@ -31,6 +31,18 @@ interface Deps {
   activeSessions: Map<string, SessionData>;
 }
 
+function _isPublicWebhookUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    if (!["http:", "https:"].includes(u.protocol)) return false;
+    const h = u.hostname.toLowerCase();
+    if (h === "localhost" || h === "127.0.0.1" || h === "::1" || h === "0.0.0.0") return false;
+    if (/^10\.|^192\.168\.|^172\.(1[6-9]|2\d|3[01])\./.test(h)) return false;
+    if (h === "169.254.169.254" || h.endsWith(".internal") || h.endsWith(".local")) return false;
+    return true;
+  } catch { return false; }
+}
+
 function getSession(
   req: Request,
   activeSessions: Map<string, SessionData>,
@@ -216,7 +228,7 @@ export function registerLeadgridWorkflowWebhookRoutes(deps: Deps): void {
         res.status(400).json({ error: "name_required" });
         return;
       }
-      if (!url || !/^https?:\/\//i.test(url)) {
+      if (!url || !_isPublicWebhookUrl(url)) {
         res.status(400).json({ error: "url_invalid" });
         return;
       }
@@ -262,7 +274,7 @@ export function registerLeadgridWorkflowWebhookRoutes(deps: Deps): void {
         vals.push(body.name.trim());
       }
       if (typeof body.url === "string") {
-        if (!/^https?:\/\//i.test(body.url)) {
+        if (!_isPublicWebhookUrl(body.url.trim())) {
           res.status(400).json({ error: "url_invalid" });
           return;
         }

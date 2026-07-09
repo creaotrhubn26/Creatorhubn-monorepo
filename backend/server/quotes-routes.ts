@@ -48,9 +48,7 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
     if (headerUserId) {
       return String(headerUserId);
     }
-
-    const fallback = await pool.query("SELECT id FROM users LIMIT 1");
-    return fallback.rows[0]?.id || "default-user";
+    return null;
   }
 
   function buildSharedQuoteWhereClause(options: {
@@ -800,13 +798,12 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
   });
 
   app.get("/api/quotes/all", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       await ensureQuotesCompatibilitySchema();
 
-      const userId =
-        typeof req.query.userId === "string" && req.query.userId.trim()
-          ? req.query.userId.trim()
-          : getPricingUserId(req);
+      const userId = session.userId;
       const status =
         typeof req.query.status === "string" ? req.query.status.trim() : "";
       const quoteType =
@@ -836,13 +833,12 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
   });
 
   app.get("/api/quotes/stats/overview", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       await ensureQuotesCompatibilitySchema();
 
-      const userId =
-        typeof req.query.userId === "string" && req.query.userId.trim()
-          ? req.query.userId.trim()
-          : getPricingUserId(req);
+      const userId = session.userId;
 
       const { params, whereSql } = buildSharedQuoteWhereClause({ userId });
       const result = await pool.query(`SELECT * FROM quotes ${whereSql}`, params);

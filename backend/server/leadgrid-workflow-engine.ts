@@ -992,6 +992,19 @@ async function runAction(
             data: { destination_id: action.destination_id },
           };
         }
+        // SSRF guard: defence-in-depth in case DB has a pre-guard URL
+        try {
+          const _wu = new URL(dest.url);
+          const _wh = _wu.hostname.toLowerCase();
+          if (!["http:", "https:"].includes(_wu.protocol) ||
+              _wh === "localhost" || _wh === "127.0.0.1" || _wh === "::1" ||
+              /^10\.|^192\.168\.|^172\.(1[6-9]|2\d|3[01])\./.test(_wh) ||
+              _wh === "169.254.169.254" || _wh.endsWith(".internal") || _wh.endsWith(".local")) {
+            return { status: "error", message: "ssrf_blocked" };
+          }
+        } catch {
+          return { status: "error", message: "invalid_destination_url" };
+        }
         const payload = buildWebhookPayload(action, event, lead, workflowId);
         const headers: Record<string, string> = {
           "Content-Type": "application/json",

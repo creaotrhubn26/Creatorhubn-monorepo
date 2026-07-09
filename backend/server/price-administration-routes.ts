@@ -413,6 +413,7 @@ export function setupPriceAdministrationRoutes(
   });
 
   app.post("/api/price-administration/pricing", async (req, res) => {
+    if (!requireAdminSession(req, res)) return;
     try {
       const {
         userId,
@@ -529,6 +530,7 @@ export function setupPriceAdministrationRoutes(
   });
 
   app.post("/api/price-administration/additional-costs", async (req, res) => {
+    if (!requireAdminSession(req, res)) return;
     try {
       const {
         userId,
@@ -585,6 +587,7 @@ export function setupPriceAdministrationRoutes(
   app.delete(
     "/api/price-administration/additional-costs/:id",
     async (req, res) => {
+      if (!requireAdminSession(req, res)) return;
       try {
         const result = await pool.query(
           "DELETE FROM additional_costs WHERE id = $1 RETURNING id",
@@ -644,6 +647,7 @@ export function setupPriceAdministrationRoutes(
   });
 
   app.post("/api/price-administration/discounts", async (req, res) => {
+    if (!requireAdminSession(req, res)) return;
     try {
       const {
         userId,
@@ -798,6 +802,7 @@ export function setupPriceAdministrationRoutes(
   });
 
   app.post("/api/price-administration/quotes", async (req, res) => {
+    if (!requireAdminSession(req, res)) return;
     try {
       const uid = req.body?.userId || getPricingUserId(req);
       const row = await insertSharedQuote(req.body, uid);
@@ -908,6 +913,7 @@ export function setupPriceAdministrationRoutes(
   // ============================================
 
   app.post("/api/price-administration/save-receipt", async (req, res) => {
+    if (!requireAdminSession(req, res)) return;
     try {
       const { receiptData, saveToDrive, saveToSheets } = req.body;
       // Store as additional cost
