@@ -779,6 +779,8 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
   app.put(
     "/api/projects/:projectId/collaborators/:collaboratorId/permissions",
     async (req, res) => {
+      const callerId = compatResolveUserId(req);
+      if (!isUuid(callerId)) return res.status(401).json({ error: "unauthorized" });
       const { projectId, collaboratorId } = req.params;
       const state = ensureCompatProjectState(projectId);
       state.collaborators = state.collaborators.map((collaborator) => {
