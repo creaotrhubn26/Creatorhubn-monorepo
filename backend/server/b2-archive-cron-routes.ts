@@ -37,7 +37,7 @@ function checkCronSecret(req: express.Request, res: express.Response): boolean {
     res.status(503).json({ error: "ADMIN_ROOM_CRON_SECRET ikke satt på server" });
     return false;
   }
-  if (typeof provided !== "string" || provided.trim() !== secret.trim()) {
+  if (typeof provided !== "string" || provided.trim().length !== secret.trim().length || !require("crypto").timingSafeEqual(Buffer.from(provided.trim()), Buffer.from(secret.trim()))) {
     res.status(401).json({ error: "unauthorized" });
     return false;
   }

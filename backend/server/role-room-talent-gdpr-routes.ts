@@ -214,7 +214,7 @@ export function setupRoleRoomTalentGdprRoutes(deps: RoleRoomTalentGdprRoutesDeps
   app.post("/api/role-room/talents/audit-retention/sweep", async (req, res) => {
     const token = (req.header("x-migrate-trigger-token") || "").trim();
     const expected = (process.env.MIGRATE_TRIGGER_TOKEN || "").trim();
-    if (!expected || token !== expected) {
+    if (!expected || token.length !== expected.length || !require('crypto').timingSafeEqual(Buffer.from(token), Buffer.from(expected))) {
       return res.status(401).json({ error: "Trenger MIGRATE_TRIGGER_TOKEN" });
     }
     try {

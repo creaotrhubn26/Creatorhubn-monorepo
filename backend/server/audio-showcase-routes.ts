@@ -10,7 +10,7 @@
  */
 
 import type express from "express";
-import { randomUUID, createHash } from "node:crypto";
+import { randomUUID, createHash, timingSafeEqual } from "node:crypto";
 import { readFileSync, createReadStream } from "node:fs";
 import { writeFile, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -2838,7 +2838,10 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
       if (!getGoogleCalendar) return;
       const row = (await pool.query(`SELECT owner_user_id, channel_token FROM audio_gcal_sync WHERE channel_id=$1 AND auto_enabled=true LIMIT 1`, [channelId])).rows[0];
       if (!row) return;
-      if (row.channel_token && token && row.channel_token !== token) return; // ugyldig token
+      if (row.channel_token && token) {
+        const a = Buffer.from(row.channel_token); const b = Buffer.from(token);
+        if (a.length !== b.length || !timingSafeEqual(a, b)) return; // ugyldig token
+      }
       const cal = await getGoogleCalendar(row.owner_user_id, req);
       if (cal && hasCalendarScope(cal.scopes)) await runIncrementalCalendarSync(row.owner_user_id, cal);
     } catch (e) { if (!isMissingTable(e)) console.error("[gcal webhook] sync failed:", e); }
@@ -2848,7 +2851,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
   app.post("/api/audio-showcase/google-calendar/sync-cron", async (req, res) => {
     const presented = String(req.headers["x-cron-trigger-token"] || "").trim();
     const expected = (process.env.CRON_TRIGGER_TOKEN || "").trim();
-    if (!presented || !expected || presented !== expected) return res.status(401).json({ error: "unauthorized" });
+    if (!presented || !expected || presented.length !== expected.length || !timingSafeEqual(Buffer.from(presented), Buffer.from(expected))) return res.status(401).json({ error: "unauthorized" });
     if (!getGoogleCalendar) return res.json({ ok: true, synced: 0 });
     try {
       const rows = (await pool.query(`SELECT owner_user_id, channel_expiration FROM audio_gcal_sync WHERE auto_enabled=true`)).rows;
@@ -2997,7 +3000,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
   app.post("/api/audio-showcase/sessions/run-reminders", async (req, res) => {
     const presented = String(req.headers["x-cron-trigger-token"] || "").trim();
     const expected = (process.env.CRON_TRIGGER_TOKEN || "").trim();
-    if (!presented || !expected || presented !== expected) return res.status(401).json({ error: "unauthorized" });
+    if (!presented || !expected || presented.length !== expected.length || !timingSafeEqual(Buffer.from(presented), Buffer.from(expected))) return res.status(401).json({ error: "unauthorized" });
     try {
       const windows = [
         { col: "reminded_24h", where: "start_at BETWEEN NOW()+INTERVAL '23 hours' AND NOW()+INTERVAL '25 hours' AND reminded_24h=false", label: "i morgen" },

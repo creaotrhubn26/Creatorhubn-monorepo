@@ -285,7 +285,7 @@ export function setupRoleRoomAdsCron(deps: RoleRoomAdsCronDeps): void {
   app.post("/api/internal/ads/attribution-tick", async (req, res) => {
     const provided = req.headers["x-cron-secret"];
     const secret = process.env.ADS_CRON_SECRET;
-    if (!secret || provided !== secret) {
+    if (!secret || typeof provided !== 'string' || provided.length !== secret.length || !require('crypto').timingSafeEqual(Buffer.from(provided), Buffer.from(secret))) {
       return res.status(401).json({ error: "unauthorized" });
     }
     try {
