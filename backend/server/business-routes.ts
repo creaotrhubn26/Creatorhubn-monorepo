@@ -899,9 +899,10 @@ export function setupBusinessRoutes(deps: BusinessRoutesDeps): void {
 
   // POST /api/business/swot-items — Create SWOT item
   app.post("/api/business/swot-items", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const _s = requireUserSession(req, res);
+    if (!_s) return;
     try {
-      const userId = readString(req.body?.userId);
+      const userId = _s.userId;
       const profession = readString(req.body?.profession);
       const type = readString(req.body?.type);
       const title = readString(req.body?.title);
@@ -911,7 +912,7 @@ export function setupBusinessRoutes(deps: BusinessRoutesDeps): void {
           .status(400)
           .json({
             success: false,
-            error: "userId, profession, type and title are required",
+            error: "profession, type and title are required",
           });
       }
 
@@ -1272,9 +1273,10 @@ export function setupBusinessRoutes(deps: BusinessRoutesDeps): void {
 
   // POST /api/business/personas — Create persona
   app.post("/api/business/personas", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const _s = requireUserSession(req, res);
+    if (!_s) return;
     try {
-      const userId = readString(req.body?.userId);
+      const userId = _s.userId;
       const profession = readString(req.body?.profession);
       const name = readString(req.body?.name);
 
@@ -1283,7 +1285,7 @@ export function setupBusinessRoutes(deps: BusinessRoutesDeps): void {
           .status(400)
           .json({
             success: false,
-            error: "userId, profession and name are required",
+            error: "profession and name are required",
           });
       }
 
@@ -1668,16 +1670,17 @@ export function setupBusinessRoutes(deps: BusinessRoutesDeps): void {
 
   // POST /api/business/newsletter-campaigns — Create newsletter campaign draft or schedule
   app.post("/api/business/newsletter-campaigns", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const _s = requireUserSession(req, res);
+    if (!_s) return;
     try {
-      const userId = readString(req.body?.userId);
+      const userId = _s.userId;
       const subject = readString(req.body?.subject);
       const content = readString(req.body?.content);
 
       if (!userId || !subject || !content) {
         return res
           .status(400)
-          .json({ error: "userId, subject and content are required" });
+          .json({ error: "subject and content are required" });
       }
 
       const campaignId = crypto.randomUUID();

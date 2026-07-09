@@ -541,10 +541,7 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
   app.put("/api/quotes/reminders/config", async (req, res) => {
     if (!requireUserSession(req, res)) return;
     try {
-      const userId =
-        typeof req.body?.userId === "string" && req.body.userId.trim()
-          ? req.body.userId.trim()
-          : await resolveQuoteUserId(req);
+      const userId = await resolveQuoteUserId(req);
       const config = normalizeQuoteReminderConfig(req.body?.config);
       await compatStoreSet(buildQuoteReminderConfigStoreKey(userId), config);
       res.json({ success: true, config });
@@ -588,10 +585,7 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
     try {
       await ensureQuotesCompatibilitySchema();
 
-      const userId =
-        typeof req.body?.userId === "string" && req.body.userId.trim()
-          ? req.body.userId.trim()
-          : await resolveQuoteUserId(req);
+      const userId = await resolveQuoteUserId(req);
       const config = normalizeQuoteReminderConfig(
         await compatStoreGet<unknown>(buildQuoteReminderConfigStoreKey(userId)),
       );
