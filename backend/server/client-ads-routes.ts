@@ -1387,7 +1387,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
     const baseUrl = (process.env.PUBLIC_BACKEND_URL || `https://${req.get("host") ?? ""}`).replace(/\/+$/, "");
     const redirectUri = `${baseUrl}/api/admin-room/agent/ads/oauth/tiktok/callback`;
     const configId = typeof req.query.configId === "string" ? req.query.configId : "";
-    const state = `${session.userId}.${configId}.${crypto.randomBytes(12).toString("hex")}`;
+    const state = _buildAdsOauthState(session.userId, configId);
     const authUrl = buildTiktokAuthUrl({ state, redirectUri });
     if (!authUrl) return res.status(503).json({ error: "TIKTOK_BUSINESS_APP_ID/SECRET ikke satt." });
     return res.json({ authUrl });
@@ -1398,8 +1398,9 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
     const state = typeof req.query.state === "string" ? req.query.state : null;
     if (!authCode || !state) return res.status(400).send("Missing auth_code/state");
 
-    const [userId, configId] = state.split(".");
-    if (!userId) return res.status(400).send("Invalid state");
+    const stateParts = _verifyAdsOauthState(state);
+    if (!stateParts) return res.status(400).send("Invalid or tampered state");
+    const { userId, configId } = stateParts;
 
     try {
       const tokenResult = await exchangeTiktokAuthCode(authCode);
