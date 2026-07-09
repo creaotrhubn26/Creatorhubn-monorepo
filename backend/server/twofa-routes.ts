@@ -1,5 +1,19 @@
+import crypto from "crypto";
 import express from "express";
 import type { Pool } from "pg";
+
+const _twoFaRateBuckets = new Map<string, number[]>();
+function _twoFaRateLimited(key: string): boolean {
+  const now = Date.now();
+  const arr = (_twoFaRateBuckets.get(key) ?? []).filter((t) => now - t < 15 * 60_000);
+  arr.push(now);
+  _twoFaRateBuckets.set(key, arr);
+  return arr.length > 10;
+}
+function _clientIp(req: express.Request): string {
+  return (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()
+    ?? req.socket?.remoteAddress ?? "?";
+}
 
 export interface TwoFaRoutesDeps {
   app: express.Application;
@@ -45,15 +59,14 @@ export function setupTwoFaRoutes(deps: TwoFaRoutesDeps): void {
         qrPngDataUrl: setup.qrPngDataUrl,
       });
     } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      console.error("[/api/2fa/setup] failed", msg);
-      return res
-        .status(500)
-        .json({ error: "setup_failed", message: msg });
+      console.error("[/api/2fa/setup] failed", error);
+      return res.status(500).json({ error: "setup_failed" });
     }
   });
 
   app.post("/api/2fa/verify-and-enable", async (req, res) => {
+    if (_twoFaRateLimited(_clientIp(req)))
+      return res.status(429).json({ error: "too_many_requests" });
     const session = await resolveActiveSessionFromRequest(req);
     if (!session) return res.status(401).json({ error: "not_authenticated" });
     const body = (
@@ -105,6 +118,8 @@ export function setupTwoFaRoutes(deps: TwoFaRoutesDeps): void {
   // Brukes av /api/auth/login når password-valid og bruker har 2FA på.
   // Endpoint validerer ikke passord selv — caller er ansvarlig for det.
   app.post("/api/2fa/login-verify", async (req, res) => {
+    if (_twoFaRateLimited(_clientIp(req)))
+      return res.status(429).json({ error: "too_many_requests" });
     const body = (
       req.body && typeof req.body === "object" ? req.body : {}
     ) as Record<string, unknown>;
