@@ -554,11 +554,11 @@ export function setupAdminUsersRoutes(deps: AdminUsersRoutesDeps): void {
       if (!requireAdminSession(req, res)) {
         return;
       }
-      const days = parseInt(req.query.days as string) || 30;
+      const days = Math.min(365, Math.max(1, parseInt(req.query.days as string) || 30));
       const result = await pool.query(
         `SELECT * FROM invite_requests
          WHERE status = 'approved' AND processed_at > NOW() - INTERVAL '1 day' * $1
-         ORDER BY processed_at DESC`,
+         ORDER BY processed_at DESC LIMIT 500`,
         [days],
       );
       res.json(
