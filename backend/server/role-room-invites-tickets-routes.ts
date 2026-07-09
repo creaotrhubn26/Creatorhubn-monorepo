@@ -173,9 +173,10 @@ export function setupRoleRoomInvitesTicketsRoutes(
       const result = await pool.query(
         `UPDATE role_room_tester_invites
          SET status = 'accepted', accepted_at = NOW(), accepted_nda_name = $1, updated_at = NOW()
-         WHERE id = $2 RETURNING accepted_at`,
+         WHERE id = $2 AND status = 'pending' RETURNING accepted_at`,
         [ndaName, inv.id],
       );
+      if (!result.rows.length) return res.status(409).json({ error: "Invite already accepted" });
       res.json({
         success: true,
         acceptedAt: result.rows[0].accepted_at,

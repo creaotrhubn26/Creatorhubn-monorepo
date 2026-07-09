@@ -457,10 +457,11 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
                program_started_at = $4,
                program_ends_at = $5,
                updated_at = NOW()
-           WHERE id = $6
+           WHERE id = $6 AND status = 'pending'
          RETURNING *`,
         [ndaName.slice(0, 200), programTermsVersion, ip, startsAt, endsAt, inv.id],
       );
+      if (!upd.rows.length) return res.status(409).json({ error: "Invitasjonen er allerede akseptert" });
 
       // Opprett brukerkonto for testeren (master/medlem) ved aksept, så de
       // faktisk har en konto med matchende e-post å logge inn med (Google OAuth /
