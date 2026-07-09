@@ -39,7 +39,13 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 25 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    if (/^(image\/|application\/pdf)/.test(file.mimetype)) cb(null, true);
+    // Explicit allowlist — image/svg+xml excluded (SVG can contain <script> → stored XSS).
+    const ALLOWED_MIME = new Set([
+      "image/jpeg", "image/png", "image/webp", "image/gif",
+      "image/heic", "image/heif", "image/avif",
+      "application/pdf",
+    ]);
+    if (ALLOWED_MIME.has(file.mimetype)) cb(null, true);
     else cb(new Error("Kun bilder og PDF er tillatt") as any, false);
   },
 });

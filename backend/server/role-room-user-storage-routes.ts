@@ -49,8 +49,25 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 },
   fileFilter: (_req, file, cb) => {
-    const allowed = /^(image\/|video\/|audio\/|application\/pdf|application\/msword|application\/vnd\.|text\/plain)/;
-    if (allowed.test(file.mimetype)) cb(null, true);
+    // Explicit allowlist — image/* prefix intentionally excluded to block
+    // image/svg+xml (SVG can contain <script> → stored XSS when served inline).
+    const ALLOWED_MIME = new Set([
+      "image/jpeg", "image/png", "image/webp", "image/gif",
+      "image/heic", "image/heif", "image/avif",
+      "video/mp4", "video/webm", "video/quicktime", "video/x-msvideo",
+      "video/mpeg", "video/ogg",
+      "audio/mpeg", "audio/mp4", "audio/ogg", "audio/wav",
+      "audio/webm", "audio/aac", "audio/x-m4a", "audio/m4a",
+      "application/pdf",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/vnd.ms-excel",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "application/vnd.ms-powerpoint",
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      "text/plain",
+    ]);
+    if (ALLOWED_MIME.has(file.mimetype)) cb(null, true);
     else cb(new Error("Filtype ikke tillatt") as any, false);
   },
 });

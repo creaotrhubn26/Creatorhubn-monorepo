@@ -41,7 +41,17 @@ const mediaUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 60 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    if (/^(image\/|video\/|audio\/|application\/pdf)/.test(file.mimetype)) cb(null, true);
+    // Explicit allowlist — image/svg+xml excluded (SVG can contain <script> → stored XSS).
+    const ALLOWED_MIME = new Set([
+      "image/jpeg", "image/png", "image/webp", "image/gif",
+      "image/heic", "image/heif", "image/avif",
+      "video/mp4", "video/webm", "video/quicktime", "video/x-msvideo",
+      "video/mpeg", "video/ogg",
+      "audio/mpeg", "audio/mp4", "audio/ogg", "audio/wav",
+      "audio/webm", "audio/aac", "audio/x-m4a", "audio/m4a",
+      "application/pdf",
+    ]);
+    if (ALLOWED_MIME.has(file.mimetype)) cb(null, true);
     else cb(new Error("Filtype ikke tillatt") as any, false);
   },
 });
