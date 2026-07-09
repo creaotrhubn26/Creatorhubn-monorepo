@@ -893,6 +893,7 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
   const ensureProjectFileStorageDirectory = async (
     projectId: string,
   ): Promise<string> => {
+    if (!isUuid(projectId)) throw new Error("invalid_project_id");
     const projectDirectory = path.join(PROJECT_FILE_STORAGE_ROOT, projectId);
     await fs.mkdir(projectDirectory, { recursive: true });
     return projectDirectory;

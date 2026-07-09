@@ -59,7 +59,7 @@ export function registerRoleRoomDeadlineReminderRoutes(app: Express, deps: Deps)
   app.post('/api/role-room/internal/deadline-reminders/run', async (req: Request, res: Response) => {
     const presented = String(req.headers['x-cron-trigger-token'] || '').trim();
     const expected = (process.env.CRON_TRIGGER_TOKEN || '').trim();
-    if (!presented || !expected || !crypto.timingSafeEqual(Buffer.from(presented), Buffer.from(expected))) {
+    if (!presented || !expected || presented.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(presented), Buffer.from(expected))) {
       res.status(401).json({ error: 'unauthorized' });
       return;
     }

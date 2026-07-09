@@ -3983,7 +3983,8 @@ async function persistEnhancedBuffer(params: {
   settings: PhotoEnhancerSettings;
   namePrefix?: string;
 }): Promise<PhotoEnhancerSavedFile> {
-  const projectDirectory = path.join(projectFileStorageRoot, params.projectId);
+  const safeProjectId = sanitizeR2KeySegment(params.projectId || "photo-enhancer", "photo-enhancer");
+  const projectDirectory = path.join(projectFileStorageRoot, safeProjectId);
   await fs.mkdir(projectDirectory, { recursive: true });
   const id = crypto.randomUUID();
   const extension = extensionForMime(params.mimeType);
