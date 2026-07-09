@@ -475,6 +475,8 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
 
   // PUT /api/projects/:id — update project
   app.put("/api/projects/:id", async (req, res) => {
+    const _putCallerId = compatResolveUserId(req);
+    if (!isUuid(_putCallerId)) return res.status(401).json({ error: "unauthorized" });
     try {
       const { id } = req.params;
       const data = req.body;
