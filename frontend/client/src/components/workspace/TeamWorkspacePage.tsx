@@ -190,34 +190,33 @@ const TeamWorkspacePage: React.FC = () => {
 
   const navItem = WS_NAV.find((n) => n.key === tab);
 
-  const TABS: Record<string, React.ReactNode> = {
-    oversikt: <OversiktTab projectId={projectId} />,
-    prosjektplan: <ProsjektplanTab projectId={projectId} />,
-    produksjonskart: <ProduksjonskartTab projectId={projectId} />,
-    shotlist: <ShotlistTab projectId={projectId} />,
-    laater: <LaaterTab projectId={projectId} />,
-    sesjoner: <SesjonerTab projectId={projectId} />,
-    academy: <AcademyProvider><AcademyInstructorAdminStudio /></AcademyProvider>,
-    community: <CommunityHub userId={user?.id} userEmail={user?.email} profession={user?.profession || 'photographer'} />,
-    moodboard: <MoodboardTab projectId={projectId} />,
-    media: <MediaTab projectId={projectId} />,
-    utstyr: <UtstyrTab projectId={projectId} profession={user?.profession} userId={user?.id} />,
-    leveranser: <LeveranserTab projectId={projectId} />,
-    oppgaver: <OppgaverTab projectId={projectId} />,
-    avtaler: <AvtalerTab projectId={projectId} />,
-    foresporsler: <ForesporslerTab projectId={projectId} profession={user?.profession} userId={user?.id} userName={user?.firstName || (user as any)?.name || user?.email} />,
-    kundevisning: <KundevisningTab projectId={projectId} />,
-    team: <TeamTab projectId={projectId} profession={user?.profession} userId={user?.id} projectName={(project as any)?.title || (project as any)?.name} />,
-    'sound-room': <SoundRoomTab projectId={projectId} />,
-    'video-room': <VideoRoomTab projectId={projectId} />,
-    'photo-room': <PhotoRoomTab projectId={projectId} />,
-    chat: (
-      <Box sx={{ height: 'calc(100vh - 160px)', maxWidth: 760, mx: 'auto' }}>
-        <WorkspaceChatPanel projectId={projectId} />
-      </Box>
-    ),
-  };
-  const content = TABS[tab] || <ComingTab label={navItem?.label || tab} />;
+  const content = useMemo(() => {
+    switch (tab) {
+      case 'oversikt':       return <OversiktTab projectId={projectId} />;
+      case 'prosjektplan':   return <ProsjektplanTab projectId={projectId} />;
+      case 'produksjonskart':return <ProduksjonskartTab projectId={projectId} />;
+      case 'shotlist':       return <ShotlistTab projectId={projectId} />;
+      case 'laater':         return <LaaterTab projectId={projectId} />;
+      case 'sesjoner':       return <SesjonerTab projectId={projectId} />;
+      case 'academy':        return <AcademyProvider><AcademyInstructorAdminStudio /></AcademyProvider>;
+      case 'community':      return <CommunityHub userId={user?.id} userEmail={user?.email} profession={user?.profession || 'photographer'} />;
+      case 'moodboard':      return <MoodboardTab projectId={projectId} />;
+      case 'media':          return <MediaTab projectId={projectId} />;
+      case 'utstyr':         return <UtstyrTab projectId={projectId} profession={user?.profession} userId={user?.id} />;
+      case 'leveranser':     return <LeveranserTab projectId={projectId} />;
+      case 'oppgaver':       return <OppgaverTab projectId={projectId} />;
+      case 'avtaler':        return <AvtalerTab projectId={projectId} />;
+      case 'foresporsler':   return <ForesporslerTab projectId={projectId} profession={user?.profession} userId={user?.id} userName={user?.firstName || (user as any)?.name || user?.email} />;
+      case 'kundevisning':   return <KundevisningTab projectId={projectId} />;
+      case 'team':           return <TeamTab projectId={projectId} profession={user?.profession} userId={user?.id} projectName={(project as any)?.title || (project as any)?.name} />;
+      case 'sound-room':     return <SoundRoomTab projectId={projectId} />;
+      case 'video-room':     return <VideoRoomTab projectId={projectId} />;
+      case 'photo-room':     return <PhotoRoomTab projectId={projectId} />;
+      case 'chat':           return <Box sx={{ height: 'calc(100vh - 160px)', maxWidth: 760, mx: 'auto' }}><WorkspaceChatPanel projectId={projectId} /></Box>;
+      default:               return <ComingTab label={navItem?.label || tab} />;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, projectId, user?.id, user?.email, user?.profession, user?.firstName, (project as any)?.title, (project as any)?.name, navItem?.label]);
 
   return (
     <WorkspaceShell

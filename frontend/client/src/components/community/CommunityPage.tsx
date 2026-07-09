@@ -1670,14 +1670,16 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
                 color="secondary"
                 startIcon={<School />}
                 onClick={() => {
-                  // Navigate to Academy Dashboard
-                  // We'll use the router or window location to navigate
                   const currentPath = window.location.pathname;
                   if (currentPath.includes('/dashboard')) {
-                    // If we're in dashboard context, trigger tab change
                     window.dispatchEvent(new CustomEvent('navigate-to-academy'));
+                  } else if (currentPath.includes('/workspace/')) {
+                    // Stay in workspace — navigate to the academy tab within the same project
+                    const match = currentPath.match(/\/workspace\/([^/]+)/);
+                    window.location.href = match
+                      ? `/workspace/${match[1]}/academy`
+                      : '/academy';
                   } else {
-                    // Otherwise navigate to dashboard with academy tab
                     window.location.href = '/dashboard?tab=academy';
                   }
                 }}
