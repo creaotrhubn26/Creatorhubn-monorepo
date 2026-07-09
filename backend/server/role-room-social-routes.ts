@@ -401,7 +401,7 @@ export function setupRoleRoomSocialRoutes(
       console.error("[tiktok-oauth-callback] failed", error);
       return res
         .status(500)
-        .send(`TikTok OAuth feilet: ${(error as Error).message}`);
+        .send("TikTok OAuth feilet. Lukk dette vinduet og prøv igjen.");
     }
   });
 
