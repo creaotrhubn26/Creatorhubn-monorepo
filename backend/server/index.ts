@@ -46908,7 +46908,20 @@ app.get("/api/showcase-media/:key", async (req, res) => {
   }
 });
 
+const _uploadRateBuckets = new Map<string, number[]>();
+function _uploadRateLimited(key: string): boolean {
+  const now = Date.now();
+  const arr = (_uploadRateBuckets.get(key) ?? []).filter((t) => now - t < 60_000);
+  arr.push(now);
+  _uploadRateBuckets.set(key, arr);
+  return arr.length > 30;
+}
+
 app.post("/api/upload/audio", audioUpload.single("file"), async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const ip = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ?? req.socket?.remoteAddress ?? "?";
+  if (_uploadRateLimited(`upload:${session.userId}:${ip}`)) return res.status(429).json({ success: false, error: "too_many_requests" });
   try {
     if (!req.file)
       return res
@@ -46919,13 +46932,17 @@ app.post("/api/upload/audio", audioUpload.single("file"), async (req, res) => {
     res.json({ success: true, url, durable: Boolean(durable) });
   } catch (error) {
     console.error("Audio upload error:", error);
-    res.status(500).json({ success: false, error: "Failed to upload audio" });
+    res.status(500).json({ success: false, error: "internal_error" });
   }
 });
 
 // Generisk bilde-opplasting (profilbilde/cover for Audio Showcase) — B2 (varig)
 // m/ fallback til lokal disk. Erstatter data-URL-inlining.
 app.post("/api/upload/image", showcaseMediaUpload.single("file"), async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const ip = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ?? req.socket?.remoteAddress ?? "?";
+  if (_uploadRateLimited(`upload:${session.userId}:${ip}`)) return res.status(429).json({ success: false, error: "too_many_requests" });
   try {
     if (!req.file) return res.status(400).json({ success: false, error: "Missing image file" });
     if (!String(req.file.mimetype || "").startsWith("image/")) return res.status(400).json({ success: false, error: "Not an image" });
@@ -46934,7 +46951,7 @@ app.post("/api/upload/image", showcaseMediaUpload.single("file"), async (req, re
     res.json({ success: true, url, durable: Boolean(durable) });
   } catch (error) {
     console.error("Image upload error:", error);
-    res.status(500).json({ success: false, error: "Failed to upload image" });
+    res.status(500).json({ success: false, error: "internal_error" });
   }
 });
 

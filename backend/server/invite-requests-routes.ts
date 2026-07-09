@@ -2,6 +2,17 @@ import express from "express";
 import type { Pool } from "pg";
 import { notifyAdmins } from "./admin-notify";
 
+const _inviteRateBuckets = new Map<string, number[]>();
+function _inviteRateLimited(ip: string): boolean {
+  const now = Date.now();
+  const arr = (_inviteRateBuckets.get(ip) ?? []).filter((t) => now - t < 3_600_000);
+  arr.push(now);
+  _inviteRateBuckets.set(ip, arr);
+  return arr.length > 5;
+}
+const _inviteClientIp = (req: express.Request): string =>
+  (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ?? req.socket?.remoteAddress ?? "?";
+
 const INVITE_REQUEST_APPROVER_ROLES = new Set([
   "admin",
   "super_admin",
@@ -209,6 +220,7 @@ export function setupInviteRequestsRoutes(
   }
 
   app.post("/api/invite-requests", async (req, res) => {
+    if (_inviteRateLimited(_inviteClientIp(req))) return res.status(429).json({ error: "too_many_requests" });
     try {
       const {
         email,
