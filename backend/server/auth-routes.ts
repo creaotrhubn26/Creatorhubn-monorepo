@@ -203,6 +203,13 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
       }
 
       if (!result.rowCount || result.rowCount === 0) {
+        // Dummy bcrypt compare equalizes response time regardless of whether the email
+        // exists, preventing timing-based username enumeration.
+        const bcrypt = await import("bcrypt");
+        await bcrypt.default.compare(
+          effectivePassword || "",
+          "$2b$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy",
+        );
         return res.status(401).json({ error: "Ugyldig e-post eller passord" });
       }
 
