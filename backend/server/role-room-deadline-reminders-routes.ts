@@ -12,6 +12,7 @@
 // [[feedback_cron_trigger_token_pattern]]). Endepunktet er prosjekt-agnostisk
 // (skanner alle prosjekter) og dedup-er via upsertProducerProjectNotification.
 
+import crypto from "crypto";
 import type { Express, Request, Response } from 'express';
 import type { Pool } from 'pg';
 import {
@@ -58,7 +59,7 @@ export function registerRoleRoomDeadlineReminderRoutes(app: Express, deps: Deps)
   app.post('/api/role-room/internal/deadline-reminders/run', async (req: Request, res: Response) => {
     const presented = String(req.headers['x-cron-trigger-token'] || '').trim();
     const expected = (process.env.CRON_TRIGGER_TOKEN || '').trim();
-    if (!presented || !expected || presented !== expected) {
+    if (!presented || !expected || !crypto.timingSafeEqual(Buffer.from(presented), Buffer.from(expected))) {
       res.status(401).json({ error: 'unauthorized' });
       return;
     }

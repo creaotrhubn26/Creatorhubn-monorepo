@@ -381,6 +381,7 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
         `[Auth] Login: ${dbUser.email} as ${roleRoomSessionRole} (session: ${sessionToken.substring(0, 8)}...)`,
       );
 
+      res.setHeader('Cache-Control', 'no-store');
       res.json({
         success: true,
         token: sessionToken,
@@ -569,6 +570,7 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
       activeSessions.set(sessionToken, pending.sessionData);
       await persistAuthSession(pool, sessionToken, pending.sessionData);
       console.log(`[Auth] 2FA login completed for ${pending.sessionData.email}${result.usedBackupCode ? " (backup-code)" : ""}`);
+      res.setHeader('Cache-Control', 'no-store');
       return res.json({
         success: true,
         usedBackupCode: result.usedBackupCode === true,

@@ -13,6 +13,7 @@ import {
 import { hydrateSessionsFromDb, persistSession } from "./persistent-session-store.js";
 
 import express from "express";
+import helmet from "helmet";
 import cors from "cors";
 import multer from "multer";
 import { createRequire } from "module";
@@ -1945,6 +1946,12 @@ const KNOWN_ORIGINS = new Set([
   'http://tauri.localhost',
   'https://tauri.localhost',
 ]);
+app.use(helmet({
+  // API-only backend — no HTML served, so CSP is not needed
+  contentSecurityPolicy: false,
+  // CORS handles cross-origin; crossOriginResourcePolicy would break file downloads
+  crossOriginResourcePolicy: false,
+}));
 app.use(cors({
   origin: (origin, callback) => {
     // Ingen origin (samme-origin eller server-til-server) — tillat

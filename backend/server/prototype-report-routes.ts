@@ -10,6 +10,7 @@
  * lazily siden start-scriptet ikke kjører migrate.sh på hver deploy.
  */
 
+import crypto from "crypto";
 import type express from "express";
 import type { Pool } from "pg";
 import { composeEmail } from "./email-design-system";
@@ -254,7 +255,7 @@ export function setupPrototypeReportRoutes({ app, pool, getActiveSessionFromRequ
   app.post("/api/cron/prototype-tester-report", async (req, res) => {
     const cronToken = req.headers["x-cron-trigger-token"] as string | undefined;
     const expected = process.env.CRON_TRIGGER_TOKEN;
-    const viaToken = !!expected && !!cronToken && cronToken === expected;
+    const viaToken = !!expected && !!cronToken && crypto.timingSafeEqual(Buffer.from(cronToken), Buffer.from(expected));
     if (!viaToken && !adminFromReq(req)) return res.status(403).json({ error: "Ikke autorisert" });
     try {
       res.json(await sendReport(null));

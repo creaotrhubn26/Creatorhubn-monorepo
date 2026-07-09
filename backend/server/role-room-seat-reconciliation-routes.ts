@@ -11,6 +11,7 @@
  *   - Av Render cron-job (POST med X-Reconcile-Token-header)
  */
 
+import crypto from "crypto";
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import { countActiveSeats, syncRoleRoomSeatQuantity, logBillingAlert } from "./role-room-seat-stripe-sync.js";
@@ -47,7 +48,7 @@ export function registerRoleRoomSeatReconciliationRoutes(app: Express, deps: Dep
     // 2. Cron-token via header (for Render cron-job)
     const cronToken = process.env.ROLE_ROOM_RECONCILE_CRON_TOKEN;
     const reqToken = String(req.headers["x-reconcile-token"] ?? "").trim();
-    if (cronToken && reqToken && cronToken === reqToken) {
+    if (cronToken && reqToken && crypto.timingSafeEqual(Buffer.from(cronToken), Buffer.from(reqToken))) {
       return "cron-job";
     }
     if (!res.headersSent) res.status(401).json({ error: "unauthorized" });

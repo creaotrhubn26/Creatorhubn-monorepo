@@ -118,6 +118,7 @@ export function setupCouplesRoutes(deps: CouplesRoutesDeps): void {
         `[CoupleLogin] Success: ${couple.email} (session: ${sessionToken.substring(0, 8)}...)`,
       );
 
+      res.setHeader('Cache-Control', 'no-store');
       res.json({
         success: true,
         token: sessionToken,
