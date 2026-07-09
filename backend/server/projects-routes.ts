@@ -634,9 +634,11 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
 
   // DELETE /api/projects/:id — delete project
   app.delete("/api/projects/:id", async (req, res) => {
+    const _callerId = compatResolveUserId(req);
+    if (!isUuid(_callerId)) return res.status(401).json({ error: "unauthorized" });
     try {
       const result = await pool.query(
-        "DELETE FROM legacy.projects WHERE id = $1 RETURNING id",
+        "DELETE FROM legacy.projects WHERE id = $1 AND created_by = $2 RETURNING id",
         [req.params.id],
       );
       if (result.rowCount === 0) {
@@ -760,6 +762,8 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
   app.delete(
     "/api/projects/:projectId/collaborators/:collaboratorId",
     async (req, res) => {
+      const _cid = compatResolveUserId(req);
+      if (!isUuid(_cid)) return res.status(401).json({ error: "unauthorized" });
       const { projectId, collaboratorId } = req.params;
       const state = ensureCompatProjectState(projectId);
       state.collaborators = state.collaborators.filter(
@@ -1193,6 +1197,7 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
   });
 
   app.put("/api/projects/:projectId/comments/:commentId", async (req, res) => {
+    if (!isUuid(compatResolveUserId(req))) return res.status(401).json({ error: "unauthorized" });
     const { projectId, commentId } = req.params;
     const state = ensureCompatProjectState(projectId);
     state.comments = state.comments.map((comment) =>
@@ -1207,6 +1212,7 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
   });
 
   app.delete("/api/projects/:projectId/comments/:commentId", async (req, res) => {
+    if (!isUuid(compatResolveUserId(req))) return res.status(401).json({ error: "unauthorized" });
     const { projectId, commentId } = req.params;
     const state = ensureCompatProjectState(projectId);
     state.comments = state.comments.filter((comment) => comment.id !== commentId);
@@ -1222,6 +1228,7 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
   });
 
   app.put("/api/projects/:projectId/integrations", async (req, res) => {
+    if (!isUuid(compatResolveUserId(req))) return res.status(401).json({ error: "unauthorized" });
     const { projectId } = req.params;
     const state = ensureCompatProjectState(projectId);
     const payload = req.body && typeof req.body === "object" ? req.body : {};
@@ -1245,6 +1252,7 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
   app.post(
     "/api/projects/:projectId/integrations/:integrationType",
     async (req, res) => {
+      if (!isUuid(compatResolveUserId(req))) return res.status(401).json({ error: "unauthorized" });
       const { projectId, integrationType } = req.params;
       const state = ensureCompatProjectState(projectId);
       state.integrations[integrationType] = {
@@ -1307,6 +1315,7 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
   });
 
   app.put("/api/projects/:projectId/permissions", async (req, res) => {
+    if (!isUuid(compatResolveUserId(req))) return res.status(401).json({ error: "unauthorized" });
     const { projectId } = req.params;
     const state = ensureCompatProjectState(projectId);
     state.permissions = {
@@ -1359,6 +1368,7 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
   });
 
   app.put("/api/projects/:projectId/compliance", async (req, res) => {
+    if (!isUuid(compatResolveUserId(req))) return res.status(401).json({ error: "unauthorized" });
     const { projectId } = req.params;
     const state = ensureCompatProjectState(projectId);
     state.compliance = {
