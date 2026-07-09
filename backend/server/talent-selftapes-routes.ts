@@ -1212,9 +1212,8 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
           WHERE cr.id = $1 LIMIT 1`,
         [req.params.roleId],
       );
-      if (!own.rowCount) return res.status(404).json({ error: "Rolle ikke funnet" });
-      if (!isDemo && own.rows[0].created_by !== session?.userId) {
-        return res.status(403).json({ error: "Du eier ikke prosjektet" });
+      if (!own.rowCount || (!isDemo && own.rows[0].created_by !== session?.userId)) {
+        return res.status(404).json({ error: "Rolle ikke funnet" });
       }
 
       const r = await pool.query(
@@ -1265,13 +1264,9 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
             WHERE s.id = $1::uuid LIMIT 1`,
           [req.params.id],
         );
-        if (!own.rowCount) return res.status(404).json({ error: "Submission ikke funnet" });
         const row = own.rows[0];
-        if (!isDemo && !row.created_by) {
-          return res.status(403).json({ error: "Ingen prosjekt-eier-info" });
-        }
-        if (!isDemo && row.created_by !== session?.userId) {
-          return res.status(403).json({ error: "Du eier ikke prosjektet" });
+        if (!own.rowCount || (!isDemo && (!row.created_by || row.created_by !== session?.userId))) {
+          return res.status(404).json({ error: "Submission ikke funnet" });
         }
 
         const upd = await pool.query(
@@ -1343,9 +1338,8 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
             WHERE s.id = $1::uuid LIMIT 1`,
           [req.params.id],
         );
-        if (!own.rowCount) return res.status(404).json({ error: "Submission ikke funnet" });
-        if (!isDemo && own.rows[0].created_by !== session?.userId) {
-          return res.status(403).json({ error: "Du eier ikke prosjektet" });
+        if (!own.rowCount || (!isDemo && own.rows[0].created_by !== session?.userId)) {
+          return res.status(404).json({ error: "Submission ikke funnet" });
         }
 
         // Fire-and-forget — feiler aldri kallet
@@ -1390,9 +1384,8 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
             WHERE s.id = $1::uuid LIMIT 1`,
           [req.params.id],
         );
-        if (!own.rowCount) return res.status(404).json({ error: "Submission ikke funnet" });
-        if (!isDemo && own.rows[0].created_by !== session?.userId) {
-          return res.status(403).json({ error: "Du eier ikke prosjektet" });
+        if (!own.rowCount || (!isDemo && own.rows[0].created_by !== session?.userId)) {
+          return res.status(404).json({ error: "Submission ikke funnet" });
         }
 
         const r = await pool.query(
@@ -1451,9 +1444,8 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
             WHERE s.id = $1::uuid LIMIT 1`,
           [req.params.id],
         );
-        if (!own.rowCount) return res.status(404).json({ error: "Submission ikke funnet" });
-        if (!isDemo && own.rows[0].created_by !== session?.userId) {
-          return res.status(403).json({ error: "Du eier ikke prosjektet" });
+        if (!own.rowCount || (!isDemo && own.rows[0].created_by !== session?.userId)) {
+          return res.status(404).json({ error: "Submission ikke funnet" });
         }
 
         const r = await pool.query(

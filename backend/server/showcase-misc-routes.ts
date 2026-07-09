@@ -469,11 +469,8 @@ export function setupShowcaseMiscRoutes(deps: ShowcaseMiscRoutesDeps): void {
         [galleryId],
       );
       const row = owner.rows[0];
-      if (!row) {
+      if (!row || row.photographer_id !== session.userId) {
         return res.status(404).json({ error: "galleri_ikke_funnet" });
-      }
-      if (row.photographer_id !== session.userId) {
-        return res.status(403).json({ error: "ikke_eier_av_galleri" });
       }
       if (row.status === 'revoked') {
         return res.json({
@@ -518,11 +515,8 @@ export function setupShowcaseMiscRoutes(deps: ShowcaseMiscRoutesDeps): void {
           [galleryId],
         );
         const row = owner.rows[0];
-        if (!row) {
+        if (!row || row.photographer_id !== session.userId) {
           return res.status(404).json({ error: "galleri_ikke_funnet" });
-        }
-        if (row.photographer_id !== session.userId) {
-          return res.status(403).json({ error: "ikke_eier_av_galleri" });
         }
         const newAccessToken = crypto.randomBytes(24).toString("hex");
         await pool.query(
@@ -769,9 +763,8 @@ export function setupShowcaseMiscRoutes(deps: ShowcaseMiscRoutesDeps): void {
         [galleryId],
       );
       const g = row.rows[0];
-      if (!g) return res.status(404).json({ error: "galleri_ikke_funnet" });
-      if (g.photographer_id !== session.userId) {
-        return res.status(403).json({ error: "ikke_eier_av_galleri" });
+      if (!g || g.photographer_id !== session.userId) {
+        return res.status(404).json({ error: "galleri_ikke_funnet" });
       }
       const settings = (g.gallery_settings ?? {}) as Record<string, unknown>;
       const round = Number(settings.proofingRound ?? 1) || 1;
@@ -801,9 +794,8 @@ export function setupShowcaseMiscRoutes(deps: ShowcaseMiscRoutesDeps): void {
           [galleryId],
         );
         const g = row.rows[0];
-        if (!g) return res.status(404).json({ error: "galleri_ikke_funnet" });
-        if (g.photographer_id !== session.userId) {
-          return res.status(403).json({ error: "ikke_eier_av_galleri" });
+        if (!g || g.photographer_id !== session.userId) {
+          return res.status(404).json({ error: "galleri_ikke_funnet" });
         }
         const settings = (g.gallery_settings ?? {}) as Record<string, unknown>;
         const currentRound = Number(settings.proofingRound ?? 1) || 1;
