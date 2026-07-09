@@ -470,6 +470,8 @@ export function setupSubmissionsRoutes(deps: SubmissionsRoutesDeps): void {
   });
 
   app.put("/api/submissions/:id/status", async (req, res) => {
+    const _sCallerId = compatResolveUserId(req);
+    if (!isUuid(_sCallerId)) return res.status(401).json({ error: "unauthorized" });
     try {
       const { id } = req.params;
       const { status, internalNotes, followUpDate } = req.body;
