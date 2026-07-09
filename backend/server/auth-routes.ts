@@ -2,6 +2,20 @@ import express from "express";
 import type { Pool } from "pg";
 import { exchangeGoogleIdToken } from "./google-id-token-service.js";
 
+// Sliding-window in-memory rate limiter (per IP or per key).
+const _authRateBuckets = new Map<string, number[]>();
+function _authRateLimited(key: string, max: number, windowMs: number): boolean {
+  const now = Date.now();
+  const arr = (_authRateBuckets.get(key) ?? []).filter((t) => now - t < windowMs);
+  arr.push(now);
+  _authRateBuckets.set(key, arr);
+  return arr.length > max;
+}
+const _authClientIp = (req: express.Request): string =>
+  (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()
+  ?? req.socket?.remoteAddress
+  ?? "?";
+
 export interface AuthRoutesDeps {
   app: express.Application;
   pool: Pool;
@@ -51,6 +65,8 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
   type ActiveSessionData = any;
 
   app.post("/api/auth/login", async (req, res) => {
+    if (_authRateLimited(`login:${_authClientIp(req)}`, 10, 60_000))
+      return res.status(429).json({ error: "too_many_requests" });
     try {
       const { email, password } = req.body;
       const loginType =
@@ -390,6 +406,8 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
   // bare ny kode, ikke flere parallelt. For ekte rate-limiting på
   // IP-nivå anbefales nginx/cloudflare-laget.
   app.post("/api/auth/email-code/send", async (req, res) => {
+    if (_authRateLimited(`emailcode-send:${_authClientIp(req)}`, 5, 600_000))
+      return res.status(429).json({ error: "too_many_requests" });
     const body = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
     const email = typeof body.email === "string" ? body.email : "";
     const purpose = typeof body.purpose === "string" ? body.purpose : "";
@@ -421,6 +439,8 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
   });
 
   app.post("/api/auth/email-code/verify", async (req, res) => {
+    if (_authRateLimited(`emailcode-verify:${_authClientIp(req)}`, 10, 60_000))
+      return res.status(429).json({ error: "too_many_requests" });
     const body = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
     const email = typeof body.email === "string" ? body.email : "";
     const purpose = typeof body.purpose === "string" ? body.purpose : "";
@@ -459,6 +479,8 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
   // GET  /api/auth/reset-password/:token   — sjekk om token er gyldig
   // POST /api/auth/reset-password/:token   — sett nytt passord
   app.post("/api/auth/request-password-reset", async (req, res) => {
+    if (_authRateLimited(`pw-reset:${_authClientIp(req)}`, 5, 3_600_000))
+      return res.status(429).json({ error: "too_many_requests" });
     const body = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
     const email = typeof body.email === "string" ? body.email : "";
     const ipAddress = (req.headers["x-forwarded-for"]?.toString().split(",")[0]
@@ -491,6 +513,8 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
   });
 
   app.post("/api/auth/reset-password/:token", async (req, res) => {
+    if (_authRateLimited(`pw-reset-consume:${_authClientIp(req)}`, 5, 60_000))
+      return res.status(429).json({ error: "too_many_requests" });
     const token = String(req.params.token || "").trim();
     const body = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
     const password = typeof body.password === "string" ? body.password : "";
@@ -515,6 +539,8 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
   //   har gitt en 6-sifret TOTP-kode (eller backup-kode).
   //   Body: { tempToken, code }
   app.post("/api/auth/login/complete-2fa", async (req, res) => {
+    if (_authRateLimited(`2fa:${_authClientIp(req)}`, 5, 60_000))
+      return res.status(429).json({ error: "too_many_requests" });
     purgeExpiredPendingTwoFactor();
     const body = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
     const tempToken = typeof body.tempToken === "string" ? body.tempToken : "";
