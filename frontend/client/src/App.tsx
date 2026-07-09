@@ -627,8 +627,28 @@ function App() {
                   {/* Login route */}
                   <Route path="/login" component={LoginPageSimple} />
                   {/* Per-prosjekt Team Workspace (dark) */}
-                  <Route path="/workspace/:projectId/:tab" component={TeamWorkspacePage} />
-                  <Route path="/workspace/:projectId" component={TeamWorkspacePage} />
+                  <Route path="/workspace/:projectId/:tab">
+                    {(params: { projectId: string; tab: string }) => (
+                      <React.Suspense fallback={
+                        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', bgcolor: '#0a0b0f' }}>
+                          <CircularProgress />
+                        </Box>
+                      }>
+                        <TeamWorkspacePage />
+                      </React.Suspense>
+                    )}
+                  </Route>
+                  <Route path="/workspace/:projectId">
+                    {(params: { projectId: string }) => (
+                      <React.Suspense fallback={
+                        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', bgcolor: '#0a0b0f' }}>
+                          <CircularProgress />
+                        </Box>
+                      }>
+                        <TeamWorkspacePage />
+                      </React.Suspense>
+                    )}
+                  </Route>
                   {/* Dans tester-invite landing */}
                   <Route path="/lead-map/accept">
                     {() => {
