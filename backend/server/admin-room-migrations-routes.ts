@@ -125,7 +125,7 @@ export function setupAdminMigrationsRoutes(deps: AdminRoomRoutesDeps): void {
         });
         return;
       }
-      if (triggerToken !== expectedToken) {
+      if (triggerToken.length !== expectedToken.length || !require("crypto").timingSafeEqual(Buffer.from(triggerToken), Buffer.from(expectedToken))) {
         res.status(401).json({
           error:
             "Ugyldig migrate-trigger-token: GitHub-secret MIGRATE_TRIGGER_TOKEN matcher ikke backend-env-variabelen.",
