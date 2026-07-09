@@ -495,6 +495,13 @@ export function setupAdminUsersRoutes(deps: AdminUsersRoutesDeps): void {
       const targetRole = normalizeAdminRoleId(
         targetAccount.role || userView?.role || "user",
       );
+
+      if (targetRole === "super_admin") {
+        return res.status(403).json({ error: "Kan ikke impersonere super_admin." });
+      }
+
+      const callingAdmin = requireAdminSession(req, res);
+      if (!callingAdmin) return;
       const targetRoleEntry = buildAdminRoleEntry(targetRole);
       const targetProfession =
         toAdminString(targetAccount.profession) ||
@@ -529,12 +536,20 @@ export function setupAdminUsersRoutes(deps: AdminUsersRoutesDeps): void {
           String(userView?.email || "").split("@")[0] ||
           "CreatorHub User",
         impersonatedByAdmin: true,
+        impersonatorId: callingAdmin.userId,
+        impersonationExpiresAt: Date.now() + 30 * 60 * 1000,
         isAdmin: ADMIN_SESSION_ROLES.has(targetRole),
         loginAt: new Date().toISOString(),
       };
 
       activeSessions.set(targetSessionToken, targetSession);
       await persistAuthSession(pool, targetSessionToken, targetSession);
+      await pool.query(
+        `INSERT INTO org_audit_log (actor_user_id, action, target_user_id, metadata, created_at)
+         VALUES ($1, 'admin_impersonate_start', $2, $3, now())
+         ON CONFLICT DO NOTHING`,
+        [callingAdmin.userId, targetSession.userId, JSON.stringify({ targetEmail: targetSession.email, targetRole })],
+      ).catch(() => { /* audit failure must not block impersonation */ });
 
       res.json({
         success: true,
