@@ -230,18 +230,21 @@ export function createConsentPortalRouter(
     }
   });
 
-  // ── GET /portal/access (offentlig) ──
-  router.get('/portal/access', async (req, res) => {
+  // ── POST /portal/access (offentlig) ──
+  // Credentials are sent in the request body (not query params) to avoid
+  // logging pin/password in server access logs and browser history.
+  router.post('/portal/access', async (req, res) => {
     try {
       await schemaReady(pool);
     } catch (err) {
       res.status(500).json({ error: 'Kunne ikke validere tilgang' });
       return;
     }
+    const body = (req.body && typeof req.body === 'object' ? req.body : {}) as Record<string, unknown>;
     const accessCode =
-      typeof req.query.access_code === 'string' ? req.query.access_code.trim().toUpperCase() : '';
-    const pin = typeof req.query.pin === 'string' ? req.query.pin.trim() : '';
-    const password = typeof req.query.password === 'string' ? req.query.password.trim() : '';
+      typeof body.access_code === 'string' ? body.access_code.trim().toUpperCase() : '';
+    const pin = typeof body.pin === 'string' ? body.pin.trim() : '';
+    const password = typeof body.password === 'string' ? body.password.trim() : '';
     if (!accessCode) {
       res.status(400).json({ error: 'Tilgangskode er påkrevd' });
       return;

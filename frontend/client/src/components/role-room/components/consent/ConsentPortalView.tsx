@@ -144,12 +144,15 @@ export default function ConsentPortalView({
     setError(null);
 
     try {
-      const params = new URLSearchParams();
-      params.append('access_code', accessCode.trim().toUpperCase());
-      if (pin) params.append('pin', pin);
-      if (password) params.append('password', password);
-
-      const response = await fetch(`/api/consent/portal/access?${params.toString()}`);
+      const response = await fetch('/api/consent/portal/access', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          access_code: accessCode.trim().toUpperCase(),
+          ...(pin ? { pin } : {}),
+          ...(password ? { password } : {}),
+        }),
+      });
       const data = await response.json();
 
       if (response.ok && data.success) {
