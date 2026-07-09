@@ -109,13 +109,9 @@ export function setupCommunityRoutes(deps: CommunityRoutesDeps): void {
   } = deps;
 
   function getCommunityAccessUserId(req: express.Request): string {
-    const headerUserId = req.header("x-user-id");
-    if (headerUserId && headerUserId.trim()) {
-      return headerUserId.trim();
-    }
-    if (typeof req.body?.userId === "string" && req.body.userId.trim()) {
-      return req.body.userId.trim();
-    }
+    const noopRes = { status: () => ({ json: () => {} }), headersSent: false } as any;
+    const session = requireUserSession(req, noopRes);
+    if (session && (session as any).userId) return String((session as any).userId).trim();
     return "";
   }
 

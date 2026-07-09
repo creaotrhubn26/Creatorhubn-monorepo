@@ -177,17 +177,18 @@ export function setupVendorOnboardingRoutes(
   });
 
   app.post("/api/vendor-onboarding/complete", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       const vendorType = readString(req.body?.vendorType);
       const vendorName = readString(req.body?.vendorName);
-      const userId = readString(req.body?.userId);
+      const userId = String(session.userId || "").trim();
       const onboardingData = req.body?.onboardingData || {};
 
       if (!vendorType || !vendorName || !userId) {
         return res
           .status(400)
-          .json({ error: "vendorType, vendorName og userId er påkrevd" });
+          .json({ error: "vendorType og vendorName er påkrevd" });
       }
 
       const now = new Date().toISOString();
