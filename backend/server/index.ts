@@ -22402,16 +22402,7 @@ app.get("/api/health", (req, res) => {
     status: "ok",
     timestamp: new Date().toISOString(),
     startedAt: serverStartedAt,
-    commit: process.env.RENDER_GIT_COMMIT || null,
-    branch: process.env.RENDER_GIT_BRANCH || null,
-    serviceId: process.env.RENDER_SERVICE_ID || null,
-    serviceName: process.env.RENDER_SERVICE_NAME || null,
-    instanceId: process.env.RENDER_INSTANCE_ID || null,
     runtime: isRenderRuntime ? "render" : process.env.NODE_ENV || "unknown",
-    // Surfaces on Render's status-page poll so we can see at a glance
-    // whether the reel normaliser has a usable ffmpeg binary on this
-    // instance. Without it reels still ship, but unchanged — the
-    // photographer sees any quality/size issues Meta flags.
     ffmpeg,
   });
 });
@@ -22423,7 +22414,7 @@ app.get("/api/leadgrid/ai-queue/health", async (_req, res) => {
     const { aiQueue } = await import("./leadgrid-ai-queue.js");
     res.json({ ok: true, ...aiQueue.snapshot() });
   } catch (err) {
-    res.status(500).json({ ok: false, error: String(err).slice(0, 200) });
+    res.status(500).json({ ok: false, error: "internal_error" });
   }
 });
 

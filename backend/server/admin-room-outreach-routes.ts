@@ -320,7 +320,7 @@ export function setupAdminOutreachRoutes(deps: AdminRoomRoutesDeps): void {
     const body = (req.body ?? {}) as Record<string, unknown>;
     const targetId = asString(body.targetId);
     const templateId = asString(body.templateId);
-    const extraContext = asString(body.extraContext) ?? "";
+    const extraContext = (asString(body.extraContext) ?? "").slice(0, 4000);
 
     if (!targetId || !templateId) {
       res.status(400).json({ error: "targetId og templateId er påkrevd" });
