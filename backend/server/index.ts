@@ -1951,7 +1951,17 @@ app.use(helmet({
   contentSecurityPolicy: false,
   // CORS handles cross-origin; crossOriginResourcePolicy would break file downloads
   crossOriginResourcePolicy: false,
+  // Prevent cross-origin window attacks (e.g. Spectre)
+  crossOriginOpenerPolicy: { policy: "same-origin" },
 }));
+// Permissions-Policy is not set by helmet — add explicitly
+app.use((_req, res, next) => {
+  res.setHeader(
+    "Permissions-Policy",
+    "camera=(), microphone=(), geolocation=(), payment=(), usb=(), fullscreen=(self)"
+  );
+  next();
+});
 app.use(cors({
   origin: (origin, callback) => {
     // Ingen origin (samme-origin eller server-til-server) — tillat
