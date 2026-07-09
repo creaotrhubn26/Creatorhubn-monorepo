@@ -30,8 +30,18 @@ export function setupProjectsOutliersRoutes(
   });
 
   app.get("/api/projects/:projectId/timeline", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       const { projectId } = req.params;
+      const owned = await pool.query(
+        `SELECT 1 FROM projects WHERE id = $1 AND user_id = $2
+         UNION ALL
+         SELECT 1 FROM legacy.projects WHERE id = $1 AND user_id = $2
+         LIMIT 1`,
+        [projectId, session.userId],
+      );
+      if (!owned.rows.length) return res.status(404).json({ error: "not_found" });
       const result = await pool.query(
         `SELECT * FROM project_milestones WHERE project_id = $1 ORDER BY COALESCE(due_date, scheduled_date, created_at) ASC`,
         [projectId],

@@ -97,6 +97,22 @@ export async function persistAuthSession<T extends PersistableAuthSession>(
   }
 }
 
+export async function deletePersistedAuthSessionsByUserId(
+  pool: Pool,
+  userId: string,
+): Promise<void> {
+  if (!userId) return;
+  if (!(await ensureAuthSessionTable(pool))) return;
+  try {
+    await pool.query(
+      `DELETE FROM ${AUTH_SESSION_TABLE_NAME} WHERE session_data->>'userId' = $1`,
+      [userId],
+    );
+  } catch (error) {
+    console.warn("Failed to delete persisted auth sessions by userId:", error);
+  }
+}
+
 export async function deletePersistedAuthSession(
   pool: Pool,
   token: string | null | undefined,

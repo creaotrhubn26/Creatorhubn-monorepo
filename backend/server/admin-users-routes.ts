@@ -21,6 +21,7 @@
 import crypto from "crypto";
 import type express from "express";
 import type { Pool } from "pg";
+import { deletePersistedAuthSessionsByUserId } from "./auth-session-store.js";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export interface AdminUsersRoutesDeps {
@@ -257,6 +258,14 @@ export function setupAdminUsersRoutes(deps: AdminUsersRoutesDeps): void {
           status: nextIsActive === true ? "approved" : undefined,
           userJourneyStatus: nextIsActive === false ? "inactive" : undefined,
         });
+      }
+
+      // If user is being deactivated, revoke all active sessions
+      if (nextIsActive === false && accountUserId) {
+        for (const [tok, sess] of activeSessions.entries()) {
+          if (String(sess?.userId) === accountUserId) activeSessions.delete(tok);
+        }
+        await deletePersistedAuthSessionsByUserId(pool, accountUserId);
       }
 
       const updatedUser = await resolveAdminUserView(req.params.id, email);
@@ -643,11 +652,17 @@ export function setupAdminUsersRoutes(deps: AdminUsersRoutesDeps): void {
       }
       const del = await client.query("DELETE FROM users WHERE id::text = $1", [targetId]);
       await client.query("COMMIT");
+      // Evict all in-memory sessions for deleted user
+      for (const [tok, sess] of activeSessions.entries()) {
+        if (String(sess?.userId) === targetId) activeSessions.delete(tok);
+      }
+      // Evict persisted sessions so they aren't rehydrated on restart
+      await deletePersistedAuthSessionsByUserId(pool, targetId);
       return res.json({ success: true, deletedEmail: target.email, deleted: del.rowCount });
     } catch (error) {
       await client.query("ROLLBACK").catch(() => {});
       console.error("Error deleting user:", error);
-      return res.status(500).json({ error: "Kunne ikke slette bruker.", detail: String(error) });
+      return res.status(500).json({ error: "Kunne ikke slette bruker." });
     } finally {
       client.release();
     }

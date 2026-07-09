@@ -24,6 +24,7 @@
 import crypto from "node:crypto";
 import nodemailer from "nodemailer";
 import type { Pool } from "pg";
+import { deletePersistedAuthSessionsByUserId } from "./auth-session-store.js";
 
 const TOKEN_TTL_MINUTES = 60;
 
@@ -257,12 +258,9 @@ export async function consumeResetToken(
         await client.query("ROLLBACK");
         return { ok: false, error: "user_missing" };
       }
-      // Invalider også eventuelle andre aktive auth-sessions så en
-      // stjålet session-cookie ikke fortsetter å virke etter reset
-      await client.query(
-        `DELETE FROM auth_sessions WHERE user_id = $1`,
-        [updateResult.rows[0].id],
-      ).catch(() => { /* tabellen kan mangle i noen environments */ });
+      // Invalider persisted auth-sessions så gamle tokens ikke gjenopplives
+      // ved server-restart (bruker JSONB-søk i creatorhub_auth_sessions).
+      await deletePersistedAuthSessionsByUserId(pool, String(updateResult.rows[0].id));
       await client.query("COMMIT");
       return { ok: true, userId: String(updateResult.rows[0].id), message: "Passordet er oppdatert. Du kan nå logge inn med det nye passordet." };
     } catch (err) {
