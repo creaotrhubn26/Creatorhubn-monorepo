@@ -471,6 +471,7 @@ export function setupPriceAdministrationRoutes(
   });
 
   app.delete("/api/price-administration/pricing/:id", async (req, res) => {
+    if (!requireAdminSession(req, res)) return;
     try {
       const result = await pool.query(
         "DELETE FROM pricing_structures WHERE id = $1 RETURNING id",
@@ -697,6 +698,7 @@ export function setupPriceAdministrationRoutes(
   });
 
   app.delete("/api/price-administration/discounts/:id", async (req, res) => {
+    if (!requireAdminSession(req, res)) return;
     try {
       const result = await pool.query(
         "DELETE FROM discounts WHERE id = $1 RETURNING id",
@@ -824,6 +826,7 @@ export function setupPriceAdministrationRoutes(
   });
 
   app.delete("/api/price-administration/quotes/:id", async (req, res) => {
+    if (!requireAdminSession(req, res)) return;
     try {
       const result = await pool.query(
         "DELETE FROM quotes WHERE id = $1 RETURNING id",
