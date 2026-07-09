@@ -184,7 +184,7 @@ export function createDanceTeamRouter(
       const summary = await svc.ensureTeamForOwner(pool, userId, userEmail);
       res.status(201).json({ success: true, data: summary });
     } catch (err) {
-      res.status(500).json({ error: 'create_team_failed', detail: String(err) });
+      res.status(500).json({ error: 'create_team_failed', detail: "internal_error" });
     }
   });
 
@@ -213,7 +213,7 @@ export function createDanceTeamRouter(
       const role = await svc.createRole(pool, String(req.params.teamOrgId), parsed.data);
       res.status(201).json({ success: true, data: role });
     } catch (err) {
-      res.status(400).json({ error: 'create_role_failed', detail: String(err) });
+      res.status(400).json({ error: 'create_role_failed', detail: "internal_error" });
     }
   });
 
@@ -368,7 +368,7 @@ export function createDanceInviteAcceptRouter(
       }
       res.json({ success: true });
     } catch (err) {
-      res.status(500).json({ error: 'request_pin_failed', detail: String(err) });
+      res.status(500).json({ error: 'request_pin_failed', detail: "internal_error" });
     }
   });
 
@@ -423,7 +423,7 @@ export function createDanceInviteAcceptRouter(
         },
       });
     } catch (err) {
-      res.status(500).json({ error: 'accept_failed', detail: String(err) });
+      res.status(500).json({ error: 'accept_failed', detail: "internal_error" });
     }
   });
 
@@ -458,7 +458,7 @@ export function createDanceInviteAcceptRouter(
         },
       });
     } catch (err) {
-      res.status(500).json({ error: 'accept_failed', detail: String(err) });
+      res.status(500).json({ error: 'accept_failed', detail: "internal_error" });
     }
   });
 

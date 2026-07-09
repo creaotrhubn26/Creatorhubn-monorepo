@@ -258,7 +258,7 @@ export function registerLeadgridBillingRoutes({
       res.json({ url: portalSession.url });
     } catch (e: any) {
       console.error("[billing] portal session failed", e);
-      res.status(500).json({ error: e.message ?? "Stripe-feil" });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 

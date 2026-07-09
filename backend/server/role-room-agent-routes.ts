@@ -71,7 +71,7 @@ export function setupRoleRoomAgentRoutes(deps: SetupAgentRoutesDeps): void {
     try {
       bootstrap = resolveBootstrap(brandKey, body);
     } catch (err) {
-      res.status(400).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+      res.status(400).json({ ok: false, error: err instanceof Error ? "internal_error" : String(err) });
       return;
     }
 
@@ -164,7 +164,7 @@ export function setupRoleRoomAgentRoutes(deps: SetupAgentRoutesDeps): void {
         generatedAt: row.generated_at,
       });
     } catch (err) {
-      res.status(500).json({ ok: false, error: 'db_query_failed', detail: String(err) });
+      res.status(500).json({ ok: false, error: 'db_query_failed', detail: "internal_error" });
     }
   });
 
@@ -306,7 +306,7 @@ export function setupRoleRoomAgentRoutes(deps: SetupAgentRoutesDeps): void {
         })),
       });
     } catch (err) {
-      res.status(500).json({ ok: false, error: 'db_query_failed', detail: String(err) });
+      res.status(500).json({ ok: false, error: 'db_query_failed', detail: "internal_error" });
     }
   });
 }

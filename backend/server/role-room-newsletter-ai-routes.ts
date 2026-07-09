@@ -245,7 +245,7 @@ Returnér KUN gyldig JSON:
       });
     } catch (err) {
       console.error("[newsletter-ai] weekly-insights error", err);
-      res.status(500).json({ error: (err as Error).message });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 
@@ -279,7 +279,7 @@ Returnér KUN gyldig JSON: { "subjects": [{ "text": "...", "rationale": "kort be
       res.json({ subjects: parsed.subjects.slice(0, 5) });
     } catch (err) {
       console.error("[newsletter-ai] subject-lines error", err);
-      res.status(500).json({ error: (err as Error).message });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 
@@ -334,7 +334,7 @@ Returnér KUN gyldig JSON med denne strukturen:
       res.json({ title: parsed.title, blocks: blocksWithIds });
     } catch (err) {
       console.error("[newsletter-ai] first-draft error", err);
-      res.status(500).json({ error: (err as Error).message });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 
@@ -372,7 +372,7 @@ Returnér KUN den omskrevne teksten — ingen forklaring, ingen kode-fences.`,
       res.json({ rewritten: raw.trim() });
     } catch (err) {
       console.error("[newsletter-ai] rewrite error", err);
-      res.status(500).json({ error: (err as Error).message });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 
@@ -467,7 +467,7 @@ Returnér KUN gyldig JSON:
       res.json(parsed);
     } catch (err) {
       console.error("[newsletter-ai] repurpose error", err);
-      res.status(500).json({ error: (err as Error).message });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 
@@ -521,7 +521,7 @@ Returnér KUN gyldig JSON:
       res.json(parsed);
     } catch (err) {
       console.error("[newsletter-ai] content-score error", err);
-      res.status(500).json({ error: (err as Error).message });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 
@@ -607,7 +607,7 @@ Returnér KUN gyldig JSON:
         res.json({ transcript, ...parsed });
       } catch (err) {
         console.error("[newsletter-ai] voice-draft error", err);
-        res.status(500).json({ error: (err as Error).message });
+        res.status(500).json({ error: "internal_error" });
       }
     },
   );

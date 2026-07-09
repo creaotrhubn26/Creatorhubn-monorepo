@@ -139,7 +139,7 @@ export async function handleAgentStream(
         errorCode: err.code,
         errorMessage: err.message,
       });
-      res.status(403).json({ error: err.code, detail: err.message });
+      res.status(403).json({ error: err.code, detail: "internal_error" });
       return;
     }
     throw err;

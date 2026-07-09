@@ -297,7 +297,7 @@ export function setupWeddingAssistantDriveRoutes(deps: WeddingAssistantDriveRout
       });
     } catch (err: any) {
       console.error("POST setup-drive-folder:", err);
-      res.status(500).json({ error: err?.message || "Kunne ikke sette opp delt mappe" });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 

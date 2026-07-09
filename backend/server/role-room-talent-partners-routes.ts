@@ -426,7 +426,7 @@ export function setupRoleRoomTalentPartnersRoutes(
       });
     } catch (err) {
       console.error("[partners-overview] failed", err);
-      return res.status(500).json({ error: "Klarte ikke å hente partners-oversikten", detail: String(err) });
+      return res.status(500).json({ error: "Klarte ikke å hente partners-oversikten", detail: "internal_error" });
     }
   });
 
@@ -465,7 +465,7 @@ export function setupRoleRoomTalentPartnersRoutes(
       return res.json({ ok: true, paused_scopes: r.rows.map((row) => row.scope), days: pauseDays });
     } catch (err) {
       console.error("[consents/pause] failed", err);
-      return res.status(500).json({ error: "Klarte ikke å pause", detail: String(err) });
+      return res.status(500).json({ error: "Klarte ikke å pause", detail: "internal_error" });
     }
   });
 
@@ -545,7 +545,7 @@ export function setupRoleRoomTalentPartnersRoutes(
       return res.json({ ok: true, perms });
     } catch (err) {
       console.error("[consents/bulk-set] failed", err);
-      return res.status(500).json({ error: "Klarte ikke å oppdatere tillatelser", detail: String(err) });
+      return res.status(500).json({ error: "Klarte ikke å oppdatere tillatelser", detail: "internal_error" });
     }
   });
 
@@ -661,7 +661,7 @@ The Role Room Talents
       });
     } catch (err) {
       console.error("[partner-invites POST] failed", err);
-      return res.status(500).json({ error: "Klarte ikke å opprette invite", detail: String(err) });
+      return res.status(500).json({ error: "Klarte ikke å opprette invite", detail: "internal_error" });
     }
   });
 
@@ -827,7 +827,7 @@ The Role Room Talents
       return res.json({ ok: true, agencyId, scopes: scopesArr });
     } catch (err) {
       console.error("[partner-invites/:token/accept] failed", err);
-      return res.status(500).json({ error: "Klarte ikke å akseptere invite", detail: String(err) });
+      return res.status(500).json({ error: "Klarte ikke å akseptere invite", detail: "internal_error" });
     }
   });
 }

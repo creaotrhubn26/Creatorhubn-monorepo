@@ -163,7 +163,7 @@ export function registerLeadgridGoogleAuthRoutes({ app, pool, activeSessions }: 
       res.json({ id_token: d.id_token });
     } catch (e: any) {
       console.error("[google-auth callback]", e);
-      res.status(500).json({ error: e.message ?? "Feil" });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 
@@ -289,7 +289,7 @@ export function registerLeadgridGoogleAuthRoutes({ app, pool, activeSessions }: 
     } catch (e: any) {
       await client.query("ROLLBACK");
       console.error("[google-auth exchange]", e);
-      res.status(500).json({ error: e.message ?? "Feil ved Google-innlogging" });
+      res.status(500).json({ error: "internal_error" });
     } finally {
       client.release();
     }

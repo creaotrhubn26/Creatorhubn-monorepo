@@ -431,7 +431,7 @@ Returnér KUN den endelige meldingen, klar til å limes inn i LinkedIn-DM/mail.`
       });
     } catch (err) {
       console.error("[admin-room outreach personalize] error", err);
-      res.status(500).json({ error: (err as Error).message });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 }

@@ -164,7 +164,7 @@ export function setupAdminLeadMapPricingRoutes(deps: Deps): void {
 
       return res.json(result);
     } catch (err) {
-      return res.status(502).json({ error: "stripe_query_failed", detail: String(err) });
+      return res.status(502).json({ error: "stripe_query_failed", detail: "internal_error" });
     }
   });
 
@@ -192,7 +192,7 @@ export function setupAdminLeadMapPricingRoutes(deps: Deps): void {
       );
       return res.json({ entitlements: r.rows });
     } catch (err) {
-      return res.status(500).json({ error: "entitlements_failed", detail: String(err) });
+      return res.status(500).json({ error: "entitlements_failed", detail: "internal_error" });
     }
   });
 
@@ -238,7 +238,7 @@ export function setupAdminLeadMapPricingRoutes(deps: Deps): void {
       );
       return res.json({ ok: true, entitlementId: r.rows[0].id });
     } catch (err) {
-      return res.status(500).json({ error: "grant_failed", detail: String(err) });
+      return res.status(500).json({ error: "grant_failed", detail: "internal_error" });
     }
   });
 
@@ -261,7 +261,7 @@ export function setupAdminLeadMapPricingRoutes(deps: Deps): void {
       if (r.rowCount === 0) return res.status(404).json({ error: "not_found_or_already_revoked" });
       return res.json({ ok: true });
     } catch (err) {
-      return res.status(500).json({ error: "revoke_failed", detail: String(err) });
+      return res.status(500).json({ error: "revoke_failed", detail: "internal_error" });
     }
   });
 
@@ -355,7 +355,7 @@ export function setupAdminLeadMapPricingRoutes(deps: Deps): void {
           : `Render env-var IKKE auto-oppdatert (${envUpdate.error}). Sett manuelt: ${envKey}=${newPrice.id}`,
       });
     } catch (err) {
-      return res.status(502).json({ error: "stripe_update_failed", detail: String(err) });
+      return res.status(502).json({ error: "stripe_update_failed", detail: "internal_error" });
     }
   });
 }

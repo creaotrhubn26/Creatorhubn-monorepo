@@ -171,7 +171,7 @@ export function registerLeadgridApiKeyMgmtRoutes(deps: Deps): void {
       });
     } catch (err) {
       console.warn("[api-key-mgmt] create feilet:", err);
-      res.status(500).json({ error: "create_failed", detail: String(err) });
+      res.status(500).json({ error: "create_failed", detail: "internal_error" });
     }
   });
 

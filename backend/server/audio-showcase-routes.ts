@@ -2363,7 +2363,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     } catch (e: any) {
       console.error("[youtube] publish failed:", e?.message || e);
       if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
-      return res.status(500).json({ error: "youtube_publish_failed", detail: String(e?.message || "").slice(0, 200) });
+      return res.status(500).json({ error: "youtube_publish_failed", detail: "internal_error" });
     } finally { for (const f of tmp) unlink(f).catch(() => {}); }
   });
 

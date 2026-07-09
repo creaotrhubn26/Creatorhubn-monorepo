@@ -233,7 +233,7 @@ export function setupAdminPlatformCostSyncRoutes(deps: AdminRoomRoutesDeps): voi
       res.json({ ok: true, created, updated, total: services.length });
     } catch (err) {
       console.error("[platform-cost-sync] render error", err);
-      res.status(500).json({ error: (err as Error).message || "Render-synk feilet" });
+      res.status(500).json({ error: "internal_error" || "Render-synk feilet" });
     }
   });
 
@@ -276,7 +276,7 @@ export function setupAdminPlatformCostSyncRoutes(deps: AdminRoomRoutesDeps): voi
       res.json({ ok: true, created, updated, total: projects.length });
     } catch (err) {
       console.error("[platform-cost-sync] neon error", err);
-      res.status(500).json({ error: (err as Error).message || "Neon-synk feilet" });
+      res.status(500).json({ error: "internal_error" || "Neon-synk feilet" });
     }
   });
 
@@ -316,7 +316,7 @@ export function setupAdminPlatformCostSyncRoutes(deps: AdminRoomRoutesDeps): voi
       res.json({ ok: true, created, updated, total: projects.length });
     } catch (err) {
       console.error("[platform-cost-sync] vercel error", err);
-      res.status(500).json({ error: (err as Error).message || "Vercel-synk feilet" });
+      res.status(500).json({ error: "internal_error" || "Vercel-synk feilet" });
     }
   });
 }

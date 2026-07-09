@@ -301,7 +301,7 @@ export function setupTesterEnterpriseOfferRoutes(deps: TesterEnterpriseOfferDeps
       res.json({ checkoutUrl: session.url, sessionId: session.id });
     } catch (err: any) {
       console.error("POST /tester-enterprise-offer/:id/checkout:", err);
-      res.status(500).json({ error: err?.message || "Kunne ikke opprette Stripe Checkout" });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 

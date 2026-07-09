@@ -223,7 +223,7 @@ export function setupPostEngagementRoutes(deps: {
         })),
       });
     } catch (err) {
-      res.status(500).json({ ok: false, error: String(err) });
+      res.status(500).json({ ok: false, error: "internal_error" });
     }
   });
 
@@ -270,7 +270,7 @@ export function setupPostEngagementRoutes(deps: {
         })),
       });
     } catch (err) {
-      res.status(500).json({ ok: false, error: String(err) });
+      res.status(500).json({ ok: false, error: "internal_error" });
     }
   });
 }

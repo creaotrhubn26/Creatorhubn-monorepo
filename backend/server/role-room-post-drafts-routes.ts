@@ -372,7 +372,7 @@ export function setupPostDraftsRoutes(deps: SetupPostDraftsRoutesDeps): void {
       if (!r.rowCount) { res.status(404).json({ ok: false, error: 'draft not found' }); return; }
       res.json({ ok: true, draft: mapDraftRow(r.rows[0]) });
     } catch (err) {
-      res.status(500).json({ ok: false, error: String(err) });
+      res.status(500).json({ ok: false, error: "internal_error" });
     }
   });
 
@@ -385,7 +385,7 @@ export function setupPostDraftsRoutes(deps: SetupPostDraftsRoutesDeps): void {
       const r = await pool.query('DELETE FROM marketing_post_drafts WHERE id = $1', [id]);
       res.json({ ok: true, deleted: r.rowCount ?? 0 });
     } catch (err) {
-      res.status(500).json({ ok: false, error: String(err) });
+      res.status(500).json({ ok: false, error: "internal_error" });
     }
   });
 
@@ -849,7 +849,7 @@ export function setupPostDraftsRoutes(deps: SetupPostDraftsRoutesDeps): void {
         return;
       }
     } catch (err) {
-      res.status(500).json({ ok: false, error: String(err) });
+      res.status(500).json({ ok: false, error: "internal_error" });
     }
   });
 }

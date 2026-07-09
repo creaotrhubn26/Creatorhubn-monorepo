@@ -781,7 +781,7 @@ Tidspunkt: ${new Date().toISOString()}
         res.setHeader('Content-Length', String(buf.length));
         res.send(buf);
       } catch (err) {
-        res.status(500).json({ error: 'tts_provider_error', detail: (err as Error).message });
+        res.status(500).json({ error: 'tts_provider_error', detail: "internal_error" });
       }
     },
   );
@@ -1092,7 +1092,7 @@ Tidspunkt: ${new Date().toISOString()}
 
       res.json({ subscriptions: out, totalMonthlyNok: Math.round(totalMonthlyNok), currency, mixedCurrencies: currencies.size > 1 });
     } catch (err) {
-      res.json({ subscriptions: [], totalMonthlyNok: 0, currency: 'NOK', degraded: true, detail: (err as Error).message });
+      res.json({ subscriptions: [], totalMonthlyNok: 0, currency: 'NOK', degraded: true, detail: "internal_error" });
     }
   });
 
@@ -1147,7 +1147,7 @@ Tidspunkt: ${new Date().toISOString()}
       res.json({ ok: true, url: session.url });
     } catch (err) {
       console.error('[post-agent] customer-portal failed:', err);
-      res.status(500).json({ error: 'portal_create_failed', detail: (err as Error).message });
+      res.status(500).json({ error: 'portal_create_failed', detail: "internal_error" });
     }
   });
 
@@ -1215,7 +1215,7 @@ Tidspunkt: ${new Date().toISOString()}
       res.json({ ok: true, url: session.url, id: session.id });
     } catch (err) {
       console.error('[post-agent] standalone-checkout failed:', err);
-      res.status(500).json({ error: 'checkout_create_failed', detail: (err as Error).message });
+      res.status(500).json({ error: 'checkout_create_failed', detail: "internal_error" });
     }
   });
 
@@ -1255,7 +1255,7 @@ Tidspunkt: ${new Date().toISOString()}
       });
     } catch (err) {
       console.error('[post-agent] modules/entitlements failed:', err);
-      res.status(500).json({ error: 'entitlements_failed', detail: (err as Error).message });
+      res.status(500).json({ error: 'entitlements_failed', detail: "internal_error" });
     }
   });
 
@@ -1285,7 +1285,7 @@ Tidspunkt: ${new Date().toISOString()}
         })),
       });
     } catch (err) {
-      res.status(500).json({ error: 'learned_fetch_failed', detail: (err as Error).message });
+      res.status(500).json({ error: 'learned_fetch_failed', detail: "internal_error" });
     }
   });
 
@@ -1317,7 +1317,7 @@ Tidspunkt: ${new Date().toISOString()}
       );
       res.json({ ok: true });
     } catch (err) {
-      res.status(500).json({ error: 'learned_save_failed', detail: (err as Error).message });
+      res.status(500).json({ error: 'learned_save_failed', detail: "internal_error" });
     }
   });
 
@@ -1374,7 +1374,7 @@ Tidspunkt: ${new Date().toISOString()}
       res.json({ ok: true, url: session.url, id: session.id });
     } catch (err) {
       console.error('[post-agent] modules/checkout failed:', err);
-      res.status(500).json({ error: 'checkout_create_failed', detail: (err as Error).message });
+      res.status(500).json({ error: 'checkout_create_failed', detail: "internal_error" });
     }
   });
 
@@ -1402,7 +1402,7 @@ Tidspunkt: ${new Date().toISOString()}
       res.json({ ok: true, url, filename, expiresIn: 300 });
     } catch (err) {
       console.error('[post-agent] modules/download failed:', err);
-      res.status(500).json({ error: 'download_failed', detail: (err as Error).message });
+      res.status(500).json({ error: 'download_failed', detail: "internal_error" });
     }
   });
 
@@ -1432,7 +1432,7 @@ Tidspunkt: ${new Date().toISOString()}
       );
       stripeSubscriptionId = rows[0]?.stripe_subscription_id ?? null;
     } catch (err) {
-      res.status(500).json({ error: 'subscription_lookup_failed', detail: (err as Error).message });
+      res.status(500).json({ error: 'subscription_lookup_failed', detail: "internal_error" });
       return;
     }
 
@@ -1696,7 +1696,7 @@ Tidspunkt: ${new Date().toISOString()}
       }
       return true;
     } catch (err) {
-      res.status(500).json({ error: 'project_lookup_failed', detail: (err as Error).message });
+      res.status(500).json({ error: 'project_lookup_failed', detail: "internal_error" });
       return false;
     }
   }
@@ -2154,7 +2154,7 @@ Hvis dette virker feil, ta kontakt med ${ownerName}.
         },
       });
     } catch (e) {
-      res.json({ seats: [], summary: { activeSeatCount: 0, seatPriceNok: 299, monthlyMrrNok: 0 }, degraded: true, detail: (e as Error).message });
+      res.json({ seats: [], summary: { activeSeatCount: 0, seatPriceNok: 299, monthlyMrrNok: 0 }, degraded: true, detail: "internal_error" });
     }
   });
 
@@ -2201,7 +2201,7 @@ Hvis dette virker feil, ta kontakt med ${ownerName}.
           })),
         });
       } catch (e) {
-        res.json({ crew: [], degraded: true, detail: (e as Error).message });
+        res.json({ crew: [], degraded: true, detail: "internal_error" });
       }
     },
   );
@@ -2235,7 +2235,7 @@ Hvis dette virker feil, ta kontakt med ${ownerName}.
         })),
       });
     } catch (e) {
-      res.json({ productions: [], degraded: true, detail: (e as Error).message });
+      res.json({ productions: [], degraded: true, detail: "internal_error" });
     }
   });
 
@@ -2279,7 +2279,7 @@ Hvis dette virker feil, ta kontakt med ${ownerName}.
       }
       return true;
     } catch (err) {
-      res.status(500).json({ error: 'project_lookup_failed', detail: (err as Error).message });
+      res.status(500).json({ error: 'project_lookup_failed', detail: "internal_error" });
       return false;
     }
   }
@@ -2309,7 +2309,7 @@ Hvis dette virker feil, ta kontakt med ${ownerName}.
         })),
       });
     } catch (e) {
-      res.json({ scenes: [], degraded: true, detail: (e as Error).message });
+      res.json({ scenes: [], degraded: true, detail: "internal_error" });
     }
   });
 
@@ -2350,7 +2350,7 @@ Hvis dette virker feil, ta kontakt med ${ownerName}.
           : null,
       });
     } catch (e) {
-      res.json({ equipment: [], projectSettings: null, degraded: true, detail: (e as Error).message });
+      res.json({ equipment: [], projectSettings: null, degraded: true, detail: "internal_error" });
     }
   });
 
@@ -2395,7 +2395,7 @@ Hvis dette virker feil, ta kontakt med ${ownerName}.
         })),
       });
     } catch (e) {
-      res.json({ clips: [], sceneMarkers: [], degraded: true, detail: (e as Error).message });
+      res.json({ clips: [], sceneMarkers: [], degraded: true, detail: "internal_error" });
     }
   });
 
@@ -2449,7 +2449,7 @@ Hvis dette virker feil, ta kontakt med ${ownerName}.
         );
         res.json({ urls });
       } catch (e) {
-        res.status(500).json({ error: 'download_urls_failed', detail: (e as Error).message });
+        res.status(500).json({ error: 'download_urls_failed', detail: "internal_error" });
       }
     },
   );

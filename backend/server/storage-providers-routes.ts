@@ -305,7 +305,7 @@ export function setupStorageProvidersRoutes(deps: StorageProvidersRoutesDeps): v
         });
       } catch (err: any) {
         console.error('[storage-providers] list_buckets failed:', err);
-        return res.status(500).json({ success: false, error: err?.message || 'B2-feil' });
+        return res.status(500).json({ success: false, error: "internal_error" });
       }
     },
   );
@@ -796,7 +796,7 @@ export function setupStorageProvidersRoutes(deps: StorageProvidersRoutesDeps): v
       });
     } catch (err: any) {
       console.error('[sign-url] failed:', err?.message || err);
-      return res.status(500).json({ success: false, error: err?.message || 'sign-url-feil' });
+      return res.status(500).json({ success: false, error: "internal_error" });
     }
   });
 

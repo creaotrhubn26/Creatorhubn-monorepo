@@ -873,7 +873,7 @@ export function registerLeadgridScheduledReportsRoutes({ app, pool, activeSessio
       res.json({ ok: true, duration_ms: Date.now() - start, ...results });
     } catch (e: any) {
       console.error("[scheduled-reports/run]", e);
-      res.status(500).json({ error: e?.message ?? "run_failed" });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 }

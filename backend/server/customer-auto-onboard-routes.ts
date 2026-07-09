@@ -474,7 +474,7 @@ export function registerCustomerAutoOnboardRoutes({
         if (r.rows.length === 0) return res.status(404).json({ error: "not_found" });
         return res.json({ audit: r.rows[0] });
       } catch (err) {
-        return res.status(500).json({ error: "status_failed", detail: String(err) });
+        return res.status(500).json({ error: "status_failed", detail: "internal_error" });
       }
     },
   );

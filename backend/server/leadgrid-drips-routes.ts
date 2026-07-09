@@ -258,7 +258,7 @@ export function registerLeadgridDripsRoutes({ app, pool, activeSessions }: Deps)
       res.json({ ok: true, duration_ms: Date.now() - start, ...results });
     } catch (e: any) {
       console.error("[drips run]", e);
-      res.status(500).json({ error: e.message ?? "Drip-run feilet" });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 
@@ -368,7 +368,7 @@ export function registerLeadgridDripsRoutes({ app, pool, activeSessions }: Deps)
       res.json({ ok: true, duration_ms: Date.now() - start, ...results });
     } catch (e: any) {
       console.error("[plan-grace expire]", e);
-      res.status(500).json({ error: e.message ?? "Grace-expire feilet" });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 }

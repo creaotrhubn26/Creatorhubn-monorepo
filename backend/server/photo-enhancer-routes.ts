@@ -5410,7 +5410,7 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
         meta = parseCubeMetadata(text);
       } catch (err) {
         if (err instanceof CubeParseError) {
-          return res.status(400).json({ success: false, error: err.code, detail: err.message });
+          return res.status(400).json({ success: false, error: err.code, detail: "internal_error" });
         }
         return res.status(400).json({ success: false, error: "parse_failed" });
       }

@@ -149,7 +149,7 @@ export function setupRoleRoomMentionsProducerRoutes(deps: RoleRoomMentionsProduc
         })),
       });
     } catch (error) {
-      res.status(500).json({ success: false, error: String(error) });
+      res.status(500).json({ success: false, error: "internal_error" });
     }
   });
 
@@ -193,7 +193,7 @@ export function setupRoleRoomMentionsProducerRoutes(deps: RoleRoomMentionsProduc
       }
       res.json({ success: true });
     } catch (error) {
-      res.status(500).json({ success: false, error: String(error) });
+      res.status(500).json({ success: false, error: "internal_error" });
     }
   });
 
@@ -229,7 +229,7 @@ export function setupRoleRoomMentionsProducerRoutes(deps: RoleRoomMentionsProduc
       });
       res.json({ success: true, reply: String(out.data?.reply || "") });
     } catch (error) {
-      res.status(200).json({ success: false, error: `AI-svar feilet: ${error instanceof Error ? error.message : String(error)}` });
+      res.status(200).json({ success: false, error: `AI-svar feilet: ${error instanceof Error ? "internal_error" : "internal_error"}` });
     }
   });
 }

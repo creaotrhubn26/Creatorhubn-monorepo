@@ -127,7 +127,7 @@ export function registerDeliveryPlaybookRoutes({
             );
         return res.json({ playbooks: r.rows });
       } catch (err) {
-        return res.status(500).json({ error: "list_failed", detail: String(err) });
+        return res.status(500).json({ error: "list_failed", detail: "internal_error" });
       }
     },
   );
@@ -154,7 +154,7 @@ export function registerDeliveryPlaybookRoutes({
         if (r.rows.length === 0) return res.status(404).json({ error: "no_playbook" });
         return res.json({ playbook: r.rows[0] });
       } catch (err) {
-        return res.status(500).json({ error: "find_failed", detail: String(err) });
+        return res.status(500).json({ error: "find_failed", detail: "internal_error" });
       }
     },
   );
@@ -205,7 +205,7 @@ export function registerDeliveryPlaybookRoutes({
         );
         return res.json({ focus_requests: r.rows });
       } catch (err) {
-        return res.status(500).json({ error: "inbox_failed", detail: String(err) });
+        return res.status(500).json({ error: "inbox_failed", detail: "internal_error" });
       }
     },
   );
@@ -332,7 +332,7 @@ export function registerDeliveryPlaybookRoutes({
         if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
         return res.json({ focus_request: r.rows[0] });
       } catch (err) {
-        return res.status(500).json({ error: "update_failed", detail: String(err) });
+        return res.status(500).json({ error: "update_failed", detail: "internal_error" });
       }
     },
   );
@@ -363,7 +363,7 @@ export function registerDeliveryPlaybookRoutes({
         if (r.rows.length === 0) return res.status(404).json({ error: "not_found" });
         return res.json({ deliverable: r.rows[0] });
       } catch (err) {
-        return res.status(500).json({ error: "load_failed", detail: String(err) });
+        return res.status(500).json({ error: "load_failed", detail: "internal_error" });
       }
     },
   );
@@ -469,7 +469,7 @@ export function registerDeliveryPlaybookRoutes({
 
         return res.json({ deliverable: upd.rows[0] });
       } catch (err) {
-        return res.status(500).json({ error: "step_update_failed", detail: String(err) });
+        return res.status(500).json({ error: "step_update_failed", detail: "internal_error" });
       }
     },
   );

@@ -139,7 +139,7 @@ export function createCastingVideoRouter(
       const result = await svc.createVideoUploadUrl(pool, { ...parsed.data, uploadedBy: userId });
       res.status(201).json({ success: true, data: result });
     } catch (err) {
-      res.status(500).json({ error: 'upload_url_failed', detail: String(err) });
+      res.status(500).json({ error: 'upload_url_failed', detail: "internal_error" });
     }
   });
 

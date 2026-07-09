@@ -146,7 +146,7 @@ export function setupAdminConfigCheckRoutes(deps: AdminConfigCheckDeps): void {
       });
     } catch (err: any) {
       console.error("GET /admin/config-check:", err);
-      res.status(500).json({ error: err?.message || "Kunne ikke kjøre config-check" });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 }

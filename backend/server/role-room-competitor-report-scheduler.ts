@@ -181,7 +181,7 @@ export function setupReportSchedulerRoutes(deps: SetupReportSchedulerDeps): void
       const result = await runWeeklyReportNow({ pool }, { recipients, markAsAuto });
       res.status(result.ok ? 200 : 502).json(result);
     } catch (err) {
-      res.status(500).json({ ok: false, error: String(err) });
+      res.status(500).json({ ok: false, error: "internal_error" });
     }
   });
 
@@ -220,7 +220,7 @@ export function setupReportSchedulerRoutes(deps: SetupReportSchedulerDeps): void
       }
       res.json({ ok: true, reportId: Number(row.id), emailResults: results });
     } catch (err) {
-      res.status(500).json({ ok: false, error: String(err) });
+      res.status(500).json({ ok: false, error: "internal_error" });
     }
   });
 
@@ -242,7 +242,7 @@ export function setupReportSchedulerRoutes(deps: SetupReportSchedulerDeps): void
         lastAutoReportAt: lastAuto,
       });
     } catch (err) {
-      res.status(500).json({ ok: false, error: String(err) });
+      res.status(500).json({ ok: false, error: "internal_error" });
     }
   });
 }

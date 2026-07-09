@@ -109,7 +109,7 @@ export function setupRoleRoomTalentGdprRoutes(deps: RoleRoomTalentGdprRoutesDeps
       return res.send(JSON.stringify(exportPayload, null, 2));
     } catch (err) {
       console.error("[gdpr/export] failed", err);
-      return res.status(500).json({ error: "Klarte ikke å eksportere", detail: String(err) });
+      return res.status(500).json({ error: "Klarte ikke å eksportere", detail: "internal_error" });
     }
   });
 
@@ -204,7 +204,7 @@ export function setupRoleRoomTalentGdprRoutes(deps: RoleRoomTalentGdprRoutesDeps
       });
     } catch (err) {
       console.error("[gdpr/delete] failed", err);
-      return res.status(500).json({ error: "Klarte ikke å slette profilen", detail: String(err) });
+      return res.status(500).json({ error: "Klarte ikke å slette profilen", detail: "internal_error" });
     }
   });
 
@@ -226,7 +226,7 @@ export function setupRoleRoomTalentGdprRoutes(deps: RoleRoomTalentGdprRoutesDeps
       return res.json({ ok: true, deleted: r.rowCount });
     } catch (err) {
       console.error("[audit-retention sweep] failed", err);
-      return res.status(500).json({ error: "Sweep feilet", detail: String(err) });
+      return res.status(500).json({ error: "Sweep feilet", detail: "internal_error" });
     }
   });
 }

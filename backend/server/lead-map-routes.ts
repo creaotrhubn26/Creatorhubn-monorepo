@@ -144,7 +144,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
       });
       return res.json({ leads });
     } catch (err) {
-      return res.status(500).json({ error: "leads_failed", detail: String(err) });
+      return res.status(500).json({ error: "leads_failed", detail: "internal_error" });
     }
   });
 
@@ -157,7 +157,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
       if (!lead) return res.status(404).json({ error: "not_found" });
       return res.json(lead);
     } catch (err) {
-      return res.status(500).json({ error: "lead_failed", detail: String(err) });
+      return res.status(500).json({ error: "lead_failed", detail: "internal_error" });
     }
   });
 
@@ -241,7 +241,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
 
       return res.json(r);
     } catch (err) {
-      return res.status(500).json({ error: "status_failed", detail: String(err) });
+      return res.status(500).json({ error: "status_failed", detail: "internal_error" });
     }
   });
 
@@ -302,7 +302,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
 
       return res.json({ ok: true, temperature: body.temperature });
     } catch (err) {
-      return res.status(500).json({ error: "temperature_failed", detail: String(err) });
+      return res.status(500).json({ error: "temperature_failed", detail: "internal_error" });
     }
   });
 
@@ -331,7 +331,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
       if (!r.ok) return res.status(404).json({ error: "not_found" });
       return res.json(r);
     } catch (err) {
-      return res.status(500).json({ error: "geo_failed", detail: String(err) });
+      return res.status(500).json({ error: "geo_failed", detail: "internal_error" });
     }
   });
 
@@ -401,7 +401,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
 
       return res.json(r);
     } catch (err) {
-      return res.status(500).json({ error: "visit_failed", detail: String(err) });
+      return res.status(500).json({ error: "visit_failed", detail: "internal_error" });
     }
   });
 
@@ -413,7 +413,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
       const visits = await listVisits(pool, { ownerUserId: session.userId }, req.params.id, 50);
       return res.json({ visits });
     } catch (err) {
-      return res.status(500).json({ error: "visits_failed", detail: String(err) });
+      return res.status(500).json({ error: "visits_failed", detail: "internal_error" });
     }
   });
 
@@ -426,7 +426,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
       const activities = await listRecentActivities(pool, { ownerUserId: session.userId }, limit);
       return res.json({ activities });
     } catch (err) {
-      return res.status(500).json({ error: "activities_failed", detail: String(err) });
+      return res.status(500).json({ error: "activities_failed", detail: "internal_error" });
     }
   });
 
@@ -441,7 +441,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
       const metrics = await getLeadMapMetrics(pool, { ownerUserId: session.userId, projectId });
       return res.json(metrics);
     } catch (err) {
-      return res.status(500).json({ error: "metrics_failed", detail: String(err) });
+      return res.status(500).json({ error: "metrics_failed", detail: "internal_error" });
     }
   });
 
@@ -460,7 +460,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
       if (!r) return res.status(503).json({ error: "ai_unavailable_or_lead_not_found" });
       return res.json(r);
     } catch (err) {
-      return res.status(500).json({ error: "pitch_failed", detail: String(err) });
+      return res.status(500).json({ error: "pitch_failed", detail: "internal_error" });
     }
   });
 
@@ -486,7 +486,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
       if (!r.ok) return res.status(503).json({ error: r.reason });
       return res.json({ results: r.results });
     } catch (err) {
-      return res.status(500).json({ error: "places_failed", detail: String(err) });
+      return res.status(500).json({ error: "places_failed", detail: "internal_error" });
     }
   });
 
@@ -563,7 +563,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
         })();
         return res.json({ ok: true, id: cardLeadId });
       } catch (err) {
-        return res.status(500).json({ error: "create_failed", detail: String(err) });
+        return res.status(500).json({ error: "create_failed", detail: "internal_error" });
       }
     },
   );
@@ -673,7 +673,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
         })();
         return res.json({ ok: true, id: newLeadId });
       } catch (err) {
-        return res.status(500).json({ error: "create_failed", detail: String(err) });
+        return res.status(500).json({ error: "create_failed", detail: "internal_error" });
       }
     },
   );
@@ -700,7 +700,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
       if (!r.ok) return res.status(r.reason === 'already_imported' ? 409 : 500).json(r);
       return res.json(r);
     } catch (err) {
-      return res.status(500).json({ error: "import_failed", detail: String(err) });
+      return res.status(500).json({ error: "import_failed", detail: "internal_error" });
     }
   });
 
@@ -750,7 +750,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
       });
       return res.json({ leads });
     } catch (err) {
-      return res.status(500).json({ error: "leads_failed", detail: String(err) });
+      return res.status(500).json({ error: "leads_failed", detail: "internal_error" });
     }
   });
 
@@ -769,7 +769,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
       if (!lead) return res.status(404).json({ error: "not_found" });
       return res.json(lead);
     } catch (err) {
-      return res.status(500).json({ error: "lead_failed", detail: String(err) });
+      return res.status(500).json({ error: "lead_failed", detail: "internal_error" });
     }
   });
 
@@ -813,7 +813,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
 
       return res.json(r);
     } catch (err) {
-      return res.status(500).json({ error: "status_failed", detail: String(err) });
+      return res.status(500).json({ error: "status_failed", detail: "internal_error" });
     }
   });
 
@@ -872,7 +872,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
 
       return res.json(r);
     } catch (err) {
-      return res.status(500).json({ error: "visit_failed", detail: String(err) });
+      return res.status(500).json({ error: "visit_failed", detail: "internal_error" });
     }
   });
 
@@ -889,7 +889,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
       });
       return res.json(metrics);
     } catch (err) {
-      return res.status(500).json({ error: "metrics_failed", detail: String(err) });
+      return res.status(500).json({ error: "metrics_failed", detail: "internal_error" });
     }
   });
 
@@ -907,7 +907,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
       }, limit);
       return res.json({ activities });
     } catch (err) {
-      return res.status(500).json({ error: "activities_failed", detail: String(err) });
+      return res.status(500).json({ error: "activities_failed", detail: "internal_error" });
     }
   });
 
@@ -935,7 +935,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
       if (!r.ok) return res.status(503).json({ error: r.reason });
       return res.json({ results: r.results });
     } catch (err) {
-      return res.status(500).json({ error: "places_failed", detail: String(err) });
+      return res.status(500).json({ error: "places_failed", detail: "internal_error" });
     }
   });
 
@@ -961,7 +961,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
       if (!r.ok) return res.status(r.reason === 'already_imported' ? 409 : 500).json(r);
       return res.json(r);
     } catch (err) {
-      return res.status(500).json({ error: "import_failed", detail: String(err) });
+      return res.status(500).json({ error: "import_failed", detail: "internal_error" });
     }
   });
 
@@ -983,7 +983,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
       if (!r) return res.status(503).json({ error: "ai_unavailable_or_lead_not_found" });
       return res.json(r);
     } catch (err) {
-      return res.status(500).json({ error: "pitch_failed", detail: String(err) });
+      return res.status(500).json({ error: "pitch_failed", detail: "internal_error" });
     }
   });
 
@@ -1012,7 +1012,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
       }
       return res.json({ active: true, entitlement: e });
     } catch (err) {
-      return res.status(500).json({ error: "entitlement_failed", detail: String(err) });
+      return res.status(500).json({ error: "entitlement_failed", detail: "internal_error" });
     }
   });
 
@@ -1030,7 +1030,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
       if (!r.ok) return res.status(409).json(r);
       return res.json(r);
     } catch (err) {
-      return res.status(500).json({ error: "trial_failed", detail: String(err) });
+      return res.status(500).json({ error: "trial_failed", detail: "internal_error" });
     }
   });
 
@@ -1079,7 +1079,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
       });
       return res.json(result);
     } catch (err) {
-      return res.status(500).json({ error: "auto_populate_failed", detail: String(err) });
+      return res.status(500).json({ error: "auto_populate_failed", detail: "internal_error" });
     }
   });
 
@@ -1130,7 +1130,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
       });
       return res.json({ checkoutUrl: checkoutSession.url, sessionId: checkoutSession.id });
     } catch (err) {
-      return res.status(500).json({ error: "checkout_failed", detail: String(err) });
+      return res.status(500).json({ error: "checkout_failed", detail: "internal_error" });
     }
   });
 }

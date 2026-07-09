@@ -186,7 +186,7 @@ export function createConsentPortalRouter(
     try {
       await schemaReady(pool);
     } catch (err) {
-      res.status(500).json({ error: 'schema_unavailable', detail: String(err) });
+      res.status(500).json({ error: 'schema_unavailable', detail: "internal_error" });
       return;
     }
     const parsed = issueBody.safeParse(req.body);
@@ -226,7 +226,7 @@ export function createConsentPortalRouter(
         portalUrl: `/consent-portal?consent_code=${encodeURIComponent(accessCode)}`,
       });
     } catch (err) {
-      res.status(500).json({ error: 'issue_failed', detail: String(err) });
+      res.status(500).json({ error: 'issue_failed', detail: "internal_error" });
     }
   });
 

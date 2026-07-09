@@ -209,7 +209,7 @@ export function setupMarketingCompetitorsRoutes(deps: SetupCompetitorsRoutesDeps
         })),
       });
     } catch (err) {
-      res.status(500).json({ ok: false, error: String(err) });
+      res.status(500).json({ ok: false, error: "internal_error" });
     }
   });
 
@@ -276,7 +276,7 @@ export function setupMarketingCompetitorsRoutes(deps: SetupCompetitorsRoutesDeps
         },
       });
     } catch (err) {
-      res.status(500).json({ ok: false, error: String(err) });
+      res.status(500).json({ ok: false, error: "internal_error" });
     }
   });
 
@@ -323,7 +323,7 @@ export function setupMarketingCompetitorsRoutes(deps: SetupCompetitorsRoutesDeps
         },
       });
     } catch (err) {
-      res.status(500).json({ ok: false, error: String(err) });
+      res.status(500).json({ ok: false, error: "internal_error" });
     }
   });
 
@@ -334,7 +334,7 @@ export function setupMarketingCompetitorsRoutes(deps: SetupCompetitorsRoutesDeps
       const result = await runCompetitorSnapshotWorkerOnce(pool);
       res.json(result);
     } catch (err) {
-      res.status(500).json({ ok: false, error: String(err) });
+      res.status(500).json({ ok: false, error: "internal_error" });
     }
   });
 
@@ -350,7 +350,7 @@ export function setupMarketingCompetitorsRoutes(deps: SetupCompetitorsRoutesDeps
       const r = await pool.query('DELETE FROM marketing_competitor_pages WHERE id = $1', [id]);
       res.json({ ok: true, deleted: r.rowCount ?? 0 });
     } catch (err) {
-      res.status(500).json({ ok: false, error: String(err) });
+      res.status(500).json({ ok: false, error: "internal_error" });
     }
   });
 
@@ -460,7 +460,7 @@ export function setupMarketingCompetitorsRoutes(deps: SetupCompetitorsRoutesDeps
         fetchError: snapshot.fetchError,
       });
     } catch (err) {
-      res.status(500).json({ ok: false, error: String(err) });
+      res.status(500).json({ ok: false, error: "internal_error" });
     }
   });
 
@@ -499,7 +499,7 @@ export function setupMarketingCompetitorsRoutes(deps: SetupCompetitorsRoutesDeps
         })),
       });
     } catch (err) {
-      res.status(500).json({ ok: false, error: String(err) });
+      res.status(500).json({ ok: false, error: "internal_error" });
     }
   });
 
@@ -765,7 +765,7 @@ export function setupMarketingCompetitorsRoutes(deps: SetupCompetitorsRoutesDeps
         report,
       });
     } catch (err) {
-      res.status(500).json({ ok: false, error: String(err) });
+      res.status(500).json({ ok: false, error: "internal_error" });
     }
   });
 
@@ -818,7 +818,7 @@ export function setupMarketingCompetitorsRoutes(deps: SetupCompetitorsRoutesDeps
         competitorPictures,
       });
     } catch (err) {
-      res.status(500).json({ ok: false, error: String(err) });
+      res.status(500).json({ ok: false, error: "internal_error" });
     }
   });
 
@@ -849,7 +849,7 @@ export function setupMarketingCompetitorsRoutes(deps: SetupCompetitorsRoutesDeps
         })),
       });
     } catch (err) {
-      res.status(500).json({ ok: false, error: String(err) });
+      res.status(500).json({ ok: false, error: "internal_error" });
     }
   });
 }

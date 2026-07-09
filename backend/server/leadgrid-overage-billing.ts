@@ -153,7 +153,7 @@ export function registerLeadgridOverageBillingRoutes({
       });
     } catch (e: any) {
       console.error("[overage-billing]", e);
-      res.status(500).json({ error: e.message ?? "Feil" });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 

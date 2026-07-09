@@ -566,7 +566,7 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
       return res.json({ ok: true, lead: r.rows[0] });
     } catch (err) {
       console.error("[agency-leads PATCH] failed", err);
-      return res.status(500).json({ error: "Oppdatering feilet", detail: String(err) });
+      return res.status(500).json({ error: "Oppdatering feilet", detail: "internal_error" });
     }
   });
 
@@ -717,7 +717,7 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
       });
     } catch (err) {
       console.error("[agency-acquisition/dashboard] failed", err);
-      return res.status(500).json({ error: "Klarte ikke å hente dashboard", detail: String(err) });
+      return res.status(500).json({ error: "Klarte ikke å hente dashboard", detail: "internal_error" });
     }
   });
 
@@ -932,7 +932,7 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
       return res.json({ ok: true, onboardingUrl, persona, emailed: sendEmail });
     } catch (err) {
       console.error("[agency-leads convert] failed", err);
-      return res.status(500).json({ error: "Konvertering feilet", detail: String(err) });
+      return res.status(500).json({ error: "Konvertering feilet", detail: "internal_error" });
     }
   });
 }

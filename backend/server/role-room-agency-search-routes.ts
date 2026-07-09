@@ -373,7 +373,7 @@ export function setupRoleRoomAgencySearchRoutes(deps: RoleRoomAgencySearchRoutes
       });
     } catch (err) {
       console.error("[agency/talents/search] failed", err);
-      return res.status(500).json({ error: "Søk feilet", detail: String(err) });
+      return res.status(500).json({ error: "Søk feilet", detail: "internal_error" });
     }
   });
 
@@ -534,7 +534,7 @@ export function setupRoleRoomAgencySearchRoutes(deps: RoleRoomAgencySearchRoutes
       return res.status(201).json({ search: r.rows[0] });
     } catch (err) {
       console.error("[saved-searches POST] failed", err);
-      return res.status(500).json({ error: "Klarte ikke å lagre søket", detail: String(err) });
+      return res.status(500).json({ error: "Klarte ikke å lagre søket", detail: "internal_error" });
     }
   });
 

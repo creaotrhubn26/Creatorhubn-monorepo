@@ -268,7 +268,7 @@ export function registerPartnerVerificationRoutes({ app, pool, activeSessions }:
       res.json({ ok: true, application_id: appId, step: stepNumber });
     } catch (e: any) {
       console.error("[save-step]", e);
-      res.status(500).json({ error: "Kunne ikke lagre step", detail: e.message?.slice(0, 200) });
+      res.status(500).json({ error: "Kunne ikke lagre step", detail: "internal_error"?.slice(0, 200) });
     }
   });
 

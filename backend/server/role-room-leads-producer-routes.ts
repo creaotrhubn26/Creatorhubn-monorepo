@@ -586,7 +586,7 @@ export function setupRoleRoomLeadsProducerRoutes(deps: RoleRoomLeadsProducerRout
         });
         results = Array.isArray(out.data?.results) ? out.data.results : [];
       } catch (e) {
-        res.status(200).json({ success: false, error: `AI-segmentering feilet: ${e instanceof Error ? e.message : String(e)}` });
+        res.status(200).json({ success: false, error: `AI-segmentering feilet: ${e instanceof Error ? "internal_error" : String(e)}` });
         return;
       }
 

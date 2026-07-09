@@ -64,7 +64,7 @@ export function registerLeadgridOrgOverrideRoutes(deps: OrgOverrideRoutesDeps): 
       });
     } catch (err) {
       console.error("[org-override] GET failed:", err);
-      return res.status(500).json({ error: "org_override_failed", detail: String((err as Error).message) });
+      return res.status(500).json({ error: "org_override_failed", detail: String("internal_error") });
     }
   });
 
@@ -105,7 +105,7 @@ export function registerLeadgridOrgOverrideRoutes(deps: OrgOverrideRoutesDeps): 
       return res.json({ ok: true, current_org_id: current });
     } catch (err) {
       console.error("[org-override] POST failed:", err);
-      return res.status(500).json({ error: "org_override_set_failed", detail: String((err as Error).message) });
+      return res.status(500).json({ error: "org_override_set_failed", detail: String("internal_error") });
     }
   });
 }

@@ -66,7 +66,7 @@ export function createLocationAnalysisRouter(
       const result = await geocodeAddress(parsed.data.address);
       res.json({ success: true, data: result });
     } catch (err) {
-      res.status(500).json({ error: 'geocode_failed', detail: String(err) });
+      res.status(500).json({ error: 'geocode_failed', detail: "internal_error" });
     }
   });
 
@@ -81,7 +81,7 @@ export function createLocationAnalysisRouter(
       const analysis = await analyzeLocation(parsed.data.address);
       res.json({ success: true, data: analysis });
     } catch (err) {
-      res.status(500).json({ error: 'analyze_failed', detail: String(err) });
+      res.status(500).json({ error: 'analyze_failed', detail: "internal_error" });
     }
   });
 

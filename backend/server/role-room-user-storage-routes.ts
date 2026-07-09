@@ -93,7 +93,7 @@ export function registerRoleRoomUserStorageRoutes(
       res.json(stats);
     } catch (err) {
       console.error("[storage/stats]", err);
-      res.status(500).json({ error: "stats_failed", detail: String(err) });
+      res.status(500).json({ error: "stats_failed", detail: "internal_error" });
     }
   });
 
@@ -122,7 +122,7 @@ export function registerRoleRoomUserStorageRoutes(
       res.json({ files });
     } catch (err) {
       console.error("[storage/files]", err);
-      res.status(500).json({ error: "list_failed", detail: String(err) });
+      res.status(500).json({ error: "list_failed", detail: "internal_error" });
     }
   });
 
@@ -139,7 +139,7 @@ export function registerRoleRoomUserStorageRoutes(
       res.json({ projects });
     } catch (err) {
       console.error("[storage/per-project]", err);
-      res.status(500).json({ error: "per_project_failed", detail: String(err) });
+      res.status(500).json({ error: "per_project_failed", detail: "internal_error" });
     }
   });
 
@@ -164,7 +164,7 @@ export function registerRoleRoomUserStorageRoutes(
       res.json({ files });
     } catch (err) {
       console.error("[storage/entity-files]", err);
-      res.status(500).json({ error: "entity_files_failed", detail: String(err) });
+      res.status(500).json({ error: "entity_files_failed", detail: "internal_error" });
     }
   });
 
@@ -239,7 +239,7 @@ export function registerRoleRoomUserStorageRoutes(
       res.json({ file: result.file });
     } catch (err) {
       console.error("[storage/upload]", err);
-      res.status(500).json({ error: "upload_failed", detail: String(err) });
+      res.status(500).json({ error: "upload_failed", detail: "internal_error" });
     }
   });
 
@@ -382,7 +382,7 @@ export function registerRoleRoomUserStorageRoutes(
 
       res.json({ ok: true, results });
     } catch (err) {
-      res.status(500).json({ error: "migration_failed", detail: String(err), results });
+      res.status(500).json({ error: "migration_failed", detail: "internal_error", results });
     }
   });
 
@@ -419,7 +419,7 @@ export function registerRoleRoomUserStorageRoutes(
       res.json(result);
     } catch (err) {
       console.error("[storage/cleanup]", err);
-      res.status(500).json({ error: "cleanup_failed", detail: String(err) });
+      res.status(500).json({ error: "cleanup_failed", detail: "internal_error" });
     }
   });
 
@@ -443,7 +443,7 @@ export function registerRoleRoomUserStorageRoutes(
       res.json(r);
     } catch (err) {
       console.error("[storage/storyboards/move-to-b2]", err);
-      res.status(500).json({ error: "move_failed", detail: String(err) });
+      res.status(500).json({ error: "move_failed", detail: "internal_error" });
     }
   });
 
@@ -461,7 +461,7 @@ export function registerRoleRoomUserStorageRoutes(
       res.json(summary);
     } catch (err) {
       console.error("[storage/storyboards/migrate-all]", err);
-      res.status(500).json({ error: "migrate_all_failed", detail: String(err) });
+      res.status(500).json({ error: "migrate_all_failed", detail: "internal_error" });
     }
   });
 
@@ -481,7 +481,7 @@ export function registerRoleRoomUserStorageRoutes(
       res.json({ ok: true, freedBytes: r.freedBytes });
     } catch (err) {
       console.error("[storage/delete]", err);
-      res.status(500).json({ error: "delete_failed", detail: String(err) });
+      res.status(500).json({ error: "delete_failed", detail: "internal_error" });
     }
   });
 }

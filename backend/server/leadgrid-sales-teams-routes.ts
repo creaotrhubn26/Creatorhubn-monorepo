@@ -125,7 +125,7 @@ export function registerLeadgridSalesTeamsRoutes(deps: SalesTeamsRoutesDeps): vo
       });
     } catch (err) {
       console.error("[activity-feed] GET failed:", err);
-      return res.status(500).json({ error: "activity_feed_failed", detail: String((err as Error).message) });
+      return res.status(500).json({ error: "activity_feed_failed", detail: String("internal_error") });
     }
   });
 
@@ -147,7 +147,7 @@ export function registerLeadgridSalesTeamsRoutes(deps: SalesTeamsRoutesDeps): vo
       return res.json({ teams: r.rows.map(mapTeamRow) });
     } catch (err) {
       console.error("[sales-teams] GET failed:", err);
-      return res.status(500).json({ error: "sales_teams_failed", detail: String((err as Error).message) });
+      return res.status(500).json({ error: "sales_teams_failed", detail: String("internal_error") });
     }
   });
 
@@ -210,7 +210,7 @@ export function registerLeadgridSalesTeamsRoutes(deps: SalesTeamsRoutesDeps): vo
       return res.json({ team: mapTeamRow(r.rows[0]) });
     } catch (err) {
       console.error("[sales-teams] PUT failed:", err);
-      return res.status(500).json({ error: "sales_team_upsert_failed", detail: String((err as Error).message) });
+      return res.status(500).json({ error: "sales_team_upsert_failed", detail: String("internal_error") });
     }
   });
 
@@ -226,7 +226,7 @@ export function registerLeadgridSalesTeamsRoutes(deps: SalesTeamsRoutesDeps): vo
       return res.json({ ok: true });
     } catch (err) {
       console.error("[sales-teams] DELETE failed:", err);
-      return res.status(500).json({ error: "sales_team_delete_failed", detail: String((err as Error).message) });
+      return res.status(500).json({ error: "sales_team_delete_failed", detail: String("internal_error") });
     }
   });
 
@@ -265,7 +265,7 @@ export function registerLeadgridSalesTeamsRoutes(deps: SalesTeamsRoutesDeps): vo
       return res.json({ assignments: r.rows.map(mapAssignmentRow) });
     } catch (err) {
       console.error("[lead-assignments] GET failed:", err);
-      return res.status(500).json({ error: "assignments_failed", detail: String((err as Error).message) });
+      return res.status(500).json({ error: "assignments_failed", detail: String("internal_error") });
     }
   });
 
@@ -322,7 +322,7 @@ export function registerLeadgridSalesTeamsRoutes(deps: SalesTeamsRoutesDeps): vo
       return res.status(201).json({ assignment });
     } catch (err) {
       console.error("[lead-assignments] POST failed:", err);
-      return res.status(500).json({ error: "assignment_create_failed", detail: String((err as Error).message) });
+      return res.status(500).json({ error: "assignment_create_failed", detail: String("internal_error") });
     }
   });
 
@@ -345,7 +345,7 @@ export function registerLeadgridSalesTeamsRoutes(deps: SalesTeamsRoutesDeps): vo
       return res.json({ assignment: mapAssignmentRow(r.rows[0]) });
     } catch (err) {
       console.error("[lead-assignments] PATCH failed:", err);
-      return res.status(500).json({ error: "assignment_update_failed", detail: String((err as Error).message) });
+      return res.status(500).json({ error: "assignment_update_failed", detail: String("internal_error") });
     }
   });
 }

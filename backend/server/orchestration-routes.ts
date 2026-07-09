@@ -480,7 +480,7 @@ export function setupOrchestrationRoutes(
         const result = await retryStep(pool, req.params.runId, parseInt(req.params.stepIndex, 10));
         res.json({ success: true, ...result });
       } catch (err: any) {
-        res.status(400).json({ success: false, error: err.message });
+        res.status(400).json({ success: false, error: "internal_error" });
       }
     },
   );
@@ -495,7 +495,7 @@ export function setupOrchestrationRoutes(
         const result = await cancelRun(pool, req.params.runId);
         res.json({ success: true, ...result });
       } catch (err: any) {
-        res.status(400).json({ success: false, error: err.message });
+        res.status(400).json({ success: false, error: "internal_error" });
       }
     },
   );
@@ -532,7 +532,7 @@ export function setupOrchestrationRoutes(
         });
         res.json({ success: true, data: row });
       } catch (err: any) {
-        res.status(400).json({ success: false, error: err.message });
+        res.status(400).json({ success: false, error: "internal_error" });
       }
     },
   );
@@ -585,7 +585,7 @@ export function setupOrchestrationRoutes(
         });
         res.json({ success: true, data: row });
       } catch (err: any) {
-        res.status(400).json({ success: false, error: err.message });
+        res.status(400).json({ success: false, error: "internal_error" });
       }
     },
   );

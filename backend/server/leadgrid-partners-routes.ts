@@ -106,7 +106,7 @@ export function registerLeadgridPartnersRoutes({ app, pool, activeSessions }: De
       res.status(201).json({ partner: r.rows[0] });
     } catch (e: any) {
       console.error("[partners create]", e);
-      res.status(500).json({ error: e.message ?? "Kunne ikke opprette partner" });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 

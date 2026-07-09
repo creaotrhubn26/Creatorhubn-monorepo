@@ -346,7 +346,7 @@ export function registerPitchDeckPdfRoutes({
         res.setHeader("Content-Type", "text/html; charset=utf-8");
         return res.send(html);
       } catch (err) {
-        return res.status(500).send(`Feil: ${String(err)}`);
+        return res.status(500).send(`Feil: ${"internal_error"}`);
       }
     },
   );

@@ -273,7 +273,7 @@ export function setupWeddingAssistantCollabRoutes(deps: WeddingAssistantCollabDe
       });
     } catch (err: any) {
       console.error("POST schedule-brief:", err);
-      res.status(500).json({ error: err?.message || "Kunne ikke opprette brief-møte" });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 

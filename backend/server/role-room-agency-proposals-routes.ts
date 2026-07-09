@@ -237,7 +237,7 @@ The Role Room Talents
       });
     } catch (err) {
       console.error("[agency/talent-proposals POST] failed", err);
-      return res.status(500).json({ error: "Klarte ikke å sende forslag", detail: String(err) });
+      return res.status(500).json({ error: "Klarte ikke å sende forslag", detail: "internal_error" });
     }
   });
 
@@ -397,7 +397,7 @@ The Role Room Talents
       return res.json({ ok: true, talentId: talent.id, scopesGranted: scopes });
     } catch (err) {
       console.error("[talent-proposals accept] failed", err);
-      return res.status(500).json({ error: "Klarte ikke å akseptere forslaget", detail: String(err) });
+      return res.status(500).json({ error: "Klarte ikke å akseptere forslaget", detail: "internal_error" });
     }
   });
 

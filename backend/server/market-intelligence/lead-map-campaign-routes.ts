@@ -89,7 +89,7 @@ export function registerLeadMapCampaignRoutes({
       return res.status(201).json({ campaign });
     } catch (err) {
       console.error("[lead-map-campaign] create failed", err);
-      return res.status(500).json({ error: "create_failed", detail: String(err) });
+      return res.status(500).json({ error: "create_failed", detail: "internal_error" });
     }
   });
 
@@ -104,7 +104,7 @@ export function registerLeadMapCampaignRoutes({
       });
       return res.json({ campaigns });
     } catch (err) {
-      return res.status(500).json({ error: "list_failed", detail: String(err) });
+      return res.status(500).json({ error: "list_failed", detail: "internal_error" });
     }
   });
 
@@ -115,7 +115,7 @@ export function registerLeadMapCampaignRoutes({
       if (!campaign) return res.status(404).json({ error: "not_found" });
       return res.json({ campaign });
     } catch (err) {
-      return res.status(500).json({ error: "fetch_failed", detail: String(err) });
+      return res.status(500).json({ error: "fetch_failed", detail: "internal_error" });
     }
   });
 
@@ -127,7 +127,7 @@ export function registerLeadMapCampaignRoutes({
       return res.json(agg);
     } catch (err) {
       console.error("[lead-map-campaign] aggregate failed", err);
-      return res.status(500).json({ error: "aggregate_failed", detail: String(err) });
+      return res.status(500).json({ error: "aggregate_failed", detail: "internal_error" });
     }
   });
 
@@ -138,7 +138,7 @@ export function registerLeadMapCampaignRoutes({
       const stats = await getCategoryConversionStats(pool, session.userId);
       return res.json({ stats });
     } catch (err) {
-      return res.status(500).json({ error: "fetch_failed", detail: String(err) });
+      return res.status(500).json({ error: "fetch_failed", detail: "internal_error" });
     }
   });
 
@@ -149,7 +149,7 @@ export function registerLeadMapCampaignRoutes({
       const stats = await getAreaResponseStats(pool, session.userId);
       return res.json({ stats });
     } catch (err) {
-      return res.status(500).json({ error: "fetch_failed", detail: String(err) });
+      return res.status(500).json({ error: "fetch_failed", detail: "internal_error" });
     }
   });
 
@@ -169,7 +169,7 @@ export function registerLeadMapCampaignRoutes({
       return res.json(result);
     } catch (err) {
       console.error("[lead-map-campaign] cron failed", err);
-      return res.status(500).json({ error: "cron_failed", detail: String(err) });
+      return res.status(500).json({ error: "cron_failed", detail: "internal_error" });
     }
   });
 }

@@ -411,7 +411,7 @@ export function registerPartnerIntentRoutes({ app, pool, activeSessions }: Deps)
       res.json({ ok: true, sent_to: email, template_key: t.template_key });
     } catch (e: any) {
       console.error("[intent test-send]", e);
-      res.status(500).json({ error: e.message ?? "Kunne ikke sende" });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 

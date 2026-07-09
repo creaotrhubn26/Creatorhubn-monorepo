@@ -424,7 +424,7 @@ export function registerClientPortalRoutes({ app, pool }: Deps): void {
       if (r.rowCount === 0) return res.status(404).json({ error: "not_found_or_expired" });
       return res.json({ accepted: true, accepted_at: r.rows[0].accepted_at });
     } catch (err) {
-      return res.status(500).json({ error: "accept_failed", detail: String(err) });
+      return res.status(500).json({ error: "accept_failed", detail: "internal_error" });
     }
   });
 
@@ -514,7 +514,7 @@ export function registerClientPortalRoutes({ app, pool }: Deps): void {
         message: "Vi har varslet rådgiveren. De tar kontakt snart.",
       });
     } catch (err) {
-      return res.status(500).json({ error: "focus_failed", detail: String(err) });
+      return res.status(500).json({ error: "focus_failed", detail: "internal_error" });
     }
   });
 }

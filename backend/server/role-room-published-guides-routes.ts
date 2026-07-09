@@ -141,7 +141,7 @@ export function registerRoleRoomPublishedGuidesRoutes(
         );
         res.json({ id, views: Number(rows[0]?.views ?? 0), lastSeen: rows[0]?.last_seen ?? null, analytics: true });
       } catch (e) {
-        res.status(500).json({ error: "stats_feil", detail: (e as Error).message });
+        res.status(500).json({ error: "stats_feil", detail: "internal_error" });
       }
     },
   );

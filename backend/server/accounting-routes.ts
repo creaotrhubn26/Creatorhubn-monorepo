@@ -236,7 +236,7 @@ export function setupAccountingRoutes(deps: AccountingRoutesDeps): void {
 
       const err = error as any;
       if (err?.name === "TripletexApiError" && typeof err.status === "number") {
-        return res.status(err.status).json({ error: err.message, details: err.details });
+        return res.status(err.status).json({ error: "internal_error", details: err.details });
       }
 
       console.error("Tripletex connect error:", error);

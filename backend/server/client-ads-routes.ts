@@ -276,7 +276,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       return res.json({ success: true, configId });
     } catch (err) {
       console.error("[client-ads/configs POST] failed", err);
-      return res.status(500).json({ error: "Klarte ikke å lagre config", detail: String(err) });
+      return res.status(500).json({ error: "Klarte ikke å lagre config", detail: "internal_error" });
     }
   });
 
@@ -551,7 +551,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       });
     } catch (err) {
       console.error("[sync-to-google] failed", err);
-      return res.status(500).json({ error: "Sync feilet", detail: String(err) });
+      return res.status(500).json({ error: "Sync feilet", detail: "internal_error" });
     }
   });
 
@@ -838,7 +838,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       });
     } catch (err) {
       console.error("[ga4-provision] failed", err);
-      return res.status(500).json({ error: "GA4-provision feilet", detail: String(err) });
+      return res.status(500).json({ error: "GA4-provision feilet", detail: "internal_error" });
     }
   });
 
@@ -908,7 +908,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       return res.json({ step: "verify", success: true, siteUrl });
     } catch (err) {
       console.error("[gsc-verify] failed", err);
-      return res.status(500).json({ error: "GSC-verify feilet", detail: String(err) });
+      return res.status(500).json({ error: "GSC-verify feilet", detail: "internal_error" });
     }
   });
 
@@ -982,7 +982,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       });
     } catch (err) {
       console.error("[gsc-sitemap] failed", err);
-      return res.status(500).json({ error: "GSC-sitemap-submit feilet", detail: String(err) });
+      return res.status(500).json({ error: "GSC-sitemap-submit feilet", detail: "internal_error" });
     }
   });
 
@@ -1012,7 +1012,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       });
       return res.json(r);
     } catch (err) {
-      return res.status(500).json({ error: "Diagnose feilet", detail: String(err) });
+      return res.status(500).json({ error: "Diagnose feilet", detail: "internal_error" });
     }
   });
 
@@ -1076,7 +1076,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       return res.redirect(`/role-room/agent/ads?oauth_success=linkedin${cfgParam}`);
     } catch (err) {
       console.error("[linkedin-oauth] callback failed", err);
-      return res.redirect(`/role-room/agent/ads?oauth_error=linkedin_${encodeURIComponent(String(err).slice(0, 80))}`);
+      return res.redirect(`/role-room/agent/ads?oauth_error=linkedin_${encodeURIComponent("internal_error".slice(0, 80))}`);
     }
   });
 
@@ -1140,7 +1140,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       });
     } catch (err) {
       console.error("[linkedin-provision] failed", err);
-      return res.status(500).json({ error: "Provision feilet", detail: String(err) });
+      return res.status(500).json({ error: "Provision feilet", detail: "internal_error" });
     }
   });
 
@@ -1211,7 +1211,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       return res.json({ success: true, created, failed });
     } catch (err) {
       console.error("[linkedin-sync] failed", err);
-      return res.status(500).json({ error: "Sync feilet", detail: String(err) });
+      return res.status(500).json({ error: "Sync feilet", detail: "internal_error" });
     }
   });
 
@@ -1300,7 +1300,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       });
     } catch (err) {
       console.error("[meta-provision] failed", err);
-      return res.status(500).json({ error: "Provision feilet", detail: String(err) });
+      return res.status(500).json({ error: "Provision feilet", detail: "internal_error" });
     }
   });
 
@@ -1371,7 +1371,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       return res.json({ success: true, created, failed });
     } catch (err) {
       console.error("[meta-sync] failed", err);
-      return res.status(500).json({ error: "Sync feilet", detail: String(err) });
+      return res.status(500).json({ error: "Sync feilet", detail: "internal_error" });
     }
   });
 
@@ -1432,7 +1432,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       return res.redirect(`/role-room/agent/ads?oauth_success=tiktok${cfgParam}`);
     } catch (err) {
       console.error("[tiktok-oauth] callback failed", err);
-      return res.redirect(`/role-room/agent/ads?oauth_error=tiktok_${encodeURIComponent(String(err).slice(0, 80))}`);
+      return res.redirect(`/role-room/agent/ads?oauth_error=tiktok_${encodeURIComponent("internal_error".slice(0, 80))}`);
     }
   });
 
@@ -1509,7 +1509,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       return res.json({ success: true, pixelCode, pixelName, baseCode });
     } catch (err) {
       console.error("[tiktok-provision] failed", err);
-      return res.status(500).json({ error: "Provision feilet", detail: String(err) });
+      return res.status(500).json({ error: "Provision feilet", detail: "internal_error" });
     }
   });
 
@@ -1560,7 +1560,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       return res.json({ success: true, created, failed: [] });
     } catch (err) {
       console.error("[tiktok-sync] failed", err);
-      return res.status(500).json({ error: "Sync feilet", detail: String(err) });
+      return res.status(500).json({ error: "Sync feilet", detail: "internal_error" });
     }
   });
 
@@ -1632,7 +1632,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       return res.json(insights);
     } catch (err) {
       console.error("[insights] failed", err);
-      return res.status(500).json({ error: "Insights-henting feilet", detail: String(err) });
+      return res.status(500).json({ error: "Insights-henting feilet", detail: "internal_error" });
     }
   });
 
@@ -1711,7 +1711,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       return res.json({ target, prompts });
     } catch (err) {
       console.error("[ai-prompts] failed", err);
-      return res.status(500).json({ error: "Prompt-generering feilet", detail: String(err) });
+      return res.status(500).json({ error: "Prompt-generering feilet", detail: "internal_error" });
     }
   });
 
@@ -1733,7 +1733,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       if (!r.ok) return res.status(503).json({ error: r.error });
       return res.json({ siteUrl, sitemaps: r.sitemaps });
     } catch (err) {
-      return res.status(500).json({ error: "Status-hent feilet", detail: String(err) });
+      return res.status(500).json({ error: "Status-hent feilet", detail: "internal_error" });
     }
   });
 
@@ -1797,7 +1797,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       });
     } catch (err) {
       console.error("[gtm-provision] failed", err);
-      return res.status(500).json({ error: "GTM-provision feilet", detail: String(err) });
+      return res.status(500).json({ error: "GTM-provision feilet", detail: "internal_error" });
     }
   });
 
@@ -1863,7 +1863,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       });
     } catch (err) {
       console.error("[gtm-import] failed", err);
-      return res.status(500).json({ error: "GTM-import feilet", detail: String(err) });
+      return res.status(500).json({ error: "GTM-import feilet", detail: "internal_error" });
     }
   });
 
@@ -1900,7 +1900,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       return res.json(r);
     } catch (err) {
       console.error("[tiktok-sync-leads] failed", err);
-      return res.status(500).json({ error: "Lead-sync feilet", detail: String(err) });
+      return res.status(500).json({ error: "Lead-sync feilet", detail: "internal_error" });
     }
   });
 
@@ -1924,7 +1924,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       );
       return res.json({ leads: r.rows });
     } catch (err) {
-      return res.status(500).json({ error: "Kunne ikke hente leads", detail: String(err) });
+      return res.status(500).json({ error: "Kunne ikke hente leads", detail: "internal_error" });
     }
   });
 
@@ -1971,7 +1971,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       return res.json(r);
     } catch (err) {
       console.error("[tiktok-create-audience] failed", err);
-      return res.status(500).json({ error: "Audience-opprettelse feilet", detail: String(err) });
+      return res.status(500).json({ error: "Audience-opprettelse feilet", detail: "internal_error" });
     }
   });
 
@@ -2006,7 +2006,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       return res.json({ ...r, days, startDate: fmt(start), endDate: fmt(end) });
     } catch (err) {
       console.error("[tiktok-attribution] failed", err);
-      return res.status(500).json({ error: "Attribution-henting feilet", detail: String(err) });
+      return res.status(500).json({ error: "Attribution-henting feilet", detail: "internal_error" });
     }
   });
 
@@ -2055,7 +2055,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       return res.json(r);
     } catch (err) {
       console.error("[tiktok-crm-event] failed", err);
-      return res.status(500).json({ error: "CRM-event-sync feilet", detail: String(err) });
+      return res.status(500).json({ error: "CRM-event-sync feilet", detail: "internal_error" });
     }
   });
 
@@ -2092,7 +2092,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       for (const row of summary.rows) counts[row.delivery_status] = row.n;
       return res.json({ events: r.rows, summary: counts });
     } catch (err) {
-      return res.status(500).json({ error: "Kunne ikke hente events", detail: String(err) });
+      return res.status(500).json({ error: "Kunne ikke hente events", detail: "internal_error" });
     }
   });
 
@@ -2119,7 +2119,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       );
       return res.json({ configs: r.rows });
     } catch (err) {
-      return res.status(500).json({ error: "Kunne ikke hente klient-configs", detail: String(err) });
+      return res.status(500).json({ error: "Kunne ikke hente klient-configs", detail: "internal_error" });
     }
   });
 
@@ -2164,7 +2164,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       if (!r.ok) return res.status(503).json({ error: r.error });
       return res.json(r);
     } catch (err) {
-      return res.status(500).json({ error: "Smart Video-generering feilet", detail: String(err) });
+      return res.status(500).json({ error: "Smart Video-generering feilet", detail: "internal_error" });
     }
   });
 
@@ -2237,7 +2237,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       if (!r.ok) return res.status(503).json({ error: r.error });
       return res.json(r);
     } catch (err) {
-      return res.status(500).json({ error: "Plugin-install feilet", detail: String(err) });
+      return res.status(500).json({ error: "Plugin-install feilet", detail: "internal_error" });
     }
   });
 
@@ -2273,7 +2273,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       const state = await getScopePermissionsState(pool, req.params.id);
       return res.json(state);
     } catch (err) {
-      return res.status(500).json({ error: "Kunne ikke hente tillatelser", detail: String(err) });
+      return res.status(500).json({ error: "Kunne ikke hente tillatelser", detail: "internal_error" });
     }
   });
 
@@ -2307,7 +2307,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       if (!r.ok) return res.status(400).json({ error: r.error });
       return res.json(r);
     } catch (err) {
-      return res.status(500).json({ error: "Kunne ikke lagre tillatelser", detail: String(err) });
+      return res.status(500).json({ error: "Kunne ikke lagre tillatelser", detail: "internal_error" });
     }
   });
 
@@ -2324,7 +2324,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       if (!r.ok) return res.status(400).json({ error: r.error });
       return res.json(r);
     } catch (err) {
-      return res.status(500).json({ error: "Kunne ikke trekke tilbake", detail: String(err) });
+      return res.status(500).json({ error: "Kunne ikke trekke tilbake", detail: "internal_error" });
     }
   });
 
@@ -2370,7 +2370,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       if (!r.ok) return res.status(503).json({ error: r.error });
       return res.json(r);
     } catch (err) {
-      return res.status(500).json({ error: "Meta-audience-opprettelse feilet", detail: String(err) });
+      return res.status(500).json({ error: "Meta-audience-opprettelse feilet", detail: "internal_error" });
     }
   });
 
@@ -2406,7 +2406,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       if (!r.ok) return res.status(503).json({ error: r.error });
       return res.json(r);
     } catch (err) {
-      return res.status(500).json({ error: "LinkedIn-audience-opprettelse feilet", detail: String(err) });
+      return res.status(500).json({ error: "LinkedIn-audience-opprettelse feilet", detail: "internal_error" });
     }
   });
 
@@ -2452,7 +2452,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       if (!r.ok) return res.status(503).json({ error: r.error });
       return res.json(r);
     } catch (err) {
-      return res.status(500).json({ error: "Google Customer Match feilet", detail: String(err) });
+      return res.status(500).json({ error: "Google Customer Match feilet", detail: "internal_error" });
     }
   });
 
@@ -2513,7 +2513,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       if (!r.ok) return res.status(503).json({ error: r.error, logId: r.logId });
       return res.json(r);
     } catch (err) {
-      return res.status(500).json({ error: "Meta CAPI feilet", detail: String(err) });
+      return res.status(500).json({ error: "Meta CAPI feilet", detail: "internal_error" });
     }
   });
 
@@ -2569,7 +2569,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       if (!r.ok) return res.status(503).json({ error: r.error, logId: r.logId });
       return res.json(r);
     } catch (err) {
-      return res.status(500).json({ error: "LinkedIn CAPI feilet", detail: String(err) });
+      return res.status(500).json({ error: "LinkedIn CAPI feilet", detail: "internal_error" });
     }
   });
 
@@ -2629,7 +2629,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       if (!r.ok) return res.status(503).json({ error: r.error, logId: r.logId });
       return res.json(r);
     } catch (err) {
-      return res.status(500).json({ error: "Google offline-konvertering feilet", detail: String(err) });
+      return res.status(500).json({ error: "Google offline-konvertering feilet", detail: "internal_error" });
     }
   });
 
@@ -2672,7 +2672,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       if ("error" in payload) return res.status(404).json(payload);
       return res.json(payload);
     } catch (err) {
-      return res.status(500).json({ error: "deployment_payload_failed", detail: String(err) });
+      return res.status(500).json({ error: "deployment_payload_failed", detail: "internal_error" });
     }
   });
 
@@ -2691,7 +2691,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       const r = await markDeploymentApplied(pool, { configId: req.params.id, method });
       return res.json(r);
     } catch (err) {
-      return res.status(500).json({ error: "mark_deployed_failed", detail: String(err) });
+      return res.status(500).json({ error: "mark_deployed_failed", detail: "internal_error" });
     }
   });
 
@@ -2705,7 +2705,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       const r = await validateDeployment(pool, req.params.id);
       return res.json(r);
     } catch (err) {
-      return res.status(500).json({ error: "validate_failed", detail: String(err) });
+      return res.status(500).json({ error: "validate_failed", detail: "internal_error" });
     }
   });
 
@@ -2723,7 +2723,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       if (!summary) return res.status(404).json({ error: "config_not_found" });
       return res.json(summary);
     } catch (err) {
-      return res.status(500).json({ error: "diagnostics_failed", detail: String(err) });
+      return res.status(500).json({ error: "diagnostics_failed", detail: "internal_error" });
     }
   });
 
@@ -2765,7 +2765,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       }
       return res.json({ ok: true, eventId: r.eventId, deduplicated: r.deduplicated });
     } catch (err) {
-      return res.status(500).json({ error: "track_failed", detail: String(err) });
+      return res.status(500).json({ error: "track_failed", detail: "internal_error" });
     }
   });
 }

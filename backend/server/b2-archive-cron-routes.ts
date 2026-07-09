@@ -93,7 +93,7 @@ export function registerB2ArchiveCronRoutes(deps: CronRoutesDeps): void {
       return res.json({ archived: true, snapshots: archived });
     } catch (err) {
       console.error("[b2-archive-cron] business-plan error", err);
-      return res.status(500).json({ error: (err as Error).message });
+      return res.status(500).json({ error: "internal_error" });
     }
   });
 
@@ -142,7 +142,7 @@ export function registerB2ArchiveCronRoutes(deps: CronRoutesDeps): void {
       });
     } catch (err) {
       console.error("[b2-archive-cron] ai-citation error", err);
-      return res.status(500).json({ error: (err as Error).message });
+      return res.status(500).json({ error: "internal_error" });
     }
   });
 }

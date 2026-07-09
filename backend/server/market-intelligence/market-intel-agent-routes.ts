@@ -77,7 +77,7 @@ export function registerMarketIntelAgentRoutes({
       console.error("[mi-agent-context] fetch failed", err);
       return res
         .status(500)
-        .json({ error: "context_fetch_failed", detail: String(err) });
+        .json({ error: "context_fetch_failed", detail: "internal_error" });
     }
   });
 }

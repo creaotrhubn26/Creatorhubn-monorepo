@@ -107,7 +107,7 @@ export function createStoryboardRouter(
       });
       res.status(201).json({ success: true, data: sb });
     } catch (err) {
-      res.status(500).json({ error: 'upsert_failed', detail: String(err) });
+      res.status(500).json({ error: 'upsert_failed', detail: "internal_error" });
     }
   });
 
@@ -207,7 +207,7 @@ export function createStoryboardRouter(
         }),
       });
     } catch (err) {
-      res.status(502).json({ error: 'openai_network', detail: String(err) });
+      res.status(502).json({ error: 'openai_network', detail: "internal_error" });
       return;
     }
 

@@ -196,7 +196,7 @@ export function registerLeadMapCompetitorRoutes({
         );
         return res.json({ competitors: r.rows.map(rowToCompetitor) });
       } catch (err) {
-        return res.status(500).json({ error: "list_failed", detail: String(err) });
+        return res.status(500).json({ error: "list_failed", detail: "internal_error" });
       }
     },
   );
@@ -304,7 +304,7 @@ export function registerLeadMapCompetitorRoutes({
 
         return res.json({ competitor });
       } catch (err) {
-        return res.status(500).json({ error: "add_failed", detail: String(err) });
+        return res.status(500).json({ error: "add_failed", detail: "internal_error" });
       }
     },
   );
@@ -345,7 +345,7 @@ export function registerLeadMapCompetitorRoutes({
         if (r.rows.length === 0) return res.status(404).json({ error: "not_found" });
         return res.json({ competitor: rowToCompetitor(r.rows[0]) });
       } catch (err) {
-        return res.status(500).json({ error: "update_failed", detail: String(err) });
+        return res.status(500).json({ error: "update_failed", detail: "internal_error" });
       }
     },
   );
@@ -367,7 +367,7 @@ export function registerLeadMapCompetitorRoutes({
         if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
         return res.json({ ok: true, deleted: r.rows[0].id });
       } catch (err) {
-        return res.status(500).json({ error: "delete_failed", detail: String(err) });
+        return res.status(500).json({ error: "delete_failed", detail: "internal_error" });
       }
     },
   );
@@ -437,7 +437,7 @@ export function registerLeadMapCompetitorRoutes({
         }));
         return res.json({ events });
       } catch (err) {
-        return res.status(500).json({ error: "calendar_failed", detail: String(err) });
+        return res.status(500).json({ error: "calendar_failed", detail: "internal_error" });
       }
     },
   );
@@ -514,7 +514,7 @@ export function registerLeadMapCompetitorRoutes({
           totalStale: stale.rows.length,
         });
       } catch (err) {
-        return res.status(500).json({ error: "reminders_failed", detail: String(err) });
+        return res.status(500).json({ error: "reminders_failed", detail: "internal_error" });
       }
     },
   );
@@ -606,7 +606,7 @@ export function registerLeadMapCompetitorRoutes({
           generatedAt: new Date().toISOString(),
         });
       } catch (err) {
-        return res.status(500).json({ error: "status_report_failed", detail: String(err) });
+        return res.status(500).json({ error: "status_report_failed", detail: "internal_error" });
       }
     },
   );
@@ -683,7 +683,7 @@ export function registerLeadMapCompetitorRoutes({
         });
         return res.json({ leaders });
       } catch (err) {
-        return res.status(500).json({ error: "leaderboard_failed", detail: String(err) });
+        return res.status(500).json({ error: "leaderboard_failed", detail: "internal_error" });
       }
     },
   );
@@ -735,7 +735,7 @@ export function registerLeadMapCompetitorRoutes({
         });
         return res.json(result);
       } catch (err) {
-        return res.status(500).json({ error: "save_failed", detail: String((err as Error).message) });
+        return res.status(500).json({ error: "save_failed", detail: String("internal_error") });
       }
     },
   );
@@ -799,7 +799,7 @@ export function registerLeadMapCompetitorRoutes({
         });
         return res.json({ demographics });
       } catch (err) {
-        return res.status(500).json({ error: "demographics_failed", detail: String(err) });
+        return res.status(500).json({ error: "demographics_failed", detail: "internal_error" });
       }
     },
   );
@@ -868,7 +868,7 @@ export function registerLeadMapCompetitorRoutes({
         res.setHeader("Content-Disposition", `attachment; filename="leads-${new Date().toISOString().slice(0, 10)}.csv"`);
         return res.send(lines.join("\n"));
       } catch (err) {
-        return res.status(500).json({ error: "export_failed", detail: String(err) });
+        return res.status(500).json({ error: "export_failed", detail: "internal_error" });
       }
     },
   );
@@ -970,7 +970,7 @@ export function registerLeadMapCompetitorRoutes({
         });
         return res.json({ enrichment });
       } catch (err) {
-        return res.status(500).json({ error: "enrichment_fetch_failed", detail: String(err) });
+        return res.status(500).json({ error: "enrichment_fetch_failed", detail: "internal_error" });
       }
     },
   );
@@ -1124,7 +1124,7 @@ Rangering 100 = bestmatch (kjør outreach nå). 0 = ikke relevant.`,
         }
         return res.json({ ranked: updates });
       } catch (err) {
-        return res.status(500).json({ error: "rank_failed", detail: String(err) });
+        return res.status(500).json({ error: "rank_failed", detail: "internal_error" });
       }
     },
   );

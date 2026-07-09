@@ -155,7 +155,7 @@ export function setupRoleRoomTalentsRoutes(deps: RoleRoomTalentsRoutesDeps): voi
       return res.status(201).json({ talent: r.rows[0] });
     } catch (err) {
       console.error("[talents/me POST] failed", err);
-      return res.status(500).json({ error: "Klarte ikke å opprette profil", detail: String(err) });
+      return res.status(500).json({ error: "Klarte ikke å opprette profil", detail: "internal_error" });
     }
   });
 
@@ -269,7 +269,7 @@ export function setupRoleRoomTalentsRoutes(deps: RoleRoomTalentsRoutesDeps): voi
       return res.status(201).json({ consent: r.rows[0] });
     } catch (err) {
       console.error("[talents/me/consents POST] failed", err);
-      return res.status(500).json({ error: "Klarte ikke å lagre samtykke", detail: String(err) });
+      return res.status(500).json({ error: "Klarte ikke å lagre samtykke", detail: "internal_error" });
     }
   });
 

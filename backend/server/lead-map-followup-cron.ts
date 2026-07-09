@@ -121,7 +121,7 @@ export function registerLeadMapFollowupCronRoutes({ app, pool }: Deps): void {
           results: results.slice(0, 50), // truncate for response-size
         });
       } catch (err) {
-        return res.status(500).json({ error: "cron_failed", detail: String(err) });
+        return res.status(500).json({ error: "cron_failed", detail: "internal_error" });
       } finally {
         await pool
           .query("SELECT pg_advisory_unlock($1)", [FOLLOWUP_CRON_LOCK])

@@ -115,7 +115,7 @@ export function registerLeadPresetRoutes({ app, pool, activeSessions }: Deps): v
             );
         return res.json({ presets: r.rows });
       } catch (err) {
-        return res.status(500).json({ error: "presets_list_failed", detail: String(err) });
+        return res.status(500).json({ error: "presets_list_failed", detail: "internal_error" });
       }
     },
   );
@@ -154,7 +154,7 @@ export function registerLeadPresetRoutes({ app, pool, activeSessions }: Deps): v
         );
         return res.status(201).json({ preset: r.rows[0] });
       } catch (err) {
-        return res.status(500).json({ error: "preset_create_failed", detail: String(err) });
+        return res.status(500).json({ error: "preset_create_failed", detail: "internal_error" });
       }
     },
   );
@@ -196,7 +196,7 @@ export function registerLeadPresetRoutes({ app, pool, activeSessions }: Deps): v
         if (r.rowCount === 0) return res.status(404).json({ error: "preset_not_found_or_system" });
         return res.json({ preset: r.rows[0] });
       } catch (err) {
-        return res.status(500).json({ error: "preset_update_failed", detail: String(err) });
+        return res.status(500).json({ error: "preset_update_failed", detail: "internal_error" });
       }
     },
   );
@@ -214,7 +214,7 @@ export function registerLeadPresetRoutes({ app, pool, activeSessions }: Deps): v
         if (r.rowCount === 0) return res.status(404).json({ error: "preset_not_found_or_system" });
         return res.json({ ok: true });
       } catch (err) {
-        return res.status(500).json({ error: "preset_delete_failed", detail: String(err) });
+        return res.status(500).json({ error: "preset_delete_failed", detail: "internal_error" });
       }
     },
   );
@@ -242,7 +242,7 @@ export function registerLeadPresetRoutes({ app, pool, activeSessions }: Deps): v
             );
         return res.json({ custom_fields: r.rows });
       } catch (err) {
-        return res.status(500).json({ error: "custom_fields_list_failed", detail: String(err) });
+        return res.status(500).json({ error: "custom_fields_list_failed", detail: "internal_error" });
       }
     },
   );
@@ -281,7 +281,7 @@ export function registerLeadPresetRoutes({ app, pool, activeSessions }: Deps): v
         );
         return res.status(201).json({ custom_field: r.rows[0] });
       } catch (err) {
-        return res.status(500).json({ error: "custom_field_create_failed", detail: String(err) });
+        return res.status(500).json({ error: "custom_field_create_failed", detail: "internal_error" });
       }
     },
   );
@@ -368,7 +368,7 @@ export function registerLeadPresetRoutes({ app, pool, activeSessions }: Deps): v
         });
       } catch (err) {
         try { await client?.query("ROLLBACK"); } catch { /* noop */ }
-        return res.status(500).json({ error: "lead_create_failed", detail: String(err) });
+        return res.status(500).json({ error: "lead_create_failed", detail: "internal_error" });
       } finally {
         client?.release();
       }

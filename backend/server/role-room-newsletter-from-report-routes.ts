@@ -238,7 +238,7 @@ export function setupNewsletterFromReportRoutes(deps: SetupNewsletterFromReportD
       });
     } catch (err) {
       console.error('[newsletter-from-report] error', err);
-      res.status(500).json({ ok: false, error: 'Kunne ikke generere utgave fra rapport', detail: String(err) });
+      res.status(500).json({ ok: false, error: 'Kunne ikke generere utgave fra rapport', detail: "internal_error" });
     }
   });
 }

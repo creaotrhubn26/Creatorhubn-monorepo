@@ -129,7 +129,7 @@ export function setupCockpitB2BRoutes(deps: CockpitB2BRoutesDeps): void {
       return res.json({ ok: true, post_urn: postUrn });
     } catch (err) {
       console.error("[cockpit/linkedin publish] failed", err);
-      return res.status(500).json({ error: "Publish feilet", detail: String(err) });
+      return res.status(500).json({ error: "Publish feilet", detail: "internal_error" });
     }
   });
 
@@ -261,7 +261,7 @@ export function setupCockpitB2BRoutes(deps: CockpitB2BRoutesDeps): void {
       return res.json({ lead: upd.rows[0], score: parsed });
     } catch (err) {
       console.error("[cockpit/leads score] failed", err);
-      return res.status(500).json({ error: "Scoring feilet", detail: String(err) });
+      return res.status(500).json({ error: "Scoring feilet", detail: "internal_error" });
     }
   });
 

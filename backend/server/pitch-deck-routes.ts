@@ -558,7 +558,7 @@ export function registerPitchDeckRoutes({ app, pool, activeSessions }: Deps): vo
           slide_count: Number(row.slide_count),
         });
       } catch (err) {
-        return res.status(500).json({ error: "availability_failed", detail: String(err) });
+        return res.status(500).json({ error: "availability_failed", detail: "internal_error" });
       }
     },
   );
@@ -586,7 +586,7 @@ export function registerPitchDeckRoutes({ app, pool, activeSessions }: Deps): vo
         );
         return res.json({ decks: r.rows });
       } catch (err) {
-        return res.status(500).json({ error: "list_failed", detail: String(err) });
+        return res.status(500).json({ error: "list_failed", detail: "internal_error" });
       }
     },
   );
@@ -683,7 +683,7 @@ export function registerPitchDeckRoutes({ app, pool, activeSessions }: Deps): vo
         return res.status(201).json({ deck, slides: slideRows });
       } catch (err) {
         try { await client.query("ROLLBACK"); } catch { /* noop */ }
-        return res.status(500).json({ error: "onboard_failed", detail: String(err) });
+        return res.status(500).json({ error: "onboard_failed", detail: "internal_error" });
       } finally {
         client.release();
       }
@@ -701,7 +701,7 @@ export function registerPitchDeckRoutes({ app, pool, activeSessions }: Deps): vo
         const slides = await loadSlides(pool, req.params.id);
         return res.json({ deck, slides });
       } catch (err) {
-        return res.status(500).json({ error: "load_failed", detail: String(err) });
+        return res.status(500).json({ error: "load_failed", detail: "internal_error" });
       }
     },
   );
@@ -735,7 +735,7 @@ export function registerPitchDeckRoutes({ app, pool, activeSessions }: Deps): vo
         if (r.rows.length === 0) return res.status(404).json({ error: "deck_not_found" });
         return res.json({ deck: r.rows[0] });
       } catch (err) {
-        return res.status(500).json({ error: "update_failed", detail: String(err) });
+        return res.status(500).json({ error: "update_failed", detail: "internal_error" });
       }
     },
   );
@@ -785,7 +785,7 @@ export function registerPitchDeckRoutes({ app, pool, activeSessions }: Deps): vo
         if (r.rows.length === 0) return res.status(404).json({ error: "slide_not_found" });
         return res.json({ slide: r.rows[0] });
       } catch (err) {
-        return res.status(500).json({ error: "update_failed", detail: String(err) });
+        return res.status(500).json({ error: "update_failed", detail: "internal_error" });
       }
     },
   );
@@ -811,7 +811,7 @@ export function registerPitchDeckRoutes({ app, pool, activeSessions }: Deps): vo
         if (r.rowCount === 0) return res.status(404).json({ error: "slide_not_found" });
         return res.json({ ok: true, soft_deleted: true });
       } catch (err) {
-        return res.status(500).json({ error: "delete_failed", detail: String(err) });
+        return res.status(500).json({ error: "delete_failed", detail: "internal_error" });
       }
     },
   );
@@ -833,7 +833,7 @@ export function registerPitchDeckRoutes({ app, pool, activeSessions }: Deps): vo
         }
         return res.json({ slide: r.rows[0] });
       } catch (err) {
-        return res.status(500).json({ error: "restore_failed", detail: String(err) });
+        return res.status(500).json({ error: "restore_failed", detail: "internal_error" });
       }
     },
   );
@@ -854,7 +854,7 @@ export function registerPitchDeckRoutes({ app, pool, activeSessions }: Deps): vo
         );
         return res.json({ slides: r.rows });
       } catch (err) {
-        return res.status(500).json({ error: "trash_failed", detail: String(err) });
+        return res.status(500).json({ error: "trash_failed", detail: "internal_error" });
       }
     },
   );
@@ -923,7 +923,7 @@ export function registerPitchDeckRoutes({ app, pool, activeSessions }: Deps): vo
             raw_preview: err.raw.slice(0, 400),
           });
         }
-        return res.status(500).json({ error: "regenerate_failed", detail: String(err) });
+        return res.status(500).json({ error: "regenerate_failed", detail: "internal_error" });
       }
     },
   );
@@ -952,7 +952,7 @@ export function registerPitchDeckRoutes({ app, pool, activeSessions }: Deps): vo
         if (r.rows.length === 0) return res.status(404).json({ error: "slide_not_found" });
         return res.json({ ok: true, locked: lock });
       } catch (err) {
-        return res.status(500).json({ error: "lock_failed", detail: String(err) });
+        return res.status(500).json({ error: "lock_failed", detail: "internal_error" });
       }
     },
   );
@@ -984,7 +984,7 @@ export function registerPitchDeckRoutes({ app, pool, activeSessions }: Deps): vo
         );
         return res.status(201).json({ presentation: r.rows[0] });
       } catch (err) {
-        return res.status(500).json({ error: "presentation_start_failed", detail: String(err) });
+        return res.status(500).json({ error: "presentation_start_failed", detail: "internal_error" });
       }
     },
   );
@@ -1035,7 +1035,7 @@ export function registerPitchDeckRoutes({ app, pool, activeSessions }: Deps): vo
         }
         return res.json({ presentation: r.rows[0] });
       } catch (err) {
-        return res.status(500).json({ error: "presentation_update_failed", detail: String(err) });
+        return res.status(500).json({ error: "presentation_update_failed", detail: "internal_error" });
       }
     },
   );

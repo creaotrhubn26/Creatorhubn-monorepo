@@ -141,7 +141,7 @@ export function registerLeadgridTerritoryRoutes(deps: Deps): void {
       );
       return res.json({ territories: r.rows });
     } catch (err) {
-      return res.status(500).json({ error: "list_failed", detail: String(err) });
+      return res.status(500).json({ error: "list_failed", detail: "internal_error" });
     }
   });
 
@@ -173,7 +173,7 @@ export function registerLeadgridTerritoryRoutes(deps: Deps): void {
       );
       return res.json({ territories: r.rows });
     } catch (err) {
-      return res.status(500).json({ error: "mine_failed", detail: String(err) });
+      return res.status(500).json({ error: "mine_failed", detail: "internal_error" });
     }
   });
 
@@ -218,7 +218,7 @@ export function registerLeadgridTerritoryRoutes(deps: Deps): void {
       );
       return res.status(201).json({ id: r.rows[0].id, overlaps });
     } catch (err) {
-      return res.status(500).json({ error: "create_failed", detail: String(err) });
+      return res.status(500).json({ error: "create_failed", detail: "internal_error" });
     }
   });
 
@@ -255,7 +255,7 @@ export function registerLeadgridTerritoryRoutes(deps: Deps): void {
       if (r.rowCount === 0) return res.status(404).json({ error: "ikke_funnet" });
       return res.json({ id: r.rows[0].id });
     } catch (err) {
-      return res.status(500).json({ error: "update_failed", detail: String(err) });
+      return res.status(500).json({ error: "update_failed", detail: "internal_error" });
     }
   });
 
@@ -270,7 +270,7 @@ export function registerLeadgridTerritoryRoutes(deps: Deps): void {
       if (r.rowCount === 0) return res.status(404).json({ error: "ikke_funnet" });
       return res.json({ ok: true });
     } catch (err) {
-      return res.status(500).json({ error: "delete_failed", detail: String(err) });
+      return res.status(500).json({ error: "delete_failed", detail: "internal_error" });
     }
   });
 
@@ -284,7 +284,7 @@ export function registerLeadgridTerritoryRoutes(deps: Deps): void {
       const all = await loadOrgTerritories(pool, orgId);
       return res.json({ overlaps: detectAdminOverlaps(all) });
     } catch (err) {
-      return res.status(500).json({ error: "overlaps_failed", detail: String(err) });
+      return res.status(500).json({ error: "overlaps_failed", detail: "internal_error" });
     }
   });
 
@@ -358,7 +358,7 @@ export function registerLeadgridTerritoryRoutes(deps: Deps): void {
         conflicting_user_id: inGrid ? null : best?.assignedUserId ?? null,
       });
     } catch (err) {
-      return res.status(500).json({ error: "check_failed", detail: String(err) });
+      return res.status(500).json({ error: "check_failed", detail: "internal_error" });
     }
   });
 
@@ -402,7 +402,7 @@ export function registerLeadgridTerritoryRoutes(deps: Deps): void {
       const coverage = computeCoverage(leads, territories);
       return res.json({ coverage, adminOverlaps: detectAdminOverlaps(territories) });
     } catch (err) {
-      return res.status(500).json({ error: "coverage_failed", detail: String(err) });
+      return res.status(500).json({ error: "coverage_failed", detail: "internal_error" });
     }
   });
 
@@ -497,7 +497,7 @@ export function registerLeadgridTerritoryRoutes(deps: Deps): void {
 
       return res.json({ period, sellers });
     } catch (err) {
-      return res.status(500).json({ error: "dashboard_failed", detail: String(err) });
+      return res.status(500).json({ error: "dashboard_failed", detail: "internal_error" });
     }
   });
 
@@ -524,7 +524,7 @@ export function registerLeadgridTerritoryRoutes(deps: Deps): void {
       );
       return res.json({ breaches: r.rows });
     } catch (err) {
-      return res.status(500).json({ error: "breaches_failed", detail: String(err) });
+      return res.status(500).json({ error: "breaches_failed", detail: "internal_error" });
     }
   });
 }

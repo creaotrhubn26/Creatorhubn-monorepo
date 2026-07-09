@@ -23830,7 +23830,7 @@ app.post("/api/tripletex/customers/ensure", async (req, res) => {
     res.json({ success: true, customer });
   } catch (error) {
     if (error instanceof TripletexApiError) {
-      return res.status(error.status).json({ error: error.message, details: error.details });
+      return res.status(error.status).json({ error: "internal_error", details: error.details });
     }
     console.error("Tripletex ensure customer error:", error);
     res.status(500).json({ error: "Kunne ikke opprette kunde i Tripletex" });
@@ -23976,7 +23976,7 @@ app.post("/api/tripletex/invoices/create", async (req, res) => {
     });
   } catch (error) {
     if (error instanceof TripletexApiError) {
-      return res.status(error.status).json({ error: error.message, details: error.details });
+      return res.status(error.status).json({ error: "internal_error", details: error.details });
     }
 
     console.error("Tripletex invoice create error:", error);
@@ -24012,7 +24012,7 @@ app.get("/api/tripletex/invoices/:invoiceId/pdf", async (req, res) => {
     res.send(Buffer.from(pdf));
   } catch (error) {
     if (error instanceof TripletexApiError) {
-      return res.status(error.status).json({ error: error.message, details: error.details });
+      return res.status(error.status).json({ error: "internal_error", details: error.details });
     }
     console.error("Tripletex invoice pdf error:", error);
     res.status(500).json({ error: "Kunne ikke hente faktura fra Tripletex" });
@@ -24047,7 +24047,7 @@ app.get("/api/tripletex/vouchers/:voucherId/pdf", async (req, res) => {
     res.send(Buffer.from(pdf));
   } catch (error) {
     if (error instanceof TripletexApiError) {
-      return res.status(error.status).json({ error: error.message, details: error.details });
+      return res.status(error.status).json({ error: "internal_error", details: error.details });
     }
     console.error("Tripletex voucher pdf error:", error);
     res.status(500).json({ error: "Kunne ikke hente bilag fra Tripletex" });
@@ -46840,7 +46840,7 @@ app.all("/api/evendi/*", async (req, res, next) => {
     console.error("Evendi proxy error:", error.message);
     res
       .status(502)
-      .json({ error: "Kunne ikke nå Evendi API", details: error.message });
+      .json({ error: "Kunne ikke nå Evendi API", details: "internal_error" });
   }
 });
 

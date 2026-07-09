@@ -85,7 +85,7 @@ export function registerIpadPairRoutes({ app, pool, activeSessions }: Deps): voi
           qrPayload: `ROLE-ROOM-PAIR:${longToken}`,
         });
       } catch (err) {
-        return res.status(500).json({ error: "generate_failed", detail: String(err) });
+        return res.status(500).json({ error: "generate_failed", detail: "internal_error" });
       }
     },
   );
@@ -124,7 +124,7 @@ export function registerIpadPairRoutes({ app, pool, activeSessions }: Deps): voi
           })),
         });
       } catch (err) {
-        return res.status(500).json({ error: "list_failed", detail: String(err) });
+        return res.status(500).json({ error: "list_failed", detail: "internal_error" });
       }
     },
   );
@@ -210,7 +210,7 @@ export function registerIpadPairRoutes({ app, pool, activeSessions }: Deps): voi
           },
         });
       } catch (err) {
-        return res.status(500).json({ error: "exchange_failed", detail: String(err) });
+        return res.status(500).json({ error: "exchange_failed", detail: "internal_error" });
       }
     },
   );

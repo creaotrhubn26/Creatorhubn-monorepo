@@ -335,7 +335,7 @@ export function setupRoleRoomPartnershipsRoutes(deps: RoleRoomPartnershipsRoutes
       return res.status(201).json({ partnership });
     } catch (err) {
       console.error("[partnerships/propose] failed", err);
-      return res.status(500).json({ error: "Klarte ikke å foreslå partnership", detail: String(err) });
+      return res.status(500).json({ error: "Klarte ikke å foreslå partnership", detail: "internal_error" });
     }
   });
 
@@ -817,7 +817,7 @@ export function setupRoleRoomPartnershipsRoutes(deps: RoleRoomPartnershipsRoutes
       return res.status(201).json({ invitation });
     } catch (err) {
       console.error("[partnerships/invite-project] failed", err);
-      return res.status(500).json({ error: "Klarte ikke å invitere prosjekt", detail: String(err) });
+      return res.status(500).json({ error: "Klarte ikke å invitere prosjekt", detail: "internal_error" });
     }
   });
 
@@ -1290,7 +1290,7 @@ export function setupRoleRoomPartnershipsRoutes(deps: RoleRoomPartnershipsRoutes
     } catch (err) {
       await client.query("ROLLBACK");
       console.error("[partnerships/availability/close] failed", err);
-      return res.status(500).json({ error: "Klarte ikke å stenge", detail: String(err) });
+      return res.status(500).json({ error: "Klarte ikke å stenge", detail: "internal_error" });
     } finally {
       client.release();
     }
@@ -1558,7 +1558,7 @@ export function setupRoleRoomPartnershipsRoutes(deps: RoleRoomPartnershipsRoutes
       return res.status(201).json({ proposal });
     } catch (err) {
       console.error("[partnerships/talent-proposals POST] failed", err);
-      return res.status(500).json({ error: "Klarte ikke å foreslå talent", detail: String(err) });
+      return res.status(500).json({ error: "Klarte ikke å foreslå talent", detail: "internal_error" });
     }
   });
 
@@ -1978,7 +1978,7 @@ export function setupRoleRoomPartnershipsRoutes(deps: RoleRoomPartnershipsRoutes
       });
     } catch (err) {
       console.error("[partnerships/talent-proposals/bulk] failed", err);
-      return res.status(500).json({ error: "Klarte ikke å foreslå bulk", detail: String(err) });
+      return res.status(500).json({ error: "Klarte ikke å foreslå bulk", detail: "internal_error" });
     }
   });
 

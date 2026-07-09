@@ -551,7 +551,7 @@ export function createLiveSetAiRouter(
           errorCode: err.code,
           errorMessage: err.message,
         });
-        res.status(403).json({ error: err.code, message: err.message });
+        res.status(403).json({ error: err.code, message: "internal_error" });
         return;
       }
       throw err;
@@ -592,7 +592,7 @@ export function createLiveSetAiRouter(
         errorCode: code,
         errorMessage: (error as Error).message,
       });
-      res.status(500).json({ error: code, message: (error as Error).message });
+      res.status(500).json({ error: code, message: "internal_error" });
     }
   };
 

@@ -107,7 +107,7 @@ export function setupCustomerSuccessRoutes(deps: Deps): void {
         });
         return res.json({ ok: true });
       } catch (err) {
-        return res.status(500).json({ error: "update_failed", detail: String(err) });
+        return res.status(500).json({ error: "update_failed", detail: "internal_error" });
       }
     });
 
@@ -118,7 +118,7 @@ export function setupCustomerSuccessRoutes(deps: Deps): void {
         const h = await computeHealthForUser(pool, req.params.userId);
         return res.json(h);
       } catch (err) {
-        return res.status(500).json({ error: "health_failed", detail: String(err) });
+        return res.status(500).json({ error: "health_failed", detail: "internal_error" });
       }
     });
 
@@ -130,7 +130,7 @@ export function setupCustomerSuccessRoutes(deps: Deps): void {
         const r = await listInteractions(pool, req.params.userId, limit);
         return res.json({ interactions: r });
       } catch (err) {
-        return res.status(500).json({ error: "interactions_failed", detail: String(err) });
+        return res.status(500).json({ error: "interactions_failed", detail: "internal_error" });
       }
     });
 
@@ -168,7 +168,7 @@ export function setupCustomerSuccessRoutes(deps: Deps): void {
         });
         return res.json(r);
       } catch (err) {
-        return res.status(500).json({ error: "create_failed", detail: String(err) });
+        return res.status(500).json({ error: "create_failed", detail: "internal_error" });
       }
     });
 
@@ -186,7 +186,7 @@ export function setupCustomerSuccessRoutes(deps: Deps): void {
         const r = await captureSnapshotsForAllActiveCustomers(pool);
         return res.json(r);
       } catch (err) {
-        return res.status(500).json({ error: "snapshot_failed", detail: String(err) });
+        return res.status(500).json({ error: "snapshot_failed", detail: "internal_error" });
       }
     });
   }
