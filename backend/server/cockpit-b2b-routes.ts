@@ -659,9 +659,19 @@ export function setupCockpitB2BRoutes(deps: CockpitB2BRoutesDeps): void {
       let featuresJson: Record<string, unknown> | null = null;
       let websiteMetaJson: Record<string, unknown> | null = null;
 
-      if (targetUrl) {
+      const _safeTarget = (() => {
+        if (!targetUrl) return null;
         try {
-          const resp = await fetch(targetUrl, {
+          const u = new URL(targetUrl);
+          if (u.protocol !== "https:") return null;
+          const h = u.hostname;
+          if (h === "localhost" || h === "127.0.0.1" || h === "0.0.0.0" || h.startsWith("169.254.") || h.startsWith("10.") || h.startsWith("192.168.") || /^172\.(1[6-9]|2\d|3[01])\./.test(h) || h.endsWith(".internal") || h.endsWith(".local")) return null;
+          return u.href;
+        } catch { return null; }
+      })();
+      if (_safeTarget) {
+        try {
+          const resp = await fetch(_safeTarget, {
             headers: { "User-Agent": "Mozilla/5.0 TheRoleRoom-Bot/1.0" },
           });
           if (resp.ok) {

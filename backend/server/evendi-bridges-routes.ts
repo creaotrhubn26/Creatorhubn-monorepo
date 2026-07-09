@@ -1275,7 +1275,14 @@ export function setupEvendiBridgesRoutes(deps: EvendiBridgesRoutesDeps): void {
           .status(400)
           .json({ error: "Mangler target-konfigurasjon: targetUrl, apiKey" });
       }
-
+      // SSRF guard: only allow HTTPS to public internet hosts
+      let _parsedTarget: URL;
+      try { _parsedTarget = new URL(targetUrl); } catch { return res.status(400).json({ error: "Ugyldig targetUrl" }); }
+      if (_parsedTarget.protocol !== "https:") return res.status(400).json({ error: "targetUrl må bruke HTTPS" });
+      const _h = _parsedTarget.hostname;
+      if (_h === "localhost" || _h === "127.0.0.1" || _h === "0.0.0.0" || _h.startsWith("169.254.") || _h.startsWith("10.") || _h.startsWith("192.168.") || /^172\.(1[6-9]|2\d|3[01])\./.test(_h) || _h.endsWith(".internal") || _h.endsWith(".local")) {
+        return res.status(400).json({ error: "targetUrl peker til ikke-tillatt adresse" });
+      }
       // Build the publish payload matching the Norwedfilm /api/publish schema
       const publishPayload = {
         project: {
