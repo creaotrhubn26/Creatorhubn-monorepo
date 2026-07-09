@@ -116,7 +116,7 @@ export function registerErrorLogRoutes({
         endpoint: req.query.endpoint as string | undefined,
         userEmail: req.query.userEmail as string | undefined,
         hoursAgo: req.query.hoursAgo ? Number(req.query.hoursAgo) : undefined,
-        limit: req.query.limit ? Number(req.query.limit) : 200,
+        limit: Math.min(Math.max(1, req.query.limit ? Number(req.query.limit) : 200), 1000),
       });
       return res.json({ errors });
     } catch (err) {
