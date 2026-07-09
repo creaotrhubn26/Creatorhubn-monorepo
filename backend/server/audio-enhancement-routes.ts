@@ -139,6 +139,7 @@ export function setupAudioEnhancementRoutes(
   );
 
   app.get("/api/audio-enhancement/download/:jobId", (req, res) => {
+    if (!requireUserSession(req, res)) return;
     const job = compatAudioJobsStore.get(req.params.jobId);
     if (!job) {
       return res
