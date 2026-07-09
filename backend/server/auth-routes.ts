@@ -395,9 +395,16 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
           });
         }
       } catch (totpCheckError) {
-        console.error("[Auth] TOTP-sjekk feilet, fortsetter uten 2FA:", totpCheckError);
-        // Best-effort: hvis TOTP-tabellen ikke finnes (gammel DB), la
-        // login fortsette uten 2FA istedenfor å låse brukeren ute.
+        const pgCode = (totpCheckError as any)?.code;
+        if (pgCode === "42P01") {
+          // TOTP-tabellen finnes ikke (gammel DB) — tillat login uten 2FA.
+          console.warn("[Auth] TOTP-tabell mangler (42P01), fortsetter uten 2FA.");
+        } else {
+          // Alle andre feil (timeout, deadlock, tilkoblingsfeil) skal
+          // IKKE åpne 2FA-gate — brukeren må prøve igjen.
+          console.error("[Auth] TOTP-sjekk feilet:", totpCheckError);
+          return res.status(500).json({ error: "internal_error" });
+        }
       }
 
       _clearFailedLogins(normalizedEmail);
