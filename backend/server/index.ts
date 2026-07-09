@@ -22419,22 +22419,14 @@ function peekFfmpegHealth(): { available: boolean | null; version: string | null
     : { available: null, version: null };
 }
 
-app.get("/api/health", (req, res) => {
-  const isRenderRuntime =
-    String(process.env.RENDER || "").toLowerCase() === "true";
-  const ffmpeg = peekFfmpegHealth();
-  res.json({
-    status: "ok",
-    timestamp: new Date().toISOString(),
-    startedAt: serverStartedAt,
-    runtime: isRenderRuntime ? "render" : process.env.NODE_ENV || "unknown",
-    ffmpeg,
-  });
+app.get("/api/health", (_req, res) => {
+  res.json({ status: "ok" });
 });
 
 // AI-queue health for observability (Leadgrid skalering nivå 2).
 // Eksponerer per-provider RPM-bruk, in-flight og pending wait-queue.
-app.get("/api/leadgrid/ai-queue/health", async (_req, res) => {
+app.get("/api/leadgrid/ai-queue/health", async (req, res) => {
+  if (!requireAdminSession(req, res)) return;
   try {
     const { aiQueue } = await import("./leadgrid-ai-queue.js");
     res.json({ ok: true, ...aiQueue.snapshot() });
