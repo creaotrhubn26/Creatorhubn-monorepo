@@ -79,6 +79,20 @@ const PAIR_TTL_MS = 10 * 60 * 1000;
 
 // Paringskoder i minne (kort levetid). code → { userId, email, name, createdAt }
 const pairStore = new Map<string, { userId: string; email: string; name: string; createdAt: number }>();
+
+// Brute-force-vern på pair/claim: maks 10 forsøk per IP per minutt.
+const _pairClaimBuckets = new Map<string, number[]>();
+function _pairClaimRateLimited(ip: string): boolean {
+  const now = Date.now();
+  const arr = (_pairClaimBuckets.get(ip) ?? []).filter((t) => now - t < 60_000);
+  arr.push(now);
+  _pairClaimBuckets.set(ip, arr);
+  return arr.length > 10;
+}
+function _pairClientIp(req: any): string {
+  return (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()
+    ?? req.socket?.remoteAddress ?? "?";
+}
 function prunePairs() { const now = Date.now(); for (const [k, v] of pairStore) if (now - v.createdAt > PAIR_TTL_MS) pairStore.delete(k); }
 function genPairCode(): string {
   // 6 sifre, unngå ledende kollisjon med eksisterende aktive koder
@@ -277,6 +291,8 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
 
   // POST /api/protools/pair/claim — companion bytter koden mot et device-token.
   app.post("/api/protools/pair/claim", async (req, res) => {
+    if (_pairClaimRateLimited(_pairClientIp(req)))
+      return res.status(429).json({ error: "too_many_requests" });
     prunePairs();
     const code = String(req.body?.code || "").trim();
     if (!/^\d{6}$/.test(code)) return res.status(400).json({ error: "invalid_code" });
