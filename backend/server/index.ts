@@ -69853,6 +69853,7 @@ app.get("/api/system/metrics", (req, res) => {
 
 
 app.post("/api/deployment/feedback-deploy", async (req, res) => {
+  if (!requireAdminSession(req, res)) return;
   try {
     const body = (req.body || {}) as Record<string, unknown>;
     const feedbackId =

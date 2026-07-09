@@ -35,6 +35,18 @@ export interface ContactFormsDeps {
 export function setupContactFormsRoutes(deps: ContactFormsDeps): void {
   const { app, pool, requireUserSession } = deps;
 
+  // Per-IP rate limit for public form submissions: 10 per 15 minutes
+  const publicFormSubmitLog = new Map<string, number[]>();
+  function checkPublicFormRateLimit(ip: string): boolean {
+    const now = Date.now();
+    const windowMs = 15 * 60 * 1000;
+    const times = (publicFormSubmitLog.get(ip) || []).filter(t => now - t < windowMs);
+    if (times.length >= 10) return false;
+    times.push(now);
+    publicFormSubmitLog.set(ip, times);
+    return true;
+  }
+
   let schemaReady = false;
   async function ensureSchema() {
     if (schemaReady) return;
@@ -151,6 +163,10 @@ export function setupContactFormsRoutes(deps: ContactFormsDeps): void {
 
   // ── Offentlig: innsending → client_submissions (forespørsel) + varsel ────────
   app.post("/api/public/contact-form/:token", async (req, res) => {
+    const ip = (req.headers["x-forwarded-for"] as string || req.socket.remoteAddress || "unknown").split(",")[0].trim();
+    if (!checkPublicFormRateLimit(ip)) {
+      return res.status(429).json({ error: "too_many_requests" });
+    }
     try {
       await ensureSchema();
       const fr = await pool.query(`SELECT * FROM contact_forms WHERE token = $1 AND is_active = TRUE`, [req.params.token]).catch(() => ({ rows: [] }));
