@@ -20,6 +20,7 @@
  * Beregner next_send_at basert på frequency + day_of_week/month + time_of_day.
  */
 
+import crypto from "crypto";
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import PDFDocument from "pdfkit";
@@ -38,7 +39,8 @@ function getSession(req: Request, sessions: Map<string, SessionData>): SessionDa
 
 function isCronAuthorized(req: Request): boolean {
   const t = req.headers["x-cron-trigger-token"] as string | undefined;
-  return !!t && !!CRON_TOKEN && t === CRON_TOKEN;
+  if (!t || !CRON_TOKEN || t.length !== CRON_TOKEN.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(t), Buffer.from(CRON_TOKEN));
 }
 
 async function getOrgId(pool: Pool, userId: string): Promise<string | null> {

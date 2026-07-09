@@ -379,7 +379,7 @@ export function setupRoleRoomSocialRoutes(
         pendingState?: { returnPath?: string | null; projectId?: string | null; clientEmail?: string | null };
       })?.pendingState;
       const returnPath = pending?.returnPath;
-      if (returnPath && typeof returnPath === "string" && returnPath.startsWith("/")) {
+      if (returnPath && typeof returnPath === "string" && returnPath.startsWith("/") && !returnPath.startsWith("//")) {
         // Varsle produsent-teamet: tilkoblingen er fullført og aktiv.
         if (pending?.projectId) {
           void notifyProducerOfClientPlatformConnection(pool, {

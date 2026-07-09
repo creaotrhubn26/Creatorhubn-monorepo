@@ -289,10 +289,8 @@ export function buildRoleRoomCheckoutReturnUrl(input: {
   status: "success" | "cancel";
   includeSessionId?: boolean;
 }): string {
-  const rawPath =
-    typeof input.returnPath === "string" && input.returnPath.trim().startsWith("/")
-      ? input.returnPath.trim()
-      : "/";
+  const _rawPath = typeof input.returnPath === "string" ? input.returnPath.trim() : "";
+  const rawPath = _rawPath.startsWith("/") && !_rawPath.startsWith("//") ? _rawPath : "/";
   const url = new URL(rawPath, input.browserOrigin);
   url.searchParams.set("rrCheckout", input.status);
   if (input.includeSessionId) {
@@ -309,10 +307,8 @@ export function buildRoleRoomBillingReturnUrl(input: {
   browserOrigin: string;
   returnPath?: string | null;
 }): string {
-  const rawPath =
-    typeof input.returnPath === "string" && input.returnPath.trim().startsWith("/")
-      ? input.returnPath.trim()
-      : "/";
+  const _rawPath = typeof input.returnPath === "string" ? input.returnPath.trim() : "";
+  const rawPath = _rawPath.startsWith("/") && !_rawPath.startsWith("//") ? _rawPath : "/";
   const url = new URL(rawPath, input.browserOrigin);
   url.searchParams.set("rrBilling", "updated");
   return url.toString();
@@ -326,10 +322,8 @@ export function buildRoleRoomActivationUrl(input: {
   const browserOrigin =
     normalizeRoleRoomBrowserOrigin(input.browserOrigin) ||
     getDefaultRoleRoomPublicOrigin();
-  const rawPath =
-    typeof input.returnPath === "string" && input.returnPath.trim().startsWith("/")
-      ? input.returnPath.trim()
-      : "/";
+  const _rawPath = typeof input.returnPath === "string" ? input.returnPath.trim() : "";
+  const rawPath = _rawPath.startsWith("/") && !_rawPath.startsWith("//") ? _rawPath : "/";
   const url = new URL("/api/role-room/billing/activate", browserOrigin);
   url.searchParams.set("token", input.token);
   url.searchParams.set("browserOrigin", browserOrigin);
@@ -346,10 +340,8 @@ export function buildRoleRoomActivationReturnUrl(input: {
   const browserOrigin =
     normalizeRoleRoomBrowserOrigin(input.browserOrigin) ||
     getDefaultRoleRoomPublicOrigin();
-  const rawPath =
-    typeof input.returnPath === "string" && input.returnPath.trim().startsWith("/")
-      ? input.returnPath.trim()
-      : "/";
+  const _rawPath = typeof input.returnPath === "string" ? input.returnPath.trim() : "";
+  const rawPath = _rawPath.startsWith("/") && !_rawPath.startsWith("//") ? _rawPath : "/";
   const url = new URL(rawPath, browserOrigin);
   url.searchParams.set("rrActivation", input.status);
   if (input.message) {

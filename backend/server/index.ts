@@ -26228,10 +26228,8 @@ function buildCreatorHubCheckoutReturnUrl(input: {
   status: "success" | "cancel";
   includeSessionId?: boolean;
 }) {
-  const rawPath =
-    typeof input.returnPath === "string" && input.returnPath.trim().startsWith("/")
-      ? input.returnPath.trim()
-      : "/subscription-selection";
+  const _rawPath = typeof input.returnPath === "string" ? input.returnPath.trim() : "";
+  const rawPath = _rawPath.startsWith("/") && !_rawPath.startsWith("//") ? _rawPath : "/subscription-selection";
   const url = new URL(rawPath, input.browserOrigin);
   url.searchParams.set("payment", input.status);
   if (input.includeSessionId) {

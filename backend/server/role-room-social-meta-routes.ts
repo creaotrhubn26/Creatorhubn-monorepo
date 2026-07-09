@@ -234,7 +234,7 @@ export function setupRoleRoomSocialMetaRoutes(
       }
       // Klient-initiert kobling (returnPath satt): send klienten tilbake til
       // portalen i stedet for en generisk success-side.
-      if (claims.returnPath && claims.returnPath.startsWith("/")) {
+      if (claims.returnPath && claims.returnPath.startsWith("/") && !claims.returnPath.startsWith("//")) {
         const sep = claims.returnPath.includes("?") ? "&" : "?";
         return res.redirect(`${claims.returnPath}${sep}connected=instagram`);
       }
@@ -248,7 +248,7 @@ export function setupRoleRoomSocialMetaRoutes(
       );
     } catch (oauthError) {
       console.error("[ig-oauth] callback failed", oauthError);
-      if (claims.returnPath && claims.returnPath.startsWith("/")) {
+      if (claims.returnPath && claims.returnPath.startsWith("/") && !claims.returnPath.startsWith("//")) {
         const sep = claims.returnPath.includes("?") ? "&" : "?";
         return res.redirect(`${claims.returnPath}${sep}connect_error=instagram`);
       }

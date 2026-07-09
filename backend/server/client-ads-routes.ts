@@ -126,6 +126,30 @@ import {
 } from "./role-room-ads-oauth.js";
 import crypto from "node:crypto";
 
+function _adsOauthStateKey(): string {
+  return process.env.SESSION_SECRET || process.env.JWT_SECRET || process.env.AUTH_SECRET || "";
+}
+function _signAdsOauthState(payload: string): string {
+  return crypto.createHmac("sha256", _adsOauthStateKey()).update(payload).digest("hex").slice(0, 16);
+}
+function _buildAdsOauthState(userId: string, configId: string): string {
+  const nonce = crypto.randomBytes(12).toString("hex");
+  const payload = `${userId}|${configId}|${nonce}`;
+  const sig = _signAdsOauthState(payload);
+  return `${payload}|${sig}`;
+}
+function _verifyAdsOauthState(state: string): { userId: string; configId: string } | null {
+  const parts = state.split("|");
+  if (parts.length !== 4) return null;
+  const [userId, configId, nonce, sig] = parts;
+  const payload = `${userId}|${configId}|${nonce}`;
+  const expected = _signAdsOauthState(payload);
+  const a = Buffer.from(sig ?? "");
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+  return { userId, configId };
+}
+
 interface SessionLike {
   userId: string;
   email?: string;
@@ -1014,7 +1038,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
     const baseUrl = (process.env.PUBLIC_BACKEND_URL || `https://${req.get("host") ?? "creatorhub-backend-rtbl.onrender.com"}`).replace(/\/+$/, "");
     const redirectUri = `${baseUrl}/api/admin-room/agent/ads/oauth/linkedin/callback`;
     const configId = typeof req.query.configId === "string" ? req.query.configId : "";
-    const state = `${session.userId}.${configId}.${crypto.randomBytes(12).toString("hex")}`;
+    const state = _buildAdsOauthState(session.userId, configId);
     const authUrl = buildAdsAuthUrl("linkedin", { clientId: creds.clientId, redirectUri, state });
     if (!authUrl) return res.status(503).json({ error: "Klarte ikke å bygge LinkedIn-auth-URL" });
     return res.json({ authUrl });
@@ -1026,8 +1050,9 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
     const state = typeof req.query.state === "string" ? req.query.state : null;
     if (!code || !state) return res.status(400).send("Missing code/state");
 
-    const [userId, configId] = state.split(".");
-    if (!userId) return res.status(400).send("Invalid state");
+    const stateParts = _verifyAdsOauthState(state);
+    if (!stateParts) return res.status(400).send("Invalid or tampered state");
+    const { userId, configId } = stateParts;
 
     const creds = adsOauthClientCreds("linkedin");
     if (!creds) return res.status(503).send("LinkedIn creds mangler");

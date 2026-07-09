@@ -48,7 +48,8 @@ const CRON_TOKEN = process.env.LEADGRID_CRON_TRIGGER_TOKEN ?? "";
 
 function isCronAuthorized(req: Request): boolean {
   const t = req.headers["x-cron-trigger-token"] as string | undefined;
-  return !!t && !!CRON_TOKEN && t === CRON_TOKEN;
+  if (!t || !CRON_TOKEN || t.length !== CRON_TOKEN.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(t), Buffer.from(CRON_TOKEN));
 }
 
 type SessionData = { userId: string; role?: string; email?: string };
