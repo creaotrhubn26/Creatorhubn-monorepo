@@ -162,7 +162,7 @@ export function setupWeddingAssistantCollabRoutes(deps: WeddingAssistantCollabDe
         `SELECT photographer_id FROM wedding_timelines WHERE id = $1 LIMIT 1`,
         [weddingId],
       );
-      if (own.rowCount === 0 || own.rows[0].photographer_id !== uid) {
+      if (!own.rows.length || own.rows[0].photographer_id !== uid) {
         return res.status(403).json({ error: "Du eier ikke dette bryllupet" });
       }
 

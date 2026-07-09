@@ -808,7 +808,7 @@ export function setupAdminAcademyRoutes(deps: AdminAcademyRoutesDeps): void {
           WHERE p.id = $1::uuid`,
         [id],
       );
-      if (ctxResult.rowCount === 0) {
+      if (!ctxResult.rows.length) {
         return res.status(404).json({ error: "payout_not_found" });
       }
       const ctx = ctxResult.rows[0];

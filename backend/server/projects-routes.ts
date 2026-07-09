@@ -657,7 +657,7 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
         "SELECT metadata FROM legacy.projects WHERE id = $1 LIMIT 1",
         [projectId],
       );
-      if (!result.rowCount || result.rowCount === 0) return null;
+      if (!result.rowCount || !result.rows.length) return null;
       const raw = result.rows[0]?.metadata;
       if (!raw) return {};
       if (typeof raw === "object") return raw as Record<string, unknown>;

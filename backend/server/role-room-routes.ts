@@ -2771,7 +2771,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         `SELECT metadata FROM legacy.projects WHERE id = $1 LIMIT 1`,
         [projectId],
       );
-      if (!result.rowCount || result.rowCount === 0) {
+      if (!result.rowCount || !result.rows.length) {
         return {};
       }
       return readJsonObject(result.rows[0]?.metadata);

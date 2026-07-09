@@ -336,7 +336,7 @@ export function setupAdminOutreachRoutes(deps: AdminRoomRoutesDeps): void {
           WHERE id = $1 AND user_id = $2`,
         [targetId, session.userId],
       );
-      if (targetResult.rowCount === 0) {
+      if (!targetResult.rows.length) {
         res.status(404).json({ error: "Target ikke funnet" });
         return;
       }
@@ -349,7 +349,7 @@ export function setupAdminOutreachRoutes(deps: AdminRoomRoutesDeps): void {
           WHERE id = $1 AND (user_id IS NULL OR user_id = $2)`,
         [templateId, session.userId],
       );
-      if (tplResult.rowCount === 0) {
+      if (!tplResult.rows.length) {
         res.status(404).json({ error: "Template ikke funnet" });
         return;
       }

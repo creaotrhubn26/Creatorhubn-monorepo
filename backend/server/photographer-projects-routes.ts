@@ -1124,7 +1124,7 @@ export function setupPhotographerProjectsRoutes(
          WHERE p.id = $1 AND p.user_id = $2 LIMIT 1`,
         [projectId, photographerId],
       );
-      if (projQ.rowCount === 0) return res.status(404).json({ error: 'project_not_found' });
+      if (!projQ.rows.length) return res.status(404).json({ error: 'project_not_found' });
       const p = projQ.rows[0];
 
       // Idempotens: hvis allerede fakturert via PO, returner eksisterende.
@@ -1393,7 +1393,7 @@ export function setupPhotographerProjectsRoutes(
           WHERE p.id = $1 AND p.user_id = $2 LIMIT 1`,
         [projectId, photographerId],
       );
-      if (projQ.rowCount === 0) return res.status(404).json({ error: 'project_not_found' });
+      if (!projQ.rows.length) return res.status(404).json({ error: 'project_not_found' });
       const p = projQ.rows[0];
 
       const { createGoogleMeetLink } = await import('./google-meet.js');
@@ -1476,7 +1476,7 @@ export function setupPhotographerProjectsRoutes(
         `SELECT title, event_date FROM projects WHERE id = $1 AND user_id = $2 LIMIT 1`,
         [projectId, photographerId],
       );
-      if (projQ.rowCount === 0) return res.status(404).json({ error: 'project_not_found' });
+      if (!projQ.rows.length) return res.status(404).json({ error: 'project_not_found' });
       const proj = projQ.rows[0];
 
       // Sjekk om det allerede finnes en aktiv capture_session for prosjektet
@@ -1576,7 +1576,7 @@ export function setupPhotographerProjectsRoutes(
          WHERE p.id = $1 AND p.user_id = $2 LIMIT 1`,
         [projectId, photographerId],
       );
-      if (ctxQ.rowCount === 0) return res.status(404).json({ error: 'project_not_found' });
+      if (!ctxQ.rows.length) return res.status(404).json({ error: 'project_not_found' });
       const ctx = ctxQ.rows[0];
 
       if (!ctx.client_id) {
@@ -1717,7 +1717,7 @@ export function setupPhotographerProjectsRoutes(
         `SELECT 1 FROM projects WHERE id = $1 AND user_id = $2 LIMIT 1`,
         [projectId, photographerId],
       );
-      if (owned.rowCount === 0) return res.status(404).json({ error: 'project_not_found' });
+      if (!owned.rows.length) return res.status(404).json({ error: 'project_not_found' });
 
       // Best-effort bakgrunns-poll. Debounced så vi ikke hammrer Gmail
       // når frontend auto-refreshes hver 30s. Kjøres etter response.
@@ -1783,7 +1783,7 @@ export function setupPhotographerProjectsRoutes(
         `SELECT 1 FROM projects WHERE id = $1 AND user_id = $2 LIMIT 1`,
         [projectId, photographerId],
       );
-      if (owned.rowCount === 0) return res.status(404).json({ error: 'project_not_found' });
+      if (!owned.rows.length) return res.status(404).json({ error: 'project_not_found' });
 
       const { pollProjectGmailReplies } = await import('./chat-gmail-poller.js');
       const result = await pollProjectGmailReplies(pool, { photographerId, projectId });

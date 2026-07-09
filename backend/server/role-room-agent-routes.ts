@@ -150,7 +150,7 @@ export function setupRoleRoomAgentRoutes(deps: SetupAgentRoutesDeps): void {
          ORDER BY generated_at DESC LIMIT 1`,
         [brandKey],
       );
-      if (!r.rowCount || r.rowCount === 0) {
+      if (!r.rowCount || !r.rows.length) {
         res.status(404).json({ ok: false, error: 'no_recommendations_yet' });
         return;
       }

@@ -35,7 +35,7 @@ export function setupCouplesRoutes(deps: CouplesRoutesDeps): void {
         [email.toLowerCase().trim()],
       );
 
-      if (!coupleResult.rowCount || coupleResult.rowCount === 0) {
+      if (!coupleResult.rowCount || !coupleResult.rows.length) {
         console.log(`[CoupleLogin] Lookup result: Not found`);
         return res
           .status(401)

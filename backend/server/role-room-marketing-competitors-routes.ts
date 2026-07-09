@@ -375,7 +375,7 @@ export function setupMarketingCompetitorsRoutes(deps: SetupCompetitorsRoutesDeps
         'SELECT page_id, account_type, ig_username FROM marketing_competitor_pages WHERE id = $1',
         [id],
       );
-      if (!compR.rowCount || compR.rowCount === 0) {
+      if (!compR.rowCount || !compR.rows.length) {
         res.status(404).json({ ok: false, error: 'competitor not found' });
         return;
       }
@@ -522,7 +522,7 @@ export function setupMarketingCompetitorsRoutes(deps: SetupCompetitorsRoutesDeps
          ORDER BY added_at ASC`,
         [brandKey],
       );
-      if (!compR.rowCount || compR.rowCount === 0) {
+      if (!compR.rowCount || !compR.rows.length) {
         res.status(400).json({ ok: false, error: 'no active competitors tracked for this brand' });
         return;
       }
@@ -782,7 +782,7 @@ export function setupMarketingCompetitorsRoutes(deps: SetupCompetitorsRoutesDeps
          ORDER BY generated_at DESC LIMIT 1`,
         [brandKey],
       );
-      if (!r.rowCount || r.rowCount === 0) {
+      if (!r.rowCount || !r.rows.length) {
         res.status(404).json({ ok: false, error: 'no_reports_yet' });
         return;
       }

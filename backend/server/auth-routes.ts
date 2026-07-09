@@ -128,7 +128,7 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
       );
 
       if (
-        (!result.rowCount || result.rowCount === 0) &&
+        (!result.rowCount || !result.rows.length) &&
         isRoleRoomLogin &&
         !isProductionEnv
       ) {
