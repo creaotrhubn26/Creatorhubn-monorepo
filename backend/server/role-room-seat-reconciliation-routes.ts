@@ -177,7 +177,7 @@ export function registerRoleRoomSeatReconciliationRoutes(app: Express, deps: Dep
         });
       } catch (err) {
         console.error("[rr-reconcile] failed:", err);
-        res.status(500).json({ error: "intern_feil", detail: (err as Error).message });
+        res.status(500).json({ error: "intern_feil" });
       }
     },
   );

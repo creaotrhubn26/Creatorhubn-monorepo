@@ -230,7 +230,7 @@ export function registerPitchDeckPdfRoutes({
           try {
             await uploadToB2(b2Key, Buffer.from(html, "utf8"), "text/html; charset=utf-8");
           } catch (err) {
-            return res.status(502).json({ error: "b2_upload_failed", detail: String(err) });
+            return res.status(502).json({ error: "b2_upload_failed" });
           }
         }
 
@@ -259,7 +259,7 @@ export function registerPitchDeckPdfRoutes({
           },
         });
       } catch (err) {
-        return res.status(500).json({ error: "export_failed", detail: String(err) });
+        return res.status(500).json({ error: "export_failed" });
       }
     },
   );

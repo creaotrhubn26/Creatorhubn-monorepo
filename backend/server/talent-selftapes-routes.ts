@@ -189,7 +189,7 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
       return res.status(201).json({ project: r.rows[0] });
     } catch (err) {
       console.error("[selftapes/projects POST] failed", err);
-      return res.status(500).json({ error: "Klarte ikke å opprette", detail: String(err) });
+      return res.status(500).json({ error: "Klarte ikke å opprette" });
     }
   });
 
@@ -230,7 +230,7 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
       return res.json({ project: r.rows[0] });
     } catch (err) {
       console.error("[selftapes/projects PATCH] failed", err);
-      return res.status(500).json({ error: "Kunne ikke oppdatere", detail: String(err) });
+      return res.status(500).json({ error: "Kunne ikke oppdatere" });
     }
   });
 
@@ -328,7 +328,7 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
         });
       } catch (err) {
         console.error("[selftapes/takes init-upload] failed", err);
-        return res.status(500).json({ error: "Init feilet", detail: String(err) });
+        return res.status(500).json({ error: "Init feilet" });
       }
     },
   );
@@ -448,7 +448,7 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
         return res.status(201).json({ take: fin.rows[0] });
       } catch (err) {
         console.error("[selftapes/takes upload] failed", err);
-        return res.status(500).json({ error: "Upload feilet", detail: String(err) });
+        return res.status(500).json({ error: "Upload feilet" });
       }
     },
   );
@@ -488,7 +488,7 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
         return res.json({ take: r.rows[0] });
       } catch (err) {
         console.error("[selftapes/takes finalize] failed", err);
-        return res.status(500).json({ error: "Finalize feilet", detail: String(err) });
+        return res.status(500).json({ error: "Finalize feilet" });
       }
     },
   );
@@ -726,7 +726,7 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
         } catch {
           // ignore secondary error
         }
-        return res.status(500).json({ error: "Regenerate feilet", detail: String(err) });
+        return res.status(500).json({ error: "Regenerate feilet" });
       }
     },
   );
@@ -788,7 +788,7 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
         return res.status(201).json({ submission: r.rows[0] });
       } catch (err) {
         console.error("[selftapes/submissions POST] failed", err);
-        return res.status(500).json({ error: "Klarte ikke å lage target", detail: String(err) });
+        return res.status(500).json({ error: "Klarte ikke å lage target" });
       }
     },
   );
@@ -1071,7 +1071,7 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
         return res.status(201).json({ take: r.rows[0] });
       } catch (err) {
         console.error("[selftapes/takes external] failed", err);
-        return res.status(500).json({ error: "Klarte ikke å lagre ekstern lenke", detail: String(err) });
+        return res.status(500).json({ error: "Klarte ikke å lagre ekstern lenke" });
       }
     },
   );
@@ -1116,7 +1116,7 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
         return res.json({ submission: r.rows[0] });
       } catch (err) {
         console.error("[selftapes/submissions revoke] failed", err);
-        return res.status(500).json({ error: "Revoke feilet", detail: String(err) });
+        return res.status(500).json({ error: "Revoke feilet" });
       }
     },
   );

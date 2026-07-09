@@ -318,7 +318,7 @@ export function setupRoleRoomAdsCron(deps: RoleRoomAdsCronDeps): void {
       }
       res.json({ ok: true, summary, autoPause, recommendations, mccLinks });
     } catch (error) {
-      res.status(500).json({ error: "ads_attribution_tick_failed", detail: String(error) });
+      res.status(500).json({ error: "ads_attribution_tick_failed" });
     }
   });
 

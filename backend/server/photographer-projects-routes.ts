@@ -198,7 +198,7 @@ export function setupPhotographerProjectsRoutes(
       // Schema-feil eller manglende tabeller skal ikke krasje admin dashboard.
       // Returner tom liste i stedet for 500 — UI viser allerede empty-state.
       console.warn('[photographer-projects] list failed, returning empty:', err);
-      res.json({ projects: [], schemaWarning: err instanceof Error ? err.message : String(err) });
+      res.json({ projects: [] });
     }
   });
 
@@ -1450,7 +1450,7 @@ export function setupPhotographerProjectsRoutes(
       });
     } catch (err: any) {
       console.error('[photographer-meet] create failed:', err);
-      res.status(500).json({ error: 'meet_create_failed', message: String(err?.message || '').slice(0, 200) });
+      res.status(500).json({ error: 'meet_create_failed' });
     }
   });
 
