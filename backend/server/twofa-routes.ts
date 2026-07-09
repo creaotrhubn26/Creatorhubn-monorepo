@@ -87,8 +87,13 @@ export function setupTwoFaRoutes(deps: TwoFaRoutesDeps): void {
   app.post("/api/2fa/disable", async (req, res) => {
     const session = await resolveActiveSessionFromRequest(req);
     if (!session) return res.status(401).json({ error: "not_authenticated" });
+    const body = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
+    const token = typeof body.token === "string" ? body.token.trim() : "";
+    if (!token) return res.status(400).json({ error: "missing_token", message: "Skriv inn en gyldig TOTP-kode eller backup-kode for å deaktivere 2FA." });
     try {
       const svc = await import("./totp-2fa-service.js");
+      const verify = await svc.verifyLoginToken(pool, { userId: session.userId, token });
+      if (!verify.ok) return res.status(401).json({ error: "wrong_code", message: "Ugyldig kode. Prøv igjen." });
       await svc.disableTotp(pool, session.userId);
       return res.json({ status: "ok" });
     } catch (error) {
