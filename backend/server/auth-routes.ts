@@ -11,6 +11,28 @@ function _authRateLimited(key: string, max: number, windowMs: number): boolean {
   _authRateBuckets.set(key, arr);
   return arr.length > max;
 }
+
+// Per-account failed-login tracker. Records timestamps of failed attempts
+// per normalised email; 10 failures in 15 min → lockout for 15 min.
+// Does NOT increment on success, so legitimate users are never affected.
+const _failedLoginBuckets = new Map<string, number[]>();
+const _FAIL_WINDOW_MS = 15 * 60_000; // 15 min
+const _FAIL_MAX = 10;
+function _recordFailedLogin(email: string): void {
+  const now = Date.now();
+  const arr = (_failedLoginBuckets.get(email) ?? []).filter((t) => now - t < _FAIL_WINDOW_MS);
+  arr.push(now);
+  _failedLoginBuckets.set(email, arr);
+}
+function _isAccountLockedOut(email: string): boolean {
+  const now = Date.now();
+  const arr = (_failedLoginBuckets.get(email) ?? []).filter((t) => now - t < _FAIL_WINDOW_MS);
+  _failedLoginBuckets.set(email, arr);
+  return arr.length >= _FAIL_MAX;
+}
+function _clearFailedLogins(email: string): void {
+  _failedLoginBuckets.delete(email);
+}
 const _authClientIp = (req: express.Request): string =>
   (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()
   ?? req.socket?.remoteAddress
@@ -92,6 +114,8 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
         process.env.PROTOTYPE_GUEST_PASSWORD || "guest-access";
       if (!email) return res.status(400).json({ error: "E-post er påkrevd" });
       const normalizedEmail = email.toLowerCase().trim();
+      if (_isAccountLockedOut(normalizedEmail))
+        return res.status(429).json({ error: "too_many_requests" });
       const prototypeGuestEmails = new Set(
         String(
           process.env.PROTOTYPE_GUEST_EMAILS ||
@@ -194,6 +218,7 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
           : effectivePassword === storedPassword;
 
         if (!passwordValid) {
+          _recordFailedLogin(normalizedEmail);
           return res.status(401).json({ error: "Ugyldig e-post eller passord" });
         }
       } else {
@@ -208,6 +233,7 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
             effectivePassword !== prototypeGuestPassword) &&
           !roleRoomPasswordValid
         ) {
+          _recordFailedLogin(normalizedEmail);
           return res.status(401).json({ error: "Ugyldig e-post eller passord" });
         }
         if (roleRoomPasswordValid) {
@@ -374,6 +400,7 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
         // login fortsette uten 2FA istedenfor å låse brukeren ute.
       }
 
+      _clearFailedLogins(normalizedEmail);
       activeSessions.set(sessionToken, sessionData);
       await persistAuthSession(pool, sessionToken, sessionData);
 
