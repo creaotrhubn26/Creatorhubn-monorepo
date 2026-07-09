@@ -155,7 +155,7 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
       const r = await pool.query(`UPDATE users SET ${sets.join(", ")} WHERE id = $${params.length} RETURNING ${PROFILE_COLS}`, params);
       if (!r.rows.length) return res.status(404).json({ error: "Bruker ikke funnet" });
       res.json({ profile: shapeUserProfile(r.rows[0]) });
-    } catch (e: any) { res.status(500).json({ error: e?.message || "Oppdatering feilet" }); }
+    } catch (e: any) { console.error("[user/profile] update failed", e); res.status(500).json({ error: "update_failed" }); }
   });
 
   app.get("/api/user/subscription-status", async (req, res) => {

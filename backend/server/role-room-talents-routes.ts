@@ -194,7 +194,7 @@ export function setupRoleRoomTalentsRoutes(deps: RoleRoomTalentsRoutesDeps): voi
       return res.json({ talent: r.rows[0] });
     } catch (err) {
       console.error("[talents/me PUT] failed", err);
-      return res.status(500).json({ error: "Klarte ikke å oppdatere profil", detail: String(err) });
+      return res.status(500).json({ error: "Klarte ikke å oppdatere profil" });
     }
   });
 
