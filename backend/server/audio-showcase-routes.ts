@@ -2838,7 +2838,11 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
       if (!getGoogleCalendar) return;
       const row = (await pool.query(`SELECT owner_user_id, channel_token FROM audio_gcal_sync WHERE channel_id=$1 AND auto_enabled=true LIMIT 1`, [channelId])).rows[0];
       if (!row) return;
-      if (row.channel_token && token) {
+      if (row.channel_token) {
+        // Token stored — require a matching token on the request.
+        // If token header is absent, reject: prevents a bypass where an attacker
+        // sends a known channel_id with no token and the && short-circuit skips validation.
+        if (!token) return;
         const a = Buffer.from(row.channel_token); const b = Buffer.from(token);
         if (a.length !== b.length || !timingSafeEqual(a, b)) return; // ugyldig token
       }
