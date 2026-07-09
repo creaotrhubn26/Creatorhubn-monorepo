@@ -408,6 +408,8 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
 
   // PUT /api/split-sheets/:id — Update split sheet
   app.put("/api/split-sheets/:id", async (req, res) => {
+    const _ssUserId = getSplitSheetUserId(req);
+    if (!_ssUserId || _ssUserId.length < 10) return res.status(401).json({ error: "unauthorized" });
     try {
       const { id } = req.params;
       const { title, description, status, project_id, track_id, contributors } =
@@ -503,6 +505,8 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
 
   // DELETE /api/split-sheets/:id — Delete split sheet (cascades)
   app.delete("/api/split-sheets/:id", async (req, res) => {
+    const _ssUserId2 = getSplitSheetUserId(req);
+    if (!_ssUserId2 || _ssUserId2.length < 10) return res.status(401).json({ error: "unauthorized" });
     try {
       const { id } = req.params;
       await pool.query(
@@ -817,6 +821,8 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
 
   // PUT /api/split-sheets/payments/:paymentId — Update payment status
   app.put("/api/split-sheets/payments/:paymentId", async (req, res) => {
+    const _ssUserId3 = getSplitSheetUserId(req);
+    if (!_ssUserId3 || _ssUserId3.length < 10) return res.status(401).json({ error: "unauthorized" });
     try {
       const { paymentId } = req.params;
       const {

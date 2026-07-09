@@ -79,6 +79,8 @@ export function setupWorklogRoutes(deps: WorklogRoutesDeps): void {
   });
 
   app.patch("/api/worklog/:id", async (req, res) => {
+    const _wCallerId = compatResolveUserId(req);
+    if (!isUuid(_wCallerId)) return res.status(401).json({ error: "unauthorized" });
     try {
       const { id } = req.params;
       const {
@@ -164,6 +166,8 @@ export function setupWorklogRoutes(deps: WorklogRoutesDeps): void {
   });
 
   app.delete("/api/worklog/:id", async (req, res) => {
+    const _wdCallerId = compatResolveUserId(req);
+    if (!isUuid(_wdCallerId)) return res.status(401).json({ error: "unauthorized" });
     try {
       const { id } = req.params;
 
