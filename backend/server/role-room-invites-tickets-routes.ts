@@ -282,6 +282,7 @@ export function setupRoleRoomInvitesTicketsRoutes(
   });
 
   app.get("/api/role-room/tickets", async (req, res) => {
+    if (!requireAdminSession(req, res)) return;
     try {
       if (!(await ensureRoleRoomTicketsTable())) {
         return res.json([]);
