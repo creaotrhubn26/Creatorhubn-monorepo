@@ -61203,6 +61203,7 @@ app.get("/api/video-ai/models", async (req, res) => {
 });
 
 app.post("/api/video-ai/enhance-url", async (req, res) => {
+  if (!requireUserSession(req, res)) return;
   const startedAt = Date.now();
   try {
     const videoUrl = readString(req.body?.videoUrl) || "";
@@ -61236,6 +61237,22 @@ app.post("/api/video-ai/enhance-url", async (req, res) => {
         reason: model.reason,
         model,
       });
+    }
+
+    // SSRF guard before HEAD fetch
+    try {
+      const _ssrfParsed = new URL(videoUrl);
+      if (_ssrfParsed.protocol !== "http:" && _ssrfParsed.protocol !== "https:") {
+        return res.status(400).json({ error: "Invalid videoUrl" });
+      }
+      const _h = _ssrfParsed.hostname.toLowerCase();
+      if (_h === "localhost" || _h === "127.0.0.1" || _h === "::1" || _h === "0.0.0.0" ||
+          /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.)/.test(_h) ||
+          _h === "metadata.google.internal" || _h.endsWith(".internal") || _h.endsWith(".local")) {
+        return res.status(400).json({ error: "Invalid videoUrl" });
+      }
+    } catch {
+      return res.status(400).json({ error: "Invalid videoUrl" });
     }
 
     let contentType = "video/mp4";
