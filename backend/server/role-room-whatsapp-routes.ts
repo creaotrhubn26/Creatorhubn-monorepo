@@ -35,6 +35,7 @@
  * Mode-noter: ingen Role Room-mode-branching.
  */
 
+import crypto from "crypto";
 import express from "express";
 import type { Pool } from "pg";
 
@@ -91,9 +92,11 @@ export function setupRoleRoomWhatsAppRoutes(
       (process.env.META_WHATSAPP_WEBHOOK_VERIFY_TOKEN || "").trim() ||
       (process.env.META_WEBHOOK_VERIFY_TOKEN || "").trim();
     const mode = req.query["hub.mode"];
-    const token = req.query["hub.verify_token"];
+    const tokenStr = typeof req.query["hub.verify_token"] === "string" ? req.query["hub.verify_token"] : "";
     const challenge = req.query["hub.challenge"];
-    if (mode === "subscribe" && expectedToken && token === expectedToken) {
+    const tokensMatch = !!expectedToken && tokenStr.length === expectedToken.length &&
+      crypto.timingSafeEqual(Buffer.from(tokenStr), Buffer.from(expectedToken));
+    if (mode === "subscribe" && tokensMatch) {
       return res.status(200).send(String(challenge ?? ""));
     }
     return res.status(403).send("verify token mismatch");
