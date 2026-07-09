@@ -529,6 +529,12 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
                          : 500;
         return res.status(httpStatus).json({ error: result.error, message: result.message });
       }
+      // Purge in-memory sessions for this user so stolen cookies can't survive a reset
+      if (result.userId) {
+        for (const [tok, sess] of activeSessions.entries()) {
+          if (sess?.userId === result.userId) activeSessions.delete(tok);
+        }
+      }
       return res.json({ status: "ok", message: result.message });
     } catch (error) {
       console.error("[auth/reset-password POST] failed", error);

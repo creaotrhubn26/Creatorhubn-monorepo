@@ -201,6 +201,7 @@ export async function verifyResetToken(
 
 export interface ConsumeResetTokenResult {
   ok: boolean;
+  userId?: string;
   error?: "invalid_token" | "expired" | "already_used" | "weak_password" | "user_missing" | "db_error";
   message?: string;
 }
@@ -215,6 +216,7 @@ export async function consumeResetToken(
     return { ok: false, error: "weak_password", message: "Passord må være minst 8 tegn." };
   }
 
+  // Quick pre-flight (avoids bcrypt cost on obviously invalid tokens)
   const info = await verifyResetToken(pool, token);
   if (!info.valid) {
     return {
@@ -228,25 +230,33 @@ export async function consumeResetToken(
   try {
     const bcrypt = await import("bcrypt");
     const hashed = await bcrypt.default.hash(newPassword, 10);
-    // Bruk en transaksjon så ikke vi får half-state (passord oppdatert
-    // men token ikke markert som brukt — ville latt tokenet brukes igjen)
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
+      // Claim the token atomically first — prevents TOCTOU if two requests
+      // race past verifyResetToken simultaneously.
+      const claimResult = await client.query(
+        `UPDATE password_reset_tokens
+            SET used_at = NOW()
+          WHERE token = $1 AND used_at IS NULL AND expires_at > NOW()
+          RETURNING email`,
+        [token],
+      );
+      if ((claimResult.rowCount ?? 0) === 0) {
+        await client.query("ROLLBACK");
+        return { ok: false, error: "already_used" };
+      }
+      const email = claimResult.rows[0].email as string;
       const updateResult = await client.query(
         `UPDATE users SET password = $1, updated_at = NOW()
           WHERE LOWER(email) = LOWER($2)
           RETURNING id`,
-        [hashed, info.email],
+        [hashed, email],
       );
-      if (updateResult.rowCount === 0) {
+      if ((updateResult.rowCount ?? 0) === 0) {
         await client.query("ROLLBACK");
         return { ok: false, error: "user_missing" };
       }
-      await client.query(
-        `UPDATE password_reset_tokens SET used_at = NOW() WHERE token = $1`,
-        [token],
-      );
       // Invalider også eventuelle andre aktive auth-sessions så en
       // stjålet session-cookie ikke fortsetter å virke etter reset
       await client.query(
@@ -254,7 +264,7 @@ export async function consumeResetToken(
         [updateResult.rows[0].id],
       ).catch(() => { /* tabellen kan mangle i noen environments */ });
       await client.query("COMMIT");
-      return { ok: true, message: "Passordet er oppdatert. Du kan nå logge inn med det nye passordet." };
+      return { ok: true, userId: String(updateResult.rows[0].id), message: "Passordet er oppdatert. Du kan nå logge inn med det nye passordet." };
     } catch (err) {
       await client.query("ROLLBACK");
       throw err;
