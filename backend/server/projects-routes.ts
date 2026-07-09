@@ -911,6 +911,16 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
       if (!(await requireProjectFileProject(res, projectId))) {
         return;
       }
+      const userId = compatResolveUserId(req);
+      if (!isUuid(userId)) return res.status(401).json({ error: "unauthorized" });
+      const owns = await pool.query(
+        `SELECT 1 FROM legacy.projects WHERE id = $1 AND user_id = $2
+         UNION ALL
+         SELECT 1 FROM casting_projects WHERE id = $1 AND user_id = $2
+         LIMIT 1`,
+        [projectId, userId],
+      );
+      if (!owns.rows.length) return res.status(404).json({ error: "not_found" });
       if (!req.file) {
         return res.status(400).json({ error: "file is required" });
       }
@@ -966,6 +976,16 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
     if (!(await requireProjectFileProject(res, projectId))) {
       return;
     }
+    const userId = compatResolveUserId(req);
+    if (!isUuid(userId)) return res.status(401).json({ error: "unauthorized" });
+    const owns = await pool.query(
+      `SELECT 1 FROM legacy.projects WHERE id = $1 AND user_id = $2
+       UNION ALL
+       SELECT 1 FROM casting_projects WHERE id = $1 AND user_id = $2
+       LIMIT 1`,
+      [projectId, userId],
+    );
+    if (!owns.rows.length) return res.status(404).json({ error: "not_found" });
     const metadata = await compatReadProjectMetadata(projectId);
     const state = await loadCompatProjectState(projectId);
     if (metadata && Array.isArray(metadata.files) && state.files.length === 0) {
@@ -984,6 +1004,16 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
     if (!(await requireProjectFileProject(res, projectId))) {
       return;
     }
+    const userId = compatResolveUserId(req);
+    if (!isUuid(userId)) return res.status(401).json({ error: "unauthorized" });
+    const owns = await pool.query(
+      `SELECT 1 FROM legacy.projects WHERE id = $1 AND user_id = $2
+       UNION ALL
+       SELECT 1 FROM casting_projects WHERE id = $1 AND user_id = $2
+       LIMIT 1`,
+      [projectId, userId],
+    );
+    if (!owns.rows.length) return res.status(404).json({ error: "not_found" });
     const metadata = await compatReadProjectMetadata(projectId);
     const state = await loadCompatProjectState(projectId);
     if (metadata && Array.isArray(metadata.files) && state.files.length === 0) {
@@ -1035,6 +1065,16 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
     if (!(await requireProjectFileProject(res, projectId))) {
       return;
     }
+    const userId = compatResolveUserId(req);
+    if (!isUuid(userId)) return res.status(401).json({ error: "unauthorized" });
+    const owns = await pool.query(
+      `SELECT 1 FROM legacy.projects WHERE id = $1 AND user_id = $2
+       UNION ALL
+       SELECT 1 FROM casting_projects WHERE id = $1 AND user_id = $2
+       LIMIT 1`,
+      [projectId, userId],
+    );
+    if (!owns.rows.length) return res.status(404).json({ error: "not_found" });
     const state = await loadCompatProjectState(projectId);
     if (!state.files.some((file) => file.id === fileId)) {
       return res.status(404).json({ error: "project_file_not_found" });
@@ -1055,6 +1095,16 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
     if (!(await requireProjectFileProject(res, projectId))) {
       return;
     }
+    const userId = compatResolveUserId(req);
+    if (!isUuid(userId)) return res.status(401).json({ error: "unauthorized" });
+    const owns = await pool.query(
+      `SELECT 1 FROM legacy.projects WHERE id = $1 AND user_id = $2
+       UNION ALL
+       SELECT 1 FROM casting_projects WHERE id = $1 AND user_id = $2
+       LIMIT 1`,
+      [projectId, userId],
+    );
+    if (!owns.rows.length) return res.status(404).json({ error: "not_found" });
     const state = await loadCompatProjectState(projectId);
     const fileRecord = state.files.find((file) => file.id === fileId);
     if (!fileRecord) {
@@ -1078,6 +1128,16 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
     if (!(await requireProjectFileProject(res, projectId))) {
       return;
     }
+    const userId = compatResolveUserId(req);
+    if (!isUuid(userId)) return res.status(401).json({ error: "unauthorized" });
+    const owns = await pool.query(
+      `SELECT 1 FROM legacy.projects WHERE id = $1 AND user_id = $2
+       UNION ALL
+       SELECT 1 FROM casting_projects WHERE id = $1 AND user_id = $2
+       LIMIT 1`,
+      [projectId, userId],
+    );
+    if (!owns.rows.length) return res.status(404).json({ error: "not_found" });
     const state = await loadCompatProjectState(projectId);
     if (!state.files.some((file) => file.id === fileId)) {
       return res.status(404).json({ error: "project_file_not_found" });

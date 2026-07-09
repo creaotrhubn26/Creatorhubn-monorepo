@@ -262,7 +262,7 @@ export function registerRoleRoomUserStorageRoutes(
       res.redirect(302, r.url);
     } catch (err) {
       console.error("[storage/download]", err);
-      res.status(500).json({ error: "download_failed", detail: String(err) });
+      res.status(500).json({ error: "download_failed", detail: "internal_error" });
     }
   });
 
