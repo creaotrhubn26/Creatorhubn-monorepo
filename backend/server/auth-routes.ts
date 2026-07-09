@@ -308,7 +308,7 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
             normalizedRequestedRole === "client_reviewer"
             ? "client_reviewer"
             : "content_producer"
-          : normalizedRequestedRole || role
+          : role
         : role;
 
       const normalizedSessionRole = normalizeAdminRoleId(roleRoomSessionRole);
