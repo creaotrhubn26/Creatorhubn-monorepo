@@ -1220,12 +1220,28 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
           const resp = await fetch(url);
           if (!resp.ok) { failures.push({ assetId: r.id, reason: `b2_fetch_${resp.status}` }); continue; }
           const buffer = Buffer.from(await resp.arrayBuffer());
+          // Kreditt trekkes FØR arbeidet køes (atomisk debit). Preflight-en over er
+          // kun en LESNING, så parallelle batcher kan alle passere den mot samme
+          // saldo (TOCTOU) og køe ubetalt arbeid. Her gater den atomiske debiten
+          // hvert bilde individuelt: går saldoen tom returnerer creditMove false og
+          // vi stopper resten av batchen. Idempotent ref pr. asset-forsøk.
+          const retailUsd = model.estCostUsd * (settings.markupMultiplier || 1);
+          let chargeRef: string | null = null;
+          if (settings.enabled && settings.billingMode === "credits") {
+            chargeRef = `enhance:${r.id}:${crypto.randomUUID()}`;
+            let charged = false;
+            try { charged = await creditMove(uid, "spend", -retailUsd, chargeRef, "photo-enhance"); } catch { /* */ }
+            if (!charged) { failures.push({ assetId: r.id, reason: "insufficient_credits" }); break; }
+          }
           const jobId = await enqueuePhotoEnhancerJobFromBuffer({
             buffer, fileName: r.original_filename || `${r.id}.jpg`, mimeType: r.mime || "image/jpeg",
             projectId: pid, owner: uid, userId: uid, preset,
           });
-          if (!jobId) { failures.push({ assetId: r.id, reason: "enqueue_failed" }); continue; }
-          // Bill per faktisk køet bilde (charge-on-submit; enhancer kjører i egen kø).
+          if (!jobId) {
+            // Køing feilet → arbeidet skjer aldri; refunder debiten (idempotent ref).
+            if (chargeRef) { try { await creditMove(uid, "purchase", retailUsd, `refund:${chargeRef}`, "photo-enhance-refund"); } catch { /* */ } }
+            failures.push({ assetId: r.id, reason: "enqueue_failed" }); continue;
+          }
           if (settings.enabled) {
             const gid = crypto.randomUUID();
             await pool.query(
@@ -1234,7 +1250,6 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
               [gid, pid, uid, me.email, model.key, model.provider, r.id, model.estCostUsd, JSON.stringify({ prompt: "Foto-forbedring", enhancerJobId: jobId })],
             ).catch(() => {});
             try { await emitGenAiMeter(pool, { userId: uid, valueUsd: model.estCostUsd, settings }); } catch { /* */ }
-            if (settings.billingMode === "credits") { try { await creditMove(uid, "spend", -(model.estCostUsd * (settings.markupMultiplier || 1)), `enhance:${jobId}`, "photo-enhance"); } catch { /* */ } }
           }
           jobs.push({ assetId: r.id, jobId });
         } catch { failures.push({ assetId: r.id, reason: "fetch_threw" }); }
