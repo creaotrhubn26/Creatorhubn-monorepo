@@ -1,0 +1,29 @@
+<style>
+  #wrap{display:flex;flex-direction:column;align-items:center;gap:8px;padding:52px 64px;width:max-content;
+    font-family:Inter,system-ui,sans-serif;background:#fff;border-radius:26px;
+    box-shadow:0 28px 70px rgba(20,40,80,.12);opacity:0;transform:scale(.92)}
+  .top{width:64px;height:6px;border-radius:4px;background:var(--a,#2f6df0);margin-bottom:14px;opacity:0}
+  .num{font-size:96px;font-weight:800;color:#1f2d4a;letter-spacing:-2px;line-height:1}
+  .lbl{font-size:22px;color:#5b6b7d;font-weight:500;opacity:0}
+</style>
+<div id="wrap">
+  <div class="top" data-d="0"></div>
+  <div class="num" data-to="0">0</div>
+  <div class="lbl" data-d="0.35"></div>
+</div>
+<script>
+  var CFG = window.__CFG__ || {};
+  document.documentElement.style.setProperty('--a', CFG.accent || '#2f6df0');
+  var first = (CFG.cards && CFG.cards[0]) || {};
+  document.querySelector('.num').dataset.to = CFG.value || first.value || '0';
+  document.querySelector('.lbl').textContent = CFG.label || first.label || '';
+  function ease(t){return t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2}
+  function num(el,to,p){var m=String(to).match(/^([-+]?\d+(?:[.,]\d+)?)(.*)$/);if(!m){el.textContent=to;return;}el.textContent=Math.round(parseFloat(m[1].replace(',','.'))*p)+m[2];}
+  window.setProgress = function (p) {
+    var w = document.getElementById('wrap'); var e = ease(Math.min(1, p / .3));
+    if (w) { w.style.opacity = e; w.style.transform = 'scale(' + (0.92 + 0.08 * e) + ')'; }
+    document.querySelectorAll('[data-d]').forEach(function (el) { el.style.opacity = ease(Math.max(0, Math.min(1, (p - (+el.dataset.d)) / 0.5))); });
+    num(document.querySelector('.num'), document.querySelector('.num').dataset.to, ease(Math.max(0, Math.min(1, (p - .1) / .7))));
+  };
+  window.setProgress(0);
+</script>

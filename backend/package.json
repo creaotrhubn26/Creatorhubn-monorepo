@@ -110,7 +110,8 @@
     "storyarc:v2:benchmark:nightly": "tsx scripts/storyarc-v2-golden-benchmark.ts --manifest scripts/storyarc-v2-golden.manifest.example.json --base-url http://127.0.0.1:3003 --nightly true --fail-on-regression true --compare-with-last-nightly true",
     "ops:pm2:start": "pm2 start ecosystem.storyarc.config.cjs",
     "ops:pm2:restart": "pm2 restart ecosystem.storyarc.config.cjs",
-    "ops:pm2:stop": "pm2 delete ecosystem.storyarc.config.cjs"
+    "ops:pm2:stop": "pm2 delete ecosystem.storyarc.config.cjs",
+    "embed:build": "esbuild server/infographic-element.ts --bundle --format=iife --minify --target=es2018 --outfile=../frontend/client/public/embed/role-room-infographic.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.35.0",

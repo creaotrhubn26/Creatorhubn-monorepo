@@ -21,7 +21,8 @@ export type BlockKind =
   | 'featureList'
   | 'relatedStudies'
   | 'usageExamples'
-  | 'image';
+  | 'image'
+  | 'infographic';
 
 export type Locale = 'no' | 'en';
 export const SUPPORTED_LOCALES: Locale[] = ['no', 'en'];
@@ -134,6 +135,32 @@ export interface ImageBlock extends BlockBase {
   maxWidth?: number;
 }
 
+/**
+ * Infografikk-blokk — rendrer en Infographic Studio-artefakt via <role-room-infographic>
+ * (public/embed/role-room-infographic.js). Malen leser `data` (window.__CFG__) og
+ * definerer setProgress(p). Kun en ILLUSTRASJON i siden — ikke redigerbar tekst.
+ */
+export interface InfographicBlock extends BlockBase {
+  type: 'infographic';
+  heading?: string;
+  /** Mal-HTML: enten hostet URL (templateUrl) ELLER inline (templateHtml). */
+  templateUrl?: string;
+  templateHtml?: string;
+  /** window.__CFG__ — data inn til malen (felt-verdier, cards, accent, …). */
+  data?: Record<string, unknown>;
+  accent?: string;
+  /** > 0 = self-playing over N sek; ellers statisk sluttbilde. */
+  autoplaySec?: number;
+  /** Høyde i px (default 360). */
+  height?: number;
+  /**
+   * Server-render: rendrer som statisk <img> fra /api/infographics/render.png (SEO-
+   * vennlig, ingen klient-JS) i stedet for <role-room-infographic>-Web-Component-en.
+   * Krever hostet mal (templateUrl under /embed/).
+   */
+  serverRender?: boolean;
+}
+
 export type Block =
   | HeroBlock
   | RichTextBlock
@@ -143,7 +170,8 @@ export type Block =
   | FeatureListBlock
   | RelatedStudiesBlock
   | UsageExamplesBlock
-  | ImageBlock;
+  | ImageBlock
+  | InfographicBlock;
 
 export const BLOCK_LABELS: Record<BlockKind, string> = {
   hero: 'Hero',
@@ -155,6 +183,7 @@ export const BLOCK_LABELS: Record<BlockKind, string> = {
   relatedStudies: 'Relaterte studier',
   usageExamples: 'Bruks-eksempler',
   image: 'Bilde',
+  infographic: 'Infografikk',
 };
 
 let counter = 0;
@@ -206,6 +235,17 @@ export function createBlock(type: BlockKind): Block {
       return { id, type: 'usageExamples', heading: 'Bruks-eksempler', items: [{ title: '', body: '' }] };
     case 'image':
       return { id, type: 'image', src: '', alt: '' };
+    case 'infographic':
+      return {
+        id,
+        type: 'infographic',
+        heading: '',
+        templateUrl: '/embed/demo-template.html',
+        data: { accent: '#2f6df0', cards: [{ label: 'Etikett', value: '124' }] },
+        accent: '#2f6df0',
+        autoplaySec: 6,
+        height: 360,
+      };
   }
 }
 

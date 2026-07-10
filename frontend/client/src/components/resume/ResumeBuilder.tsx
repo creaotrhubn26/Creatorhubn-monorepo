@@ -301,6 +301,102 @@ interface ResumeTemplate {
   isPremium: boolean;
 }
 
+// Maler som har genererte fargeskjema-varianter (public/templates/<id>-<scheme>-preview.jpg).
+// minimal-mono er bevisst monokrom → ingen fargeskjema.
+const SCHEME_AWARE_TEMPLATE_IDS = new Set<string>([
+  'academic-researcher', 'bold-creative', 'creative-photographer', 'executive-leadership',
+  'healthcare-professional', 'minimal-clean', 'modern-ats', 'modern-tan-sidebar', 'modern-tech',
+  'nordic-dark-sidebar', 'norwegian-two-column', 'professional-two-column', 'sales-professional',
+  'timeline-centered',
+]);
+
+/**
+ * Galleri-kort for én CV-mal. Viser previewImage + (for skjema-bevisste maler) en rad
+ * fargeskjema-swatches. Klikk på en swatch bytter forhåndsvisnings-bildet til den
+ * genererte varianten; "Velg mal" tar med det valgte skjemaet inn i editoren.
+ */
+function TemplateGalleryCard({
+  template,
+  onSelect,
+}: {
+  template: ResumeTemplate;
+  onSelect: (template: ResumeTemplate, colorScheme?: string) => void;
+}) {
+  const [scheme, setScheme] = useState<string | null>(null);
+  const schemeAware = SCHEME_AWARE_TEMPLATE_IDS.has(template.id);
+  const previewSrc = scheme
+    ? `/templates/${template.id}-${scheme}-preview.jpg`
+    : template.previewImage;
+
+  return (
+    <Card variant="outlined">
+      {/* Galleri-thumbnail. Genereres av backend/scripts/gen-resume-thumbnails fra den
+          EKTE mal-komponenten. Skjules pent hvis bildet ennå ikke er generert. */}
+      {previewSrc && (
+        <Box
+          sx={{ height: 168, overflow: 'hidden', bgcolor: 'grey.100', borderBottom: 1, borderColor: 'divider', display: 'flex', justifyContent: 'center' }}
+        >
+          <img
+            key={previewSrc}
+            src={previewSrc}
+            alt={scheme ? `${template.name} (${RESUME_COLOR_SCHEMES[scheme]?.name ?? scheme})` : template.name}
+            loading="lazy"
+            style={{ width: '100%', objectFit: 'cover', objectPosition: 'top' }}
+            onError={(e) => {
+              // Variant mangler → fall tilbake til default; ellers skjul boksen.
+              if (scheme) { setScheme(null); return; }
+              const p = e.currentTarget.parentElement as HTMLElement | null;
+              if (p) p.style.display = 'none';
+            }}
+          />
+        </Box>
+      )}
+      <CardContent>
+        <Typography variant="h6">{template.name}</Typography>
+        <Typography variant="body2" color="text.secondary">
+          {template.description}
+        </Typography>
+        <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
+          <Chip label={template.layout} size="small" />
+          <Chip label={`ATS ${template.atsScore}%`} size="small" color="success" />
+          {template.isPremium && <Chip label="Premium" size="small" color="warning" />}
+        </Stack>
+        {schemeAware && (
+          <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mt: 2, flexWrap: 'wrap', rowGap: 0.75 }}>
+            <Typography variant="caption" color="text.secondary" sx={{ mr: 0.5 }}>Farge:</Typography>
+            {Object.values(RESUME_COLOR_SCHEMES).map((s) => {
+              const active = scheme === s.id;
+              return (
+                <Tooltip key={s.id} title={s.name} arrow>
+                  <Box
+                    role="button"
+                    aria-label={s.name}
+                    aria-pressed={active}
+                    onClick={() => setScheme(active ? null : s.id)}
+                    sx={{
+                      width: 20, height: 20, borderRadius: '50%', cursor: 'pointer',
+                      bgcolor: s.accent,
+                      boxShadow: active ? `0 0 0 2px #fff, 0 0 0 4px ${s.accent}` : 'inset 0 0 0 1px rgba(0,0,0,0.15)',
+                      transition: 'box-shadow 120ms ease, transform 120ms ease',
+                      transform: active ? 'scale(1.12)' : 'none',
+                      '&:hover': { transform: 'scale(1.12)' },
+                    }}
+                  />
+                </Tooltip>
+              );
+            })}
+          </Stack>
+        )}
+      </CardContent>
+      <CardActions>
+        <Button variant="contained" onClick={() => onSelect(template, scheme || undefined)}>
+          Velg mal{scheme ? ` · ${RESUME_COLOR_SCHEMES[scheme]?.name ?? scheme}` : ''}
+        </Button>
+      </CardActions>
+    </Card>
+  );
+}
+
 interface JobApplication {
   id: string;
   userId: string;
@@ -3674,16 +3770,21 @@ export default function ResumeBuilder() {
     }
   }, [jobApplications, updateJobApplicationMutation]);
 
-  const handleSelectTemplate = useCallback((template: ResumeTemplate) => {
+  const handleSelectTemplate = useCallback((template: ResumeTemplate, colorScheme?: string) => {
     if (!selectedResume) return;
-    setSelectedResume({ ...selectedResume, templateId: template.id });
-    handleUpdateResume({ templateId: template.id });
+    // Fargeskjema valgt via galleri-swatch følger med inn i editoren (der live-preview
+    // rendrer malen i den valgte fargen). Uten valg beholdes eksisterende skjema.
+    const patch: Partial<Resume> = { templateId: template.id };
+    if (colorScheme) patch.colorScheme = colorScheme;
+    setSelectedResume({ ...selectedResume, ...patch });
+    handleUpdateResume(patch);
     setShowTemplateDialog(false);
     analytics?.trackEvent?.('nextrole_template_changed', {
       userId: user?.id,
       resumeId: selectedResume.id,
       templateId: template.id,
       templateName: template.name,
+      colorScheme: colorScheme || null,
     });
   }, [selectedResume, handleUpdateResume, analytics, user?.id]);
 
@@ -7893,24 +7994,7 @@ export default function ResumeBuilder() {
           <Grid container spacing={2} sx={{ mt: 1 }}>
             {(templates.length > 0 ? templates : resumeTemplates).map((template) => (
               <Grid item xs={12} md={6} key={template.id}>
-                <Card variant="outlined">
-                  <CardContent>
-                    <Typography variant="h6">{template.name}</Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {template.description}
-                    </Typography>
-                    <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
-                      <Chip label={template.layout} size="small" />
-                      <Chip label={`ATS ${template.atsScore}%`} size="small" color="success" />
-                      {template.isPremium && <Chip label="Premium" size="small" color="warning" />}
-                    </Stack>
-                  </CardContent>
-                  <CardActions>
-                    <Button variant="contained" onClick={() => handleSelectTemplate(template)}>
-                      Velg mal
-                    </Button>
-                  </CardActions>
-                </Card>
+                <TemplateGalleryCard template={template} onSelect={handleSelectTemplate} />
               </Grid>
             ))}
           </Grid>

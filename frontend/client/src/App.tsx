@@ -43,6 +43,7 @@ import { ScrollRestoration } from '@/components/ScrollRestoration';
 import { useDynamicProfessions } from '@/components/universal/hooks/useDynamicProfessions';
 import NotFound from '@/pages/not-found';
 import EmailDesignerPage from '@/pages/EmailDesignerPage';
+import ResumeThumbPage from '@/pages/ResumeThumbPage';
 // import GoogleOAuthSetupPage from '@/pages/GoogleOAuthSetupPage'; // File deleted
 import AdminPage from '@/pages/AdminPage';
 import EquipmentAdminPage from '@/pages/EquipmentAdminPage';
@@ -761,6 +762,13 @@ function App() {
                   )} />
                   <Route path="/showcase-amazon-demo" component={() => <ShowcaseAmazonDesign />} />
                   <Route path="/demo/animatic" component={DemoAnimaticPage} />
+                  {/* Skjult, offentlig thumbnail-rute: rendrer den ekte CV-mal-komponenten
+                      med eksempel-data for headless PNG-generering (galleri-previewImage). */}
+                  <Route path="/_thumb/resume/:id">
+                    {(params: { id: string }) => (
+                      <ResumeThumbPage id={params.id} scheme={new URLSearchParams(window.location.search).get('scheme')} />
+                    )}
+                  </Route>
                   <Route path="/integration-test" component={IntegrationTest} />
                   <Route path="/email-designer" component={EmailDesignerPage} />
                   {/* <Route path="/google-oauth-setup" component={GoogleOAuthSetupPage} /> */}

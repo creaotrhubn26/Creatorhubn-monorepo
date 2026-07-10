@@ -15,6 +15,7 @@ import {
   Divider,
   Grid,
   Stack,
+  Avatar,
 } from '@mui/material';
 import MailOutlineIcon from '@mui/icons-material/MailOutline';
 import PhoneIphoneIcon from '@mui/icons-material/PhoneIphone';
@@ -122,6 +123,30 @@ export function resolveAccent(resume: any, fallback: string): string {
     return RESUME_COLOR_SCHEMES[schemeId].accent;
   }
   return fallback;
+}
+
+/**
+ * Full fargeskjema for en template. Hvis brukeren har valgt et globalt skjema
+ * (`resume.colorScheme`), brukes det; ellers templatens egne default-farger.
+ * Slik kan ALLE templates deles på samme 8 skjemaer — samtidig som hver template
+ * beholder sitt eget uttrykk når ingen skjema er valgt.
+ */
+export function resolveScheme(
+  resume: any,
+  fallback: { accent: string; accentDark?: string; bgSoft?: string; textOnAccent?: string },
+): ColorScheme {
+  const schemeId = resume?.colorScheme as string | undefined;
+  if (schemeId && RESUME_COLOR_SCHEMES[schemeId]) {
+    return RESUME_COLOR_SCHEMES[schemeId];
+  }
+  return {
+    id: 'template-default',
+    name: 'Template default',
+    accent: fallback.accent,
+    accentDark: fallback.accentDark ?? fallback.accent,
+    bgSoft: fallback.bgSoft ?? '#F5F5F5',
+    textOnAccent: fallback.textOnAccent ?? '#FFFFFF',
+  };
 }
 
 // ============================================================================
@@ -259,6 +284,7 @@ function renderExperienceContent(
 // ============================================================================
 
 export const ModernATSTemplate: React.FC<ResumeTemplateProps> = ({ resume, preview = false }) => {
+  const _sc = resolveScheme(resume, { accent: '#2c3e50', accentDark: '#34495e', bgSoft: '#f5f5f5' });
   const styles = {
     container: {
       maxWidth: '8.5in',
@@ -270,7 +296,7 @@ export const ModernATSTemplate: React.FC<ResumeTemplateProps> = ({ resume, previ
     header: {
       textAlign: 'center' as const,
       mb: 3,
-      borderBottom: '2px solid #2c3e50',
+      borderBottom: `2px solid ${_sc.accent}`,
       pb: 2,
     },
     section: {
@@ -279,7 +305,7 @@ export const ModernATSTemplate: React.FC<ResumeTemplateProps> = ({ resume, previ
     sectionTitle: {
       fontSize: '18px',
       fontWeight: 700,
-      color: '#2c3e50',
+      color: `${_sc.accent}`,
       borderBottom: '1px solid #bdc3c7',
       pb: 1,
       mb: 2,
@@ -291,7 +317,7 @@ export const ModernATSTemplate: React.FC<ResumeTemplateProps> = ({ resume, previ
     <Box sx={styles.container}>
       {/* Header */}
       <Box sx={styles.header}>
-        <Typography variant="h3" sx={{ fontWeight: 700, fontSize: '32px', color: '#2c3e50' }}>
+        <Typography variant="h3" sx={{ fontWeight: 700, fontSize: '32px', color: `${_sc.accent}` }}>
           {resume.personalInfo.fullName}
         </Typography>
         {resume.personalInfo.professionalTitle && (
@@ -324,7 +350,7 @@ export const ModernATSTemplate: React.FC<ResumeTemplateProps> = ({ resume, previ
                 {new Date(exp.startDate).toLocaleDateString('no-NO', { year: 'numeric', month: 'short' })} - {exp.isCurrent ? 'Nå' : (exp.endDate ? new Date(exp.endDate).toLocaleDateString('no-NO', { year: 'numeric', month: 'short' }) : '')}
               </Typography>
             </Box>
-            <Typography sx={{ fontSize: '13px', fontStyle: 'italic', color: '#34495e' }}>
+            <Typography sx={{ fontSize: '13px', fontStyle: 'italic', color: `${_sc.accentDark}` }}>
               {exp.company}{exp.location ? ` | ${exp.location}` : ''}
             </Typography>
             <Box sx={{ mt: 1 }}>
@@ -364,7 +390,7 @@ export const ModernATSTemplate: React.FC<ResumeTemplateProps> = ({ resume, previ
       {resume.languages?.length > 0 && (
         <Box sx={styles.section}>
           <Typography sx={styles.sectionTitle}>Språk</Typography>
-          {renderLanguageList(resume.languages, { accent: '#2c3e50', variant: 'text', fontSize: 12 })}
+          {renderLanguageList(resume.languages, { accent: `${_sc.accent}`, variant: 'text', fontSize: 12 })}
         </Box>
       )}
 
@@ -380,7 +406,7 @@ export const ModernATSTemplate: React.FC<ResumeTemplateProps> = ({ resume, previ
                   {new Date(edu.startDate).getFullYear()} - {edu.isCurrent ? 'Nå' : (edu.endDate ? new Date(edu.endDate).getFullYear() : '')}
                 </Typography>
               </Box>
-              <Typography sx={{ fontSize: '13px', fontStyle: 'italic', color: '#34495e' }}>
+              <Typography sx={{ fontSize: '13px', fontStyle: 'italic', color: `${_sc.accentDark}` }}>
                 {edu.institution}
               </Typography>
               {edu.description && (
@@ -422,12 +448,13 @@ export const ModernATSTemplate: React.FC<ResumeTemplateProps> = ({ resume, previ
 // ============================================================================
 
 export const ProfessionalTwoColumnTemplate: React.FC<ResumeTemplateProps> = ({ resume, preview = false }) => {
+  const _sc = resolveScheme(resume, { accent: '#34495e', accentDark: '#2c3e50', bgSoft: '#f4f6f7' });
   return (
     <Box sx={{ maxWidth: '8.5in', minHeight: '11in', bgcolor: 'rgba(255,255,255,0.04)', p: preview ? 2 : 4 }}>
       <Grid container spacing={3}>
         {/* Left Column */}
         <Grid item xs={4}>
-          <Box sx={{ bgcolor: '#34495e', color: 'white', p: 3, height: '100%' }}>
+          <Box sx={{ bgcolor: `${_sc.accent}`, color: 'white', p: 3, height: '100%' }}>
             {/* Personal Info */}
             <Typography variant="h5" sx={{ fontWeight: 700, mb: 2 }}>
               {resume.personalInfo.fullName}
@@ -469,7 +496,7 @@ export const ProfessionalTwoColumnTemplate: React.FC<ResumeTemplateProps> = ({ r
                 <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5, fontSize: '14px' }}>
                   SPRÅK
                 </Typography>
-                {renderLanguageList(resume.languages, { accent: '#34495e', bgTrack: 'rgba(255,255,255,0.2)', fontSize: 12 })}
+                {renderLanguageList(resume.languages, { accent: `${_sc.accent}`, bgTrack: 'rgba(255,255,255,0.2)', fontSize: 12 })}
               </>
             )}
           </Box>
@@ -480,7 +507,7 @@ export const ProfessionalTwoColumnTemplate: React.FC<ResumeTemplateProps> = ({ r
           {/* Summary */}
           {resume.personalInfo.summary && (
             <Box sx={{ mb: 3 }}>
-              <Typography variant="h6" sx={{ fontWeight: 700, mb: 1, color: '#34495e' }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, mb: 1, color: `${_sc.accent}` }}>
                 OM MEG
               </Typography>
               <Typography variant="body2" sx={{ fontSize: '12px', lineHeight: 1.6 }}>
@@ -506,13 +533,13 @@ export const ProfessionalTwoColumnTemplate: React.FC<ResumeTemplateProps> = ({ r
               <>
                 {regular.length > 0 && (
                   <Box sx={{ mb: 3 }}>
-                    <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: '#34495e' }}>ERFARING</Typography>
+                    <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: `${_sc.accent}` }}>ERFARING</Typography>
                     {regular.map(renderExp)}
                   </Box>
                 )}
                 {internships.length > 0 && (
                   <Box sx={{ mb: 3 }}>
-                    <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: '#34495e' }}>PRAKSISPLASSER</Typography>
+                    <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: `${_sc.accent}` }}>PRAKSISPLASSER</Typography>
                     {internships.map(renderExp)}
                   </Box>
                 )}
@@ -523,7 +550,7 @@ export const ProfessionalTwoColumnTemplate: React.FC<ResumeTemplateProps> = ({ r
           {/* Education */}
           {resume.education?.length > 0 && (
             <Box sx={{ mb: 3 }}>
-              <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: '#34495e' }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: `${_sc.accent}` }}>
                 UTDANNING
               </Typography>
               {resume.education.map((edu: any) => (
@@ -547,7 +574,7 @@ export const ProfessionalTwoColumnTemplate: React.FC<ResumeTemplateProps> = ({ r
           {/* Certifications */}
           {resume.certifications?.length > 0 && (
             <Box>
-              <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: '#34495e' }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: `${_sc.accent}` }}>
                 SERTIFISERINGER
               </Typography>
               {resume.certifications.map((c: any) => (
@@ -571,6 +598,7 @@ export const ProfessionalTwoColumnTemplate: React.FC<ResumeTemplateProps> = ({ r
 // ============================================================================
 
 export const MinimalCleanTemplate: React.FC<ResumeTemplateProps> = ({ resume, preview = false }) => {
+  const _sc = resolveScheme(resume, { accent: '#374151', accentDark: '#111827', bgSoft: '#f3f4f6' });
   const head = (label: string) => (
     <Typography sx={{ fontSize: 13, fontWeight: 300, letterSpacing: 4, color: '#111', mt: 3, mb: 1.5 }}>
       {label.toUpperCase()}
@@ -600,7 +628,7 @@ export const MinimalCleanTemplate: React.FC<ResumeTemplateProps> = ({ resume, pr
           {(resume.personalInfo?.fullName ?? '').toUpperCase()}
         </Typography>
         {resume.personalInfo?.professionalTitle && (
-          <Typography variant="body1" sx={{ mt: 1, fontWeight: 300, letterSpacing: 1, color: '#374151' }}>
+          <Typography variant="body1" sx={{ mt: 1, fontWeight: 300, letterSpacing: 1, color: `${_sc.accent}` }}>
             {resume.personalInfo.professionalTitle}
           </Typography>
         )}
@@ -676,6 +704,7 @@ export const MinimalCleanTemplate: React.FC<ResumeTemplateProps> = ({ resume, pr
 // ============================================================================
 
 export const NorwegianTwoColumnTemplate: React.FC<ResumeTemplateProps> = ({ resume, preview = false }) => {
+  const _sc = resolveScheme(resume, { accent: '#2c3e50', accentDark: '#1a252f', bgSoft: '#f4f6f7' });
   const styles = {
     container: {
       maxWidth: '8.5in',
@@ -690,7 +719,7 @@ export const NorwegianTwoColumnTemplate: React.FC<ResumeTemplateProps> = ({ resu
     },
     rightColumn: {
       flex: 1,
-      bgcolor: '#2c3e50',
+      bgcolor: `${_sc.accent}`,
       color: 'white',
       p: preview ? 2 : 3,
     },
@@ -704,7 +733,7 @@ export const NorwegianTwoColumnTemplate: React.FC<ResumeTemplateProps> = ({ resu
     sectionTitle: {
       fontSize: '18px',
       fontWeight: 700,
-      color: '#2c3e50',
+      color: `${_sc.accent}`,
       mb: 2,
       textTransform: 'uppercase' as const,
     },
@@ -730,7 +759,7 @@ export const NorwegianTwoColumnTemplate: React.FC<ResumeTemplateProps> = ({ resu
             {resume.personalInfo.fullName.charAt(0)}
           </Avatar>
           <Box sx={{ ml: 2 }}>
-            <Typography variant="h3" sx={{ fontWeight: 700, fontSize: '32px', color: '#2c3e50' }}>
+            <Typography variant="h3" sx={{ fontWeight: 700, fontSize: '32px', color: `${_sc.accent}` }}>
               {resume.personalInfo.fullName}
             </Typography>
             {resume.personalInfo.professionalTitle && (
@@ -756,7 +785,7 @@ export const NorwegianTwoColumnTemplate: React.FC<ResumeTemplateProps> = ({ resu
           const renderExp = (exp: any) => (
             <Box key={exp.id} sx={{ mb: 2 }}>
               <Typography sx={{ fontWeight: 600, fontSize: '14px' }}>{exp.jobTitle}</Typography>
-              <Typography sx={{ fontSize: '12px', color: '#2c3e50', fontWeight: 600 }}>
+              <Typography sx={{ fontSize: '12px', color: `${_sc.accent}`, fontWeight: 600 }}>
                 {exp.company}{exp.location ? `, ${exp.location}` : ''}
               </Typography>
               <Typography sx={{ fontSize: '11px', color: '#7f8c8d', mb: 1 }}>
@@ -794,7 +823,7 @@ export const NorwegianTwoColumnTemplate: React.FC<ResumeTemplateProps> = ({ resu
                 <Typography sx={{ fontWeight: 600, fontSize: '14px' }}>
                   {edu.degree}
                 </Typography>
-                <Typography sx={{ fontSize: '12px', color: '#2c3e50' }}>
+                <Typography sx={{ fontSize: '12px', color: `${_sc.accent}` }}>
                   {edu.institution}
                 </Typography>
                 <Typography sx={{ fontSize: '11px', color: '#7f8c8d' }}>
@@ -885,6 +914,7 @@ export const NorwegianTwoColumnTemplate: React.FC<ResumeTemplateProps> = ({ resu
 // ============================================================================
 
 export const CreativePhotographerTemplate: React.FC<ResumeTemplateProps> = ({ resume, preview = false }) => {
+  const _sc = resolveScheme(resume, { accent: '#e74c3c', accentDark: '#c0392b', bgSoft: '#fdf0ee' });
   return (
     <Box sx={{ maxWidth: '8.5in', minHeight: '11in', bgcolor: 'rgba(255,255,255,0.04)', p: preview ? 2 : 4 }}>
       {/* Header with large photo area */}
@@ -902,7 +932,7 @@ export const CreativePhotographerTemplate: React.FC<ResumeTemplateProps> = ({ re
           <Typography variant="h2" sx={{ fontWeight: 700, fontSize: '42px', color: '#2c3e50', mb: 1 }}>
             {resume.personalInfo.fullName}
           </Typography>
-          <Typography variant="h4" sx={{ fontSize: '20px', color: '#e74c3c', mb: 2, fontWeight: 300}}>
+          <Typography variant="h4" sx={{ fontSize: '20px', color: `${_sc.accent}`, mb: 2, fontWeight: 300}}>
             {resume.personalInfo.professionalTitle}
           </Typography>
           <Stack spacing={1}>
@@ -941,11 +971,11 @@ export const CreativePhotographerTemplate: React.FC<ResumeTemplateProps> = ({ re
                 Arbeidserfaring
               </Typography>
               {resume.experiences.map((exp: any) => (
-                <Box key={exp.id} sx={{ mb: 2, pl: 2, borderLeft: '3px solid #e74c3c' }}>
+                <Box key={exp.id} sx={{ mb: 2, pl: 2, borderLeft: `3px solid ${_sc.accent}` }}>
                   <Typography sx={{ fontWeight: 600, fontSize: '15px', color: '#2c3e50' }}>
                     {exp.jobTitle}
                   </Typography>
-                  <Typography sx={{ fontSize: '13px', color: '#e74c3c', fontWeight: 600}}>
+                  <Typography sx={{ fontSize: '13px', color: `${_sc.accent}`, fontWeight: 600}}>
                     {exp.company}
                   </Typography>
                   <Typography sx={{ fontSize: '12px', color: '#7f8c8d', mb: 1 }}>
@@ -972,7 +1002,7 @@ export const CreativePhotographerTemplate: React.FC<ResumeTemplateProps> = ({ re
               <Stack spacing={1}>
                 {resume.skills.map((skill: any) => (
                   <Box key={skill.id} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Box sx={{ width: 8, height: 8, bgcolor: '#e74c3c', borderRadius: '50%' }} />
+                    <Box sx={{ width: 8, height: 8, bgcolor: `${_sc.accent}`, borderRadius: '50%' }} />
                     <Typography variant="body2" sx={{ fontSize: '12px' }}>
                       {skill.name}
                     </Typography>
@@ -987,7 +1017,7 @@ export const CreativePhotographerTemplate: React.FC<ResumeTemplateProps> = ({ re
               <Typography variant="h5" sx={{ fontWeight: 600, color: '#2c3e50', mb: 2 }}>
                 Språk
               </Typography>
-              {renderLanguageList(resume.languages, { accent: '#e74c3c', fontSize: 12 })}
+              {renderLanguageList(resume.languages, { accent: `${_sc.accent}`, fontSize: 12 })}
             </Box>
           )}
 
@@ -1017,11 +1047,12 @@ export const CreativePhotographerTemplate: React.FC<ResumeTemplateProps> = ({ re
 // ============================================================================
 
 export const ModernTechTemplate: React.FC<ResumeTemplateProps> = ({ resume, preview = false }) => {
+  const _sc = resolveScheme(resume, { accent: '#667eea', accentDark: '#764ba2', bgSoft: '#eef1fe' });
   return (
     <Box sx={{ maxWidth: '8.5in', minHeight: '11in', bgcolor: 'rgba(255,255,255,0.04)', p: preview ? 2 : 4 }}>
       {/* Header with gradient */}
       <Box sx={{
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        background: `linear-gradient(135deg, ${_sc.accent} 0%, ${_sc.accentDark} 100%)`,
         color: 'white',
         p: 3,
         borderRadius: 2,
@@ -1047,7 +1078,7 @@ export const ModernTechTemplate: React.FC<ResumeTemplateProps> = ({ resume, prev
           {/* Summary */}
           {resume.personalInfo.summary && (
             <Box sx={{ mb: 3 }}>
-              <Typography variant="h6" sx={{ fontWeight: 700, color: '#667eea', mb: 1 }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, color: `${_sc.accent}`, mb: 1 }}>
                 <SectionHeading icon={<DescriptionIcon />} label="Profil" />
               </Typography>
               <Typography variant="body2" sx={{ fontSize: '13px', lineHeight: 1.6 }}>
@@ -1059,7 +1090,7 @@ export const ModernTechTemplate: React.FC<ResumeTemplateProps> = ({ resume, prev
           {/* Experience */}
           {resume.experiences?.length > 0 && (
             <Box sx={{ mb: 3 }}>
-              <Typography variant="h6" sx={{ fontWeight: 700, color: '#667eea', mb: 2 }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, color: `${_sc.accent}`, mb: 2 }}>
                 <SectionHeading icon={<WorkOutlineIcon />} label="Arbeidserfaring" />
               </Typography>
               {resume.experiences.map((exp: any, index: number) => (
@@ -1069,7 +1100,7 @@ export const ModernTechTemplate: React.FC<ResumeTemplateProps> = ({ resume, prev
                       <Typography sx={{ fontWeight: 600, fontSize: '14px' }}>
                         {exp.jobTitle}
                       </Typography>
-                      <Typography sx={{ fontSize: '13px', color: '#667eea', fontWeight: 600}}>
+                      <Typography sx={{ fontSize: '13px', color: `${_sc.accent}`, fontWeight: 600}}>
                         {exp.company}
                       </Typography>
                       <Typography sx={{ fontSize: '12px', color: '#7f8c8d' }}>
@@ -1093,7 +1124,7 @@ export const ModernTechTemplate: React.FC<ResumeTemplateProps> = ({ resume, prev
           {/* Skills with progress bars */}
           {resume.skills?.length > 0 && (
             <Box sx={{ mb: 3 }}>
-              <Typography variant="h6" sx={{ fontWeight: 700, color: '#667eea', mb: 2 }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, color: `${_sc.accent}`, mb: 2 }}>
                 <SectionHeading icon={<BuildIcon />} label="Teknologier" />
               </Typography>
               <Stack spacing={2}>
@@ -1112,7 +1143,7 @@ export const ModernTechTemplate: React.FC<ResumeTemplateProps> = ({ resume, prev
                         sx={{
                           width: `${skill.proficiencyLevel || 85}%`,
                           height: '100%',
-                          bgcolor: '#667eea',
+                          bgcolor: `${_sc.accent}`,
                           borderRadius: 3}}
                       />
                     </Box>
@@ -1124,17 +1155,17 @@ export const ModernTechTemplate: React.FC<ResumeTemplateProps> = ({ resume, prev
 
           {resume.languages?.length > 0 && (
             <Box sx={{ mb: 3 }}>
-              <Typography variant="h6" sx={{ fontWeight: 700, color: '#667eea', mb: 2 }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, color: `${_sc.accent}`, mb: 2 }}>
                 <SectionHeading icon={<PublicIcon />} label="Språk" />
               </Typography>
-              {renderLanguageList(resume.languages, { accent: '#667eea', fontSize: 12 })}
+              {renderLanguageList(resume.languages, { accent: `${_sc.accent}`, fontSize: 12 })}
             </Box>
           )}
 
           {/* Education */}
           {resume.education?.length > 0 && (
             <Box sx={{ mb: 3 }}>
-              <Typography variant="h6" sx={{ fontWeight: 700, color: '#667eea', mb: 2 }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, color: `${_sc.accent}`, mb: 2 }}>
                 <SectionHeading icon={<SchoolIcon />} label="Utdanning" />
               </Typography>
               {resume.education.map((edu: any) => (
@@ -1142,7 +1173,7 @@ export const ModernTechTemplate: React.FC<ResumeTemplateProps> = ({ resume, prev
                   <Typography sx={{ fontWeight: 600, fontSize: '13px' }}>
                     {edu.degree}
                   </Typography>
-                  <Typography sx={{ fontSize: '12px', color: '#667eea' }}>
+                  <Typography sx={{ fontSize: '12px', color: `${_sc.accent}` }}>
                     {edu.institution}
                   </Typography>
                   <Typography sx={{ fontSize: '11px', color: '#7f8c8d' }}>
@@ -1156,7 +1187,7 @@ export const ModernTechTemplate: React.FC<ResumeTemplateProps> = ({ resume, prev
           {/* Certifications */}
           {resume.certifications?.length > 0 && (
             <Box>
-              <Typography variant="h6" sx={{ fontWeight: 700, color: '#667eea', mb: 2 }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, color: `${_sc.accent}`, mb: 2 }}>
                 <SectionHeading icon={<EmojiEventsIcon />} label="Sertifiseringer" />
               </Typography>
               <Stack spacing={1}>
@@ -1184,15 +1215,16 @@ export const ModernTechTemplate: React.FC<ResumeTemplateProps> = ({ resume, prev
 // ============================================================================
 
 export const HealthcareProfessionalTemplate: React.FC<ResumeTemplateProps> = ({ resume, preview = false }) => {
+  const _sc = resolveScheme(resume, { accent: '#4caf50', accentDark: '#2e7d32', bgSoft: '#e8f5e8' });
   return (
     <Box sx={{ maxWidth: '8.5in', minHeight: '11in', bgcolor: 'rgba(255,255,255,0.04)', p: preview ? 2 : 4 }}>
       {/* Header with medical theme */}
       <Box sx={{ 
-        bgcolor: '#e8f5e8', 
+        bgcolor: `${_sc.bgSoft}`, 
         p: 3, 
         borderRadius: 2, 
         mb: 3, 
-        borderLeft: '5px solid #4caf50',
+        borderLeft: `5px solid ${_sc.accent}`,
         display: 'flex',
         alignItems: 'center'
       }}>
@@ -1200,7 +1232,7 @@ export const HealthcareProfessionalTemplate: React.FC<ResumeTemplateProps> = ({ 
           width: 80, 
           height: 80, 
           borderRadius: '50%', 
-          bgcolor: '#4caf50', 
+          bgcolor: `${_sc.accent}`, 
           display: 'flex', 
           alignItems: 'center', 
           justifyContent: 'center',
@@ -1212,20 +1244,20 @@ export const HealthcareProfessionalTemplate: React.FC<ResumeTemplateProps> = ({ 
           {resume.personalInfo.fullName.split(', ').map((n: string) => n[0]).join(',')}
         </Box>
         <Box sx={{ flex: 1 }}>
-          <Typography variant="h4" sx={{ fontWeight: 700, color: '#2e7d32', mb: 1 }}>
+          <Typography variant="h4" sx={{ fontWeight: 700, color: `${_sc.accentDark}`, mb: 1 }}>
             {resume.personalInfo.fullName}
           </Typography>
-          <Typography variant="h6" sx={{ fontSize: '18px', color: '#4caf50', mb: 2 }}>
+          <Typography variant="h6" sx={{ fontSize: '18px', color: `${_sc.accent}`, mb: 2 }}>
             {resume.personalInfo.professionalTitle}
           </Typography>
           <Stack direction="row" spacing={3}>
-            <Typography variant="body2" sx={{ fontSize: '13px', color: '#2e7d32' }}>
+            <Typography variant="body2" sx={{ fontSize: '13px', color: `${_sc.accentDark}` }}>
               <ContactLine icon={<MailOutlineIcon />}>{resume.personalInfo.email}</ContactLine>
             </Typography>
-            <Typography variant="body2" sx={{ fontSize: '13px', color: '#2e7d32' }}>
+            <Typography variant="body2" sx={{ fontSize: '13px', color: `${_sc.accentDark}` }}>
               <ContactLine icon={<PhoneIphoneIcon />}>{resume.personalInfo.phone}</ContactLine>
             </Typography>
-            <Typography variant="body2" sx={{ fontSize: '13px', color: '#2e7d32' }}>
+            <Typography variant="body2" sx={{ fontSize: '13px', color: `${_sc.accentDark}` }}>
               <ContactLine icon={<LocationOnIcon />}>{resume.personalInfo.location}</ContactLine>
             </Typography>
           </Stack>
@@ -1237,7 +1269,7 @@ export const HealthcareProfessionalTemplate: React.FC<ResumeTemplateProps> = ({ 
           {/* Professional Summary */}
           {resume.personalInfo.summary && (
             <Box sx={{ mb: 3 }}>
-              <Typography variant="h6" sx={{ fontWeight: 700, color: '#2e7d32', mb: 1 }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, color: `${_sc.accentDark}`, mb: 1 }}>
                 <SectionHeading icon={<MedicalServicesIcon />} label="Profesjonell profil" />
               </Typography>
               <Typography variant="body2" sx={{ fontSize: '13px', lineHeight: 1.7, color: '#424242' }}>
@@ -1249,17 +1281,17 @@ export const HealthcareProfessionalTemplate: React.FC<ResumeTemplateProps> = ({ 
           {/* Clinical Experience */}
           {resume.experiences?.length > 0 && (
             <Box sx={{ mb: 3 }}>
-              <Typography variant="h6" sx={{ fontWeight: 700, color: '#2e7d32', mb: 2 }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, color: `${_sc.accentDark}`, mb: 2 }}>
                 <SectionHeading icon={<LocalHospitalIcon />} label="Klinisk erfaring" />
               </Typography>
               {resume.experiences.map((exp: any) => (
-                <Box key={exp.id} sx={{ mb: 2, p: 2, bgcolor: '#f8fff8', borderRadius: 1, borderLeft: '3px solid #4caf50' }}>
+                <Box key={exp.id} sx={{ mb: 2, p: 2, bgcolor: `${_sc.bgSoft}`, borderRadius: 1, borderLeft: `3px solid ${_sc.accent}` }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
                     <Box sx={{ flex: 1 }}>
-                      <Typography sx={{ fontWeight: 600, fontSize: '15px', color: '#2e7d32' }}>
+                      <Typography sx={{ fontWeight: 600, fontSize: '15px', color: `${_sc.accentDark}` }}>
                         {exp.jobTitle}
                       </Typography>
-                      <Typography sx={{ fontSize: '13px', color: '#4caf50', fontWeight: 600}}>
+                      <Typography sx={{ fontSize: '13px', color: `${_sc.accent}`, fontWeight: 600}}>
                         {exp.company}
                       </Typography>
                       <Typography sx={{ fontSize: '12px', color: '#757575' }}>
@@ -1281,15 +1313,15 @@ export const HealthcareProfessionalTemplate: React.FC<ResumeTemplateProps> = ({ 
           {/* Education */}
           {resume.education?.length > 0 && (
             <Box>
-              <Typography variant="h6" sx={{ fontWeight: 700, color: '#2e7d32', mb: 2 }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, color: `${_sc.accentDark}`, mb: 2 }}>
                 <SectionHeading icon={<SchoolIcon />} label="Utdanning & sertifiseringer" />
               </Typography>
               {resume.education.map((edu: any) => (
                 <Box key={edu.id} sx={{ mb: 2 }}>
-                  <Typography sx={{ fontWeight: 600, fontSize: '14px', color: '#2e7d32' }}>
+                  <Typography sx={{ fontWeight: 600, fontSize: '14px', color: `${_sc.accentDark}` }}>
                     {edu.degree}
                   </Typography>
-                  <Typography sx={{ fontSize: '13px', color: '#4caf50' }}>
+                  <Typography sx={{ fontSize: '13px', color: `${_sc.accent}` }}>
                     {edu.institution}
                   </Typography>
                   <Typography sx={{ fontSize: '12px', color: '#757575' }}>
@@ -1305,20 +1337,20 @@ export const HealthcareProfessionalTemplate: React.FC<ResumeTemplateProps> = ({ 
           {/* Specializations */}
           {resume.skills?.length > 0 && (
             <Box sx={{ mb: 3 }}>
-              <Typography variant="h6" sx={{ fontWeight: 700, color: '#2e7d32', mb: 2 }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, color: `${_sc.accentDark}`, mb: 2 }}>
                 <SectionHeading icon={<ScienceIcon />} label="Spesialiseringer" />
               </Typography>
               <Stack spacing={1}>
                 {resume.skills.map((skill: any) => (
                   <Box key={skill.id} sx={{ 
                     p: 1.5, 
-                    bgcolor: '#f1f8e9', 
+                    bgcolor: `${_sc.bgSoft}`, 
                     borderRadius: 1, 
-                    borderLeft: '3px solid #4caf50',
+                    borderLeft: `3px solid ${_sc.accent}`,
                     display: 'flex',
                     alignItems: 'center'
                   }}>
-                    <Box sx={{ width: 6, height: 6, bgcolor: '#4caf50', borderRadius: '50%', mr: 1 }} />
+                    <Box sx={{ width: 6, height: 6, bgcolor: `${_sc.accent}`, borderRadius: '50%', mr: 1 }} />
                     <Typography variant="body2" sx={{ fontSize: '12px', fontWeight: 500}}>
                       {skill.name}
                     </Typography>
@@ -1331,12 +1363,12 @@ export const HealthcareProfessionalTemplate: React.FC<ResumeTemplateProps> = ({ 
           {/* Licenses */}
           {resume.certifications?.length > 0 && (
             <Box sx={{ mb: 3 }}>
-              <Typography variant="h6" sx={{ fontWeight: 700, color: '#2e7d32', mb: 2 }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, color: `${_sc.accentDark}`, mb: 2 }}>
                 <SectionHeading icon={<VerifiedIcon />} label="Lisenser & godkjenninger" />
               </Typography>
               <Stack spacing={1}>
                 {resume.certifications.map((cert: any) => (
-                  <Box key={cert.id} sx={{ p: 1.5, bgcolor: '#f8fff8', borderRadius: 1 }}>
+                  <Box key={cert.id} sx={{ p: 1.5, bgcolor: `${_sc.bgSoft}`, borderRadius: 1 }}>
                     <Typography variant="body2" sx={{ fontSize: '12px', fontWeight: 600}}>
                       {cert.name}
                     </Typography>
@@ -1352,10 +1384,10 @@ export const HealthcareProfessionalTemplate: React.FC<ResumeTemplateProps> = ({ 
           {/* Languages — bruker resume.languages-data (ikke hardkodet lenger) */}
           {resume.languages?.length > 0 && (
             <Box>
-              <Typography variant="h6" sx={{ fontWeight: 700, color: '#2e7d32', mb: 2 }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, color: `${_sc.accentDark}`, mb: 2 }}>
                 <SectionHeading icon={<PublicIcon />} label="Språk" />
               </Typography>
-              {renderLanguageList(resume.languages, { accent: '#4caf50', fontSize: 12 })}
+              {renderLanguageList(resume.languages, { accent: `${_sc.accent}`, fontSize: 12 })}
             </Box>
           )}
         </Grid>
@@ -1369,11 +1401,12 @@ export const HealthcareProfessionalTemplate: React.FC<ResumeTemplateProps> = ({ 
 // ============================================================================
 
 export const AcademicResearcherTemplate: React.FC<ResumeTemplateProps> = ({ resume, preview = false }) => {
+  const _sc = resolveScheme(resume, { accent: '#1976d2', accentDark: '#0d47a1', bgSoft: '#e3f2fd' });
   return (
     <Box sx={{ maxWidth: '8.5in', minHeight: '11in', bgcolor: 'rgba(255,255,255,0.04)', p: preview ? 2 : 4 }}>
       {/* Header */}
-      <Box sx={{ textAlign: 'center', mb: 4, borderBottom: '2px solid #1976d2', pb: 3 }}>
-        <Typography variant="h3" sx={{ fontWeight: 300, fontSize: '32px', color: '#1976d2', mb: 1 }}>
+      <Box sx={{ textAlign: 'center', mb: 4, borderBottom: `2px solid ${_sc.accent}`, pb: 3 }}>
+        <Typography variant="h3" sx={{ fontWeight: 300, fontSize: '32px', color: `${_sc.accent}`, mb: 1 }}>
           {resume.personalInfo.fullName.toUpperCase()}
         </Typography>
         <Typography variant="h5" sx={{ fontSize: '18px', color: '#424242', fontWeight: 300, mb: 2 }}>
@@ -1392,7 +1425,7 @@ export const AcademicResearcherTemplate: React.FC<ResumeTemplateProps> = ({ resu
           {/* Research Interests */}
           {resume.personalInfo.summary && (
             <Box sx={{ mb: 3 }}>
-              <Typography variant="h6" sx={{ fontWeight: 600, color: '#1976d2', mb: 1, borderBottom: '1px solid rgba(33,150,243,0.20)', pb: 0.5 }}>
+              <Typography variant="h6" sx={{ fontWeight: 600, color: `${_sc.accent}`, mb: 1, borderBottom: '1px solid rgba(33,150,243,0.20)', pb: 0.5 }}>
                 Forskningsinteresser
               </Typography>
               <Typography variant="body2" sx={{ fontSize: '13px', lineHeight: 1.7, fontStyle: 'italic' }}>
@@ -1404,7 +1437,7 @@ export const AcademicResearcherTemplate: React.FC<ResumeTemplateProps> = ({ resu
           {/* Education */}
           {resume.education?.length > 0 && (
             <Box sx={{ mb: 3 }}>
-              <Typography variant="h6" sx={{ fontWeight: 600, color: '#1976d2', mb: 2, borderBottom: '1px solid rgba(33,150,243,0.20)', pb: 0.5 }}>
+              <Typography variant="h6" sx={{ fontWeight: 600, color: `${_sc.accent}`, mb: 2, borderBottom: '1px solid rgba(33,150,243,0.20)', pb: 0.5 }}>
                 Utdanning
               </Typography>
               {resume.education.map((edu: any) => (
@@ -1414,7 +1447,7 @@ export const AcademicResearcherTemplate: React.FC<ResumeTemplateProps> = ({ resu
                       <Typography sx={{ fontWeight: 600, fontSize: '14px' }}>
                         {edu.degree}
                       </Typography>
-                      <Typography sx={{ fontSize: '13px', color: '#1976d2', fontWeight: 500}}>
+                      <Typography sx={{ fontSize: '13px', color: `${_sc.accent}`, fontWeight: 500}}>
                         {edu.institution}
                       </Typography>
                       {edu.gpa && (
@@ -1440,7 +1473,7 @@ export const AcademicResearcherTemplate: React.FC<ResumeTemplateProps> = ({ resu
           {/* Research Experience */}
           {resume.experiences?.length > 0 && (
             <Box sx={{ mb: 3 }}>
-              <Typography variant="h6" sx={{ fontWeight: 600, color: '#1976d2', mb: 2, borderBottom: '1px solid rgba(33,150,243,0.20)', pb: 0.5 }}>
+              <Typography variant="h6" sx={{ fontWeight: 600, color: `${_sc.accent}`, mb: 2, borderBottom: '1px solid rgba(33,150,243,0.20)', pb: 0.5 }}>
                 Forskningserfaring
               </Typography>
               {resume.experiences.map((exp: any) => (
@@ -1448,7 +1481,7 @@ export const AcademicResearcherTemplate: React.FC<ResumeTemplateProps> = ({ resu
                   <Typography sx={{ fontWeight: 600, fontSize: '14px' }}>
                     {exp.jobTitle}
                   </Typography>
-                  <Typography sx={{ fontSize: '13px', color: '#1976d2', fontWeight: 500}}>
+                  <Typography sx={{ fontSize: '13px', color: `${_sc.accent}`, fontWeight: 500}}>
                     {exp.company}
                   </Typography>
                   <Typography sx={{ fontSize: '12px', color: '#757575', mb: 1 }}>
@@ -1465,7 +1498,7 @@ export const AcademicResearcherTemplate: React.FC<ResumeTemplateProps> = ({ resu
           {/* Publications */}
           {resume.projects?.length > 0 && (
             <Box>
-              <Typography variant="h6" sx={{ fontWeight: 600, color: '#1976d2', mb: 2, borderBottom: '1px solid rgba(33,150,243,0.20)', pb: 0.5 }}>
+              <Typography variant="h6" sx={{ fontWeight: 600, color: `${_sc.accent}`, mb: 2, borderBottom: '1px solid rgba(33,150,243,0.20)', pb: 0.5 }}>
                 Publikasjoner & Prosjekter
               </Typography>
               {resume.projects.map((project: any) => (
@@ -1486,7 +1519,7 @@ export const AcademicResearcherTemplate: React.FC<ResumeTemplateProps> = ({ resu
           {/* Skills */}
           {resume.skills?.length > 0 && (
             <Box sx={{ mb: 3 }}>
-              <Typography variant="h6" sx={{ fontWeight: 600, color: '#1976d2', mb: 2, borderBottom: '1px solid rgba(33,150,243,0.20)', pb: 0.5 }}>
+              <Typography variant="h6" sx={{ fontWeight: 600, color: `${_sc.accent}`, mb: 2, borderBottom: '1px solid rgba(33,150,243,0.20)', pb: 0.5 }}>
                 Tekniske Ferdigheter
               </Typography>
               <Stack spacing={1}>
@@ -1502,7 +1535,7 @@ export const AcademicResearcherTemplate: React.FC<ResumeTemplateProps> = ({ resu
           {/* Awards */}
           {resume.certifications?.length > 0 && (
             <Box sx={{ mb: 3 }}>
-              <Typography variant="h6" sx={{ fontWeight: 600, color: '#1976d2', mb: 2, borderBottom: '1px solid rgba(33,150,243,0.20)', pb: 0.5 }}>
+              <Typography variant="h6" sx={{ fontWeight: 600, color: `${_sc.accent}`, mb: 2, borderBottom: '1px solid rgba(33,150,243,0.20)', pb: 0.5 }}>
                 Priser & Anerkjennelser
               </Typography>
               <Stack spacing={1}>
@@ -1522,10 +1555,10 @@ export const AcademicResearcherTemplate: React.FC<ResumeTemplateProps> = ({ resu
 
           {resume.languages?.length > 0 && (
             <Box>
-              <Typography variant="h6" sx={{ fontWeight: 600, color: '#1976d2', mb: 2, borderBottom: '1px solid rgba(33,150,243,0.20)', pb: 0.5 }}>
+              <Typography variant="h6" sx={{ fontWeight: 600, color: `${_sc.accent}`, mb: 2, borderBottom: '1px solid rgba(33,150,243,0.20)', pb: 0.5 }}>
                 Språk
               </Typography>
-              {renderLanguageList(resume.languages, { accent: '#1976d2', fontSize: 12 })}
+              {renderLanguageList(resume.languages, { accent: `${_sc.accent}`, fontSize: 12 })}
             </Box>
           )}
         </Grid>
@@ -1539,11 +1572,12 @@ export const AcademicResearcherTemplate: React.FC<ResumeTemplateProps> = ({ resu
 // ============================================================================
 
 export const ExecutiveLeadershipTemplate: React.FC<ResumeTemplateProps> = ({ resume, preview = false }) => {
+  const _sc = resolveScheme(resume, { accent: '#1a1a1a', accentDark: '#2d2d2d', bgSoft: '#f0f0f0' });
   return (
     <Box sx={{ maxWidth: '8.5in', minHeight: '11in', bgcolor: 'rgba(255,255,255,0.04)', p: preview ? 2 : 4 }}>
       {/* Header with executive styling */}
       <Box sx={{ 
-        background: 'linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%)',
+        background: `linear-gradient(135deg, ${_sc.accent} 0%, ${_sc.accentDark} 100%)`,
         color: 'white',
         p: 4,
         borderRadius: 2,
@@ -1565,8 +1599,8 @@ export const ExecutiveLeadershipTemplate: React.FC<ResumeTemplateProps> = ({ res
 
       {/* Executive Summary */}
       {resume.personalInfo.summary && (
-        <Box sx={{ mb: 4, p: 3, bgcolor: 'rgba(255,255,255,0.04)', borderRadius: 2, borderLeft: '4px solid #1a1a1a' }}>
-          <Typography variant="h6" sx={{ fontWeight: 700, color: '#1a1a1a', mb: 2 }}>
+        <Box sx={{ mb: 4, p: 3, bgcolor: 'rgba(255,255,255,0.04)', borderRadius: 2, borderLeft: `4px solid ${_sc.accent}` }}>
+          <Typography variant="h6" sx={{ fontWeight: 700, color: `${_sc.accent}`, mb: 2 }}>
             Lederskapsprofil
           </Typography>
           <Typography variant="body2" sx={{ fontSize: '14px', lineHeight: 1.7, color: '#424242' }}>
@@ -1580,14 +1614,14 @@ export const ExecutiveLeadershipTemplate: React.FC<ResumeTemplateProps> = ({ res
           {/* Leadership Experience */}
           {resume.experiences?.length > 0 && (
             <Box sx={{ mb: 3 }}>
-              <Typography variant="h5" sx={{ fontWeight: 700, color: '#1a1a1a', mb: 3, borderBottom: '2px solid #1a1a1a', pb: 1 }}>
+              <Typography variant="h5" sx={{ fontWeight: 700, color: `${_sc.accent}`, mb: 3, borderBottom: `2px solid ${_sc.accent}`, pb: 1 }}>
                 Ledelseserfaring
               </Typography>
               {resume.experiences.map((exp: any, index: number) => (
                 <Box key={exp.id} sx={{ mb: 3, p: 2, border: '1px solid rgba(255,255,255,0.10)', borderRadius: 2 }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
                     <Box sx={{ flex: 1 }}>
-                      <Typography sx={{ fontWeight: 700, fontSize: '16px', color: '#1a1a1a' }}>
+                      <Typography sx={{ fontWeight: 700, fontSize: '16px', color: `${_sc.accent}` }}>
                         {exp.jobTitle}
                       </Typography>
                       <Typography sx={{ fontSize: '14px', color: '#666', fontWeight: 600}}>
@@ -1612,12 +1646,12 @@ export const ExecutiveLeadershipTemplate: React.FC<ResumeTemplateProps> = ({ res
           {/* Education */}
           {resume.education?.length > 0 && (
             <Box>
-              <Typography variant="h5" sx={{ fontWeight: 700, color: '#1a1a1a', mb: 2, borderBottom: '2px solid #1a1a1a', pb: 1 }}>
+              <Typography variant="h5" sx={{ fontWeight: 700, color: `${_sc.accent}`, mb: 2, borderBottom: `2px solid ${_sc.accent}`, pb: 1 }}>
                 Utdanning
               </Typography>
               {resume.education.map((edu: any) => (
                 <Box key={edu.id} sx={{ mb: 2, p: 2, bgcolor: 'rgba(255,255,255,0.04)', borderRadius: 1 }}>
-                  <Typography sx={{ fontWeight: 600, fontSize: '14px', color: '#1a1a1a' }}>
+                  <Typography sx={{ fontWeight: 600, fontSize: '14px', color: `${_sc.accent}` }}>
                     {edu.degree}
                   </Typography>
                   <Typography sx={{ fontSize: '13px', color: '#666' }}>
@@ -1636,7 +1670,7 @@ export const ExecutiveLeadershipTemplate: React.FC<ResumeTemplateProps> = ({ res
           {/* Core Competencies */}
           {resume.skills?.length > 0 && (
             <Box sx={{ mb: 3 }}>
-              <Typography variant="h6" sx={{ fontWeight: 700, color: '#1a1a1a', mb: 2 }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, color: `${_sc.accent}`, mb: 2 }}>
                 Kjernkompetanser
               </Typography>
               <Stack spacing={1}>
@@ -1645,7 +1679,7 @@ export const ExecutiveLeadershipTemplate: React.FC<ResumeTemplateProps> = ({ res
                     p: 1.5, 
                     bgcolor: '#f0f0f0', 
                     borderRadius: 1,
-                    borderLeft: '3px solid #1a1a1a'
+                    borderLeft: `3px solid ${_sc.accent}`
                   }}>
                     <Typography variant="body2" sx={{ fontSize: '12px', fontWeight: 500}}>
                       {skill.name}
@@ -1659,7 +1693,7 @@ export const ExecutiveLeadershipTemplate: React.FC<ResumeTemplateProps> = ({ res
           {/* Board Positions */}
           {resume.certifications?.length > 0 && (
             <Box sx={{ mb: 3 }}>
-              <Typography variant="h6" sx={{ fontWeight: 700, color: '#1a1a1a', mb: 2 }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, color: `${_sc.accent}`, mb: 2 }}>
                 Styreverv & Roller
               </Typography>
               <Stack spacing={1}>
@@ -1679,10 +1713,10 @@ export const ExecutiveLeadershipTemplate: React.FC<ResumeTemplateProps> = ({ res
 
           {resume.languages?.length > 0 && (
             <Box>
-              <Typography variant="h6" sx={{ fontWeight: 700, color: '#1a1a1a', mb: 2 }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, color: `${_sc.accent}`, mb: 2 }}>
                 Språk
               </Typography>
-              {renderLanguageList(resume.languages, { accent: '#1a1a1a', fontSize: 12 })}
+              {renderLanguageList(resume.languages, { accent: `${_sc.accent}`, fontSize: 12 })}
             </Box>
           )}
         </Grid>
@@ -1696,11 +1730,12 @@ export const ExecutiveLeadershipTemplate: React.FC<ResumeTemplateProps> = ({ res
 // ============================================================================
 
 export const SalesProfessionalTemplate: React.FC<ResumeTemplateProps> = ({ resume, preview = false }) => {
+  const _sc = resolveScheme(resume, { accent: '#ff6b35', accentDark: '#e65100', bgSoft: '#fff8e1' });
   return (
     <Box sx={{ maxWidth: '8.5in', minHeight: '11in', bgcolor: 'rgba(255,255,255,0.04)', p: preview ? 2 : 4 }}>
       {/* Header with sales theme */}
       <Box sx={{ 
-        background: 'linear-gradient(135deg, #ff6b35 0%, #f7931e 100%)',
+        background: `linear-gradient(135deg, ${_sc.accent} 0%, #f7931e 100%)`,
         color: 'white',
         p: 3,
         borderRadius: 2,
@@ -1722,8 +1757,8 @@ export const SalesProfessionalTemplate: React.FC<ResumeTemplateProps> = ({ resum
 
       {/* Sales Performance Summary */}
       {resume.personalInfo.summary && (
-        <Box sx={{ mb: 3, p: 2, bgcolor: 'rgba(255,152,0,0.12)', borderRadius: 2, borderLeft: '4px solid #ff6b35' }}>
-          <Typography variant="h6" sx={{ fontWeight: 700, color: '#e65100', mb: 1 }}>
+        <Box sx={{ mb: 3, p: 2, bgcolor: 'rgba(255,152,0,0.12)', borderRadius: 2, borderLeft: `4px solid ${_sc.accent}` }}>
+          <Typography variant="h6" sx={{ fontWeight: 700, color: `${_sc.accentDark}`, mb: 1 }}>
             Salgsprofil
           </Typography>
           <Typography variant="body2" sx={{ fontSize: '13px', lineHeight: 1.7 }}>
@@ -1737,7 +1772,7 @@ export const SalesProfessionalTemplate: React.FC<ResumeTemplateProps> = ({ resum
           {/* Sales Experience */}
           {resume.experiences?.length > 0 && (
             <Box sx={{ mb: 3 }}>
-              <Typography variant="h6" sx={{ fontWeight: 700, color: '#e65100', mb: 2 }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, color: `${_sc.accentDark}`, mb: 2 }}>
                 <SectionHeading icon={<WorkOutlineIcon />} label="Salgserfaring" />
               </Typography>
               {resume.experiences.map((exp: any) => (
@@ -1747,7 +1782,7 @@ export const SalesProfessionalTemplate: React.FC<ResumeTemplateProps> = ({ resum
                       <Typography sx={{ fontWeight: 600, fontSize: '14px' }}>
                         {exp.jobTitle}
                       </Typography>
-                      <Typography sx={{ fontSize: '13px', color: '#e65100', fontWeight: 600}}>
+                      <Typography sx={{ fontSize: '13px', color: `${_sc.accentDark}`, fontWeight: 600}}>
                         {exp.company}
                       </Typography>
                       <Typography sx={{ fontSize: '12px', color: '#757575' }}>
@@ -1769,7 +1804,7 @@ export const SalesProfessionalTemplate: React.FC<ResumeTemplateProps> = ({ resum
           {/* Education */}
           {resume.education?.length > 0 && (
             <Box>
-              <Typography variant="h6" sx={{ fontWeight: 700, color: '#e65100', mb: 2 }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, color: `${_sc.accentDark}`, mb: 2 }}>
                 <SectionHeading icon={<SchoolIcon />} label="Utdanning" />
               </Typography>
               {resume.education.map((edu: any) => (
@@ -1777,7 +1812,7 @@ export const SalesProfessionalTemplate: React.FC<ResumeTemplateProps> = ({ resum
                   <Typography sx={{ fontWeight: 600, fontSize: '14px' }}>
                     {edu.degree}
                   </Typography>
-                  <Typography sx={{ fontSize: '13px', color: '#e65100' }}>
+                  <Typography sx={{ fontSize: '13px', color: `${_sc.accentDark}` }}>
                     {edu.institution}
                   </Typography>
                   <Typography sx={{ fontSize: '12px', color: '#757575' }}>
@@ -1793,7 +1828,7 @@ export const SalesProfessionalTemplate: React.FC<ResumeTemplateProps> = ({ resum
           {/* Sales Skills */}
           {resume.skills?.length > 0 && (
             <Box sx={{ mb: 3 }}>
-              <Typography variant="h6" sx={{ fontWeight: 700, color: '#e65100', mb: 2 }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, color: `${_sc.accentDark}`, mb: 2 }}>
                 <SectionHeading icon={<TrackChangesIcon />} label="Salgsferdigheter" />
               </Typography>
               <Stack spacing={1}>
@@ -1802,7 +1837,7 @@ export const SalesProfessionalTemplate: React.FC<ResumeTemplateProps> = ({ resum
                     p: 1.5, 
                     bgcolor: '#fff8e1', 
                     borderRadius: 1,
-                    borderLeft: '3px solid #ff6b35'
+                    borderLeft: `3px solid ${_sc.accent}`
                   }}>
                     <Typography variant="body2" sx={{ fontSize: '12px', fontWeight: 500}}>
                       {skill.name}
@@ -1816,7 +1851,7 @@ export const SalesProfessionalTemplate: React.FC<ResumeTemplateProps> = ({ resum
           {/* Achievements */}
           {resume.certifications?.length > 0 && (
             <Box sx={{ mb: 3 }}>
-              <Typography variant="h6" sx={{ fontWeight: 700, color: '#e65100', mb: 2 }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, color: `${_sc.accentDark}`, mb: 2 }}>
                 <SectionHeading icon={<EmojiEventsIcon />} label="Prestasjoner" />
               </Typography>
               <Stack spacing={1}>
@@ -1837,10 +1872,10 @@ export const SalesProfessionalTemplate: React.FC<ResumeTemplateProps> = ({ resum
           {/* Languages — bruker resume.languages-data (ikke hardkodet) */}
           {resume.languages?.length > 0 && (
             <Box>
-              <Typography variant="h6" sx={{ fontWeight: 700, color: '#e65100', mb: 2 }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, color: `${_sc.accentDark}`, mb: 2 }}>
                 <SectionHeading icon={<PublicIcon />} label="Språk" />
               </Typography>
-              {renderLanguageList(resume.languages, { accent: '#e65100', fontSize: 12 })}
+              {renderLanguageList(resume.languages, { accent: `${_sc.accentDark}`, fontSize: 12 })}
             </Box>
           )}
         </Grid>
@@ -1854,7 +1889,7 @@ export const SalesProfessionalTemplate: React.FC<ResumeTemplateProps> = ({ resum
 // ============================================================================
 
 export const NordicDarkSidebarTemplate: React.FC<ResumeTemplateProps> = ({ resume, preview = false }) => {
-  const accent = '#1f2937'; // mørk navy
+  const accent = resolveAccent(resume, '#1f2937'); // mørk navy (skjema-styrbar)
   const accentText = '#FFFFFF';
   const muted = '#6B7280';
   const sectionTitle = (label: string) => (
@@ -2081,7 +2116,7 @@ export const NordicDarkSidebarTemplate: React.FC<ResumeTemplateProps> = ({ resum
 // ============================================================================
 
 export const ModernTanSidebarTemplate: React.FC<ResumeTemplateProps> = ({ resume, preview = false }) => {
-  const tan = '#C09464';
+  const tan = resolveAccent(resume, '#C09464');
   const tanLight = '#D9B79A';
   const sidebarBg = '#F3F1ED';
   const dark = '#1A1A1A';
@@ -2313,7 +2348,7 @@ export const ModernTanSidebarTemplate: React.FC<ResumeTemplateProps> = ({ resume
 export const TimelineCenteredTemplate: React.FC<ResumeTemplateProps> = ({ resume, preview = false }) => {
   const dark = '#0F172A';
   const muted = '#6B7280';
-  const dot = '#0F172A';
+  const dot = resolveAccent(resume, '#0F172A');
   // Vertical timeline with dots, centered name + photo, left sidebar with details
   const sideHead = (label: string) => (
     <Box sx={{ textAlign: 'center', position: 'relative', my: 2 }}>
@@ -2695,7 +2730,7 @@ export const MinimalMonoTemplate: React.FC<ResumeTemplateProps> = ({ resume, pre
 // ============================================================================
 
 export const BoldCreativeTemplate: React.FC<ResumeTemplateProps> = ({ resume, preview = false }) => {
-  const orange = '#FF6B35';
+  const orange = resolveAccent(resume, '#FF6B35');
   const dark = '#0F172A';
   const muted = '#64748B';
   const head = (label: string) => (
@@ -3068,7 +3103,7 @@ export const RESUME_TEMPLATE_SEED_DATA = [
     isActive: true,
   },
   {
-    id: 'creative-bold',
+    id: 'bold-creative',
     name: 'Kreativ & Modig',
     description: 'For kreative profesjonelle som vil skille seg ut. God ATS-score med moderne design.',
     category: 'creative',
@@ -3076,99 +3111,9 @@ export const RESUME_TEMPLATE_SEED_DATA = [
     isAtsOptimized: true,
     layout: 'modern-split',
     sections: ['summary','experience','skills','projects','education'],
-    previewImage: '/templates/creative-bold-preview.png',
+    previewImage: '/templates/bold-creative-preview.png',
     colorSchemes: ['vibrant-orange','bold-red','creative-teal'],
     fonts: { heading: 'Montserrat', body: 'Open Sans' },
-    isPremium: true,
-    isActive: true,
-  },
-  {
-    id: 'executive',
-    name: 'Executive',
-    description: 'For lederstillinger og senior roller. Elegant og profesjonell.',
-    category: 'executive',
-    atsScore: 90,
-    isAtsOptimized: true,
-    layout: 'single-column',
-    sections: ['summary','experience','education','skills','certifications'],
-    previewImage: '/templates/executive-preview.png',
-    colorSchemes: ['executive-navy','executive-charcoal','executive-burgundy'],
-    fonts: { heading: 'Georgia', body: 'Times New Roman' },
-    isPremium: true,
-    isActive: true,
-  },
-  {
-    id: 'tech-modern',
-    name: 'Tech Modern',
-    description: 'For teknologi-profesjonelle. Ren kode-inspirert design med høy ATS-score.',
-    category: 'technology',
-    atsScore: 95,
-    isAtsOptimized: true,
-    layout: 'single-column',
-    sections: ['summary','experience','skills','projects','education','certifications'],
-    previewImage: '/templates/tech-modern-preview.png',
-    colorSchemes: ['tech-blue','tech-green','tech-purple'],
-    fonts: { heading: 'Roboto', body: 'Source Sans Pro' },
-    isPremium: false,
-    isActive: true,
-  },
-  {
-    id: 'academic',
-    name: 'Academic',
-    description: 'For akademiske stillinger og forskere. Tradisjonell og respektert layout.',
-    category: 'academic',
-    atsScore: 100,
-    isAtsOptimized: true,
-    layout: 'single-column',
-    sections: ['summary','education','experience','publications','certifications','skills'],
-    previewImage: '/templates/academic-preview.png',
-    colorSchemes: ['academic-black','academic-navy','academic-burgundy'],
-    fonts: { heading: 'Times New Roman', body: 'Times New Roman' },
-    isPremium: false,
-    isActive: true,
-  },
-  {
-    id: 'creative-portfolio',
-    name: 'Creative Portfolio',
-    description: 'Vis frem ditt kreative arbeid. Perfekt for designere og kunstnere.',
-    category: 'creative',
-    atsScore: 75,
-    isAtsOptimized: false,
-    layout: 'modern-split',
-    sections: ['summary','projects','experience','skills','education'],
-    previewImage: '/templates/creative-portfolio-preview.png',
-    colorSchemes: ['creative-vibrant','creative-pastel','creative-monochrome'],
-    fonts: { heading: 'Playfair Display', body: 'Lato' },
-    isPremium: true,
-    isActive: true,
-  },
-  {
-    id: 'simple-classic',
-    name: 'Simple Classic',
-    description: 'Tidløs klassisk design. Fungerer for alle bransjer og stillinger.',
-    category: 'classic',
-    atsScore: 100,
-    isAtsOptimized: true,
-    layout: 'single-column',
-    sections: ['summary','experience','education','skills'],
-    previewImage: '/templates/simple-classic-preview.png',
-    colorSchemes: ['classic-black','classic-navy','classic-gray'],
-    fonts: { heading: 'Times New Roman', body: 'Times New Roman' },
-    isPremium: false,
-    isActive: true,
-  },
-  {
-    id: 'modern-gradient',
-    name: 'Modern Gradient',
-    description: 'Moderne design med subtile gradienter. Skiller seg ut samtidig som den er ATS-vennlig.',
-    category: 'modern',
-    atsScore: 85,
-    isAtsOptimized: true,
-    layout: 'single-column',
-    sections: ['summary','experience','skills','education','projects'],
-    previewImage: '/templates/modern-gradient-preview.png',
-    colorSchemes: ['gradient-blue-purple','gradient-green-teal','gradient-orange-red'],
-    fonts: { heading: 'Inter', body: 'Inter' },
     isPremium: true,
     isActive: true,
   },

@@ -44,6 +44,12 @@ const ADMIN_ROUTE_PATTERN = /^\/(?:admin|visual-cms-admin|equipment-admin|photo-
 const ROLE_ROOM_SHARED_APP_ROUTE_PATTERN = /^\/(?:privacy-policy|terms-and-conditions)\/?$/;
 const LOCALHOST_HOSTNAME_SET = new Set(['localhost', '127.0.0.1']);
 
+// Skjult thumbnail-rute: rendres med en MINIMAL, backend-fri bootstrap (thumb-entry),
+// så headless PNG-generering av CV-maler ikke krever session/auth/backend.
+const THUMB_ROUTE_PATTERN = /^\/_thumb(?:\/.*)?$/;
+const shouldUseThumbBootstrap = (pathname: string): boolean =>
+  THUMB_ROUTE_PATTERN.test(pathname);
+
 const shouldUseVisualEditorBootstrap = (pathname: string): boolean =>
   VISUAL_EDITOR_ROUTE_PATTERN.test(pathname);
 
@@ -71,6 +77,12 @@ const shouldUseRoleRoomDedicatedHostBootstrap = (
 };
 
 const resolveRootComponent = async (): Promise<React.ComponentType> => {
+  // Thumbnail-ruten FØRST — minimal, backend-fri bootstrap (vinner på alle hoster).
+  if (shouldUseThumbBootstrap(window.location.pathname)) {
+    const module = await import('./thumb-entry');
+    return module.default;
+  }
+
   if (shouldUseRoleRoomDedicatedHostBootstrap(window.location)) {
     const module = await import('./components/role-room/casting-main');
     return module.default;
@@ -138,7 +150,9 @@ console.log('[main.tsx] React:', typeof React);
 console.log('[main.tsx] ReactDOM:', typeof ReactDOM);
 console.log(
   '[main.tsx] Bootstrap mode:',
-  shouldUseRoleRoomDedicatedHostBootstrap(window.location)
+  shouldUseThumbBootstrap(window.location.pathname)
+    ? 'thumb'
+    : shouldUseRoleRoomDedicatedHostBootstrap(window.location)
     ? 'role-room-host'
     : shouldUseVisualEditorBootstrap(window.location.pathname)
     ? 'visual-editor'
