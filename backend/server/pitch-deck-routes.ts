@@ -518,6 +518,47 @@ async function insertSlides(
 export function registerPitchDeckRoutes({ app, pool, activeSessions }: Deps): void {
   const ROOT = "/api/admin-room/lead-map/pitch-deck";
 
+  // ── Ressurs-scopet org-resolve (lukker kryss-tenant IDOR) ──────────
+  // Standard-vakta (defaultResolveOrgId) klarer IKKE å utlede org fra en
+  // deck/slide/presentation-uuid: den prøver params.id som LEAD-id (→ 0
+  // treff) og faller så tilbake til KALLERENS egen default-org. Dermed
+  // slapp enhver bruker med pitch_deck-perm i sin egen org gjennom vakta
+  // og kunne lese/endre ANDRE organisasjoners decks/slides via uuid.
+  // Disse resolverne henter den EKTE eier-org-en for ressursen slik at
+  // resolveEffectivePermissions kjøres mot riktig org → ikke-medlem = 403.
+  const orgFromDeckParam = async (req: Request, p: Pool): Promise<string | null> => {
+    const id = req.params.id;
+    if (typeof id !== "string" || id.length === 0) return null;
+    const r = await p.query<{ org_id: string | null }>(
+      `SELECT org_id::text FROM pitch_decks WHERE id = $1 LIMIT 1`, [id]);
+    return r.rows[0]?.org_id ?? null;
+  };
+  const orgFromDeckBody = async (req: Request, p: Pool): Promise<string | null> => {
+    const id = typeof req.body?.deck_id === "string" ? req.body.deck_id : null;
+    if (!id) return null;
+    const r = await p.query<{ org_id: string | null }>(
+      `SELECT org_id::text FROM pitch_decks WHERE id = $1 LIMIT 1`, [id]);
+    return r.rows[0]?.org_id ?? null;
+  };
+  const orgFromSlideParam = async (req: Request, p: Pool): Promise<string | null> => {
+    const id = req.params.id;
+    if (typeof id !== "string" || id.length === 0) return null;
+    const r = await p.query<{ org_id: string | null }>(
+      `SELECT d.org_id::text FROM pitch_slides s
+         JOIN pitch_decks d ON d.id = s.deck_id
+        WHERE s.id = $1 LIMIT 1`, [id]);
+    return r.rows[0]?.org_id ?? null;
+  };
+  const orgFromPresentationParam = async (req: Request, p: Pool): Promise<string | null> => {
+    const id = req.params.id;
+    if (typeof id !== "string" || id.length === 0) return null;
+    const r = await p.query<{ org_id: string | null }>(
+      `SELECT d.org_id::text FROM pitch_deck_presentations pr
+         JOIN pitch_decks d ON d.id = pr.deck_id
+        WHERE pr.id = $1 LIMIT 1`, [id]);
+    return r.rows[0]?.org_id ?? null;
+  };
+
   // ─── GET /availability ─────────────────────────────────────────
   // Lett-vekts sjekk som iPad-lead-detail kaller for å avgjøre om
   // "Presenter pitch"-knappen skal vises i prosjekt-kortet. Krever
@@ -568,21 +609,23 @@ export function registerPitchDeckRoutes({ app, pool, activeSessions }: Deps): vo
     `${ROOT}/decks`,
     requireLeadMapPermission("pitch_deck.access", { pool, activeSessions }),
     async (req: Request, res: Response) => {
+      // organization_id er PÅKREVD. Uten den falt spørringen tidligere til
+      // en org-løs gren som returnerte ALLE organisasjoners decks (kryss-
+      // tenant lekkasje) — vakta slapp gjennom fordi defaultResolveOrgId da
+      // faller tilbake til kallerens egen default-org, mens handleren leste
+      // rå query og fikk null. Nå kreves org eksplisitt, og vakta har alt
+      // verifisert at kalleren har pitch_deck.access i nettopp den org-en.
       const orgId = typeof req.query.organization_id === "string"
         ? req.query.organization_id
         : null;
+      if (!orgId) return res.status(400).json({ error: "organization_id påkrevd" });
       try {
         const r = await pool.query<DeckRow>(
-          orgId
-            ? `SELECT ${DECK_SELECT}
+          `SELECT ${DECK_SELECT}
                  FROM pitch_decks
                 WHERE org_id = $1 AND status <> 'archived'
-                ORDER BY last_used_at DESC NULLS LAST, created_at DESC`
-            : `SELECT ${DECK_SELECT}
-                 FROM pitch_decks WHERE status <> 'archived'
-                ORDER BY last_used_at DESC NULLS LAST, created_at DESC
-                LIMIT 50`,
-          orgId ? [orgId] : [],
+                ORDER BY last_used_at DESC NULLS LAST, created_at DESC`,
+          [orgId],
         );
         return res.json({ decks: r.rows });
       } catch (err) {
@@ -693,7 +736,7 @@ export function registerPitchDeckRoutes({ app, pool, activeSessions }: Deps): vo
   // ─── GET /decks/:id ────────────────────────────────────────────
   app.get(
     `${ROOT}/decks/:id`,
-    requireLeadMapPermission("pitch_deck.access", { pool, activeSessions }),
+    requireLeadMapPermission("pitch_deck.access", { pool, activeSessions, resolveOrgId: orgFromDeckParam }),
     async (req: Request, res: Response) => {
       try {
         const deck = await loadDeck(pool, req.params.id);
@@ -711,7 +754,7 @@ export function registerPitchDeckRoutes({ app, pool, activeSessions }: Deps): vo
   // endres direkte — bruk /regenerate.
   app.patch(
     `${ROOT}/decks/:id`,
-    requireLeadMapPermission("pitch_deck.edit", { pool, activeSessions }),
+    requireLeadMapPermission("pitch_deck.edit", { pool, activeSessions, resolveOrgId: orgFromDeckParam }),
     async (req: Request, res: Response) => {
       const updates: string[] = [];
       const params: unknown[] = [];
@@ -743,7 +786,7 @@ export function registerPitchDeckRoutes({ app, pool, activeSessions }: Deps): vo
   // ─── PATCH /slides/:id ─────────────────────────────────────────
   app.patch(
     `${ROOT}/slides/:id`,
-    requireLeadMapPermission("pitch_deck.edit", { pool, activeSessions }),
+    requireLeadMapPermission("pitch_deck.edit", { pool, activeSessions, resolveOrgId: orgFromSlideParam }),
     async (req: Request, res: Response) => {
       const session = activeSessions.get(
         (req.headers.authorization ?? "").replace("Bearer ", ""),
@@ -799,7 +842,7 @@ export function registerPitchDeckRoutes({ app, pool, activeSessions }: Deps): vo
   // til senere).
   app.delete(
     `${ROOT}/slides/:id`,
-    requireLeadMapPermission("pitch_deck.edit", { pool, activeSessions }),
+    requireLeadMapPermission("pitch_deck.edit", { pool, activeSessions, resolveOrgId: orgFromSlideParam }),
     async (req: Request, res: Response) => {
       try {
         const r = await pool.query(
@@ -819,7 +862,7 @@ export function registerPitchDeckRoutes({ app, pool, activeSessions }: Deps): vo
   // ─── POST /slides/:id/restore ──────────────────────────────────
   app.post(
     `${ROOT}/slides/:id/restore`,
-    requireLeadMapPermission("pitch_deck.edit", { pool, activeSessions }),
+    requireLeadMapPermission("pitch_deck.edit", { pool, activeSessions, resolveOrgId: orgFromSlideParam }),
     async (req: Request, res: Response) => {
       try {
         const r = await pool.query<SlideRow>(
@@ -842,7 +885,7 @@ export function registerPitchDeckRoutes({ app, pool, activeSessions }: Deps): vo
   // Slettede slides — vises i Studio som "Slettede slides"-fane.
   app.get(
     `${ROOT}/decks/:id/trash`,
-    requireLeadMapPermission("pitch_deck.access", { pool, activeSessions }),
+    requireLeadMapPermission("pitch_deck.access", { pool, activeSessions, resolveOrgId: orgFromDeckParam }),
     async (req: Request, res: Response) => {
       try {
         const r = await pool.query<SlideRow & { deleted_at: string }>(
@@ -862,7 +905,7 @@ export function registerPitchDeckRoutes({ app, pool, activeSessions }: Deps): vo
   // ─── POST /slides/:id/regenerate ───────────────────────────────
   app.post(
     `${ROOT}/slides/:id/regenerate`,
-    requireLeadMapPermission("pitch_deck.edit", { pool, activeSessions }),
+    requireLeadMapPermission("pitch_deck.edit", { pool, activeSessions, resolveOrgId: orgFromSlideParam }),
     async (req: Request, res: Response) => {
       try {
         // Hent slide + deck for å gjenbruke generated_from-konteksten
@@ -931,7 +974,7 @@ export function registerPitchDeckRoutes({ app, pool, activeSessions }: Deps): vo
   // ─── POST /slides/:id/lock ─────────────────────────────────────
   app.post(
     `${ROOT}/slides/:id/lock`,
-    requireLeadMapPermission("pitch_deck.edit", { pool, activeSessions }),
+    requireLeadMapPermission("pitch_deck.edit", { pool, activeSessions, resolveOrgId: orgFromSlideParam }),
     async (req: Request, res: Response) => {
       const session = activeSessions.get(
         (req.headers.authorization ?? "").replace("Bearer ", ""),
@@ -960,7 +1003,7 @@ export function registerPitchDeckRoutes({ app, pool, activeSessions }: Deps): vo
   // ─── POST /presentations ───────────────────────────────────────
   app.post(
     `${ROOT}/presentations`,
-    requireLeadMapPermission("pitch_deck.access", { pool, activeSessions }),
+    requireLeadMapPermission("pitch_deck.access", { pool, activeSessions, resolveOrgId: orgFromDeckBody }),
     async (req: Request, res: Response) => {
       const session = activeSessions.get(
         (req.headers.authorization ?? "").replace("Bearer ", ""),
@@ -993,7 +1036,7 @@ export function registerPitchDeckRoutes({ app, pool, activeSessions }: Deps): vo
   // Mater inn slides_shown, annotations, outcome — og avslutt sesjonen.
   app.patch(
     `${ROOT}/presentations/:id`,
-    requireLeadMapPermission("pitch_deck.access", { pool, activeSessions }),
+    requireLeadMapPermission("pitch_deck.access", { pool, activeSessions, resolveOrgId: orgFromPresentationParam }),
     async (req: Request, res: Response) => {
       const updates: string[] = [];
       const params: unknown[] = [];
