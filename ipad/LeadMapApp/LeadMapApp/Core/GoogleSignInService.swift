@@ -113,8 +113,6 @@ extension GoogleSignInService: ASWebAuthenticationPresentationContextProviding {
         // vi er allerede på main. MainActor.assumeIsolated er den riktige
         // veien for synkron MainActor-aksess fra nonisolated kontekst når
         // kaller-en er main thread (iOS 17+).
-        // (Samme fiks som i PR #829 — duplisert her fordi denne branchen
-        // er basert på origin/main hvor #829 ikke er merget enda.)
         MainActor.assumeIsolated {
             UIApplication.shared.connectedScenes
                 .compactMap { $0 as? UIWindowScene }
