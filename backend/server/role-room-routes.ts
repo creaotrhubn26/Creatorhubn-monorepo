@@ -2008,6 +2008,18 @@ function getUserId(req: Request): string {
   return apiKeyReq.apiKeyUser?.userId ?? 'anonymous';
 }
 
+/**
+ * Server-trusted role for entitlement decisions. Resolved by `apiKeyAuth`
+ * from the authenticated session (or, only when dev-bypass is enabled, from
+ * the dev headers). NEVER re-read the raw `x-user-role` header for gating —
+ * doing so lets any caller send `x-user-role: admin` and hit the privileged
+ * `checkAgentEntitlement` bypass, skipping the paywall and trial caps.
+ */
+function getSessionRole(req: Request): string | undefined {
+  const apiKeyReq = req as Request & { apiKeyUser?: ApiKeyUserContext };
+  return apiKeyReq.apiKeyUser?.role ?? undefined;
+}
+
 function requireScope(req: Request, scope: string): boolean {
   const apiKeyReq = req as Request & { apiKeyUser?: ApiKeyUserContext };
   const scopes = apiKeyReq.apiKeyUser?.scopes ?? [];
@@ -22043,7 +22055,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           pool,
           projectId: req.params.projectId,
           userId,
-          userRole: readRoleRoomDevUserRole(req),
+          userRole: getSessionRole(req),
           action: action as RoleRoomAgentAction,
           userMessage: userMessage.trim(),
           requiredScope,
@@ -22069,7 +22081,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         }
         res.status(500).json({
           error: 'agent_failed',
-          detail: error instanceof Error ? error.message : String(error),
+          detail: "internal_error",
         });
       }
     },
@@ -22084,7 +22096,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     async (req: Request, res: Response) => {
       try {
         const userId = getUserId(req);
-        await handleAgentStream(pool, req, res, userId, readRoleRoomDevUserRole(req));
+        await handleAgentStream(pool, req, res, userId, getSessionRole(req));
       } catch (error) {
         if (!res.headersSent) {
           res.status(500).json({ error: 'stream_failed', detail: "internal_error" });
@@ -22613,7 +22625,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     async (req: Request, res: Response) => {
       try {
         const userId = getUserId(req);
-        const entitlement = await checkAgentEntitlement(pool, userId, readRoleRoomDevUserRole(req));
+        const entitlement = await checkAgentEntitlement(pool, userId, getSessionRole(req));
         const config = getEntitlementConfig();
         res.json({ entitlement, config });
       } catch (error) {
@@ -22632,7 +22644,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         if (!result.ok) {
           return res.status(409).json({ error: result.error });
         }
-        const entitlement = await checkAgentEntitlement(pool, userId, readRoleRoomDevUserRole(req));
+        const entitlement = await checkAgentEntitlement(pool, userId, getSessionRole(req));
         res.status(201).json({ trialEndsAt: result.trialEndsAt, entitlement });
       } catch (error) {
         res.status(500).json({ error: 'Failed to start trial', detail: "internal_error" });
@@ -24090,7 +24102,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         if (!projectId || typeof projectId !== 'string') {
           return res.status(400).json({ error: 'projectId_required' });
         }
-        const entitlement = await checkAgentEntitlement(pool, userId, readRoleRoomDevUserRole(req));
+        const entitlement = await checkAgentEntitlement(pool, userId, getSessionRole(req));
         if (!entitlement.allowed) {
           return res.status(402).json({ error: 'entitlement_required', entitlement });
         }
@@ -24154,7 +24166,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         }
 
         // AI-generering teller mot agent-kvoten (samme som marketing-plan).
-        const entitlement = await checkAgentEntitlement(pool, userId, readRoleRoomDevUserRole(req));
+        const entitlement = await checkAgentEntitlement(pool, userId, getSessionRole(req));
         if (!entitlement.allowed) {
           return res.status(402).json({ error: 'entitlement_required', entitlement });
         }
