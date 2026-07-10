@@ -202,7 +202,9 @@ export async function createTakeUploadUrl(
   const mediaType: "video" | "audio" = input.mediaType ?? "video";
   const safeName = sanitizeFilenameSegment(input.filename);
   const timestamp = Date.now();
-  const scenePart = input.sceneId ? `${input.sceneId}/` : "_unscoped/";
+  const scenePart = input.sceneId
+    ? `${sanitizeFilenameSegment(input.sceneId)}/`
+    : "_unscoped/";
   const mediaKey = `takes/${input.projectId}/${scenePart}${timestamp}-${takeId}-${safeName}`;
 
   const r2 = getR2();
