@@ -66172,6 +66172,7 @@ setupProjectTypesRoutes({
 setupSettingsRoutes({
   app,
   requireUserSession,
+  getActiveSessionFromRequest,
   readQueryString,
   legacySettingsStore,
   legacySettingKey,
