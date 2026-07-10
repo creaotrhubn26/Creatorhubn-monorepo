@@ -20,6 +20,8 @@ verifisert mot kode — se `01-integration-inventory.md`.
 | Job postings / funding | Stillinger, funding-signaler | **Ingen** | Missing | Ja | Lavt MVP-behov; postpone |
 | Ad performance (owned) | Kampanjedata | Google Ads + Meta + TikTok + LinkedIn | Existing | Nei | Koble til normalized layer |
 | Social/owned channels | Innhold + engasjement | Meta/TikTok/LinkedIn/YouTube/Reddit | Existing | Nei | Koble til normalized layer |
+| AI search interest (GEO) | Hva folk spør AI-assistenter om (prompt-volum per tema) | **Ingen** (proxy: GSC inkluderer AI Overviews-visninger; GA4 kan segmentere chatgpt.com-referrals — begge aktive) | Missing | Ja | Ingen AI-leverandør publiserer prompt-logger — kun estimert/lisensiert data finnes (Semrush Prompt Research, Profound, Otterly). `requiresLicensedProvider`; start med GSC/GA4-proxyene som allerede er integrert |
+| AI answer visibility (GEO) | Om/hvordan merkevaren siteres i ChatGPT/Perplexity/AI Overviews | **Ingen** | Missing | Ja | Syntetisk prompt-tracking (definerte prompts kjøres mot motorene) — lisensiert verktøy; alle signaler MÅ merkes isEstimated, aldri presenteres som reelt søkevolum |
 | Lead conversion | Faktiske salgsutfall | Leadgrid (won/lost, aktiv) | Existing | Nei | Feedback-pipeline til scoring (P2-punktet i cto-audit-planen) |
 | Weather context | Værdata (Evendi-vertikal) | MET/Yr | Existing | Nei | — |
 
@@ -41,6 +43,8 @@ Recommendation Rules:
 | Reddit som *markedsdata* (utover engasjement) | use alternative source / reject for scraping | Offisiell Data API er priset og ToS-begrenset for bulk; eksisterende script-app er kun for eget engasjement |
 | Kommunale åpne data / geodata utover Geonorge | use manual import initially | Heterogene formater; importflyten (§`05`) håndterer dem bedre enn N små adaptere |
 | Web-change collectors (konkurrent-overvåking) | prepare adapter only + juridisk sjekkliste per domene | Se `04-provider-strategy-licensing-cost.md` §2 — robots.txt/ToS-dokumentasjon FØR aktivering, per kilde |
+| GEO prompt-volum (Semrush AI Toolkit / Prompt Research el.l.) | **requires paid license** — evaluér i trial først | Nærmeste «Google Trends for AI» som finnes: estimert tema-volum fra clickstream + ML (289M+ prompt-database, 220+ land). Estimert data, ikke logger — `isEstimated=true`; verifiser norsk dekning i trial før kjøp |
+| GEO answer-tracking (Profound / Otterly / Peec) | requires paid license / postpone til GEO blir produktfeature | Syntetisk monitorering av merkevaresynlighet i AI-svar; G2-leder er Profound, Otterly bredt brukt. Ingen fri API-vei |
 
 ## §3 Vurdering av integrasjonsgruppene A–E (oppdragets krav)
 
