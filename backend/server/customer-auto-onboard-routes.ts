@@ -185,43 +185,84 @@ async function runOnboarding(args: OnboardArgs): Promise<void> {
       if (r.rows[0]) presetData = { ...presetData, ...r.rows[0] };
     }
 
-    // 4. Opprett casting_project
+    // 4-5. Opprett casting_project + crm_customer — serialisert per org
+    // med advisory-lock så kunde-grensen (max_active_customers) håndheves
+    // atomisk. En COUNT-basert grense kan IKKE håndheves med en betinget
+    // INSERT alene under READ COMMITTED (samtidige COUNT ser ikke
+    // hverandres ucommittede rader), så vi tar en per-org lås rundt
+    // sjekk + insert; samtidige onboards for samme org serialiseres.
     const projectId = shortIdFor(customerName);
-    await pool.query(
-      `INSERT INTO casting_projects
-         (id, name, description, status, created_by, project_type,
-          organization_id, created_at)
-       VALUES ($1, $2, $3, 'active', $4, 'kundeprosjekt', $5, now())`,
-      [
-        projectId,
-        `${customerName} — kundeprosjekt`,
-        `Auto-onboardet ${new Date().toLocaleDateString("nb-NO")} via Leadgrid. Website: ${args.websiteUrl}.`
-          + (brreg.orgNumber ? ` Org-nr: ${brreg.orgNumber}.` : ""),
-        args.triggeredBy, args.organizationId,
-      ],
-    );
+    let customerId = "";
+    const lockClient = await pool.connect();
+    let txnOpen = false;
+    try {
+      await lockClient.query("BEGIN");
+      txnOpen = true;
+      await lockClient.query(
+        "SELECT pg_advisory_xact_lock(hashtext($1)::bigint)",
+        [args.organizationId],
+      );
 
-    // 5. Opprett crm_customer
-    const customerRes = await pool.query<{ id: string }>(
-      `INSERT INTO crm_customers
-         (id, name, website_url, email, phone, owner_user_id,
-          status, lead_status, lead_category, lead_source, tags,
-          custom_fields, project_id, enrichment_org_nr, enrichment_data)
-       VALUES (gen_random_uuid(), $1, $2, $3, $4, $5,
-               'lead', 'unvisited', $6, $7, $8::text[],
-               $9::jsonb, $10, $11, $12::jsonb)
-       RETURNING id::text`,
-      [
-        customerName, args.websiteUrl, args.contactEmail,
-        args.contactPhone, args.triggeredBy,
-        presetData.industry, presetData.default_lead_source,
-        presetData.default_tags,
-        JSON.stringify(presetData.default_custom_fields),
-        projectId, brreg.orgNumber,
-        JSON.stringify({ brreg: { orgNumber: brreg.orgNumber, name: brreg.officialName } }),
-      ],
-    );
-    const customerId = customerRes.rows[0].id;
+      // Re-sjekk kunde-grensen INNENFOR låsen (ser committede konkurrenter).
+      const { canCreateCustomer } = await import("./plan-limits-service.js");
+      const capCheck = await canCreateCustomer(pool, args.organizationId);
+      if (!capCheck.allowed) {
+        await lockClient.query("ROLLBACK");
+        txnOpen = false;
+        await pool.query(
+          `UPDATE customer_auto_onboards
+              SET status = 'failed',
+                  error_message = $2,
+                  finished_at = now()
+            WHERE id = $1`,
+          [auditId, `customer_limit_reached:${capCheck.limit}`],
+        );
+        return;
+      }
+
+      await lockClient.query(
+        `INSERT INTO casting_projects
+           (id, name, description, status, created_by, project_type,
+            organization_id, created_at)
+         VALUES ($1, $2, $3, 'active', $4, 'kundeprosjekt', $5, now())`,
+        [
+          projectId,
+          `${customerName} — kundeprosjekt`,
+          `Auto-onboardet ${new Date().toLocaleDateString("nb-NO")} via Leadgrid. Website: ${args.websiteUrl}.`
+            + (brreg.orgNumber ? ` Org-nr: ${brreg.orgNumber}.` : ""),
+          args.triggeredBy, args.organizationId,
+        ],
+      );
+
+      const customerRes = await lockClient.query<{ id: string }>(
+        `INSERT INTO crm_customers
+           (id, name, website_url, email, phone, owner_user_id,
+            status, lead_status, lead_category, lead_source, tags,
+            custom_fields, project_id, enrichment_org_nr, enrichment_data)
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5,
+                 'lead', 'unvisited', $6, $7, $8::text[],
+                 $9::jsonb, $10, $11, $12::jsonb)
+         RETURNING id::text`,
+        [
+          customerName, args.websiteUrl, args.contactEmail,
+          args.contactPhone, args.triggeredBy,
+          presetData.industry, presetData.default_lead_source,
+          presetData.default_tags,
+          JSON.stringify(presetData.default_custom_fields),
+          projectId, brreg.orgNumber,
+          JSON.stringify({ brreg: { orgNumber: brreg.orgNumber, name: brreg.officialName } }),
+        ],
+      );
+      customerId = customerRes.rows[0].id;
+
+      await lockClient.query("COMMIT");
+      txnOpen = false;
+    } finally {
+      if (txnOpen) {
+        try { await lockClient.query("ROLLBACK"); } catch { /* noop */ }
+      }
+      lockClient.release();
+    }
 
     // Tell customer-create i usage-bucket (for max_active_customers-grense)
     try {
@@ -374,23 +415,27 @@ export function registerCustomerAutoOnboardRoutes({
         return res.status(400).json({ error: "organization_id påkrevd" });
       }
 
-      // Plan-gating: sjekk auto-onboard-grense + kunde-grense før vi starter
-      const { canAutoOnboard, canCreateCustomer, incrementUsage } =
+      // Plan-gating. Kunde-grensen håndheves atomisk i runOnboarding
+      // (advisory-lock rundt count+insert); her er canCreateCustomer en
+      // billig pre-sjekk for en pen 402-melding på ikke-race-tilfellet.
+      const { canCreateCustomer, tryClaimAutoOnboard } =
         await import("./plan-limits-service.js");
-      const gateA = await canAutoOnboard(pool, b.organization_id);
-      if (!gateA.allowed) {
-        return res.status(402).json({
-          error: "plan_limit_reached",
-          gate: gateA,
-          message: `Du har brukt ${gateA.current_usage}/${gateA.limit} auto-onboards denne måneden på ${gateA.current_plan}-planen.`,
-        });
-      }
       const gateB = await canCreateCustomer(pool, b.organization_id);
       if (!gateB.allowed) {
         return res.status(402).json({
           error: "plan_limit_reached",
           gate: gateB,
           message: `Du har ${gateB.current_usage}/${gateB.limit} aktive kunder på ${gateB.current_plan}-planen.`,
+        });
+      }
+      // Atomisk claim av auto-onboard-slot (lukker TOCTOU-racet mot
+      // månedstaket). Bruker slot først når vi faktisk starter.
+      const gateA = await tryClaimAutoOnboard(pool, b.organization_id);
+      if (!gateA.allowed) {
+        return res.status(402).json({
+          error: "plan_limit_reached",
+          gate: gateA,
+          message: `Du har brukt ${gateA.current_usage}/${gateA.limit} auto-onboards denne måneden på ${gateA.current_plan}-planen.`,
         });
       }
 
@@ -411,11 +456,8 @@ export function registerCustomerAutoOnboardRoutes({
         const auditId = auditRes.rows[0].id;
 
         // Fire-and-forget — Leadgrid gjør jobben i bakgrunn, klient
-        // poller GET /auto-onboard/:auditId for status.
-        // Tell usage med én gang vi starter — selv om jobben feiler er
-        // det riktig (vi har brukt Claude/API-tid). Hvis kunden allerede
-        // fantes (duplikat) refunderer vi senere i runOnboarding.
-        await incrementUsage(pool, b.organization_id, "auto_onboards");
+        // poller GET /auto-onboard/:auditId for status. Auto-onboard-slot
+        // er allerede talt atomisk via tryClaimAutoOnboard() over.
 
         // Trigger e-post-drypp ved første aha-moment (idempotent via
         // ON CONFLICT — kjøres bare første gang per (user, trigger))

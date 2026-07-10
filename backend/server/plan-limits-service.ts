@@ -179,6 +179,77 @@ export async function canAutoOnboard(pool: Pool, orgId: string): Promise<GateRes
   };
 }
 
+/**
+ * Atomisk «claim» av én auto-onboard-slot. Erstatter mønsteret
+ * `canAutoOnboard()` (les) → `incrementUsage("auto_onboards")` (skriv),
+ * som hadde et TOCTOU-race: to samtidige requests kunne begge passere
+ * les-sjekken og begge inkrementere → over grensen.
+ *
+ * plan_usage-raden per (org, måned) er én enkelt rad, så ON CONFLICT DO
+ * UPDATE ... WHERE tar radlås og serialiserer samtidige claims. Vi
+ * inkrementerer KUN hvis vi fortsatt er under taket; ingen returnert rad
+ * = taket nådd (tapte racet).
+ */
+export async function tryClaimAutoOnboard(pool: Pool, orgId: string): Promise<GateResult> {
+  const orgPlan = await getOrgPlan(pool, orgId);
+  const limits = await getPlanLimits(pool, orgPlan.effective_plan_key);
+  if (!limits) {
+    return { allowed: true, current_plan: orgPlan.plan_key, reason: "plan_not_found" };
+  }
+  const cap = limits.max_auto_onboards_per_month;
+  if (cap == null) {
+    // Ubegrenset — tell likevel for statistikk, men uten tak.
+    await incrementUsage(pool, orgId, "auto_onboards");
+    return { allowed: true, current_plan: orgPlan.plan_key };
+  }
+
+  const buildDenied = async (used: number): Promise<GateResult> => {
+    const nextPlan = await getNextPlanUp(pool, orgPlan.effective_plan_key);
+    return {
+      allowed: false,
+      reason: "auto_onboard_limit_reached",
+      current_plan: orgPlan.plan_key,
+      current_usage: used,
+      limit: cap,
+      upgrade_to: nextPlan?.plan_key,
+      upgrade_price_nok: nextPlan?.price_monthly_nok,
+      in_grace_period: orgPlan.in_grace,
+      grace_expires_at: orgPlan.grace_expires_at,
+    };
+  };
+
+  if (cap <= 0) {
+    return buildDenied(0);
+  }
+
+  // Atomisk: sett inn 1 (ny måned) ELLER inkrementer bare hvis < cap.
+  // WHERE på DO UPDATE gjør at raden ikke oppdateres når vi er på taket,
+  // og da returnerer RETURNING ingen rad.
+  const claim = await pool.query<{ auto_onboards_used: number }>(
+    `INSERT INTO plan_usage (organization_id, period_month, auto_onboards_used)
+     VALUES ($1, date_trunc('month', now())::date, 1)
+     ON CONFLICT (organization_id, period_month) DO UPDATE
+       SET auto_onboards_used = plan_usage.auto_onboards_used + 1,
+           updated_at = now()
+       WHERE plan_usage.auto_onboards_used < $2
+     RETURNING auto_onboards_used`,
+    [orgId, cap],
+  );
+
+  if (claim.rows.length === 0) {
+    // Tapte racet / allerede på taket. Hent faktisk forbruk for melding.
+    const usage = await getCurrentMonthUsage(pool, orgId);
+    return buildDenied(usage.auto_onboards_used);
+  }
+
+  return {
+    allowed: true,
+    current_plan: orgPlan.plan_key,
+    current_usage: claim.rows[0].auto_onboards_used,
+    limit: cap,
+  };
+}
+
 /** Sjekk om org kan legge til en kunde til. */
 export async function canCreateCustomer(pool: Pool, orgId: string): Promise<GateResult> {
   const orgPlan = await getOrgPlan(pool, orgId);
