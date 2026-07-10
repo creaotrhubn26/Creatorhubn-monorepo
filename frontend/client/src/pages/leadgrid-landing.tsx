@@ -56,6 +56,7 @@ import {
   WorkspacesOutlined,
 } from '@mui/icons-material';
 import type { SvgIconComponent } from '@mui/icons-material';
+import LeadgridExperience from '@/components/leadgrid/LeadgridExperience';
 
 const PALETTE = {
   bg: '#0b0518',
@@ -168,6 +169,7 @@ function injectJsonLd(id: string, schema: Record<string, unknown>) {
 // ────────────────────────────────────────────────────────────
 
 export default function LeadgridLanding() {
+  const [expStartOpen, setExpStartOpen] = useState(false);
   useEffect(() => {
     // GA4 page view (ekspl. tracket fordi SPA-routing ikke fyrer auto)
     trackPageView('/leadgrid', 'Leadgrid — Gjør kartet om til kunder');
@@ -285,6 +287,8 @@ export default function LeadgridLanding() {
       overflowX: 'hidden',
     }}>
       <StickyHeader />
+      <LeadgridExperience onStartFree={() => setExpStartOpen(true)} />
+      <StartFreeDialog open={expStartOpen} onClose={() => setExpStartOpen(false)} />
       <HeroSection />
       <TrustStrip />
       <HowItWorksSection />
