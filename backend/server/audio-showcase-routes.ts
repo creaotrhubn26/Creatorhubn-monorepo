@@ -1502,12 +1502,12 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     const subject = `Kvittering: du har signert «${title}»`;
     const html = `<div style="font-family:system-ui,Arial,sans-serif;max-width:560px;margin:0 auto;color:#1a1a1a">
       <h2 style="margin:0 0 4px">Signatur bekreftet</h2>
-      <p style="margin:0 0 16px;color:#555">Dette bekrefter at <strong>${signerName}</strong> har signert avtalen for <strong>«${title}»</strong>.</p>
+      <p style="margin:0 0 16px;color:#555">Dette bekrefter at <strong>${htmlEsc(signerName)}</strong> har signert avtalen for <strong>«${htmlEsc(title)}»</strong>.</p>
       <table style="border-collapse:collapse;width:100%;font-size:14px">
         <tr><td style="padding:6px 0;color:#888">Master-andel</td><td style="text-align:right;font-weight:600">${s.masterPct ?? 0}%</td></tr>
         <tr><td style="padding:6px 0;color:#888">Komposisjon</td><td style="text-align:right;font-weight:600">${s.compositionPct ?? 0}%</td></tr>
         <tr><td style="padding:6px 0;color:#888">Honorar</td><td style="text-align:right;font-weight:600">${fee}</td></tr>
-        ${(s.contributions || []).length ? `<tr><td style="padding:6px 0;color:#888">Bidrag</td><td style="text-align:right;font-weight:600">${s.contributions.join(", ")}</td></tr>` : ""}
+        ${(s.contributions || []).length ? `<tr><td style="padding:6px 0;color:#888">Bidrag</td><td style="text-align:right;font-weight:600">${htmlEsc(s.contributions.join(", "))}</td></tr>` : ""}
         <tr><td style="padding:6px 0;color:#888">Signert</td><td style="text-align:right">${when}</td></tr>
       </table>
       <p style="margin:16px 0 0;padding:10px 12px;background:#f5f5f7;border-radius:8px;color:#666;font-size:12px">

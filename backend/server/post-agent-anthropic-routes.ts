@@ -1954,18 +1954,18 @@ Spørsmål? Svar på denne eposten.
       const html = `<div style="font-family: -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif; max-width: 560px; color: #1a0d45; line-height: 1.6;">
   <div style="border-left: 3px solid #a030c0; padding-left: 16px; margin-bottom: 24px;">
     <h2 style="font-size: 18px; margin: 0 0 4px; font-weight: 700;">Du har fått Post Agent-tilgang</h2>
-    <p style="margin: 0; color: #6e3fc7; font-size: 14px;">Produksjon: <strong>${productionName}</strong></p>
+    <p style="margin: 0; color: #6e3fc7; font-size: 14px;">Produksjon: <strong>${escapeHtml(productionName)}</strong></p>
   </div>
 
-  <p>${greeting}</p>
+  <p>${escapeHtml(greeting)}</p>
 
-  <p><strong>${ownerName}</strong> har gitt deg tilgang til The Role Room Post Agent for denne produksjonen.</p>
+  <p><strong>${escapeHtml(ownerName)}</strong> har gitt deg tilgang til The Role Room Post Agent for denne produksjonen.</p>
 
   <p style="margin-top: 24px;"><strong>Slik kommer du i gang:</strong></p>
   <ol style="padding-left: 20px;">
     <li style="margin-bottom: 8px;">Last ned <a href="https://creatorhubn.com/link" style="color: #a030c0; text-decoration: none; font-weight: 600;">Post Agent for Mac</a> (Apple Silicon).</li>
-    <li style="margin-bottom: 8px;">Logg inn med Role Room-kontoen din (<code>${crewEmail}</code>).</li>
-    <li style="margin-bottom: 8px;">Velg <strong>${productionName}</strong> i prosjekt-pickeren — appen leser scener, utstyr og fangede klipp automatisk.</li>
+    <li style="margin-bottom: 8px;">Logg inn med Role Room-kontoen din (<code>${escapeHtml(crewEmail)}</code>).</li>
+    <li style="margin-bottom: 8px;">Velg <strong>${escapeHtml(productionName)}</strong> i prosjekt-pickeren — appen leser scener, utstyr og fangede klipp automatisk.</li>
   </ol>
 
   <p style="background: #f4eefd; padding: 12px 16px; border-radius: 8px; font-size: 13px; color: #4a2e7a;">
@@ -2055,12 +2055,12 @@ Hvis dette virker feil, ta kontakt med ${ownerName}.
       const html = `<div style="font-family: -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif; max-width: 560px; color: #1a0d45; line-height: 1.6;">
   <div style="border-left: 3px solid #6e3fc7; padding-left: 16px; margin-bottom: 24px;">
     <h2 style="font-size: 18px; margin: 0 0 4px; font-weight: 700;">Post Agent-tilgang avsluttet</h2>
-    <p style="margin: 0; color: #6e3fc7; font-size: 14px;">Produksjon: <strong>${productionName}</strong></p>
+    <p style="margin: 0; color: #6e3fc7; font-size: 14px;">Produksjon: <strong>${escapeHtml(productionName)}</strong></p>
   </div>
 
-  <p>${greeting}</p>
+  <p>${escapeHtml(greeting)}</p>
 
-  <p><strong>${ownerName}</strong> har avsluttet Post Agent-tilgangen din til denne produksjonen.</p>
+  <p><strong>${escapeHtml(ownerName)}</strong> har avsluttet Post Agent-tilgangen din til denne produksjonen.</p>
 
   <p>Det betyr at AI-cull, scene-detection og andre Post Agent-funksjoner ikke lenger er
   tilgjengelige for dette prosjektet. Lokale klipp og prosjektfiler er upåvirket.</p>

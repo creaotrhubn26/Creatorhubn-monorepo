@@ -21,6 +21,15 @@ import { buildComplianceSummary, type ComplianceProfile } from "./editing-compli
 
 type SessionData = { userId: string; role?: string; email?: string };
 
+function escapeHtml(value: unknown): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 const PORTAL_BASE = process.env.CREATORHUB_PUBLIC_URL || "https://creatorhubn.com";
 
 interface Deps {
@@ -274,7 +283,7 @@ export function setupEditingPartnerApplicationsAdminRoutes(deps: Deps): void {
           await sendTransactionalEmail({
             to: row.email,
             subject: "Påminnelse: gi tilbakemelding som prototype-tester",
-            html: `<p>Hei ${row.vendor_name || ""},</p><p>${intro}</p>`
+            html: `<p>Hei ${escapeHtml(row.vendor_name || "")},</p><p>${intro}</p>`
               + `<p>Som prototype-tester har du <strong>0 % plattformgebyr</strong> — avtalen forutsetter at du `
               + `hjelper oss å forbedre systemet med jevnlig tilbakemelding. Logg inn og bruk «Gi tilbakemelding» `
               + `i partner-arbeidsområdet.</p><p><a href="${workspaceUrl}">Åpne partner-arbeidsområdet</a></p>`,
