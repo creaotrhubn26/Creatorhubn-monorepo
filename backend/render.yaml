@@ -13,6 +13,28 @@ services:
         sync: false
       - key: OPENAI_API_KEY
         sync: false
+      # Deklarasjoner av secrets som allerede er satt i Render-dashboardet
+      # (verifisert 2026-07-10, integrasjonsanalysen) — verdiene lever i
+      # dashboardet (sync: false), deklarasjonen gjør fila til komplett
+      # credential-manifest for tjenesten.
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: GOOGLE_ADS_DEVELOPER_TOKEN
+        sync: false
+      - key: GOOGLE_ADS_OAUTH_CLIENT_ID
+        sync: false
+      - key: GOOGLE_ADS_OAUTH_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_ADS_LOGIN_CUSTOMER_ID
+        sync: false
+      - key: TIKTOK_BUSINESS_APP_ID
+        sync: false
+      - key: TIKTOK_BUSINESS_APP_SECRET
+        sync: false
+      - key: LINKEDIN_CLIENT_ID
+        sync: false
+      - key: LINKEDIN_CLIENT_SECRET
+        sync: false
       - key: ROLE_ROOM_AGENT_MODEL
         value: gpt-5.4-mini
       - key: GOOGLE_PLACES_API_KEY
