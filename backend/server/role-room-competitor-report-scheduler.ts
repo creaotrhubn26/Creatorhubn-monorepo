@@ -169,6 +169,11 @@ export function startCompetitorReportScheduler(deps: { pool: Pool }): void {
 export function setupReportSchedulerRoutes(deps: SetupReportSchedulerDeps): void {
   const { app, pool, requireAdminOrDemoBypass } = deps;
 
+  // Cap client-supplied recipient lists: these endpoints sit behind
+  // requireAdminOrDemoBypass, whose demo half accepts a static query-param
+  // token — so an uncapped recipients[] fan-out is an email-amplification path.
+  const MAX_REPORT_RECIPIENTS = 100;
+
   // ── POST trigger-weekly-now — for testing/manual override ───────────────
   app.post('/api/role-room/marketing-cockpit/competitors/reports/send-weekly-now', async (req, res) => {
     if (!requireAdminOrDemoBypass(req, res)) return;
@@ -176,6 +181,10 @@ export function setupReportSchedulerRoutes(deps: SetupReportSchedulerDeps): void
     const recipients = Array.isArray(body.recipients)
       ? (body.recipients as unknown[]).filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
       : undefined;
+    if (recipients && recipients.length > MAX_REPORT_RECIPIENTS) {
+      res.status(400).json({ ok: false, error: 'too_many_recipients', max: MAX_REPORT_RECIPIENTS });
+      return;
+    }
     const markAsAuto = body.markAsAuto !== false;
     try {
       const result = await runWeeklyReportNow({ pool }, { recipients, markAsAuto });
@@ -193,6 +202,10 @@ export function setupReportSchedulerRoutes(deps: SetupReportSchedulerDeps): void
     const recipients = Array.isArray(body.recipients)
       ? (body.recipients as unknown[]).filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
       : getRecipients();
+    if (recipients.length > MAX_REPORT_RECIPIENTS) {
+      res.status(400).json({ ok: false, error: 'too_many_recipients', max: MAX_REPORT_RECIPIENTS });
+      return;
+    }
     try {
       const r = await pool.query(
         `SELECT id, report_json, generated_at, competitor_count
