@@ -55,7 +55,7 @@ import { clientInvitesApi, googleWorkspaceApi } from './services/castingApiServi
 import { EnhancedMasterIntegrationProvider } from '@/integration/EnhancedMasterIntegrationProvider';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { parseTalentPortalIntentFromWindow } from './utils/talentPortal';
-import { isRoleRoomEducationPathname } from './utils/runtime';
+import { isLeadgridDedicatedHost, isRoleRoomEducationPathname } from './utils/runtime';
 import { syncSiteSeo } from '@/lib/siteSeo';
 import { trackMarketingPageView } from '@/lib/marketingPixelsRuntime';
 import RoleRoomUXLayer from './shared/RoleRoomUXLayer';
@@ -235,10 +235,23 @@ function CastingStandaloneAppContent() {
     return <SuperAdminAdminRoomShell />;
   }
 
+  // Leadgrid dedikert host (leadgrid.no): rene stier uten /leadgrid-prefiks —
+  // '/' → landing, '/priser' → '/leadgrid/priser', osv. Prefiksede stier
+  // fortsetter å virke på alle hoster (lenker/bokmerker brekker ikke).
+  const leadgridHost = typeof window !== 'undefined'
+    && isLeadgridDedicatedHost(window.location.hostname);
+  const leadgridPath = (() => {
+    const p = localeCtx.pathname;
+    if (!leadgridHost) return p;
+    if (p === '/' || p === '') return '/leadgrid';
+    if (p.startsWith('/leadgrid')) return p;
+    return `/leadgrid${p}`;
+  })();
+
   // Leadgrid landing-side + personvern (offentlige sider — krever ikke auth).
   // Personvern må komme før hoved-landing-en pga prefix-match.
-  if (localeCtx.pathname === '/leadgrid/personvern'
-      || localeCtx.pathname === '/leadgrid/personvern/') {
+  if (leadgridPath === '/leadgrid/personvern'
+      || leadgridPath === '/leadgrid/personvern/') {
     return <LeadgridPersonvern />;
   }
   if (localeCtx.pathname === '/personvern/automatisk-research'
@@ -252,21 +265,21 @@ function CastingStandaloneAppContent() {
       </React.Suspense>
     );
   }
-  if (localeCtx.pathname === '/leadgrid/pricing' || localeCtx.pathname === '/leadgrid/pricing/'
-      || localeCtx.pathname === '/leadgrid/priser' || localeCtx.pathname === '/leadgrid/priser/') {
+  if (leadgridPath === '/leadgrid/pricing' || leadgridPath === '/leadgrid/pricing/'
+      || leadgridPath === '/leadgrid/priser' || leadgridPath === '/leadgrid/priser/') {
     return <LeadgridPricingPage />;
   }
   // GEO-innholdssider (offentlige — docs/integration-audit/09)
-  if (localeCtx.pathname === '/leadgrid/skaffe-leads-guide'
-      || localeCtx.pathname === '/leadgrid/skaffe-leads-guide/') {
+  if (leadgridPath === '/leadgrid/skaffe-leads-guide'
+      || leadgridPath === '/leadgrid/skaffe-leads-guide/') {
     return <LeadgridSkaffeLeadsGuidePage />;
   }
-  if (localeCtx.pathname === '/leadgrid/feltsalg-for-salgsteam'
-      || localeCtx.pathname === '/leadgrid/feltsalg-for-salgsteam/') {
+  if (leadgridPath === '/leadgrid/feltsalg-for-salgsteam'
+      || leadgridPath === '/leadgrid/feltsalg-for-salgsteam/') {
     return <LeadgridFeltsalgSalgsteamPage />;
   }
 
-  if (localeCtx.pathname === '/leadgrid' || localeCtx.pathname === '/leadgrid/') {
+  if (leadgridPath === '/leadgrid' || leadgridPath === '/leadgrid/') {
     return <LeadgridLanding />;
   }
   if (localeCtx.pathname === '/superadmin' || localeCtx.pathname === '/superadmin/') {
@@ -277,54 +290,54 @@ function CastingStandaloneAppContent() {
     return <LeadgridClientPortalPage />;
   }
   // Org-side partnerskap — multi-step wizard (krever innlogget org-admin)
-  if (localeCtx.pathname === '/leadgrid/innstillinger/partnerskap' ||
-      localeCtx.pathname === '/leadgrid/innstillinger/partnerskap/') {
+  if (leadgridPath === '/leadgrid/innstillinger/partnerskap' ||
+      leadgridPath === '/leadgrid/innstillinger/partnerskap/') {
     return <LeadgridPartnerWizardPage />;
   }
   // Partner-dashboard (etter submit)
-  if (localeCtx.pathname === '/leadgrid/partner-dashboard' ||
-      localeCtx.pathname === '/leadgrid/partner-dashboard/') {
+  if (leadgridPath === '/leadgrid/partner-dashboard' ||
+      leadgridPath === '/leadgrid/partner-dashboard/') {
     return <LeadgridPartnerDashboardPage />;
   }
   // Public marketplace
-  if (localeCtx.pathname === '/leadgrid/marketplace' ||
-      localeCtx.pathname === '/leadgrid/marketplace/') {
+  if (leadgridPath === '/leadgrid/marketplace' ||
+      leadgridPath === '/leadgrid/marketplace/') {
     return <LeadgridMarketplacePage />;
   }
   // Connector Marketplace (public — viser frem API v1 integrasjoner)
-  if (localeCtx.pathname === '/leadgrid/connectors' ||
-      localeCtx.pathname === '/leadgrid/connectors/') {
+  if (leadgridPath === '/leadgrid/connectors' ||
+      leadgridPath === '/leadgrid/connectors/') {
     return <LeadgridConnectorsPage />;
   }
   // CSV/Excel + URL-basert lead-import (mig 328, krever innlogging)
-  if (localeCtx.pathname === '/leadgrid/import' ||
-      localeCtx.pathname === '/leadgrid/import/') {
+  if (leadgridPath === '/leadgrid/import' ||
+      leadgridPath === '/leadgrid/import/') {
     return <LeadgridImportPage />;
   }
   // Webhook-destinasjoner (mig 0350) — MÅ komme FØR /leadgrid/workflows for
   // å unngå at /workflows/webhooks tolkes som workflow-sida.
-  if (localeCtx.pathname === '/leadgrid/workflows/webhooks' ||
-      localeCtx.pathname === '/leadgrid/workflows/webhooks/') {
+  if (leadgridPath === '/leadgrid/workflows/webhooks' ||
+      leadgridPath === '/leadgrid/workflows/webhooks/') {
     return <LeadgridWorkflowWebhooksPage />;
   }
   // Smart Workflow Builder (mig 0349, #203) — Leadgrid-koblede triggers + actions
-  if (localeCtx.pathname === '/leadgrid/workflows' ||
-      localeCtx.pathname === '/leadgrid/workflows/') {
+  if (leadgridPath === '/leadgrid/workflows' ||
+      leadgridPath === '/leadgrid/workflows/') {
     return <LeadgridWorkflowsPage />;
   }
   // Deal Pipeline Kanban (mig 0349, #154/#155) — weighted forecast
-  if (localeCtx.pathname === '/leadgrid/deals' ||
-      localeCtx.pathname === '/leadgrid/deals/') {
+  if (leadgridPath === '/leadgrid/deals' ||
+      leadgridPath === '/leadgrid/deals/') {
     return <LeadgridDealsPage />;
   }
   // Developer-docs (public)
-  if (localeCtx.pathname === '/leadgrid/utviklere' ||
-      localeCtx.pathname === '/leadgrid/utviklere/') {
+  if (leadgridPath === '/leadgrid/utviklere' ||
+      leadgridPath === '/leadgrid/utviklere/') {
     return <LeadgridDevelopersPage />;
   }
   // Utvikler-søknadsskjema (public)
-  if (localeCtx.pathname === '/leadgrid/utviklere/soknad' ||
-      localeCtx.pathname === '/leadgrid/utviklere/soknad/') {
+  if (leadgridPath === '/leadgrid/utviklere/soknad' ||
+      leadgridPath === '/leadgrid/utviklere/soknad/') {
     return <LeadgridDeveloperApplicationPage />;
   }
 

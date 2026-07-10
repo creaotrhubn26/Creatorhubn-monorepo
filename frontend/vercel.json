@@ -7,17 +7,6 @@
   "devCommand": "npm run dev",
   "redirects": [
     {
-      "source": "/",
-      "has": [
-        {
-          "type": "host",
-          "value": "((www\\.)?leadgrid\\.no|leadgrid\\.theroleroom\\.com)"
-        }
-      ],
-      "destination": "/leadgrid",
-      "permanent": false
-    },
-    {
       "source": "/casting.html",
       "has": [
         {

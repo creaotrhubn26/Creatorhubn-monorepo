@@ -71,7 +71,7 @@ export function LeadgridSkaffeLeadsGuidePage() {
               name: 'Leadgrid',
               logo: { '@type': 'ImageObject', url: 'https://leadgrid.no/leadgrid/leadgrid-logo.png' },
             },
-            mainEntityOfPage: 'https://leadgrid.no/leadgrid/skaffe-leads-guide',
+            mainEntityOfPage: 'https://leadgrid.no/skaffe-leads-guide',
             inLanguage: 'no',
             datePublished: '2026-07-10',
           }),

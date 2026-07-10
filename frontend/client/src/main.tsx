@@ -19,6 +19,7 @@ try {
 }
 import { normalizeRequestUrl } from './lib/normalizeRequestUrl';
 import {
+  isLeadgridDedicatedHost,
   isRoleRoomDedicatedHost,
   isRoleRoomStandalonePathname,
 } from './components/role-room/utils/runtime';
@@ -67,7 +68,9 @@ const shouldUseRoleRoomDedicatedHostBootstrap = (
   if (LOCALHOST_HOSTNAME_SET.has(hostname)) {
     return isRoleRoomStandalonePathname(pathname, locationLike);
   }
-  return isRoleRoomDedicatedHost(hostname);
+  // Leadgrid-dedikerte hoster (leadgrid.no) bruker samme bootstrap —
+  // casting-main eier Leadgrid-sidene og aliaser rene stier per host.
+  return isRoleRoomDedicatedHost(hostname) || isLeadgridDedicatedHost(hostname);
 };
 
 const resolveRootComponent = async (): Promise<React.ComponentType> => {

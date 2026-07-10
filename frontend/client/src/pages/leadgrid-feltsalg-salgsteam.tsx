@@ -80,7 +80,7 @@ export function LeadgridFeltsalgSalgsteamPage() {
               name: 'Leadgrid',
               logo: { '@type': 'ImageObject', url: 'https://leadgrid.no/leadgrid/leadgrid-logo.png' },
             },
-            mainEntityOfPage: 'https://leadgrid.no/leadgrid/feltsalg-for-salgsteam',
+            mainEntityOfPage: 'https://leadgrid.no/feltsalg-for-salgsteam',
             inLanguage: 'no',
             datePublished: '2026-07-10',
           }),
