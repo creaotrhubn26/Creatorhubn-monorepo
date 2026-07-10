@@ -61036,6 +61036,7 @@ const generateCaptionPayload = async (
 };
 
 app.post("/api/video/generate-captions", async (req, res) => {
+  if (!requireUserSession(req, res)) return;
   try {
     const videoPath =
       readString(req.body?.video_path) || readString(req.body?.videoPath);
@@ -61058,6 +61059,7 @@ app.post("/api/video/generate-captions", async (req, res) => {
 });
 
 app.post("/api/capcut-features/auto-captions", async (req, res) => {
+  if (!requireUserSession(req, res)) return;
   try {
     const videoPath =
       readString(req.body?.videoPath) || readString(req.body?.video_path);
@@ -61472,7 +61474,22 @@ const FASTER_WHISPER_URL =
   process.env.FASTER_WHISPER_URL || "http://localhost:5000";
 const USE_FREE_SERVICES = process.env.USE_FASTER_WHISPER === "true";
 
+const _ttsRateBuckets = new Map<string, number[]>();
+function _ttsRateLimited(key: string): boolean {
+  const now = Date.now();
+  const arr = (_ttsRateBuckets.get(key) ?? []).filter((t) => now - t < 60_000);
+  if (arr.length >= 20) return true;
+  arr.push(now);
+  _ttsRateBuckets.set(key, arr);
+  return false;
+}
+
 app.post("/api/ai/tts", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  if (_ttsRateLimited(`tts:${session.userId}`)) {
+    return res.status(429).json({ error: "rate_limited" });
+  }
   try {
     const { text, voice, model, speed, format, language } = req.body || {};
 
