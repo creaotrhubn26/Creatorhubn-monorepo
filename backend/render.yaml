@@ -35,6 +35,12 @@ services:
         sync: false
       - key: LINKEDIN_CLIENT_SECRET
         sync: false
+      # GEO Visibility (docs/integration-audit/08) — cron-token må settes;
+      # PERPLEXITY_API_KEY er valgfri (motoren hoppes over til den finnes)
+      - key: GEO_VISIBILITY_CRON_TOKEN
+        sync: false
+      - key: PERPLEXITY_API_KEY
+        sync: false
       - key: ROLE_ROOM_AGENT_MODEL
         value: gpt-5.4-mini
       - key: GOOGLE_PLACES_API_KEY
