@@ -38,6 +38,7 @@ targets:
     info:
       path: LeadMapApp/Generated/Info.plist
       properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleDisplayName: Leadgrid
         CFBundleName: Leadgrid
         UILaunchScreen:
@@ -145,6 +146,7 @@ targets:
     info:
       path: LeadMapWidget/Generated/Info.plist
       properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleDisplayName: Leadgrid
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
@@ -196,6 +198,7 @@ targets:
     info:
       path: LeadgridWatchApp/Generated/Info.plist
       properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleDisplayName: Leadgrid
         CFBundleName: Leadgrid
         WKApplication: true
@@ -266,6 +269,7 @@ targets:
     info:
       path: LeadgridVisionApp/Generated/Info.plist
       properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleDisplayName: Leadgrid
         CFBundleName: Leadgrid
         UIApplicationSceneManifest:
