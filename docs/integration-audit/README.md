@@ -20,12 +20,13 @@ manglende integrasjon er eksplisitt merket som manglende.
    scraper-basert lib, null call-sites) og `@google-analytics/data` (null
    call-sites — GA4 brukes i praksis via REST i `client-insights-service.ts`).
    Begge bør fjernes fra `package.json` slik at inventaret speiler virkeligheten.
-3. **Fire integrasjoner har kode men udeklarerte credentials** i
-   `backend/render.yaml`: `GOOGLE_ADS_DEVELOPER_TOKEN`, `REDDIT_CLIENT_ID/SECRET`,
-   `TIKTOK_BUSINESS_APP_ID/SECRET`, `LINKEDIN_CLIENT_ID/SECRET` (den
-   ikke-RoleRoom-varianten) — og `ANTHROPIC_API_KEY`/`COHERE_API_KEY`-mønsteret
-   er inkonsistent. Disse er trolig satt manuelt i Render-dashboardet; de bør
-   deklareres (`sync: false`) så credential-kartet er komplett. Se
+3. **Credential-kartet er verifisert mot faktisk Render-tjeneste (2026-07-10):**
+   `ANTHROPIC_API_KEY`, komplett Google Ads-sett (inkl. developer token),
+   TikTok- og LinkedIn-credentials **finnes** i Render men er udeklarert i
+   `render.yaml` (bør deklareres `sync:false`). Reelt manglende:
+   `REDDIT_*` (missingCredentials bekreftet), `COHERE_API_KEY` og
+   `ROLE_ROOM_LINKEDIN_*` på hovedbackenden. I tillegg finnes en
+   legacy-backend (`backend-djm5`) med divergerende credential-sett. Se
    `01-integration-inventory.md` §4.
 4. **Google Trends finnes ikke som integrasjon i dag** — verken offisiell API
    (krever alpha-tilgang), BigQuery-datasettet eller manuell import. Keyword
@@ -84,9 +85,9 @@ Disse kan ikke automatiseres fra kodebasen:
 1. **Google Trends API alpha**: søk om tilgang (Google-skjema, krever
    use-case-beskrivelse). Inntil svar: bruk Ads-data + manuell CSV-import
    (se `03-google-trends-assessment.md`).
-2. **Google Ads developer token**: bekreft at prod-token finnes og hvilken
-   tilgangsklasse (test/basic/standard) den har — koden leser
-   `GOOGLE_ADS_DEVELOPER_TOKEN`, men den er ikke deklarert i `render.yaml`.
+2. **Google Ads developer token**: tokenet FINNES i Render (verifisert
+   2026-07-10) — gjenstår kun å bekrefte tilgangsklassen (test/basic/standard)
+   i ads.google.com → API-senter, siden klassen ikke kan leses via API.
 3. **OAuth-verifisering/scopes**: Google OAuth-appens scope-liste bør
    revideres mot faktisk bruk (jf. `docs/cto-audit/02` — ingen samlet
    scopes-manifest finnes).

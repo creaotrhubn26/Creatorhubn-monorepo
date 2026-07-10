@@ -109,16 +109,29 @@ token-krypteringsnøkler), `GOOGLE_PLACES_API_KEY`, `GOOGLE_API_KEY`,
 `GMAIL_APP_PASSWORD`, `VAPID_*`, `JWT_SECRET`, `SESSION_SECRET`,
 `ENCRYPTION_KEY`, `TOKEN_ENCRYPTION_KEY`, `DATABASE_URL`.
 
-**Brukt i kode men IKKE deklarert i render.yaml** (trolig satt manuelt i
-Render-dashboardet — udokumentert avhengighet, bør deklareres):
+**Brukt i kode men ikke deklarert i render.yaml — verifisert mot faktisk
+Render-tjeneste (`creatorhub-backend`, API-oppslag 2026-07-10, kun navn lest):**
 
-| Env-var | Integrasjon | Kodereferanse |
-|---|---|---|
-| `ANTHROPIC_API_KEY` | anthropic (kjerne!) | 89 filer |
-| `GOOGLE_ADS_DEVELOPER_TOKEN` | google-ads | `role-room-ads-cron.ts:269` |
-| `REDDIT_CLIENT_ID/SECRET/USER_AGENT` | reddit | `reddit-engagement-service.ts` |
-| `TIKTOK_BUSINESS_APP_ID/SECRET` | tiktok-business | `client-tiktok-suite.ts` |
-| `LINKEDIN_CLIENT_ID/SECRET` | linkedin (plain-varianten) | `linkedin-oauth-routes.ts` |
+| Env-var | Integrasjon | Finnes i Render? | Handling |
+|---|---|---|---|
+| `ANTHROPIC_API_KEY` | anthropic (kjerne!) | **Ja** | Kun deklarasjon i render.yaml mangler |
+| `GOOGLE_ADS_DEVELOPER_TOKEN` (+ `GOOGLE_ADS_OAUTH_CLIENT_ID/SECRET`, `GOOGLE_ADS_LOGIN_CUSTOMER_ID`) | google-ads | **Ja — komplett sett** | Deklarer; bekreft token-klasse i ads.google.com (kan ikke leses via API) |
+| `TIKTOK_BUSINESS_APP_ID/SECRET` (+ `TIKTOK_CLIENT_KEY/SECRET`) | tiktok-business | **Ja** | Kun deklarasjon mangler |
+| `LINKEDIN_CLIENT_ID/SECRET` | linkedin (plain) | **Ja** | Kun deklarasjon mangler |
+| `REDDIT_CLIENT_ID/SECRET/USER_AGENT` | reddit | **Nei** | Reelt `missingCredentials` — sett opp script-app hvis funksjonen skal brukes |
+| `COHERE_API_KEY` | cohere (rerank) | **Nei** (finnes kun på legacy-tjenesten `backend-djm5`) | Rerank kjører trolig uten Cohere i prod — flytt nøkkelen eller aksepter fallback |
+| `ROLE_ROOM_LINKEDIN_*` | linkedin (Role Room) | **Nei** (deklarert i render.yaml, aldri satt) | Verifiser om RR-LinkedIn-flyten faller tilbake på plain `LINKEDIN_*` eller er død |
+
+**To prod-backender med credential-drift (funn 2026-07-10):**
+`creatorhub-backend` (creatorhub-backend-rtbl — dit Vercel-rewrites går, 233
+env-vars) og `backend` (backend-djm5 — som `frontend/.env.example` fortsatt
+peker på, 86 env-vars med eget sett: `OPENAI_API_KEY`, `COHERE_API_KEY`,
+`FACEBOOK_*`/`INSTAGRAM_*`, `GOOGLE_SERVICE_ACCOUNT_EMAIL`/`ADC_JSON`,
+`REDIS_URL`, TickTick/Bring/Vegvesen/Pexels/WandB, `SSB_INFLATION_URL`).
+Merk: service-account-variablene på backend-djm5 betyr at det finnes én GCP
+service account i økosystemet likevel — cto-auditens «ingen service accounts»
+gjelder monorepo-koden, ikke legacy-tjenesten. Avklaring av backend-djm5 sin
+status hører sammen med cto-auditens P3-punkt om `frontend/creatorhub-frontend`.
 
 **Token-lagring:** Google Workspace-/LinkedIn-OAuth-tokens lagres kryptert
 (`encryptGoogleToken`/`ROLE_ROOM_*_TOKEN_ENCRYPTION_KEY` — riktig mønster, jf.
