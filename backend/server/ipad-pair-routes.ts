@@ -174,7 +174,28 @@ export function registerIpadPairRoutes({ app, pool, activeSessions }: Deps): voi
           return res.status(410).json({ error: "kode_utlopt" });
         }
 
-        // Opprett permanent bearer
+        // Konsumer pair-token ATOMISK før vi minter noe. `used_at IS NULL`-
+        // guarden gjør at bare ÉN samtidig exchange-request vinner kappløpet;
+        // uten dette kunne to parallelle requests med samme kode begge passere
+        // used_at-sjekken over og hver minte et permanent 365-dagers bearer på
+        // kontoen (én engangs-kode → flere permanente sesjoner). Taperen får 0
+        // rader tilbake og avvises.
+        const claim = await pool.query(
+          `UPDATE ipad_pair_tokens
+              SET used_at = NOW(),
+                  device_info = $2::jsonb
+            WHERE token = $1
+              AND used_at IS NULL
+              AND expires_at > NOW()
+            RETURNING token`,
+          [row.token, JSON.stringify(body.deviceInfo ?? {})],
+        );
+        if (claim.rows.length === 0) {
+          // Mistet kappløpet (eller utløpt i vinduet) — koden er allerede brukt.
+          return res.status(409).json({ error: "kode_allerede_brukt" });
+        }
+
+        // Opprett permanent bearer — kun vinneren av det atomiske claimet.
         const bearer = crypto.randomBytes(32).toString("hex");
         const sessionData = {
           userId: row.user_id,
@@ -192,15 +213,6 @@ export function registerIpadPairRoutes({ app, pool, activeSessions }: Deps): voi
           userAgent: req.headers["user-agent"] as string | undefined,
           meta: { deviceInfo: body.deviceInfo ?? {} },
         });
-
-        // Marker pair-token som brukt
-        await pool.query(
-          `UPDATE ipad_pair_tokens
-              SET used_at = NOW(),
-                  device_info = $2::jsonb
-            WHERE token = $1`,
-          [row.token, JSON.stringify(body.deviceInfo ?? {})],
-        );
 
         return res.json({
           bearer,
