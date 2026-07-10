@@ -1,6 +1,7 @@
 import express from "express";
 import type { Pool } from "pg";
 import { notifyAdmins } from "./admin-notify";
+import { safeAppBaseUrl } from "./web-origin-allowlist";
 
 const _inviteRateBuckets = new Map<string, number[]>();
 function _inviteRateLimited(ip: string): boolean {
@@ -664,8 +665,7 @@ export function setupInviteRequestsRoutes(
           request.source === "prototype_tester_pricing";
         if (isPrototypeTester) {
           try {
-            const baseUrl =
-              req.headers.origin || `https://${req.headers.host || "creatorhubn.com"}`;
+            const baseUrl = safeAppBaseUrl(req);
             const fullName =
               [request.first_name, request.last_name].filter(Boolean).join(" ") ||
               request.email;
@@ -799,9 +799,7 @@ export function setupInviteRequestsRoutes(
             row.plan_name === "Prototype Tester" ||
             row.source === "prototype_tester_pricing");
         if (isPrototypeTester) {
-          const baseUrl =
-            req.headers.origin ||
-            `https://${req.headers.host || "creatorhubn.com"}`;
+          const baseUrl = safeAppBaseUrl(req);
           const fullName =
             [row.first_name, row.last_name].filter(Boolean).join(" ") ||
             row.email;

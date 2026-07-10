@@ -30,6 +30,7 @@ import type { Pool } from 'pg';
 import { loadPersistedAuthSession, persistAuthSession } from './auth-session-store.js';
 import { aiRateLimit } from './ai-rate-limiter.js';
 import { checkAgentEntitlement } from './role-room-agent-entitlements.js';
+import { safeAppBaseUrl, safeReturnPath } from './web-origin-allowlist.js';
 import { sendEmail } from './casting-reminder-sender.js';
 import { presignTakeReadUrl } from './coverage-take-service.js';
 import { presignRoleRoomB2Download } from './b2-archive-helper.js';
@@ -1133,10 +1134,8 @@ Tidspunkt: ${new Date().toISOString()}
         return;
       }
 
-      const origin =
-        (req.headers.origin as string | undefined) ||
-        (process.env.PUBLIC_APP_URL ?? 'https://creatorhubn.com');
-      const returnPath = typeof req.body?.returnPath === 'string' ? req.body.returnPath : '/';
+      const origin = safeAppBaseUrl(req);
+      const returnPath = safeReturnPath(req.body?.returnPath, '/');
 
       const { default: Stripe } = await import('stripe');
       const stripe = new Stripe(secret);
@@ -1180,9 +1179,7 @@ Tidspunkt: ${new Date().toISOString()}
       const email = userRows[0]?.email;
       const existingCustomer = userRows[0]?.stripe_customer_id;
 
-      const origin =
-        (req.headers.origin as string | undefined) ||
-        (process.env.PUBLIC_APP_URL ?? 'https://creatorhubn.com');
+      const origin = safeAppBaseUrl(req);
       const successQuery = productionId
         ? `productionId=${encodeURIComponent(productionId)}&checkout=success`
         : 'checkout=success';
@@ -1343,9 +1340,7 @@ Tidspunkt: ${new Date().toISOString()}
       );
       const email = userRows[0]?.email;
       const existingCustomer = userRows[0]?.stripe_customer_id;
-      const origin =
-        (req.headers.origin as string | undefined) ||
-        (process.env.PUBLIC_APP_URL ?? 'https://creatorhubn.com');
+      const origin = safeAppBaseUrl(req);
       const def = getModuleDef(moduleKey as PostAgentModule);
 
       const { default: Stripe } = await import('stripe');

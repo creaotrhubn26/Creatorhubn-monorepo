@@ -21,6 +21,7 @@ import type express from "express";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
 import { normalizeProfession } from "../../frontend/shared/profession-types.ts";
+import { safeAppBaseUrl } from "./web-origin-allowlist.ts";
 
 export interface PrototypeTesterInvitesDeps {
   app: express.Application;
@@ -337,7 +338,7 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
         ],
       );
       const row = ins.rows[0];
-      const baseUrl = req.headers.origin || `https://${req.headers.host || "creatorhubn.com"}`;
+      const baseUrl = safeAppBaseUrl(req);
       const inviteUrl = `${baseUrl}/prototype-tester/accept-invite?token=${encodeURIComponent(row.token)}`;
 
       // Send e-post (best effort)
@@ -680,7 +681,7 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
         ],
       );
 
-      const baseUrl = req.headers.origin || `https://${req.headers.host || "creatorhubn.com"}`;
+      const baseUrl = safeAppBaseUrl(req);
       const inviteUrl = `${baseUrl}/prototype-tester/accept-invite?token=${encodeURIComponent(token)}`;
 
       const mailer = getMailer();

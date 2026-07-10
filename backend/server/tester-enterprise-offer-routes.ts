@@ -21,6 +21,7 @@
 import type express from "express";
 import type Stripe from "stripe";
 import nodemailer from "nodemailer";
+import { safeAppBaseUrl } from "./web-origin-allowlist.ts";
 
 export interface TesterEnterpriseOfferDeps {
   app: express.Application;
@@ -262,7 +263,7 @@ export function setupTesterEnterpriseOfferRoutes(deps: TesterEnterpriseOfferDeps
       // Sørg for at rabatt-coupon-en finnes
       const couponId = await ensureDiscountCoupon(stripeClient);
 
-      const baseUrl = req.headers.origin || `https://${req.headers.host || "creatorhubn.com"}`;
+      const baseUrl = safeAppBaseUrl(req);
       const session = await stripeClient.checkout.sessions.create({
         mode: "subscription",
         success_url: `${baseUrl}/tester-enterprise-offer/${offer.id}/success?session_id={CHECKOUT_SESSION_ID}`,
