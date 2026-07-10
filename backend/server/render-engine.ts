@@ -26,6 +26,7 @@ export interface RenderOpts {
   waitUntil?: 'load' | 'domcontentloaded' | 'networkidle0' | 'networkidle2';
   waitForSelector?: string;   // vent til dette elementet finnes
   clipToSelector?: string;    // beskjær til ETT elements bounding box (f.eks. CV-en, ikke sidechrome)
+  blockExternalRequests?: boolean; // SSRF-vern: abort ALLE ikke-inline (ikke data:/blob:/about:) requests
   waitForMs?: number;         // ekstra fast vent (font-dekoding / animasjons-settling)
   timeoutMs?: number;         // navigasjons-/setContent-timeout (default 20000)
 }
@@ -51,6 +52,16 @@ async function shoot(load: (page: Page) => Promise<void>, opts: RenderOpts): Pro
   const browser = await getBrowser();
   const page = await browser.newPage();
   try {
+    if (opts.blockExternalRequests) {
+      // SSRF-vern: kun inline-ressurser (data:/blob:/about:) tillates — alt annet abortes,
+      // så en render av upålitelig HTML ikke kan hente interne/eksterne URL-er.
+      await page.setRequestInterception(true);
+      page.on('request', (r) => {
+        const u = r.url();
+        if (u.startsWith('data:') || u.startsWith('blob:') || u.startsWith('about:')) r.continue().catch(() => {});
+        else r.abort().catch(() => {});
+      });
+    }
     await page.setViewport({
       width: opts.width ?? 1200,
       height: opts.height ?? 630,
