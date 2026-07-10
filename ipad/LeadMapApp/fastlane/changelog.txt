@@ -1,33 +1,35 @@
-Leadgrid v0.4.0 (build 5) — Territorie-grids: hold deg i din sone
+Leadgrid 1.4.0 (build 20260712) — Varsler, tildeling og dine data
 
-NYTT I DENNE BUILDEN:
+NYTT / FIKSET I DENNE BUILDEN:
 
-• Selger-grids (territorier) — native
-  - Hver selger/promotør får et tildelt område (polygon, sirkel og/eller
-    kommune/postnummer). Vises på kartet (blått omriss).
-  - Tegn grids direkte med Apple Pencil: «Tegn på kart» → «Lagre som grid».
+• Push-varsler leveres nå pålitelig
+  - Når en lead tildeles deg (som teamleder eller selger) får du et
+    push-varsel — også når appen er lukket.
+  - Trykk på varselet åpner riktig lead direkte.
 
-• Geofence-håndheving (mykt)
-  - On-device sjekk: banner «Du er utenfor din sone» med en gang du går ut.
-  - Bakgrunns-geofence for sirkel-soner: varsel selv når appen er lukket.
-  - Logges server-side; teamleder/salgssjef varsles. Ingenting blokkeres.
+• Bjelle-badge viser riktig
+  - Antallet uleste på bjella nullstilles med en gang du har lest — ingen
+    falsk «ulest»-indikasjon lenger.
 
-• Smart dagsrute
-  - «Bygg rute» ordner dine in-grid leads etter prioritet + kjøretid.
-  - Native turn-by-turn (Apple Maps) per stopp + felt-innsjekk
-    (Ankommet/Besøkt/Hopp over). Ruten tegnes på kartet.
+• «Tildel til teammedlem» er stabilisert
+  - Teammedlem-lista lastes pålitelig, og selve tildelingen henger ikke
+    lenger på trege/utgåtte enheter. Tildeling + varsel skjer i bakgrunnen
+    så handlingen bekreftes umiddelbart.
 
-• Territorie-dekning (leder)
-  - «...» → «Territorie-dekning»: foreldreløse leads (rødt) + grids på kart.
-  - «Tegn manglende sone» åpner Pencil-editoren rett fra dekningsvisningen.
+• Last ned mine data (GDPR)
+  - «Min profil» → «Last ned mine data» eksporterer dine egne Leadgrid-data
+    som fil du kan dele/arkivere.
 
-• Leder-dashboard for sone-ytelse
-  - Team-leaderboard → «Sone-ytelse»: per selger — brudd, besøk i/ute,
-    leads i/ute, og live «utenfor sonen nå» på kart (rødt = ute akkurat nå).
+• Tofaktor og passord
+  - «Tofaktor-autentisering» og «Endre passord» åpner nå de riktige
+    innstillingene på web (theroleroom.com/innstillinger).
+
+• Varsel-innstillinger
+  - Skru av/på e-post, SMS, WhatsApp og in-app per varseltype (tildeling,
+    statusendring, vunnet/tapt) fra profilen.
 
 KJENT:
-- Bakgrunns-geofence krever «Alltid»-posisjonstillatelse (samme som
-  nær-lead-varsel). Uten den faller den tilbake til on-device-sjekk når
-  appen er åpen.
+- Push krever at du godtar varslings-tillatelse ved første pålogging.
+  Uten den vises tildelinger fortsatt i appen (bjella), men uten push.
 
 Krever iOS 17.0+. Tilbakemeldinger på Slack eller daniel@creatorhubn.com.
