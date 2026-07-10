@@ -11,7 +11,22 @@
 // closeRenderEngine() ved shutdown. Ingen domene-kobling, ingen lagring — kalleren
 // bestemmer hva bufferen brukes til (B2/R2/disk/respons).
 
+import { existsSync } from 'node:fs';
 import puppeteer, { type Browser, type Page } from 'puppeteer';
+
+// I prod (Render) bruker vi system-chromium fra apt (Dockerfile) i stedet for puppeteers
+// egen nedlasting (PUPPETEER_SKIP_DOWNLOAD=true). Detekter binæren på disk framfor å
+// stole på at PUPPETEER_EXECUTABLE_PATH-env-en propagerer — puppeteer v24 auto-leser den
+// ikke pålitelig. Lokalt (ingen system-chromium) → undefined → puppeteers bundlede Chrome.
+function resolveExecutablePath(): string | undefined {
+  const candidates = [
+    process.env.PUPPETEER_EXECUTABLE_PATH,
+    '/usr/bin/chromium',
+    '/usr/bin/chromium-browser',
+    '/usr/bin/google-chrome',
+  ].filter((p): p is string => !!p);
+  return candidates.find((p) => existsSync(p));
+}
 
 export interface RenderOpts {
   width?: number;             // viewport-bredde (default 1200)
@@ -38,6 +53,7 @@ async function getBrowser(): Promise<Browser> {
   if (_browser && _browser.connected) return _browser;
   _browser = await puppeteer.launch({
     headless: true,
+    executablePath: resolveExecutablePath(),
     args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--font-render-hinting=none'],
   });
   return _browser;
