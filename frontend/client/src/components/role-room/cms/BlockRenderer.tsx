@@ -140,7 +140,47 @@ function ensureInfographicScript(): void {
   document.head.appendChild(s);
 }
 
+// base64url av JSON (browser) — trygt i URL-query.
+function encodeData(data: unknown): string {
+  try {
+    return btoa(unescape(encodeURIComponent(JSON.stringify(data ?? {}))))
+      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  } catch { return ''; }
+}
+
+// Dispatcher (ingen hooks) → egne under-komponenter for server-render (<img>) vs
+// klient (Web Component). Holder hooks ubetingede i hver (rules-of-hooks).
 function InfographicView({ block }: { block: InfographicBlock }) {
+  if (block.serverRender && block.templateUrl && block.templateUrl.startsWith('/embed/')) {
+    return <InfographicImgView block={block} />;
+  }
+  return <InfographicLiveView block={block} />;
+}
+
+// Server-render: statisk <img> fra render-API (SEO-vennlig, ingen klient-JS).
+function InfographicImgView({ block }: { block: InfographicBlock }) {
+  const params = new URLSearchParams({ tpl: block.templateUrl! });
+  const d = encodeData(block.data); if (d) params.set('d', d);
+  if (block.accent) params.set('accent', block.accent);
+  return (
+    <RevealBlock>
+      <Box sx={{ my: 5 }}>
+        {block.heading ? (
+          <Typography variant="h4" component="h2" sx={{ fontWeight: 800, mb: 2 }}>{block.heading}</Typography>
+        ) : null}
+        <img
+          src={`/api/infographics/render.png?${params.toString()}`}
+          alt={block.heading || 'Infografikk'}
+          loading="lazy"
+          style={{ display: 'block', width: '100%', maxWidth: 1200, height: 'auto', borderRadius: 12 }}
+        />
+      </Box>
+    </RevealBlock>
+  );
+}
+
+// Klient: interaktiv/animert via <role-room-infographic>-Web-Component.
+function InfographicLiveView({ block }: { block: InfographicBlock }) {
   const ref = React.useRef<HTMLElement | null>(null);
   React.useEffect(() => { ensureInfographicScript(); }, []);
   React.useEffect(() => {

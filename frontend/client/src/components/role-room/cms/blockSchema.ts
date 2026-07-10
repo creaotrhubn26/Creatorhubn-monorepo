@@ -153,6 +153,12 @@ export interface InfographicBlock extends BlockBase {
   autoplaySec?: number;
   /** Høyde i px (default 360). */
   height?: number;
+  /**
+   * Server-render: rendrer som statisk <img> fra /api/infographics/render.png (SEO-
+   * vennlig, ingen klient-JS) i stedet for <role-room-infographic>-Web-Component-en.
+   * Krever hostet mal (templateUrl under /embed/).
+   */
+  serverRender?: boolean;
 }
 
 export type Block =

@@ -18,11 +18,13 @@ import {
   CardContent,
   Chip,
   FormControl,
+  FormControlLabel,
   IconButton,
   InputLabel,
   MenuItem,
   Select,
   Stack,
+  Switch,
   TextField,
   Typography,
 } from '@mui/material';
@@ -780,6 +782,16 @@ function InfographicEditor({ block, onUpdate }: { block: InfographicBlock; onUpd
       <TextRow label="Aksentfarge (hex)" value={block.accent ?? ''} onChange={(v) => upd({ accent: v })} />
       <TextRow label="Autoplay (sekunder, 0 = statisk sluttbilde)" value={String(block.autoplaySec ?? 0)} onChange={(v) => upd({ autoplaySec: parseFloat(v) || 0 })} />
       <TextRow label="Høyde (px)" value={String(block.height ?? 360)} onChange={(v) => upd({ height: parseInt(v, 10) || 360 })} />
+      <FormControlLabel
+        control={<Switch checked={!!block.serverRender} onChange={(e) => upd({ serverRender: e.target.checked })} disabled={!inLibrary} />}
+        label="Server-render (statisk bilde, SEO-vennlig, ingen klient-JS)"
+        sx={{ '& .MuiFormControlLabel-label': { fontSize: 13 } }}
+      />
+      {block.serverRender && !inLibrary && (
+        <Typography variant="caption" sx={{ color: '#fca5a5' }}>
+          Server-render krever en hostet bibliotek-mal (/embed/…). Egendefinerte URL-er faller tilbake til klient-render.
+        </Typography>
+      )}
     </Stack>
   );
 }

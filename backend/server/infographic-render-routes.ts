@@ -37,10 +37,62 @@ const clampDim = (v: unknown, def: number): number => {
   return Number.isFinite(n) ? Math.min(MAX_DIM, Math.max(MIN_DIM, n)) : def;
 };
 
+// Enkel TTL-cache for GET-render (samme tpl+data+dims → serveres fra minne).
+const imgCache = new Map<string, { buf: Buffer; at: number }>();
+const IMG_CACHE_TTL_MS = 15 * 60 * 1000;
+const IMG_CACHE_MAX = 300;
+
+// Bare hostede maler under /embed/ (validert path). Fetches fra frontend-basen — INGEN
+// vilkårlig host (SSRF-vern). Basen settes via env; default localhost for dev.
+const TEMPLATE_BASE = process.env.INFOGRAPHIC_TEMPLATE_BASE || 'http://localhost:5001';
+const SAFE_TPL = /^\/embed\/[A-Za-z0-9._/-]+\.html$/;
+
 export function registerInfographicRenderRoutes(
   app: Express,
   deps: { activeSessions: Sessions },
 ): void {
+  // GET /api/infographics/render.png — OFFENTLIG (til <img> i CMS-sider). Rendrer en
+  // HOSTET bibliotek-mal (?tpl=/embed/…) med data (?d=base64url-JSON) → PNG. SEO-vennlig,
+  // ingen klient-JS. Cachet + IP-rate-limitet. KUN /embed/-maler (ingen vilkårlig HTML/host).
+  app.get(
+    '/api/infographics/render.png',
+    aiRateLimit({ windowMs: 60_000, max: 60, label: 'infographic-render-img' }),
+    async (req: Request, res: Response) => {
+      const tpl = String(req.query.tpl ?? '');
+      if (!SAFE_TPL.test(tpl) || tpl.includes('..')) {
+        res.status(400).json({ error: 'Ugyldig tpl — kun /embed/*.html-maler.' });
+        return;
+      }
+      const width = clampDim(req.query.w, 1200);
+      const height = clampDim(req.query.h, 630);
+      const dRaw = typeof req.query.d === 'string' ? req.query.d : '';
+      const accent = typeof req.query.accent === 'string' ? req.query.accent : '';
+      const key = `${tpl}|${width}x${height}|${accent}|${dRaw}`;
+      const now = Date.now();
+      const hit = imgCache.get(key);
+      if (hit && now - hit.at < IMG_CACHE_TTL_MS) {
+        res.type('image/png').setHeader('Cache-Control', 'public, max-age=86400').send(hit.buf);
+        return;
+      }
+      let data: Record<string, unknown> = {};
+      if (dRaw) { try { data = JSON.parse(Buffer.from(dRaw, 'base64url').toString('utf8')); } catch { /* tom */ } }
+      if (accent) data.accent = accent;
+      try {
+        const r = await fetch(`${TEMPLATE_BASE}${tpl}`);
+        if (!r.ok) { res.status(502).json({ error: 'Kunne ikke hente mal.' }); return; }
+        const templateHtml = await r.text();
+        if (templateHtml.length > MAX_TEMPLATE_BYTES) { res.status(413).json({ error: 'Mal for stor.' }); return; }
+        const html = assembleHtml(templateHtml, data, { progress: 1, width, height });
+        const buf = await renderHtmlToImage(html, { width, height, deviceScaleFactor: 2, format: 'png', waitForMs: 400, blockExternalRequests: true });
+        if (imgCache.size >= IMG_CACHE_MAX) imgCache.delete(imgCache.keys().next().value as string);
+        imgCache.set(key, { buf, at: now });
+        res.type('image/png').setHeader('Cache-Control', 'public, max-age=86400').send(buf);
+      } catch (e) {
+        res.status(500).json({ error: 'Render feilet: ' + (e as Error).message });
+      }
+    },
+  );
+
   app.post(
     '/api/infographics/render',
     aiRateLimit({ windowMs: 60_000, max: 30, label: 'infographic-render' }),
