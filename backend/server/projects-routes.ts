@@ -1236,6 +1236,7 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
     const state = ensureCompatProjectState(projectId);
     const payload = req.body && typeof req.body === "object" ? req.body : {};
     for (const [key, value] of Object.entries(payload)) {
+      if (key === "__proto__" || key === "constructor" || key === "prototype") continue;
       state.integrations[key] = {
         ...(state.integrations[key] || {}),
         enabled: Boolean(value),

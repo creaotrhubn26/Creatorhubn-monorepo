@@ -5457,6 +5457,7 @@ function normalizeFieldMetadata(value: unknown): RoleRoomAgentFieldProvenance | 
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const out: RoleRoomAgentFieldProvenance = {};
   for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (key === "__proto__" || key === "constructor" || key === "prototype") continue;
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
     const entry = raw as Record<string, unknown>;
     const sanitized: RoleRoomAgentFieldProvenanceEntry = {};

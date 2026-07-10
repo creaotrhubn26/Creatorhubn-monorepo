@@ -245,6 +245,7 @@ export async function handleAgentStream(
     if (value && typeof value === 'object') {
       const out: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(value)) {
+        if (k === "__proto__" || k === "constructor" || k === "prototype") continue;
         out[k] = depseudonymizeToolInput(v);
       }
       return out;
