@@ -67250,7 +67250,10 @@ async function ensureQuotesCompatibilitySchema() {
       ALTER TABLE quotes ADD COLUMN IF NOT EXISTS tripletex_voucher_id VARCHAR;
       ALTER TABLE quotes ADD COLUMN IF NOT EXISTS tripletex_voucher_url TEXT;
       ALTER TABLE quotes ADD COLUMN IF NOT EXISTS tripletex_synced_at TIMESTAMP;
+      ALTER TABLE quotes ADD COLUMN IF NOT EXISTS share_token VARCHAR(64);
+      ALTER TABLE quotes ADD COLUMN IF NOT EXISTS share_expires_at TIMESTAMPTZ;
       CREATE INDEX IF NOT EXISTS idx_quotes_contract_id ON quotes(contract_id);
+      CREATE INDEX IF NOT EXISTS idx_quotes_share_token ON quotes(share_token);
     `,
       )
       .then(() => undefined);

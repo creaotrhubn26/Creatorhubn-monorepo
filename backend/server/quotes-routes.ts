@@ -1,6 +1,30 @@
 import express from "express";
+import crypto from "crypto";
 import type { Pool } from "pg";
 import PDFDocument from "pdfkit";
+
+// Client-facing quote portal links (`GET /api/quotes/:id`, `/:id/pdf`,
+// `/status/:clientId`) are unauthenticated by design — the recipient is not a
+// logged-in user. To stop a bare UUID from being a permanent, enumerable
+// bearer, quotes issued a `share_token` at send time must present it as `?t=`.
+// Constant-time compared, length-guarded, and expiry-checked. Quotes with no
+// token (legacy rows, or drafts never sent) fall through to a grace path so
+// links handed out before this rollout keep working.
+function isQuoteShareAllowed(row: any, req: any): boolean {
+  const shareToken = row?.share_token;
+  if (!shareToken) return true; // legacy / never-sent grace path
+  const provided = typeof req.query?.t === "string" ? req.query.t : "";
+  const a = Buffer.from(provided);
+  const b = Buffer.from(String(shareToken));
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return false;
+  if (
+    row.share_expires_at &&
+    new Date(row.share_expires_at).getTime() < Date.now()
+  ) {
+    return false;
+  }
+  return true;
+}
 
 export interface QuotesRoutesDeps {
   app: express.Application;
@@ -926,6 +950,10 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
         return res.status(404).json({ error: "Quote not found" });
       }
 
+      if (!isQuoteShareAllowed(result.rows[0], req)) {
+        return res.status(404).json({ error: "Quote not found" });
+      }
+
       const quote = mapQuoteCompatibilityRecord(result.rows[0]);
       const doc = new PDFDocument({ margin: 48, size: "A4" });
       const fileName = `${quote.quoteNumber || quote.id}.pdf`;
@@ -1042,6 +1070,10 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
         [req.params.id],
       );
       if (result.rows.length === 0) {
+        return res.status(404).json({ error: "Quote not found" });
+      }
+
+      if (!isQuoteShareAllowed(result.rows[0], req)) {
         return res.status(404).json({ error: "Quote not found" });
       }
 
@@ -1185,19 +1217,28 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
     try {
       await ensureQuotesCompatibilitySchema();
 
+      // Mint a share token the first time a quote is sent (kept stable on
+      // re-send via COALESCE so an already-shared link isn't invalidated) and
+      // (re)extend its validity window. The client portal link is built as
+      // `/quote/<id>?t=<shareToken>`.
+      const newShareToken = crypto.randomBytes(32).toString("hex");
       const result = await pool.query(
         `UPDATE quotes
          SET sent_at = NOW(),
              status = CASE WHEN COALESCE(status, 'draft') = 'draft' THEN 'pending' ELSE status END,
+             share_token = COALESCE(share_token, $3),
+             share_expires_at = NOW() + INTERVAL '90 days',
              updated_at = NOW()
          WHERE id = $1 AND created_by = $2
          RETURNING *`,
-        [req.params.id, session.userId],
+        [req.params.id, session.userId, newShareToken],
       );
 
       if (result.rows.length === 0) {
         return res.status(404).json({ error: "Quote not found" });
       }
+
+      const shareToken = result.rows[0].share_token;
 
       console.log("📧 Quote email marked as sent:", {
         quoteId: req.params.id,
@@ -1209,6 +1250,7 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
         success: true,
         emailId: `quote-email-${Date.now()}`,
         sentAt: new Date().toISOString(),
+        shareToken,
         quote: mapQuoteCompatibilityRecord(result.rows[0]),
       });
     } catch (error) {
@@ -1426,6 +1468,10 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
       );
 
       if (result.rows.length === 0) {
+        return res.json({ accepted: false, projectId: null, clientInfo: null });
+      }
+
+      if (!isQuoteShareAllowed(result.rows[0], req)) {
         return res.json({ accepted: false, projectId: null, clientInfo: null });
       }
 
