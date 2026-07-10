@@ -33,6 +33,9 @@
   }
 
   window.__demoPii = {
+    // Eksponert så scan-scriptet kan maskere INNSAMLET tekst (pageText/labels) som
+    // sendes til Claude — ikke bare skjermbildet. E-post/tlf i strengen sladdes.
+    maskText: maskText,
     mask: function () {
       var count = 0;
       try {
