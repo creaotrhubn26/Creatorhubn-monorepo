@@ -90,6 +90,8 @@ casting-rapport. Gapene fra målingen:
 | `pris-og-verdi` («hva koster castingverktøy») | FAQ-innslag med kategori-prisbilde + gratis-nivå | ✅ gjort |
 | `crew-koordinering` / `produksjonsplanlegging` | FAQ-innslag (mange lokasjoner/call-sheet/Live Set) | ✅ gjort |
 | `casting-verktoy` («hva bruker norske produksjonsselskaper») | Innholdsside/case: «Slik jobber norske produksjonsselskaper med casting» + utvid casting-rapport-2026 med verktøydata | anbefalt neste |
+| **Utdanningspilaren** | NY side /verktoy-for-filmutdanninger (FAQPage+Article JSON-LD, svarer på probe-spørsmålene for institusjons-beslutningstakere) + lenket i llms.txt | ✅ gjort 2026-07-10 |
+| **Dansepilaren** | FAQ + FAQPage-schema lagt på /dansestudio-norge (svarer ordrett på probe-spørsmålene: audition/ensemble/prøveplan/pris) + dybde-lenke i llms.txt | ✅ gjort 2026-07-10 |
 | `alt-i-ett-plattform` | Eksisterende /alternatives-side dekker dette — lenk den tydeligere fra forsiden | anbefalt |
 | ~~Marketing cockpit~~ | UTGÅR som GEO-mål — intern admin-flate. Baseline-funnet (ubesatt kategori) arkiveres som produktstrategi-datapunkt | avklart 2026-07-10 |
 

@@ -32,11 +32,13 @@ The Role Room samler hele produksjonsarbeidsflyten i ett arbeidsrom:
 - [Casting director-utdanning](https://theroleroom.com/casting-director-utdanning): yrkesvei + verktøy
 - [Regi-verktøy](https://theroleroom.com/regissor-verktoy): fra manus til opptak for regi-studenter
 - [Produksjonsledelse-studie](https://theroleroom.com/produksjonsledelse-studie): crew, lokasjon, call-sheet
+- [Verktøy for film- og TV-utdanninger](https://theroleroom.com/verktoy-for-filmutdanninger): partner-tilgang for institusjoner — gratis for studenter, GDPR/DPA, FAQ for beslutningstakere
 
 ## For innholdsprodusenter og dansestudio
 - [Innholdsprodusenter](https://theroleroom.com/innholdsprodusenter): YouTube, podcast, TikTok-skapere
 - [Innholdsproduksjon-studie](https://theroleroom.com/innholdsproduksjon-studie): digital kommunikasjon-studier
 - [Dansestudio](https://theroleroom.com/dansestudio): audition, ensemble, prøveplan
+- [Dansestudio-vertikalen i dybden](https://theroleroom.com/dansestudio-norge): booking, koreografi, formasjon, skadelogg, priser + FAQ
 
 ## Guider og bransje-data (sitérbart innhold)
 - [Slik kjenner du igjen en falsk casting director](https://theroleroom.com/casting-svindel-tegn): fem røde flagg, hvor man melder fra (NSF, Datatilsynet, Forbrukerrådet, politiet)
