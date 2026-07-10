@@ -13915,6 +13915,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function compatResolveUserId(req: any): string {
+  // SECURITY: a validated session token (server-side activeSessions lookup) is
+  // non-spoofable and MUST win over the client-supplied x-user-id header /
+  // body.userId / query.userId below. Otherwise any authenticated caller — or an
+  // anonymous one — could impersonate another account by setting those values.
+  // Legacy/compat callers with no session fall through to the old resolution.
+  const sessionUserId = getActiveSessionFromRequest(req)?.userId;
+  if (sessionUserId) return sessionUserId;
+
   const headerUserId = compatHeaderString(req.headers?.["x-user-id"]);
   if (headerUserId) return headerUserId;
 
@@ -65682,6 +65690,12 @@ function normalizeInterfacePreferencesRecord(
 
 // Helper: get userId from header, body, or query
 function getPricingUserId(req: any): string {
+  // SECURITY: prefer the validated (non-spoofable) session identity over the
+  // client-supplied x-user-id header / body.userId / query.userId. Without this,
+  // any caller could read/write another user's pricing/quote/billing data by
+  // passing a victim's id. Falls back to the legacy values only when unauthenticated.
+  const sessionUserId = getActiveSessionFromRequest(req)?.userId;
+  if (sessionUserId) return sessionUserId;
   return (
     req.headers["x-user-id"] || req.body?.userId || req.query?.userId || ""
   );
@@ -66688,7 +66702,7 @@ setupMaintenanceRoutes({
   normalizeTaskType, normalizePriority,
   toDateOnly, addMonths, resolveScheduledDate, mapMaintenanceRow,
 });
-setupSplitSheetsRoutes({ app, pool, getSplitSheetUserId });
+setupSplitSheetsRoutes({ app, pool, getSplitSheetUserId, requireAdminSession });
 setupSplitSheetSigningRoutes({ app, pool, getSplitSheetUserId });
 setupEquipmentValueRoutes({ app });
 setupSoftwareExpensesRoutes({ app, pool, requireUserSession, getGoogleOAuthClient });
@@ -68680,15 +68694,13 @@ function getSplitSheetUserId(req: any): string {
       ? activeSessions.get(bearerToken)?.userId
       : "";
 
+  // Identity is resolved ONLY from the authenticated Bearer session. The app is
+  // Bearer-token-only (no cookies), so spoofable client-supplied fallbacks
+  // (x-user-id / x-userid / x-user headers, req.body.userId, req.query.userId)
+  // must NOT be trusted — they previously allowed anyone to impersonate any user
+  // and bypass the length-based write guards on PUT/DELETE (IDOR).
   const rawUserId =
-    req.session?.user?.id ||
-    req.user?.id ||
-    sessionUserId ||
-    req.headers["x-user-id"] ||
-    req.body?.userId ||
-    req.query?.userId ||
-    req.headers["x-userid"] ||
-    req.headers["x-user"];
+    req.session?.user?.id || req.user?.id || sessionUserId;
 
   if (typeof rawUserId === "string" && rawUserId.trim().length > 0) {
     return rawUserId.trim();

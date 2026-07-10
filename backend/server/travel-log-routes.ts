@@ -58,7 +58,6 @@ export function setupTravelLogRoutes(deps: TravelLogRoutesDeps): void {
     if (!requireUserSession(req, res)) return;
     try {
       const {
-        userId,
         date,
         description,
         contact,
@@ -76,7 +75,10 @@ export function setupTravelLogRoutes(deps: TravelLogRoutesDeps): void {
         selectedVehicleData,
         projectId,
       } = req.body;
-      const uid = userId || getPricingUserId(req);
+      // SECURITY: scope the insert to the authenticated session (getPricingUserId
+      // is now session-first), not a client-supplied body.userId — otherwise an
+      // authenticated user could create a travel log under another user's account.
+      const uid = getPricingUserId(req);
       const result = await pool.query(
         `INSERT INTO travel_logs (user_id, date, description, contact, vehicle, vehicle_registration, from_address, to_address, extra_destinations, return_trip, kilometers, toll_fees, additional_fees, additional_fees_description, calculated_cost, selected_vehicle_data, project_id, created_at, updated_at)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,$12,$13,$14,$15,$16::jsonb,$17,NOW(),NOW()) RETURNING *`,

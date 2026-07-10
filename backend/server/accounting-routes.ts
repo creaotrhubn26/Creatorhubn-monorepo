@@ -282,7 +282,7 @@ export function setupAccountingRoutes(deps: AccountingRoutesDeps): void {
 
   app.get("/api/accounting/skattemelding/status", async (req, res) => {
     try {
-      const userId = readString(req.query.userId) || compatResolveUserId(req);
+      const userId = compatResolveUserId(req);
       const status = await readCompatSkattemeldingStatus(userId || "guest");
       res.json(status);
     } catch (error) {

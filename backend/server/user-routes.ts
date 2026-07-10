@@ -160,7 +160,7 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
 
   app.get("/api/user/subscription-status", async (req, res) => {
     try {
-      const userId = readString(req.query.userId) || compatResolveUserId(req);
+      const userId = compatResolveUserId(req);
       const email =
         readString(req.query.userEmail) || compatResolveUserEmail(req);
       const status = await resolveCompatSubscriptionStatus(
@@ -176,7 +176,7 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
 
   app.get("/api/user/payment-methods", async (req, res) => {
     try {
-      const userId = readString(req.query.userId) || compatResolveUserId(req);
+      const userId = compatResolveUserId(req);
       const paymentMethods = await readCompatPaymentMethods(userId || "guest");
       res.json({ paymentMethods });
     } catch (error) {

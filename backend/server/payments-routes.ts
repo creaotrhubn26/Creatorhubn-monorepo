@@ -82,7 +82,7 @@ export function setupPaymentsRoutes(deps: PaymentsRoutesDeps): void {
 
   app.get("/api/payments/history", async (req, res) => {
     try {
-      const userId = readString(req.query.userId) || compatResolveUserId(req);
+      const userId = compatResolveUserId(req);
       const email =
         readString(req.query.userEmail) || compatResolveUserEmail(req);
       const history = await buildCompatPaymentHistory(
@@ -509,8 +509,7 @@ export function setupPaymentsRoutes(deps: PaymentsRoutesDeps): void {
 
   app.get("/api/payments/fiken-mva-status", async (req, res) => {
     try {
-      const userId =
-        readString(req.query.userId) || compatResolveUserId(req);
+      const userId = compatResolveUserId(req);
       const status = await readCompatFikenMvaStatus(userId || "guest");
       res.json(status);
     } catch (error) {

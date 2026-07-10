@@ -299,7 +299,7 @@ export function setupPricingRoutes(deps: PricingRoutesDeps): void {
   // GET /api/pricing/packages — returns ALL packages (used by PriceAdministration without userId)
   app.get("/api/pricing/packages", async (req, res) => {
     try {
-      const userId = req.query.userId || getPricingUserId(req);
+      const userId = getPricingUserId(req);
       let result;
       if (userId) {
         result = await pool.query(
