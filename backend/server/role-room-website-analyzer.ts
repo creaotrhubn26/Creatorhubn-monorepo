@@ -25,20 +25,12 @@ import { createHash } from "node:crypto";
 import { Vibrant } from "node-vibrant/node";
 import Anthropic from "@anthropic-ai/sdk";
 import { logAIUsage } from './ai-usage-tracker.js';
+import { assertPublicUrl, ssrfSafeHttpAgent, ssrfSafeHttpsAgent } from './ssrf-guard.js';
 
 function assertNotSsrf(rawUrl: string): void {
-  let hostname: string;
-  try {
-    hostname = new URL(rawUrl).hostname;
-  } catch {
-    throw new Error("Ugyldig URL");
-  }
-  if (
-    /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.|169\.254\.|0\.|::1$|localhost$)/i.test(hostname) ||
-    hostname === "metadata.google.internal"
-  ) {
-    throw new Error("SSRF: intern adresse ikke tillatt");
-  }
+  // Cheap literal pre-check; the guarded agents on the axios call below
+  // enforce the resolved-address / redirect-hop protection (see ssrf-guard.ts).
+  assertPublicUrl(rawUrl);
 }
 
 // ─────────────────────────────────────────────────────────
@@ -114,6 +106,11 @@ const defaultHttp: HttpFetcher = async (url, options = {}) => {
     responseType: options.binary ? "arraybuffer" : "text",
     headers: { "User-Agent": "RoleRoomWebsiteAnalyzer/1.0" },
     maxRedirects: 5,
+    // Guarded lookup rejects any hostname that resolves to a private address,
+    // and re-runs on every redirect hop — closes the DNS-rebinding / redirect
+    // SSRF holes the literal hostname check could not see.
+    httpAgent: ssrfSafeHttpAgent,
+    httpsAgent: ssrfSafeHttpsAgent,
     validateStatus: () => true,
   });
   return {

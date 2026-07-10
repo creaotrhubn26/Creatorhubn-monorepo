@@ -22,21 +22,10 @@
 import type { Pool } from "pg";
 import { callClaudeForJson, ClaudeJsonParseError } from "./claude-json-helper.js";
 import { fetchBestLogo } from "./lead-logo-fetcher.js";
+import { ssrfSafeFetch } from "./ssrf-guard.js";
 
-function assertNotSsrf(rawUrl: string): void {
-  let hostname: string;
-  try {
-    hostname = new URL(rawUrl).hostname;
-  } catch {
-    throw new Error("Ugyldig URL");
-  }
-  if (
-    /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.|169\.254\.|0\.|::1$|localhost$)/i.test(hostname) ||
-    hostname === "metadata.google.internal"
-  ) {
-    throw new Error("SSRF: intern adresse ikke tillatt");
-  }
-}
+// SSRF protection (resolved-address + per-redirect-hop) now lives in
+// ssrfSafeFetch (ssrf-guard.ts); the old string-only assertNotSsrf was removed.
 
 // ─────────────────────────────────────────────────────────────────
 // Typer
@@ -148,13 +137,11 @@ async function fetchText(
   url: string, timeoutMs = 12000, maxBytes = 200_000,
 ): Promise<{ status: number; text: string; bytes: number } | null> {
   try {
-    assertNotSsrf(url);
-    const resp = await fetch(url, {
+    const resp = await ssrfSafeFetch(url, {
       headers: {
         "user-agent": "Mozilla/5.0 (compatible; CreatorhubLeadScout/1.0)",
         accept: "text/html, application/xml, */*",
       },
-      redirect: "follow",
       signal: AbortSignal.timeout(timeoutMs),
     });
     const reader = resp.body?.getReader();
@@ -180,11 +167,9 @@ async function fetchText(
 
 async function probeUrl(url: string): Promise<number | null> {
   try {
-    assertNotSsrf(url);
-    const resp = await fetch(url, {
+    const resp = await ssrfSafeFetch(url, {
       method: "HEAD",
       signal: AbortSignal.timeout(7000),
-      redirect: "follow",
     });
     return resp.status;
   } catch {
