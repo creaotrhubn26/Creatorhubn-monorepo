@@ -83,7 +83,8 @@ export function setupShowcaseCommentsRoutes(
   });
 
   app.post("/api/showcase/:itemId/comments", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       const payload = req.body as Record<string, unknown>;
       const timestampSeconds =
@@ -93,10 +94,7 @@ export function setupShowcaseCommentsRoutes(
         .values({
           id: crypto.randomUUID(),
           showcaseItemId: req.params.itemId,
-          userId:
-            readString(payload.userId) ||
-            readString(req.headers["x-user-id"]) ||
-            "guest",
+          userId: String(session.userId),
           userName: readString(payload.userName) || "CreatorHub-bruker",
           userEmail: readString(payload.userEmail) || null,
           commentText:
