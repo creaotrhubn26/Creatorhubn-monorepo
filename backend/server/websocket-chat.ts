@@ -31,6 +31,8 @@ interface ConnectedClient {
   authenticated: boolean;
   /** The server-verified user id (from the session), never a client-claimed one. */
   authUserId?: string;
+  /** The server-verified email (from the session) — used for channel-name membership matching. */
+  authEmail?: string;
 }
 
 // Slice 9D.5.D — module-level handle slik at route-handlers kan
@@ -96,11 +98,11 @@ export function createWebSocketServer(
    * resolveBearerSession. Returns null for any unknown/expired token — callers
    * treat that as unauthenticated (fail closed).
    */
-  async function resolveWsSession(token: string): Promise<{ userId: string } | null> {
+  async function resolveWsSession(token: string): Promise<{ userId: string; email?: string } | null> {
     const t = (token || '').trim();
     if (!t) return null;
     const inMem = activeSessions.get(t);
-    if (inMem?.userId) return { userId: String(inMem.userId) };
+    if (inMem?.userId) return { userId: String(inMem.userId), email: inMem.email ? String(inMem.email) : undefined };
     try {
       const persisted = await loadPersistedAuthSession<{
         userId: string; email: string; name: string; role: string; loginAt: string;
@@ -108,12 +110,79 @@ export function createWebSocketServer(
       }>(pool, t);
       if (persisted?.userId) {
         activeSessions.set(t, persisted);
-        return { userId: String(persisted.userId) };
+        return { userId: String(persisted.userId), email: persisted.email ? String(persisted.email) : undefined };
       }
     } catch {
       // Treat store errors as unauthenticated.
     }
     return null;
+  }
+
+  /**
+   * Parse the projectId out of a Live Set room key ('liveset:<projectId>:<shootingDayId>').
+   * Returns null for any non-liveset room (those are not project-authorized here).
+   */
+  function parseLiveSetProjectId(roomKey?: string): string | null {
+    if (!roomKey || !roomKey.startsWith('liveset:')) return null;
+    const parts = roomKey.split(':');
+    return parts[1] || null;
+  }
+
+  /**
+   * Authorize a user to read/write a chat channel. Mirrors the prod-verified
+   * membership predicate used by the REST GET /api/communication/conversations
+   * privacy fix (communication-routes.ts): a user may access a channel when it is
+   * brand-new (they are creating it), named for them (dm-admin-<id> DMs), lists
+   * them in settings.participants, has an explicit participant row, or they have
+   * already sent a message in it. Everything else is rejected so an authenticated
+   * user cannot inject into — or silently self-join (via ensureParticipant) and
+   * then eavesdrop on — another tenant's conversation. Fails closed on error.
+   */
+  async function canAccessChannel(channelId: string, userId: string, email?: string): Promise<boolean> {
+    if (!channelId || !userId) return false;
+    // Shared support lobby fallback stays open (the default channel id).
+    if (channelId === 'general') return true;
+    try {
+      const chan = await pool.query(
+        `SELECT name, settings FROM communication_channels WHERE id = $1 LIMIT 1`,
+        [channelId],
+      );
+      // Channel does not exist yet → the sender is creating it. Allow.
+      if ((chan.rowCount ?? 0) === 0) return true;
+
+      const row = chan.rows[0] as { name?: string; settings?: any };
+      // Match membership against BOTH the verified userId and the verified email
+      // — a faithful superset of the REST /conversations predicate. Messages and
+      // participant rows may key on either (the chat widget persists sender_id as
+      // the user's email), so matching only userId would false-block a legitimate
+      // first reply in a channel where the user appears solely by email.
+      const identifiers = [String(userId)];
+      if (email) identifiers.push(String(email));
+      const needles = identifiers.map((v) => v.toLowerCase());
+      // Channel named for this user (covers dm-admin-<userId> and email-named channels).
+      if (row.name) {
+        const name = String(row.name).toLowerCase();
+        if (needles.some((n) => n && name.includes(n))) return true;
+      }
+      // settings.participants includes one of the identifiers.
+      const parts = row.settings?.participants;
+      if (Array.isArray(parts) && parts.some((p: unknown) => identifiers.includes(String(p)))) return true;
+      // Explicit participant row (user_id keyed by userId or email).
+      const pr = await pool.query(
+        `SELECT 1 FROM communication_participants WHERE channel_id = $1 AND user_id = ANY($2::text[]) LIMIT 1`,
+        [channelId, identifiers],
+      );
+      if ((pr.rowCount ?? 0) > 0) return true;
+      // Has previously sent a message here → an established member.
+      const mr = await pool.query(
+        `SELECT 1 FROM communication_messages WHERE channel_id = $1 AND sender_id = ANY($2::text[]) LIMIT 1`,
+        [channelId, identifiers],
+      );
+      return (mr.rowCount ?? 0) > 0;
+    } catch (e) {
+      console.error('[WS] canAccessChannel error:', e);
+      return false; // fail closed
+    }
   }
 
   /** Active participant user-ids for a channel (empty set on error). */
@@ -202,7 +271,11 @@ export function createWebSocketServer(
     let authenticated = false;
 
     const record: ConnectedClient = {
-      ws, userId: connectedUserId, room, role, connectedAt: new Date(),
+      ws, userId: connectedUserId,
+      // A Live Set room is NOT honored until the token is verified as
+      // authenticated (below). Other room types keep their behavior.
+      room: parseLiveSetProjectId(room) ? undefined : room,
+      role, connectedAt: new Date(),
       authenticated: false,
     };
     clients.set(clientId, record);
@@ -218,6 +291,30 @@ export function createWebSocketServer(
         record.authenticated = true;
         record.authUserId = session.userId;
         record.userId = session.userId;
+        record.authEmail = session.email;
+      }
+
+      // Authorize Live Set room subscription. An UNauthenticated socket may not
+      // subscribe to a room's real-time production feed (this closes anonymous
+      // eavesdropping via ?room=liveset:*). Authentication-only mirrors the
+      // existing liveset REST posture (role-room-projects-routes uses
+      // requireUserSession, not project membership). Per-project scoping is a
+      // deferred coordinated WS+REST change. Other room types (wedding client
+      // view, plain chat) keep their existing behavior and are unaffected.
+      const lsProject = parseLiveSetProjectId(room);
+      if (lsProject) {
+        if (authenticated) {
+          record.room = room;
+        } else {
+          record.room = undefined;
+          try {
+            ws.send(JSON.stringify({
+              type: 'error',
+              payload: { message: 'forbidden_room', code: 'auth_required', room },
+              timestamp: new Date().toISOString(),
+            }));
+          } catch { /* ignore */ }
+        }
       }
       console.log(`[WS] Client connected: ${connectedUserId} (${clientId}) auth=${authenticated}. Total: ${clients.size}`);
 
@@ -305,6 +402,19 @@ export function createWebSocketServer(
             // data.userId is ignored so a caller cannot post as someone else.
             const senderId = connectedUserId;
             const now = new Date().toISOString();
+
+            // Authorize the channel for this sender (mirrors the REST membership
+            // predicate). Blocks posting into — and, via ensureParticipant,
+            // silently self-joining then eavesdropping on — a conversation the
+            // sender has no relationship to.
+            if (!(await canAccessChannel(channelId, senderId, record.authEmail))) {
+              ws.send(JSON.stringify({
+                type: 'error',
+                payload: { message: 'forbidden_channel', code: 'forbidden_channel', conversationId: channelId },
+                timestamp: new Date().toISOString(),
+              }));
+              break;
+            }
 
             if (content.trim()) {
               try {
@@ -406,12 +516,22 @@ export function createWebSocketServer(
 
           // ── Live Set room events ─────────────────────────────────────────
           case 'liveset:join': {
-            // Client announces which room it is in
-            const c = clients.get(clientId);
-            if (c) {
-              c.room = data.payload?.room
-                ?? `liveset:${data.projectId}:${data.shootingDayId}`;
-              c.role = data.payload?.role ?? c.role;
+            // Room membership is authoritatively granted by the authenticated
+            // handshake (?room=) path above; here we only (re)affirm it for an
+            // authenticated socket and return the state snapshot. An
+            // unauthenticated socket gets NO room (fail closed) — but no error,
+            // to avoid racing the async handshake auth on the client's
+            // connect-time join.
+            const joinRoom = typeof data.payload?.room === 'string' && data.payload.room
+              ? data.payload.room
+              : `liveset:${data.projectId}:${data.shootingDayId}`;
+            const joinProject = parseLiveSetProjectId(joinRoom);
+            if (authenticated && joinProject) {
+              const c = clients.get(clientId);
+              if (c) {
+                c.room = joinRoom;
+                c.role = data.payload?.role ?? c.role;
+              }
             }
             // Optionally: send back a state snapshot from DB (TODO [Studio])
             ws.send(JSON.stringify({
@@ -521,9 +641,11 @@ export function createWebSocketServer(
           case 'liveset:note':
           case 'liveset:setup_done':
           case 'liveset:cursor': {
-            const senderRoom   = clients.get(clientId)?.room
-              ?? `liveset:${data.projectId}:${data.shootingDayId}`;
-            // Relay the message to everyone else in the same room
+            // Relay only from an authenticated socket, and only into the room it
+            // was authorized into on join — never a client-supplied room. An
+            // unauthorized socket never had record.room set, so it cannot relay.
+            const senderRoom = clients.get(clientId)?.room;
+            if (!authenticated || !senderRoom || !senderRoom.startsWith('liveset:')) break;
             broadcastToRoom(clients, senderRoom, {
               type:          data.type,
               payload:       data.payload,
