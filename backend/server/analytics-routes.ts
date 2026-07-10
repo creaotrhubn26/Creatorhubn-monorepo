@@ -362,7 +362,9 @@ export function setupAnalyticsRoutes(deps: AnalyticsRoutesDeps): void {
 
   app.get("/api/analytics/summary", async (req, res) => {
     try {
-      const userId = readString(req.query.userId) || "";
+      const session = requireUserSession(req, res);
+      if (!session) return;
+      const userId = String(session.userId || "");
       const profession = readString(req.query.profession);
       if (!userId) return res.status(400).json({ error: "Missing userId" });
 
@@ -436,7 +438,9 @@ export function setupAnalyticsRoutes(deps: AnalyticsRoutesDeps): void {
 
   app.get("/api/analytics/revenue", async (req, res) => {
     try {
-      const userId = readString(req.query.userId) || "";
+      const session = requireUserSession(req, res);
+      if (!session) return;
+      const userId = String(session.userId || "");
       const profession = readString(req.query.profession);
       const range = readString(req.query.range) || "12m";
       if (!userId) return res.status(400).json({ error: "Missing userId" });
@@ -578,7 +582,9 @@ export function setupAnalyticsRoutes(deps: AnalyticsRoutesDeps): void {
 
   app.get("/api/analytics/clients", async (req, res) => {
     try {
-      const userId = readString(req.query.userId) || "";
+      const session = requireUserSession(req, res);
+      if (!session) return;
+      const userId = String(session.userId || "");
       const profession = readString(req.query.profession);
       const range = readString(req.query.range) || "12m";
       if (!userId) return res.status(400).json({ error: "Missing userId" });
@@ -683,7 +689,9 @@ export function setupAnalyticsRoutes(deps: AnalyticsRoutesDeps): void {
 
   app.get("/api/analytics/performance", async (req, res) => {
     try {
-      const userId = readString(req.query.userId) || "";
+      const session = requireUserSession(req, res);
+      if (!session) return;
+      const userId = String(session.userId || "");
       const profession = readString(req.query.profession);
       const range = readString(req.query.range) || "12m";
       if (!userId) return res.status(400).json({ error: "Missing userId" });
@@ -847,7 +855,9 @@ export function setupAnalyticsRoutes(deps: AnalyticsRoutesDeps): void {
 
   app.get("/api/analytics/growth", async (req, res) => {
     try {
-      const userId = readString(req.query.userId) || "";
+      const session = requireUserSession(req, res);
+      if (!session) return;
+      const userId = String(session.userId || "");
       const profession = readString(req.query.profession);
       const range = readString(req.query.range) || "12m";
       if (!userId) return res.status(400).json({ error: "Missing userId" });
@@ -1024,6 +1034,7 @@ export function setupAnalyticsRoutes(deps: AnalyticsRoutesDeps): void {
 
   app.post("/api/analytics/export", async (req, res) => {
     try {
+      if (!requireUserSession(req, res)) return;
       const { profession, userId, reportType, timeRange } = req.body || {};
       const payload = {
         profession,
@@ -1044,7 +1055,9 @@ export function setupAnalyticsRoutes(deps: AnalyticsRoutesDeps): void {
 
   app.get("/api/analytics/clients/behavior", async (req, res) => {
     try {
-      const userId = readString(req.query.userId) || "";
+      const session = requireUserSession(req, res);
+      if (!session) return;
+      const userId = String(session.userId || "");
       const profession = readString(req.query.profession);
       const range = readString(req.query.range) || "12m";
       if (!userId) return res.status(400).json({ error: "Missing userId" });
@@ -1183,7 +1196,9 @@ export function setupAnalyticsRoutes(deps: AnalyticsRoutesDeps): void {
 
   app.get("/api/analytics/clients/satisfaction", async (req, res) => {
     try {
-      const userId = readString(req.query.userId) || "";
+      const session = requireUserSession(req, res);
+      if (!session) return;
+      const userId = String(session.userId || "");
       const profession = readString(req.query.profession);
       if (!userId) return res.status(400).json({ error: "Missing userId" });
 
@@ -1254,7 +1269,9 @@ export function setupAnalyticsRoutes(deps: AnalyticsRoutesDeps): void {
 
   app.get("/api/analytics/clients/lifetime-value", async (req, res) => {
     try {
-      const userId = readString(req.query.userId) || "";
+      const session = requireUserSession(req, res);
+      if (!session) return;
+      const userId = String(session.userId || "");
       const profession = readString(req.query.profession);
       if (!userId) return res.status(400).json({ error: "Missing userId" });
 
@@ -1356,7 +1373,9 @@ export function setupAnalyticsRoutes(deps: AnalyticsRoutesDeps): void {
 
   app.get("/api/analytics/clients/referrals", async (req, res) => {
     try {
-      const userId = readString(req.query.userId) || "";
+      const session = requireUserSession(req, res);
+      if (!session) return;
+      const userId = String(session.userId || "");
       const profession = readString(req.query.profession);
       if (!userId) return res.status(400).json({ error: "Missing userId" });
 
@@ -1463,6 +1482,7 @@ export function setupAnalyticsRoutes(deps: AnalyticsRoutesDeps): void {
 
   app.post("/api/analytics/clients/export", async (req, res) => {
     try {
+      if (!requireUserSession(req, res)) return;
       const { profession, userId, reportType, timeRange } = req.body || {};
       const payload = {
         profession,
@@ -1483,7 +1503,9 @@ export function setupAnalyticsRoutes(deps: AnalyticsRoutesDeps): void {
 
   app.get("/api/analytics/equipment/usage", async (req, res) => {
     try {
-      const userId = readString(req.query.userId) || "";
+      const session = requireUserSession(req, res);
+      if (!session) return;
+      const userId = String(session.userId || "");
       const range = readString(req.query.range) || "12m";
       if (!userId) return res.status(400).json({ error: "Missing userId" });
 
@@ -1608,7 +1630,9 @@ export function setupAnalyticsRoutes(deps: AnalyticsRoutesDeps): void {
 
   app.get("/api/analytics/equipment/roi", async (req, res) => {
     try {
-      const userId = readString(req.query.userId) || "";
+      const session = requireUserSession(req, res);
+      if (!session) return;
+      const userId = String(session.userId || "");
       if (!userId) return res.status(400).json({ error: "Missing userId" });
 
       const equipmentRows = await db
@@ -1679,7 +1703,9 @@ export function setupAnalyticsRoutes(deps: AnalyticsRoutesDeps): void {
 
   app.get("/api/analytics/equipment/maintenance", async (req, res) => {
     try {
-      const userId = readString(req.query.userId) || "";
+      const session = requireUserSession(req, res);
+      if (!session) return;
+      const userId = String(session.userId || "");
       if (!userId) return res.status(400).json({ error: "Missing userId" });
 
       const equipmentRows = await db
@@ -1736,7 +1762,9 @@ export function setupAnalyticsRoutes(deps: AnalyticsRoutesDeps): void {
 
   app.get("/api/analytics/equipment/recommendations", async (req, res) => {
     try {
-      const userId = readString(req.query.userId) || "";
+      const session = requireUserSession(req, res);
+      if (!session) return;
+      const userId = String(session.userId || "");
       const range = readString(req.query.range) || "12m";
       if (!userId) return res.status(400).json({ error: "Missing userId" });
 
@@ -1857,9 +1885,10 @@ export function setupAnalyticsRoutes(deps: AnalyticsRoutesDeps): void {
 
   app.post("/api/equipment/schedule-maintenance", async (req, res) => {
     try {
+      const session = requireUserSession(req, res);
+      if (!session) return;
       const { equipmentId, date, type } = req.body || {};
-      const userId =
-        readString(req.body?.userId) || readString(req.query.userId) || "";
+      const userId = String(session.userId || "");
       if (!equipmentId || !userId)
         return res.status(400).json({ error: "Missing equipmentId or userId" });
 
@@ -1884,6 +1913,7 @@ export function setupAnalyticsRoutes(deps: AnalyticsRoutesDeps): void {
 
   app.post("/api/analytics/equipment/export", async (req, res) => {
     try {
+      if (!requireUserSession(req, res)) return;
       const { profession, userId, reportType, timeRange } = req.body || {};
       const payload = {
         profession,
@@ -1904,6 +1934,7 @@ export function setupAnalyticsRoutes(deps: AnalyticsRoutesDeps): void {
 
   app.get("/api/analytics/performance/summary", async (req, res) => {
     try {
+      if (!requireAdminSession(req, res)) return;
       const range = readString(req.query.range) || "30d";
       const { start, end } = parseRangeParam(range);
       const metrics = await db
@@ -1974,6 +2005,7 @@ export function setupAnalyticsRoutes(deps: AnalyticsRoutesDeps): void {
 
   app.get("/api/analytics/business-intelligence", async (req, res) => {
     try {
+      if (!requireAdminSession(req, res)) return;
       const range = readString(req.query.range) || "30d";
       const profession = readString(req.query.profession);
       const { start, end } = parseRangeParam(range);
@@ -2069,6 +2101,7 @@ export function setupAnalyticsRoutes(deps: AnalyticsRoutesDeps): void {
 
   app.get("/api/analytics/norwegian-market", async (req, res) => {
     try {
+      if (!requireUserSession(req, res)) return;
       const users = await db
         .select({ profession: schema.users.profession })
         .from(schema.users);
@@ -2148,6 +2181,7 @@ export function setupAnalyticsRoutes(deps: AnalyticsRoutesDeps): void {
 
   app.get("/api/analytics/real-time", async (req, res) => {
     try {
+      if (!requireAdminSession(req, res)) return;
       const users = await db
         .select({ lastLoginAt: schema.users.lastLoginAt })
         .from(schema.users);
