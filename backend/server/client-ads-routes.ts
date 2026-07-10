@@ -133,12 +133,21 @@ function _signAdsOauthState(payload: string): string {
   return crypto.createHmac("sha256", _adsOauthStateKey()).update(payload).digest("hex").slice(0, 16);
 }
 function _buildAdsOauthState(userId: string, configId: string): string {
+  // Fail closed: with an empty HMAC key the signed state is trivially forgeable
+  // (an attacker computes HMAC("", payload) themselves), enabling ad-account
+  // linking CSRF. Refuse to mint a state rather than emit an insecure one.
+  if (!_adsOauthStateKey()) {
+    throw new Error("ads_oauth_state_secret_missing");
+  }
   const nonce = crypto.randomBytes(12).toString("hex");
   const payload = `${userId}|${configId}|${nonce}`;
   const sig = _signAdsOauthState(payload);
   return `${payload}|${sig}`;
 }
 function _verifyAdsOauthState(state: string): { userId: string; configId: string } | null {
+  // Fail closed: never accept a state when the signing key is absent — otherwise
+  // a forged HMAC over an empty key would validate.
+  if (!_adsOauthStateKey()) return null;
   const parts = state.split("|");
   if (parts.length !== 4) return null;
   const [userId, configId, nonce, sig] = parts;
