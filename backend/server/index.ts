@@ -66759,6 +66759,7 @@ setupEquipmentCatalogRoutes({
 });
 setupEquipmentFirmwareRoutes({
   app, pool, db, schema,
+  requireUserSession,
   buildEquipmentImageAttachmentMap,
   buildInventoryRecommendedMemoryCards,
   ensureEquipmentImageEnvelope,

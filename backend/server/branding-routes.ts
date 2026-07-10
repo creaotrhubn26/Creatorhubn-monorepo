@@ -165,7 +165,14 @@ export function setupBrandingRoutes(deps: BrandingRoutesDeps): void {
   app.put("/api/branding/business-info/:userId", async (req, res) => {
     const session = requireUserSession(req, res);
     if (!session) return;
-    await handleBusinessInfoUpdate(req, res, readString(req.params.userId));
+    // Ownership: a user may only update their own business branding. The
+    // :userId path param was previously passed through unchecked, so any
+    // authenticated user could overwrite another user's business info by id.
+    const targetUserId = readString(req.params.userId);
+    if (targetUserId && session.userId && targetUserId !== session.userId) {
+      return res.status(403).json({ error: "forbidden" });
+    }
+    await handleBusinessInfoUpdate(req, res, session.userId || targetUserId);
   });
 
   // Uten userId i URL-en: utled fra session/header/query (samme oppslag som
