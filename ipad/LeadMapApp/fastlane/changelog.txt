@@ -1,35 +1,26 @@
-Leadgrid 1.4.0 (build 20260713) — Varsler, tildeling og dine data
+Leadgrid 1.4.0 (build 20260714) — Apple Watch, Mac og Kart-forbedringer
 
 NYTT / FIKSET I DENNE BUILDEN:
 
-• Push-varsler leveres nå pålitelig
-  - Når en lead tildeles deg (som teamleder eller selger) får du et
-    push-varsel — også når appen er lukket.
-  - Trykk på varselet åpner riktig lead direkte.
+• Apple Watch: krasjfiks
+  - Leads-fanen på uret krasjet så snart du hadde leads å vise. Fikset —
+    leadsene dine listes nå riktig på Apple Watch, sortert etter avstand.
 
-• Bjelle-badge viser riktig
-  - Antallet uleste på bjella nullstilles med en gang du har lest — ingen
-    falsk «ulest»-indikasjon lenger.
+• Mac (Catalyst): opprydding i Kart-fanen
+  - Knappene «Planlegg møte» og «Naviger» brakk teksten i Mac-appen. Nå
+    står de rent på én linje.
 
-• «Tildel til teammedlem» er stabilisert
-  - Teammedlem-lista lastes pålitelig, og selve tildelingen henger ikke
-    lenger på trege/utgåtte enheter. Tildeling + varsel skjer i bakgrunnen
-    så handlingen bekreftes umiddelbart.
+• Større kart i Kart-fanen
+  - På iPad og Mac er kartet nå vesentlig høyere og mer dominerende, så du
+    ser mer av territoriet ditt om gangen. iPhone er uendret.
 
-• Last ned mine data (GDPR)
-  - «Min profil» → «Last ned mine data» eksporterer dine egne Leadgrid-data
-    som fil du kan dele/arkivere.
+• Versjonsvisning
+  - Appen viser nå korrekt versjon (1.4.0) på TestFlight.
 
-• Tofaktor og passord
-  - «Tofaktor-autentisering» og «Endre passord» åpner nå de riktige
-    innstillingene på web (theroleroom.com/innstillinger).
-
-• Varsel-innstillinger
-  - Skru av/på e-post, SMS, WhatsApp og in-app per varseltype (tildeling,
-    statusendring, vunnet/tapt) fra profilen.
-
-KJENT:
-- Push krever at du godtar varslings-tillatelse ved første pålogging.
-  Uten den vises tildelinger fortsatt i appen (bjella), men uten push.
+FRA FORRIGE BUILDER (fortsatt med):
+- Push-varsler ved lead-tildeling + tap åpner riktig lead
+- Bjelle-badge nullstilles korrekt
+- «Tildel til teammedlem» stabilisert
+- Last ned mine data (GDPR) + tofaktor/passord-lenker
 
 Krever iOS 17.0+. Tilbakemeldinger på Slack eller daniel@creatorhubn.com.
