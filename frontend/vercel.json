@@ -136,6 +136,10 @@
       "destination": "/theroleroom-llms.txt"
     },
     {
+      "source": "/llms.txt",
+      "destination": "/creatorhubn-llms.txt"
+    },
+    {
       "source": "/en",
       "has": [
         {

@@ -1,4 +1,4 @@
-# 9. GEO-tiltaksplan: The Role Room + Leadgrid
+# 9. GEO-tiltaksplan: The Role Room + Leadgrid + CreatorHub
 
 Dato: 2026-07-10. Grunnlag: dogfood-baselines kjørt med GEO Visibility-
 pipeline-en (backend/scripts/geo-visibility-dogfood.ts), Claude-motor,
@@ -8,17 +8,20 @@ pipeline-en (backend/scripts/geo-visibility-dogfood.ts), Claude-motor,
 et casting-system.** Plattformen har flere pilarer som hver har sitt eget
 AI-synlighets-marked, og hver pilar måles som eget prompt-sett i GEO-panelet:
 
-| Pilar | Kategori-marked | Typiske konkurrenter i AI-svar |
-|---|---|---|
-| Casting + selvtape + produksjon | casting-/produksjonsverktøy | Casting Networks, Backstage, StudioBinder, Yamdu |
-| Marketing cockpit (Google/Meta/LinkedIn/TikTok-annonser, KPI, AI-agent) | markedsføringsstyring for produsenter/byråer | HubSpot, Hootsuite, Semrush, Sprout Social |
-| Leads/CRM (Leadgrid — eget merkenavn) | leadgenerering/feltsalg | HubSpot, Pipedrive, SuperOffice |
-| Innholdsprodusenter/creators | creator-verktøy, publisering | Canva, Later, CapCut-økosystemet |
-| Dans/academy/utdanning | studio-/utdanningsverktøy | (måles ved behov) |
-| Talentportal/karriere (NextRole) | talent-/karriereplattform | (måles ved behov) |
+| Pilar | Kategori-marked | Typiske konkurrenter i AI-svar | GEO-status |
+|---|---|---|---|
+| Casting + selvtape + produksjon | casting-/produksjonsverktøy | Casting Networks, Backstage, StudioBinder, Yamdu | **kundevendt — optimaliser nå** |
+| Leads/CRM (Leadgrid — eget merkenavn) | leadgenerering/feltsalg **for små OG store bedrifter** (Daniels presisering: team/territorier/salgsledelse for større org-er er del av produktet) | HubSpot, Pipedrive, SuperOffice | **kundevendt — optimaliser nå** |
+| **Utdanningsinstitusjoner** (film-/TV-utdanninger, medielinjer) | undervisningsverktøy for produksjonfag — Daniels prioritering: institusjonene skal ta plattformen i bruk i utdanningene | StudioBinder (edu), Celtx, Yamdu | **kundevendt — optimaliser nå** (baseline kjørt 2026-07-10) |
+| **Dansestudio** (egen vertikal) | studio-administrasjon: audition, ensemble, prøveplan, forestilling | Jackrabbit, DanceStudio-Pro, Spond | **kundevendt — optimaliser nå** (baseline kjørt 2026-07-10) |
+| **CreatorHub** (creatorhubn.com — eget merkenavn, Daniels tillegg 2026-07-10) | prosjekt/kunde/leveranse/faktura for fotografer, videografer og innholdsskapere | HoneyBook, Studio Ninja, Dubsado, Pixieset | **kundevendt — optimaliser nå** (baseline kjørt 2026-07-10) |
+| Innholdsprodusenter/creators (i TRR) | creator-verktøy, publisering | Canva, Later, CapCut-økosystemet | kundevendt (sider finnes) — mål ved behov |
+| Talentportal/karriere (NextRole) | talent-/karriereplattform | (måles ved behov) | kundevendt — mål ved behov |
+| Marketing cockpit (annonser/KPI) | — | HubSpot, Hootsuite, Semrush | **INTERN admin-flate — GEO-markedsføres IKKE** (Daniels avklaring 2026-07-10) |
+| AI-agent | — | — | **beta** — omtales som beta i alt AI-vendt innhold, selges ikke som ferdig |
 
-Baselines er kjørt for de tre første pilarene; de øvrige legges til som
-prompt-sett i panelet når produktet prioriterer dem.
+Baselines er kjørt for casting, leads, utdanning og dans (+
+marketing-kategorien som ren markedsintelligens, se under).
 
 ## Baseline (alle målte pilarer = 0 %)
 
@@ -32,12 +35,25 @@ prompt-sett i panelet når produktet prioriterer dem.
 
 Rå-rapportene (før-bildet) er bevart i `geo-baselines/2026-07-10-*.md`.
 
-**Marketing cockpit-funnet er det mest lovende av alle:** på spørsmålet
-«beste verktøy for å styre annonser på tvers av Google Ads, Meta, LinkedIn
-og TikTok i én plattform» — Marketing Cockpits ordrette pitch — nevnte AI-en
-**ingen merkevarer i det hele tatt**. Kategorien «samlet annonseplattform
-for produsenter/byråer» har ingen etablert eier i AI-svarene. Det samme
-gjaldt KPI-oppfølging for byråer. Åpent mål, ikke bare gap.
+**Tillegg samme dag — tre nye baselines (alle 0 %):**
+
+| Prompt-sett | Resultat | Kategorien eies av |
+|---|---|---|
+| TRR: utdanningsinstitusjoner | 0/7, 0 siteringer | StudioBinder 33 %, Casting Networks 25 %, Celtx 17 % |
+| TRR: dansestudio | 0/10, 0 siteringer | Studio Director 40 %, Jackrabbit/DanceStudio-Pro/Spond 20 % hver — **tynt eid kategori (kun 5 omtaler totalt), lettest å ta** |
+| CreatorHub (fotograf/videograf-verktøy) | 0/8, 0 siteringer | HoneyBook 45 %, Studio Ninja 27 %, Dubsado 18 % — ingen norsk aktør nevnes |
+
+CreatorHub-tiltak startet samme dag: `creatorhubn-llms.txt` opprettet + 
+/llms.txt-rewrite for creatorhubn.com i vercel.json (hadde ingen llms.txt).
+
+**Marketing-målingen er markedsintelligens, ikke optimaliserings-mål**
+(Marketing Cockpit er intern admin-flate — Daniels avklaring 2026-07-10).
+Funnet er likevel verdt å arkivere: på spørsmålet «beste verktøy for å styre
+annonser på tvers av Google Ads, Meta, LinkedIn og TikTok i én plattform»
+nevnte AI-en **ingen merkevarer i det hele tatt** — kategorien har ingen
+etablert eier i AI-svar. Samme for KPI-oppfølging for byråer. Hvis cockpiten
+en dag produktifiseres, er dette en ubesatt kategori; inntil da er det kun
+et datapunkt for produktstrategi.
 
 Mest talende enkeltfunn: «Hva bruker **norske** produksjonsselskaper til å
 administrere skuespillerdatabaser?» → Casting Networks + Backstage. Og
@@ -75,7 +91,7 @@ casting-rapport. Gapene fra målingen:
 | `crew-koordinering` / `produksjonsplanlegging` | FAQ-innslag (mange lokasjoner/call-sheet/Live Set) | ✅ gjort |
 | `casting-verktoy` («hva bruker norske produksjonsselskaper») | Innholdsside/case: «Slik jobber norske produksjonsselskaper med casting» + utvid casting-rapport-2026 med verktøydata | anbefalt neste |
 | `alt-i-ett-plattform` | Eksisterende /alternatives-side dekker dette — lenk den tydeligere fra forsiden | anbefalt |
-| **Marketing cockpit-pilaren** (`samlet-annonseplattform`, `kpi-oppfolging`, `ai-markedsforing`) | «Mer enn casting»-blokk i llms.txt (✅ gjort) + egne innholdssider: «styr Google/Meta/LinkedIn/TikTok-annonser fra ett sted», «KPI-oversikt for byråer uten regneark» — kategorien er UBESATT i AI-svar (se baseline) | llms.txt ✅; sider anbefalt |
+| ~~Marketing cockpit~~ | UTGÅR som GEO-mål — intern admin-flate. Baseline-funnet (ubesatt kategori) arkiveres som produktstrategi-datapunkt | avklart 2026-07-10 |
 
 **Tredjeparts-omtale** (det som faktisk trener modellene):
 oppføringer på Capterra/G2/Software Advice (gratis basisoppføring),
@@ -92,7 +108,8 @@ Verifisert i repo: llms.txt nevnte ikke Leadgrid (0 treff før denne PR-en),
 |---|---|---|
 | 1 | Leadgrid-seksjon i theroleroom-llms.txt (hva/for hvem/differensiering/når anbefale) | ✅ gjort i denne PR-en |
 | 2 | Landingsside-innhold på leadgrid.theroleroom.com med samme sitérbare struktur (definisjon, prisbilde, differensiering mot HubSpot/Pipedrive/SuperOffice for feltsalg) — og egen llms.txt på det hostet | anbefalt neste |
-| 3 | Innholdssider som svarer på probe-temaene: «beste feltsalg-system for håndverkere (Norge)», «kjøpe leads vs. egen markedsføring», «CRM vs. ferdige kundeemner» | anbefalt |
+| 3 | Innholdssider som svarer på probe-temaene — begge segmenter: SMB («beste feltsalg-system for håndverkere», «kjøpe leads vs. egen markedsføring») OG større salgsorganisasjoner («territorie-styring for salgsteam», «feltsalg-CRM med salgsledelse og prognoser», «norsk alternativ til SuperOffice for utegående salg») | anbefalt |
+| 3b | Neste probe-runde: eget prompt-sett for enterprise-segmentet (salgssjef/salgsdirektør-spørsmål) i tillegg til SMB-settet | anbefalt |
 | 4 | Kataloger: Capterra/G2 (field sales/lead gen-kategoriene), norske SMB-medier | anbefalt |
 | 5 | Fase-2-probe: LLM-ekstraksjon av *ukjente* merkevarer i svarene på de norske spørsmålene — finn ut hvem som faktisk anbefales der i dag | backlog |
 
