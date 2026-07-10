@@ -158,8 +158,10 @@ export function registerLeadMapTranscriptRoutes({ app, pool, activeSessions }: D
           `SELECT name, address, city, lead_status, lead_category,
                   ai_opportunity_score, claude_recommendation_reason,
                   notes, next_action, assigned_user_id, project_id
-             FROM crm_customers WHERE id = $1 LIMIT 1`,
-          [req.params.id],
+             FROM crm_customers
+            WHERE id = $1 AND (owner_user_id = $2 OR assigned_user_id = $2)
+            LIMIT 1`,
+          [req.params.id, session.userId],
         );
         if (leadRes.rows.length === 0) return res.status(404).json({ error: "lead_ikke_funnet" });
         const lead = leadRes.rows[0];
@@ -335,8 +337,11 @@ export function registerLeadMapTranscriptRoutes({ app, pool, activeSessions }: D
 
       // Hent lead-navn for kontekst + sjekk eierskap
       const r = await pool.query<{ name: string; assigned_user_id: string | null }>(
-        `SELECT name, assigned_user_id FROM crm_customers WHERE id = $1 LIMIT 1`,
-        [body.lead_id],
+        `SELECT name, assigned_user_id
+           FROM crm_customers
+          WHERE id = $1 AND (owner_user_id = $2 OR assigned_user_id = $2)
+          LIMIT 1`,
+        [body.lead_id, session.userId],
       );
       if (r.rows.length === 0) return res.status(404).json({ error: "lead_ikke_funnet" });
       const leadName = r.rows[0].name;

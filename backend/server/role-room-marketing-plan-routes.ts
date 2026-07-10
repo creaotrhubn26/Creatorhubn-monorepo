@@ -78,6 +78,7 @@ import {
 import { listInstagramConnections } from "./role-room-instagram-oauth.js";
 import { loadFeedPlan, saveFeedPlan } from "./role-room-feed-plan.js";
 import { buildChannelScorecard } from "./role-room-marketing-scorecard.js";
+import { aiRateLimit } from "./ai-rate-limiter.js";
 
 interface AdminSession {
   userId: string;
@@ -102,6 +103,12 @@ export function setupRoleRoomMarketingPlanRoutes(
 ): void {
   const { app, pool, requireAdminSession, isCompatAdminFeatureEnabled } = deps;
 
+  // Per-caller throttle on the generative endpoints (bearer-token keyed).
+  // Admin-gated, but caps unbounded Claude/DALL-E spend from an admin loop
+  // or a compromised admin session.
+  const genLimit = aiRateLimit({ windowMs: 60_000, max: 12, label: "Marketing-plan AI" });
+  const imageLimit = aiRateLimit({ windowMs: 60_000, max: 5, label: "Marketing-plan bilde-generering" });
+
   app.post("/api/role-room/marketing-plan/readiness", async (req, res) => {
     const featureId = "role-room-agent-producer";
     if (!isCompatAdminFeatureEnabled(featureId)) {
@@ -116,7 +123,7 @@ export function setupRoleRoomMarketingPlanRoutes(
     return res.json({ success: true, readiness });
   });
 
-  app.post("/api/role-room/marketing-plan/generate", async (req, res) => {
+  app.post("/api/role-room/marketing-plan/generate", genLimit, async (req, res) => {
     const featureId = "role-room-agent-producer";
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
@@ -271,7 +278,7 @@ export function setupRoleRoomMarketingPlanRoutes(
     return res.json({ success: true, posts, serverTime });
   });
 
-  app.post("/api/role-room/marketing-plan/:planId/generate-posts", async (req, res) => {
+  app.post("/api/role-room/marketing-plan/:planId/generate-posts", genLimit, async (req, res) => {
     const featureId = "role-room-agent-producer";
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
@@ -604,7 +611,7 @@ export function setupRoleRoomMarketingPlanRoutes(
   //      hvis du vil bytte til Imagen uten kodeendring).
   //   2. Ellers fall tilbake til direkte OpenAI med OPENAI_API_KEY.
   //   3. Hvis ingen av delene er satt → 503.
-  app.post("/api/role-room/marketing-plan/posts/:postId/thumbnail", async (req, res) => {
+  app.post("/api/role-room/marketing-plan/posts/:postId/thumbnail", imageLimit, async (req, res) => {
     const session = requireAdminSession(req, res);
     if (!session) return;
     const postId = String(req.params.postId || "").trim();
@@ -841,7 +848,7 @@ export function setupRoleRoomMarketingPlanRoutes(
   // spørsmål, negativ) basert på post-teksten. Bruker Haiku siden det
   // er små payloads. Returnerer ikke persistert — UI viser dem som
   // copy-til-utklippstavle-templates.
-  app.post("/api/role-room/marketing-plan/posts/:postId/reply-templates", async (req, res) => {
+  app.post("/api/role-room/marketing-plan/posts/:postId/reply-templates", genLimit, async (req, res) => {
     const session = requireAdminSession(req, res);
     if (!session) return;
     const postId = String(req.params.postId || "").trim();
@@ -916,7 +923,7 @@ Returner KUN JSON: { "positive": "svar på rosende kommentar", "question": "svar
   // søsken-post med samme pillarId/dayOffset/format/platform, men hook
   // + script + caption regenerert med temperature=0.9. UI markerer
   // varianter med sortOrder = orig+0.5 så de havner like under originalen.
-  app.post("/api/role-room/marketing-plan/posts/:postId/variant", async (req, res) => {
+  app.post("/api/role-room/marketing-plan/posts/:postId/variant", genLimit, async (req, res) => {
     const session = requireAdminSession(req, res);
     if (!session) return;
     const postId = String(req.params.postId || "").trim();
@@ -1359,7 +1366,7 @@ Returner KUN JSON: { "hook": "...", "script": "...", "captionDraft": "...", "cal
   // Item #157 — regenerér én post med valgfri prompt-hint
   // ("gjør den mer ironisk", "kort den ned til 50 ord", etc.).
   // Bruker Claude Haiku for hastighet (single-post er liten payload).
-  app.post("/api/role-room/marketing-plan/posts/:postId/regenerate", async (req, res) => {
+  app.post("/api/role-room/marketing-plan/posts/:postId/regenerate", genLimit, async (req, res) => {
     const session = requireAdminSession(req, res);
     if (!session) return;
     const postId = String(req.params.postId || "").trim();
