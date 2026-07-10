@@ -129,14 +129,17 @@ export function sanitizeGeneratedPrompts(
   return out;
 }
 
-export async function generatePromptSet(
-  pool: Pool,
-  input: GeneratePromptSetInput,
-): Promise<{ promptSet: GeoPromptSet; prompts: GeoPrompt[] }> {
-  const count = Math.min(Math.max(input.count ?? 30, 10), 50);
-  const region = input.region?.trim() || "Norge";
-  const competitorBrands = (input.competitorBrands ?? []).slice(0, 15);
-
+/**
+ * LLM-delen alene (ingen DB) — brukes av generatePromptSet og av
+ * dogfood-/test-scripts (backend/scripts/geo-visibility-dogfood.ts).
+ */
+export async function generatePromptsViaClaude(input: {
+  industry: string;
+  region: string;
+  targetBrand: string;
+  competitorBrands: string[];
+  count: number;
+}): Promise<GeneratedPrompt[]> {
   const client = getAnthropic();
   const response = await client.messages.create({
     model: "claude-opus-4-7",
@@ -146,12 +149,12 @@ export async function generatePromptSet(
       {
         role: "user",
         content:
-          `Bransje: ${input.industry}\nRegion: ${region}\n` +
+          `Bransje: ${input.industry}\nRegion: ${input.region}\n` +
           `Målmerkevare (skal IKKE nevnes i spørsmålene): ${input.targetBrand}\n` +
-          (competitorBrands.length > 0
-            ? `Konkurrenter (skal heller IKKE nevnes): ${competitorBrands.join(", ")}\n`
+          (input.competitorBrands.length > 0
+            ? `Konkurrenter (skal heller IKKE nevnes): ${input.competitorBrands.join(", ")}\n`
             : "") +
-          `Lag ${count} spørsmål.`,
+          `Lag ${input.count} spørsmål.`,
       },
     ],
   });
@@ -160,10 +163,27 @@ export async function generatePromptSet(
     .filter((c): c is Anthropic.TextBlock => c.type === "text")
     .map((c) => c.text)
     .join("\n");
-  const prompts = sanitizeGeneratedPrompts(tryParseJson(text), {
+  return sanitizeGeneratedPrompts(tryParseJson(text), {
+    targetBrand: input.targetBrand,
+    competitorBrands: input.competitorBrands,
+    max: input.count,
+  });
+}
+
+export async function generatePromptSet(
+  pool: Pool,
+  input: GeneratePromptSetInput,
+): Promise<{ promptSet: GeoPromptSet; prompts: GeoPrompt[] }> {
+  const count = Math.min(Math.max(input.count ?? 30, 10), 50);
+  const region = input.region?.trim() || "Norge";
+  const competitorBrands = (input.competitorBrands ?? []).slice(0, 15);
+
+  const prompts = await generatePromptsViaClaude({
+    industry: input.industry,
+    region,
     targetBrand: input.targetBrand,
     competitorBrands,
-    max: count,
+    count,
   });
   if (prompts.length < 5) {
     throw new Error("geo_prompt_generation_insufficient");
