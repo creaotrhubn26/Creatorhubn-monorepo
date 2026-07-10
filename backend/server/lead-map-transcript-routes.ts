@@ -16,6 +16,7 @@
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import Anthropic from "@anthropic-ai/sdk";
+import { aiRateLimit } from "./ai-rate-limiter.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 interface Deps {
@@ -126,9 +127,19 @@ Regler:
 - Ingen generisk salgs-vrøvl — bare det som er relevant for dette spesifikke leadet.`;
 
 export function registerLeadMapTranscriptRoutes({ app, pool, activeSessions }: Deps): void {
+  // Per-user throttle on the two Claude-backed endpoints below. Keyed on
+  // the bearer token (getUser reads activeSessions by bearer), so one
+  // logged-in user can't loop these into unbounded Anthropic spend.
+  const claudeLimit = aiRateLimit({
+    windowMs: 60_000,
+    max: 15,
+    label: "Lead-map transcript AI",
+  });
+
   // ─── POST /leads/:id/meeting-brief ──────────────────────────────
   app.post(
     "/api/admin-room/lead-map/leads/:id/meeting-brief",
+    claudeLimit,
     async (req: Request, res: Response) => {
       const session = getUser(req, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });

@@ -2324,7 +2324,9 @@ app.get("/api/admin/presence/online", async (req, res) => {
 
 registerTidumAdminRoutes(app, pool, requireAdminSession);
 registerStripePriceDriftRoutes(app, pool, requireAdminSession);
-registerMarketplaceAppConfigRoutes(app, pool, requireAdminSession);
+registerMarketplaceAppConfigRoutes(app, pool, requireAdminSession, (req) =>
+  getActiveSessionFromRequest(req)?.userId ?? null,
+);
 configureAIUsageTracker(pool);
 registerAIUsageRoutes(app, pool, requireAdminSession);
 registerDesignTokensRoutes(app, pool, requireAdminSession);

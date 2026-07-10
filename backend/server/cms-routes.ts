@@ -300,6 +300,10 @@ export function setupCmsRoutes(deps: CmsRoutesDeps): void {
 
   // CMS write (admin) — upsert by (content_key, profession, locale)
   app.put("/api/cms/content/:key", async (req, res) => {
+    // Published CMS content is served to every CreatorHub surface via the
+    // public GET above, so writes MUST be admin-only. Was requireUserSession,
+    // which let any authenticated user overwrite/deface global content.
+    if (!requireAdminSession(req, res)) return;
     const session = requireUserSession(req, res);
     if (!session) return;
     const key = String(req.params.key || "").trim();

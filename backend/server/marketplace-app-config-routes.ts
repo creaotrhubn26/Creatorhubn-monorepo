@@ -181,6 +181,11 @@ export function registerMarketplaceAppConfigRoutes(
   app: Express,
   pool: Pool,
   requireAdminSession: RequireAdminSession,
+  // SECURITY: resolves the caller's user id from the validated server-side
+  // session (Bearer token → activeSessions) ONLY. Returns null for anonymous
+  // callers. Never derives identity from the spoofable x-user-id header — that
+  // is exactly the attribution-forgery hole this closes on the checkout path.
+  resolveSessionUserId: (req: Request) => string | null = () => null,
 ) {
   // requireAdminSession is a GUARD (returns session | null, sends 401/403) — it
   // is NOT Express middleware. Used directly as `app.get(path, requireAdminSession, …)`
@@ -805,8 +810,12 @@ export function registerMarketplaceAppConfigRoutes(
       const publicHost = (
         process.env.CREATORHUB_PUBLIC_URL ?? "https://app.creatorhubn.com"
       ).replace(/\/$/, "");
-      const xUserId =
-        (req.headers["x-user-id"] as string | undefined) ?? null;
+      // SECURITY: attribute the subscription to the authenticated session user,
+      // NOT the client-supplied x-user-id header (which any caller can forge to
+      // pin a paid subscription/entitlement onto an arbitrary account). Anonymous
+      // checkout keeps an empty attribution — the Stripe webhook reconciles the
+      // owner via the customer email instead of trusting a spoofed id.
+      const attributedUserId = resolveSessionUserId(req) ?? "";
       try {
         const session = await stripe.checkout.sessions.create({
           mode: "subscription",
@@ -820,7 +829,7 @@ export function registerMarketplaceAppConfigRoutes(
             metadata: {
               app_id: app_.id as string,
               tier_id: tier.id as string,
-              user_id: xUserId ?? "",
+              user_id: attributedUserId,
             },
             // 14-dagers trial for standard og pro (kun ved første kjøp)
             trial_period_days: tier.id === "trial" ? undefined : 14,
@@ -828,7 +837,7 @@ export function registerMarketplaceAppConfigRoutes(
           metadata: {
             app_id: app_.id as string,
             tier_id: tier.id as string,
-            user_id: xUserId ?? "",
+            user_id: attributedUserId,
           },
           allow_promotion_codes: true,
           locale: "nb",
