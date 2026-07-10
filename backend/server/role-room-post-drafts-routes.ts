@@ -520,6 +520,18 @@ export function setupPostDraftsRoutes(deps: SetupPostDraftsRoutesDeps): void {
       const draft = r.rows[0];
       const platform = String(draft.platform);
 
+      // Predecessor-guard: en allerede publisert draft skal ikke re-publiseres
+      // (duplikat offentlig FB/LinkedIn-post + overskriving av external_post_id).
+      // 'failed'/'draft'/'scheduled' kan fortsatt (re)publiseres.
+      if (String(draft.status) === 'published') {
+        res.status(409).json({
+          ok: false,
+          error: 'already_published',
+          externalPostId: draft.external_post_id ?? null,
+        });
+        return;
+      }
+
       if (platform === 'facebook') {
         const pageId = (process.env.THEROLERROOM_PAGE_ID || '').trim();
         const pageToken = (process.env.THEROLERROOM_PAGE_ACCESS_TOKEN || '').trim();
