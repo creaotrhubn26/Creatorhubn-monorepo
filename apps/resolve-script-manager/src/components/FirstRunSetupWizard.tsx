@@ -94,7 +94,7 @@ export function FirstRunSetupWizard({ onClose }: Props) {
       const r = winner.events.find((e) => e.type === "result")?.value as DepResult | undefined;
       return r ?? null;
     } catch (e) {
-      setError(String(e));
+      setError("Sjekk feilet: " + (e instanceof Error ? e.message : String(e)));
       return null;
     }
   }, []);
@@ -105,7 +105,7 @@ export function FirstRunSetupWizard({ onClose }: Props) {
     const r = await runCheck();
     if (cancelled.current) return;
     if (!r) {
-      setError((prev) => prev ?? "Could not check dependencies — see the log panel.");
+      setError((prev) => prev ?? "Kunne ikke sjekke avhengigheter — se loggpanelet.");
       return;
     }
     setCheck(r);
@@ -123,18 +123,18 @@ export function FirstRunSetupWizard({ onClose }: Props) {
   // --- Install actions ---
   const runInstall = useCallback(
     async (manager: "brew" | "pip", packages: string[], stepKey: string, advanceTo: Stage) => {
-      updateStep(stepKey, "running", `Installing via ${manager}…`);
+      updateStep(stepKey, "running", `Installerer via ${manager}…`);
       setError(null);
       try {
         await executeScript("install_dependency", { manager, packages }, false);
-        updateStep(stepKey, "ok", `${packages.join(", ")} installed`);
+        updateStep(stepKey, "ok", `${packages.join(", ")} installert`);
         // Re-check then advance
         const r = await runCheck();
         if (r) setCheck(r);
         setStage(advanceTo);
       } catch (e) {
-        updateStep(stepKey, "failed", String(e));
-        setError(String(e));
+        updateStep(stepKey, "failed", e instanceof Error ? e.message : String(e));
+        setError("Installering feilet: " + (e instanceof Error ? e.message : String(e)));
       }
     },
     [runCheck, updateStep],
@@ -173,9 +173,9 @@ export function FirstRunSetupWizard({ onClose }: Props) {
     try {
       localStorage.setItem("trrpa.settings", JSON.stringify(settings));
       await updateAppSettings(settingsToEnvVars(settings));
-      updateStep("anthropicKey", "ok", "API key saved");
+      updateStep("anthropicKey", "ok", "API-nøkkel lagret");
     } catch (e) {
-      setError(String(e));
+      setError("Kunne ikke lagre: " + (e instanceof Error ? e.message : String(e)));
     }
     setStage("resolve");
   }, [anthropicKey, updateStep]);
@@ -311,7 +311,7 @@ export function FirstRunSetupWizard({ onClose }: Props) {
             <div className="first-run-tool-list">
               <div className="first-run-tool">
                 <strong>ffmpeg</strong>
-                <span className="card-chip-meta">audio + video processing</span>
+                <span className="card-chip-meta">audio- og videobehandling</span>
               </div>
               <div className="first-run-tool">
                 <strong>chromaprint</strong>
@@ -450,7 +450,7 @@ export function FirstRunSetupWizard({ onClose }: Props) {
               <ol>
                 <li>Åpne Resolve Studio</li>
                 <li>Preferences → System → General → <strong>External scripting using: Local</strong></li>
-                <li>Save → restart Resolve</li>
+                <li>Lagre → start Resolve på nytt</li>
                 <li>Kom tilbake hit og klikk "Sjekk igjen"</li>
               </ol>
             </div>

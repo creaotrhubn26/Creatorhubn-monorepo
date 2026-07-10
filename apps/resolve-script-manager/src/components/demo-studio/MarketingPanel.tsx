@@ -130,6 +130,9 @@ export function MarketingPanel({ onOpenSignIn }: { onOpenSignIn: () => void }) {
 
   const draftOnePager = async () => {
     if (!aiReady) return onOpenSignIn();
+    // Feltet er kontrollert state → nettleser-undo virker ikke. Bekreft før vi
+    // overskriver brukerens egen tekst med AI-utkastet.
+    if (onePager.trim() && !window.confirm('Du har allerede tekst i one-pageren. Erstatte den med et AI-utkast? Dette kan ikke angres.')) return;
     setBusy('draft'); setMsg('AI skriver et one-pager-utkast fra siden…');
     try {
       const { elements, siteContext, branding, pagesScanned } = await scanContext({ vision: true });

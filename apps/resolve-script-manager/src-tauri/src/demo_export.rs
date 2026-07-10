@@ -40,6 +40,7 @@ pub async fn demo_print_html(app: AppHandle, html: String) -> Result<(), String>
     WebviewWindowBuilder::new(&app, "demo-print", WebviewUrl::External(parsed))
         .title("Manus — skriv ut / lagre som PDF")
         .inner_size(820.0, 1040.0)
+        .center()
         .initialization_script(
             "window.addEventListener('load',function(){setTimeout(function(){try{window.print();}catch(e){}},400);});",
         )

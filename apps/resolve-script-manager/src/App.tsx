@@ -328,28 +328,20 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // Holder alltid siste «kjør forrige»-logikk (fersk runs/scriptsById/runScript).
+  // Menu-lytteren har [] deps, så den kan ikke lese state direkte uten stale closure.
+  const rerunLastRef = useRef<() => void | Promise<void>>(() => {});
+
   // Subscribe to native-menu events (#186 + #187 + #129)
   useEffect(() => {
     const unlisteners: Array<() => void> = [];
     let cancelled = false;
     void import("@tauri-apps/api/event").then(({ listen }) => {
       if (cancelled) return;
-      listen("menu://rerun-last", async () => {
-        const all = Object.values(runs ?? {}).filter((r): r is RunRecord => !!r);
-        if (all.length === 0) {
-          setEvents((prev) => [
-            ...prev,
-            { type: "log", ts: Date.now() / 1000, runId: "n/a", message: "No previous run to re-execute" },
-          ]);
-          return;
-        }
-        const last = all.sort((a, b) => Number(b.startedAt ?? 0) - Number(a.startedAt ?? 0))[0];
-        const script = scriptsById[last.scriptId];
-        if (!script) return;
-        // Params aren't persisted on RunRecord — re-run with empty params,
-        // which makes the runner use defaults or prompt where required.
-        await runScript(script, {}, false);
-      }).then((u) => unlisteners.push(u));
+      // Denne effekten har [] deps → closuren ville fanget INITIELL (tom) runs/
+      // scriptsById → «Kjør forrige» så alltid ingen kjøringer. Rut via en ref som
+      // holdes fersk (rerunLastRef) i stedet.
+      listen("menu://rerun-last", () => { void rerunLastRef.current(); }).then((u) => unlisteners.push(u));
       listen("menu://new-workflow", () => setView("pipeline")).then((u) => unlisteners.push(u));
       // Updater-handler: brukes både av menu://check-updates og av
       // auto-check ved oppstart. Sjekker etter ny versjon; hvis funnet
@@ -693,6 +685,22 @@ export default function App() {
     },
     [recordRun],
   );
+
+  // Hold «kjør forrige»-handleren fersk (leses av menu-lytteren via ref). Billig
+  // ref-oppdatering — ingen re-subscribe av menu-lytterne.
+  useEffect(() => {
+    rerunLastRef.current = async () => {
+      const all = Object.values(runs ?? {}).filter((r): r is RunRecord => !!r);
+      if (all.length === 0) {
+        setEvents((prev) => [...prev, { type: "log", ts: Date.now() / 1000, runId: "n/a", message: "Ingen tidligere kjøring å re-kjøre" }]);
+        return;
+      }
+      const last = all.sort((a, b) => Number(b.startedAt ?? 0) - Number(a.startedAt ?? 0))[0];
+      const script = scriptsById[last.scriptId];
+      if (!script) return;
+      await runScript(script, {}, false);
+    };
+  }, [runs, scriptsById, runScript]);
 
   const selectedWorkflow = selectedWorkflowId ? workflows[selectedWorkflowId] : null;
 
@@ -1168,12 +1176,9 @@ export default function App() {
         />
       )}
 
-      {showSignIn && (
-        <RoleRoomSignInDialog
-          onClose={() => setShowSignIn(false)}
-          onSignedIn={() => { setShowSignIn(false); void silentAuthCheck(); }}
-        />
-      )}
+      {/* (Innloggings-dialogen rendres ÉN gang lenger opp, gated på !showFirstRun &&
+          showSignIn. En duplikat-render her ga to modaler oppå hverandre + to
+          pairing-forespørsler/-faner — fjernet.) */}
     </div>
   );
 }

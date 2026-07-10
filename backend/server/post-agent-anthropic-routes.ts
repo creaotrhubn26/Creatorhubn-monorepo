@@ -645,8 +645,21 @@ Tidspunkt: ${new Date().toISOString()}
    * Body: { prompt, options?: { width?, height?, image_size? } }
    * Returns: { image_url, model, seed? }
    */
-  router.post('/ai/generate-image', postAgentAuth, async (req: Request, res: Response) => {
+  router.post('/ai/generate-image', postAgentAuth,
+    aiRateLimit({ windowMs: 60_000, max: 20, label: 'post-agent-image-gen' }),
+    async (req: Request, res: Response) => {
     const userId = (req as AuthedRequest).userId;
+    // Entitlement-gate (som /anthropic/messages) — dette kaller betalt FAL flux-pro.
+    // Uten den kunne enhver PARET (men ikke-abonnert) konto generere ubegrenset →
+    // wallet-DoS. Admin/abonnement/team-seat kreves, ellers 402.
+    {
+      const session = activeSessions?.get((req as AuthedRequest).bearerToken);
+      const entitlement = await checkAgentEntitlement(pool, userId, session?.role);
+      if (!entitlement.allowed && !(await userHasActiveTeamSeat(pool, userId))) {
+        res.status(402).json({ error: 'subscription_required', detail: entitlement.reason });
+        return;
+      }
+    }
     const body = (req.body ?? {}) as {
       prompt?: string;
       options?: {
@@ -727,6 +740,8 @@ Tidspunkt: ${new Date().toISOString()}
            VALUES ($1, $2, $3, $4)`,
           [userId, prompt, firstImage.url, data.seed ?? null],
         );
+        // Retention (personvern): ikke lagre bruker-prompts på ubestemt tid.
+        await pool.query(`DELETE FROM post_agent_ai_image_log WHERE created_at < NOW() - INTERVAL '90 days'`).catch(() => {});
       } catch (logErr) {
         console.warn('[post-agent ai/generate-image] log insert failed:', (logErr as Error).message);
       }
@@ -2215,7 +2230,7 @@ Hvis dette virker feil, ta kontakt med ${ownerName}.
            WHERE is_active = true
            GROUP BY project_id
          ) s ON s.project_id = p.id
-         WHERE p.owner_id = $1
+         WHERE p.user_id = $1
          ORDER BY p.event_date DESC NULLS LAST, p.created_at DESC NULLS LAST
          LIMIT 100`,
         [userId],

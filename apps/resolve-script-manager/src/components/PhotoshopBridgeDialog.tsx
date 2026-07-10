@@ -74,7 +74,7 @@ export function PhotoshopBridgeDialog({ onClose }: Props) {
     logCounter.current += 1;
     const row: LogRow = {
       id: logCounter.current,
-      ts: new Date().toLocaleTimeString(),
+      ts: new Date().toLocaleTimeString('nb-NO'),
       label,
       ok,
       detail: detail.length > 600 ? detail.slice(0, 600) + "…" : detail,

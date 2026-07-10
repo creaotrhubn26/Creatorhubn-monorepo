@@ -180,7 +180,7 @@ export function LowerThirdsStudio({
     <div
       style={{
         position: "fixed", inset: 0, zIndex: 5800,
-        background: "rgba(8,4,20,0.92)", backdropFilter: "blur(10px)",
+        background: "rgba(8,4,20,0.92)", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)",
         display: "flex", flexDirection: "column",
         color: ROLE_ROOM_BRAND.textPrimary,
         fontFamily: "system-ui, -apple-system, sans-serif",

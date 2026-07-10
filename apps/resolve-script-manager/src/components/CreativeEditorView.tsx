@@ -712,7 +712,7 @@ export function CreativeEditorView({ picksPath, advisorPath, onClose, onStartNew
       // per sekund. Save fortsatt rask nok til at restart-bevaring funker.
     }, 1500);
     return () => clearTimeout(handle);
-  }, [stateKey, payload, projectTitle, includedChapters, pickOverrides, activePickOrder, activeSongIdx, clientWishes, pickTransitions, customAudios, markers, pickComments, segmentOrder, extraPicks]);
+  }, [stateKey, payload, projectTitle, includedChapters, pickOverrides, activePickOrder, activeSongIdx, clientWishes, pickTransitions, customAudios, markers, pickComments, segmentOrder, extraPicks, projectKind, projectPurpose, projectTargetMin]);
 
   // Counter trigger advisor-refresh — bumpes etter scan-jobber så
   // useEffecten re-fetcher freshe data fra disk.
@@ -3097,6 +3097,7 @@ ${ctxLines.join("\n")}`;
               }}
               onPlay={() => setIsPlaying(true)}
               onPause={() => setIsPlaying(false)}
+              onEnded={() => setIsPlaying(false)}
               playsInline
               muted={previewMuted}
             />
@@ -5184,7 +5185,7 @@ function FakeWaveform({ bars, active }: { bars: number; active: boolean }) {
     <div className="ce-wave-bars">
       {heights.map((h, i) => (
         <div key={i} className={`ce-wave-bar ${active ? "active" : ""}`}
-             style={{ height: `${h * 100}%` }} />
+             style={{ height: `${h * 100}%`, ["--i" as string]: i } as React.CSSProperties} />
       ))}
     </div>
   );
@@ -5257,7 +5258,7 @@ function RealWaveform({ wavPath, bars, active }: {
     <div className="ce-wave-bars">
       {peaks.map((h, i) => (
         <div key={i} className={`ce-wave-bar ${active ? "active" : ""}`}
-             style={{ height: `${Math.max(8, h * 100)}%` }} />
+             style={{ height: `${Math.max(8, h * 100)}%`, ["--i" as string]: i } as React.CSSProperties} />
       ))}
     </div>
   );

@@ -92,7 +92,7 @@ export function StudioVsFreeDialog({ open, productName, onClose }: Props) {
       style={{
         position: "fixed", inset: 0,
         background: "rgba(8, 4, 20, 0.78)",
-        backdropFilter: "blur(8px)",
+        backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)",
         zIndex: 6000,
         display: "flex", alignItems: "center", justifyContent: "center",
         padding: 20,
