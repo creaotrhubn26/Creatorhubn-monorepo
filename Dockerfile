@@ -3,6 +3,7 @@ FROM node:20-bookworm-slim
 ENV NODE_ENV=production \
   RENDER=true \
   PUPPETEER_SKIP_DOWNLOAD=true \
+  PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium \
   PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
   PHOTO_ENHANCER_BIN_DIR=/usr/bin \
   PHOTO_ENHANCER_FORCE_LOCAL_DCRAW=true \
@@ -15,9 +16,11 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends \
     bash \
     ca-certificates \
+    chromium \
     curl \
     darktable \
     ffmpeg \
+    fonts-liberation \
     g++ \
     git \
     imagemagick \
