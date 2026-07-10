@@ -281,7 +281,9 @@ async function sendSms(to: string, body: string): Promise<boolean> {
 }
 function buildIcs(sess: any): string {
   const start = new Date(sess.start_at); const end = sess.end_at ? new Date(sess.end_at) : new Date(start.getTime() + 2 * 3600_000);
-  const desc = [sess.notes, sess.online_url ? `Online: ${sess.online_url}` : ""].filter(Boolean).join("\\n");
+  // icsEsc hvert felt (nøytraliserer injisert CRLF/;/,/\ som ellers kan smugle
+  // inn ekstra iCalendar-properties/-events); behold den litterale \n som skille.
+  const desc = [sess.notes, sess.online_url ? `Online: ${sess.online_url}` : ""].filter(Boolean).map(icsEsc).join("\\n");
   return ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//CreatorHub//Audio Showcase//NO", "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
     "BEGIN:VEVENT", `UID:${sess.id}@creatorhub`, `DTSTAMP:${icsDate(new Date())}`,
     `DTSTART:${icsDate(start)}`, `DTEND:${icsDate(end)}`,
