@@ -879,7 +879,11 @@ struct KartView: View {
                 columns {
                     VStack(spacing: 12) {
                         mapCard
-                            .frame(minHeight: 380, maxHeight: 460)
+                            // Kartet skal dominere Kart-fanen. På iPad/Mac
+                            // (romslig vindu) gir vi det vesentlig mer høyde;
+                            // iPhone holder en kompakt høyde så resten får plass.
+                            .frame(minHeight: DeviceIdiom.isPhone ? 360 : 520,
+                                   maxHeight: DeviceIdiom.isPhone ? 460 : 680)
                         legendCard
                         if showDetailPanel {
                             detailPanel
@@ -1872,7 +1876,9 @@ struct KartView: View {
                                 .font(.appScaled(size: 10, weight: .semibold))
                             Text("Planlegg møte")
                                 .font(.appScaled(size: 11, weight: .semibold))
+                                .lineLimit(1)
                         }
+                        .fixedSize(horizontal: true, vertical: false)
                         .foregroundStyle(.white)
                         .padding(.horizontal, 10).padding(.vertical, 9)
                         .background(KrBrand.cardHi, in: RoundedRectangle(cornerRadius: 9))
@@ -1886,7 +1892,9 @@ struct KartView: View {
                                 .font(.appScaled(size: 10, weight: .semibold))
                             Text("Naviger")
                                 .font(.appScaled(size: 11, weight: .semibold))
+                                .lineLimit(1)
                         }
+                        .fixedSize(horizontal: true, vertical: false)
                         .foregroundStyle(.white)
                         .padding(.horizontal, 10).padding(.vertical, 9)
                         .background(KrBrand.green.opacity(0.18), in: RoundedRectangle(cornerRadius: 9))
