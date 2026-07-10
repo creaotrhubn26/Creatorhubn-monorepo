@@ -295,6 +295,7 @@ export default function LeadgridLanding() {
       <FeatureGridSection />
       <EcosystemSection />
       <TestimonialsSection />
+      <StackReplaceSection onStartFree={() => setExpStartOpen(true)} />
       <PricingSection />
       <FinalCtaSection />
       <Footer />
@@ -1298,6 +1299,126 @@ function TestimonialsSection() {
 // ────────────────────────────────────────────────────────────
 // Pricing
 // ────────────────────────────────────────────────────────────
+
+// Kategori-priser = typiske markedspriser (2025) for tilsvarende frittstående
+// verktøy, omregnet til NOK. Vist som KATEGORIER, ikke navngitte leverandører,
+// for å være defensivt korrekt (mye enablement/SPM-prising er gated).
+const STACK_TOOLS: { cat: string; price: string; note?: string }[] = [
+  { cat: 'Felt-CRM (kart, pipeline, ruter)', price: '~440' },
+  { cat: 'Salgs-coaching / playbook', price: '~500' },
+  { cat: 'Opplæring (LMS) for egne selgere', price: '~90' },
+  { cat: 'Provisjon / incentiv-styring', price: '~385', note: '+ plattform-avgift' },
+  { cat: 'Konkurranser + premie-butikk', price: '~275' },
+  { cat: 'Kjøregodtgjørelse', price: '~130' },
+];
+
+function StackReplaceSection({ onStartFree }: { onStartFree: () => void }) {
+  return (
+    <Box sx={{ py: { xs: 8, md: 12 }, bgcolor: PALETTE.bg }}>
+      <Container maxWidth="lg">
+        <SectionTitle title="Ett verktøy, ikke fem" />
+        <Typography sx={{
+          color: PALETTE.textMuted, fontSize: { xs: 15, md: 17 }, textAlign: 'center',
+          maxWidth: 680, mx: 'auto', mb: { xs: 5, md: 7 },
+        }}>
+          De fleste team stykker sammen felt-CRM, salgs-coaching, opplæring, provisjon
+          og gamification av separate abonnementer. Leadgrid samler alt i én pris.
+        </Typography>
+
+        <Grid container spacing={3} alignItems="stretch">
+          {/* Vanlig stabel */}
+          <Grid item xs={12} md={6}>
+            <Card sx={{
+              height: '100%', bgcolor: PALETTE.card, border: `1px solid ${PALETTE.cardBorder}`,
+              borderRadius: 3, boxShadow: 'none', p: 4, display: 'flex', flexDirection: 'column',
+            }}>
+              <Typography sx={{ fontWeight: 700, fontSize: 18, mb: 0.5 }}>
+                Vanlig salgs-stabel
+              </Typography>
+              <Typography sx={{ color: PALETTE.textFaint, fontSize: 13, mb: 3 }}>
+                5–6 separate abonnementer
+              </Typography>
+              <Stack spacing={1.5} flexGrow={1}>
+                {STACK_TOOLS.map((t) => (
+                  <Stack key={t.cat} direction="row" justifyContent="space-between" alignItems="baseline" spacing={2}>
+                    <Typography sx={{ color: PALETTE.textMuted, fontSize: 14 }}>
+                      {t.cat}
+                      {t.note && (
+                        <Box component="span" sx={{ color: PALETTE.textFaint, fontSize: 12, ml: 0.5 }}>
+                          {t.note}
+                        </Box>
+                      )}
+                    </Typography>
+                    <Typography sx={{ color: PALETTE.textFaint, fontSize: 14, whiteSpace: 'nowrap' }}>
+                      {t.price} kr
+                    </Typography>
+                  </Stack>
+                ))}
+              </Stack>
+              <Divider sx={{ my: 2.5, borderColor: PALETTE.cardBorder }} />
+              <Stack direction="row" justifyContent="space-between" alignItems="baseline">
+                <Typography sx={{ fontWeight: 700, fontSize: 15 }}>Til sammen</Typography>
+                <Typography sx={{ fontWeight: 700, fontSize: 22 }}>1 300–1 800 kr</Typography>
+              </Stack>
+              <Typography sx={{ color: PALETTE.textFaint, fontSize: 12.5, mt: 0.5 }}>
+                per bruker/mnd — + oppsett og integrasjoner
+              </Typography>
+            </Card>
+          </Grid>
+
+          {/* Med Leadgrid */}
+          <Grid item xs={12} md={6}>
+            <Card sx={{
+              height: '100%', bgcolor: 'rgba(167, 139, 250, 0.10)', border: `1px solid ${PALETTE.accent}`,
+              borderRadius: 3, boxShadow: 'none', p: 4, display: 'flex', flexDirection: 'column',
+            }}>
+              <Typography sx={{ fontWeight: 700, fontSize: 18, mb: 0.5 }}>Med Leadgrid</Typography>
+              <Typography sx={{ color: PALETTE.accentBright, fontSize: 13, mb: 3 }}>
+                Alt i ett — én norsk pris
+              </Typography>
+              <Stack spacing={1.5} flexGrow={1}>
+                {[
+                  'Alt over — innebygd, ingen tillegg',
+                  'Pondus-coaching med per-manus-score',
+                  'Akademi — lær opp dine egne selgere',
+                  'Salgsledelse: provisjon, konkurranser & premier',
+                  'Native iPad, Apple Watch & Mac',
+                ].map((f) => (
+                  <Stack key={f} direction="row" spacing={1.2} alignItems="flex-start">
+                    <CheckCircleOutlineOutlined sx={{ fontSize: 18, color: PALETTE.accentBright, mt: 0.2 }} />
+                    <Typography sx={{ color: PALETTE.text, fontSize: 14 }}>{f}</Typography>
+                  </Stack>
+                ))}
+              </Stack>
+              <Divider sx={{ my: 2.5, borderColor: PALETTE.cardBorder }} />
+              <Stack direction="row" alignItems="baseline" spacing={1}>
+                <Typography sx={{ fontWeight: 700, fontSize: 22 }}>fra 799 kr</Typography>
+                <Typography sx={{ color: PALETTE.textFaint, fontSize: 14 }}>/ bruker / mnd</Typography>
+              </Stack>
+              <Button
+                onClick={onStartFree}
+                variant="contained"
+                sx={{
+                  mt: 2.5, alignSelf: 'flex-start', textTransform: 'none', fontWeight: 700,
+                  bgcolor: PALETTE.accent, color: '#1a0535', px: 3, py: 1.1, borderRadius: 999,
+                  '&:hover': { bgcolor: PALETTE.accentBright },
+                }}
+              >
+                Start gratis
+              </Button>
+            </Card>
+          </Grid>
+        </Grid>
+
+        <Typography sx={{ color: PALETTE.textFaint, fontSize: 12, textAlign: 'center', mt: 3, maxWidth: 760, mx: 'auto' }}>
+          Prisene til venstre er typiske markedspriser (2025) for tilsvarende frittstående verktøy,
+          vist som kategorier — ikke navngitte leverandører. Faktisk stabel-kostnad varierer med
+          sete-minimum, oppsett og integrasjoner.
+        </Typography>
+      </Container>
+    </Box>
+  );
+}
 
 function PricingSection() {
   return (
