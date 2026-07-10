@@ -351,9 +351,10 @@ export function setupRoleRoomAgentCoreRoutes(
       });
       writeEvent("done", { success: true, result: resultWithSummary, version: versionInfo });
     } catch (error) {
+      console.error("[role-room-agent] producer-bootstrap-stream failed", error);
       writeEvent("error", {
         success: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: "internal_error",
       });
     } finally {
       res.end();

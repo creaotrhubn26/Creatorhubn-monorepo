@@ -479,11 +479,11 @@ export async function handleAgentStream(
           usage: { inputTokens, outputTokens },
           consentId: consent.id,
           threadId,
-          error: err instanceof Error ? err.message : String(err),
+          error: 'internal_error',
         } as unknown,
       });
     }
-    writeEvent(res, 'error', { message: err instanceof Error ? err.message : String(err) });
+    writeEvent(res, 'error', { message: 'internal_error' });
     streamFinalised = true;
     res.end();
   }
