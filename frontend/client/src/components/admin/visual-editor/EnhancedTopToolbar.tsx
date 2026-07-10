@@ -134,11 +134,16 @@ export const EnhancedTopToolbar: React.FC<EnhancedTopToolbarProps> = ({
 
   const handleSaveClick = useCallback(() => {
     setSaveStatus('saving');
-    saveProject();
-    addNotification({
+    const persisted = saveProject();
+    addNotification(persisted ? {
       type: 'success',
       title: 'Saved',
-      message: 'Project saved successfully',
+      message: 'Saved to this browser (not a live/shared save — nothing leaves your device).',
+      read: false,
+    } : {
+      type: 'error',
+      title: 'Save failed',
+      message: 'Could not save — this browser\'s local storage is likely full. Your latest changes are not saved.',
       read: false,
     });
   }, [addNotification, saveProject]);
@@ -146,11 +151,16 @@ export const EnhancedTopToolbar: React.FC<EnhancedTopToolbarProps> = ({
   // Publish handler
   const handlePublish = useCallback(() => {
     setSaveStatus('saving');
-    publishProject();
-    addNotification({
+    const persisted = publishProject();
+    addNotification(persisted ? {
       type: 'success',
-      title: 'Published',
-      message: 'Project published successfully',
+      title: 'Published (local only)',
+      message: 'Marked as published in this browser. This does not deploy anything or become visible to site visitors.',
+      read: false,
+    } : {
+      type: 'error',
+      title: 'Publish failed',
+      message: 'Could not publish — this browser\'s local storage is likely full.',
       read: false,
     });
   }, [publishProject, addNotification]);
@@ -208,6 +218,7 @@ export const EnhancedTopToolbar: React.FC<EnhancedTopToolbarProps> = ({
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 0 }}>
         <IconButton
           size="small"
+          aria-label="Back"
           sx={{
             ...toolbarButtonSx,
             width: 42,
@@ -408,6 +419,7 @@ export const EnhancedTopToolbar: React.FC<EnhancedTopToolbarProps> = ({
         >
           <IconButton
             size="small"
+            aria-label="View history"
             onClick={(e) => setHistoryAnchor(e.currentTarget)}
             sx={toolbarButtonSx}>
             <HistoryIcon fontSize="small" />
@@ -435,30 +447,36 @@ export const EnhancedTopToolbar: React.FC<EnhancedTopToolbarProps> = ({
             timeout: shouldAnimate() ? TOOLBAR_ANIMATIONS.menu.duration : 0
           }}
         >
+          {(state.historyEntries ?? []).length > 0 && (
+            <MenuItem disabled sx={{ opacity: '1 !important', color: 'rgba(255,255,255,0.5)', fontSize: '0.75rem' }}>
+              Read-only activity log — entries aren't clickable/restorable
+            </MenuItem>
+          )}
           {(state.historyEntries ?? [])
             .slice(-20)
             .reverse()
             .map((entry: HistoryEntry) => (
-              <MenuItem 
-                key={entry.id} 
-                onClick={() => setHistoryAnchor(null)}
+              <Box
+                key={entry.id}
                 sx={{
-                  color: 'rgba(255,255,255,0.88)',
-                  transition: getTransition('background-color', TOOLBAR_ANIMATIONS.iconButton.duration, TOOLBAR_ANIMATIONS.iconButton.easing),
-                  '&:hover': {
-                    bgcolor: 'rgba(255,255,255,0.08)',
-                  },
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1.5,
+                  px: 2,
+                  py: 1,
+                  cursor: 'default',
                 }}
               >
-                <ListItemIcon sx={{ color: 'rgba(255,255,255,0.68)' }}>
+                <ListItemIcon sx={{ color: 'rgba(255,255,255,0.68)', minWidth: 'auto' }}>
                   <HistoryIcon fontSize="small" sx={{ color: 'inherit' }} />
                 </ListItemIcon>
                 <ListItemText
                   primary={entry.description}
                   secondary={new Date(entry.timestamp).toLocaleTimeString()}
+                  primaryTypographyProps={{ sx: { color: 'rgba(255,255,255,0.88)' } }}
                   secondaryTypographyProps={{ sx: { color: 'rgba(255,255,255,0.54)' } }}
                 />
-              </MenuItem>
+              </Box>
             ))}
           {(!state.historyEntries || state.historyEntries.length === 0) && (
             <MenuItem disabled>

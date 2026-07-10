@@ -32,6 +32,9 @@ const InviteRequestForm = React.lazy(() => import('@/components/InviteRequestFor
 import { GdprNotice } from '@/components/common/GdprNotice';
 import { useLanguage } from '@/components/language-provider';
 import { getPublicSocialProfiles, PUBLIC_BRAND_LINKS } from '@/lib/publicBrandLinks';
+import BlockRenderer from '@/components/role-room/cms/BlockRenderer';
+import { useCmsBlocks } from '@/components/role-room/cms/useCmsBlocks';
+import { DEFAULT_LOCALE } from '@/components/role-room/cms/blockSchema';
 
 type Locale = 'no' | 'en';
 type LandingMode = 'desktop' | 'mobile';
@@ -541,6 +544,7 @@ export default function CreatorHubInvestorLanding({
   const [publicPricingPlans, setPublicPricingPlans] = useState<CreatorHubPublicPricingPlan[] | null>(null);
   const [, setLocation] = useLocation();
   const { language, setLanguage } = useLanguage();
+  const cmsBlocks = useCmsBlocks('creatorhub-home');
   const isMobile = mode === 'mobile';
   const locale = language as Locale;
   const copy = landingCopy[locale];
@@ -732,6 +736,10 @@ export default function CreatorHubInvestorLanding({
     };
   })();
   const creatorhubSocialLinks = getPublicSocialProfiles('creatorhub');
+
+  if (cmsBlocks) {
+    return <BlockRenderer blocks={cmsBlocks} locale={DEFAULT_LOCALE} />;
+  }
 
   return (
     <Box sx={{ bgcolor: '#05060a', color: '#f6f2ea' }}>

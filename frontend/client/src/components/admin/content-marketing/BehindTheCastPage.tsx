@@ -1,6 +1,9 @@
 import { Box, Chip, Container, Stack, Typography } from '@mui/material';
 import TheaterComedyIcon from '@mui/icons-material/TheaterComedy';
 import NewsletterSignupBlock from './NewsletterSignupBlock';
+import BlockRenderer from '../../role-room/cms/BlockRenderer';
+import { useCmsBlocks } from '../../role-room/cms/useCmsBlocks';
+import { DEFAULT_LOCALE } from '../../role-room/cms/blockSchema';
 
 /**
  * Behind the Cast-pillar — historier fra ekte caster gjennom The Role Room.
@@ -61,6 +64,12 @@ const KIND_COLOR: Record<Story['kind'], string> = {
 };
 
 export function BehindTheCastPage() {
+  const cmsBlocks = useCmsBlocks('bak-castingen');
+
+  if (cmsBlocks) {
+    return <BlockRenderer blocks={cmsBlocks} locale={DEFAULT_LOCALE} />;
+  }
+
   return (
     <Box
       component="article"

@@ -20,7 +20,17 @@ export function useCmsBlocks(slug: string): Block[] | null {
   useEffect(() => {
     let cancelled = false;
     fetch(`/api/cms/pages/${slug}`, { credentials: 'same-origin' })
-      .then((res) => (res.ok ? res.json() : null))
+      .then((res) => {
+        if (res.ok) return res.json();
+        if (res.status !== 404) {
+          // 404 = forventet (siden har ingen CMS-override ennå), men
+          // andre statuskoder er en reell feil (backend/DB nede) og skal
+          // ikke se identiske ut som "ingen override" — logg til konsoll
+          // slik at et utfall ikke er usynlig for QA/on-call.
+          console.error(`[cms] uventet status ${res.status} for /api/cms/pages/${slug}`);
+        }
+        return null;
+      })
       .then((data) => {
         if (cancelled || !data?.success || !data?.page?.content) return;
         const content = data.page.content as Record<string, unknown>;
@@ -28,8 +38,8 @@ export function useCmsBlocks(slug: string): Block[] | null {
           setBlocks(content.blocks);
         }
       })
-      .catch(() => {
-        // Stillegående fallback — hardkodet innhold rendres.
+      .catch((err) => {
+        console.error(`[cms] nettverksfeil ved henting av /api/cms/pages/${slug}:`, err);
       });
     return () => {
       cancelled = true;
@@ -39,6 +49,7 @@ export function useCmsBlocks(slug: string): Block[] | null {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const handler = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
       if (!event.data || typeof event.data !== 'object') return;
       const msg = event.data as { type?: string; pageKey?: string; content?: Record<string, unknown> };
       if (msg.type !== 'roleroom-cms-preview') return;
@@ -51,7 +62,7 @@ export function useCmsBlocks(slug: string): Block[] | null {
       }
     };
     window.addEventListener('message', handler);
-    window.parent?.postMessage({ type: 'roleroom-cms-preview-ready', pageKey: slug }, '*');
+    window.parent?.postMessage({ type: 'roleroom-cms-preview-ready', pageKey: slug }, window.location.origin);
     return () => window.removeEventListener('message', handler);
   }, [slug]);
 

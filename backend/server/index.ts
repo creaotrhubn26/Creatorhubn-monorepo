@@ -14874,6 +14874,9 @@ app.get("/api/profession/config/:profession", async (req, res) => {
 });
 
 app.post("/api/profession/config/:profession", async (req, res) => {
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+
   const profession =
     typeof req.params.profession === "string"
       ? req.params.profession.trim().toLowerCase()
@@ -25657,9 +25660,18 @@ function readCompatUserKvParamKey(rawValue: unknown): string | null {
   }
 }
 
+// Secret-shaped key patterns are blocked for unauthenticated callers too:
+// every anonymous request shares the literal userId "guest" below (there is
+// no per-visitor anonymous identity), so any non-academy key an anonymous
+// caller could write/read here is visible to every OTHER anonymous visitor —
+// a real cross-visitor leak for anything secret-shaped (e.g. a user-supplied
+// third-party API key stored via /api/user/kv).
+const SENSITIVE_KV_KEY_PATTERN = /(api[_-]?key|apikey|access[_-]?token|auth[_-]?token|secret|password|credential|private[_-]?key)/i;
+
 function isProtectedAcademyKvKey(rawKey: unknown): boolean {
   const normalizedKey = readString(rawKey)?.trim().toLowerCase();
-  return Boolean(normalizedKey && normalizedKey.startsWith("academy"));
+  if (!normalizedKey) return false;
+  return normalizedKey.startsWith("academy") || SENSITIVE_KV_KEY_PATTERN.test(normalizedKey);
 }
 
 function resolveUserKvScope(req: express.Request): {

@@ -29,6 +29,9 @@ import {
   resolvePublicBrandFromWindow,
 } from '@/lib/publicBrandLinks';
 import { useTheming } from '../utils/theming-helper';
+import BlockRenderer from '../components/role-room/cms/BlockRenderer';
+import { useCmsBlocks } from '../components/role-room/cms/useCmsBlocks';
+import { DEFAULT_LOCALE } from '../components/role-room/cms/blockSchema';
 
 type LegalBrand = {
   appName: string;
@@ -209,6 +212,7 @@ function getPrivacyBrand(): LegalBrand {
 }
 
 const PrivacyPolicy: React.FC = () => {
+  const cmsBlocks = useCmsBlocks('privacy-policy');
   const [, setLocation] = useLocation();
   const theming = useTheming('photographer');
   const brandKey = resolvePublicBrandFromWindow();
@@ -234,6 +238,10 @@ const PrivacyPolicy: React.FC = () => {
     border: `1px solid ${brand.accentBorder}`,
     borderRadius: '14px',
   } as const;
+
+  if (cmsBlocks) {
+    return <BlockRenderer blocks={cmsBlocks} locale={DEFAULT_LOCALE} />;
+  }
 
   return (
     <Box sx={{ minHeight: '100vh', background: brand.pageBg, py: 6 }}>

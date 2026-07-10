@@ -70,6 +70,10 @@ interface LivePreviewPanelProps {
     javascript?: string;
   };
   mode?: 'html' | 'react';
+  /** Optional external ref to the preview iframe — lets a parent (e.g. its own
+   * AccessibilityChecker instance) target the same rendered iframe instead of
+   * only the one this panel keeps privately. Falls back to an internal ref. */
+  iframeRef?: React.RefObject<HTMLIFrameElement>;
 }
 
 type DeviceType = 'mobile' | 'tablet' | 'desktop' | 'custom';
@@ -118,9 +122,10 @@ const DEVICE_PRESETS = [
   { name: 'Desktop 4K', width: 3840, height: 2160 },
 ];
 
-export const LivePreviewPanel: React.FC<LivePreviewPanelProps> = ({ code, mode = 'react' }) => {
+export const LivePreviewPanel: React.FC<LivePreviewPanelProps> = ({ code, mode = 'react', iframeRef: externalIframeRef }) => {
   const { state } = useVisualEditor();
-  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const internalIframeRef = useRef<HTMLIFrameElement>(null);
+  const iframeRef = externalIframeRef ?? internalIframeRef;
   const previewSurfaceRef = useRef<HTMLDivElement>(null);
   const recordingSessionRef = useRef<PreviewRecordingSession | null>(null);
   const [device, setDevice] = useState<DeviceType>(
@@ -422,6 +427,18 @@ export const LivePreviewPanel: React.FC<LivePreviewPanelProps> = ({ code, mode =
     return html;
   };
 
+  // element.props.* is admin/user-authored content interpolated straight into
+  // an HTML string later fed to iframeDoc.write() — escape it so a saved
+  // project can't inject markup/scripts into the preview.
+  const escapeHtml = (value: unknown): string => {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  };
+
   const generateElementHTML = (element: EditorElement): string => {
     const baseStyle = `
       left: ${element.x}px;
@@ -442,18 +459,18 @@ export const LivePreviewPanel: React.FC<LivePreviewPanelProps> = ({ code, mode =
 
     switch (element.type) {
       case 'button':
-        return `<button class="element button-element" id="${element.id}" style="${style}">${element.props.text || 'Button'}</button>\n`;
+        return `<button class="element button-element" id="${element.id}" style="${style}">${escapeHtml(element.props.text || 'Button')}</button>\n`;
 
       case 'text':
-        return `<div class="element text-element" id="${element.id}" style="${style}">${element.props.text || 'Text'}</div>\n`;
+        return `<div class="element text-element" id="${element.id}" style="${style}">${escapeHtml(element.props.text || 'Text')}</div>\n`;
 
       case 'container':
         return `<div class="element container-element" id="${element.id}" style="${style}"></div>\n`;
 
       case 'image': {
-        const src = element.props.src || 'https://via.placeholder.com/300x200?text=Image';
-        const alt = element.props.alt || 'Image';
-        return `<img class="element image-element" id="${element.id}" src="${src}" alt="${alt}" style="${style}" />\n`;
+        const src = escapeHtml(element.props.src || 'https://via.placeholder.com/300x200?text=Image');
+        const alt = escapeHtml(element.props.alt || 'Image');
+        return `<img class="element image-element" id="${element.id}" src="${src}" alt="${alt}" style="${style}" onerror="this.onerror=null;this.src='https://via.placeholder.com/300x200?text=Image';" />\n`;
       }
 
       default:

@@ -17,6 +17,9 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { useLocation, useParams } from 'wouter';
 import { getMyAccess, acceptInvite, AREA_LABELS, type MyAssistantAccess, type AssistantArea } from '../../services/roleRoomAssistantsApi';
+import BlockRenderer from '../../cms/BlockRenderer';
+import { useCmsBlocks } from '../../cms/useCmsBlocks';
+import { DEFAULT_LOCALE } from '../../cms/blockSchema';
 import {
   Alert,
   Box,
@@ -94,6 +97,7 @@ export default function ClientWorkspaceShell({
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [activeTab, setActiveTab] = useState<TabValue>(getInitialTab);
+  const cmsHeroBlocks = useCmsBlocks('clientworkspace');
 
   // ?preview=true → produsent ser sin egen klient-flate
   const isPreviewMode = useMemo(() => {
@@ -217,6 +221,12 @@ export default function ClientWorkspaceShell({
           </Stack>
         </Container>
       </Box>
+
+      {cmsHeroBlocks && cmsHeroBlocks.length > 0 ? (
+        <Container maxWidth="lg" sx={{ pt: 2 }}>
+          <BlockRenderer blocks={cmsHeroBlocks} locale={DEFAULT_LOCALE} />
+        </Container>
+      ) : null}
 
       {/* Tab-navigasjon — sticky under header */}
       <Box

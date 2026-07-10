@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react';
 import DOMPurify from 'dompurify';
 import { Box, Container, Stack, Typography, Chip } from '@mui/material';
 import NewsletterSignupBlock from './NewsletterSignupBlock';
+import BlockRenderer from '../../role-room/cms/BlockRenderer';
+import { useCmsBlocks } from '../../role-room/cms/useCmsBlocks';
+import { DEFAULT_LOCALE } from '../../role-room/cms/blockSchema';
 
 /**
  * Public brief-arkiv på theroleroom.com.
@@ -47,6 +50,7 @@ export function PublicBriefIndex() {
   const [issues, setIssues] = useState<BriefSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const cmsHeroBlocks = useCmsBlocks('brief');
 
   useEffect(() => {
     fetch('/api/newsletter/role-room/brief')
@@ -70,6 +74,11 @@ export function PublicBriefIndex() {
   return (
     <Box component="article" sx={{ width: '100%', minHeight: '100vh', bgcolor: '#0a0a0f', color: '#e2e8f0', py: { xs: 5, md: 8 } }}>
       <Container maxWidth="md">
+        {cmsHeroBlocks && cmsHeroBlocks.length > 0 ? (
+          <Box sx={{ mb: 5 }}>
+            <BlockRenderer blocks={cmsHeroBlocks} locale={DEFAULT_LOCALE} />
+          </Box>
+        ) : null}
         <Box sx={{ mb: 5 }}>
           <Typography
             sx={{ fontFamily: '"Courier New", Courier, monospace', fontSize: { xs: '0.85rem', md: '0.95rem' }, letterSpacing: '0.25em', textTransform: 'uppercase', color: '#a78bfa', fontWeight: 700, mb: 1.5 }}

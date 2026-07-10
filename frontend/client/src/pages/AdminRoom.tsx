@@ -103,6 +103,7 @@ import { NewsletterStudioTab } from '../components/admin/content-marketing/Newsl
 import { RoleRoomTesterInviteDialog } from '../components/invite/RoleRoomTesterInviteDialog';
 import { STUDENT_PAGE_CONFIGS } from '../components/role-room/components/StudentSEOPage';
 import { COMPETITOR_CONFIGS } from '../components/role-room/components/CompetitorComparisonPage';
+import { MARKETING_PAGES, PILLAR_LABELS } from '../components/admin/content-marketing/marketingPagesConfig';
 import BlockListEditor from '../components/role-room/cms/BlockListEditor';
 import RevisionsDrawer from '../components/role-room/cms/RevisionsDrawer';
 import { createBlock, isBlockArray, type Block, type BlocksContent } from '../components/role-room/cms/blockSchema';
@@ -2431,12 +2432,38 @@ function CmsListView({ onEdit }: { onEdit: (slug: string) => void }) {
     }));
     const landingEntries = [
       { slug: 'home', variant: 'landing', h1: 'The Role Room (forside)', audience: '/' },
-      { slug: 'talentportal', variant: 'landing', h1: 'Talentportal', audience: 'For skuespillere og crew' },
+      { slug: 'talentportal', variant: 'landing', h1: 'Talentportal (hero-seksjon)', audience: 'For skuespillere og crew — kun banner øverst, ikke hele siden' },
+      { slug: 'agencyportal', variant: 'landing', h1: 'Agency-portal (hero-seksjon)', audience: 'For byråer — kun banner øverst, ikke hele siden' },
       { slug: 'utdanningsinstitusjon', variant: 'landing', h1: 'For utdanningsinstitusjoner', audience: 'Skoler og fagmiljø' },
       { slug: 'alternatives', variant: 'competitor', h1: 'Casting-plattform alternativer', audience: 'Indeks-side' },
       { slug: 'presse', variant: 'landing', h1: 'Pressepakke', audience: 'Journalister og partnere' },
+      { slug: 'for-byraer', variant: 'landing', h1: 'For byråer', audience: 'B2B-landingsside' },
+      { slug: 'faq', variant: 'landing', h1: 'Ofte stilte spørsmål', audience: 'Offentlig FAQ' },
+      { slug: 'pitch', variant: 'landing', h1: 'Pitch deck', audience: 'Investorer' },
+      { slug: 'privacy-policy', variant: 'landing', h1: 'Personvernerklæring', audience: 'Juridisk — deles med CreatorHub-varianten av samme URL' },
+      { slug: 'brief', variant: 'landing', h1: 'Norwegian Casting Brief (arkiv-intro)', audience: '/brief — kun toppseksjon over utgave-listen' },
+      { slug: 'clientportal', variant: 'landing', h1: 'Klientportal (banner)', audience: 'Klienter med magic-link — kun banner øverst, ikke hele siden' },
+      { slug: 'clientworkspace', variant: 'landing', h1: 'Klient-workspace (banner)', audience: 'Klienter med prosjekttilgang — kun banner mellom header og faner' },
     ];
-    return [...studentEntries, ...competitorEntries, ...landingEntries];
+    const marketingEntries = MARKETING_PAGES.map((page) => ({
+      slug: page.key,
+      variant: 'landing' as const,
+      h1: page.title,
+      audience: PILLAR_LABELS[page.pillar],
+    }));
+    const creatorHubEntries = [
+      { slug: 'creatorhub-home', variant: 'landing' as const, h1: 'CreatorHub (forside)', audience: 'creatorhubn.com /' },
+      { slug: 'about', variant: 'landing' as const, h1: 'Om CreatorHub', audience: '/about, /about-us' },
+      { slug: 'request-access', variant: 'landing' as const, h1: 'Be om tilgang', audience: '/request-access' },
+      { slug: 'creatorhub-innovasjon', variant: 'landing' as const, h1: 'Tidum / CreatorHub Innovasjon', audience: '/creatorhub-innovasjon' },
+      { slug: 'terms-and-conditions', variant: 'landing' as const, h1: 'Vilkår og betingelser', audience: 'Juridisk — deles med Role Room-varianten av samme URL' },
+      { slug: 'nextrole', variant: 'landing' as const, h1: 'NextRole (salgsside)', audience: '/nextrole' },
+      { slug: 'academy', variant: 'landing' as const, h1: 'Academy (hero-seksjon)', audience: '/academy — kun banner øverst, ikke kurslisten' },
+      { slug: 'pricing', variant: 'landing' as const, h1: 'Priser (offentlig side)', audience: '/pricing — sammenlign planer' },
+      { slug: 'cookie-policy', variant: 'landing' as const, h1: 'Cookie-erklæring', audience: '/cookie-policy — deles med Role Room-varianten av samme URL' },
+      { slug: 'data-deletion', variant: 'landing' as const, h1: 'Sletting av brukerdata', audience: '/data-deletion' },
+    ];
+    return [...studentEntries, ...competitorEntries, ...landingEntries, ...marketingEntries, ...creatorHubEntries];
   }, []);
 
   const [cmsPages, setCmsPages] = useState<CmsPageRow[]>([]);
@@ -2586,7 +2613,10 @@ function CmsEditView({ slug, onClose }: { slug: string; onClose: () => void }) {
   }));
   // Block-CMS state. Når `blocks` er null bruker editoren legacy-skjema-felter.
   const [blocks, setBlocks] = useState<Block[] | null>(null);
-  const [published, setPublished] = useState(true);
+  // Default utkast for nye sider — matcher backend-defaulten i cms-pages-routes.ts
+  // (published=false når raden ikke finnes fra før). Lastes over med faktisk
+  // verdi fra `data.page.published` under hvis en CMS-override allerede finnes.
+  const [published, setPublished] = useState(false);
   const [publishAt, setPublishAt] = useState<string>('');
   const [unpublishAt, setUnpublishAt] = useState<string>('');
   const [loading, setLoading] = useState(true);
@@ -2609,7 +2639,7 @@ function CmsEditView({ slug, onClose }: { slug: string; onClose: () => void }) {
       const previewContent = blocks ? { blocks } : content;
       win.postMessage(
         { type: 'roleroom-cms-preview', pageKey: slug, content: previewContent },
-        '*',
+        window.location.origin,
       );
     });
     return () => cancelAnimationFrame(raf);
@@ -2618,12 +2648,13 @@ function CmsEditView({ slug, onClose }: { slug: string; onClose: () => void }) {
   // Vent til iframe sender "preview-ready" så vi vet at den kan motta postMessage
   useEffect(() => {
     const handler = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
       if (event.data?.type === 'roleroom-cms-preview-ready' && event.data?.pageKey === slug) {
         previewReadyRef.current = true;
         const previewContent = blocks ? { blocks } : content;
         iframeRef.current?.contentWindow?.postMessage(
           { type: 'roleroom-cms-preview', pageKey: slug, content: previewContent },
-          '*',
+          window.location.origin,
         );
       }
     };
