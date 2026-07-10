@@ -13,7 +13,7 @@
 
 | Vei | Status | Vurdering |
 |---|---|---|
-| Offisiell Google Trends API (alpha) | `awaitingApproval` er ikke engang startet — søknad må sendes (**manuell eier-handling**) | Gir interest-over-time, interest-by-region, related topics/queries med konsistent skalering; gratis; kvoter ukjent til tilgang gis |
+| Offisiell Google Trends API (alpha) | `awaitingApproval` — **søknad sendt 2026-07-10** (skjema: support.google.com/trends/contact/trends_api); Google svarer per e-post, løpende opptak | Gir interest-over-time, interest-by-region, related topics/queries med konsistent skalering (5-års rullerende vindu, dag/uke/måned/år, land + sub-region); gratis; kvoter ukjent til tilgang gis |
 | Trends BigQuery-datasett (`bigquery-public-data.google_trends`) | Tilgjengelig i dag med GCP-prosjekt | Dekker kun top terms/rising queries (primært US-fokusert DMA-nivå; internasjonal tabell finnes men begrenset) — supplement, ikke erstatning |
 | Manuell CSV-eksport fra trends.google.com | Tilgjengelig i dag | Lovlig for intern bruk; perfekt match for import-flyten; skaleres ikke, men dekker MVP-demo og pilot-kunder |
 | Google Ads Keyword Planner | Tilgjengelig (krever developer-token-avklaring) | Absolutt volum-proxy — komplementær, ikke Trends-ekvivalent |

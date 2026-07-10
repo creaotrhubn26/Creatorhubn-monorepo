@@ -82,8 +82,8 @@ utgir seg for å være live.
 
 Disse kan ikke automatiseres fra kodebasen:
 
-1. **Google Trends API alpha**: søk om tilgang (Google-skjema, krever
-   use-case-beskrivelse). Inntil svar: bruk Ads-data + manuell CSV-import
+1. **Google Trends API alpha**: ~~søk om tilgang~~ **søknad sendt 2026-07-10**
+   (`awaitingApproval`). Inntil svar: bruk Ads-data + manuell CSV-import
    (se `03-google-trends-assessment.md`).
 2. **Google Ads developer token**: tokenet FINNES i Render (verifisert
    2026-07-10) — gjenstår kun å bekrefte tilgangsklassen (test/basic/standard)
