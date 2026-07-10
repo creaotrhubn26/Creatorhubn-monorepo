@@ -20,7 +20,7 @@
  *      Rapporter + "Alt du trenger samlet"
  *   6. Økosystem-visual — "Slik henger alt sammen i Leadgrid"
  *   7. Testimonials — 3 sitater
- *   8. Pricing — Starter 249 / Pro 799 / Team 1499
+ *   8. Pricing — Solo Free 0 / Solo Pro 799 / Agency 2999 (matcher /leadgrid/pricing)
  *   9. Final CTA + Footer
  *
  * UI-bilder (iPad/iPhone/Mac) er device-rammer fra /public/leadgrid/device-*.png
@@ -118,19 +118,19 @@ const TESTIMONIALS: { quote: string; name: string; role: string }[] = [];
 
 const PRICING = [
   {
-    name: 'Starter', price: 249, popular: false,
-    blurb: 'For små team som vil komme i gang.',
-    perks: ['Ubegrenset leads', 'Kart og filtre', 'E-post og oppgaver', 'Standard rapporter'],
+    name: 'Solo Free', price: 0, popular: false,
+    blurb: 'Gratis for solo-selgere. Kom i gang på 2 min.',
+    perks: ['1 kunde · 3 auto-onboards/mnd', 'Kart, Kanban og filtre', 'Native iPad-app', 'Intelligence + Momentum Engine'],
   },
   {
-    name: 'Pro', price: 799, popular: true,
-    blurb: 'For team som vil skalere salget.',
-    perks: ['Alt i Starter', 'AI-assistent', 'SMS og automatisering', 'Avanserte rapporter'],
+    name: 'Solo Pro', price: 799, popular: true,
+    blurb: 'Full Leadgrid for én selger — alle AI-features.',
+    perks: ['Alt i Solo Free', 'Forecasting + Market Scan', 'Voice Memo + AI-møtenotater', '1 000 AI-kall/mnd'],
   },
   {
-    name: 'Team', price: 1499, popular: false,
-    blurb: 'For større team med avanserte behov.',
-    perks: ['Alt i Pro', 'Team-roller og tillatelser', 'Integrasjoner (CRM, kalender)', 'Dedikert onboarding'],
+    name: 'Agency', price: 2999, popular: false,
+    blurb: 'For salgs-team med flere selgere.',
+    perks: ['Alt i Solo Pro', 'Multi-bruker (5 inkl.) + team-roller', 'Territorie-grids m/ geofence', 'White-label klient-portal'],
   },
 ];
 
@@ -216,9 +216,9 @@ export default function LeadgridLanding() {
       description: content,
       url: 'https://theroleroom.com/leadgrid',
       offers: [
-        { '@type': 'Offer', name: 'Solo (gratis)', price: '0', priceCurrency: 'NOK' },
-        { '@type': 'Offer', name: 'Solo Pro', price: '199', priceCurrency: 'NOK' },
-        { '@type': 'Offer', name: 'Agency', price: '990', priceCurrency: 'NOK' },
+        { '@type': 'Offer', name: 'Solo Free', price: '0', priceCurrency: 'NOK' },
+        { '@type': 'Offer', name: 'Solo Pro', price: '799', priceCurrency: 'NOK' },
+        { '@type': 'Offer', name: 'Agency', price: '2999', priceCurrency: 'NOK' },
       ],
       provider: {
         '@type': 'Organization',
@@ -257,7 +257,7 @@ export default function LeadgridLanding() {
         {
           '@type': 'Question',
           name: 'Hvor mye koster Leadgrid?',
-          acceptedAnswer: { '@type': 'Answer', text: 'Solo er gratis (1 kunde, 3 auto-onboards/mnd). Solo Pro er 199 kr/mnd (10 kunder, 30 auto-onboards). Agency er 990 kr/mnd med ubegrensede kunder og white-label klient-portal.' },
+          acceptedAnswer: { '@type': 'Answer', text: 'Solo Free er gratis (1 kunde, 3 auto-onboards/mnd). Solo Pro er 799 kr/mnd (10 kunder, alle AI-features). Agency er 2 999 kr/mnd med multi-bruker, territorie-grids og white-label klient-portal.' },
         },
         {
           '@type': 'Question',
@@ -1339,14 +1339,16 @@ function PricingSection() {
                 </Typography>
                 <Stack direction="row" alignItems="baseline" spacing={1} mb={1}>
                   <Typography sx={{ fontWeight: 700, fontSize: 40, lineHeight: 1 }}>
-                    kr {p.price}
+                    {p.price === 0 ? 'Gratis' : `kr ${p.price}`}
                   </Typography>
-                  <Typography sx={{ color: PALETTE.textFaint, fontSize: 14 }}>
-                    /mnd
-                  </Typography>
+                  {p.price !== 0 && (
+                    <Typography sx={{ color: PALETTE.textFaint, fontSize: 14 }}>
+                      /mnd
+                    </Typography>
+                  )}
                 </Stack>
                 <Typography sx={{ color: PALETTE.textFaint, fontSize: 12, mb: 3 }}>
-                  Faktureres årlig, ingen binding.
+                  {p.price === 0 ? 'Ingen kortkrav, ingen binding.' : 'Rimeligere ved årlig fakturering. Ingen binding.'}
                 </Typography>
                 <Stack spacing={1} mb={3} flexGrow={1}>
                   {p.perks.map((perk) => (
@@ -1376,7 +1378,7 @@ function PricingSection() {
                   }}
                   href="/"
                 >
-                  {p.name === 'Team' ? 'Kontakt oss' : 'Start gratis'}
+                  {p.name === 'Agency' ? 'Kontakt oss' : 'Start gratis'}
                 </Button>
               </Card>
             </Grid>
