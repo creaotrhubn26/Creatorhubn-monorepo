@@ -33,6 +33,16 @@ class RoleRoomInfographic extends HTMLElement {
   set fontsCss(css: string) { this._fontsCss = css; this.render(); }
 
   connectedCallback() {
+    // Pre-upgrade-properties: hvis en app satte .template/.data/.fontsCss FØR elementet
+    // ble definert (async script-last), sitter verdien som en own-property som SKYGGER
+    // setteren → data «forsvinner». Løft dem tilbake via setteren.
+    for (const prop of ['template', 'data', 'fontsCss'] as const) {
+      if (Object.prototype.hasOwnProperty.call(this, prop)) {
+        const value = (this as unknown as Record<string, unknown>)[prop];
+        delete (this as unknown as Record<string, unknown>)[prop];
+        (this as unknown as Record<string, unknown>)[prop] = value;
+      }
+    }
     if (!this._frame) {
       const root = this.attachShadow({ mode: 'open' });
       const style = document.createElement('style');
