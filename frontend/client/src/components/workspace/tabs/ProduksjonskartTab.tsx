@@ -88,7 +88,7 @@ const ProduksjonskartTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     : ROWS;
   const fokus = events ? (events.find((e: any) => e.status === 'in_progress' || e.status === 'current') || events[0]) : null;
   return (
-    <Stack direction="row" spacing={2.5} sx={{ alignItems: 'flex-start' }}>
+    <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2.5} sx={{ alignItems: 'flex-start' }}>
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Typography sx={{ fontSize: 20, fontWeight: 800, mb: 2 }}>Production Map</Typography>
 
@@ -180,7 +180,7 @@ const ProduksjonskartTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       </Box>
 
       {/* Live koordinering (høyre) */}
-      <Box sx={{ width: 320, flexShrink: 0 }}>
+      <Box sx={{ width: { xs: '100%', lg: 320 }, flexShrink: 0 }}>
         <WsCard sx={{ mb: 2 }}>
           <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
             <Typography sx={{ fontSize: 14, fontWeight: 700 }}>Live koordinering</Typography>

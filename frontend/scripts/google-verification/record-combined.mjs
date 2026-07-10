@@ -48,15 +48,36 @@ const ADS_SCOPES = [
   "https://www.googleapis.com/auth/tagmanager.publish",
 ];
 
-// ── Segment B: Drive/Gmail (workspace)-klient (registrert creatorhub-callback) ──
+// ── Segment B: Workspace-klient (registrert creatorhub-callback) ──
 const WS_CLIENT = "256648631702-7s92vtepjrmv68eb9iick95npivkgs3j.apps.googleusercontent.com";
 const WS_REDIRECT = `${BASE}/api/creatorhub/google/oauth/callback`;
-// Kun scopene Google flagget for denne saken — fokusert consent-skjerm.
+// Alle restricted + sensitive familier workspace-klienten faktisk bruker og
+// demonstrerer på demo-siden — så consent-skjermen i videoen matcher scope-lista.
 const WS_SCOPES = [
+  // Drive (restricted)
   "https://www.googleapis.com/auth/drive",
   "https://www.googleapis.com/auth/drive.readonly",
+  "https://www.googleapis.com/auth/drive.meet.readonly",
+  "https://www.googleapis.com/auth/drive.scripts",
+  // Gmail (restricted)
   "https://www.googleapis.com/auth/gmail.readonly",
   "https://www.googleapis.com/auth/gmail.compose",
+  // Meet + Apps Script API
+  "https://www.googleapis.com/auth/meetings.space.readonly",
+  "https://www.googleapis.com/auth/script.projects",
+  // Calendar / Docs / Kontakter / Tasks (sensitive)
+  "https://www.googleapis.com/auth/calendar",
+  "https://www.googleapis.com/auth/calendar.events",
+  "https://www.googleapis.com/auth/documents",
+  "https://www.googleapis.com/auth/contacts",
+  "https://www.googleapis.com/auth/tasks",
+  // Google Chat (restricted)
+  "https://www.googleapis.com/auth/chat.spaces.create",
+  "https://www.googleapis.com/auth/chat.messages",
+  "https://www.googleapis.com/auth/chat.messages.readonly",
+  // YouTube (sensitive)
+  "https://www.googleapis.com/auth/youtube",
+  "https://www.googleapis.com/auth/youtube.upload",
 ];
 
 const authUrl = (clientId, redirectUri, scopes, state) =>
@@ -136,10 +157,10 @@ await page.waitForTimeout(3000);
 log("SEGMENT B — Drive/Gmail-consent. Åpner Google …");
 await page.goto(authUrl(WS_CLIENT, WS_REDIRECT, WS_SCOPES, "verifB"), { waitUntil: "domcontentloaded" }).catch(() => {});
 banner([
-  "SEGMENT B (Drive/Gmail) — opptaket går:",
+  "SEGMENT B (Workspace) — opptaket går:",
   "1) Logg inn / velg Google-kontoen.",
-  "2) La consent-skjermen vises: Drive (full), Se Drive-filer, Les e-post,",
-  "   Administrer utkast og send e-post.",
+  "2) La consent-skjermen vises: Drive, Gmail, Calendar/Meet, Docs,",
+  "   Kontakter, Tasks, Google Chat og YouTube.",
   `   URL-linja viser client_id=256648631702-7s92v…`,
   "3) Klikk «Fortsett»/«Tillat». Script-et går videre automatisk.",
 ]);
@@ -189,12 +210,32 @@ if (demoPage) {
   await demoPage.waitForTimeout(1200);
 
   const actions = [
+    // Workspace (Drive / Docs / Calendar+Meet)
+    "Load Drive Files",
+    "Upload Drive Demo File",
+    "Create Docs Demo Contract",
+    "Create Google Meet Demo",
+    // Kommunikasjon (Gmail / Kontakter / Tasks / Chat)
+    "Load Gmail Threads",
+    "Create Gmail Draft",
+    "Search Contacts",
+    "Create Contact",
+    "Load Task Lists",
+    "Create Task",
+    "Load Chat Spaces",
+    "Create Chat Space",
+    "Send Chat Message",
+    "Load Chat Messages",
+    // YouTube
+    "Create YouTube Playlist",
+    "Upload YouTube Demo Video",
+    "Update YouTube Metadata",
+    "Upload YouTube Thumbnail",
+    // Ads & marketing
     "List Google Ads accounts",
     "List GA4 accounts",
     "List Search Console sites",
     "List Tag Manager accounts",
-    "Load Drive Files",
-    "Create Gmail Draft",
   ];
   for (const label of actions) {
     try {

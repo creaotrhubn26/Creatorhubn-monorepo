@@ -112,15 +112,19 @@ const TeamWorkspacePage: React.FC = () => {
   const [realProject, setRealProject] = useState<any | null>(null);
   useEffect(() => {
     if (!projectId || projectId === 'sample') { setRealProject(null); return; }
-    apiRequest(`/api/photographer/projects/${encodeURIComponent(projectId)}`)
+    // Profesjons-AGNOSTISK henting (/api/projects/:id) — den forrige brukte kun
+    // /api/photographer/… og falt til sample-prosjektet for musikk/vendor/service.
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}`)
       .then((r: any) => {
-        const p = r?.project;
-        if (!p) return;
-        const date = p.eventDate ? new Date(p.eventDate).toLocaleDateString('nb-NO', { day: 'numeric', month: 'short', year: 'numeric' }) : undefined;
+        const p = r?.project || r; // generisk endepunkt returnerer feltene direkte
+        if (!p || !p.id) return;
+        const rawDate = p.eventDate || p.event_date || p.date;
+        const date = rawDate ? new Date(rawDate).toLocaleDateString('nb-NO', { day: 'numeric', month: 'short', year: 'numeric' }) : undefined;
         setRealProject({
-          id: p.id, name: p.title || 'Uten tittel', type: p.projectType || undefined,
+          id: p.id, name: p.title || p.name || 'Uten tittel',
+          type: p.projectType || p.project_type || undefined,
           status: p.status === 'active' ? 'Pågående' : (p.status || undefined),
-          date, location: p.location || undefined, coverUrl: p.coverUrl || null, members: [],
+          date, location: p.location || undefined, coverUrl: p.coverUrl || p.cover_url || null, members: [],
           updatedAt: p.updatedAt || p.updated_at || null,
         });
       })
@@ -146,7 +150,12 @@ const TeamWorkspacePage: React.FC = () => {
     if (WS_NAV.find((n) => n.key === key)?.route) navigate(`/workspace/${projectId}/${key}`, { replace: true });
   };
 
-  const project = { ...(realProject || { ...SAMPLE_PROJECT, id: projectId }), members };
+  // Kun det EKTE sample-prosjektet får SAMPLE_PROJECT-innhold. Et ekte prosjekt
+  // som ennå ikke er lastet (eller feilet) får et nøytralt skall — ALDRI «Sara &
+  // Amir – Wedding» (sample-lekkasje inn i ikke-fotograf-prosjekter).
+  const project = projectId === 'sample'
+    ? { ...SAMPLE_PROJECT, id: projectId, members }
+    : { ...(realProject || { id: projectId, name: '', type: undefined, status: undefined, date: undefined, location: undefined, coverUrl: null }), members };
   const wsUser = {
     name: user?.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : (user?.name || user?.email || 'Bruker'),
     // Rolle-etiketten hentes fra profesjons-registeret (dekker alle ~20
@@ -164,7 +173,7 @@ const TeamWorkspacePage: React.FC = () => {
     apiRequest('/api/foresporsler/inbound')
       .then((r: any) => setInboundCount(Array.isArray(r?.items) ? r.items.length : (r?.openCount || 0)))
       .catch(() => setInboundCount(0));
-  }, [user?.id, tab]);
+  }, [user?.id]);
 
   // Ulest klient-aktivitet (nedlasting/utvalg/kommentar) → badge på Kundevisning.
   // Re-fetches ved tab-bytte; nullstilles når Kundevisning-fanen åpnes (marker sett).
@@ -220,36 +229,35 @@ const TeamWorkspacePage: React.FC = () => {
   // WS_NAV som fallback for keys utenfor profesjonens nav.
   const navItem = nav.find((n) => n.key === tab) || WS_NAV.find((n) => n.key === tab);
 
-  const TABS: Record<string, React.ReactNode> = {
-    oversikt: <OversiktTab projectId={projectId} profession={user?.profession} />,
-    prosjektplan: <ProsjektplanTab projectId={projectId} />,
-    produksjonskart: <ProduksjonskartTab projectId={projectId} />,
-    shotlist: <ShotlistTab projectId={projectId} />,
-    laater: <LaaterTab projectId={projectId} />,
-    sesjoner: <SesjonerTab projectId={projectId} />,
-    oppdrag: <OppdragTab projectId={projectId} />,
-    bookinger: <BookingerTab projectId={projectId} />,
-    academy: <AcademyProvider><AcademyInstructorAdminStudio /></AcademyProvider>,
-    community: <CommunityHub userId={user?.id} userEmail={user?.email} profession={user?.profession || 'photographer'} />,
-    moodboard: <MoodboardTab projectId={projectId} />,
-    media: <MediaTab projectId={projectId} />,
-    utstyr: <UtstyrTab projectId={projectId} profession={user?.profession} userId={user?.id} />,
-    leveranser: <LeveranserTab projectId={projectId} />,
-    oppgaver: <OppgaverTab projectId={projectId} />,
-    avtaler: <AvtalerTab projectId={projectId} />,
-    foresporsler: <ForesporslerTab projectId={projectId} profession={user?.profession} userId={user?.id} userName={user?.firstName || (user as any)?.name || user?.email} />,
-    kundevisning: <KundevisningTab projectId={projectId} />,
-    team: <TeamTab projectId={projectId} profession={user?.profession} userId={user?.id} projectName={(project as any)?.title || (project as any)?.name} lastUpdated={(realProject as any)?.updatedAt || null} />,
-    'sound-room': <SoundRoomTab projectId={projectId} />,
-    'video-room': <VideoRoomTab projectId={projectId} />,
-    'photo-room': <PhotoRoomTab projectId={projectId} />,
-    chat: (
-      <Box sx={{ height: 'calc(100vh - 160px)', maxWidth: 760, mx: 'auto' }}>
-        <WorkspaceChatPanel projectId={projectId} category={workspaceCategoryFor(user?.profession, categoryOverrides)} />
-      </Box>
-    ),
-  };
-  const content = TABS[tab] || <ComingTab label={navItem?.label || tab} />;
+  const content = useMemo(() => {
+    switch (tab) {
+      case 'oversikt':        return <OversiktTab projectId={projectId} profession={user?.profession} />;
+      case 'prosjektplan':    return <ProsjektplanTab projectId={projectId} />;
+      case 'produksjonskart': return <ProduksjonskartTab projectId={projectId} />;
+      case 'shotlist':        return <ShotlistTab projectId={projectId} />;
+      case 'laater':          return <LaaterTab projectId={projectId} />;
+      case 'sesjoner':        return <SesjonerTab projectId={projectId} />;
+      case 'oppdrag':         return <OppdragTab projectId={projectId} />;
+      case 'bookinger':       return <BookingerTab projectId={projectId} />;
+      case 'academy':         return <AcademyProvider><AcademyInstructorAdminStudio /></AcademyProvider>;
+      case 'community':       return <CommunityHub userId={user?.id} userEmail={user?.email} profession={user?.profession || undefined} />;
+      case 'moodboard':       return <MoodboardTab projectId={projectId} />;
+      case 'media':           return <MediaTab projectId={projectId} />;
+      case 'utstyr':          return <UtstyrTab projectId={projectId} profession={user?.profession} userId={user?.id} />;
+      case 'leveranser':      return <LeveranserTab projectId={projectId} />;
+      case 'oppgaver':        return <OppgaverTab projectId={projectId} />;
+      case 'avtaler':         return <AvtalerTab projectId={projectId} />;
+      case 'foresporsler':    return <ForesporslerTab projectId={projectId} profession={user?.profession} userId={user?.id} userName={user?.firstName || (user as any)?.name || user?.email} />;
+      case 'kundevisning':    return <KundevisningTab projectId={projectId} />;
+      case 'team':            return <TeamTab projectId={projectId} profession={user?.profession} userId={user?.id} projectName={(project as any)?.title || (project as any)?.name} lastUpdated={(realProject as any)?.updatedAt || null} />;
+      case 'sound-room':      return <SoundRoomTab projectId={projectId} />;
+      case 'video-room':      return <VideoRoomTab projectId={projectId} />;
+      case 'photo-room':      return <PhotoRoomTab projectId={projectId} />;
+      case 'chat':            return <Box sx={{ height: 'calc(100dvh - 160px)', maxWidth: 760, mx: 'auto' }}><WorkspaceChatPanel projectId={projectId} category={workspaceCategoryFor(user?.profession, categoryOverrides)} /></Box>;
+      default:                return <ComingTab label={navItem?.label || tab} />;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, projectId, user?.id, user?.email, user?.profession, user?.firstName, (project as any)?.title, (project as any)?.name, (realProject as any)?.updatedAt, navItem?.label, categoryOverrides]);
 
   return (
     <WsLocaleProvider value={wsLocale}>
@@ -291,7 +299,7 @@ const TeamWorkspacePage: React.FC = () => {
         <DialogContent dividers sx={{ p: 0 }}>
           {showCreate && (
             <ProjectCreationWithMemoryCards
-              profession={(user?.profession as string) || 'photographer'}
+              profession={(user?.profession as string) || undefined}
               userId={user?.id}
               onProjectCreated={(p: any) => {
                 setShowCreate(false);

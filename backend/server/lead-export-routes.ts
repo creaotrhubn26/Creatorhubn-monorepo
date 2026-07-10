@@ -124,7 +124,7 @@ async function fetchLeadsForExport(pool: Pool, opts: {
 // ============================================================
 function escapeCsv(v: any): string {
   if (v === null || v === undefined) return "";
-  const s = String(v);
+  const s = /^[=+\-@|\t\r]/.test(String(v)) ? `'${v}` : String(v);
   if (s.includes(";") || s.includes('"') || s.includes("\n")) {
     return `"${s.replace(/"/g, '""')}"`;
   }

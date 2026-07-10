@@ -368,7 +368,17 @@ export async function verifyPaypalWebhook(
   event: unknown,
 ): Promise<boolean> {
   const webhookId = process.env.PAYPAL_WEBHOOK_ID;
-  if (!webhookId) return true; // ingen ID → ikke konfigurert ennå, ikke blokkér
+  if (!webhookId) {
+    // Fail CLOSED i produksjon: en uverifisert payout-webhook kan forfalske
+    // payout_status='paid' på vilkårlig editing-job (sender_item_id=<jobId>,
+    // transaction_status=SUCCESS) uten en reell PayPal-utbetaling. Kun
+    // sandbox/lokal får hoppe over verifisering.
+    if (process.env.NODE_ENV === "production") {
+      console.error("[paypal-webhook] PAYPAL_WEBHOOK_ID mangler i produksjon — avviser uverifisert webhook");
+      return false;
+    }
+    return true; // sandbox/dev: ikke konfigurert ennå, ikke blokkér
+  }
   const token = await getPaypalAccessToken();
   if (!token) return false;
   const h = (k: string) => { const v = headers[k]; return Array.isArray(v) ? v[0] : v; };

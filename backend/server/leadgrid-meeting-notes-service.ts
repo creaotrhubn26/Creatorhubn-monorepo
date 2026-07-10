@@ -134,7 +134,7 @@ export async function processMeetingNote(
        WHERE mn.id = $1::uuid`,
     [noteId],
   );
-  if (r.rowCount === 0) return;
+  if (!r.rows.length) return;
   const { lead_id: leadId, transcript, lead_name: leadName } = r.rows[0];
   if (!transcript) {
     await pool.query(

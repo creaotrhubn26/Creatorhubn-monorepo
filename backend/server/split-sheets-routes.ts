@@ -45,10 +45,15 @@ export interface SplitSheetsRoutesDeps {
   pool: Pool;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   getSplitSheetUserId: (req: any) => string;
+  // Gate for platform-wide aggregate endpoints (cross-tenant revenue/payment
+  // business intelligence). Returns the session (truthy) or writes 401/403 and
+  // returns null.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  requireAdminSession: (req: any, res: any) => any;
 }
 
 export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
-  const { app, pool, getSplitSheetUserId } = deps;
+  const { app, pool, getSplitSheetUserId, requireAdminSession } = deps;
 
   // GET /api/split-sheets — List all split sheets for user
   app.get("/api/split-sheets", async (req, res) => {
@@ -102,7 +107,8 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
 
   app.get("/api/split-sheets/stats", async (req, res) => {
     try {
-      const userId = (req.headers["x-user-id"] as string) || "anonymous";
+      const userId = getSplitSheetUserId(req);
+      if (!userId) return res.status(401).json({ error: "unauthorized" });
 
       const totalResult = await pool.query(
         "SELECT COUNT(*) as count FROM split_sheets WHERE user_id = $1",
@@ -144,6 +150,7 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
 
   // GET /api/split-sheets/revenue-analytics — Revenue trends from split sheets (BI Dashboard)
   app.get("/api/split-sheets/revenue-analytics", async (req, res) => {
+    if (!requireAdminSession(req, res)) return;
     try {
       const profession = req.query.profession as string;
 
@@ -204,6 +211,7 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
 
   // GET /api/split-sheets/payment-analytics — Payment status distribution (BI Dashboard)
   app.get("/api/split-sheets/payment-analytics", async (req, res) => {
+    if (!requireAdminSession(req, res)) return;
     try {
       const statusResult = await pool.query(
         `SELECT status, COUNT(*) AS count
@@ -243,7 +251,8 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
   });
 
   // GET /api/split-sheets/market-insights — Industry benchmarks for split sheets (BI Dashboard)
-  app.get("/api/split-sheets/market-insights", async (_req, res) => {
+  app.get("/api/split-sheets/market-insights", async (req, res) => {
+    if (!requireAdminSession(req, res)) return;
     try {
       const roleResult = await pool.query(
         `SELECT
@@ -339,6 +348,7 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
   app.post("/api/split-sheets", async (req, res) => {
     try {
       const userId = getSplitSheetUserId(req);
+      if (!userId) return res.status(401).json({ error: "unauthorized" });
       const {
         project_id,
         track_id,
@@ -408,8 +418,21 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
 
   // PUT /api/split-sheets/:id — Update split sheet
   app.put("/api/split-sheets/:id", async (req, res) => {
+    const _ssUserId = getSplitSheetUserId(req);
+    if (!_ssUserId) return res.status(401).json({ error: "unauthorized" });
     try {
       const { id } = req.params;
+      // Ownership scope: only the owner may mutate the sheet. Return 404 (not
+      // 403) so non-owners cannot enumerate which sheet ids exist (IDOR).
+      const _own = await pool.query(
+        "SELECT 1 FROM split_sheets WHERE id = $1 AND user_id = $2",
+        [id, _ssUserId],
+      );
+      if (_own.rowCount === 0) {
+        return res
+          .status(404)
+          .json({ success: false, error: "Split sheet not found" });
+      }
       const { title, description, status, project_id, track_id, contributors } =
         req.body;
 
@@ -503,8 +526,21 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
 
   // DELETE /api/split-sheets/:id — Delete split sheet (cascades)
   app.delete("/api/split-sheets/:id", async (req, res) => {
+    const _ssUserId2 = getSplitSheetUserId(req);
+    if (!_ssUserId2) return res.status(401).json({ error: "unauthorized" });
     try {
       const { id } = req.params;
+      // Ownership scope: only the owner may delete the sheet + its children.
+      // Return 404 (not 403) to prevent id enumeration (IDOR).
+      const _own = await pool.query(
+        "SELECT 1 FROM split_sheets WHERE id = $1 AND user_id = $2",
+        [id, _ssUserId2],
+      );
+      if (_own.rowCount === 0) {
+        return res
+          .status(404)
+          .json({ success: false, error: "Split sheet not found" });
+      }
       await pool.query(
         "DELETE FROM split_sheet_contributors WHERE split_sheet_id = $1",
         [id],
@@ -583,6 +619,19 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
   app.post("/api/split-sheets/:id/share", async (req, res) => {
     try {
       const { id } = req.params;
+      const userId = getSplitSheetUserId(req);
+      if (!userId) return res.status(401).json({ error: "unauthorized" });
+      // Ownership scope: only the owner may (re)send invitations for their sheet.
+      // 404 to prevent id enumeration.
+      const _own = await pool.query(
+        "SELECT 1 FROM split_sheets WHERE id = $1 AND user_id = $2",
+        [id, userId],
+      );
+      if (_own.rowCount === 0) {
+        return res
+          .status(404)
+          .json({ success: false, error: "Split sheet not found" });
+      }
       const { contributor_ids, message } = req.body;
 
       // Update invitation status for contributors
@@ -651,11 +700,16 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
     try {
       const { id } = req.params;
       const userId = getSplitSheetUserId(req);
+      if (!userId) return res.status(401).json({ error: "unauthorized" });
       const { title } = req.body;
 
+      // Ownership scope: only the owner may duplicate their sheet. Without this,
+      // an authenticated user could clone any other user's sheet (title,
+      // description, contributors, percentages) into their own account (IDOR
+      // read-through-duplicate). 404 (not 403) to prevent id enumeration.
       const original = await pool.query(
-        "SELECT * FROM split_sheets WHERE id = $1",
-        [id],
+        "SELECT * FROM split_sheets WHERE id = $1 AND user_id = $2",
+        [id, userId],
       );
       if (original.rows.length === 0)
         return res.status(404).json({ success: false, error: "Not found" });
@@ -725,6 +779,20 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
     try {
       const { id } = req.params;
       const userId = getSplitSheetUserId(req);
+      if (!userId) return res.status(401).json({ error: "unauthorized" });
+      // Ownership scope: only the owner may record revenue against their sheet.
+      // Without this, an authenticated user could inject revenue rows into any
+      // other user's split sheet (financial data tampering). 404 to prevent
+      // id enumeration.
+      const _own = await pool.query(
+        "SELECT 1 FROM split_sheets WHERE id = $1 AND user_id = $2",
+        [id, userId],
+      );
+      if (_own.rowCount === 0) {
+        return res
+          .status(404)
+          .json({ success: false, error: "Split sheet not found" });
+      }
       const {
         amount,
         currency = "NOK",
@@ -817,6 +885,8 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
 
   // PUT /api/split-sheets/payments/:paymentId — Update payment status
   app.put("/api/split-sheets/payments/:paymentId", async (req, res) => {
+    const _ssUserId3 = getSplitSheetUserId(req);
+    if (!_ssUserId3) return res.status(401).json({ error: "unauthorized" });
     try {
       const { paymentId } = req.params;
       const {
@@ -854,10 +924,22 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
       updates.push("updated_at = NOW()");
 
       params.push(paymentId);
+      // Ownership scope: only update a payment whose parent split sheet is owned
+      // by the session user. Without this an authenticated user could mutate any
+      // payment row (mark paid, alter amount/reference) across tenants (IDOR).
+      params.push(_ssUserId3);
       const result = await pool.query(
-        `UPDATE split_sheet_payments SET ${updates.join(", ")} WHERE id = $${idx} RETURNING *`,
+        `UPDATE split_sheet_payments SET ${updates.join(", ")}
+         WHERE id = $${idx}
+           AND split_sheet_id IN (SELECT id FROM split_sheets WHERE user_id = $${idx + 1})
+         RETURNING *`,
         params,
       );
+      if (result.rowCount === 0) {
+        return res
+          .status(404)
+          .json({ success: false, error: "Payment not found" });
+      }
       res.json({ success: true, data: result.rows[0] });
     } catch (error) {
       console.error("Error updating payment:", error);

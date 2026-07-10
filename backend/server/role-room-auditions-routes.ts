@@ -162,7 +162,7 @@ export function setupRoleRoomAuditionsRoutes(
       date,
       body.start_time ?? null,
       body.end_time ?? null,
-      body.status ?? 'scheduled',
+      (['scheduled', 'active', 'completed', 'cancelled'].includes(String(body.status ?? '')) ? String(body.status) : 'scheduled'),
       JSON.stringify(Array.isArray(body.team_members) ? body.team_members : []),
       body.notes ?? null,
       session.email,

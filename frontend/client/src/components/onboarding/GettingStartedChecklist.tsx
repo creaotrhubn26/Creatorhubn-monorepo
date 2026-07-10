@@ -23,7 +23,9 @@ import RocketLaunch from '@mui/icons-material/RocketLaunch';
 import { useLocation } from 'wouter';
 import { apiRequest } from '@/lib/queryClient';
 
-const DISMISS_KEY = 'getting-started-dismissed';
+// Per-bruker-nøkkel: en global nøkkel skjulte sjekklisten for ALLE kontoer på
+// samme nettleser og overlevde logg-ut/inn.
+const dismissKeyFor = (userId?: string) => `getting-started-dismissed:${userId || 'anon'}`;
 const ACCENT = '#ff8c00';
 const TEXT = '#fff5e8';
 const DIM = 'rgba(246,242,234,0.72)';
@@ -43,8 +45,12 @@ interface Props {
 const GettingStartedChecklist: React.FC<Props> = ({ userId, profession, projectId, onNewProject }) => {
   const [, navigate] = useLocation();
   const [dismissed, setDismissed] = useState(() => {
-    try { return localStorage.getItem(DISMISS_KEY) === '1'; } catch { return false; }
+    try { return localStorage.getItem(dismissKeyFor(userId)) === '1'; } catch { return false; }
   });
+  // Re-les dismiss-flagget hvis brukeren bytter (per-bruker-nøkkel).
+  useEffect(() => {
+    try { setDismissed(localStorage.getItem(dismissKeyFor(userId)) === '1'); } catch { /* ignore */ }
+  }, [userId]);
   const [state, setState] = useState<any>({
     loading: true, profileComplete: false, hasProject: false,
     teamInvited: false, toolsConnected: false, firstProjectId: null, isEnterprise: false,
@@ -93,7 +99,7 @@ const GettingStartedChecklist: React.FC<Props> = ({ userId, profession, projectI
   }, [userId, profession]);
 
   const dismiss = () => {
-    try { localStorage.setItem(DISMISS_KEY, '1'); } catch { /* ignore */ }
+    try { localStorage.setItem(dismissKeyFor(userId), '1'); } catch { /* ignore */ }
     setDismissed(true);
   };
 

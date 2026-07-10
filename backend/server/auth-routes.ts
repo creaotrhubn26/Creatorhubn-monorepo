@@ -2,6 +2,42 @@ import express from "express";
 import type { Pool } from "pg";
 import { exchangeGoogleIdToken } from "./google-id-token-service.js";
 
+// Sliding-window in-memory rate limiter (per IP or per key).
+const _authRateBuckets = new Map<string, number[]>();
+function _authRateLimited(key: string, max: number, windowMs: number): boolean {
+  const now = Date.now();
+  const arr = (_authRateBuckets.get(key) ?? []).filter((t) => now - t < windowMs);
+  arr.push(now);
+  _authRateBuckets.set(key, arr);
+  return arr.length > max;
+}
+
+// Per-account failed-login tracker. Records timestamps of failed attempts
+// per normalised email; 10 failures in 15 min → lockout for 15 min.
+// Does NOT increment on success, so legitimate users are never affected.
+const _failedLoginBuckets = new Map<string, number[]>();
+const _FAIL_WINDOW_MS = 15 * 60_000; // 15 min
+const _FAIL_MAX = 10;
+function _recordFailedLogin(email: string): void {
+  const now = Date.now();
+  const arr = (_failedLoginBuckets.get(email) ?? []).filter((t) => now - t < _FAIL_WINDOW_MS);
+  arr.push(now);
+  _failedLoginBuckets.set(email, arr);
+}
+function _isAccountLockedOut(email: string): boolean {
+  const now = Date.now();
+  const arr = (_failedLoginBuckets.get(email) ?? []).filter((t) => now - t < _FAIL_WINDOW_MS);
+  _failedLoginBuckets.set(email, arr);
+  return arr.length >= _FAIL_MAX;
+}
+function _clearFailedLogins(email: string): void {
+  _failedLoginBuckets.delete(email);
+}
+const _authClientIp = (req: express.Request): string =>
+  (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()
+  ?? req.socket?.remoteAddress
+  ?? "?";
+
 export interface AuthRoutesDeps {
   app: express.Application;
   pool: Pool;
@@ -51,6 +87,8 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
   type ActiveSessionData = any;
 
   app.post("/api/auth/login", async (req, res) => {
+    if (_authRateLimited(`login:${_authClientIp(req)}`, 10, 60_000))
+      return res.status(429).json({ error: "too_many_requests" });
     try {
       const { email, password } = req.body;
       const loginType =
@@ -76,6 +114,8 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
         process.env.PROTOTYPE_GUEST_PASSWORD || "guest-access";
       if (!email) return res.status(400).json({ error: "E-post er påkrevd" });
       const normalizedEmail = email.toLowerCase().trim();
+      if (_isAccountLockedOut(normalizedEmail))
+        return res.status(429).json({ error: "too_many_requests" });
       const prototypeGuestEmails = new Set(
         String(
           process.env.PROTOTYPE_GUEST_EMAILS ||
@@ -128,7 +168,7 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
       );
 
       if (
-        (!result.rowCount || result.rowCount === 0) &&
+        (!result.rowCount || !result.rows.length) &&
         isRoleRoomLogin &&
         !isProductionEnv
       ) {
@@ -163,6 +203,13 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
       }
 
       if (!result.rowCount || result.rowCount === 0) {
+        // Dummy bcrypt compare equalizes response time regardless of whether the email
+        // exists, preventing timing-based username enumeration.
+        const bcrypt = await import("bcrypt");
+        await bcrypt.default.compare(
+          effectivePassword || "",
+          "$2b$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy",
+        );
         return res.status(401).json({ error: "Ugyldig e-post eller passord" });
       }
 
@@ -178,6 +225,7 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
           : effectivePassword === storedPassword;
 
         if (!passwordValid) {
+          _recordFailedLogin(normalizedEmail);
           return res.status(401).json({ error: "Ugyldig e-post eller passord" });
         }
       } else {
@@ -192,6 +240,7 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
             effectivePassword !== prototypeGuestPassword) &&
           !roleRoomPasswordValid
         ) {
+          _recordFailedLogin(normalizedEmail);
           return res.status(401).json({ error: "Ugyldig e-post eller passord" });
         }
         if (roleRoomPasswordValid) {
@@ -266,7 +315,7 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
             normalizedRequestedRole === "client_reviewer"
             ? "client_reviewer"
             : "content_producer"
-          : normalizedRequestedRole || role
+          : role
         : role;
 
       const normalizedSessionRole = normalizeAdminRoleId(roleRoomSessionRole);
@@ -353,11 +402,19 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
           });
         }
       } catch (totpCheckError) {
-        console.error("[Auth] TOTP-sjekk feilet, fortsetter uten 2FA:", totpCheckError);
-        // Best-effort: hvis TOTP-tabellen ikke finnes (gammel DB), la
-        // login fortsette uten 2FA istedenfor å låse brukeren ute.
+        const pgCode = (totpCheckError as any)?.code;
+        if (pgCode === "42P01") {
+          // TOTP-tabellen finnes ikke (gammel DB) — tillat login uten 2FA.
+          console.warn("[Auth] TOTP-tabell mangler (42P01), fortsetter uten 2FA.");
+        } else {
+          // Alle andre feil (timeout, deadlock, tilkoblingsfeil) skal
+          // IKKE åpne 2FA-gate — brukeren må prøve igjen.
+          console.error("[Auth] TOTP-sjekk feilet:", totpCheckError);
+          return res.status(500).json({ error: "internal_error" });
+        }
       }
 
+      _clearFailedLogins(normalizedEmail);
       activeSessions.set(sessionToken, sessionData);
       await persistAuthSession(pool, sessionToken, sessionData);
 
@@ -365,6 +422,7 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
         `[Auth] Login: ${dbUser.email} as ${roleRoomSessionRole} (session: ${sessionToken.substring(0, 8)}...)`,
       );
 
+      res.setHeader('Cache-Control', 'no-store');
       res.json({
         success: true,
         token: sessionToken,
@@ -390,6 +448,8 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
   // bare ny kode, ikke flere parallelt. For ekte rate-limiting på
   // IP-nivå anbefales nginx/cloudflare-laget.
   app.post("/api/auth/email-code/send", async (req, res) => {
+    if (_authRateLimited(`emailcode-send:${_authClientIp(req)}`, 5, 600_000))
+      return res.status(429).json({ error: "too_many_requests" });
     const body = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
     const email = typeof body.email === "string" ? body.email : "";
     const purpose = typeof body.purpose === "string" ? body.purpose : "";
@@ -421,6 +481,8 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
   });
 
   app.post("/api/auth/email-code/verify", async (req, res) => {
+    if (_authRateLimited(`emailcode-verify:${_authClientIp(req)}`, 10, 60_000))
+      return res.status(429).json({ error: "too_many_requests" });
     const body = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
     const email = typeof body.email === "string" ? body.email : "";
     const purpose = typeof body.purpose === "string" ? body.purpose : "";
@@ -459,6 +521,8 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
   // GET  /api/auth/reset-password/:token   — sjekk om token er gyldig
   // POST /api/auth/reset-password/:token   — sett nytt passord
   app.post("/api/auth/request-password-reset", async (req, res) => {
+    if (_authRateLimited(`pw-reset:${_authClientIp(req)}`, 5, 3_600_000))
+      return res.status(429).json({ error: "too_many_requests" });
     const body = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
     const email = typeof body.email === "string" ? body.email : "";
     const ipAddress = (req.headers["x-forwarded-for"]?.toString().split(",")[0]
@@ -491,6 +555,8 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
   });
 
   app.post("/api/auth/reset-password/:token", async (req, res) => {
+    if (_authRateLimited(`pw-reset-consume:${_authClientIp(req)}`, 5, 60_000))
+      return res.status(429).json({ error: "too_many_requests" });
     const token = String(req.params.token || "").trim();
     const body = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
     const password = typeof body.password === "string" ? body.password : "";
@@ -504,6 +570,12 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
                          : 500;
         return res.status(httpStatus).json({ error: result.error, message: result.message });
       }
+      // Purge in-memory sessions for this user so stolen cookies can't survive a reset
+      if (result.userId) {
+        for (const [tok, sess] of activeSessions.entries()) {
+          if (sess?.userId === result.userId) activeSessions.delete(tok);
+        }
+      }
       return res.json({ status: "ok", message: result.message });
     } catch (error) {
       console.error("[auth/reset-password POST] failed", error);
@@ -515,6 +587,8 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
   //   har gitt en 6-sifret TOTP-kode (eller backup-kode).
   //   Body: { tempToken, code }
   app.post("/api/auth/login/complete-2fa", async (req, res) => {
+    if (_authRateLimited(`2fa:${_authClientIp(req)}`, 5, 60_000))
+      return res.status(429).json({ error: "too_many_requests" });
     purgeExpiredPendingTwoFactor();
     const body = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
     const tempToken = typeof body.tempToken === "string" ? body.tempToken : "";
@@ -543,6 +617,7 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
       activeSessions.set(sessionToken, pending.sessionData);
       await persistAuthSession(pool, sessionToken, pending.sessionData);
       console.log(`[Auth] 2FA login completed for ${pending.sessionData.email}${result.usedBackupCode ? " (backup-code)" : ""}`);
+      res.setHeader('Cache-Control', 'no-store');
       return res.json({
         success: true,
         usedBackupCode: result.usedBackupCode === true,

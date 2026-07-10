@@ -188,7 +188,7 @@ export function registerLeadScoutRoutes({ app, pool, activeSessions }: Deps): vo
         if (r.rowCount === 0) return res.status(404).json({ error: "need_not_found" });
         return res.json({ need: r.rows[0] });
       } catch (err) {
-        return res.status(500).json({ error: "update_failed", detail: String(err) });
+        return res.status(500).json({ error: "update_failed" });
       }
     },
   );

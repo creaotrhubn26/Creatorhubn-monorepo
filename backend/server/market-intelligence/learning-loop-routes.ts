@@ -70,7 +70,7 @@ export function registerLearningLoopRoutes({
       return res.json({ analytics: result });
     } catch (err) {
       console.error("[learning-loop] recompute failed", err);
-      return res.status(500).json({ error: "recompute_failed", detail: String(err) });
+      return res.status(500).json({ error: "recompute_failed", detail: "internal_error" });
     }
   });
 
@@ -91,7 +91,7 @@ export function registerLearningLoopRoutes({
       return res.json({ processed });
     } catch (err) {
       console.error("[learning-loop] cron failed", err);
-      return res.status(500).json({ error: "cron_failed", detail: String(err) });
+      return res.status(500).json({ error: "cron_failed", detail: "internal_error" });
     }
   });
 
@@ -114,7 +114,7 @@ export function registerLearningLoopRoutes({
       if (r.rows.length === 0) return res.status(404).json({ error: "no_analytics" });
       return res.json({ analytics: r.rows[0] });
     } catch (err) {
-      return res.status(500).json({ error: "fetch_failed", detail: String(err) });
+      return res.status(500).json({ error: "fetch_failed", detail: "internal_error" });
     }
   });
 
@@ -141,7 +141,7 @@ export function registerLearningLoopRoutes({
       );
       return res.json({ topPerformers: r.rows });
     } catch (err) {
-      return res.status(500).json({ error: "fetch_failed", detail: String(err) });
+      return res.status(500).json({ error: "fetch_failed", detail: "internal_error" });
     }
   });
 }

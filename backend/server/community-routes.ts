@@ -109,14 +109,59 @@ export function setupCommunityRoutes(deps: CommunityRoutesDeps): void {
   } = deps;
 
   function getCommunityAccessUserId(req: express.Request): string {
-    const headerUserId = req.header("x-user-id");
-    if (headerUserId && headerUserId.trim()) {
-      return headerUserId.trim();
-    }
-    if (typeof req.body?.userId === "string" && req.body.userId.trim()) {
-      return req.body.userId.trim();
-    }
+    const noopRes = { status: () => ({ json: () => {} }), headersSent: false } as any;
+    const session = requireUserSession(req, noopRes);
+    if (session && (session as any).userId) return String((session as any).userId).trim();
     return "";
+  }
+
+  async function userHasChannelAccess(
+    userId: string,
+    channelId: string,
+  ): Promise<boolean> {
+    if (!userId || !channelId) return false;
+    try {
+      const result = await pool.query(
+        `
+          SELECT 1
+          FROM community_channels c
+          JOIN user_community_memberships m
+            ON m.group_id = c.group_id
+           AND m.user_id = $1
+          WHERE c.id = $2::uuid
+          LIMIT 1
+        `,
+        [userId, channelId],
+      );
+      return result.rows.length > 0;
+    } catch {
+      return false;
+    }
+  }
+
+  async function userHasMessageAccess(
+    userId: string,
+    messageId: string,
+  ): Promise<boolean> {
+    if (!userId || !messageId) return false;
+    try {
+      const result = await pool.query(
+        `
+          SELECT 1
+          FROM community_messages msg
+          JOIN community_channels c ON c.id = msg.channel_id
+          JOIN user_community_memberships m
+            ON m.group_id = c.group_id
+           AND m.user_id = $1
+          WHERE msg.id = $2::uuid
+          LIMIT 1
+        `,
+        [userId, messageId],
+      );
+      return result.rows.length > 0;
+    } catch {
+      return false;
+    }
   }
 
   function getDefaultCommunityOnboardingConfig(
@@ -860,7 +905,15 @@ export function setupCommunityRoutes(deps: CommunityRoutesDeps): void {
   });
 
   app.get("/api/community/channels/:channelId/messages", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
+      const channelId = String(req.params.channelId || "").trim();
+      if (!(await userHasChannelAccess(String(session.userId), channelId))) {
+        return res
+          .status(404)
+          .json({ success: false, error: "Kanal ikke funnet" });
+      }
       const result = await pool.query(
         `
           SELECT
@@ -920,9 +973,11 @@ export function setupCommunityRoutes(deps: CommunityRoutesDeps): void {
   });
 
   app.post("/api/community/channels/:channelId/messages", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       const channelId = String(req.params.channelId || "").trim();
-      const userId = String(req.body?.userId || "").trim();
+      const userId = String(session.userId || "").trim();
       const content = String(req.body?.content || "").trim();
       const attachments = Array.isArray(req.body?.attachments)
         ? req.body.attachments
@@ -934,6 +989,12 @@ export function setupCommunityRoutes(deps: CommunityRoutesDeps): void {
           success: false,
           error: "channelId, userId og innhold er obligatoriske",
         });
+      }
+
+      if (!(await userHasChannelAccess(userId, channelId))) {
+        return res
+          .status(404)
+          .json({ success: false, error: "Kanal ikke funnet" });
       }
 
       const created = await pool.query(
@@ -1016,7 +1077,15 @@ export function setupCommunityRoutes(deps: CommunityRoutesDeps): void {
   });
 
   app.get("/api/community/messages/:messageId/thread", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
+      const messageId = String(req.params.messageId || "").trim();
+      if (!(await userHasMessageAccess(String(session.userId), messageId))) {
+        return res
+          .status(404)
+          .json({ success: false, error: "Melding ikke funnet" });
+      }
       const result = await pool.query(
         `
           SELECT

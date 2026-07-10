@@ -2,10 +2,13 @@ import express from "express";
 import type { Pool } from "pg";
 import { readString } from "./_shared";
 
+const isUuid = (s: string | null | undefined): s is string =>
+  !!s && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+
 export interface WeddingTimelineRoutesDeps {
   app: express.Application;
   pool: Pool;
-  getUserIdFromAuth: (req: any) => string | null;
+  compatResolveUserId: (req: any) => string;
   resolveMeetingNotesProjectContext: (...args: any[]) => Promise<any>;
 }
 
@@ -15,9 +18,41 @@ export function setupWeddingTimelineRoutes(
   const {
     app,
     pool,
-    getUserIdFromAuth,
+    compatResolveUserId,
     resolveMeetingNotesProjectContext,
   } = deps;
+
+  // ── AuthZ-hjelpere ────────────────────────────────────────────────
+  // Disse endepunktene hadde INGEN autentisering: enhver kunne lese en
+  // vilkårlig couples bryllupstidslinje (navn, dato, sted, hendelser) ved
+  // å gjette prosjekt-/wedding-id, skrive møtenotater inn i andres tidslinje,
+  // og opprette tidslinjer (+ auto-innsatte public.projects-rader) for
+  // prosjekter de ikke eier. compatResolveUserId er session-first (hardnet
+  // i round 31), så vi har ekte identitet tilgjengelig — den var bare ubrukt.
+  const authUserId = (req: express.Request): string | null => {
+    const uid = compatResolveUserId(req);
+    return isUuid(uid) ? uid : null;
+  };
+  // Eier innloggeren prosjektet? Samme mønster som photographer-projects-
+  // routes / projects-outliers-routes: sjekk både public.projects og
+  // legacy.projects på (id, user_id).
+  async function callerOwnsProject(projectId: string, userId: string): Promise<boolean> {
+    if (!isUuid(projectId)) return false;
+    const r = await pool.query(
+      `SELECT 1 FROM projects WHERE id = $1 AND user_id = $2
+        UNION ALL
+       SELECT 1 FROM legacy.projects WHERE id = $1 AND user_id = $2
+       LIMIT 1`,
+      [projectId, userId],
+    );
+    return (r.rowCount ?? 0) > 0;
+  }
+  // Kan innloggeren se/endre denne timeline-raden? Eier via user_id ELLER
+  // eier prosjektet tidslinjen henger på.
+  async function callerOwnsTimeline(row: any, userId: string): Promise<boolean> {
+    if (row?.user_id && row.user_id === userId) return true;
+    return callerOwnsProject(String(row?.project_id ?? ""), userId);
+  }
 
   function mapTimelineRow(r: any) {
     return {
@@ -280,6 +315,8 @@ export function setupWeddingTimelineRoutes(
   app.get("/api/wedding/timeline/project/:projectId", async (req, res) => {
     try {
       const { projectId } = req.params;
+      const uid = authUserId(req);
+      if (!uid) return res.status(401).json({ error: "krever_innlogging" });
 
       // Find timeline by project_id
       const tlResult = await pool.query(
@@ -287,7 +324,9 @@ export function setupWeddingTimelineRoutes(
         [projectId],
       );
 
-      if (tlResult.rowCount === 0) {
+      // 404 (ikke 403) ved manglende eierskap → hindrer id-enumerering.
+      if (!tlResult.rows.length
+          || !(await callerOwnsTimeline(tlResult.rows[0], uid))) {
         return res
           .status(404)
           .json({ error: "Ingen tidslinje funnet for dette prosjektet" });
@@ -322,6 +361,8 @@ export function setupWeddingTimelineRoutes(
 
   app.post("/api/wedding-timeline/sync-meeting-notes", async (req, res) => {
     try {
+      const uid = authUserId(req);
+      if (!uid) return res.status(401).json({ error: "krever_innlogging" });
       const body =
         req.body && typeof req.body === "object" && !Array.isArray(req.body)
           ? (req.body as Record<string, unknown>)
@@ -363,6 +404,9 @@ export function setupWeddingTimelineRoutes(
 
       if (!timelineRow) {
         return res.status(404).json({ error: "Ingen Evendi-tidslinje funnet for prosjektet" });
+      }
+      if (!(await callerOwnsTimeline(timelineRow, uid))) {
+        return res.status(403).json({ error: "ingen_tilgang" });
       }
 
       const timeline = mapTimelineRow(timelineRow);
@@ -557,7 +601,7 @@ export function setupWeddingTimelineRoutes(
         [timelineId],
       );
 
-      if (tlResult.rowCount === 0) {
+      if (!tlResult.rows.length) {
         return res.status(404).json({ error: "Tidslinje ikke funnet" });
       }
 
@@ -597,7 +641,7 @@ export function setupWeddingTimelineRoutes(
         [accessToken],
       );
 
-      if (tlResult.rowCount === 0) {
+      if (!tlResult.rows.length) {
         return res.status(404).json({ error: "Tidslinje ikke funnet" });
       }
 
@@ -635,7 +679,7 @@ export function setupWeddingTimelineRoutes(
         [projectId],
       );
 
-      if (tlResult.rowCount === 0) {
+      if (!tlResult.rows.length) {
         return res.status(404).json({ error: "Tidslinje ikke funnet" });
       }
 
@@ -669,7 +713,25 @@ export function setupWeddingTimelineRoutes(
   app.post("/api/wedding/timeline/project/:projectId", async (req, res) => {
     try {
       const { projectId } = req.params;
-      const userId = getUserIdFromAuth(req);
+      const resolvedUserId = compatResolveUserId(req);
+      const userId = isUuid(resolvedUserId) ? resolvedUserId : null;
+      if (!userId) return res.status(401).json({ error: "krever_innlogging" });
+      // Hvis prosjektet allerede finnes må innloggeren eie det (hindrer at man
+      // oppretter tidslinjer + auto-innsatte projects-rader på andres prosjekt).
+      // Helt nye bryllup (prosjekt finnes ikke enda) opprettes under egen bruker.
+      if (isUuid(projectId)) {
+        const ownRes = await pool.query(
+          `SELECT
+             (EXISTS(SELECT 1 FROM projects WHERE id = $1) OR
+              EXISTS(SELECT 1 FROM legacy.projects WHERE id = $1)) AS exists,
+             (EXISTS(SELECT 1 FROM projects WHERE id = $1 AND user_id = $2) OR
+              EXISTS(SELECT 1 FROM legacy.projects WHERE id = $1 AND user_id = $2)) AS owns`,
+          [projectId, userId],
+        );
+        if (ownRes.rows[0]?.exists && !ownRes.rows[0]?.owns) {
+          return res.status(403).json({ error: "ingen_tilgang_til_prosjekt" });
+        }
+      }
       const { weddingDate, venue, coupleName, events, culturalType } = req.body;
 
       // Ensure project exists in public.projects (FK constraint)
@@ -678,7 +740,7 @@ export function setupWeddingTimelineRoutes(
         "SELECT id FROM public.projects WHERE id = $1",
         [projectId],
       );
-      if (pubCheck.rowCount === 0) {
+      if (!pubCheck.rows.length) {
         // Copy from legacy.projects or create a minimal record
         const legacyProj = await pool.query(
           "SELECT * FROM legacy.projects WHERE id = $1",
@@ -796,19 +858,23 @@ export function setupWeddingTimelineRoutes(
   app.get("/api/wedding-timeline/timelines/:weddingId", async (req, res) => {
     try {
       const { weddingId } = req.params;
+      const uid = authUserId(req);
+      if (!uid) return res.status(401).json({ error: "krever_innlogging" });
 
       // Try by wedding_id first, then by project_id, then by id
       let result = await pool.query(
         "SELECT * FROM wedding_timelines WHERE wedding_id = $1 LIMIT 1",
         [weddingId],
       );
-      if (result.rowCount === 0) {
+      if (!result.rows.length) {
         result = await pool.query(
           "SELECT * FROM wedding_timelines WHERE project_id = $1 OR id = $1 LIMIT 1",
           [weddingId],
         );
       }
-      if (result.rowCount === 0) {
+      // 404 (ikke 403) ved manglende eierskap → hindrer id-enumerering.
+      if (!result.rows.length
+          || !(await callerOwnsTimeline(result.rows[0], uid))) {
         return res.status(404).json({ error: "Tidslinje ikke funnet" });
       }
 

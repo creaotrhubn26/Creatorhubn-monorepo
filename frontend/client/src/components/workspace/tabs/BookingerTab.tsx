@@ -20,7 +20,7 @@ import Add from '@mui/icons-material/Add';
 import Place from '@mui/icons-material/Place';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
-import { WsCard, WsTag, WsStat, WsSectionTitle } from '../ui';
+import { WsCard, WsTag, WsStat, WsSectionTitle, WsErrorState } from '../ui';
 
 const fmtTime = (iso: any) => {
   const d = new Date(iso);
@@ -44,6 +44,7 @@ const BookingerTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [meetings, setMeetings] = useState<any[]>([]);
   const [customer, setCustomer] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadErr, setLoadErr] = useState(false); // feil på primærlasting av bookinger
   const [newOpen, setNewOpen] = useState(false);
 
   const load = () => {
@@ -52,8 +53,9 @@ const BookingerTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       .then((r: any) => {
         setMeetings(Array.isArray(r?.meetings) ? r.meetings : []);
         setCustomer(r?.crmCustomer || null);
+        setLoadErr(false); // nullstill ved suksess
       })
-      .catch(() => {})
+      .catch(() => setLoadErr(true))
       .finally(() => setLoading(false));
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [projectId, isReal]);
@@ -96,11 +98,14 @@ const BookingerTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         <WsStat icon={<Person sx={{ fontSize: 20 }} />} label="Kunde" value={customer?.name ? customer.name.split(' ')[0] : '—'} sub={customer?.status || 'ikke koblet'} tone={ws.greenSoft} />
       </Box>
 
-      <Stack direction="row" spacing={2} alignItems="flex-start">
+      <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} alignItems="flex-start">
         {/* Booking-liste gruppert per dag */}
         <WsCard sx={{ flex: 1, minWidth: 0 }}>
           <WsSectionTitle icon={<EventAvailable sx={{ fontSize: 18, color: ws.textDim }} />} title="Kommende bookinger" />
-          {upcoming.length === 0 ? (
+          {isReal && loadErr && upcoming.length === 0 ? (
+            // Feilstate for primærlasting — erstatter tomtilstand, header står
+            <WsErrorState message="Kunne ikke laste bookinger. Sjekk tilkoblingen og prøv igjen." onRetry={load} />
+          ) : upcoming.length === 0 ? (
             <Stack alignItems="center" sx={{ py: 5 }} spacing={1}>
               <EventAvailable sx={{ fontSize: 36, color: ws.textFaint }} />
               <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>Ingen bookinger ennå</Typography>
@@ -156,7 +161,7 @@ const BookingerTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         </WsCard>
 
         {/* Kunde-kort */}
-        <WsCard sx={{ width: 300, flexShrink: 0 }}>
+        <WsCard sx={{ width: { xs: '100%', lg: 300 }, flexShrink: 0 }}>
           <WsSectionTitle icon={<Person sx={{ fontSize: 18, color: ws.textDim }} />} title="Kunde" />
           {customer ? (
             <Stack spacing={1}>

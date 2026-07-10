@@ -185,6 +185,19 @@ export function HeaderBar({
       </div>
 
       <div className="header-actions">
+        {/* Uten avansert-modus er view-switcheren skjult. Cull/Audio kan fortsatt
+            nås via Cmd+K, så vi gir en tydelig vei tilbake til pipeline —
+            ellers er de en blindvei. */}
+        {!advancedMode && view !== "pipeline" && (
+          <button
+            className="small"
+            onClick={() => onViewChange("pipeline")}
+            title="Tilbake til pipeline"
+          >
+            ← Tilbake
+          </button>
+        )}
+
         {advancedMode && (
           <div className="view-switcher">
             <button className={view === "pipeline" ? "active" : ""} onClick={() => onViewChange("pipeline")}>Pipeline</button>

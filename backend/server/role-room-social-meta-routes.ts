@@ -39,6 +39,7 @@
  * Mode-noter: Innholdsprodusent-mode-features. Backend mode-agnostic.
  */
 
+import crypto from "crypto";
 import express from "express";
 import type { Pool } from "pg";
 
@@ -234,7 +235,7 @@ export function setupRoleRoomSocialMetaRoutes(
       }
       // Klient-initiert kobling (returnPath satt): send klienten tilbake til
       // portalen i stedet for en generisk success-side.
-      if (claims.returnPath && claims.returnPath.startsWith("/")) {
+      if (claims.returnPath && claims.returnPath.startsWith("/") && !claims.returnPath.startsWith("//")) {
         const sep = claims.returnPath.includes("?") ? "&" : "?";
         return res.redirect(`${claims.returnPath}${sep}connected=instagram`);
       }
@@ -248,7 +249,7 @@ export function setupRoleRoomSocialMetaRoutes(
       );
     } catch (oauthError) {
       console.error("[ig-oauth] callback failed", oauthError);
-      if (claims.returnPath && claims.returnPath.startsWith("/")) {
+      if (claims.returnPath && claims.returnPath.startsWith("/") && !claims.returnPath.startsWith("//")) {
         const sep = claims.returnPath.includes("?") ? "&" : "?";
         return res.redirect(`${claims.returnPath}${sep}connect_error=instagram`);
       }
@@ -654,11 +655,13 @@ export function setupRoleRoomSocialMetaRoutes(
 
   // Meta webhook for IG events (status updates, mention notifications, etc.)
   app.get("/api/role-room/instagram/webhook", (req, res) => {
-    const expectedToken = process.env.META_WEBHOOK_VERIFY_TOKEN;
+    const expectedToken = process.env.META_WEBHOOK_VERIFY_TOKEN || "";
     const mode = req.query["hub.mode"];
-    const token = req.query["hub.verify_token"];
+    const tokenStr = typeof req.query["hub.verify_token"] === "string" ? req.query["hub.verify_token"] : "";
     const challenge = req.query["hub.challenge"];
-    if (mode === "subscribe" && expectedToken && token === expectedToken) {
+    const tokensMatch = !!expectedToken && tokenStr.length === expectedToken.length &&
+      crypto.timingSafeEqual(Buffer.from(tokenStr), Buffer.from(expectedToken));
+    if (mode === "subscribe" && tokensMatch) {
       return res.status(200).send(String(challenge ?? ""));
     }
     return res.status(403).send("verify token mismatch");
@@ -817,9 +820,11 @@ export function setupRoleRoomSocialMetaRoutes(
       (process.env.META_FB_WEBHOOK_VERIFY_TOKEN || "").trim() ||
       (process.env.META_WEBHOOK_VERIFY_TOKEN || "").trim();
     const mode = req.query["hub.mode"];
-    const token = req.query["hub.verify_token"];
+    const tokenStr = typeof req.query["hub.verify_token"] === "string" ? req.query["hub.verify_token"] : "";
     const challenge = req.query["hub.challenge"];
-    if (mode === "subscribe" && expectedToken && token === expectedToken) {
+    const tokensMatch = !!expectedToken && tokenStr.length === expectedToken.length &&
+      crypto.timingSafeEqual(Buffer.from(tokenStr), Buffer.from(expectedToken));
+    if (mode === "subscribe" && tokensMatch) {
       return res.status(200).send(String(challenge ?? ""));
     }
     return res.status(403).send("verify token mismatch");

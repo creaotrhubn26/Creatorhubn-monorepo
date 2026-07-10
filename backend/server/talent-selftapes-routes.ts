@@ -19,6 +19,7 @@ import type { Pool } from "pg";
 import crypto from "crypto";
 import multer from "multer";
 import Anthropic from "@anthropic-ai/sdk";
+import { aiRateLimit } from "./ai-rate-limiter.js";
 
 import {
   isStreamEnabled,
@@ -35,6 +36,10 @@ const MAX_SELFTAPE_BYTES = 500 * 1024 * 1024;
 const selftapeUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_SELFTAPE_BYTES },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith("video/")) cb(null, true);
+    else cb(new Error("Kun videofiler er tillatt") as any, false);
+  },
 });
 
 interface SessionLike {
@@ -185,7 +190,7 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
       return res.status(201).json({ project: r.rows[0] });
     } catch (err) {
       console.error("[selftapes/projects POST] failed", err);
-      return res.status(500).json({ error: "Klarte ikke å opprette", detail: String(err) });
+      return res.status(500).json({ error: "Klarte ikke å opprette" });
     }
   });
 
@@ -226,7 +231,7 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
       return res.json({ project: r.rows[0] });
     } catch (err) {
       console.error("[selftapes/projects PATCH] failed", err);
-      return res.status(500).json({ error: "Kunne ikke oppdatere", detail: String(err) });
+      return res.status(500).json({ error: "Kunne ikke oppdatere" });
     }
   });
 
@@ -324,7 +329,7 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
         });
       } catch (err) {
         console.error("[selftapes/takes init-upload] failed", err);
-        return res.status(500).json({ error: "Init feilet", detail: String(err) });
+        return res.status(500).json({ error: "Init feilet" });
       }
     },
   );
@@ -444,7 +449,7 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
         return res.status(201).json({ take: fin.rows[0] });
       } catch (err) {
         console.error("[selftapes/takes upload] failed", err);
-        return res.status(500).json({ error: "Upload feilet", detail: String(err) });
+        return res.status(500).json({ error: "Upload feilet" });
       }
     },
   );
@@ -484,7 +489,7 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
         return res.json({ take: r.rows[0] });
       } catch (err) {
         console.error("[selftapes/takes finalize] failed", err);
-        return res.status(500).json({ error: "Finalize feilet", detail: String(err) });
+        return res.status(500).json({ error: "Finalize feilet" });
       }
     },
   );
@@ -493,13 +498,16 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
   app.post("/api/role-room/talents/selftapes/takes/:takeId/select", async (req, res) => {
     const session = getActiveSession(req);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const talentId = await resolveTalentId(pool, req, session);
+    if (!talentId) return res.status(401).json({ error: "Innlogging kreves" });
     try {
       const r = await pool.query(
         `UPDATE talent_selftape_projects
             SET current_take_id = $1::uuid
           WHERE id = (SELECT project_id FROM talent_selftape_takes WHERE id = $1::uuid)
+            AND talent_id = $2::uuid
           RETURNING id::text, current_take_id::text`,
-        [req.params.takeId],
+        [req.params.takeId, talentId],
       );
       if (!r.rowCount) return res.status(404).json({ error: "Take ikke funnet" });
       return res.json({ project: r.rows[0] });
@@ -513,14 +521,19 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
   app.patch("/api/role-room/talents/selftapes/takes/:takeId", async (req, res) => {
     const session = getActiveSession(req);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const talentId = await resolveTalentId(pool, req, session);
+    if (!talentId) return res.status(401).json({ error: "Innlogging kreves" });
     const { notes, metadata } = (req.body || {}) as Record<string, unknown>;
     try {
       const r = await pool.query(
         `UPDATE talent_selftape_takes
             SET notes = COALESCE($1, notes),
                 metadata = COALESCE($2::jsonb, metadata)
-          WHERE id = $3::uuid RETURNING *`,
-        [notes ?? null, metadata ? JSON.stringify(metadata) : null, req.params.takeId],
+          WHERE id = $3::uuid
+            AND project_id IN (
+              SELECT id FROM talent_selftape_projects WHERE talent_id = $4::uuid
+            ) RETURNING *`,
+        [notes ?? null, metadata ? JSON.stringify(metadata) : null, req.params.takeId, talentId],
       );
       if (!r.rowCount) return res.status(404).json({ error: "Take ikke funnet" });
       return res.json({ take: r.rows[0] });
@@ -534,10 +547,16 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
   app.delete("/api/role-room/talents/selftapes/takes/:takeId", async (req, res) => {
     const session = getActiveSession(req);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const talentId = await resolveTalentId(pool, req, session);
+    if (!talentId) return res.status(401).json({ error: "Innlogging kreves" });
     try {
       const r = await pool.query(
-        `DELETE FROM talent_selftape_takes WHERE id = $1::uuid RETURNING id::text`,
-        [req.params.takeId],
+        `DELETE FROM talent_selftape_takes
+          WHERE id = $1::uuid
+            AND project_id IN (
+              SELECT id FROM talent_selftape_projects WHERE talent_id = $2::uuid
+            ) RETURNING id::text`,
+        [req.params.takeId, talentId],
       );
       if (!r.rowCount) return res.status(404).json({ error: "Take ikke funnet" });
       return res.json({ deleted: true });
@@ -556,8 +575,9 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
       const r = await pool.query(
         `SELECT f.* FROM talent_selftape_ai_feedback f
            JOIN talent_selftape_takes t ON t.ai_feedback_id = f.id
-          WHERE t.id = $1::uuid LIMIT 1`,
-        [req.params.takeId],
+           JOIN talent_selftape_projects p ON p.id = t.project_id
+          WHERE t.id = $1::uuid AND p.talent_id = $2::uuid LIMIT 1`,
+        [req.params.takeId, talentId],
       );
       return res.json({ feedback: r.rows[0] ?? null });
     } catch (err) {
@@ -570,6 +590,7 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
   // Fase D: kaller Claude Opus 4.7 med scenens kontekst + take-metadata
   // og lagrer strukturert respons i talent_selftape_ai_feedback.
   app.post("/api/role-room/talents/selftapes/takes/:takeId/feedback/regenerate",
+    aiRateLimit({ windowMs: 60_000, max: 10, label: "Self-tape AI feedback" }),
     async (req, res) => {
       const session = getActiveSession(req);
       const talentId = await resolveTalentId(pool, req, session);
@@ -722,7 +743,7 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
         } catch {
           // ignore secondary error
         }
-        return res.status(500).json({ error: "Regenerate feilet", detail: String(err) });
+        return res.status(500).json({ error: "Regenerate feilet" });
       }
     },
   );
@@ -784,7 +805,7 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
         return res.status(201).json({ submission: r.rows[0] });
       } catch (err) {
         console.error("[selftapes/submissions POST] failed", err);
-        return res.status(500).json({ error: "Klarte ikke å lage target", detail: String(err) });
+        return res.status(500).json({ error: "Klarte ikke å lage target" });
       }
     },
   );
@@ -793,6 +814,8 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
   app.patch("/api/role-room/talents/selftapes/submissions/:id", async (req, res) => {
     const session = getActiveSession(req);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const talentId = await resolveTalentId(pool, req, session);
+    if (!talentId) return res.status(401).json({ error: "Innlogging kreves" });
     const allowed = ["enabled", "deadline_at", "status", "agency_preferred"];
     const sets: string[] = [];
     const vals: unknown[] = [];
@@ -803,10 +826,14 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
     }
     if (sets.length === 0) return res.status(400).json({ error: "Ingen felter" });
     vals.push(req.params.id);
+    vals.push(talentId);
     try {
       const r = await pool.query(
         `UPDATE talent_selftape_submissions SET ${sets.join(", ")}, status_updated_at = now()
-          WHERE id = $${p}::uuid RETURNING *`,
+          WHERE id = $${p}::uuid
+            AND project_id IN (
+              SELECT id FROM talent_selftape_projects WHERE talent_id = $${p + 1}::uuid
+            ) RETURNING *`,
         vals,
       );
       if (!r.rowCount) return res.status(404).json({ error: "Submission ikke funnet" });
@@ -1067,7 +1094,7 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
         return res.status(201).json({ take: r.rows[0] });
       } catch (err) {
         console.error("[selftapes/takes external] failed", err);
-        return res.status(500).json({ error: "Klarte ikke å lagre ekstern lenke", detail: String(err) });
+        return res.status(500).json({ error: "Klarte ikke å lagre ekstern lenke" });
       }
     },
   );
@@ -1112,7 +1139,7 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
         return res.json({ submission: r.rows[0] });
       } catch (err) {
         console.error("[selftapes/submissions revoke] failed", err);
-        return res.status(500).json({ error: "Revoke feilet", detail: String(err) });
+        return res.status(500).json({ error: "Revoke feilet" });
       }
     },
   );
@@ -1208,9 +1235,8 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
           WHERE cr.id = $1 LIMIT 1`,
         [req.params.roleId],
       );
-      if (!own.rowCount) return res.status(404).json({ error: "Rolle ikke funnet" });
-      if (!isDemo && own.rows[0].created_by !== session?.userId) {
-        return res.status(403).json({ error: "Du eier ikke prosjektet" });
+      if (!own.rowCount || (!isDemo && own.rows[0].created_by !== session?.userId)) {
+        return res.status(404).json({ error: "Rolle ikke funnet" });
       }
 
       const r = await pool.query(
@@ -1261,13 +1287,9 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
             WHERE s.id = $1::uuid LIMIT 1`,
           [req.params.id],
         );
-        if (!own.rowCount) return res.status(404).json({ error: "Submission ikke funnet" });
         const row = own.rows[0];
-        if (!isDemo && !row.created_by) {
-          return res.status(403).json({ error: "Ingen prosjekt-eier-info" });
-        }
-        if (!isDemo && row.created_by !== session?.userId) {
-          return res.status(403).json({ error: "Du eier ikke prosjektet" });
+        if (!own.rowCount || (!isDemo && (!row.created_by || row.created_by !== session?.userId))) {
+          return res.status(404).json({ error: "Submission ikke funnet" });
         }
 
         const upd = await pool.query(
@@ -1339,9 +1361,8 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
             WHERE s.id = $1::uuid LIMIT 1`,
           [req.params.id],
         );
-        if (!own.rowCount) return res.status(404).json({ error: "Submission ikke funnet" });
-        if (!isDemo && own.rows[0].created_by !== session?.userId) {
-          return res.status(403).json({ error: "Du eier ikke prosjektet" });
+        if (!own.rowCount || (!isDemo && own.rows[0].created_by !== session?.userId)) {
+          return res.status(404).json({ error: "Submission ikke funnet" });
         }
 
         // Fire-and-forget — feiler aldri kallet
@@ -1386,9 +1407,8 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
             WHERE s.id = $1::uuid LIMIT 1`,
           [req.params.id],
         );
-        if (!own.rowCount) return res.status(404).json({ error: "Submission ikke funnet" });
-        if (!isDemo && own.rows[0].created_by !== session?.userId) {
-          return res.status(403).json({ error: "Du eier ikke prosjektet" });
+        if (!own.rowCount || (!isDemo && own.rows[0].created_by !== session?.userId)) {
+          return res.status(404).json({ error: "Submission ikke funnet" });
         }
 
         const r = await pool.query(
@@ -1447,9 +1467,8 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
             WHERE s.id = $1::uuid LIMIT 1`,
           [req.params.id],
         );
-        if (!own.rowCount) return res.status(404).json({ error: "Submission ikke funnet" });
-        if (!isDemo && own.rows[0].created_by !== session?.userId) {
-          return res.status(403).json({ error: "Du eier ikke prosjektet" });
+        if (!own.rowCount || (!isDemo && own.rows[0].created_by !== session?.userId)) {
+          return res.status(404).json({ error: "Submission ikke funnet" });
         }
 
         const r = await pool.query(

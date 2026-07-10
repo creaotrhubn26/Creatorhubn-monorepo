@@ -43,6 +43,9 @@ import {
 import { apiRequest } from '@/lib/queryClient';
 import { useAuth } from '@/hooks/useAuth';
 import { NextRoleSplash } from '@/components/resume/NextRoleSplash';
+import BlockRenderer from '@/components/role-room/cms/BlockRenderer';
+import { useCmsBlocks } from '@/components/role-room/cms/useCmsBlocks';
+import { DEFAULT_LOCALE } from '@/components/role-room/cms/blockSchema';
 
 // ════════════════════════════════════════════════════════════════════
 // SAMPLE-DATA for å vise template-preview
@@ -601,6 +604,7 @@ const REFERRAL_REDEEMED_KEY = 'nextrole:referral-redeemed';
 const NextRoleLanding: React.FC = () => {
   const theme = useTheme();
   const { user } = useAuth();
+  const cmsBlocks = useCmsBlocks('nextrole');
   const [loading, setLoading] = useState<string | null>(null);
   // Vis splash kun én gang per sesjon (lagres i sessionStorage så
   // refresh resetter, men intern navigering ikke trigger den)
@@ -746,6 +750,10 @@ const NextRoleLanding: React.FC = () => {
       document.title = prevTitle;
     };
   }, []);
+
+  if (cmsBlocks) {
+    return <BlockRenderer blocks={cmsBlocks} locale={DEFAULT_LOCALE} />;
+  }
 
   return (
     <Box sx={{ bgcolor: '#fff' }}>

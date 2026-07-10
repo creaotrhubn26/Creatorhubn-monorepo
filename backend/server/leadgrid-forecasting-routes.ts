@@ -81,7 +81,7 @@ export function registerLeadgridForecastingRoutes(deps: Deps): void {
         res.json({ forecast });
       } catch (err) {
         console.error("[forecasting] pipeline failed", err);
-        res.status(500).json({ error: "forecast_failed", detail: String(err) });
+        res.status(500).json({ error: "forecast_failed" });
       }
     },
   );
@@ -114,7 +114,7 @@ export function registerLeadgridForecastingRoutes(deps: Deps): void {
         res.json({ forecast });
       } catch (err) {
         console.error("[forecasting] refresh failed", err);
-        res.status(500).json({ error: "refresh_failed", detail: String(err) });
+        res.status(500).json({ error: "refresh_failed" });
       }
     },
   );
@@ -143,7 +143,7 @@ export function registerLeadgridForecastingRoutes(deps: Deps): void {
         res.json({ attribution });
       } catch (err) {
         console.error("[forecasting] attribution failed", err);
-        res.status(500).json({ error: "attribution_failed", detail: String(err) });
+        res.status(500).json({ error: "attribution_failed" });
       }
     },
   );

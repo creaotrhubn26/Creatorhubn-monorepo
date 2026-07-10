@@ -135,7 +135,7 @@ export function registerSuperAdminEmergencyLoginRoutes({
       });
     } catch (err) {
       console.error("[emergency-login] failed", err);
-      return res.status(500).json({ error: "login_feilet", detail: String(err) });
+      return res.status(500).json({ error: "login_feilet" });
     }
   });
 }

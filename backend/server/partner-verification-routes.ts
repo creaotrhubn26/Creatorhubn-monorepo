@@ -38,13 +38,24 @@ import {
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 25 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    // Explicit allowlist — image/svg+xml excluded (SVG can contain <script> → stored XSS).
+    const ALLOWED_MIME = new Set([
+      "image/jpeg", "image/png", "image/webp", "image/gif",
+      "image/heic", "image/heif", "image/avif",
+      "application/pdf",
+    ]);
+    if (ALLOWED_MIME.has(file.mimetype)) cb(null, true);
+    else cb(new Error("Kun bilder og PDF er tillatt") as any, false);
+  },
 });
 
 const CRON_TOKEN = process.env.LEADGRID_CRON_TRIGGER_TOKEN ?? "";
 
 function isCronAuthorized(req: Request): boolean {
   const t = req.headers["x-cron-trigger-token"] as string | undefined;
-  return !!t && !!CRON_TOKEN && t === CRON_TOKEN;
+  if (!t || !CRON_TOKEN || t.length !== CRON_TOKEN.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(t), Buffer.from(CRON_TOKEN));
 }
 
 type SessionData = { userId: string; role?: string; email?: string };
@@ -263,7 +274,7 @@ export function registerPartnerVerificationRoutes({ app, pool, activeSessions }:
       res.json({ ok: true, application_id: appId, step: stepNumber });
     } catch (e: any) {
       console.error("[save-step]", e);
-      res.status(500).json({ error: "Kunne ikke lagre step", detail: e.message?.slice(0, 200) });
+      res.status(500).json({ error: "Kunne ikke lagre step", detail: "internal_error"?.slice(0, 200) });
     }
   });
 

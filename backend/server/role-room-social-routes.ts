@@ -52,6 +52,7 @@ import { listManagedCompaniesForUser } from "./social-publisher-linkedin.js";
 import { listYouTubeChannels } from "./social-publisher-youtube.js";
 import { generateYouTubeChannelPlan } from "./social-publisher-youtube-channel-plan.js";
 import { getTikTokConnectionSummary } from "./social-publisher-tiktok.js";
+import { safeReturnPath } from "./web-origin-allowlist.js";
 import { notifyProducerOfClientPlatformConnection } from "./role-room-producer-notifications.js";
 import { resolveClientPortalSession } from "./role-room-client-portal.js";
 import { getProjectProducerUserId } from "./client-portal-connected-platforms.js";
@@ -324,7 +325,7 @@ export function setupRoleRoomSocialRoutes(
       console.error("[tiktok-oauth-start] failed", error);
       return res
         .status(500)
-        .json({ success: false, error: (error as Error).message || "Kunne ikke starte TikTok OAuth." });
+        .json({ success: false, error: "internal_error" || "Kunne ikke starte TikTok OAuth." });
     }
   });
 
@@ -361,7 +362,7 @@ export function setupRoleRoomSocialRoutes(
       console.error("[tiktok-oauth-start-client] failed", error);
       return res
         .status(500)
-        .json({ success: false, error: (error as Error).message || "Kunne ikke starte TikTok OAuth." });
+        .json({ success: false, error: "internal_error" || "Kunne ikke starte TikTok OAuth." });
     }
   });
 
@@ -378,8 +379,12 @@ export function setupRoleRoomSocialRoutes(
       const pending = (result as {
         pendingState?: { returnPath?: string | null; projectId?: string | null; clientEmail?: string | null };
       })?.pendingState;
-      const returnPath = pending?.returnPath;
-      if (returnPath && typeof returnPath === "string" && returnPath.startsWith("/")) {
+      // Reject scheme-relative (`//host`) and backslash (`/\host`, which
+      // browsers normalize to `//host`) open-redirect bypasses. safeReturnPath
+      // returns "" (falsy) for anything that isn't a clean root-relative path,
+      // so we fall through to the popup-HTML flow instead of redirecting.
+      const returnPath = safeReturnPath(pending?.returnPath, "");
+      if (returnPath) {
         // Varsle produsent-teamet: tilkoblingen er fullført og aktiv.
         if (pending?.projectId) {
           void notifyProducerOfClientPlatformConnection(pool, {
@@ -401,7 +406,7 @@ export function setupRoleRoomSocialRoutes(
       console.error("[tiktok-oauth-callback] failed", error);
       return res
         .status(500)
-        .send(`TikTok OAuth feilet: ${(error as Error).message}`);
+        .send("TikTok OAuth feilet. Lukk dette vinduet og prøv igjen.");
     }
   });
 
@@ -919,7 +924,7 @@ export function setupRoleRoomSocialRoutes(
       });
     } catch (error) {
       console.error("[social-metrics] snapshot failed", error);
-      return res.status(500).json({ success: false, error: (error as Error).message });
+      return res.status(500).json({ success: false, error: "internal_error" });
     }
   });
 

@@ -263,7 +263,7 @@ export function registerLeadgridChannelOnboardingRoutes({
           WHERE org_key = $2`,
         [e?.message ?? String(e), orgKey],
       );
-      res.status(500).json({ error: "test_failed", details: e?.message });
+      res.status(500).json({ error: "test_failed", details: "internal_error" });
     }
   });
 

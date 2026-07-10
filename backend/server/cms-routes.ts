@@ -6,10 +6,11 @@ export interface CmsRoutesDeps {
   pool: Pool;
   ensureCmsSchema: () => Promise<void>;
   requireUserSession: (req: any, res: any) => any;
+  requireAdminSession: (req: any, res: any) => boolean;
 }
 
 export function setupCmsRoutes(deps: CmsRoutesDeps): void {
-  const { app, pool, ensureCmsSchema, requireUserSession } = deps;
+  const { app, pool, ensureCmsSchema, requireUserSession, requireAdminSession } = deps;
 
   // CMS Admin — fields CRUD
   app.get("/api/cms/admin/fields", async (_req, res) => {
@@ -39,6 +40,7 @@ export function setupCmsRoutes(deps: CmsRoutesDeps): void {
   });
 
   app.post("/api/cms/admin/fields", async (req, res) => {
+    if (!requireAdminSession(req, res)) return;
     try {
       await ensureCmsSchema();
       const {
@@ -77,6 +79,7 @@ export function setupCmsRoutes(deps: CmsRoutesDeps): void {
   });
 
   app.put("/api/cms/admin/fields/:id", async (req, res) => {
+    if (!requireAdminSession(req, res)) return;
     try {
       await ensureCmsSchema();
       const {
@@ -115,6 +118,7 @@ export function setupCmsRoutes(deps: CmsRoutesDeps): void {
   });
 
   app.delete("/api/cms/admin/fields/:id", async (req, res) => {
+    if (!requireAdminSession(req, res)) return;
     try {
       await ensureCmsSchema();
       await pool.query(`DELETE FROM cms_fields WHERE id = $1`, [
@@ -152,6 +156,7 @@ export function setupCmsRoutes(deps: CmsRoutesDeps): void {
   });
 
   app.post("/api/cms/admin/content-types", async (req, res) => {
+    if (!requireAdminSession(req, res)) return;
     try {
       await ensureCmsSchema();
       const { key, label, description, fieldKeys, isActive } = req.body ?? {};
@@ -180,6 +185,7 @@ export function setupCmsRoutes(deps: CmsRoutesDeps): void {
   });
 
   app.put("/api/cms/admin/content-types/:id", async (req, res) => {
+    if (!requireAdminSession(req, res)) return;
     try {
       await ensureCmsSchema();
       const { label, description, fieldKeys, isActive } = req.body ?? {};
@@ -207,6 +213,7 @@ export function setupCmsRoutes(deps: CmsRoutesDeps): void {
   });
 
   app.delete("/api/cms/admin/content-types/:id", async (req, res) => {
+    if (!requireAdminSession(req, res)) return;
     try {
       await ensureCmsSchema();
       await pool.query(`DELETE FROM cms_content_types WHERE id = $1`, [
@@ -271,7 +278,7 @@ export function setupCmsRoutes(deps: CmsRoutesDeps): void {
          LIMIT 1`,
         [key, locale, profession],
       );
-      if (result.rowCount === 0)
+      if (!result.rows.length)
         return res.status(404).json({ error: "not_found" });
       const row = result.rows[0];
       res.json({
@@ -293,6 +300,10 @@ export function setupCmsRoutes(deps: CmsRoutesDeps): void {
 
   // CMS write (admin) — upsert by (content_key, profession, locale)
   app.put("/api/cms/content/:key", async (req, res) => {
+    // Published CMS content is served to every CreatorHub surface via the
+    // public GET above, so writes MUST be admin-only. Was requireUserSession,
+    // which let any authenticated user overwrite/deface global content.
+    if (!requireAdminSession(req, res)) return;
     const session = requireUserSession(req, res);
     if (!session) return;
     const key = String(req.params.key || "").trim();

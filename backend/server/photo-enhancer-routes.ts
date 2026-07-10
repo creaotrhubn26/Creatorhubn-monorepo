@@ -3983,7 +3983,8 @@ async function persistEnhancedBuffer(params: {
   settings: PhotoEnhancerSettings;
   namePrefix?: string;
 }): Promise<PhotoEnhancerSavedFile> {
-  const projectDirectory = path.join(projectFileStorageRoot, params.projectId);
+  const safeProjectId = sanitizeR2KeySegment(params.projectId || "photo-enhancer", "photo-enhancer");
+  const projectDirectory = path.join(projectFileStorageRoot, safeProjectId);
   await fs.mkdir(projectDirectory, { recursive: true });
   const id = crypto.randomUUID();
   const extension = extensionForMime(params.mimeType);
@@ -5220,11 +5221,25 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
         ? keywordsRaw.split(",").map((s) => s.trim()).filter(Boolean)
         : [];
 
+      const SAFE_IMAGE_MIMES: Record<string, string> = {
+        "image/jpeg": "image/jpeg",
+        "image/jpg": "image/jpeg",
+        "image/png": "image/png",
+        "image/webp": "image/webp",
+        "image/tiff": "image/tiff",
+        "image/heic": "image/heic",
+        "image/heif": "image/heif",
+      };
+      const safeContentType =
+        SAFE_IMAGE_MIMES[(req.file.mimetype || "").toLowerCase()] ||
+        "application/octet-stream";
+
       if (!copyright && !artist && !creator && keywords.length === 0) {
         // Nothing to stamp — send the input back unchanged so the
         // frontend can use the same code path whether or not the user
         // configured metadata.
-        res.setHeader("Content-Type", req.file.mimetype || "application/octet-stream");
+        res.setHeader("Content-Type", safeContentType);
+        res.setHeader("Content-Disposition", "attachment");
         return res.status(200).end(req.file.buffer);
       }
 
@@ -5244,10 +5259,8 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
         // Don't fail the export just because exiftool isn't on the
         // dev box — fall back to passing through untouched.
         if (result.error === "exiftool_unavailable") {
-          res.setHeader(
-            "Content-Type",
-            req.file.mimetype || "application/octet-stream",
-          );
+          res.setHeader("Content-Type", safeContentType);
+          res.setHeader("Content-Disposition", "attachment");
           res.setHeader("X-Exif-Stamp", "skipped_exiftool_unavailable");
           return res.status(200).end(req.file.buffer);
         }
@@ -5257,8 +5270,9 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
           detail: result.detail,
         });
       }
-      res.setHeader("Content-Type", req.file.mimetype || "application/octet-stream");
+      res.setHeader("Content-Type", safeContentType);
       res.setHeader("Content-Length", result.bytes.length.toString());
+      res.setHeader("Content-Disposition", "attachment");
       res.setHeader("X-Exif-Stamp", "applied");
       return res.status(200).end(result.bytes);
     },
@@ -5410,7 +5424,7 @@ export function createPhotoEnhancerRouter(pool?: Pool) {
         meta = parseCubeMetadata(text);
       } catch (err) {
         if (err instanceof CubeParseError) {
-          return res.status(400).json({ success: false, error: err.code, detail: err.message });
+          return res.status(400).json({ success: false, error: err.code, detail: "internal_error" });
         }
         return res.status(400).json({ success: false, error: "parse_failed" });
       }

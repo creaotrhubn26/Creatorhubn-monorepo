@@ -105,7 +105,7 @@ export function registerLeadgridPublicApiV1(deps: Deps): void {
       });
     } catch (err) {
       console.warn("[public-api-v1] /leads list feilet:", err);
-      res.status(500).json({ error: "list_failed", detail: String(err) });
+      res.status(500).json({ error: "list_failed", detail: "internal_error" });
     }
   });
 
@@ -139,7 +139,7 @@ export function registerLeadgridPublicApiV1(deps: Deps): void {
       res.json({ data: r.rows[0], meta: { version: "v1" } });
     } catch (err) {
       console.warn("[public-api-v1] /leads/:id feilet:", err);
-      res.status(500).json({ error: "get_failed", detail: String(err) });
+      res.status(500).json({ error: "get_failed", detail: "internal_error" });
     }
   });
 
@@ -241,7 +241,7 @@ export function registerLeadgridPublicApiV1(deps: Deps): void {
       });
     } catch (err) {
       console.warn("[public-api-v1] /leads POST feilet:", err);
-      res.status(500).json({ error: "create_failed", detail: String(err) });
+      res.status(500).json({ error: "create_failed", detail: "internal_error" });
     }
   });
 
@@ -291,7 +291,7 @@ export function registerLeadgridPublicApiV1(deps: Deps): void {
       });
     } catch (err) {
       console.warn("[public-api-v1] /recommendations feilet:", err);
-      res.status(500).json({ error: "list_failed", detail: String(err) });
+      res.status(500).json({ error: "list_failed", detail: "internal_error" });
     }
   });
 }

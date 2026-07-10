@@ -1580,7 +1580,7 @@ function readRoleRoomGoogleUpstreamErrorMessage(error: unknown): string | null {
 
 function sendRoleRoomGoogleError(res: Response, error: unknown, fallbackMessage: string) {
   if (isRoleRoomGoogleAuthError(error)) {
-    res.status(error.statusCode).json({ error: error.message, reconnectRequired: true });
+    res.status(error.statusCode).json({ error: "internal_error", reconnectRequired: true });
     return;
   }
 
@@ -1974,7 +1974,7 @@ function apiKeyAuth(pool: Pool, activeSessions?: Map<string, SessionData>) {
         [keyHash]
       );
 
-      if (result.rowCount === 0) {
+      if (!result.rows.length) {
         res.status(403).json({ error: 'Ugyldig eller utløpt API-nøkkel' });
         return;
       }
@@ -2006,6 +2006,18 @@ function apiKeyAuth(pool: Pool, activeSessions?: Map<string, SessionData>) {
 function getUserId(req: Request): string {
   const apiKeyReq = req as Request & { apiKeyUser?: ApiKeyUserContext };
   return apiKeyReq.apiKeyUser?.userId ?? 'anonymous';
+}
+
+/**
+ * Server-trusted role for entitlement decisions. Resolved by `apiKeyAuth`
+ * from the authenticated session (or, only when dev-bypass is enabled, from
+ * the dev headers). NEVER re-read the raw `x-user-role` header for gating —
+ * doing so lets any caller send `x-user-role: admin` and hit the privileged
+ * `checkAgentEntitlement` bypass, skipping the paywall and trial caps.
+ */
+function getSessionRole(req: Request): string | undefined {
+  const apiKeyReq = req as Request & { apiKeyUser?: ApiKeyUserContext };
+  return apiKeyReq.apiKeyUser?.role ?? undefined;
 }
 
 function requireScope(req: Request, scope: string): boolean {
@@ -2771,7 +2783,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         `SELECT metadata FROM legacy.projects WHERE id = $1 LIMIT 1`,
         [projectId],
       );
-      if (!result.rowCount || result.rowCount === 0) {
+      if (!result.rowCount || !result.rows.length) {
         return {};
       }
       return readJsonObject(result.rows[0]?.metadata);
@@ -8970,7 +8982,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         apiKeyEnforced: true,
       });
     } catch (err) {
-      res.status(500).json({ status: 'error', message: String(err) });
+      res.status(500).json({ status: 'error', message: "internal_error" });
     }
   });
 
@@ -8987,7 +8999,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         message: 'API-nøkkel verifisert. Tilkobling vellykket.',
       });
     } catch (err) {
-      res.status(500).json({ status: 'error', message: String(err) });
+      res.status(500).json({ status: 'error', message: "internal_error" });
     }
   });
 
@@ -11741,7 +11753,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       );
       res.json({ success: true });
     } catch (err) {
-      res.status(500).json({ error: String(err) });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 
@@ -12014,7 +12026,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
          WHERE cp.id = $1`,
         [req.params.id]
       );
-      if (result.rowCount === 0) {
+      if (!result.rows.length) {
         res.status(404).json({ error: 'Prosjekt ikke funnet' });
         return;
       }
@@ -13203,7 +13215,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
          LIMIT 1`,
         [notificationId, projectId],
       );
-      if (existingResult.rowCount === 0) {
+      if (!existingResult.rows.length) {
         res.status(404).json({ error: 'Fant ikke innbokselementet' });
         return;
       }
@@ -13331,7 +13343,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
          LIMIT 1`,
         [notificationId, projectId],
       );
-      if (notificationCheck.rowCount === 0) {
+      if (!notificationCheck.rows.length) {
         res.status(404).json({ error: 'Fant ikke varselet' });
         return;
       }
@@ -13718,7 +13730,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
          LIMIT 1`,
         [expenseId, projectId],
       );
-      if (expenseCheck.rowCount === 0) {
+      if (!expenseCheck.rows.length) {
         res.status(404).json({ error: 'Fant ikke utlegget' });
         return;
       }
@@ -13840,7 +13852,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
          LIMIT 1`,
         [expenseId, projectId],
       );
-      if (expenseCheck.rowCount === 0) {
+      if (!expenseCheck.rows.length) {
         res.status(404).json({ error: 'Fant ikke utlegget' });
         return;
       }
@@ -14894,7 +14906,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         `SELECT * FROM role_room_client_reviews WHERE id = $1 AND project_id = $2 LIMIT 1`,
         [reviewId, projectId],
       );
-      if (existingResult.rowCount === 0) {
+      if (!existingResult.rows.length) {
         res.status(404).json({ error: 'Fant ikke review' });
         return;
       }
@@ -14990,7 +15002,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         `SELECT id, title FROM role_room_client_reviews WHERE id = $1 AND project_id = $2`,
         [reviewId, projectId],
       );
-      if (reviewCheck.rowCount === 0) {
+      if (!reviewCheck.rows.length) {
         res.status(404).json({ error: 'Fant ikke review' });
         return;
       }
@@ -15060,7 +15072,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         `SELECT * FROM role_room_client_reviews WHERE id = $1 AND project_id = $2 LIMIT 1`,
         [reviewId, projectId],
       );
-      if (reviewResult.rowCount === 0) {
+      if (!reviewResult.rows.length) {
         res.status(404).json({ error: 'Fant ikke review' });
         return;
       }
@@ -15562,7 +15574,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           WHERE id = $1 AND project_id = $2`,
         [commentId, projectId],
       );
-      if (existing.rowCount === 0) {
+      if (!existing.rows.length) {
         res.status(404).json({ error: 'Kommentar ikke funnet' });
         return;
       }
@@ -16249,7 +16261,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
          LIMIT 1`,
         [materialId, projectId],
       );
-      if (existingMaterialResult.rowCount === 0) {
+      if (!existingMaterialResult.rows.length) {
         res.status(404).json({ error: 'Fant ikke klientmateriale' });
         return;
       }
@@ -16747,7 +16759,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
          LIMIT 1`,
         [requestId, projectId],
       );
-      if (requestResult.rowCount === 0) {
+      if (!requestResult.rows.length) {
         res.status(404).json({ error: 'Fant ikke reveal-forespørselen' });
         return;
       }
@@ -16832,7 +16844,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
          LIMIT 1`,
         [requestId, projectId],
       );
-      if (requestResult.rowCount === 0) {
+      if (!requestResult.rows.length) {
         res.status(404).json({ error: 'Fant ikke reveal-forespørselen' });
         return;
       }
@@ -16865,7 +16877,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
          LIMIT 1`,
         [requestRow.secret_id, projectId],
       );
-      if (secretResult.rowCount === 0) {
+      if (!secretResult.rows.length) {
         res.status(404).json({ error: 'Fant ikke secret' });
         return;
       }
@@ -20730,7 +20742,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         });
         return;
       }
-      res.status(502).json({ success: false, error: error instanceof Error ? error.message : 'Weather upstream failed' });
+      res.status(502).json({ success: false, error: error instanceof Error ? "internal_error" : 'Weather upstream failed' });
     }
   });
 
@@ -21130,7 +21142,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         [projectId]
       );
 
-      if (result.rowCount === 0) {
+      if (!result.rows.length) {
         res.status(404).json({ error: 'Prosjekt ikke funnet' });
         return;
       }
@@ -21168,7 +21180,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         [projectId]
       );
 
-      if (existing.rowCount === 0) {
+      if (!existing.rows.length) {
         res.status(404).json({ error: 'Prosjekt ikke funnet' });
         return;
       }
@@ -21210,7 +21222,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         [projectId]
       );
 
-      if (result.rowCount === 0) {
+      if (!result.rows.length) {
         res.status(404).json({ error: 'Prosjekt ikke funnet' });
         return;
       }
@@ -21918,7 +21930,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const record = await getAiConsent(pool, req.params.projectId, processor);
         res.json({ consent: record });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to load AI consent', detail: String(error) });
+        res.status(500).json({ error: 'Failed to load AI consent', detail: "internal_error" });
       }
     },
   );
@@ -21947,7 +21959,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         });
         res.status(201).json({ consent: record });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to grant AI consent', detail: String(error) });
+        res.status(500).json({ error: 'Failed to grant AI consent', detail: "internal_error" });
       }
     },
   );
@@ -21964,7 +21976,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         await revokeAiConsent(pool, req.params.projectId, processor);
         res.json({ ok: true });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to revoke AI consent', detail: String(error) });
+        res.status(500).json({ error: 'Failed to revoke AI consent', detail: "internal_error" });
       }
     },
   );
@@ -21986,7 +21998,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         if (!updated) return res.status(404).json({ error: 'no active consent' });
         res.json({ consent: updated });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to update entity lists', detail: String(error) });
+        res.status(500).json({ error: 'Failed to update entity lists', detail: "internal_error" });
       }
     },
   );
@@ -22043,7 +22055,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           pool,
           projectId: req.params.projectId,
           userId,
-          userRole: readRoleRoomDevUserRole(req),
+          userRole: getSessionRole(req),
           action: action as RoleRoomAgentAction,
           userMessage: userMessage.trim(),
           requiredScope,
@@ -22055,7 +22067,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.json(response);
       } catch (error) {
         if (error instanceof RoleRoomAgentDisabledError) {
-          return res.status(503).json({ error: 'agent_disabled', detail: error.message });
+          return res.status(503).json({ error: 'agent_disabled', detail: "internal_error" });
         }
         if (error instanceof RoleRoomAgentEntitlementError) {
           return res.status(402).json({
@@ -22065,11 +22077,11 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           });
         }
         if (error instanceof RoleRoomAiConsentError) {
-          return res.status(403).json({ error: error.code, detail: error.message });
+          return res.status(403).json({ error: error.code, detail: "internal_error" });
         }
         res.status(500).json({
           error: 'agent_failed',
-          detail: error instanceof Error ? error.message : String(error),
+          detail: "internal_error",
         });
       }
     },
@@ -22084,10 +22096,10 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     async (req: Request, res: Response) => {
       try {
         const userId = getUserId(req);
-        await handleAgentStream(pool, req, res, userId, readRoleRoomDevUserRole(req));
+        await handleAgentStream(pool, req, res, userId, getSessionRole(req));
       } catch (error) {
         if (!res.headersSent) {
-          res.status(500).json({ error: 'stream_failed', detail: String(error) });
+          res.status(500).json({ error: 'stream_failed', detail: "internal_error" });
         } else {
           res.end();
         }
@@ -22129,7 +22141,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         });
         res.json({ ok: true });
       } catch (error) {
-        res.status(500).json({ error: 'tool_result_log_failed', detail: String(error) });
+        res.status(500).json({ error: 'tool_result_log_failed', detail: "internal_error" });
       }
     },
   );
@@ -22549,7 +22561,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         });
         res.json({ threads });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to list threads', detail: String(error) });
+        res.status(500).json({ error: 'Failed to list threads', detail: "internal_error" });
       }
     },
   );
@@ -22564,7 +22576,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         if (!data) return res.status(404).json({ error: 'Not found' });
         res.json({ thread: data.thread, messages: data.messages });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to load thread', detail: String(error) });
+        res.status(500).json({ error: 'Failed to load thread', detail: "internal_error" });
       }
     },
   );
@@ -22583,7 +22595,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         if (!ok) return res.status(404).json({ error: 'Not found' });
         res.json({ ok: true });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to rename thread', detail: String(error) });
+        res.status(500).json({ error: 'Failed to rename thread', detail: "internal_error" });
       }
     },
   );
@@ -22598,7 +22610,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         if (!ok) return res.status(404).json({ error: 'Not found' });
         res.json({ ok: true });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to archive thread', detail: String(error) });
+        res.status(500).json({ error: 'Failed to archive thread', detail: "internal_error" });
       }
     },
   );
@@ -22613,11 +22625,11 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     async (req: Request, res: Response) => {
       try {
         const userId = getUserId(req);
-        const entitlement = await checkAgentEntitlement(pool, userId, readRoleRoomDevUserRole(req));
+        const entitlement = await checkAgentEntitlement(pool, userId, getSessionRole(req));
         const config = getEntitlementConfig();
         res.json({ entitlement, config });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to load entitlement', detail: String(error) });
+        res.status(500).json({ error: 'Failed to load entitlement', detail: "internal_error" });
       }
     },
   );
@@ -22632,10 +22644,10 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         if (!result.ok) {
           return res.status(409).json({ error: result.error });
         }
-        const entitlement = await checkAgentEntitlement(pool, userId, readRoleRoomDevUserRole(req));
+        const entitlement = await checkAgentEntitlement(pool, userId, getSessionRole(req));
         res.status(201).json({ trialEndsAt: result.trialEndsAt, entitlement });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to start trial', detail: String(error) });
+        res.status(500).json({ error: 'Failed to start trial', detail: "internal_error" });
       }
     },
   );
@@ -22696,7 +22708,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
 
         res.json({ status: 'ok', url: session.url, id: session.id });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to create checkout', detail: String(error) });
+        res.status(500).json({ error: 'Failed to create checkout', detail: "internal_error" });
       }
     },
   );
@@ -22723,7 +22735,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         });
         res.json({ ok: true });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to grant', detail: String(error) });
+        res.status(500).json({ error: 'Failed to grant', detail: "internal_error" });
       }
     },
   );
@@ -22743,7 +22755,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         await revokeEntitlement(pool, userId, typeof reason === 'string' ? reason : 'admin_revoke');
         res.json({ ok: true });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to revoke', detail: String(error) });
+        res.status(500).json({ error: 'Failed to revoke', detail: "internal_error" });
       }
     },
   );
@@ -22760,7 +22772,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const rows = await listEntitlements(pool, { limit });
         res.json({ entitlements: rows });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to list', detail: String(error) });
+        res.status(500).json({ error: 'Failed to list', detail: "internal_error" });
       }
     },
   );
@@ -22779,7 +22791,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const overview = await getAiGovernanceOverview(pool);
         res.json(overview);
       } catch (error) {
-        res.status(500).json({ error: 'Failed to load overview', detail: String(error) });
+        res.status(500).json({ error: 'Failed to load overview', detail: "internal_error" });
       }
     },
   );
@@ -22797,7 +22809,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const consents = await getConsentList(pool, { includeRevoked, limit });
         res.json({ consents });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to load consents', detail: String(error) });
+        res.status(500).json({ error: 'Failed to load consents', detail: "internal_error" });
       }
     },
   );
@@ -22816,7 +22828,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const rows = await getAuditTrail(pool, { limit, projectId, status });
         res.json({ rows });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to load audit trail', detail: String(error) });
+        res.status(500).json({ error: 'Failed to load audit trail', detail: "internal_error" });
       }
     },
   );
@@ -22833,7 +22845,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const rows = await listAiCallsForUser(pool, userId, { projectId, limit });
         res.json({ interactions: rows });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to load AI interactions', detail: String(error) });
+        res.status(500).json({ error: 'Failed to load AI interactions', detail: "internal_error" });
       }
     },
   );
@@ -22947,9 +22959,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.json({ accounts });
       } catch (error) {
         if (error instanceof MetaAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to list Meta ad accounts', detail: String(error) });
+        res.status(500).json({ error: 'Failed to list Meta ad accounts', detail: "internal_error" });
       }
     },
   );
@@ -23031,9 +23043,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.status(201).json({ campaign: row });
       } catch (error) {
         if (error instanceof MetaAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to create Meta campaign', detail: String(error) });
+        res.status(500).json({ error: 'Failed to create Meta campaign', detail: "internal_error" });
       }
     },
   );
@@ -23079,9 +23091,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.status(201).json({ adSet: result });
       } catch (error) {
         if (error instanceof MetaAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to create ad set', detail: String(error) });
+        res.status(500).json({ error: 'Failed to create ad set', detail: "internal_error" });
       }
     },
   );
@@ -23110,9 +23122,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.status(201).json({ ad: result });
       } catch (error) {
         if (error instanceof MetaAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to create ad', detail: String(error) });
+        res.status(500).json({ error: 'Failed to create ad', detail: "internal_error" });
       }
     },
   );
@@ -23139,9 +23151,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.json({ campaign: updated });
       } catch (error) {
         if (error instanceof MetaAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to pause campaign', detail: String(error) });
+        res.status(500).json({ error: 'Failed to pause campaign', detail: "internal_error" });
       }
     },
   );
@@ -23174,12 +23186,12 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.json({ campaign: updated });
       } catch (error) {
         if (error instanceof BudgetExceededError) {
-          return res.status(409).json({ error: 'budget_exceeded', detail: error.message, status: error.status });
+          return res.status(409).json({ error: 'budget_exceeded', detail: "internal_error", status: error.status });
         }
         if (error instanceof MetaAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to resume campaign', detail: String(error) });
+        res.status(500).json({ error: 'Failed to resume campaign', detail: "internal_error" });
       }
     },
   );
@@ -23206,9 +23218,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.json({ campaign: updated });
       } catch (error) {
         if (error instanceof MetaAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to end campaign', detail: String(error) });
+        res.status(500).json({ error: 'Failed to end campaign', detail: "internal_error" });
       }
     },
   );
@@ -23243,9 +23255,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.json({ customers });
       } catch (error) {
         if (error instanceof GoogleAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'google_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'google_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to list Google customers', detail: String(error) });
+        res.status(500).json({ error: 'Failed to list Google customers', detail: "internal_error" });
       }
     },
   );
@@ -23299,9 +23311,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         });
       } catch (error) {
         if (error instanceof GoogleAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'google_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'google_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to send MCC invite', detail: String(error) });
+        res.status(500).json({ error: 'Failed to send MCC invite', detail: "internal_error" });
       }
     },
   );
@@ -23326,9 +23338,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.json({ links });
       } catch (error) {
         if (error instanceof GoogleAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'google_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'google_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to list MCC links', detail: String(error) });
+        res.status(500).json({ error: 'Failed to list MCC links', detail: "internal_error" });
       }
     },
   );
@@ -23360,9 +23372,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.json({ clientCustomerId: customerId, link });
       } catch (error) {
         if (error instanceof GoogleAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'google_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'google_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to check MCC link status', detail: String(error) });
+        res.status(500).json({ error: 'Failed to check MCC link status', detail: "internal_error" });
       }
     },
   );
@@ -23403,9 +23415,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.status(201).json({ campaign: row, budgetResourceName: created.budgetResourceName });
       } catch (error) {
         if (error instanceof GoogleAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'google_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'google_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to create Google campaign', detail: String(error) });
+        res.status(500).json({ error: 'Failed to create Google campaign', detail: "internal_error" });
       }
     },
   );
@@ -23438,12 +23450,12 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           res.json({ campaign: updated });
         } catch (error) {
           if (error instanceof BudgetExceededError) {
-            return res.status(409).json({ error: 'budget_exceeded', detail: error.message, status: error.status });
+            return res.status(409).json({ error: 'budget_exceeded', detail: "internal_error", status: error.status });
           }
           if (error instanceof GoogleAdsApiError) {
-            return res.status(error.statusCode).json({ error: 'google_api_error', detail: error.message });
+            return res.status(error.statusCode).json({ error: 'google_api_error', detail: "internal_error" });
           }
-          res.status(500).json({ error: `Failed to ${action} Google campaign`, detail: String(error) });
+          res.status(500).json({ error: `Failed to ${action} Google campaign`, detail: "internal_error" });
         }
       },
     );
@@ -23470,9 +23482,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.json({ campaign: updated });
       } catch (error) {
         if (error instanceof GoogleAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'google_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'google_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to end Google campaign', detail: String(error) });
+        res.status(500).json({ error: 'Failed to end Google campaign', detail: "internal_error" });
       }
     },
   );
@@ -23496,7 +23508,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           .filter((a) => a.assetType === 'ad_account');
         res.json({ accounts });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to list LinkedIn accounts', detail: String(error) });
+        res.status(500).json({ error: 'Failed to list LinkedIn accounts', detail: "internal_error" });
       }
     },
   );
@@ -23514,7 +23526,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const groups = await listLinkedInCampaignGroups(auth.accessToken, accountUrn, auth.apiVersion);
         res.json({ groups });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to list LinkedIn campaign groups', detail: String(error) });
+        res.status(500).json({ error: 'Failed to list LinkedIn campaign groups', detail: "internal_error" });
       }
     },
   );
@@ -23556,9 +23568,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.status(201).json({ campaign: row });
       } catch (error) {
         if (error instanceof LinkedInAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'linkedin_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'linkedin_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to create LinkedIn campaign', detail: String(error) });
+        res.status(500).json({ error: 'Failed to create LinkedIn campaign', detail: "internal_error" });
       }
     },
   );
@@ -23588,12 +23600,12 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           res.json({ campaign: updated });
         } catch (error) {
           if (error instanceof BudgetExceededError) {
-            return res.status(409).json({ error: 'budget_exceeded', detail: error.message, status: error.status });
+            return res.status(409).json({ error: 'budget_exceeded', detail: "internal_error", status: error.status });
           }
           if (error instanceof LinkedInAdsApiError) {
-            return res.status(error.statusCode).json({ error: 'linkedin_api_error', detail: error.message });
+            return res.status(error.statusCode).json({ error: 'linkedin_api_error', detail: "internal_error" });
           }
-          res.status(500).json({ error: `Failed to ${action} LinkedIn campaign`, detail: String(error) });
+          res.status(500).json({ error: `Failed to ${action} LinkedIn campaign`, detail: "internal_error" });
         }
       },
     );
@@ -23617,9 +23629,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.json({ campaign: updated });
       } catch (error) {
         if (error instanceof LinkedInAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'linkedin_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'linkedin_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to end LinkedIn campaign', detail: String(error) });
+        res.status(500).json({ error: 'Failed to end LinkedIn campaign', detail: "internal_error" });
       }
     },
   );
@@ -23641,7 +23653,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const campaigns = await listCampaignsForUser(pool, userId, { projectId, platform, status });
         res.json({ campaigns });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to list campaigns', detail: String(error) });
+        res.status(500).json({ error: 'Failed to list campaigns', detail: "internal_error" });
       }
     },
   );
@@ -23677,9 +23689,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         res.json({ sync: result });
       } catch (error) {
         if (error instanceof MetaAdsApiError) {
-          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: error.message });
+          return res.status(error.statusCode).json({ error: 'meta_api_error', detail: "internal_error" });
         }
-        res.status(500).json({ error: 'Failed to sync campaign spend', detail: String(error) });
+        res.status(500).json({ error: 'Failed to sync campaign spend', detail: "internal_error" });
       }
     },
   );
@@ -23716,7 +23728,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         );
         res.json({ sync: result });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to sync campaign spend', detail: String(error) });
+        res.status(500).json({ error: 'Failed to sync campaign spend', detail: "internal_error" });
       }
     },
   );
@@ -23746,7 +23758,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           totalClientCostExVatNok: summary.totalSpendNok + summary.totalFeeNok,
         });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to load spend summary', detail: String(error) });
+        res.status(500).json({ error: 'Failed to load spend summary', detail: "internal_error" });
       }
     },
   );
@@ -23771,7 +23783,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const results = buildChannelResults(rows);
         res.json({ period, ...results });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to load channel results', detail: String(error) });
+        res.status(500).json({ error: 'Failed to load channel results', detail: "internal_error" });
       }
     },
   );
@@ -23800,7 +23812,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         }));
         res.json({ period, campaigns: campaignsWithRoas });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to load campaign results', detail: String(error) });
+        res.status(500).json({ error: 'Failed to load campaign results', detail: "internal_error" });
       }
     },
   );
@@ -23870,7 +23882,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           })),
         });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to load comments', detail: String(error) });
+        res.status(500).json({ error: 'Failed to load comments', detail: "internal_error" });
       }
     },
   );
@@ -24003,7 +24015,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           },
         });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to save comment', detail: String(error) });
+        res.status(500).json({ error: 'Failed to save comment', detail: "internal_error" });
       }
     },
   );
@@ -24036,7 +24048,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         );
         res.json({ ok: true });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to resolve', detail: String(error) });
+        res.status(500).json({ error: 'Failed to resolve', detail: "internal_error" });
       }
     },
   );
@@ -24069,7 +24081,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           generatedWithModel: persisted.generatedWithModel,
         });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to load recommendations', detail: String(error) });
+        res.status(500).json({ error: 'Failed to load recommendations', detail: "internal_error" });
       }
     },
   );
@@ -24090,7 +24102,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         if (!projectId || typeof projectId !== 'string') {
           return res.status(400).json({ error: 'projectId_required' });
         }
-        const entitlement = await checkAgentEntitlement(pool, userId, readRoleRoomDevUserRole(req));
+        const entitlement = await checkAgentEntitlement(pool, userId, getSessionRole(req));
         if (!entitlement.allowed) {
           return res.status(402).json({ error: 'entitlement_required', entitlement });
         }
@@ -24103,7 +24115,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         }
         res.json({ period, ...summary });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to generate recommendations', detail: String(error) });
+        res.status(500).json({ error: 'Failed to generate recommendations', detail: "internal_error" });
       }
     },
   );
@@ -24154,7 +24166,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         }
 
         // AI-generering teller mot agent-kvoten (samme som marketing-plan).
-        const entitlement = await checkAgentEntitlement(pool, userId, readRoleRoomDevUserRole(req));
+        const entitlement = await checkAgentEntitlement(pool, userId, getSessionRole(req));
         if (!entitlement.allowed) {
           return res.status(402).json({ error: 'entitlement_required', entitlement });
         }
@@ -24195,7 +24207,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         }
         res.json({ creative });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to generate ad creatives', detail: String(error) });
+        res.status(500).json({ error: 'Failed to generate ad creatives', detail: "internal_error" });
       }
     },
   );
@@ -24238,7 +24250,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const autoPauseOnCap = budget?.autoPauseOnCap ?? false;
         res.json({ period, status, pacing, autoPauseOnCap, canEdit: await isClientForProject(req, projectId) });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to load budget', detail: String(error) });
+        res.status(500).json({ error: 'Failed to load budget', detail: "internal_error" });
       }
     },
   );
@@ -24265,7 +24277,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const bestTimes = platform ? results.filter((r) => r.platform === platform) : results;
         res.json({ bestTimes });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to compute best time to post', detail: String(error) });
+        res.status(500).json({ error: 'Failed to compute best time to post', detail: "internal_error" });
       }
     },
   );
@@ -24294,7 +24306,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         });
         res.json(result);
       } catch (error) {
-        res.status(500).json({ error: 'Failed to send client update', detail: String(error) });
+        res.status(500).json({ error: 'Failed to send client update', detail: "internal_error" });
       }
     },
   );
@@ -24314,7 +24326,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const updates = await listClientUpdates(pool, ctx.projectId);
         res.json({ updates });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to list client updates', detail: String(error) });
+        res.status(500).json({ error: 'Failed to list client updates', detail: "internal_error" });
       }
     },
   );
@@ -24338,7 +24350,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const budget = await setBudget(pool, projectId, period, maxSpendNok, identifiers[0] ?? 'klient');
         res.json({ budget });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to set budget', detail: String(error) });
+        res.status(500).json({ error: 'Failed to set budget', detail: "internal_error" });
       }
     },
   );
@@ -24364,7 +24376,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const budget = await setAutoPauseOnCap(pool, projectId, period, enabled, identifiers[0] ?? 'klient');
         res.json({ budget });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to set auto-pause', detail: String(error) });
+        res.status(500).json({ error: 'Failed to set auto-pause', detail: "internal_error" });
       }
     },
   );
@@ -24393,7 +24405,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         if (!budget) return res.status(404).json({ error: 'budget_not_set', detail: 'Kunden må sette et budsjett først.' });
         res.json({ budget });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to request overage', detail: String(error) });
+        res.status(500).json({ error: 'Failed to request overage', detail: "internal_error" });
       }
     },
   );
@@ -24418,7 +24430,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         if (!budget) return res.status(404).json({ error: 'budget_not_set' });
         res.json({ budget });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to approve overage', detail: String(error) });
+        res.status(500).json({ error: 'Failed to approve overage', detail: "internal_error" });
       }
     },
   );
@@ -24446,7 +24458,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           })),
         });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to list ads connections', detail: String(error) });
+        res.status(500).json({ error: 'Failed to list ads connections', detail: "internal_error" });
       }
     },
   );
@@ -24531,7 +24543,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           platforms: { meta, linkedin },
         });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to load granted assets', detail: String(error) });
+        res.status(500).json({ error: 'Failed to load granted assets', detail: "internal_error" });
       }
     },
   );
@@ -24573,7 +24585,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         if (!authorizationUrl) return res.status(400).json({ error: 'unsupported_platform' });
         res.json({ success: true, authorizationUrl, stateId, scopes: ADS_OAUTH_SCOPES[typedPlatform] });
       } catch (error) {
-        res.status(500).json({ error: 'Failed to start ads OAuth', detail: String(error) });
+        res.status(500).json({ error: 'Failed to start ads OAuth', detail: "internal_error" });
       }
     },
   );
@@ -24618,7 +24630,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         const base = state.browserOrigin ?? '';
         res.redirect(`${base}${state.returnPath}?adsOauthStatus=connected&platform=${platform}`);
       } catch (error) {
-        res.status(500).json({ error: 'ads_oauth_callback_failed', detail: String(error) });
+        res.status(500).json({ error: 'ads_oauth_callback_failed', detail: "internal_error" });
       }
     },
   );

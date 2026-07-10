@@ -34,15 +34,18 @@ import {
 } from '@mui/icons-material';
 import { CircularProgress } from '@mui/material';
 import { apiRequest } from '@/lib/queryClient';
+import { getProfessionIconColor } from '@shared/profession-types';
 import { useQueryClient } from '@tanstack/react-query';
 import StorageProviderStep from '@/components/onboarding/StorageProviderStep';
 import OneDeskDownloadCard from '@/components/storage/OneDeskDownloadCard';
 
+// Farger hentes fra den KANONISKE getProfessionIconColor slik at samme profesjon
+// har samme farge i wizarden som i Min profil / workspace (unngår drift).
 const PROFESSIONS = [
-  { id: 'photographer', label: 'Fotograf', icon: <CameraIcon />, color: '#ffba6c', tagline: 'Bryllup, portrett, kommersielt' },
-  { id: 'videographer', label: 'Videograf', icon: <VideoIcon />, color: '#e74c3c', tagline: 'Reklame, musikkvideo, dokumentar' },
-  { id: 'music_producer', label: 'Musikkprodusent', icon: <MusicIcon />, color: '#1976d2', tagline: 'Studio, beats, miksing' },
-  { id: 'vendor', label: 'Leverandør', icon: <VendorIcon />, color: '#27ae60', tagline: 'Utleie, salg, service' },
+  { id: 'photographer', label: 'Fotograf', icon: <CameraIcon />, color: getProfessionIconColor('photographer') || '#ff8c00', tagline: 'Bryllup, portrett, kommersielt' },
+  { id: 'videographer', label: 'Videograf', icon: <VideoIcon />, color: getProfessionIconColor('videographer') || '#e74c3c', tagline: 'Reklame, musikkvideo, dokumentar' },
+  { id: 'music_producer', label: 'Musikkprodusent', icon: <MusicIcon />, color: getProfessionIconColor('music_producer') || '#9b59b6', tagline: 'Studio, beats, miksing' },
+  { id: 'vendor', label: 'Leverandør', icon: <VendorIcon />, color: getProfessionIconColor('vendor') || '#3498db', tagline: 'Utleie, salg, service' },
 ];
 
 const TIER_RECOMMENDATIONS: Record<string, { name: string; price: string; reason: string }> = {
@@ -265,7 +268,10 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
     return true;
   })();
 
-  const handleFinish = async () => {
+  // Returnerer true kun ved vellykket lagring — kalleren skal IKKE rute til
+  // workspace hvis dette er false (ellers havner brukeren i workspace før
+  // profesjon/bedriftsinfo faktisk er lagret).
+  const handleFinish = async (): Promise<boolean> => {
     setSaveError(null);
     setSaving(true);
     const payload: DraftData = { firstName, businessName, profession, brandColor };
@@ -283,7 +289,7 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
         `Kunne ikke lagre bedriftsinfo (${message}). Vi har lagret det lokalt og forsøker igjen automatisk neste gang. Prøv på nytt nå hvis du vil.`,
       );
       setSaving(false);
-      return;
+      return false;
     }
     // Speil identitet + avatar til users-recorden (samlet profil). Best-effort:
     // profesjon speiles uansett av branding-lagringen; avatar/navn er ekstra.
@@ -306,6 +312,7 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
     setSaving(false);
     onComplete?.({ profession, businessName });
     onClose();
+    return true;
   };
 
   // Når profesjon endres, oppdater brand-farge automatisk
@@ -601,7 +608,7 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
             <Step key={label}>
               <StepLabel StepIconComponent={({ active, completed }) => {
                 // One icon per STEPS entry: Velkomst, Profesjon, Brand,
-                // Marketplace, Backup, Cloud Storage, Ferdig (7 steg).
+                // Marketplace, Backup, Cloud Storage, Profil, Ferdig (8 steg).
                 // Defensiv || DoneIcon-fallback hindrer "Element type is
                 // invalid"-krasj hvis STEPS skulle vokse uten matching ikon.
                 const Icon = [WelcomeIcon, PersonIcon, PaletteIcon, StoreIcon, BackupIcon, CloudIcon, AccountCircleIcon, DoneIcon][i] || DoneIcon;
@@ -644,7 +651,7 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
                 placeholder="Fornavn"
               />
               <TextField
-                label="Firmanavn (valgfri)" fullWidth
+                label="Firmanavn (valgfritt)" fullWidth
                 value={businessName}
                 onChange={(e) => setBusinessName(e.target.value)}
                 placeholder="F.eks. Lysverkene Foto"
@@ -1354,7 +1361,7 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
 
             {/* Bro inn i workspace — prøv demoen uten å opprette noe */}
             <Card
-              onClick={async () => { await handleFinish(); try { window.location.assign('/workspace/sample'); } catch { /* noop */ } }}
+              onClick={async () => { const ok = await handleFinish(); if (ok) { try { window.location.assign('/workspace/sample'); } catch { /* noop */ } } }}
               sx={{
                 p: 2.5, cursor: 'pointer',
                 background: `linear-gradient(135deg, ${alpha(brandColor, 0.14)}, rgba(15,10,7,0.86))`,
@@ -1452,7 +1459,7 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
             endIcon={<DoneIcon />}
             variant="contained"
             disabled={saving}
-            onClick={handleFinish}
+            onClick={async () => { const ok = await handleFinish(); if (ok) { try { window.location.assign('/workspace'); } catch { /* noop */ } } }}
             sx={{
               borderRadius: '999px', px: 3, py: 1.1,
               fontWeight: 700, textTransform: 'none',
@@ -1460,7 +1467,7 @@ const IndividualOnboardingWizard: React.FC<Props> = ({
               '&:hover': { bgcolor: '#059669' },
             }}
           >
-            {saving ? 'Lagrer…' : 'Ta meg til dashboardet'}
+            {saving ? 'Lagrer…' : 'Ta meg til workspace'}
           </Button>
         )}
       </DialogActions>

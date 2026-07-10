@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * MinProfil — samlet profil- + tilgangs-hub («/profil», alle profesjoner).
  *
@@ -22,6 +21,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   Box, Container, Stack, Typography, Avatar, IconButton, TextField, Button,
   Chip, Divider, CircularProgress, Snackbar, Alert, Card, Grid, ThemeProvider,
+  Select, MenuItem, InputLabel, FormControl,
 } from '@mui/material';
 import Lock from '@mui/icons-material/Lock';
 import PhotoCamera from '@mui/icons-material/PhotoCamera';
@@ -49,7 +49,7 @@ const GROUP_LABEL = { hoved: 'Hovedmeny', rom: 'Smart rom', klient: 'Kundeportal
 
 const MinProfil: React.FC = () => {
   const [, navigate] = useLocation();
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState('');
@@ -57,10 +57,18 @@ const MinProfil: React.FC = () => {
   const [plan, setPlan] = useState<any>(null);
   const [tester, setTester] = useState<any>(null);
   const [avatar, setAvatar] = useState<string | null>(null);
+  const [phoneCountryCode, setPhoneCountryCode] = useState('+47');
   const [form, setForm] = useState({
     firstName: '', lastName: '', phone: '', businessName: '', tagline: '',
     organizationNumber: '', businessAddress: '', website: '', brandingColor: ACCENT,
   });
+
+  // Parse stored phone (e.g. "+47 12345678") → split into code + local number
+  const parsePhone = (raw: string) => {
+    if (!raw) return { code: '+47', local: '' };
+    const m = raw.match(/^(\+\d{1,4})\s*(.*)/);
+    return m ? { code: m[1], local: m[2] } : { code: '+47', local: raw };
+  };
 
   useEffect(() => {
     (async () => {
@@ -76,8 +84,10 @@ const MinProfil: React.FC = () => {
         setPlan(s || null);
         setTester(t?.isTester ? t : null);
         setAvatar(prof?.avatarUrl || null);
+        const { code, local } = parsePhone(prof?.phone || '');
+        setPhoneCountryCode(code);
         setForm({
-          firstName: prof?.firstName || '', lastName: prof?.lastName || '', phone: prof?.phone || '',
+          firstName: prof?.firstName || '', lastName: prof?.lastName || '', phone: local,
           businessName: bi?.businessName || prof?.companyName || '', tagline: bi?.tagline || '',
           organizationNumber: bi?.organizationNumber || '', businessAddress: bi?.businessAddress || '',
           website: bi?.website || '',
@@ -112,8 +122,9 @@ const MinProfil: React.FC = () => {
   const save = async () => {
     setSaving(true);
     try {
+      const fullPhone = form.phone.trim() ? `${phoneCountryCode} ${form.phone.trim()}` : '';
       await apiRequest('/api/user/profile', { method: 'PATCH', body: {
-        firstName: form.firstName, lastName: form.lastName, phone: form.phone, companyName: form.businessName,
+        firstName: form.firstName, lastName: form.lastName, phone: fullPhone, companyName: form.businessName,
         ...(avatar && avatar.startsWith('data:') ? { avatarUrl: avatar } : {}),
       } });
       await apiRequest('/api/branding/business-info', { method: 'PUT', body: {
@@ -144,7 +155,7 @@ const MinProfil: React.FC = () => {
       <Container maxWidth="lg">
         {/* Header */}
         <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 3 }}>
-          <IconButton onClick={() => navigate('/dashboard')} sx={{ color: DIM }} aria-label="Tilbake"><ArrowBack /></IconButton>
+          <IconButton onClick={() => navigate('/workspace')} sx={{ color: DIM }} aria-label="Tilbake"><ArrowBack /></IconButton>
           <Typography variant="h4" sx={{ fontWeight: 800, fontFamily: '"Space Grotesk", sans-serif' }}>Min profil</Typography>
         </Stack>
 
@@ -197,10 +208,35 @@ const MinProfil: React.FC = () => {
                   <TextField label="Fornavn" fullWidth size="small" value={form.firstName} onChange={set('firstName')} sx={fieldSx} />
                   <TextField label="Etternavn" fullWidth size="small" value={form.lastName} onChange={set('lastName')} sx={fieldSx} />
                 </Stack>
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-                  <TextField label="Telefon" fullWidth size="small" value={form.phone} onChange={set('phone')} sx={fieldSx} />
-                  <TextField label="Firmanavn" fullWidth size="small" value={form.businessName} onChange={set('businessName')} sx={fieldSx} />
+                {/* Telefon: landskode + lokalnummer — egen rad for å unngå label-kollisjon */}
+                <Stack direction="row" spacing={1} alignItems="flex-start">
+                  <FormControl size="small" sx={{ width: 110, flexShrink: 0, '& .MuiOutlinedInput-root': { color: 'white', borderRadius: 1, '& fieldset': { borderColor: BORDER }, '&:hover fieldset': { borderColor: ACCENT }, '&.Mui-focused fieldset': { borderColor: ACCENT } }, '& .MuiSvgIcon-root': { color: DIM } }}>
+                    <InputLabel sx={{ color: DIM, '&.Mui-focused': { color: ACCENT } }}>Land</InputLabel>
+                    <Select label="Land" value={phoneCountryCode} onChange={(e) => setPhoneCountryCode(e.target.value as string)} MenuProps={{ PaperProps: { sx: { bgcolor: '#111827', color: 'white' } } }}>
+                      {[
+                        { code: '+47', flag: '🇳🇴' },
+                        { code: '+46', flag: '🇸🇪' },
+                        { code: '+45', flag: '🇩🇰' },
+                        { code: '+358', flag: '🇫🇮' },
+                        { code: '+44', flag: '🇬🇧' },
+                        { code: '+1', flag: '🇺🇸' },
+                        { code: '+49', flag: '🇩🇪' },
+                        { code: '+33', flag: '🇫🇷' },
+                        { code: '+31', flag: '🇳🇱' },
+                        { code: '+880', flag: '🇧🇩' },
+                        { code: '+91', flag: '🇮🇳' },
+                        { code: '+92', flag: '🇵🇰' },
+                        { code: '+48', flag: '🇵🇱' },
+                      ].map(({ code, flag }) => (
+                        <MenuItem key={code} value={code} sx={{ color: 'white', '&:hover': { bgcolor: 'rgba(255,140,0,0.1)' }, '&.Mui-selected': { bgcolor: 'rgba(255,140,0,0.15)' } }}>
+                          {flag} {code}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  <TextField label="Telefonnummer" fullWidth size="small" value={form.phone} onChange={set('phone')} sx={fieldSx} placeholder="12345678" inputProps={{ inputMode: 'tel' }} />
                 </Stack>
+                <TextField label="Firmanavn" fullWidth size="small" value={form.businessName} onChange={set('businessName')} sx={fieldSx} />
                 <TextField label="Tagline" fullWidth size="small" value={form.tagline} onChange={set('tagline')} sx={fieldSx} placeholder="Kort setning om deg/bedriften" />
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
                   <TextField label="Org.nr" fullWidth size="small" value={form.organizationNumber} onChange={set('organizationNumber')} sx={fieldSx} />
@@ -234,21 +270,25 @@ const MinProfil: React.FC = () => {
                   <Typography variant="h6" sx={{ fontWeight: 700 }}>Profesjon</Typography>
                 </Stack>
                 <Chip label={professionLabel} sx={{ bgcolor: `${professionColor}24`, color: professionColor, fontWeight: 800, fontSize: '0.9rem', height: 34, mb: 1.5 }} />
-                <Typography variant="caption" sx={{ color: DIM, display: 'block', mb: 2 }}>
-                  {tester
-                    ? 'Profesjon er låst — den skiller flatene og verktøyene fra hverandre. I testprogrammet tester du din tildelte profesjon; etter programmet kan du bytte mot betaling eller Enterprise.'
-                    : 'Profesjon er låst — den skiller flatene og verktøyene fra hverandre. Å bytte krever betaling, eller oppgradering til Enterprise (som også gir team).'}
-                </Typography>
-                <Stack spacing={1}>
-                  <Button variant="outlined" startIcon={<Upgrade />} onClick={() => navigate('/subscription')}
-                    sx={{ borderRadius: 999, textTransform: 'none', fontWeight: 700, borderColor: BORDER, color: TEXT, '&:hover': { borderColor: ACCENT, bgcolor: ws.accentSoft } }}>
-                    Endre profesjon (mot betaling)
-                  </Button>
-                  <Button variant="contained" startIcon={<WorkspacePremium />} onClick={() => navigate('/subscription')}
-                    sx={{ borderRadius: 999, textTransform: 'none', fontWeight: 700, bgcolor: ACCENT, color: ws.accentContrast, '&:hover': { bgcolor: ws.accentHover } }}>
-                    Oppgrader til Enterprise (team)
-                  </Button>
-                </Stack>
+                {!isAdmin && (
+                  <>
+                    <Typography variant="caption" sx={{ color: DIM, display: 'block', mb: 2 }}>
+                      {tester
+                        ? 'Profesjon er låst — den skiller flatene og verktøyene fra hverandre. I testprogrammet tester du din tildelte profesjon; etter programmet kan du bytte mot betaling eller Enterprise.'
+                        : 'Profesjon er låst — den skiller flatene og verktøyene fra hverandre. Å bytte krever betaling, eller oppgradering til Enterprise (som også gir team).'}
+                    </Typography>
+                    <Stack spacing={1}>
+                      <Button variant="outlined" startIcon={<Upgrade />} onClick={() => navigate('/subscription?intent=change-profession')}
+                        sx={{ borderRadius: 999, textTransform: 'none', fontWeight: 700, borderColor: BORDER, color: TEXT, '&:hover': { borderColor: ACCENT, bgcolor: ws.accentSoft } }}>
+                        Endre profesjon (mot betaling)
+                      </Button>
+                      <Button variant="contained" startIcon={<WorkspacePremium />} onClick={() => navigate('/subscription?plan=enterprise&intent=upgrade')}
+                        sx={{ borderRadius: 999, textTransform: 'none', fontWeight: 700, bgcolor: ACCENT, color: ws.accentContrast, '&:hover': { bgcolor: ws.accentHover } }}>
+                        Oppgrader til Enterprise (team)
+                      </Button>
+                    </Stack>
+                  </>
+                )}
               </Card>
 
               {/* Tjenester du har tilgang til */}
@@ -273,18 +313,23 @@ const MinProfil: React.FC = () => {
                     <Typography variant="caption" sx={{ color: DIM, display: 'block', mt: 0.75 }}>
                       {access.isAllAccess
                         ? `Full tilgang: alt ${access.basedOnPlan} har + alle funksjoner under utvikling.`
-                        : `Tilgang: ${access.basedOnPlan} + ${access.features.length} in-dev-funksjoner.`}
+                        : `Tilgang: ${access.basedOnPlan} + ${access.features.length} funksjoner under utvikling.`}
                       {typeof tester.feedbackCount === 'number' && typeof tester.expectedFeedbacks === 'number'
-                        ? ` · ${tester.feedbackCount}/${tester.expectedFeedbacks} feedbacks logget.` : ''}
+                        ? ` · ${tester.feedbackCount}/${tester.expectedFeedbacks} tilbakemeldinger logget.` : ''}
                     </Typography>
                   </Box>
                   );
                 })() : (
                   <Stack direction="row" spacing={1} alignItems="center" sx={{ my: 1.5 }}>
-                    <Chip label={plan?.planName || plan?.tier || plan?.status || 'CreatorHub Standard'} size="small"
-                      sx={{ bgcolor: ws.accentSoft, color: ACCENT, fontWeight: 700 }} />
-                    <Button size="small" endIcon={<OpenInNew sx={{ fontSize: 14 }} />} onClick={() => navigate('/pricing')}
-                      sx={{ textTransform: 'none', color: DIM }}>Se planer</Button>
+                    <Chip
+                      label={isAdmin ? 'CreatorHub Admin' : (plan?.planName || plan?.tier || plan?.status || 'CreatorHub Standard')}
+                      size="small"
+                      sx={{ bgcolor: ws.accentSoft, color: ACCENT, fontWeight: 700 }}
+                    />
+                    {!isAdmin && (
+                      <Button size="small" endIcon={<OpenInNew sx={{ fontSize: 14 }} />} onClick={() => navigate('/subscription')}
+                        sx={{ textTransform: 'none', color: DIM }}>Se planer</Button>
+                    )}
                   </Stack>
                 )}
                 <Divider sx={{ borderColor: BORDER, my: 1.5 }} />

@@ -78,7 +78,7 @@ export function registerRoleRoomInfographicSignalsRoutes(app: Express, deps: Dep
       }
       res.json({ ok: true, inserted });
     } catch (e) {
-      res.status(500).json({ error: "lagre_feil", detail: (e as Error).message });
+      res.status(500).json({ error: "lagre_feil", detail: "internal_error" });
     }
   });
 
@@ -121,7 +121,7 @@ export function registerRoleRoomInfographicSignalsRoutes(app: Express, deps: Dep
       const cursor = rows[0]?.cursor ? new Date(rows[0].cursor).toISOString() : (since || null);
       res.json({ signals: rows.map((r) => ({ tplId: r.tpl_id, net: r.net, n: r.n })), now: cursor });
     } catch (e) {
-      res.status(500).json({ error: "hent_feil", detail: (e as Error).message });
+      res.status(500).json({ error: "hent_feil", detail: "internal_error" });
     }
   });
 
@@ -157,7 +157,7 @@ export function registerRoleRoomInfographicSignalsRoutes(app: Express, deps: Dep
         top: top.map((r) => ({ tplId: r.tpl_id, net: r.net, n: r.n })), now,
       });
     } catch (e) {
-      res.status(500).json({ error: "innsikt_feil", detail: (e as Error).message });
+      res.status(500).json({ error: "innsikt_feil", detail: "internal_error" });
     }
   });
 }

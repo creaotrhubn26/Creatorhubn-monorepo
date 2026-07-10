@@ -404,7 +404,7 @@ export function registerPitchDeckBriefRoutes({ app, pool, activeSessions }: Deps
             raw_preview: err.raw.slice(0, 400),
           });
         }
-        return res.status(500).json({ error: "brief_failed", detail: String(err) });
+        return res.status(500).json({ error: "brief_failed" });
       }
     },
   );
@@ -462,7 +462,7 @@ export function registerPitchDeckBriefRoutes({ app, pool, activeSessions }: Deps
             raw_preview: err.raw.slice(0, 400),
           });
         }
-        return res.status(500).json({ error: "value_override_failed", detail: String(err) });
+        return res.status(500).json({ error: "value_override_failed" });
       }
     },
   );
@@ -496,7 +496,7 @@ export function registerPitchDeckBriefRoutes({ app, pool, activeSessions }: Deps
         const applied = await applyOutcomeActions(pool, lead_id, outcome, session.userId);
         return res.json({ ok: true, applied });
       } catch (err) {
-        return res.status(500).json({ error: "finalize_failed", detail: String(err) });
+        return res.status(500).json({ error: "finalize_failed" });
       }
     },
   );

@@ -41,6 +41,15 @@ import type express from "express";
 import type { Pool } from "pg";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import crypto from "crypto";
+
+function escapeHtml(value: unknown): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
 import { and, eq, sql } from "drizzle-orm";
 
 import * as schema from "../migrations/schema.js";
@@ -163,16 +172,16 @@ async function sendDeadlineReminderEmail(
 
   const html = `
     <div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:560px;margin:0 auto;padding:24px;background:#fafafa;">
-      <h2 style="color:#1a1a1a;margin:0 0 12px;font-size:20px;">${row.project_title}</h2>
-      <p style="font-size:15px;line-height:1.6;color:#333;margin:0 0 18px;">${greeting}</p>
-      <p style="font-size:15px;line-height:1.6;color:#333;margin:0 0 18px;">${body}</p>
+      <h2 style="color:#1a1a1a;margin:0 0 12px;font-size:20px;">${escapeHtml(row.project_title)}</h2>
+      <p style="font-size:15px;line-height:1.6;color:#333;margin:0 0 18px;">${escapeHtml(greeting)}</p>
+      <p style="font-size:15px;line-height:1.6;color:#333;margin:0 0 18px;">${escapeHtml(body)}</p>
       <p style="margin:24px 0;">
-        <a href="${shareUrl}" style="display:inline-block;background:#ff8c00;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600;">
+        <a href="${escapeHtml(shareUrl)}" style="display:inline-block;background:#ff8c00;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600;">
           Fortsett utvalget
         </a>
       </p>
       <p style="font-size:13px;color:#888;margin:24px 0 0;">
-        Send fra ${photographerName} via Creatorhubn.
+        Send fra ${escapeHtml(photographerName)} via Creatorhubn.
       </p>
     </div>
   `;
@@ -469,11 +478,8 @@ export function setupShowcaseMiscRoutes(deps: ShowcaseMiscRoutesDeps): void {
         [galleryId],
       );
       const row = owner.rows[0];
-      if (!row) {
+      if (!row || row.photographer_id !== session.userId) {
         return res.status(404).json({ error: "galleri_ikke_funnet" });
-      }
-      if (row.photographer_id !== session.userId) {
-        return res.status(403).json({ error: "ikke_eier_av_galleri" });
       }
       if (row.status === 'revoked') {
         return res.json({
@@ -518,11 +524,8 @@ export function setupShowcaseMiscRoutes(deps: ShowcaseMiscRoutesDeps): void {
           [galleryId],
         );
         const row = owner.rows[0];
-        if (!row) {
+        if (!row || row.photographer_id !== session.userId) {
           return res.status(404).json({ error: "galleri_ikke_funnet" });
-        }
-        if (row.photographer_id !== session.userId) {
-          return res.status(403).json({ error: "ikke_eier_av_galleri" });
         }
         const newAccessToken = crypto.randomBytes(24).toString("hex");
         await pool.query(
@@ -769,9 +772,8 @@ export function setupShowcaseMiscRoutes(deps: ShowcaseMiscRoutesDeps): void {
         [galleryId],
       );
       const g = row.rows[0];
-      if (!g) return res.status(404).json({ error: "galleri_ikke_funnet" });
-      if (g.photographer_id !== session.userId) {
-        return res.status(403).json({ error: "ikke_eier_av_galleri" });
+      if (!g || g.photographer_id !== session.userId) {
+        return res.status(404).json({ error: "galleri_ikke_funnet" });
       }
       const settings = (g.gallery_settings ?? {}) as Record<string, unknown>;
       const round = Number(settings.proofingRound ?? 1) || 1;
@@ -801,9 +803,8 @@ export function setupShowcaseMiscRoutes(deps: ShowcaseMiscRoutesDeps): void {
           [galleryId],
         );
         const g = row.rows[0];
-        if (!g) return res.status(404).json({ error: "galleri_ikke_funnet" });
-        if (g.photographer_id !== session.userId) {
-          return res.status(403).json({ error: "ikke_eier_av_galleri" });
+        if (!g || g.photographer_id !== session.userId) {
+          return res.status(404).json({ error: "galleri_ikke_funnet" });
         }
         const settings = (g.gallery_settings ?? {}) as Record<string, unknown>;
         const currentRound = Number(settings.proofingRound ?? 1) || 1;

@@ -351,9 +351,10 @@ export function setupRoleRoomAgentCoreRoutes(
       });
       writeEvent("done", { success: true, result: resultWithSummary, version: versionInfo });
     } catch (error) {
+      console.error("[role-room-agent] producer-bootstrap-stream failed", error);
       writeEvent("error", {
         success: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: "internal_error",
       });
     } finally {
       res.end();
@@ -418,7 +419,7 @@ export function setupRoleRoomAgentCoreRoutes(
     try {
       secret = requireShareSecret();
     } catch (err) {
-      return res.status(503).json({ success: false, error: err instanceof Error ? err.message : String(err) });
+      return res.status(503).json({ success: false, error: err instanceof Error ? "internal_error" : String(err) });
     }
     // Gzip the JSON before base64url-encoding. Research-payloads are
     // mostly repeated structure (consistent JSON keys, repeating brand
@@ -485,7 +486,7 @@ export function setupRoleRoomAgentCoreRoutes(
     try {
       secret = requireShareSecret();
     } catch (err) {
-      return res.status(503).json({ success: false, error: err instanceof Error ? err.message : String(err) });
+      return res.status(503).json({ success: false, error: err instanceof Error ? "internal_error" : String(err) });
     }
     const expectedSig = crypto.createHmac("sha256", secret).update(payloadB64).digest();
     let providedSig: Buffer;

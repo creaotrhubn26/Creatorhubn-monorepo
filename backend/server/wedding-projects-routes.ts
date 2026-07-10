@@ -55,7 +55,7 @@ export function setupWeddingProjectsRoutes(
         "SELECT * FROM legacy.projects WHERE id = $1 LIMIT 1",
         [req.params.projectId],
       );
-      if (!result.rowCount || result.rowCount === 0) {
+      if (!result.rowCount || !result.rows.length) {
         return res
           .status(404)
           .json({ success: false, error: "Project not found" });

@@ -90,6 +90,13 @@ import {
   getProjectItems,
   setProjectItems,
 } from "./_shared";
+
+const DANGEROUS_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+function sanitizeBody(body: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(body).filter(([k]) => !DANGEROUS_KEYS.has(k)),
+  );
+}
 import type {
   CastingManuscriptsService,
   CompatStoreTransactionContext,
@@ -691,7 +698,7 @@ export function setupCastingProjectsRoutes(
     const updatedAtIso = new Date().toISOString();
     const updated = {
       ...existing,
-      ...req.body,
+      ...sanitizeBody(req.body),
       id,
       ownerId,
       owner_id: ownerId,
@@ -916,7 +923,7 @@ export function setupCastingProjectsRoutes(
         }
         current[idx] = {
           ...current[idx],
-          ...req.body,
+          ...sanitizeBody(req.body),
           id: shotListId,
           projectId,
           updatedAt: new Date().toISOString(),
@@ -1139,7 +1146,7 @@ export function setupCastingProjectsRoutes(
       const existing = current[location.index];
       current[location.index] = {
         ...existing,
-        ...req.body,
+        ...sanitizeBody(req.body),
         id: eventId,
         project_id: location.projectId,
         updated_at: new Date().toISOString(),

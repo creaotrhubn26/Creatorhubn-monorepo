@@ -210,7 +210,7 @@ export function registerRoleRoomSeatManagementRoutes(app: Express, deps: Deps): 
         console.error("[rr-seat-mgmt] upgrade failed:", err);
         res.status(500).json({
           error: "stripe_feil",
-          detail: (err as Error).message,
+          detail: "internal_error",
         });
       }
     },

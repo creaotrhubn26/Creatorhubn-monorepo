@@ -21,7 +21,7 @@ import Payments from '@mui/icons-material/Payments';
 import Send from '@mui/icons-material/Send';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
-import { WsCard, WsTag, WsStat, WsPills } from '../ui';
+import { WsCard, WsTag, WsStat, WsPills, WsErrorState } from '../ui';
 import { useWsLocale } from '../wsLocale';
 
 // Lokal no/en-ordbok for fanen (samme mønster som editingMarketplaceStrings).
@@ -74,6 +74,10 @@ const T: Record<string, { no: string; en: string }> = {
   msgClosed: { no: 'Dialogen er stengt for denne statusen', en: 'Chat is closed for this status' },
   msgSend: { no: 'Send', en: 'Send' },
   msgFailed: { no: 'Kunne ikke sende.', en: 'Could not send.' },
+  loadError: {
+    no: 'Kunne ikke laste oppdrag. Sjekk tilkoblingen og prøv igjen.',
+    en: 'Could not load assignments. Check your connection and try again.',
+  },
 };
 const STATUS_I18N: Record<string, { no: string; en: string }> = {
   requested: { no: 'Ny forespørsel', en: 'New request' },
@@ -109,6 +113,7 @@ const OppdragTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [filter, setFilter] = useState('alle');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [msgJob, setMsgJob] = useState<any | null>(null);
+  const [loadErr, setLoadErr] = useState(false); // feiltilstand for primær-lasten
   // Utenlandske partner-vendors (is_foreign/land≠NO) får engelsk UI —
   // locale kommer fra WsLocaleProvider i TeamWorkspacePage (vendor/me).
   const locale = useWsLocale();
@@ -117,8 +122,8 @@ const OppdragTab: React.FC<{ projectId: string }> = ({ projectId }) => {
 
   const load = () => {
     apiRequest('/api/editing/vendor/jobs')
-      .then((r: any) => setJobs(Array.isArray(r?.jobs) ? r.jobs : []))
-      .catch(() => setJobs([]))
+      .then((r: any) => { setJobs(Array.isArray(r?.jobs) ? r.jobs : []); setLoadErr(false); })
+      .catch(() => setLoadErr(true)) // primær-last feilet — vis feiltilstand med retry
       .finally(() => setLoading(false));
   };
   useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
@@ -165,7 +170,7 @@ const OppdragTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           <Typography sx={{ fontSize: 20, fontWeight: 800 }}>{t('title')}</Typography>
           <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>{t('subtitle')}</Typography>
         </Box>
-        <Button variant="outlined" onClick={() => navigate('/dashboard')} sx={{ color: ws.accent, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 700 }}>{t('fullWorkspace')}</Button>
+        <Button variant="outlined" onClick={() => navigate('/workspace')} sx={{ color: ws.accent, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 700 }}>{t('fullWorkspace')}</Button>
       </Stack>
 
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: 'repeat(4, 1fr)' }, gap: 1.5, mb: 2 }}>
@@ -184,7 +189,10 @@ const OppdragTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         ]} />
 
       <WsCard>
-        {filtered.length === 0 ? (
+        {isReal && loadErr && list.length === 0 ? (
+          // Primær-last feilet og ingen data — feiltilstand med retry i stedet for tom-tilstand
+          <WsErrorState message={t('loadError')} onRetry={() => { setLoading(true); load(); }} />
+        ) : filtered.length === 0 ? (
           <Stack alignItems="center" sx={{ py: 5 }} spacing={1}>
             <WorkOutline sx={{ fontSize: 36, color: ws.textFaint }} />
             <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>{list.length === 0 ? t('emptyNone') : t('emptyFilter')}</Typography>
@@ -233,7 +241,7 @@ const OppdragTab: React.FC<{ projectId: string }> = ({ projectId }) => {
                         </>
                       )}
                       {j.status === 'in_progress' && (
-                        <Button size="small" variant="outlined" onClick={() => navigate('/dashboard')}
+                        <Button size="small" variant="outlined" onClick={() => navigate('/workspace')}
                           sx={{ color: ws.accent, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 600 }}>{t('deliver')}</Button>
                       )}
                     </Stack>

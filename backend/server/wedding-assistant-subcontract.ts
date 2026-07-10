@@ -85,7 +85,7 @@ export async function buildSubcontractTerms(
        WHERE a.id = $1 LIMIT 1`,
     [assistantId],
   );
-  if (r.rowCount === 0) return null;
+  if (!r.rows.length) return null;
   const row = r.rows[0];
   const primaryName = row.p_company || [row.p_first_name, row.p_last_name].filter(Boolean).join(" ") || "Hovedfotograf";
 
@@ -207,7 +207,7 @@ export function setupWeddingAssistantSubcontractRoutes(deps: WeddingAssistantSub
            FROM wedding_assistants WHERE invite_token = $1 OR id = $1 LIMIT 1`,
         [req.params.token],
       );
-      if (r.rowCount === 0) return res.status(404).json({ error: "Invitasjon finnes ikke" });
+      if (!r.rows.length) return res.status(404).json({ error: "Invitasjon finnes ikke" });
       const row = r.rows[0];
       let terms = row.subcontract_terms;
       if (!terms) {

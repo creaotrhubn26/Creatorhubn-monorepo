@@ -299,7 +299,7 @@ export function registerLeadMapLeaderboardRoutes({ app, pool, activeSessions }: 
           sortBy,
         });
       } catch (err) {
-        return res.status(500).json({ error: "leaderboard_failed", detail: String(err) });
+        return res.status(500).json({ error: "leaderboard_failed", detail: "internal_error" });
       }
     },
   );
@@ -413,7 +413,7 @@ export function registerLeadMapLeaderboardRoutes({ app, pool, activeSessions }: 
           closeRate: (won + lost) > 0 ? Math.round((won / (won + lost)) * 100) : null,
         });
       } catch (err) {
-        return res.status(500).json({ error: "summary_failed", detail: String(err) });
+        return res.status(500).json({ error: "summary_failed", detail: "internal_error" });
       }
     },
   );

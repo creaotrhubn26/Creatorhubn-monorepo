@@ -45,6 +45,10 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
   } = deps;
 
   async function resolveContractUserId(req: any) {
+    // Prefer verified session over attacker-controlled header/body
+    const activeSession = getActiveSessionFromRequest(req);
+    if (activeSession?.userId) return activeSession.userId;
+
     const rawUserId =
       readString(req.headers["x-user-id"]) ??
       readString(req.body?.userId) ??
@@ -532,6 +536,7 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
 
   // GET /api/contracts/:contractId/signers — Get contract signers by contract ID
   app.get("/api/contracts/:contractId/signers", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       await ensureContractsCompatibilitySchema(pool);
       const { contractId } = req.params;
@@ -697,9 +702,18 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
   });
 
   app.put("/api/contracts/:contractId", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       await ensureContractsCompatibilitySchema(pool);
+
+      const existingForOwnership = await fetchContractById(req.params.contractId);
+      if (!existingForOwnership) {
+        return res.status(404).json({ success: false, message: "Contract not found" });
+      }
+      if (existingForOwnership.userId && existingForOwnership.userId !== session.userId) {
+        return res.status(403).json({ success: false, message: "Forbidden" });
+      }
 
       const contractData = req.body || {};
       const setClauses = ["updated_at = NOW()"];
@@ -952,6 +966,8 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
   });
 
   app.get("/api/contracts/:contractId", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       await ensureContractsCompatibilitySchema(pool);
       const contract = await fetchContractById(req.params.contractId);
@@ -961,6 +977,9 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
           success: false,
           message: "Contract not found",
         });
+      }
+      if (contract.userId && contract.userId !== session.userId) {
+        return res.status(403).json({ success: false, message: "Forbidden" });
       }
 
       // Calculate verification hash for signed contracts
@@ -1347,7 +1366,8 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
   });
 
   app.delete("/api/contracts/:contractId", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       await ensureContractsCompatibilitySchema(pool);
       const contract = await fetchContractById(req.params.contractId);
@@ -1355,6 +1375,9 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
         return res
           .status(404)
           .json({ success: false, message: "Contract not found" });
+      }
+      if (contract.userId && contract.userId !== session.userId) {
+        return res.status(403).json({ success: false, message: "Forbidden" });
       }
 
       await pool.query(`DELETE FROM contracts WHERE id = $1`, [

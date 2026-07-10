@@ -202,7 +202,7 @@ export function registerLeadgridIntelligenceRoutes(deps: Deps): void {
         res.json({ lead_id: leadId, cached: false, ...result });
       } catch (err) {
         console.error("[intelligence GET /leads/:id] error", err);
-        res.status(500).json({ error: "internal", detail: String(err).slice(0, 200) });
+        res.status(500).json({ error: "internal", detail: "internal_error".slice(0, 200) });
       }
     },
   );
@@ -224,7 +224,7 @@ export function registerLeadgridIntelligenceRoutes(deps: Deps): void {
         res.json({ lead_id: req.params.id, ok: true, ...result });
       } catch (err) {
         console.error("[intelligence recompute] error", err);
-        res.status(500).json({ error: "internal", detail: String(err).slice(0, 200) });
+        res.status(500).json({ error: "internal", detail: "internal_error".slice(0, 200) });
       }
     },
   );
@@ -297,7 +297,7 @@ export function registerLeadgridIntelligenceRoutes(deps: Deps): void {
         res.json({ recommendations: r.rows, count: r.rowCount });
       } catch (err) {
         console.error("[intelligence GET /recommendations] error", err);
-        res.status(500).json({ error: "internal", detail: String(err).slice(0, 200) });
+        res.status(500).json({ error: "internal", detail: "internal_error".slice(0, 200) });
       }
     },
   );
@@ -322,7 +322,7 @@ export function registerLeadgridIntelligenceRoutes(deps: Deps): void {
         res.json({ id: r.rows[0].id, status: "accepted" });
       } catch (err) {
         console.error("[intelligence accept] error", err);
-        res.status(500).json({ error: "internal", detail: String(err).slice(0, 200) });
+        res.status(500).json({ error: "internal", detail: "internal_error".slice(0, 200) });
       }
     },
   );
@@ -373,7 +373,7 @@ export function registerLeadgridIntelligenceRoutes(deps: Deps): void {
         res.json({ id: row.id, status: "executed", outcome });
       } catch (err) {
         console.error("[intelligence execute] error", err);
-        res.status(500).json({ error: "internal", detail: String(err).slice(0, 200) });
+        res.status(500).json({ error: "internal", detail: "internal_error".slice(0, 200) });
       }
     },
   );
@@ -398,7 +398,7 @@ export function registerLeadgridIntelligenceRoutes(deps: Deps): void {
         res.json({ id: r.rows[0].id, status: "dismissed" });
       } catch (err) {
         console.error("[intelligence dismiss] error", err);
-        res.status(500).json({ error: "internal", detail: String(err).slice(0, 200) });
+        res.status(500).json({ error: "internal", detail: "internal_error".slice(0, 200) });
       }
     },
   );
@@ -445,7 +445,7 @@ export function registerLeadgridIntelligenceRoutes(deps: Deps): void {
         res.json({ ok: true, snoozed_until: r.rows[0].snoozed_until, hours });
       } catch (err) {
         console.error("[intelligence snooze] error", err);
-        res.status(500).json({ error: "snooze_failed", detail: String(err).slice(0, 200) });
+        res.status(500).json({ error: "snooze_failed", detail: "internal_error".slice(0, 200) });
       }
     },
   );
@@ -552,7 +552,7 @@ export function registerLeadgridIntelligenceRoutes(deps: Deps): void {
         });
       } catch (err) {
         console.error("[intelligence pipeline-stage] error", err);
-        res.status(500).json({ error: "update_failed", detail: String(err).slice(0, 200) });
+        res.status(500).json({ error: "update_failed", detail: "internal_error".slice(0, 200) });
       }
     },
   );
@@ -627,7 +627,7 @@ export function registerLeadgridIntelligenceRoutes(deps: Deps): void {
         res.json({ queue: r.rows, count: r.rowCount });
       } catch (err) {
         console.error("[intelligence follow-up-queue] error", err);
-        res.status(500).json({ error: "internal", detail: String(err).slice(0, 200) });
+        res.status(500).json({ error: "internal", detail: "internal_error".slice(0, 200) });
       }
     },
   );
@@ -669,7 +669,7 @@ export function registerLeadgridIntelligenceRoutes(deps: Deps): void {
         res.json({ lead_id: req.params.id, history: r.rows });
       } catch (err) {
         console.error("[intelligence history] error", err);
-        res.status(500).json({ error: "internal", detail: String(err).slice(0, 200) });
+        res.status(500).json({ error: "internal", detail: "internal_error".slice(0, 200) });
       }
     },
   );
@@ -719,7 +719,7 @@ export function registerLeadgridIntelligenceRoutes(deps: Deps): void {
         res.json({ ok: true, lead_id: u.rows[0].id, lead_score: score });
       } catch (err) {
         console.error("[intelligence score-override] error", err);
-        res.status(500).json({ error: "internal", detail: String(err).slice(0, 200) });
+        res.status(500).json({ error: "internal", detail: "internal_error".slice(0, 200) });
       }
     },
   );
@@ -801,7 +801,7 @@ export function registerLeadgridIntelligenceRoutes(deps: Deps): void {
         res.json({ ok: true, weights: w });
       } catch (err) {
         console.error("[intelligence PATCH weights] error", err);
-        res.status(500).json({ error: "internal", detail: String(err).slice(0, 200) });
+        res.status(500).json({ error: "internal", detail: "internal_error".slice(0, 200) });
       }
     },
   );
@@ -865,7 +865,7 @@ export function registerLeadgridIntelligenceRoutes(deps: Deps): void {
         });
       } catch (err) {
         console.error("[intelligence batch] error", err);
-        res.status(500).json({ error: "internal", detail: String(err).slice(0, 200) });
+        res.status(500).json({ error: "internal", detail: "internal_error".slice(0, 200) });
       }
     },
   );

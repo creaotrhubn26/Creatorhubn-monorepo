@@ -277,7 +277,7 @@ export async function updateLeadStatus(
      WHERE id = $1::uuid AND ${checkConds.join(' AND ')}`,
     checkParams,
   );
-  if (current.rowCount === 0) return { ok: false };
+  if (!current.rows.length) return { ok: false };
 
   const previous = current.rows[0].lead_status;
 
@@ -331,7 +331,7 @@ export async function logVisit(
      WHERE id = $1::uuid AND ${verifyConds.join(' AND ')}`,
     verifyParams,
   );
-  if (c.rowCount === 0) return { ok: false };
+  if (!c.rows.length) return { ok: false };
   const previousStatus = c.rows[0].lead_status;
 
   const v = await pool.query<{ id: string }>(

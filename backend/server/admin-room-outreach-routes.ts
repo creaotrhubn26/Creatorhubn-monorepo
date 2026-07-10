@@ -215,7 +215,7 @@ export function setupAdminOutreachRoutes(deps: AdminRoomRoutesDeps): void {
       `SELECT product_key, title FROM role_room_outreach_templates WHERE id = $1 AND user_id = $2`,
       [id, session.userId],
     );
-    if (existingResult.rowCount === 0) {
+    if (!existingResult.rows.length) {
       res.status(404).json({ error: "Template ikke funnet eller ikke redigerbar (default-templates kan ikke endres — kopiér i stedet)" });
       return;
     }
@@ -320,7 +320,7 @@ export function setupAdminOutreachRoutes(deps: AdminRoomRoutesDeps): void {
     const body = (req.body ?? {}) as Record<string, unknown>;
     const targetId = asString(body.targetId);
     const templateId = asString(body.templateId);
-    const extraContext = asString(body.extraContext) ?? "";
+    const extraContext = (asString(body.extraContext) ?? "").slice(0, 4000);
 
     if (!targetId || !templateId) {
       res.status(400).json({ error: "targetId og templateId er påkrevd" });
@@ -336,7 +336,7 @@ export function setupAdminOutreachRoutes(deps: AdminRoomRoutesDeps): void {
           WHERE id = $1 AND user_id = $2`,
         [targetId, session.userId],
       );
-      if (targetResult.rowCount === 0) {
+      if (!targetResult.rows.length) {
         res.status(404).json({ error: "Target ikke funnet" });
         return;
       }
@@ -349,7 +349,7 @@ export function setupAdminOutreachRoutes(deps: AdminRoomRoutesDeps): void {
           WHERE id = $1 AND (user_id IS NULL OR user_id = $2)`,
         [templateId, session.userId],
       );
-      if (tplResult.rowCount === 0) {
+      if (!tplResult.rows.length) {
         res.status(404).json({ error: "Template ikke funnet" });
         return;
       }
@@ -431,7 +431,7 @@ Returnér KUN den endelige meldingen, klar til å limes inn i LinkedIn-DM/mail.`
       });
     } catch (err) {
       console.error("[admin-room outreach personalize] error", err);
-      res.status(500).json({ error: (err as Error).message });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 }

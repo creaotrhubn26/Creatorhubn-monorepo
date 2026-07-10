@@ -83,7 +83,7 @@ export function registerLeadgridWebhookRotationRoutes(deps: Deps): void {
             "Oppdater consumer innen 7 dager. Gammel secret aksepteres parallelt.",
         });
       } catch (err) {
-        res.status(500).json({ error: "rotate_failed", detail: String(err) });
+        res.status(500).json({ error: "rotate_failed", detail: "internal_error" });
       }
     },
   );
@@ -117,7 +117,7 @@ export function registerLeadgridWebhookRotationRoutes(deps: Deps): void {
         );
         res.json({ ok: true, expired: r.rowCount ?? 0 });
       } catch (err) {
-        res.status(500).json({ error: "expire_failed", detail: String(err) });
+        res.status(500).json({ error: "expire_failed", detail: "internal_error" });
       }
     },
   );

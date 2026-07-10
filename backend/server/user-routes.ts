@@ -107,19 +107,26 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
   };
   const PROFILE_COLS = "id, first_name, last_name, email, phone_number, profession, profile_image_url, company_name";
 
+  // Validates that a string is a real UUID (prevents raw session tokens from
+  // reaching the DB when activeSessions is empty after a Render restart).
+  const isUuid = (s: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+
   app.get("/api/user/profile", async (req, res) => {
-    const uid = getUserIdFromAuth(req) || compatResolveUserId(req);
-    if (!uid) return res.status(401).json({ error: "Ikke innlogget" });
+    // compatResolveUserId slår opp activeSessions → returnerer ekte userId (UUID)
+    // når session finnes. getUserIdFromAuth returnerer rå Bearer-token (ikke UUID)
+    // og ville kortslutte || slik at activeSessions aldri ble sjekket.
+    const uid = compatResolveUserId(req);
+    if (!uid || !isUuid(uid)) return res.status(401).json({ error: "Ikke innlogget" });
     try {
       const r = await pool.query(`SELECT ${PROFILE_COLS} FROM users WHERE id = $1`, [uid]);
       if (!r.rows.length) return res.status(404).json({ error: "Bruker ikke funnet" });
       res.json({ profile: shapeUserProfile(r.rows[0]) });
-    } catch (e: any) { res.status(500).json({ error: e?.message || "Kunne ikke hente profil" }); }
+    } catch (e: any) { res.status(500).json({ error: "internal_error" || "Kunne ikke hente profil" }); }
   });
 
   app.patch("/api/user/profile", async (req, res) => {
-    const uid = getUserIdFromAuth(req) || compatResolveUserId(req);
-    if (!uid) return res.status(401).json({ error: "Ikke innlogget" });
+    const uid = compatResolveUserId(req);
+    if (!uid || !isUuid(uid)) return res.status(401).json({ error: "Ikke innlogget" });
     const b = req.body ?? {};
     // camelCase-alias → users-kolonner (avatar kan være en data-URL-streng).
     const colMap: Record<string, string> = {
@@ -135,19 +142,25 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
       // Profesjon er GATED: settes kun første gang (onboarding). Endring krever
       // betaling / Enterprise-oppgradering — aldri fri redigering herfra.
       // COALESCE(NULLIF(...)) beholder eksisterende profesjon hvis den er satt.
-      if (canon) { sets.push(`profession = COALESCE(NULLIF(profession, ''), $${n++})`); params.push(canon); }
+      // 'enterprise' kan ALDRI settes self-serve (ville gitt gratis team-tilgang
+      // via useTeamAccess) — den kommer kun via betalt kjøp / org-medlemskap.
+      if (canon && canon !== "enterprise") {
+        sets.push(`profession = COALESCE(NULLIF(profession, ''), $${n++})`);
+        params.push(canon);
+      }
     }
     if (!sets.length) return res.status(400).json({ error: "Ingen felter å oppdatere" });
     sets.push("updated_at = now()"); params.push(uid);
     try {
       const r = await pool.query(`UPDATE users SET ${sets.join(", ")} WHERE id = $${params.length} RETURNING ${PROFILE_COLS}`, params);
+      if (!r.rows.length) return res.status(404).json({ error: "Bruker ikke funnet" });
       res.json({ profile: shapeUserProfile(r.rows[0]) });
-    } catch (e: any) { res.status(500).json({ error: e?.message || "Oppdatering feilet" }); }
+    } catch (e: any) { console.error("[user/profile] update failed", e); res.status(500).json({ error: "update_failed" }); }
   });
 
   app.get("/api/user/subscription-status", async (req, res) => {
     try {
-      const userId = readString(req.query.userId) || compatResolveUserId(req);
+      const userId = compatResolveUserId(req);
       const email =
         readString(req.query.userEmail) || compatResolveUserEmail(req);
       const status = await resolveCompatSubscriptionStatus(
@@ -163,7 +176,7 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
 
   app.get("/api/user/payment-methods", async (req, res) => {
     try {
-      const userId = readString(req.query.userId) || compatResolveUserId(req);
+      const userId = compatResolveUserId(req);
       const paymentMethods = await readCompatPaymentMethods(userId || "guest");
       res.json({ paymentMethods });
     } catch (error) {
@@ -497,7 +510,7 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
 
   app.get("/api/user/meeting-preferences", async (req, res) => {
     try {
-      const userId = getUserIdFromAuth(req);
+      const userId = compatResolveUserId(req);
       const profession =
         typeof req.query.profession === "string" ? req.query.profession : null;
       const tableCheck = await pool.query(
@@ -508,7 +521,7 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
       }
 
       let result;
-      if (userId) {
+      if (userId && isUuid(userId)) {
         result = await pool.query(
           "SELECT * FROM user_meeting_preferences WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1",
           [userId],
@@ -522,7 +535,7 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
         return res.json({ meetingOption: "auto", meetingDuration: 60 });
       }
 
-      if (result.rowCount === 0) {
+      if (!result.rows.length) {
         return res.json({ meetingOption: "auto", meetingDuration: 60 });
       }
 
@@ -542,7 +555,7 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
   // POST /api/user/meeting-preferences — save meeting preferences
   app.post("/api/user/meeting-preferences", async (req, res) => {
     try {
-      const userId = getUserIdFromAuth(req);
+      const userId = compatResolveUserId(req);
       const { meetingOption, meetingDuration, meetingTime, profession } =
         req.body;
 
@@ -553,11 +566,12 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
         return res.json({ success: true });
       }
 
+      const resolvedUserId = userId && isUuid(userId) ? userId : null;
       // Delete existing preferences for this user, then insert fresh
-      if (userId) {
+      if (resolvedUserId) {
         await pool.query(
           "DELETE FROM user_meeting_preferences WHERE user_id = $1",
-          [userId],
+          [resolvedUserId],
         );
       }
 
@@ -565,7 +579,7 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
         `INSERT INTO user_meeting_preferences (user_id, profession, meeting_option, meeting_duration, meeting_time, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`,
         [
-          userId || "anonymous",
+          resolvedUserId || "anonymous",
           profession || "photographer",
           meetingOption || "auto",
           meetingDuration || 60,
@@ -594,7 +608,13 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
 
   app.get("/api/user/interface-preferences/:sessionId", async (req, res) => {
     const { sessionId } = req.params;
-    const fromCompatMemory = compatInterfacePreferencesStore.get(sessionId);
+    // Bruk ekte userId som primærnøkkel — sessionId (Bearer-token) endres ved
+    // re-login og ville føre til at preferanser forsvinner. Fallback til
+    // sessionId for anonyme/compat-klienter som ikke har aktiv sesjon.
+    const resolvedUserId = compatResolveUserId(req);
+    const dbKey = isUuid(resolvedUserId) ? resolvedUserId : sessionId;
+
+    const fromCompatMemory = compatInterfacePreferencesStore.get(dbKey);
     if (fromCompatMemory) {
       return res.json({
         success: true,
@@ -604,10 +624,10 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
     }
 
     const fromCompatDb = await compatStoreGet<Record<string, unknown>>(
-      dbCompatInterfacePreferencesKey(sessionId),
+      dbCompatInterfacePreferencesKey(dbKey),
     );
     if (fromCompatDb && typeof fromCompatDb === "object") {
-      compatInterfacePreferencesStore.set(sessionId, fromCompatDb);
+      compatInterfacePreferencesStore.set(dbKey, fromCompatDb);
       return res.json({
         success: true,
         preferences: fromCompatDb,
@@ -622,14 +642,14 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
          WHERE user_id = $1
          ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
          LIMIT 1`,
-        [sessionId],
+        [dbKey],
       );
 
       if (prefs.rows.length > 0) {
         const normalized = normalizeInterfacePreferencesRecord(prefs.rows[0]);
-        compatInterfacePreferencesStore.set(sessionId, normalized);
+        compatInterfacePreferencesStore.set(dbKey, normalized);
         await compatStoreSet(
-          dbCompatInterfacePreferencesKey(sessionId),
+          dbCompatInterfacePreferencesKey(dbKey),
           normalized,
         );
         return res.json({
@@ -659,13 +679,16 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
   app.put("/api/user/interface-preferences/:sessionId", async (req, res) => {
     const { sessionId } = req.params;
     const preferences = req.body;
+    const resolvedUserId = compatResolveUserId(req);
+    const dbKey = isUuid(resolvedUserId) ? resolvedUserId : sessionId;
+
     const compatNext = {
-      ...(compatInterfacePreferencesStore.get(sessionId) || {}),
+      ...(compatInterfacePreferencesStore.get(dbKey) || {}),
       ...(preferences || {}),
       updatedAt: new Date().toISOString(),
     };
-    compatInterfacePreferencesStore.set(sessionId, compatNext);
-    await compatStoreSet(dbCompatInterfacePreferencesKey(sessionId), compatNext);
+    compatInterfacePreferencesStore.set(dbKey, compatNext);
+    await compatStoreSet(dbCompatInterfacePreferencesKey(dbKey), compatNext);
 
     try {
       const normalized = {
@@ -688,10 +711,6 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
       };
 
       try {
-        // Single atomic upsert — race-free under concurrency (the old
-        // SELECT-then-UPDATE/INSERT could double-insert or lose updates when
-        // several saves for the same user overlapped). Relies on the UNIQUE
-        // index user_preferences(user_id) from migration 004.
         await pool.query(
           `INSERT INTO user_preferences (
             id, user_id, preferences, theme, language, timezone, notifications, dashboard, created_at, updated_at
@@ -708,7 +727,7 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
             updated_at = NOW()`,
           [
             crypto.randomUUID(),
-            sessionId,
+            dbKey,
             JSON.stringify(preferencesPayload),
             normalized.theme,
             normalized.language,
@@ -718,9 +737,6 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
           ],
         );
       } catch (upsertErr) {
-        // 42P10 = no unique/exclusion constraint matching ON CONFLICT. A few
-        // legacy envs never got migration 004's unique index, so fall back to
-        // the read-modify-write path there rather than dropping the DB write.
         if ((upsertErr as { code?: string })?.code !== "42P10") throw upsertErr;
         const existing = await pool.query<{ id: string }>(
           `SELECT id
@@ -728,7 +744,7 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
             WHERE user_id = $1
             ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
             LIMIT 1`,
-          [sessionId],
+          [dbKey],
         );
         if (existing.rows.length > 0) {
           await pool.query(
@@ -756,7 +772,7 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
             )`,
             [
               crypto.randomUUID(),
-              sessionId,
+              dbKey,
               JSON.stringify(preferencesPayload),
               normalized.theme,
               normalized.language,

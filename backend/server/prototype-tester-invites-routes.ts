@@ -21,6 +21,7 @@ import type express from "express";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
 import { normalizeProfession } from "../../frontend/shared/profession-types.ts";
+import { safeAppBaseUrl } from "./web-origin-allowlist.ts";
 
 export interface PrototypeTesterInvitesDeps {
   app: express.Application;
@@ -337,7 +338,7 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
         ],
       );
       const row = ins.rows[0];
-      const baseUrl = req.headers.origin || `https://${req.headers.host || "creatorhubn.com"}`;
+      const baseUrl = safeAppBaseUrl(req);
       const inviteUrl = `${baseUrl}/prototype-tester/accept-invite?token=${encodeURIComponent(row.token)}`;
 
       // Send e-post (best effort)
@@ -374,7 +375,7 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
         `SELECT * FROM prototype_tester_invites WHERE token = $1 LIMIT 1`,
         [req.params.token],
       );
-      if (r.rowCount === 0) return res.status(404).json({ error: "Invitasjon ikke funnet" });
+      if (!r.rows.length) return res.status(404).json({ error: "Invitasjon ikke funnet" });
       const row = r.rows[0];
       const expired = new Date(row.expires_at).getTime() < Date.now();
       const payload = rowToInvite(row);
@@ -412,7 +413,7 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
         `SELECT id, status, expires_at FROM prototype_tester_invites WHERE token = $1 LIMIT 1`,
         [req.params.token],
       );
-      if (existing.rowCount === 0) return res.status(404).json({ error: "Invitasjon ikke funnet" });
+      if (!existing.rows.length) return res.status(404).json({ error: "Invitasjon ikke funnet" });
       const inv = existing.rows[0];
       if (inv.status !== "pending") {
         return res.status(409).json({ error: `Invitasjon er allerede ${inv.status}` });
@@ -457,10 +458,11 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
                program_started_at = $4,
                program_ends_at = $5,
                updated_at = NOW()
-           WHERE id = $6
+           WHERE id = $6 AND status = 'pending'
          RETURNING *`,
         [ndaName.slice(0, 200), programTermsVersion, ip, startsAt, endsAt, inv.id],
       );
+      if (!upd.rows.length) return res.status(409).json({ error: "Invitasjonen er allerede akseptert" });
 
       // Opprett brukerkonto for testeren (master/medlem) ved aksept, så de
       // faktisk har en konto med matchende e-post å logge inn med (Google OAuth /
@@ -500,7 +502,7 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
       await ensureSchema(pool);
       // Heuristikk: matcher e-post mot innlogget bruker
       const userR = await pool.query(`SELECT email FROM users WHERE id = $1 LIMIT 1`, [uid]);
-      if (userR.rowCount === 0 || !userR.rows[0].email) return res.json({ isTester: false });
+      if (!userR.rows.length || !userR.rows[0].email) return res.json({ isTester: false });
       const email = String(userR.rows[0].email).toLowerCase();
       const inv = await pool.query(
         `SELECT * FROM prototype_tester_invites
@@ -509,7 +511,7 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
           ORDER BY program_started_at DESC LIMIT 1`,
         [email],
       );
-      if (inv.rowCount === 0) return res.json({ isTester: false });
+      if (!inv.rows.length) return res.json({ isTester: false });
       const row = inv.rows[0];
       // Side-effekt: oppdater last_login_at idempotent
       await pool.query(
@@ -550,7 +552,7 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
       if (!uid) return res.status(401).json({ error: "Mangler bruker-ID" });
       await ensureSchema(pool);
       const userR = await pool.query(`SELECT email FROM users WHERE id = $1 LIMIT 1`, [uid]);
-      if (userR.rowCount === 0) return res.status(404).json({ error: "Bruker ikke funnet" });
+      if (!userR.rows.length) return res.status(404).json({ error: "Bruker ikke funnet" });
       const email = String(userR.rows[0].email).toLowerCase();
 
       const masterR = await pool.query(
@@ -560,7 +562,7 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
           ORDER BY program_started_at DESC LIMIT 1`,
         [email],
       );
-      if (masterR.rowCount === 0) {
+      if (!masterR.rows.length) {
         return res.json({ isMaster: false, members: [], slotsRemaining: 0, maxTeamSize: 0 });
       }
       const master = masterR.rows[0];
@@ -619,7 +621,7 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
       }
 
       const userR = await pool.query(`SELECT email FROM users WHERE id = $1 LIMIT 1`, [uid]);
-      if (userR.rowCount === 0) return res.status(404).json({ error: "Bruker ikke funnet" });
+      if (!userR.rows.length) return res.status(404).json({ error: "Bruker ikke funnet" });
       const masterEmail = String(userR.rows[0].email).toLowerCase();
 
       const masterR = await pool.query(
@@ -629,7 +631,7 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
           ORDER BY program_started_at DESC LIMIT 1`,
         [masterEmail],
       );
-      if (masterR.rowCount === 0) {
+      if (!masterR.rows.length) {
         return res.status(403).json({ error: "Du er ikke registrert som team-master" });
       }
       const master = masterR.rows[0];
@@ -679,7 +681,7 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
         ],
       );
 
-      const baseUrl = req.headers.origin || `https://${req.headers.host || "creatorhubn.com"}`;
+      const baseUrl = safeAppBaseUrl(req);
       const inviteUrl = `${baseUrl}/prototype-tester/accept-invite?token=${encodeURIComponent(token)}`;
 
       const mailer = getMailer();
@@ -719,7 +721,7 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
       if (!uid) return res.status(401).json({ error: "Mangler bruker-ID" });
       await ensureSchema(pool);
       const userR = await pool.query(`SELECT email FROM users WHERE id = $1 LIMIT 1`, [uid]);
-      if (userR.rowCount === 0) return res.status(404).json({ error: "Bruker ikke funnet" });
+      if (!userR.rows.length) return res.status(404).json({ error: "Bruker ikke funnet" });
       const email = String(userR.rows[0].email).toLowerCase();
 
       const masterR = await pool.query(
@@ -728,7 +730,7 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
           LIMIT 1`,
         [email],
       );
-      if (masterR.rowCount === 0) return res.status(403).json({ error: "Du er ikke team-master" });
+      if (!masterR.rows.length) return res.status(403).json({ error: "Du er ikke team-master" });
 
       // Bare trekk tilbake hvis medlemmet ennå ikke har signert
       const del = await pool.query(

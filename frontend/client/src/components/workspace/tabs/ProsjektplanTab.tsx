@@ -208,7 +208,7 @@ const ProsjektplanTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   }) : null;
 
   return (
-    <Stack direction="row" spacing={2.5} sx={{ alignItems: 'flex-start' }}>
+    <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2.5} sx={{ alignItems: 'flex-start' }}>
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
           <Box>
@@ -283,7 +283,7 @@ const ProsjektplanTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       </Box>
 
       {/* Høyre sidebar */}
-      <Box sx={{ width: 300, flexShrink: 0 }}>
+      <Box sx={{ width: { xs: '100%', lg: 300 }, flexShrink: 0 }}>
         <WsCard sx={{ mb: 2 }}>
           <WsSectionTitle title={t('projectInfo')} action={<Button size="small" onClick={() => navigate(`/workspace/${projectId}/avtaler`)} sx={{ color: ws.accent, textTransform: 'none' }}>{t('edit')}</Button>} />
           <Stack spacing={1}>

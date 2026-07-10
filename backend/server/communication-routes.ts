@@ -275,6 +275,10 @@ export function createCommunicationRouter(
       fileSize: CONTEXTUAL_DRIVE_UPLOAD_MAX_BYTES,
       files: 24,
     },
+    fileFilter: (_req, file, cb) => {
+      if (/^(image\/|video\/|audio\/|application\/pdf|text\/)/.test(file.mimetype)) cb(null, true);
+      else cb(new Error("Filtype ikke tillatt") as any, false);
+    },
   });
 
   const toNonEmptyString = (value: unknown): string | null => {
@@ -2674,7 +2678,7 @@ export function createCommunicationRouter(
       // Prosjekt-kanaler krever auth + medlemskap (ellers IDOR på tvers av prosjekter).
       const gate = await guardProjectChannel(channelId, req, res);
       if (!gate.ok) return;
-      const limit = parseInt(req.query.limit as string) || 100;
+      const limit = Math.min(Math.max(1, parseInt(req.query.limit as string) || 100), 500);
 
       const messages = await db
         .select({
@@ -5752,7 +5756,7 @@ export function createCommunicationRouter(
       }
 
       const channelId = normalizeChannelId(rawSpace);
-      const limit = Number.parseInt(String(req.query.limit || '100'), 10) || 100;
+      const limit = Math.min(Math.max(1, Number.parseInt(String(req.query.limit || '100'), 10) || 100), 500);
 
       const messages = await db
         .select({

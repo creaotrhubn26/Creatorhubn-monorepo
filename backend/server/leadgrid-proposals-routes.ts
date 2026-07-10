@@ -536,7 +536,7 @@ export function registerLeadgridProposalsRoutes(deps: ProposalsRoutesDeps): void
       });
     } catch (err) {
       console.error("[proposals] POST failed:", err);
-      return res.status(500).json({ error: "proposal_create_failed", detail: String((err as Error).message) });
+      return res.status(500).json({ error: "proposal_create_failed", detail: String("internal_error") });
     }
   });
 
@@ -555,7 +555,7 @@ export function registerLeadgridProposalsRoutes(deps: ProposalsRoutesDeps): void
       return res.json({ proposals: r.rows.map(mapProposalRow) });
     } catch (err) {
       console.error("[proposals] GET failed:", err);
-      return res.status(500).json({ error: "proposals_failed", detail: String((err as Error).message) });
+      return res.status(500).json({ error: "proposals_failed", detail: String("internal_error") });
     }
   });
 
@@ -580,7 +580,7 @@ export function registerLeadgridProposalsRoutes(deps: ProposalsRoutesDeps): void
       return res.json({ proposal: mapProposalRow(r.rows[0]) });
     } catch (err) {
       console.error("[proposals] PATCH failed:", err);
-      return res.status(500).json({ error: "proposal_update_failed", detail: String((err as Error).message) });
+      return res.status(500).json({ error: "proposal_update_failed", detail: String("internal_error") });
     }
   });
 

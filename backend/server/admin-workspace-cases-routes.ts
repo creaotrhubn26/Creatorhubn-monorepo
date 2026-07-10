@@ -130,7 +130,7 @@ export function setupAdminWorkspaceCasesRoutes(deps: AdminRoomRoutesDeps): void 
         `SELECT * FROM admin_workspace_cases WHERE id = $1 AND user_id = $2`,
         [req.params.id, session.userId],
       );
-      if (caseResult.rowCount === 0) {
+      if (!caseResult.rows.length) {
         res.status(404).json({ error: "Sak ikke funnet" });
         return;
       }
@@ -377,7 +377,7 @@ export function setupAdminWorkspaceCasesRoutes(deps: AdminRoomRoutesDeps): void 
           WHERE id = $1 AND user_id = $2`,
         [req.params.id, session.userId],
       );
-      if (caseCheck.rowCount === 0) {
+      if (!caseCheck.rows.length) {
         res.status(404).json({ error: "Sak ikke funnet" });
         return;
       }

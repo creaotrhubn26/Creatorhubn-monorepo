@@ -208,7 +208,7 @@ export function registerWaTemplatesAdminRoutes({ app, pool, activeSessions }: De
       }
       res.json({ ok: true, synced, total: j.data?.length ?? 0 });
     } catch (e: any) {
-      res.status(500).json({ error: e?.message ?? "sync_failed" });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 
@@ -286,7 +286,7 @@ export function registerWaTemplatesAdminRoutes({ app, pool, activeSessions }: De
       );
       res.json({ ok: true, meta_id: j.id, status: j.status });
     } catch (e: any) {
-      res.status(500).json({ error: e?.message ?? "create_failed" });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 
@@ -316,7 +316,7 @@ export function registerWaTemplatesAdminRoutes({ app, pool, activeSessions }: De
       );
       res.json({ ok: true });
     } catch (e: any) {
-      res.status(500).json({ error: e?.message ?? "delete_failed" });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 
@@ -484,7 +484,7 @@ export function registerWaTemplatesAdminRoutes({ app, pool, activeSessions }: De
       if (!ok) return res.status(r.status).json({ error: "send_failed", details: j });
       res.json({ ok: true, message_id: msgId });
     } catch (e: any) {
-      res.status(500).json({ error: e?.message ?? "send_failed" });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 

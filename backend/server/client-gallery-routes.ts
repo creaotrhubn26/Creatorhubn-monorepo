@@ -1133,7 +1133,7 @@ export function setupClientGalleryRoutes(
           `SELECT id FROM video_timecode_comments WHERE id = $1 AND gallery_id = $2 LIMIT 1`,
           [parentIdRaw, access.gallery.id],
         );
-        if (p.rowCount === 0) return res.status(400).json({ error: "invalid_parent" });
+        if (!p.rows.length) return res.status(400).json({ error: "invalid_parent" });
         parentId = parentIdRaw;
       }
       const inserted = await pool.query(
@@ -1557,24 +1557,27 @@ export function setupClientGalleryRoutes(
       const feePercent = Number(process.env.PHOTO_PURCHASE_PLATFORM_FEE_PERCENT || "0");
       const platformFeeAmount = feePercent > 0 ? Math.round(amount * (feePercent / 100)) : 0;
 
-      const intent = await stripe.paymentIntents.create({
-        amount,
-        currency: pricing.currency.toLowerCase(),
-        receipt_email: effectiveEmail,
-        // Destination charge → pengene går til fotografens Connect-konto.
-        transfer_data: { destination: photographerStripeAccountId },
-        ...(platformFeeAmount > 0 ? { application_fee_amount: platformFeeAmount } : {}),
-        // Metadata feeds the webhook handler — without galleryId it
-        // can't associate the success event with the right row.
-        metadata: {
-          galleryId: gallery.id,
-          clientEmail: effectiveEmail,
-          extraImages: String(pricing.extraImages),
-          accessToken: accessToken.slice(0, 32), // truncated for log readability
+      const intent = await stripe.paymentIntents.create(
+        {
+          amount,
+          currency: pricing.currency.toLowerCase(),
+          receipt_email: effectiveEmail,
+          // Destination charge → pengene går til fotografens Connect-konto.
+          transfer_data: { destination: photographerStripeAccountId },
+          ...(platformFeeAmount > 0 ? { application_fee_amount: platformFeeAmount } : {}),
+          // Metadata feeds the webhook handler — without galleryId it
+          // can't associate the success event with the right row.
+          metadata: {
+            galleryId: gallery.id,
+            clientEmail: effectiveEmail,
+            extraImages: String(pricing.extraImages),
+            accessToken: accessToken.slice(0, 32), // truncated for log readability
+          },
+          description: `CreatorHub klient-galleri ekstra-bilder (${pricing.extraImages} stk)`,
+          automatic_payment_methods: { enabled: true },
         },
-        description: `CreatorHub klient-galleri ekstra-bilder (${pricing.extraImages} stk)`,
-        automatic_payment_methods: { enabled: true },
-      });
+        { idempotencyKey: `gallery-pay:${gallery.id}:${effectiveEmail}:${amount}:${pricing.extraImages}` },
+      );
 
       // Insert pending payment row. Webhook flips status to 'succeeded'
       // and stamps download_token on confirmation.
@@ -2230,7 +2233,7 @@ export function setupClientGalleryRoutes(
            LIMIT 1`,
           [gallery.id, clientEmail],
         );
-        if (paid.rowCount === 0) {
+        if (!paid.rows.length) {
           return res.status(402).json({
             error: "payment_required",
             pricing,

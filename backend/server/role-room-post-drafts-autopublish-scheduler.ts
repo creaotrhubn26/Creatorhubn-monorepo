@@ -188,7 +188,7 @@ export function setupAutoPublishSchedulerRoutes(deps: SetupAutoPublishSchedulerD
       const r = await runAutoPublishTick(pool);
       res.json({ ok: true, ...r, state });
     } catch (err) {
-      res.status(500).json({ ok: false, error: String(err) });
+      res.status(500).json({ ok: false, error: "internal_error" });
     }
   });
 
@@ -227,7 +227,7 @@ export function setupAutoPublishSchedulerRoutes(deps: SetupAutoPublishSchedulerD
         },
       });
     } catch (err) {
-      res.status(500).json({ ok: false, error: String(err) });
+      res.status(500).json({ ok: false, error: "internal_error" });
     }
   });
 }

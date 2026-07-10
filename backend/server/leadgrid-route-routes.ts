@@ -172,7 +172,7 @@ export function registerLeadgridRouteRoutes(deps: Deps): void {
         },
       });
     } catch (err) {
-      return res.status(500).json({ error: "plan_failed", detail: String(err) });
+      return res.status(500).json({ error: "plan_failed", detail: "internal_error" });
     }
   });
 
@@ -194,7 +194,7 @@ export function registerLeadgridRouteRoutes(deps: Deps): void {
                 total_distance_meters, total_drive_seconds, expected_route_value,
                 created_at, started_at, completed_at
            FROM lead_routes WHERE id = $1::uuid LIMIT 1`, [req.params.id]);
-      if (r.rowCount === 0) return res.status(404).json({ error: "ikke_funnet" });
+      if (!r.rows.length) return res.status(404).json({ error: "ikke_funnet" });
       const stops = await pool.query(
         `SELECT s.id::text, s.position, s.lead_id::text, s.status, s.outcome, s.notes,
                 s.distance_from_previous_meters, s.drive_seconds_from_previous,
@@ -206,7 +206,7 @@ export function registerLeadgridRouteRoutes(deps: Deps): void {
           ORDER BY s.position ASC`, [req.params.id]);
       return res.json({ route: r.rows[0], stops: stops.rows });
     } catch (err) {
-      return res.status(500).json({ error: "read_failed", detail: String(err) });
+      return res.status(500).json({ error: "read_failed", detail: "internal_error" });
     }
   });
 
@@ -231,7 +231,7 @@ export function registerLeadgridRouteRoutes(deps: Deps): void {
       if (r.rowCount === 0) return res.status(404).json({ error: "stopp_ikke_funnet" });
       return res.json({ ok: true });
     } catch (err) {
-      return res.status(500).json({ error: "update_failed", detail: String(err) });
+      return res.status(500).json({ error: "update_failed", detail: "internal_error" });
     }
   });
 }

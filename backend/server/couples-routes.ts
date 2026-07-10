@@ -2,6 +2,19 @@ import express from "express";
 import type { Pool } from "pg";
 import crypto from "crypto";
 
+const _couplesRateBuckets = new Map<string, number[]>();
+function _couplesRateLimited(key: string, max: number, windowMs: number): boolean {
+  const now = Date.now();
+  const arr = (_couplesRateBuckets.get(key) ?? []).filter((t) => now - t < windowMs);
+  arr.push(now);
+  _couplesRateBuckets.set(key, arr);
+  return arr.length > max;
+}
+const _couplesClientIp = (req: express.Request): string =>
+  (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()
+  ?? req.socket?.remoteAddress
+  ?? "?";
+
 export interface CouplesRoutesDeps {
   app: express.Application;
   pool: Pool;
@@ -24,6 +37,8 @@ export function setupCouplesRoutes(deps: CouplesRoutesDeps): void {
   } = deps;
 
   app.post("/api/couples/login", async (req, res) => {
+    if (_couplesRateLimited(`couples-login:${_couplesClientIp(req)}`, 10, 60_000))
+      return res.status(429).json({ error: "too_many_requests" });
     try {
       const { email, password } = req.body;
       if (!email) return res.status(400).json({ error: "E-post er påkrevd" });
@@ -35,7 +50,7 @@ export function setupCouplesRoutes(deps: CouplesRoutesDeps): void {
         [email.toLowerCase().trim()],
       );
 
-      if (!coupleResult.rowCount || coupleResult.rowCount === 0) {
+      if (!coupleResult.rowCount || !coupleResult.rows.length) {
         console.log(`[CoupleLogin] Lookup result: Not found`);
         return res
           .status(401)
@@ -56,7 +71,14 @@ export function setupCouplesRoutes(deps: CouplesRoutesDeps): void {
             couple.password,
           );
         } else {
-          passwordValid = password === couple.password;
+          if (password === couple.password) {
+            passwordValid = true;
+            const hashed = await bcrypt.default.hash(password || "", 10);
+            await pool.query(
+              "UPDATE couple_profiles SET password = $1 WHERE id = $2",
+              [hashed, couple.id],
+            ).catch(() => {});
+          }
         }
 
         if (!passwordValid) {
@@ -96,6 +118,7 @@ export function setupCouplesRoutes(deps: CouplesRoutesDeps): void {
         `[CoupleLogin] Success: ${couple.email} (session: ${sessionToken.substring(0, 8)}...)`,
       );
 
+      res.setHeader('Cache-Control', 'no-store');
       res.json({
         success: true,
         token: sessionToken,
@@ -155,11 +178,11 @@ export function setupCouplesRoutes(deps: CouplesRoutesDeps): void {
         published: r.published,
         settings:
           typeof r.settings === "string"
-            ? JSON.parse(r.settings)
+            ? (() => { try { return JSON.parse(r.settings); } catch { return null; } })()
             : r.settings,
         metadata:
           typeof r.metadata === "string"
-            ? JSON.parse(r.metadata)
+            ? (() => { try { return JSON.parse(r.metadata); } catch { return null; } })()
             : r.metadata,
         createdAt: r.created_at,
         updatedAt: r.updated_at,
@@ -222,11 +245,11 @@ export function setupCouplesRoutes(deps: CouplesRoutesDeps): void {
         published: r.published,
         settings:
           typeof r.settings === "string"
-            ? JSON.parse(r.settings)
+            ? (() => { try { return JSON.parse(r.settings); } catch { return null; } })()
             : r.settings,
         metadata:
           typeof r.metadata === "string"
-            ? JSON.parse(r.metadata)
+            ? (() => { try { return JSON.parse(r.metadata); } catch { return null; } })()
             : r.metadata,
         createdAt: r.created_at,
         updatedAt: r.updated_at,

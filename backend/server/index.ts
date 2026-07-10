@@ -13,6 +13,7 @@ import {
 import { hydrateSessionsFromDb, persistSession } from "./persistent-session-store.js";
 
 import express from "express";
+import helmet from "helmet";
 import cors from "cors";
 import multer from "multer";
 import { createRequire } from "module";
@@ -818,6 +819,8 @@ import { setupBrandingRoutes } from "./branding-routes";
 import { setupVendorTypesRoutes } from "./vendor-types-routes";
 import { setupEditingJobsRoutes } from "./editing-jobs-routes";
 import { setupEditingPartnerApplicationsAdminRoutes } from "./editing-partner-applications-admin-routes";
+import { setupSuperadminImpersonationRoutes } from "./superadmin-impersonation-routes";
+import { setupSuperadminDebugRoutes } from "./superadmin-debug-routes";
 import { setupMeetingNotesRoutes } from "./meeting-notes-routes";
 import { setupDavinciResolveRoutes } from "./davinci-resolve-routes";
 import { setupSeoBotRoutes } from "./seo-bot-routes";
@@ -1141,6 +1144,10 @@ const showcaseMediaUpload = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: 250 * 1024 * 1024,
+  },
+  fileFilter: (_req, file, cb) => {
+    if (/^(image\/|video\/|audio\/)/.test(file.mimetype)) cb(null, true);
+    else cb(new Error("Filtype ikke tillatt") as any, false);
   },
 });
 
@@ -1940,6 +1947,22 @@ const KNOWN_ORIGINS = new Set([
   'http://tauri.localhost',
   'https://tauri.localhost',
 ]);
+app.use(helmet({
+  // API-only backend — no HTML served, so CSP is not needed
+  contentSecurityPolicy: false,
+  // CORS handles cross-origin; crossOriginResourcePolicy would break file downloads
+  crossOriginResourcePolicy: false,
+  // Prevent cross-origin window attacks (e.g. Spectre)
+  crossOriginOpenerPolicy: { policy: "same-origin" },
+}));
+// Permissions-Policy is not set by helmet — add explicitly
+app.use((_req, res, next) => {
+  res.setHeader(
+    "Permissions-Policy",
+    "camera=(), microphone=(), geolocation=(), payment=(), usb=(), fullscreen=(self)"
+  );
+  next();
+});
 app.use(cors({
   origin: (origin, callback) => {
     // Ingen origin (samme-origin eller server-til-server) — tillat
@@ -1957,6 +1980,13 @@ app.use(cors({
 }));
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
+
+// All /api responses must never be cached — prevents stale sensitive data
+// being served from browser cache or shared proxies.
+app.use("/api", (_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  next();
+});
 
 function normalizeIncomingApiUrl(rawUrl: string): string {
   if (!rawUrl) return rawUrl;
@@ -2017,6 +2047,12 @@ type ActiveSessionData = {
   picture?: string;
   verified_email?: boolean;
   impersonatedByAdmin?: boolean;
+  // User-nivå impersonation (super_admin «vis som bruker»): peker sesjonen på
+  // målbrukeren, men beholder super_adminen for gjenoppretting + audit.
+  impersonatorId?: string;
+  impersonatorEmail?: string;
+  impersonatorSnapshot?: Partial<ActiveSessionData>;
+  impersonationExpiresAt?: number;
   isAdmin?: boolean;
   vendorId?: string;
   businessName?: string;
@@ -2212,6 +2248,42 @@ function requireAdminSession(
 
 // ─── GET /api/admin/presence/online ──────────────────────────────────────
 // Admin-guardet oversikt over hvilke brukere som er pålogget akkurat nå.
+// Skriv-audit under impersonation: logg alle mutasjoner utført mens en super_admin
+// «ser som» en bruker (impersonator ansvarlig). Registrert her — FØR rutene — så
+// den fanger så godt som alle endepunkter. Fire-and-forget, blokkerer aldri.
+app.use((req, _res, next) => {
+  try {
+    const token = readActiveSessionToken(req);
+    const s = token ? activeSessions.get(token) : null;
+    if (s?.impersonatedByAdmin) {
+      // Håndhev 30-min TTL på HVER request. Uten dette utløper impersonasjonen
+      // kun når frontend poller /impersonation-status — bruker man token-en
+      // direkte (eller slutter å polle) beholder super_adminen målbrukerens
+      // sesjon med skrivetilgang i det uendelige. Gjenopprett fra snapshot.
+      if (s.impersonationExpiresAt && Date.now() > s.impersonationExpiresAt) {
+        const snap = s.impersonatorSnapshot || {};
+        Object.assign(s, snap);
+        s.impersonatedByAdmin = false;
+        delete s.impersonatorId; delete s.impersonatorEmail;
+        delete s.impersonatorSnapshot; delete s.impersonationExpiresAt;
+        activeSessions.set(token as string, s);
+        void persistAuthSession(pool, token as string, s);
+      } else {
+        const m = req.method.toUpperCase();
+        if ((m === "POST" || m === "PUT" || m === "PATCH" || m === "DELETE")
+            && !req.path.includes("/impersonat")) {
+          void pool.query(
+            `INSERT INTO superadmin_impersonation_audit (super_admin_id, action, target_user_id, details)
+             VALUES ($1,'write',$2,$3::jsonb)`,
+            [s.impersonatorId || null, s.userId, JSON.stringify({ method: m, path: String(req.path).slice(0, 200) })],
+          ).catch(() => { /* audit skal aldri blokkere */ });
+        }
+      }
+    }
+  } catch { /* aldri blokkér requesten */ }
+  next();
+});
+
 // Presence er personvern-sensitivt → kun admin. Online = user_presence
 // last_seen_at innen 90 sek og ikke idle (samme vindu som Admin Room /
 // platform-status). Degraderer trygt hvis user_presence-tabellen mangler.
@@ -2253,7 +2325,9 @@ app.get("/api/admin/presence/online", async (req, res) => {
 
 registerTidumAdminRoutes(app, pool, requireAdminSession);
 registerStripePriceDriftRoutes(app, pool, requireAdminSession);
-registerMarketplaceAppConfigRoutes(app, pool, requireAdminSession);
+registerMarketplaceAppConfigRoutes(app, pool, requireAdminSession, (req) =>
+  getActiveSessionFromRequest(req)?.userId ?? null,
+);
 configureAIUsageTracker(pool);
 registerAIUsageRoutes(app, pool, requireAdminSession);
 registerDesignTokensRoutes(app, pool, requireAdminSession);
@@ -7419,7 +7493,7 @@ const loadDatabaseCameraStore = async (): Promise<CameraRecord[]> => {
     }
     if (!model && displayName && brand) {
       const withoutBrand = displayName
-        .replace(new RegExp(`^${brand}\\s+`, "i"), "")
+        .replace(new RegExp(`^${escapeRegex(brand)}\\s+`, "i"), "")
         .trim();
       model = withoutBrand || displayName;
     } else if (!model && displayName) {
@@ -9051,7 +9125,7 @@ const stripLeadingBrandFromModel = (brand: string, model: string): string => {
   const normalizedBrand = brand.trim().toLowerCase();
   const normalizedModel = model.trim();
   if (!normalizedBrand || !normalizedModel) return model.trim();
-  const prefixPattern = new RegExp(`^${normalizedBrand}\\s+`, "iu");
+  const prefixPattern = new RegExp(`^${escapeRegex(normalizedBrand)}\\s+`, "iu");
   return normalizedModel.replace(prefixPattern, "").trim();
 };
 
@@ -13845,6 +13919,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function compatResolveUserId(req: any): string {
+  // SECURITY: a validated session token (server-side activeSessions lookup) is
+  // non-spoofable and MUST win over the client-supplied x-user-id header /
+  // body.userId / query.userId below. Otherwise any authenticated caller — or an
+  // anonymous one — could impersonate another account by setting those values.
+  // Legacy/compat callers with no session fall through to the old resolution.
+  const sessionUserId = getActiveSessionFromRequest(req)?.userId;
+  if (sessionUserId) return sessionUserId;
+
   const headerUserId = compatHeaderString(req.headers?.["x-user-id"]);
   if (headerUserId) return headerUserId;
 
@@ -13853,7 +13935,19 @@ function compatResolveUserId(req: any): string {
     const token = authHeader.slice("Bearer ".length).trim();
     const activeSession = activeSessions.get(token);
     if (activeSession?.userId) return activeSession.userId;
-    if (token.length > 0) return token;
+    // Session token not in activeSessions (restart race condition): trigger lazy
+    // hydration so the NEXT request finds the real userId, but return "guest"
+    // for this request rather than the raw token (which is a session-ID UUID,
+    // not the user-ID UUID, and would corrupt per-user KV/preference data).
+    if (token.length > 0) {
+      void loadPersistedAuthSession<ActiveSessionData>(pool, token).then(
+        (persisted) => {
+          if (persisted && !activeSessions.has(token)) {
+            activeSessions.set(token, persisted);
+          }
+        },
+      );
+    }
   }
 
   const bodyUserId = compatHeaderString(req.body?.userId ?? req.body?.user_id);
@@ -14782,6 +14876,9 @@ app.get("/api/profession/config/:profession", async (req, res) => {
 });
 
 app.post("/api/profession/config/:profession", async (req, res) => {
+  const session = requireAdminSession(req, res);
+  if (!session) return;
+
   const profession =
     typeof req.params.profession === "string"
       ? req.params.profession.trim().toLowerCase()
@@ -16991,10 +17088,11 @@ app.post("/api/demo/troll/seed-all", async (req, res) => {
     // "demo-user" kun hvis ingen session — slik kan demo brukes anonymt i dev,
     // men ekte brukere får prosjektet eid av seg selv så /api/casting/projects/:id
     // finner det (filtrerer på created_by).
+    // NOTE: x-user-id header intentionally NOT trusted — attacker-controlled.
     const resolvedUserId = compatResolveUserId(req);
     const ownerUserId = (resolvedUserId && resolvedUserId !== "guest")
       ? resolvedUserId
-      : readString(req.headers["x-user-id"] as string | undefined) || "demo-user";
+      : "demo-user";
     const body = (req.body ?? {}) as {
       projectId?: string;
       projectName?: string;
@@ -18458,8 +18556,12 @@ async function resolveCompatSubscriptionStatus(
         if (stripeClient) {
           const sub = await stripeClient.subscriptions.retrieve(subId);
           const subStatus = String((sub as { status?: string }).status || "");
-          const periodEnd = (sub as { current_period_end?: number })
-            .current_period_end;
+          // Stripe v18/v19: current_period_end flyttet fra topp-nivå til
+          // items.data[0]. Les derfra, med topp-nivå som fallback (eldre API).
+          const periodEnd =
+            (sub as { items?: { data?: Array<{ current_period_end?: number }> } })
+              .items?.data?.[0]?.current_period_end ??
+            (sub as { current_period_end?: number }).current_period_end;
           const cancelAtEnd = Boolean(
             (sub as { cancel_at_period_end?: boolean }).cancel_at_period_end,
           );
@@ -18475,6 +18577,10 @@ async function resolveCompatSubscriptionStatus(
             autoRenew: cancelAtEnd ? false : withEmail.autoRenew,
             accessUntil: periodEndIso ?? withEmail.accessUntil,
             nextBillingDate: periodEndIso ?? withEmail.nextBillingDate,
+            // Negativ caching: når abonnementet er bekreftet inaktivt (kansellert/
+            // utløpt), fjern subscription-id-en så vi ikke slår opp mot Stripe på
+            // HVERT statuskall for en churnet bruker. Et nytt kjøp skriver en ny id.
+            stripeSubscriptionId: active ? subId : null,
           };
           await writeCompatSubscriptionStatus(userId, reconciled).catch(
             () => undefined,
@@ -20584,6 +20690,11 @@ async function getAudioBufferFromUrl(audioUrl: string) {
   }
 
   if (isHttpUrl(normalizedSource)) {
+    let hostname: string;
+    try { hostname = new URL(normalizedSource).hostname; } catch { throw new Error("Ugyldig URL"); }
+    if (/^(127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.|169\.254\.|0\.|::1$|localhost$)/i.test(hostname) || hostname === "metadata.google.internal") {
+      throw new Error("SSRF: intern adresse ikke tillatt");
+    }
     const response = await fetch(normalizedSource);
     if (!response.ok) {
       throw new Error("Failed to fetch audio");
@@ -22030,7 +22141,7 @@ async function checkContractSignature(
       `SELECT signature_status, status FROM contracts WHERE id = $1 LIMIT 1`,
       [contractId],
     );
-    if (r.rowCount === 0) {
+    if (!r.rows.length) {
       // Kontrakten er slettet — fail-safe blokker. Stine må enten
       // unlinke kontrakten eller laste opp ny.
       return { ok: false, status: 412, error: 'linked_contract_missing' };
@@ -22337,36 +22448,19 @@ function peekFfmpegHealth(): { available: boolean | null; version: string | null
     : { available: null, version: null };
 }
 
-app.get("/api/health", (req, res) => {
-  const isRenderRuntime =
-    String(process.env.RENDER || "").toLowerCase() === "true";
-  const ffmpeg = peekFfmpegHealth();
-  res.json({
-    status: "ok",
-    timestamp: new Date().toISOString(),
-    startedAt: serverStartedAt,
-    commit: process.env.RENDER_GIT_COMMIT || null,
-    branch: process.env.RENDER_GIT_BRANCH || null,
-    serviceId: process.env.RENDER_SERVICE_ID || null,
-    serviceName: process.env.RENDER_SERVICE_NAME || null,
-    instanceId: process.env.RENDER_INSTANCE_ID || null,
-    runtime: isRenderRuntime ? "render" : process.env.NODE_ENV || "unknown",
-    // Surfaces on Render's status-page poll so we can see at a glance
-    // whether the reel normaliser has a usable ffmpeg binary on this
-    // instance. Without it reels still ship, but unchanged — the
-    // photographer sees any quality/size issues Meta flags.
-    ffmpeg,
-  });
+app.get("/api/health", (_req, res) => {
+  res.json({ status: "ok" });
 });
 
 // AI-queue health for observability (Leadgrid skalering nivå 2).
 // Eksponerer per-provider RPM-bruk, in-flight og pending wait-queue.
-app.get("/api/leadgrid/ai-queue/health", async (_req, res) => {
+app.get("/api/leadgrid/ai-queue/health", async (req, res) => {
+  if (!requireAdminSession(req, res)) return;
   try {
     const { aiQueue } = await import("./leadgrid-ai-queue.js");
     res.json({ ok: true, ...aiQueue.snapshot() });
   } catch (err) {
-    res.status(500).json({ ok: false, error: String(err).slice(0, 200) });
+    res.status(500).json({ ok: false, error: "internal_error" });
   }
 });
 
@@ -23774,7 +23868,7 @@ app.post("/api/tripletex/customers/ensure", async (req, res) => {
     res.json({ success: true, customer });
   } catch (error) {
     if (error instanceof TripletexApiError) {
-      return res.status(error.status).json({ error: error.message, details: error.details });
+      return res.status(error.status).json({ error: "internal_error", details: error.details });
     }
     console.error("Tripletex ensure customer error:", error);
     res.status(500).json({ error: "Kunne ikke opprette kunde i Tripletex" });
@@ -23920,7 +24014,7 @@ app.post("/api/tripletex/invoices/create", async (req, res) => {
     });
   } catch (error) {
     if (error instanceof TripletexApiError) {
-      return res.status(error.status).json({ error: error.message, details: error.details });
+      return res.status(error.status).json({ error: "internal_error", details: error.details });
     }
 
     console.error("Tripletex invoice create error:", error);
@@ -23956,7 +24050,7 @@ app.get("/api/tripletex/invoices/:invoiceId/pdf", async (req, res) => {
     res.send(Buffer.from(pdf));
   } catch (error) {
     if (error instanceof TripletexApiError) {
-      return res.status(error.status).json({ error: error.message, details: error.details });
+      return res.status(error.status).json({ error: "internal_error", details: error.details });
     }
     console.error("Tripletex invoice pdf error:", error);
     res.status(500).json({ error: "Kunne ikke hente faktura fra Tripletex" });
@@ -23991,7 +24085,7 @@ app.get("/api/tripletex/vouchers/:voucherId/pdf", async (req, res) => {
     res.send(Buffer.from(pdf));
   } catch (error) {
     if (error instanceof TripletexApiError) {
-      return res.status(error.status).json({ error: error.message, details: error.details });
+      return res.status(error.status).json({ error: "internal_error", details: error.details });
     }
     console.error("Tripletex voucher pdf error:", error);
     res.status(500).json({ error: "Kunne ikke hente bilag fra Tripletex" });
@@ -25279,6 +25373,7 @@ setupAdminFeaturesRoutes({
   dbCompatAdminFeatureKey,
   compatResolveUserId,
   isRecord,
+  requireAdminSession,
 });
 
 // ── Admin refund-requests — flyttet til ./admin-refund-requests-routes.ts
@@ -25567,9 +25662,18 @@ function readCompatUserKvParamKey(rawValue: unknown): string | null {
   }
 }
 
+// Secret-shaped key patterns are blocked for unauthenticated callers too:
+// every anonymous request shares the literal userId "guest" below (there is
+// no per-visitor anonymous identity), so any non-academy key an anonymous
+// caller could write/read here is visible to every OTHER anonymous visitor —
+// a real cross-visitor leak for anything secret-shaped (e.g. a user-supplied
+// third-party API key stored via /api/user/kv).
+const SENSITIVE_KV_KEY_PATTERN = /(api[_-]?key|apikey|access[_-]?token|auth[_-]?token|secret|password|credential|private[_-]?key)/i;
+
 function isProtectedAcademyKvKey(rawKey: unknown): boolean {
   const normalizedKey = readString(rawKey)?.trim().toLowerCase();
-  return Boolean(normalizedKey && normalizedKey.startsWith("academy"));
+  if (!normalizedKey) return false;
+  return normalizedKey.startsWith("academy") || SENSITIVE_KV_KEY_PATTERN.test(normalizedKey);
 }
 
 function resolveUserKvScope(req: express.Request): {
@@ -25956,7 +26060,11 @@ app.get("/api/enterprise/team/:organizationId/members", async (req, res) => {
 // e-post-fallback (invitert på e-post før konto-kobling).
 app.get("/api/enterprise/my-membership", async (req, res) => {
   try {
-    const userId = getUserIdFromAuth(req) || compatResolveUserId(req);
+    // Krev en EKTE sesjon (activeSessions-token), ikke det rå X-User-Id-headeren
+    // — ellers kan hvem som helst lese en annen brukers medlemskap + e-post
+    // (IDOR/PII-lekkasje). Uinnlogget → null-medlemskap.
+    const session = getActiveSessionFromRequest(req);
+    const userId = session?.userId || null;
     if (!userId) {
       res.json({ membership: null });
       return;
@@ -25972,7 +26080,7 @@ app.get("/api/enterprise/my-membership", async (req, res) => {
       /* e-post-fallback er valgfri */
     }
     const r = await pool.query(
-      `SELECT id, organization_id, email, role, status
+      `SELECT id, organization_id, role, status
          FROM enterprise_team_members
         WHERE status = 'active'
           AND (user_id = $1 OR ($2::text IS NOT NULL AND LOWER(email) = $2))
@@ -25985,11 +26093,12 @@ app.get("/api/enterprise/my-membership", async (req, res) => {
       res.json({ membership: null });
       return;
     }
+    // Returner IKKE e-post (PII, unødvendig for klienten — den bruker kun
+    // organizationId + role).
     res.json({
       membership: {
         id: row.id,
         organizationId: row.organization_id,
-        email: row.email,
         role: row.role,
         status: row.status,
       },
@@ -26167,10 +26276,8 @@ function buildCreatorHubCheckoutReturnUrl(input: {
   status: "success" | "cancel";
   includeSessionId?: boolean;
 }) {
-  const rawPath =
-    typeof input.returnPath === "string" && input.returnPath.trim().startsWith("/")
-      ? input.returnPath.trim()
-      : "/subscription-selection";
+  const _rawPath = typeof input.returnPath === "string" ? input.returnPath.trim() : "";
+  const rawPath = _rawPath.startsWith("/") && !_rawPath.startsWith("//") ? _rawPath : "/subscription-selection";
   const url = new URL(rawPath, input.browserOrigin);
   url.searchParams.set("payment", input.status);
   if (input.includeSessionId) {
@@ -26987,8 +27094,13 @@ async function markCreatorHubStripeCheckoutRecordPaid(
         const sub = await stripeClient.subscriptions.retrieve(
           nextRecord.stripeSubscriptionId,
         );
-        const periodEnd = (sub as unknown as { current_period_end?: number })
-          .current_period_end;
+        // Stripe v18/v19: current_period_end ligger på items.data[0], ikke
+        // topp-nivå. Les derfra, med topp-nivå som fallback.
+        const periodEnd =
+          (sub as unknown as {
+            items?: { data?: Array<{ current_period_end?: number }> };
+          }).items?.data?.[0]?.current_period_end ??
+          (sub as unknown as { current_period_end?: number }).current_period_end;
         if (typeof periodEnd === "number" && periodEnd > 0) {
           realStripePeriodEnd = new Date(periodEnd * 1000).toISOString();
         }
@@ -27039,7 +27151,11 @@ async function markCreatorHubStripeCheckoutRecordPaid(
   // team-/Enterprise-gatene (useTeamAccess, «Inviter team», Easeverse-band)
   // faktisk slår inn. Uten dette er et fullført Enterprise-kjøp ≠ tilgang.
   // Deterministisk org-id (org_<userId>) → idempotent på (org, e-post).
-  if (nextRecord.planId === "enterprise" && nextRecord.userId) {
+  if (
+    nextRecord.planId === "enterprise" &&
+    nextRecord.userId &&
+    isPersistableCompatUserId(nextRecord.userId)
+  ) {
     try {
       const orgId = `org_${nextRecord.userId}`;
       const memberEmail =
@@ -32950,7 +33066,7 @@ async function ensureInviteRequestAccessProvisioning(
       [userId, subscriptionPlanId],
     );
 
-    if (existingSubscription.rowCount === 0) {
+    if (!existingSubscription.rows.length) {
       await pool.query(
         `INSERT INTO user_subscriptions
           (user_id, plan_id, status, started_at, auto_renew)
@@ -42836,6 +42952,67 @@ app.get("/api/business-lifecycle/profile-by-email/:email", async (req, res) => {
 });
 
 // ============================================================
+// GDPR: last ned mine data (self-scopet). To web-knapper (BusinessInfo-
+// Settings + wcag-util/ResumeBuilder) kalte tidligere endepunkter som
+// IKKE eksisterte -> 404 (QA 2026-07-06). Ett ekte, session-scopet
+// endepunkt + alias for begge stiene. Bruker session.userId - path-
+// param ignoreres, sa en bruker kan aldri eksportere en ANNENS data.
+// ============================================================
+const handleUserDataExport = async (
+  req: express.Request,
+  res: express.Response,
+) => {
+  const session = await resolveActiveSessionFromRequest(req);
+  if (!session?.userId) {
+    return res.status(401).json({ error: "Innlogging kreves" });
+  }
+  try {
+    const email = session.email ?? "";
+    const [userRow, businessProfile, vendor] = await Promise.all([
+      pool.query(
+        `SELECT id, email, name, first_name, role, created_at
+           FROM users WHERE id = $1`,
+        [session.userId],
+      ),
+      (await hasTable("invite_requests")) && email
+        ? pool.query(
+            `SELECT company_name, organization_number, business_address,
+                    profession, website, phone_number, status, created_at
+               FROM invite_requests WHERE email = $1
+               ORDER BY created_at DESC LIMIT 1`,
+            [email],
+          )
+        : Promise.resolve({ rows: [] as Array<Record<string, unknown>> }),
+      email ? getVendorByEmail(email).catch(() => null) : Promise.resolve(null),
+    ]);
+    const payload = {
+      exported_at: new Date().toISOString(),
+      description:
+        "Dine personlige data (GDPR art. 20 dataportabilitet). Self-scopet til innlogget bruker.",
+      account: userRow.rows[0] ?? null,
+      business_profile: businessProfile.rows[0] ?? null,
+      vendor_profile: vendor
+        ? {
+            business_name: (vendor as any).business_name,
+            category: (vendor as any).category,
+            location: (vendor as any).location,
+            website: (vendor as any).website,
+            status: (vendor as any).status,
+            created_at: (vendor as any).created_at,
+          }
+        : null,
+    };
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    return res.json({ data: payload });
+  } catch (e) {
+    console.error("[gdpr] user data-export failed", e);
+    return res.status(500).json({ error: "Kunne ikke eksportere data" });
+  }
+};
+app.get("/api/users/:id/export-data", handleUserDataExport);
+app.get("/api/business-lifecycle/export-data/:id", handleUserDataExport);
+
+// ============================================================
 // CLIENT SUBMISSIONS API → flyttet til ./submissions-routes.ts
 // (6 endpoints + mapSubmissionRow-helper).
 // ============================================================
@@ -42966,7 +43143,7 @@ const adminUsernameFromEmail = (email: string): string => {
 function normalizeAdminRoleId(value: unknown): string {
   const raw = toAdminString(value)?.toLowerCase().replace(/\s+/g, "_") || "";
   if (!raw) return "user";
-  return adminRoleCatalogById.has(raw) ? raw : raw;
+  return adminRoleCatalogById.has(raw) ? raw : "user";
 }
 
 const inferAdminRoleFromProfession = (profession: unknown): string => {
@@ -44470,7 +44647,8 @@ function safeAdminCurrency(value: unknown): number {
 }
 
 function escapeAdminCsv(value: unknown): string {
-  const text = String(value ?? "");
+  const raw = String(value ?? "");
+  const text = /^[=+\-@|\t\r]/.test(raw) ? `'${raw}` : raw;
   return `"${text.replace(/"/g, '""')}"`;
 }
 
@@ -46047,8 +46225,8 @@ app.post(
   async (req, res) => {
     try {
       const { projectId, shotId } = req.params;
-      const userId = getUserIdFromAuth(req);
-      if (!userId) {
+      const userId = compatResolveUserId(req);
+      if (!userId || !isUuid(userId)) {
         return res.status(401).json({ error: "unauthorized" });
       }
       const capturedAssetId =
@@ -46178,7 +46356,7 @@ app.post(
         "SELECT id, wedding_date FROM wedding_timelines WHERE project_id = $1 LIMIT 1",
         [projectId],
       );
-      if (tlResult.rowCount === 0) {
+      if (!tlResult.rows.length) {
         return res
           .status(404)
           .json({ error: "Ingen tidslinje funnet for prosjektet" });
@@ -46242,7 +46420,7 @@ app.put(
         "SELECT id, wedding_date FROM wedding_timelines WHERE project_id = $1 LIMIT 1",
         [projectId],
       );
-      if (tlResult.rowCount === 0) {
+      if (!tlResult.rows.length) {
         return res.status(404).json({ error: "Tidslinje ikke funnet" });
       }
       const rawDate2 = tlResult.rows[0].wedding_date;
@@ -46343,7 +46521,7 @@ app.get(
         [projectId],
       );
 
-      if (tlResult.rowCount === 0) {
+      if (!tlResult.rows.length) {
         return res.status(404).json({ error: "Ingen tidslinje funnet" });
       }
 
@@ -46353,7 +46531,7 @@ app.get(
 
       // Generate new codes if missing or regenerate requested
       if (!accessCode || regenerate) {
-        accessCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+        accessCode = crypto.randomBytes(3).toString("hex").toUpperCase();
         accessToken = crypto.randomUUID();
 
         await pool.query(
@@ -46395,7 +46573,7 @@ app.put(
         "SELECT id FROM wedding_timelines WHERE wedding_id = $1 OR project_id = $1 OR id = $1 LIMIT 1",
         [weddingId],
       );
-      if (tlResult.rowCount === 0) {
+      if (!tlResult.rows.length) {
         return res.status(404).json({ error: "Tidslinje ikke funnet" });
       }
       const timelineId = tlResult.rows[0].id;
@@ -46426,7 +46604,7 @@ app.post(
         "SELECT id, wedding_date FROM wedding_timelines WHERE wedding_id = $1 OR project_id = $1 OR id = $1 LIMIT 1",
         [weddingId],
       );
-      if (tlResult.rowCount === 0) {
+      if (!tlResult.rows.length) {
         return res.status(404).json({ error: "Tidslinje ikke funnet" });
       }
       const timelineId = tlResult.rows[0].id;
@@ -46709,7 +46887,7 @@ app.all("/api/evendi/*", async (req, res, next) => {
     console.error("Evendi proxy error:", error.message);
     res
       .status(502)
-      .json({ error: "Kunne ikke nå Evendi API", details: error.message });
+      .json({ error: "Kunne ikke nå Evendi API", details: "internal_error" });
   }
 });
 
@@ -46779,7 +46957,20 @@ app.get("/api/showcase-media/:key", async (req, res) => {
   }
 });
 
+const _uploadRateBuckets = new Map<string, number[]>();
+function _uploadRateLimited(key: string): boolean {
+  const now = Date.now();
+  const arr = (_uploadRateBuckets.get(key) ?? []).filter((t) => now - t < 60_000);
+  arr.push(now);
+  _uploadRateBuckets.set(key, arr);
+  return arr.length > 30;
+}
+
 app.post("/api/upload/audio", audioUpload.single("file"), async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const ip = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ?? req.socket?.remoteAddress ?? "?";
+  if (_uploadRateLimited(`upload:${session.userId}:${ip}`)) return res.status(429).json({ success: false, error: "too_many_requests" });
   try {
     if (!req.file)
       return res
@@ -46790,13 +46981,17 @@ app.post("/api/upload/audio", audioUpload.single("file"), async (req, res) => {
     res.json({ success: true, url, durable: Boolean(durable) });
   } catch (error) {
     console.error("Audio upload error:", error);
-    res.status(500).json({ success: false, error: "Failed to upload audio" });
+    res.status(500).json({ success: false, error: "internal_error" });
   }
 });
 
 // Generisk bilde-opplasting (profilbilde/cover for Audio Showcase) — B2 (varig)
 // m/ fallback til lokal disk. Erstatter data-URL-inlining.
 app.post("/api/upload/image", showcaseMediaUpload.single("file"), async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const ip = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ?? req.socket?.remoteAddress ?? "?";
+  if (_uploadRateLimited(`upload:${session.userId}:${ip}`)) return res.status(429).json({ success: false, error: "too_many_requests" });
   try {
     if (!req.file) return res.status(400).json({ success: false, error: "Missing image file" });
     if (!String(req.file.mimetype || "").startsWith("image/")) return res.status(400).json({ success: false, error: "Not an image" });
@@ -46805,7 +47000,7 @@ app.post("/api/upload/image", showcaseMediaUpload.single("file"), async (req, re
     res.json({ success: true, url, durable: Boolean(durable) });
   } catch (error) {
     console.error("Image upload error:", error);
-    res.status(500).json({ success: false, error: "Failed to upload image" });
+    res.status(500).json({ success: false, error: "internal_error" });
   }
 });
 
@@ -60879,6 +61074,7 @@ const generateCaptionPayload = async (
 };
 
 app.post("/api/video/generate-captions", async (req, res) => {
+  if (!requireUserSession(req, res)) return;
   try {
     const videoPath =
       readString(req.body?.video_path) || readString(req.body?.videoPath);
@@ -60901,6 +61097,7 @@ app.post("/api/video/generate-captions", async (req, res) => {
 });
 
 app.post("/api/capcut-features/auto-captions", async (req, res) => {
+  if (!requireUserSession(req, res)) return;
   try {
     const videoPath =
       readString(req.body?.videoPath) || readString(req.body?.video_path);
@@ -61046,6 +61243,7 @@ app.get("/api/video-ai/models", async (req, res) => {
 });
 
 app.post("/api/video-ai/enhance-url", async (req, res) => {
+  if (!requireUserSession(req, res)) return;
   const startedAt = Date.now();
   try {
     const videoUrl = readString(req.body?.videoUrl) || "";
@@ -61079,6 +61277,22 @@ app.post("/api/video-ai/enhance-url", async (req, res) => {
         reason: model.reason,
         model,
       });
+    }
+
+    // SSRF guard before HEAD fetch
+    try {
+      const _ssrfParsed = new URL(videoUrl);
+      if (_ssrfParsed.protocol !== "http:" && _ssrfParsed.protocol !== "https:") {
+        return res.status(400).json({ error: "Invalid videoUrl" });
+      }
+      const _h = _ssrfParsed.hostname.toLowerCase();
+      if (_h === "localhost" || _h === "127.0.0.1" || _h === "::1" || _h === "0.0.0.0" ||
+          /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.)/.test(_h) ||
+          _h === "metadata.google.internal" || _h.endsWith(".internal") || _h.endsWith(".local")) {
+        return res.status(400).json({ error: "Invalid videoUrl" });
+      }
+    } catch {
+      return res.status(400).json({ error: "Invalid videoUrl" });
     }
 
     let contentType = "video/mp4";
@@ -61298,7 +61512,22 @@ const FASTER_WHISPER_URL =
   process.env.FASTER_WHISPER_URL || "http://localhost:5000";
 const USE_FREE_SERVICES = process.env.USE_FASTER_WHISPER === "true";
 
+const _ttsRateBuckets = new Map<string, number[]>();
+function _ttsRateLimited(key: string): boolean {
+  const now = Date.now();
+  const arr = (_ttsRateBuckets.get(key) ?? []).filter((t) => now - t < 60_000);
+  if (arr.length >= 20) return true;
+  arr.push(now);
+  _ttsRateBuckets.set(key, arr);
+  return false;
+}
+
 app.post("/api/ai/tts", async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  if (_ttsRateLimited(`tts:${session.userId}`)) {
+    return res.status(429).json({ error: "rate_limited" });
+  }
   try {
     const { text, voice, model, speed, format, language } = req.body || {};
 
@@ -65477,6 +65706,12 @@ function normalizeInterfacePreferencesRecord(
 
 // Helper: get userId from header, body, or query
 function getPricingUserId(req: any): string {
+  // SECURITY: prefer the validated (non-spoofable) session identity over the
+  // client-supplied x-user-id header / body.userId / query.userId. Without this,
+  // any caller could read/write another user's pricing/quote/billing data by
+  // passing a victim's id. Falls back to the legacy values only when unauthenticated.
+  const sessionUserId = getActiveSessionFromRequest(req)?.userId;
+  if (sessionUserId) return sessionUserId;
   return (
     req.headers["x-user-id"] || req.body?.userId || req.query?.userId || ""
   );
@@ -65553,7 +65788,7 @@ setupPrototypeTesterInvitesRoutes({
           WHERE user_id = $1 AND plan_id = $2 AND status IN ('active', 'trial') LIMIT 1`,
         [userId, TESTER_PLAN],
       );
-      if (existing.rowCount === 0) {
+      if (!existing.rows.length) {
         await pool.query(
           `INSERT INTO user_subscriptions (user_id, plan_id, status, started_at, auto_renew)
            VALUES ($1, $2, 'active', NOW(), true)`,
@@ -65594,7 +65829,7 @@ setupSubmissionsRoutes({
   compatStoreSet,
   dbCompatSubmissionKey,
   recordAnalyticsEvent,
-  getUserIdFromAuth,
+  compatResolveUserId,
   readString,
 });
 
@@ -65682,6 +65917,38 @@ setupEditingJobsRoutes({
 // Partner Program — superadmin søknads-/godkjennings-ruter (godkjenning oppretter
 // users-rad + vendor-profil + magic-link portal-tilgang).
 setupEditingPartnerApplicationsAdminRoutes({ app, pool, activeSessions });
+setupSuperadminImpersonationRoutes({
+  app, pool, activeSessions,
+  readSessionToken: readActiveSessionToken,
+  persistSession: (token, session) => persistSession(pool, { token, session }),
+});
+setupSuperadminDebugRoutes({ app, pool, activeSessions, readSessionToken: readActiveSessionToken });
+
+// Support-ticket fra innebygd support-chat-knapp → e-post til daniel@creatorhubn.com
+app.post("/api/support/ticket", async (req, res) => {
+  const token = readActiveSessionToken(req);
+  const sess = token ? activeSessions.get(token) : null;
+  if (!sess) return res.status(401).json({ error: "auth_required" });
+  const msg = String(req.body?.message || "").trim();
+  if (!msg) return res.status(400).json({ error: "message_required" });
+  try {
+    await sendTransactionalEmail({
+      to: "daniel@creatorhubn.com",
+      subject: `[Support] Fra ${sess.email || sess.userId}`,
+      html: `<p><b>Fra:</b> ${sess.email || "?"} (${sess.role || "user"})</p><p>${msg.replace(/\n/g, "<br>")}</p>`,
+      text: `Fra: ${sess.email || "?"}\n\n${msg}`,
+      replyTo: sess.email || null,
+      fromLabel: "CreatorHub Support",
+      kind: "support_ticket",
+      sentByUserId: sess.userId,
+      pool,
+    });
+    res.json({ ok: true });
+  } catch (e: any) {
+    console.error("[support/ticket]", e);
+    res.status(500).json({ error: "send_failed" });
+  }
+});
 
 // /api/meeting-notes/* — 7 endpoints (AI-process, writing-assist, CRUD,
 // google-backup). Helpers dep-injiseres siden mapMeetingNotesRecord +
@@ -65844,7 +66111,7 @@ setupInspirationsRoutes({ app, pool, requireUserSession });
 // /api/cms/* — 11 endpoints (admin fields/content-types CRUD + stats +
 // public content GET + write). Dep-injiserer ensureCmsSchema (initialiserer
 // cms_fields/types/content-tabeller ved første kall) + requireUserSession.
-setupCmsRoutes({ app, pool, ensureCmsSchema, requireUserSession });
+setupCmsRoutes({ app, pool, ensureCmsSchema, requireUserSession, requireAdminSession });
 
 // /api/payments/* + /api/google-pay/process-payment — 10 endpoints
 // (kompat-fallback for betalings-flyt: history, receipt/invoice HTML-docs,
@@ -66004,7 +66271,7 @@ setupEmailsRoutes({
 setupTelemetryRoutes({
   app,
   pool,
-  getUserIdFromAuth,
+  compatResolveUserId,
   ingestErgonomicsBatch,
   ingestErgonomicsReflect,
   summariseErgonomicsSession,
@@ -66052,7 +66319,7 @@ setupOnboardingRoutes({ app, pool, resolveActiveSessionFromRequest });
 
 // /api/worklog/* — 3 endpoints (POST/PATCH/DELETE). Multi-tabell-
 // fallback: worklogs → worklog_entries → project_milestones.
-setupWorklogRoutes({ app, pool, getUserIdFromAuth });
+setupWorklogRoutes({ app, pool, compatResolveUserId });
 
 // /api/travel-log — 3 endpoints (GET liste, POST create, DELETE).
 // Kjørebok-data for photographers reise-utlegg.
@@ -66378,14 +66645,13 @@ setupWeddingRoutes({
 setupWeddingTimelineRoutes({
   app,
   pool,
-  getUserIdFromAuth,
+  compatResolveUserId,
   resolveMeetingNotesProjectContext,
 });
 setupProjectsRoutes({
   app,
   pool,
   mapProjectRow,
-  getUserIdFromAuth,
   compatResolveUserId,
   compatStoreSet,
   buildGalleryShareUrl,
@@ -66452,7 +66718,7 @@ setupMaintenanceRoutes({
   normalizeTaskType, normalizePriority,
   toDateOnly, addMonths, resolveScheduledDate, mapMaintenanceRow,
 });
-setupSplitSheetsRoutes({ app, pool, getSplitSheetUserId });
+setupSplitSheetsRoutes({ app, pool, getSplitSheetUserId, requireAdminSession });
 setupSplitSheetSigningRoutes({ app, pool, getSplitSheetUserId });
 setupEquipmentValueRoutes({ app });
 setupSoftwareExpensesRoutes({ app, pool, requireUserSession, getGoogleOAuthClient });
@@ -67014,7 +67280,10 @@ async function ensureQuotesCompatibilitySchema() {
       ALTER TABLE quotes ADD COLUMN IF NOT EXISTS tripletex_voucher_id VARCHAR;
       ALTER TABLE quotes ADD COLUMN IF NOT EXISTS tripletex_voucher_url TEXT;
       ALTER TABLE quotes ADD COLUMN IF NOT EXISTS tripletex_synced_at TIMESTAMP;
+      ALTER TABLE quotes ADD COLUMN IF NOT EXISTS share_token VARCHAR(64);
+      ALTER TABLE quotes ADD COLUMN IF NOT EXISTS share_expires_at TIMESTAMPTZ;
       CREATE INDEX IF NOT EXISTS idx_quotes_contract_id ON quotes(contract_id);
+      CREATE INDEX IF NOT EXISTS idx_quotes_share_token ON quotes(share_token);
     `,
       )
       .then(() => undefined);
@@ -68441,15 +68710,13 @@ function getSplitSheetUserId(req: any): string {
       ? activeSessions.get(bearerToken)?.userId
       : "";
 
+  // Identity is resolved ONLY from the authenticated Bearer session. The app is
+  // Bearer-token-only (no cookies), so spoofable client-supplied fallbacks
+  // (x-user-id / x-userid / x-user headers, req.body.userId, req.query.userId)
+  // must NOT be trusted — they previously allowed anyone to impersonate any user
+  // and bypass the length-based write guards on PUT/DELETE (IDOR).
   const rawUserId =
-    req.session?.user?.id ||
-    req.user?.id ||
-    sessionUserId ||
-    req.headers["x-user-id"] ||
-    req.body?.userId ||
-    req.query?.userId ||
-    req.headers["x-userid"] ||
-    req.headers["x-user"];
+    req.session?.user?.id || req.user?.id || sessionUserId;
 
   if (typeof rawUserId === "string" && rawUserId.trim().length > 0) {
     return rawUserId.trim();
@@ -69657,6 +69924,7 @@ app.get("/api/system/metrics", (req, res) => {
 
 
 app.post("/api/deployment/feedback-deploy", async (req, res) => {
+  if (!requireAdminSession(req, res)) return;
   try {
     const body = (req.body || {}) as Record<string, unknown>;
     const feedbackId =
@@ -70176,7 +70444,7 @@ async function syncContractLifecycleArtifacts(params: {
           LIMIT 1`,
         [customerId, subject, `${message}\n\n[ref:${externalRef}]`],
       );
-      if (existingActivity.rowCount === 0) {
+      if (!existingActivity.rows.length) {
         await pool.query(
           `INSERT INTO crm_activities (
              id, customer_id, deal_id, type, subject, description, direction, outcome, created_at, updated_at
@@ -70212,7 +70480,7 @@ async function syncContractLifecycleArtifacts(params: {
           LIMIT 1`,
         [contract.projectId, `[ref:${externalRef}]`],
       );
-      if (existingMilestone.rowCount === 0) {
+      if (!existingMilestone.rows.length) {
         await pool.query(
           `INSERT INTO project_milestones (
              id, project_id, user_id, title, description, category, type, status, priority, location, internal_notes, client_visible
@@ -70263,7 +70531,7 @@ async function syncContractLifecycleArtifacts(params: {
             LIMIT 1`,
           [link.conversation_id, externalRef],
         );
-        if (existingMessage.rowCount === 0) {
+        if (!existingMessage.rows.length) {
           await pool.query(
             `INSERT INTO communication_messages (
                id, channel_id, sender_id, message_type, content, metadata, is_read, is_priority, is_system_generated, created_at, updated_at
@@ -73911,7 +74179,6 @@ app.get("/api/notebooklm/workspace/status", async (req, res) => {
     await ensureMeetingNotesCompatibilitySchema();
     const userId =
       readString(req.query.userId) ||
-      getUserIdFromAuth(req) ||
       compatResolveUserId(req);
     const status = await getNotebookLmWorkspaceStatus(pool, {
       userId,
@@ -73938,7 +74205,6 @@ app.post("/api/notebooklm/workspace/sync", async (req, res) => {
     await ensureMeetingNotesCompatibilitySchema();
     const userId =
       readString(req.body?.userId) ||
-      getUserIdFromAuth(req) ||
       compatResolveUserId(req);
     await syncNotebookLmWorkspaceForScope(pool, {
       userId,
@@ -74161,6 +74427,12 @@ app.post(
       const assetId = String(req.params.assetId || "").trim();
       if (!assetId) {
         return res.status(400).json({ error: "Missing asset id" });
+      }
+      // Guard mot path traversal: assetId brukes direkte i path.join for
+      // fillagring. Express dekoder %2f/%2e ETTER segment-routing, så en
+      // rå ":assetId" kan inneholde "../" hvis vi ikke validerer formatet.
+      if (!/^[A-Za-z0-9._-]{1,128}$/.test(assetId) || assetId.includes("..")) {
+        return res.status(400).json({ error: "Invalid asset id" });
       }
       const file = req.file as
         | {

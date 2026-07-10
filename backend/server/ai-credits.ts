@@ -30,25 +30,67 @@ export async function getUserCredits(pool: any, uid: string): Promise<{ balanceU
 }
 
 // Idempotent kreditt-bevegelse: ledger FØRST (unik ref gater dobbel) → så saldo.
+// Spend (amountUsd < 0): bruker betinget UPDATE som avviser hvis saldo ville gå
+// under null — eliminerer race-condition der to parallelle kall begge passerer
+// en forhåndssjekk og begge trekker (double-spend).
+// Hele operasjonen er pakket i en DB-transaksjon: krasj mellom ledger-INSERT og
+// saldo-UPDATE ville ellers brenne idempotency-nøkkelen uten å flytte penger.
 export async function creditMove(pool: any, uid: string, type: string, amountUsd: number, ref: string | null, note: string): Promise<boolean> {
   await ensureCreditSchema(pool);
-  const led = await pool.query(
-    `INSERT INTO ai_credit_ledger (id, user_id, type, amount_usd, ref, note) VALUES ($1,$2,$3,$4,$5,$6)
-     ON CONFLICT (ref) DO NOTHING RETURNING id`,
-    [crypto.randomUUID(), uid, type, amountUsd, ref, note],
-  ).catch(() => ({ rows: [] }));
-  if (!led.rows.length) return false; // duplikat ref → allerede behandlet
-  const purchaseCol = amountUsd > 0 ? `, lifetime_purchased_usd = user_ai_credits.lifetime_purchased_usd + ${amountUsd}` : "";
-  const spendCol = amountUsd < 0 ? `, lifetime_spent_usd = user_ai_credits.lifetime_spent_usd + ${-amountUsd}` : "";
-  const upd = await pool.query(
-    `INSERT INTO user_ai_credits (user_id, balance_usd, lifetime_purchased_usd, lifetime_spent_usd, updated_at)
-     VALUES ($1, $2, $3, $4, NOW())
-     ON CONFLICT (user_id) DO UPDATE SET balance_usd = user_ai_credits.balance_usd + $2, updated_at = NOW() ${purchaseCol} ${spendCol}
-     RETURNING balance_usd`,
-    [uid, amountUsd, amountUsd > 0 ? amountUsd : 0, amountUsd < 0 ? -amountUsd : 0],
-  ).catch(() => ({ rows: [] }));
-  await pool.query(`UPDATE ai_credit_ledger SET balance_after_usd = $1 WHERE id = $2`, [Number(upd.rows[0]?.balance_usd || 0), led.rows[0].id]).catch(() => {});
-  return true;
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const led = await client.query(
+      `INSERT INTO ai_credit_ledger (id, user_id, type, amount_usd, ref, note) VALUES ($1,$2,$3,$4,$5,$6)
+       ON CONFLICT (ref) DO NOTHING RETURNING id`,
+      [crypto.randomUUID(), uid, type, amountUsd, ref, note],
+    );
+    if (!led.rows.length) {
+      await client.query("ROLLBACK");
+      return false; // duplikat ref → allerede behandlet
+    }
+    const ledgerId = led.rows[0].id;
+
+    let upd: { rows: Array<{ balance_usd?: number }> };
+    if (amountUsd < 0) {
+      // Spend: betinget UPDATE — saldo kan ikke bli negativ (eliminerer race-condition)
+      const spendCol = `, lifetime_spent_usd = user_ai_credits.lifetime_spent_usd + ${-amountUsd}`;
+      upd = await client.query(
+        `UPDATE user_ai_credits SET balance_usd = balance_usd + $2, updated_at = NOW() ${spendCol}
+         WHERE user_id = $1 AND balance_usd + $2 >= 0
+         RETURNING balance_usd`,
+        [uid, amountUsd],
+      );
+      if (!upd.rows.length) {
+        // Utilstrekkelig saldo — ROLLBACK ruller tilbake ledger-INSERT automatisk
+        await client.query("ROLLBACK");
+        return false;
+      }
+    } else {
+      // Purchase: krediter alltid, opprett rad for ny bruker
+      const purchaseCol = `, lifetime_purchased_usd = user_ai_credits.lifetime_purchased_usd + ${amountUsd}`;
+      upd = await client.query(
+        `INSERT INTO user_ai_credits (user_id, balance_usd, lifetime_purchased_usd, lifetime_spent_usd, updated_at)
+         VALUES ($1, $2, $2, 0, NOW())
+         ON CONFLICT (user_id) DO UPDATE SET balance_usd = user_ai_credits.balance_usd + $2, updated_at = NOW() ${purchaseCol}
+         RETURNING balance_usd`,
+        [uid, amountUsd],
+      );
+    }
+
+    await client.query(
+      `UPDATE ai_credit_ledger SET balance_after_usd = $1 WHERE id = $2`,
+      [Number(upd.rows[0]?.balance_usd || 0), ledgerId],
+    );
+    await client.query("COMMIT");
+    return true;
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 // Krediter en betalt ai_credits Checkout-session (brukt av webhook + confirm).

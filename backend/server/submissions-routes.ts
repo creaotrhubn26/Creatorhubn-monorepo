@@ -5,6 +5,9 @@ import { readNumber } from "./_shared";
 import { sendTransactionalEmail } from "./transactional-email-service";
 
 const APP_URL = (process.env.PUBLIC_APP_URL || "https://creatorhubn.com").replace(/\/+$/, "");
+
+const isUuid = (s: string | null | undefined): s is string =>
+  !!s && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
 const escH = (s: any) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 export interface SubmissionsRoutesDeps {
@@ -17,7 +20,7 @@ export interface SubmissionsRoutesDeps {
   ) => Promise<void>;
   dbCompatSubmissionKey: (submissionId: string) => string;
   recordAnalyticsEvent: (eventType: string, opts: any) => void;
-  getUserIdFromAuth: (req: any) => string | null;
+  compatResolveUserId: (req: any) => string;
   readString: (value: unknown) => string | null;
 }
 
@@ -29,7 +32,7 @@ export function setupSubmissionsRoutes(deps: SubmissionsRoutesDeps): void {
     compatStoreSet,
     dbCompatSubmissionKey,
     recordAnalyticsEvent,
-    getUserIdFromAuth,
+    compatResolveUserId,
     readString,
   } = deps;
 
@@ -272,6 +275,8 @@ export function setupSubmissionsRoutes(deps: SubmissionsRoutesDeps): void {
   });
 
   app.get("/api/submissions", async (req, res) => {
+    const requestUserId = compatResolveUserId(req);
+    if (!isUuid(requestUserId)) return res.status(401).json({ error: "unauthorized" });
     try {
       const profession =
         typeof req.query.profession === "string"
@@ -306,7 +311,7 @@ export function setupSubmissionsRoutes(deps: SubmissionsRoutesDeps): void {
         query += ` AND status = $${paramIdx++}`;
         params.push(status);
       }
-      query += " ORDER BY submitted_at DESC";
+      query += " ORDER BY submitted_at DESC LIMIT 500";
 
       const result = await pool.query(query, params);
       const dbRows = result.rows.map(mapSubmissionRow);
@@ -451,7 +456,7 @@ export function setupSubmissionsRoutes(deps: SubmissionsRoutesDeps): void {
       recordAnalyticsEvent("submission.converted", {
         entityType: "submission",
         entityId: String(id),
-        actorUserId: readString(getUserIdFromAuth(req)) ?? null,
+        actorUserId: compatResolveUserId(req),
         metadata: {
           projectId: String(projectId),
           clientEmail: (updated as Record<string, unknown>).email ?? null,
@@ -465,6 +470,8 @@ export function setupSubmissionsRoutes(deps: SubmissionsRoutesDeps): void {
   });
 
   app.put("/api/submissions/:id/status", async (req, res) => {
+    const _sCallerId = compatResolveUserId(req);
+    if (!isUuid(_sCallerId)) return res.status(401).json({ error: "unauthorized" });
     try {
       const { id } = req.params;
       const { status, internalNotes, followUpDate } = req.body;
@@ -475,9 +482,9 @@ export function setupSubmissionsRoutes(deps: SubmissionsRoutesDeps): void {
              internal_notes = COALESCE($2, internal_notes),
              follow_up_date = COALESCE($3, follow_up_date),
              updated_at = NOW()
-         WHERE id = $4
+         WHERE id = $4 AND vendor_id = $5
          RETURNING *`,
-        [status, internalNotes || null, followUpDate || null, id],
+        [status, internalNotes || null, followUpDate || null, id, _sCallerId],
       );
 
       if (result.rowCount === 0) {
@@ -488,7 +495,7 @@ export function setupSubmissionsRoutes(deps: SubmissionsRoutesDeps): void {
         recordAnalyticsEvent("submission.status_changed", {
           entityType: "submission",
           entityId: String(id),
-          actorUserId: readString(getUserIdFromAuth(req)) ?? null,
+          actorUserId: compatResolveUserId(req),
           metadata: {
             newStatus: status,
             clientEmail: (updated as Record<string, unknown>).email ?? null,
@@ -507,6 +514,8 @@ export function setupSubmissionsRoutes(deps: SubmissionsRoutesDeps): void {
   app.post(
     "/api/submissions/:submissionId/send-email",
     async (req, res) => {
+      const _sCallerId = compatResolveUserId(req);
+      if (!isUuid(_sCallerId)) return res.status(401).json({ error: "unauthorized" });
       try {
         const { submissionId } = req.params;
         const { responseType, estimatedPrice } = req.body;
@@ -515,18 +524,23 @@ export function setupSubmissionsRoutes(deps: SubmissionsRoutesDeps): void {
           "last_contacted_at = NOW()",
           "updated_at = NOW()",
         ];
+        const params: any[] = [];
         if (responseType === "quote") {
           updates.push("quote_sent = true");
-          if (estimatedPrice)
-            updates.push(`quote_amount = ${parseFloat(estimatedPrice)}`);
+          const amount = parseFloat(estimatedPrice);
+          if (Number.isFinite(amount)) {
+            params.push(amount);
+            updates.push(`quote_amount = $${params.length}`);
+          }
           updates.push("status = 'quote_sent'");
         } else {
           updates.push("status = 'contacted'");
         }
 
+        params.push(submissionId, _sCallerId);
         const result = await pool.query(
-          `UPDATE client_submissions SET ${updates.join(", ")} WHERE id = $1 RETURNING *`,
-          [submissionId],
+          `UPDATE client_submissions SET ${updates.join(", ")} WHERE id = $${params.length - 1} AND vendor_id = $${params.length} RETURNING *`,
+          params,
         );
 
         if (result.rowCount === 0) {

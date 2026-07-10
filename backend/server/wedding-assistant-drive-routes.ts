@@ -223,7 +223,7 @@ export function setupWeddingAssistantDriveRoutes(deps: WeddingAssistantDriveRout
            WHERE a.id = $1 AND a.wedding_id = $2 AND a.primary_photographer_id = $3 LIMIT 1`,
         [req.params.assistantId, req.params.weddingId, uid],
       );
-      if (assistantR.rowCount === 0) return res.status(404).json({ error: "Assistent finnes ikke" });
+      if (!assistantR.rows.length) return res.status(404).json({ error: "Assistent finnes ikke" });
       const a = assistantR.rows[0];
 
       if (a.drive_folder_id) {
@@ -297,7 +297,7 @@ export function setupWeddingAssistantDriveRoutes(deps: WeddingAssistantDriveRout
       });
     } catch (err: any) {
       console.error("POST setup-drive-folder:", err);
-      res.status(500).json({ error: err?.message || "Kunne ikke sette opp delt mappe" });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 
@@ -314,7 +314,7 @@ export function setupWeddingAssistantDriveRoutes(deps: WeddingAssistantDriveRout
            WHERE id = $1 AND wedding_id = $2 AND primary_photographer_id = $3 LIMIT 1`,
         [req.params.assistantId, req.params.weddingId, uid],
       );
-      if (r.rowCount === 0) return res.status(404).json({ error: "Assistent finnes ikke" });
+      if (!r.rows.length) return res.status(404).json({ error: "Assistent finnes ikke" });
       if (!r.rows[0].drive_folder_id) return res.status(400).json({ error: "Drive-mappe ikke satt opp ennå" });
 
       const result = await pollAssistantFolder(pool, r.rows[0], true);

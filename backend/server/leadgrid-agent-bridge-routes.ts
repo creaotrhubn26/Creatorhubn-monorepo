@@ -106,7 +106,7 @@ export function registerLeadgridAgentBridgeRoutes(deps: Deps): void {
         );
         res.json({ report });
       } catch (err) {
-        res.status(500).json({ error: "generate_failed", detail: String(err) });
+        res.status(500).json({ error: "generate_failed", detail: "internal_error" });
       }
     },
   );
@@ -136,7 +136,7 @@ export function registerLeadgridAgentBridgeRoutes(deps: Deps): void {
           cached_at: r.rows[0].ts,
         });
       } catch (err) {
-        res.status(500).json({ error: "read_failed", detail: String(err) });
+        res.status(500).json({ error: "read_failed", detail: "internal_error" });
       }
     },
   );
@@ -159,7 +159,7 @@ export function registerLeadgridAgentBridgeRoutes(deps: Deps): void {
         );
         res.json({ report });
       } catch (err) {
-        res.status(500).json({ error: "refresh_failed", detail: String(err) });
+        res.status(500).json({ error: "refresh_failed", detail: "internal_error" });
       }
     },
   );

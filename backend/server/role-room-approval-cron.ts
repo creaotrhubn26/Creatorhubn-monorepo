@@ -44,7 +44,7 @@ export function setupRoleRoomApprovalCron(deps: RoleRoomApprovalCronDeps): void 
   app.post("/api/internal/approval/auto-approve-tick", async (req, res) => {
     const provided = req.headers["x-cron-secret"];
     const secret = process.env.APPROVAL_CRON_SECRET;
-    if (!secret || provided !== secret) {
+    if (!secret || typeof provided !== 'string' || provided.length !== secret.length || !require('crypto').timingSafeEqual(Buffer.from(provided), Buffer.from(secret))) {
       return res.status(401).json({ error: "unauthorized" });
     }
     try {

@@ -124,7 +124,7 @@ export default function LoginPageSimple() {
         context="general"
         initialError={googleError}
         initialLoginType={null}
-        redirectTo={redirectTarget || '/dashboard'}
+        redirectTo={redirectTarget || undefined}
       />
     </Box>
   );

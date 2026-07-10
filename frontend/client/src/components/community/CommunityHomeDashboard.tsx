@@ -25,6 +25,7 @@ import {
 } from '@mui/icons-material';
 import { formatDistanceToNow } from 'date-fns';
 import { nb } from 'date-fns/locale';
+import { useCommunityLocale } from './communityLocale';
 
 interface CommunityHomeQuestion {
   id: string;
@@ -167,6 +168,7 @@ export default function CommunityHomeDashboard({
   isMentor,
   mentorEligible,
 }: CommunityHomeDashboardProps) {
+  const { tt } = useCommunityLocale();
   return (
     <Box sx={{ display: 'grid', gap: 2.5 }}>
       <Card sx={surfaceCardSx}>
@@ -181,7 +183,7 @@ export default function CommunityHomeDashboard({
           >
             <Box>
               <Chip
-                label="Community-hjem"
+                label={tt('Community-hjem', 'Community home')}
                 size="small"
                 sx={{
                   mb: 1.5,
@@ -202,13 +204,13 @@ export default function CommunityHomeDashboard({
                   color: SHELL_TEXT,
                 }}
               >
-                Hei {userName.split(' ')[0]}, her er pulsen i community.
+                {tt(`Hei ${userName.split(' ')[0]}, her er pulsen i community.`, `Hi ${userName.split(' ')[0]}, here is the pulse of the community.`)}
               </Typography>
               <Typography
                 variant="body1"
                 sx={{ mt: 1.4, maxWidth: 680, color: SHELL_MUTED, lineHeight: 1.7 }}
               >
-                Prioriter svar, bygg kunnskap, og koble Academy tettere til fellesskapet uten å miste oversikten.
+                {tt('Prioriter svar, bygg kunnskap, og koble Academy tettere til fellesskapet uten å miste oversikten.', 'Prioritize answers, build knowledge, and connect Academy more closely to the community without losing the overview.')}
               </Typography>
               {interests.length > 0 && (
                 <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 2 }}>
@@ -242,7 +244,7 @@ export default function CommunityHomeDashboard({
                       },
                     }}
                   >
-                    Gå til #{recommendedChannel.display_name}
+                    {tt(`Gå til #${recommendedChannel.display_name}`, `Go to #${recommendedChannel.display_name}`)}
                   </Button>
                 )}
                 <Button
@@ -259,7 +261,7 @@ export default function CommunityHomeDashboard({
                     },
                   }}
                 >
-                  Varslingsregler
+                  {tt('Varslingsregler', 'Notification rules')}
                 </Button>
                 <Button
                   variant="text"
@@ -267,7 +269,7 @@ export default function CommunityHomeDashboard({
                   onClick={onOpenAcademy}
                   sx={{ color: SHELL_MUTED, justifyContent: 'flex-start' }}
                 >
-                  Åpne Academy
+                  {tt('Åpne Academy', 'Open Academy')}
                 </Button>
               </Stack>
             </Box>
@@ -281,7 +283,7 @@ export default function CommunityHomeDashboard({
             >
               <Box sx={metricCardSx}>
                 <Typography variant="caption" sx={{ color: SHELL_MUTED }}>
-                  Dine innlegg
+                  {tt('Dine innlegg', 'Your posts')}
                 </Typography>
                 <Typography variant="h4" sx={{ mt: 0.6, fontWeight: 800 }}>
                   {stats.messages}
@@ -289,7 +291,7 @@ export default function CommunityHomeDashboard({
               </Box>
               <Box sx={metricCardSx}>
                 <Typography variant="caption" sx={{ color: SHELL_MUTED }}>
-                  Løste tråder
+                  {tt('Løste tråder', 'Solved threads')}
                 </Typography>
                 <Typography variant="h4" sx={{ mt: 0.6, fontWeight: 800 }}>
                   {stats.solutions}
@@ -297,7 +299,7 @@ export default function CommunityHomeDashboard({
               </Box>
               <Box sx={metricCardSx}>
                 <Typography variant="caption" sx={{ color: SHELL_MUTED }}>
-                  Trenger svar
+                  {tt('Trenger svar', 'Needs answers')}
                 </Typography>
                 <Typography variant="h4" sx={{ mt: 0.6, fontWeight: 800 }}>
                   {needsHelp.length}
@@ -305,7 +307,7 @@ export default function CommunityHomeDashboard({
               </Box>
               <Box sx={metricCardSx}>
                 <Typography variant="caption" sx={{ color: SHELL_MUTED }}>
-                  Mentorer tilgjengelig
+                  {tt('Mentorer tilgjengelig', 'Mentors available')}
                 </Typography>
                 <Typography variant="h4" sx={{ mt: 0.6, fontWeight: 800 }}>
                   {mentorsOnline.length}
@@ -330,14 +332,14 @@ export default function CommunityHomeDashboard({
               <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, alignItems: 'center', mb: 2 }}>
                 <Box>
                   <Typography variant="h5" sx={{ fontWeight: 700 }}>
-                    Spørsmål som trenger hjelp
+                    {tt('Spørsmål som trenger hjelp', 'Questions that need help')}
                   </Typography>
                   <Typography variant="body2" sx={{ color: SHELL_MUTED, mt: 0.4 }}>
-                    Gjør community mer nyttig ved å svare der behovet er størst.
+                    {tt('Gjør community mer nyttig ved å svare der behovet er størst.', 'Make the community more useful by answering where the need is greatest.')}
                   </Typography>
                 </Box>
                 <Chip
-                  label={needsHelp.length === 0 ? 'Innboks ryddet' : `${needsHelp.length} åpne`}
+                  label={needsHelp.length === 0 ? tt('Innboks ryddet', 'Inbox cleared') : tt(`${needsHelp.length} åpne`, `${needsHelp.length} open`)}
                   sx={{
                     bgcolor: needsHelp.length === 0 ? 'rgba(84, 181, 125, 0.14)' : 'rgba(255, 140, 0, 0.14)',
                     color: needsHelp.length === 0 ? '#78df9c' : '#ff8c00',
@@ -358,7 +360,7 @@ export default function CommunityHomeDashboard({
                   }}
                 >
                   <Typography sx={{ color: '#d8f8e4', fontWeight: 600 }}>
-                    🎉 Alle spørsmål har fått svar!
+                    {tt('🎉 Alle spørsmål har fått svar!', '🎉 All questions have been answered!')}
                   </Typography>
                 </Box>
               ) : (
@@ -390,7 +392,7 @@ export default function CommunityHomeDashboard({
                             {summarize(question.content)}
                           </Typography>
                           <Typography variant="body2" sx={{ mt: 0.4, color: SHELL_MUTED }}>
-                            {question.user_name} i #{question.channel_name} • {formatRelative(question.created_at)}
+                            {question.user_name} {tt('i', 'in')} #{question.channel_name} • {formatRelative(question.created_at)}
                           </Typography>
                         </Box>
                         <Button
@@ -404,7 +406,7 @@ export default function CommunityHomeDashboard({
                             flexShrink: 0,
                           }}
                         >
-                          Svar nå
+                          {tt('Svar nå', 'Answer now')}
                         </Button>
                       </Box>
                     </Box>
@@ -424,28 +426,28 @@ export default function CommunityHomeDashboard({
             <Card sx={surfaceCardSx}>
               <CardContent sx={{ p: { xs: 2.5, md: 3 } }}>
                 <Typography variant="h5" sx={{ fontWeight: 700 }}>
-                  Dine tråder
+                  {tt('Dine tråder', 'Your threads')}
                 </Typography>
                 <Typography variant="body2" sx={{ mt: 0.5, color: SHELL_MUTED }}>
-                  Hold oversikt over spørsmål du har startet og diskusjoner du eier.
+                  {tt('Hold oversikt over spørsmål du har startet og diskusjoner du eier.', 'Keep track of questions you have started and discussions you own.')}
                 </Typography>
                 <Stack spacing={1.2} sx={{ mt: 2 }}>
                   {yourThreads.length === 0 ? (
                     <Box sx={{ p: 2, borderRadius: 3, bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
                       <Typography sx={{ color: SHELL_MUTED }}>
-                        Ingen egne tråder ennå. Start med en introduksjon eller et konkret fagspørsmål.
+                        {tt('Ingen egne tråder ennå. Start med en introduksjon eller et konkret fagspørsmål.', 'No threads of your own yet. Start with an introduction or a specific topic question.')}
                       </Typography>
                       <Button
                         variant="text"
                         sx={{ mt: 1, color: '#ff8c00' }}
                         onClick={() =>
                           onUsePrompt(
-                            'Hei! Jeg er ny i community. Dette jobber jeg med akkurat nå, og dette vil jeg gjerne lære mer om: ',
+                            tt('Hei! Jeg er ny i community. Dette jobber jeg med akkurat nå, og dette vil jeg gjerne lære mer om: ', 'Hi! I am new to the community. This is what I am working on right now, and this is what I would love to learn more about: '),
                             recommendedChannel?.id,
                           )
                         }
                       >
-                        Start en intro
+                        {tt('Start en intro', 'Start an intro')}
                       </Button>
                     </Box>
                   ) : (
@@ -470,7 +472,7 @@ export default function CommunityHomeDashboard({
                           sx={{ mt: 1, color: '#ff8c00' }}
                           onClick={() => onOpenDiscussion(thread.channel_id, thread.id)}
                         >
-                          Åpne tråd
+                          {tt('Åpne tråd', 'Open thread')}
                         </Button>
                       </Box>
                     ))
@@ -482,16 +484,16 @@ export default function CommunityHomeDashboard({
             <Card sx={surfaceCardSx}>
               <CardContent sx={{ p: { xs: 2.5, md: 3 } }}>
                 <Typography variant="h5" sx={{ fontWeight: 700 }}>
-                  Kunnskapsstrøm
+                  {tt('Kunnskapsstrøm', 'Knowledge stream')}
                 </Typography>
                 <Typography variant="body2" sx={{ mt: 0.5, color: SHELL_MUTED }}>
-                  Løste tråder og svar som bør bli til gjenbrukbar kunnskap.
+                  {tt('Løste tråder og svar som bør bli til gjenbrukbar kunnskap.', 'Solved threads and answers that should become reusable knowledge.')}
                 </Typography>
                 <Stack spacing={1.2} sx={{ mt: 2 }}>
                   {knowledgeFeed.length === 0 ? (
                     <Box sx={{ p: 2, borderRadius: 3, bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
                       <Typography sx={{ color: SHELL_MUTED }}>
-                        Ingen løste diskusjoner enda. Marker nyttige svar som løsning for å bygge kunnskapsbasen.
+                        {tt('Ingen løste diskusjoner enda. Marker nyttige svar som løsning for å bygge kunnskapsbasen.', 'No solved discussions yet. Mark useful answers as the solution to build the knowledge base.')}
                       </Typography>
                     </Box>
                   ) : (
@@ -509,7 +511,7 @@ export default function CommunityHomeDashboard({
                       >
                         <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.7 }}>
                           <Chip
-                            label={item.is_solution ? 'Løsning' : `${item.thread_count || 0} svar`}
+                            label={item.is_solution ? tt('Løsning', 'Solution') : tt(`${item.thread_count || 0} svar`, `${item.thread_count || 0} replies`)}
                             size="small"
                             sx={{
                               bgcolor: item.is_solution ? 'rgba(84, 181, 125, 0.14)' : 'rgba(255, 140, 0, 0.14)',
@@ -528,7 +530,7 @@ export default function CommunityHomeDashboard({
                           sx={{ mt: 1, color: '#ff8c00' }}
                           onClick={() => onOpenDiscussion(item.channel_id, item.id)}
                         >
-                          Les svar
+                          {tt('Les svar', 'Read answer')}
                         </Button>
                       </Box>
                     ))
@@ -545,16 +547,16 @@ export default function CommunityHomeDashboard({
               <Stack direction="row" spacing={1.2} alignItems="center">
                 <School sx={{ color: '#ff8c00' }} />
                 <Typography variant="h5" sx={{ fontWeight: 700 }}>
-                  Mentorer pålogget
+                  {tt('Mentorer pålogget', 'Mentors online')}
                 </Typography>
               </Stack>
               <Typography variant="body2" sx={{ mt: 0.5, color: SHELL_MUTED }}>
-                Send spørsmål dit ekspertisen faktisk finnes.
+                {tt('Send spørsmål dit ekspertisen faktisk finnes.', 'Send questions where the expertise actually is.')}
               </Typography>
               <Stack spacing={1.1} sx={{ mt: 2 }}>
                 {mentorsOnline.length === 0 ? (
                   <Typography sx={{ color: SHELL_MUTED }}>
-                    Ingen mentorer er synlige akkurat nå. Bruk hjelpekøen eller send SOS når noe haster.
+                    {tt('Ingen mentorer er synlige akkurat nå. Bruk hjelpekøen eller send SOS når noe haster.', 'No mentors are visible right now. Use the help queue or send an SOS when something is urgent.')}
                   </Typography>
                 ) : (
                   mentorsOnline.slice(0, 5).map((mentor) => (
@@ -577,7 +579,7 @@ export default function CommunityHomeDashboard({
                     color: SHELL_TEXT,
                   }}
                 >
-                  Åpne mentorflyt
+                  {tt('Åpne mentorflyt', 'Open mentor flow')}
                 </Button>
                 {!isMentor && mentorEligible && (
                   <Button
@@ -589,7 +591,7 @@ export default function CommunityHomeDashboard({
                       color: '#0a0f1a',
                     }}
                   >
-                    Bli mentor
+                    {tt('Bli mentor', 'Become a mentor')}
                   </Button>
                 )}
               </Stack>
@@ -601,11 +603,11 @@ export default function CommunityHomeDashboard({
               <Stack direction="row" spacing={1.2} alignItems="center">
                 <WorkspacePremium sx={{ color: '#ff8c00' }} />
                 <Typography variant="h5" sx={{ fontWeight: 700 }}>
-                  Merkeprogresjon
+                  {tt('Merkeprogresjon', 'Badge progress')}
                 </Typography>
               </Stack>
               <Typography variant="body2" sx={{ mt: 0.5, color: SHELL_MUTED }}>
-                Gjør merker nyttige ved å koble dem til konkret verdi og progresjon.
+                {tt('Gjør merker nyttige ved å koble dem til konkret verdi og progresjon.', 'Make badges useful by connecting them to concrete value and progress.')}
               </Typography>
               <Stack spacing={1.4} sx={{ mt: 2 }}>
                 {badgeTracks.map((track) => {
@@ -649,7 +651,7 @@ export default function CommunityHomeDashboard({
               <Stack direction="row" spacing={1.2} alignItems="center">
                 <CalendarMonth sx={{ color: '#ff8c00' }} />
                 <Typography variant="h5" sx={{ fontWeight: 700 }}>
-                  Kommende økter
+                  {tt('Kommende økter', 'Upcoming sessions')}
                 </Typography>
               </Stack>
               <Stack spacing={1.2} sx={{ mt: 2 }}>
@@ -692,11 +694,11 @@ export default function CommunityHomeDashboard({
               <Stack direction="row" spacing={1.2} alignItems="center">
                 <MenuBook sx={{ color: '#ff8c00' }} />
                 <Typography variant="h5" sx={{ fontWeight: 700 }}>
-                  Academy + fellesskapet
+                  {tt('Academy + fellesskapet', 'Academy + the community')}
                 </Typography>
               </Stack>
               <Typography variant="body2" sx={{ mt: 0.5, color: SHELL_MUTED }}>
-                Flytt læring ut av video og inn i praktiske diskusjoner.
+                {tt('Flytt læring ut av video og inn i praktiske diskusjoner.', 'Move learning out of video and into practical discussions.')}
               </Typography>
               <Stack spacing={1.1} sx={{ mt: 2 }}>
                 <Button
@@ -704,7 +706,7 @@ export default function CommunityHomeDashboard({
                   startIcon={<Forum />}
                   onClick={() =>
                     onUsePrompt(
-                      'Jeg jobber med en Academy-leksjon akkurat nå og trenger sparring på dette punktet: ',
+                      tt('Jeg jobber med en Academy-leksjon akkurat nå og trenger sparring på dette punktet: ', 'I am working on an Academy lesson right now and need sparring on this point: '),
                       recommendedChannel?.id,
                     )
                   }
@@ -715,14 +717,14 @@ export default function CommunityHomeDashboard({
                     color: SHELL_TEXT,
                   }}
                 >
-                  Spør community om leksjon
+                  {tt('Spør community om leksjon', 'Ask the community about a lesson')}
                 </Button>
                 <Button
                   variant="outlined"
                   startIcon={<AutoAwesome />}
                   onClick={() =>
                     onUsePrompt(
-                      'Dette er min viktigste takeaway fra Academy i dag. Hvordan ville dere brukt dette i praksis? ',
+                      tt('Dette er min viktigste takeaway fra Academy i dag. Hvordan ville dere brukt dette i praksis? ', 'This is my most important takeaway from Academy today. How would you use this in practice? '),
                       recommendedChannel?.id,
                     )
                   }
@@ -733,7 +735,7 @@ export default function CommunityHomeDashboard({
                     color: SHELL_TEXT,
                   }}
                 >
-                  Del takeaway
+                  {tt('Del takeaway', 'Share takeaway')}
                 </Button>
                 {isMentor && (
                   <Button
@@ -749,7 +751,7 @@ export default function CommunityHomeDashboard({
                       },
                     }}
                   >
-                    Publiser Academy-kurs
+                    {tt('Publiser Academy-kurs', 'Publish Academy course')}
                   </Button>
                 )}
               </Stack>
@@ -769,7 +771,7 @@ export default function CommunityHomeDashboard({
                             sx={{ mt: 0.8, color: '#ff8c00' }}
                             onClick={() => onOpenDiscussion(announcement.channel_id, announcement.id)}
                           >
-                            Åpne diskusjon
+                            {tt('Åpne diskusjon', 'Open discussion')}
                           </Button>
                         </Box>
                       );

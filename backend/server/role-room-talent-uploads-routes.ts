@@ -256,7 +256,7 @@ export function setupRoleRoomTalentUploadsRoutes(deps: RoleRoomTalentUploadsRout
       });
     } catch (err) {
       console.error("[uploads/sign] failed", err);
-      return res.status(500).json({ error: "Klarte ikke å generere upload-URL", detail: String(err) });
+      return res.status(500).json({ error: "Klarte ikke å generere upload-URL", detail: "internal_error" });
     }
   });
 
@@ -466,7 +466,7 @@ export function setupRoleRoomTalentUploadsRoutes(deps: RoleRoomTalentUploadsRout
       });
     } catch (err) {
       console.error("[uploads/sign-stream] failed", err);
-      return res.status(500).json({ error: "Klarte ikke å initiere video-opplastning", detail: String(err) });
+      return res.status(500).json({ error: "Klarte ikke å initiere video-opplastning", detail: "internal_error" });
     }
   });
 

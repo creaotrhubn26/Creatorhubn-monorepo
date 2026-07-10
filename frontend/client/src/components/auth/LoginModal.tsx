@@ -83,12 +83,23 @@ export function LoginModal({
 
     switch (String(role || '').toLowerCase()) {
       case 'vendor':
-        return '/fotograf';
+        // Vendor-rollen skal inn i sin egen workspace, IKKE fotograf-dashboardet
+        // (gammel feilruting). /vendor-dashboard = UniversalDashboard(profession=vendor).
+        return '/vendor-dashboard';
+      case 'editing_vendor':
+      case 'editing':
+        // Redigeringspartnere skal inn i sin egen portal/workspace, ALDRI skaper-
+        // prosjektvelgeren. /partner-portal viser EditingVendorWorkspace fra
+        // eksisterende sesjon når det ikke er noen magic-link-token i URL-en.
+        return '/partner-portal';
       case 'admin':
       case 'super_admin':
         return '/admin';
       default:
-        return '/dashboard';
+        // Workspace er hovedflaten. Dette er den ENE kilden til post-login-ruting
+        // (LoginPageSimple OG landingssidenes direkte LoginModal går gjennom her),
+        // så skaper-brukere (role 'user') havner i workspace uansett inngang.
+        return '/workspace';
     }
   };
 

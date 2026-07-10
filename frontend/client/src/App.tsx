@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Switch, Route, useLocation } from 'wouter';
+import { Switch, Route, useLocation, Redirect } from 'wouter';
 import { queryClient } from './lib/queryClient';
 import { useQuery, useMutation, useQueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useAuth } from "@/hooks/useAuth";
@@ -89,6 +89,7 @@ import WeddingTimelineClientPage from '@/pages/wedding-timeline-client';
 import WeddingTimelineClientResponsive from '@/pages/WeddingTimelineClientResponsive';
 import EvendiTimelineAdmin from '@/components/wedding/WeddingTimelineAdmin';
 import PricingPage from '@/pages/PricingPage';
+import PublicPricingPage from '@/pages/public-pricing';
 import ContractSigningPage from '@/pages/ContractSigningPage';
 // import MillionDollarMeetingSystem from '@/pages/million-dollar-meeting-system'; // File deleted
 // import MeetingWorkspaceSimple from '@/pages/meeting-workspace-simple'; // File deleted
@@ -189,6 +190,8 @@ import LoginPageSimple from '@/pages/LoginPageSimple';
 import SmartMeetingNotesPage from '@/pages/SmartMeetingNotesPage';
 import PrivacyPolicy from '@/pages/privacy-policy';
 import TermsAndConditions from '@/pages/terms-and-conditions';
+import DataDeletion from '@/pages/data-deletion';
+import CookiePolicy from '@/pages/cookie-policy';
 import ClientWorkspaceShell from '@/components/role-room/components/client-workspace/ClientWorkspaceShell';
 import PublicCV from '@/pages/public-cv';
 import NextRoleLanding from '@/pages/nextrole-landing';
@@ -241,6 +244,8 @@ const PartnerApplicationForm = React.lazy(() => import('@/components/universal/e
 const PartnerPortalPage = React.lazy(() => import('@/components/universal/editing-marketplace/PartnerPortalPage'));
 const PartnerTerms = React.lazy(() => import('@/components/universal/editing-marketplace/PartnerTerms'));
 const PartnerLanding = React.lazy(() => import('@/components/universal/editing-marketplace/PartnerLanding'));
+const EditingVendorWorkspaceShell = React.lazy(() => import('@/components/universal/editing-marketplace/EditingVendorWorkspace'));
+import ImpersonationBanner from '@/components/admin/ImpersonationBanner';
 const AudioReviewInvitePage = React.lazy(() => import('@/pages/audio-review-invite'));
 const AudioReviewSharedPage = React.lazy(() => import('@/pages/audio-review-shared'));
 const WarmupGuidePage = React.lazy(() => import('@/pages/warmup-guide'));
@@ -452,10 +457,39 @@ const CommunityLandingPageWrapper = () => {
   }
 };
 
+// Admin-only guard for the visual-editor-enhanced/evendi routes — these were
+// previously registered with no auth wrapper at all, reachable by anyone.
+const VisualEditorEnhancedGuard = ({ children }: { children: React.ReactNode }) => {
+  const { user, isLoading, isAuthenticated, isAdmin } = useAuth();
+  if (isLoading) return null;
+  if (!isAuthenticated || !user?.id || !isAdmin) {
+    if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+      window.location.href = '/login';
+    }
+    return null;
+  }
+  return <>{children}</>;
+};
+
 // Smart Dynamic Dashboard Route Component
 const SmartDashboardRoute = ({ profession }: { profession?: ValidProfession }) => {
   const { getUserProfession } = useDynamicProfessions();
-  
+  const { user: authUser } = useAuth();
+
+  // Editing-vendors (magic-link-partnere) skal ALLTID inn i vendor-workspacen,
+  // ALDRI den generiske UniversalDashboard (photographer/vendor-chrome).
+  if ((authUser?.role as string | undefined) === 'editing_vendor' && authUser?.id) {
+    return (
+      <React.Suspense fallback={null}>
+        <div style={{ minHeight: '100vh', background: '#05060a', color: '#f6f2ea', padding: '24px 16px' }}>
+          <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+            <EditingVendorWorkspaceShell userId={authUser.id} />
+          </div>
+        </div>
+      </React.Suspense>
+    );
+  }
+
   // Authentication disabled - use mock data
   const currentUser = {
     email: 'admin@local.dev',
@@ -604,6 +638,7 @@ function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
+      <ImpersonationBanner />
       <DemoModeProvider>
         <UniversalSessionProvider>
           <ClientSessionProvider>
@@ -635,8 +670,28 @@ function App() {
                   {/* Workspace-hjem (prosjektvelger) — hovedflate ved innlogging */}
                   <Route path="/workspace" component={WorkspaceHome} />
                   {/* Per-prosjekt Team Workspace (dark) */}
-                  <Route path="/workspace/:projectId/:tab" component={TeamWorkspacePage} />
-                  <Route path="/workspace/:projectId" component={TeamWorkspacePage} />
+                  <Route path="/workspace/:projectId/:tab">
+                    {(params: { projectId: string; tab: string }) => (
+                      <React.Suspense fallback={
+                        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', bgcolor: '#0a0b0f' }}>
+                          <CircularProgress />
+                        </Box>
+                      }>
+                        <TeamWorkspacePage />
+                      </React.Suspense>
+                    )}
+                  </Route>
+                  <Route path="/workspace/:projectId">
+                    {(params: { projectId: string }) => (
+                      <React.Suspense fallback={
+                        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', bgcolor: '#0a0b0f' }}>
+                          <CircularProgress />
+                        </Box>
+                      }>
+                        <TeamWorkspacePage />
+                      </React.Suspense>
+                    )}
+                  </Route>
                   {/* Dans tester-invite landing */}
                   <Route path="/lead-map/accept">
                     {() => {
@@ -911,9 +966,13 @@ function App() {
                   <Route path="/about" component={About as React.ComponentType<any>} />
                   <Route path="/creatorhub-innovasjon" component={CreatorhubInnovationPage as React.ComponentType<any>} />
                   <Route path="/google-verification-demo" component={GoogleVerificationDemoPage as React.ComponentType<any>} />
-                  <Route path="/pricing" component={PricingPage as React.ComponentType<any>} />
+                  <Route path="/pricing" component={PublicPricingPage as React.ComponentType<any>} />
+                  <Route path="/admin/pricing-calculator" component={() => <VisualEditorEnhancedGuard><PricingPage /></VisualEditorEnhancedGuard>} />
                   <Route path="/privacy-policy" component={PrivacyPolicy as React.ComponentType<any>} />
                   <Route path="/terms-and-conditions" component={TermsAndConditions as React.ComponentType<any>} />
+                  <Route path="/data-deletion" component={DataDeletion as React.ComponentType<any>} />
+                  <Route path="/cookie-policy" component={CookiePolicy as React.ComponentType<any>} />
+                  <Route path="/gdpr-rettigheter" component={PrivacyPolicy as React.ComponentType<any>} />
                   <Route path="/subscription" component={SubscriptionSelectionPage as React.ComponentType<any>} />
                   <Route path="/subscription-selection" component={SubscriptionSelectionPage as React.ComponentType<any>} />
                   <Route path="/about-us" component={About as React.ComponentType<any>} />
@@ -937,7 +996,9 @@ function App() {
                     path="/wedding-timeline/:timelineId/:accessCode"
                     component={WeddingTimelineClientResponsive}
                   />
-                  <Route path="/dashboard" component={() => <SmartDashboardRoute />} />
+                  {/* Workspace er hovedflaten — den gamle UniversalDashboard-ruten
+                      redirecter dit. (Vendor beholder /fotograf.) */}
+                  <Route path="/dashboard" component={() => <Redirect to="/workspace" />} />
                   <Route path="/crm" component={CrmStandalone as React.ComponentType<any>} />
                   <Route path="/story-arc-studio" component={StoryArcStudioRouteWrapper} />
                   <Route
@@ -998,9 +1059,9 @@ function App() {
                   <Route path="/vendor-dashboard/:vendorType/:vendorName" component={({ params }) => <UniversalVendorDashboard vendorType={params.vendorType} vendorName={params.vendorName} userId="current-user" />} />
                   <Route path="/visual-editor-advanced" component={VisualEditorWithPageSelection as React.ComponentType<any>} />
                   <Route path="/visual-editor-unified" component={() => <CreatorhubVisualEditorRefactored />} />
-                  <Route path="/visual-editor-enhanced" component={() => <EnhancedVisualEditorPage />} />
-                  <Route path="/visual-editor-enhanced/:projectId" component={({ params }) => <EnhancedVisualEditorPage projectId={params.projectId} />} />
-                  <Route path="/evendi" component={() => <EventiOnePager />} />
+                  <Route path="/visual-editor-enhanced" component={() => <VisualEditorEnhancedGuard><EnhancedVisualEditorPage /></VisualEditorEnhancedGuard>} />
+                  <Route path="/visual-editor-enhanced/:projectId" component={({ params }) => <VisualEditorEnhancedGuard><EnhancedVisualEditorPage projectId={params.projectId} /></VisualEditorEnhancedGuard>} />
+                  <Route path="/evendi" component={() => <VisualEditorEnhancedGuard><EventiOnePager /></VisualEditorEnhancedGuard>} />
                   
                   {/* Unified Dashboard Routes */}
                   <Route path="/templates" component={() => <TemplateDashboard onTemplatesClick={() => {}} onCategoriesClick={() => {}} onSearchClick={() => {}} onPreviewClick={() => {}} />} />

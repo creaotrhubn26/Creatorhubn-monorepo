@@ -73,7 +73,7 @@ export function setupRoleRoomIgMessagingRoutes(deps: RoleRoomIgMessagingRoutesDe
         })),
       });
     } catch (error) {
-      res.status(500).json({ success: false, error: String(error) });
+      res.status(500).json({ success: false, error: "internal_error" });
     }
   });
 
@@ -110,7 +110,7 @@ export function setupRoleRoomIgMessagingRoutes(deps: RoleRoomIgMessagingRoutesDe
         syncError,
       });
     } catch (error) {
-      res.status(500).json({ success: false, error: String(error) });
+      res.status(500).json({ success: false, error: "internal_error" });
     }
   });
 
@@ -148,7 +148,7 @@ export function setupRoleRoomIgMessagingRoutes(deps: RoleRoomIgMessagingRoutesDe
       await markConversationRead(pool, conversationId, session.userId);
       res.json({ success: true, conversation, messages, syncError });
     } catch (error) {
-      res.status(500).json({ success: false, error: String(error) });
+      res.status(500).json({ success: false, error: "internal_error" });
     }
   });
 
@@ -189,7 +189,7 @@ export function setupRoleRoomIgMessagingRoutes(deps: RoleRoomIgMessagingRoutesDe
       const messages = await listMessages(pool, conversationId);
       res.json({ success: true, messageId: result.messageId, messages });
     } catch (error) {
-      res.status(500).json({ success: false, error: String(error) });
+      res.status(500).json({ success: false, error: "internal_error" });
     }
   });
 
@@ -244,7 +244,7 @@ export function setupRoleRoomIgMessagingRoutes(deps: RoleRoomIgMessagingRoutesDe
       }
       res.json({ success: true });
     } catch (error) {
-      res.status(500).json({ success: false, error: String(error) });
+      res.status(500).json({ success: false, error: "internal_error" });
     }
   });
 }

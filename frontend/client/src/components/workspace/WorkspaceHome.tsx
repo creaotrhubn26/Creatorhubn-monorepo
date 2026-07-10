@@ -34,7 +34,12 @@ const WorkspaceHome: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [projects, setProjects] = useState<any[]>([]);
   const [showCreate, setShowCreate] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const redirected = useRef(false);
+  // ?pick=1 lar brukeren nå prosjektvelgeren bevisst uten å bli auto-sendt inn i
+  // eneste-prosjektet (ellers uoppnåelig med nøyaktig ett prosjekt).
+  const pickMode = typeof window !== 'undefined' && /(?:\?|&)pick=1/.test(window.location.search);
 
   const profession = user?.profession;
   const userId = user?.id;
@@ -44,22 +49,27 @@ const WorkspaceHome: React.FC = () => {
   useEffect(() => {
     let alive = true;
     (async () => {
+      let errored = false;
       const res = await apiRequest(
         `/api/projects?profession=${encodeURIComponent(profession || '')}&userId=${encodeURIComponent(userId || '')}`,
-      ).catch(() => null);
+      ).catch(() => { errored = true; return null; });
       const list = Array.isArray(res) ? res : (res?.projects || []);
       if (!alive) return;
-      // Nøyaktig ett prosjekt → hopp rett inn.
-      if (list.length === 1 && !redirected.current) {
+      // Skill nettverks-/auth-feil fra ekte «ingen prosjekter» — ellers ville en
+      // transient feil vist tom-tilstand og fristet til duplikat-opprettelse.
+      if (errored) { setLoadError(true); setLoading(false); return; }
+      // Nøyaktig ett prosjekt → hopp rett inn (replace: ikke stable på historikken,
+      // ellers blir Back en felle som umiddelbart redirecter framover igjen).
+      if (list.length === 1 && !redirected.current && !pickMode) {
         redirected.current = true;
-        navigate(`/workspace/${list[0].id}`);
+        navigate(`/workspace/${list[0].id}`, { replace: true });
         return;
       }
       setProjects(list);
       setLoading(false);
     })();
     return () => { alive = false; };
-  }, [userId, profession]);
+  }, [userId, profession, reloadKey]);
 
   const openProject = (id: string) => navigate(`/workspace/${id}`);
 
@@ -67,6 +77,21 @@ const WorkspaceHome: React.FC = () => {
     <ThemeProvider theme={workspaceDarkTheme}>
       <Box sx={{ minHeight: '100vh', bgcolor: ws.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <CircularProgress sx={{ color: ws.accent }} />
+      </Box>
+    </ThemeProvider>
+  );
+
+  if (loadError) return (
+    <ThemeProvider theme={workspaceDarkTheme}>
+      <Box sx={{ minHeight: '100vh', bgcolor: ws.bg, color: ws.text, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Stack spacing={2} alignItems="center" sx={{ textAlign: 'center', px: 3 }}>
+          <Typography variant="h6" sx={{ fontWeight: 800 }}>Kunne ikke laste prosjektene dine</Typography>
+          <Typography variant="body2" sx={{ color: ws.textDim, maxWidth: 380 }}>Noe gikk galt under henting. Sjekk tilkoblingen og prøv igjen.</Typography>
+          <Button variant="contained" onClick={() => { setLoadError(false); setLoading(true); redirected.current = false; setReloadKey((k) => k + 1); }}
+            sx={{ borderRadius: 999, textTransform: 'none', fontWeight: 700, bgcolor: ws.accent, color: ws.accentContrast, '&:hover': { bgcolor: ws.accentHover } }}>
+            Prøv igjen
+          </Button>
+        </Stack>
       </Box>
     </ThemeProvider>
   );
@@ -82,7 +107,7 @@ const WorkspaceHome: React.FC = () => {
                 {firstName ? `Hei ${firstName}` : 'Workspace'}
               </Typography>
               <Typography variant="body2" sx={{ color: ws.textDim, mt: 0.5 }}>
-                {profession ? `${getProfessionDisplayName(profession)} · ${CATEGORY_LABEL[category] || ''}` : 'Velg et prosjekt for å komme i gang'}
+                {profession ? [getProfessionDisplayName(profession), CATEGORY_LABEL[category]].filter(Boolean).join(' · ') : 'Velg et prosjekt for å komme i gang'}
               </Typography>
             </Box>
             <Stack direction="row" spacing={1} alignItems="center">

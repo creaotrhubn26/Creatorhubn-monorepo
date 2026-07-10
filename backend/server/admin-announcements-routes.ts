@@ -351,7 +351,7 @@ export function setupAdminAnnouncementsRoutes(deps: AdminAnnouncementsDeps): voi
           GROUP BY a.id, a.view_count, a.dismissed_count`,
         [req.params.id],
       );
-      if (r.rowCount === 0) return res.status(404).json({ error: "Ikke funnet" });
+      if (!r.rows.length) return res.status(404).json({ error: "Ikke funnet" });
       const row = r.rows[0];
 
       // Foretrekk view-logg når det finnes, ellers counter på rader.

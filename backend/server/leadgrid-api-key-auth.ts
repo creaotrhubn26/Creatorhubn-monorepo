@@ -99,7 +99,7 @@ export function requireApiKey(pool: Pool, requiredScopes: string[] = []) {
           LIMIT 1`,
         [prefix, hash],
       );
-      if (r.rowCount === 0) {
+      if (!r.rows.length) {
         res.status(401).json({ error: "invalid_or_revoked_api_key" });
         return;
       }

@@ -65,7 +65,7 @@ export function registerRoleRoomDemoAssetsRoutes(app: Express, deps: Deps): void
       );
       res.json({ assets: rows.map((r) => ({ ...r.payload, id: r.id, host: r.host, kind: r.kind, title: r.title, createdAt: r.created_at })) });
     } catch (e) {
-      res.status(500).json({ error: "list_feil", detail: (e as Error).message });
+      res.status(500).json({ error: "list_feil", detail: "internal_error" });
     }
   });
 
@@ -87,7 +87,7 @@ export function registerRoleRoomDemoAssetsRoutes(app: Express, deps: Deps): void
       );
       res.json({ id, ok: true });
     } catch (e) {
-      res.status(500).json({ error: "lagre_feil", detail: (e as Error).message });
+      res.status(500).json({ error: "lagre_feil", detail: "internal_error" });
     }
   });
 
@@ -98,7 +98,7 @@ export function registerRoleRoomDemoAssetsRoutes(app: Express, deps: Deps): void
       await pool.query(`DELETE FROM demo_studio_assets WHERE id = $1 AND created_by = $2`, [String(req.params.id), uid]);
       res.json({ ok: true });
     } catch (e) {
-      res.status(500).json({ error: "slett_feil", detail: (e as Error).message });
+      res.status(500).json({ error: "slett_feil", detail: "internal_error" });
     }
   });
 
@@ -139,7 +139,7 @@ export function registerRoleRoomDemoAssetsRoutes(app: Express, deps: Deps): void
       );
       res.json({ projects: rows.map((r) => ({ id: r.id, name: r.name, url: r.url ?? "", sceneCount: r.scene_count, updatedAt: r.updated_at })) });
     } catch (e) {
-      res.status(500).json({ error: "list_feil", detail: (e as Error).message });
+      res.status(500).json({ error: "list_feil", detail: "internal_error" });
     }
   });
 
@@ -155,7 +155,7 @@ export function registerRoleRoomDemoAssetsRoutes(app: Express, deps: Deps): void
       if (!rows.length) { res.status(404).json({ error: "finnes_ikke" }); return; }
       res.json({ project: rows[0].payload });
     } catch (e) {
-      res.status(500).json({ error: "hent_feil", detail: (e as Error).message });
+      res.status(500).json({ error: "hent_feil", detail: "internal_error" });
     }
   });
 
@@ -179,7 +179,7 @@ export function registerRoleRoomDemoAssetsRoutes(app: Express, deps: Deps): void
       );
       res.json({ ok: true });
     } catch (e) {
-      res.status(500).json({ error: "lagre_feil", detail: (e as Error).message });
+      res.status(500).json({ error: "lagre_feil", detail: "internal_error" });
     }
   });
 
@@ -190,7 +190,7 @@ export function registerRoleRoomDemoAssetsRoutes(app: Express, deps: Deps): void
       await pool.query(`DELETE FROM demo_studio_projects WHERE id = $1 AND created_by = $2`, [String(req.params.id), uid]);
       res.json({ ok: true });
     } catch (e) {
-      res.status(500).json({ error: "slett_feil", detail: (e as Error).message });
+      res.status(500).json({ error: "slett_feil", detail: "internal_error" });
     }
   });
 }

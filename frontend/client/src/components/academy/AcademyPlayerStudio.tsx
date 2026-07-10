@@ -11,6 +11,7 @@ import {
   VolumeOff,
   VolumeUp,
 } from '@mui/icons-material';
+import { useAcademyLocale } from './academyLocale';
 
 interface AcademyPlayerStudioProps {
   src: string;
@@ -126,6 +127,7 @@ function AcademyPlayerStudio({
   onStudioControlAction,
   children,
 }: AcademyPlayerStudioProps) {
+  const { tt } = useAcademyLocale();
   const fallbackVideoRef = useRef<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [posterVisible, setPosterVisible] = useState(Boolean(poster));
@@ -594,13 +596,19 @@ function AcademyPlayerStudio({
           <Stack spacing={1.1} alignItems="center" sx={{ maxWidth: 420 }}>
             <Typography sx={{ fontSize: 20, fontWeight: 700, color: '#edf0f7' }}>
               {inferredSourceType === 'google-vids'
-                ? 'Google Vids source'
-                : 'External video source'}
+                ? tt('Google Vids-kilde', 'Google Vids source')
+                : tt('Ekstern videokilde', 'External video source')}
             </Typography>
             <Typography sx={{ fontSize: 13, color: 'rgba(237,240,247,0.72)', lineHeight: 1.5 }}>
               {inferredSourceType === 'google-vids'
-                ? 'Denne kilden spilles ikke direkte i Academy-playeren. Aapne originalen i Google Vids eller koble en eksportert MP4 for innebygget avspilling.'
-                : 'Denne videokilden maa aapnes eksternt eller erstattes med en direkte videofil for innebygget avspilling.'}
+                ? tt(
+                    'Denne kilden spilles ikke direkte i Academy-playeren. Aapne originalen i Google Vids eller koble en eksportert MP4 for innebygget avspilling.',
+                    'This source does not play directly in the Academy player. Open the original in Google Vids or attach an exported MP4 for embedded playback.',
+                  )
+                : tt(
+                    'Denne videokilden maa aapnes eksternt eller erstattes med en direkte videofil for innebygget avspilling.',
+                    'This video source must be opened externally or replaced with a direct video file for embedded playback.',
+                  )}
             </Typography>
             {resolvedExternalUrl ? (
               <Button
@@ -616,7 +624,7 @@ function AcademyPlayerStudio({
                   background: 'linear-gradient(180deg, #ffd44e, #f2a616)',
                 }}
               >
-                {externalLabel || 'Open source'}
+                {externalLabel || tt('Aapne kilde', 'Open source')}
               </Button>
             ) : null}
           </Stack>
@@ -665,7 +673,7 @@ function AcademyPlayerStudio({
                 size="small"
                 onClick={togglePlay}
                 sx={{ color: '#edf0f7' }}
-                aria-label={isPlaying ? 'Pause' : 'Play'}
+                aria-label={isPlaying ? tt('Pause', 'Pause') : tt('Spill av', 'Play')}
               >
                 {isPlaying ? <Pause fontSize="small" /> : <PlayArrow fontSize="small" />}
               </IconButton>
@@ -713,7 +721,7 @@ function AcademyPlayerStudio({
                 size="small"
                 onClick={toggleCaptions}
                 sx={{ color: captionsEnabled ? '#f8d675' : 'rgba(237,240,247,0.88)' }}
-                aria-label={captionsEnabled ? 'Disable captions' : 'Enable captions'}
+                aria-label={captionsEnabled ? tt('Skru av teksting', 'Disable captions') : tt('Skru paa teksting', 'Enable captions')}
               >
                 {captionsEnabled ? <Subtitles fontSize="small" /> : <SubtitlesOff fontSize="small" />}
               </IconButton>
@@ -721,7 +729,7 @@ function AcademyPlayerStudio({
                 size="small"
                 onClick={toggleMute}
                 sx={{ color: 'rgba(237,240,247,0.88)' }}
-                aria-label={isMuted ? 'Unmute' : 'Mute'}
+                aria-label={isMuted ? tt('Slaa paa lyd', 'Unmute') : tt('Demp lyd', 'Mute')}
               >
                 {isMuted || volume <= 0 ? <VolumeOff fontSize="small" /> : <VolumeUp fontSize="small" />}
               </IconButton>
@@ -743,7 +751,7 @@ function AcademyPlayerStudio({
                 size="small"
                 onClick={toggleFullscreen}
                 sx={{ color: 'rgba(237,240,247,0.88)' }}
-                aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+                aria-label={isFullscreen ? tt('Avslutt fullskjerm', 'Exit fullscreen') : tt('Fullskjerm', 'Enter fullscreen')}
               >
                 {isFullscreen ? <FullscreenExit fontSize="small" /> : <Fullscreen fontSize="small" />}
               </IconButton>

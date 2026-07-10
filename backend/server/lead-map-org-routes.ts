@@ -185,7 +185,7 @@ export function registerLeadMapOrgRoutes({ app, pool, activeSessions }: Deps): v
           })),
         });
       } catch (err) {
-        return res.status(500).json({ error: "list_failed", detail: String(err) });
+        return res.status(500).json({ error: "list_failed", detail: "internal_error" });
       }
     },
   );
@@ -215,7 +215,7 @@ export function registerLeadMapOrgRoutes({ app, pool, activeSessions }: Deps): v
         if (r.rows.length === 0) return res.status(404).json({ error: "not_found" });
         return res.json({ organization: r.rows[0] });
       } catch (err) {
-        return res.status(500).json({ error: "detail_failed", detail: String(err) });
+        return res.status(500).json({ error: "detail_failed", detail: "internal_error" });
       }
     },
   );
@@ -401,7 +401,7 @@ export function registerLeadMapOrgRoutes({ app, pool, activeSessions }: Deps): v
           emailReason: result.sent ? null : result.reason,
         });
       } catch (err) {
-        return res.status(500).json({ error: "invite_failed", detail: String(err) });
+        return res.status(500).json({ error: "invite_failed", detail: "internal_error" });
       }
     },
   );
@@ -480,7 +480,7 @@ export function registerLeadMapOrgRoutes({ app, pool, activeSessions }: Deps): v
         );
         return res.json({ ok: true });
       } catch (err) {
-        return res.status(500).json({ error: "remove_failed", detail: String(err) });
+        return res.status(500).json({ error: "remove_failed", detail: "internal_error" });
       }
     },
   );
@@ -507,7 +507,7 @@ export function registerLeadMapOrgRoutes({ app, pool, activeSessions }: Deps): v
         );
         return res.json({ ok: true });
       } catch (err) {
-        return res.status(500).json({ error: "update_failed", detail: String(err) });
+        return res.status(500).json({ error: "update_failed", detail: "internal_error" });
       }
     },
   );
@@ -552,7 +552,7 @@ export function registerLeadMapOrgRoutes({ app, pool, activeSessions }: Deps): v
           expiresAt: row.expires_at,
         });
       } catch (err) {
-        return res.status(500).json({ error: "preview_failed", detail: String(err) });
+        return res.status(500).json({ error: "preview_failed", detail: "internal_error" });
       }
     },
   );
@@ -614,7 +614,7 @@ export function registerLeadMapOrgRoutes({ app, pool, activeSessions }: Deps): v
           role: inv.role,
         });
       } catch (err) {
-        return res.status(500).json({ error: "accept_failed", detail: String(err) });
+        return res.status(500).json({ error: "accept_failed", detail: "internal_error" });
       }
     },
   );

@@ -504,10 +504,13 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
         goToStep(i);
         const at = scene.actionType ?? 'click';
         if (!scene.targetSelector && !(scene.targetLocators?.length)) {
-          // Ubundet scene: scroll kan kjøres uten target; annet hoppes over.
-          if (at === 'scroll') { await sessionExec('', 'scroll'); updateScene(scene.id, { status: 'done' }); }
-          await sleepMs(800);
-          continue;
+          // Ubundet scene: scroll kan kjøres uten target. Annet (klikk o.l.) kan IKKE
+          // utføres uten et bundet element → marker + STOPP (ikke hopp stille over, som
+          // fikk økten til å se fullført ut mens scener aldri ble kjørt).
+          if (at === 'scroll') { await sessionExec('', 'scroll'); updateScene(scene.id, { status: 'done' }); await sleepMs(800); continue; }
+          updateScene(scene.id, { status: 'needs_review' });
+          window.alert(`Scene ${i + 1}${scene.targetLabel ? ` («${scene.targetLabel}»)` : ''}: mangler et bundet mål (element) — auto-kjøring stoppet. Bind scenen til et element og prøv igjen herfra.`);
+          break;
         }
         const r = await sessionExec(scene.targetSelector ?? '', at, undefined, scene.targetLocators);
         if (r?.ok && r.found) {
@@ -887,7 +890,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, fontFamily: C.font, background: C.bg, color: C.ink, fontSize: 13 }}>
       {/* ── Topbar (URL-input erstatter Search) ── */}
       <div style={topbarStyle}>
-        <div style={iconBtn} onClick={onClose} title="Tilbake til hjem">☰</div>
+        <div style={iconBtn} onClick={() => { if (recording && !window.confirm('Du har et pågående skjermopptak. Forlater du Demo Studio nå, forkastes opptaket. Fortsette?')) return; onClose?.(); }} title="Tilbake til hjem">☰</div>
         <div>
           <input style={{ ...titleField }} value={project.name} onChange={(e) => setProjectField('name', e.target.value)} />
           <div style={{ fontSize: 11, color: saveStatus === 'error' ? '#dc2626' : C.inkFaint, display: 'flex', alignItems: 'center', gap: 5, marginTop: 1 }}>
@@ -919,6 +922,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
             const sc = st.project?.scenes[st.recorderStepIndex];
             const ok = sc && st.project ? await rec.start(st.project.id, sc.id) : false;
             if (ok) setRecording(true);
+            else window.alert('Kunne ikke starte skjermopptak. Sjekk at appen har tillatelse til skjermopptak (Systeminnstillinger → Personvern og sikkerhet → Skjermopptak), og at en scene er valgt.');
           }}>● {rec.state === 'recording' ? 'Recording' : rec.state === 'saving' ? 'Lagrer…' : 'Record'}</button>
         <button style={{ ...btn, background: C.dark, color: '#fff', borderColor: C.dark }}
           onClick={() => { setStoryMode(false); setNav('export'); }}>Export <span>⌄</span></button>
@@ -1529,11 +1533,11 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                       } else {
                         setRecording(false);
                       }
-                    }}>✓ Mark as Done</button>
+                    }}>✓ Merk som ferdig</button>
                   <button style={{ ...outlineBtn, width: '100%', marginBottom: 8 }}
-                    onClick={async () => { retakeCurrent(); await startForCurrent(); }}>↺ Retake</button>
+                    onClick={async () => { retakeCurrent(); await startForCurrent(); }}>↺ Ta på nytt</button>
                   <button style={{ ...outlineBtn, width: '100%', marginBottom: 8, opacity: recorderStepIndex >= scenes.length - 1 ? 0.5 : 1 }} disabled={recorderStepIndex >= scenes.length - 1}
-                    onClick={async () => { if (rec.state === 'recording') await rec.stopAndSave(project.id, recorderScene.id).then((pth) => pth && updateScene(recorderScene.id, { recordingPath: pth })); nextStep(); await startForCurrent(); }}>→ Next Step</button>
+                    onClick={async () => { if (rec.state === 'recording') await rec.stopAndSave(project.id, recorderScene.id).then((pth) => pth && updateScene(recorderScene.id, { recordingPath: pth })); nextStep(); await startForCurrent(); }}>→ Neste steg</button>
                   <button style={{ ...outlineBtn, width: '100%', marginBottom: 8, opacity: autoBusy ? 0.6 : 1 }} disabled={autoBusy}
                     onClick={() => void autoRunCurrent()}
                     title="La systemet utføre handlingen automatisk på target-elementet (continueMode: auto)">
@@ -1640,7 +1644,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                   </select>
 
                   <button style={{ ...outlineBtn, width: '100%', marginTop: 14, color: '#c4453b', borderColor: '#e6c5c2' }}
-                    disabled={scenes.length <= 1} onClick={() => removeScene(selected.id)}>Slett scene</button>
+                    disabled={scenes.length <= 1} onClick={() => { if (window.confirm('Slette denne scenen? Et eventuelt opptak på scenen fjernes også. Dette kan ikke angres.')) removeScene(selected.id); }}>Slett scene</button>
                 </>
               ) : null}
             </div>
@@ -1991,6 +1995,15 @@ function ValidationModal({ scenes, onClose, onGoto, onSetStatus }: {
 function SceneThumb({ scene, url, height = 80 }: { scene: DemoScene; url: string; height?: number }) {
   const ref = useRef<HTMLDivElement>(null);
   const [boxW, setBoxW] = useState(0);
+  // Lazy-load: last KUN live-iframen når kortet er nær viewporten. Uten dette lastet
+  // hvert scene-kort HELE nettsiden samtidig (N scener → N parallelle side-lastinger).
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof IntersectionObserver === 'undefined') { setVisible(true); return; }
+    const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { setVisible(true); io.disconnect(); } }, { rootMargin: '300px' });
+    io.observe(el); return () => io.disconnect();
+  }, []);
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -2010,8 +2023,8 @@ function SceneThumb({ scene, url, height = 80 }: { scene: DemoScene; url: string
   const logicalH = scale > 0 ? height / scale : height;
   return (
     <div ref={ref} style={{ position: 'relative', width: '100%', height, borderRadius: 7, overflow: 'hidden', background: '#fff', border: `1px solid ${C.line}`, marginBottom: 8 }}>
-      <iframe src={url} scrolling="no" tabIndex={-1} title="" aria-hidden
-        style={{ width: vw, height: logicalH, border: 0, transform: `scale(${scale || 0.001})`, transformOrigin: '0 0', pointerEvents: 'none', opacity: scale > 0 ? 1 : 0 }} />
+      {visible && <iframe src={url} scrolling="no" tabIndex={-1} title="" aria-hidden
+        style={{ width: vw, height: logicalH, border: 0, transform: `scale(${scale || 0.001})`, transformOrigin: '0 0', pointerEvents: 'none', opacity: scale > 0 ? 1 : 0 }} />}
     </div>
   );
 }

@@ -137,7 +137,7 @@ export function registerLeadMapAgentRoutes({ app, pool, activeSessions }: Deps):
         });
       } catch (err) {
         console.error("[lead-map-agent] context failed", err);
-        return res.status(500).json({ error: "context_failed", detail: String(err) });
+        return res.status(500).json({ error: "context_failed", detail: "internal_error" });
       }
     },
   );
@@ -209,7 +209,7 @@ export function registerLeadMapAgentRoutes({ app, pool, activeSessions }: Deps):
         });
       } catch (err) {
         console.error("[lead-map-agent] run failed", err);
-        return res.status(500).json({ error: "run_failed", detail: String(err) });
+        return res.status(500).json({ error: "run_failed", detail: "internal_error" });
       }
     },
   );

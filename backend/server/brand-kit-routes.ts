@@ -76,7 +76,7 @@ export function registerBrandKitRoutes({
       console.error("[brand-kit] GET failed", err);
       return res
         .status(500)
-        .json({ error: "brand_kit_fetch_failed", detail: String(err) });
+        .json({ error: "brand_kit_fetch_failed", detail: "internal_error" });
     }
   });
 
@@ -98,7 +98,7 @@ export function registerBrandKitRoutes({
       console.error("[brand-kit] scan failed", err);
       return res
         .status(500)
-        .json({ error: "brand_scan_failed", detail: String(err) });
+        .json({ error: "brand_scan_failed", detail: "internal_error" });
     }
   });
 
@@ -120,7 +120,7 @@ export function registerBrandKitRoutes({
       console.error("[brand-kit] PATCH failed", err);
       return res
         .status(500)
-        .json({ error: "brand_kit_update_failed", detail: String(err) });
+        .json({ error: "brand_kit_update_failed", detail: "internal_error" });
     }
   });
 }

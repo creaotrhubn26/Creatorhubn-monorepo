@@ -1376,13 +1376,13 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
           return res.status(401).json({ error: "PowerOffice-tilkoblingen er ikke gyldig lenger. Koble til på nytt." });
         }
         if (err instanceof PowerOfficeApiError) {
-          return res.status(502).json({ error: `PowerOffice-feil: ${String(err.message).slice(0, 300)}` });
+          return res.status(502).json({ error: `PowerOffice-feil: ${String("internal_error").slice(0, 300)}` });
         }
         throw err;
       }
     } catch (error: any) {
       console.error("CRM invoice book error:", error);
-      return res.status(500).json({ error: error?.message || "Failed to book invoice" });
+      return res.status(500).json({ error: "internal_error" });
     }
   });
 
@@ -1869,10 +1869,10 @@ export function setupUniversalCrmRoutes(deps: UniversalCrmRoutesDeps): void {
       return res.json({ ok: true, sid: result.sid, provider: result.provider });
     } catch (error: any) {
       if (error?.code === "sms_not_configured") {
-        return res.status(409).json({ error: error.message });
+        return res.status(409).json({ error: "internal_error" });
       }
       console.error("CRM SMS send error:", error);
-      return res.status(500).json({ error: error?.message || "Failed to send SMS" });
+      return res.status(500).json({ error: "internal_error" });
     }
   });
 

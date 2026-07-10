@@ -72,7 +72,7 @@ export function registerRoleRoomInfographicLibraryRoutes(app: Express, deps: Dep
       if ((r.rowCount ?? 0) === 0) { res.status(409).json({ error: "id_tatt_av_annen" }); return; }
       res.json({ ok: true, id });
     } catch (e) {
-      res.status(500).json({ error: "lagre_feil", detail: (e as Error).message });
+      res.status(500).json({ error: "lagre_feil", detail: "internal_error" });
     }
   });
 
@@ -102,7 +102,7 @@ export function registerRoleRoomInfographicLibraryRoutes(app: Express, deps: Dep
         })),
       });
     } catch (e) {
-      res.status(500).json({ error: "hent_feil", detail: (e as Error).message });
+      res.status(500).json({ error: "hent_feil", detail: "internal_error" });
     }
   });
 
@@ -119,7 +119,7 @@ export function registerRoleRoomInfographicLibraryRoutes(app: Express, deps: Dep
       if (!rows.length) { res.status(404).json({ error: "finnes_ikke" }); return; }
       res.json({ snapshot: rows[0].snapshot });
     } catch (e) {
-      res.status(500).json({ error: "hent_feil", detail: (e as Error).message });
+      res.status(500).json({ error: "hent_feil", detail: "internal_error" });
     }
   });
 
@@ -132,7 +132,7 @@ export function registerRoleRoomInfographicLibraryRoutes(app: Express, deps: Dep
       const r = await pool.query(`DELETE FROM infographic_library WHERE id = $1 AND created_by = $2`, [String(req.params.id).slice(0, 80), s.userId]);
       res.json({ ok: true, deleted: r.rowCount ?? 0 });
     } catch (e) {
-      res.status(500).json({ error: "slett_feil", detail: (e as Error).message });
+      res.status(500).json({ error: "slett_feil", detail: "internal_error" });
     }
   });
 }

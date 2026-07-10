@@ -139,7 +139,7 @@ export async function handleAgentStream(
         errorCode: err.code,
         errorMessage: err.message,
       });
-      res.status(403).json({ error: err.code, detail: err.message });
+      res.status(403).json({ error: err.code, detail: "internal_error" });
       return;
     }
     throw err;
@@ -245,6 +245,7 @@ export async function handleAgentStream(
     if (value && typeof value === 'object') {
       const out: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(value)) {
+        if (k === "__proto__" || k === "constructor" || k === "prototype") continue;
         out[k] = depseudonymizeToolInput(v);
       }
       return out;
@@ -478,11 +479,11 @@ export async function handleAgentStream(
           usage: { inputTokens, outputTokens },
           consentId: consent.id,
           threadId,
-          error: err instanceof Error ? err.message : String(err),
+          error: 'internal_error',
         } as unknown,
       });
     }
-    writeEvent(res, 'error', { message: err instanceof Error ? err.message : String(err) });
+    writeEvent(res, 'error', { message: 'internal_error' });
     streamFinalised = true;
     res.end();
   }

@@ -35,7 +35,7 @@ export function setupBlogPublicRoutes(deps: BlogPublicRoutesDeps): void {
     const limit = Math.min(Number(req.query.limit ?? 50), 200);
 
     try {
-      let where = `variant = 'blog' AND published = TRUE`;
+      let where = `variant = 'blog' AND published = TRUE AND (publish_at IS NULL OR publish_at <= NOW()) AND (unpublish_at IS NULL OR unpublish_at > NOW())`;
       const params: unknown[] = [];
       if (pillar) {
         params.push(pillar);
@@ -91,6 +91,8 @@ export function setupBlogPublicRoutes(deps: BlogPublicRoutesDeps): void {
            FROM cms_pages
           WHERE variant = 'blog'
             AND published = TRUE
+            AND (publish_at IS NULL OR publish_at <= NOW())
+            AND (unpublish_at IS NULL OR unpublish_at > NOW())
             AND slug = ANY($1::text[])
           LIMIT 1`,
         [candidates],
@@ -109,6 +111,8 @@ export function setupBlogPublicRoutes(deps: BlogPublicRoutesDeps): void {
            FROM cms_pages
           WHERE variant = 'blog'
             AND published = TRUE
+            AND (publish_at IS NULL OR publish_at <= NOW())
+            AND (unpublish_at IS NULL OR unpublish_at > NOW())
             AND slug != $1
             AND content->>'pillar' = $2
           ORDER BY content->>'published_at' DESC NULLS LAST

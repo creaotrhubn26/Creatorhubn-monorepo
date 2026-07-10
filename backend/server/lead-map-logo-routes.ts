@@ -70,7 +70,7 @@ export function registerLeadMapLogoRoutes({ app, pool, activeSessions }: Deps): 
           size: logo.size ?? null,
         });
       } catch (err) {
-        return res.status(500).json({ error: "fetch_failed", detail: String(err) });
+        return res.status(500).json({ error: "fetch_failed", detail: "internal_error" });
       }
     },
   );
@@ -95,7 +95,7 @@ export function registerLeadMapLogoRoutes({ app, pool, activeSessions }: Deps): 
         );
         return res.json({ ok: true });
       } catch (err) {
-        return res.status(500).json({ error: "update_failed", detail: String(err) });
+        return res.status(500).json({ error: "update_failed", detail: "internal_error" });
       }
     },
   );
@@ -116,7 +116,7 @@ export function registerLeadMapLogoRoutes({ app, pool, activeSessions }: Deps): 
         );
         return res.json({ ok: true });
       } catch (err) {
-        return res.status(500).json({ error: "delete_failed", detail: String(err) });
+        return res.status(500).json({ error: "delete_failed", detail: "internal_error" });
       }
     },
   );

@@ -104,7 +104,7 @@ export function registerLeadMapAnnotationRoutes({ app, pool, activeSessions }: D
         );
         return res.json({ annotations: r.rows, canCreate: CAN_CREATE_ROLES.has(role) });
       } catch (err) {
-        return res.status(500).json({ error: "list_failed", detail: String(err) });
+        return res.status(500).json({ error: "list_failed", detail: "internal_error" });
       }
     },
   );
@@ -162,7 +162,7 @@ export function registerLeadMapAnnotationRoutes({ app, pool, activeSessions }: D
         );
         return res.json({ ok: true, id: r.rows[0].id });
       } catch (err) {
-        return res.status(500).json({ error: "create_failed", detail: String(err) });
+        return res.status(500).json({ error: "create_failed", detail: "internal_error" });
       }
     },
   );
@@ -212,7 +212,7 @@ export function registerLeadMapAnnotationRoutes({ app, pool, activeSessions }: D
         );
         return res.json({ ok: true, updated: sets.length });
       } catch (err) {
-        return res.status(500).json({ error: "update_failed", detail: String(err) });
+        return res.status(500).json({ error: "update_failed", detail: "internal_error" });
       }
     },
   );
@@ -246,7 +246,7 @@ export function registerLeadMapAnnotationRoutes({ app, pool, activeSessions }: D
         );
         return res.json({ ok: true });
       } catch (err) {
-        return res.status(500).json({ error: "archive_failed", detail: String(err) });
+        return res.status(500).json({ error: "archive_failed", detail: "internal_error" });
       }
     },
   );
@@ -273,7 +273,7 @@ export function registerLeadMapAnnotationRoutes({ app, pool, activeSessions }: D
         );
         return res.json({ ok: true });
       } catch (err) {
-        return res.status(500).json({ error: "delete_failed", detail: String(err) });
+        return res.status(500).json({ error: "delete_failed", detail: "internal_error" });
       }
     },
   );

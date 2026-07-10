@@ -1,6 +1,9 @@
 import { Box, Container, Stack, Typography } from '@mui/material';
 import MovieIcon from '@mui/icons-material/Movie';
 import NewsletterSignupBlock from './NewsletterSignupBlock';
+import BlockRenderer from '../../role-room/cms/BlockRenderer';
+import { useCmsBlocks } from '../../role-room/cms/useCmsBlocks';
+import { DEFAULT_LOCALE } from '../../role-room/cms/blockSchema';
 
 /**
  * Sentimental Value-effekten — meta-pillar som kobler norsk films
@@ -38,6 +41,12 @@ const SECTIONS: Array<{ heading: string; body: string }> = [
 ];
 
 export function SentimentalValueEffektenPage() {
+  const cmsBlocks = useCmsBlocks('sentimental-value-effekten');
+
+  if (cmsBlocks) {
+    return <BlockRenderer blocks={cmsBlocks} locale={DEFAULT_LOCALE} />;
+  }
+
   return (
     <Box
       component="article"

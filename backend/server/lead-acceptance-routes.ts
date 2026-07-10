@@ -279,7 +279,7 @@ export function registerLeadAcceptanceRoutes({ app, pool, activeSessions }: Deps
         portal_url: `${process.env.LEADGRID_PORTAL_BASE_URL ?? "https://leadgrid.theroleroom.com"}/c/${portalToken}`,
       });
     } catch (e: any) {
-      res.status(500).json({ error: "accept_failed", details: e?.message });
+      res.status(500).json({ error: "accept_failed", details: "internal_error" });
     }
   });
 

@@ -96,9 +96,29 @@ export const AccessibilityChecker: React.FC<AccessibilityCheckerProps> = ({
   const [lastScan, setLastScan] = useState<Date | null>(null);
 
   useEffect(() => {
-    if (open && iframeRef.current) {
-      runAccessibilityScan();
-    }
+    if (!open) return;
+    // The preview iframe can mount a render or two after this drawer opens
+    // (it's owned by a sibling panel that reacts to `open` separately), so
+    // poll briefly instead of only checking once on this effect's own fire.
+    let cancelled = false;
+    let attempts = 0;
+    const tryScan = () => {
+      if (cancelled) return;
+      const iframe = iframeRef.current;
+      const iframeDoc = iframe?.contentDocument || iframe?.contentWindow?.document;
+      if (iframeDoc && iframeDoc.readyState !== 'loading') {
+        runAccessibilityScan();
+        return;
+      }
+      attempts += 1;
+      if (attempts < 20) {
+        window.setTimeout(tryScan, 150);
+      }
+    };
+    tryScan();
+    return () => {
+      cancelled = true;
+    };
   }, [open]);
 
   const runAccessibilityScan = async () => {
@@ -115,18 +135,27 @@ export const AccessibilityChecker: React.FC<AccessibilityCheckerProps> = ({
 
     try {
       // Run axe-core scan with WCAG 2.2 Level AA standards
-      const results = await axe.run(iframeDoc, {
+      // Pass the <iframe> element itself, not its contentDocument — axe-core
+      // checks `instanceof window.Node` against ITS OWN (parent-window) Node
+      // constructor, and a Document from the iframe's separate global realm
+      // fails that check (classic cross-realm instanceof gotcha), throwing
+      // "axe.run arguments are invalid". The iframe element belongs to the
+      // parent realm, and axe-core has built-in recursion into frame content.
+      const results = await axe.run(iframe, {
         runOnly: {
           type: 'tag',
           values: ['wcag2a','wcag2aa','wcag21a','wcag21aa','wcag22aa'],
         },
         rules: {
-          // WCAG 2.2 specific rules
+          // WCAG 2.2 specific rules — axe-core 4.11.4 only ships a dedicated
+          // rule for 2.5.8 (target-size); the other 2.2 criteria this used to
+          // list here (focus-visible/focus-not-obscured/dragging-movements/
+          // accessible-text) aren't real rule IDs in this version at all, and
+          // passing an unknown ID makes axe.run() throw for the WHOLE scan —
+          // which is exactly why this checker never produced a single real
+          // result before. `wcag22aa` in runOnly above still requests
+          // whatever 2.2 coverage axe-core does have.
           'target-size': { enabled: true }, // WCAG 2.2 - Success Criterion 2.5.8
-          'focus-visible': { enabled: true }, // WCAG 2.2 - Success Criterion 2.4.11
-          'focus-not-obscured': { enabled: true }, // WCAG 2.2 - Success Criterion 2.4.12
-          'dragging-movements': { enabled: true }, // WCAG 2.2 - Success Criterion 2.5.7
-          'accessible-text': { enabled: true }, // WCAG 2.2 - Success Criterion 2.4.13
 
           // Core accessibility rules
           'color-contrast': { enabled: true }, 'color-contrast-enhanced': { enabled: true }, 'image-alt': { enabled: true },

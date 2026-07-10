@@ -307,7 +307,7 @@ export function setupWeddingMileageRoutes(deps: WeddingMileageRoutesDeps): void 
            LIMIT 1`,
         [uid],
       );
-      if (r.rowCount === 0) {
+      if (!r.rows.length) {
         return res.json({
           vehicle: null,
           // Selv uten bil kan vi vise hva hjemmeadressen vil bli
@@ -619,7 +619,7 @@ export function setupWeddingMileageRoutes(deps: WeddingMileageRoutesDeps): void 
            WHERE r.wedding_id = $1 AND r.photographer_id = $2`,
         [req.params.weddingId, uid],
       );
-      if (r.rowCount === 0) return res.json({ report: null });
+      if (!r.rows.length) return res.json({ report: null });
       const x = r.rows[0];
       res.json({
         report: {
@@ -660,7 +660,7 @@ export function setupWeddingMileageRoutes(deps: WeddingMileageRoutesDeps): void 
            WHERE r.wedding_id = $1 AND r.photographer_id = $2`,
         [req.params.weddingId, uid],
       );
-      if (r.rowCount === 0) return res.status(404).json({ error: "Ingen rapport funnet — generer først" });
+      if (!r.rows.length) return res.status(404).json({ error: "Ingen rapport funnet — generer først" });
       const x = r.rows[0];
       const fmtKr = (n: number) => `${n.toFixed(2).replace(".", ",")} kr`;
       const destinations: any[] = Array.isArray(x.destinations) ? x.destinations : [];

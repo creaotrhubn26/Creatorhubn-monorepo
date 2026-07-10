@@ -279,7 +279,7 @@ export function setupAdminAutomationsRoutes(
         `SELECT id FROM automations WHERE id = $1`,
         [id],
       );
-      if (exists.rowCount === 0) {
+      if (!exists.rows.length) {
         return res.status(404).json({ error: "automation_not_found" });
       }
 

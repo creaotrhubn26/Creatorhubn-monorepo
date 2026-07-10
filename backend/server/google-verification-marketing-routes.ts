@@ -151,7 +151,7 @@ export function setupGoogleVerificationMarketingRoutes(deps: {
     } catch (err) {
       return res
         .status(502)
-        .json({ ok: false, error: err instanceof Error ? err.message : "google_api_error" });
+        .json({ ok: false, error: err instanceof Error ? "internal_error" : "google_api_error" });
     }
   });
 }

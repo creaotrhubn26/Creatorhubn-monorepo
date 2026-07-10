@@ -483,7 +483,7 @@ export function registerSuperadminRoutes({
         await client.query(
           `UPDATE users
               SET meta = COALESCE(meta, '{}'::jsonb)
-                       || jsonb_build_object('invite_token', $1, 'invite_org_id', $2::text, 'invite_expires', $3::text)
+                       || jsonb_build_object('invite_token', $1::text, 'invite_org_id', $2::text, 'invite_expires', $3::text)
             WHERE id = $4`,
           [
             inviteToken,

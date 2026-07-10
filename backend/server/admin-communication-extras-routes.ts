@@ -232,7 +232,7 @@ export function setupAdminCommunicationExtrasRoutes(
         `SELECT id FROM communication_channels WHERE id = $1 LIMIT 1`,
         [chatId],
       );
-      if (existing.rowCount === 0) {
+      if (!existing.rows.length) {
         await pool.query(
           `
             INSERT INTO communication_channels (id, name, type, is_active, created_at, updated_at)
@@ -247,7 +247,7 @@ export function setupAdminCommunicationExtrasRoutes(
           `SELECT 1 FROM communication_participants WHERE channel_id = $1 AND user_id = $2 LIMIT 1`,
           [chatId, targetUserId],
         );
-        if (hasParticipant.rowCount === 0) {
+        if (!hasParticipant.rows.length) {
           await pool.query(
             `INSERT INTO communication_participants (id, channel_id, user_id, role, is_active, joined_at)
              VALUES ($1, $2, $3, 'member', TRUE, NOW())`,

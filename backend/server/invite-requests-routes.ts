@@ -1,6 +1,18 @@
 import express from "express";
 import type { Pool } from "pg";
 import { notifyAdmins } from "./admin-notify";
+import { safeAppBaseUrl } from "./web-origin-allowlist";
+
+const _inviteRateBuckets = new Map<string, number[]>();
+function _inviteRateLimited(ip: string): boolean {
+  const now = Date.now();
+  const arr = (_inviteRateBuckets.get(ip) ?? []).filter((t) => now - t < 3_600_000);
+  arr.push(now);
+  _inviteRateBuckets.set(ip, arr);
+  return arr.length > 5;
+}
+const _inviteClientIp = (req: express.Request): string =>
+  (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ?? req.socket?.remoteAddress ?? "?";
 
 const INVITE_REQUEST_APPROVER_ROLES = new Set([
   "admin",
@@ -209,6 +221,7 @@ export function setupInviteRequestsRoutes(
   }
 
   app.post("/api/invite-requests", async (req, res) => {
+    if (_inviteRateLimited(_inviteClientIp(req))) return res.status(429).json({ error: "too_many_requests" });
     try {
       const {
         email,
@@ -424,7 +437,7 @@ export function setupInviteRequestsRoutes(
         "SELECT * FROM invite_requests WHERE id = $1",
         [req.params.id],
       );
-      if (result.rowCount === 0) {
+      if (!result.rows.length) {
         return res.status(404).json({ error: "Forespørsel ikke funnet" });
       }
       const screening = await getInviteRequestProffScreening(
@@ -444,7 +457,7 @@ export function setupInviteRequestsRoutes(
         "SELECT * FROM invite_requests WHERE id = $1",
         [req.params.id],
       );
-      if (result.rowCount === 0) {
+      if (!result.rows.length) {
         return res.status(404).json({ error: "Forespørsel ikke funnet" });
       }
 
@@ -652,8 +665,7 @@ export function setupInviteRequestsRoutes(
           request.source === "prototype_tester_pricing";
         if (isPrototypeTester) {
           try {
-            const baseUrl =
-              req.headers.origin || `https://${req.headers.host || "creatorhubn.com"}`;
+            const baseUrl = safeAppBaseUrl(req);
             const fullName =
               [request.first_name, request.last_name].filter(Boolean).join(" ") ||
               request.email;
@@ -787,9 +799,7 @@ export function setupInviteRequestsRoutes(
             row.plan_name === "Prototype Tester" ||
             row.source === "prototype_tester_pricing");
         if (isPrototypeTester) {
-          const baseUrl =
-            req.headers.origin ||
-            `https://${req.headers.host || "creatorhubn.com"}`;
+          const baseUrl = safeAppBaseUrl(req);
           const fullName =
             [row.first_name, row.last_name].filter(Boolean).join(" ") ||
             row.email;

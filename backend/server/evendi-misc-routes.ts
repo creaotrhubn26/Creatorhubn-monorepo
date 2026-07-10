@@ -1026,14 +1026,17 @@ export function setupEvendiMiscRoutes(deps: EvendiMiscRoutesDeps): void {
       const columns = await getTableColumns("bookings");
       const userId =
         readString(req.headers["x-user-id"]) || readString(req.query.userId) || null;
+      if (!userId) {
+        return res.status(400).json({ error: "userId required" });
+      }
       const filters: string[] = [];
       const params: unknown[] = [];
-      if (userId && columns.has("user_id")) {
+      if (columns.has("user_id")) {
         params.push(userId);
         filters.push(`user_id = $${params.length}`);
       }
       const whereClause = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
-      const result = await pool.query(`SELECT * FROM bookings ${whereClause}`, params);
+      const result = await pool.query(`SELECT * FROM bookings ${whereClause} LIMIT 5000`, params);
       const rows = result.rows as Array<Record<string, unknown>>;
       const today = new Date();
       today.setHours(0, 0, 0, 0);

@@ -77,6 +77,7 @@ import {
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { apiRequest } from '../../lib/queryClient';
 import { useSnackbar } from 'notistack';
+import { useCommunityLocale } from './communityLocale';
 
 const TUTORIAL_ID = 'community-guide';
 const COMMUNITY_GUIDE_BACKGROUND = `
@@ -311,6 +312,7 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
   const [completedSteps, setCompletedSteps] = React.useState<number[]>([]);
   const queryClient = useQueryClient();
   const { enqueueSnackbar } = useSnackbar();
+  const { tt } = useCommunityLocale();
 
   // Fetch tutorial preferences from database
   const { data: tutorialPrefs } = useQuery<TutorialPreference>({
@@ -342,13 +344,13 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
   const getProfessionDisplayName = () => {
     if (professionName) return professionName;
     const names: Record<string, string> = {
-      photographer: 'Fotograf',
-      videographer: 'Videograf',
-      musicproducer: 'Musikkprodusent',
-      music_producer: 'Musikkprodusent',
-      vendor: 'Utstyrsleverandør',
+      photographer: tt('Fotograf', 'Photographer'),
+      videographer: tt('Videograf', 'Videographer'),
+      musicproducer: tt('Musikkprodusent', 'Music Producer'),
+      music_producer: tt('Musikkprodusent', 'Music Producer'),
+      vendor: tt('Utstyrsleverandør', 'Equipment Supplier'),
     };
-    return names[profession] || 'Kreativ profesjonell';
+    return names[profession] || tt('Kreativ profesjonell', 'Creative Professional');
   };
 
   // Get profession icon
@@ -442,7 +444,7 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
           completedSteps,
           profession
         });
-        enqueueSnackbar('Guiden er skjult. Du finner den igjen via Hjelp-menyen eller ⌘+?', { 
+        enqueueSnackbar(tt('Guiden er skjult. Du finner den igjen via Hjelp-menyen eller ⌘+?', 'The guide is hidden. You can find it again via the Help menu or ⌘+?'), {
           variant: 'info',
           autoHideDuration: 5000 
         });
@@ -464,49 +466,48 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
 
   const tutorialSteps = [
     {
-      label: 'Velkommen til fellesskapet',
+      label: tt('Velkommen til fellesskapet', 'Welcome to the community'),
       icon: <Forum />,
       content: (
         <Box>
           <Typography variant="h6" gutterBottom fontWeight={600}>
-            🎉 Velkommen til CreatorHub Fellesskap!
+            {tt('🎉 Velkommen til CreatorHub Fellesskap!', '🎉 Welcome to the CreatorHub Community!')}
           </Typography>
-          
+
           <Alert severity="info" sx={{ mb: 2 }}>
             <Typography variant="body2">
-              Dette er din guide til å bli en aktiv del av Norges største kreative fellesskap.
-              Bruk <strong>5-10 minutter</strong> på denne guiden for å komme raskt i gang.
+              {tt('Dette er din guide til å bli en aktiv del av Norges største kreative fellesskap. Bruk', 'This is your guide to becoming an active part of Norway\'s largest creative community. Spend')} <strong>{tt('5-10 minutter', '5-10 minutes')}</strong> {tt('på denne guiden for å komme raskt i gang.', 'on this guide to get up and running quickly.')}
             </Typography>
           </Alert>
 
           <Typography variant="subtitle1" fontWeight={600} gutterBottom>
-            📚 Hva du vil lære:
+            {tt('📚 Hva du vil lære:', '📚 What you will learn:')}
           </Typography>
-          
+
           <List dense>
             <ListItem>
               <ListItemIcon><CheckCircle color="success" fontSize="small" /></ListItemIcon>
-              <ListItemText primary="Navigere i kanaler og grupper" />
+              <ListItemText primary={tt('Navigere i kanaler og grupper', 'Navigate channels and groups')} />
             </ListItem>
             <ListItem>
               <ListItemIcon><CheckCircle color="success" fontSize="small" /></ListItemIcon>
-              <ListItemText primary="Sende meldinger med emoji og vedlegg" />
+              <ListItemText primary={tt('Sende meldinger med emoji og vedlegg', 'Send messages with emoji and attachments')} />
             </ListItem>
             <ListItem>
               <ListItemIcon><CheckCircle color="success" fontSize="small" /></ListItemIcon>
-              <ListItemText primary="Starte private samtaler" />
+              <ListItemText primary={tt('Starte private samtaler', 'Start private conversations')} />
             </ListItem>
             <ListItem>
               <ListItemIcon><CheckCircle color="success" fontSize="small" /></ListItemIcon>
-              <ListItemText primary="Delta i avstemninger og polls" />
+              <ListItemText primary={tt('Delta i avstemninger og polls', 'Take part in votes and polls')} />
             </ListItem>
             <ListItem>
               <ListItemIcon><CheckCircle color="success" fontSize="small" /></ListItemIcon>
-              <ListItemText primary="Få hjelp fra mentorer" />
+              <ListItemText primary={tt('Få hjelp fra mentorer', 'Get help from mentors')} />
             </ListItem>
             <ListItem>
               <ListItemIcon><CheckCircle color="success" fontSize="small" /></ListItemIcon>
-              <ListItemText primary="Tjene merker og poeng" />
+              <ListItemText primary={tt('Tjene merker og poeng', 'Earn badges and points')} />
             </ListItem>
           </List>
 
@@ -522,55 +523,54 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
               {getProfessionIcon()}
               <Typography variant="subtitle2" fontWeight={600}>
-                Tilpasset for deg som {getProfessionDisplayName()}
+                {tt('Tilpasset for deg som', 'Tailored for you as a')} {getProfessionDisplayName()}
               </Typography>
             </Box>
             <Typography variant="body2" sx={{ color: COMMUNITY_GUIDE_MUTED }}>
-              Denne guiden er tilpasset din profesjon. Du vil se tips og kanaler som er 
-              relevante for {getProfessionDisplayName().toLowerCase()}-miljøet.
+              {tt('Denne guiden er tilpasset din profesjon. Du vil se tips og kanaler som er relevante for', 'This guide is tailored to your profession. You will see tips and channels that are relevant to the')} {getProfessionDisplayName().toLowerCase()}{tt('-miljøet.', ' community.')}
             </Typography>
           </Paper>
         </Box>
       )
     },
     {
-      label: 'Navigere i fellesskapet',
+      label: tt('Navigere i fellesskapet', 'Navigate the community'),
       icon: <Group />,
       content: (
         <Box>
           <Typography variant="h6" gutterBottom fontWeight={600}>
-            🗂️ Finn veien rundt
+            {tt('🗂️ Finn veien rundt', '🗂️ Find your way around')}
           </Typography>
 
           <Typography variant="body1" paragraph>
-            Fellesskapet er organisert i <strong>grupper</strong> og <strong>kanaler</strong>.
-            Tenk på det som et kontorbygg med ulike rom.
+            {tt('Fellesskapet er organisert i', 'The community is organized into')} <strong>{tt('grupper', 'groups')}</strong> {tt('og', 'and')} <strong>{tt('kanaler', 'channels')}</strong>.
+            {tt(' Tenk på det som et kontorbygg med ulike rom.', ' Think of it as an office building with different rooms.')}
           </Typography>
 
           <Table size="small" sx={{ mb: 2 }}>
             <TableBody>
               <TableRow>
                 <TableCell sx={{ fontWeight: 600, width: 120 }}>
-                  <Chip icon={<Group />} label="Grupper" size="small" />
+                  <Chip icon={<Group />} label={tt('Grupper', 'Groups')} size="small" />
                 </TableCell>
                 <TableCell>
-                  Samler folk med felles interesser. F.eks. "Fotografer Norge" eller "Bryllupsfoto"
+                  {tt('Samler folk med felles interesser. F.eks. "Fotografer Norge" eller "Bryllupsfoto"', 'Bring together people with shared interests. E.g. "Photographers Norway" or "Wedding Photo"')}
                 </TableCell>
               </TableRow>
               <TableRow>
                 <TableCell sx={{ fontWeight: 600 }}>
-                  <Chip icon={<Forum />} label="Kanaler" size="small" />
+                  <Chip icon={<Forum />} label={tt('Kanaler', 'Channels')} size="small" />
                 </TableCell>
                 <TableCell>
-                  Spesifikke samtaler innen en gruppe. F.eks. "#tips-triks" eller "#jobbtilbud"
+                  {tt('Spesifikke samtaler innen en gruppe. F.eks. "#tips-triks" eller "#jobbtilbud"', 'Specific conversations within a group. E.g. "#tips-tricks" or "#job-offers"')}
                 </TableCell>
               </TableRow>
               <TableRow>
                 <TableCell sx={{ fontWeight: 600 }}>
-                  <Chip icon={<Lock />} label="Private" size="small" color="warning" />
+                  <Chip icon={<Lock />} label={tt('Private', 'Private')} size="small" color="warning" />
                 </TableCell>
                 <TableCell>
-                  Noen kanaler krever spesifikke rettigheter eller medlemskap
+                  {tt('Noen kanaler krever spesifikke rettigheter eller medlemskap', 'Some channels require specific permissions or membership')}
                 </TableCell>
               </TableRow>
             </TableBody>
@@ -578,13 +578,12 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
 
           <Alert severity="success" icon={<TipsAndUpdates />} sx={{ mb: 2 }}>
             <Typography variant="body2">
-              <strong>Tips:</strong> Bruk søkefeltet øverst (⌘+K) for å raskt finne 
-              kanaler, meldinger eller brukere.
+              <strong>{tt('Tips:', 'Tip:')}</strong> {tt('Bruk søkefeltet øverst (⌘+K) for å raskt finne kanaler, meldinger eller brukere.', 'Use the search field at the top (⌘+K) to quickly find channels, messages or users.')}
             </Typography>
           </Alert>
 
           <Typography variant="subtitle2" fontWeight={600} gutterBottom>
-            👆 Prøv dette:
+            {tt('👆 Prøv dette:', '👆 Try this:')}
           </Typography>
           <Paper
             sx={{
@@ -594,38 +593,38 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
             }}
           >
             <Typography variant="body2">
-              1. Klikk på en <strong>gruppe</strong> i venstre sidefelt<br />
-              2. Velg en <strong>kanal</strong> for å se meldinger<br />
-              3. Bruk <strong>søkefeltet</strong> for å finne "{getProfessionDisplayName().toLowerCase()}"
+              {tt('1. Klikk på en', '1. Click a')} <strong>{tt('gruppe', 'group')}</strong> {tt('i venstre sidefelt', 'in the left sidebar')}<br />
+              {tt('2. Velg en', '2. Select a')} <strong>{tt('kanal', 'channel')}</strong> {tt('for å se meldinger', 'to see messages')}<br />
+              {tt('3. Bruk', '3. Use the')} <strong>{tt('søkefeltet', 'search field')}</strong> {tt('for å finne', 'to find')} "{getProfessionDisplayName().toLowerCase()}"
             </Typography>
           </Paper>
         </Box>
       )
     },
     {
-      label: 'Sende meldinger',
+      label: tt('Sende meldinger', 'Send messages'),
       icon: <Send />,
       content: (
         <Box>
           <Typography variant="h6" gutterBottom fontWeight={600}>
-            💬 Kommuniser med fellesskapet
+            {tt('💬 Kommuniser med fellesskapet', '💬 Communicate with the community')}
           </Typography>
 
           <Typography variant="body1" paragraph>
-            Å sende meldinger er enkelt. Her er alt du trenger å vite:
+            {tt('Å sende meldinger er enkelt. Her er alt du trenger å vite:', 'Sending messages is easy. Here is everything you need to know:')}
           </Typography>
 
           <Accordion defaultExpanded>
             <AccordionSummary expandIcon={<ExpandMore />}>
-              <Typography fontWeight={600}>📝 Skrive en melding</Typography>
+              <Typography fontWeight={600}>{tt('📝 Skrive en melding', '📝 Write a message')}</Typography>
             </AccordionSummary>
             <AccordionDetails>
               <List dense>
                 <ListItem>
                   <ListItemIcon><Send fontSize="small" /></ListItemIcon>
-                  <ListItemText 
-                    primary="Skriv i tekstfeltet nederst"
-                    secondary="Trykk Enter for å sende, Shift+Enter for ny linje"
+                  <ListItemText
+                    primary={tt('Skriv i tekstfeltet nederst', 'Type in the text field at the bottom')}
+                    secondary={tt('Trykk Enter for å sende, Shift+Enter for ny linje', 'Press Enter to send, Shift+Enter for a new line')}
                   />
                 </ListItem>
               </List>
@@ -634,15 +633,15 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
 
           <Accordion>
             <AccordionSummary expandIcon={<ExpandMore />}>
-              <Typography fontWeight={600}>😊 Legge til emoji</Typography>
+              <Typography fontWeight={600}>{tt('😊 Legge til emoji', '😊 Add emoji')}</Typography>
             </AccordionSummary>
             <AccordionDetails>
               <List dense>
                 <ListItem>
                   <ListItemIcon><EmojiEmotions fontSize="small" /></ListItemIcon>
-                  <ListItemText 
-                    primary="Klikk på emoji-ikonet"
-                    secondary="Eller skriv :emoji_navn: for hurtigtilgang"
+                  <ListItemText
+                    primary={tt('Klikk på emoji-ikonet', 'Click the emoji icon')}
+                    secondary={tt('Eller skriv :emoji_navn: for hurtigtilgang', 'Or type :emoji_name: for quick access')}
                   />
                 </ListItem>
               </List>
@@ -651,15 +650,15 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
 
           <Accordion>
             <AccordionSummary expandIcon={<ExpandMore />}>
-              <Typography fontWeight={600}>📎 Dele filer</Typography>
+              <Typography fontWeight={600}>{tt('📎 Dele filer', '📎 Share files')}</Typography>
             </AccordionSummary>
             <AccordionDetails>
               <List dense>
                 <ListItem>
                   <ListItemIcon><AttachFile fontSize="small" /></ListItemIcon>
-                  <ListItemText 
-                    primary="Klikk på binders-ikonet"
-                    secondary="Last opp fra enhet eller velg fra Google Drive"
+                  <ListItemText
+                    primary={tt('Klikk på binders-ikonet', 'Click the paperclip icon')}
+                    secondary={tt('Last opp fra enhet eller velg fra Google Drive', 'Upload from your device or choose from Google Drive')}
                   />
                 </ListItem>
               </List>
@@ -668,15 +667,15 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
 
           <Accordion>
             <AccordionSummary expandIcon={<ExpandMore />}>
-              <Typography fontWeight={600}>↩️ Svare på meldinger</Typography>
+              <Typography fontWeight={600}>{tt('↩️ Svare på meldinger', '↩️ Reply to messages')}</Typography>
             </AccordionSummary>
             <AccordionDetails>
               <List dense>
                 <ListItem>
                   <ListItemIcon><Reply fontSize="small" /></ListItemIcon>
-                  <ListItemText 
-                    primary="Hold over melding → Klikk svar-ikonet"
-                    secondary="Starter en tråd under originalmeldingen"
+                  <ListItemText
+                    primary={tt('Hold over melding → Klikk svar-ikonet', 'Hover over a message → Click the reply icon')}
+                    secondary={tt('Starter en tråd under originalmeldingen', 'Starts a thread under the original message')}
                   />
                 </ListItem>
               </List>
@@ -685,110 +684,107 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
 
           <Alert severity="info" sx={{ mt: 2 }}>
             <Typography variant="body2">
-              <strong>@-nevning:</strong> Skriv @brukernavn for å varsle noen direkte.
-              De får en notifikasjon umiddelbart.
+              <strong>{tt('@-nevning:', '@-mention:')}</strong> {tt('Skriv @brukernavn for å varsle noen direkte. De får en notifikasjon umiddelbart.', 'Type @username to notify someone directly. They receive a notification immediately.')}
             </Typography>
           </Alert>
         </Box>
       )
     },
     {
-      label: 'Private samtaler',
+      label: tt('Private samtaler', 'Private conversations'),
       icon: <Chat />,
       content: (
         <Box>
           <Typography variant="h6" gutterBottom fontWeight={600}>
-            🔒 Direkte meldinger (DM)
+            {tt('🔒 Direkte meldinger (DM)', '🔒 Direct messages (DM)')}
           </Typography>
 
           <Typography variant="body1" paragraph>
-            Noen samtaler er best en-til-en. Slik starter du en privat samtale:
+            {tt('Noen samtaler er best en-til-en. Slik starter du en privat samtale:', 'Some conversations are best one-to-one. Here is how to start a private conversation:')}
           </Typography>
 
           <Paper sx={{ ...COMMUNITY_GUIDE_BASE_PAPER_SX, mb: 2 }}>
             <Typography variant="subtitle2" fontWeight={600} gutterBottom>
-              Metode 1: Via brukerprofil
+              {tt('Metode 1: Via brukerprofil', 'Method 1: Via user profile')}
             </Typography>
             <List dense>
               <ListItem>
-                <ListItemText primary="1. Klikk på brukerens avatar eller navn" />
+                <ListItemText primary={tt('1. Klikk på brukerens avatar eller navn', "1. Click the user's avatar or name")} />
               </ListItem>
               <ListItem>
-                <ListItemText primary="2. Klikk «Send melding» i profilen" />
+                <ListItemText primary={tt('2. Klikk «Send melding» i profilen', '2. Click "Send message" in the profile')} />
               </ListItem>
               <ListItem>
-                <ListItemText primary="3. Skriv din melding og send" />
+                <ListItemText primary={tt('3. Skriv din melding og send', '3. Write your message and send')} />
               </ListItem>
             </List>
           </Paper>
 
           <Paper sx={{ ...COMMUNITY_GUIDE_BASE_PAPER_SX, mb: 2 }}>
             <Typography variant="subtitle2" fontWeight={600} gutterBottom>
-              Metode 2: Via chat-ikon
+              {tt('Metode 2: Via chat-ikon', 'Method 2: Via chat icon')}
             </Typography>
             <List dense>
               <ListItem>
-                <ListItemText primary="1. Klikk chat-ikonet øverst i høyre hjørne" />
+                <ListItemText primary={tt('1. Klikk chat-ikonet øverst i høyre hjørne', '1. Click the chat icon in the top right corner')} />
               </ListItem>
               <ListItem>
-                <ListItemText primary="2. Søk etter brukeren" />
+                <ListItemText primary={tt('2. Søk etter brukeren', '2. Search for the user')} />
               </ListItem>
               <ListItem>
-                <ListItemText primary="3. Start samtalen" />
+                <ListItemText primary={tt('3. Start samtalen', '3. Start the conversation')} />
               </ListItem>
             </List>
           </Paper>
 
           <Alert severity="warning" icon={<Warning />}>
             <Typography variant="body2">
-              <strong>Respekter andres tid:</strong> Private meldinger bør være 
-              relevante og profesjonelle. Spam eller uønskede meldinger kan føre 
-              til blokkering.
+              <strong>{tt("Respekter andres tid:", "Respect others' time:")}</strong> {tt('Private meldinger bør være relevante og profesjonelle. Spam eller uønskede meldinger kan føre til blokkering.', 'Private messages should be relevant and professional. Spam or unwanted messages may lead to being blocked.')}
             </Typography>
           </Alert>
         </Box>
       )
     },
     {
-      label: 'Avstemninger & Mentorer',
+      label: tt('Avstemninger & Mentorer', 'Votes & Mentors'),
       icon: <HowToVote />,
       content: (
         <Box>
           <Typography variant="h6" gutterBottom fontWeight={600}>
-            🗳️ Delta aktivt
+            {tt('🗳️ Delta aktivt', '🗳️ Take an active part')}
           </Typography>
 
           <Divider sx={{ my: 2 }} />
 
           <Typography variant="subtitle1" fontWeight={600} gutterBottom>
             <HowToVote sx={{ mr: 1, verticalAlign: 'middle' }} />
-            Avstemninger
+            {tt('Avstemninger', 'Votes')}
           </Typography>
-          
+
           <Typography variant="body2" paragraph>
-            Stem på forslag, del dine meninger, og påvirk fellesskapets retning.
+            {tt('Stem på forslag, del dine meninger, og påvirk fellesskapets retning.', 'Vote on proposals, share your opinions, and influence the direction of the community.')}
           </Typography>
 
           <List dense>
             <ListItem>
               <ListItemIcon><CheckCircle color="success" fontSize="small" /></ListItemIcon>
-              <ListItemText 
-                primary="Finn avstemninger"
-                secondary="Klikk på 🗳️ ikonet i venstre sidefelt"
+              <ListItemText
+                primary={tt('Finn avstemninger', 'Find votes')}
+                secondary={tt('Klikk på 🗳️ ikonet i venstre sidefelt', 'Click the 🗳️ icon in the left sidebar')}
               />
             </ListItem>
             <ListItem>
               <ListItemIcon><CheckCircle color="success" fontSize="small" /></ListItemIcon>
-              <ListItemText 
-                primary="Avgi din stemme"
-                secondary="Klikk tommel opp/ned på forslagene"
+              <ListItemText
+                primary={tt('Avgi din stemme', 'Cast your vote')}
+                secondary={tt('Klikk tommel opp/ned på forslagene', 'Click thumbs up/down on the proposals')}
               />
             </ListItem>
             <ListItem>
               <ListItemIcon><CheckCircle color="success" fontSize="small" /></ListItemIcon>
-              <ListItemText 
-                primary="Opprett egen avstemning"
-                secondary="Klikk «+ Ny avstemning» for å starte"
+              <ListItemText
+                primary={tt('Opprett egen avstemning', 'Create your own vote')}
+                secondary={tt('Klikk «+ Ny avstemning» for å starte', 'Click "+ New vote" to get started')}
               />
             </ListItem>
           </List>
@@ -797,33 +793,33 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
 
           <Typography variant="subtitle1" fontWeight={600} gutterBottom>
             <School sx={{ mr: 1, verticalAlign: 'middle' }} />
-            Mentorer
+            {tt('Mentorer', 'Mentors')}
           </Typography>
-          
+
           <Typography variant="body2" paragraph>
-            Få hjelp fra erfarne {getProfessionDisplayName().toLowerCase()}-eksperter.
+            {tt('Få hjelp fra erfarne', 'Get help from experienced')} {getProfessionDisplayName().toLowerCase()} {tt('eksperter.', 'experts.')}
           </Typography>
 
           <List dense>
             <ListItem>
               <ListItemIcon><Help color="primary" fontSize="small" /></ListItemIcon>
-              <ListItemText 
-                primary="Still spørsmål"
-                secondary="Klikk på 🎓 Mentor-ikonet og skriv spørsmålet ditt"
+              <ListItemText
+                primary={tt('Still spørsmål', 'Ask questions')}
+                secondary={tt('Klikk på 🎓 Mentor-ikonet og skriv spørsmålet ditt', 'Click the 🎓 Mentor icon and write your question')}
               />
             </ListItem>
             <ListItem>
               <ListItemIcon><QuestionAnswer color="primary" fontSize="small" /></ListItemIcon>
-              <ListItemText 
-                primary="Se ubesvarte spørsmål"
-                secondary="Hjelp andre ved å svare på åpne spørsmål"
+              <ListItemText
+                primary={tt('Se ubesvarte spørsmål', 'View unanswered questions')}
+                secondary={tt('Hjelp andre ved å svare på åpne spørsmål', 'Help others by answering open questions')}
               />
             </ListItem>
             <ListItem>
               <ListItemIcon><Star color="warning" fontSize="small" /></ListItemIcon>
-              <ListItemText 
-                primary="Bli mentor"
-                secondary="Søk om å bli mentor når du har nok erfaring"
+              <ListItemText
+                primary={tt('Bli mentor', 'Become a mentor')}
+                secondary={tt('Søk om å bli mentor når du har nok erfaring', 'Apply to become a mentor once you have enough experience')}
               />
             </ListItem>
           </List>
@@ -831,92 +827,90 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
       )
     },
     {
-      label: 'Merker & engasjement',
+      label: tt('Merker & engasjement', 'Badges & engagement'),
       icon: <EmojiEvents />,
       content: (
         <Box>
           <Typography variant="h6" gutterBottom fontWeight={600}>
-            🏆 Tjene anerkjennelse
+            {tt('🏆 Tjene anerkjennelse', '🏆 Earn recognition')}
           </Typography>
 
           <Typography variant="body1" paragraph>
-            Jo mer du deltar, jo flere merker og poeng får du.
-            Her er hvordan systemet fungerer:
+            {tt('Jo mer du deltar, jo flere merker og poeng får du. Her er hvordan systemet fungerer:', 'The more you participate, the more badges and points you earn. Here is how the system works:')}
           </Typography>
 
           <Table size="small" sx={{ mb: 2 }}>
             <TableBody>
               <TableRow>
                 <TableCell sx={{ fontWeight: 600 }}>
-                  <Chip icon={<Favorite />} label="+1 poeng" size="small" color="error" />
+                  <Chip icon={<Favorite />} label={tt('+1 poeng', '+1 point')} size="small" color="error" />
                 </TableCell>
-                <TableCell>Gi en reaksjon på en melding</TableCell>
+                <TableCell>{tt('Gi en reaksjon på en melding', 'React to a message')}</TableCell>
               </TableRow>
               <TableRow>
                 <TableCell sx={{ fontWeight: 600 }}>
-                  <Chip icon={<Send />} label="+2 poeng" size="small" color="primary" />
+                  <Chip icon={<Send />} label={tt('+2 poeng', '+2 points')} size="small" color="primary" />
                 </TableCell>
-                <TableCell>Send en melding</TableCell>
+                <TableCell>{tt('Send en melding', 'Send a message')}</TableCell>
               </TableRow>
               <TableRow>
                 <TableCell sx={{ fontWeight: 600 }}>
-                  <Chip icon={<Reply />} label="+3 poeng" size="small" color="secondary" />
+                  <Chip icon={<Reply />} label={tt('+3 poeng', '+3 points')} size="small" color="secondary" />
                 </TableCell>
-                <TableCell>Svar i en tråd</TableCell>
+                <TableCell>{tt('Svar i en tråd', 'Reply in a thread')}</TableCell>
               </TableRow>
               <TableRow>
                 <TableCell sx={{ fontWeight: 600 }}>
-                  <Chip icon={<HowToVote />} label="+5 poeng" size="small" color="success" />
+                  <Chip icon={<HowToVote />} label={tt('+5 poeng', '+5 points')} size="small" color="success" />
                 </TableCell>
-                <TableCell>Delta i en avstemning</TableCell>
+                <TableCell>{tt('Delta i en avstemning', 'Take part in a vote')}</TableCell>
               </TableRow>
               <TableRow>
                 <TableCell sx={{ fontWeight: 600 }}>
-                  <Chip icon={<School />} label="+10 poeng" size="small" color="warning" />
+                  <Chip icon={<School />} label={tt('+10 poeng', '+10 points')} size="small" color="warning" />
                 </TableCell>
-                <TableCell>Svar på et mentor-spørsmål</TableCell>
+                <TableCell>{tt('Svar på et mentor-spørsmål', 'Answer a mentor question')}</TableCell>
               </TableRow>
             </TableBody>
           </Table>
 
           <Alert severity="success" icon={<EmojiEvents />} sx={{ mb: 2 }}>
             <Typography variant="body2">
-              <strong>Merker:</strong> Du låser opp merker automatisk når du
-              når visse milepæler. Se alle merkene dine i profilen din!
+              <strong>{tt('Merker:', 'Badges:')}</strong> {tt('Du låser opp merker automatisk når du når visse milepæler. Se alle merkene dine i profilen din!', 'You unlock badges automatically when you reach certain milestones. See all your badges in your profile!')}
             </Typography>
           </Alert>
 
           <Typography variant="subtitle2" fontWeight={600} gutterBottom>
-            📈 Dine første mål:
+            {tt('📈 Dine første mål:', '📈 Your first goals:')}
           </Typography>
           <List dense>
             <ListItem>
               <ListItemIcon><CheckCircle color="disabled" fontSize="small" /></ListItemIcon>
-              <ListItemText primary="Send din første melding" secondary="Utstedes: Velkommen-merke" />
+              <ListItemText primary={tt('Send din første melding', 'Send your first message')} secondary={tt('Utstedes: Velkommen-merke', 'Awarded: Welcome badge')} />
             </ListItem>
             <ListItem>
               <ListItemIcon><CheckCircle color="disabled" fontSize="small" /></ListItemIcon>
-              <ListItemText primary="Gi 10 reaksjoner" secondary="Utstedes: Supporter-merke" />
+              <ListItemText primary={tt('Gi 10 reaksjoner', 'Give 10 reactions')} secondary={tt('Utstedes: Supporter-merke', 'Awarded: Supporter badge')} />
             </ListItem>
             <ListItem>
               <ListItemIcon><CheckCircle color="disabled" fontSize="small" /></ListItemIcon>
-              <ListItemText primary="Delta i 3 avstemninger" secondary="Utstedes: Demokrat-merke" />
+              <ListItemText primary={tt('Delta i 3 avstemninger', 'Take part in 3 votes')} secondary={tt('Utstedes: Demokrat-merke', 'Awarded: Democrat badge')} />
             </ListItem>
           </List>
         </Box>
       )
     },
     {
-      label: 'Sjekkliste & Tips',
+      label: tt('Sjekkliste & Tips', 'Checklist & Tips'),
       icon: <CheckCircle />,
       content: (
         <Box>
           <Typography variant="h6" gutterBottom fontWeight={600}>
-            ✅ Du er klar til å starte!
+            {tt('✅ Du er klar til å starte!', '✅ You are ready to get started!')}
           </Typography>
 
           <Typography variant="body1" paragraph>
-            Her er en oppsummering og noen siste tips:
+            {tt('Her er en oppsummering og noen siste tips:', 'Here is a summary and some final tips:')}
           </Typography>
 
           <Paper
@@ -929,52 +923,52 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
             }}
           >
             <Typography variant="subtitle2" fontWeight={600} gutterBottom>
-              📋 Kom-i-gang sjekkliste:
+              {tt('📋 Kom-i-gang sjekkliste:', '📋 Getting-started checklist:')}
             </Typography>
             <List dense>
               <ListItem>
                 <ListItemIcon><Checkbox size="small" /></ListItemIcon>
-                <ListItemText primary="Bli med i en gruppe relatert til din profesjon" />
+                <ListItemText primary={tt('Bli med i en gruppe relatert til din profesjon', 'Join a group related to your profession')} />
               </ListItem>
               <ListItem>
                 <ListItemIcon><Checkbox size="small" /></ListItemIcon>
-                <ListItemText primary="Send din første melding i #presentasjoner" />
+                <ListItemText primary={tt('Send din første melding i #presentasjoner', 'Send your first message in #introductions')} />
               </ListItem>
               <ListItem>
                 <ListItemIcon><Checkbox size="small" /></ListItemIcon>
-                <ListItemText primary="Gi en reaksjon på en annens melding" />
+                <ListItemText primary={tt('Gi en reaksjon på en annens melding', "React to someone else's message")} />
               </ListItem>
               <ListItem>
                 <ListItemIcon><Checkbox size="small" /></ListItemIcon>
-                <ListItemText primary="Sjekk ut en aktiv avstemning" />
+                <ListItemText primary={tt('Sjekk ut en aktiv avstemning', 'Check out an active vote')} />
               </ListItem>
               <ListItem>
                 <ListItemIcon><Checkbox size="small" /></ListItemIcon>
-                <ListItemText primary="Still et spørsmål til en mentor (valgfritt)" />
+                <ListItemText primary={tt('Still et spørsmål til en mentor (valgfritt)', 'Ask a mentor a question (optional)')} />
               </ListItem>
             </List>
           </Paper>
 
           <Alert severity="error" icon={<Warning />} sx={{ mb: 2 }}>
             <Typography variant="subtitle2" fontWeight={600}>
-              ⚠️ Vanlige feil å unngå:
+              {tt('⚠️ Vanlige feil å unngå:', '⚠️ Common mistakes to avoid:')}
             </Typography>
             <List dense sx={{ mb: 0, pb: 0 }}>
               <ListItem sx={{ py: 0.5 }}>
-                <ListItemText 
-                  primary="Ikke spam samme melding i flere kanaler" 
+                <ListItemText
+                  primary={tt('Ikke spam samme melding i flere kanaler', 'Do not spam the same message across multiple channels')}
                   primaryTypographyProps={{ variant: 'body2' }}
                 />
               </ListItem>
               <ListItem sx={{ py: 0.5 }}>
-                <ListItemText 
-                  primary="Unngå selvpromotering uten å gi verdi først" 
+                <ListItemText
+                  primary={tt('Unngå selvpromotering uten å gi verdi først', 'Avoid self-promotion without providing value first')}
                   primaryTypographyProps={{ variant: 'body2' }}
                 />
               </ListItem>
               <ListItem sx={{ py: 0.5 }}>
-                <ListItemText 
-                  primary="Ikke del andres innhold uten tillatelse" 
+                <ListItemText
+                  primary={tt('Ikke del andres innhold uten tillatelse', "Do not share others' content without permission")}
                   primaryTypographyProps={{ variant: 'body2' }}
                 />
               </ListItem>
@@ -990,25 +984,25 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
             }}
           >
             <Typography variant="subtitle2" fontWeight={600} gutterBottom>
-              🔑 Hurtigtaster:
+              {tt('🔑 Hurtigtaster:', '🔑 Keyboard shortcuts:')}
             </Typography>
             <Table size="small">
               <TableBody>
                 <TableRow>
                   <TableCell sx={{ fontWeight: 600, fontFamily: 'monospace' }}>⌘ + K</TableCell>
-                  <TableCell>Åpne søk</TableCell>
+                  <TableCell>{tt('Åpne søk', 'Open search')}</TableCell>
                 </TableRow>
                 <TableRow>
                   <TableCell sx={{ fontWeight: 600, fontFamily: 'monospace' }}>⌘ + ?</TableCell>
-                  <TableCell>Åpne denne guiden</TableCell>
+                  <TableCell>{tt('Åpne denne guiden', 'Open this guide')}</TableCell>
                 </TableRow>
                 <TableRow>
                   <TableCell sx={{ fontWeight: 600, fontFamily: 'monospace' }}>Shift + Enter</TableCell>
-                  <TableCell>Ny linje i melding</TableCell>
+                  <TableCell>{tt('Ny linje i melding', 'New line in a message')}</TableCell>
                 </TableRow>
                 <TableRow>
                   <TableCell sx={{ fontWeight: 600, fontFamily: 'monospace' }}>Esc</TableCell>
-                  <TableCell>Lukk dialog/modal</TableCell>
+                  <TableCell>{tt('Lukk dialog/modal', 'Close dialog/modal')}</TableCell>
                 </TableRow>
               </TableBody>
             </Table>
@@ -1017,7 +1011,7 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
           <Divider sx={{ my: 3 }} />
 
           <Typography variant="h6" gutterBottom fontWeight={600}>
-            📖 Komplett eksempel: "Slik blir du aktiv på 5 minutter"
+            {tt('📖 Komplett eksempel: "Slik blir du aktiv på 5 minutter"', '📖 Complete example: "How to get active in 5 minutes"')}
           </Typography>
 
           <Paper
@@ -1027,12 +1021,12 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
             }}
           >
             <Typography variant="body2" component="div">
-              <strong>Steg 1:</strong> Klikk på gruppen "{getProfessionDisplayName()}-fellesskapet" i venstre meny.<br /><br />
-              <strong>Steg 2:</strong> Velg kanalen "#presentasjoner".<br /><br />
-              <strong>Steg 3:</strong> Skriv: "Hei alle! Jeg heter [navn] og jobber som {getProfessionDisplayName().toLowerCase()} i [by]. Gleder meg til å bli kjent med dere! 📸"<br /><br />
-              <strong>Steg 4:</strong> Trykk Enter for å sende.<br /><br />
-              <strong>Steg 5:</strong> Scroll opp og gi en 👍 på noen andres presentasjon.<br /><br />
-              <strong>Gratulerer!</strong> Du har nå sendt din første melding og gitt din første reaksjon. Du er offisielt en del av fellesskapet! 🎉
+              <strong>{tt('Steg 1:', 'Step 1:')}</strong> {tt('Klikk på gruppen', 'Click the group')} "{getProfessionDisplayName()}{tt('-fellesskapet', ' community')}" {tt('i venstre meny.', 'in the left menu.')}<br /><br />
+              <strong>{tt('Steg 2:', 'Step 2:')}</strong> {tt('Velg kanalen "#presentasjoner".', 'Select the channel "#introductions".')}<br /><br />
+              <strong>{tt('Steg 3:', 'Step 3:')}</strong> {tt('Skriv: "Hei alle! Jeg heter [navn] og jobber som', 'Write: "Hi everyone! My name is [name] and I work as a')} {getProfessionDisplayName().toLowerCase()} {tt('i [by]. Gleder meg til å bli kjent med dere! 📸"', 'in [city]. Looking forward to getting to know you all! 📸"')}<br /><br />
+              <strong>{tt('Steg 4:', 'Step 4:')}</strong> {tt('Trykk Enter for å sende.', 'Press Enter to send.')}<br /><br />
+              <strong>{tt('Steg 5:', 'Step 5:')}</strong> {tt('Scroll opp og gi en 👍 på noen andres presentasjon.', "Scroll up and give a 👍 to someone else's introduction.")}<br /><br />
+              <strong>{tt('Gratulerer!', 'Congratulations!')}</strong> {tt('Du har nå sendt din første melding og gitt din første reaksjon. Du er offisielt en del av fellesskapet! 🎉', 'You have now sent your first message and given your first reaction. You are officially part of the community! 🎉')}
             </Typography>
           </Paper>
         </Box>
@@ -1107,7 +1101,7 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
           </Box>
           <Box>
             <Chip
-              label="Fellesskapsguide"
+              label={tt('Fellesskapsguide', 'Community guide')}
               size="small"
               sx={{
                 mb: 1,
@@ -1127,7 +1121,7 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
                 color: COMMUNITY_GUIDE_TEXT,
               }}
             >
-              Velkommen til Fellesskapet
+              {tt('Velkommen til Fellesskapet', 'Welcome to the Community')}
             </Typography>
             <Typography
               variant="body2"
@@ -1143,7 +1137,7 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
               <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', color: COMMUNITY_GUIDE_ACCENT_BRIGHT }}>
                 {getProfessionIcon()}
               </Box>
-              Din komplette guide til CreatorHub Norge Community, tilpasset {getProfessionDisplayName().toLowerCase()}-flyten.
+              {tt('Din komplette guide til CreatorHub Norge Community, tilpasset', 'Your complete guide to CreatorHub Norge Community, tailored to the')} {getProfessionDisplayName().toLowerCase()}{tt('-flyten.', ' flow.')}
             </Typography>
           </Box>
         </Box>
@@ -1196,7 +1190,7 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
                 optional={
                   index === tutorialSteps.length - 1 ? (
                     <Typography variant="caption" sx={{ color: COMMUNITY_GUIDE_MUTED }}>
-                      Siste steg
+                      {tt('Siste steg', 'Final step')}
                     </Typography>
                   ) : null
                 }
@@ -1264,7 +1258,7 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
                       },
                     }}
                   >
-                    Tilbake
+                    {tt('Tilbake', 'Back')}
                   </Button>
                   <Button
                     variant="contained"
@@ -1282,7 +1276,7 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
                       },
                     }}
                   >
-                    {index === tutorialSteps.length - 1 ? 'Fullfør' : 'Neste'}
+                    {index === tutorialSteps.length - 1 ? tt('Fullfør', 'Finish') : tt('Neste', 'Next')}
                   </Button>
                 </Box>
               </StepContent>
@@ -1312,16 +1306,15 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
             >
               <EmojiEvents sx={{ fontSize: 64, color: COMMUNITY_GUIDE_ACCENT_BRIGHT, mb: 2 }} />
               <Typography variant="h5" fontWeight={700} gutterBottom sx={{ color: COMMUNITY_GUIDE_TEXT }}>
-                🎉 Gratulerer!
+                {tt('🎉 Gratulerer!', '🎉 Congratulations!')}
               </Typography>
               <Typography variant="body1" sx={{ color: COMMUNITY_GUIDE_MUTED }} paragraph>
-                Du har fullført guiden og er klar til å bli en aktiv del av fellesskapet.
+                {tt('Du har fullført guiden og er klar til å bli en aktiv del av fellesskapet.', 'You have completed the guide and are ready to become an active part of the community.')}
               </Typography>
               <Alert severity="info" sx={{ textAlign: 'left', maxWidth: 400, mx: 'auto' }}>
                 <Typography variant="body2">
-                  <strong>Åpne guiden igjen:</strong><br />
-                  Klikk på <Help sx={{ fontSize: 14, verticalAlign: 'middle' }} /> Hjelp-ikonet
-                  eller trykk <code>⌘+?</code>
+                  <strong>{tt('Åpne guiden igjen:', 'Open the guide again:')}</strong><br />
+                  {tt('Klikk på', 'Click the')} <Help sx={{ fontSize: 14, verticalAlign: 'middle' }} /> {tt('Hjelp-ikonet eller trykk', 'Help icon or press')} <code>⌘+?</code>
                 </Typography>
               </Alert>
             </Box>
@@ -1357,7 +1350,7 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
           }
           label={
             <Typography variant="body2" sx={{ color: COMMUNITY_GUIDE_MUTED }}>
-              Ikke vis denne guiden automatisk igjen
+              {tt('Ikke vis denne guiden automatisk igjen', 'Do not show this guide automatically again')}
             </Typography>
           }
         />
@@ -1385,7 +1378,7 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
               },
             }}
           >
-            {activeStep === tutorialSteps.length ? 'Lukk' : 'Hopp over'}
+            {activeStep === tutorialSteps.length ? tt('Lukk', 'Close') : tt('Hopp over', 'Skip')}
           </Button>
           {activeStep < tutorialSteps.length && (
             <Button
@@ -1404,7 +1397,7 @@ export const CommunityTutorial: React.FC<CommunityTutorialProps> = ({
                 },
               }}
             >
-              Gå til slutt
+              {tt('Gå til slutt', 'Go to end')}
             </Button>
           )}
         </Box>

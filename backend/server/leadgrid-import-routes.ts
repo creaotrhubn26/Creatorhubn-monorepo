@@ -48,6 +48,10 @@ const MAX_PREVIEW_ROWS = 20;
 const importUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_IMPORT_BYTES },
+  fileFilter: (_req, file, cb) => {
+    if (/^(text\/csv|text\/plain|application\/vnd\.|application\/csv|application\/octet-stream)/.test(file.mimetype)) cb(null, true);
+    else cb(new Error("Kun CSV- og Excel-filer er tillatt") as any, false);
+  },
 });
 
 type SessionData = { userId: string; role?: string; email?: string };

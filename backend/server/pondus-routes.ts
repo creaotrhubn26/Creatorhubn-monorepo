@@ -222,7 +222,7 @@ export function registerPondusRoutes(deps: PondusRoutesDeps): void {
       console.error("[pondus] templates GET failed:", err);
       return res
         .status(500)
-        .json({ error: "pondus_templates_failed", detail: String((err as Error).message) });
+        .json({ error: "pondus_templates_failed", detail: String("internal_error") });
     }
   });
 
@@ -248,7 +248,7 @@ export function registerPondusRoutes(deps: PondusRoutesDeps): void {
           LIMIT 1`,
         [id],
       );
-      if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      if (!r.rows.length) return res.status(404).json({ error: "not_found" });
       const row = r.rows[0] as Record<string, unknown>;
       // Synlighet — vanlig bruker kan bare se publiserte + Leadgrid/egen org
       if (!admin) {
@@ -262,7 +262,7 @@ export function registerPondusRoutes(deps: PondusRoutesDeps): void {
       console.error("[pondus] template GET failed:", err);
       return res
         .status(500)
-        .json({ error: "pondus_template_failed", detail: String((err as Error).message) });
+        .json({ error: "pondus_template_failed", detail: String("internal_error") });
     }
   });
 
@@ -328,7 +328,7 @@ export function registerPondusRoutes(deps: PondusRoutesDeps): void {
       console.error("[pondus] template POST failed:", err);
       return res
         .status(500)
-        .json({ error: "pondus_template_create_failed", detail: String((err as Error).message) });
+        .json({ error: "pondus_template_create_failed", detail: String("internal_error") });
     }
   });
 
@@ -355,7 +355,7 @@ export function registerPondusRoutes(deps: PondusRoutesDeps): void {
           LIMIT 1`,
         [id],
       );
-      if (existing.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      if (!existing.rows.length) return res.status(404).json({ error: "not_found" });
       const currentRow = existing.rows[0] as Record<string, unknown>;
 
       // Audit-snapshot: forrige versjon slik den lå
@@ -420,7 +420,7 @@ export function registerPondusRoutes(deps: PondusRoutesDeps): void {
       console.error("[pondus] template PATCH failed:", err);
       return res
         .status(500)
-        .json({ error: "pondus_template_update_failed", detail: String((err as Error).message) });
+        .json({ error: "pondus_template_update_failed", detail: String("internal_error") });
     }
   });
 
@@ -465,7 +465,7 @@ export function registerPondusRoutes(deps: PondusRoutesDeps): void {
       console.error("[pondus] template publish failed:", err);
       return res
         .status(500)
-        .json({ error: "pondus_template_publish_failed", detail: String((err as Error).message) });
+        .json({ error: "pondus_template_publish_failed", detail: String("internal_error") });
     }
   });
 
@@ -488,7 +488,7 @@ export function registerPondusRoutes(deps: PondusRoutesDeps): void {
         `SELECT created_by FROM pondus_templates WHERE id = $1 LIMIT 1`,
         [id],
       );
-      if (existing.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      if (!existing.rows.length) return res.status(404).json({ error: "not_found" });
       const createdBy = existing.rows[0]?.created_by;
 
       if (createdBy && String(createdBy) === session.userId) {
@@ -512,7 +512,7 @@ export function registerPondusRoutes(deps: PondusRoutesDeps): void {
       console.error("[pondus] template DELETE failed:", err);
       return res
         .status(500)
-        .json({ error: "pondus_template_delete_failed", detail: String((err as Error).message) });
+        .json({ error: "pondus_template_delete_failed", detail: String("internal_error") });
     }
   });
 
@@ -546,7 +546,7 @@ export function registerPondusRoutes(deps: PondusRoutesDeps): void {
       console.error("[pondus] versions GET failed:", err);
       return res
         .status(500)
-        .json({ error: "pondus_versions_failed", detail: String((err as Error).message) });
+        .json({ error: "pondus_versions_failed", detail: String("internal_error") });
     }
   });
 
@@ -575,7 +575,7 @@ export function registerPondusRoutes(deps: PondusRoutesDeps): void {
           LIMIT 1`,
         [id, versionParam],
       );
-      if (snap.rowCount === 0) {
+      if (!snap.rows.length) {
         return res.status(404).json({ error: "version_not_found" });
       }
       const snapshot = snap.rows[0]?.snapshot as Record<string, unknown> | null;
@@ -590,7 +590,7 @@ export function registerPondusRoutes(deps: PondusRoutesDeps): void {
           LIMIT 1`,
         [id],
       );
-      if (cur.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      if (!cur.rows.length) return res.status(404).json({ error: "not_found" });
       const currentRow = cur.rows[0] as Record<string, unknown>;
 
       await pool.query(
@@ -634,7 +634,7 @@ export function registerPondusRoutes(deps: PondusRoutesDeps): void {
       console.error("[pondus] template rollback failed:", err);
       return res
         .status(500)
-        .json({ error: "pondus_rollback_failed", detail: String((err as Error).message) });
+        .json({ error: "pondus_rollback_failed", detail: String("internal_error") });
     }
   });
 
@@ -682,7 +682,7 @@ export function registerPondusRoutes(deps: PondusRoutesDeps): void {
       console.error("[pondus] content-by-step GET failed:", err);
       return res
         .status(500)
-        .json({ error: "pondus_content_failed", detail: String((err as Error).message) });
+        .json({ error: "pondus_content_failed", detail: String("internal_error") });
     }
   });
 
@@ -732,7 +732,7 @@ export function registerPondusRoutes(deps: PondusRoutesDeps): void {
       console.error("[pondus] content-by-step POST failed:", err);
       return res
         .status(500)
-        .json({ error: "pondus_content_create_failed", detail: String((err as Error).message) });
+        .json({ error: "pondus_content_create_failed", detail: String("internal_error") });
     }
   });
 }
@@ -814,7 +814,7 @@ export function registerPondusUsageRoutes(deps: PondusRoutesDeps): void {
       });
     } catch (err) {
       console.error("[pondus] usage POST failed:", err);
-      return res.status(500).json({ error: "pondus_usage_failed", detail: String((err as Error).message) });
+      return res.status(500).json({ error: "pondus_usage_failed", detail: String("internal_error") });
     }
   });
 
@@ -872,7 +872,7 @@ export function registerPondusUsageRoutes(deps: PondusRoutesDeps): void {
       });
     } catch (err) {
       console.error("[pondus] usage stats failed:", err);
-      return res.status(500).json({ error: "pondus_usage_stats_failed", detail: String((err as Error).message) });
+      return res.status(500).json({ error: "pondus_usage_stats_failed", detail: String("internal_error") });
     }
   });
 }

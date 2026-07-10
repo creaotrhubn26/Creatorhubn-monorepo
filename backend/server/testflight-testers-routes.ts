@@ -321,7 +321,7 @@ export function registerTestflightTestersRoutes({ app, pool, activeSessions }: D
       res.json({ ok: true, agreement_id: created.agreement_id });
     } catch (e: any) {
       console.error("[testflight nda]", e);
-      res.status(500).json({ error: e.message ?? "Kunne ikke sende NDA" });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 
@@ -377,7 +377,7 @@ export function registerTestflightTestersRoutes({ app, pool, activeSessions }: D
       res.json({ ok: true, agreement_id: created.agreement_id });
     } catch (e: any) {
       console.error("[testflight intent]", e);
-      res.status(500).json({ error: e.message ?? "Kunne ikke sende intent" });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 
@@ -641,7 +641,7 @@ export function registerTestflightTestersRoutes({ app, pool, activeSessions }: D
         [durationMs, (e.message ?? String(e)).slice(0, 500)],
       );
       console.error("[ASC sync]", e);
-      res.status(500).json({ error: e.message ?? "Sync feilet" });
+      res.status(500).json({ error: "internal_error" });
     }
   });
 

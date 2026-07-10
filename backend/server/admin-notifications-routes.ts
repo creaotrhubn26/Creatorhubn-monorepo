@@ -341,7 +341,7 @@ export function setupAdminNotificationsRoutes(deps: AdminNotificationsDeps): voi
         `SELECT * FROM admin_notifications WHERE id = $1 LIMIT 1`,
         [req.params.id],
       );
-      if (n.rowCount === 0) return res.status(404).json({ error: "Ikke funnet" });
+      if (!n.rows.length) return res.status(404).json({ error: "Ikke funnet" });
       const notif = n.rows[0];
 
       let result = "no_action";

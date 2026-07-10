@@ -124,7 +124,8 @@ export function setupBrandingRoutes(deps: BrandingRoutesDeps): void {
       // (workspaceCategoryFor) får en kanonisk verdi. Onboarding-wizarden sender
       // profesjon hit, så dette lukker NULL-profesjon-hullet uten frontend-endring.
       const canonProfession = canonicalizeProfession(normalized.profession);
-      if (canonProfession) {
+      // 'enterprise' settes aldri self-serve (ville gitt gratis team-tilgang).
+      if (canonProfession && canonProfession !== "enterprise") {
         // Profesjon er GATED: settes kun første gang. COALESCE(NULLIF(...))
         // beholder eksisterende profesjon, så branding-lagring aldri blir en
         // bakvei for å bytte profesjon (endring krever betaling/Enterprise).
@@ -186,14 +187,12 @@ export function setupBrandingRoutes(deps: BrandingRoutesDeps): void {
     "/api/branding/upload-logo",
     brandingLogoUpload.single("logo"),
     async (req, res) => {
-      if (!requireUserSession(req, res)) return;
-      const userId =
-        readString(req.body?.userId) ||
-        readString(req.body?.user_id) ||
-        readString(req.headers["x-user-id"]);
+      const _brandSession = requireUserSession(req, res);
+      if (!_brandSession) return;
+      const userId = _brandSession.userId;
 
       if (!userId || !req.file) {
-        res.status(400).json({ error: "userId and logo are required" });
+        res.status(400).json({ error: "logo is required" });
         return;
       }
 

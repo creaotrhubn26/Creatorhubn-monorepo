@@ -23,6 +23,7 @@ import EditIcon from "@mui/icons-material/Edit";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import RestoreIcon from "@mui/icons-material/Restore";
 import AddIcon from "@mui/icons-material/Add";
+import DOMPurify from 'dompurify';
 
 interface Branding {
   org_key: string | null;
@@ -435,7 +436,7 @@ function BrandingPreview({ branding, large }: { branding: Branding; large?: bool
         {/* Footer */}
         <Box sx={{ px: 3, py: 2, borderTop: "1px solid #eee",
                     color: "#888", fontSize: 11, lineHeight: 1.55 }}>
-          {branding.footer_html && <Box dangerouslySetInnerHTML={{ __html: branding.footer_html }} />}
+          {branding.footer_html && <Box dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(branding.footer_html) }} />}
           {branding.footer_address && <Box sx={{ mt: 0.5 }}>{branding.footer_address}</Box>}
           <Box sx={{ mt: 1, color: "#aaa", fontSize: 10 }}>
             Sendt av {branding.brand_name} via Leadgrid.

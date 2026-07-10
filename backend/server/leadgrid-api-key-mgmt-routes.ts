@@ -171,7 +171,7 @@ export function registerLeadgridApiKeyMgmtRoutes(deps: Deps): void {
       });
     } catch (err) {
       console.warn("[api-key-mgmt] create feilet:", err);
-      res.status(500).json({ error: "create_failed", detail: String(err) });
+      res.status(500).json({ error: "create_failed", detail: "internal_error" });
     }
   });
 
@@ -202,7 +202,7 @@ export function registerLeadgridApiKeyMgmtRoutes(deps: Deps): void {
       res.json({ data: r.rows });
     } catch (err) {
       console.warn("[api-key-mgmt] list feilet:", err);
-      res.status(500).json({ error: "list_failed", detail: String(err) });
+      res.status(500).json({ error: "list_failed" });
     }
   });
 
@@ -241,7 +241,7 @@ export function registerLeadgridApiKeyMgmtRoutes(deps: Deps): void {
       res.json({ ok: true, id: r.rows[0].id });
     } catch (err) {
       console.warn("[api-key-mgmt] revoke feilet:", err);
-      res.status(500).json({ error: "revoke_failed", detail: String(err) });
+      res.status(500).json({ error: "revoke_failed" });
     }
   });
 }

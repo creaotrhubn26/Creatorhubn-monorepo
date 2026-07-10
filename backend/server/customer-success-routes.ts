@@ -14,6 +14,7 @@
  *          (cron-token-gated bulk-snapshot)
  */
 
+import crypto from "crypto";
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import {
@@ -106,7 +107,7 @@ export function setupCustomerSuccessRoutes(deps: Deps): void {
         });
         return res.json({ ok: true });
       } catch (err) {
-        return res.status(500).json({ error: "update_failed", detail: String(err) });
+        return res.status(500).json({ error: "update_failed", detail: "internal_error" });
       }
     });
 
@@ -117,7 +118,7 @@ export function setupCustomerSuccessRoutes(deps: Deps): void {
         const h = await computeHealthForUser(pool, req.params.userId);
         return res.json(h);
       } catch (err) {
-        return res.status(500).json({ error: "health_failed", detail: String(err) });
+        return res.status(500).json({ error: "health_failed", detail: "internal_error" });
       }
     });
 
@@ -129,7 +130,7 @@ export function setupCustomerSuccessRoutes(deps: Deps): void {
         const r = await listInteractions(pool, req.params.userId, limit);
         return res.json({ interactions: r });
       } catch (err) {
-        return res.status(500).json({ error: "interactions_failed", detail: String(err) });
+        return res.status(500).json({ error: "interactions_failed", detail: "internal_error" });
       }
     });
 
@@ -167,7 +168,7 @@ export function setupCustomerSuccessRoutes(deps: Deps): void {
         });
         return res.json(r);
       } catch (err) {
-        return res.status(500).json({ error: "create_failed", detail: String(err) });
+        return res.status(500).json({ error: "create_failed", detail: "internal_error" });
       }
     });
 
@@ -176,7 +177,7 @@ export function setupCustomerSuccessRoutes(deps: Deps): void {
       const cronToken = req.headers['x-cron-trigger-token'] as string | undefined;
       const expected = process.env.CUSTOMER_SUCCESS_SNAPSHOT_TOKEN
         || process.env.CRON_TRIGGER_TOKEN;
-      const tokenValid = expected && cronToken === expected;
+      const tokenValid = !!expected && !!cronToken && expected.length === cronToken.length && crypto.timingSafeEqual(Buffer.from(cronToken), Buffer.from(expected));
       if (!tokenValid) {
         const session = requireAdmin(req, res);
         if (!session) return;
@@ -185,7 +186,7 @@ export function setupCustomerSuccessRoutes(deps: Deps): void {
         const r = await captureSnapshotsForAllActiveCustomers(pool);
         return res.json(r);
       } catch (err) {
-        return res.status(500).json({ error: "snapshot_failed", detail: String(err) });
+        return res.status(500).json({ error: "snapshot_failed", detail: "internal_error" });
       }
     });
   }

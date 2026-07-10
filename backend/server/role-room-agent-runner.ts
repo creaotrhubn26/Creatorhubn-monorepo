@@ -322,7 +322,7 @@ export async function invokeRoleRoomAgent(
       threadId: resolvedThreadId,
       role: 'user',
       text: input.userMessage,
-    });
+    }).catch((e: unknown) => console.error("[agent-runner] appendMessage failed:", e));
   }
 
   const cacheEnabled = process.env.ROLE_ROOM_AGENT_CACHE !== 'off';
@@ -366,7 +366,7 @@ export async function invokeRoleRoomAgent(
           role: 'assistant',
           text: cachedResponse.text,
           response: cachedResponse,
-        });
+        }).catch((e: unknown) => console.error("[agent-runner] appendMessage failed:", e));
       }
       return cachedResponse;
     }
@@ -494,7 +494,7 @@ export async function invokeRoleRoomAgent(
         role: 'assistant',
         text: depseudonymized,
         response,
-      });
+      }).catch((e: unknown) => console.error("[agent-runner] appendMessage failed:", e));
     }
 
     return response;

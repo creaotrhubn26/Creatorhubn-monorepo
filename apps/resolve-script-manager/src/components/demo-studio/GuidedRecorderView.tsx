@@ -338,7 +338,10 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
             <span style={{ color: C.inkFaint }}>🌐</span>
             <input style={{ flex: 1, border: 0, outline: 'none', fontSize: 13, color: C.ink, background: 'transparent', colorScheme: 'light' }} value={project.url}
               placeholder="https://din-side.no" onChange={(e) => setProjectField('url', e.target.value)} />
-            <span style={{ color: C.inkFaint, cursor: 'pointer' }}>✕</span>
+            {project.url ? (
+              <span role="button" title="Tøm URL-feltet" onClick={() => setProjectField('url', '')}
+                style={{ color: C.inkFaint, cursor: 'pointer' }}>✕</span>
+            ) : null}
           </div>
 
           {/* Capture-kilde-velger: web / Mac-skjerm / kablet iOS / simulator */}
@@ -499,7 +502,8 @@ export function GuidedRecorderView({ onNav }: { onNav?: (id: string) => void } =
               {/* REQUIRED ACTION */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
                 <span style={{ fontSize: 13, fontWeight: 700 }}>Required Action</span>
-                <div style={{ flex: 1 }} /><span style={{ color: C.inkFaint, cursor: 'pointer' }}>⚙</span>
+                {/* ⚙-ikonet er fjernet: det så klikkbart ut, men hadde ingen handler. */}
+                <div style={{ flex: 1 }} />
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
                 <span style={{ width: 22, height: 22, borderRadius: '50%', border: `1.5px solid ${C.lineStrong}`, display: 'grid', placeItems: 'center', fontSize: 11, color: C.inkSoft }}>{actionMeta.icon}</span>
