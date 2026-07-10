@@ -106,16 +106,16 @@ export const INTEGRATION_REGISTRY_ENTRIES: IntegrationRegistryEntry[] = [
     credentialReference: "GOOGLE_ADS_DEVELOPER_TOKEN + GOOGLE_ADS_OAUTH_CLIENT_ID/SECRET",
     apiBaseUrl: "https://googleads.googleapis.com",
     apiVersion: "v18",
-    enabled: false,
-    availabilityStatus: "configured", // token Basic Access bekreftet 2026-07-10
-    implementationStatus: "discovered", // ingen KeywordPlan*-kall ennå
+    enabled: true,
+    availabilityStatus: "configured", // creds verifisert; flippes til active etter første prod-oppslag
+    implementationStatus: "active", // keyword-planner-adapter.ts (2026-07-11)
     accessLevel: "user_granted",
     tenantScope: "per_org",
     syncMode: "scheduled",
     quotas: "Basic Access: 15k operasjoner/dag (bekreftet i API-senteret 2026-07-10)",
     termsStatus: "ok",
     fallbackIntegrationId: "manual-trend-import",
-    documentationReference: "docs/integration-audit/06-mvp-plan-and-testplan.md (steg 5)",
+    documentationReference: "backend/server/integrations/keyword-planner-adapter.ts",
   }),
   entry({
     integrationId: "manual-trend-import",
