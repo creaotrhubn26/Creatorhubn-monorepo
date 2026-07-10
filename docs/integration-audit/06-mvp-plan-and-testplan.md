@@ -5,8 +5,8 @@
 Rangert etter produktverdi × tilgjengelighet ÷ risiko:
 
 1. **Keyword demand via Google Ads Keyword Planner** — eneste reelle
-   volum-kilde; OAuth-fundamentet finnes; blokkert kun av
-   developer-token-avklaring (manuell). *implement now.*
+   volum-kilde; OAuth-fundamentet finnes; developer-token avklart 2026-07-10
+   (Basic Access, 15k ops/dag) — ublokkert. *implement now.*
 2. **Manuell import + ManualTrendImportProvider** — gjør search-interest-
    widgets ekte uten API-tilgang; gjenbrukbar for alle fremtidige kilder.
    *implement now.*
@@ -33,7 +33,7 @@ er P2 der og forblir det).
 | 2 | Kodedrevet registry-fil (validert mot skjemaet) for dagens integrasjoner; eksponer GET `/api/integrations` (admin) fra den | 0 |
 | 3 | `normalized_signals`-migrasjon + query-API + GSC/GA4-normalisering (første to adaptere over egne data) | 0 |
 | 4 | Import-flyt (CSV først) + `import_batches` + `ManualTrendImportProvider` | 3 |
-| 5 | Keyword Planner-adapter bak kø/cache (krever token-avklaring) | 3 + manuell handling |
+| 5 | Keyword Planner-adapter bak kø/cache (token avklart: Basic Access) | 3 |
 | 6 | Admin Integration Center v1 (les-visning: status/helse/sync-historikk fra registry) | 2, 3 |
 | 7 | Brreg-regnskaps-utvidelse; SSB-næringsdata | 3 |
 | 8 | Trends alpha-adapter (hvis innvilget); fallback-kjede i registeret | 4, 5 |

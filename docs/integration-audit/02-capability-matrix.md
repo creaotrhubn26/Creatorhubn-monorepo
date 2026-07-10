@@ -9,7 +9,7 @@ verifisert mot kode — se `01-integration-inventory.md`.
 | Capability | Required data | Existing source | Status | Gap | Recommended action |
 |---|---|---|---|---|---|
 | Search interest | Relative søketrender, sesong, rising queries | **Ingen** (`google-trends-api` er død dep) | Missing | Ja | Søk Trends API alpha; adapter + manuell import først (`03-google-trends-assessment.md`) |
-| Keyword demand | Månedlig søkevolum, konkurranse, bud | Google Ads API finnes, men **ingen KeywordPlan*-kall** | Partial | Ja | Implementér KeywordPlanIdeaService bak kø+cache; krever developer-token-avklaring |
+| Keyword demand | Månedlig søkevolum, konkurranse, bud | Google Ads API finnes, men **ingen KeywordPlan*-kall** | Partial | Ja | Implementér KeywordPlanIdeaService bak kø+cache — token avklart 2026-07-10 (Basic Access), ublokkert |
 | Owned search performance | Clicks/impressions/CTR/position | Search Console API | Existing | Nei | Valider dimensjoner + koble til normalized layer; kun egne domener |
 | Website behavior | Sessions/conversions | GA4 Data API (REST) | Existing | Nei | Valider dimensjoner; fjern død SDK-dep |
 | Geographic demand | Lokasjonsbasert interesse | Places (delvis), SSB (demografi), Kartverket (geo) | Partial | Ja | Normaliser geografi (kommune-nr som nøkkel — SSB-tjenesten har allerede kommune-mapping) |

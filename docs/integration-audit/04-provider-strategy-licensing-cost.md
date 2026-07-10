@@ -46,7 +46,7 @@ Det som kan sies fra repo + offentlig priskunnskap (tall som endres er merket
 | Kilde | Kostmodell | Kvote-/ratefare | Tiltak |
 |---|---|---|---|
 | Places API (New) | Betalt per kall, ulik pris per SKU (Text Search vs. Details) | Høy — lead-discovery-løkker kan løpe | **Per-org tellere (P2)**; cache place-details; budsjettalarm i Google-konsoll (manuell) |
-| Google Ads API | Gratis, men developer-token-klasse styrer kvote (test≈15k ops/dag, basic/standard mer — verifiser) | Middels | Kø + cache (allerede krav for Keyword Planner); token-klasse må avklares (leveranse 16) |
+| Google Ads API | Gratis; token har **Basic Access** (bekreftet i API-senteret 2026-07-10): 15k operasjoner/dag, prod-kontoer tillatt | Middels | Kø + cache (allerede krav for Keyword Planner); søk Standard Access først hvis 15k/dag blir trangt i drift |
 | GSC API | Gratis; ~1 200 QPM per prosjekt (verifiser) | Lav | Cache 24t (searchanalytics er dags-granulær) |
 | GA4 Data API | Gratis; token-kvoter per property/time | Lav-middels | Cache + batch runReport |
 | Trends alpha | Gratis (antatt); kvoter ukjent | Ukjent | Design for kø fra dag én |

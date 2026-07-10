@@ -85,9 +85,10 @@ Disse kan ikke automatiseres fra kodebasen:
 1. **Google Trends API alpha**: ~~søk om tilgang~~ **søknad sendt 2026-07-10**
    (`awaitingApproval`). Inntil svar: bruk Ads-data + manuell CSV-import
    (se `03-google-trends-assessment.md`).
-2. **Google Ads developer token**: tokenet FINNES i Render (verifisert
-   2026-07-10) — gjenstår kun å bekrefte tilgangsklassen (test/basic/standard)
-   i ads.google.com → API-senter, siden klassen ikke kan leses via API.
+2. **Google Ads developer token**: ~~avklaring~~ **AVKLART 2026-07-10** —
+   tokenet finnes i Render og har **Basic Access** (bekreftet i API-senteret:
+   Creatorhub AS, daniel@creatorhubn.com). 15k ops/dag, prod-kontoer OK →
+   Keyword Planner-integrasjonen (Implementation Plan steg 5) er ublokkert.
 3. **OAuth-verifisering/scopes**: Google OAuth-appens scope-liste bør
    revideres mot faktisk bruk (jf. `docs/cto-audit/02` — ingen samlet
    scopes-manifest finnes).
