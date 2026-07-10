@@ -1120,6 +1120,20 @@ function FeatureGridSection() {
           highlight
         />
       </Grid>
+      <Box sx={{ mt: 5, textAlign: 'center' }}>
+        <Button
+          href="/leadgrid/losninger"
+          variant="text"
+          sx={{
+            color: PALETTE.accentBright,
+            fontWeight: 600,
+            textTransform: 'none',
+            '&:hover': { bgcolor: 'rgba(167, 139, 250, 0.10)' },
+          }}
+        >
+          Se løsninger for din bransje →
+        </Button>
+      </Box>
     </Container>
   );
 }
@@ -1520,7 +1534,15 @@ function Footer() {
 
           {[
             { title: 'Produkt', links: ['Funksjoner', { label: 'Leadgrid API', href: '/leadgrid/connectors' }, 'Sikkerhet', 'Oppdateringer'] },
-            { title: 'Løsninger', links: ['Salgsteam', 'Markedsføring', 'Franchise', 'Eiendomsmegling'] },
+            {
+              title: 'Løsninger',
+              links: [
+                { label: 'Salgsteam', href: '/leadgrid/losninger#salgsteam' },
+                { label: 'Markedsføring', href: '/leadgrid/losninger#markedsforing' },
+                { label: 'Franchise', href: '/leadgrid/losninger#franchise' },
+                { label: 'Eiendomsmegling', href: '/leadgrid/losninger#eiendomsmegling' },
+              ],
+            },
             { title: 'Ressurser', links: ['Hjelpesenter', 'Blogg', 'Guides', 'Webinarer'] },
             {
               title: 'Selskap',

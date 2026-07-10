@@ -19,6 +19,7 @@ import LeadgridPartnerWizardPage from '@/pages/leadgrid-partner-wizard';
 import LeadgridPartnerDashboardPage from '@/pages/leadgrid-partner-dashboard';
 import LeadgridMarketplacePage from '@/pages/leadgrid-marketplace';
 import LeadgridConnectorsPage from '@/pages/leadgrid-connectors';
+import LeadgridLosningerPage from '@/pages/leadgrid-losninger';
 import LeadgridImportPage from '@/pages/leadgrid-import';
 import LeadgridWorkflowsPage from '@/pages/leadgrid-workflows';
 import LeadgridWorkflowWebhooksPage from '@/pages/leadgrid-workflow-webhooks';
@@ -283,6 +284,12 @@ function CastingStandaloneAppContent() {
   if (localeCtx.pathname === '/leadgrid/connectors' ||
       localeCtx.pathname === '/leadgrid/connectors/') {
     return <LeadgridConnectorsPage />;
+  }
+  // Løsninger — segmentert etter bruksområde (Salgsteam/Markedsføring/
+  // Franchise/Eiendomsmegling), lenket fra landingssiden og footeren
+  if (localeCtx.pathname === '/leadgrid/losninger' ||
+      localeCtx.pathname === '/leadgrid/losninger/') {
+    return <LeadgridLosningerPage />;
   }
   // CSV/Excel + URL-basert lead-import (mig 328, krever innlogging)
   if (localeCtx.pathname === '/leadgrid/import' ||
