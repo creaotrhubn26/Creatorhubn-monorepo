@@ -482,9 +482,9 @@ export function setupSubmissionsRoutes(deps: SubmissionsRoutesDeps): void {
              internal_notes = COALESCE($2, internal_notes),
              follow_up_date = COALESCE($3, follow_up_date),
              updated_at = NOW()
-         WHERE id = $4
+         WHERE id = $4 AND vendor_id = $5
          RETURNING *`,
-        [status, internalNotes || null, followUpDate || null, id],
+        [status, internalNotes || null, followUpDate || null, id, _sCallerId],
       );
 
       if (result.rowCount === 0) {
@@ -514,6 +514,8 @@ export function setupSubmissionsRoutes(deps: SubmissionsRoutesDeps): void {
   app.post(
     "/api/submissions/:submissionId/send-email",
     async (req, res) => {
+      const _sCallerId = compatResolveUserId(req);
+      if (!isUuid(_sCallerId)) return res.status(401).json({ error: "unauthorized" });
       try {
         const { submissionId } = req.params;
         const { responseType, estimatedPrice } = req.body;
@@ -522,18 +524,23 @@ export function setupSubmissionsRoutes(deps: SubmissionsRoutesDeps): void {
           "last_contacted_at = NOW()",
           "updated_at = NOW()",
         ];
+        const params: any[] = [];
         if (responseType === "quote") {
           updates.push("quote_sent = true");
-          if (estimatedPrice)
-            updates.push(`quote_amount = ${parseFloat(estimatedPrice)}`);
+          const amount = parseFloat(estimatedPrice);
+          if (Number.isFinite(amount)) {
+            params.push(amount);
+            updates.push(`quote_amount = $${params.length}`);
+          }
           updates.push("status = 'quote_sent'");
         } else {
           updates.push("status = 'contacted'");
         }
 
+        params.push(submissionId, _sCallerId);
         const result = await pool.query(
-          `UPDATE client_submissions SET ${updates.join(", ")} WHERE id = $1 RETURNING *`,
-          [submissionId],
+          `UPDATE client_submissions SET ${updates.join(", ")} WHERE id = $${params.length - 1} AND vendor_id = $${params.length} RETURNING *`,
+          params,
         );
 
         if (result.rowCount === 0) {
