@@ -7489,7 +7489,7 @@ const loadDatabaseCameraStore = async (): Promise<CameraRecord[]> => {
     }
     if (!model && displayName && brand) {
       const withoutBrand = displayName
-        .replace(new RegExp(`^${brand}\\s+`, "i"), "")
+        .replace(new RegExp(`^${escapeRegex(brand)}\\s+`, "i"), "")
         .trim();
       model = withoutBrand || displayName;
     } else if (!model && displayName) {
@@ -9121,7 +9121,7 @@ const stripLeadingBrandFromModel = (brand: string, model: string): string => {
   const normalizedBrand = brand.trim().toLowerCase();
   const normalizedModel = model.trim();
   if (!normalizedBrand || !normalizedModel) return model.trim();
-  const prefixPattern = new RegExp(`^${normalizedBrand}\\s+`, "iu");
+  const prefixPattern = new RegExp(`^${escapeRegex(normalizedBrand)}\\s+`, "iu");
   return normalizedModel.replace(prefixPattern, "").trim();
 };
 
