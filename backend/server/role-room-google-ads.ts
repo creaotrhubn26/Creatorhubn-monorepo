@@ -30,6 +30,7 @@ import type {
   NormalizedDailyMetrics,
   InsightsFetchOptions,
 } from "./role-room-ads-sync.js";
+import { externalFetch } from "./external-api.js";
 
 const GOOGLE_ADS_API_VERSION = "v18";
 const GOOGLE_ADS_BASE = `https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}`;
@@ -63,14 +64,19 @@ interface FetchLike {
   }>;
 }
 
-let fetchImpl: FetchLike = globalThis.fetch as unknown as FetchLike;
+// Default går via externalFetch så alle Ads-kall har 12s-timeout
+// (CTO-audit P1 — samme mønster som Places). FetchLike-init bærer aldri
+// egen signal, så externalFetch legger alltid på timeouten.
+const defaultAdsFetch: FetchLike = externalFetch as unknown as FetchLike;
+
+let fetchImpl: FetchLike = defaultAdsFetch;
 
 /** Inject fetch for tests. */
 export function __setGoogleAdsFetch(impl: FetchLike): void {
   fetchImpl = impl;
 }
 export function __resetGoogleAdsFetch(): void {
-  fetchImpl = globalThis.fetch as unknown as FetchLike;
+  fetchImpl = defaultAdsFetch;
 }
 
 /**

@@ -29,6 +29,7 @@ import {
   Refresh as RefreshIcon,
   TrendingUp as TrendingUpIcon,
 } from "@mui/icons-material";
+import PanelStateContainer, { toLoadingState } from "./PanelStateContainer";
 
 type LeadStatus = "unvisited" | "visited" | "return" | "not_present" | "declined"
   | "interested" | "meeting_booked" | "proposal_sent" | "won" | "lost" | "do_not_contact";
@@ -360,13 +361,11 @@ export default function LeadMapCampaignsPanel() {
         hvor mange ble vunnet. Declined leads våkner opp igjen etter N dager.
       </Typography>
 
-      {error && <Alert severity="warning" sx={{ mb: 2 }}>{error}</Alert>}
-
-      {loading ? (
-        <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
-          <CircularProgress />
-        </Box>
-      ) : (
+      <PanelStateContainer
+        state={toLoadingState({ loading, error })}
+        error={error}
+        onRetry={fetchData}
+      >
         <Stack spacing={2}>
           {/* Kampanje-kort */}
           {campaigns.length === 0 ? (
@@ -562,7 +561,7 @@ export default function LeadMapCampaignsPanel() {
             </Stack>
           )}
         </Stack>
-      )}
+      </PanelStateContainer>
 
       {/* Create dialog */}
       <Dialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="sm" fullWidth>

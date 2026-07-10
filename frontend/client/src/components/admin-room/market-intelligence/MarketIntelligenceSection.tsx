@@ -5,18 +5,38 @@
  * og kan mountes som én seksjon i MarketingCockpitTab.
  *
  * State: 'overview' (default) | 'detail' (når Daniel åpner en scan).
+ *
+ * Leadgrid-panelene (LeadInbox/WonLost/ScheduledReports) er gatet bak
+ * module_feature_entitlements (CTO-audit P1, Migration Plan steg 3) — MI
+ * skal fungere fullt ut med Leadgrid deaktivert for org-en. Komponentene
+ * lazy-importeres så de hverken mountes eller fyrer API-kall når modulen
+ * er låst.
  */
 
-import React, { useState } from "react";
+import React, { Suspense, useState } from "react";
 import { Box, Chip, Divider, Stack, Typography } from "@mui/material";
 import BrandKitPanel from "./BrandKitPanel";
 import MarketIntelligenceOverviewPanel from "./MarketIntelligenceOverviewPanel";
 import MarketScanDetailPanel from "./MarketScanDetailPanel";
 import AgentContextPreviewPanel from "./AgentContextPreviewPanel";
 import LeadMapCampaignsPanel from "./LeadMapCampaignsPanel";
-import { LeadInboxSection } from "@/components/leadgrid/LeadInboxSection";
-import { WonLostDashboard } from "@/components/leadgrid/WonLostDashboard";
-import { ScheduledReportsPanel } from "@/components/leadgrid/ScheduledReportsPanel";
+import { useModuleFeature } from "@/hooks/useModuleFeature";
+
+const LeadInboxSection = React.lazy(() =>
+  import("@/components/leadgrid/LeadInboxSection").then((m) => ({
+    default: m.LeadInboxSection,
+  })),
+);
+const WonLostDashboard = React.lazy(() =>
+  import("@/components/leadgrid/WonLostDashboard").then((m) => ({
+    default: m.WonLostDashboard,
+  })),
+);
+const ScheduledReportsPanel = React.lazy(() =>
+  import("@/components/leadgrid/ScheduledReportsPanel").then((m) => ({
+    default: m.ScheduledReportsPanel,
+  })),
+);
 
 interface Props {
   /** Aktivt prosjekt — brukes til Brand Kit + scans-isolering. */
@@ -30,6 +50,7 @@ export default function MarketIntelligenceSection({
   defaultBrandScanUrl,
 }: Props) {
   const [activeScanId, setActiveScanId] = useState<string | null>(null);
+  const { enabled: leadgridEnabled } = useModuleFeature("leadgrid");
 
   return (
     <Box>
@@ -56,14 +77,18 @@ export default function MarketIntelligenceSection({
         />
       ) : (
         <Stack spacing={3}>
-          {/* Innkommende Leadgrid-leads — øverst, høyest urgency */}
-          <LeadInboxSection />
+          {leadgridEnabled && (
+            <Suspense fallback={null}>
+              {/* Innkommende Leadgrid-leads — øverst, høyest urgency */}
+              <LeadInboxSection />
 
-          {/* Won/Lost-dashboard — KPI + MoM + funnel */}
-          <WonLostDashboard />
+              {/* Won/Lost-dashboard — KPI + MoM + funnel */}
+              <WonLostDashboard />
 
-          {/* Schedulerte rapporter — ukentlig PDF på e-post */}
-          <ScheduledReportsPanel />
+              {/* Schedulerte rapporter — ukentlig PDF på e-post */}
+              <ScheduledReportsPanel />
+            </Suspense>
+          )}
 
           <BrandKitPanel
             projectId={projectId}

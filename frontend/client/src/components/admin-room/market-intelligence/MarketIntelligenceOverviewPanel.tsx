@@ -34,6 +34,7 @@ import {
   Search as SearchIcon,
   TipsAndUpdates as TipsIcon,
 } from "@mui/icons-material";
+import PanelStateContainer, { toLoadingState } from "./PanelStateContainer";
 
 // ── Types matching backend ────────────────────────────────────────────
 type ConfidenceLevel = "low" | "medium" | "high";
@@ -349,17 +350,11 @@ export default function MarketIntelligenceOverviewPanel({
 
       <WorkflowStrip activeStep={activeStep} />
 
-      {error && (
-        <Alert severity="warning" sx={{ mb: 2 }}>
-          {error}
-        </Alert>
-      )}
-
-      {loading ? (
-        <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
-          <CircularProgress />
-        </Box>
-      ) : (
+      <PanelStateContainer
+        state={toLoadingState({ loading, error })}
+        error={error}
+        onRetry={fetchData}
+      >
         <Stack spacing={2}>
           {/* Recent scans */}
           <Card>
@@ -499,7 +494,7 @@ export default function MarketIntelligenceOverviewPanel({
             </Card>
           )}
         </Stack>
-      )}
+      </PanelStateContainer>
 
       {/* New scan dialog */}
       <Dialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="sm" fullWidth>

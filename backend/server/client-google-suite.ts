@@ -23,6 +23,7 @@ import {
   ensureFreshAdsToken,
   getAdsOauthConnection,
 } from "./role-room-ads-oauth.js";
+import { externalFetch } from "./external-api.js";
 
 // ─────────────────────────────────────────────────────────────────────
 // Token-helper — reuses MCC-connection lagret av B2-OAuth
@@ -60,7 +61,7 @@ export async function listGa4Accounts(
   const token = await getGoogleAccessToken(pool, producerUserId);
   if (!token) return { ok: false, error: "not_connected" };
 
-  const r = await fetch(`${GA4_ADMIN_BASE}/accountSummaries`, {
+  const r = await externalFetch(`${GA4_ADMIN_BASE}/accountSummaries`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!r.ok) return { ok: false, error: `GA4 list-accounts: HTTP ${r.status}` };
@@ -101,7 +102,7 @@ export async function provisionGa4Property(
     currencyCode: opts.currencyCode ?? "NOK",
     industryCategory: opts.industryCategory ?? "OTHER",
   };
-  const propR = await fetch(`${GA4_ADMIN_BASE}/properties`, {
+  const propR = await externalFetch(`${GA4_ADMIN_BASE}/properties`, {
     method: "POST",
     headers: jsonHeaders(token),
     body: JSON.stringify(propBody),
@@ -121,7 +122,7 @@ export async function provisionGa4Property(
       defaultUri: opts.websiteUrl,
     },
   };
-  const streamR = await fetch(`${GA4_ADMIN_BASE}/${prop.name}/dataStreams`, {
+  const streamR = await externalFetch(`${GA4_ADMIN_BASE}/${prop.name}/dataStreams`, {
     method: "POST",
     headers: jsonHeaders(token),
     body: JSON.stringify(streamBody),
@@ -158,7 +159,7 @@ export async function getGscVerificationToken(
   if (!access) return { ok: false, error: "not_connected" };
 
   const method = opts.method ?? "META";
-  const r = await fetch(`${SITEVERIFY_BASE}/token`, {
+  const r = await externalFetch(`${SITEVERIFY_BASE}/token`, {
     method: "POST",
     headers: jsonHeaders(access),
     body: JSON.stringify({
@@ -184,7 +185,7 @@ export async function verifyGscSite(
 
   const method = opts.method ?? "META";
   const url = `${SITEVERIFY_BASE}/webResource?verificationMethod=${encodeURIComponent(method)}`;
-  const r = await fetch(url, {
+  const r = await externalFetch(url, {
     method: "POST",
     headers: jsonHeaders(access),
     body: JSON.stringify({
@@ -205,7 +206,7 @@ export async function addGscSite(
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const access = await getGoogleAccessToken(pool, opts.producerUserId);
   if (!access) return { ok: false, error: "not_connected" };
-  const r = await fetch(`${SEARCHCONSOLE_BASE}/sites/${encodeURIComponent(opts.siteUrl)}`, {
+  const r = await externalFetch(`${SEARCHCONSOLE_BASE}/sites/${encodeURIComponent(opts.siteUrl)}`, {
     method: "PUT",
     headers: { Authorization: `Bearer ${access}` },
   });
@@ -224,7 +225,7 @@ export async function submitGscSitemap(
   const access = await getGoogleAccessToken(pool, opts.producerUserId);
   if (!access) return { ok: false, error: "not_connected" };
   const url = `${SEARCHCONSOLE_BASE}/sites/${encodeURIComponent(opts.siteUrl)}/sitemaps/${encodeURIComponent(opts.sitemapUrl)}`;
-  const r = await fetch(url, {
+  const r = await externalFetch(url, {
     method: "PUT",
     headers: { Authorization: `Bearer ${access}` },
   });
@@ -248,7 +249,7 @@ export async function discoverSitemaps(
 
   // robots.txt
   try {
-    const r = await fetch(`${baseUrl}/robots.txt`, { signal: AbortSignal.timeout(7000) });
+    const r = await externalFetch(`${baseUrl}/robots.txt`, { signal: AbortSignal.timeout(7000) });
     if (r.ok) {
       const text = await r.text();
       for (const line of text.split(/\r?\n/)) {
@@ -263,7 +264,7 @@ export async function discoverSitemaps(
   // Fallback: vanlige sitemap-stier — HEAD-sjekk så vi bare returnerer det som finnes
   for (const path of ["/sitemap.xml", "/sitemap_index.xml", "/sitemap-index.xml"]) {
     try {
-      const r = await fetch(`${baseUrl}${path}`, { method: "HEAD", signal: AbortSignal.timeout(5000) });
+      const r = await externalFetch(`${baseUrl}${path}`, { method: "HEAD", signal: AbortSignal.timeout(5000) });
       if (r.ok) found.add(`${baseUrl}${path}`);
     } catch { /* fortsett */ }
   }
@@ -334,7 +335,7 @@ export async function fetchSitemapStatus(
 } | { ok: false; error: string }> {
   const access = await getGoogleAccessToken(pool, opts.producerUserId);
   if (!access) return { ok: false, error: "not_connected" };
-  const r = await fetch(
+  const r = await externalFetch(
     `${SEARCHCONSOLE_BASE}/sites/${encodeURIComponent(opts.siteUrl)}/sitemaps`,
     { headers: { Authorization: `Bearer ${access}` } },
   );
@@ -422,7 +423,7 @@ export async function diagnoseClientSetup(
   let htmlText = "";
   let xRobotsHeader = "";
   try {
-    const r = await fetch(httpsProp, {
+    const r = await externalFetch(httpsProp, {
       headers: { "User-Agent": "Mozilla/5.0 (compatible; TheRoleRoomAgent/1.0)" },
       signal: AbortSignal.timeout(10000),
     });
@@ -681,7 +682,7 @@ export async function diagnoseClientSetup(
 
   // 1) robots.txt
   try {
-    const r = await fetch(`${baseUrl}/robots.txt`, { signal: AbortSignal.timeout(7000) });
+    const r = await externalFetch(`${baseUrl}/robots.txt`, { signal: AbortSignal.timeout(7000) });
     if (!r.ok) {
       checks.push({
         id: "robots",
@@ -749,7 +750,7 @@ export async function diagnoseClientSetup(
   // Vi prøver getToken — hvis verifisert returnerer Google et lavt-verbose-svar.
   // Bedre er å sjekke webResources/list for å se hvilke sites producer eier.
   try {
-    const wrR = await fetch(`${SITEVERIFY_BASE}/webResource`, {
+    const wrR = await externalFetch(`${SITEVERIFY_BASE}/webResource`, {
       headers: { Authorization: `Bearer ${access}` },
     });
     if (wrR.ok) {
@@ -792,7 +793,7 @@ export async function diagnoseClientSetup(
 
   // 4) Search Console — er siten registrert? Hvilken property-type?
   try {
-    const sitesR = await fetch(`${SEARCHCONSOLE_BASE}/sites`, {
+    const sitesR = await externalFetch(`${SEARCHCONSOLE_BASE}/sites`, {
       headers: { Authorization: `Bearer ${access}` },
     });
     if (sitesR.ok) {
@@ -814,7 +815,7 @@ export async function diagnoseClientSetup(
         });
 
         // 4b) Sitemap-status fra GSC
-        const smR = await fetch(`${SEARCHCONSOLE_BASE}/sites/${encodeURIComponent(match.siteUrl)}/sitemaps`, {
+        const smR = await externalFetch(`${SEARCHCONSOLE_BASE}/sites/${encodeURIComponent(match.siteUrl)}/sitemaps`, {
           headers: { Authorization: `Bearer ${access}` },
         });
         if (smR.ok) {
@@ -862,7 +863,7 @@ export async function diagnoseClientSetup(
 
           // 4c) URL Inspection på hjemmesiden — viktigste signal på indeksering
           try {
-            const inspR = await fetch("https://searchconsole.googleapis.com/v1/urlInspection/index:inspect", {
+            const inspR = await externalFetch("https://searchconsole.googleapis.com/v1/urlInspection/index:inspect", {
               method: "POST",
               headers: jsonHeaders(access),
               body: JSON.stringify({
@@ -960,7 +961,7 @@ export async function requestIndexingForUrls(
 
   for (const u of opts.urls) {
     try {
-      const r = await fetch("https://indexing.googleapis.com/v3/urlNotifications:publish", {
+      const r = await externalFetch("https://indexing.googleapis.com/v3/urlNotifications:publish", {
         method: "POST",
         headers: jsonHeaders(access),
         body: JSON.stringify({ url: u, type }),
@@ -991,7 +992,7 @@ export async function listGtmAccounts(
 ): Promise<{ ok: true; accounts: Array<{ accountId: string; name: string }> } | { ok: false; error: string }> {
   const token = await getGoogleAccessToken(pool, producerUserId);
   if (!token) return { ok: false, error: "not_connected" };
-  const r = await fetch(`${GTM_BASE}/accounts`, {
+  const r = await externalFetch(`${GTM_BASE}/accounts`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!r.ok) return { ok: false, error: `listAccounts: HTTP ${r.status}` };
@@ -1009,7 +1010,7 @@ export async function listGscSites(
 ): Promise<{ ok: true; sites: Array<{ siteUrl: string; permissionLevel: string }> } | { ok: false; error: string }> {
   const token = await getGoogleAccessToken(pool, producerUserId);
   if (!token) return { ok: false, error: "not_connected" };
-  const r = await fetch(`${SEARCHCONSOLE_BASE}/sites`, {
+  const r = await externalFetch(`${SEARCHCONSOLE_BASE}/sites`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!r.ok) return { ok: false, error: `listSites: HTTP ${r.status}` };
@@ -1041,7 +1042,7 @@ export async function provisionGtmContainer(
     usageContext: ["WEB"],
     domainName: opts.domainName ? [opts.domainName] : undefined,
   };
-  const r = await fetch(`${GTM_BASE}/accounts/${opts.accountId}/containers`, {
+  const r = await externalFetch(`${GTM_BASE}/accounts/${opts.accountId}/containers`, {
     method: "POST",
     headers: jsonHeaders(token),
     body: JSON.stringify(body),
@@ -1084,7 +1085,7 @@ export async function importActionsToGtm(
   // 1) Hent default workspace hvis ikke spesifisert
   let workspaceId = opts.workspaceId;
   if (!workspaceId) {
-    const wsR = await fetch(
+    const wsR = await externalFetch(
       `${GTM_BASE}/accounts/${opts.accountId}/containers/${opts.containerId}/workspaces`,
       { headers: { Authorization: `Bearer ${token}` } },
     );
@@ -1104,7 +1105,7 @@ export async function importActionsToGtm(
     try {
       // 2a) Opprett trigger basert på triggerType
       const triggerBody = buildGtmTrigger(a);
-      const tR = await fetch(`${wsPath}/triggers`, {
+      const tR = await externalFetch(`${wsPath}/triggers`, {
         method: "POST",
         headers: jsonHeaders(token),
         body: JSON.stringify(triggerBody),
@@ -1119,7 +1120,7 @@ export async function importActionsToGtm(
 
       // 2b) Opprett Google Ads Conversion-tag som fyrer på triggeren
       const tagBody = buildGtmAdsConversionTag(a, opts.awConversionId, trigger.triggerId);
-      const tagR = await fetch(`${wsPath}/tags`, {
+      const tagR = await externalFetch(`${wsPath}/tags`, {
         method: "POST",
         headers: jsonHeaders(token),
         body: JSON.stringify(tagBody),

@@ -90,10 +90,12 @@ export const WidgetErrorStateSchema = z.object({
   message: z.string().min(1),
   retryable: z.boolean().default(true),
 });
+export type WidgetErrorState = z.infer<typeof WidgetErrorStateSchema>;
 
 export const WidgetEmptyStateSchema = z.object({
   message: z.string().min(1),
 });
+export type WidgetEmptyState = z.infer<typeof WidgetEmptyStateSchema>;
 
 export const WidgetInstanceSchema = z.object({
   id: z.string().min(1),
