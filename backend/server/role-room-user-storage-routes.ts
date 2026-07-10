@@ -293,7 +293,9 @@ export function registerRoleRoomUserStorageRoutes(
     const cronToken = req.headers['x-cron-trigger-token'] as string | undefined;
     const expectedToken = process.env.ROLE_ROOM_STORAGE_CLEANUP_TOKEN
       || process.env.CRON_TRIGGER_TOKEN;
-    const tokenValid = !!expectedToken && !!cronToken && crypto.timingSafeEqual(Buffer.from(cronToken), Buffer.from(expectedToken));
+    const tokenValid = !!expectedToken && !!cronToken
+      && Buffer.byteLength(cronToken) === Buffer.byteLength(expectedToken)
+      && crypto.timingSafeEqual(Buffer.from(cronToken), Buffer.from(expectedToken));
     if (!tokenValid) {
       res.status(401).json({ error: "krever_cron_token" });
       return;
@@ -413,7 +415,9 @@ export function registerRoleRoomUserStorageRoutes(
     const expectedToken = process.env.ROLE_ROOM_STORAGE_CLEANUP_TOKEN
       || process.env.CRON_TRIGGER_TOKEN;
 
-    const tokenValid = !!expectedToken && !!cronToken && crypto.timingSafeEqual(Buffer.from(cronToken), Buffer.from(expectedToken));
+    const tokenValid = !!expectedToken && !!cronToken
+      && Buffer.byteLength(cronToken) === Buffer.byteLength(expectedToken)
+      && crypto.timingSafeEqual(Buffer.from(cronToken), Buffer.from(expectedToken));
     if (!tokenValid) {
       const viewerId = getUserIdFromRequest(req, activeSessions);
       if (!viewerId) {

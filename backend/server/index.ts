@@ -74397,6 +74397,12 @@ app.post(
       if (!assetId) {
         return res.status(400).json({ error: "Missing asset id" });
       }
+      // Guard mot path traversal: assetId brukes direkte i path.join for
+      // fillagring. Express dekoder %2f/%2e ETTER segment-routing, så en
+      // rå ":assetId" kan inneholde "../" hvis vi ikke validerer formatet.
+      if (!/^[A-Za-z0-9._-]{1,128}$/.test(assetId) || assetId.includes("..")) {
+        return res.status(400).json({ error: "Invalid asset id" });
+      }
       const file = req.file as
         | {
             originalname: string;
