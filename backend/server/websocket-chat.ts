@@ -12,6 +12,7 @@ import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { and, eq } from 'drizzle-orm';
 import * as schema from '../migrations/schema.js';
 import { loadPersistedAuthSession } from './auth-session-store.js';
+import { canAccessProject } from './project-team-routes.js';
 import crypto from 'crypto';
 
 type DB = NodePgDatabase<typeof schema>;
@@ -129,6 +130,16 @@ export function createWebSocketServer(
   }
 
   /**
+   * Parse the weddingId out of a wedding-room key ('wedding:<weddingId>').
+   * Returns null for any non-wedding room (those keep their existing behavior).
+   */
+  function parseWeddingId(roomKey?: string): string | null {
+    if (!roomKey || !roomKey.startsWith('wedding:')) return null;
+    const id = roomKey.slice('wedding:'.length);
+    return id || null;
+  }
+
+  /**
    * Authorize a user to read/write a chat channel. Mirrors the prod-verified
    * membership predicate used by the REST GET /api/communication/conversations
    * privacy fix (communication-routes.ts): a user may access a channel when it is
@@ -181,6 +192,61 @@ export function createWebSocketServer(
       return (mr.rowCount ?? 0) > 0;
     } catch (e) {
       console.error('[WS] canAccessChannel error:', e);
+      return false; // fail closed
+    }
+  }
+
+  /**
+   * Authorize a socket to subscribe to a wedding real-time room
+   * ('wedding:<weddingId>'). Two legitimate audiences exist:
+   *   - The couple, who open /wedding/client/:token and connect UNauthenticated
+   *     with userId='couple:<shareToken>'. Authorized iff that share token
+   *     resolves to THIS wedding (client_settings->>'accessToken') and client
+   *     access is still enabled. This closes anonymous eavesdropping: previously
+   *     any socket could pass ?room=wedding:<anyId> and receive the feed
+   *     without possessing the wedding's share token.
+   *   - The photographer/team, who connect authenticated (bearer). Authorized
+   *     iff they own the wedding (photographer_id) or can access its linked
+   *     project (owner or active team member) — a superset of the REST
+   *     photographer check (wedding-routes.ts), so no legitimate crew is blocked.
+   * Fails closed on error.
+   */
+  async function canAccessWeddingRoom(
+    weddingId: string,
+    opts: { authUserId?: string; coupleToken?: string },
+  ): Promise<boolean> {
+    if (!weddingId) return false;
+    try {
+      const { authUserId, coupleToken } = opts;
+      // Couple share-token path (unauthenticated).
+      if (coupleToken !== undefined) {
+        const t = coupleToken.trim();
+        if (!t) return false;
+        const r = await pool.query(
+          `SELECT 1 FROM wedding_timelines
+            WHERE id = $1
+              AND (client_settings->>'accessToken') = $2
+              AND client_access_enabled = true
+            LIMIT 1`,
+          [weddingId, t],
+        );
+        return (r.rowCount ?? 0) > 0;
+      }
+      // Authenticated photographer/team path.
+      if (authUserId) {
+        const w = await pool.query(
+          `SELECT photographer_id, project_id FROM wedding_timelines WHERE id = $1 LIMIT 1`,
+          [weddingId],
+        );
+        if ((w.rowCount ?? 0) === 0) return false;
+        const row = w.rows[0] as { photographer_id?: string | null; project_id?: string | null };
+        if (row.photographer_id && String(row.photographer_id) === String(authUserId)) return true;
+        if (row.project_id && (await canAccessProject(pool, authUserId, String(row.project_id)))) return true;
+        return false;
+      }
+      return false;
+    } catch (e) {
+      console.error('[WS] canAccessWeddingRoom error:', e);
       return false; // fail closed
     }
   }
@@ -272,9 +338,11 @@ export function createWebSocketServer(
 
     const record: ConnectedClient = {
       ws, userId: connectedUserId,
-      // A Live Set room is NOT honored until the token is verified as
-      // authenticated (below). Other room types keep their behavior.
-      room: parseLiveSetProjectId(room) ? undefined : room,
+      // Live Set and wedding rooms are NOT honored until the connecting socket
+      // is authorized (below): liveset requires an authenticated token; wedding
+      // requires the couple's share token or authenticated photographer/team
+      // access. Other room types keep their existing behavior.
+      room: (parseLiveSetProjectId(room) || parseWeddingId(room)) ? undefined : room,
       role, connectedAt: new Date(),
       authenticated: false,
     };
@@ -311,6 +379,34 @@ export function createWebSocketServer(
             ws.send(JSON.stringify({
               type: 'error',
               payload: { message: 'forbidden_room', code: 'auth_required', room },
+              timestamp: new Date().toISOString(),
+            }));
+          } catch { /* ignore */ }
+        }
+      }
+
+      // Authorize wedding real-time room subscription. The couple connects
+      // UNauthenticated with userId='couple:<shareToken>'; the photographer/team
+      // connect authenticated. A 'couple:' socket is always evaluated on the
+      // share token (never routed to the photographer path by an incidental
+      // leftover bearer). Anyone else — an arbitrary authenticated user, or an
+      // anonymous socket without the share token — is denied, closing the
+      // cross-wedding eavesdrop on ?room=wedding:<anyId>.
+      const weddingId = parseWeddingId(room);
+      if (weddingId) {
+        const isCouple = queryUserId.startsWith('couple:');
+        const allowed = await canAccessWeddingRoom(weddingId, {
+          authUserId: !isCouple && authenticated ? connectedUserId : undefined,
+          coupleToken: isCouple ? queryUserId.slice('couple:'.length) : undefined,
+        });
+        if (allowed) {
+          record.room = room;
+        } else {
+          record.room = undefined;
+          try {
+            ws.send(JSON.stringify({
+              type: 'error',
+              payload: { message: 'forbidden_room', code: 'wedding_forbidden', room },
               timestamp: new Date().toISOString(),
             }));
           } catch { /* ignore */ }
