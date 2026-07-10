@@ -19,6 +19,7 @@ import type { Pool } from "pg";
 import crypto from "crypto";
 import multer from "multer";
 import Anthropic from "@anthropic-ai/sdk";
+import { aiRateLimit } from "./ai-rate-limiter.js";
 
 import {
   isStreamEnabled,
@@ -589,6 +590,7 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
   // Fase D: kaller Claude Opus 4.7 med scenens kontekst + take-metadata
   // og lagrer strukturert respons i talent_selftape_ai_feedback.
   app.post("/api/role-room/talents/selftapes/takes/:takeId/feedback/regenerate",
+    aiRateLimit({ windowMs: 60_000, max: 10, label: "Self-tape AI feedback" }),
     async (req, res) => {
       const session = getActiveSession(req);
       const talentId = await resolveTalentId(pool, req, session);

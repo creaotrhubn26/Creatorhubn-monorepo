@@ -319,6 +319,7 @@ export function registerLeadMapTranscriptRoutes({ app, pool, activeSessions }: D
 
   app.post(
     "/api/admin-room/lead-map/visits/parse-transcript",
+    claudeLimit,
     async (req: Request, res: Response) => {
       const session = getUser(req, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
