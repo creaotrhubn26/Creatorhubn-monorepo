@@ -1,0 +1,46 @@
+name: Owned channels signal sync (GSC/GA4)
+
+# Daglig synk av GSC/GA4-data (inkl. AI-referrals) til normalized_signals
+# for alle produsenter med tilkoblet Google-OAuth. Token-gated via
+# CRON_TRIGGER_TOKEN (samme secret som cockpit-cron).
+
+on:
+  schedule:
+    # 04:45 UTC daglig — før arbeidsdagen, utenom andre cron-topper
+    - cron: '45 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: owned-channels-sync
+  cancel-in-progress: false
+
+env:
+  BACKEND_URL: https://creatorhub-backend-rtbl.onrender.com
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: POST /api/integrations/sync/owned-channels
+        env:
+          CRON_TRIGGER_TOKEN: ${{ secrets.CRON_TRIGGER_TOKEN }}
+        run: |
+          if [ -z "$CRON_TRIGGER_TOKEN" ]; then
+            echo "::error::CRON_TRIGGER_TOKEN GitHub-secret er ikke satt."
+            exit 1
+          fi
+          RES=$(curl -s -w "\n%{http_code}" \
+            -X POST \
+            -H "x-cron-token: $CRON_TRIGGER_TOKEN" \
+            "$BACKEND_URL/api/integrations/sync/owned-channels")
+          BODY=$(echo "$RES" | head -n -1)
+          CODE=$(echo "$RES" | tail -n 1)
+          echo "HTTP $CODE — $BODY"
+          if [ "$CODE" != "200" ]; then
+            echo "::error::Synk feilet (HTTP $CODE)"
+            exit 1
+          fi

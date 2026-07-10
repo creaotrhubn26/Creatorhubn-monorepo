@@ -21,6 +21,7 @@ import MarketScanDetailPanel from "./MarketScanDetailPanel";
 import AgentContextPreviewPanel from "./AgentContextPreviewPanel";
 import LeadMapCampaignsPanel from "./LeadMapCampaignsPanel";
 import GeoVisibilityPanel from "./GeoVisibilityPanel";
+import AiTrafficPanel from "./AiTrafficPanel";
 import { useModuleFeature } from "@/hooks/useModuleFeature";
 
 const LeadInboxSection = React.lazy(() =>
@@ -100,6 +101,7 @@ export default function MarketIntelligenceSection({
             onOpenScanDetail={setActiveScanId}
           />
           <GeoVisibilityPanel />
+          <AiTrafficPanel />
           <LeadMapCampaignsPanel />
           <AgentContextPreviewPanel projectId={projectId} />
         </Stack>
