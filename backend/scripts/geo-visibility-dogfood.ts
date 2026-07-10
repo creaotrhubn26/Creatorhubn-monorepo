@@ -38,7 +38,7 @@ const CONFIG = {
     "leadgenerering, feltsalg og kundeoppfølging for småbedrifter og håndverkere",
   ),
   region: arg("region", "Norge"),
-  competitorBrands: ["HubSpot", "Pipedrive", "SuperOffice", "Salesforce"],
+  competitorBrands: (arg("competitors", "HubSpot,Pipedrive,SuperOffice,Salesforce")).split(",").map((s) => s.trim()).filter(Boolean),
   promptCount: Number(arg("prompts", "10")),
   out: arg("out", ""),
 };
