@@ -741,6 +741,14 @@ function ImageEditor({ block, onUpdate }: { block: ImageBlock; onUpdate: (b: Ima
   );
 }
 
+// Lite bibliotek av hostede infographic-maler (public/embed/…). Velges i editoren;
+// «Egendefinert» lar admin lime inn egen mal-URL.
+const INFOGRAPHIC_TEMPLATE_LIBRARY: { label: string; url: string }[] = [
+  { label: 'KPI-kort (tellende tall)', url: '/embed/demo-template.html' },
+  { label: 'Stat-bar (horisontal)', url: '/embed/templates/stat-bar.html' },
+  { label: 'Stort tall', url: '/embed/templates/big-number.html' },
+];
+
 function InfographicEditor({ block, onUpdate }: { block: InfographicBlock; onUpdate: (b: InfographicBlock) => void }) {
   const upd = (patch: Partial<InfographicBlock>) => onUpdate({ ...block, ...patch });
   const [dataText, setDataText] = React.useState(() => JSON.stringify(block.data ?? {}, null, 2));
@@ -750,10 +758,23 @@ function InfographicEditor({ block, onUpdate }: { block: InfographicBlock; onUpd
     try { const parsed = JSON.parse(v || '{}'); setDataErr(false); upd({ data: parsed }); }
     catch { setDataErr(true); }
   };
+  const inLibrary = INFOGRAPHIC_TEMPLATE_LIBRARY.some((t) => t.url === block.templateUrl);
   return (
     <Stack spacing={1.5}>
       <TextRow label="Overskrift (valgfri)" value={block.heading ?? ''} onChange={(v) => upd({ heading: v })} />
-      <TextRow label="Mal-URL (hostet infographic-HTML, f.eks. /embed/demo-template.html)" value={block.templateUrl ?? ''} onChange={(v) => upd({ templateUrl: v })} />
+      <TextField
+        select
+        label="Velg mal"
+        value={inLibrary ? block.templateUrl : '__custom__'}
+        onChange={(e) => { if (e.target.value !== '__custom__') upd({ templateUrl: e.target.value }); }}
+        size="small" fullWidth sx={FIELD_SX}
+      >
+        {INFOGRAPHIC_TEMPLATE_LIBRARY.map((t) => (
+          <MenuItem key={t.url} value={t.url}>{t.label}</MenuItem>
+        ))}
+        <MenuItem value="__custom__">Egendefinert URL …</MenuItem>
+      </TextField>
+      <TextRow label="Mal-URL (hostet infographic-HTML)" value={block.templateUrl ?? ''} onChange={(v) => upd({ templateUrl: v })} />
       <TextRow label="Data (JSON → window.__CFG__)" value={dataText} onChange={onData} multiline rows={5} />
       {dataErr && <Typography variant="caption" sx={{ color: '#fca5a5' }}>Ugyldig JSON — endringen lagres ikke før den er gyldig.</Typography>}
       <TextRow label="Aksentfarge (hex)" value={block.accent ?? ''} onChange={(v) => upd({ accent: v })} />

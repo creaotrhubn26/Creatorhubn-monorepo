@@ -1,0 +1,30 @@
+<style>
+  #wrap{display:flex;align-items:center;gap:34px;padding:34px 44px;width:max-content;
+    font-family:Inter,system-ui,sans-serif;background:#fff;border-radius:22px;
+    box-shadow:0 24px 60px rgba(20,40,80,.10);opacity:0;transform:translateY(22px)}
+  .ttl{font-size:32px;font-weight:800;color:#1f2d4a;letter-spacing:-.5px}
+  .kpi{text-align:center}.kpi .k{font-size:15px;color:#5b6b7d;font-weight:500;margin-bottom:4px}
+  .kpi .v{font-size:40px;font-weight:800;color:var(--a,#2f6df0);letter-spacing:-.5px}
+  .sep{width:1px;height:56px;background:rgba(20,40,80,.10)}
+</style>
+<div id="wrap"></div>
+<script>
+  var CFG = window.__CFG__ || {};
+  document.documentElement.style.setProperty('--a', CFG.accent || '#2f6df0');
+  var wrap = document.getElementById('wrap');
+  if (CFG.title) { var t = document.createElement('div'); t.className = 'ttl'; t.textContent = CFG.title; wrap.appendChild(t); }
+  (CFG.kpis || CFG.cards || []).forEach(function (k, i) {
+    if (i > 0 || CFG.title) { var s = document.createElement('div'); s.className = 'sep'; wrap.appendChild(s); }
+    var kp = document.createElement('div'); kp.className = 'kpi'; kp.dataset.d = 0.12 + 0.1 * i;
+    kp.innerHTML = '<div class="k">' + (k.label || '') + '</div><div class="v" data-to="' + (k.value || '') + '">0</div>';
+    wrap.appendChild(kp);
+  });
+  function ease(t){return t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2}
+  function num(el,to,p){var m=String(to).match(/^([-+]?\d+(?:[.,]\d+)?)(.*)$/);if(!m){el.textContent=to;return;}el.textContent=Math.round(parseFloat(m[1].replace(',','.'))*p)+m[2];}
+  window.setProgress = function (p) {
+    document.querySelectorAll('[data-d]').forEach(function (e) { e.style.opacity = ease(Math.max(0, Math.min(1, (p - (+e.dataset.d)) / 0.5))); });
+    document.querySelectorAll('[data-to]').forEach(function (e) { num(e, e.dataset.to, ease(Math.max(0, Math.min(1, (p - .15) / .6)))); });
+    var w = document.getElementById('wrap'); if (w) { w.style.opacity = ease(Math.min(1, p / .3)); w.style.transform = 'translateY(' + (22 * (1 - ease(Math.min(1, p / .3)))) + 'px)'; }
+  };
+  window.setProgress(0);
+</script>
