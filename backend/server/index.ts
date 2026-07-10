@@ -2255,14 +2255,28 @@ app.use((req, _res, next) => {
     const token = readActiveSessionToken(req);
     const s = token ? activeSessions.get(token) : null;
     if (s?.impersonatedByAdmin) {
-      const m = req.method.toUpperCase();
-      if ((m === "POST" || m === "PUT" || m === "PATCH" || m === "DELETE")
-          && !req.path.includes("/impersonat")) {
-        void pool.query(
-          `INSERT INTO superadmin_impersonation_audit (super_admin_id, action, target_user_id, details)
-           VALUES ($1,'write',$2,$3::jsonb)`,
-          [s.impersonatorId || null, s.userId, JSON.stringify({ method: m, path: String(req.path).slice(0, 200) })],
-        ).catch(() => { /* audit skal aldri blokkere */ });
+      // Håndhev 30-min TTL på HVER request. Uten dette utløper impersonasjonen
+      // kun når frontend poller /impersonation-status — bruker man token-en
+      // direkte (eller slutter å polle) beholder super_adminen målbrukerens
+      // sesjon med skrivetilgang i det uendelige. Gjenopprett fra snapshot.
+      if (s.impersonationExpiresAt && Date.now() > s.impersonationExpiresAt) {
+        const snap = s.impersonatorSnapshot || {};
+        Object.assign(s, snap);
+        s.impersonatedByAdmin = false;
+        delete s.impersonatorId; delete s.impersonatorEmail;
+        delete s.impersonatorSnapshot; delete s.impersonationExpiresAt;
+        activeSessions.set(token as string, s);
+        void persistAuthSession(pool, token as string, s);
+      } else {
+        const m = req.method.toUpperCase();
+        if ((m === "POST" || m === "PUT" || m === "PATCH" || m === "DELETE")
+            && !req.path.includes("/impersonat")) {
+          void pool.query(
+            `INSERT INTO superadmin_impersonation_audit (super_admin_id, action, target_user_id, details)
+             VALUES ($1,'write',$2,$3::jsonb)`,
+            [s.impersonatorId || null, s.userId, JSON.stringify({ method: m, path: String(req.path).slice(0, 200) })],
+          ).catch(() => { /* audit skal aldri blokkere */ });
+        }
       }
     }
   } catch { /* aldri blokkér requesten */ }

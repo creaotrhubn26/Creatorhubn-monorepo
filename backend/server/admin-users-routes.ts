@@ -260,8 +260,15 @@ export function setupAdminUsersRoutes(deps: AdminUsersRoutesDeps): void {
         });
       }
 
-      // If user is being deactivated, revoke all active sessions
-      if (nextIsActive === false && accountUserId) {
+      // Revoke all active sessions when the account is deactivated OR when its
+      // role changes. Live sessions carry a role snapshot and are only ever
+      // upgraded (never downgraded) by reconcileSessionAdminRole, so a demoted
+      // admin would otherwise retain admin access in their existing session
+      // indefinitely (there is no session TTL). Forcing re-login rebuilds a
+      // fresh snapshot from the persisted role.
+      const roleChanged =
+        nextRole !== undefined && nextRole !== currentRole;
+      if ((nextIsActive === false || roleChanged) && accountUserId) {
         for (const [tok, sess] of activeSessions.entries()) {
           if (String(sess?.userId) === accountUserId) activeSessions.delete(tok);
         }
