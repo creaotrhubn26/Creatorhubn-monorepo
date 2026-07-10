@@ -89,6 +89,8 @@ docs/
 !docs/AGENCY_GO_TO_MARKET.md
 !docs/security/
 !docs/security/*.md
+!docs/cto-audit/
+!docs/cto-audit/*.md
 !docs/post-agent/
 !docs/post-agent/*.md
 !docs/leadgrid/
