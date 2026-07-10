@@ -338,7 +338,7 @@ function StickyHeader() {
             {([
               { label: 'Produkt', href: '#produkt' },
               { label: 'Løsninger', href: '#løsninger' },
-              { label: 'Connectors', href: '/leadgrid/connectors' },
+              { label: 'Leadgrid API', href: '/leadgrid/connectors' },
               { label: 'Priser', href: '#priser' },
               { label: 'Demo', href: '#demo' },
             ]).map((item) => (
@@ -1519,7 +1519,7 @@ function Footer() {
           </Grid>
 
           {[
-            { title: 'Produkt', links: ['Funksjoner', { label: 'Integrasjoner', href: '/leadgrid/connectors' }, { label: 'Connector Marketplace', href: '/leadgrid/connectors' }, 'Sikkerhet', 'Oppdateringer'] },
+            { title: 'Produkt', links: ['Funksjoner', { label: 'Leadgrid API', href: '/leadgrid/connectors' }, 'Sikkerhet', 'Oppdateringer'] },
             { title: 'Løsninger', links: ['Salgsteam', 'Markedsføring', 'Franchise', 'Eiendomsmegling'] },
             { title: 'Ressurser', links: ['Hjelpesenter', 'Blogg', 'Guides', 'Webinarer'] },
             {
