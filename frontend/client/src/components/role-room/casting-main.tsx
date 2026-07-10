@@ -23,6 +23,8 @@ import LeadgridImportPage from '@/pages/leadgrid-import';
 import LeadgridWorkflowsPage from '@/pages/leadgrid-workflows';
 import LeadgridWorkflowWebhooksPage from '@/pages/leadgrid-workflow-webhooks';
 import LeadgridDealsPage from '@/pages/leadgrid-deals';
+import LeadgridSkaffeLeadsGuidePage from '@/pages/leadgrid-skaffe-leads-guide';
+import LeadgridFeltsalgSalgsteamPage from '@/pages/leadgrid-feltsalg-salgsteam';
 import BlogIndexPage from '@/pages/blog-index';
 import BlogPostPage from '@/pages/blog-post';
 import AgencyLandingPage from '@/pages/agency-landing';
@@ -254,6 +256,16 @@ function CastingStandaloneAppContent() {
       || localeCtx.pathname === '/leadgrid/priser' || localeCtx.pathname === '/leadgrid/priser/') {
     return <LeadgridPricingPage />;
   }
+  // GEO-innholdssider (offentlige — docs/integration-audit/09)
+  if (localeCtx.pathname === '/leadgrid/skaffe-leads-guide'
+      || localeCtx.pathname === '/leadgrid/skaffe-leads-guide/') {
+    return <LeadgridSkaffeLeadsGuidePage />;
+  }
+  if (localeCtx.pathname === '/leadgrid/feltsalg-for-salgsteam'
+      || localeCtx.pathname === '/leadgrid/feltsalg-for-salgsteam/') {
+    return <LeadgridFeltsalgSalgsteamPage />;
+  }
+
   if (localeCtx.pathname === '/leadgrid' || localeCtx.pathname === '/leadgrid/') {
     return <LeadgridLanding />;
   }
