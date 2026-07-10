@@ -65868,6 +65868,7 @@ setupBrandingRoutes({
   app,
   pool,
   requireUserSession,
+  requireAdminSession,
   brandingLogoUpload,
   getStoredBusinessBrandingInfo,
   persistBusinessBrandingInfo,

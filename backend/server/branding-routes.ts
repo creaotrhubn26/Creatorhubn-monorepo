@@ -8,6 +8,7 @@ export interface BrandingRoutesDeps {
   app: express.Application;
   pool: Pool;
   requireUserSession: (req: any, res: any) => any;
+  requireAdminSession: (req: any, res: any) => any;
   brandingLogoUpload: Multer;
   getStoredBusinessBrandingInfo: (userId: string) => Promise<any>;
   persistBusinessBrandingInfo: (
@@ -44,6 +45,7 @@ export function setupBrandingRoutes(deps: BrandingRoutesDeps): void {
     app,
     pool,
     requireUserSession,
+    requireAdminSession,
     brandingLogoUpload,
     getStoredBusinessBrandingInfo,
     persistBusinessBrandingInfo,
@@ -290,16 +292,14 @@ export function setupBrandingRoutes(deps: BrandingRoutesDeps): void {
   });
 
   app.put("/api/branding/settings", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    // Platform branding is a shared singleton (roleRoomBrandingSettingsUserId)
+    // read by every Role Room surface — only an admin may mutate it. The write
+    // is always keyed to the canonical singleton, never a client-supplied id.
+    if (!requireAdminSession(req, res)) return;
     try {
-      const userId =
-        readString(req.body?.userId) ||
-        readString(req.body?.user_id) ||
-        readString(req.headers["x-user-id"]) ||
-        roleRoomBrandingSettingsUserId;
       const normalized = await persistRoleRoomPlatformBrandingSettings(
         req.body?.settings,
-        userId,
+        roleRoomBrandingSettingsUserId,
       );
       res.json({ ok: true, settings: normalized });
     } catch (error) {
