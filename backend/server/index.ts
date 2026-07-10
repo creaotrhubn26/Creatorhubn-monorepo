@@ -620,6 +620,7 @@ import { registerLeadExportRoutes } from "./lead-export-routes.js";
 import { registerLeadgridScheduledReportsRoutes } from "./leadgrid-scheduled-reports-routes.js";
 import { registerBrandKitRoutes } from "./brand-kit-routes.js";
 import { registerMarketScanRoutes } from "./market-intelligence/market-scan-routes.js";
+import { registerModuleFeaturesRoutes } from "./feature-flags/module-features-routes.js";
 import { registerMarketingWorkflowRoutes } from "./market-intelligence/marketing-workflow-routes.js";
 import { registerMarketIntelAgentRoutes } from "./market-intelligence/market-intel-agent-routes.js";
 import { registerLearningLoopRoutes } from "./market-intelligence/learning-loop-routes.js";
@@ -25056,6 +25057,9 @@ registerBrandKitRoutes({
   activeSessions,
   isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
 });
+// Modul-feature-state for frontend-gating (CTO-audit P1 — leser
+// module_feature_entitlements via resolveModuleFeatureState, fail-open)
+registerModuleFeaturesRoutes({ app, pool, activeSessions });
 // Market Intelligence Scanner (Fase 2 — orkestrert competitor/funnel/teknikk-scan)
 registerMarketScanRoutes({
   app,

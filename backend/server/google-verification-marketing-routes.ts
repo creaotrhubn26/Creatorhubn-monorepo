@@ -26,6 +26,7 @@ import {
   refreshGoogleAdsAccessToken,
 } from "./role-room-ads-oauth.js";
 import { decryptInstagramToken } from "./role-room-instagram-oauth.js";
+import { externalFetch } from "./external-api.js";
 
 const GA4_BASE = "https://analyticsadmin.googleapis.com/v1beta";
 const GSC_BASE = "https://www.googleapis.com/webmasters/v3";
@@ -67,7 +68,7 @@ async function googleGet(
   url: string,
   accessToken: string,
 ): Promise<{ ok: boolean; status: number; body: Record<string, unknown> }> {
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+  const res = await externalFetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
   const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   return { ok: res.ok, status: res.status, body };
 }
@@ -97,7 +98,7 @@ export function setupGoogleVerificationMarketingRoutes(deps: {
         let lastStatus = 0;
         let lastDetail = "";
         for (const v of versions) {
-          const r = await fetch(
+          const r = await externalFetch(
             `https://googleads.googleapis.com/${v}/customers:listAccessibleCustomers`,
             { headers: { Authorization: `Bearer ${accessToken}`, "developer-token": developerToken } },
           );

@@ -17,6 +17,7 @@ import {
   ensureFreshAdsToken,
   getAdsOauthConnection,
 } from "./role-room-ads-oauth.js";
+import { externalFetch } from "./external-api.js";
 
 const GOOGLE_ADS_API_BASE = "https://googleads.googleapis.com/v18";
 
@@ -75,7 +76,7 @@ export async function createGoogleCustomerMatchAudience(
       },
     }],
   };
-  const listR = await fetch(`${GOOGLE_ADS_API_BASE}/customers/${cleanId}/userLists:mutate`, {
+  const listR = await externalFetch(`${GOOGLE_ADS_API_BASE}/customers/${cleanId}/userLists:mutate`, {
     method: "POST",
     headers: adsHeaders(access),
     body: JSON.stringify(userListBody),
@@ -89,7 +90,7 @@ export async function createGoogleCustomerMatchAudience(
   if (!userListResource) return { ok: false, error: "Manglende resourceName" };
 
   // 2) Opprett offline-user-data-job
-  const jobR = await fetch(`${GOOGLE_ADS_API_BASE}/customers/${cleanId}/offlineUserDataJobs:create`, {
+  const jobR = await externalFetch(`${GOOGLE_ADS_API_BASE}/customers/${cleanId}/offlineUserDataJobs:create`, {
     method: "POST",
     headers: adsHeaders(access),
     body: JSON.stringify({
@@ -119,7 +120,7 @@ export async function createGoogleCustomerMatchAudience(
   // Google tillater max 100 000 ops per request — batch i 10 000-er for sikkerhet
   for (let i = 0; i < operations.length; i += 10000) {
     const batch = operations.slice(i, i + 10000);
-    await fetch(`${GOOGLE_ADS_API_BASE}/${jobResource}:addOperations`, {
+    await externalFetch(`${GOOGLE_ADS_API_BASE}/${jobResource}:addOperations`, {
       method: "POST",
       headers: adsHeaders(access),
       body: JSON.stringify({
@@ -130,7 +131,7 @@ export async function createGoogleCustomerMatchAudience(
   }
 
   // 4) Kjør jobben
-  await fetch(`${GOOGLE_ADS_API_BASE}/${jobResource}:run`, {
+  await externalFetch(`${GOOGLE_ADS_API_BASE}/${jobResource}:run`, {
     method: "POST",
     headers: adsHeaders(access),
     body: "{}",
@@ -174,7 +175,7 @@ export async function listGoogleCustomerMatchAudiences(
      LIMIT 50
   `;
 
-  const r = await fetch(`${GOOGLE_ADS_API_BASE}/customers/${cleanId}/googleAds:search`, {
+  const r = await externalFetch(`${GOOGLE_ADS_API_BASE}/customers/${cleanId}/googleAds:search`, {
     method: "POST",
     headers: adsHeaders(access),
     body: JSON.stringify({ query: gaql }),
@@ -288,7 +289,7 @@ export async function sendGoogleOfflineConversion(
     conversion.userIdentifiers = userIdentifiers;
   }
 
-  const r = await fetch(
+  const r = await externalFetch(
     `${GOOGLE_ADS_API_BASE}/customers/${cleanId}:uploadClickConversions`,
     {
       method: "POST",
