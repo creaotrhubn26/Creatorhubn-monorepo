@@ -27,6 +27,7 @@ import type { Server as HTTPServer } from "http";
 import type { Pool } from "pg";
 import { WebSocketServer, WebSocket } from "ws";
 import { URL } from "url";
+import { resolveEffectivePermissions } from "./lead-map-permission-routes.js";
 
 type SessionData = {
   userId: string;
@@ -49,7 +50,7 @@ class LeadgridRealtimeServer {
 
   attach(
     httpServer: HTTPServer,
-    _pool: Pool,
+    pool: Pool,
     activeSessions: Map<string, SessionData>,
   ): void {
     this.wss = new WebSocketServer({ noServer: true });
@@ -81,19 +82,36 @@ class LeadgridRealtimeServer {
         };
         this.clients.add(client);
 
-        ws.on("message", (raw) => {
+        ws.on("message", async (raw) => {
           try {
             const msg = JSON.parse(raw.toString());
             if (msg.type === "subscribe" && Array.isArray(msg.channels)) {
+              const denied: string[] = [];
               for (const ch of msg.channels) {
-                if (typeof ch === "string" && ch.length > 0 && ch.length < 200) {
+                if (
+                  typeof ch !== "string" ||
+                  ch.length === 0 ||
+                  ch.length >= 200
+                ) {
+                  continue;
+                }
+                // Authorize every channel against the connecting session —
+                // a bearer-authenticated user may ONLY subscribe to their own
+                // user:-channel or an org:-channel they are a member of.
+                // Without this, any logged-in user could subscribe to
+                // org:<any-uuid> / user:<any-id> and eavesdrop on other
+                // tenants' live lead-intelligence events.
+                if (await this.canSubscribe(pool, client.userId, ch)) {
                   client.channels.add(ch);
+                } else {
+                  denied.push(ch);
                 }
               }
               ws.send(
                 JSON.stringify({
                   type: "subscribed",
                   channels: Array.from(client.channels),
+                  ...(denied.length ? { denied } : {}),
                 }),
               );
             } else if (
@@ -146,6 +164,36 @@ class LeadgridRealtimeServer {
     console.log(
       "[leadgrid-realtime] WebSocket server attached at /ws/leadgrid",
     );
+  }
+
+  /**
+   * Authorize a subscribe request for a single channel against the
+   * connecting user. `user:<id>` is allowed only for one's own id;
+   * `org:<uuid>` requires organization membership. Unknown channel
+   * shapes are denied by default (fail closed).
+   */
+  private async canSubscribe(
+    pool: Pool,
+    userId: string,
+    channel: string,
+  ): Promise<boolean> {
+    const sep = channel.indexOf(":");
+    if (sep <= 0) return false;
+    const kind = channel.slice(0, sep);
+    const id = channel.slice(sep + 1);
+    if (!id) return false;
+    if (kind === "user") {
+      return id === userId;
+    }
+    if (kind === "org") {
+      try {
+        const { role } = await resolveEffectivePermissions(pool, id, userId);
+        return Boolean(role);
+      } catch {
+        return false;
+      }
+    }
+    return false;
   }
 
   /**
