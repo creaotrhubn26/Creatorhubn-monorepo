@@ -1528,6 +1528,17 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     try {
       const ss = await pool.query(`SELECT id FROM split_sheets WHERE user_id=$1 AND metadata->>'sourceReviewId'=$2 LIMIT 1`, [s.userId, id]);
       if (!ss.rows.length) return res.status(404).json({ error: "not_found" });
+      // Separasjon av plikter: via denne sesjons-autentiserte eier-ruten kan eieren
+      // KUN signere sin egen andel. Øvrige parter signerer sin egen andel via sin
+      // personlige invitasjonslenke (/api/audio-review-shared/:token/sign, som
+      // name-matcher signataren mot invitasjonen). Uten dette kunne eieren
+      // forfalske medskribentenes juridisk bindende signaturer (m/ IP, tid,
+      // samtykke og integritetshash) og flippe splittarket til «completed».
+      const ownerRow = await pool.query(`SELECT name FROM audio_review_members WHERE project_id=$1::uuid AND is_owner=TRUE LIMIT 1`, [id]);
+      const ownerName = ownerRow.rows[0]?.name || null;
+      const tgt = await pool.query(`SELECT name FROM split_sheet_contributors WHERE id=$1::uuid AND split_sheet_id=$2::uuid LIMIT 1`, [contributorId, ss.rows[0].id]);
+      if (!tgt.rows.length) return res.status(404).json({ error: "contributor_not_found" });
+      if (!ownerName || tgt.rows[0].name !== ownerName) return res.status(403).json({ error: "can_only_sign_own_share" });
       const out = await signContributor(ss.rows[0].id, contributorId, signature, clientIp(req), String(req.headers["user-agent"] || ""), { signatureImage: req.body?.signatureImage, method: str(req.body?.signatureMethod, 12) });
       if (!out) return res.status(404).json({ error: "contributor_not_found" });
       return res.json({ ok: true, signed: out });
