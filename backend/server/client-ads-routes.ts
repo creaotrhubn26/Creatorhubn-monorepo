@@ -174,6 +174,33 @@ const TRIGGER_TYPES = new Set([
 export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
   const { app, pool, getActiveSession } = deps;
 
+  // IDOR-vakt for config-id-baserte endepunkter: last configens
+  // client_project_id og bekreft at brukeren tilhører prosjektet
+  // (produsent/team) eller er klienten med aktiv portal-sesjon.
+  // Returnerer true kun ved bekreftet tilgang; false → kall 404 (ikke lekk eksistens).
+  async function callerCanAccessConfig(
+    configId: string,
+    session: SessionLike,
+  ): Promise<boolean> {
+    if (!configId) return false;
+    let projectId: string | null = null;
+    try {
+      const r = await pool.query(
+        `SELECT client_project_id::text AS pid FROM client_ads_configs WHERE id = $1::uuid`,
+        [configId],
+      );
+      if (!r.rowCount) return false;
+      projectId = r.rows[0].pid;
+    } catch {
+      return false;
+    }
+    if (!projectId) return false;
+    return canAccessProjectAds(pool, projectId, {
+      userId: session.userId,
+      email: session.email ?? null,
+    });
+  }
+
   // ── POST /api/admin-room/agent/ads/analyze ──────────────────────
   app.post("/api/admin-room/agent/ads/analyze", async (req, res) => {
     const session = getActiveSession(req);
@@ -590,6 +617,12 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
 
     const projectId = typeof req.query.clientProjectId === "string" ? req.query.clientProjectId : null;
 
+    // IDOR-vakt: prosjekt-filteret må bekreftes mot brukerens tilgang, ellers
+    // kan hvem som helst hente pending ads-strategi + fee for et vilkårlig prosjekt.
+    if (projectId && !(await canAccessProjectAds(pool, projectId, { userId: session.userId, email: session.email ?? null }))) {
+      return res.status(403).json({ error: "forbidden_project" });
+    }
+
     try {
       const cfgs = projectId
         ? await pool.query(
@@ -698,6 +731,12 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
     const session = getActiveSession(req);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
 
+    // Kun prosjektets klient/team/produsent kan avgjøre godkjenning — ellers
+    // kan en vilkårlig innlogget bruker forfalske klientens beslutning.
+    if (!(await callerCanAccessConfig(req.params.configId, session))) {
+      return res.status(404).json({ error: "Ikke funnet" });
+    }
+
     try {
       const upd = await pool.query(
         `UPDATE client_ads_configs
@@ -738,6 +777,10 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
     const body = (req.body ?? {}) as { feedback?: string };
     const feedback = body.feedback?.trim().slice(0, 4000) || null;
+
+    if (!(await callerCanAccessConfig(req.params.configId, session))) {
+      return res.status(404).json({ error: "Ikke funnet" });
+    }
 
     try {
       const upd = await pool.query(
@@ -2106,6 +2149,9 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
     const projectId = typeof req.query.clientProjectId === "string" ? req.query.clientProjectId : "";
     if (!projectId) return res.status(400).json({ error: "clientProjectId påkrevd" });
+    if (!(await canAccessProjectAds(pool, projectId, { userId: session.userId, email: session.email ?? null }))) {
+      return res.status(403).json({ error: "forbidden_project" });
+    }
     try {
       const r = await pool.query(
         `SELECT id::text, tiktok_pixel_id, tiktok_advertiser_id,
@@ -2269,6 +2315,9 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
   app.get("/api/role-room/ads-configs/:id/permissions", async (req, res) => {
     const session = getActiveSession(req);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    if (!(await callerCanAccessConfig(req.params.id, session))) {
+      return res.status(404).json({ error: "Ikke funnet" });
+    }
     try {
       const state = await getScopePermissionsState(pool, req.params.id);
       return res.json(state);
@@ -2287,6 +2336,9 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       acceptedByEmail?: string;
     };
     if (!body.permissions) return res.status(400).json({ error: "permissions påkrevd" });
+    if (!(await callerCanAccessConfig(req.params.id, session))) {
+      return res.status(404).json({ error: "Ikke funnet" });
+    }
 
     const ip = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()
       || req.socket?.remoteAddress
@@ -2315,6 +2367,9 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
     const session = getActiveSession(req);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
     const body = (req.body ?? {}) as { reason?: string };
+    if (!(await callerCanAccessConfig(req.params.id, session))) {
+      return res.status(404).json({ error: "Ikke funnet" });
+    }
     try {
       const r = await revokeScopePermissions(pool, {
         configId: req.params.id,
@@ -2662,6 +2717,11 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       return res.status(400).json({ error: "ugyldig_method" });
     }
 
+    // Payloaden kan inneholde proxy-token (delt hemmelighet for /track) — IDOR-vakt.
+    if (!(await callerCanAccessConfig(req.params.id, session))) {
+      return res.status(404).json({ error: "config_not_found" });
+    }
+
     try {
       const payload = await buildDeploymentPayload(pool, {
         configId: req.params.id,
@@ -2687,6 +2747,10 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       return res.status(400).json({ error: "mangler_eller_ugyldig_method" });
     }
 
+    if (!(await callerCanAccessConfig(req.params.id, session))) {
+      return res.status(404).json({ error: "config_not_found" });
+    }
+
     try {
       const r = await markDeploymentApplied(pool, { configId: req.params.id, method });
       return res.json(r);
@@ -2700,6 +2764,10 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
   app.post("/api/role-room/ads-configs/:id/validate-deployment", async (req, res) => {
     const session = getActiveSession(req);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+
+    if (!(await callerCanAccessConfig(req.params.id, session))) {
+      return res.status(404).json({ error: "config_not_found" });
+    }
 
     try {
       const r = await validateDeployment(pool, req.params.id);
@@ -2717,6 +2785,10 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
   app.get("/api/role-room/ads-configs/:id/diagnostics", async (req, res) => {
     const session = getActiveSession(req);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+
+    if (!(await callerCanAccessConfig(req.params.id, session))) {
+      return res.status(404).json({ error: "config_not_found" });
+    }
 
     try {
       const summary = await buildDiagnosticsSummary(pool, req.params.id);
