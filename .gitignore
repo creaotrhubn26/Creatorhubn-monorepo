@@ -93,6 +93,8 @@ docs/
 !docs/cto-audit/*.md
 !docs/integration-audit/
 !docs/integration-audit/*.md
+!docs/integration-audit/geo-baselines/
+!docs/integration-audit/geo-baselines/*.md
 !docs/post-agent/
 !docs/post-agent/*.md
 !docs/leadgrid/

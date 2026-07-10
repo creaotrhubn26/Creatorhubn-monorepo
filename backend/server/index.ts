@@ -620,6 +620,7 @@ import { registerLeadExportRoutes } from "./lead-export-routes.js";
 import { registerLeadgridScheduledReportsRoutes } from "./leadgrid-scheduled-reports-routes.js";
 import { registerBrandKitRoutes } from "./brand-kit-routes.js";
 import { registerMarketScanRoutes } from "./market-intelligence/market-scan-routes.js";
+import { registerGeoVisibilityRoutes } from "./market-intelligence/geo-visibility-routes.js";
 import { registerModuleFeaturesRoutes } from "./feature-flags/module-features-routes.js";
 import { registerIntegrationsAdminRoutes } from "./integrations/integrations-admin-routes.js";
 import { registerMarketingWorkflowRoutes } from "./market-intelligence/marketing-workflow-routes.js";
@@ -25065,6 +25066,13 @@ registerModuleFeaturesRoutes({ app, pool, activeSessions });
 registerIntegrationsAdminRoutes({ app, pool, activeSessions });
 // Market Intelligence Scanner (Fase 2 — orkestrert competitor/funnel/teknikk-scan)
 registerMarketScanRoutes({
+  app,
+  pool,
+  activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
+// GEO Visibility — syntetisk AI-synlighets-probing (docs/integration-audit/08)
+registerGeoVisibilityRoutes({
   app,
   pool,
   activeSessions,

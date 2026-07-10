@@ -136,6 +136,20 @@
       "destination": "/theroleroom-llms.txt"
     },
     {
+      "source": "/llms.txt",
+      "has": [
+        {
+          "type": "host",
+          "value": "((www\\.)?leadgrid\\.no|leadgrid\\.theroleroom\\.com)"
+        }
+      ],
+      "destination": "/leadgrid-llms.txt"
+    },
+    {
+      "source": "/llms.txt",
+      "destination": "/creatorhubn-llms.txt"
+    },
+    {
       "source": "/en",
       "has": [
         {

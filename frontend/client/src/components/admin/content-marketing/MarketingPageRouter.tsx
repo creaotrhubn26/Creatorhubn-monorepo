@@ -17,6 +17,7 @@ import EtterproduksjonNorgePage from './EtterproduksjonNorgePage';
 import ProduksjonsOSPage from './ProduksjonsOSPage';
 import InnholdsprodusentPage from './InnholdsprodusentPage';
 import DansestudioNorgePage from './DansestudioNorgePage';
+import FilmTvUtdanningVerktoyPage from './FilmTvUtdanningVerktoyPage';
 import { getMarketingPageConfig, type MarketingPageKey } from './marketingPagesConfig';
 
 /**
@@ -82,6 +83,8 @@ export function MarketingPageRouter({ pageKey }: { pageKey: MarketingPageKey }) 
       return <InnholdsprodusentPage />;
     case 'dansestudio-norge':
       return <DansestudioNorgePage />;
+    case 'verktoy-for-filmutdanninger':
+      return <FilmTvUtdanningVerktoyPage />;
     default:
       return null;
   }
