@@ -1,4 +1,4 @@
-Leadgrid 1.4.0 (build 20260712) — Varsler, tildeling og dine data
+Leadgrid 1.4.0 (build 20260713) — Varsler, tildeling og dine data
 
 NYTT / FIKSET I DENNE BUILDEN:
 
