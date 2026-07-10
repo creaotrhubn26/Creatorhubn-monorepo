@@ -250,7 +250,11 @@ export function setupEditingPartnerApplicationsAdminRoutes(deps: Deps): void {
   app.post("/api/cron/prototype-feedback-reminders", async (req, res) => {
     const cronToken = req.headers["x-cron-trigger-token"] as string | undefined;
     const expected = process.env.CRON_TRIGGER_TOKEN;
-    const viaToken = !!expected && !!cronToken && crypto.timingSafeEqual(Buffer.from(cronToken), Buffer.from(expected));
+    const viaToken =
+      !!expected &&
+      !!cronToken &&
+      Buffer.byteLength(cronToken) === Buffer.byteLength(expected) &&
+      crypto.timingSafeEqual(Buffer.from(cronToken), Buffer.from(expected));
     if (!viaToken) {
       const sess = await requireSuperAdmin(req, res, pool, activeSessions);
       if (!sess) return;

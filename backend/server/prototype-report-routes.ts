@@ -255,7 +255,11 @@ export function setupPrototypeReportRoutes({ app, pool, getActiveSessionFromRequ
   app.post("/api/cron/prototype-tester-report", async (req, res) => {
     const cronToken = req.headers["x-cron-trigger-token"] as string | undefined;
     const expected = process.env.CRON_TRIGGER_TOKEN;
-    const viaToken = !!expected && !!cronToken && crypto.timingSafeEqual(Buffer.from(cronToken), Buffer.from(expected));
+    const viaToken =
+      !!expected &&
+      !!cronToken &&
+      Buffer.byteLength(cronToken) === Buffer.byteLength(expected) &&
+      crypto.timingSafeEqual(Buffer.from(cronToken), Buffer.from(expected));
     if (!viaToken && !adminFromReq(req)) return res.status(403).json({ error: "Ikke autorisert" });
     try {
       res.json(await sendReport(null));
