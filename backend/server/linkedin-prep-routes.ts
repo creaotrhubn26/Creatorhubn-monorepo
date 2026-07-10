@@ -7,6 +7,7 @@
 
 import type express from "express";
 import type { Pool } from "pg";
+import { timingSafeEqual } from "node:crypto";
 
 import { pollLeadFormsDue } from "./linkedin-leadsync-service.js";
 import {
@@ -45,7 +46,6 @@ export function setupLinkedInPrepRoutes(deps: LinkedInPrepRoutesDeps): void {
       return null;
     }
     if (presentedToken && expectedToken) {
-      const { timingSafeEqual } = await import("node:crypto");
       const a = Buffer.from(presentedToken); const b = Buffer.from(expectedToken);
       if (a.length === b.length && timingSafeEqual(a, b)) return { source: "cron" };
       res.status(401).json({ error: "Ugyldig cron-trigger-token" });
