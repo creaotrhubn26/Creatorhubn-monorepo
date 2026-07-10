@@ -620,6 +620,7 @@ import { registerLeadgridScheduledReportsRoutes } from "./leadgrid-scheduled-rep
 import { registerBrandKitRoutes } from "./brand-kit-routes.js";
 import { registerMarketScanRoutes } from "./market-intelligence/market-scan-routes.js";
 import { registerModuleFeaturesRoutes } from "./feature-flags/module-features-routes.js";
+import { registerIntegrationsAdminRoutes } from "./integrations/integrations-admin-routes.js";
 import { registerMarketingWorkflowRoutes } from "./market-intelligence/marketing-workflow-routes.js";
 import { registerMarketIntelAgentRoutes } from "./market-intelligence/market-intel-agent-routes.js";
 import { registerLearningLoopRoutes } from "./market-intelligence/learning-loop-routes.js";
@@ -25031,6 +25032,8 @@ registerBrandKitRoutes({
 // Modul-feature-state for frontend-gating (CTO-audit P1 — leser
 // module_feature_entitlements via resolveModuleFeatureState, fail-open)
 registerModuleFeaturesRoutes({ app, pool, activeSessions });
+// Admin Integration Center v1 — read-only registry (integrasjonsanalysen steg 2)
+registerIntegrationsAdminRoutes({ app, pool, activeSessions });
 // Market Intelligence Scanner (Fase 2 — orkestrert competitor/funnel/teknikk-scan)
 registerMarketScanRoutes({
   app,
