@@ -1053,7 +1053,8 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
   });
 
   app.put("/api/quotes/:id/status", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       await ensureQuotesCompatibilitySchema();
 
@@ -1068,8 +1069,9 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
       }
 
       params.push(req.params.id);
+      params.push(session.userId);
       const result = await pool.query(
-        `UPDATE quotes SET ${updates.join(", ")} WHERE id = $2 RETURNING *`,
+        `UPDATE quotes SET ${updates.join(", ")} WHERE id = $2 AND created_by = $3 RETURNING *`,
         params,
       );
 
@@ -1104,7 +1106,8 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
   });
 
   app.put("/api/quotes/:id/link-project", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       await ensureQuotesCompatibilitySchema();
 
@@ -1114,8 +1117,8 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
       }
 
       const result = await pool.query(
-        "UPDATE quotes SET project_id = $1, updated_at = NOW() WHERE id = $2 RETURNING *",
-        [projectId, req.params.id],
+        "UPDATE quotes SET project_id = $1, updated_at = NOW() WHERE id = $2 AND created_by = $3 RETURNING *",
+        [projectId, req.params.id, session.userId],
       );
 
       if (result.rows.length === 0) {
@@ -1133,13 +1136,14 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
   });
 
   app.post("/api/quotes/:id/create-chat", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       await ensureQuotesCompatibilitySchema();
 
       const result = await pool.query(
-        "SELECT * FROM quotes WHERE id = $1 LIMIT 1",
-        [req.params.id],
+        "SELECT * FROM quotes WHERE id = $1 AND created_by = $2 LIMIT 1",
+        [req.params.id, session.userId],
       );
       if (result.rows.length === 0) {
         return res.status(404).json({ error: "Quote not found" });
@@ -1176,7 +1180,8 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
   });
 
   app.post("/api/quotes/:id/send-email", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       await ensureQuotesCompatibilitySchema();
 
@@ -1185,9 +1190,9 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
          SET sent_at = NOW(),
              status = CASE WHEN COALESCE(status, 'draft') = 'draft' THEN 'pending' ELSE status END,
              updated_at = NOW()
-         WHERE id = $1
+         WHERE id = $1 AND created_by = $2
          RETURNING *`,
-        [req.params.id],
+        [req.params.id, session.userId],
       );
 
       if (result.rows.length === 0) {
@@ -1213,7 +1218,8 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
   });
 
   app.put("/api/quotes/:id", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       await ensureQuotesCompatibilitySchema();
 
@@ -1349,8 +1355,10 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
       }
 
       params.push(req.params.id);
+      const idParamIdx = idx;
+      params.push(session.userId);
       const result = await pool.query(
-        `UPDATE quotes SET ${setClauses.join(", ")} WHERE id = $${idx} RETURNING *`,
+        `UPDATE quotes SET ${setClauses.join(", ")} WHERE id = $${idParamIdx} AND created_by = $${idParamIdx + 1} RETURNING *`,
         params,
       );
 
@@ -1384,15 +1392,16 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
   });
 
   app.delete("/api/quotes/:id", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       await ensureQuotesCompatibilitySchema();
 
       const result = await pool.query(
-        "DELETE FROM quotes WHERE id = $1 RETURNING id",
-        [req.params.id],
+        "DELETE FROM quotes WHERE id = $1 AND created_by = $2 RETURNING id",
+        [req.params.id, session.userId],
       );
-      if (result.rowCount === 0) {
+      if (!result.rows.length) {
         return res.status(404).json({ error: "Quote not found" });
       }
 
