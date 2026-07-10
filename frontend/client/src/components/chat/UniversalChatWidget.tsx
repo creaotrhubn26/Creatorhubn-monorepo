@@ -972,6 +972,14 @@ const getChatWebSocketUrl = (
     if (userIdentifier && userIdentifier.trim()) {
       url.searchParams.set('userId', userIdentifier.trim());
     }
+    // Bearer token so the /ws chat server can verify identity at handshake
+    // (chat send/receive is gated on this server-side).
+    try {
+      const token = localStorage.getItem('creatorhub_auth_token')
+        || localStorage.getItem('token')
+        || localStorage.getItem('role_room_auth_token');
+      if (token) url.searchParams.set('token', token);
+    } catch { /* localStorage unavailable */ }
     return url.toString();
   } catch {
     return null;

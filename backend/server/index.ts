@@ -74651,7 +74651,7 @@ app.use(buildSentryErrorMiddleware());
 
 // Create HTTP server for WebSocket support
 const httpServer = createServer(app);
-createWebSocketServer(httpServer, db);
+createWebSocketServer(httpServer, db, pool, activeSessions);
 // G25/J1: dance realtime presence + cursor sync på /ws/dance/realtime
 createDanceRealtimeServer(httpServer);
 attachCaptureWebSocket(httpServer, pool, activeSessions);

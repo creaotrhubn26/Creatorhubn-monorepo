@@ -337,7 +337,8 @@ export default function UniversalCommunication({
     }
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws/communication/${selectedConversation.id}`;
+    const wsToken = localStorage.getItem('creatorhub_auth_token') || localStorage.getItem('token') || localStorage.getItem('role_room_auth_token') || '';
+    const wsUrl = `${protocol}//${window.location.host}/ws/communication/${selectedConversation.id}${wsToken ? `?token=${encodeURIComponent(wsToken)}` : ''}`;
     wsRef.current = new WebSocket(wsUrl);
 
     wsRef.current.onmessage = (event) => {

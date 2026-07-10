@@ -7,9 +7,11 @@
 
 import { WebSocketServer, WebSocket } from 'ws';
 import type { Server } from 'http';
+import type { Pool } from 'pg';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import * as schema from '../migrations/schema.js';
+import { loadPersistedAuthSession } from './auth-session-store.js';
 import crypto from 'crypto';
 
 type DB = NodePgDatabase<typeof schema>;
@@ -21,18 +23,34 @@ interface ConnectedClient {
   room?:       string;
   role?:       string;
   connectedAt: Date;
+  /**
+   * True once the socket presented a valid bearer token at handshake (or via a
+   * later `auth` message). Chat send/receive is gated on this — an
+   * unauthenticated socket may never be trusted with an identity.
+   */
+  authenticated: boolean;
+  /** The server-verified user id (from the session), never a client-claimed one. */
+  authUserId?: string;
 }
 
 // Slice 9D.5.D — module-level handle slik at route-handlers kan
 // broadcaste events uten å gå via WebSocketServer-instansen.
 let activeChatClients: Map<string, ConnectedClient> | null = null;
 
-/** Broadcast en JSON-payload til alle åpne sockets eid av userId. */
+/**
+ * Broadcast en JSON-payload til alle åpne sockets eid av userId.
+ * Matches only on the server-verified identity (authUserId) — an
+ * unauthenticated socket that merely claimed `?userId=victim` is never a target.
+ */
 export function broadcastChatEventToUser(userId: string, message: unknown): void {
   if (!activeChatClients) return;
   const data = JSON.stringify(message);
   for (const client of activeChatClients.values()) {
-    if (client.userId === userId && client.ws.readyState === WebSocket.OPEN) {
+    if (
+      client.authenticated &&
+      client.authUserId === userId &&
+      client.ws.readyState === WebSocket.OPEN
+    ) {
       try { client.ws.send(data); } catch { /* ignore */ }
     }
   }
@@ -60,10 +78,94 @@ export function broadcastEventToRoom(room: string, message: unknown): number {
   return count;
 }
 
-export function createWebSocketServer(server: Server, db: DB): WebSocketServer {
+export function createWebSocketServer(
+  server: Server,
+  db: DB,
+  pool: Pool,
+  // Typed loosely to sidestep Map invariance against the caller's
+  // ActiveSessionData; we only ever read `.userId`.
+  activeSessions: Map<string, any>,
+): WebSocketServer {
   const wss = new WebSocketServer({ noServer: true });
   const clients = new Map<string, ConnectedClient>();
   activeChatClients = clients;
+
+  /**
+   * Resolve a bearer token to a verified session (in-memory first, then the
+   * persisted auth-session store). Mirrors realtime-user-events.ts's
+   * resolveBearerSession. Returns null for any unknown/expired token — callers
+   * treat that as unauthenticated (fail closed).
+   */
+  async function resolveWsSession(token: string): Promise<{ userId: string } | null> {
+    const t = (token || '').trim();
+    if (!t) return null;
+    const inMem = activeSessions.get(t);
+    if (inMem?.userId) return { userId: String(inMem.userId) };
+    try {
+      const persisted = await loadPersistedAuthSession<{
+        userId: string; email: string; name: string; role: string; loginAt: string;
+        [k: string]: unknown;
+      }>(pool, t);
+      if (persisted?.userId) {
+        activeSessions.set(t, persisted);
+        return { userId: String(persisted.userId) };
+      }
+    } catch {
+      // Treat store errors as unauthenticated.
+    }
+    return null;
+  }
+
+  /** Active participant user-ids for a channel (empty set on error). */
+  async function channelParticipantIds(channelId: string): Promise<Set<string>> {
+    try {
+      const rows = await db
+        .select({ userId: schema.communicationParticipants.userId })
+        .from(schema.communicationParticipants)
+        .where(
+          and(
+            eq(schema.communicationParticipants.channelId, channelId),
+            eq(schema.communicationParticipants.isActive, true),
+          ),
+        );
+      return new Set(rows.map((r) => r.userId).filter((u): u is string => !!u));
+    } catch {
+      return new Set();
+    }
+  }
+
+  /**
+   * Ensure the sender is recorded as a participant of the channel. The table has
+   * no unique constraint on (channel_id, user_id), so we SELECT-then-INSERT.
+   * This self-populates membership so participant-scoped delivery works for
+   * ad-hoc channels created on the fly.
+   */
+  async function ensureParticipant(channelId: string, userId: string): Promise<void> {
+    if (!userId) return;
+    try {
+      const existing = await db
+        .select({ id: schema.communicationParticipants.id })
+        .from(schema.communicationParticipants)
+        .where(
+          and(
+            eq(schema.communicationParticipants.channelId, channelId),
+            eq(schema.communicationParticipants.userId, userId),
+          ),
+        )
+        .limit(1);
+      if (existing.length === 0) {
+        await db.insert(schema.communicationParticipants).values({
+          channelId,
+          userId,
+          role: 'member',
+          joinedAt: new Date().toISOString(),
+          isActive: true,
+        });
+      }
+    } catch (e) {
+      console.error('[WS] ensureParticipant error:', e);
+    }
+  }
 
   server.on('upgrade', (req, socket, head) => {
     try {
@@ -88,27 +190,52 @@ export function createWebSocketServer(server: Server, db: DB): WebSocketServer {
   wss.on('connection', (ws, req) => {
     const clientId = crypto.randomUUID();
     const url    = new URL(req.url || '/', `http://${req.headers.host}`);
-    let connectedUserId = url.searchParams.get('userId') || 'anonymous';
+    // The `?userId=` query param is NO LONGER trusted for identity — it is kept
+    // only as a provisional label for unauthenticated sockets (which cannot
+    // send/receive chat). The real identity comes from the verified token below.
+    const queryUserId = url.searchParams.get('userId') || 'anonymous';
+    const handshakeToken = url.searchParams.get('token') || '';
     const room   = url.searchParams.get('room')   || undefined;
     const role   = url.searchParams.get('role')   || undefined;
 
-    clients.set(clientId, { ws, userId: connectedUserId, room, role, connectedAt: new Date() });
-    console.log(`[WS] Client connected: ${connectedUserId} (${clientId}). Total: ${clients.size}`);
+    let connectedUserId = queryUserId;
+    let authenticated = false;
 
-    // Send connection confirmation
-    ws.send(JSON.stringify({
-      type: 'connection_established',
-      payload: { clientId, userId: connectedUserId, connectedClients: clients.size },
-      timestamp: new Date().toISOString(),
-    }));
+    const record: ConnectedClient = {
+      ws, userId: connectedUserId, room, role, connectedAt: new Date(),
+      authenticated: false,
+    };
+    clients.set(clientId, record);
 
-    // Broadcast presence update
+    // Resolve the bearer token, then finalise identity and announce presence.
+    // Message listeners are attached synchronously below so nothing is missed
+    // while this resolves; chat handlers gate on `authenticated`.
+    void (async () => {
+      const session = handshakeToken ? await resolveWsSession(handshakeToken) : null;
+      if (session?.userId) {
+        authenticated = true;
+        connectedUserId = session.userId;
+        record.authenticated = true;
+        record.authUserId = session.userId;
+        record.userId = session.userId;
+      }
+      console.log(`[WS] Client connected: ${connectedUserId} (${clientId}) auth=${authenticated}. Total: ${clients.size}`);
+
+      // Send connection confirmation (reports the verified identity + auth state)
+      ws.send(JSON.stringify({
+        type: 'connection_established',
+        payload: { clientId, userId: connectedUserId, authenticated, connectedClients: clients.size },
+        timestamp: new Date().toISOString(),
+      }));
+
+      // Broadcast presence update (identity is the server-bound connectedUserId).
       broadcast(clients, {
         type: 'presence_update',
-      payload: { userId: connectedUserId, status: 'online' },
-      timestamp: new Date().toISOString(),
-      userId: connectedUserId,
-    }, clientId);
+        payload: { userId: connectedUserId, status: 'online' },
+        timestamp: new Date().toISOString(),
+        userId: connectedUserId,
+      }, clientId);
+    })();
 
     ws.on('message', async (rawData) => {
       try {
@@ -116,22 +243,24 @@ export function createWebSocketServer(server: Server, db: DB): WebSocketServer {
 
         switch (data.type) {
           case 'auth': {
-            const claimedUserId =
-              typeof data.userId === 'string' && data.userId.trim().length > 0
-                ? data.userId.trim()
-                : typeof data.payload?.userId === 'string' && data.payload.userId.trim().length > 0
-                  ? data.payload.userId.trim()
-                  : connectedUserId;
-
-            connectedUserId = claimedUserId;
-            const connectedClient = clients.get(clientId);
-            if (connectedClient) {
-              connectedClient.userId = claimedUserId;
+            // Identity is ONLY established by a verified bearer token — never by
+            // a client-claimed userId. A token may be presented here (in
+            // addition to the handshake query) e.g. after a token refresh.
+            const authToken =
+              typeof data.token === 'string' ? data.token
+                : typeof data.payload?.token === 'string' ? data.payload.token
+                  : '';
+            const session = authToken ? await resolveWsSession(authToken) : null;
+            if (session?.userId) {
+              authenticated = true;
+              connectedUserId = session.userId;
+              const rec = clients.get(clientId);
+              if (rec) { rec.authenticated = true; rec.authUserId = session.userId; rec.userId = session.userId; }
             }
 
             ws.send(JSON.stringify({
               type: 'auth_ack',
-              payload: { userId: claimedUserId },
+              payload: { userId: authenticated ? connectedUserId : null, authenticated },
               timestamp: new Date().toISOString(),
             }));
             break;
@@ -157,11 +286,24 @@ export function createWebSocketServer(server: Server, db: DB): WebSocketServer {
           }
 
           case 'chat_message': {
+            // Chat is fully gated: an unauthenticated socket may neither send
+            // (impersonation) nor implicitly receive (cross-tenant read).
+            if (!authenticated) {
+              ws.send(JSON.stringify({
+                type: 'error',
+                payload: { message: 'unauthenticated', code: 'auth_required' },
+                timestamp: new Date().toISOString(),
+              }));
+              break;
+            }
+
             // Persist message to database
             const msgId = data.payload?.id || crypto.randomUUID();
             const channelId = data.conversationId || data.payload?.conversationId || 'general';
             const content = data.payload?.content || '';
-            const senderId = data.userId || connectedUserId;
+            // Sender is ALWAYS the server-verified identity — client-supplied
+            // data.userId is ignored so a caller cannot post as someone else.
+            const senderId = connectedUserId;
             const now = new Date().toISOString();
 
             if (content.trim()) {
@@ -197,13 +339,18 @@ export function createWebSocketServer(server: Server, db: DB): WebSocketServer {
                   createdAt: data.payload?.timestamp || now,
                   updatedAt: now,
                 });
+
+                // Self-populate membership so participant-scoped delivery works.
+                await ensureParticipant(channelId, senderId);
               } catch (dbErr) {
                 console.error('[WS] DB persist error:', dbErr);
               }
             }
 
-            // Broadcast to all other clients
-            broadcast(clients, {
+            // Deliver only to authenticated participants of this channel — no
+            // longer a system-wide fan-out to every connected socket.
+            const participants = await channelParticipantIds(channelId);
+            broadcastToChannelParticipants(clients, participants, {
               type: 'chat_message',
               payload: {
                 ...data.payload,
@@ -226,22 +373,24 @@ export function createWebSocketServer(server: Server, db: DB): WebSocketServer {
           }
 
           case 'typing_indicator': {
+            // Identity is server-bound (never the client-claimed data.userId).
             broadcast(clients, {
               type: 'typing_indicator',
               payload: data.payload,
               timestamp: new Date().toISOString(),
-              userId: data.userId || connectedUserId,
+              userId: connectedUserId,
               conversationId: data.conversationId,
             }, clientId);
             break;
           }
 
           case 'presence_update': {
+            // Identity is server-bound (never the client-claimed data.userId).
             broadcast(clients, {
               type: 'presence_update',
               payload: data.payload,
               timestamp: new Date().toISOString(),
-              userId: data.userId || connectedUserId,
+              userId: connectedUserId,
             }, clientId);
             break;
           }
@@ -378,7 +527,8 @@ export function createWebSocketServer(server: Server, db: DB): WebSocketServer {
             broadcastToRoom(clients, senderRoom, {
               type:          data.type,
               payload:       data.payload,
-              userId:        data.userId ?? connectedUserId,
+              // Identity is the server-side one, never the client-claimed data.userId.
+              userId:        connectedUserId,
               projectId:     data.projectId,
               shootingDayId: data.shootingDayId,
               timestamp:     new Date().toISOString(),
@@ -424,6 +574,32 @@ function broadcast(
   const data = JSON.stringify(message);
   for (const [id, client] of clients) {
     if (id !== excludeClientId && client.ws.readyState === WebSocket.OPEN) {
+      client.ws.send(data);
+    }
+  }
+}
+
+/**
+ * Deliver a chat message only to authenticated sockets whose verified user id
+ * is an active participant of the channel (plus never to anonymous sockets).
+ * This replaces the old system-wide fan-out that let any socket read every
+ * conversation.
+ */
+function broadcastToChannelParticipants(
+  clients: Map<string, ConnectedClient>,
+  participantUserIds: Set<string>,
+  message: unknown,
+  excludeClientId?: string,
+) {
+  const data = JSON.stringify(message);
+  for (const [id, client] of clients) {
+    if (
+      id !== excludeClientId &&
+      client.ws.readyState === WebSocket.OPEN &&
+      client.authenticated &&
+      client.authUserId != null &&
+      participantUserIds.has(client.authUserId)
+    ) {
       client.ws.send(data);
     }
   }

@@ -46,7 +46,8 @@ export function useWeddingWebSocket({
       if (disposed) return;
       try {
         const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const url = `${proto}//${window.location.host}/ws?userId=${encodeURIComponent(userId)}&room=${encodeURIComponent(`wedding:${weddingId}`)}`;
+        const wsToken = localStorage.getItem('creatorhub_auth_token') || localStorage.getItem('token') || localStorage.getItem('role_room_auth_token') || '';
+        const url = `${proto}//${window.location.host}/ws?userId=${encodeURIComponent(userId)}&room=${encodeURIComponent(`wedding:${weddingId}`)}${wsToken ? `&token=${encodeURIComponent(wsToken)}` : ''}`;
         const ws = new WebSocket(url);
         wsRef.current = ws;
 
