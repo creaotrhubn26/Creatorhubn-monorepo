@@ -864,6 +864,26 @@ export default function CastingStandaloneApp() {
     upsertHeadLink('apple-touch-icon', ROLE_ROOM_FAVICON_URL);
   }, []);
 
+  // CreatorHub Design (Fase C): token-driv Role Room-aksenten (casting-admin-panelene) fra
+  // design-tokens (ws=theroleroom, RÅ override m/ raw:true-markør). Ingen override →
+  // literalene (#b86bff) gjelder → identisk. Deler theroleroom-aksent med Talents (--rr-*).
+  useEffect(() => {
+    let live = true;
+    fetch('/api/design/tokens?ws=theroleroom&raw=1', { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!live || !d || d.raw !== true) return;
+        const hex = d.tokens && d.tokens.accent;
+        if (typeof hex !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(hex)) return;
+        const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+        const root = document.documentElement;
+        root.style.setProperty('--role-accent', hex);
+        root.style.setProperty('--role-border', `rgba(${r},${g},${b},0.32)`);
+      })
+      .catch(() => {});
+    return () => { live = false; };
+  }, []);
+
   const muiTheme = useMemo(() => createTheme({
     palette: { mode: 'dark', primary: { main: '#1976d2' }, secondary: { main: '#dc004e' } },
     shape: { borderRadius: 8 },

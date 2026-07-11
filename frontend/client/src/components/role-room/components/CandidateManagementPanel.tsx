@@ -355,12 +355,12 @@ function CandidateManagementPanelInner({
   const focalPickerRef = useRef<HTMLDivElement | null>(null);
 
   const containerPadding = { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 3 };
-  const roleTabAccent = '#b86bff';
+  const roleTabAccent = 'var(--role-accent, #b86bff)';
   const roleTabAccentHover = '#a855f7';
   const roleTabAccentSoft = 'rgba(184,107,255,0.18)';
   const roleSurface = 'rgba(20,14,48,0.84)';
   const roleSurfaceMuted = 'rgba(33,24,70,0.72)';
-  const roleBorder = 'rgba(184,107,255,0.32)';
+  const roleBorder = 'var(--role-border, rgba(184,107,255,0.32))';
   const roleText = '#f3eaff';
   const roleTextMuted = 'rgba(220,205,255,0.82)';
   const quickContactColor = '#46d9ff';

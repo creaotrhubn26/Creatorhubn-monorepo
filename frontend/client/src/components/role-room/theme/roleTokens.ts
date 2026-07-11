@@ -16,8 +16,10 @@
  */
 
 export const roleTokens = {
-  /** Hovedaksent — lilla #b86bff. Brukes for active-state, knapper, fokus. */
-  accent: '#b86bff',
+  /** Hovedaksent — lilla #b86bff. CreatorHub Design (Fase C): CSS-var-drevet fra
+   *  design-tokens (ws=theroleroom); literal-fallback = identisk. accentHover/Soft er
+   *  håndplukkede (ikke eksakt aksent-derivbare) → holdes literal. */
+  accent: 'var(--role-accent, #b86bff)',
   /** Hover-aksent — litt mørkere lilla #a855f7. */
   accentHover: '#a855f7',
   /** Soft aksent — rgba med 0.24 alpha. Brukes for bakgrunn på chips. */
@@ -26,8 +28,8 @@ export const roleTokens = {
   surface: 'rgba(20,14,48,0.84)',
   /** Dempet surface — for nestede flater. */
   surfaceMuted: 'rgba(33,24,70,0.72)',
-  /** Standard border for kort/dialoger. */
-  border: 'rgba(184,107,255,0.32)',
+  /** Standard border for kort/dialoger (aksent-derivbar). */
+  border: 'var(--role-border, rgba(184,107,255,0.32))',
   /** Primær tekst-farge — varm-hvit #f3eaff. */
   text: '#f3eaff',
   /** Dempet tekst — beige-lavendel for sekundær-info. */
