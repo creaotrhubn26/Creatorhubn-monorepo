@@ -248,6 +248,28 @@ export function registerInfographicRenderRoutes(
     res.json({ workspace: (req.query.ws as string) || 'global', ...(raw ? { raw: true } : {}), tokens });
   });
 
+  // GET konnektor-register pr. workspace (Fase D) — ÉN kilde til sannhet for hvilke live-data-
+  // flater et produkt kan binde. Utvides ved å legge til her (ikke frontend-hardkode). Leadgrid
+  // har ekte konnektorer i dag; andre produkter markeres «kommer» (planned).
+  const DESIGN_CONNECTORS: Record<string, { id: string; path: string; desc: string; status: 'live' | 'planned' }[]> = {
+    leadgrid: [
+      { id: 'momentum', path: '/api/infographics/leadgrid/momentum.png?view=score|activity|breakdown|goal', desc: 'Salgs-momentum (donut/stat-bar)', status: 'live' },
+      { id: 'leaderboard', path: '/api/infographics/leadgrid/leaderboard.png?metric=leads|prizes|value', desc: 'Team-podium', status: 'live' },
+      { id: 'commission', path: '/api/infographics/leadgrid/commission.png?period=month&view=total|byseller', desc: 'Provisjon', status: 'live' },
+    ],
+    creatorhub: [
+      { id: 'project-overview', path: '(planlagt)', desc: 'Prosjekt-oversikt (leveranser/milepæler)', status: 'planned' },
+    ],
+    theroleroom: [
+      { id: 'casting-activity', path: '(planlagt)', desc: 'Casting-aktivitet (roller/auditions)', status: 'planned' },
+    ],
+  };
+  app.get('/api/design/connectors', (req: Request, res: Response) => {
+    const ws = String(req.query.ws || '');
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    res.json({ workspace: ws, connectors: DESIGN_CONNECTORS[ws] || [] });
+  });
+
   // PUT overstyr tokens for et workspace (admin). Body = patch (kun kjente string-tokens).
   app.put('/api/admin/design/tokens/:ws', async (req: Request, res: Response) => {
     const admin = requireAdminSession(req, res);
@@ -276,6 +298,7 @@ export function registerInfographicRenderRoutes(
   app.post('/api/admin/design/tokens/:ws/undo', async (req: Request, res: Response) => {
     const admin = requireAdminSession(req, res);
     if (!admin) return;
+    if ((admin as any).role !== 'super_admin') { res.status(403).json({ error: 'Angre krever super_admin.' }); return; }
     const ws = String(req.params.ws);
     try {
       const q = await pool.query(
@@ -317,6 +340,8 @@ export function registerInfographicRenderRoutes(
   app.delete('/api/admin/design/tokens/:ws', async (req: Request, res: Response) => {
     const admin = requireAdminSession(req, res);
     if (!admin) return;
+    // Rolle-tier (Fase D): destruktive ops (reset) er super_admin-only; vanlig admin kan redigere.
+    if ((admin as any).role !== 'super_admin') { res.status(403).json({ error: 'Tilbakestilling krever super_admin.' }); return; }
     const ws = String(req.params.ws);
     const result = await resetTokens(pool, ws);
     if ('error' in result) { res.status(400).json(result); return; }
