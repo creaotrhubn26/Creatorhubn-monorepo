@@ -465,6 +465,22 @@ export function setupCastingProjectsRoutes(
     // 8 kandidater / 6 crew Daniel hadde seedet.
     const existing = (await getLegacyCastingProject(id)) || {};
     const existingRecord = existing as Record<string, unknown>;
+    // Ownership gate: POST er en upsert som MERGER inn i `existing` og
+    // returnerer resultatet (`res.json(project)`). Uten denne sjekken kunne
+    // enhver innlogget bruker POSTe et annet tenant sitt projectId og (a) lese
+    // hele prosjektet tilbake i responsen (roller/kandidater/PII), (b)
+    // overskrive feltene, eller (c) STJELE prosjektet ved å sende createdBy.
+    // Nye prosjekter (ingen existing-eier) og selv-eide oppdateringer passerer.
+    const existingOwnerPost =
+      typeof existingRecord.created_by === "string" ? existingRecord.created_by : null;
+    if (
+      existingOwnerPost &&
+      existingOwnerPost !== "demo-user" &&
+      existingOwnerPost !== session.userId
+    ) {
+      res.status(404).json({ error: "Project not found" });
+      return;
+    }
     const payloadRecord = payload as Record<string, unknown>;
     const ownerId = readString(
       payloadRecord.ownerId,
@@ -642,6 +658,19 @@ export function setupCastingProjectsRoutes(
     }
     const existing = (await getLegacyCastingProject(id)) || {};
     const existingRecord = existing as Record<string, unknown>;
+    // Ownership gate (samme rasjonal som POST): PUT merger inn i `existing` og
+    // returnerer resultatet. Uten sjekken kunne enhver innlogget bruker
+    // overskrive/stjele et annet tenant sitt prosjekt via `:projectId`.
+    const existingOwnerPut =
+      typeof existingRecord.created_by === "string" ? existingRecord.created_by : null;
+    if (
+      existingOwnerPut &&
+      existingOwnerPut !== "demo-user" &&
+      existingOwnerPut !== session.userId
+    ) {
+      res.status(404).json({ error: "Project not found" });
+      return;
+    }
     const payloadRecord = (req.body || {}) as Record<string, unknown>;
     const ownerId = readString(
       payloadRecord.ownerId,
@@ -749,7 +778,8 @@ export function setupCastingProjectsRoutes(
   });
 
   app.delete("/api/casting/projects/:projectId", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       const projectId = rejectInvalidProjectId(
         res,
@@ -757,6 +787,13 @@ export function setupCastingProjectsRoutes(
         "deleteProject",
       );
       if (!projectId) return;
+      // Ownership gate: cascade-DELETE sletter ALT prosjekt-scope-state. Uten
+      // denne kunne enhver innlogget bruker slette et annet tenant sitt
+      // prosjekt (+ shot-lists/kalender/tilbud/kontrakter) via `:projectId`.
+      if (!(await callerOwnsProject(projectId, session.userId))) {
+        res.status(404).json({ error: "Project not found" });
+        return;
+      }
       if (rejectProtectedDemoWrite(res, projectId, "deleteProject")) {
         return;
       }
@@ -833,6 +870,8 @@ export function setupCastingProjectsRoutes(
   app.get(
     "/api/casting/projects/:projectId/shot-lists",
     async (req, res) => {
+      const session = requireUserSession(req, res);
+      if (!session) return;
       try {
         const projectId = rejectInvalidProjectId(
           res,
@@ -840,6 +879,10 @@ export function setupCastingProjectsRoutes(
           "getShotLists",
         );
         if (!projectId) return;
+        if (!(await callerOwnsProject(projectId, session.userId))) {
+          res.status(404).json({ error: "Project not found" });
+          return;
+        }
         const shotLists = await getLegacyShotLists(projectId);
         res.json(shotLists);
       } catch (error) {
@@ -852,7 +895,8 @@ export function setupCastingProjectsRoutes(
   app.post(
     "/api/casting/projects/:projectId/shot-lists",
     async (req, res) => {
-      if (!requireUserSession(req, res)) return;
+      const session = requireUserSession(req, res);
+      if (!session) return;
       try {
         const projectId = rejectInvalidProjectId(
           res,
@@ -860,6 +904,10 @@ export function setupCastingProjectsRoutes(
           "saveShotList",
         );
         if (!projectId) return;
+        if (!(await callerOwnsProject(projectId, session.userId))) {
+          res.status(404).json({ error: "Project not found" });
+          return;
+        }
         if (rejectProtectedDemoWrite(res, projectId, "saveShotList")) {
           return;
         }
@@ -898,7 +946,8 @@ export function setupCastingProjectsRoutes(
   app.put(
     "/api/casting/projects/:projectId/shot-lists/:shotListId",
     async (req, res) => {
-      if (!requireUserSession(req, res)) return;
+      const session = requireUserSession(req, res);
+      if (!session) return;
       try {
         const projectId = rejectInvalidProjectId(
           res,
@@ -906,6 +955,10 @@ export function setupCastingProjectsRoutes(
           "updateShotList",
         );
         if (!projectId) return;
+        if (!(await callerOwnsProject(projectId, session.userId))) {
+          res.status(404).json({ error: "Project not found" });
+          return;
+        }
         if (rejectProtectedDemoWrite(res, projectId, "updateShotList")) {
           return;
         }
@@ -941,7 +994,8 @@ export function setupCastingProjectsRoutes(
   app.post(
     "/api/casting/projects/:projectId/shot-lists/reorder",
     async (req, res) => {
-      if (!requireUserSession(req, res)) return;
+      const session = requireUserSession(req, res);
+      if (!session) return;
       try {
         const projectId = rejectInvalidProjectId(
           res,
@@ -949,6 +1003,10 @@ export function setupCastingProjectsRoutes(
           "reorderShotLists",
         );
         if (!projectId) return;
+        if (!(await callerOwnsProject(projectId, session.userId))) {
+          res.status(404).json({ error: "Project not found" });
+          return;
+        }
         if (rejectProtectedDemoWrite(res, projectId, "reorderShotLists")) {
           return;
         }
@@ -985,6 +1043,8 @@ export function setupCastingProjectsRoutes(
   app.get(
     "/api/casting/projects/:projectId/calendar-events",
     async (req, res) => {
+      const session = requireUserSession(req, res);
+      if (!session) return;
       try {
         const projectId = rejectInvalidProjectId(
           res,
@@ -992,6 +1052,10 @@ export function setupCastingProjectsRoutes(
           "getCalendarEvents",
         );
         if (!projectId) return;
+        if (!(await callerOwnsProject(projectId, session.userId))) {
+          res.status(404).json({ error: "Project not found" });
+          return;
+        }
         const events = await getLegacyCalendarEvents(projectId);
         res.json({ events });
       } catch (error) {
@@ -1002,7 +1066,8 @@ export function setupCastingProjectsRoutes(
   );
 
   app.post("/api/casting/calendar-events", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       const payload = req.body && typeof req.body === "object" ? req.body : {};
       const projectId = rejectInvalidProjectId(
@@ -1011,6 +1076,10 @@ export function setupCastingProjectsRoutes(
         "createCalendarEvent",
       );
       if (!projectId) return;
+      if (!(await callerOwnsProject(projectId, session.userId))) {
+        res.status(404).json({ error: "Project not found" });
+        return;
+      }
       if (
         rejectProtectedDemoWrite(res, projectId, "createCalendarEvent")
       ) {
@@ -1229,6 +1298,8 @@ export function setupCastingProjectsRoutes(
   app.get(
     "/api/casting/projects/:projectId/team-dashboard/snapshots",
     async (req, res) => {
+      const session = requireUserSession(req, res);
+      if (!session) return;
       try {
         const projectId = rejectInvalidProjectId(
           res,
@@ -1236,6 +1307,10 @@ export function setupCastingProjectsRoutes(
           "getTeamSnapshots",
         );
         if (!projectId) return;
+        if (!(await callerOwnsProject(projectId, session.userId))) {
+          res.status(404).json({ error: "Project not found" });
+          return;
+        }
         const snapshots = await getLegacyTeamSnapshots(projectId);
         res.json({ success: true, snapshots });
       } catch (error) {
@@ -1248,7 +1323,8 @@ export function setupCastingProjectsRoutes(
   app.post(
     "/api/casting/projects/:projectId/team-dashboard/snapshots",
     async (req, res) => {
-      if (!requireUserSession(req, res)) return;
+      const session = requireUserSession(req, res);
+      if (!session) return;
       try {
         const projectId = rejectInvalidProjectId(
           res,
@@ -1256,6 +1332,10 @@ export function setupCastingProjectsRoutes(
           "saveTeamSnapshot",
         );
         if (!projectId) return;
+        if (!(await callerOwnsProject(projectId, session.userId))) {
+          res.status(404).json({ error: "Project not found" });
+          return;
+        }
         if (rejectProtectedDemoWrite(res, projectId, "saveTeamSnapshot")) {
           return;
         }
