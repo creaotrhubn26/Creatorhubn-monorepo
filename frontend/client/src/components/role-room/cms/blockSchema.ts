@@ -240,7 +240,7 @@ export function createBlock(type: BlockKind): Block {
         id,
         type: 'infographic',
         heading: '',
-        templateUrl: '/embed/demo-template.html',
+        templateUrl: 'auto', // smart auto-velg: motoren velger mal fra data-formen
         data: { accent: '#2f6df0', cards: [{ label: 'Etikett', value: '124' }] },
         accent: '#2f6df0',
         autoplaySec: 6,

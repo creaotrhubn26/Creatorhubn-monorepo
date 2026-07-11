@@ -99,36 +99,45 @@ function looksLikePercent(v: unknown): boolean {
   return Number.isFinite(n) && n > 0 && n <= 1;
 }
 
+/** Mal-KATEGORIER — data-formen mappes til én av disse. Registeret (kode-innebygde
+ *  + DB-maler) knytter hver mal til en kategori, så nye maler kan delta i auto-velg
+ *  uten kodeendring. */
+export type InfographicCategory = 'single' | 'percent' | 'kpis' | 'comparison' | 'timeline';
+
 /**
- * Velg beste mal ut fra data-formen. Presedens:
- *  1. steps[] / kort med desc|when|date        → timeline
- *  2. before&after / eksakt 2 kort             → comparison
- *  3. ett tall som ser ut som prosent          → donut
- *  4. ett tall / ett kort                      → big-number
- *  5. ≥2 kort                                  → stat-bar
- * Returnerer bibliotek-STIEN (ikke nøkkelen).
+ * Detekter data-formens KATEGORI (den «smarte» delen — inherent kode). Presedens:
+ *  1. steps[] / kort med desc|when|date  → timeline
+ *  2. before&after / eksakt 2 kort       → comparison
+ *  3. ett tall som ser ut som prosent    → percent
+ *  4. ett tall / ett kort                → single
+ *  5. ≥2 kort                            → kpis
+ * Mapping kategori→mal er DATA (se templates-store), ikke her.
  */
-export function pickTemplate(data: Record<string, unknown> | null | undefined): string {
-  const L = INFOGRAPHIC_TEMPLATE_LIBRARY;
+export function detectCategory(data: Record<string, unknown> | null | undefined): InfographicCategory {
   const d = data || {};
   const cards = Array.isArray(d.cards) ? (d.cards as Record<string, unknown>[]) : [];
 
-  // 1. Tidslinje
-  if (Array.isArray(d.steps) && d.steps.length > 0) return L.timeline;
-  if (cards.length >= 2 && cards.some((c) => c && (c.desc != null || c.when != null || c.date != null))) return L.timeline;
+  if (Array.isArray(d.steps) && d.steps.length > 0) return 'timeline';
+  if (cards.length >= 2 && cards.some((c) => c && (c.desc != null || c.when != null || c.date != null))) return 'timeline';
 
-  // 2. Sammenligning
-  if (d.before != null && d.after != null) return L.comparison;
-  if (cards.length === 2) return L.comparison;
+  if (d.before != null && d.after != null) return 'comparison';
+  if (cards.length === 2) return 'comparison';
 
-  // 3/4. Enkelt-verdi
   const single = d.value != null ? d.value : cards.length === 1 ? cards[0]?.value : undefined;
   if (single != null && cards.length <= 1) {
-    return looksLikePercent(single) ? L.donut : L.bigNumber;
+    return looksLikePercent(single) ? 'percent' : 'single';
   }
 
-  // 5. Flere KPI-er
-  if (cards.length >= 2) return L.statBar;
+  if (cards.length >= 2) return 'kpis';
+  return 'single';
+}
 
-  return L.bigNumber;
+/** Standard kategori→innebygd-mal-nøkkel (fallback når DB-registeret ikke er lastet). */
+const CATEGORY_TO_BUILTIN: Record<InfographicCategory, keyof typeof INFOGRAPHIC_TEMPLATE_LIBRARY> = {
+  single: 'bigNumber', percent: 'donut', kpis: 'statBar', comparison: 'comparison', timeline: 'timeline',
+};
+
+/** Back-compat: velg innebygd mal-STI ut fra data-formen (uten DB-register). */
+export function pickTemplate(data: Record<string, unknown> | null | undefined): string {
+  return INFOGRAPHIC_TEMPLATE_LIBRARY[CATEGORY_TO_BUILTIN[detectCategory(data)]];
 }

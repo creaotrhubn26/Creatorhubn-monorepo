@@ -747,28 +747,43 @@ function ImageEditor({ block, onUpdate }: { block: ImageBlock; onUpdate: (b: Ima
   );
 }
 
-// Lite bibliotek av hostede infographic-maler (public/embed/…). Velges i editoren;
-// «Egendefinert» lar admin lime inn egen mal-URL.
-const INFOGRAPHIC_TEMPLATE_LIBRARY: { label: string; url: string }[] = [
-  { label: '✨ Auto (velg mal fra data)', url: 'auto' },
-  { label: 'KPI-kort (tellende tall)', url: '/embed/demo-template.html' },
-  { label: 'Stat-bar (horisontal)', url: '/embed/templates/stat-bar.html' },
-  { label: 'Stort tall', url: '/embed/templates/big-number.html' },
-  { label: 'Donut (prosent / andel)', url: '/embed/templates/donut.html' },
-  { label: 'Sammenligning (før/etter)', url: '/embed/templates/comparison.html' },
-  { label: 'Tidslinje (steg)', url: '/embed/templates/timeline.html' },
+// Maler er DATA: mal-velgeren HENTER lista fra /api/infographics/templates, så nye
+// maler (lagt til via admin) dukker opp UTEN app-deploy. `templateUrl` lagres som
+// mal-id (t.d. «donut») eller «auto». Fallback-lista brukes bare hvis fetch feiler.
+const INFOGRAPHIC_AUTO_OPTION = { label: '✨ Auto (velg mal fra data)', url: 'auto' };
+const INFOGRAPHIC_FALLBACK_TEMPLATES: { label: string; url: string }[] = [
+  { label: 'KPI-kort (tellende tall)', url: 'demo-template' },
+  { label: 'Stat-bar (horisontal)', url: 'stat-bar' },
+  { label: 'Stort tall', url: 'big-number' },
+  { label: 'Donut (prosent / andel)', url: 'donut' },
+  { label: 'Sammenligning (før/etter)', url: 'comparison' },
+  { label: 'Tidslinje (steg)', url: 'timeline' },
 ];
 
 function InfographicEditor({ block, onUpdate }: { block: InfographicBlock; onUpdate: (b: InfographicBlock) => void }) {
   const upd = (patch: Partial<InfographicBlock>) => onUpdate({ ...block, ...patch });
   const [dataText, setDataText] = React.useState(() => JSON.stringify(block.data ?? {}, null, 2));
   const [dataErr, setDataErr] = React.useState(false);
+  const [library, setLibrary] = React.useState<{ label: string; url: string }[]>(
+    [INFOGRAPHIC_AUTO_OPTION, ...INFOGRAPHIC_FALLBACK_TEMPLATES],
+  );
+  React.useEffect(() => {
+    let alive = true;
+    fetch('/api/infographics/templates', { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!alive || !d?.templates?.length) return;
+        setLibrary([INFOGRAPHIC_AUTO_OPTION, ...d.templates.map((t: { id: string; label: string }) => ({ label: t.label, url: t.id }))]);
+      })
+      .catch(() => { /* behold fallback */ });
+    return () => { alive = false; };
+  }, []);
   const onData = (v: string) => {
     setDataText(v);
     try { const parsed = JSON.parse(v || '{}'); setDataErr(false); upd({ data: parsed }); }
     catch { setDataErr(true); }
   };
-  const inLibrary = INFOGRAPHIC_TEMPLATE_LIBRARY.some((t) => t.url === block.templateUrl);
+  const inLibrary = library.some((t) => t.url === block.templateUrl);
   return (
     <Stack spacing={1.5}>
       <TextRow label="Overskrift (valgfri)" value={block.heading ?? ''} onChange={(v) => upd({ heading: v })} />
@@ -779,12 +794,12 @@ function InfographicEditor({ block, onUpdate }: { block: InfographicBlock; onUpd
         onChange={(e) => { if (e.target.value !== '__custom__') upd({ templateUrl: e.target.value }); }}
         size="small" fullWidth sx={FIELD_SX}
       >
-        {INFOGRAPHIC_TEMPLATE_LIBRARY.map((t) => (
+        {library.map((t) => (
           <MenuItem key={t.url} value={t.url}>{t.label}</MenuItem>
         ))}
-        <MenuItem value="__custom__">Egendefinert URL …</MenuItem>
+        <MenuItem value="__custom__">Egendefinert id / URL …</MenuItem>
       </TextField>
-      <TextRow label="Mal-URL (hostet infographic-HTML)" value={block.templateUrl ?? ''} onChange={(v) => upd({ templateUrl: v })} />
+      <TextRow label="Mal-id eller URL" value={block.templateUrl ?? ''} onChange={(v) => upd({ templateUrl: v })} />
       <TextRow label="Data (JSON → window.__CFG__)" value={dataText} onChange={onData} multiline rows={5} />
       {dataErr && <Typography variant="caption" sx={{ color: '#fca5a5' }}>Ugyldig JSON — endringen lagres ikke før den er gyldig.</Typography>}
       <TextRow label="Aksentfarge (hex)" value={block.accent ?? ''} onChange={(v) => upd({ accent: v })} />
