@@ -463,11 +463,16 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
 
 
   app.get("/api/quotes/templates", async (req, res) => {
+    // SECURITY: session-scope only. Templates expose the caller's private
+    // pricing catalog (package names, base_price, included_services). This
+    // previously took `?userId=` / x-user-id (spoofable) with no session gate,
+    // so `?userId=<victim>` leaked another photographer's price list. The sole
+    // caller (QuoteTemplatesDialog) sends its own id via a Bearer request, so
+    // binding to the session changes nothing for legit use.
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
-      const userId =
-        typeof req.query.userId === "string" && req.query.userId.trim()
-          ? req.query.userId.trim()
-          : await resolveQuoteUserId(req);
+      const userId = session.userId;
       const professionVariants = buildQuoteProfessionVariants(
         req.query.profession,
       );
@@ -895,13 +900,19 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
   });
 
   app.get("/api/quotes", async (req, res) => {
+    // SECURITY: scope to the authenticated session only. This endpoint
+    // previously derived the owner from `?userId=` / x-user-id (both
+    // client-spoofable) with NO session gate, so any caller could list a
+    // victim's quotes (client names, e-post, beløp) via `?userId=<victim>` —
+    // and with no userId at all the WHERE clause collapsed to empty, dumping
+    // EVERY tenant's quotes. Now identical to `/api/quotes/all`: session-bound
+    // `created_by` scope, spoofable inputs ignored.
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       await ensureQuotesCompatibilitySchema();
 
-      const userId =
-        typeof req.query.userId === "string" && req.query.userId.trim()
-          ? req.query.userId.trim()
-          : getPricingUserId(req);
+      const userId = session.userId;
       const status =
         typeof req.query.status === "string" ? req.query.status.trim() : "";
       const signatureStatus =
