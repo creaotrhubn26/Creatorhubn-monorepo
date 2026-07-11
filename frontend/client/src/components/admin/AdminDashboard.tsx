@@ -128,6 +128,7 @@ import AdminAnalyticsHub from './AdminAnalyticsHub';
 import AdminAICostDashboard from './AdminAICostDashboard';
 import GenerativeAiAdminPanel from './GenerativeAiAdminPanel';
 import AdminDesignTokensPanel from './AdminDesignTokensPanel';
+import CreatorHubDesignShell from './visual-editor/CreatorHubDesignShell';
 import BillingManagementPanel from './BillingManagementPanel';
 import UserCostOverviewPanel from './UserCostOverviewPanel';
 import InboundAlertsPanel from './InboundAlertsPanel';
@@ -1402,6 +1403,7 @@ export default function AdminDashboard({
     { id: 'ai-cost', label: 'AI-kostnader', icon: Psychology },
     { id: 'generative-ai', label: 'Generativ AI', icon: Psychology },
     { id: 'design-tokens', label: 'Design-tokens', icon: Palette },
+    { id: 'creatorhub-design', label: 'CreatorHub Design', icon: Palette },
     { id: 'reports', label: 'Rapporter', icon: Assessment },
     { id: 'academy', label: 'Academy', icon: School },
     { id: 'tidum-tilganger', label: 'Tidum', icon: Business },
@@ -1457,7 +1459,7 @@ export default function AdminDashboard({
     {
       label: 'Plattform',
       items: adminTabs.filter((tab) =>
-        ['integrasjoner', 'feature-management', 'centralized-monitoring', 'protokollstyring', 'secrets-rotation', 'drift-helse', 'system-backup', 'gdpr-compliance'].includes(tab.id),
+        ['creatorhub-design', 'integrasjoner', 'feature-management', 'centralized-monitoring', 'protokollstyring', 'secrets-rotation', 'drift-helse', 'system-backup', 'gdpr-compliance'].includes(tab.id),
       ),
     },
     {
@@ -1491,6 +1493,7 @@ export default function AdminDashboard({
     'workspace-preview': 'Forhåndsvis hver profesjons workspace-grensesnitt (foto/video/produsent/vendor) for å inspisere layout/flyt. «Vis som ekte bruker» kommer i Del 2.',
     'debug-tool': 'Diagnose-verktøy: sjekk hvorfor en bruker har (eller ikke har) tilgang (identitet/godkjenning/compliance/magic-link/routing) + system-helse (PayPal/Stripe/e-post/DB/migrasjoner).',
     'profession-types': 'Administrer profesjoner, roller og kapasitet i CreatorHub.',
+    'creatorhub-design': 'Administrer produkt-flatene som data — merkevare, navigasjon, tekst, maler og konnektorer per workspace (CreatorHub / The Role Room / Leadgrid).',
     integrasjoner: 'Konfigurer API-er, OAuth og eksterne systemkoblinger.',
     'feature-management': 'Kontroller funksjonsflagg og plattformtilgang.',
     'centralized-monitoring': 'Se overvåkning, alarmer og kritiske hendelser samlet.',
@@ -3585,6 +3588,8 @@ export default function AdminDashboard({
         return <GenerativeAiAdminPanel />;
       case 'design-tokens':
         return <AdminDesignTokensPanel />;
+      case 'creatorhub-design':
+        return <CreatorHubDesignShell />;
       case 'reports':
         return <ReportsPanel onFileDownload={onFileDownload} />;
       case 'academy':

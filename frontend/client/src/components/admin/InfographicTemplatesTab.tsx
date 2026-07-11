@@ -51,9 +51,11 @@ function b64url(obj: unknown): string {
   return b.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-export default function InfographicTemplatesTab() {
+export default function InfographicTemplatesTab({ workspace }: { workspace?: string } = {}) {
+  // Shell-styrt workspace: filtrer lista + default nye maler til workspacet.
+  const controlled = typeof workspace === 'string' && workspace.length > 0 && workspace !== 'global';
   const [rows, setRows] = React.useState<TemplateRow[]>([]);
-  const [form, setForm] = React.useState({ ...EMPTY });
+  const [form, setForm] = React.useState({ ...EMPTY, workspace: controlled ? (workspace as string) : '' });
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [msg, setMsg] = React.useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [previewKey, setPreviewKey] = React.useState(0);
@@ -190,9 +192,11 @@ export default function InfographicTemplatesTab() {
       </Card>
 
       <Divider />
-      <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>Alle maler ({rows.length})</Typography>
+      <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+        {controlled ? `Maler for «${workspace}» + globale` : 'Alle maler'} ({(controlled ? rows.filter((r) => !r.workspaceId || r.workspaceId === workspace) : rows).length})
+      </Typography>
       <Stack spacing={1}>
-        {rows.map((r) => (
+        {(controlled ? rows.filter((r) => !r.workspaceId || r.workspaceId === workspace) : rows).map((r) => (
           <Card key={r.id} variant="outlined">
             <CardContent sx={{ py: 1.2, '&:last-child': { pb: 1.2 } }}>
               <Stack direction="row" alignItems="center" spacing={1.5}>

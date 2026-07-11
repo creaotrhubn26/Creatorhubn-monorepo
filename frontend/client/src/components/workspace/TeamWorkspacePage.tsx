@@ -13,6 +13,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { apiRequest } from '@/lib/queryClient';
 import ProjectCreationWithMemoryCards from '../project/ProjectCreationWithMemoryCards';
 import WorkspaceShell from './WorkspaceShell';
+import WorkspaceDesignOverlay from './WorkspaceDesignOverlay';
+import { createPortal } from 'react-dom';
 import OversiktTab from './tabs/OversiktTab';
 import ProsjektplanTab from './tabs/ProsjektplanTab';
 import ProduksjonskartTab from './tabs/ProduksjonskartTab';
@@ -39,7 +41,7 @@ import CommunityHub from '../community/CommunityHub';
 import WorkspaceChatPanel from './WorkspaceChatPanel';
 import UniversalPrototypeFeedback from '../prototype-testing/UniversalPrototypeFeedback';
 import { usePresence } from './usePresence';
-import { ws, WS_NAV, navForProfession, localizeNav, workspaceCategoryFor, isMusicProfession } from './workspaceTheme';
+import { ws, WS_NAV, navForProfession, localizeNav, workspaceCategoryFor, isMusicProfession, type WsNavItem } from './workspaceTheme';
 import { getProfessionDisplayName } from '@shared/profession-types';
 import { useWorkspaceCategoryMap } from './useWorkspaceCategory';
 import { WsLocaleProvider, type WsLocale } from './wsLocale';
@@ -67,12 +69,36 @@ const ComingTab: React.FC<{ label: string }> = ({ label }) => (
   </Stack>
 );
 
+/**
+ * CreatorHub Design (Nivå 2): slå nav-overstyringer (fra design-tokens) på en
+ * ferdig-filtrert/lokalisert nav-liste. Patch pr. key: label/badge/hidden/order.
+ * Ukjent/tom → uendret. order sorterer kun når minst én key har order (ellers stabil).
+ */
+function applyNavOverrides(items: WsNavItem[], ov: Record<string, any> | null | undefined): WsNavItem[] {
+  if (!ov || typeof ov !== 'object') return items;
+  const kept = items
+    .filter((n) => !ov[n.key]?.hidden)
+    .map((n) => {
+      const o = ov[n.key];
+      if (!o) return n;
+      const next: WsNavItem = { ...n };
+      if (typeof o.label === 'string' && o.label) next.label = o.label;
+      if (typeof o.badge === 'number') next.badge = o.badge || undefined;
+      return next;
+    });
+  if (!Object.values(ov).some((o: any) => typeof o?.order === 'number')) return kept;
+  return kept
+    .map((n, i) => ({ n, i, ord: typeof ov[n.key]?.order === 'number' ? ov[n.key].order : 1000 + i }))
+    .sort((a, b) => a.ord - b.ord || a.i - b.i)
+    .map((x) => x.n);
+}
+
 const TeamWorkspacePage: React.FC = () => {
   const [, params] = useRoute('/workspace/:projectId');
   const [, paramsTab] = useRoute('/workspace/:projectId/:tab');
   const projectId = paramsTab?.projectId || params?.projectId || 'sample';
   const [, navigate] = useLocation();
-  const { user, logout, isPrototypeTester } = useAuth();
+  const { user, logout, isPrototypeTester, isAdmin } = useAuth();
 
   const [tab, setTab] = useState<string>(paramsTab?.tab || 'oversikt');
   // URL er sannhetskilden for aktiv fane — så navigate('/workspace/:id/:tab')
@@ -211,9 +237,25 @@ const TeamWorkspacePage: React.FC = () => {
       .catch(() => setWsLocale('no'));
   }, [isVendorCategory]);
 
+  // CreatorHub Design (Nivå 2): nav-overstyringer som DATA (design-tokens, ws=creatorhub).
+  // Patch pr. key (label/badge/hidden/order) — tom/feil → WS_NAV-fallback (uendret).
+  const [navOv, setNavOv] = useState<Record<string, any> | null>(null);
+  // CreatorHub Design (Nivå 3): live-overlay på ekte ruten, aktivert med ?design=1.
+  const [designMode, setDesignMode] = useState<boolean>(() => {
+    try { return new URLSearchParams(window.location.search).get('design') === '1'; } catch { return false; }
+  });
+  useEffect(() => {
+    let live = true;
+    fetch('/api/design/tokens?ws=creatorhub', { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (live && d && d.tokens && d.tokens.nav && typeof d.tokens.nav === 'object') setNavOv(d.tokens.nav); })
+      .catch(() => {});
+    return () => { live = false; };
+  }, []);
+
   const nav = useMemo(
-    () => localizeNav(navForProfession(user?.profession, { isMentor, categoryOverrides }), wsLocale),
-    [user?.profession, isMentor, categoryOverrides, wsLocale],
+    () => applyNavOverrides(localizeNav(navForProfession(user?.profession, { isMentor, categoryOverrides }), wsLocale), navOv),
+    [user?.profession, isMentor, categoryOverrides, wsLocale, navOv],
   );
   // Hvis aktiv fane ikke finnes i profesjonens nav (f.eks. delt lenke til
   // 'shotlist' for en musikkprodusent), fall tilbake til Oversikt.
@@ -275,6 +317,24 @@ const TeamWorkspacePage: React.FC = () => {
       onInvite={() => goTab('team')}
     >
       {content}
+      {/* CreatorHub Design (N3): admin-gated. Portalert til <body> så position:fixed er ekte
+          viewport-relativ (MUI-shell-wrappere lager containing-block-ancestorer som ellers
+          dytter FAB-en utenfor skjermen og forskyver overlay-pins). FAB åpner live-overlayet. */}
+      {isAdmin && typeof document !== 'undefined' && createPortal(
+        designMode ? (
+          <WorkspaceDesignOverlay onClose={() => setDesignMode(false)} />
+        ) : (
+          <Box role="button" tabIndex={0} onClick={() => setDesignMode(true)}
+            sx={{ position: 'fixed', bottom: 24, left: 24, zIndex: 2000, display: 'flex', alignItems: 'center', gap: 1,
+              px: 1.75, py: 1, borderRadius: 999, cursor: 'pointer', bgcolor: '#FBFAF6', color: '#171C28',
+              border: '1px solid #E7E3D8', boxShadow: '0 4px 16px rgba(0,0,0,.28)', fontWeight: 700, fontSize: 13,
+              '&:hover': { bgcolor: '#fff' } }}>
+            <Box component="span" sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: '#EE7A08' }} />
+            CreatorHub Design
+          </Box>
+        ),
+        document.body,
+      )}
       <Snackbar open={!!accepted} autoHideDuration={5000} onClose={() => setAccepted(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
         <Alert severity="success" variant="filled" onClose={() => setAccepted(null)}>{accepted}</Alert>
       </Snackbar>

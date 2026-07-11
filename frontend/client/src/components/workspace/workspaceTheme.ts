@@ -28,11 +28,14 @@ export const ws = {
   textDim: 'rgba(255,255,255,0.62)',
   textFaint: 'rgba(255,255,255,0.40)',
 
-  // Aksent — CreatorHub oransje
-  accent: '#ff8c00',
-  accentHover: '#e67e00',
-  accentSoft: 'rgba(255,140,0,0.14)',
-  accentBorder: 'rgba(255,140,0,0.42)',
+  // Aksent — CreatorHub oransje.
+  // CreatorHub Design (Nivå 1): aksent-familien er CSS-var-drevet med literalene som
+  // fallback. WorkspaceShell setter --ws-accent* fra design-tokens (ws=creatorhub),
+  // avledet fra ÉN accent-verdi. Uten tokens (eller ved feil) → identisk med før.
+  accent: 'var(--ws-accent, #ff8c00)',
+  accentHover: 'var(--ws-accent-hover, #e67e00)',
+  accentSoft: 'var(--ws-accent-soft, rgba(255,140,0,0.14))',
+  accentBorder: 'var(--ws-accent-border, rgba(255,140,0,0.42))',
   accentContrast: '#150d05',
 
   // Status
