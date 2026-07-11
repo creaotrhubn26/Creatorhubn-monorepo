@@ -253,6 +253,73 @@ export function createCommunicationRouter(
     if (!access) { res.status(403).json({ error: 'forbidden' }); return { ok: false, access: null, user: null }; }
     return { ok: true, access, user };
   };
+  // Medlemskaps-sjekk for IKKE-prosjekt-kanaler (DM `dm-admin-<userId>`, chat,
+  // email, team/Google Space). Speiler den prod-verifiserte predikaten i
+  // websocket-chat.ts `canAccessChannel` og REST /conversations-synligheten: en
+  // innlogget bruker har tilgang når kanalen ikke finnes enda (de oppretter
+  // den), heter noe som inneholder identiteten (dm-admin-<userId>/e-postnavn),
+  // er listet i settings.participants, har en deltaker-rad, eller allerede har
+  // sendt en melding. Alt annet nektes → ingen kan lese/oppsummere/skrive i en
+  // annen tenants DM ved å gjette kanal-ID. Fail-closed ved feil. Delt
+  // support-lobby ('general') er bevisst åpen (samme som WS-gaten).
+  const canAccessNonProjectChannel = async (
+    channelId: string, user: AuthedUser,
+  ): Promise<boolean> => {
+    if (!channelId) return false;
+    if (channelId === 'general') return true;
+    try {
+      const chan = await pool.query(
+        `SELECT name, settings FROM communication_channels WHERE id = $1 LIMIT 1`,
+        [channelId],
+      );
+      if ((chan.rowCount ?? 0) === 0) return true; // finnes ikke → sender oppretter den
+      const row = chan.rows[0] as { name?: string; settings?: any };
+      // Match mot BÅDE userId og e-post (chat-widgeten lagrer sender_id som
+      // e-post; deltaker-/meldingsrader kan nøkle på enten) — faithful superset
+      // av /conversations-predikaten.
+      const identifiers = [String(user.userId)];
+      if (user.email) identifiers.push(String(user.email));
+      const needles = identifiers.map((v) => v.toLowerCase());
+      if (row.name) {
+        const name = String(row.name).toLowerCase();
+        if (needles.some((n) => n && name.includes(n))) return true;
+      }
+      const parts = row.settings?.participants;
+      if (Array.isArray(parts) && parts.some((p: unknown) => identifiers.includes(String(p)))) return true;
+      const pr = await pool.query(
+        `SELECT 1 FROM communication_participants WHERE channel_id = $1 AND user_id = ANY($2::text[]) LIMIT 1`,
+        [channelId, identifiers],
+      );
+      if ((pr.rowCount ?? 0) > 0) return true;
+      const mr = await pool.query(
+        `SELECT 1 FROM communication_messages WHERE channel_id = $1 AND sender_id = ANY($2::text[]) LIMIT 1`,
+        [channelId, identifiers],
+      );
+      return (mr.rowCount ?? 0) > 0;
+    } catch (e) {
+      console.error('[communication] canAccessNonProjectChannel error:', e);
+      return false; // fail closed
+    }
+  };
+  // Enhetlig kanal-gate: prosjekt-kanaler → guardProjectChannel (auth +
+  // prosjekt-medlemskap, uendret). Ikke-prosjekt-kanaler → krev Bearer-sesjon
+  // (401) + medlemskap (403). Tidligere gikk alle ikke-prosjekt-kanaler fritt
+  // (guardProjectChannel returnerte { ok:true, user:null } for dem), så hvem
+  // som helst kunne lese/patche/oppsummere/skrive i en DM ved å kjenne/gjette
+  // kanal-ID. Erstatter guardProjectChannel på meldings-lese/skrive-endepunktene.
+  const guardChannelAccess = async (
+    channelId: string, req: Request, res: Response,
+  ): Promise<{ ok: boolean; access: { displayName: string } | null; user: AuthedUser | null }> => {
+    if (projectIdFromChannel(channelId)) {
+      return guardProjectChannel(channelId, req, res);
+    }
+    const user = await resolveAuthedUser(req);
+    if (!user) { res.status(401).json({ error: 'unauthorized' }); return { ok: false, access: null, user: null }; }
+    if (!(await canAccessNonProjectChannel(channelId, user))) {
+      res.status(403).json({ error: 'forbidden' }); return { ok: false, access: null, user: null };
+    }
+    return { ok: true, access: null, user };
+  };
 
   const GMAIL_READ_SCOPES = ['https://www.googleapis.com/auth/gmail.readonly'];
   const GMAIL_DRAFT_SCOPES = ['https://www.googleapis.com/auth/gmail.compose'];
@@ -2731,7 +2798,7 @@ export function createCommunicationRouter(
     try {
       const { channelId } = req.params;
       // Prosjekt-kanaler krever auth + medlemskap (ellers IDOR på tvers av prosjekter).
-      const gate = await guardProjectChannel(channelId, req, res);
+      const gate = await guardChannelAccess(channelId, req, res);
       if (!gate.ok) return;
       const limit = Math.min(Math.max(1, parseInt(req.query.limit as string) || 100), 500);
 
@@ -2796,7 +2863,7 @@ export function createCommunicationRouter(
       const content = toNonEmptyString(payload.content) || toNonEmptyString(payload.message);
       const conversationId = normalizeChannelId(payload.conversationId || payload.contactId || payload.channelId);
       // Prosjekt-kanal: krev auth + medlemskap, bind avsender til sesjonen.
-      const gate = await guardProjectChannel(conversationId, req, res);
+      const gate = await guardChannelAccess(conversationId, req, res);
       if (!gate.ok) return;
       const senderId = gate.user
         ? gate.user.email
@@ -2866,7 +2933,7 @@ export function createCommunicationRouter(
       const channelId = normalizeChannelId(msg.conversationId || 'general');
       // Prosjekt-kanal: krev auth + medlemskap, og bind avsender-identitet til
       // den autentiserte brukeren (klientstyrt senderId/senderName ignoreres).
-      const gate = await guardProjectChannel(channelId, req, res);
+      const gate = await guardChannelAccess(channelId, req, res);
       if (!gate.ok) return;
       const senderId = gate.user
         ? gate.user.email
@@ -2921,7 +2988,7 @@ export function createCommunicationRouter(
         .from(schema.communicationMessages)
         .where(eq(schema.communicationMessages.id, id)).limit(1);
       if (!row[0]) return res.status(404).json({ error: 'not_found' });
-      const gate = await guardProjectChannel(row[0].channelId, req, res);
+      const gate = await guardChannelAccess(row[0].channelId, req, res);
       if (!gate.ok) return;
       const status = String((req.body || {}).status || '');
       if (!['open', 'resolved'].includes(status)) return res.status(400).json({ error: 'invalid_status' });
@@ -2943,7 +3010,7 @@ export function createCommunicationRouter(
   router.post('/api/communication/:channelId/ai', async (req, res) => {
     try {
       const channelId = String(req.params.channelId || '').trim();
-      const gate = await guardProjectChannel(channelId, req, res);
+      const gate = await guardChannelAccess(channelId, req, res);
       if (!gate.ok) return;
       const mode = String((req.body || {}).mode) === 'summary' ? 'summary' : 'draft';
       const apiKey = process.env.ANTHROPIC_API_KEY;
