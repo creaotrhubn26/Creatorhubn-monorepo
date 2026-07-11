@@ -31,12 +31,14 @@ import { canAccessProject } from "./project-team-routes";
  * path): the caller must own the wedding_timelines row (user_id / photographer_id)
  * or have team access to the linked project. Fail closed on any error.
  *
- * Prior to this, both /activate and /deactivate only required *a* logged-in
- * session (requireUserSession) plus a valid altId↔weddingId pair — an IDOR that
- * let any authenticated user shift another couple's timeline events and inject
- * spoofed plan_b_activated / plan_b_deactivated events into their wedding room.
- * The couple portal is token-based (/api/wedding/client/:token/…) and never held
- * a session, so it never reached these endpoints; this guard adds no regression.
+ * Prior to this, the endpoints in this file were unauthorized against the
+ * wedding: activate/deactivate/alternatives/weather-flags required only *a*
+ * logged-in session (IDOR — mutate another couple's locations/timeline and
+ * inject spoofed plan_b events into their room), and the two GETs were fully
+ * public (leaking location addresses and notification-recipient PII). All are
+ * now gated on this predicate. The couple portal is token-based
+ * (/api/wedding/client/:token/…) and never held a session, so it never reached
+ * these endpoints; this guard adds no regression.
  */
 async function callerOwnsWedding(pool: any, weddingId: string, userId: string): Promise<boolean> {
   if (!userId || !weddingId) return false;
@@ -116,8 +118,14 @@ export function setupWeddingLocationAlternativesRoutes(
 
   // ─── GET /api/wedding/:weddingId/locations-with-alternatives ───
   app.get("/api/wedding/:weddingId/locations-with-alternatives", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
       await ensureSchema(pool);
+      // Authorize the caller against THIS wedding — previously this read was
+      // fully public, leaking any couple's location list (addresses, notes).
+      if (!(await callerOwnsWedding(pool, req.params.weddingId, getPricingUserId(req)))) {
+        return res.status(403).json({ error: "Ingen tilgang til dette bryllupet" });
+      }
       const r = await pool.query(
         `SELECT * FROM wedding_locations WHERE wedding_id = $1 ORDER BY sort_order, created_at`,
         [req.params.weddingId],
@@ -141,6 +149,10 @@ export function setupWeddingLocationAlternativesRoutes(
     try {
       await ensureSchema(pool);
       const { primaryId, weddingId } = req.params;
+      // Authorize the caller against THIS wedding before inserting a location.
+      if (!(await callerOwnsWedding(pool, weddingId, getPricingUserId(req)))) {
+        return res.status(403).json({ error: "Ingen tilgang til dette bryllupet" });
+      }
       const { label, address, postalCode, city, notes, isIndoor } = req.body || {};
       if (!label || !String(label).trim()) {
         return res.status(400).json({ error: "label er påkrevd" });
@@ -183,6 +195,10 @@ export function setupWeddingLocationAlternativesRoutes(
     if (!requireUserSession(req, res)) return;
     try {
       await ensureSchema(pool);
+      // Authorize the caller against THIS wedding before updating a location.
+      if (!(await callerOwnsWedding(pool, req.params.weddingId, getPricingUserId(req)))) {
+        return res.status(403).json({ error: "Ingen tilgang til dette bryllupet" });
+      }
       const { isIndoor, weatherDependent } = req.body || {};
       const r = await pool.query(
         `UPDATE wedding_locations
@@ -411,7 +427,13 @@ export function setupWeddingLocationAlternativesRoutes(
   // ─── GET /api/wedding/:weddingId/notifications ────────────────
   // Logg over varsler sendt for dette bryllupet.
   app.get("/api/wedding/:weddingId/notifications", async (req, res) => {
+    if (!requireUserSession(req, res)) return;
     try {
+      // Authorize the caller against THIS wedding — previously this read was
+      // fully public, leaking recipient names / emails / phone numbers (PII).
+      if (!(await callerOwnsWedding(pool, req.params.weddingId, getPricingUserId(req)))) {
+        return res.status(403).json({ error: "Ingen tilgang til dette bryllupet" });
+      }
       const r = await pool.query(
         `SELECT id, notification_type, recipient_type, recipient_name,
                 recipient_email, recipient_phone, channel, subject, status,
