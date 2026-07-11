@@ -859,7 +859,8 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
   });
 
   app.post("/api/contracts/:contractId/sign", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       await ensureContractsCompatibilitySchema(pool);
 
@@ -875,6 +876,27 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
         return res
           .status(404)
           .json({ success: false, message: "Contract not found" });
+      }
+
+      // SECURITY: only the contract owner or the intended signer (client) may
+      // sign. Previously this required only *a* login, so any logged-in user
+      // could forge a signature on ANY contract by id — flip status to
+      // 'signed', write an arbitrary signer_name/email, and insert a
+      // customer_signatures audit row. Gate to the two legitimate parties:
+      // the owner (userId) or a logged-in session whose e-post matches the
+      // contract's client e-post. Mirrors the signature-status gate above.
+      const isOwner =
+        !!existingContract.userId && existingContract.userId === session.userId;
+      const isIntendedSigner =
+        !!session.email &&
+        !!existingContract.clientEmail &&
+        String(session.email).toLowerCase() ===
+          String(existingContract.clientEmail).toLowerCase();
+      if (existingContract.userId && !isOwner && !isIntendedSigner) {
+        return res.status(403).json({
+          success: false,
+          message: "Not authorized to sign this contract",
+        });
       }
 
       const updateResult = await pool.query(
@@ -1491,12 +1513,31 @@ export function setupContractsRoutes(deps: ContractsRoutesDeps): void {
   });
 
   app.get("/api/contracts/:contractId/pdf", async (req, res) => {
+    // SECURITY: renders the full contract PDF (terms, beløp, client PII).
+    // Previously ungated → anyone with an enumerable contractId downloaded any
+    // tenant's contract. All live consumers are owner-facing dashboards, so
+    // gate to the owner or the intended signer (same audiences as
+    // signature-status). Consumers that used window.open now fetch with a
+    // Bearer token and open the resulting blob.
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       const contract = await fetchContractById(req.params.contractId);
       if (!contract) {
         return res
           .status(404)
           .json({ success: false, message: "Contract not found" });
+      }
+      const isOwner = !!contract.userId && contract.userId === session.userId;
+      const isIntendedSigner =
+        !!session.email &&
+        !!contract.clientEmail &&
+        String(session.email).toLowerCase() ===
+          String(contract.clientEmail).toLowerCase();
+      if (contract.userId && !isOwner && !isIntendedSigner) {
+        return res
+          .status(403)
+          .json({ success: false, message: "Forbidden" });
       }
       const pdfBuffer = await buildContractPdfBuffer(contract);
       const safeFileName = (contract.contractNumber || contract.id).replace(

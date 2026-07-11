@@ -340,9 +340,27 @@ export default function ContractPreviewModal({
         <Button
           variant="outlined"
           startIcon={theming.getThemedIcon('download,')}
-          onClick={() => {
+          onClick={async () => {
             const contractIdForPdf = contractId || 'demo-contract-001';
-            window.open(`/api/contracts/${contractIdForPdf}/pdf`, '_blank');
+            // The /pdf endpoint is session-gated, so a plain window.open (no
+            // Bearer) would 401. Fetch with the auth token and open the blob.
+            const authToken =
+              localStorage.getItem('creatorhub_auth_token') ||
+              localStorage.getItem('role_room_auth_token') ||
+              localStorage.getItem('token') ||
+              '';
+            try {
+              const response = await fetch(`/api/contracts/${contractIdForPdf}/pdf`, {
+                headers: { 'Authorization': `Bearer ${authToken}` },
+              });
+              if (!response.ok) return;
+              const blob = await response.blob();
+              const url = window.URL.createObjectURL(blob);
+              window.open(url, '_blank');
+              setTimeout(() => window.URL.revokeObjectURL(url), 60000);
+            } catch {
+              /* best-effort preview download */
+            }
           }}
           sx={{
             color: '#ffa720',

@@ -144,7 +144,17 @@ const AvtalerTab: React.FC<{ projectId: string }> = ({ projectId }) => {
               )}
               <Stack direction="row" spacing={1}>
                 {dContract.contractId && (
-                  <Button size="small" onClick={() => window.open(`/api/contracts/${dContract.contractId}/pdf`, '_blank')} sx={{ color: ws.accent, textTransform: 'none', border: `1px solid ${ws.accentBorder}` }}>{t('openPdf')}</Button>
+                  <Button size="small" onClick={async () => {
+                    // /pdf is session-gated; fetch with Bearer and open the blob (plain window.open would 401).
+                    const authToken = localStorage.getItem('creatorhub_auth_token') || localStorage.getItem('role_room_auth_token') || localStorage.getItem('token') || '';
+                    try {
+                      const r = await fetch(`/api/contracts/${dContract.contractId}/pdf`, { headers: { 'Authorization': `Bearer ${authToken}` } });
+                      if (!r.ok) return;
+                      const u = window.URL.createObjectURL(await r.blob());
+                      window.open(u, '_blank');
+                      setTimeout(() => window.URL.revokeObjectURL(u), 60000);
+                    } catch { /* noop */ }
+                  }} sx={{ color: ws.accent, textTransform: 'none', border: `1px solid ${ws.accentBorder}` }}>{t('openPdf')}</Button>
                 )}
                 {!dContract.isSigned && dContract.contractId && (
                   <Button size="small" onClick={() => window.open(`/contract/${dContract.contractId}`, '_blank')} sx={{ color: ws.text, textTransform: 'none', border: `1px solid ${ws.border}` }}>{t('sign')}</Button>

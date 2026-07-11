@@ -3958,8 +3958,14 @@ export default function UniversalChatWidget({
     }
 
     try {
+      const authToken =
+        localStorage.getItem('creatorhub_auth_token') ||
+        localStorage.getItem('role_room_auth_token') ||
+        localStorage.getItem('token') ||
+        '';
       const response = await fetch(`/api/contracts/${contractId}/pdf`, {
         headers: {
+          'Authorization': `Bearer ${authToken}`,
           'X-User-Email': userEmail || 'anonymous',
         },
       });
