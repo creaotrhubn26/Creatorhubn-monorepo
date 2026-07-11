@@ -128,6 +128,7 @@ import AdminAnalyticsHub from './AdminAnalyticsHub';
 import AdminAICostDashboard from './AdminAICostDashboard';
 import GenerativeAiAdminPanel from './GenerativeAiAdminPanel';
 import AdminDesignTokensPanel from './AdminDesignTokensPanel';
+import CreatorHubDesignShell from './visual-editor/CreatorHubDesignShell';
 import BillingManagementPanel from './BillingManagementPanel';
 import UserCostOverviewPanel from './UserCostOverviewPanel';
 import InboundAlertsPanel from './InboundAlertsPanel';
@@ -1402,6 +1403,7 @@ export default function AdminDashboard({
     { id: 'ai-cost', label: 'AI-kostnader', icon: Psychology },
     { id: 'generative-ai', label: 'Generativ AI', icon: Psychology },
     { id: 'design-tokens', label: 'Design-tokens', icon: Palette },
+    { id: 'creatorhub-design', label: 'CreatorHub Design', icon: Palette },
     { id: 'reports', label: 'Rapporter', icon: Assessment },
     { id: 'academy', label: 'Academy', icon: School },
     { id: 'tidum-tilganger', label: 'Tidum', icon: Business },
@@ -3585,6 +3587,8 @@ export default function AdminDashboard({
         return <GenerativeAiAdminPanel />;
       case 'design-tokens':
         return <AdminDesignTokensPanel />;
+      case 'creatorhub-design':
+        return <CreatorHubDesignShell />;
       case 'reports':
         return <ReportsPanel onFileDownload={onFileDownload} />;
       case 'academy':
