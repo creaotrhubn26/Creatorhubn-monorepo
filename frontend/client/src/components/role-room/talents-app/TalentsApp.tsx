@@ -104,8 +104,11 @@ function useTalentsBrand() {
     fetch('/api/design/tokens?ws=theroleroom&raw=1', { credentials: 'same-origin' })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
-        const hex = d && d.tokens && d.tokens.accent;
-        if (!live || typeof hex !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(hex)) return;
+        // Krev `raw:true`-markør: en gammel backend (før ?raw=1) ignorerer paramet og
+        // returnerer MERGET (global-arvet blå) — da hopper vi over og beholder literalene.
+        if (!live || !d || d.raw !== true) return;
+        const hex = d.tokens && d.tokens.accent;
+        if (typeof hex !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(hex)) return;
         const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
         const root = document.documentElement;
         root.style.setProperty('--rr-accent', hex);

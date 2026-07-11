@@ -243,7 +243,9 @@ export function registerInfographicRenderRoutes(
       ? await getRawTokens(pool, req.query.ws as string | undefined)
       : await getTokens(pool, req.query.ws as string | undefined);
     res.setHeader('Cache-Control', 'public, max-age=60');
-    res.json({ workspace: (req.query.ws as string) || 'global', tokens });
+    // `raw: true`-markør slik at klienter (Role Room Talents) trygt kan skille et EKTE
+    // raw-svar fra en gammel backend som ignorerer ?raw=1 (deploy-rekkefølge-sikkerhet).
+    res.json({ workspace: (req.query.ws as string) || 'global', ...(raw ? { raw: true } : {}), tokens });
   });
 
   // PUT overstyr tokens for et workspace (admin). Body = patch (kun kjente string-tokens).
