@@ -10,6 +10,7 @@ import {
 } from '@mui/material';
 import WorkspaceNavEditor from './WorkspaceNavEditor';
 import WorkspaceCopyEditor from './WorkspaceCopyEditor';
+import WorkspaceChromeEditor from './WorkspaceChromeEditor';
 
 const WORKSPACES = [
   { value: 'global', label: 'Global (delt basis)' },
@@ -113,6 +114,8 @@ export default function DesignTokensTab({ workspace }: { workspace?: string } = 
       </Card>
       {ws === 'creatorhub' && (
         <>
+          <Divider />
+          <WorkspaceChromeEditor workspace="creatorhub" />
           <Divider />
           <WorkspaceNavEditor workspace="creatorhub" />
           <Divider />

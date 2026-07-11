@@ -87,6 +87,18 @@ export async function setTokens(pool: Pool, workspace: string, patch: Record<str
     }
     clean.copy = copy;
   }
+  // CreatorHub Design (Fase B): shell-chrome-palett som DATA (bakgrunn/panel/ramme/tekst).
+  // WorkspaceShell setter --ws-<key> på :root fra chrome; tomt = de mørke literalene.
+  // Hvitlistede farge-nøkler (hex/rgba) — ikke vilkårlig JSON.
+  const chromeIn = (patch as any)?.chrome;
+  if (chromeIn && typeof chromeIn === 'object' && !Array.isArray(chromeIn)) {
+    const ALLOWED = new Set(['bg', 'bgSidebar', 'panel', 'panelSolid', 'panelAlt', 'panelInput', 'border', 'borderSoft', 'text', 'textDim', 'textFaint']);
+    const chrome: Record<string, string> = {};
+    for (const [k, v] of Object.entries(chromeIn as Record<string, unknown>)) {
+      if (ALLOWED.has(k) && typeof v === 'string' && v.length <= 120 && /^[A-Za-z0-9#,.()\-\s%]*$/.test(v)) chrome[k] = v;
+    }
+    clean.chrome = chrome;
+  }
   await pool.query(
     `INSERT INTO workspace_design_tokens (workspace_id, tokens) VALUES ($1, $2::jsonb)
      ON CONFLICT (workspace_id) DO UPDATE SET tokens = workspace_design_tokens.tokens || EXCLUDED.tokens, updated_at = NOW()`,

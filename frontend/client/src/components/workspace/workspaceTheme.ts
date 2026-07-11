@@ -11,22 +11,24 @@
 export { default as workspaceDarkTheme } from '../admin/adminDarkTheme';
 
 export const ws = {
-  // Bakgrunner (matcher adminDarkTheme + skall-kommentaren #0a0f1a)
-  bg: '#0a0f1a',           // app/skall-bakgrunn
-  bgSidebar: '#0b1120',    // venstre nav (litt dypere)
-  panel: 'rgba(15,23,42,0.72)', // kort/paper (glassmorphism, som adminDarkTheme)
-  panelSolid: '#0f1729',   // opake flater (dialog/meny/tabell-header)
-  panelAlt: '#111c30',     // hover/nested
-  panelInput: 'rgba(255,255,255,0.04)',
+  // Bakgrunner — CreatorHub Design (Fase B): shell-chrome er CSS-var-drevet med de mørke
+  // literalene som fallback. WorkspaceShell setter --ws-* fra design-tokens (chrome-namespace).
+  // Uten override (eller ved feil) → identisk med det mørke adminDarkTheme-utseendet.
+  bg: 'var(--ws-bg, #0a0f1a)',                 // app/skall-bakgrunn
+  bgSidebar: 'var(--ws-bg-sidebar, #0b1120)',  // venstre nav (litt dypere)
+  panel: 'var(--ws-panel, rgba(15,23,42,0.72))', // kort/paper (glassmorphism)
+  panelSolid: 'var(--ws-panel-solid, #0f1729)',  // opake flater (dialog/meny/tabell-header)
+  panelAlt: 'var(--ws-panel-alt, #111c30)',      // hover/nested
+  panelInput: 'var(--ws-panel-input, rgba(255,255,255,0.04))',
 
   // Linjer
-  border: 'rgba(255,255,255,0.12)',
-  borderSoft: 'rgba(255,255,255,0.07)',
+  border: 'var(--ws-border, rgba(255,255,255,0.12))',
+  borderSoft: 'var(--ws-border-soft, rgba(255,255,255,0.07))',
 
-  // Tekst (adminDarkTheme)
-  text: 'rgba(255,255,255,0.95)',
-  textDim: 'rgba(255,255,255,0.62)',
-  textFaint: 'rgba(255,255,255,0.40)',
+  // Tekst
+  text: 'var(--ws-text, rgba(255,255,255,0.95))',
+  textDim: 'var(--ws-text-dim, rgba(255,255,255,0.62))',
+  textFaint: 'var(--ws-text-faint, rgba(255,255,255,0.40))',
 
   // Aksent — CreatorHub oransje.
   // CreatorHub Design (Nivå 1): aksent-familien er CSS-var-drevet med literalene som
