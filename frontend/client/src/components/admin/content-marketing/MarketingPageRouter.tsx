@@ -18,6 +18,7 @@ import ProduksjonsOSPage from './ProduksjonsOSPage';
 import InnholdsprodusentPage from './InnholdsprodusentPage';
 import DansestudioNorgePage from './DansestudioNorgePage';
 import FilmTvUtdanningVerktoyPage from './FilmTvUtdanningVerktoyPage';
+import NorskCastingProsessPage from './NorskCastingProsessPage';
 import { getMarketingPageConfig, type MarketingPageKey } from './marketingPagesConfig';
 
 /**
@@ -85,6 +86,8 @@ export function MarketingPageRouter({ pageKey }: { pageKey: MarketingPageKey }) 
       return <DansestudioNorgePage />;
     case 'verktoy-for-filmutdanninger':
       return <FilmTvUtdanningVerktoyPage />;
+    case 'norsk-casting-prosess':
+      return <NorskCastingProsessPage />;
     default:
       return null;
   }
