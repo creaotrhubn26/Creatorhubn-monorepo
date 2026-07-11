@@ -70,11 +70,12 @@ export function registerInfographicRenderRoutes(
 ): void {
   const { pool, requireAdminSession } = deps;
 
-  // GET /api/infographics/templates — OFFENTLIG liste (id+label+kategori) til mal-velger.
-  app.get('/api/infographics/templates', async (_req: Request, res: Response) => {
-    const rows = await listTemplates(pool);
+  // GET /api/infographics/templates?ws=<workspace> — OFFENTLIG liste (globale + workspace-
+  // scopede) til mal-velger. Uten ws → kun globale (produkt-flatene holdes atskilt).
+  app.get('/api/infographics/templates', async (req: Request, res: Response) => {
+    const rows = await listTemplates(pool, req.query.ws as string | undefined);
     res.setHeader('Cache-Control', 'public, max-age=60');
-    res.json({ templates: rows.map((t) => ({ id: t.id, label: t.label, category: t.category, isBuiltin: t.isBuiltin })) });
+    res.json({ templates: rows.map((t) => ({ id: t.id, label: t.label, category: t.category, isBuiltin: t.isBuiltin, workspaceId: t.workspaceId })) });
   });
   // GET /api/infographics/render.png — OFFENTLIG (til <img> i CMS-sider). Rendrer en
   // HOSTET bibliotek-mal (?tpl=/embed/…) med data (?d=base64url-JSON) → PNG. SEO-vennlig,
@@ -97,7 +98,7 @@ export function registerInfographicRenderRoutes(
       let id: string;
       let embedFallback: string | null = null;
       if (rawTpl === 'auto') {
-        id = await pickTemplateId(pool, data);
+        id = await pickTemplateId(pool, data, req.query.ws as string | undefined);
         embedFallback = builtinEmbedPath(id);
       } else if (SAFE_TPL.test(rawTpl) && !rawTpl.includes('..')) {
         id = embedPathToId(rawTpl);
@@ -209,6 +210,7 @@ export function registerInfographicRenderRoutes(
       autoPriority: typeof b.autoPriority === 'number' ? b.autoPriority : 0,
       accentDefault: typeof b.accent === 'string' ? b.accent : (typeof b.accentDefault === 'string' ? b.accentDefault : null),
       active: b.active !== false,
+      workspaceId: (b.workspaceId ?? b.workspace) as string | null | undefined,
     });
     if ('error' in result) { res.status(400).json(result); return; }
     res.json({ ok: true });

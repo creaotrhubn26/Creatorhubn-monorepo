@@ -8,6 +8,14 @@
 import type { Pool } from 'pg';
 import { detectCategory, type InfographicCategory } from './infographic-engine.js';
 
+// Kjente workspaces (produkt/merkevare). NULL workspace_id = DELT/globalt.
+export const DESIGN_WORKSPACES = ['creatorhub', 'theroleroom', 'leadgrid'] as const;
+/** Normaliser innkommende workspace-slug → gyldig slug, ellers null (globalt). */
+export function normalizeWorkspace(ws: unknown): string | null {
+  const s = String(ws ?? '').trim().toLowerCase();
+  return (DESIGN_WORKSPACES as readonly string[]).includes(s) ? s : null;
+}
+
 export interface TemplateRow {
   id: string;
   label: string;
@@ -16,47 +24,56 @@ export interface TemplateRow {
   accentDefault: string | null;
   isBuiltin: boolean;
   active: boolean;
+  workspaceId: string | null;
 }
 export interface TemplateFull extends TemplateRow { html: string; }
 
 const CACHE_TTL_MS = 60_000;
-let _cache: { rows: TemplateRow[]; at: number } | null = null;
+// Liste-cache er workspace-scopet (nøkkel = workspace slug el. '∅' for globalt).
+const _listCache = new Map<string, { rows: TemplateRow[]; at: number }>();
 const _htmlCache = new Map<string, { html: string; at: number }>();
 
-export function invalidateTemplateCache(): void { _cache = null; _htmlCache.clear(); }
+export function invalidateTemplateCache(): void { _listCache.clear(); _htmlCache.clear(); }
 
-/** Aktive maler (uten html) — til mal-velger + auto-velg. Cachet. Robust: DB-feil
- *  (f.eks. tabell ikke migrert enda) → tom liste, ikke kast. */
-export async function listTemplates(pool: Pool): Promise<TemplateRow[]> {
+const mapRow = (x: any): TemplateRow => ({
+  id: x.id, label: x.label, category: x.category, autoPriority: x.auto_priority,
+  accentDefault: x.accent_default, isBuiltin: x.is_builtin, active: x.active,
+  workspaceId: x.workspace_id ?? null,
+});
+
+/** Aktive maler (uten html) for et workspace: GLOBALE (NULL) + workspace-scopede.
+ *  Uten workspace → kun globale. Cachet per workspace. Robust mot manglende tabell. */
+export async function listTemplates(pool: Pool, workspace?: string | null): Promise<TemplateRow[]> {
+  const ws = normalizeWorkspace(workspace);
+  const key = ws ?? '∅';
   const now = Date.now();
-  if (_cache && now - _cache.at < CACHE_TTL_MS) return _cache.rows;
+  const hit = _listCache.get(key);
+  if (hit && now - hit.at < CACHE_TTL_MS) return hit.rows;
   try {
-    const r = await pool.query(
-      `SELECT id, label, category, auto_priority, accent_default, is_builtin, active
-         FROM infographic_templates WHERE active = TRUE
-         ORDER BY is_builtin DESC, auto_priority DESC, label ASC`,
-    );
-    const rows: TemplateRow[] = r.rows.map((x: any) => ({
-      id: x.id, label: x.label, category: x.category, autoPriority: x.auto_priority,
-      accentDefault: x.accent_default, isBuiltin: x.is_builtin, active: x.active,
-    }));
-    _cache = { rows, at: now };
+    const r = ws
+      ? await pool.query(
+          `SELECT id, label, category, auto_priority, accent_default, is_builtin, active, workspace_id
+             FROM infographic_templates WHERE active = TRUE AND (workspace_id IS NULL OR workspace_id = $1)
+             ORDER BY (workspace_id IS NOT NULL) DESC, auto_priority DESC, label ASC`, [ws])
+      : await pool.query(
+          `SELECT id, label, category, auto_priority, accent_default, is_builtin, active, workspace_id
+             FROM infographic_templates WHERE active = TRUE AND workspace_id IS NULL
+             ORDER BY is_builtin DESC, auto_priority DESC, label ASC`);
+    const rows = r.rows.map(mapRow);
+    _listCache.set(key, { rows, at: now });
     return rows;
   } catch {
     return [];
   }
 }
 
-/** Alle maler inkl. inaktive (til admin-liste). Ikke cachet. */
+/** Alle maler inkl. inaktive (til admin-liste), m/ workspace_id. Ikke cachet. */
 export async function listTemplatesAdmin(pool: Pool): Promise<TemplateRow[]> {
   const r = await pool.query(
-    `SELECT id, label, category, auto_priority, accent_default, is_builtin, active
-       FROM infographic_templates ORDER BY is_builtin DESC, label ASC`,
+    `SELECT id, label, category, auto_priority, accent_default, is_builtin, active, workspace_id
+       FROM infographic_templates ORDER BY workspace_id NULLS FIRST, is_builtin DESC, label ASC`,
   );
-  return r.rows.map((x: any) => ({
-    id: x.id, label: x.label, category: x.category, autoPriority: x.auto_priority,
-    accentDefault: x.accent_default, isBuiltin: x.is_builtin, active: x.active,
-  }));
+  return r.rows.map(mapRow);
 }
 
 /** Mal-HTML ved id. Cachet (render.png-hyppig). null hvis ukjent/inaktiv. */
@@ -82,11 +99,13 @@ const CATEGORY_TO_BUILTIN_ID: Record<InfographicCategory, string> = {
   single: 'big-number', percent: 'donut', kpis: 'stat-bar', comparison: 'comparison', timeline: 'timeline',
 };
 
-/** Auto-velg: data-form → kategori → aktiv mal med den kategorien (høyest prioritet). */
-export async function pickTemplateId(pool: Pool, data: Record<string, unknown> | null | undefined): Promise<string> {
+/** Auto-velg innen workspace (globale + workspace-scopede): data-form → kategori →
+ *  aktiv mal med den kategorien (høyest prioritet; workspace-mal slår global ved lik prio). */
+export async function pickTemplateId(pool: Pool, data: Record<string, unknown> | null | undefined, workspace?: string | null): Promise<string> {
   const cat = detectCategory(data);
-  const rows = await listTemplates(pool);
-  const match = rows.filter((r) => r.category === cat).sort((a, b) => b.autoPriority - a.autoPriority)[0];
+  const rows = await listTemplates(pool, workspace);
+  const match = rows.filter((r) => r.category === cat)
+    .sort((a, b) => (b.workspaceId ? 1 : 0) - (a.workspaceId ? 1 : 0) || b.autoPriority - a.autoPriority)[0];
   if (match) return match.id;
   if (rows.length) { const single = rows.find((r) => r.category === 'single'); if (single) return single.id; return rows[0].id; }
   return CATEGORY_TO_BUILTIN_ID[cat]; // tomt register → innebygd id (route faller til /embed)
@@ -95,6 +114,7 @@ export async function pickTemplateId(pool: Pool, data: Record<string, unknown> |
 export interface UpsertInput {
   id: string; label: string; html: string;
   category: TemplateRow['category']; autoPriority?: number; accentDefault?: string | null; active?: boolean;
+  workspaceId?: string | null;
 }
 
 const ID_RE = /^[a-z0-9][a-z0-9-]{1,63}$/;
@@ -113,16 +133,17 @@ export async function upsertTemplate(pool: Pool, input: UpsertInput): Promise<{ 
     return { error: 'Malen må definere window.setProgress(p) og ha et element med id="wrap".' };
   }
   // Ikke la admin overskrive en innebygd mal med DO UPDATE som endrer is_builtin.
+  const workspaceId = normalizeWorkspace(input.workspaceId);
   await pool.query(
-    `INSERT INTO infographic_templates (id, label, html, category, auto_priority, accent_default, is_builtin, active)
-     VALUES ($1,$2,$3,$4,$5,$6,FALSE,$7)
+    `INSERT INTO infographic_templates (id, label, html, category, auto_priority, accent_default, is_builtin, active, workspace_id)
+     VALUES ($1,$2,$3,$4,$5,$6,FALSE,$7,$8)
      ON CONFLICT (id) DO UPDATE SET
        label=EXCLUDED.label, html=EXCLUDED.html, category=EXCLUDED.category,
        auto_priority=EXCLUDED.auto_priority, accent_default=EXCLUDED.accent_default,
-       active=EXCLUDED.active, updated_at=NOW()`,
+       active=EXCLUDED.active, workspace_id=EXCLUDED.workspace_id, updated_at=NOW()`,
     [id, String(input.label || id).slice(0, 200), html, input.category,
       Number.isFinite(input.autoPriority) ? input.autoPriority : 0,
-      input.accentDefault ?? null, input.active !== false],
+      input.accentDefault ?? null, input.active !== false, workspaceId],
   );
   invalidateTemplateCache();
   return { ok: true };
