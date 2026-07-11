@@ -2645,26 +2645,29 @@ export function createCommunicationRouter(
   // ─── GET /api/communication/conversations ─────────────────
   router.get('/api/communication/conversations', async (req, res) => {
     try {
-      const userEmail = (req.query.userEmail as string) || req.headers['x-user-email'] as string || '';
+      // SIKKERHET (IDOR/privacy): identiteten som avgjør HVILKE samtaler/DM-er
+      // som listes MÅ komme fra den autentiserte Bearer-sesjonen — ALDRI fra
+      // spoofbar query.userEmail / x-user-email. Tidligere leste denne e-posten
+      // fra klientstyrt input, så en kaller kunne sende en ANNEN brukers e-post
+      // og få listet offerets DM-kanaler (kanalnavn + siste meldingsinnhold +
+      // ulest-antall) på tvers av tenants. Nå: sesjonsutledet (userId+email fra
+      // resolveAuthedUser). Uten gyldig sesjon → tom liste (fail-closed, aldri
+      // lekk). Frontenden kaller alltid via apiRequest (sender Bearer), så
+      // legitime produsent-innbokser er uendret.
+      const authed = await resolveAuthedUser(req);
+      if (!authed) {
+        return res.json({ conversations: [] });
+      }
+      const userEmail = authed.email || '';
 
-      // PRIVACY: only return channels this user is actually connected to.
-      // Previously this selected ALL active channels for EVERY caller (userEmail
-      // was read but never used in the query) — leaking other users' DMs. The
+      // PRIVACY: only return channels this user is actually connected to. The
       // communication_participants table is mostly placeholder, so we match on
       // reliable signals: channels the user has messaged in, channels named for
       // them (incl. dm-admin-<id> DMs from the admin send flow), or real
-      // participant rows. Empty identity → empty arrays → zero channels (safe
-      // default; never leak). Verified live: daniel sees 2 channels, not 419.
-      const identifiers: string[] = userEmail ? [userEmail] : [];
-      if (userEmail) {
-        const resolved = await db.execute(
-          sql`SELECT id FROM users WHERE LOWER(email) = LOWER(${userEmail}) LIMIT 1`,
-        );
-        const resolvedId = (resolved.rows?.[0] as { id?: string } | undefined)?.id;
-        if (resolvedId && !identifiers.includes(String(resolvedId))) identifiers.push(String(resolvedId));
-      }
-      // Tom identitet → null kanaler (trygt default). Returner tidlig: kallere
-      // uten userEmail (gamle ChatWidget) skal ikke kjøre kanal-spørringen.
+      // participant rows. Identiteten er nå sesjonens egen userId + e-post.
+      const identifiers: string[] = [];
+      if (userEmail) identifiers.push(userEmail);
+      if (authed.userId && !identifiers.includes(authed.userId)) identifiers.push(authed.userId);
       if (identifiers.length === 0) {
         return res.json({ conversations: [] });
       }
