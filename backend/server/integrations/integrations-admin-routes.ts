@@ -70,7 +70,40 @@ export function registerIntegrationsAdminRoutes({ app, pool, activeSessions }: D
 
     try {
       const registry = getIntegrationRegistry();
-      const integrations = [...registry.values()];
+
+      // Live-status: siste signal + antall per provider fra
+      // normalized_signals (fail-soft — tabell kan mangle pre-0376).
+      const liveByProvider = new Map<string, { lastSignalAt: string; signalCount: number }>();
+      try {
+        const live = await pool.query<{
+          provider: string;
+          last_signal_at: Date | string;
+          signal_count: string;
+        }>(
+          `SELECT provider, MAX(collected_at) AS last_signal_at, COUNT(*) AS signal_count
+             FROM normalized_signals GROUP BY provider`,
+        );
+        for (const row of live.rows) {
+          liveByProvider.set(row.provider, {
+            lastSignalAt: new Date(row.last_signal_at).toISOString(),
+            signalCount: Number(row.signal_count),
+          });
+        }
+      } catch {
+        // normalized_signals finnes ikke ennå — vis registry uten live-data
+      }
+
+      const integrations = [...registry.values()].map((e) => {
+        // GEO-probe-signaler lagres per motor (geo-probe-<engine>) —
+        // match både eksakt id og prefiks.
+        const live = liveByProvider.get(e.integrationId) ?? null;
+        return {
+          ...e,
+          lastSignalAt: live?.lastSignalAt ?? null,
+          signalCount: live?.signalCount ?? 0,
+        };
+      });
+
       const byStatus: Record<string, number> = {};
       for (const e of integrations) {
         byStatus[e.availabilityStatus] = (byStatus[e.availabilityStatus] ?? 0) + 1;

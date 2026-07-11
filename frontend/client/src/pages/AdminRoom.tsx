@@ -90,6 +90,7 @@ import {
 import { RoleNavConfigTab } from '../components/role-room/components/admin-room/RoleNavConfigTab';
 import { WhatsNewTab } from '../components/role-room/components/admin-room/WhatsNewTab';
 import ObservabilityPanel from '../components/admin-room/observability/ObservabilityPanel';
+import IntegrationCenterTab from '../components/admin-room/integration-center/IntegrationCenterTab';
 import { ResendStatusTab } from '../components/role-room/components/admin-room/ResendStatusTab';
 import { B2ArchiveTab } from '../components/role-room/components/admin-room/B2ArchiveTab';
 import { PlatformStatusWidget } from '../components/role-room/components/admin-room/PlatformStatusWidget';
@@ -116,7 +117,7 @@ import ContentCalendarTab from './admin-room/ContentCalendarTab';
 
 const ADMIN_ROOM_OWNER_EMAIL = 'daniel@creatorhubn.com';
 
-type AdminRoomTab = 'dashboard' | 'business-plan' | 'funding' | 'investors' | 'partners' | 'activity' | 'analytics' | 'cms' | 'presence' | 'role-nav' | 'prototype-testers' | 'post-agent-seats' | 'operating-system' | 'content-marketing' | 'industry-crm' | 'role-room-economy' | 'newsletter-studio' | 'ai-citation' | 'whats-new' | 'resend' | 'marketing-cockpit' | 'role-room-agent' | 'content-calendar' | 'b2-archive' | 'migrations' | 'observability';
+type AdminRoomTab = 'dashboard' | 'business-plan' | 'funding' | 'investors' | 'partners' | 'activity' | 'analytics' | 'cms' | 'presence' | 'role-nav' | 'prototype-testers' | 'post-agent-seats' | 'operating-system' | 'content-marketing' | 'industry-crm' | 'role-room-economy' | 'newsletter-studio' | 'ai-citation' | 'whats-new' | 'resend' | 'marketing-cockpit' | 'role-room-agent' | 'content-calendar' | 'b2-archive' | 'migrations' | 'observability' | 'integrations';
 
 // ─────────────────────────────────────────────────────────
 // Stable produkt-features for søknadsmaler. Role Room Agent
@@ -4523,7 +4524,7 @@ function resolveInitialAdminTab(): AdminRoomTab {
     'content-marketing', 'industry-crm', 'role-room-economy',
     'newsletter-studio', 'ai-citation', 'whats-new', 'resend',
     'marketing-cockpit', 'role-room-agent', 'content-calendar',
-    'b2-archive', 'migrations', 'observability',
+    'b2-archive', 'migrations', 'observability', 'integrations',
   ];
   try {
     const fromUrl = new URLSearchParams(window.location.search).get('adminTab');
@@ -4615,6 +4616,7 @@ export default function AdminRoom() {
   else if (tab === 'ai-citation') content = <AiCitationTab />;
   else if (tab === 'whats-new') content = <WhatsNewTab />;
   else if (tab === 'observability') content = <ObservabilityPanel />;
+  else if (tab === 'integrations') content = <IntegrationCenterTab />;
   else if (tab === 'resend') content = <ResendStatusTab />;
   else if (tab === 'marketing-cockpit') content = <MarketingCockpitTab />;
   else if (tab === 'role-room-agent') content = <RoleRoomAgentTab />;
@@ -4677,6 +4679,7 @@ export default function AdminRoom() {
           <Tab value="content-calendar" label="Content-kalender" />
           <Tab value="b2-archive" label="B2-arkiv" />
           <Tab value="migrations" label="Migrasjoner" />
+          <Tab value="integrations" label="🔌 Integrasjoner" />
         </Tabs>
         <Box>{content}</Box>
       </Stack>
